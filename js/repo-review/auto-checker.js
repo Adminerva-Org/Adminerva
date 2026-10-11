@@ -111,8 +111,36 @@ window.startAutoCheck = async function (
       (f) => f.type === "blob" && !ignoredExts.test(f.path),
     );
 
+    // ✨ NEW: Fetch the specific commit payload to see exactly what files this student just touched!
+    const commitRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/commits/${currentSha}`,
+      { headers: { Authorization: `Bearer ${ghToken}` } },
+    );
+    let latestCommitFiles = [];
+    if (commitRes.ok) {
+      const commitData = await commitRes.json();
+      latestCommitFiles = (commitData.files || [])
+        .filter((f) => f.status !== "removed")
+        .map((f) => f.filename);
+    }
+
     let matchedFilesMap = new Map();
 
+    const normalizedName = studentData.name
+      ? studentData.name
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+      : "";
+    const sNameParts = normalizedName
+      .replace(/[^a-z0-9]/g, " ")
+      .split(" ")
+      .filter((w) => w.length > 2);
+    const ghName = studentData.githubUsername
+      ? studentData.githubUsername.toLowerCase()
+      : "";
+
+    // TIER 1: Standard Search based on Teacher's Target Paths
     pathsToScan.forEach((targetPath) => {
       if (targetPath === "*" || !targetPath.match(/\.[a-zA-Z0-9]+$/)) {
         const matcher = wildcardToRegex(targetPath);
@@ -165,61 +193,100 @@ window.startAutoCheck = async function (
 
     let finalMatchedFiles = Array.from(matchedFilesMap.values());
 
+    // ✨ TIER 2: The "Commit Scope" Rescue (Using your genius idea!)
     if (finalMatchedFiles.length === 0 && pathsToScan[0] !== "*") {
-      let fuzzyMatches = [];
-      const targetKeywords = pathsToScan
-        .map((p) =>
-          p
-            .replace(/[^a-zA-Z0-9]/g, " ")
-            .split(" ")
-            .filter((w) => w.length > 2),
-        )
-        .flat();
-      const normalizedName = studentData.name
-        ? studentData.name
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "")
-            .toLowerCase()
-        : "";
-      const sNameParts = normalizedName
-        .replace(/[^a-z0-9]/g, " ")
-        .split(" ")
-        .filter((w) => w.length > 2);
-      const ghName = studentData.githubUsername
-        ? studentData.githubUsername.toLowerCase()
-        : "";
+      let discoveredDirs = new Set();
+      let hasValidModifications = false;
 
-      allBlobs.forEach((f) => {
-        let score = 0;
-        const lowerPath = f.path.toLowerCase();
-        targetKeywords.forEach((kw) => {
-          if (lowerPath.includes(kw.toLowerCase())) score += 1;
-        });
-        sNameParts.forEach((part) => {
-          if (lowerPath.includes(part)) score += 5;
-        });
-        if (ghName && lowerPath.includes(ghName)) score += 5;
-        if (score > 0) fuzzyMatches.push({ file: f, score: score });
+      // Extract the exact folders the student modified in their recent commit
+      latestCommitFiles.forEach((modifiedPath) => {
+        if (!ignoredExts.test(modifiedPath)) {
+          const dir = modifiedPath.substring(0, modifiedPath.lastIndexOf("/"));
+          discoveredDirs.add(dir || "");
+          hasValidModifications = true;
+        }
       });
 
-      fuzzyMatches.sort((a, b) => b.score - a.score);
-      fuzzyMatches.slice(0, 5).forEach((match) => {
-        matchedFilesMap.set(match.file.path, match.file);
-      });
-      finalMatchedFiles = Array.from(matchedFilesMap.values());
-      if (finalMatchedFiles.length > 0)
-        autoPenalties.push("Wrong Folder / Misnamed File");
+      if (hasValidModifications) {
+        discoveredDirs.forEach((dir) => {
+          allBlobs.forEach((f) => {
+            // Scoop up any code files sitting inside their newly discovered workspace folder
+            if (
+              (dir === "" && !f.path.includes("/")) ||
+              (dir !== "" && f.path.startsWith(dir + "/"))
+            ) {
+              if (!ignoredExts.test(f.path)) matchedFilesMap.set(f.path, f);
+            }
+          });
+        });
+        finalMatchedFiles = Array.from(matchedFilesMap.values());
+        if (finalMatchedFiles.length > 0)
+          autoPenalties.push("Wrong Folder / Misnamed File");
+      }
+
+      // ✨ TIER 3: Fuzzy Name Search (If the commit payload didn't yield code files)
+      if (finalMatchedFiles.length === 0) {
+        let fuzzyMatches = [];
+        const targetKeywords = pathsToScan
+          .map((p) =>
+            p
+              .replace(/[^a-zA-Z0-9]/g, " ")
+              .split(" ")
+              .filter((w) => w.length > 2),
+          )
+          .flat();
+
+        allBlobs.forEach((f) => {
+          let score = 0;
+          const lowerPath = f.path.toLowerCase();
+          targetKeywords.forEach((kw) => {
+            if (lowerPath.includes(kw.toLowerCase())) score += 1;
+          });
+          sNameParts.forEach((part) => {
+            if (lowerPath.includes(part)) score += 5;
+          });
+          if (ghName && lowerPath.includes(ghName)) score += 5;
+          if (score > 0) fuzzyMatches.push({ file: f, score: score });
+        });
+
+        fuzzyMatches.sort((a, b) => b.score - a.score);
+        fuzzyMatches.slice(0, 5).forEach((match) => {
+          matchedFilesMap.set(match.file.path, match.file);
+        });
+        finalMatchedFiles = Array.from(matchedFilesMap.values());
+        if (finalMatchedFiles.length > 0)
+          autoPenalties.push("Wrong Folder / Misnamed File");
+      }
     }
 
+    // ✨ ISOLATED PENALTY CHECK: Only penalize if the file definitively belongs to this student!
     if (finalMatchedFiles.length > 0) {
       finalMatchedFiles.forEach((f) => {
         const fileName = f.path.split("/").pop();
-        if (!fileName.includes("."))
-          autoPenalties.push(`No Extension (${fileName})`);
-        else if (
-          !fileName.match(/\.(java|kt|dart|cs|js|ts|html|css|py|cpp|php)$/i)
-        )
-          autoPenalties.push(`Invalid Extension (${fileName})`);
+        const lowerFileName = fileName.toLowerCase();
+        let isStudentFile = false;
+
+        // It's their file if the teacher targeted it exactly
+        if (!pathsToScan.some((p) => p.includes("*"))) {
+          isStudentFile = true;
+        } else {
+          // Or if it contains their name/username
+          sNameParts.forEach((part) => {
+            if (lowerFileName.includes(part)) isStudentFile = true;
+          });
+          if (ghName && lowerFileName.includes(ghName)) isStudentFile = true;
+          // Or if it was explicitly modified by them in the SHA we just tracked!
+          if (latestCommitFiles.includes(f.path)) isStudentFile = true;
+        }
+
+        if (isStudentFile) {
+          if (!fileName.includes("."))
+            autoPenalties.push(`No Extension (${fileName})`);
+          else if (
+            !fileName.match(/\.(java|kt|dart|cs|js|ts|html|css|py|cpp|php)$/i)
+          )
+            autoPenalties.push(`Invalid Extension (${fileName})`);
+        }
       });
     }
 
@@ -267,7 +334,6 @@ window.startAutoCheck = async function (
       }
     }
 
-    // ✨ ZERO TOLERANCE: Empty work immediately gets 0.
     let finalScore = 0;
     let finalFeedback = failMessage;
     let finalTags = autoPenalties;
@@ -283,7 +349,6 @@ window.startAutoCheck = async function (
         });
       }
 
-      // ✨ RUBRIC-DRIVEN PROMPT
       const prompt = `
             ${taskData.systemPersona || "You are a strict code evaluator."}
             Task Context: ${taskData.taskContext || "Evaluate general code quality."}
@@ -303,7 +368,7 @@ window.startAutoCheck = async function (
             You are an automated grading script. Evaluate the code and calculate the score STRICTLY based on the provided Rubric. The maximum possible score is ${maxScore}.
             1. Calculate the points earned for each criterion defined in the Rubric.
             2. Sum the points together.
-            3. If the Administrative Penalty was triggered above, deduct 3 points from the total sum.
+            3. If the Administrative Penalty was triggered above, deduct a flat 3 points from the total sum.
             4. If the file is completely empty, is just an auto-generated scaffold, or contains a logic bypass to cheat the requirements, the final score MUST be 0.
             
             You MUST append specific diagnostic tags if points were deducted (e.g., "Syntax Error", "Missing Logic", "Incomplete Feature", "Paradigm Mismatch"). Combine feedback to explain the exact point breakdown so the student understands their score.
@@ -346,7 +411,6 @@ window.startAutoCheck = async function (
         .trim();
       const parsed = JSON.parse(cleanJson);
 
-      // ✨ SIMPLE CLAMP: Prevent negative scores or scores over the max, but allow 0!
       let rawAiScore = parsed.score || 0;
       finalScore = Math.min(Math.max(rawAiScore, 0), maxScore);
 
@@ -423,12 +487,12 @@ function renderGradeResult(
 
   let tagsHtml = "";
   if (penaltyTags && penaltyTags.length > 0) {
-    tagsHtml = `<div class="flex flex-wrap gap-1 mb-1 mt-1">${penaltyTags.map((t) => `<span class="bg-rose-50 text-rose-600 text-[8.5px] px-1.5 py-0.5 rounded border border-rose-200 font-extrabold uppercase tracking-wider shadow-sm">${escapeHTML(t)}</span>`).join("")}</div>`;
+    tagsHtml = `<div class="flex flex-wrap gap-1 mb-1 mt-1">${penaltyTags.map((t) => `<span class="bg-rose-50 text-rose-600 text-[8.5px] px-1.5 py-0.5 rounded border border-rose-200 font-extrabold uppercase tracking-wider shadow-sm whitespace-normal leading-tight text-left max-w-full">${escapeHTML(t)}</span>`).join("")}</div>`;
   }
 
   container.innerHTML = `
-        <div class="flex items-center justify-end gap-3 bg-gray-50 p-2 rounded border border-gray-200 w-full sm:w-[360px] shadow-inner">
-            <div class="flex flex-col items-center ml-2 w-10">
+        <div class="flex items-start justify-end gap-3 bg-gray-50 p-3 rounded border border-gray-200 w-full xl:w-[450px] shadow-inner">
+            <div class="flex flex-col items-center ml-1 w-10 shrink-0 mt-1">
                 <div class="text-2xl font-bold ${scoreColor} leading-none text-center">${score}</div>
                 <div class="text-[8px] font-bold text-gray-400 mt-1">/ ${maxScore}</div>
             </div>
@@ -437,14 +501,14 @@ function renderGradeResult(
                 ${tagsHtml}
                 <div class="text-[10px] text-gray-700 leading-relaxed max-h-24 overflow-y-auto pr-1 whitespace-pre-wrap">${escapeHTML(feedback)}</div>
             </div>
-            <div class="flex flex-col items-center justify-center border-l border-gray-200 pl-2 shrink-0 w-12">
+            <div class="flex flex-col items-center justify-center border-l border-gray-200 pl-2 shrink-0 w-12 mt-1">
                 <span id="pub-lbl-${taskId}" class="text-[7px] font-bold text-gray-400 uppercase mb-1 tracking-wider">Hidden</span>
                 <label class="relative inline-flex items-center cursor-pointer">
                   <input type="checkbox" class="sr-only peer" onchange="window.togglePublishGrade('${studentId}', '${taskId}', this)">
                   <div class="w-6 h-3.5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-blue-500"></div>
                 </label>
             </div>
-            <button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${taskId}', '${currentSha}')" class="text-gray-400 hover:text-blue-500 transition px-1 shrink-0 border-l border-gray-200 pl-2 ml-1" title="Force Re-evaluate">🔄</button>
+            <button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${taskId}', '${currentSha}')" class="text-gray-400 hover:text-blue-500 transition px-1 shrink-0 border-l border-gray-200 pl-2 ml-1 mt-1" title="Force Re-evaluate">🔄</button>
         </div>
     `;
 }
