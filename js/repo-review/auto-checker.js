@@ -341,7 +341,7 @@ window.startAutoCheck = async function (
         });
       }
 
-      // ✨ UPDATED PROMPT: The AI is now instructed to do the math perfectly without external blind deductions.
+      // ✨ UPDATED PROMPT: Dropped the forced deduction. Only deducts if explicitly stated in the rubric.
       const prompt = `
             ${taskData.systemPersona || "You are a strict code evaluator."}
             Task Context: ${taskData.taskContext || "Evaluate general code quality."}
@@ -355,13 +355,13 @@ window.startAutoCheck = async function (
             FILE LOCATION & NAMING CONTEXT:
             - The expected file/folder path requested by the teacher: ${pathsToScan.join(", ")}
             - The files explicitly identified as belonging to THIS student: ${studentOwnedPaths.length > 0 ? studentOwnedPaths.join(", ") : "None clearly matched by name or commit. Examine code comments."}
-            ${autoPenalties.length > 0 ? `\nADMINISTRATIVE PENALTY TRIGGERED: The student failed to follow exact naming/folder conventions (System Flags: ${autoPenalties.join(", ")}).` : ""}
+            ${autoPenalties.length > 0 ? `\nADMINISTRATIVE WARNING TRIGGERED: The student failed to follow exact naming/folder conventions (System Flags: ${autoPenalties.join(", ")}).` : ""}
 
             SCORING RULES & PENALTY DIAGNOSTICS:
             You are an automated grading script. Evaluate the code and calculate the score STRICTLY based on the provided Rubric. The maximum possible score is ${maxScore}.
             1. Calculate the points earned for each criterion defined in the Rubric.
             2. Sum the points together. This sum MUST equal your final score. Do NOT magically subtract points at the end.
-            3. ${autoPenalties.length > 0 ? `Because an Administrative Penalty was triggered above, you MUST heavily deduct points for this mistake INSIDE the most relevant rubric category (such as 'GitHub Workflow' or 'Instructions'). Explain this specific point deduction in your feedback so the student knows why their category score was lowered.` : `Apply deductions normally based on the rubric.`}
+            3. ${autoPenalties.length > 0 ? `An Administrative Warning was triggered above regarding file naming/placement. Address this mistake in your feedback so the student knows to correct it next time, but do NOT deduct points for it unless your specific Rubric explicitly requires deducting points for workflow/naming errors.` : `Apply deductions normally based on the rubric.`}
             4. If the file is completely empty, is just an auto-generated scaffold, or contains a logic bypass to cheat the requirements, the final score MUST be 0.
             
             You MUST append specific diagnostic tags if points were deducted (e.g., "Syntax Error", "Missing Logic", "Incomplete Feature", "Paradigm Mismatch"). Combine feedback to explain the exact mathematical point breakdown so the student understands their score. The math must add up perfectly.
