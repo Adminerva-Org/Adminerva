@@ -76,55 +76,42 @@ window.startAutoCheck = async function (
       : { name: "Unknown Student", githubUsername: "Unknown" };
 
     const maxScore = taskData.maxScore || 20;
-
-    updateStatus("Scanning Repo...");
+    const floorScore = Math.round(maxScore * 0.3); // ✨ 30% Safety Net Floor
 
     let pathsToScan =
       taskData.targetPaths ||
       (taskData.targetPath ? [taskData.targetPath] : []);
     if (pathsToScan.length === 0) pathsToScan = ["*"];
 
-    let fileRawText = "";
-    let displayPathText = pathsToScan.join(", ") || "Entire Repository";
-    let autoPenalties = [];
-    let forceFail = false;
-    let failMessage = "";
-    let pathsFound = [];
-    let studentOwnedPaths = [];
+    updateStatus("Tracking Student Commits...");
 
-    const repoRes = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}`,
-      { headers: { Authorization: `Bearer ${ghToken}` } },
-    );
+    // ✨ PHASE 1: Concurrent Data Gathering (Super Fast)
+    const [repoRes, treeRes, commitsRes] = await Promise.all([
+      fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+        headers: { Authorization: `Bearer ${ghToken}` },
+      }),
+      fetch(
+        `https://api.github.com/repos/${owner}/${repo}/git/trees/${currentSha}?recursive=1`,
+        { headers: { Authorization: `Bearer ${ghToken}` } },
+      ),
+      fetch(
+        `https://api.github.com/repos/${owner}/${repo}/commits?per_page=100`,
+        { headers: { Authorization: `Bearer ${ghToken}` } },
+      ),
+    ]);
+
     if (!repoRes.ok) throw new Error("Repo inaccessible. Might be private.");
     const repoData = await repoRes.json();
-    const defaultBranch = repoData.default_branch;
-    if (!defaultBranch) throw new Error("Repository is empty.");
+    if (!repoData.default_branch) throw new Error("Repository is empty.");
 
-    const treeRes = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/git/trees/${currentSha}?recursive=1`,
-      { headers: { Authorization: `Bearer ${ghToken}` } },
-    );
     const treeData = await treeRes.json();
+    const commitsData = await commitsRes.json();
+
     const ignoredExts =
       /\.(class|jar|exe|png|jpg|jpeg|gif|ico|svg|mp3|mp4|zip|rar|tar|gz|pdf|docx|xlsx|pptx)$/i;
     const allBlobs = (treeData.tree || []).filter(
       (f) => f.type === "blob" && !ignoredExts.test(f.path),
     );
-
-    const commitRes = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/commits/${currentSha}`,
-      { headers: { Authorization: `Bearer ${ghToken}` } },
-    );
-    let latestCommitFiles = [];
-    if (commitRes.ok) {
-      const commitData = await commitRes.json();
-      latestCommitFiles = (commitData.files || [])
-        .filter((f) => f.status !== "removed")
-        .map((f) => f.filename);
-    }
-
-    let matchedFilesMap = new Map();
 
     const normalizedName = studentData.name
       ? studentData.name
@@ -140,185 +127,145 @@ window.startAutoCheck = async function (
       ? studentData.githubUsername.toLowerCase()
       : "";
 
-    pathsToScan.forEach((targetPath) => {
-      if (targetPath === "*" || !targetPath.match(/\.[a-zA-Z0-9]+$/)) {
-        const matcher = wildcardToRegex(targetPath);
-        allBlobs.forEach((f) => {
-          if (matcher.test(f.path)) {
-            matchedFilesMap.set(f.path, f);
-          }
-        });
-      } else {
-        let foundExact = false;
-        for (let f of allBlobs) {
-          if (f.path === targetPath) {
-            matchedFilesMap.set(f.path, f);
-            foundExact = true;
-            break;
-          }
-        }
-        if (!foundExact) {
-          const expectedFileName = targetPath.split("/").pop();
-          const expectedBaseName = expectedFileName.replace(
-            /\.[a-zA-Z0-9]+$/,
-            "",
-          );
-          const expectedDir = targetPath
-            .replace(expectedFileName, "")
-            .replace(/\/$/, "");
-          let bestMatch = null;
-          for (let f of allBlobs) {
-            const fName = f.path.split("/").pop();
-            const fBase = fName.replace(/\.[a-zA-Z0-9]+$/, "");
-            const fDir = f.path.replace(fName, "").replace(/\/$/, "");
-            if (fName === expectedFileName) {
-              bestMatch = f;
-              autoPenalties.push(`Wrong Folder: ${expectedFileName}`);
-              break;
-            }
-            if (fBase === expectedBaseName) {
-              bestMatch = f;
-              if (fDir === expectedDir)
-                autoPenalties.push(`Missing Extension: ${expectedFileName}`);
-              else
-                autoPenalties.push(`Wrong Folder & Ext: ${expectedBaseName}`);
-              break;
-            }
-          }
-          if (bestMatch) matchedFilesMap.set(bestMatch.path, bestMatch);
-        }
-      }
+    // ✨ PHASE 2: Student Isolation (Finding their exact commits)
+    const studentCommits = (commitsData || []).filter((c) => {
+      const authorLogin = (c.author?.login || "").toLowerCase();
+      const authorEmail = (c.commit?.author?.email || "").toLowerCase();
+      const authorName = (c.commit?.author?.name || "").toLowerCase();
+      return (
+        (ghName && authorLogin === ghName) ||
+        (studentData.email &&
+          authorEmail === studentData.email.toLowerCase()) ||
+        sNameParts.some((part) => authorName.includes(part)) ||
+        (ghName && authorName.includes(ghName))
+      );
     });
 
-    let finalMatchedFiles = Array.from(matchedFilesMap.values());
+    updateStatus(`Analyzing ${studentCommits.length} Commit(s)...`);
 
-    if (finalMatchedFiles.length === 0 && pathsToScan[0] !== "*") {
-      let discoveredDirs = new Set();
-      let hasValidModifications = false;
+    // Concurrently fetch the exact files touched in their 5 most recent commits
+    const touchedFilesSet = new Set();
+    const commitPromises = studentCommits.slice(0, 5).map(async (c) => {
+      try {
+        const detailRes = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/commits/${c.sha}`,
+          { headers: { Authorization: `Bearer ${ghToken}` } },
+        );
+        if (detailRes.ok) {
+          const detail = await detailRes.json();
+          (detail.files || []).forEach((f) => {
+            if (f.status !== "removed") touchedFilesSet.add(f.filename);
+          });
+        }
+      } catch (e) {
+        console.warn("Commit fetch skipped", e);
+      }
+    });
+    await Promise.all(commitPromises);
 
-      latestCommitFiles.forEach((modifiedPath) => {
-        if (!ignoredExts.test(modifiedPath)) {
-          const dir = modifiedPath.substring(0, modifiedPath.lastIndexOf("/"));
-          discoveredDirs.add(dir || "");
-          hasValidModifications = true;
+    let studentOwnedBlobs = [];
+    allBlobs.forEach((f) => {
+      const lowerPath = f.path.toLowerCase();
+      let isTheirs = touchedFilesSet.has(f.path);
+
+      // Authorship Rescue: If their groupmate pushed it, but their name is on the file
+      if (!isTheirs) {
+        if (sNameParts.some((part) => lowerPath.includes(part)))
+          isTheirs = true;
+        if (ghName && lowerPath.includes(ghName)) isTheirs = true;
+      }
+      if (isTheirs) studentOwnedBlobs.push(f);
+    });
+
+    // ✨ PHASE 3: The Golden Path (Target Verification)
+    let targetMatchedFiles = [];
+    pathsToScan.forEach((targetPath) => {
+      const matcher = wildcardToRegex(targetPath);
+      studentOwnedBlobs.forEach((f) => {
+        if (matcher.test(f.path) || f.path === targetPath) {
+          if (!targetMatchedFiles.includes(f)) targetMatchedFiles.push(f);
         }
       });
+    });
 
-      if (hasValidModifications) {
-        discoveredDirs.forEach((dir) => {
-          allBlobs.forEach((f) => {
-            if (
-              (dir === "" && !f.path.includes("/")) ||
-              (dir !== "" && f.path.startsWith(dir + "/"))
-            ) {
-              if (!ignoredExts.test(f.path)) matchedFilesMap.set(f.path, f);
-            }
-          });
-        });
-        finalMatchedFiles = Array.from(matchedFilesMap.values());
-        if (finalMatchedFiles.length > 0)
-          autoPenalties.push("Wrong Folder / Misnamed File");
-      }
+    let filesToProcess = [];
+    let autoPenalties = [];
 
-      if (finalMatchedFiles.length === 0) {
-        let fuzzyMatches = [];
-        const targetKeywords = pathsToScan
-          .map((p) =>
-            p
-              .replace(/[^a-zA-Z0-9]/g, " ")
-              .split(" ")
-              .filter((w) => w.length > 2),
-          )
-          .flat();
-
-        allBlobs.forEach((f) => {
-          let score = 0;
-          const lowerPath = f.path.toLowerCase();
-          targetKeywords.forEach((kw) => {
-            if (lowerPath.includes(kw.toLowerCase())) score += 1;
-          });
-          sNameParts.forEach((part) => {
-            if (lowerPath.includes(part)) score += 5;
-          });
-          if (ghName && lowerPath.includes(ghName)) score += 5;
-          if (score > 0) fuzzyMatches.push({ file: f, score: score });
-        });
-
-        fuzzyMatches.sort((a, b) => b.score - a.score);
-        fuzzyMatches.slice(0, 5).forEach((match) => {
-          matchedFilesMap.set(match.file.path, match.file);
-        });
-        finalMatchedFiles = Array.from(matchedFilesMap.values());
-        if (finalMatchedFiles.length > 0)
-          autoPenalties.push("Wrong Folder / Misnamed File");
-      }
+    // ✨ PHASE 4: Search & Rescue
+    if (targetMatchedFiles.length > 0) {
+      filesToProcess = targetMatchedFiles;
+    } else if (studentOwnedBlobs.length > 0 && pathsToScan[0] !== "*") {
+      autoPenalties.push("Wrong Folder / Misnamed File");
+      filesToProcess = studentOwnedBlobs;
     }
 
-    if (finalMatchedFiles.length > 0) {
-      finalMatchedFiles.forEach((f) => {
+    // Apply extension penalties ONLY to the files we successfully isolated
+    if (filesToProcess.length > 0) {
+      filesToProcess.forEach((f) => {
         const fileName = f.path.split("/").pop();
-        const lowerFileName = fileName.toLowerCase();
-        let isStudentFile = false;
-
-        if (pathsToScan.includes(f.path)) {
-          isStudentFile = true;
-        } else {
-          sNameParts.forEach((part) => {
-            if (lowerFileName.includes(part)) isStudentFile = true;
-          });
-          if (ghName && lowerFileName.includes(ghName)) isStudentFile = true;
-          if (latestCommitFiles.includes(f.path)) isStudentFile = true;
-        }
-
-        if (isStudentFile) {
-          studentOwnedPaths.push(f.path);
-          if (!fileName.includes("."))
-            autoPenalties.push(`No Extension (${fileName})`);
-          else if (
-            !fileName.match(/\.(java|kt|dart|cs|js|ts|html|css|py|cpp|php)$/i)
-          )
-            autoPenalties.push(`Invalid Extension (${fileName})`);
-        }
+        if (!fileName.includes("."))
+          autoPenalties.push(`No Extension (${fileName})`);
+        else if (
+          !fileName.match(/\.(java|kt|dart|cs|js|ts|html|css|py|cpp|php)$/i)
+        )
+          autoPenalties.push(`Invalid Extension (${fileName})`);
       });
     }
 
-    if (finalMatchedFiles.length === 0) {
+    let forceFail = false;
+    let failMessage = "";
+    let pathsFound = [];
+    let fileRawText = "";
+    let displayPathText = pathsToScan.join(", ") || "Entire Repository";
+
+    // Ensure we don't feed huge binary files to Gemini
+    const validCodeExts =
+      /\.(java|kt|dart|cs|js|ts|html|css|py|cpp|php|xml|json|md)$/i;
+    filesToProcess = filesToProcess
+      .filter((f) => validCodeExts.test(f.path) || !f.path.includes("."))
+      .slice(0, 40);
+
+    // ✨ PHASE 5: Evidence Aggregation
+    if (filesToProcess.length === 0) {
       forceFail = true;
-      failMessage = `No code files found matching your target paths. Please ensure you committed your work.`;
+      failMessage = `No code files found matching your target paths or in your recent commits. Please ensure you pushed your work to GitHub.`;
       autoPenalties.push("Empty Submission");
     } else {
-      const filesToProcess = finalMatchedFiles.slice(0, 40);
       updateStatus(`Reading ${filesToProcess.length} File(s)...`);
 
-      let combinedCode = "";
+      // Concurrent fetch for all raw code text
       const filePromises = filesToProcess.map(async (file) => {
-        const fileRes = await fetch(
-          `https://api.github.com/repos/${owner}/${repo}/contents/${file.path}?ref=${currentSha}`,
-          {
-            headers: {
-              Authorization: `Bearer ${ghToken}`,
-              Accept: "application/vnd.github.v3.raw",
+        try {
+          const fileRes = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/contents/${file.path}?ref=${currentSha}`,
+            {
+              headers: {
+                Authorization: `Bearer ${ghToken}`,
+                Accept: "application/vnd.github.v3.raw",
+              },
             },
-          },
-        );
-        if (fileRes.ok) return { path: file.path, text: await fileRes.text() };
+          );
+          if (fileRes.ok)
+            return { path: file.path, text: await fileRes.text() };
+        } catch (e) {
+          return null;
+        }
         return null;
       });
 
       const fetchedFiles = await Promise.all(filePromises);
       fetchedFiles.forEach((fileObj) => {
         if (fileObj && fileObj.text.trim()) {
-          combinedCode += `\n\n--- FILE: ${fileObj.path} ---\n${fileObj.text}`;
+          fileRawText += `\n\n--- FILE: ${fileObj.path} ---\n${fileObj.text}`;
           pathsFound.push(fileObj.path);
         }
       });
 
-      if (!combinedCode.trim()) {
+      if (!fileRawText.trim()) {
         forceFail = true;
         failMessage = "Files found, but contents were empty or unreadable.";
         autoPenalties.push("Empty Submission");
       } else {
-        fileRawText = combinedCode;
         if (pathsFound.length > 1)
           displayPathText = `${pathsFound[0].split("/").pop()} (+${pathsFound.length - 1} files)`;
         else if (pathsFound.length === 1)
@@ -330,6 +277,7 @@ window.startAutoCheck = async function (
     let finalFeedback = failMessage;
     let finalTags = autoPenalties;
 
+    // ✨ PHASE 6 & 7: Dynamic AI Evaluation & Human-Centric Feedback
     if (!forceFail) {
       updateStatus("Evaluating Code...");
       let rulesText = "No strict objective string rules applied.";
@@ -341,7 +289,6 @@ window.startAutoCheck = async function (
         });
       }
 
-      // ✨ UPDATED PROMPT: Dropped the forced deduction. Only deducts if explicitly stated in the rubric.
       const prompt = `
             ${taskData.systemPersona || "You are a strict code evaluator."}
             Task Context: ${taskData.taskContext || "Evaluate general code quality."}
@@ -349,26 +296,29 @@ window.startAutoCheck = async function (
             
             CRITICAL INSTRUCTION - TARGET STUDENT ISOLATION:
             You are grading ONLY the individual work of student: ${studentData.name} (GitHub username: @${studentData.githubUsername || "unlinked"}).
-            Note: The student's name might be spelled slightly differently in the file path.
-            The codebase below contains files from multiple group members. You MUST identify which files or code blocks belong to this specific student. DO NOT deduct points for errors found in files clearly belonging to other students.
+            The code provided below contains files definitively linked to this student via their commit history or filename.
 
             FILE LOCATION & NAMING CONTEXT:
-            - The expected file/folder path requested by the teacher: ${pathsToScan.join(", ")}
-            - The files explicitly identified as belonging to THIS student: ${studentOwnedPaths.length > 0 ? studentOwnedPaths.join(", ") : "None clearly matched by name or commit. Examine code comments."}
-            ${autoPenalties.length > 0 ? `\nADMINISTRATIVE WARNING TRIGGERED: The student failed to follow exact naming/folder conventions (System Flags: ${autoPenalties.join(", ")}).` : ""}
+            - Expected Target Path: ${pathsToScan.join(", ")}
+            - Actual Uploaded Path: ${pathsFound.join(", ")}
+            ${autoPenalties.length > 0 ? `\nADMINISTRATIVE WARNING TRIGGERED: The student placed their code in the wrong folder or misnamed the file (System Flags: ${autoPenalties.join(", ")}).` : ""}
 
             SCORING RULES & PENALTY DIAGNOSTICS:
-            You are an automated grading script. Evaluate the code and calculate the score STRICTLY based on the provided Rubric. The maximum possible score is ${maxScore}.
-            1. Calculate the points earned for each criterion defined in the Rubric.
-            2. Sum the points together. This sum MUST equal your final score. Do NOT magically subtract points at the end.
-            3. ${autoPenalties.length > 0 ? `An Administrative Warning was triggered above regarding file naming/placement. Address this mistake in your feedback so the student knows to correct it next time, but do NOT deduct points for it unless your specific Rubric explicitly requires deducting points for workflow/naming errors.` : `Apply deductions normally based on the rubric.`}
-            4. If the file is completely empty, is just an auto-generated scaffold, or contains a logic bypass to cheat the requirements, the final score MUST be 0.
+            Evaluate the valid code and calculate the score STRICTLY based on the provided Rubric. The maximum possible score is ${maxScore}.
             
-            You MUST append specific diagnostic tags if points were deducted (e.g., "Syntax Error", "Missing Logic", "Incomplete Feature", "Paradigm Mismatch"). Combine feedback to explain the exact mathematical point breakdown so the student understands their score. The math must add up perfectly.
+            1. ZERO TOLERANCE (0 Points): If the file is completely blank, is just an unmodified auto-generated scaffold/template with no student logic, or contains a blatant logic bypass to cheat the requirements, the final score MUST be exactly 0.
+            2. NEEDS DEVELOPMENT FLOOR (${floorScore} Points Minimum): If the student made a genuine attempt but failed catastrophically (e.g., Paradigm Mismatch like submitting Android XML instead of Java, severe syntax errors, or completely broken logic), you must not give them a zero. The lowest score for a genuine attempt is ${floorScore}.
+            3. STANDARD GRADING (${floorScore + 1} to ${maxScore} Points): If the code is functional, calculate the score strictly by adding up the points earned for each criterion defined in the Rubric.
+            4. ${autoPenalties.length > 0 ? `An Administrative Warning was triggered above regarding file naming/placement. Address this mistake in your conversational feedback so the student knows to correct it next time, but do NOT artificially deduct points for it unless your specific Rubric explicitly requires deducting points for workflow/naming errors.` : `Apply deductions normally based on the rubric.`}
+            
+            You MUST append specific diagnostic tags if points were deducted (e.g., "Syntax Error", "Missing Logic", "Incomplete Feature", "Paradigm Mismatch"). The score must reflect the exact mathematical point breakdown.
+
+            FEEDBACK TONE & STYLE:
+            Write the \`teacher_note\` as a single, natural, human-sounding paragraph addressed directly to the student (e.g., "Hi Kenshin, ..."). Do not use robotic phrases like "Here is the breakdown of your score." Weave the administrative warnings and rubric feedback together naturally.
 
             CRITICAL JSON OUTPUT FORMAT:
             You MUST return your evaluation strictly as a JSON object with NO markdown formatting. Format EXACTLY like this:
-            {"score": <number>, "penalty_tags": ["<tag1>", "<tag2>"], "teacher_note": "<2 to 4 sentences addressed directly to the student explaining the score breakdown and penalties>"}
+            {"score": <number>, "penalty_tags": ["<tag1>", "<tag2>"], "teacher_note": "<paragraph>"}
             
             ${rulesText}
             
@@ -404,7 +354,7 @@ window.startAutoCheck = async function (
         .trim();
       const parsed = JSON.parse(cleanJson);
 
-      let rawAiScore = parsed.score || 0;
+      let rawAiScore = parsed.score !== undefined ? parsed.score : floorScore;
       finalScore = Math.min(Math.max(rawAiScore, 0), maxScore);
 
       finalFeedback =
