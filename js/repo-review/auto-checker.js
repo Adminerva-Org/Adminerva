@@ -76,16 +76,16 @@ window.startAutoCheck = async function (
       : { name: "Unknown Student", githubUsername: "Unknown" };
 
     const maxScore = taskData.maxScore || 20;
-    const floorScore = Math.round(maxScore * 0.3); // ✨ 30% Safety Net Floor
+    const floorScore = Math.round(maxScore * 0.3); // 30% Safety Net Floor
 
     let pathsToScan =
       taskData.targetPaths ||
       (taskData.targetPath ? [taskData.targetPath] : []);
     if (pathsToScan.length === 0) pathsToScan = ["*"];
 
-    updateStatus("Tracking Student Commits...");
+    updateStatus("Tracking Repository Data...");
 
-    // ✨ PHASE 1: Concurrent Data Gathering (Super Fast)
+    // ✨ PHASE 1: Concurrent Multi-Tasking (Fetch Repo, Tree, and ALL Commits at once)
     const [repoRes, treeRes, commitsRes] = await Promise.all([
       fetch(`https://api.github.com/repos/${owner}/${repo}`, {
         headers: { Authorization: `Bearer ${ghToken}` },
@@ -127,7 +127,7 @@ window.startAutoCheck = async function (
       ? studentData.githubUsername.toLowerCase()
       : "";
 
-    // ✨ PHASE 2: Student Isolation (Finding their exact commits)
+    // Isolate ONLY this student's commits
     const studentCommits = (commitsData || []).filter((c) => {
       const authorLogin = (c.author?.login || "").toLowerCase();
       const authorEmail = (c.commit?.author?.email || "").toLowerCase();
@@ -141,65 +141,121 @@ window.startAutoCheck = async function (
       );
     });
 
-    updateStatus(`Analyzing ${studentCommits.length} Commit(s)...`);
-
-    // Concurrently fetch the exact files touched in their 5 most recent commits
-    const touchedFilesSet = new Set();
-    const commitPromises = studentCommits.slice(0, 5).map(async (c) => {
-      try {
-        const detailRes = await fetch(
-          `https://api.github.com/repos/${owner}/${repo}/commits/${c.sha}`,
-          { headers: { Authorization: `Bearer ${ghToken}` } },
-        );
-        if (detailRes.ok) {
-          const detail = await detailRes.json();
-          (detail.files || []).forEach((f) => {
-            if (f.status !== "removed") touchedFilesSet.add(f.filename);
-          });
-        }
-      } catch (e) {
-        console.warn("Commit fetch skipped", e);
-      }
-    });
-    await Promise.all(commitPromises);
-
-    let studentOwnedBlobs = [];
-    allBlobs.forEach((f) => {
-      const lowerPath = f.path.toLowerCase();
-      let isTheirs = touchedFilesSet.has(f.path);
-
-      // Authorship Rescue: If their groupmate pushed it, but their name is on the file
-      if (!isTheirs) {
-        if (sNameParts.some((part) => lowerPath.includes(part)))
-          isTheirs = true;
-        if (ghName && lowerPath.includes(ghName)) isTheirs = true;
-      }
-      if (isTheirs) studentOwnedBlobs.push(f);
-    });
-
-    // ✨ PHASE 3: The Golden Path (Target Verification)
-    let targetMatchedFiles = [];
-    pathsToScan.forEach((targetPath) => {
-      const matcher = wildcardToRegex(targetPath);
-      studentOwnedBlobs.forEach((f) => {
-        if (matcher.test(f.path) || f.path === targetPath) {
-          if (!targetMatchedFiles.includes(f)) targetMatchedFiles.push(f);
-        }
-      });
-    });
-
-    let filesToProcess = [];
+    let matchedFilesMap = new Map();
     let autoPenalties = [];
 
-    // ✨ PHASE 4: Search & Rescue
-    if (targetMatchedFiles.length > 0) {
-      filesToProcess = targetMatchedFiles;
-    } else if (studentOwnedBlobs.length > 0 && pathsToScan[0] !== "*") {
-      autoPenalties.push("Wrong Folder / Misnamed File");
-      filesToProcess = studentOwnedBlobs;
+    // PHASE 2: Explicit Target Path Match
+    pathsToScan.forEach((targetPath) => {
+      if (targetPath !== "*" && targetPath.match(/\.[a-zA-Z0-9]+$/)) {
+        allBlobs.forEach((f) => {
+          if (f.path === targetPath) matchedFilesMap.set(f.path, f);
+        });
+      }
+    });
+
+    // ✨ PHASE 3: The "AI Semantic Commit Locator" (Triggered if explicit paths fail or if folder is dynamic)
+    if (matchedFilesMap.size === 0 || pathsToScan[0] === "*") {
+      updateStatus("AI Semantic Commit Search...");
+
+      // Fetch the exact file payloads for their last 20 commits concurrently!
+      const commitDetailsPromises = studentCommits
+        .slice(0, 20)
+        .map(async (c) => {
+          try {
+            const res = await fetch(
+              `https://api.github.com/repos/${owner}/${repo}/commits/${c.sha}`,
+              { headers: { Authorization: `Bearer ${ghToken}` } },
+            );
+            if (res.ok) {
+              const data = await res.json();
+              return {
+                sha: c.sha,
+                message: c.commit.message,
+                date: c.commit.committer?.date,
+                files: (data.files || [])
+                  .filter((f) => f.status !== "removed")
+                  .map((f) => f.filename),
+              };
+            }
+          } catch (e) {}
+          return null;
+        });
+
+      const commitDetails = (await Promise.all(commitDetailsPromises)).filter(
+        (c) => c !== null && c.files.length > 0,
+      );
+
+      if (commitDetails.length > 0) {
+        // Send all their commit history to Gemini to find the dynamic project!
+        const locatorPrompt = `
+You are an AI repository analyzer.
+Task Description: ${taskData.taskContext || taskData.title}
+
+Below is the student's commit history. Analyze the commit messages and the file paths modified to determine WHICH commit represents their work for the Task described above.
+Ignore commits related to entirely different projects (e.g., ignore Android XML files if the task is a Java Console app).
+
+Student Commits:
+${JSON.stringify(commitDetails, null, 2)}
+
+Respond strictly in JSON format:
+{
+  "matched_sha": "<sha of the best commit, or null if none match>",
+  "confidence": "<'Very Close', 'Close', or 'None'>",
+  "target_folder": "<the main directory path where the matching files are located, e.g., 'quarter2/MySystem'. Use '' if in root>",
+  "reason": "<brief explanation why this commit/folder matches the task>"
+}
+          `;
+
+        const locatorRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${geminiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: locatorPrompt }] }],
+              generationConfig: {
+                response_mime_type: "application/json",
+                temperature: 0.1,
+              },
+            }),
+          },
+        );
+
+        if (locatorRes.ok) {
+          const locatorData = await locatorRes.json();
+          let cleanJson = locatorData.candidates[0].content.parts[0].text
+            .replace(/^```(json)?\s*/i, "")
+            .replace(/\s*```$/i, "")
+            .trim();
+          const locatorParsed = JSON.parse(cleanJson);
+
+          if (
+            locatorParsed.confidence === "Very Close" ||
+            locatorParsed.confidence === "Close"
+          ) {
+            autoPenalties.push(`AI Match: ${locatorParsed.confidence}`);
+            autoPenalties.push(
+              `Dynamic Folder: ${locatorParsed.target_folder || "Root"}`,
+            );
+
+            // Scoop up ALL files in the dynamic folder Gemini found!
+            const targetFolder = locatorParsed.target_folder;
+            allBlobs.forEach((f) => {
+              if (
+                (targetFolder === "" && !f.path.includes("/")) ||
+                (targetFolder !== "" && f.path.startsWith(targetFolder))
+              ) {
+                matchedFilesMap.set(f.path, f);
+              }
+            });
+          }
+        }
+      }
     }
 
-    // Apply extension penalties ONLY to the files we successfully isolated
+    let filesToProcess = Array.from(matchedFilesMap.values());
+
+    // Only apply basic extension checks (Removed Wrong Folder penalties since folders are dynamic!)
     if (filesToProcess.length > 0) {
       filesToProcess.forEach((f) => {
         const fileName = f.path.split("/").pop();
@@ -218,22 +274,21 @@ window.startAutoCheck = async function (
     let fileRawText = "";
     let displayPathText = pathsToScan.join(", ") || "Entire Repository";
 
-    // Ensure we don't feed huge binary files to Gemini
+    // Filter down to valid code extensions before grading
     const validCodeExts =
       /\.(java|kt|dart|cs|js|ts|html|css|py|cpp|php|xml|json|md)$/i;
     filesToProcess = filesToProcess
       .filter((f) => validCodeExts.test(f.path) || !f.path.includes("."))
       .slice(0, 40);
 
-    // ✨ PHASE 5: Evidence Aggregation
+    // ✨ PHASE 4: Concurrent Code Fetching
     if (filesToProcess.length === 0) {
       forceFail = true;
-      failMessage = `No code files found matching your target paths or in your recent commits. Please ensure you pushed your work to GitHub.`;
+      failMessage = `No code files found matching the task requirements in your commits. Please ensure you pushed the correct assignment.`;
       autoPenalties.push("Empty Submission");
     } else {
       updateStatus(`Reading ${filesToProcess.length} File(s)...`);
 
-      // Concurrent fetch for all raw code text
       const filePromises = filesToProcess.map(async (file) => {
         try {
           const fileRes = await fetch(
@@ -277,7 +332,7 @@ window.startAutoCheck = async function (
     let finalFeedback = failMessage;
     let finalTags = autoPenalties;
 
-    // ✨ PHASE 6 & 7: Dynamic AI Evaluation & Human-Centric Feedback
+    // ✨ PHASE 5: AI Rubric Grading & Natural Feedback
     if (!forceFail) {
       updateStatus("Evaluating Code...");
       let rulesText = "No strict objective string rules applied.";
@@ -296,12 +351,7 @@ window.startAutoCheck = async function (
             
             CRITICAL INSTRUCTION - TARGET STUDENT ISOLATION:
             You are grading ONLY the individual work of student: ${studentData.name} (GitHub username: @${studentData.githubUsername || "unlinked"}).
-            The code provided below contains files definitively linked to this student via their commit history or filename.
-
-            FILE LOCATION & NAMING CONTEXT:
-            - Expected Target Path: ${pathsToScan.join(", ")}
-            - Actual Uploaded Path: ${pathsFound.join(", ")}
-            ${autoPenalties.length > 0 ? `\nADMINISTRATIVE WARNING TRIGGERED: The student placed their code in the wrong folder or misnamed the file (System Flags: ${autoPenalties.join(", ")}).` : ""}
+            The code provided below was specifically isolated using a Semantic Search of their commit history. It represents their dynamic project workspace.
 
             SCORING RULES & PENALTY DIAGNOSTICS:
             Evaluate the valid code and calculate the score STRICTLY based on the provided Rubric. The maximum possible score is ${maxScore}.
@@ -309,12 +359,11 @@ window.startAutoCheck = async function (
             1. ZERO TOLERANCE (0 Points): If the file is completely blank, is just an unmodified auto-generated scaffold/template with no student logic, or contains a blatant logic bypass to cheat the requirements, the final score MUST be exactly 0.
             2. NEEDS DEVELOPMENT FLOOR (${floorScore} Points Minimum): If the student made a genuine attempt but failed catastrophically (e.g., Paradigm Mismatch like submitting Android XML instead of Java, severe syntax errors, or completely broken logic), you must not give them a zero. The lowest score for a genuine attempt is ${floorScore}.
             3. STANDARD GRADING (${floorScore + 1} to ${maxScore} Points): If the code is functional, calculate the score strictly by adding up the points earned for each criterion defined in the Rubric.
-            4. ${autoPenalties.length > 0 ? `An Administrative Warning was triggered above regarding file naming/placement. Address this mistake in your conversational feedback so the student knows to correct it next time, but do NOT artificially deduct points for it unless your specific Rubric explicitly requires deducting points for workflow/naming errors.` : `Apply deductions normally based on the rubric.`}
             
-            You MUST append specific diagnostic tags if points were deducted (e.g., "Syntax Error", "Missing Logic", "Incomplete Feature", "Paradigm Mismatch"). The score must reflect the exact mathematical point breakdown.
-
+            ${autoPenalties.length > 0 ? `ADMINISTRATIVE FLAGS: The system detected these technical flags: [${autoPenalties.join(", ")}]. Address these gently in your conversational feedback so the student knows to correct it next time, but do NOT artificially deduct points for it unless your specific Rubric explicitly requires deducting points for workflow/naming errors.` : ``}
+            
             FEEDBACK TONE & STYLE:
-            Write the \`teacher_note\` as a single, natural, human-sounding paragraph addressed directly to the student (e.g., "Hi Kenshin, ..."). Do not use robotic phrases like "Here is the breakdown of your score." Weave the administrative warnings and rubric feedback together naturally.
+            Write the \`teacher_note\` as a single, natural, human-sounding paragraph addressed directly to the student (e.g., "Hi Kenshin, ..."). Do not use robotic phrases like "Here is the breakdown of your score." Weave the administrative flags and rubric feedback together naturally like a real teacher writing a note.
 
             CRITICAL JSON OUTPUT FORMAT:
             You MUST return your evaluation strictly as a JSON object with NO markdown formatting. Format EXACTLY like this:
