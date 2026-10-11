@@ -94,6 +94,7 @@ window.startAutoCheck = async function (
     let autoPenalties = [];
     let forceFail = false;
     let failMessage = "";
+    let pathsFound = []; // ✨ Lifted this variable up so the prompt can see it!
 
     const repoRes = await fetch(
       `https://api.github.com/repos/${owner}/${repo}`,
@@ -184,7 +185,6 @@ window.startAutoCheck = async function (
       updateStatus(`Reading ${filesToProcess.length} File(s)...`);
 
       let combinedCode = "";
-      let pathsFound = [];
 
       // Fetch raw code for all matches
       const filePromises = filesToProcess.map(async (file) => {
@@ -205,7 +205,7 @@ window.startAutoCheck = async function (
       fetchedFiles.forEach((fileObj) => {
         if (fileObj && fileObj.text.trim()) {
           combinedCode += `\n\n--- FILE: ${fileObj.path} ---\n${fileObj.text}`;
-          pathsFound.push(fileObj.path.split("/").pop());
+          pathsFound.push(fileObj.path); // ✨ Full path captured for the AI
         }
       });
 
@@ -216,9 +216,9 @@ window.startAutoCheck = async function (
       } else {
         fileRawText = combinedCode;
         if (pathsFound.length > 1) {
-          displayPathText = `${pathsFound[0]} (+${pathsFound.length - 1} files)`;
+          displayPathText = `${pathsFound[0].split("/").pop()} (+${pathsFound.length - 1} files)`;
         } else if (pathsFound.length === 1) {
-          displayPathText = pathsFound[0];
+          displayPathText = pathsFound[0].split("/").pop();
         }
       }
     }
@@ -248,9 +248,13 @@ window.startAutoCheck = async function (
             You are grading ONLY the individual work of student: ${studentData.name} (GitHub username: @${studentData.githubUsername || "unlinked"}).
             The codebase below contains files from multiple group members. You MUST identify which files or code blocks belong to this specific student. DO NOT deduct points for errors found in files clearly belonging to other students.
 
+            FILE LOCATION & NAMING CONTEXT:
+            - The expected file/folder path requested by the teacher: ${pathsToScan.join(", ")}
+            - The actual file path(s) submitted by the student: ${pathsFound.join(", ")}
+            ${autoPenalties.length > 0 ? `\nADMINISTRATIVE PENALTY TRIGGERED: The student failed to follow exact naming/folder conventions (System Flags: ${autoPenalties.join(", ")}). You MUST deduct 3 points for this mistake and explicitly explain what they did wrong with their file name or folder placement in your teacher_note.` : ""}
+
             MANDATORY PENALTY & TIERED DIAGNOSTIC RUBRIC:
             You are an automated grading script. Evaluate the code, calculate the score out of 20, and then apply deductions and tags based on these strict thresholds:
-            ${autoPenalties.length > 0 ? `* Administrative Penalties: The system detected these errors: [${autoPenalties.join(", ")}]. Deduct 3 points for each.` : ""}
             
             * TIER 1 (Score 15-20 / Above 75%): Code is mostly functional. Penalty tags are optional for minor syntax issues.
             * TIER 2 (Score 10-14 / 50%-75%): The code has structural/logic issues. You MUST append specific diagnostic tags (e.g., "Syntax Error", "Missing Logic", "Incomplete Feature"). Combine feedback to explain what to fix.

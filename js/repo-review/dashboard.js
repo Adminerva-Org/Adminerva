@@ -183,13 +183,17 @@ window.loadDashboardData = async function () {
       if (!bankData) {
         staleCount++; // Never mapped
       } else if (bankData.lastUpdated && cacheData && cacheData.latestSha) {
+        // Fallback: Check if it's a Firebase Timestamp or an old date string
+        const lastUpdatedTime =
+          typeof bankData.lastUpdated.toDate === "function"
+            ? bankData.lastUpdated.toDate().getTime()
+            : new Date(bankData.lastUpdated).getTime();
+
         // We consider it stale if the repobank hasn't been updated in 14 days
         const bankAgeDays =
-          (Date.now() - bankData.lastUpdated.toDate().getTime()) /
-          (1000 * 60 * 60 * 24);
+          (Date.now() - lastUpdatedTime) / (1000 * 60 * 60 * 24);
         if (bankAgeDays > 14) staleCount++;
       }
-
       // Check Team Equity (Groups > 1 member)
       if (groupMembers.length > 1 && cacheData && cacheData.studentStats) {
         let totalGroupCommits = 0;
