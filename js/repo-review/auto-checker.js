@@ -90,7 +90,7 @@ window.startAutoCheck = async function (
     let forceFail = false;
     let failMessage = "";
     let pathsFound = [];
-    let studentOwnedPaths = []; // ✨ NEW: Keeps track of exactly which files are theirs
+    let studentOwnedPaths = [];
 
     const repoRes = await fetch(
       `https://api.github.com/repos/${owner}/${repo}`,
@@ -254,14 +254,12 @@ window.startAutoCheck = async function (
       }
     }
 
-    // ✨ FIX: Safe Ownership Verification
     if (finalMatchedFiles.length > 0) {
       finalMatchedFiles.forEach((f) => {
         const fileName = f.path.split("/").pop();
         const lowerFileName = fileName.toLowerCase();
         let isStudentFile = false;
 
-        // Only true if the teacher typed the exact file extension in the Studio!
         if (pathsToScan.includes(f.path)) {
           isStudentFile = true;
         } else {
@@ -273,7 +271,7 @@ window.startAutoCheck = async function (
         }
 
         if (isStudentFile) {
-          studentOwnedPaths.push(f.path); // Track it for the AI prompt
+          studentOwnedPaths.push(f.path);
           if (!fileName.includes("."))
             autoPenalties.push(`No Extension (${fileName})`);
           else if (
@@ -343,7 +341,7 @@ window.startAutoCheck = async function (
         });
       }
 
-      // ✨ UPDATED AI PROMPT: Tells Gemini exactly which files belong to the student
+      // ✨ UPDATED PROMPT: The AI is now instructed to do the math perfectly without external blind deductions.
       const prompt = `
             ${taskData.systemPersona || "You are a strict code evaluator."}
             Task Context: ${taskData.taskContext || "Evaluate general code quality."}
@@ -357,16 +355,16 @@ window.startAutoCheck = async function (
             FILE LOCATION & NAMING CONTEXT:
             - The expected file/folder path requested by the teacher: ${pathsToScan.join(", ")}
             - The files explicitly identified as belonging to THIS student: ${studentOwnedPaths.length > 0 ? studentOwnedPaths.join(", ") : "None clearly matched by name or commit. Examine code comments."}
-            ${autoPenalties.length > 0 ? `\nADMINISTRATIVE PENALTY TRIGGERED: The student failed to follow exact naming/folder conventions (System Flags: ${autoPenalties.join(", ")}). You MUST explicitly explain what they did wrong with their file name or folder placement.` : ""}
+            ${autoPenalties.length > 0 ? `\nADMINISTRATIVE PENALTY TRIGGERED: The student failed to follow exact naming/folder conventions (System Flags: ${autoPenalties.join(", ")}).` : ""}
 
             SCORING RULES & PENALTY DIAGNOSTICS:
             You are an automated grading script. Evaluate the code and calculate the score STRICTLY based on the provided Rubric. The maximum possible score is ${maxScore}.
             1. Calculate the points earned for each criterion defined in the Rubric.
-            2. Sum the points together.
-            3. If the Administrative Penalty was triggered above, deduct a flat 3 points from the total sum.
+            2. Sum the points together. This sum MUST equal your final score. Do NOT magically subtract points at the end.
+            3. ${autoPenalties.length > 0 ? `Because an Administrative Penalty was triggered above, you MUST heavily deduct points for this mistake INSIDE the most relevant rubric category (such as 'GitHub Workflow' or 'Instructions'). Explain this specific point deduction in your feedback so the student knows why their category score was lowered.` : `Apply deductions normally based on the rubric.`}
             4. If the file is completely empty, is just an auto-generated scaffold, or contains a logic bypass to cheat the requirements, the final score MUST be 0.
             
-            You MUST append specific diagnostic tags if points were deducted (e.g., "Syntax Error", "Missing Logic", "Incomplete Feature", "Paradigm Mismatch"). Combine feedback to explain the exact point breakdown so the student understands their score.
+            You MUST append specific diagnostic tags if points were deducted (e.g., "Syntax Error", "Missing Logic", "Incomplete Feature", "Paradigm Mismatch"). Combine feedback to explain the exact mathematical point breakdown so the student understands their score. The math must add up perfectly.
 
             CRITICAL JSON OUTPUT FORMAT:
             You MUST return your evaluation strictly as a JSON object with NO markdown formatting. Format EXACTLY like this:
