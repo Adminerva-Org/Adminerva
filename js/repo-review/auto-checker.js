@@ -82,7 +82,6 @@ window.startAutoCheck = async function (
 
     updateStatus("Scanning Repo...");
 
-    // Support new array or fallback to old string
     let pathsToScan =
       taskData.targetPaths ||
       (taskData.targetPath ? [taskData.targetPath] : []);
@@ -94,7 +93,7 @@ window.startAutoCheck = async function (
     let autoPenalties = [];
     let forceFail = false;
     let failMessage = "";
-    let pathsFound = []; // ✨ Lifted this variable up so the prompt can see it!
+    let pathsFound = [];
 
     const repoRes = await fetch(
       `https://api.github.com/repos/${owner}/${repo}`,
@@ -105,30 +104,31 @@ window.startAutoCheck = async function (
     const defaultBranch = repoData.default_branch;
     if (!defaultBranch) throw new Error("Repository is empty.");
 
-    // Fetch the entire tree ONCE for efficiency
     const treeRes = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/git/trees/${currentSha}?recursive=1`,
       { headers: { Authorization: `Bearer ${ghToken}` } },
     );
     const treeData = await treeRes.json();
-    const allBlobs = (treeData.tree || []).filter((f) => f.type === "blob");
-    const allowedExts =
-      /\.(java|xml|kt|dart|cs|js|ts|html|css|txt|json|sql|gradle|properties|md|py|php|cpp)$/i;
+
+    // ✨ FIX 1: Ignored List instead of Allowed List!
+    // This throws out compiled files/images but safely keeps "Penaflor", "Penaflor.jav", etc.
+    const ignoredExts =
+      /\.(class|jar|exe|png|jpg|jpeg|gif|ico|svg|mp3|mp4|zip|rar|tar|gz|pdf|docx|xlsx|pptx)$/i;
+    const allBlobs = (treeData.tree || []).filter(
+      (f) => f.type === "blob" && !ignoredExts.test(f.path),
+    );
 
     let matchedFilesMap = new Map();
 
-    // Check each target path against the single GitHub tree
     pathsToScan.forEach((targetPath) => {
       if (targetPath === "*" || !targetPath.match(/\.[a-zA-Z0-9]+$/)) {
-        // It's a folder/wildcard
         const matcher = wildcardToRegex(targetPath);
         allBlobs.forEach((f) => {
-          if (matcher.test(f.path) && allowedExts.test(f.path)) {
-            matchedFilesMap.set(f.path, f); // Using Map prevents duplicate file injections
+          if (matcher.test(f.path)) {
+            matchedFilesMap.set(f.path, f);
           }
         });
       } else {
-        // It's an exact file
         let foundExact = false;
         for (let f of allBlobs) {
           if (f.path === targetPath) {
@@ -137,7 +137,6 @@ window.startAutoCheck = async function (
             break;
           }
         }
-        // Tier 2 Fallback: If exact file is missing, look for misspelled folders
         if (!foundExact) {
           const expectedFileName = targetPath.split("/").pop();
           const expectedBaseName = expectedFileName.replace(
@@ -162,6 +161,7 @@ window.startAutoCheck = async function (
             if (fBase === expectedBaseName) {
               bestMatch = f;
               if (fDir === expectedDir) {
+                // Caught them! They named it exactly right but missed the extension!
                 autoPenalties.push(`Missing Extension: ${expectedFileName}`);
               } else {
                 autoPenalties.push(`Wrong Folder & Ext: ${expectedBaseName}`);
@@ -174,19 +174,88 @@ window.startAutoCheck = async function (
       }
     });
 
-    const matchedFiles = Array.from(matchedFilesMap.values());
+    let finalMatchedFiles = Array.from(matchedFilesMap.values());
 
-    if (matchedFiles.length === 0) {
+    // ✨ TIER 3 FALLBACK: Desperation Search (Fuzzy Matching for Lost Files)
+    if (finalMatchedFiles.length === 0 && pathsToScan[0] !== "*") {
+      let fuzzyMatches = [];
+      const targetKeywords = pathsToScan
+        .map((p) =>
+          p
+            .replace(/[^a-zA-Z0-9]/g, " ")
+            .split(" ")
+            .filter((w) => w.length > 2),
+        )
+        .flat();
+
+      const normalizedName = studentData.name
+        ? studentData.name
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLowerCase()
+        : "";
+      const sNameParts = normalizedName
+        .replace(/[^a-z0-9]/g, " ")
+        .split(" ")
+        .filter((w) => w.length > 2);
+      const ghName = studentData.githubUsername
+        ? studentData.githubUsername.toLowerCase()
+        : "";
+
+      allBlobs.forEach((f) => {
+        let score = 0;
+        const lowerPath = f.path.toLowerCase();
+
+        targetKeywords.forEach((kw) => {
+          if (lowerPath.includes(kw.toLowerCase())) score += 1;
+        });
+
+        sNameParts.forEach((part) => {
+          if (lowerPath.includes(part)) score += 5; // High priority if file/folder contains their name
+        });
+
+        if (ghName && lowerPath.includes(ghName)) score += 5;
+
+        if (score > 0) fuzzyMatches.push({ file: f, score: score });
+      });
+
+      // Sort by best match and grab top 5 files so we don't blow up the API limit
+      fuzzyMatches.sort((a, b) => b.score - a.score);
+      fuzzyMatches.slice(0, 5).forEach((match) => {
+        matchedFilesMap.set(match.file.path, match.file);
+      });
+
+      finalMatchedFiles = Array.from(matchedFilesMap.values());
+
+      if (finalMatchedFiles.length > 0) {
+        autoPenalties.push("Wrong Folder / Misnamed File");
+      }
+    }
+
+    // ✨ FIX 2: Scan the rescued files and aggressively penalize bad extensions
+    if (finalMatchedFiles.length > 0) {
+      finalMatchedFiles.forEach((f) => {
+        const fileName = f.path.split("/").pop();
+        if (!fileName.includes(".")) {
+          autoPenalties.push(`No Extension (${fileName})`);
+        } else if (
+          !fileName.match(/\.(java|kt|dart|cs|js|ts|html|css|py|cpp|php)$/i)
+        ) {
+          autoPenalties.push(`Invalid Extension (${fileName})`);
+        }
+      });
+    }
+
+    if (finalMatchedFiles.length === 0) {
       forceFail = true;
       failMessage = `No code files found matching your target paths. Please ensure you committed your work.`;
       autoPenalties.push("Empty Submission");
     } else {
-      const filesToProcess = matchedFiles.slice(0, 40);
+      const filesToProcess = finalMatchedFiles.slice(0, 40);
       updateStatus(`Reading ${filesToProcess.length} File(s)...`);
 
       let combinedCode = "";
 
-      // Fetch raw code for all matches
       const filePromises = filesToProcess.map(async (file) => {
         const fileRes = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/contents/${file.path}?ref=${currentSha}`,
@@ -205,7 +274,7 @@ window.startAutoCheck = async function (
       fetchedFiles.forEach((fileObj) => {
         if (fileObj && fileObj.text.trim()) {
           combinedCode += `\n\n--- FILE: ${fileObj.path} ---\n${fileObj.text}`;
-          pathsFound.push(fileObj.path); // ✨ Full path captured for the AI
+          pathsFound.push(fileObj.path);
         }
       });
 
@@ -227,7 +296,7 @@ window.startAutoCheck = async function (
     let finalFeedback = failMessage;
     let finalTags = autoPenalties;
 
-    // TIER 3: LLM EVALUATION (If code was successfully located)
+    // TIER 3: LLM EVALUATION
     if (!forceFail) {
       updateStatus("Evaluating Code...");
       let rulesText = "No strict objective string rules applied.";
@@ -246,6 +315,7 @@ window.startAutoCheck = async function (
             
             CRITICAL INSTRUCTION - TARGET STUDENT ISOLATION:
             You are grading ONLY the individual work of student: ${studentData.name} (GitHub username: @${studentData.githubUsername || "unlinked"}).
+            Note: The student's name might be spelled slightly differently in the file path (e.g., Penaflor instead of Peñaflor).
             The codebase below contains files from multiple group members. You MUST identify which files or code blocks belong to this specific student. DO NOT deduct points for errors found in files clearly belonging to other students.
 
             FILE LOCATION & NAMING CONTEXT:
@@ -319,7 +389,6 @@ window.startAutoCheck = async function (
     updateStatus("Saving Grade...");
     const gradeDocId = `${studentId}_${taskId}`;
 
-    // ✨ CALCULATE LATENCY HERE BEFORE SAVING
     const durationMs = Math.round(performance.now() - checkStartTime);
 
     await setDoc(
@@ -331,7 +400,7 @@ window.startAutoCheck = async function (
         feedback: finalFeedback,
         penaltyTags: finalTags,
         targetPath: displayPathText,
-        gradingDurationMs: durationMs, // Passed successfully to the database
+        gradingDurationMs: durationMs,
         gradedSha: currentSha,
         gradedAt: serverTimestamp(),
       },

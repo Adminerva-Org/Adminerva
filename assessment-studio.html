@@ -247,6 +247,12 @@
                     <input
                       type="text"
                       id="newTargetPath"
+                      onkeypress="
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          window.addTarget();
+                        }
+                      "
                       placeholder="e.g., quarter2/minipeta3/*"
                       class="flex-1 border-gray-300 rounded-lg p-2.5 text-sm focus:ring-blue-500 focus:border-blue-500"
                     />
@@ -338,6 +344,12 @@
                   <input
                     type="text"
                     id="newRuleValue"
+                    onkeypress="
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        window.addObjectiveRule();
+                      }
+                    "
                     class="flex-1 p-2 border rounded text-sm font-mono"
                     placeholder="e.g., Scanner(System.in)"
                   />
