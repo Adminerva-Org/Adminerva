@@ -35,6 +35,11 @@ function wildcardToRegex(wildcardPath) {
   return new RegExp(regexStr, "i");
 }
 
+function sanitizePath(p) {
+  if (!p) return "";
+  return p.replace(/[_\-\s]/g, "").toLowerCase();
+}
+
 window.startAutoCheck = async function (
   studentId,
   owner,
@@ -85,7 +90,7 @@ window.startAutoCheck = async function (
 
     updateStatus("Tracking Repository Data...");
 
-    // ✨ PHASE 1: Concurrent Multi-Tasking (Fetch Repo, Tree, and ALL Commits at once)
+    // PHASE 1: Concurrent Multi-Tasking
     const [repoRes, treeRes, commitsRes] = await Promise.all([
       fetch(`https://api.github.com/repos/${owner}/${repo}`, {
         headers: { Authorization: `Bearer ${ghToken}` },
@@ -144,22 +149,25 @@ window.startAutoCheck = async function (
     let matchedFilesMap = new Map();
     let autoPenalties = [];
 
-    // PHASE 2: Explicit Target Path Match
+    // PHASE 2: The "Fuzzy" Target Path Match
     pathsToScan.forEach((targetPath) => {
-      if (targetPath !== "*" && targetPath.match(/\.[a-zA-Z0-9]+$/)) {
-        allBlobs.forEach((f) => {
-          if (f.path === targetPath) matchedFilesMap.set(f.path, f);
-        });
-      }
+      if (targetPath === "*") return;
+      const softTarget = sanitizePath(targetPath).replace(/\*$/, "");
+
+      allBlobs.forEach((f) => {
+        const softFile = sanitizePath(f.path);
+        if (softFile.includes(softTarget)) {
+          matchedFilesMap.set(f.path, f);
+        }
+      });
     });
 
-    // ✨ PHASE 3: The "AI Semantic Commit Locator" (Triggered if explicit paths fail or if folder is dynamic)
+    // ✨ PHASE 3: AI Semantic Commit Locator (Silent Rescue Layer)
     if (matchedFilesMap.size === 0 || pathsToScan[0] === "*") {
-      updateStatus("AI Semantic Commit Search...");
+      updateStatus("Analyzing Code Changes in Commits...");
 
-      // Fetch the exact file payloads for their last 20 commits concurrently!
       const commitDetailsPromises = studentCommits
-        .slice(0, 20)
+        .slice(0, 10)
         .map(async (c) => {
           try {
             const res = await fetch(
@@ -174,7 +182,12 @@ window.startAutoCheck = async function (
                 date: c.commit.committer?.date,
                 files: (data.files || [])
                   .filter((f) => f.status !== "removed")
-                  .map((f) => f.filename),
+                  .map((f) => ({
+                    filename: f.filename,
+                    code_changes: f.patch
+                      ? f.patch.substring(0, 1000)
+                      : "No raw code preview available",
+                  })),
               };
             }
           } catch (e) {}
@@ -186,23 +199,21 @@ window.startAutoCheck = async function (
       );
 
       if (commitDetails.length > 0) {
-        // Send all their commit history to Gemini to find the dynamic project!
         const locatorPrompt = `
-You are an AI repository analyzer.
+You are an AI repository analyzer locating student work.
 Task Description: ${taskData.taskContext || taskData.title}
 
-Below is the student's commit history. Analyze the commit messages and the file paths modified to determine WHICH commit represents their work for the Task described above.
-Ignore commits related to entirely different projects (e.g., ignore Android XML files if the task is a Java Console app).
+Below is the student's recent commit history, including the ACTUAL CODE CHANGES they made in those commits.
+Analyze the code changes to determine WHICH commit contains the logic required for the Task described above.
 
-Student Commits:
+Student Commits & Code Patches:
 ${JSON.stringify(commitDetails, null, 2)}
 
 Respond strictly in JSON format:
 {
-  "matched_sha": "<sha of the best commit, or null if none match>",
+  "matched_sha": "<sha of the best matching commit, or null if none match>",
   "confidence": "<'Very Close', 'Close', or 'None'>",
-  "target_folder": "<the main directory path where the matching files are located, e.g., 'quarter2/MySystem'. Use '' if in root>",
-  "reason": "<brief explanation why this commit/folder matches the task>"
+  "target_folder": "<the main directory path where the matching files are located, e.g., 'quarter2/MySystem'. Use '' if in root>"
 }
           `;
 
@@ -233,21 +244,32 @@ Respond strictly in JSON format:
             locatorParsed.confidence === "Very Close" ||
             locatorParsed.confidence === "Close"
           ) {
-            autoPenalties.push(`AI Match: ${locatorParsed.confidence}`);
-            autoPenalties.push(
-              `Dynamic Folder: ${locatorParsed.target_folder || "Root"}`,
-            );
+            // ✨ SILENT RESCUE: No "AI Match" tags! Just give them a normal Wrong Folder warning.
+            if (pathsToScan[0] !== "*")
+              autoPenalties.push("Wrong Folder / Misnamed File");
 
-            // Scoop up ALL files in the dynamic folder Gemini found!
             const targetFolder = locatorParsed.target_folder;
-            allBlobs.forEach((f) => {
-              if (
-                (targetFolder === "" && !f.path.includes("/")) ||
-                (targetFolder !== "" && f.path.startsWith(targetFolder))
-              ) {
-                matchedFilesMap.set(f.path, f);
+            const matchedSha = locatorParsed.matched_sha;
+
+            if (targetFolder && targetFolder !== "") {
+              allBlobs.forEach((f) => {
+                if (f.path.toLowerCase().includes(targetFolder.toLowerCase())) {
+                  matchedFilesMap.set(f.path, f);
+                }
+              });
+            }
+
+            if (matchedSha) {
+              const matchedCommit = commitDetails.find(
+                (c) => c.sha === matchedSha,
+              );
+              if (matchedCommit) {
+                matchedCommit.files.forEach((mf) => {
+                  const blobInfo = allBlobs.find((b) => b.path === mf.filename);
+                  if (blobInfo) matchedFilesMap.set(mf.filename, blobInfo);
+                });
               }
-            });
+            }
           }
         }
       }
@@ -255,7 +277,6 @@ Respond strictly in JSON format:
 
     let filesToProcess = Array.from(matchedFilesMap.values());
 
-    // Only apply basic extension checks (Removed Wrong Folder penalties since folders are dynamic!)
     if (filesToProcess.length > 0) {
       filesToProcess.forEach((f) => {
         const fileName = f.path.split("/").pop();
@@ -277,11 +298,22 @@ Respond strictly in JSON format:
     // Filter down to valid code extensions before grading
     const validCodeExts =
       /\.(java|kt|dart|cs|js|ts|html|css|py|cpp|php|xml|json|md)$/i;
-    filesToProcess = filesToProcess
-      .filter((f) => validCodeExts.test(f.path) || !f.path.includes("."))
-      .slice(0, 40);
+    filesToProcess = filesToProcess.filter(
+      (f) => validCodeExts.test(f.path) || !f.path.includes("."),
+    );
 
-    // ✨ PHASE 4: Concurrent Code Fetching
+    // Smart Sorter: Put Java/Programming files at the top to save context window space
+    filesToProcess.sort((a, b) => {
+      const aIsPrimary = /\.(java|kt|dart|cs|js|ts|py|cpp|php)$/i.test(a.path);
+      const bIsPrimary = /\.(java|kt|dart|cs|js|ts|py|cpp|php)$/i.test(b.path);
+      if (aIsPrimary && !bIsPrimary) return -1;
+      if (!aIsPrimary && bIsPrimary) return 1;
+      return 0;
+    });
+
+    filesToProcess = filesToProcess.slice(0, 40);
+
+    // PHASE 4: Concurrent Code Fetching
     if (filesToProcess.length === 0) {
       forceFail = true;
       failMessage = `No code files found matching the task requirements in your commits. Please ensure you pushed the correct assignment.`;
@@ -332,7 +364,7 @@ Respond strictly in JSON format:
     let finalFeedback = failMessage;
     let finalTags = autoPenalties;
 
-    // ✨ PHASE 5: AI Rubric Grading & Natural Feedback
+    // ✨ PHASE 5: Ultra-Concise Direct Grading Prompt (Saves Tokens & Removes AI Tone)
     if (!forceFail) {
       updateStatus("Evaluating Code...");
       let rulesText = "No strict objective string rules applied.";
@@ -345,29 +377,25 @@ Respond strictly in JSON format:
       }
 
       const prompt = `
-            ${taskData.systemPersona || "You are a strict code evaluator."}
-            Task Context: ${taskData.taskContext || "Evaluate general code quality."}
-            Rubric: ${taskData.evalCriteria || "Score based on correctness and structure."}
+            Persona: ${taskData.systemPersona || "Strict teacher"}
+            Context: ${taskData.taskContext || "Evaluate code quality"}
+            Rubric: ${taskData.evalCriteria || "Score based on correctness"}
+            Max Score: ${maxScore}
+            Floor Score: ${floorScore}
             
-            CRITICAL INSTRUCTION - TARGET STUDENT ISOLATION:
-            You are grading ONLY the individual work of student: ${studentData.name} (GitHub username: @${studentData.githubUsername || "unlinked"}).
-            The code provided below was specifically isolated using a Semantic Search of their commit history. It represents their dynamic project workspace.
+            Code to evaluate belongs exclusively to: ${studentData.name}
 
-            SCORING RULES & PENALTY DIAGNOSTICS:
-            Evaluate the valid code and calculate the score STRICTLY based on the provided Rubric. The maximum possible score is ${maxScore}.
+            RULES:
+            1. Score 0 if code is blank, an unmodified template, or blatantly bypasses logic.
+            2. Score ${floorScore} (Floor) for a genuine attempt with catastrophic failures (e.g. wrong paradigm, severe syntax errors).
+            3. Otherwise, strictly calculate the score by adding up points based on the Rubric.
             
-            1. ZERO TOLERANCE (0 Points): If the file is completely blank, is just an unmodified auto-generated scaffold/template with no student logic, or contains a blatant logic bypass to cheat the requirements, the final score MUST be exactly 0.
-            2. NEEDS DEVELOPMENT FLOOR (${floorScore} Points Minimum): If the student made a genuine attempt but failed catastrophically (e.g., Paradigm Mismatch like submitting Android XML instead of Java, severe syntax errors, or completely broken logic), you must not give them a zero. The lowest score for a genuine attempt is ${floorScore}.
-            3. STANDARD GRADING (${floorScore + 1} to ${maxScore} Points): If the code is functional, calculate the score strictly by adding up the points earned for each criterion defined in the Rubric.
-            
-            ${autoPenalties.length > 0 ? `ADMINISTRATIVE FLAGS: The system detected these technical flags: [${autoPenalties.join(", ")}]. Address these gently in your conversational feedback so the student knows to correct it next time, but do NOT artificially deduct points for it unless your specific Rubric explicitly requires deducting points for workflow/naming errors.` : ``}
-            
-            FEEDBACK TONE & STYLE:
-            Write the \`teacher_note\` as a single, natural, human-sounding paragraph addressed directly to the student (e.g., "Hi Kenshin, ..."). Do not use robotic phrases like "Here is the breakdown of your score." Weave the administrative flags and rubric feedback together naturally like a real teacher writing a note.
+            FEEDBACK FORMAT (CRITICAL):
+            Provide a direct, ultra-concise 1-2 sentence \`teacher_note\`. State exactly what was done well, what was missing/wrong, and why points were deducted based on the Rubric. 
+            Do NOT use fluff, greetings, AI meta-language, or robotic breakdowns. Be blunt and professional.
 
-            CRITICAL JSON OUTPUT FORMAT:
-            You MUST return your evaluation strictly as a JSON object with NO markdown formatting. Format EXACTLY like this:
-            {"score": <number>, "penalty_tags": ["<tag1>", "<tag2>"], "teacher_note": "<paragraph>"}
+            JSON OUTPUT ONLY:
+            {"score": <number>, "penalty_tags": ["<tag1>", "<tag2>"], "teacher_note": "<short direct feedback>"}
             
             ${rulesText}
             
