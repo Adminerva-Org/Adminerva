@@ -90,6 +90,7 @@ window.startAutoCheck = async function (
     let forceFail = false;
     let failMessage = "";
     let pathsFound = [];
+    let studentOwnedPaths = []; // ✨ NEW: Keeps track of exactly which files are theirs
 
     const repoRes = await fetch(
       `https://api.github.com/repos/${owner}/${repo}`,
@@ -111,7 +112,6 @@ window.startAutoCheck = async function (
       (f) => f.type === "blob" && !ignoredExts.test(f.path),
     );
 
-    // ✨ NEW: Fetch the specific commit payload to see exactly what files this student just touched!
     const commitRes = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/commits/${currentSha}`,
       { headers: { Authorization: `Bearer ${ghToken}` } },
@@ -140,7 +140,6 @@ window.startAutoCheck = async function (
       ? studentData.githubUsername.toLowerCase()
       : "";
 
-    // TIER 1: Standard Search based on Teacher's Target Paths
     pathsToScan.forEach((targetPath) => {
       if (targetPath === "*" || !targetPath.match(/\.[a-zA-Z0-9]+$/)) {
         const matcher = wildcardToRegex(targetPath);
@@ -193,12 +192,10 @@ window.startAutoCheck = async function (
 
     let finalMatchedFiles = Array.from(matchedFilesMap.values());
 
-    // ✨ TIER 2: The "Commit Scope" Rescue (Using your genius idea!)
     if (finalMatchedFiles.length === 0 && pathsToScan[0] !== "*") {
       let discoveredDirs = new Set();
       let hasValidModifications = false;
 
-      // Extract the exact folders the student modified in their recent commit
       latestCommitFiles.forEach((modifiedPath) => {
         if (!ignoredExts.test(modifiedPath)) {
           const dir = modifiedPath.substring(0, modifiedPath.lastIndexOf("/"));
@@ -210,7 +207,6 @@ window.startAutoCheck = async function (
       if (hasValidModifications) {
         discoveredDirs.forEach((dir) => {
           allBlobs.forEach((f) => {
-            // Scoop up any code files sitting inside their newly discovered workspace folder
             if (
               (dir === "" && !f.path.includes("/")) ||
               (dir !== "" && f.path.startsWith(dir + "/"))
@@ -224,7 +220,6 @@ window.startAutoCheck = async function (
           autoPenalties.push("Wrong Folder / Misnamed File");
       }
 
-      // ✨ TIER 3: Fuzzy Name Search (If the commit payload didn't yield code files)
       if (finalMatchedFiles.length === 0) {
         let fuzzyMatches = [];
         const targetKeywords = pathsToScan
@@ -259,27 +254,26 @@ window.startAutoCheck = async function (
       }
     }
 
-    // ✨ ISOLATED PENALTY CHECK: Only penalize if the file definitively belongs to this student!
+    // ✨ FIX: Safe Ownership Verification
     if (finalMatchedFiles.length > 0) {
       finalMatchedFiles.forEach((f) => {
         const fileName = f.path.split("/").pop();
         const lowerFileName = fileName.toLowerCase();
         let isStudentFile = false;
 
-        // It's their file if the teacher targeted it exactly
-        if (!pathsToScan.some((p) => p.includes("*"))) {
+        // Only true if the teacher typed the exact file extension in the Studio!
+        if (pathsToScan.includes(f.path)) {
           isStudentFile = true;
         } else {
-          // Or if it contains their name/username
           sNameParts.forEach((part) => {
             if (lowerFileName.includes(part)) isStudentFile = true;
           });
           if (ghName && lowerFileName.includes(ghName)) isStudentFile = true;
-          // Or if it was explicitly modified by them in the SHA we just tracked!
           if (latestCommitFiles.includes(f.path)) isStudentFile = true;
         }
 
         if (isStudentFile) {
+          studentOwnedPaths.push(f.path); // Track it for the AI prompt
           if (!fileName.includes("."))
             autoPenalties.push(`No Extension (${fileName})`);
           else if (
@@ -349,6 +343,7 @@ window.startAutoCheck = async function (
         });
       }
 
+      // ✨ UPDATED AI PROMPT: Tells Gemini exactly which files belong to the student
       const prompt = `
             ${taskData.systemPersona || "You are a strict code evaluator."}
             Task Context: ${taskData.taskContext || "Evaluate general code quality."}
@@ -361,7 +356,7 @@ window.startAutoCheck = async function (
 
             FILE LOCATION & NAMING CONTEXT:
             - The expected file/folder path requested by the teacher: ${pathsToScan.join(", ")}
-            - The actual file path(s) submitted by the student: ${pathsFound.join(", ")}
+            - The files explicitly identified as belonging to THIS student: ${studentOwnedPaths.length > 0 ? studentOwnedPaths.join(", ") : "None clearly matched by name or commit. Examine code comments."}
             ${autoPenalties.length > 0 ? `\nADMINISTRATIVE PENALTY TRIGGERED: The student failed to follow exact naming/folder conventions (System Flags: ${autoPenalties.join(", ")}). You MUST explicitly explain what they did wrong with their file name or folder placement.` : ""}
 
             SCORING RULES & PENALTY DIAGNOSTICS:
