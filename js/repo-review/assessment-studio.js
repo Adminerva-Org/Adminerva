@@ -171,6 +171,7 @@ window.openCreateModal = function () {
   document.getElementById("saveAssessmentBtn").textContent = "Save Blueprint";
 
   document.getElementById("assessTitle").value = "";
+  document.getElementById("maxScore").value = "20";
   document.getElementById("assessType").value = "Mini PETA";
   document.getElementById("systemPersona").value =
     "You are a strict Java high school programming teacher grading a student's code.";
@@ -192,6 +193,7 @@ window.openEditModal = function () {
   document.getElementById("saveAssessmentBtn").textContent = "Update Blueprint";
 
   document.getElementById("assessTitle").value = item.title || "";
+  document.getElementById("maxScore").value = item.maxScore || 20;
   document.getElementById("assessType").value = item.type || "Mini PETA";
   document.getElementById("systemPersona").value = item.systemPersona || "";
   document.getElementById("taskContext").value = item.taskContext || "";
@@ -218,6 +220,7 @@ window.saveAssessment = async function () {
   const payload = {
     title: title,
     type: document.getElementById("assessType").value,
+    maxScore: parseInt(document.getElementById("maxScore").value) || 20,
     targetPaths: targetPaths, // Save the array to Firebase
     systemPersona: document.getElementById("systemPersona").value.trim(),
     taskContext: document.getElementById("taskContext").value.trim(),

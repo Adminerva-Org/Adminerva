@@ -30,7 +30,6 @@ function wildcardToRegex(wildcardPath) {
     return new RegExp(".*");
   let path = wildcardPath.trim();
   if (!path.match(/\.[a-zA-Z0-9]+$/)) path = path.replace(/\/$/, "") + "/*";
-  // The asterisk is now properly escaped here:
   let escaped = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const regexStr = escaped.replace(/\\\*/g, ".*");
   return new RegExp(regexStr, "i");
@@ -49,17 +48,13 @@ window.startAutoCheck = async function (
     localStorage.getItem("Adminerva_ai_model") || "gemini-1.5-flash-latest";
 
   if (!ghToken || !geminiKey) {
-    alert(
-      "Missing API Keys! Please configure GitHub and Gemini tokens in your settings.",
-    );
+    alert("Missing API Keys!");
     return;
   }
 
   const checkStartTime = performance.now();
-
   const cardId = `task-card-${studentId}-${taskId}`;
   const taskCard = document.getElementById(cardId);
-
   const actionArea = taskCard
     ? taskCard.querySelector(".grade-action-area")
     : null;
@@ -80,6 +75,8 @@ window.startAutoCheck = async function (
       ? studentSnap.data()
       : { name: "Unknown Student", githubUsername: "Unknown" };
 
+    const maxScore = taskData.maxScore || 20;
+
     updateStatus("Scanning Repo...");
 
     let pathsToScan =
@@ -89,7 +86,6 @@ window.startAutoCheck = async function (
 
     let fileRawText = "";
     let displayPathText = pathsToScan.join(", ") || "Entire Repository";
-
     let autoPenalties = [];
     let forceFail = false;
     let failMessage = "";
@@ -109,9 +105,6 @@ window.startAutoCheck = async function (
       { headers: { Authorization: `Bearer ${ghToken}` } },
     );
     const treeData = await treeRes.json();
-
-    // ✨ FIX 1: Ignored List instead of Allowed List!
-    // This throws out compiled files/images but safely keeps "Penaflor", "Penaflor.jav", etc.
     const ignoredExts =
       /\.(class|jar|exe|png|jpg|jpeg|gif|ico|svg|mp3|mp4|zip|rar|tar|gz|pdf|docx|xlsx|pptx)$/i;
     const allBlobs = (treeData.tree || []).filter(
@@ -146,13 +139,11 @@ window.startAutoCheck = async function (
           const expectedDir = targetPath
             .replace(expectedFileName, "")
             .replace(/\/$/, "");
-
           let bestMatch = null;
           for (let f of allBlobs) {
             const fName = f.path.split("/").pop();
             const fBase = fName.replace(/\.[a-zA-Z0-9]+$/, "");
             const fDir = f.path.replace(fName, "").replace(/\/$/, "");
-
             if (fName === expectedFileName) {
               bestMatch = f;
               autoPenalties.push(`Wrong Folder: ${expectedFileName}`);
@@ -160,12 +151,10 @@ window.startAutoCheck = async function (
             }
             if (fBase === expectedBaseName) {
               bestMatch = f;
-              if (fDir === expectedDir) {
-                // Caught them! They named it exactly right but missed the extension!
+              if (fDir === expectedDir)
                 autoPenalties.push(`Missing Extension: ${expectedFileName}`);
-              } else {
+              else
                 autoPenalties.push(`Wrong Folder & Ext: ${expectedBaseName}`);
-              }
               break;
             }
           }
@@ -176,7 +165,6 @@ window.startAutoCheck = async function (
 
     let finalMatchedFiles = Array.from(matchedFilesMap.values());
 
-    // ✨ TIER 3 FALLBACK: Desperation Search (Fuzzy Matching for Lost Files)
     if (finalMatchedFiles.length === 0 && pathsToScan[0] !== "*") {
       let fuzzyMatches = [];
       const targetKeywords = pathsToScan
@@ -187,7 +175,6 @@ window.startAutoCheck = async function (
             .filter((w) => w.length > 2),
         )
         .flat();
-
       const normalizedName = studentData.name
         ? studentData.name
             .normalize("NFD")
@@ -205,44 +192,34 @@ window.startAutoCheck = async function (
       allBlobs.forEach((f) => {
         let score = 0;
         const lowerPath = f.path.toLowerCase();
-
         targetKeywords.forEach((kw) => {
           if (lowerPath.includes(kw.toLowerCase())) score += 1;
         });
-
         sNameParts.forEach((part) => {
-          if (lowerPath.includes(part)) score += 5; // High priority if file/folder contains their name
+          if (lowerPath.includes(part)) score += 5;
         });
-
         if (ghName && lowerPath.includes(ghName)) score += 5;
-
         if (score > 0) fuzzyMatches.push({ file: f, score: score });
       });
 
-      // Sort by best match and grab top 5 files so we don't blow up the API limit
       fuzzyMatches.sort((a, b) => b.score - a.score);
       fuzzyMatches.slice(0, 5).forEach((match) => {
         matchedFilesMap.set(match.file.path, match.file);
       });
-
       finalMatchedFiles = Array.from(matchedFilesMap.values());
-
-      if (finalMatchedFiles.length > 0) {
+      if (finalMatchedFiles.length > 0)
         autoPenalties.push("Wrong Folder / Misnamed File");
-      }
     }
 
-    // ✨ FIX 2: Scan the rescued files and aggressively penalize bad extensions
     if (finalMatchedFiles.length > 0) {
       finalMatchedFiles.forEach((f) => {
         const fileName = f.path.split("/").pop();
-        if (!fileName.includes(".")) {
+        if (!fileName.includes("."))
           autoPenalties.push(`No Extension (${fileName})`);
-        } else if (
+        else if (
           !fileName.match(/\.(java|kt|dart|cs|js|ts|html|css|py|cpp|php)$/i)
-        ) {
+        )
           autoPenalties.push(`Invalid Extension (${fileName})`);
-        }
       });
     }
 
@@ -255,7 +232,6 @@ window.startAutoCheck = async function (
       updateStatus(`Reading ${filesToProcess.length} File(s)...`);
 
       let combinedCode = "";
-
       const filePromises = filesToProcess.map(async (file) => {
         const fileRes = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/contents/${file.path}?ref=${currentSha}`,
@@ -284,19 +260,18 @@ window.startAutoCheck = async function (
         autoPenalties.push("Empty Submission");
       } else {
         fileRawText = combinedCode;
-        if (pathsFound.length > 1) {
+        if (pathsFound.length > 1)
           displayPathText = `${pathsFound[0].split("/").pop()} (+${pathsFound.length - 1} files)`;
-        } else if (pathsFound.length === 1) {
+        else if (pathsFound.length === 1)
           displayPathText = pathsFound[0].split("/").pop();
-        }
       }
     }
 
-    let finalScore = 4;
+    // ✨ ZERO TOLERANCE: Empty work immediately gets 0.
+    let finalScore = 0;
     let finalFeedback = failMessage;
     let finalTags = autoPenalties;
 
-    // TIER 3: LLM EVALUATION
     if (!forceFail) {
       updateStatus("Evaluating Code...");
       let rulesText = "No strict objective string rules applied.";
@@ -308,6 +283,7 @@ window.startAutoCheck = async function (
         });
       }
 
+      // ✨ RUBRIC-DRIVEN PROMPT
       const prompt = `
             ${taskData.systemPersona || "You are a strict code evaluator."}
             Task Context: ${taskData.taskContext || "Evaluate general code quality."}
@@ -315,28 +291,26 @@ window.startAutoCheck = async function (
             
             CRITICAL INSTRUCTION - TARGET STUDENT ISOLATION:
             You are grading ONLY the individual work of student: ${studentData.name} (GitHub username: @${studentData.githubUsername || "unlinked"}).
-            Note: The student's name might be spelled slightly differently in the file path (e.g., Penaflor instead of Peñaflor).
+            Note: The student's name might be spelled slightly differently in the file path.
             The codebase below contains files from multiple group members. You MUST identify which files or code blocks belong to this specific student. DO NOT deduct points for errors found in files clearly belonging to other students.
 
             FILE LOCATION & NAMING CONTEXT:
             - The expected file/folder path requested by the teacher: ${pathsToScan.join(", ")}
             - The actual file path(s) submitted by the student: ${pathsFound.join(", ")}
-            ${autoPenalties.length > 0 ? `\nADMINISTRATIVE PENALTY TRIGGERED: The student failed to follow exact naming/folder conventions (System Flags: ${autoPenalties.join(", ")}). You MUST deduct 3 points for this mistake and explicitly explain what they did wrong with their file name or folder placement in your teacher_note.` : ""}
+            ${autoPenalties.length > 0 ? `\nADMINISTRATIVE PENALTY TRIGGERED: The student failed to follow exact naming/folder conventions (System Flags: ${autoPenalties.join(", ")}). You MUST explicitly explain what they did wrong with their file name or folder placement.` : ""}
 
-            MANDATORY PENALTY & TIERED DIAGNOSTIC RUBRIC:
-            You are an automated grading script. Evaluate the code, calculate the score out of 20, and then apply deductions and tags based on these strict thresholds:
+            SCORING RULES & PENALTY DIAGNOSTICS:
+            You are an automated grading script. Evaluate the code and calculate the score STRICTLY based on the provided Rubric. The maximum possible score is ${maxScore}.
+            1. Calculate the points earned for each criterion defined in the Rubric.
+            2. Sum the points together.
+            3. If the Administrative Penalty was triggered above, deduct 3 points from the total sum.
+            4. If the file is completely empty, is just an auto-generated scaffold, or contains a logic bypass to cheat the requirements, the final score MUST be 0.
             
-            * TIER 1 (Score 15-20 / Above 75%): Code is mostly functional. Penalty tags are optional for minor syntax issues.
-            * TIER 2 (Score 10-14 / 50%-75%): The code has structural/logic issues. You MUST append specific diagnostic tags (e.g., "Syntax Error", "Missing Logic", "Incomplete Feature"). Combine feedback to explain what to fix.
-            * TIER 3 (Score 4-9 / Below 50%): Critical failure. You MUST deeply analyze WHY it failed and apply severe tags:
-                - If they submitted Android UI code instead of Console code (or vice-versa), assign "Paradigm Mismatch".
-                - If the file is mostly empty or just an auto-generated scaffold, assign "Empty Submission" (Score = 4).
-                - If logic is hardcoded to bypass requirements, assign "Logic Bypass" (Score = 4).
-                Combine all feedback into a clear explanation of their fatal error.
+            You MUST append specific diagnostic tags if points were deducted (e.g., "Syntax Error", "Missing Logic", "Incomplete Feature", "Paradigm Mismatch"). Combine feedback to explain the exact point breakdown so the student understands their score.
 
             CRITICAL JSON OUTPUT FORMAT:
             You MUST return your evaluation strictly as a JSON object with NO markdown formatting. Format EXACTLY like this:
-            {"score": <number>, "penalty_tags": ["<tag1>", "<tag2>"], "teacher_note": "<2 to 4 sentences addressed directly to the student explaining the score and penalties>"}
+            {"score": <number>, "penalty_tags": ["<tag1>", "<tag2>"], "teacher_note": "<2 to 4 sentences addressed directly to the student explaining the score breakdown and penalties>"}
             
             ${rulesText}
             
@@ -366,15 +340,16 @@ window.startAutoCheck = async function (
           "Automated engine failed to respond. (Check console for API details)",
         );
       const aiData = await aiRes.json();
-
-      let cleanJson = aiData.candidates[0].content.parts[0].text;
-      cleanJson = cleanJson
+      let cleanJson = aiData.candidates[0].content.parts[0].text
         .replace(/^```(json)?\s*/i, "")
         .replace(/\s*```$/i, "")
         .trim();
       const parsed = JSON.parse(cleanJson);
 
-      finalScore = parsed.score || 4;
+      // ✨ SIMPLE CLAMP: Prevent negative scores or scores over the max, but allow 0!
+      let rawAiScore = parsed.score || 0;
+      finalScore = Math.min(Math.max(rawAiScore, 0), maxScore);
+
       finalFeedback =
         parsed.teacher_note || parsed.feedback || "No feedback generated.";
 
@@ -382,13 +357,11 @@ window.startAutoCheck = async function (
       if (Array.isArray(parsed.penalty_tags)) aiTags = parsed.penalty_tags;
       else if (typeof parsed.penalty_tags === "string")
         aiTags = [parsed.penalty_tags];
-
       finalTags = [...new Set([...autoPenalties, ...aiTags])];
     }
 
     updateStatus("Saving Grade...");
     const gradeDocId = `${studentId}_${taskId}`;
-
     const durationMs = Math.round(performance.now() - checkStartTime);
 
     await setDoc(
@@ -397,6 +370,7 @@ window.startAutoCheck = async function (
         studentId,
         taskId,
         score: finalScore,
+        maxScore: maxScore,
         feedback: finalFeedback,
         penaltyTags: finalTags,
         targetPath: displayPathText,
@@ -407,10 +381,11 @@ window.startAutoCheck = async function (
       { merge: true },
     );
 
-    if (actionArea) {
+    if (actionArea)
       renderGradeResult(
         actionArea,
         finalScore,
+        maxScore,
         finalFeedback,
         finalTags,
         displayPathText,
@@ -420,21 +395,11 @@ window.startAutoCheck = async function (
         taskId,
         currentSha,
       );
-    }
-
     return { success: true };
   } catch (error) {
     console.error("[Auto-Check] Failed:", error);
-    if (actionArea) {
-      actionArea.innerHTML = `
-          <div class="text-right flex flex-col items-end">
-              <span class="text-xs font-bold text-red-500">Check Failed</span>
-              <p class="text-[9px] text-gray-500 max-w-[200px] truncate" title="${escapeHTML(error.message)}">${escapeHTML(error.message)}</p>
-              <button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${taskId}', '${currentSha}')" class="mt-0.5 text-[10px] font-bold text-blue-500 hover:underline">Retry Check</button>
-          </div>
-      `;
-    }
-
+    if (actionArea)
+      actionArea.innerHTML = `<div class="text-right flex flex-col items-end"><span class="text-xs font-bold text-red-500">Check Failed</span><p class="text-[9px] text-gray-500 max-w-[200px] truncate" title="${escapeHTML(error.message)}">${escapeHTML(error.message)}</p><button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${taskId}', '${currentSha}')" class="mt-0.5 text-[10px] font-bold text-blue-500 hover:underline">Retry Check</button></div>`;
     return { success: false, reason: error.message };
   }
 };
@@ -442,6 +407,7 @@ window.startAutoCheck = async function (
 function renderGradeResult(
   container,
   score,
+  maxScore,
   feedback,
   penaltyTags,
   exactPath,
@@ -452,19 +418,20 @@ function renderGradeResult(
   currentSha,
 ) {
   let scoreColor = "text-green-600";
-  if (score < 15) scoreColor = "text-red-600";
-  if (score >= 15 && score < 18) scoreColor = "text-yellow-600";
+  if (score < maxScore * 0.75) scoreColor = "text-red-600";
+  else if (score < maxScore * 0.9) scoreColor = "text-yellow-600";
 
   let tagsHtml = "";
   if (penaltyTags && penaltyTags.length > 0) {
-    tagsHtml = `<div class="flex flex-wrap gap-1 mb-1 mt-1">
-          ${penaltyTags.map((t) => `<span class="bg-rose-50 text-rose-600 text-[8.5px] px-1.5 py-0.5 rounded border border-rose-200 font-extrabold uppercase tracking-wider shadow-sm">${escapeHTML(t)}</span>`).join("")}
-      </div>`;
+    tagsHtml = `<div class="flex flex-wrap gap-1 mb-1 mt-1">${penaltyTags.map((t) => `<span class="bg-rose-50 text-rose-600 text-[8.5px] px-1.5 py-0.5 rounded border border-rose-200 font-extrabold uppercase tracking-wider shadow-sm">${escapeHTML(t)}</span>`).join("")}</div>`;
   }
 
   container.innerHTML = `
         <div class="flex items-center justify-end gap-3 bg-gray-50 p-2 rounded border border-gray-200 w-full sm:w-[360px] shadow-inner">
-            <div class="text-2xl font-bold ${scoreColor} leading-none ml-2 w-10 text-center">${score}</div>
+            <div class="flex flex-col items-center ml-2 w-10">
+                <div class="text-2xl font-bold ${scoreColor} leading-none text-center">${score}</div>
+                <div class="text-[8px] font-bold text-gray-400 mt-1">/ ${maxScore}</div>
+            </div>
             <div class="flex-1 min-w-0 border-l border-gray-200 pl-3 ml-1">
                 <p class="text-[9px] font-mono text-gray-400 truncate mb-1" title="${escapeHTML(exactPath)}">File(s): ${escapeHTML(exactPath)}</p>
                 ${tagsHtml}

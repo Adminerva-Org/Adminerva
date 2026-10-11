@@ -141,10 +141,11 @@ async function loadGrid() {
       let pubToggle = `<span class="text-slate-300 text-xs italic font-medium">Awaiting Score</span>`;
 
       if (grade) {
+        const max = grade.maxScore || 20;
         let sColor =
-          grade.score < 15
+          grade.score < max * 0.75
             ? "bg-rose-50 text-rose-700 border-rose-200"
-            : grade.score < 18
+            : grade.score < max * 0.9
               ? "bg-amber-50 text-amber-700 border-amber-200"
               : "bg-emerald-50 text-emerald-700 border-emerald-200";
 

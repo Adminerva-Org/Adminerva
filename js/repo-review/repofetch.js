@@ -454,9 +454,10 @@ window.openGradingModal = async function (studentId, owner, repo) {
       let actionAreaHtml = "";
 
       if (isUpToDate) {
+        const maxScore = task.maxScore || 20;
         let scoreColor = "text-green-600";
-        if (gradeRecord.score < 15) scoreColor = "text-red-600";
-        if (gradeRecord.score >= 15 && gradeRecord.score < 18)
+        if (gradeRecord.score < maxScore * 0.75) scoreColor = "text-red-600";
+        else if (gradeRecord.score < maxScore * 0.9)
           scoreColor = "text-yellow-600";
 
         const isPub = gradeRecord.published || false;
