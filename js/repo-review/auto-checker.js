@@ -21,20 +21,6 @@ function escapeHTML(str) {
   );
 }
 
-function wildcardToRegex(wildcardPath) {
-  if (
-    !wildcardPath ||
-    wildcardPath.trim() === "" ||
-    wildcardPath.trim() === "*"
-  )
-    return new RegExp(".*");
-  let path = wildcardPath.trim();
-  if (!path.match(/\.[a-zA-Z0-9]+$/)) path = path.replace(/\/$/, "") + "/*";
-  let escaped = path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const regexStr = escaped.replace(/\\\*/g, ".*");
-  return new RegExp(regexStr, "i");
-}
-
 function sanitizePath(p) {
   if (!p) return "";
   return p.replace(/[_\-\s]/g, "").toLowerCase();
@@ -81,7 +67,7 @@ window.startAutoCheck = async function (
       : { name: "Unknown Student", githubUsername: "Unknown" };
 
     const maxScore = taskData.maxScore || 20;
-    const floorScore = Math.round(maxScore * 0.3); // 30% Safety Net Floor
+    const floorScore = Math.round(maxScore * 0.2); // ✨ Updated: 20% Safety Net Floor
 
     let pathsToScan =
       taskData.targetPaths ||
@@ -90,7 +76,7 @@ window.startAutoCheck = async function (
 
     updateStatus("Tracking Repository Data...");
 
-    // PHASE 1: Concurrent Multi-Tasking
+    // PHASE 1: Concurrent Data Fetching
     const [repoRes, treeRes, commitsRes] = await Promise.all([
       fetch(`https://api.github.com/repos/${owner}/${repo}`, {
         headers: { Authorization: `Bearer ${ghToken}` },
@@ -148,146 +134,90 @@ window.startAutoCheck = async function (
 
     let matchedFilesMap = new Map();
     let autoPenalties = [];
+    let diagnosticWarnings = [];
 
-    // PHASE 2: The "Fuzzy" Target Path Match
-    pathsToScan.forEach((targetPath) => {
-      if (targetPath === "*") return;
-      const softTarget = sanitizePath(targetPath).replace(/\*$/, "");
+    // ✨ PHASE 2 & 3: Commit-Driven File Resolution & Diagnostics
+    updateStatus("Analyzing Commit Modifications...");
 
-      allBlobs.forEach((f) => {
-        const softFile = sanitizePath(f.path);
-        if (softFile.includes(softTarget)) {
-          matchedFilesMap.set(f.path, f);
+    // Fetch detailed patches for the student's latest 10 commits
+    const commitDetailsPromises = studentCommits.slice(0, 10).map(async (c) => {
+      try {
+        const res = await fetch(
+          `https://api.github.com/repos/${owner}/${repo}/commits/${c.sha}`,
+          { headers: { Authorization: `Bearer ${ghToken}` } },
+        );
+        if (res.ok) return await res.json();
+      } catch (e) {}
+      return null;
+    });
+
+    const commitDetails = (await Promise.all(commitDetailsPromises)).filter(
+      (c) => c !== null && c.files && c.files.length > 0,
+    );
+
+    const validCodeExts = /\.(java|kt|dart|cs|js|ts|html|css|py|cpp|php)$/i;
+
+    commitDetails.forEach((commitData) => {
+      commitData.files.forEach((file) => {
+        if (file.status === "removed") return; // Ignore deleted files
+
+        const filename = file.filename;
+        const hasValidExt = validCodeExts.test(filename);
+        const hasNoExt = !filename.includes(".");
+
+        // Skip binary files, images, etc. Only evaluate code or extension-less files.
+        if (!hasValidExt && !hasNoExt) return;
+
+        // Verify if the modified file matches the Blueprint's Target Path
+        let isMatch = pathsToScan[0] === "*";
+        if (!isMatch) {
+          pathsToScan.forEach((target) => {
+            const softTarget = sanitizePath(target).replace(/\*$/, "");
+            if (sanitizePath(filename).includes(softTarget)) isMatch = true;
+          });
+        }
+
+        // Link with repo tree blob if it exists, otherwise use raw commit patch fallback
+        const blobInfo = allBlobs.find((b) => b.path === filename) || {
+          path: filename,
+          isPatchOnly: true,
+          rawText: file.patch || "No raw code preview available.",
+        };
+
+        if (isMatch) {
+          matchedFilesMap.set(filename, blobInfo);
+        } else {
+          // Fallback: Found valid code, but they saved it in the wrong folder
+          matchedFilesMap.set(filename, blobInfo);
+          const warningMsg = `Wrong Location: Student modified '${filename}', but expected path was '${pathsToScan.join(", ")}'.`;
+          if (!diagnosticWarnings.includes(warningMsg))
+            diagnosticWarnings.push(warningMsg);
+        }
+
+        if (hasNoExt) {
+          const warningMsg = `Missing Extension: Student did not use a valid file extension for '${filename}'.`;
+          if (!diagnosticWarnings.includes(warningMsg))
+            diagnosticWarnings.push(warningMsg);
         }
       });
     });
 
-    // ✨ PHASE 3: AI Semantic Commit Locator (Silent Rescue Layer)
-    if (matchedFilesMap.size === 0 || pathsToScan[0] === "*") {
-      updateStatus("Analyzing Code Changes in Commits...");
-
-      const commitDetailsPromises = studentCommits
-        .slice(0, 10)
-        .map(async (c) => {
-          try {
-            const res = await fetch(
-              `https://api.github.com/repos/${owner}/${repo}/commits/${c.sha}`,
-              { headers: { Authorization: `Bearer ${ghToken}` } },
-            );
-            if (res.ok) {
-              const data = await res.json();
-              return {
-                sha: c.sha,
-                message: c.commit.message,
-                date: c.commit.committer?.date,
-                files: (data.files || [])
-                  .filter((f) => f.status !== "removed")
-                  .map((f) => ({
-                    filename: f.filename,
-                    code_changes: f.patch
-                      ? f.patch.substring(0, 1000)
-                      : "No raw code preview available",
-                  })),
-              };
-            }
-          } catch (e) {}
-          return null;
-        });
-
-      const commitDetails = (await Promise.all(commitDetailsPromises)).filter(
-        (c) => c !== null && c.files.length > 0,
-      );
-
-      if (commitDetails.length > 0) {
-        const locatorPrompt = `
-You are an AI repository analyzer locating student work.
-Task Description: ${taskData.taskContext || taskData.title}
-
-Below is the student's recent commit history, including the ACTUAL CODE CHANGES they made in those commits.
-Analyze the code changes to determine WHICH commit contains the logic required for the Task described above.
-
-Student Commits & Code Patches:
-${JSON.stringify(commitDetails, null, 2)}
-
-Respond strictly in JSON format:
-{
-  "matched_sha": "<sha of the best matching commit, or null if none match>",
-  "confidence": "<'Very Close', 'Close', or 'None'>",
-  "target_folder": "<the main directory path where the matching files are located, e.g., 'quarter2/MySystem'. Use '' if in root>"
-}
-          `;
-
-        const locatorRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${geminiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: locatorPrompt }] }],
-              generationConfig: {
-                response_mime_type: "application/json",
-                temperature: 0.1,
-              },
-            }),
-          },
-        );
-
-        if (locatorRes.ok) {
-          const locatorData = await locatorRes.json();
-          let cleanJson = locatorData.candidates[0].content.parts[0].text
-            .replace(/^```(json)?\s*/i, "")
-            .replace(/\s*```$/i, "")
-            .trim();
-          const locatorParsed = JSON.parse(cleanJson);
-
-          if (
-            locatorParsed.confidence === "Very Close" ||
-            locatorParsed.confidence === "Close"
-          ) {
-            // ✨ SILENT RESCUE: No "AI Match" tags! Just give them a normal Wrong Folder warning.
-            if (pathsToScan[0] !== "*")
-              autoPenalties.push("Wrong Folder / Misnamed File");
-
-            const targetFolder = locatorParsed.target_folder;
-            const matchedSha = locatorParsed.matched_sha;
-
-            if (targetFolder && targetFolder !== "") {
-              allBlobs.forEach((f) => {
-                if (f.path.toLowerCase().includes(targetFolder.toLowerCase())) {
-                  matchedFilesMap.set(f.path, f);
-                }
-              });
-            }
-
-            if (matchedSha) {
-              const matchedCommit = commitDetails.find(
-                (c) => c.sha === matchedSha,
-              );
-              if (matchedCommit) {
-                matchedCommit.files.forEach((mf) => {
-                  const blobInfo = allBlobs.find((b) => b.path === mf.filename);
-                  if (blobInfo) matchedFilesMap.set(mf.filename, blobInfo);
-                });
-              }
-            }
-          }
-        }
-      }
+    if (diagnosticWarnings.length > 0) {
+      autoPenalties.push("Submission Format Error");
     }
 
     let filesToProcess = Array.from(matchedFilesMap.values());
 
-    if (filesToProcess.length > 0) {
-      filesToProcess.forEach((f) => {
-        const fileName = f.path.split("/").pop();
-        if (!fileName.includes("."))
-          autoPenalties.push(`No Extension (${fileName})`);
-        else if (
-          !fileName.match(/\.(java|kt|dart|cs|js|ts|html|css|py|cpp|php)$/i)
-        )
-          autoPenalties.push(`Invalid Extension (${fileName})`);
-      });
-    }
+    // Sort files to put primary valid code extensions at the top to save context window space
+    filesToProcess.sort((a, b) => {
+      const aIsPrimary = validCodeExts.test(a.path);
+      const bIsPrimary = validCodeExts.test(b.path);
+      if (aIsPrimary && !bIsPrimary) return -1;
+      if (!aIsPrimary && bIsPrimary) return 1;
+      return 0;
+    });
+
+    filesToProcess = filesToProcess.slice(0, 20);
 
     let forceFail = false;
     let failMessage = "";
@@ -295,25 +225,7 @@ Respond strictly in JSON format:
     let fileRawText = "";
     let displayPathText = pathsToScan.join(", ") || "Entire Repository";
 
-    // Filter down to valid code extensions before grading
-    const validCodeExts =
-      /\.(java|kt|dart|cs|js|ts|html|css|py|cpp|php|xml|json|md)$/i;
-    filesToProcess = filesToProcess.filter(
-      (f) => validCodeExts.test(f.path) || !f.path.includes("."),
-    );
-
-    // Smart Sorter: Put Java/Programming files at the top to save context window space
-    filesToProcess.sort((a, b) => {
-      const aIsPrimary = /\.(java|kt|dart|cs|js|ts|py|cpp|php)$/i.test(a.path);
-      const bIsPrimary = /\.(java|kt|dart|cs|js|ts|py|cpp|php)$/i.test(b.path);
-      if (aIsPrimary && !bIsPrimary) return -1;
-      if (!aIsPrimary && bIsPrimary) return 1;
-      return 0;
-    });
-
-    filesToProcess = filesToProcess.slice(0, 40);
-
-    // PHASE 4: Concurrent Code Fetching
+    // PHASE 4: Extract Code via Blob or Patch Fallback
     if (filesToProcess.length === 0) {
       forceFail = true;
       failMessage = `No code files found matching the task requirements in your commits. Please ensure you pushed the correct assignment.`;
@@ -322,6 +234,12 @@ Respond strictly in JSON format:
       updateStatus(`Reading ${filesToProcess.length} File(s)...`);
 
       const filePromises = filesToProcess.map(async (file) => {
+        if (file.isPatchOnly) {
+          return {
+            path: `${file.path} (Extracted from Commit Patch)`,
+            text: file.rawText,
+          };
+        }
         try {
           const fileRes = await fetch(
             `https://api.github.com/repos/${owner}/${repo}/contents/${file.path}?ref=${currentSha}`,
@@ -364,9 +282,10 @@ Respond strictly in JSON format:
     let finalFeedback = failMessage;
     let finalTags = autoPenalties;
 
-    // ✨ PHASE 5: Ultra-Concise Direct Grading Prompt (Saves Tokens & Removes AI Tone)
+    // ✨ PHASE 5: AI Evaluation using Diagnostics & Strict Rubric
     if (!forceFail) {
       updateStatus("Evaluating Code...");
+
       let rulesText = "No strict objective string rules applied.";
       if (taskData.rules && taskData.rules.length > 0) {
         rulesText =
@@ -375,6 +294,12 @@ Respond strictly in JSON format:
           rulesText += `- ${r.type}: "${r.value}"\n`;
         });
       }
+
+      // Compile diagnostics for AI Instructions
+      const sysDiagnosticsText =
+        diagnosticWarnings.length > 0
+          ? diagnosticWarnings.map((w) => `- ${w}`).join("\n")
+          : "- No structural submission errors detected.";
 
       const prompt = `
             Persona: ${taskData.systemPersona || "Strict teacher"}
@@ -385,13 +310,17 @@ Respond strictly in JSON format:
             
             Code to evaluate belongs exclusively to: ${studentData.name}
 
+            SYSTEM DIAGNOSTICS (CRITICAL):
+            The automated system logged the following submission formatting errors based on the student's GitHub commits. You MUST explicitly mention these in your feedback and apply deductions for poor file organization:
+            ${sysDiagnosticsText}
+
             RULES:
             1. Score 0 if code is blank, an unmodified template, or blatantly bypasses logic.
-            2. Score ${floorScore} (Floor) for a genuine attempt with catastrophic failures (e.g. wrong paradigm, severe syntax errors).
-            3. Otherwise, strictly calculate the score by adding up points based on the Rubric.
+            2. Score ${floorScore} (Floor) for a genuine attempt with catastrophic failures.
+            3. Otherwise, strictly calculate the score by evaluating the code ONLY based on the Rubric, minus any deductions for the System Diagnostics above.
             
             FEEDBACK FORMAT (CRITICAL):
-            Provide a direct, ultra-concise 1-2 sentence \`teacher_note\`. State exactly what was done well, what was missing/wrong, and why points were deducted based on the Rubric. 
+            Provide a direct, ultra-concise 1-2 sentence \`teacher_note\`. State exactly what was done well, what was wrong based on the Rubric, AND explicitly address any System Diagnostics warnings. 
             Do NOT use fluff, greetings, AI meta-language, or robotic breakdowns. Be blunt and professional.
 
             JSON OUTPUT ONLY:
