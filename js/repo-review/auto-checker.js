@@ -139,68 +139,48 @@ window.startAutoCheck = async function (
     // ✨ PHASE 2 & 3: Commit-Driven File Resolution & Diagnostics
     updateStatus("Analyzing Commit Modifications...");
 
-    // Fetch detailed patches for the student's latest 10 commits
-    const commitDetailsPromises = studentCommits.slice(0, 10).map(async (c) => {
+    // Safe to use 80 now! The cache protects your API limit.
+    const commitDetailsPromises = studentCommits.slice(0, 80).map(async (c) => {
       try {
+        const cacheRef = doc(db, "commit_cache", c.sha);
+        const cacheSnap = await getDoc(cacheRef);
+
+        // 1. Check Firebase Cache First
+        if (cacheSnap.exists()) {
+          return cacheSnap.data();
+        }
+
+        // 2. If not cached, fetch from GitHub
         const res = await fetch(
           `https://api.github.com/repos/${owner}/${repo}/commits/${c.sha}`,
           { headers: { Authorization: `Bearer ${ghToken}` } },
         );
-        if (res.ok) return await res.json();
-      } catch (e) {}
+
+        if (res.ok) {
+          const rawData = await res.json();
+
+          // Strip down the data to save Firestore space (we only need the files array)
+          const minimalData = {
+            files: (rawData.files || []).map((f) => ({
+              filename: f.filename,
+              status: f.status,
+              patch: f.patch || "No raw code preview available.",
+            })),
+          };
+
+          // 3. Save to Firebase so we never have to fetch this SHA again
+          await setDoc(cacheRef, minimalData);
+          return minimalData;
+        }
+      } catch (e) {
+        console.warn(`Failed to process commit ${c.sha}`, e);
+      }
       return null;
     });
 
     const commitDetails = (await Promise.all(commitDetailsPromises)).filter(
       (c) => c !== null && c.files && c.files.length > 0,
     );
-
-    const validCodeExts = /\.(java|kt|dart|cs|js|ts|html|css|py|cpp|php)$/i;
-
-    commitDetails.forEach((commitData) => {
-      commitData.files.forEach((file) => {
-        if (file.status === "removed") return; // Ignore deleted files
-
-        const filename = file.filename;
-        const hasValidExt = validCodeExts.test(filename);
-        const hasNoExt = !filename.includes(".");
-
-        // Skip binary files, images, etc. Only evaluate code or extension-less files.
-        if (!hasValidExt && !hasNoExt) return;
-
-        // Verify if the modified file matches the Blueprint's Target Path
-        let isMatch = pathsToScan[0] === "*";
-        if (!isMatch) {
-          pathsToScan.forEach((target) => {
-            const softTarget = sanitizePath(target).replace(/\*$/, "");
-            if (sanitizePath(filename).includes(softTarget)) isMatch = true;
-          });
-        }
-
-        // Link with repo tree blob if it exists, otherwise use raw commit patch fallback
-        const blobInfo = allBlobs.find((b) => b.path === filename) || {
-          path: filename,
-          isPatchOnly: true,
-          rawText: file.patch || "No raw code preview available.",
-        };
-
-        if (isMatch) {
-          matchedFilesMap.set(filename, blobInfo);
-        } else {
-          // Fallback: Found valid code, but they saved it in the wrong folder
-          matchedFilesMap.set(filename, blobInfo);
-          const warningMsg = `Wrong Location: Student modified '${filename}', but expected path was '${pathsToScan.join(", ")}'.`;
-          if (!diagnosticWarnings.includes(warningMsg))
-            diagnosticWarnings.push(warningMsg);
-        }
-
-        if (hasNoExt) {
-          const warningMsg = `Missing Extension: Student did not use a valid file extension for '${filename}'.`;
-          if (!diagnosticWarnings.includes(warningMsg))
-            diagnosticWarnings.push(warningMsg);
-        }
-      });
-    });
 
     if (diagnosticWarnings.length > 0) {
       autoPenalties.push("Submission Format Error");
