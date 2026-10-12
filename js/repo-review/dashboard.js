@@ -4,11 +4,12 @@ import {
   getDocs,
   query,
   where,
-  getDoc,
-  doc,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 let velocityChartInstance = null;
+let globalStudents = [];
+let globalGrades = [];
+let globalAssessments = {};
 
 window.showLoader = function (msg = "Processing...") {
   if (typeof window.showSubtleLoader === "function")
@@ -22,14 +23,14 @@ function escapeHTML(str) {
   if (!str) return "";
   return String(str).replace(
     /[&<>"']/g,
-    (match) =>
+    (m) =>
       ({
         "&": "&amp;",
         "<": "&lt;",
         ">": "&gt;",
         '"': "&quot;",
         "'": "&#039;",
-      })[match],
+      })[m],
   );
 }
 
@@ -44,20 +45,34 @@ function getRepoId(repoUrl) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  loadSections();
+  initDashboard();
 });
 
-async function loadSections() {
+async function initDashboard() {
   if (!db) return;
   try {
+    window.showLoader("Initializing Analytics...");
+
+    // Fetch Assessments for Task Filter & Naming
+    const assSnap = await getDocs(collection(db, "assessments"));
+    const taskSelect = document.getElementById("taskSelect");
+    assSnap.forEach((d) => {
+      globalAssessments[d.id] = d.data();
+      taskSelect.insertAdjacentHTML(
+        "beforeend",
+        `<option value="${d.id}">${escapeHTML(d.data().title)}</option>`,
+      );
+    });
+
+    // Fetch Sections
     const snap = await getDocs(collection(db, "students"));
     const select = document.getElementById("sectionSelect");
-    select.innerHTML = "";
-
     let uniqueSections = new Set();
+
     snap.forEach((d) => {
-      const sectionName = d.data().section;
-      if (sectionName) uniqueSections.add(sectionName);
+      const data = d.data();
+      globalStudents.push({ id: d.id, ...data });
+      if (data.section) uniqueSections.add(data.section);
     });
 
     [...uniqueSections].sort().forEach((sec) => {
@@ -67,102 +82,140 @@ async function loadSections() {
       );
     });
 
-    if (uniqueSections.size > 0) {
-      window.loadDashboardData();
-    }
+    if (uniqueSections.size > 0) window.loadDashboardData();
+    else window.hideLoader();
   } catch (e) {
-    console.error("Failed to load sections", e);
+    console.error("Init Error", e);
+    window.hideLoader();
   }
 }
 
 window.loadDashboardData = async function () {
   const section = document.getElementById("sectionSelect").value;
+  const taskIdFilter = document.getElementById("taskSelect").value;
   if (!section) return;
 
-  window.showLoader("Analyzing Database Insights...");
+  window.showLoader("Analyzing Mastery & Telemetry...");
 
   try {
-    // 1. Fetch Students in Section
-    const qStudents = query(
-      collection(db, "students"),
-      where("section", "==", section),
-    );
-    const stuSnap = await getDocs(qStudents);
-    const students = [];
-    const studentIds = new Set();
-    stuSnap.forEach((d) => {
-      const s = { id: d.id, ...d.data() };
-      students.push(s);
-      studentIds.add(d.id);
-    });
-    document.getElementById("statStudents").textContent = students.length;
+    // 1. Filter Students
+    const sectionStudents = globalStudents.filter((s) => s.section === section);
+    const studentIds = new Set(sectionStudents.map((s) => s.id));
+    document.getElementById("statStudents").textContent =
+      sectionStudents.length;
 
-    // 2. Fetch Grades (Filter client-side for this section)
+    // 2. Fetch Grades (Live to catch recent manual grading updates)
     const gradesSnap = await getDocs(collection(db, "student_grades"));
-    const sectionGrades = [];
-    let totalLatency = 0;
-    let latencyCount = 0;
-
-    // Tier Tracking
-    let t1 = 0,
-      t2 = 0,
-      t3 = 0;
-
-    // Penalty Tracking
-    const penaltyCounts = {};
-
-    // Assessment Averages Tracking
-    const taskAverages = {};
-
+    globalGrades = [];
     gradesSnap.forEach((d) => {
-      const g = d.data();
-      if (studentIds.has(g.studentId)) {
-        sectionGrades.push(g);
-
-        // Latency
-        if (g.gradingDurationMs) {
-          totalLatency += g.gradingDurationMs;
-          latencyCount++;
-        }
-
-        // Tiers
-        const score = g.score || 0;
-        if (score >= 15) t1++;
-        else if (score >= 10) t2++;
-        else t3++;
-
-        // Penalties
-        if (g.penaltyTags && Array.isArray(g.penaltyTags)) {
-          g.penaltyTags.forEach((tag) => {
-            penaltyCounts[tag] = (penaltyCounts[tag] || 0) + 1;
-          });
-        }
-
-        // Task Averages
-        if (!taskAverages[g.taskId])
-          taskAverages[g.taskId] = { total: 0, count: 0 };
-        taskAverages[g.taskId].total += score;
-        taskAverages[g.taskId].count++;
+      if (studentIds.has(d.data().studentId)) {
+        globalGrades.push({ id: d.id, ...d.data() });
       }
     });
 
-    // Process Top KPI Cards
-    document.getElementById("statGrades").textContent = sectionGrades.length;
+    // Filter by specific task if requested
+    const filteredGrades =
+      taskIdFilter === "ALL"
+        ? globalGrades
+        : globalGrades.filter((g) => g.taskId === taskIdFilter);
+
+    // Analytics Trackers
+    let totalLatency = 0,
+      latencyCount = 0;
+    let t1 = 0,
+      t2 = 0,
+      t3 = 0;
+    let totalMasteryPercentage = 0;
+    const penaltyCounts = {};
+    const taskAverages = {};
+    const studentPerformance = {}; // For Top 5 / At-Risk calculations
+
+    sectionStudents.forEach((s) => {
+      studentPerformance[s.id] = {
+        name: s.name,
+        gh: s.githubUsername,
+        grades: [],
+        totalPerc: 0,
+        penaltyCount: 0,
+      };
+    });
+
+    filteredGrades.forEach((g) => {
+      // Latency
+      if (g.gradingDurationMs) {
+        totalLatency += g.gradingDurationMs;
+        latencyCount++;
+      }
+
+      // Dynamic Mastery Math
+      const maxScore =
+        g.maxScore || globalAssessments[g.taskId]?.maxScore || 20;
+      const score = g.score || 0;
+      const perc = (score / maxScore) * 100;
+
+      totalMasteryPercentage += perc;
+
+      if (perc >= 75) t1++;
+      else if (perc >= 50) t2++;
+      else t3++;
+
+      // Populate Student Stats
+      if (studentPerformance[g.studentId]) {
+        studentPerformance[g.studentId].grades.push({
+          task: g.taskId,
+          score,
+          maxScore,
+          perc,
+        });
+        studentPerformance[g.studentId].totalPerc += perc;
+      }
+
+      // Penalties
+      if (g.penaltyTags && Array.isArray(g.penaltyTags)) {
+        g.penaltyTags.forEach((tag) => {
+          penaltyCounts[tag] = (penaltyCounts[tag] || 0) + 1;
+          if (studentPerformance[g.studentId])
+            studentPerformance[g.studentId].penaltyCount++;
+        });
+      }
+
+      // Task Averages (For Weaknesses Panel)
+      if (!taskAverages[g.taskId])
+        taskAverages[g.taskId] = { totalPerc: 0, count: 0 };
+      taskAverages[g.taskId].totalPerc += perc;
+      taskAverages[g.taskId].count++;
+    });
+
+    // Update KPI Cards
+    document.getElementById("statGrades").textContent = filteredGrades.length;
     const avgMs = latencyCount > 0 ? totalLatency / latencyCount : 0;
     document.getElementById("statAvgTime").textContent =
       avgMs > 0 ? (avgMs / 1000).toFixed(1) + "s" : "N/A";
 
-    // 3. Fetch Group Repos & Repobanks for Equity and Stale Memory
+    const secAvg =
+      filteredGrades.length > 0
+        ? Math.round(totalMasteryPercentage / filteredGrades.length)
+        : 0;
+    document.getElementById("statMastery").textContent = `${secAvg}%`;
+
+    // 3. Process Student Rankings (Top 5 & At-Risk)
+    const rankedStudents = Object.values(studentPerformance)
+      .filter((s) => s.grades.length > 0)
+      .map((s) => {
+        s.avgPerc = s.totalPerc / s.grades.length;
+        return s;
+      })
+      .sort((a, b) => b.avgPerc - a.avgPerc);
+
+    renderStudentRadar(rankedStudents);
+
+    // 4. Group Repo Analytics (Equity & Ghost)
     const cacheSnap = await getDocs(collection(db, "group_repo_cache"));
     const repoCacheMap = {};
     cacheSnap.forEach((d) => (repoCacheMap[d.id] = d.data()));
 
-    const bankSnap = await getDocs(collection(db, "repobank"));
-    const repoBankMap = {};
-    bankSnap.forEach((d) => (repoBankMap[d.id] = d.data()));
-
     const groups = {};
-    students.forEach((s) => {
+    sectionStudents.forEach((s) => {
       const rid = getRepoId(s.repoUrl);
       if (rid) {
         if (!groups[rid]) groups[rid] = [];
@@ -170,31 +223,24 @@ window.loadDashboardData = async function () {
       }
     });
 
-    let staleCount = 0;
     const equityAlerts = [];
+    const ghostAlerts = [];
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
 
     Object.keys(groups).forEach((rid) => {
       const groupMembers = groups[rid];
-
-      // Check Staleness
-      const bankData = repoBankMap[rid];
       const cacheData = repoCacheMap[rid];
 
-      if (!bankData) {
-        staleCount++; // Never mapped
-      } else if (bankData.lastUpdated && cacheData && cacheData.latestSha) {
-        // Fallback: Check if it's a Firebase Timestamp or an old date string
-        const lastUpdatedTime =
-          typeof bankData.lastUpdated.toDate === "function"
-            ? bankData.lastUpdated.toDate().getTime()
-            : new Date(bankData.lastUpdated).getTime();
-
-        // We consider it stale if the repobank hasn't been updated in 14 days
-        const bankAgeDays =
-          (Date.now() - lastUpdatedTime) / (1000 * 60 * 60 * 24);
-        if (bankAgeDays > 14) staleCount++;
+      // Check Ghost / Dormancy
+      if (
+        !cacheData ||
+        !cacheData.latestSha ||
+        cacheData.lastUpdated < weekAgo
+      ) {
+        ghostAlerts.push({ repoId: rid, members: groupMembers });
       }
-      // Check Team Equity (Groups > 1 member)
+
+      // Check Equity
       if (groupMembers.length > 1 && cacheData && cacheData.studentStats) {
         let totalGroupCommits = 0;
         const memberCommits = [];
@@ -206,7 +252,6 @@ window.loadDashboardData = async function () {
           memberCommits.push({ name: m.name, count: count });
         });
 
-        // Only analyze active repos to avoid noise
         if (totalGroupCommits > 5) {
           memberCommits.sort((a, b) => b.count - a.count);
           const topShare = memberCommits[0].count / totalGroupCommits;
@@ -225,18 +270,14 @@ window.loadDashboardData = async function () {
       }
     });
 
-    document.getElementById("statStaleMemory").textContent = staleCount;
+    // Render Components
+    renderTiers(t1, t2, t3, filteredGrades.length);
+    renderPenalties(penaltyCounts, filteredGrades.length);
+    renderTaskAverages(taskAverages);
+    renderRadarAlerts(ghostAlerts, equityAlerts);
 
-    // Render Sub-Panels
-    renderTiers(t1, t2, t3, sectionGrades.length);
-    renderPenalties(penaltyCounts, sectionGrades.length);
-    await renderTaskAverages(taskAverages);
-    renderEquityAlerts(equityAlerts);
-
-    // 4. Fetch GitHub Velocity Data
-    if (students.length > 0) {
-      window.showLoader("Fetching 30-Day Commit Velocity...");
-      await renderVelocityChart(students);
+    if (sectionStudents.length > 0) {
+      await renderVelocityChart(sectionStudents);
     } else {
       renderEmptyChart();
     }
@@ -248,6 +289,10 @@ window.loadDashboardData = async function () {
   }
 };
 
+// ==========================================
+// RENDERING FUNCTIONS
+// ==========================================
+
 function renderTiers(t1, t2, t3, total) {
   const list = document.getElementById("tierList");
   if (total === 0) {
@@ -255,28 +300,65 @@ function renderTiers(t1, t2, t3, total) {
       '<div class="text-center text-xs text-slate-400 italic">No grades found.</div>';
     return;
   }
-
   const p1 = Math.round((t1 / total) * 100) || 0;
   const p2 = Math.round((t2 / total) * 100) || 0;
   const p3 = Math.round((t3 / total) * 100) || 0;
 
   list.innerHTML = `
     <div class="flex flex-col gap-1">
-        <div class="flex justify-between text-xs font-bold text-slate-600"><span>Tier 1 (Proficient)</span><span>${p1}%</span></div>
+        <div class="flex justify-between text-xs font-bold text-slate-600"><span>Mastered (≥75%)</span><span>${p1}%</span></div>
         <div class="w-full bg-slate-100 rounded-full h-2.5 shadow-inner"><div class="bg-emerald-500 h-2.5 rounded-full" style="width: ${p1}%"></div></div>
-        <div class="text-[9px] text-slate-400 text-right">${t1} Submissions (Score 15-20)</div>
+        <div class="text-[9px] text-slate-400 text-right">${t1} Submissions</div>
     </div>
     <div class="flex flex-col gap-1 mt-2">
-        <div class="flex justify-between text-xs font-bold text-slate-600"><span>Tier 2 (Developing)</span><span>${p2}%</span></div>
+        <div class="flex justify-between text-xs font-bold text-slate-600"><span>Developing (50-74%)</span><span>${p2}%</span></div>
         <div class="w-full bg-slate-100 rounded-full h-2.5 shadow-inner"><div class="bg-amber-400 h-2.5 rounded-full" style="width: ${p2}%"></div></div>
-        <div class="text-[9px] text-slate-400 text-right">${t2} Submissions (Score 10-14)</div>
+        <div class="text-[9px] text-slate-400 text-right">${t2} Submissions</div>
     </div>
     <div class="flex flex-col gap-1 mt-2">
-        <div class="flex justify-between text-xs font-bold text-slate-600"><span>Tier 3 (Critical)</span><span>${p3}%</span></div>
+        <div class="flex justify-between text-xs font-bold text-slate-600"><span>Critical (<50%)</span><span>${p3}%</span></div>
         <div class="w-full bg-slate-100 rounded-full h-2.5 shadow-inner"><div class="bg-rose-500 h-2.5 rounded-full" style="width: ${p3}%"></div></div>
-        <div class="text-[9px] text-slate-400 text-right">${t3} Submissions (Score <10)</div>
+        <div class="text-[9px] text-slate-400 text-right">${t3} Submissions</div>
     </div>
   `;
+}
+
+function renderTaskAverages(taskAverages) {
+  const list = document.getElementById("criteriaList");
+  const taskIds = Object.keys(taskAverages);
+  if (taskIds.length === 0) {
+    list.innerHTML =
+      '<div class="text-center text-xs text-slate-400 italic mt-4">No assessments graded yet.</div>';
+    return;
+  }
+
+  const sortedTasks = taskIds
+    .map((id) => {
+      return {
+        id,
+        name: globalAssessments[id]?.title || "Unknown Task",
+        perc: taskAverages[id].totalPerc / taskAverages[id].count,
+      };
+    })
+    .sort((a, b) => a.perc - b.perc);
+
+  list.innerHTML = "";
+  sortedTasks.forEach((task) => {
+    let colorClass = "text-emerald-600 bg-emerald-50";
+    if (task.perc < 50) colorClass = "text-rose-600 bg-rose-50 border-rose-200";
+    else if (task.perc < 75)
+      colorClass = "text-amber-600 bg-amber-50 border-amber-200";
+
+    list.insertAdjacentHTML(
+      "beforeend",
+      `
+      <div class="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
+        <span class="font-bold text-slate-700 text-xs truncate max-w-[200px]" title="${escapeHTML(task.name)}">${escapeHTML(task.name)}</span>
+        <span class="font-black text-sm px-2 py-0.5 rounded border ${colorClass}">${Math.round(task.perc)}%</span>
+      </div>
+    `,
+    );
+  });
 }
 
 function renderPenalties(penaltyCounts, totalGrades) {
@@ -285,105 +367,150 @@ function renderPenalties(penaltyCounts, totalGrades) {
 
   if (sorted.length === 0) {
     list.innerHTML =
-      '<div class="text-center text-xs text-emerald-500 font-bold italic mt-4">Clean code! No diagnostic penalties found.</div>';
+      '<div class="text-center text-xs text-emerald-500 font-bold italic mt-4">Clean code! No penalties found.</div>';
     return;
   }
-
-  list.innerHTML = "";
-  sorted.forEach(([tag, count], index) => {
-    const percentage = Math.round((count / totalGrades) * 100);
-    const colorClass =
-      index < 2
-        ? "bg-rose-50 text-rose-700 border-rose-200"
-        : "bg-amber-50 text-amber-700 border-amber-200";
-
-    list.insertAdjacentHTML(
-      "beforeend",
-      `
+  list.innerHTML = sorted
+    .map(([tag, count], index) => {
+      const percentage = Math.round((count / totalGrades) * 100);
+      const colorClass =
+        index < 2
+          ? "bg-rose-50 text-rose-700 border-rose-200"
+          : "bg-amber-50 text-amber-700 border-amber-200";
+      return `
       <div class="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
-        <div class="flex items-center gap-2">
-           <span class="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${colorClass}">${escapeHTML(tag)}</span>
-        </div>
+        <span class="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${colorClass}">${escapeHTML(tag)}</span>
         <div class="text-right flex flex-col">
           <span class="font-bold text-slate-700 text-sm">${count}</span>
-          <span class="text-[9px] text-slate-400 font-bold tracking-wider">${percentage}% of grades</span>
+          <span class="text-[9px] text-slate-400 font-bold tracking-wider">${percentage}% incidence</span>
         </div>
       </div>
-    `,
-    );
-  });
-}
-
-async function renderTaskAverages(taskAverages) {
-  const list = document.getElementById("criteriaList");
-  const taskIds = Object.keys(taskAverages);
-
-  if (taskIds.length === 0) {
-    list.innerHTML =
-      '<div class="text-center text-xs text-slate-400 italic mt-4">No assessments graded yet.</div>';
-    return;
-  }
-
-  // Fetch assessment titles
-  const assSnap = await getDocs(collection(db, "assessments"));
-  const taskNames = {};
-  assSnap.forEach((d) => (taskNames[d.id] = d.data().title || "Unknown Task"));
-
-  const sortedTasks = taskIds
-    .map((id) => {
-      return {
-        name: taskNames[id] || id,
-        avg: taskAverages[id].total / taskAverages[id].count,
-      };
+    `;
     })
-    .sort((a, b) => a.avg - b.avg); // Lowest scores first (weaknesses)
-
-  list.innerHTML = "";
-  sortedTasks.forEach((task, index) => {
-    let colorClass = "text-emerald-600 bg-emerald-50";
-    if (task.avg < 10) colorClass = "text-rose-600 bg-rose-50";
-    else if (task.avg < 15) colorClass = "text-amber-600 bg-amber-50";
-
-    list.insertAdjacentHTML(
-      "beforeend",
-      `
-      <div class="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-lg">
-        <span class="font-bold text-slate-700 text-xs truncate max-w-[200px]" title="${escapeHTML(task.name)}">${escapeHTML(task.name)}</span>
-        <span class="font-black text-sm px-2 py-0.5 rounded border border-transparent ${colorClass}">${task.avg.toFixed(1)} / 20</span>
-      </div>
-    `,
-    );
-  });
+    .join("");
 }
 
-function renderEquityAlerts(alerts) {
-  const list = document.getElementById("equityList");
-  if (alerts.length === 0) {
-    list.innerHTML =
-      '<div class="text-center text-xs text-emerald-500 font-bold italic mt-4">All groups show balanced commit distributions.</div>';
+function renderStudentRadar(rankedStudents) {
+  const topList = document.getElementById("topStudentsList");
+  const riskList = document.getElementById("atRiskList");
+
+  if (rankedStudents.length === 0) {
+    topList.innerHTML = riskList.innerHTML =
+      '<div class="text-xs text-slate-400 italic">No grading data available yet.</div>';
     return;
   }
 
-  list.innerHTML = "";
-  alerts.forEach((alert) => {
-    list.insertAdjacentHTML(
-      "beforeend",
-      `
-      <div class="p-3 bg-rose-50/50 border border-rose-200 rounded-lg flex flex-col gap-2">
-        <div class="flex justify-between items-center border-b border-rose-100 pb-2">
+  const top5 = rankedStudents.slice(0, 5);
+  const bottom5 = [...rankedStudents]
+    .reverse()
+    .slice(0, 5)
+    .filter((s) => s.avgPerc < 75); // Only show at-risk if they actually struggle
+
+  const renderCard = (s, isRisk) => `
+    <div onclick="window.openStudent360('${s.id}')" class="flex justify-between items-center p-3 bg-white border ${isRisk ? "border-rose-200 hover:bg-rose-50" : "border-slate-200 hover:bg-emerald-50"} rounded-lg cursor-pointer transition shadow-sm">
+        <div class="flex flex-col">
+            <span class="font-bold text-slate-700 text-xs">${escapeHTML(s.name)}</span>
+            <span class="text-[9px] text-slate-400 font-mono">@${escapeHTML(s.gh || "unlinked")}</span>
+        </div>
+        <div class="flex flex-col items-end">
+            <span class="font-black text-sm ${isRisk ? "text-rose-600" : "text-emerald-600"}">${Math.round(s.avgPerc)}%</span>
+            ${s.penaltyCount === 0 && !isRisk ? '<span class="text-[8px] bg-emerald-100 text-emerald-700 px-1 rounded uppercase font-bold">Zero Penalties</span>' : ""}
+        </div>
+    </div>
+  `;
+
+  topList.innerHTML = top5.map((s) => renderCard(s, false)).join("");
+  riskList.innerHTML =
+    bottom5.length > 0
+      ? bottom5.map((s) => renderCard(s, true)).join("")
+      : '<div class="text-xs text-emerald-500 font-bold italic">No critical students detected!</div>';
+}
+
+function renderRadarAlerts(ghostAlerts, equityAlerts) {
+  const gl = document.getElementById("ghostList");
+  const el = document.getElementById("equityList");
+
+  gl.innerHTML =
+    ghostAlerts.length > 0
+      ? ghostAlerts
+          .map(
+            (g) =>
+              `<div class="p-2 border-l-2 border-slate-400 bg-slate-50 text-xs font-bold text-slate-700 mb-2">${escapeHTML(g.repoId)} <span class="text-[9px] text-slate-400 font-normal ml-1">(Dormant > 7 days)</span></div>`,
+          )
+          .join("")
+      : '<div class="text-xs text-emerald-500 font-bold italic">All repos are active.</div>';
+
+  el.innerHTML =
+    equityAlerts.length > 0
+      ? equityAlerts
+          .map(
+            (alert) => `
+      <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg flex flex-col gap-2 mb-2">
+        <div class="flex justify-between items-center border-b border-amber-100 pb-1">
           <span class="font-bold text-slate-800 text-xs truncate">${escapeHTML(alert.repoId)}</span>
-          <span class="text-[9px] text-rose-500 font-black uppercase tracking-wider bg-rose-100 px-1.5 py-0.5 rounded">High Disparity</span>
         </div>
         <div class="flex justify-between text-xs">
           <div class="flex flex-col"><span class="text-[9px] text-slate-400 uppercase">Top Contributor</span><span class="font-bold text-slate-700">${escapeHTML(alert.top.name)} (${alert.top.count})</span></div>
-          <div class="flex flex-col text-right"><span class="text-[9px] text-slate-400 uppercase">Bottom Contributor</span><span class="font-bold text-rose-600">${escapeHTML(alert.bottom.name)} (${alert.bottom.count})</span></div>
+          <div class="flex flex-col text-right"><span class="text-[9px] text-slate-400 uppercase">Bottom Contributor</span><span class="font-bold text-amber-600">${escapeHTML(alert.bottom.name)} (${alert.bottom.count})</span></div>
         </div>
-      </div>
-    `,
-    );
-  });
+      </div>`,
+          )
+          .join("")
+      : '<div class="text-xs text-emerald-500 font-bold italic">Team commits are balanced.</div>';
 }
 
+window.openStudent360 = function (studentId) {
+  const student = globalStudents.find((s) => s.id === studentId);
+  const sGrades = globalGrades.filter((g) => g.studentId === studentId);
+  if (!student) return;
+
+  document.getElementById("modalStudentName").textContent = student.name;
+  document.getElementById("modalStudentGithub").textContent =
+    `@${student.githubUsername || "unlinked"}`;
+
+  let totalPerc = 0,
+    penalties = 0;
+  const historyHtml = sGrades
+    .map((g) => {
+      const max = g.maxScore || globalAssessments[g.taskId]?.maxScore || 20;
+      const score = g.score || 0;
+      const perc = (score / max) * 100;
+      totalPerc += perc;
+      if (g.penaltyTags) penalties += g.penaltyTags.length;
+
+      let color =
+        perc >= 75
+          ? "text-emerald-600"
+          : perc >= 50
+            ? "text-amber-600"
+            : "text-rose-600";
+      return `
+            <div class="flex justify-between items-center p-2 bg-slate-50 border border-slate-100 rounded">
+                <div class="flex flex-col">
+                    <span class="text-xs font-bold text-slate-700">${escapeHTML(globalAssessments[g.taskId]?.title || "Task")}</span>
+                    <span class="text-[9px] text-slate-400">${g.penaltyTags ? g.penaltyTags.join(", ") : "No penalties"}</span>
+                </div>
+                <div class="flex flex-col items-end">
+                    <span class="font-black text-sm ${color}">${score} / ${max}</span>
+                    <span class="text-[9px] font-bold ${color}">${Math.round(perc)}%</span>
+                </div>
+            </div>
+        `;
+    })
+    .join("");
+
+  document.getElementById("modalMastery").textContent =
+    sGrades.length > 0 ? `${Math.round(totalPerc / sGrades.length)}%` : "N/A";
+  document.getElementById("modalSubmissions").textContent = sGrades.length;
+  document.getElementById("modalPenaltiesCount").textContent = penalties;
+  document.getElementById("modalGradeHistory").innerHTML =
+    historyHtml ||
+    '<div class="text-xs italic text-slate-400">No grades recorded.</div>';
+
+  document.getElementById("student360Modal").classList.remove("hidden");
+};
+
+// Chart Logic (Unchanged core, but encapsulated cleanly)
 async function renderVelocityChart(students) {
   const ghToken = localStorage.getItem("Adminerva_github_token");
   if (!ghToken) return renderEmptyChart();
@@ -402,7 +529,6 @@ async function renderVelocityChart(students) {
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const sinceIso = thirtyDaysAgo.toISOString();
 
-  // Deduplicate repos to prevent double-counting team commits
   const uniqueRepos = new Set();
   students.forEach((s) => {
     if (s.repoUrl && s.repoUrl !== "unassigned") {
@@ -415,7 +541,6 @@ async function renderVelocityChart(students) {
       const urlParts = url.split("/");
       const repo = urlParts.pop();
       const owner = urlParts.pop();
-
       const res = await fetch(
         `https://api.github.com/repos/${owner}/${repo}/commits?since=${sinceIso}`,
         {
@@ -425,49 +550,41 @@ async function renderVelocityChart(students) {
           },
         },
       );
-
       if (res.ok) {
         const commits = await res.json();
         commits.forEach((c) => {
           const commitDateStr = c.commit.author.date.split("T")[0];
-          if (dateCounts[commitDateStr] !== undefined) {
+          if (dateCounts[commitDateStr] !== undefined)
             dateCounts[commitDateStr]++;
-          }
         });
       }
-    } catch (e) {
-      console.warn("Chart fetch error for repo:", url);
-    }
+    } catch (e) {}
   });
 
   await Promise.all(fetchPromises);
-
-  const dataPoints = dates.map((d) => dateCounts[d]);
-  drawChart(dates, dataPoints);
+  drawChart(
+    dates,
+    dates.map((d) => dateCounts[d]),
+  );
 }
 
 function drawChart(labels, data) {
   const ctx = document.getElementById("velocityChart").getContext("2d");
-
-  if (velocityChartInstance) {
-    velocityChartInstance.destroy();
-  }
-
+  if (velocityChartInstance) velocityChartInstance.destroy();
   velocityChartInstance = new Chart(ctx, {
     type: "line",
     data: {
       labels: labels,
       datasets: [
         {
-          label: "Total Section Commits",
+          label: "Section Commits",
           data: data,
-          borderColor: "#4f46e5", // Indigo-600
+          borderColor: "#4f46e5",
           backgroundColor: "rgba(79, 70, 229, 0.1)",
           borderWidth: 2.5,
           pointBackgroundColor: "#fff",
           pointBorderColor: "#4f46e5",
           pointRadius: 4,
-          pointHoverRadius: 6,
           fill: true,
           tension: 0.4,
         },
@@ -499,7 +616,6 @@ function drawChart(labels, data) {
     },
   });
 }
-
 function renderEmptyChart() {
   drawChart(["No Data"], [0]);
 }
