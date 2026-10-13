@@ -467,7 +467,7 @@ window.openGradingModal = async function (studentId, owner, repo) {
           `;
       } else {
         actionAreaHtml = `
-              <button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${task.id}', '${currentStudentSha}')" class="${gradeRecord ? "bg-amber-500 hover:bg-amber-600" : "bg-purple-600 hover:bg-purple-700"} text-white px-4 py-1.5 rounded text-xs font-bold transition shadow-sm whitespace-nowrap flex items-center gap-2">
+              <button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${task.id}', '${currentStudentSha}')" class="${gradeRecord ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-700"} text-white px-4 py-1.5 rounded text-xs font-bold transition shadow-sm whitespace-nowrap flex items-center gap-2">
                   ✨ ${gradeRecord ? "Evaluate New Commits" : "Run Auto-Check"}
               </button>
           `;
@@ -480,16 +480,16 @@ window.openGradingModal = async function (studentId, owner, repo) {
           : "Target: Entire Repository";
 
       const cardHtml = `
-            <div id="${taskCardId}" class="p-4 bg-white border ${gradeRecord && !isUpToDate ? "border-amber-400 bg-amber-50/30" : "border-gray-200"} rounded-lg shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-blue-300 transition">
-                <div class="flex-1">
-                    <div class="flex items-center gap-2 mb-1">
+            <div id="${taskCardId}" class="p-4 sm:p-5 bg-white border ${gradeRecord && !isUpToDate ? "border-amber-400 bg-amber-50/30" : "border-gray-200"} rounded-xl shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-blue-300 transition">
+                <div class="flex-1 min-w-0 w-full">
+                    <div class="flex flex-wrap items-center gap-2 mb-2">
                         <span class="bg-blue-50 text-blue-600 border border-blue-200 text-[10px] font-bold px-2 py-0.5 rounded uppercase">${escapeHTML(task.type)}</span>
-                        <h4 class="font-bold text-sm text-gray-800">${escapeHTML(task.title)}</h4>
+                        <h4 class="font-bold text-sm sm:text-base text-gray-800 break-words">${escapeHTML(task.title)}</h4>
                     </div>
-                    <p class="text-[10px] text-gray-500 font-mono truncate" title="${escapeHTML(formattedTargets)}">${escapeHTML(formattedTargets)}</p>
-                    <p class="text-[10px] text-red-500 font-bold mt-1">Due: ${new Date(task.deployment.deadline).toLocaleDateString()}</p>
+                    <p class="text-xs text-gray-600 font-mono break-all whitespace-normal leading-relaxed" title="${escapeHTML(formattedTargets)}">${escapeHTML(formattedTargets)}</p>
+                    <p class="text-xs text-slate-600 font-semibold mt-2">Due: ${new Date(task.deployment.deadline).toLocaleDateString()}</p>
                 </div>
-                <div class="grade-action-area shrink-0">${actionAreaHtml}</div>
+                <div class="grade-action-area w-full sm:w-auto sm:shrink-0">${actionAreaHtml}</div>
             </div>
         `;
       listContainer.insertAdjacentHTML("beforeend", cardHtml);
