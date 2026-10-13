@@ -7,6 +7,8 @@ import {
   getDoc,
   query,
   where,
+  runTransaction,
+  serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const CACHE_VERSION = 7;
@@ -529,23 +531,35 @@ window.closeGradingModal = function () {
 };
 
 window.togglePublishGrade = async function (studentId, taskId, checkbox) {
-  const gradeDocId = `${studentId}_${taskId}`;
+  const gradeRef = doc(db, "student_grades", `${studentId}_${taskId}`);
   const label = document.getElementById(`pub-lbl-${taskId}`);
-
+  const wantsPublish = checkbox.checked;
   try {
-    await setDoc(
-      doc(db, "student_grades", gradeDocId),
-      { published: checkbox.checked },
-      { merge: true },
-    );
+    const gradeSnap = await getDoc(gradeRef);
+    if (!gradeSnap.exists()) throw new Error("Grade not found.");
+    if (wantsPublish && gradeSnap.data().reviewRequired === true) {
+      if (!window.confirm("This AI draft requires teacher review. Have you verified the student's commits, matched code, and submission timing before publishing?")) {
+        checkbox.checked = false;
+        return;
+      }
+    }
+    await runTransaction(db, async tx => {
+      const grade = await tx.get(gradeRef);
+      if (!grade.exists()) throw new Error("Grade was deleted during publication.");
+      tx.update(gradeRef, {
+        published: wantsPublish,
+        ...(wantsPublish && grade.data().reviewRequired === true
+          ? { reviewRequired: false, reviewedAt: serverTimestamp() } : {}),
+      });
+    });
     if (label) {
-      label.textContent = checkbox.checked ? "Visible" : "Hidden";
-      label.className = `text-[7px] font-bold ${checkbox.checked ? "text-blue-600" : "text-gray-400"} uppercase mb-1 tracking-wider`;
+      label.textContent = wantsPublish ? "Visible" : "Hidden";
+      label.className = `text-[7px] font-bold ${wantsPublish ? "text-blue-600" : "text-gray-400"} uppercase mb-1 tracking-wider`;
     }
   } catch (e) {
     console.error("Failed to publish grade", e);
-    alert("Failed to update publish status. Check permissions.");
-    checkbox.checked = !checkbox.checked;
+    alert("Failed to update publish status: " + e.message);
+    checkbox.checked = !wantsPublish;
   }
 };
 
