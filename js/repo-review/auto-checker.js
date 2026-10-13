@@ -110,7 +110,7 @@ window.startAutoCheck = async function (
     const postDate = toISO(deployment?.postDate || taskData.postDate);
     const rawPaths = Array.isArray(pathsToScan) ? pathsToScan : [pathsToScan];
     const targetPaths = [...new Set(rawPaths.flatMap(raw => {
-      const path = String(raw || "").trim().replaceAll("\\\\", "/");
+      const path = String(raw || "").trim().replaceAll("\\", "/");
       if (!path || path === "*" || path.startsWith("**/") || path.startsWith("app/")) return [path || "*"];
       // Android assessment paths can be entered relative to the Java package root.
       return [path, "**/" + path];
@@ -160,15 +160,16 @@ window.startAutoCheck = async function (
     if (fileRawText.length > 80000) {
       throw new Error("Relevant changes exceed the AI context limit. Grading paused to avoid silently truncated evidence.");
     }
-    const diagnosticWarnings = reviewReasons;
+    // Identity and deadline caveats are not student mistakes and never incur score deductions.
+    const diagnosticWarnings = [];
     const autoPenalties = [];
 
     let finalScore = 0;
-    let finalFeedback = failMessage;
+    let finalFeedback = "";
     let finalTags = autoPenalties;
 
     // ✨ PHASE 5: AI Evaluation using Diagnostics & Strict Rubric
-    if (!forceFail) {
+    {
       updateStatus("Evaluating Code...");
 
       let rulesText = "No strict objective string rules applied.";
@@ -195,8 +196,12 @@ window.startAutoCheck = async function (
             
             Grade only the student's attributed Git diff hunks. Do not credit other group members' work to ${studentData.name}.
 
-            SYSTEM DIAGNOSTICS (CRITICAL):
-            The automated system logged the following submission formatting errors based on the student's GitHub commits. You MUST explicitly mention these in your feedback and apply deductions for poor file organization:
+            EVIDENCE CAVEATS (not scoring penalties):
+            ${reviewReasons.map(w => "- " + w).join("\n")}
+            Do not deduct points because of missing identity verification, merge ancestry, or an unverified submission cutoff.
+            Teacher review is required before publication.
+
+            SYSTEM DIAGNOSTICS:
             ${sysDiagnosticsText}
 
             RULES:
