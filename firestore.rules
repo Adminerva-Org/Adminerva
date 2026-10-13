@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null && request.auth.token.email is string;
+    }
+    // Temporary development instructor allowlist. Replace with teacher claims/roles.
+    function isInstructor() {
+      return signedIn() &&
+        (request.auth.token.email.lower() == "babaynike2013@gmail.com" ||
+         request.auth.token.email.lower() == "josephsixson@mcstayuman.edu.ph");
+    }
+    function ownsStudentProfile(studentId) {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/students/$(studentId)) &&
+        get(/databases/$(database)/documents/students/$(studentId)).data.email.lower() ==
+          request.auth.token.email.lower();
+    }
+
+    match /{document=**} {
+      allow read, write: if isInstructor();
+    }
+
+    match /students/{studentId} {
+      allow read: if signedIn() && resource.data.email is string &&
+        resource.data.email.lower() == request.auth.token.email.lower();
+      // Do not permit students to change identity, section, or role information.
+      // githubToken remains writable for compatibility with the existing OAuth flow;
+      // migrate that token to a secure backend in a later release.
+      allow update: if signedIn() && resource.data.email is string &&
+        resource.data.email.lower() == request.auth.token.email.lower() &&
+        request.resource.data.email == resource.data.email &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["githubUsername", "repoUrl", "githubToken"]);
+      allow create, delete: if false;
+    }
+
+    match /teachers/{teacherId} {
+      allow read: if signedIn() && resource.data.email is string &&
+        resource.data.email.lower() == request.auth.token.email.lower();
+    }
+
+    match /student_grades/{gradeId} {
+      // Student queries must constrain BOTH studentId and published == true.
+      // Do not infer privacy from frontend-only published checks.
+      allow read: if signedIn() &&
+        resource.data.published == true &&
+        resource.data.studentId is string &&
+        ownsStudentProfile(resource.data.studentId);
+    }
+
+    match /student_dashboard_cache/{studentId} {
+      allow read, write: if ownsStudentProfile(studentId);
+    }
+
+    match /assessments/{assessmentPath=**} {
+      allow read: if signedIn();
+      // TODO: split hidden rubrics and AI instructions into instructor-only documents.
+    }
+
+    match /playground_snapshots/{snapshotId} {
+      // Existing link-sharing behavior; review snapshot privacy policy separately.
+      allow read, create: if signedIn();
+    }
+
+    match /issues/{issueId} {
+      allow read, write: if signedIn();
+      match /comments/{commentId} {
+        allow read, write: if signedIn();
+      }
+    }
+  }
+}
