@@ -78,6 +78,9 @@
     <!-- Grading Modal -->
     <div
       id="gradingModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="gradingModalTitle"
       class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-[120] p-4"
     >
       <!-- Update this wrapper line for the Grading Modal -->
@@ -88,7 +91,7 @@
           class="p-5 border-b bg-slate-800 flex justify-between items-center"
         >
           <div>
-            <h2 class="text-xl font-bold text-white">Evaluate Student Work</h2>
+            <h2 id="gradingModalTitle" class="text-xl font-bold text-white">Evaluate Student Work</h2>
             <p
               class="text-xs text-cyan-400 mt-1 font-mono"
               id="modalStudentName"
@@ -98,6 +101,7 @@
           </div>
           <button
             onclick="closeGradingModal()"
+            aria-label="Close grading dialog"
             class="text-slate-400 hover:text-white text-2xl font-bold"
           >
             &times;
