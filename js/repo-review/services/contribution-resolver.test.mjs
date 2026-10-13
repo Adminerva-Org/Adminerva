@@ -113,3 +113,89 @@ test('trusted cutoff ancestry excludes newer commits',async()=>{
  assert.deepEqual(r.acceptedCommits.map(x=>x.sha),['at-cutoff']);
  assert.ok(r.skipped.some(x=>x.sha==='after-cutoff' && x.reason==='not_in_verified_cutoff_snapshot'));
 });
+
+
+// Legacy blueprint fallback: only author-linked changes may become evidence.
+// Alternative files can get a provisional score, but uncertain work never gets an invented score.
+async function inspectFallback(files, patterns=['**/quarter2/practicalexam/**/*.java']) {
+  return resolveContributions({
+    repository: project, student,
+    assessment:{id:'practical_exam',title:'Grade 11 Q2 Practical Exam',
+      targetPaths:patterns,expectedExtensions:['java','xml'],investigationFallback:true},
+    commits:[commit('my-work',323893681,'Belo-mcs')],historyComplete:true,
+    loadCommit:async()=>({parents:[{sha:'parent'}],files})
+  });
+}
+test('ordinary in-scope Java code stays primary even if alternative Kotlin exists',async()=>{
+ const result=await inspectFallback([
+  {filename:'app/quarter2/practicalexam/Main.java',patch:'@@ +1 @@\n+public class Main { void run(){} }',status:'added'},
+  {filename:'other/Practical_Exam.kt',patch:'@@ +1 @@\n+fun run() { println(1) }',status:'added'}
+ ],['**/quarter2/practicalexam/**']);
+ assert.equal(result.relevantFiles.length,1);
+ assert.equal(result.fallback.status,'not_needed');
+ assert.deepEqual(result.fallback.selected,[]);
+});
+test('finds Kotlin implementation saved in differently named folder',async()=>{
+ const result=await inspectFallback([
+  {filename:'other-folder/Practical_Exam.kt',status:'added',patch:'@@ +1 @@\n+fun main() { println(42) }'}
+ ]);
+ assert.equal(result.relevantFiles.length,0);
+ assert.equal(result.fallback.status,'candidate_found');
+ assert.equal(result.status,'requires_review');
+ assert.equal(result.fallback.selected[0].unexpectedExtension,true);
+ assert.match(result.fallback.selected[0].reasons.join(' '),/Unexpected file type/);
+});
+test('finds code saved as txt without treating plain explanations as executable work',async()=>{
+ const good=await inspectFallback([
+  {filename:'other/practical-exam.txt',status:'added',
+   patch:'@@ +1 @@\n+public class StudentExam { public static void main(String[] args) {} }'}]);
+ assert.equal(good.fallback.status,'candidate_found');
+ const prose=await inspectFallback([
+  {filename:'other/practical-exam.txt',status:'added',
+   patch:'@@ +1 @@\n+I think this is the right answer because it should work.'}]);
+ assert.equal(prose.fallback.status,'none');
+ assert.equal(prose.fallback.selected.length,0);
+});
+test('unrelated coding tasks are suggestions, not automatically selected',async()=>{
+ const result=await inspectFallback([
+  {filename:'other/LoginActivity.kt',status:'added',patch:'@@ +1 @@\n+fun login() { return true }'}
+ ]);
+ assert.equal(result.fallback.status,'weak_candidates');
+ assert.equal(result.fallback.selected.length,0);
+ assert.equal(result.fallback.suggestions.length,1);
+});
+test('other students commits are not searched by the fallback',async()=>{
+ let detailsCalls=0;
+ const result=await resolveContributions({
+  repository:project,student,assessment:{id:'practical_exam',title:'Practical Exam',
+    targetPaths:['**/quarter2/practicalexam/**'],investigationFallback:true},
+  historyComplete:true,commits:[commit('someone-else',789,'Teammate')],
+  loadCommit:async()=>{detailsCalls++;return {parents:[{sha:'parent'}],files:[
+    {filename:'other/PracticalExam.kt',patch:'+fun main() { return 0 }'}]}}
+ });
+ assert.equal(detailsCalls,0);
+ assert.equal(result.fallback.selected.length,0);
+});
+test('too many similarly plausible alternative files require teacher selection',async()=>{
+ const files=Array.from({length:16},(_,i)=>({
+  filename:'misc/Practical_Exam_'+i+'.kt',
+  status:'added',patch:'@@ +1 @@\n+fun exam() { println(1) }'
+ }));
+ const result=await inspectFallback(files);
+ assert.equal(result.fallback.status,'ambiguous');
+ assert.equal(result.fallback.selected.length,0);
+ assert.equal(result.fallback.overflow,true);
+});
+test('deleted-only alternative files are not submitted for provisional grading',async()=>{
+ const result=await inspectFallback([
+  {filename:'other/Practical_Exam.kt',status:'removed',
+   patch:'@@ -1 +0,0 @@\n-fun main() { println(1) }'}
+ ]);
+ assert.equal(result.fallback.selected.length,0);
+});
+test('missing fallback patches are not promoted to gradable evidence',async()=>{
+ const result=await inspectFallback([
+  {filename:'other/Practical_Exam.kt',status:'added'}
+ ]);
+ assert.equal(result.fallback.selected.length,0);
+});
