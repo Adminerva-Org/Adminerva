@@ -30,8 +30,17 @@ function escapeHTML(str) {
 let allStudents = [];
 let allAssessments = [];
 
-document.addEventListener("DOMContentLoaded", async () => {
+let legacyGradebookInitialized = false;
+async function ensureLegacyGradebook() {
+  if (legacyGradebookInitialized) return;
+  legacyGradebookInitialized = true;
   await loadFilters();
+}
+window.addEventListener("adminerva:open-legacy-gradebook", ensureLegacyGradebook);
+document.addEventListener("DOMContentLoaded", async () => {
+  if (!document.getElementById("gbLegacyView")?.classList.contains("hidden")) {
+    await ensureLegacyGradebook();
+  }
   document
     .getElementById("gbSection")
     .addEventListener("change", updateAssessmentsForSection);
