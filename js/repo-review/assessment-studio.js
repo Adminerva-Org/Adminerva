@@ -222,6 +222,9 @@ window.saveAssessment = async function () {
     type: document.getElementById("assessType").value,
     maxScore: parseInt(document.getElementById("maxScore").value) || 20,
     targetPaths: targetPaths, // Save the array to Firebase
+    gradingMode: currentAssessmentId
+      ? (assessments.find(a => a.id === currentAssessmentId)?.gradingMode || "individual")
+      : "individual",
     systemPersona: document.getElementById("systemPersona").value.trim(),
     taskContext: document.getElementById("taskContext").value.trim(),
     evalCriteria: document.getElementById("evalCriteria").value.trim(),
