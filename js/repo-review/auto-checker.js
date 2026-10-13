@@ -64,6 +64,9 @@ window.startAutoCheck = async function (
 
     if (!taskSnap.exists()) throw new Error("Blueprint missing in database.");
     const taskData = taskSnap.data();
+    if (taskData.gradingMode && taskData.gradingMode !== "individual") {
+      throw new Error("Only individual grading is supported by this Auto-Checker.");
+    }
     const studentData = studentSnap.exists()
       ? studentSnap.data()
       : { name: "Unknown Student", githubUsername: "Unknown" };
