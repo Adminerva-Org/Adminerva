@@ -111,12 +111,25 @@ window.startAutoCheck = async function (
     const deployment = (taskData.deployments || []).find(d => d.section === studentData.section);
     const deadline = toISO(deployment?.deadline || taskData.deadline || taskData.dueDate);
     const postDate = toISO(deployment?.postDate || taskData.postDate);
-    const rawPaths = Array.isArray(pathsToScan) ? pathsToScan : [pathsToScan];
-    const targetPaths = [...new Set(rawPaths.flatMap(raw => {
-      const path = String(raw || "").trim().replaceAll("\\", "/");
-      if (!path || path === "*" || path.startsWith("**/") || path.startsWith("app/")) return [path || "*"];
-      // Android assessment paths can be entered relative to the Java package root.
-      return [path, "**/" + path];
+    const rawPaths = (Array.isArray(pathsToScan) ? pathsToScan : [pathsToScan])
+      .map(raw => String(raw || "").trim().replaceAll("\\", "/").replace(/^\.\//, "").replace(/^\/+/, ""))
+      .filter(Boolean);
+    // Existing blueprints may contain broad quarter folders plus narrower task paths.
+    // Prefer specific targets to avoid grading other assignments in a shared repository.
+    const specificPaths = rawPaths.filter(pattern => {
+      if (pattern === "*") return !rawPaths.some(other => other !== pattern);
+      const base = pattern.replace(/\/\*+$/, "");
+      return !rawPaths.some(other => other !== pattern &&
+        (other.startsWith(base + "/") ||
+         (pattern.endsWith("/*") && other.startsWith(pattern.slice(0, -1)))));
+    });
+    const targetPaths = [...new Set(specificPaths.flatMap(path => {
+      if (path === "*") return ["*"];
+      const isFolder = !/[?*]/.test(path) && !/\.[a-z0-9]+$/i.test(path);
+      const normalized = isFolder ? path.replace(/\/$/, "") + "/**" : path;
+      // Assessment Studio paths may be relative to Android Java package roots.
+      return normalized.startsWith("**/") || normalized.startsWith("app/")
+        ? [normalized] : [normalized, "**/" + normalized];
     }))];
     const client = createGithubEvidenceClient({ token: ghToken, maxPages: 20, maxCommitFilesPages: 30 });
     const evidence = await client.resolveEvidence({
@@ -141,7 +154,7 @@ window.startAutoCheck = async function (
       f.kind !== "asset" && f.kind !== "other" && f.patches.length > 0
     );
     if (!sourceFiles.length) {
-      throw new Error("No attributable source-code patches match this assessment. Review the GitHub identity and target paths.");
+      throw new Error("No matching student patches. Check assessment directory patterns, nested practical exam files, and GitHub identity.");
     }
     if (sourceFiles.length > 20) {
       throw new Error("More than 20 relevant files need review. Automated scoring will not silently omit them.");
