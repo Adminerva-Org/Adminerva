@@ -111,6 +111,9 @@ window.startAutoCheck = async function (
     const deployment = (taskData.deployments || []).find(d => d.section === studentData.section);
     const deadline = toISO(deployment?.deadline || taskData.deadline || taskData.dueDate);
     const postDate = toISO(deployment?.postDate || taskData.postDate);
+    // Existing student projects can predate assessment deployment.
+    // Enforce a strict start window only when the teacher explicitly enables it.
+    const enforceSubmissionStart = taskData.enforceSubmissionStart === true;
     const rawPaths = (Array.isArray(pathsToScan) ? pathsToScan : [pathsToScan])
       .map(raw => String(raw || "").trim().replaceAll("\\", "/").replace(/^\.\//, "").replace(/^\/+/, ""))
       .filter(Boolean);
@@ -146,7 +149,11 @@ window.startAutoCheck = async function (
     const evidence = await client.resolveEvidence({
       repository: repoFullName,
       student: { id: studentId, githubUsername: ghProfile.login, githubUserId: ghProfile.id },
-      assessment: { id: taskId, targetPaths, postDate, deadline, caseSensitivePaths: taskData.caseSensitivePaths === true },
+      assessment: {
+        id: taskId, targetPaths,
+        postDate: enforceSubmissionStart ? postDate : null,
+        deadline, caseSensitivePaths: taskData.caseSensitivePaths === true,
+      },
       resolver: resolveContributions,
       // Scan the pinned current default-branch HEAD, not one student's latest commit.
       // Other earlier merged student commits may not be ancestors of that student's SHA.
@@ -176,6 +183,9 @@ window.startAutoCheck = async function (
       ...evidence.reviewCommits.map(c => "Commit " + c.sha.slice(0, 12) + ": " + c.reason),
     ];
     if (deadline) reviewReasons.push("Commit dates do not establish that code was pushed before the assessment deadline.");
+    if (postDate && !enforceSubmissionStart) {
+      reviewReasons.push("Assessment posting date was advisory: earlier work may be included; teacher must verify assignment relevance.");
+    }
     const pathsFound = sourceFiles.map(f => f.path);
     const displayPathText = pathsFound.length > 1
       ? pathsFound[0].split("/").pop() + " (+" + (pathsFound.length - 1) + " files)"
