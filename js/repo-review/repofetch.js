@@ -533,6 +533,18 @@ window.openGradingModal = async function (studentId, owner, repo) {
         repoLink.className = "text-xs font-bold text-blue-700 hover:underline";
         repoLink.textContent = "Repository ↗";
         tools.append(repoLink);
+        const srcLink = document.createElement("a");
+        const pinnedStudentSha = String(currentStudentSha || "");
+        srcLink.href = /^[a-f0-9]{40}$/i.test(pinnedStudentSha)
+          ? repoUrl + "/tree/" + encodeURIComponent(pinnedStudentSha) + "/app/src"
+          : repoUrl;
+        srcLink.target = "_blank";
+        srcLink.rel = "noopener noreferrer";
+        srcLink.className = "text-xs font-bold text-blue-700 hover:underline";
+        srcLink.textContent = /^[a-f0-9]{40}$/i.test(pinnedStudentSha)
+          ? "app/src at commit ↗" : "Browse source ↗";
+        srcLink.title = "Android projects commonly use app/src; source directories vary by repository.";
+        tools.append(srcLink);
         // Keep teacher controls outside the content replaced by Auto-Checker.
         const controlColumn = document.createElement("div");
         controlColumn.className = "w-full sm:w-auto flex flex-col items-stretch sm:items-end gap-1";
