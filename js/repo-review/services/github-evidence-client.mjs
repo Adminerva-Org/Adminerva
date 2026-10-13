@@ -37,10 +37,30 @@ export function createGithubEvidenceClient({ token = null, fetchImpl = globalThi
   }
   const headers = { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
   if (token) headers.Authorization = `Bearer ${token}`;
+  // Cache only Git objects addressed by immutable commit SHA, not mutable
+  // branch references or repo metadata. Cache stays in this client instance.
+  const immutableResponses = new Map();
+  const MAX_IMMUTABLE_RESPONSES = 180;
+  function stableRequest(url) {
+    const base = /^\/repos\/[^/]+\/[^/]+\/commits(?:\/(.+))?$/.exec(url.pathname);
+    if (!base) return false;
+    if (base[1]) return /^[a-f0-9]{40}$/i.test(base[1]);
+    return /^[a-f0-9]{40}$/i.test(url.searchParams.get("sha") || "");
+  }
+  function rememberImmutable(url, data) {
+    if (!stableRequest(url)) return;
+    immutableResponses.set(url.href, data);
+    if (immutableResponses.size > MAX_IMMUTABLE_RESPONSES) {
+      immutableResponses.delete(immutableResponses.keys().next().value);
+    }
+  }
 
   async function request(path, { allow404 = false } = {}) {
     const url = new URL(path, API);
     if (url.origin !== API) throw new Error('Unexpected GitHub API origin');
+    if (stableRequest(url) && immutableResponses.has(url.href)) {
+      return immutableResponses.get(url.href);
+    }
     for (let attempt = 0; ; attempt++) {
       let response;
       try { response = await fetchImpl(url.toString(), { headers }); }
@@ -56,8 +76,11 @@ export function createGithubEvidenceClient({ token = null, fetchImpl = globalThi
         }
         throw new Error(`GitHub API HTTP ${response.status} for ${url.pathname}`);
       }
-      try { return await response.json(); }
-      catch { throw new Error(`GitHub API returned invalid JSON for ${url.pathname}`); }
+      try {
+        const data = await response.json();
+        rememberImmutable(url, data);
+        return data;
+      } catch { throw new Error(`GitHub API returned invalid JSON for ${url.pathname}`); }
     }
   }
 
