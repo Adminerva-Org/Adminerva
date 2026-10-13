@@ -2,15 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Adminerva — Contribution Inspector (Development)</title>
+  <title>Adminerva | Contribution Inspector</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
     :root{font-family:system-ui,Arial,sans-serif;color:#142135;background:#f6f8fb}*{box-sizing:border-box}
     body{margin:0}header{background:#172b48;color:white;padding:19px max(18px,calc((100vw - 1100px)/2))}
     header h1{margin:0;font-size:1.45rem}header p{margin:7px 0 0;color:#d7e3f1}
-    main{max-width:1100px;margin:20px auto;padding:0 18px 45px}.card{background:white;border:1px solid #dde4ee;border-radius:10px;padding:18px;margin-bottom:16px}
+    main{max-width:1100px;margin:20px auto;padding:0 18px 45px}.card{background:white;border:1px solid #dce4f0;border-radius:14px;padding:clamp(16px,2.6vw,24px);margin-bottom:16px;box-shadow:0 9px 26px rgba(23,39,68,.065)}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:13px}label{display:block;font-weight:650;font-size:.92rem;margin-bottom:8px}
     select,input[type=text]{width:100%;border:1px solid #bac6d7;border-radius:6px;padding:10px;background:white;font:inherit}
-    button{background:#2055b7;border:0;color:white;padding:11px 18px;border-radius:6px;font-weight:650;cursor:pointer}
+    button{background:#2755c8;border:0;color:white;padding:11px 18px;border-radius:10px;font-weight:650;cursor:pointer}
     button:disabled{background:#9ba9bf;cursor:wait}a{color:#2055b7}small,.muted{color:#53667c}.error{color:#ad2030}.warning{color:#875600}
     pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7fa;padding:12px;border-radius:6px;max-height:220px;overflow:auto}
     summary{cursor:pointer;font-weight:600}.file{border-top:1px solid #dde4ee;padding:14px 0}.pill{display:inline-block;background:#e9eefb;border-radius:20px;padding:4px 9px;font-size:.8rem}
@@ -20,8 +21,10 @@
   <link rel="stylesheet" href="css/adminerva-ui.css?v=1" />
 </head>
 <body>
+<div id="adminerva-nav" data-module="repo" data-page="inspector"></div>
+<script src="js/core/adminerva-nav.js"></script>
 <div id="pageBody" class="hidden">
-<header><h1>Contribution Inspector <span class="pill">Read-only development preview</span></h1><p>Individual evidence from shared GitHub repositories. No grading or Firestore writes.</p></header>
+<header><h1>Contribution Inspector <span class="pill">Read-only evidence review</span></h1><p>Individual evidence from shared GitHub repositories. No grading or Firestore writes.</p></header>
 <main>
   <section class="card"><h2>Choose an assessment and student</h2>
     <div class="grid">
@@ -40,6 +43,7 @@
   <section id="results" class="card" hidden><h2>Contribution evidence</h2><div id="summary"></div><h3>Warnings</h3><ul id="warnings"></ul><h3>Relevant files</h3><div id="files"></div><h3>Attributed commit history</h3><div id="commits"></div><h3>Commits needing review</h3><div id="review"></div></section>
   <p><a href="repofetch.html">Return to RepoFetch</a></p>
 </main></div>
+<script src="js/core/adminerva-loader.js"></script>
 <script type="module" src="js/core/auth-guard.js"></script>
 <script type="module" src="js/repo-review/contribution-inspector.js"></script>
 </body></html>
