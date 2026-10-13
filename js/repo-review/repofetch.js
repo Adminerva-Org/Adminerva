@@ -170,8 +170,13 @@ window.fetchAndSyncRepos = async function () {
           return;
         }
 
-        // Read every available page. A capped history must never be mistaken for zero work.
-        let commits = [];
+        // Reuse identity-specific statistics when the repository HEAD is unchanged.
+        // Check this on the FIRST history page rather than downloading every page
+        // before comparing the SHA. An unchanged shared repository may have many pages.
+        const identitySignature = group.members.map(m =>
+          m.id + ":" + String(m.githubUsername || "").toLowerCase().replace(/^@/, "")
+        ).sort().join("|");
+        const commits = [];
         let paginationComplete = false;
         for (let page = 1; page <= 20; page++) {
           const res = await fetch(
@@ -183,24 +188,20 @@ window.fetchAndSyncRepos = async function () {
           }
           const pageCommits = await res.json();
           if (!Array.isArray(pageCommits)) throw new Error("GitHub returned an invalid commit history.");
+          if (page === 1 && pageCommits.length > 0 &&
+              group.latestSha === pageCommits[0].sha &&
+              group.cachedIdentitySignature === identitySignature) {
+            // The cached history is for precisely the same HEAD and student login mapping.
+            processed++;
+            window.showSubtleLoader(`Syncing GitHub... ${processed}/${groupKeys.length} (unchanged)`);
+            return;
+          }
           commits.push(...pageCommits);
           if (pageCommits.length < 100) { paginationComplete = true; break; }
         }
         if (!paginationComplete) throw new Error("Commit history exceeds the safety limit; review repository manually.");
-        const identitySignature = group.members.map(m =>
-          m.id + ":" + String(m.githubUsername || "").toLowerCase().replace(/^@/, "")
-        ).sort().join("|");
 
         if (commits.length === 0) {
-          processed++;
-          window.showSubtleLoader(
-            `Syncing GitHub... ${processed}/${groupKeys.length}`,
-          );
-          return;
-        }
-
-        if (group.latestSha === commits[0].sha &&
-            group.cachedIdentitySignature === identitySignature) {
           processed++;
           window.showSubtleLoader(
             `Syncing GitHub... ${processed}/${groupKeys.length}`,
