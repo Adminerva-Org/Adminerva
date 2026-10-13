@@ -49,6 +49,11 @@ body :where(button, input, select, textarea):disabled { cursor: not-allowed; opa
 body :where(table) { border-collapse: separate; border-spacing: 0; }
 body :where(th) { letter-spacing: .025em; }
 body :where(td, th) { vertical-align: middle; }
+/* Prevent long GitHub paths, filenames, and generated text from stretching layouts. */
+body :where(.min-w-0, .overflow-hidden, .break-words) { overflow-wrap: anywhere; }
+body :where(.overflow-x-auto) { -webkit-overflow-scrolling: touch; }
+body :where(.shadow-2xl, .shadow-xl) { box-shadow: 0 18px 48px rgba(14, 32, 59, .18); }
+
 
 /* Common navigation across educator, lessons, and student modules. */
 #adminerva-nav nav {
@@ -70,7 +75,8 @@ body :is(
   #gradingModal, #createModal, #viewModal, #bulkGradeModal, #bulkResultModal,
   #globalSettingsModal, #feedbackModal, #detailsModal, #confirmModal,
   #editModal, #previewModal, #scoreModal, #bug-modal
-)[class*="fixed"] {
+)[class*="fixed"],
+body div[id$="Modal"][class*="fixed"][class*="inset-0"] {
   padding: clamp(8px, 2.4vw, 26px);
   background-color: rgba(8, 21, 40, .70);
   backdrop-filter: blur(7px);
