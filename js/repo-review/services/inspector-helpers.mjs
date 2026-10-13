@@ -12,7 +12,7 @@ export function normalizeAssessment(raw, section, id) {
     return d.toISOString();
   };
   const targetPaths = raw.targetPaths?.length ? raw.targetPaths : (raw.targetPath ? [raw.targetPath] : ['*']);
-  return { id, targetPaths, postDate: dateValue(deployment.postDate || raw.postDate), deadline: dateValue(deployment.deadline || raw.dueDate), caseSensitivePaths: true };
+  return { id, targetPaths, postDate: dateValue(deployment.deadlineEnabled === false ? null : (deployment.postDate || raw.postDate)), deadline: dateValue(deployment.deadlineEnabled === false ? null : (deployment.deadline || raw.dueDate)), caseSensitivePaths: true };
 }
 
 export function validateInspectorInput({ student, assessment, acknowledgedNoCutoff }) {
