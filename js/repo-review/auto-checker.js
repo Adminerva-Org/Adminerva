@@ -109,8 +109,10 @@ window.startAutoCheck = async function (
       return date.toISOString();
     };
     const deployment = (taskData.deployments || []).find(d => d.section === studentData.section);
-    const deadline = toISO(deployment?.deadline || taskData.deadline || taskData.dueDate);
-    const postDate = toISO(deployment?.postDate || taskData.postDate);
+    const deadline = deployment?.deadlineEnabled === false
+      ? null : toISO(deployment?.deadline || taskData.deadline || taskData.dueDate);
+    const postDate = deployment?.deadlineEnabled === false
+      ? null : toISO(deployment?.postDate || taskData.postDate);
     // Existing student projects can predate assessment deployment.
     // Enforce a strict start window only when the teacher explicitly enables it.
     const enforceSubmissionStart = taskData.enforceSubmissionStart === true;
