@@ -148,6 +148,28 @@ body div[id$="Modal"] :where(.overflow-y-auto) { overscroll-behavior: contain; }
   text-align: center;
 }
 
+/* RepoFetch grading cards: file paths and diagnostic text must remain readable. */
+#gradingModal #dynamicAssessmentsList > div {
+  background-color: var(--av-surface);
+  border-radius: var(--av-radius);
+  box-shadow: 0 4px 15px rgba(20, 36, 60, .045);
+}
+#gradingModal #dynamicAssessmentsList .grade-action-area { min-width: 0; }
+#gradingModal #dynamicAssessmentsList p { overflow-wrap: anywhere; }
+#gradingModal #dynamicAssessmentsList button {
+  border-radius: 10px;
+  min-height: 40px;
+}
+#gradingModal :where(.overflow-y-auto) { scrollbar-color: #bfcde0 transparent; }
+@media (max-width: 639px) {
+  #gradingModal .grade-action-area,
+  #gradingModal .grade-action-area > button {
+    width: 100%;
+    max-width: 100%;
+  }
+  #gradingModal #dynamicAssessmentsList > div { align-items: stretch; }
+}
+
 /* Compact screens: modal panels stay within viewport, actions stay tappable. */
 @media (max-width: 767px) {
   html { scroll-padding-top: 20px; }
@@ -158,7 +180,9 @@ body div[id$="Modal"] :where(.overflow-y-auto) { overscroll-behavior: contain; }
     border-radius: 14px;
   }
   body :where(button, select, input[type="button"], input[type="submit"]) { min-height: 40px; }
-  body :where(input:not([type="checkbox"]):not([type="radio"]), textarea, select) {
+  body input[type="text"]:not(.inputarea),
+  body input[type="email"], body input[type="password"],
+  body select, body textarea:not(.inputarea) {
     font-size: 16px;
   }
   body :where(.grid) { min-width: 0; }
