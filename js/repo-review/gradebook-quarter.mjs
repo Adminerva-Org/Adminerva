@@ -48,6 +48,7 @@ function view(mode) {
   el("gbViewSingle").className = "px-4 py-2 rounded-lg text-sm font-bold " +
     (mode === "single" ? "bg-blue-600 text-white" : "text-slate-600");
   if (mode === "quarter" && state.ready) loadQuarter();
+  if (mode === "single") window.dispatchEvent(new Event("adminerva:open-legacy-gradebook"));
 }
 function cell(row, value, css = "") {
   return add(row, "td", "p-3 border-b border-slate-100 align-middle " + css, value);
