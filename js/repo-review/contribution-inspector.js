@@ -1,0 +1,67 @@
+import { auth, db } from '../core/firebase-core.js';
+import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
+import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
+import { resolveContributions } from './services/contribution-resolver.mjs';
+import { createGithubEvidenceClient } from './services/github-evidence-client.mjs';
+import { normalizeAssessment, validateInspectorInput, summarizeEvidence } from './services/inspector-helpers.mjs';
+
+const el=id=>document.getElementById(id);
+const state={students:[],assessments:[],busy:false};
+const github=createGithubEvidenceClient({maxPages:10,maxCommitFilesPages:10,retryCount:1});
+function text(node,value){node.textContent=String(value??'');return node}
+function child(parent,tag,value){const n=document.createElement(tag);if(value!==undefined)text(n,value);parent.append(n);return n}
+function option(select,value,label){const o=document.createElement('option');o.value=value;o.textContent=label;select.append(o)}
+function status(message,error=false){el('status').className=error?'error':'muted';text(el('status'),message)}
+function selectedStudent(){return state.students.find(s=>s.id===el('student').value)}
+function selectedAssessment(){return state.assessments.find(a=>a.id===el('assessment').value)}
+function updateSelection(){
+ const section=el('section').value;
+ for(const [name,list,empty] of [['student',state.students.filter(s=>s.section===section),'Select student'],['assessment',state.assessments.filter(a=>Array.isArray(a.deployments)&&a.deployments.some(d=>d.section===section)),'Select assessment']]){
+   const dropdown=el(name);dropdown.replaceChildren();option(dropdown,'',empty);
+   for(const item of list)option(dropdown,item.id,item.name||item.title||item.id);
+ }
+ el('confirmLogin').value='';updateRepo();
+}
+function updateRepo(){const s=selectedStudent();text(el('repoDisplay'),s?`GitHub: @${s.githubUsername||'(not linked)'} · Repo: ${s.repoUrl||'(not linked)'}`:'');el('inspect').disabled=state.busy||!s||!selectedAssessment()}
+function safeGithubLink(sha,repository){const a=document.createElement('a');const [owner,repo]=repository.split('/');a.href=`https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commit/${encodeURIComponent(sha)}`;a.rel='noopener noreferrer';a.target='_blank';text(a,sha.slice(0,12));return a}
+function render(evidence){
+ el('results').hidden=false;const summary=summarizeEvidence(evidence);
+ text(el('summary'),`Status: ${summary.status} | Attributed commits: ${summary.attributedCommits} | Assessment-relevant commits: ${summary.relevantCommits} | Relevant files: ${summary.relevantFiles} | Needs-review commits: ${summary.reviewCommits} | Missing text patches: ${summary.missingPatches}`);
+ el('warnings').replaceChildren();for(const w of summary.warnings)child(el('warnings'),'li',w);
+ el('files').replaceChildren();for(const file of evidence.relevantFiles){
+  const wrap=child(el('files'),'div');wrap.className='file';child(wrap,'strong',file.path);child(wrap,'p',`Type: ${file.kind} · Status: ${file.statuses.join(', ')} · Commits: ${file.commitShas.length}${file.missingPatch?' · Text patch missing':''}`);
+  if(file.previousPaths.length)child(wrap,'p',`Previous path(s): ${file.previousPaths.join(', ')}`);
+  for(const patch of file.patches.slice(0,3)){const details=child(wrap,'details');child(details,'summary',`Show diff from ${patch.sha.slice(0,12)} (up to 6,000 chars)`);child(details,'pre',patch.patch.slice(0,6000));}
+ }
+ if(!evidence.relevantFiles.length)child(el('files'),'p','No matching files were found in the attributed commits available. This does not prove that the student submitted nothing.');
+ el('commits').replaceChildren();for(const c of evidence.acceptedCommits){const p=child(el('commits'),'p');p.append(safeGithubLink(c.sha,evidence.repository));child(p,'span',` — ${c.matchedPaths.length} matching file(s)`)}
+ el('review').replaceChildren();for(const c of evidence.reviewCommits){const p=child(el('review'),'p');p.append(safeGithubLink(c.sha,evidence.repository));child(p,'span',` — ${c.reason}`)}
+ if(!evidence.reviewCommits.length)child(el('review'),'p','No individually flagged commits (overall evidence can still require review).');
+}
+async function inspect(){
+ if(state.busy)return;const student=selectedStudent(), raw=selectedAssessment();
+ try{
+  const assessment=normalizeAssessment(raw,el('section').value,raw?.id);
+  validateInspectorInput({student,assessment,confirmedLogin:el('confirmLogin').value,acknowledgedNoCutoff:el('acknowledge').checked});
+  state.busy=true;el('inspect').disabled=true;el('results').hidden=true;status('Checking public GitHub account identity…');
+  const response=await fetch(`https://api.github.com/users/${encodeURIComponent(student.githubUsername.trim())}`,{headers:{Accept:'application/vnd.github+json'}});
+  if(!response.ok)throw new Error(`GitHub profile lookup failed (HTTP ${response.status})`);
+  const profile=await response.json();if(!Number.isSafeInteger(profile.id)||profile.login?.toLowerCase()!==student.githubUsername.toLowerCase())throw new Error('GitHub identity response was inconsistent');
+  status(`Retrieving commit history for ${student.name||student.id}… API rate limits may apply.`);
+  const result=await github.resolveEvidence({repository:student.repoUrl,student:{id:student.id,githubUsername:profile.login,githubUserId:profile.id},assessment,resolver:resolveContributions});
+  // The student-to-login assertion is teacher-confirmed in this session, not cryptographically verified.
+  result.warnings.push('Identity match uses a GitHub account ID resolved from a teacher-confirmed login, not a proven account-ownership link.');
+  render(result);status('Inspection finished. No grades or student records were modified.');
+ }catch(err){status(err?.message||'Inspection failed',true)}finally{state.busy=false;updateRepo()}
+}
+async function load(){
+ try{
+  status('Loading class roster and assessments…');
+  const [stuSnap,assSnap]=await Promise.all([getDocs(collection(db,'students')),getDocs(collection(db,'assessments'))]);
+  state.students=stuSnap.docs.map(d=>({id:d.id,...d.data()}));state.assessments=assSnap.docs.map(d=>({id:d.id,...d.data()}));
+  const sections=[...new Set(state.students.map(s=>s.section).filter(Boolean))].sort();const dropdown=el('section');dropdown.replaceChildren();option(dropdown,'','Select section');for(const section of sections)option(dropdown,section,section);
+  status('Ready. Select a section, assessment, and student.');
+ }catch(e){status(`Unable to load roster: ${e.message}. Only teacher accounts with Firestore read permissions can use this inspector.`,true)}
+}
+el('section').addEventListener('change',updateSelection);el('student').addEventListener('change',updateRepo);el('assessment').addEventListener('change',updateRepo);el('inspect').addEventListener('click',inspect);
+onAuthStateChanged(auth,user=>{if(user)load()});
