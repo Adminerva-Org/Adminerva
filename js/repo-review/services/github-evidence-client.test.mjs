@@ -63,3 +63,32 @@ test('resolves branch head before evidence scan', async () => {
   assert.equal(out.scannedRef,SHA);assert.equal(out.received,0);assert.equal(out.loaded,'function');
   assert(calls.some(u=>u.searchParams.get('sha')===SHA));
 });
+
+test('reuses SHA-pinned history and commit detail responses without caching moving branch HEAD', async () => {
+  const refSha = 'f'.repeat(40);
+  const {calls,fetchImpl}=mock(u=>{
+    if (u.pathname==='/repos/foo/bar') return {default_branch:'main'};
+    if (u.pathname==='/repos/foo/bar/commits/main') return {sha:refSha};
+    if (u.pathname==='/repos/foo/bar/commits/'+refSha)
+      return {sha:refSha,parents:[],files:[{filename:'Exam.java',patch:'@@ +1 @@'}]};
+    if (u.pathname==='/repos/foo/bar/commits') return [{sha:refSha}];
+    throw new Error('Unexpected path: '+u.pathname);
+  });
+  const client=createGithubEvidenceClient({fetchImpl});
+  for (let i=0;i<2;i++) {
+    await client.resolveEvidence({repository:'foo/bar',student:{id:'s'},assessment:{id:'task'},
+      resolver:async ({loadCommit}) => {
+        const detail=await loadCommit(refSha);
+        return {files:detail.files.length};
+      }});
+  }
+  assert.equal(calls.filter(u=>u.pathname==='/repos/foo/bar').length,2,
+    'Mutable repository metadata must be refreshed');
+  assert.equal(calls.filter(u=>u.pathname==='/repos/foo/bar/commits/main').length,2,
+    'Mutable branch tip must be refreshed');
+  assert.equal(calls.filter(u=>u.pathname==='/repos/foo/bar/commits' &&
+    u.searchParams.get('sha')===refSha).length,1,
+    'SHA-pinned history should be reused');
+  assert.equal(calls.filter(u=>u.pathname==='/repos/foo/bar/commits/'+refSha).length,1,
+    'Immutable commit diff should be reused');
+});
