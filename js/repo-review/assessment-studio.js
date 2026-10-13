@@ -173,6 +173,7 @@ window.openCreateModal = function () {
   document.getElementById("assessTitle").value = "";
   document.getElementById("maxScore").value = "20";
   document.getElementById("assessType").value = "Mini PETA";
+  document.getElementById("assessQuarter").value = "";
   document.getElementById("systemPersona").value =
     "You are a strict Java high school programming teacher grading a student's code.";
   document.getElementById("taskContext").value = "";
@@ -195,6 +196,7 @@ window.openEditModal = function () {
   document.getElementById("assessTitle").value = item.title || "";
   document.getElementById("maxScore").value = item.maxScore || 20;
   document.getElementById("assessType").value = item.type || "Mini PETA";
+  document.getElementById("assessQuarter").value = item.quarter || "";
   document.getElementById("systemPersona").value = item.systemPersona || "";
   document.getElementById("taskContext").value = item.taskContext || "";
   document.getElementById("evalCriteria").value = item.evalCriteria || "";
@@ -221,6 +223,7 @@ window.saveAssessment = async function () {
     title: title,
     type: document.getElementById("assessType").value,
     maxScore: parseInt(document.getElementById("maxScore").value) || 20,
+    quarter: document.getElementById("assessQuarter").value,
     targetPaths: targetPaths, // Save the array to Firebase
     gradingMode: currentAssessmentId
       ? (assessments.find(a => a.id === currentAssessmentId)?.gradingMode || "individual")
@@ -334,7 +337,7 @@ function renderDeploymentsTable(deployments) {
   }
 
   const sorted = [...deployments].sort(
-    (a, b) => new Date(a.deadline) - new Date(b.deadline),
+    (a, b) => (Date.parse(a.deadline) || 0) - (Date.parse(b.deadline) || 0),
   );
 
   sorted.forEach((deploy) => {
@@ -344,7 +347,7 @@ function renderDeploymentsTable(deployments) {
             <tr class="border-b last:border-0 hover:bg-gray-50 transition">
                 <td class="px-4 py-3 font-bold text-gray-800">${escapeHTML(deploy.section)}</td>
                 <td class="px-4 py-3">${formatPrettyDate(deploy.postDate)}</td>
-                <td class="px-4 py-3 font-bold text-blue-600">${formatPrettyDate(deploy.deadline)}</td>
+                <td class="px-4 py-3 font-bold text-blue-600">${deploy.deadlineEnabled === false ? "No deadline" : formatPrettyDate(deploy.deadline)}</td>
                 <td class="px-4 py-3 text-right">
                     <button onclick="window.openDeployModal('${deploy.id}')" class="text-xs font-bold text-slate-500 hover:text-slate-800 mr-2">Edit</button>
                     <button onclick="window.deleteDeployment('${deploy.id}')" class="text-xs font-bold text-red-400 hover:text-red-600">Remove</button>
@@ -382,6 +385,12 @@ window.openCustomRange = function (btnElement) {
   fpInstance.open();
 };
 
+window.toggleDeployDeadline = function () {
+  const checkbox = document.getElementById("deployUseDeadline");
+  const fields = document.getElementById("deployScheduleFields");
+  if (checkbox && fields) fields.classList.toggle("hidden", !checkbox.checked);
+};
+
 window.openDeployModal = function (deployId = null) {
   const item = assessments.find((a) => a.id === currentAssessmentId);
   if (!item) return;
@@ -395,10 +404,10 @@ window.openDeployModal = function (deployId = null) {
     document.getElementById("deployId").value = deploy.id;
 
     deploySelectedSections = [deploy.section];
-    fpInstance.setDate(
-      [new Date(deploy.postDate), new Date(deploy.deadline)],
-      true,
-    );
+    document.getElementById("deployUseDeadline").checked = deploy.deadlineEnabled !== false;
+    if (deploy.postDate && deploy.deadline) {
+      fpInstance.setDate([new Date(deploy.postDate), new Date(deploy.deadline)], true);
+    } else fpInstance.clear();
 
     document.getElementById("deploySectionSelector").classList.add("hidden");
     document.getElementById("deployEditNotice").classList.remove("hidden");
@@ -408,6 +417,7 @@ window.openDeployModal = function (deployId = null) {
     document.getElementById("deployId").value = "";
 
     deploySelectedSections = [];
+    document.getElementById("deployUseDeadline").checked = false;
     fpInstance.clear();
 
     document.getElementById("deploySectionSelector").classList.remove("hidden");
@@ -416,6 +426,7 @@ window.openDeployModal = function (deployId = null) {
 
   renderDeployChips();
   updateDeployDropdown();
+  window.toggleDeployDeadline();
   document.getElementById("deployModal").classList.remove("hidden");
 };
 
@@ -487,11 +498,12 @@ window.saveDeployment = async function () {
   if (!currentAssessmentId) return;
 
   const deployId = document.getElementById("deployId").value;
-  const postDate = document.getElementById("deployPostDate").value;
-  const deadline = document.getElementById("deployDeadline").value;
+  const deadlineEnabled = document.getElementById("deployUseDeadline").checked;
+  const postDate = deadlineEnabled ? document.getElementById("deployPostDate").value : null;
+  const deadline = deadlineEnabled ? document.getElementById("deployDeadline").value : null;
 
-  if (deploySelectedSections.length === 0 || !postDate || !deadline) {
-    return alert("Please select at least one section and set both dates.");
+  if (deploySelectedSections.length === 0 || (deadlineEnabled && (!postDate || !deadline))) {
+    return alert("Select a class section and, when enabled, both schedule dates.");
   }
 
   const item = assessments.find((a) => a.id === currentAssessmentId);
@@ -505,6 +517,7 @@ window.saveDeployment = async function () {
         section: deploySelectedSections[0],
         postDate,
         deadline,
+        deadlineEnabled,
       };
     }
   } else {
@@ -514,6 +527,7 @@ window.saveDeployment = async function () {
         section: section,
         postDate: postDate,
         deadline: deadline,
+        deadlineEnabled,
       });
     });
   }
