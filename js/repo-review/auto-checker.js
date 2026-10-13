@@ -121,7 +121,9 @@ window.startAutoCheck = async function (
       student: { id: studentId, githubUsername: ghProfile.login, githubUserId: ghProfile.id },
       assessment: { id: taskId, targetPaths, postDate, deadline },
       resolver: resolveContributions,
-      ref: /^[a-f0-9]{40}$/i.test(currentSha || "") ? currentSha : null,
+      // Scan the pinned current default-branch HEAD, not one student's latest commit.
+      // Other earlier merged student commits may not be ancestors of that student's SHA.
+      ref: null,
     });
     if (evidence.historyWarning || evidence.historyPagesFetched >= 20 && evidence.status === "requires_review" &&
         evidence.warnings.some(w => w.includes("pagination"))) {
@@ -284,7 +286,8 @@ window.startAutoCheck = async function (
         penaltyTags: finalTags,
         targetPath: displayPathText,
         gradingDurationMs: durationMs,
-        gradedSha: evidence.scannedRef,
+        // RepoFetch uses this student's most recent attributed SHA as the freshness key.
+        gradedSha: /^[a-f0-9]{40}$/i.test(currentSha || "") ? currentSha : evidence.scannedRef,
         gradedAt: serverTimestamp(),
         published: false,
         gradingMode: "individual",
