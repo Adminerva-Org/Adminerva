@@ -9,7 +9,7 @@ import {
   where,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
-const CACHE_VERSION = 7;
+const CACHE_VERSION = 8; // Changes attribution and rejects mixed legacy cache documents
 
 let repoGroups = {};
 let studentStatsMap = {};
@@ -170,46 +170,22 @@ window.fetchGroupRepos = async function () {
         const cacheRef = doc(db, "group_repo_cache", groupId);
         const cacheSnap = await getDoc(cacheRef);
         const cachedData = cacheSnap.exists() ? cacheSnap.data() : {};
-        let commitsCache = cachedData.commitsCache || {};
-
-        const res = await fetch(
-          `https://api.github.com/repos/${owner}/${repo}/commits?per_page=100`,
-          {
-            headers: {
-              Authorization: `Bearer ${ghToken}`,
-              Accept: "application/vnd.github+json",
-            },
-          },
-        );
-
-        // Targeted Error Handling
-        if (!res.ok) {
-          if (res.status === 404) {
-            group.apiError = "Private Repo or Broken Link (404)";
-          } else if (res.status === 403) {
-            group.apiError = "GitHub API Rate Limit Reached (403)";
-          } else if (res.status === 409) {
-            group.apiError = "Empty Repository (409)";
-          } else if (res.status === 401) {
-            group.apiError = "Invalid GitHub Token (401)";
-          } else {
-            group.apiError = `HTTP Error ${res.status}`;
-          }
-
-          processed++;
-          window.showLoader(
-            `Syncing Repositories`,
-            `Completed ${processed} of ${validGroupIds.length}`,
+        let commitsCache = cachedData.cacheVersion === CACHE_VERSION
+          ? (cachedData.commitsCache || {}) : {};
+        const currentCommits = [];
+        let historyComplete = false;
+        for (let page = 1; page <= 20; page++) {
+          const res = await fetch(
+            `https://api.github.com/repos/${owner}/${repo}/commits?per_page=100&page=${page}`,
+            { headers: { Authorization: `Bearer ${ghToken}`, Accept: "application/vnd.github+json" } },
           );
-          return;
-        } else {
-          // Clear any previous errors if fetch succeeds
-          if (group.apiError !== null) {
-            group.apiError = null;
-          }
+          if (!res.ok) throw new Error(`GitHub history HTTP ${res.status}, page ${page}`);
+          const pageCommits = await res.json();
+          if (!Array.isArray(pageCommits)) throw new Error("Invalid GitHub history response");
+          currentCommits.push(...pageCommits);
+          if (pageCommits.length < 100) { historyComplete = true; break; }
         }
-
-        const currentCommits = await res.json();
+        if (!historyComplete) throw new Error("Commit history exceeds scan limit; counts are not reliable.");
         if (currentCommits.length === 0) return;
 
         if (
@@ -236,90 +212,14 @@ window.fetchGroupRepos = async function () {
         });
 
         for (let c of currentCommits) {
-          const authorLogin = (c.author?.login || "").toLowerCase().trim();
-          const authorName = (c.commit?.author?.name || "")
-            .toLowerCase()
-            .trim();
-          const authorEmail = (c.commit?.author?.email || "")
-            .toLowerCase()
-            .trim();
-          const committerLogin = (c.committer?.login || "")
-            .toLowerCase()
-            .trim();
-          const committerName = (c.commit?.committer?.name || "")
-            .toLowerCase()
-            .trim();
-          const committerEmail = (c.commit?.committer?.email || "")
-            .toLowerCase()
-            .trim();
-
-          let member = null;
-
-          member = group.members.find((m) => {
-            const dbUsername = (m.githubUsername || "").toLowerCase().trim();
-            const dbEmail = (m.email || "").toLowerCase().trim();
-
-            if (dbUsername) {
-              if (authorLogin && dbUsername === authorLogin) return true;
-              if (committerLogin && dbUsername === committerLogin) return true;
-            }
-            if (dbEmail) {
-              if (authorEmail && dbEmail === authorEmail) return true;
-              if (committerEmail && dbEmail === committerEmail) return true;
-            }
-            return false;
-          });
-
-          if (!member) {
-            member = group.members.find((m) => {
-              const dbName = (m.name || "").toLowerCase().trim();
-              const dbUsername = (m.githubUsername || "").toLowerCase().trim();
-
-              if (!dbName) return false;
-
-              if (authorName && dbName === authorName) return true;
-              if (committerName && dbName === committerName) return true;
-
-              const nameParts = dbName.split(" ").filter((w) => w.length > 2);
-
-              if (authorName) {
-                const matches = nameParts.filter((part) =>
-                  authorName.includes(part),
-                );
-                if (
-                  matches.length >= 2 ||
-                  (nameParts.length === 1 && matches.length === 1)
-                )
-                  return true;
-                if (
-                  dbUsername &&
-                  authorName.includes(dbUsername) &&
-                  dbUsername.length > 3
-                )
-                  return true;
-              }
-
-              if (committerName) {
-                const matches = nameParts.filter((part) =>
-                  committerName.includes(part),
-                );
-                if (
-                  matches.length >= 2 ||
-                  (nameParts.length === 1 && matches.length === 1)
-                )
-                  return true;
-                if (
-                  dbUsername &&
-                  committerName.includes(dbUsername) &&
-                  dbUsername.length > 3
-                )
-                  return true;
-              }
-
-              return false;
-            });
-          }
-
+          if (Array.isArray(c.parents) && c.parents.length > 1) continue;
+          const authorLogin = String(c.author?.login || "").toLowerCase().trim();
+          if (!authorLogin) continue;
+          const candidates = group.members.filter(m =>
+            String(m.githubUsername || "").toLowerCase().trim().replace(/^@/, "") === authorLogin
+          );
+          if (candidates.length !== 1) continue;
+          const member = candidates[0];
           if (member) {
             const stats = tempStats[member.id];
             stats.count++;
