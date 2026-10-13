@@ -167,6 +167,7 @@ async function loadDashboardProfile(studentData) {
       const gradeQuery = query(
         collection(db, "student_grades"),
         where("studentId", "==", studentData.docId),
+        where("published", "==", true),
       );
       const gradeSnap = await getDocs(gradeQuery);
 
