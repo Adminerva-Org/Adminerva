@@ -101,6 +101,12 @@ function loadProfileData(index) {
 
   const statusBox = document.getElementById("saveStatus");
   if (statusBox) statusBox.classList.add("hidden");
+  const label = document.getElementById("studentIdentitySummary");
+  if (label) label.textContent = [profile.name || "Student", profile.email || "", profile.section || ""].filter(Boolean).join(" • ");
+  const gender = document.getElementById("studentGender");
+  if (gender) gender.value = ["Female", "Male", "Non-binary", "Self-described"].includes(profile.gender) ? profile.gender : "";
+  const repoChoices = document.getElementById("studentRepoChoices");
+  if (repoChoices) { repoChoices.replaceChildren(); repoChoices.classList.add("hidden"); }
 }
 
 const repoForm = document.getElementById("repoForm");
@@ -162,6 +168,93 @@ if (repoForm) {
     }
   });
 }
+const profileForm = document.getElementById("studentProfileForm");
+if (profileForm) profileForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  const index = Number(document.getElementById("sectionSelectorSettings")?.value || 0);
+  const profile = userProfiles[index];
+  if (!auth.currentUser || !profile) return;
+  const selected = document.getElementById("studentGender").value;
+  const gender = ["Female", "Male", "Non-binary", "Self-described"].includes(selected) ? selected : "";
+  const button = document.getElementById("saveStudentProfile");
+  const message = document.getElementById("profileSaveStatus");
+  button.disabled = true;
+  try {
+    await setDoc(doc(db, "students", profile.id), { gender }, { merge: true });
+    profile.gender = gender;
+    message.textContent = "Profile saved. This field is optional and does not affect grades.";
+    message.className = "mt-2 text-xs text-emerald-700";
+  } catch (error) {
+    message.textContent = "Unable to save profile: " + error.message;
+    message.className = "mt-2 text-xs text-rose-700";
+  } finally { button.disabled = false; }
+});
+
+document.getElementById("discoverStudentRepos")?.addEventListener("click", async () => {
+  const index = Number(document.getElementById("sectionSelectorSettings")?.value || 0);
+  const profile = userProfiles[index];
+  const button = document.getElementById("discoverStudentRepos");
+  const select = document.getElementById("studentRepoChoices");
+  const message = document.getElementById("studentRepoStatus");
+  if (!auth.currentUser || !profile?.githubUsername) {
+    message.textContent = "Connect your GitHub account from the Student Dashboard first.";
+    return;
+  }
+  const token = typeof profile.githubToken === "string" ? profile.githubToken : "";
+  button.disabled = true;
+  select.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a repository…";
+  select.append(placeholder);
+  try {
+    const repositories = new Map();
+    for (let page = 1; page <= 3; page++) {
+      const route = token
+        ? "https://api.github.com/user/repos?affiliation=owner,collaborator,organization_member&per_page=100&page=" + page
+        : "https://api.github.com/users/" + encodeURIComponent(profile.githubUsername) + "/repos?per_page=100&page=" + page;
+      const headers = { Accept: "application/vnd.github+json" };
+      if (token) headers.Authorization = "Bearer " + token;
+      const response = await fetch(route, { headers });
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw new Error("GitHub access expired or lacks permission. Reconnect through Student Dashboard.");
+        }
+        throw new Error("GitHub returned HTTP " + response.status);
+      }
+      const data = await response.json();
+      if (!Array.isArray(data)) throw new Error("GitHub returned an unexpected repository list.");
+      for (const item of data) {
+        try {
+          const parsed = new URL(item.html_url);
+          if (parsed.protocol !== "https:" || parsed.hostname !== "github.com" ||
+              parsed.pathname.split("/").filter(Boolean).length !== 2) continue;
+          repositories.set(item.full_name, item);
+        } catch { /* skip malformed links */ }
+      }
+      if (data.length < 100) break;
+    }
+    const ordered = [...repositories.values()].sort((a, b) => a.full_name.localeCompare(b.full_name));
+    for (const item of ordered) {
+      const option = document.createElement("option");
+      option.value = item.html_url;
+      option.textContent = item.full_name + (item.private ? " (private)" : "");
+      select.append(option);
+    }
+    select.classList.remove("hidden");
+    message.textContent = ordered.length
+      ? "Select a repository, then click Save Configuration. " +
+        (token ? "Shows repositories visible to this GitHub connection." : "Only public repositories are visible; reconnect to discover collaborator access.")
+      : "No repositories were returned. Check GitHub connection permissions.";
+  } catch (error) {
+    message.textContent = error.message;
+    message.className = "text-xs text-rose-700 mt-2";
+  } finally { button.disabled = false; }
+});
+document.getElementById("studentRepoChoices")?.addEventListener("change", event => {
+  if (event.target.value) document.getElementById("repoUrl").value = event.target.value;
+});
+
 // ==========================================
 // BYOK: GEMINI API KEY MANAGEMENT
 // ==========================================
