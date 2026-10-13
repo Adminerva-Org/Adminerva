@@ -619,13 +619,15 @@ window.executeBulkGrade = async function () {
       const gradeDocRef = doc(db, "student_grades", `${student.id}_${taskId}`);
       const gradeSnap = await getDoc(gradeDocRef);
 
-      let shouldSkip = false;
-      if (gradeSnap.exists() && skipGraded) {
-        shouldSkip = true;
+      // Published grades stay protected even with "Skip Graded Students" unchecked.
+      // Regrade only unpublished drafts, never replace a teacher-released score.
+      const existing = gradeSnap.exists() ? gradeSnap.data() : null;
+      if (existing?.published === true) {
+        skippedList.push(student.name + " (published grade protected)");
+        continue;
       }
-
-      if (shouldSkip) {
-        skippedList.push(student.name);
+      if (existing && skipGraded) {
+        skippedList.push(student.name + " (already graded)");
         continue;
       }
 
