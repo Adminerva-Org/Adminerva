@@ -8,6 +8,8 @@
  * deadline. For official cutoff grading, use a trusted cutoff snapshot/webhook.
  */
 
+import { analyzeFileContributions } from './commit-substance.mjs';
+
 const SOURCE_EXTS = new Set(['java', 'kt', 'kts', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'py', 'cpp', 'c', 'h', 'cs', 'html', 'css', 'sql', 'xml', 'json', 'gradle', 'md', 'txt', 'dart', 'swift', 'go', 'rs', 'rb', 'php', 'vue', 'svelte']);
 const ASSET_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif', 'ico', 'mp3', 'mp4', 'wav', 'pdf']);
 
@@ -164,6 +166,7 @@ function rankFallbackCandidate(file, patterns, assessment) {
   if (file.kind === 'other' || !file.patches.length || file.missingPatch) return null;
   if (file.statuses.length && file.statuses.every(status => status === 'removed')) return null;
   const content = file.patches.map(item => item.patch).join('\n');
+  if (analyzeFileContributions(file).lowSubstance) return null;
   const codeLike = looksLikeCode(content, file.path);
   if (name.endsWith('.txt') && !codeLike) return null;
   const tokens = taskKeywords(patterns, assessment);
@@ -208,6 +211,7 @@ export function isGradableSource(file) {
   if (!file || file.kind === 'asset' || file.kind === 'other' ||
       !Array.isArray(file.patches) || !file.patches.length || file.missingPatch) return false;
   if (file.statuses?.length && file.statuses.every(status => status === 'removed')) return false;
+  if (analyzeFileContributions(file).lowSubstance) return false;
   if (/\.(?:txt|md)$/i.test(file.path)) {
     return looksLikeCode(file.patches.map(p => p.patch).join('\n'), file.path);
   }
@@ -362,6 +366,11 @@ export async function resolveContributions({
     previousPaths: [...f.previousPaths], missingPatch: f.missingPatch
   })).sort((a,b) => a.path.localeCompare(b.path));
   if (relevantFiles.some(f=>f.missingPatch)) warnings.push('One or more textual patches are unavailable; fetch a trusted file snapshot for context.');
+  const lowSubstanceFiles = relevantFiles.filter(file => analyzeFileContributions(file).lowSubstance);
+  if (lowSubstanceFiles.length) {
+    warnings.push('Possible whitespace/comment-only recommits in ' + lowSubstanceFiles.length +
+      ' matching file(s). These edits alone are not evidence of new implementation.');
+  }
   const gradableStrict = relevantFiles.some(isGradableSource);
   const unmatched = [...unmatchedFiles.values()].map(f => ({
     path: f.path, kind: f.kind, statuses: [...f.statuses], commitShas: [...f.commits],
@@ -382,11 +391,13 @@ export async function resolveContributions({
     warnings.push('Possible work outside blueprint paths requires manual file selection; no confident fallback evaluation.');
   }
   let status = relevantFiles.length ? 'resolved' : 'no_relevant_changes';
-  if (fallback.status === 'candidate_found' || reviewCommits.length || !historyComplete ||
+  if (fallback.status === 'candidate_found' || lowSubstanceFiles.length || reviewCommits.length || !historyComplete ||
       (end !== null && !hasVerifiedCutoff) || relevantFiles.some(f=>f.missingPatch)) {
     status = 'requires_review';
   }
   return { repository, studentId: student.id, assessmentId: assessment.id,
     status, acceptedCommits, reviewCommits, skipped, relevantFiles,
-    fallback, cutoffSnapshotSha, warnings };
+    fallback, lowSubstanceFiles: lowSubstanceFiles.map(file => ({
+      path:file.path, commitShas:analyzeFileContributions(file).flaggedShas
+    })), cutoffSnapshotSha, warnings };
 }
