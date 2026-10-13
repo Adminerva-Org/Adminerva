@@ -532,7 +532,12 @@ window.openGradingModal = async function (studentId, owner, repo) {
         repoLink.className = "text-xs font-bold text-blue-700 hover:underline";
         repoLink.textContent = "Repository ↗";
         tools.append(repoLink);
-        actionContainer.append(tools);
+        // Keep teacher controls outside the content replaced by Auto-Checker.
+        const controlColumn = document.createElement("div");
+        controlColumn.className = "w-full sm:w-auto flex flex-col items-stretch sm:items-end gap-1";
+        actionContainer.parentNode.insertBefore(controlColumn, actionContainer);
+        controlColumn.append(actionContainer);
+        controlColumn.append(tools);
       }
     });
   } catch (err) {
