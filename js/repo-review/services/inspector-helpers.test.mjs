@@ -30,3 +30,18 @@ test('disabled deadline leaves historical work eligible',()=>{
  const actual=normalizeAssessment({deployments:[{section:'11-A',deadlineEnabled:false,deadline:'2026-01-01'}]},'11-A','A');
  assert.equal(actual.deadline,null);
 });
+
+test('historical deployments ignore post date unless start enforcement explicitly enabled',()=>{
+ const section='11-A';
+ const historical=normalizeAssessment({deployments:[{
+   section,postDate:'2026-10-01T00:00:00Z',deadline:'2026-10-13T00:00:00Z'
+ }]},section,'task');
+ assert.equal(historical.postDate,null);
+ assert.equal(historical.historicalStartIgnored,true);
+ assert.equal(historical.deadline,'2026-10-13T00:00:00.000Z');
+ const strict=normalizeAssessment({enforceSubmissionStart:true,deployments:[{
+   section,postDate:'2026-10-01T00:00:00Z',deadline:'2026-10-13T00:00:00Z'
+ }]},section,'task');
+ assert.equal(strict.postDate,'2026-10-01T00:00:00.000Z');
+ assert.equal(strict.historicalStartIgnored,false);
+});
