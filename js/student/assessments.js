@@ -108,6 +108,7 @@ async function fetchAssessments() {
         query(
           collection(db, "student_grades"),
           where("studentId", "==", studentId),
+        where("published", "==", true),
         ),
       );
       gradeSnap.forEach((d) => {
