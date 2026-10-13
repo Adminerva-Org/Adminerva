@@ -1,5 +1,5 @@
 import { db } from "../core/firebase-core.js";
-import { resolveContributions, isGradableSource } from "./services/contribution-resolver.mjs";
+import { resolveContributions, isGradableSource, scopeAssessmentFiles } from "./services/contribution-resolver.mjs";
 import { createGithubEvidenceClient, parseGithubRepository } from "./services/github-evidence-client.mjs";
 import {
   doc,
@@ -195,7 +195,14 @@ window.startAutoCheck = async function (
     }
     // A merge commit is intentionally omitted by the resolver. It may require
     // manual inspection before any AI suggestion is published.
-    const strictFiles = evidence.relevantFiles.filter(isGradableSource);
+    // A legacy "quarter2" folder can contain Mini PETA 2 and Mini PETA 3.
+    // Keep the task named in the blueprint and avoid auto-crediting classmates'
+    // individually named files uploaded together in shared Git commits.
+    const scoped = scopeAssessmentFiles(evidence.relevantFiles.filter(isGradableSource), {
+      title: taskData.title || "",
+      studentName: studentData.name || "",
+    });
+    const strictFiles = scoped.selected;
     const fallbackUsed = strictFiles.length === 0 &&
       evidence.fallback?.status === "candidate_found" &&
       evidence.fallback.selected.length > 0;
@@ -214,6 +221,7 @@ window.startAutoCheck = async function (
     const reviewReasons = [
       "GitHub account association has not been independently verified against the student record.",
       ...evidence.warnings,
+      ...scoped.warnings,
       ...evidence.reviewCommits.map(c => "Commit " + c.sha.slice(0, 12) + ": " + c.reason),
     ];
     if (fallbackUsed) {
@@ -402,7 +410,7 @@ window.startAutoCheck = async function (
         published: false,
         gradingMode: "individual",
         reviewRequired: true,
-        reviewPriority: fallbackUsed ? "high" : "normal",
+        reviewPriority: fallbackUsed || scoped.warnings.length ? "high" : "normal",
         sourceSelectionMode: fallbackUsed ? "investigation" : "blueprint_match",
         provisionalScore: fallbackUsed,
         reviewReasons,
@@ -413,6 +421,7 @@ window.startAutoCheck = async function (
           scannedSha: evidence.scannedRef,
           matchedPaths: pathsFound,
           fallbackUsed,
+          excludedTaskOrClassmatePaths: scoped.excluded.map(f => f.path),
           expectedExtensions: expectedExts,
           fallbackCandidatePaths: (evidence.fallback?.suggestions || []).map(f => f.path),
           fallbackReasons: fallbackUsed
