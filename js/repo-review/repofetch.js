@@ -496,6 +496,44 @@ window.openGradingModal = async function (studentId, owner, repo) {
             </div>
         `;
       listContainer.insertAdjacentHTML("beforeend", cardHtml);
+      const renderedCard = document.getElementById(taskCardId);
+      const actionContainer = renderedCard?.querySelector(".grade-action-area");
+      if (actionContainer) {
+        const tools = document.createElement("div");
+        tools.className = "mt-3 flex flex-wrap items-center gap-2 justify-start sm:justify-end";
+        const manual = document.createElement("button");
+        manual.type = "button";
+        manual.className = "bg-white hover:bg-amber-50 text-amber-900 border border-amber-300 rounded-lg px-3 py-2 text-xs font-bold";
+        manual.textContent = "Manual Review & Score";
+        manual.addEventListener("click", () => {
+          if (typeof window.openManualGradeReview !== "function") {
+            alert("Manual grading tools are still loading. Refresh and try again.");
+            return;
+          }
+          const diagnostic = window.AdminervaGradingDiagnostics?.get(studentId + ":" + task.id) || "";
+          window.openManualGradeReview({ studentId, taskId: task.id, owner, repo, diagnostic });
+        });
+        tools.append(manual);
+        const repoUrl = "https://github.com/" + encodeURIComponent(owner) + "/" + encodeURIComponent(repo);
+        const login = String(student.githubUsername || "").trim().replace(/^@/, "");
+        if (/^[A-Za-z0-9-]{1,39}$/.test(login)) {
+          const commitsLink = document.createElement("a");
+          commitsLink.href = repoUrl + "/commits?author=" + encodeURIComponent(login);
+          commitsLink.target = "_blank";
+          commitsLink.rel = "noopener noreferrer";
+          commitsLink.className = "text-xs font-bold text-blue-700 hover:underline";
+          commitsLink.textContent = "Student commits ↗";
+          tools.append(commitsLink);
+        }
+        const repoLink = document.createElement("a");
+        repoLink.href = repoUrl;
+        repoLink.target = "_blank";
+        repoLink.rel = "noopener noreferrer";
+        repoLink.className = "text-xs font-bold text-blue-700 hover:underline";
+        repoLink.textContent = "Repository ↗";
+        tools.append(repoLink);
+        actionContainer.append(tools);
+      }
     });
   } catch (err) {
     console.error(err);
