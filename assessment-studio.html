@@ -252,6 +252,15 @@
                 </div>
               </div>
               <div class="mb-4">
+                <label for="assessQuarter" class="block text-sm font-bold text-gray-700 mb-1">Grading Quarter</label>
+                <select id="assessQuarter" class="w-full p-2.5 border border-gray-300 rounded-lg bg-white text-sm">
+                  <option value="">Unassigned / legacy</option>
+                  <option value="Q1">Quarter 1</option><option value="Q2">Quarter 2</option>
+                  <option value="Q3">Quarter 3</option><option value="Q4">Quarter 4</option>
+                </select>
+                <p class="text-xs text-gray-500 mt-1">Organizes assessments in the quarter gradebook.</p>
+              </div>
+              <div class="mb-4">
                 <label
                   class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2"
                   >Target Paths (Folders or Exact Files)</label
@@ -444,7 +453,12 @@
             </p>
           </div>
 
-          <div>
+          <label class="flex gap-3 items-start p-3 rounded-lg bg-white border border-slate-200 mb-3">
+            <input type="checkbox" id="deployUseDeadline" onchange="toggleDeployDeadline()" checked class="mt-1 h-4 w-4" />
+            <span><strong class="text-sm text-slate-800">Enforce deadline</strong>
+              <span class="block text-xs text-slate-500">Uncheck for historical assessments; existing deployments keep their settings until edited.</span></span>
+          </label>
+          <div id="deployScheduleFields">
             <label class="block text-sm font-bold text-gray-700 mb-2"
               >Duration & Schedule</label
             >
