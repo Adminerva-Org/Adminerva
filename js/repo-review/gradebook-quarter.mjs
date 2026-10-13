@@ -187,6 +187,8 @@ function renderEvidence(student, task, grade) {
   if (breakdown) detailLine(box, "Rubric breakdown", JSON.stringify(breakdown));
   else detailLine(box, "Rubric breakdown", "Not stored by the current grader");
   links(box, "Considered files", evidence.matchedPaths || grade.pathsFound || []);
+  links(box, "Excluded out-of-scope or other-named files",
+    evidence.excludedTaskOrClassmatePaths || []);
   links(box, "Evidence warnings", grade.reviewReasons || []);
   const commits = evidence.acceptedCommitShas || [];
   links(box, "Attributed commits", commits, sha => info ? info.url + "/commit/" + encodeURIComponent(sha) : "#");
