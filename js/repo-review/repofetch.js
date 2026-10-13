@@ -11,7 +11,7 @@ import {
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
-const CACHE_VERSION = 7;
+const CACHE_VERSION = 8; // RepoFetch schema: independent of Group Inspector
 let globalStudentsData = {};
 let currentClassSection = "";
 
@@ -112,17 +112,17 @@ window.fetchAndSyncRepos = async function () {
     const groupKeys = Object.keys(repoGroups);
 
     const cachePromises = groupKeys.map(async (groupId) => {
-      const cacheRef = doc(db, "group_repo_cache", groupId);
+      const cacheRef = doc(db, "group_repo_cache", "repofetch_" + groupId);
       const cacheSnap = await getDoc(cacheRef);
       if (cacheSnap.exists()) {
         const cachedData = cacheSnap.data();
-        const stats = cachedData.studentStats || {};
+        const stats = cachedData.cacheVersion === CACHE_VERSION ? (cachedData.studentStats || {}) : {};
         repoGroups[groupId].members.forEach((member) => {
-          if (stats[member.id])
-            member.commitCount = stats[member.id].count || 0;
-          member.latestSha = cachedData.latestSha;
+          member.commitCount = stats[member.id]?.count || 0;
+          member.latestSha = stats[member.id]?.latestSha || null;
         });
-        repoGroups[groupId].latestSha = cachedData.latestSha;
+        repoGroups[groupId].latestSha = cachedData.cacheVersion === CACHE_VERSION ? cachedData.latestSha : null;
+        repoGroups[groupId].cachedIdentitySignature = cachedData.identitySignature || "";
       }
     });
 
@@ -170,35 +170,27 @@ window.fetchAndSyncRepos = async function () {
           return;
         }
 
-        const res = await fetch(
-          `https://api.github.com/repos/${actualOwner}/${actualRepo}/commits?per_page=100`,
-          {
-            headers: {
-              Authorization: `Bearer ${ghToken}`,
-              Accept: "application/vnd.github+json",
-            },
-          },
-        );
-
-        if (!res.ok) {
-          if (res.status === 409) group.apiError = "Empty Repository (409)";
-          else if (res.status === 401)
-            group.apiError = "Invalid GitHub Token (401)";
-          else group.apiError = `HTTP Error ${res.status}`;
-          requiresUIRefresh = true;
-          processed++;
-          window.showSubtleLoader(
-            `Syncing GitHub... ${processed}/${groupKeys.length}`,
+        // Read every available page. A capped history must never be mistaken for zero work.
+        let commits = [];
+        let paginationComplete = false;
+        for (let page = 1; page <= 20; page++) {
+          const res = await fetch(
+            `https://api.github.com/repos/${actualOwner}/${actualRepo}/commits?per_page=100&page=${page}`,
+            { headers: { Authorization: `Bearer ${ghToken}`, Accept: "application/vnd.github+json" } },
           );
-          return;
+          if (!res.ok) {
+            throw new Error(`GitHub commit listing failed (HTTP ${res.status}, page ${page})`);
+          }
+          const pageCommits = await res.json();
+          if (!Array.isArray(pageCommits)) throw new Error("GitHub returned an invalid commit history.");
+          commits.push(...pageCommits);
+          if (pageCommits.length < 100) { paginationComplete = true; break; }
         }
+        if (!paginationComplete) throw new Error("Commit history exceeds the safety limit; review repository manually.");
+        const identitySignature = group.members.map(m =>
+          m.id + ":" + String(m.githubUsername || "").toLowerCase().replace(/^@/, "")
+        ).sort().join("|");
 
-        if (group.apiError !== null) {
-          group.apiError = null;
-          requiresUIRefresh = true;
-        }
-
-        const commits = await res.json();
         if (commits.length === 0) {
           processed++;
           window.showSubtleLoader(
@@ -207,11 +199,8 @@ window.fetchAndSyncRepos = async function () {
           return;
         }
 
-        group.members.forEach((m) => {
-          m.latestSha = commits[0].sha;
-        });
-
-        if (group.latestSha === commits[0].sha) {
+        if (group.latestSha === commits[0].sha &&
+            group.cachedIdentitySignature === identitySignature) {
           processed++;
           window.showSubtleLoader(
             `Syncing GitHub... ${processed}/${groupKeys.length}`,
@@ -224,61 +213,44 @@ window.fetchAndSyncRepos = async function () {
         group.members.forEach((m) => {
           updatedStats[m.id] = {
             count: 0,
+            latestSha: null,
             additions: 0,
             deletions: 0,
             messages: [],
           };
         });
 
-        commits.forEach((c) => {
-          const authorLogin = (c.author?.login || "").toLowerCase().trim();
-          const authorEmail = (c.commit?.author?.email || "")
-            .toLowerCase()
-            .trim();
-          const authorName = (c.commit?.author?.name || "")
-            .toLowerCase()
-            .trim();
-
-          let matchedMember = group.members.find((m) => {
-            const dbUser = (m.githubUsername || "").toLowerCase().trim();
-            const dbEmail = (m.email || "").toLowerCase().trim();
-            if (dbUser && authorLogin === dbUser) return true;
-            if (dbEmail && authorEmail === dbEmail) return true;
-            return false;
-          });
-
-          if (!matchedMember) {
-            matchedMember = group.members.find((m) => {
-              const dbName = (m.name || "").toLowerCase().trim();
-              return (
-                dbName &&
-                authorName &&
-                (dbName === authorName ||
-                  authorName.includes(dbName.split(" ")[0]))
-              );
-            });
-          }
-
-          if (matchedMember) {
-            updatedStats[matchedMember.id].count++;
-            matchedMember.commitCount = updatedStats[matchedMember.id].count;
-          }
+        commits.forEach(c => {
+          const login = String(c.author?.login || "").toLowerCase().trim();
+          if (!login) return;
+          const candidates = group.members.filter(m =>
+            String(m.githubUsername || "").toLowerCase().trim().replace(/^@/, "") === login
+          );
+          // One GitHub account must not silently credit multiple students.
+          if (candidates.length !== 1) return;
+          const member = candidates[0];
+          const stats = updatedStats[member.id];
+          stats.count++;
+          if (!stats.latestSha) stats.latestSha = c.sha;
+          member.commitCount = stats.count;
+          member.latestSha = stats.latestSha;
         });
 
-        const cacheRef = doc(db, "group_repo_cache", groupId);
+        const cacheRef = doc(db, "group_repo_cache", "repofetch_" + groupId);
         await setDoc(
           cacheRef,
           {
             repoUrl: group.cleanUrl,
             latestSha: commits[0].sha,
             studentStats: updatedStats,
+            identitySignature,
             cacheVersion: CACHE_VERSION,
           },
           { merge: true },
         );
       } catch (err) {
         console.warn(`Failed to sync ${group.repo}`, err);
-        group.apiError = "Network/Fetch Error";
+        group.apiError = err?.message || "Network/Fetch Error";
         requiresUIRefresh = true;
       }
       processed++;
