@@ -284,6 +284,35 @@ export async function resolveContributions({
   const cutoffSet = hasVerifiedCutoff ? new Set(verifiedCutoffCommitShas) : null;
   if (end !== null && !hasVerifiedCutoff) warnings.push('Commit timestamps do not prove push-before-deadline; verify ancestry against a trusted cutoff snapshot.');
 
+  // Fetch independent, attributable commit details with bounded concurrency.
+  // Reuse these results below in original history order. Limit parallel calls
+  // to four to reduce waiting time without flooding the GitHub REST API.
+  const detailResults = new Map();
+  const needed = [];
+  const scheduled = new Set();
+  for (const commit of commits) {
+    if (!commit?.sha || scheduled.has(commit.sha)) continue;
+    scheduled.add(commit.sha);
+    if (attributeCommit(commit, student).status !== 'verified') continue;
+    if (Array.isArray(commit.parents) && commit.parents.length > 1) continue;
+    const dateText = commit.commit?.committer?.date || commit.commit?.author?.date;
+    const when = dateText ? Date.parse(dateText) : NaN;
+    if (!Number.isFinite(when)) continue;
+    if (cutoffSet && !cutoffSet.has(commit.sha)) continue;
+    if ((start !== null && when < start) || (end !== null && !cutoffSet && when > end)) continue;
+    needed.push(commit.sha);
+  }
+  let nextDetail = 0;
+  await Promise.all(Array.from({length: Math.min(4, needed.length)}, async () => {
+    for (;;) {
+      const index = nextDetail++;
+      if (index >= needed.length) return;
+      const sha = needed[index];
+      try { detailResults.set(sha, {detail: await loadCommit(sha)}); }
+      catch (error) { detailResults.set(sha, {error}); }
+    }
+  }));
+
   for (const commit of commits) {
     if (!commit?.sha || seen.has(commit.sha)) continue;
     seen.add(commit.sha);
@@ -301,9 +330,22 @@ export async function resolveContributions({
       skipped.push({ sha: commit.sha, reason: 'outside_configured_window' }); continue;
     }
 
+    // Known merge commits cannot independently establish who introduced code.
+    if (Array.isArray(commit.parents) && commit.parents.length > 1) {
+      reviewCommits.push({sha:commit.sha,reason:'merge_commit_requires_parent_aware_review'});
+      continue;
+    }
+    const fetched = detailResults.get(commit.sha);
     let detail;
-    try { detail = await loadCommit(commit.sha); }
-    catch (error) { reviewCommits.push({ sha: commit.sha, reason: 'commit_detail_fetch_error' }); continue; }
+    if (fetched?.error) {
+      reviewCommits.push({sha:commit.sha,reason:'commit_detail_fetch_error'});
+      continue;
+    }
+    if (fetched) detail = fetched.detail;
+    else {
+      try { detail = await loadCommit(commit.sha); }
+      catch (error) { reviewCommits.push({ sha: commit.sha, reason: 'commit_detail_fetch_error' }); continue; }
+    }
     if (!detail || !Array.isArray(detail.files)) {
       reviewCommits.push({ sha: commit.sha, reason: 'missing_commit_files' }); continue;
     }
