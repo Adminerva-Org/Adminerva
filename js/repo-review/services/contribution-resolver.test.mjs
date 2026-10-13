@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { matchPath, classifyFile, attributeCommit, resolveContributions } from './contribution-resolver.mjs';
+import { matchPath, classifyFile, attributeCommit, resolveContributions, scopeAssessmentFiles } from './contribution-resolver.mjs';
 
 const gradeRepoFile = 'app/src/test/java/com/example/gradingmadeeasy/quarter2/minipeta3/MainSystemTest.java';
 const campusExam = 'app/src/test/java/com/example/campusvoice/quarter2/PracticalExam/FastFoodMenu.java';
@@ -198,4 +198,48 @@ test('missing fallback patches are not promoted to gradable evidence',async()=>{
   {filename:'other/Practical_Exam.kt',status:'added'}
  ]);
  assert.equal(result.fallback.selected.length,0);
+});
+
+
+test('legacy PETA title scopes quarter folder to its actual task', () => {
+  const files = [
+    'Quarter2/MiniPeta2/SantosAlyiah_minipeta2.java',
+    'Quarter2/MiniPeta3/Runprogram.java',
+    'Quarter2/Placeholder.java'
+  ].map(path=>({path}));
+  const result=scopeAssessmentFiles(files,{title:'Q2 Peta 2',studentName:'Alyiah Kym Santos'});
+  assert.deepEqual(result.selected.map(x=>x.path),[files[0].path]);
+  assert.equal(result.excluded.length,2);
+  assert.equal(result.scoped,true);
+});
+test('files named for classmates are not automatically credited to a shared uploader', () => {
+  const paths=[
+    'Quarter2/MiniPeta2/Baltazar_minipeta2.java',
+    'Quarter2/MiniPeta2/SantosAlyiah_minipeta2.java',
+    'Quarter2/MiniPeta2/SorianoZijan_minipeta2.java'
+  ];
+  const result=scopeAssessmentFiles(paths.map(path=>({path})),
+    {title:'Q2 Peta 2',studentName:'Alyiah Kym Santos'});
+  assert.deepEqual(result.selected.map(f=>f.path),[paths[1]]);
+  assert.equal(result.excluded.length,2);
+  assert.match(result.warnings.join(' '),/individually named/i);
+});
+test('Q2 Peta 3 title helps find MiniPeta3 even when blueprint expects practicalexam',async()=>{
+  const result=await resolveContributions({
+    repository:project,student,
+    assessment:{id:'q2peta3',title:'Q2 Peta 3',
+      targetPaths:['**/quarter2/practicalexam/**'],caseSensitivePaths:false,
+      investigationFallback:true},
+    historyComplete:true,
+    commits:[commit('peta3-change',323893681,'Belo-mcs')],
+    loadCommit:async()=>({
+      parents:[{sha:'parent'}],
+      files:[{filename:'app/src/test/java/com/example/project/Quarter2/MiniPeta3/SantosUserAuthentication.java',
+        status:'added',patch:'@@ +1 @@\n+public class SantosUserAuthentication { public boolean verify() { return true; } }'}]
+    })
+  });
+  assert.equal(result.relevantFiles.length,0);
+  assert.equal(result.fallback.status,'candidate_found');
+  assert.equal(result.fallback.selected.length,1);
+  assert.equal(result.status,'requires_review');
 });
