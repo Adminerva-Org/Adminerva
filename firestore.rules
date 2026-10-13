@@ -31,7 +31,7 @@ service cloud.firestore {
         resource.data.email.lower() == request.auth.token.email.lower() &&
         request.resource.data.email == resource.data.email &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["githubUsername", "repoUrl", "githubToken"]);
+          .hasOnly(["githubUsername", "repoUrl", "githubToken", "gender"]);
       allow create, delete: if false;
     }
 
