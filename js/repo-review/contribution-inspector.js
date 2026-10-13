@@ -20,7 +20,7 @@ function updateSelection(){
    const dropdown=el(name);dropdown.replaceChildren();option(dropdown,'',empty);
    for(const item of list)option(dropdown,item.id,item.name||item.title||item.id);
  }
- el('confirmLogin').value='';updateRepo();
+ updateRepo();
 }
 function updateRepo(){const s=selectedStudent();text(el('repoDisplay'),s?`GitHub: @${s.githubUsername||'(not linked)'} · Repo: ${s.repoUrl||'(not linked)'}`:'');el('inspect').disabled=state.busy||!s||!selectedAssessment()}
 function safeGithubLink(sha,repository){const a=document.createElement('a');const [owner,repo]=repository.split('/');a.href=`https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commit/${encodeURIComponent(sha)}`;a.rel='noopener noreferrer';a.target='_blank';text(a,sha.slice(0,12));return a}
@@ -42,15 +42,15 @@ async function inspect(){
  if(state.busy)return;const student=selectedStudent(), raw=selectedAssessment();
  try{
   const assessment=normalizeAssessment(raw,el('section').value,raw?.id);
-  validateInspectorInput({student,assessment,confirmedLogin:el('confirmLogin').value,acknowledgedNoCutoff:el('acknowledge').checked});
+  validateInspectorInput({student,assessment,acknowledgedNoCutoff:el('acknowledge').checked});
   state.busy=true;el('inspect').disabled=true;el('results').hidden=true;status('Checking public GitHub account identity…');
   const response=await fetch(`https://api.github.com/users/${encodeURIComponent(student.githubUsername.trim())}`,{headers:{Accept:'application/vnd.github+json'}});
   if(!response.ok)throw new Error(`GitHub profile lookup failed (HTTP ${response.status})`);
   const profile=await response.json();if(!Number.isSafeInteger(profile.id)||profile.login?.toLowerCase()!==student.githubUsername.toLowerCase())throw new Error('GitHub identity response was inconsistent');
   status(`Retrieving commit history for ${student.name||student.id}… API rate limits may apply.`);
   const result=await github.resolveEvidence({repository:student.repoUrl,student:{id:student.id,githubUsername:profile.login,githubUserId:profile.id},assessment,resolver:resolveContributions});
-  // The student-to-login assertion is teacher-confirmed in this session, not cryptographically verified.
-  result.warnings.push('Identity match uses a GitHub account ID resolved from a teacher-confirmed login, not a proven account-ownership link.');
+  // A profile login identifies GitHub commits; it does not prove profile ownership.
+  result.warnings.push('Saved GitHub login has not been independently verified as belonging to this student.');
   render(result);status('Inspection finished. No grades or student records were modified.');
  }catch(err){status(err?.message||'Inspection failed',true)}finally{state.busy=false;updateRepo()}
 }
