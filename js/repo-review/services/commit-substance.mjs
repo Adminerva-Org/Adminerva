@@ -33,7 +33,8 @@ function meaningful(line, ext) {
 function canonical(line, ext) {
   const val = meaningful(line, ext);
   if (NON_SEMANTIC.has(ext)) return val.replace(/\s+/g,'');
-  // Whitespace is meaningful for Python and some text formats.
+  // Python indentation is executable syntax. Do not trim leading spaces.
+  if (['py','yaml','yml'].includes(ext)) return val ? line.replace(/\s+$/g,'') : '';
   return val;
 }
 export function analyzePatchSubstance(patch, path) {
