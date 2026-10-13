@@ -8,7 +8,7 @@
  * deadline. For official cutoff grading, use a trusted cutoff snapshot/webhook.
  */
 
-const SOURCE_EXTS = new Set(['java', 'kt', 'kts', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'py', 'cpp', 'c', 'h', 'cs', 'html', 'css', 'sql', 'xml', 'json', 'gradle', 'md', 'txt']);
+const SOURCE_EXTS = new Set(['java', 'kt', 'kts', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'py', 'cpp', 'c', 'h', 'cs', 'html', 'css', 'sql', 'xml', 'json', 'gradle', 'md', 'txt', 'dart', 'swift', 'go', 'rs', 'rb', 'php', 'vue', 'svelte']);
 const ASSET_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif', 'ico', 'mp3', 'mp4', 'wav', 'pdf']);
 
 export function classifyFile(path) {
@@ -111,6 +111,7 @@ function rankFallbackCandidate(file, patterns, assessment) {
   const name = path.split('/').pop();
   if (FALLBACK_EXCLUDED.test(path) || FALLBACK_DOCUMENTS.test(name) || file.kind === 'asset') return null;
   if (file.kind === 'other' || !file.patches.length || file.missingPatch) return null;
+  if (file.statuses.length && file.statuses.every(status => status === 'removed')) return null;
   const content = file.patches.map(item => item.patch).join('\n');
   const codeLike = looksLikeCode(content, file.path);
   if (name.endsWith('.txt') && !codeLike) return null;
