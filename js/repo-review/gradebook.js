@@ -8,6 +8,8 @@ import {
   setDoc,
   getDoc,
   writeBatch,
+  runTransaction,
+  serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 function escapeHTML(str) {
@@ -251,18 +253,33 @@ async function loadGrid() {
 }
 
 window.matrixTogglePub = async function (studentId, taskId, checkbox) {
+  const gradeRef = doc(db, "student_grades", `${studentId}_${taskId}`);
+  const wantsPublish = checkbox.checked;
   try {
-    await setDoc(
-      doc(db, "student_grades", `${studentId}_${taskId}`),
-      { published: checkbox.checked },
-      { merge: true },
-    );
+    const gradeSnap = await getDoc(gradeRef);
+    if (!gradeSnap.exists()) throw new Error("Grade does not exist.");
+    if (wantsPublish && gradeSnap.data().reviewRequired === true) {
+      const verified = window.confirm(
+        "This is an AI draft requiring teacher review. Have you checked the attributed commits, matched files, and deadline limitations before publishing?"
+      );
+      if (!verified) { checkbox.checked = false; return; }
+    }
+    await runTransaction(db, async tx => {
+      const latest = await tx.get(gradeRef);
+      if (!latest.exists()) throw new Error("Grade was removed during publication.");
+      tx.update(gradeRef, {
+        published: wantsPublish,
+        ...(wantsPublish && latest.data().reviewRequired === true
+          ? { reviewRequired: false, reviewedAt: serverTimestamp() } : {}),
+      });
+    });
     const span = checkbox.nextElementSibling.nextElementSibling;
-    span.textContent = checkbox.checked ? "Visible" : "Hidden";
-    span.className = `ml-3 text-[10px] font-extrabold uppercase tracking-wider ${checkbox.checked ? "text-indigo-600" : "text-slate-400"}`;
+    span.textContent = wantsPublish ? "Visible" : "Hidden";
+    span.className = `ml-3 text-[10px] font-extrabold uppercase tracking-wider ${wantsPublish ? "text-indigo-600" : "text-slate-400"}`;
   } catch (e) {
-    alert("Failed to update visibility");
-    checkbox.checked = !checkbox.checked;
+    console.error("Publication failed:", e);
+    alert("Failed to update visibility: " + e.message);
+    checkbox.checked = !wantsPublish;
   }
 };
 
@@ -435,18 +452,25 @@ window.bulkPublishCurrentGrid = async function () {
     // 3. Prepare the Firestore batch
     const batch = writeBatch(db);
     let publishedCount = 0;
+    let reviewSkippedCount = 0;
 
     gradesSnap.forEach((gradeDoc) => {
       const data = gradeDoc.data();
       // Only publish if the grade belongs to a student in this section
       if (sectionStudentIds.has(data.studentId)) {
+        if (data.reviewRequired === true) {
+          reviewSkippedCount++;
+          return;
+        }
         batch.update(gradeDoc.ref, { published: true });
         publishedCount++;
       }
     });
 
     if (publishedCount === 0) {
-      alert("No existing grades found to publish for this task.");
+      alert(reviewSkippedCount
+        ? `No review-cleared grades to publish. ${reviewSkippedCount} AI draft(s) require individual teacher review.`
+        : "No existing grades found to publish for this task.");
       return;
     }
 
@@ -454,7 +478,7 @@ window.bulkPublishCurrentGrid = async function () {
     await batch.commit();
 
     alert(
-      `📢 Publish Complete!\n\nSuccessfully made ${publishedCount} grades visible to students for "${taskName}".`,
+      `📢 Publish Complete!\n\nSuccessfully made ${publishedCount} grades visible to students for "${taskName}".${reviewSkippedCount ? `\nSkipped ${reviewSkippedCount} AI draft(s) pending review.` : ""}`,
     );
 
     // Refresh UI matrix to reflect visible status
