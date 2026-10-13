@@ -153,6 +153,16 @@ function rankFallbackCandidate(file, patterns, assessment) {
     unexpectedExtension, codeLike, strong, selectionMode: 'investigation' };
 }
 
+export function isGradableSource(file) {
+  if (!file || file.kind === 'asset' || file.kind === 'other' ||
+      !Array.isArray(file.patches) || !file.patches.length || file.missingPatch) return false;
+  if (file.statuses?.length && file.statuses.every(status => status === 'removed')) return false;
+  if (/\.(?:txt|md)$/i.test(file.path)) {
+    return looksLikeCode(file.patches.map(p => p.patch).join('\n'), file.path);
+  }
+  return true;
+}
+
 export function selectFallbackCandidates(unmatchedFiles, patterns, assessment, { maxFiles = 12 } = {}) {
   const ranked = [...unmatchedFiles]
     .map(file => rankFallbackCandidate(file, patterns, assessment))
@@ -301,7 +311,7 @@ export async function resolveContributions({
     previousPaths: [...f.previousPaths], missingPatch: f.missingPatch
   })).sort((a,b) => a.path.localeCompare(b.path));
   if (relevantFiles.some(f=>f.missingPatch)) warnings.push('One or more textual patches are unavailable; fetch a trusted file snapshot for context.');
-  const gradableStrict = relevantFiles.some(f => f.kind !== 'asset' && f.kind !== 'other' && f.patches.length);
+  const gradableStrict = relevantFiles.some(isGradableSource);
   const unmatched = [...unmatchedFiles.values()].map(f => ({
     path: f.path, kind: f.kind, statuses: [...f.statuses], commitShas: [...f.commits],
     patches: f.patches, previousPaths: [...f.previousPaths], missingPatch: f.missingPatch
