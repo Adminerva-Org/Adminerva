@@ -179,7 +179,10 @@ body div[id$="Modal"] :where(.overflow-y-auto) { overscroll-behavior: contain; }
   body :where(.bg-white.rounded-lg, .bg-white.rounded-xl) {
     border-radius: 14px;
   }
-  body :where(button, select, input[type="button"], input[type="submit"]) { min-height: 40px; }
+  body :is(button, a):is(.bg-blue-600, .bg-purple-600, .bg-indigo-600, .bg-emerald-600) {
+    min-height: 40px;
+  }
+  #adminerva-nav button { min-height: 40px; }
   body input[type="text"]:not(.inputarea),
   body input[type="email"], body input[type="password"],
   body select, body textarea:not(.inputarea) {
