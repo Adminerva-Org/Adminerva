@@ -628,6 +628,10 @@ window.executeBulkGrade = async function () {
         skippedList.push(student.name + " (published grade protected)");
         continue;
       }
+      if (existing?.manuallyAdjusted === true) {
+        skippedList.push(student.name + " (teacher-adjusted grade protected)");
+        continue;
+      }
       if (existing && skipGraded) {
         skippedList.push(student.name + " (already graded)");
         continue;
