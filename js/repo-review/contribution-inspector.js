@@ -33,7 +33,31 @@ function render(evidence){
   if(file.previousPaths.length)child(wrap,'p',`Previous path(s): ${file.previousPaths.join(', ')}`);
   for(const patch of file.patches.slice(0,3)){const details=child(wrap,'details');child(details,'summary',`Show diff from ${patch.sha.slice(0,12)} (up to 6,000 chars)`);child(details,'pre',patch.patch.slice(0,6000));}
  }
- if(!evidence.relevantFiles.length)child(el('files'),'p','No matching files were found in the attributed commits available. This does not prove that the student submitted nothing.');
+ if(!evidence.relevantFiles.length)child(el('files'),'p','No matching files were found in the attributed commits available. This does not prove that the student submitted nothing.'); 
+ const fallbackBox=el('fallback');fallbackBox.replaceChildren();
+ const fallback=evidence.fallback || {status:'not_available',suggestions:[],selected:[]};
+ if(fallback.status==='not_needed') child(fallbackBox,'p','Expected-path code was found; an alternative search was not needed.');
+ else if(fallback.status==='none' || fallback.status==='not_available') child(fallbackBox,'p','No credible alternative work identified from available attributed changes. This does not prove the student submitted nothing.');
+ else {
+   const selectedPaths=new Set((fallback.selected||[]).map(f=>f.path));
+   child(fallbackBox,'p',
+      fallback.status==='candidate_found'
+        ? 'Potential assessment work exists outside target paths. These files can be provisionally evaluated, but teacher review is mandatory.'
+        : 'Possible files were found, but evidence is too weak or ambiguous for automatic selection. Please inspect manually.');
+   for(const candidate of (fallback.suggestions||[])){
+     const wrap=child(fallbackBox,'div');wrap.className='file';
+     const label=child(wrap,'strong',candidate.path);label.className='break-all';
+     child(wrap,'p',(selectedPaths.has(candidate.path)?'Selected as tentative evidence':'Manual investigation only')+
+       ' · File category: '+candidate.kind+' · Candidate rank: '+candidate.candidateScore);
+     child(wrap,'p',(candidate.reasons||[]).join('; ')||'No strong assessment-specific filename evidence.');
+     for(const patch of candidate.patches.slice(0,2)){
+       const details=child(wrap,'details');
+       child(details,'summary','View attributed changes from '+patch.sha.slice(0,12));
+       child(details,'pre',patch.patch.slice(0,4500));
+     }
+   }
+ }
+
  el('commits').replaceChildren();for(const c of evidence.acceptedCommits){const p=child(el('commits'),'p');p.append(safeGithubLink(c.sha,evidence.repository));child(p,'span',` — ${c.matchedPaths.length} matching file(s)`)}
  el('review').replaceChildren();for(const c of evidence.reviewCommits){const p=child(el('review'),'p');p.append(safeGithubLink(c.sha,evidence.repository));child(p,'span',` — ${c.reason}`)}
  if(!evidence.reviewCommits.length)child(el('review'),'p','No individually flagged commits (overall evidence can still require review).');
