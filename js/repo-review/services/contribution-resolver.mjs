@@ -8,7 +8,7 @@
  * deadline. For official cutoff grading, use a trusted cutoff snapshot/webhook.
  */
 
-const SOURCE_EXTS = new Set(['java', 'kt', 'kts', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'py', 'cpp', 'c', 'h', 'cs', 'html', 'css', 'sql', 'xml', 'json', 'gradle', 'md']);
+const SOURCE_EXTS = new Set(['java', 'kt', 'kts', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'py', 'cpp', 'c', 'h', 'cs', 'html', 'css', 'sql', 'xml', 'json', 'gradle', 'md', 'txt']);
 const ASSET_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif', 'ico', 'mp3', 'mp4', 'wav', 'pdf']);
 
 export function classifyFile(path) {
@@ -68,6 +68,107 @@ export function matchPath(path, patterns, { caseSensitive = true } = {}) {
 }
 
 /**
+ * Evidence-based fallback for nonstandard submission locations.
+ * Ranking is advisory. Never attribute teammates' commits, use binary assets,
+ * accept incomplete patches as valid code, or silently expand a blueprint.
+ */
+const FALLBACK_EXCLUDED = /(?:^|\/)(?:\.git|\.gradle|\.idea|node_modules|vendor|build|dist|coverage|generated|__pycache__)(?:\/|$)/i;
+const FALLBACK_DOCUMENTS = /^(?:readme|license|changelog|contributing|notice|authors|todo)(?:[._-]|$)/i;
+const GENERIC_SEGMENTS = new Set([
+  'app','src','source','main','test','tests','java','kotlin','xml','res','layout',
+  'com','org','example','project','code','student','students','quarter','quarter1',
+  'quarter2','quarter3','quarter4','q1','q2','q3','q4','peta','task','assignment',
+  'exam','activity','mini','file','files','the','and','for','with','from','new'
+]);
+function pathSegments(value) {
+  return String(value || '').split('/').map(v => v.replace(/[*?]/g,'')
+    .replace(/\.[a-z0-9]+$/i,'').replace(/[^a-z0-9]/gi,'').toLowerCase())
+    .filter(v => v.length >= 4 && !GENERIC_SEGMENTS.has(v));
+}
+function taskKeywords(patterns, assessment) {
+  const tokens = new Set();
+  for (const pattern of patterns) {
+    for (const token of pathSegments(pattern)) tokens.add(token);
+  }
+  const title = String(assessment.title || '').replace(/([a-z])([A-Z])/g, '$1 $2');
+  for (const word of title.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (word.length >= 5 && !GENERIC_SEGMENTS.has(word)) tokens.add(word);
+  }
+  return [...tokens].slice(0, 20);
+}
+function looksLikeCode(patch, path) {
+  const additions = String(patch || '').split('\n')
+    .filter(line => line.startsWith('+') && !line.startsWith('+++'))
+    .slice(0, 180).join('\n');
+  if (/(?:^|\n)\+\s*<([A-Za-z][\w.-]*)(?:\s|\/?>)/.test(additions) &&
+      /\.(?:xml|txt)$/i.test(path)) return true;
+  const hasSyntax = /[{};()]|=>/.test(additions);
+  const hasLanguage = /\b(?:class|interface|enum|fun|void|static|public|private|protected|if|else|for|while|switch|return|import|package|def|function|const|let|val|var|println|print|printf|System\.out|extends|implements|override|when|namespace)\b/.test(additions);
+  return hasSyntax && hasLanguage;
+}
+function rankFallbackCandidate(file, patterns, assessment) {
+  const path = file.path.toLowerCase();
+  const name = path.split('/').pop();
+  if (FALLBACK_EXCLUDED.test(path) || FALLBACK_DOCUMENTS.test(name) || file.kind === 'asset') return null;
+  if (file.kind === 'other' || !file.patches.length || file.missingPatch) return null;
+  const content = file.patches.map(item => item.patch).join('\n');
+  const codeLike = looksLikeCode(content, file.path);
+  if (name.endsWith('.txt') && !codeLike) return null;
+  const tokens = taskKeywords(patterns, assessment);
+  const compact = path.replace(/[^a-z0-9]/g, '');
+  const reasons = [], matched = [];
+  let score = codeLike ? 2 : 0;
+  for (const token of tokens) {
+    if (compact.includes(token)) {
+      score += 5;
+      matched.push(token);
+    }
+  }
+  if (matched.length) reasons.push('Filename or folder relates to: ' + matched.join(', '));
+  const patchWords = content.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const contentMatch = tokens.filter(t => !matched.includes(t) && patchWords.includes(t));
+  if (contentMatch.length) {
+    score += Math.min(4, 2 * contentMatch.length);
+    reasons.push('Code changes mention: ' + contentMatch.join(', '));
+  }
+  for (const raw of patterns) {
+    if (/[*?]/.test(raw)) continue;
+    const basename = String(raw).split('/').pop().replace(/\.[^.]+$/, '').toLowerCase();
+    if (basename.length >= 5 && name.replace(/\.[^.]+$/, '').replace(/[^a-z0-9]/g, '').includes(basename.replace(/[^a-z0-9]/g, ''))) {
+      score += 10;
+      reasons.push('Filename resembles the blueprint target');
+      break;
+    }
+  }
+  const expected = Array.isArray(assessment.expectedExtensions)
+    ? assessment.expectedExtensions.map(ext => String(ext).toLowerCase().replace(/^\./, '')) : [];
+  const ext = name.includes('.') ? name.split('.').pop() : '';
+  const unexpectedExtension = !!expected.length && !expected.includes(ext);
+  if (unexpectedExtension) reasons.push('Unexpected file type: .' + ext + ' (expected ' + expected.join(', ') + ')');
+  if (!codeLike) reasons.push('Patch has insufficient code syntax for automatic selection');
+  // Require a meaningful assignment-specific connection, not just any code.
+  const strong = score >= 7 && codeLike && (matched.length > 0 || reasons.includes('Filename resembles the blueprint target'));
+  return { ...file, candidateScore: score, reasons,
+    unexpectedExtension, codeLike, strong, selectionMode: 'investigation' };
+}
+
+export function selectFallbackCandidates(unmatchedFiles, patterns, assessment, { maxFiles = 12 } = {}) {
+  const ranked = [...unmatchedFiles]
+    .map(file => rankFallbackCandidate(file, patterns, assessment))
+    .filter(Boolean)
+    .sort((a,b) => b.candidateScore - a.candidateScore || a.path.localeCompare(b.path));
+  if (!ranked.length) return { status: 'none', selected: [], suggestions: [], overflow: false };
+  const top = ranked[0].candidateScore;
+  const qualified = ranked.filter(file => file.strong && file.candidateScore >= Math.max(7, top - 4));
+  // Many equally plausible files indicate a whole-project change rather than a clear assignment.
+  const overflow = qualified.length > maxFiles;
+  const selected = overflow ? [] : qualified;
+  const status = overflow ? 'ambiguous' : selected.length ? 'candidate_found' : 'weak_candidates';
+  return { status, selected, suggestions: ranked.slice(0, maxFiles),
+    overflow };
+}
+
+/**
  * Attribution requires verified account binding for auto-acceptance.
  * Fallback metadata may suggest a candidate, but never establishes ownership.
  */
@@ -109,7 +210,9 @@ export async function resolveContributions({
     throw new Error('Invalid assessment timestamps');
   }
   const seen = new Set();
-  const acceptedCommits = [], reviewCommits = [], skipped = [], files = new Map(), warnings = [];
+  const acceptedCommits = [], reviewCommits = [], skipped = [], files = new Map(),
+    unmatchedFiles = new Map(), warnings = [];
+  let unmatchedOverflow = false;
   if (!historyComplete) warnings.push('Commit history pagination has not been confirmed complete.');
   const hasVerifiedCutoff = cutoffSnapshotSha && Array.isArray(verifiedCutoffCommitShas);
   const cutoffSet = hasVerifiedCutoff ? new Set(verifiedCutoffCommitShas) : null;
@@ -152,8 +255,30 @@ export async function resolveContributions({
     for (const file of detail.files) {
       if (!file?.filename) continue;
       const candidatePaths = [file.filename, file.previous_filename].filter(Boolean);
-      if (!candidatePaths.some(path => matchPath(path, patterns, {caseSensitive: assessment.caseSensitivePaths !== false}))) continue;
+      const matchesBlueprint = candidatePaths.some(path =>
+        matchPath(path, patterns, {caseSensitive: assessment.caseSensitivePaths !== false}));
       const path = normalizeRepoPath(file.filename);
+      if (!matchesBlueprint && assessment.investigationFallback !== false) {
+        const kind = classifyFile(path);
+        if (kind !== 'asset' && kind !== 'other' && !FALLBACK_EXCLUDED.test(path)) {
+          if (!unmatchedFiles.has(path) && unmatchedFiles.size >= 250) unmatchedOverflow = true;
+          else {
+            const alternative = unmatchedFiles.get(path) || {
+              path, kind, statuses: new Set(), commits: new Set(),
+              patches: [], previousPaths: new Set(), missingPatch: false
+            };
+            alternative.commits.add(commit.sha);
+            alternative.statuses.add(file.status || 'modified');
+            if (file.previous_filename) alternative.previousPaths.add(file.previous_filename);
+            if (typeof file.patch === 'string' && file.patch.length) {
+              alternative.patches.push({sha: commit.sha, patch: file.patch});
+            } else alternative.missingPatch = true;
+            unmatchedFiles.set(path, alternative);
+          }
+        }
+        continue;
+      }
+      if (!matchesBlueprint) continue;
       const entry = files.get(path) || {
         path, kind: classifyFile(path), statuses: new Set(),
         commits: new Set(), patches: [], previousPaths: new Set(), missingPatch: false
@@ -175,11 +300,31 @@ export async function resolveContributions({
     previousPaths: [...f.previousPaths], missingPatch: f.missingPatch
   })).sort((a,b) => a.path.localeCompare(b.path));
   if (relevantFiles.some(f=>f.missingPatch)) warnings.push('One or more textual patches are unavailable; fetch a trusted file snapshot for context.');
+  const gradableStrict = relevantFiles.some(f => f.kind !== 'asset' && f.kind !== 'other' && f.patches.length);
+  const unmatched = [...unmatchedFiles.values()].map(f => ({
+    path: f.path, kind: f.kind, statuses: [...f.statuses], commitShas: [...f.commits],
+    patches: f.patches, previousPaths: [...f.previousPaths], missingPatch: f.missingPatch
+  }));
+  const fallback = assessment.investigationFallback === false || gradableStrict
+    ? { status: 'not_needed', selected: [], suggestions: [], overflow: false }
+    : selectFallbackCandidates(unmatched, patterns, assessment);
+  if (unmatchedOverflow) {
+    fallback.selected = [];
+    fallback.status = 'ambiguous';
+    fallback.overflow = true;
+    warnings.push('Too many alternative files to investigate safely; teacher must narrow the search.');
+  }
+  if (fallback.status === 'candidate_found') {
+    warnings.push('Expected paths had no gradable student code; alternative files found. Provisional score requires teacher review.');
+  } else if (fallback.status === 'ambiguous' || fallback.status === 'weak_candidates') {
+    warnings.push('Possible work outside blueprint paths requires manual file selection; no confident fallback evaluation.');
+  }
   let status = relevantFiles.length ? 'resolved' : 'no_relevant_changes';
-  if (reviewCommits.length || !historyComplete || (end !== null && !hasVerifiedCutoff) || relevantFiles.some(f=>f.missingPatch)) {
+  if (fallback.status === 'candidate_found' || reviewCommits.length || !historyComplete ||
+      (end !== null && !hasVerifiedCutoff) || relevantFiles.some(f=>f.missingPatch)) {
     status = 'requires_review';
   }
   return { repository, studentId: student.id, assessmentId: assessment.id,
     status, acceptedCommits, reviewCommits, skipped, relevantFiles,
-    cutoffSnapshotSha, warnings };
+    fallback, cutoffSnapshotSha, warnings };
 }
