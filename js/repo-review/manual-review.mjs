@@ -5,7 +5,7 @@ import {
 import { analyzePatchSubstance } from "./services/commit-substance.mjs";
 
 const el = id => document.getElementById(id);
-const state = { active: null, token: 0 };
+const state = { active: null, token: 0, flags: [] };
 function message(text, error=false) {
   const node=el("manualReviewStatus");
   node.textContent=text; node.className=error ? "text-sm text-rose-700" : "text-sm text-slate-600";
@@ -28,6 +28,7 @@ function flag(text) {
   if (!text) return;
   const p=document.createElement("p");
   p.className="mb-2"; p.textContent=String(text);
+  if (state.flags.length < 60) state.flags.push(String(text).slice(0, 1200));
   el("manualReviewFlags").append(p);
 }
 function close() {
@@ -108,6 +109,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
   el("manualReviewModal").classList.remove("hidden");
   el("manualReviewForm").reset();
   el("manualReviewFlags").replaceChildren();
+  state.flags = [];
   el("manualReviewLinks").replaceChildren();
   el("manualReviewStudent").textContent="Loading student and assessment…";
   el("manualReviewTask").textContent="";
@@ -196,7 +198,9 @@ async function save(event) {
         feedback,published:false,reviewRequired:false,manuallyAdjusted:true,
         gradeSource:"teacher_manual",gradingMode:"individual",sourceSelectionMode:"teacher_manual",
         reviewPriority:"teacher_verified",provisionalScore:false,
-        teacherReviewNote:reason,reviewedBy:auth.currentUser?.uid||null,
+        teacherReviewNote:reason,
+        reviewReasons:[...new Set(state.flags.concat(previous?.reviewReasons || []))].slice(0,60),
+        reviewedBy:auth.currentUser?.uid||null,
         reviewedAt:serverTimestamp(),gradedAt:serverTimestamp(),
         targetPath:paths.length?paths.join(", "):"Manual review — see teacher note",
         contributionEvidence:{
@@ -209,7 +213,7 @@ async function save(event) {
         }
       },{merge:true});
     });
-    message("Manual grade saved as unpublished. The previous grade was archived. Reopen RepoFetch or Gradebook to see the new score.");
+    message("Manual grade saved as unpublished, with warnings and revision history. Close and reopen RepoFetch or Gradebook to see the updated score.");
     button.textContent="Saved";
     state.active=null;
   }catch(error){message("Unable to save: "+error.message,true);button.disabled=false;}
