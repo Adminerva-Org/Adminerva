@@ -113,6 +113,24 @@ body div[id$="Modal"] :where(.overflow-y-auto) { overscroll-behavior: contain; }
   z-index: 250 !important;
 }
 #subtleLoaderText { color: #f2f7ff; font-size: 13px; line-height: 1.5; }
+/* Legacy Group Inspector uses a nonblocking #globalLoader toast rather than
+   the shared #subtleLoader. Keep both at the SAME bottom-right location. */
+#globalLoader[class*="bottom-"] {
+  position: fixed !important;
+  top: auto !important;
+  left: auto !important;
+  right: max(16px, env(safe-area-inset-right)) !important;
+  bottom: max(16px, env(safe-area-inset-bottom)) !important;
+  width: min(360px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  border-radius: 14px;
+  border: 1px solid #496380;
+  background: #172b47;
+  box-shadow: 0 16px 46px rgba(9, 20, 36, .3);
+  z-index: 250 !important;
+}
+#globalLoader[class*="bottom-"] .animate-spin { border-top-color: #81d8f3; }
+
 #subtleLoader svg { flex: 0 0 auto; color: #81d8f3; }
 :is(#globalLoader, #loaderOverlay, #loadingOverlay)[class*="fixed"][class*="inset-0"] {
   background: rgba(9, 21, 39, .65);
