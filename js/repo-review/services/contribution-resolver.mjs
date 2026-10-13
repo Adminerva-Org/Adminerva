@@ -89,6 +89,26 @@ function assessmentPetaNumber(title) {
   const match = String(title || "").match(/\b(?:mini[\s_-]*)?peta[\s#:_-]*(\d{1,2})\b/i);
   return match ? Number(match[1]) : null;
 }
+export function scopeAssessmentFiles(files, { title = '', studentName = '' } = {}) {
+  const number = assessmentPetaNumber(title);
+  if (!number || !Array.isArray(files) || !files.length) {
+    return { selected: files || [], excluded: [], warnings: [], scoped: false };
+  }
+  const exact = new RegExp('(?:^|[/_.-])(?:mini)?peta[_ -]*' + number + '(?:[/_.-]|$)', 'i');
+  const any = /(?:^|[/_.-])(?:mini)?peta[_ -]*\d+(?:[/_.-]|$)/i;
+  const selected = files.filter(file => exact.test(file.path));
+  const wrong = files.some(file => any.test(file.path) && !exact.test(file.path));
+  if (!selected.length && !wrong) {
+    return { selected: files, excluded: [], warnings: [], scoped: false };
+  }
+  const excluded = files.filter(file => !selected.includes(file));
+  const warnings = excluded.length ? [
+    'The broad assessment path includes other assignments. ' +
+    excluded.length + ' file(s) outside PETA ' + number +
+    ' were excluded; confirm the task path.'
+  ] : [];
+  return { selected, excluded, warnings, scoped: true };
+}
 function taskKeywords(patterns, assessment) {
   const tokens = new Set();
   for (const pattern of patterns) {
