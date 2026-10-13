@@ -418,7 +418,8 @@ window.openGradingModal = async function (studentId, owner, repo) {
     listContainer.innerHTML = "";
     activeTasks.sort(
       (a, b) =>
-        new Date(a.deployment.deadline) - new Date(b.deployment.deadline),
+        (Date.parse(a.deployment.deadline) || Number.MAX_SAFE_INTEGER) -
+        (Date.parse(b.deployment.deadline) || Number.MAX_SAFE_INTEGER),
     );
 
     activeTasks.forEach((task) => {
@@ -487,7 +488,8 @@ window.openGradingModal = async function (studentId, owner, repo) {
                         <h4 class="font-bold text-sm sm:text-base text-gray-800 break-words">${escapeHTML(task.title)}</h4>
                     </div>
                     <p class="text-xs text-gray-600 font-mono break-all whitespace-normal leading-relaxed" title="${escapeHTML(formattedTargets)}">${escapeHTML(formattedTargets)}</p>
-                    <p class="text-xs text-slate-600 font-semibold mt-2">Due: ${new Date(task.deployment.deadline).toLocaleDateString()}</p>
+                    <p class="text-xs text-slate-600 font-semibold mt-2">${task.deployment.deadlineEnabled === false || !task.deployment.deadline
+                      ? "No deadline" : "Due: " + new Date(task.deployment.deadline).toLocaleDateString()}</p>
                 </div>
                 <div class="grade-action-area w-full sm:w-auto sm:shrink-0">${actionAreaHtml}</div>
             </div>
