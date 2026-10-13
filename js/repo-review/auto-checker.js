@@ -167,7 +167,9 @@ window.startAutoCheck = async function (
       repository: repoFullName,
       student: { id: studentId, githubUsername: ghProfile.login, githubUserId: ghProfile.id },
       assessment: {
-        id: taskId, targetPaths,
+        id: taskId, title: taskData.title || "", targetPaths,
+        expectedExtensions: taskData.expectedExtensions || [],
+        investigationFallback: taskData.investigationFallback !== false,
         postDate: enforceSubmissionStart ? postDate : null,
         deadline, caseSensitivePaths: taskData.caseSensitivePaths === true,
       },
@@ -185,11 +187,20 @@ window.startAutoCheck = async function (
     }
     // A merge commit is intentionally omitted by the resolver. It may require
     // manual inspection before any AI suggestion is published.
-    const sourceFiles = evidence.relevantFiles.filter(f =>
+    const strictFiles = evidence.relevantFiles.filter(f =>
       f.kind !== "asset" && f.kind !== "other" && f.patches.length > 0
     );
+    const fallbackUsed = strictFiles.length === 0 &&
+      evidence.fallback?.status === "candidate_found" &&
+      evidence.fallback.selected.length > 0;
+    const sourceFiles = fallbackUsed ? evidence.fallback.selected : strictFiles;
     if (!sourceFiles.length) {
-      throw new Error("No matching student patches. Check assessment directory patterns, nested practical exam files, and GitHub identity.");
+      const suggestions = evidence.fallback?.suggestions?.map(f => f.path).slice(0, 6) || [];
+      const note = suggestions.length
+        ? " Potential alternative files: " + suggestions.join(", ") +
+          ". Review them in Contribution Inspector; no unrelated file will receive an invented score."
+        : " Confirm the student's GitHub identity and examine their commits in Contribution Inspector.";
+      throw new Error("No confident assessment-related code could be selected." + note);
     }
     if (sourceFiles.length > 20) {
       throw new Error("More than 20 relevant files need review. Automated scoring will not silently omit them.");
@@ -199,6 +210,26 @@ window.startAutoCheck = async function (
       ...evidence.warnings,
       ...evidence.reviewCommits.map(c => "Commit " + c.sha.slice(0, 12) + ": " + c.reason),
     ];
+    const expectedExts = Array.isArray(taskData.expectedExtensions)
+      ? taskData.expectedExtensions.map(e => String(e).toLowerCase().replace(/^\./, ""))
+      : [];
+    if (fallbackUsed) {
+      reviewReasons.unshift(
+        "HIGH PRIORITY: Blueprint paths had no gradable attributed code. " +
+        "Alternative files were inferred and require teacher verification."
+      );
+      for (const candidate of sourceFiles) {
+        reviewReasons.push("Investigated " + candidate.path + ": " +
+          (candidate.reasons?.join("; ") || "alternative source path"));
+      }
+    }
+    for (const file of sourceFiles) {
+      const ext = file.path.split(".").pop().toLowerCase();
+      if (expectedExts.length && !expectedExts.includes(ext)) {
+        reviewReasons.push("Unexpected submission file type: ." + ext +
+          " in " + file.path + " (expected " + expectedExts.join(", ") + ").");
+      }
+    }
     if (deadline) reviewReasons.push("Commit dates do not establish that code was pushed before the assessment deadline.");
     if (postDate && !enforceSubmissionStart) {
       reviewReasons.push("Assessment posting date was advisory: earlier work may be included; teacher must verify assignment relevance.");
@@ -251,6 +282,8 @@ window.startAutoCheck = async function (
             Floor Score: ${floorScore}
             
             Grade only the student's attributed Git diff hunks. Do not credit other group members' work to ${studentData.name}.
+            ${fallbackUsed ? "INVESTIGATION MODE: Expected paths had no gradable attributed code. Alternative files may be in unexpected folders or languages. Suggest a PROVISIONAL score only for demonstrated task-related logic, explain uncertainty, and identify missing expected Java/XML features. Do not automatically penalize a path or language deviation unless the rubric requires it. The teacher makes final considerations." : "NORMAL MODE: selected files matched blueprint paths."}
+            Code diffs are not complete runnable programs: never assert compilation or runtime behavior without evidence.
 
             EVIDENCE CAVEATS (not scoring penalties):
             ${reviewReasons.map(w => "- " + w).join("\n")}
@@ -365,6 +398,9 @@ window.startAutoCheck = async function (
         published: false,
         gradingMode: "individual",
         reviewRequired: true,
+        reviewPriority: fallbackUsed ? "high" : "normal",
+        sourceSelectionMode: fallbackUsed ? "investigation" : "blueprint_match",
+        provisionalScore: fallbackUsed,
         reviewReasons,
         contributionEvidence: {
           repository: repoFullName,
@@ -372,6 +408,12 @@ window.startAutoCheck = async function (
           githubUserId: ghProfile.id,
           scannedSha: evidence.scannedRef,
           matchedPaths: pathsFound,
+          fallbackUsed,
+          expectedExtensions: expectedExts,
+          fallbackCandidatePaths: (evidence.fallback?.suggestions || []).map(f => f.path),
+          fallbackReasons: fallbackUsed
+            ? sourceFiles.map(f => ({ path: f.path, reasons: f.reasons || [], candidateScore: f.candidateScore || 0 }))
+            : [],
           acceptedCommitShas: evidence.acceptedCommits.map(c => c.sha),
           reviewCommitShas: evidence.reviewCommits.map(c => c.sha),
           deadlineVerified: false,
