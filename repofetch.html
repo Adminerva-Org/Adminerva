@@ -325,8 +325,82 @@
       </div>
     </div>
 
+    <!-- Teacher-operated fallback when individual code attribution needs review. -->
+    <div id="manualReviewModal" role="dialog" aria-modal="true"
+      aria-labelledby="manualReviewTitle"
+      class="hidden fixed inset-0 z-[155] bg-slate-950/70 backdrop-blur-sm p-2 sm:p-5 flex items-center justify-center">
+      <div class="bg-white rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col"
+        style="max-height:calc(100dvh - 16px)">
+        <div class="bg-slate-800 px-5 py-4 text-white flex justify-between items-start gap-4">
+          <div>
+            <h2 id="manualReviewTitle" class="text-lg font-extrabold">Manual Review & Score</h2>
+            <p id="manualReviewStudent" class="text-sm text-slate-300 mt-1"></p>
+          </div>
+          <button type="button" id="manualReviewClose" aria-label="Close manual review"
+            class="rounded-lg text-xl font-bold text-white px-2">✕</button>
+        </div>
+        <div class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
+          <div class="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2">
+            <p id="manualReviewTask" class="font-bold text-slate-900"></p>
+            <div id="manualReviewLinks" class="flex flex-wrap gap-x-4 gap-y-2 text-sm"></div>
+            <p class="text-xs text-slate-500">Commit links show GitHub account activity; verify actual authorship against the changed files. The source-folder shortcut opens the shared project.</p>
+          </div>
+          <section class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <h3 class="font-extrabold text-sm text-amber-900 mb-2">Evidence requiring attention</h3>
+            <div id="manualReviewFlags" class="text-xs text-amber-900 break-words whitespace-pre-wrap space-y-2"></div>
+          </section>
+          <form id="manualReviewForm" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewScore">Teacher score</label>
+                <input type="number" id="manualReviewScore" min="0" step="0.5" required
+                  class="w-full border border-slate-300 rounded-lg px-3 py-2.5" />
+              </div>
+              <div>
+                <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewMax">Maximum score</label>
+                <input type="number" id="manualReviewMax" readonly
+                  class="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2.5"/>
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewFiles">Files considered (one repository path per line, optional)</label>
+              <textarea id="manualReviewFiles" rows="3"
+                placeholder="app/src/test/java/.../MiniPeta2/StudentCode.java"
+                class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm font-mono"></textarea>
+            </div>
+            <div>
+              <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewFeedback">Feedback to student</label>
+              <textarea id="manualReviewFeedback" rows="4" maxlength="6000" required
+                placeholder="Describe demonstrated work, errors, and any consideration given."
+                class="w-full border border-slate-300 rounded-lg px-3 py-2.5"></textarea>
+            </div>
+            <div>
+              <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewReason">Teacher review note</label>
+              <textarea id="manualReviewReason" rows="3" maxlength="3000" required
+                placeholder="Explain why you accepted or rejected the flagged evidence. This is saved in the grading audit trail."
+                class="w-full border border-slate-300 rounded-lg px-3 py-2.5"></textarea>
+            </div>
+            <label class="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-slate-800">
+              <input type="checkbox" id="manualReviewConfirm" class="mt-1" required />
+              <span>I inspected the relevant commits and source files. My score reflects my review, not an assumption of authorship based on a filename or commit count.</span>
+            </label>
+            <p id="manualReviewStatus" role="status" class="text-sm text-slate-600"></p>
+          </form>
+        </div>
+        <div class="flex flex-wrap justify-end gap-2 p-4 bg-white border-t border-slate-200">
+          <button type="button" id="manualReviewCancel"
+            class="rounded-lg px-4 py-2.5 font-bold text-sm text-slate-700 bg-slate-100">Cancel</button>
+          <button type="submit" form="manualReviewForm" id="manualReviewSave"
+            class="rounded-lg px-4 py-2.5 font-bold text-sm bg-blue-600 text-white">
+            Save unpublished grade
+          </button>
+        </div>
+      </div>
+    </div>
+
     <script src="js/core/adminerva-loader.js"></script>
     <script type="module" src="js/repo-review/repofetch.js"></script>
-    <script type="module" src="js/repo-review/auto-checker.js?v=3"></script>
+    <script type="module" src="js/repo-review/auto-checker.js?v=4"></script>
+    <script type="module" src="js/repo-review/manual-review.mjs"></script>
   </body>
 </html>
