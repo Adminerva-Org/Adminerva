@@ -15,13 +15,10 @@ export function normalizeAssessment(raw, section, id) {
   return { id, targetPaths, postDate: dateValue(deployment.postDate || raw.postDate), deadline: dateValue(deployment.deadline || raw.dueDate), caseSensitivePaths: true };
 }
 
-export function validateInspectorInput({ student, assessment, confirmedLogin, acknowledgedNoCutoff }) {
+export function validateInspectorInput({ student, assessment, acknowledgedNoCutoff }) {
   if (!student?.id || !student.repoUrl || !student.githubUsername) throw new Error('Student must have a linked repository and GitHub username');
   parseGithubRepository(student.repoUrl);
   if (!assessment?.id) throw new Error('Select an assessment');
-  if (!confirmedLogin || confirmedLogin.trim().toLowerCase() !== student.githubUsername.trim().toLowerCase()) {
-    throw new Error('Confirm the exact GitHub login to inspect this identity');
-  }
   if (!acknowledgedNoCutoff) throw new Error('Acknowledge that this is not a verified deadline snapshot');
   return true;
 }
