@@ -15,6 +15,7 @@
     button:disabled{background:#9ba9bf;cursor:wait}a{color:#2055b7}small,.muted{color:#53667c}.error{color:#ad2030}.warning{color:#875600}
     pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7fa;padding:12px;border-radius:6px;max-height:220px;overflow:auto}
     summary{cursor:pointer;font-weight:600}.file{border-top:1px solid #dde4ee;padding:14px 0}.pill{display:inline-block;background:#e9eefb;border-radius:20px;padding:4px 9px;font-size:.8rem}
+    .pill{color:#193660;background:#e0ebfc;font-weight:700}header .pill{color:#17345d;background:#d8e9ff}
     .check{display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-weight:400}.check input{margin-top:5px}
     #status{margin:10px 0}#pageBody.hidden{display:none}
   </style>
@@ -33,8 +34,7 @@
       <div><label for="student">Student</label><select id="student"><option value="">Select a section first</option></select></div>
     </div>
     <p id="repoDisplay" class="muted"></p>
-    <label for="confirmLogin">Type the student's exact GitHub login to confirm the identity association for this inspection</label>
-    <input type="text" id="confirmLogin" autocomplete="off" placeholder="GitHub username" />
+    <p class="muted" style="margin-top:12px">The saved GitHub username is used automatically. Account ownership still requires independent verification.</p>
     <label class="check"><input type="checkbox" id="acknowledge" /> I understand this checks the repository's current branch history and does not establish which code existed before the assignment deadline.</label>
     <p class="muted">Public GitHub API only; no private tokens. Large histories can hit GitHub's anonymous API rate limit. Results with uncertain identity or deadline evidence require teacher review.</p>
     <button id="inspect" disabled>Inspect contributions</button>
