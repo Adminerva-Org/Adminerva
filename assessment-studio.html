@@ -287,6 +287,16 @@
                   </button>
                 </div>
                 <div id="targetsContainer" class="flex flex-col gap-1"></div>
+                <p class="text-xs text-slate-500 mt-2">Use <code>**</code> for recursive folders, e.g. <code>quarter2/practicalexam/**</code>. The expected paths are checked first.</p>
+                <label for="assessExpectedExts" class="block text-sm font-bold text-slate-700 mt-4 mb-1">Expected file types (optional)</label>
+                <input type="text" id="assessExpectedExts" placeholder="java, xml" class="w-full p-2.5 border border-gray-300 rounded-lg text-sm" />
+                <p class="text-xs text-slate-500 mt-1">Comma-separated extensions. Unexpected languages and file types are flagged, not automatically rejected.</p>
+                <label class="flex gap-3 items-start mt-4 border border-blue-200 bg-blue-50 rounded-xl p-3">
+                  <input type="checkbox" id="assessInvestigationFallback" checked class="mt-1 h-4 w-4" />
+                  <span class="text-sm font-bold text-slate-800">Investigate work saved outside target paths
+                    <span class="block font-normal text-xs text-slate-600 mt-1">When no gradable files match, search only the student's attributed changes for plausible alternative files. Any resulting AI score stays an unpublished draft for manual review.</span>
+                  </span>
+                </label>
               </div>
             </div>
 
