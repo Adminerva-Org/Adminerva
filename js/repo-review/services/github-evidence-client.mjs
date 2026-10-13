@@ -153,7 +153,10 @@ export function createGithubEvidenceClient({ token = null, fetchImpl = globalThi
       student, assessment, commits: history.commits, historyComplete: history.historyComplete,
       cutoffSnapshotSha, verifiedCutoffCommitShas,
       loadCommit: sha => loadCommit(repository, sha) });
-    return { ...result, scannedRef: head.sha, historyPagesFetched: history.pagesFetched,
+    return { ...result, scannedRef: head.sha,
+      historyCommitsScanned: history.commits.length,
+      historyComplete: history.historyComplete,
+      historyPagesFetched: history.pagesFetched,
       historyWarning: history.warning || null };
   }
 
