@@ -1,0 +1,161 @@
+/* Adminerva shared interface theme — v1
+   Works alongside the existing Tailwind utilities; preserves each module's behaviors. */
+:root {
+  --av-bg: #f3f6fb;
+  --av-surface: #ffffff;
+  --av-surface-muted: #f8fafd;
+  --av-ink: #14243c;
+  --av-muted: #617089;
+  --av-border: #dce4f0;
+  --av-border-strong: #bfcde0;
+  --av-navy: #14243b;
+  --av-navy-deep: #0c182a;
+  --av-primary: #2755c8;
+  --av-primary-hover: #1d45ad;
+  --av-focus: rgba(39, 85, 200, .22);
+  --av-radius: 14px;
+  --av-shadow: 0 9px 26px rgba(23, 39, 68, .065);
+}
+html { scroll-behavior: smooth; }
+body { background-color: var(--av-bg); color: var(--av-ink); -webkit-font-smoothing: antialiased; }
+button, a, input, textarea, select, summary { -webkit-tap-highlight-color: transparent; }
+button, a { touch-action: manipulation; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, [role="button"]:focus-visible {
+  outline: 3px solid var(--av-focus);
+  outline-offset: 2px;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select, textarea { max-width: 100%; }
+body :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):not(.monaco-inputbox input) {
+  transition: border-color .16s ease, box-shadow .16s ease;
+}
+body :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus {
+  border-color: #6086de;
+  box-shadow: 0 0 0 3px var(--av-focus);
+}
+body :where(.bg-white.rounded-lg, .bg-white.rounded-xl, .bg-white.rounded-2xl) {
+  border-color: var(--av-border);
+  box-shadow: var(--av-shadow);
+}
+body :where(.bg-gray-50, .bg-slate-50) { --av-panel-bg: var(--av-surface-muted); }
+body :where(.text-gray-500, .text-slate-500) { color: var(--av-muted); }
+body :where(.bg-blue-600, .bg-purple-600, .bg-indigo-600) { background-color: var(--av-primary); }
+body :where(.hover\:bg-blue-700:hover, .hover\:bg-purple-700:hover, .hover\:bg-indigo-700:hover) {
+  background-color: var(--av-primary-hover);
+}
+body :where(button, a)[class*="rounded"] { transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease; }
+body :where(button, input, select, textarea):disabled { cursor: not-allowed; opacity: .65; }
+body :where(table) { border-collapse: separate; border-spacing: 0; }
+body :where(th) { letter-spacing: .025em; }
+body :where(td, th) { vertical-align: middle; }
+
+/* Common navigation across educator, lessons, and student modules. */
+#adminerva-nav nav {
+  background: linear-gradient(110deg, var(--av-navy-deep), var(--av-navy));
+  border-bottom: 1px solid #304766;
+  box-shadow: 0 3px 18px rgba(12, 24, 42, .22);
+}
+#adminerva-nav nav a { text-decoration: none; }
+#adminerva-nav nav a:focus-visible, #adminerva-nav nav button:focus-visible {
+  outline-color: #6ecdf2;
+}
+#adminerva-nav nav > div > div:last-child[class*="overflow-x-auto"] {
+  scrollbar-width: thin; scrollbar-color: #647895 transparent;
+}
+#adminerva-nav nav a[class*="border-cyan-400"] { color: #fff; border-bottom-color: #67c6ed; }
+
+/* All existing popup/modal containers keep their IDs and JS hooks. */
+body :is(
+  #gradingModal, #createModal, #viewModal, #bulkGradeModal, #bulkResultModal,
+  #globalSettingsModal, #feedbackModal, #detailsModal, #confirmModal,
+  #editModal, #previewModal, #scoreModal, #bug-modal
+)[class*="fixed"] {
+  padding: clamp(8px, 2.4vw, 26px);
+  background-color: rgba(8, 21, 40, .70);
+  backdrop-filter: blur(7px);
+}
+body div[id$="Modal"][class*="fixed"] > div,
+body :is(#bug-modal, #gradingModal, #createModal, #viewModal)[class*="fixed"] > div {
+  max-width: min(100%, 1150px);
+  max-height: calc(100dvh - 24px);
+  border: 1px solid rgba(215, 226, 242, .9);
+  border-radius: 18px;
+  box-shadow: 0 24px 70px rgba(8, 21, 40, .32);
+}
+body div[id$="Modal"] > div > :is(.bg-slate-800, .bg-slate-900, .bg-purple-700),
+body :is(#gradingModal, #createModal, #viewModal, #bug-modal) > div > :is(.bg-slate-800, .bg-purple-700) {
+  background: linear-gradient(108deg, var(--av-navy-deep), #253c5b);
+}
+body div[id$="Modal"] :where(.overflow-y-auto) { overscroll-behavior: contain; }
+
+/* Loader is a single visual language: nonblocking toast bottom right,
+   blocking overlays centered with the same spinner and card treatments. */
+#subtleLoader {
+  position: fixed !important;
+  left: auto !important;
+  right: max(16px, env(safe-area-inset-right)) !important;
+  bottom: max(16px, env(safe-area-inset-bottom)) !important;
+  width: min(340px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 1px solid #496380;
+  background: #172b47;
+  color: #f4f8ff;
+  box-shadow: 0 16px 46px rgba(9, 20, 36, .3);
+  z-index: 250 !important;
+}
+#subtleLoaderText { color: #f2f7ff; font-size: 13px; line-height: 1.5; }
+#subtleLoader svg { flex: 0 0 auto; color: #81d8f3; }
+:is(#globalLoader, #loaderOverlay, #loadingOverlay)[class*="fixed"][class*="inset-0"] {
+  background: rgba(9, 21, 39, .65);
+  backdrop-filter: blur(6px);
+  z-index: 240;
+}
+:is(#globalLoader, #loaderOverlay, #loadingOverlay) :where(.animate-spin) {
+  border-top-color: #71c7f0;
+}
+:is(#globalLoader, #loaderOverlay, #loadingOverlay) :where(#loaderMessage, #loaderSubMessage) {
+  max-width: min(400px, calc(100vw - 40px));
+  text-align: center;
+}
+
+/* Compact screens: modal panels stay within viewport, actions stay tappable. */
+@media (max-width: 767px) {
+  html { scroll-padding-top: 20px; }
+  body > :where(.max-w-screen-xl, .max-w-screen-2xl, .max-w-7xl) {
+    padding-left: 14px; padding-right: 14px;
+  }
+  body :where(.bg-white.rounded-lg, .bg-white.rounded-xl) {
+    border-radius: 14px;
+  }
+  body :where(button, select, input[type="button"], input[type="submit"]) { min-height: 40px; }
+  body :where(input:not([type="checkbox"]):not([type="radio"]), textarea, select) {
+    font-size: 16px;
+  }
+  body :where(.grid) { min-width: 0; }
+  body div[id$="Modal"][class*="fixed"],
+  body :is(#bug-modal, #gradingModal, #createModal, #viewModal)[class*="fixed"] {
+    padding: 8px;
+    align-items: center;
+  }
+  body div[id$="Modal"][class*="fixed"] > div,
+  body :is(#bug-modal, #gradingModal, #createModal, #viewModal)[class*="fixed"] > div {
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+    border-radius: 15px;
+  }
+  body div[id$="Modal"] > div > :where(.p-6) { padding: 16px; }
+  body div[id$="Modal"] > div > :where(.p-5) { padding: 14px; }
+  #adminerva-nav nav > div > div[class*="overflow-x-auto"] {
+    gap: 15px;
+    scroll-snap-type: x proximity;
+  }
+  #adminerva-nav nav > div > div[class*="overflow-x-auto"] > a { scroll-snap-align: start; }
+  #subtleLoader { width: calc(100vw - 32px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  #subtleLoader, body button, body a { transition-duration: .01ms !important; }
+}
