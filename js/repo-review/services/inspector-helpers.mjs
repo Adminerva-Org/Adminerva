@@ -36,8 +36,15 @@ export function normalizeAssessment(raw, section, id) {
     id, title: raw.title || '', targetPaths,
     expectedExtensions: raw.expectedExtensions || [],
     investigationFallback: raw.investigationFallback !== false,
-    postDate: dateValue(deployment.deadlineEnabled === false ? null : (deployment.postDate || raw.postDate)),
-    deadline: dateValue(deployment.deadlineEnabled === false ? null : (deployment.deadline || raw.dueDate)),
+    // Historical assessment deployments must not hide existing work simply
+    // because the teacher deployed the blueprint after students made commits.
+    // Match Auto-Checker: enforce a start date only when explicitly enabled.
+    postDate: dateValue(raw.enforceSubmissionStart === true &&
+      deployment.deadlineEnabled !== false ? (deployment.postDate || raw.postDate) : null),
+    deadline: dateValue(deployment.deadlineEnabled === false ? null :
+      (deployment.deadline || raw.dueDate)),
+    historicalStartIgnored: raw.enforceSubmissionStart !== true &&
+      Boolean(deployment.postDate || raw.postDate),
     caseSensitivePaths: raw.caseSensitivePaths === true
   };
 }
