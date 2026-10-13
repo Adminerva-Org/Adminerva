@@ -95,8 +95,12 @@ window.startAutoCheck = async function (
     const repoData = await repoRes.json();
     if (!repoData.default_branch) throw new Error("Repository is empty.");
 
+    if (!treeRes.ok || !commitsRes.ok) throw new Error("GitHub tree or commit history could not be retrieved.");
     const treeData = await treeRes.json();
     const commitsData = await commitsRes.json();
+    if (treeData.truncated) throw new Error("GitHub returned an incomplete file tree.");
+    if (!Array.isArray(commitsData)) throw new Error("Invalid GitHub commit history.");
+    if (commitsData.length === 100) throw new Error("Commit history requires pagination. Use Contribution Inspector for review; automatic grading is paused.");
 
     const ignoredExts =
       /\.(class|jar|exe|png|jpg|jpeg|gif|ico|svg|mp3|mp4|zip|rar|tar|gz|pdf|docx|xlsx|pptx)$/i;
@@ -104,33 +108,13 @@ window.startAutoCheck = async function (
       (f) => f.type === "blob" && !ignoredExts.test(f.path),
     );
 
-    const normalizedName = studentData.name
-      ? studentData.name
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toLowerCase()
-      : "";
-    const sNameParts = normalizedName
-      .replace(/[^a-z0-9]/g, " ")
-      .split(" ")
-      .filter((w) => w.length > 2);
-    const ghName = studentData.githubUsername
-      ? studentData.githubUsername.toLowerCase()
-      : "";
-
-    // Isolate ONLY this student's commits
-    const studentCommits = (commitsData || []).filter((c) => {
-      const authorLogin = (c.author?.login || "").toLowerCase();
-      const authorEmail = (c.commit?.author?.email || "").toLowerCase();
-      const authorName = (c.commit?.author?.name || "").toLowerCase();
-      return (
-        (ghName && authorLogin === ghName) ||
-        (studentData.email &&
-          authorEmail === studentData.email.toLowerCase()) ||
-        sNameParts.some((part) => authorName.includes(part)) ||
-        (ghName && authorName.includes(ghName))
-      );
-    });
+    // Only GitHub-account-linked commits are eligible. Names/emails can be shared or spoofed.
+    const ghName = String(studentData.githubUsername || "").trim().replace(/^@/, "").toLowerCase();
+    if (!ghName) throw new Error("Student GitHub identity is not linked; manual verification required.");
+    const studentCommits = commitsData.filter(c =>
+      String(c.author?.login || "").toLowerCase() === ghName
+    );
+    if (studentCommits.length > 80) throw new Error("Student has more than 80 commits; grading paused to prevent incomplete assessment.");
 
     let matchedFilesMap = new Map();
     let autoPenalties = [];
@@ -164,7 +148,8 @@ window.startAutoCheck = async function (
             files: (rawData.files || []).map((f) => ({
               filename: f.filename,
               status: f.status,
-              patch: f.patch || "No raw code preview available.",
+              patch: typeof f.patch === "string" ? f.patch : null,
+              previous_filename: f.previous_filename || null,
             })),
           };
 
@@ -178,9 +163,40 @@ window.startAutoCheck = async function (
       return null;
     });
 
-    const commitDetails = (await Promise.all(commitDetailsPromises)).filter(
-      (c) => c !== null && c.files && c.files.length > 0,
-    );
+    const details = await Promise.all(commitDetailsPromises);
+    if (details.some(d => !d || !Array.isArray(d.files))) {
+      throw new Error("GitHub commit details are incomplete. Retry or inspect manually.");
+    }
+    const commitDetails = details.filter(d => d.files.length > 0);
+    const validCodeExts = /\.(java|kt|kts|js|mjs|cjs|ts|tsx|jsx|py|cpp|c|h|cs|html|css|sql|xml|json|gradle)$/i;
+    const targetMatchers = pathsToScan.map(raw => {
+      const pattern = String(raw || "").replaceAll("\\", "/").replace(/^\.\//, "").replace(/^\/+/, "");
+      if (pattern === "*" || pattern === "**") return () => true;
+      if (!pattern || pattern.split("/").includes("..")) return () => false;
+      const esc = v => v.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+      let regex = "^";
+      for (let i = 0; i < pattern.length;) {
+        if (pattern.slice(i, i + 3) === "**/") { regex += "(?:.*/)?"; i += 3; }
+        else if (pattern.slice(i, i + 2) === "**") { regex += ".*"; i += 2; }
+        else if (pattern[i] === "*") { regex += "[^/]*"; i++; }
+        else if (pattern[i] === "?") { regex += "[^/]"; i++; }
+        else { regex += esc(pattern[i]); i++; }
+      }
+      const matcher = new RegExp(regex + "$");
+      return path => matcher.test(path);
+    });
+    for (const detail of commitDetails) {
+      for (const file of detail.files) {
+        if (!file?.filename || !validCodeExts.test(file.filename) || file.status === "removed") continue;
+        if (![file.filename, file.previous_filename].filter(Boolean).some(p => targetMatchers.some(match => match(p)))) continue;
+        if (typeof file.patch !== "string" || !file.patch.trim()) {
+          throw new Error("A matching code patch is missing. Teacher review required.");
+        }
+        const item = matchedFilesMap.get(file.filename) || { path: file.filename, isPatchOnly: true, rawText: "" };
+        item.rawText += "\n" + file.patch;
+        matchedFilesMap.set(file.filename, item);
+      }
+    }
 
     if (diagnosticWarnings.length > 0) {
       autoPenalties.push("Submission Format Error");
@@ -207,9 +223,7 @@ window.startAutoCheck = async function (
 
     // PHASE 4: Extract Code via Blob or Patch Fallback
     if (filesToProcess.length === 0) {
-      forceFail = true;
-      failMessage = `No code files found matching the task requirements in your commits. Please ensure you pushed the correct assignment.`;
-      autoPenalties.push("Empty Submission");
+      throw new Error("No matching source changes verified for this student. Teacher review required.");
     } else {
       updateStatus(`Reading ${filesToProcess.length} File(s)...`);
 
@@ -247,9 +261,7 @@ window.startAutoCheck = async function (
       });
 
       if (!fileRawText.trim()) {
-        forceFail = true;
-        failMessage = "Files found, but contents were empty or unreadable.";
-        autoPenalties.push("Empty Submission");
+        throw new Error("Relevant source changes were unreadable. Teacher review required.");
       } else {
         if (pathsFound.length > 1)
           displayPathText = `${pathsFound[0].split("/").pop()} (+${pathsFound.length - 1} files)`;
@@ -288,7 +300,7 @@ window.startAutoCheck = async function (
             Max Score: ${maxScore}
             Floor Score: ${floorScore}
             
-            Code to evaluate belongs exclusively to: ${studentData.name}
+            Grade only the student's attributed Git diff hunks. Do not credit other group members' work to ${studentData.name}.
 
             SYSTEM DIAGNOSTICS (CRITICAL):
             The automated system logged the following submission formatting errors based on the student's GitHub commits. You MUST explicitly mention these in your feedback and apply deductions for poor file organization:
@@ -355,6 +367,10 @@ window.startAutoCheck = async function (
 
     updateStatus("Saving Grade...");
     const gradeDocId = `${studentId}_${taskId}`;
+    const existingGrade = await getDoc(doc(db, "student_grades", gradeDocId));
+    if (existingGrade.exists() && existingGrade.data().published === true) {
+      throw new Error("A published grade already exists. Unpublish it before regrading.");
+    }
     const durationMs = Math.round(performance.now() - checkStartTime);
 
     await setDoc(
