@@ -105,7 +105,8 @@ function render() {
       add(btn, "strong", "text-base text-slate-900", String(grade.score) + " / " + String(grade.maxScore || task.maxScore || 20));
       add(btn, "span", "text-[10px] font-semibold " + (grade.published ? "text-emerald-700" :
         grade.reviewRequired ? "text-amber-700" : "text-slate-500"),
-        grade.published ? "Published" : grade.reviewRequired ? "Review draft" : "Unpublished");
+        grade.published ? "Published" : grade.provisionalScore ? "Investigate draft" :
+        grade.reviewRequired ? "Review draft" : "Unpublished");
       btn.addEventListener("click", () => openDetails(student, task, entry));
     }
   }
@@ -170,7 +171,17 @@ function renderEvidence(student, task, grade) {
   detailLine(box, "GitHub login", evidence.githubLogin || student.githubUsername);
   detailLine(box, "Graded revision", grade.gradedSha || evidence.scannedSha);
   detailLine(box, "Assessment target", grade.targetPath || task.targetPaths?.join(", "));
+  detailLine(box, "File discovery", grade.sourceSelectionMode === "investigation"
+    ? "ALTERNATIVE FILES — PROVISIONAL SCORE; HIGH-PRIORITY TEACHER REVIEW"
+    : "Blueprint target-path match");
+  detailLine(box, "Expected file types", evidence.expectedExtensions?.join(", ") || "Not specified");
   detailLine(box, "Penalties / flags", (grade.penaltyTags || []).join(", "));
+  if (grade.sourceSelectionMode === "investigation") {
+    links(box, "Investigation reasons",
+      (evidence.fallbackReasons || []).map(f =>
+        f.path + " — " + (f.reasons || []).join("; ")));
+    links(box, "Other candidate file paths", evidence.fallbackCandidatePaths || []);
+  }
   detailLine(box, "AI evaluation", grade.reviewRequired ? "Draft requires teacher review" : grade.published ? "Published" : "Unpublished");
   const breakdown = grade.criteriaScores || grade.rubricBreakdown || grade.criterionScores;
   if (breakdown) detailLine(box, "Rubric breakdown", JSON.stringify(breakdown));
