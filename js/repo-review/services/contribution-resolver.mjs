@@ -85,12 +85,22 @@ function pathSegments(value) {
     .replace(/\.[a-z0-9]+$/i,'').replace(/[^a-z0-9]/gi,'').toLowerCase())
     .filter(v => v.length >= 4 && !GENERIC_SEGMENTS.has(v));
 }
+function assessmentPetaNumber(title) {
+  const match = String(title || "").match(/\b(?:mini[\s_-]*)?peta[\s#:_-]*(\d{1,2})\b/i);
+  return match ? Number(match[1]) : null;
+}
 function taskKeywords(patterns, assessment) {
   const tokens = new Set();
   for (const pattern of patterns) {
     for (const token of pathSegments(pattern)) tokens.add(token);
   }
   const title = String(assessment.title || '').replace(/([a-z])([A-Z])/g, '$1 $2');
+  const taskNumber = assessmentPetaNumber(assessment.title);
+  if (taskNumber) {
+    tokens.add('peta' + taskNumber);
+    tokens.add('minipeta' + taskNumber);
+  }
+
   for (const word of title.toLowerCase().split(/[^a-z0-9]+/)) {
     if (word.length >= 5 && !GENERIC_SEGMENTS.has(word)) tokens.add(word);
   }
