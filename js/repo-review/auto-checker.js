@@ -117,11 +117,22 @@ window.startAutoCheck = async function (
     // Existing blueprints may contain broad quarter folders plus narrower task paths.
     // Prefer specific targets to avoid grading other assignments in a shared repository.
     const specificPaths = rawPaths.filter(pattern => {
-      if (pattern === "*") return !rawPaths.some(other => other !== pattern);
-      const base = pattern.replace(/\/\*+$/, "");
-      return !rawPaths.some(other => other !== pattern &&
-        (other.startsWith(base + "/") ||
-         (pattern.endsWith("/*") && other.startsWith(pattern.slice(0, -1)))));
+      if (pattern === "*") return rawPaths.length === 1;
+      const hasGlob = /[?*]/.test(pattern);
+      if (!hasGlob) {
+        // A narrower explicit folder takes priority over a broader quarter folder.
+        // Do NOT discard a directory because of a sibling pattern ending in "/*":
+        // the directory is necessary for nested Java packages.
+        return !rawPaths.some(other => other !== pattern &&
+          !/[?*]/.test(other) && other.startsWith(pattern.replace(/\/$/, "") + "/"));
+      }
+      if (pattern.endsWith("/*")) {
+        const parent = pattern.slice(0, -2);
+        if (rawPaths.includes(parent) || rawPaths.includes(parent + "/")) return false;
+        return !rawPaths.some(other => other !== pattern &&
+          !/[?*]/.test(other) && other.startsWith(parent + "/"));
+      }
+      return true;
     });
     const targetPaths = [...new Set(specificPaths.flatMap(path => {
       if (path === "*") return ["*"];
@@ -135,7 +146,7 @@ window.startAutoCheck = async function (
     const evidence = await client.resolveEvidence({
       repository: repoFullName,
       student: { id: studentId, githubUsername: ghProfile.login, githubUserId: ghProfile.id },
-      assessment: { id: taskId, targetPaths, postDate, deadline },
+      assessment: { id: taskId, targetPaths, postDate, deadline, caseSensitivePaths: taskData.caseSensitivePaths === true },
       resolver: resolveContributions,
       // Scan the pinned current default-branch HEAD, not one student's latest commit.
       // Other earlier merged student commits may not be ancestors of that student's SHA.
