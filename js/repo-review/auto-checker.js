@@ -162,13 +162,21 @@ window.startAutoCheck = async function (
       return normalized.startsWith("**/") || normalized.startsWith("app/")
         ? [normalized] : [normalized, "**/" + normalized];
     }))];
+    // Old blueprints often express required languages via *.java / *.xml globs.
+    // Infer expectations from those patterns if no explicit file-type list exists.
+    const explicitExtensions = Array.isArray(taskData.expectedExtensions)
+      ? taskData.expectedExtensions.map(e => String(e).toLowerCase().replace(/^\./, "")).filter(Boolean)
+      : [];
+    const inferredExtensions = rawPaths.map(path => path.match(/\.([a-z0-9]{1,12})$/i)?.[1]?.toLowerCase())
+      .filter(Boolean);
+    const expectedExts = [...new Set(explicitExtensions.length ? explicitExtensions : inferredExtensions)];
     const client = getSessionEvidenceClient(ghToken);
     const evidence = await client.resolveEvidence({
       repository: repoFullName,
       student: { id: studentId, githubUsername: ghProfile.login, githubUserId: ghProfile.id },
       assessment: {
         id: taskId, title: taskData.title || "", targetPaths,
-        expectedExtensions: taskData.expectedExtensions || [],
+        expectedExtensions: expectedExts,
         investigationFallback: taskData.investigationFallback !== false,
         postDate: enforceSubmissionStart ? postDate : null,
         deadline, caseSensitivePaths: taskData.caseSensitivePaths === true,
@@ -210,9 +218,6 @@ window.startAutoCheck = async function (
       ...evidence.warnings,
       ...evidence.reviewCommits.map(c => "Commit " + c.sha.slice(0, 12) + ": " + c.reason),
     ];
-    const expectedExts = Array.isArray(taskData.expectedExtensions)
-      ? taskData.expectedExtensions.map(e => String(e).toLowerCase().replace(/^\./, ""))
-      : [];
     if (fallbackUsed) {
       reviewReasons.unshift(
         "HIGH PRIORITY: Blueprint paths had no gradable attributed code. " +
