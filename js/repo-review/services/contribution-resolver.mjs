@@ -57,8 +57,12 @@ export function matchPath(path, patterns, { caseSensitive = true } = {}) {
     try { pattern = normalizeRepoPath(rawPattern); } catch { return false; }
     const file = caseSensitive ? filePath : filePath.toLowerCase();
     const target = caseSensitive ? pattern : pattern.toLowerCase();
-    if (target.endsWith('/')) return file.startsWith(target);
-    if (!/[?*]/.test(target)) return file === target;
+    // A path without glob characters can denote a directory.
+    // Match its descendants without accepting similarly named sibling paths.
+    if (!/[?*]/.test(target)) {
+      const folder = target.endsWith('/') ? target : target + '/';
+      return file === target || file.startsWith(folder);
+    }
     return globRegex(target).test(file);
   });
 }
