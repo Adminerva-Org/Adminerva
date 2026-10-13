@@ -135,6 +135,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <a href="repobank.html" class="${getStyle("repobank")}">RepoBank</a>
             <a href="temp-grading.html" class="${getStyle("activity-grader")}">Manual Grader</a>
             <a href="repofetch.html" class="${getStyle("repofetch")}">RepoFetch</a>
+            <a href="contribution-inspector.html" class="${getStyle("contributions")}">Contributions</a>
             <a href="assessment-studio.html" class="${getStyle("studio")}">Assessment Studio</a>
             <a href="gradebook.html" class="${getStyle("gradebook")}">Gradebook</a>
         `;
@@ -214,7 +215,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   navContainer.innerHTML = `
-    <nav class="bg-gray-900/95 backdrop-blur-md text-white shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative z-50 border-b border-cyan-900/50 sticky top-0">
+    <nav aria-label="Adminerva main navigation" class="bg-gray-900/95 backdrop-blur-md text-white shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative z-50 border-b border-cyan-900/50 sticky top-0">
         <div class="max-w-7xl mx-auto">
             <!-- Top Row: Always visible -->
             <div class="flex justify-between items-center h-16 px-4 sm:px-6 lg:px-8">
@@ -235,6 +236,21 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
         ${navTabsHTML}
     </nav>`;
+
+  // Announce active location to assistive technology and keep the selected
+  // page visible in the horizontally scrolling mobile navigation.
+  navContainer.querySelectorAll('a[class*="border-cyan-400"]').forEach(link => {
+    link.setAttribute("aria-current", "page");
+  });
+  if (window.matchMedia?.("(max-width: 1023px)").matches) {
+    const row = navContainer.querySelector('div[class*="overflow-x-auto"]');
+    const active = row?.querySelector('[aria-current="page"]');
+    if (row && active) {
+      requestAnimationFrame(() => {
+        row.scrollLeft = Math.max(0, active.offsetLeft - row.offsetLeft - row.clientWidth / 2 + active.clientWidth / 2);
+      });
+    }
+  }
 
   document.addEventListener("click", async (e) => {
     const signOutTarget = e.target.closest("#signOutBtn");
