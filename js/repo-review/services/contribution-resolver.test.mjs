@@ -275,3 +275,43 @@ test('substantive implementation from another student is never credited due to a
   assert.deepEqual(r.acceptedCommits.map(c=>c.sha),['local-comment']);
   assert.equal(r.relevantFiles.some(isGradableSource),false);
 });
+
+
+test('legacy start-window fallback includes older attributed history but explicit start excludes it',async()=>{
+ const old = commit('sep-practical',323893681,'Belo-mcs','2026-09-23T09:42:23Z');
+ const run = (postDate=null) => resolveContributions({
+  repository:project,student,
+  assessment:{id:'p3',title:'Q2 Peta 3',targetPaths:['**/QUARTER2/**'],
+    postDate,deadline:'2026-10-13T23:59:59Z'},
+  historyComplete:true,commits:[old],
+  loadCommit:async()=>({parents:[{sha:'first'}],files:[{
+    filename:'app/src/test/java/com/example/app/QUARTER2/KALEND_ARAL.java',
+    status:'modified',patch:'@@ -1 +1 @@\n-return false;\n+return true;'}]})
+ });
+ const historical = await run();
+ assert.equal(historical.acceptedCommits.length,1);
+ assert.equal(historical.relevantFiles.length,1);
+ const strict = await run('2026-10-01T00:00:00Z');
+ assert.equal(strict.acceptedCommits.length,0);
+ assert.ok(strict.skipped.some(x=>x.reason==='outside_configured_window'));
+});
+test('fetches commit details with bounded concurrency and preserves commit order',async()=>{
+ const list=Array.from({length:9},(_,i)=>commit('unique-'+i,323893681,'Belo-mcs'));
+ let inFlight=0,peak=0;
+ const loaded=[];
+ const resolved=await resolveContributions({
+  repository:project,student,assessment:{id:'bounded',targetPaths:['**/*.java']},
+  historyComplete:true,commits:list,
+  loadCommit:async sha=>{
+    inFlight++;peak=Math.max(peak,inFlight);
+    await new Promise(resolve=>setTimeout(resolve,1));
+    inFlight--;loaded.push(sha);
+    return {parents:[{sha:'parent'}],files:[{filename:'src/App.java',
+      status:'modified',patch:'@@ -1 +1 @@\n-return false;\n+return true;'}]};
+  }
+ });
+ assert.equal(resolved.acceptedCommits.length,9);
+ assert.deepEqual(resolved.acceptedCommits.map(x=>x.sha),list.map(x=>x.sha));
+ assert.ok(peak>1 && peak<=4);
+ assert.equal(loaded.length,9);
+});
