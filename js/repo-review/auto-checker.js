@@ -452,8 +452,49 @@ window.startAutoCheck = async function (
     return { success: true };
   } catch (error) {
     console.error("[Auto-Check] Failed:", error);
-    if (actionArea)
-      actionArea.innerHTML = `<div class="w-full sm:max-w-[340px] text-left sm:text-right flex flex-col items-start sm:items-end gap-1"><span class="text-xs font-bold text-red-600">Check requires review</span><p class="text-xs text-slate-600 break-words whitespace-normal leading-relaxed" title="${escapeHTML(error.message)}">${escapeHTML(error.message)}</p><button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${taskId}', '${currentSha}')" class="mt-0.5 text-[10px] font-bold text-blue-500 hover:underline">Retry Check</button></div>`;
+    if (actionArea) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "w-full sm:w-[290px] max-w-full flex flex-col items-start gap-2 text-left";
+      const heading = document.createElement("strong");
+      heading.className = "text-xs text-amber-800";
+      heading.textContent = "Needs file review — no score saved";
+      wrapper.append(heading);
+      const description = document.createElement("p");
+      description.className = "text-xs text-slate-600 leading-relaxed";
+      const message = String(error?.message || "Unknown grading error");
+      description.textContent = /No confident|No matching student patches|no attributable/i.test(message)
+        ? "The selected student's work could not be confidently connected to this assessment."
+        : message.length > 145 ? message.slice(0, 142) + "…" : message;
+      wrapper.append(description);
+      const diagnostics = document.createElement("details");
+      diagnostics.className = "w-full";
+      const summary = document.createElement("summary");
+      summary.className = "text-xs font-bold text-slate-600 cursor-pointer";
+      summary.textContent = "View full diagnostic details";
+      diagnostics.append(summary);
+      const full = document.createElement("p");
+      full.className = "text-xs mt-2 p-2 bg-slate-50 rounded-lg border border-slate-200 break-all max-h-40 overflow-y-auto whitespace-pre-wrap";
+      full.textContent = message;
+      diagnostics.append(full);
+      wrapper.append(diagnostics);
+      const actions = document.createElement("div");
+      actions.className = "flex flex-wrap gap-3 items-center mt-1";
+      const inspect = document.createElement("a");
+      inspect.href = "contribution-inspector.html";
+      inspect.className = "text-xs text-blue-700 underline font-bold";
+      inspect.textContent = "Open Contribution Inspector";
+      actions.append(inspect);
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "text-xs text-blue-700 underline font-bold";
+      retry.textContent = "Retry";
+      retry.addEventListener("click", () =>
+        window.startAutoCheck(studentId, owner, repo, taskId, currentSha)
+      );
+      actions.append(retry);
+      wrapper.append(actions);
+      actionArea.replaceChildren(wrapper);
+    }
     return { success: false, reason: error.message };
   }
 };
