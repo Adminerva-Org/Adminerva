@@ -17,7 +17,10 @@
   --av-shadow: 0 9px 26px rgba(23, 39, 68, .065);
 }
 html { scroll-behavior: smooth; }
-body { background-color: var(--av-bg); color: var(--av-ink); -webkit-font-smoothing: antialiased; }
+body { color: var(--av-ink); -webkit-font-smoothing: antialiased; }
+body.bg-gray-100, body.bg-slate-50, body.bg-slate-100, body:not([class]) {
+  background-color: var(--av-bg);
+}
 button, a, input, textarea, select, summary { -webkit-tap-highlight-color: transparent; }
 button, a { touch-action: manipulation; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
@@ -34,14 +37,14 @@ body :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea):
   border-color: #6086de;
   box-shadow: 0 0 0 3px var(--av-focus);
 }
-body :where(.bg-white.rounded-lg, .bg-white.rounded-xl, .bg-white.rounded-2xl) {
+body .bg-white.rounded-lg, body .bg-white.rounded-xl, body .bg-white.rounded-2xl {
   border-color: var(--av-border);
   box-shadow: var(--av-shadow);
 }
 body :where(.bg-gray-50, .bg-slate-50) { --av-panel-bg: var(--av-surface-muted); }
-body :where(.text-gray-500, .text-slate-500) { color: var(--av-muted); }
-body :where(.bg-blue-600, .bg-purple-600, .bg-indigo-600) { background-color: var(--av-primary); }
-body :where(.hover\:bg-blue-700:hover, .hover\:bg-purple-700:hover, .hover\:bg-indigo-700:hover) {
+body .text-gray-500, body .text-slate-500 { color: var(--av-muted); }
+body .bg-blue-600, body .bg-purple-600, body .bg-indigo-600 { background-color: var(--av-primary); }
+body .hover\:bg-blue-700:hover, body .hover\:bg-purple-700:hover, body .hover\:bg-indigo-700:hover {
   background-color: var(--av-primary-hover);
 }
 body :where(button, a)[class*="rounded"] { transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease; }
