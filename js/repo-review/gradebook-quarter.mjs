@@ -184,6 +184,33 @@ function renderEvidence(student, task, grade) {
     a.href = info.commits; a.target = "_blank"; a.rel = "noopener noreferrer";
   }
 }
+async function loadRevisions(entry) {
+  const historyBox = el("gbRevisionHistory");
+  historyBox.replaceChildren();
+  add(historyBox, "p", "text-slate-500", "Loading previous grades…");
+  try {
+    const result = await getDocs(query(collection(db, "grade_revisions"), where("gradeId", "==", entry.ref.id)));
+    if (state.active?.entry.ref.id !== entry.ref.id) return;
+    historyBox.replaceChildren();
+    const records = result.docs.map(d => d.data()).sort((a, b) =>
+      (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+    if (!records.length) {
+      add(historyBox, "p", "text-slate-500", "No previous grade revisions recorded.");
+      return;
+    }
+    for (const version of records.slice(0, 40)) {
+      const wrap = add(historyBox, "details", "border-b border-slate-200 py-2");
+      const date = version.createdAt?.toDate ? version.createdAt.toDate().toLocaleString() : "Earlier revision";
+      add(wrap, "summary", "cursor-pointer text-slate-700 font-semibold", date + " — " + (version.reason || "Grade changed"));
+      add(wrap, "p", "mt-2 text-slate-700", "Before: " + (version.before?.score ?? "n/a") +
+        " • After: " + (version.after?.score ?? "n/a"));
+      if (version.before?.feedback) add(wrap, "p", "mt-1 break-words whitespace-pre-wrap", "Previous feedback: " + version.before.feedback);
+    }
+  } catch (error) {
+    historyBox.replaceChildren();
+    add(historyBox, "p", "text-rose-700", "Revision history unavailable: " + error.message);
+  }
+}
 function openDetails(student, task, entry) {
   state.active = { student, task, entry };
   const grade = entry.data;
@@ -201,6 +228,7 @@ function openDetails(student, task, entry) {
   el("gbDetailUnpublish").classList.toggle("hidden", grade.published !== true);
   renderEvidence(student, task, grade);
   el("gbDetailModal").classList.remove("hidden");
+  void loadRevisions(entry);
 }
 function closeDetails() {
   el("gbDetailModal").classList.add("hidden");
