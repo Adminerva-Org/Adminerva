@@ -43,6 +43,10 @@ function getSessionEvidenceClient(token) {
   return sessionEvidenceClient;
 }
 
+// Short-lived diagnostics are available to the manual-review dialog without
+// writing a failed attempt to the student's grade record.
+window.AdminervaGradingDiagnostics ||= new Map();
+
 window.startAutoCheck = async function (
   studentId,
   owner,
@@ -449,9 +453,13 @@ window.startAutoCheck = async function (
         currentSha,
         fallbackUsed,
       );
+    window.AdminervaGradingDiagnostics.delete(studentId + ":" + taskId);
     return { success: true };
   } catch (error) {
     console.error("[Auto-Check] Failed:", error);
+    window.AdminervaGradingDiagnostics.set(
+      studentId + ":" + taskId, String(error?.message || "Unknown grading error").slice(0, 2500)
+    );
     if (actionArea) {
       const wrapper = document.createElement("div");
       wrapper.className = "w-full sm:w-[290px] max-w-full flex flex-col items-start gap-2 text-left";
