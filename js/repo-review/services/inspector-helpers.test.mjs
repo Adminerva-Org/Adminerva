@@ -10,7 +10,10 @@ test('rejects assessments not assigned to selected section',()=>assert.throws(()
 test('legacy targetPath remains supported',()=>assert.deepEqual(normalizeAssessment({targetPath:'src/**',deployments:[deployment]},'11-A','A').targetPaths,['src/**']));
 test('missing paths default to entire repository',()=>assert.deepEqual(normalizeAssessment({deployments:[deployment]},'11-A','A').targetPaths,['*']));
 const student={id:'1',repoUrl:'https://github.com/pransin-ca/Group-08.git',githubUsername:'pransin-ca'};
-test('requires teacher confirmation',()=>assert.throws(()=>validateInspectorInput({student,assessment:{id:'a'},confirmedLogin:'other',acknowledgedNoCutoff:true}),/exact GitHub login/));
-test('requires cutoff disclaimer',()=>assert.throws(()=>validateInspectorInput({student,assessment:{id:'a'},confirmedLogin:'pransin-ca',acknowledgedNoCutoff:false}),/not a verified/));
-test('accepts exact login with confirmation',()=>assert.equal(validateInspectorInput({student,assessment:{id:'a'},confirmedLogin:'Pransin-CA',acknowledgedNoCutoff:true}),true));
+test('uses saved student GitHub username without manual typing', () =>
+ assert.equal(validateInspectorInput({student,assessment:{id:'a'},acknowledgedNoCutoff:true}), true));
+test('requires cutoff disclaimer',()=>
+ assert.throws(()=>validateInspectorInput({student,assessment:{id:'a'},acknowledgedNoCutoff:false}),/not a verified/));
+test('requires a linked account',()=>
+ assert.throws(()=>validateInspectorInput({student:{...student,githubUsername:''},assessment:{id:'a'},acknowledgedNoCutoff:true}),/linked repository/));
 test('summarizes evidence without grading',()=>{const x=summarizeEvidence({status:'requires_review',acceptedCommits:[{matchedPaths:['x']},{matchedPaths:[]}],relevantFiles:[{missingPatch:true}],reviewCommits:[{}],warnings:[]});assert.equal(x.relevantCommits,1);assert.equal(x.missingPatches,1);assert.match(x.warnings[0],/Preview only/)});
