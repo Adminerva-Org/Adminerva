@@ -361,7 +361,7 @@ window.startAutoCheck = async function (
   } catch (error) {
     console.error("[Auto-Check] Failed:", error);
     if (actionArea)
-      actionArea.innerHTML = `<div class="text-right flex flex-col items-end"><span class="text-xs font-bold text-red-500">Check Failed</span><p class="text-[9px] text-gray-500 max-w-[200px] truncate" title="${escapeHTML(error.message)}">${escapeHTML(error.message)}</p><button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${taskId}', '${currentSha}')" class="mt-0.5 text-[10px] font-bold text-blue-500 hover:underline">Retry Check</button></div>`;
+      actionArea.innerHTML = `<div class="w-full sm:max-w-[340px] text-left sm:text-right flex flex-col items-start sm:items-end gap-1"><span class="text-xs font-bold text-red-600">Check requires review</span><p class="text-xs text-slate-600 break-words whitespace-normal leading-relaxed" title="${escapeHTML(error.message)}">${escapeHTML(error.message)}</p><button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${taskId}', '${currentSha}')" class="mt-0.5 text-[10px] font-bold text-blue-500 hover:underline">Retry Check</button></div>`;
     return { success: false, reason: error.message };
   }
 };
