@@ -29,6 +29,20 @@ function sanitizePath(p) {
   return p.replace(/[_\-\s]/g, "").toLowerCase();
 }
 
+// Share SHA-pinned GitHub evidence across checks in the same browser session.
+// Credentials and cached results are not persisted; a token change resets the client.
+let sessionEvidenceClient = null;
+let sessionEvidenceToken = null;
+function getSessionEvidenceClient(token) {
+  if (!sessionEvidenceClient || sessionEvidenceToken !== token) {
+    sessionEvidenceClient = createGithubEvidenceClient({
+      token, maxPages: 20, maxCommitFilesPages: 30,
+    });
+    sessionEvidenceToken = token;
+  }
+  return sessionEvidenceClient;
+}
+
 window.startAutoCheck = async function (
   studentId,
   owner,
@@ -148,7 +162,7 @@ window.startAutoCheck = async function (
       return normalized.startsWith("**/") || normalized.startsWith("app/")
         ? [normalized] : [normalized, "**/" + normalized];
     }))];
-    const client = createGithubEvidenceClient({ token: ghToken, maxPages: 20, maxCommitFilesPages: 30 });
+    const client = getSessionEvidenceClient(ghToken);
     const evidence = await client.resolveEvidence({
       repository: repoFullName,
       student: { id: studentId, githubUsername: ghProfile.login, githubUserId: ghProfile.id },
