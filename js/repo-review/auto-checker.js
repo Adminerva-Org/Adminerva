@@ -3,6 +3,7 @@ import { resolveContributions } from "./services/contribution-resolver.mjs";
 import { createGithubEvidenceClient, parseGithubRepository } from "./services/github-evidence-client.mjs";
 import {
   doc,
+  collection,
   getDoc,
   runTransaction,
   serverTimestamp,
@@ -318,6 +319,25 @@ window.startAutoCheck = async function (
       const previous = await transaction.get(gradeRef);
       if (previous.exists() && previous.data().published === true) {
         throw new Error("A published grade exists. Unpublish and review it before replacing the score.");
+      }
+      if (previous.exists() && previous.data().manuallyAdjusted === true) {
+        throw new Error("This draft contains teacher adjustments. Auto-regrading is blocked to preserve them.");
+      }
+      if (previous.exists()) {
+        const old = previous.data();
+        const revisionRef = doc(collection(db, "grade_revisions"));
+        transaction.set(revisionRef, {
+          studentId, taskId, gradeId: gradeDocId,
+          reason: "Automated regrade replaced an unpublished draft",
+          editorUid: null,
+          before: {
+            score: old.score, maxScore: old.maxScore, feedback: old.feedback || "",
+            published: !!old.published, reviewRequired: !!old.reviewRequired,
+            gradedSha: old.gradedSha || null, gradedAt: old.gradedAt || null
+          },
+          after: { score: finalScore, maxScore, published: false, reviewed: false },
+          createdAt: serverTimestamp()
+        });
       }
       transaction.set(gradeRef, {
         studentId, taskId, score: finalScore, maxScore,
