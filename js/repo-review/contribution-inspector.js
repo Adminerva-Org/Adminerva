@@ -26,7 +26,13 @@ function updateRepo(){const s=selectedStudent();text(el('repoDisplay'),s?`GitHub
 function safeGithubLink(sha,repository){const a=document.createElement('a');const [owner,repo]=repository.split('/');a.href=`https://github.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commit/${encodeURIComponent(sha)}`;a.rel='noopener noreferrer';a.target='_blank';text(a,sha.slice(0,12));return a}
 function render(evidence){
  el('results').hidden=false;const summary=summarizeEvidence(evidence);
- text(el('summary'),`Status: ${summary.status} | Attributed commits: ${summary.attributedCommits} | Assessment-relevant commits: ${summary.relevantCommits} | Relevant files: ${summary.relevantFiles} | Needs-review commits: ${summary.reviewCommits} | Missing text patches: ${summary.missingPatches}`);
+ const windowExcluded = evidence.skipped.filter(c=>c.reason==='outside_configured_window').length;
+ const otherAuthor = evidence.skipped.filter(c=>c.reason==='different_github_user_id'||c.reason==='unmatched_identity').length;
+ const mergeExcluded = evidence.reviewCommits.filter(c=>c.reason==='merge_commit_requires_parent_aware_review').length;
+ text(el('summary'),
+   `Status: ${summary.status} | GitHub commits scanned: ${evidence.historyCommitsScanned ?? 'unknown'} (${evidence.historyPagesFetched ?? '?'} page(s), ${evidence.historyComplete ? 'complete' : 'unverified'}) | ` +
+   `Attributed non-merge commits: ${summary.attributedCommits} | Assessment-relevant commits: ${summary.relevantCommits} | Relevant files: ${summary.relevantFiles} | ` +
+   `Merge commits needing review: ${mergeExcluded} | Excluded by time: ${windowExcluded} | Other GitHub authors: ${otherAuthor} | Missing patches: ${summary.missingPatches}`);
  el('warnings').replaceChildren();for(const w of summary.warnings)child(el('warnings'),'li',w);
  el('files').replaceChildren();for(const file of evidence.relevantFiles){
   const wrap=child(el('files'),'div');wrap.className='file';child(wrap,'strong',file.path);child(wrap,'p',`Type: ${file.kind} · Status: ${file.statuses.join(', ')} · Commits: ${file.commitShas.length}${file.missingPatch?' · Text patch missing':''}`);
@@ -75,6 +81,16 @@ async function inspect(){
   const result=await github.resolveEvidence({repository:student.repoUrl,student:{id:student.id,githubUsername:profile.login,githubUserId:profile.id},assessment,resolver:resolveContributions});
   // A profile login identifies GitHub commits; it does not prove profile ownership.
   result.warnings.push('Saved GitHub login has not been independently verified as belonging to this student.');
+  if (assessment.historicalStartIgnored) {
+    result.warnings.push('Historical grading: the blueprint posting date was ignored because strict submission-start enforcement is disabled. Older commits were included.');
+  }
+  const windowExcluded = result.skipped.filter(c => c.reason === 'outside_configured_window').length;
+  if (windowExcluded) {
+    result.warnings.push(windowExcluded + ' commit(s) were excluded by an explicitly configured submission window. Change the deployment or deadline policy if you intend to inspect those dates.');
+  }
+  if (result.historyComplete === false) {
+    result.warnings.push('Repository history is incomplete. Do not use missing commits as evidence of non-submission.');
+  }
   render(result);status('Inspection finished. No grades or student records were modified.');
  }catch(err){status(err?.message||'Inspection failed',true)}finally{state.busy=false;updateRepo()}
 }
