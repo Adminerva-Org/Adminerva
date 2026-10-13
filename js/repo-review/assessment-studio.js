@@ -174,6 +174,8 @@ window.openCreateModal = function () {
   document.getElementById("maxScore").value = "20";
   document.getElementById("assessType").value = "Mini PETA";
   document.getElementById("assessQuarter").value = "";
+  document.getElementById("assessExpectedExts").value = "";
+  document.getElementById("assessInvestigationFallback").checked = true;
   document.getElementById("systemPersona").value =
     "You are a strict Java high school programming teacher grading a student's code.";
   document.getElementById("taskContext").value = "";
@@ -197,6 +199,10 @@ window.openEditModal = function () {
   document.getElementById("maxScore").value = item.maxScore || 20;
   document.getElementById("assessType").value = item.type || "Mini PETA";
   document.getElementById("assessQuarter").value = item.quarter || "";
+  document.getElementById("assessExpectedExts").value =
+    Array.isArray(item.expectedExtensions) ? item.expectedExtensions.join(", ") : "";
+  document.getElementById("assessInvestigationFallback").checked =
+    item.investigationFallback !== false;
   document.getElementById("systemPersona").value = item.systemPersona || "";
   document.getElementById("taskContext").value = item.taskContext || "";
   document.getElementById("evalCriteria").value = item.evalCriteria || "";
@@ -224,7 +230,10 @@ window.saveAssessment = async function () {
     type: document.getElementById("assessType").value,
     maxScore: parseInt(document.getElementById("maxScore").value) || 20,
     quarter: document.getElementById("assessQuarter").value,
-    targetPaths: targetPaths, // Save the array to Firebase
+    targetPaths: targetPaths, // Legacy path arrays are preserved.
+    expectedExtensions: [...new Set(document.getElementById("assessExpectedExts").value
+      .split(",").map(e => e.trim().toLowerCase().replace(/^\./, "")).filter(e => /^[a-z0-9]{1,12}$/.test(e)))],
+    investigationFallback: document.getElementById("assessInvestigationFallback").checked,
     gradingMode: currentAssessmentId
       ? (assessments.find(a => a.id === currentAssessmentId)?.gradingMode || "individual")
       : "individual",
