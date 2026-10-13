@@ -1,8 +1,10 @@
 import { db } from "../core/firebase-core.js";
+import { resolveContributions } from "./services/contribution-resolver.mjs";
+import { createGithubEvidenceClient, parseGithubRepository } from "./services/github-evidence-client.mjs";
 import {
   doc,
   getDoc,
-  setDoc,
+  runTransaction,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
@@ -74,201 +76,92 @@ window.startAutoCheck = async function (
       (taskData.targetPath ? [taskData.targetPath] : []);
     if (pathsToScan.length === 0) pathsToScan = ["*"];
 
-    updateStatus("Tracking Repository Data...");
-
-    // PHASE 1: Concurrent Data Fetching
-    const [repoRes, treeRes, commitsRes] = await Promise.all([
-      fetch(`https://api.github.com/repos/${owner}/${repo}`, {
-        headers: { Authorization: `Bearer ${ghToken}` },
-      }),
-      fetch(
-        `https://api.github.com/repos/${owner}/${repo}/git/trees/${currentSha}?recursive=1`,
-        { headers: { Authorization: `Bearer ${ghToken}` } },
-      ),
-      fetch(
-        `https://api.github.com/repos/${owner}/${repo}/commits?per_page=100`,
-        { headers: { Authorization: `Bearer ${ghToken}` } },
-      ),
-    ]);
-
-    if (!repoRes.ok) throw new Error("Repo inaccessible. Might be private.");
-    const repoData = await repoRes.json();
-    if (!repoData.default_branch) throw new Error("Repository is empty.");
-
-    if (!treeRes.ok || !commitsRes.ok) throw new Error("GitHub tree or commit history could not be retrieved.");
-    const treeData = await treeRes.json();
-    const commitsData = await commitsRes.json();
-    if (treeData.truncated) throw new Error("GitHub returned an incomplete file tree.");
-    if (!Array.isArray(commitsData)) throw new Error("Invalid GitHub commit history.");
-    if (commitsData.length === 100) throw new Error("Commit history requires pagination. Use Contribution Inspector for review; automatic grading is paused.");
-
-    const ignoredExts =
-      /\.(class|jar|exe|png|jpg|jpeg|gif|ico|svg|mp3|mp4|zip|rar|tar|gz|pdf|docx|xlsx|pptx)$/i;
-    const allBlobs = (treeData.tree || []).filter(
-      (f) => f.type === "blob" && !ignoredExts.test(f.path),
+    // Resolve individual contribution evidence before asking AI for a score.
+    // This evaluates the student's GitHub-linked commits, not the shared file at HEAD.
+    updateStatus("Retrieving complete GitHub history...");
+    const ghName = String(studentData.githubUsername || "").trim().replace(/^@/, "");
+    if (!ghName) throw new Error("The student has no linked GitHub username.");
+    const repoFullName = parseGithubRepository(owner + "/" + repo).fullName;
+    if (studentData.repoUrl && studentData.repoUrl !== "unassigned") {
+      const linkedRepo = parseGithubRepository(studentData.repoUrl).fullName;
+      if (linkedRepo.toLowerCase() !== repoFullName.toLowerCase()) {
+        throw new Error("The selected repository differs from the student's linked repository.");
+      }
+    }
+    const identityRes = await fetch(
+      "https://api.github.com/users/" + encodeURIComponent(ghName),
+      { headers: { Authorization: "Bearer " + ghToken, Accept: "application/vnd.github+json" } },
     );
+    if (!identityRes.ok) throw new Error("Unable to verify the linked GitHub account (HTTP " + identityRes.status + ").");
+    const ghProfile = await identityRes.json();
+    if (!Number.isSafeInteger(ghProfile.id) || ghProfile.login?.toLowerCase() !== ghName.toLowerCase()) {
+      throw new Error("The GitHub account identity could not be resolved.");
+    }
 
-    // Only GitHub-account-linked commits are eligible. Names/emails can be shared or spoofed.
-    const ghName = String(studentData.githubUsername || "").trim().replace(/^@/, "").toLowerCase();
-    if (!ghName) throw new Error("Student GitHub identity is not linked; manual verification required.");
-    const studentCommits = commitsData.filter(c =>
-      String(c.author?.login || "").toLowerCase() === ghName
+    const toISO = (value) => {
+      if (value == null || value === "") return null;
+      const date = typeof value.toDate === "function" ? value.toDate() :
+        (typeof value.seconds === "number" ? new Date(value.seconds * 1000) : new Date(value));
+      if (!Number.isFinite(date.getTime())) throw new Error("Invalid assessment submission date.");
+      return date.toISOString();
+    };
+    const deployment = (taskData.deployments || []).find(d => d.section === studentData.section);
+    const deadline = toISO(deployment?.deadline || taskData.deadline || taskData.dueDate);
+    const postDate = toISO(deployment?.postDate || taskData.postDate);
+    const rawPaths = Array.isArray(pathsToScan) ? pathsToScan : [pathsToScan];
+    const targetPaths = [...new Set(rawPaths.flatMap(raw => {
+      const path = String(raw || "").trim().replaceAll("\\\\", "/");
+      if (!path || path === "*" || path.startsWith("**/") || path.startsWith("app/")) return [path || "*"];
+      // Android assessment paths can be entered relative to the Java package root.
+      return [path, "**/" + path];
+    }))];
+    const client = createGithubEvidenceClient({ token: ghToken, maxPages: 20, maxCommitFilesPages: 30 });
+    const evidence = await client.resolveEvidence({
+      repository: repoFullName,
+      student: { id: studentId, githubUsername: ghProfile.login, githubUserId: ghProfile.id },
+      assessment: { id: taskId, targetPaths, postDate, deadline },
+      resolver: resolveContributions,
+      ref: /^[a-f0-9]{40}$/i.test(currentSha || "") ? currentSha : null,
+    });
+    if (evidence.historyWarning || evidence.historyPagesFetched >= 20 && evidence.status === "requires_review" &&
+        evidence.warnings.some(w => w.includes("pagination"))) {
+      throw new Error("Commit history could not be verified as complete. Grading paused for review.");
+    }
+    if (evidence.relevantFiles.some(f => f.missingPatch)) {
+      throw new Error("Matching source-code changes have missing patches. Grading paused for teacher review.");
+    }
+    // A merge commit is intentionally omitted by the resolver. It may require
+    // manual inspection before any AI suggestion is published.
+    const sourceFiles = evidence.relevantFiles.filter(f =>
+      f.kind !== "asset" && f.kind !== "other" && f.patches.length > 0
     );
-    if (studentCommits.length > 80) throw new Error("Student has more than 80 commits; grading paused to prevent incomplete assessment.");
-
-    let matchedFilesMap = new Map();
-    let autoPenalties = [];
-    let diagnosticWarnings = [];
-
-    // ✨ PHASE 2 & 3: Commit-Driven File Resolution & Diagnostics
-    updateStatus("Analyzing Commit Modifications...");
-
-    // Safe to use 80 now! The cache protects your API limit.
-    const commitDetailsPromises = studentCommits.slice(0, 80).map(async (c) => {
-      try {
-        const cacheRef = doc(db, "commit_cache", c.sha);
-        const cacheSnap = await getDoc(cacheRef);
-
-        // 1. Check Firebase Cache First
-        if (cacheSnap.exists()) {
-          return cacheSnap.data();
-        }
-
-        // 2. If not cached, fetch from GitHub
-        const res = await fetch(
-          `https://api.github.com/repos/${owner}/${repo}/commits/${c.sha}`,
-          { headers: { Authorization: `Bearer ${ghToken}` } },
-        );
-
-        if (res.ok) {
-          const rawData = await res.json();
-
-          // Strip down the data to save Firestore space (we only need the files array)
-          const minimalData = {
-            files: (rawData.files || []).map((f) => ({
-              filename: f.filename,
-              status: f.status,
-              patch: typeof f.patch === "string" ? f.patch : null,
-              previous_filename: f.previous_filename || null,
-            })),
-          };
-
-          // 3. Save to Firebase so we never have to fetch this SHA again
-          await setDoc(cacheRef, minimalData);
-          return minimalData;
-        }
-      } catch (e) {
-        console.warn(`Failed to process commit ${c.sha}`, e);
-      }
-      return null;
-    });
-
-    const details = await Promise.all(commitDetailsPromises);
-    if (details.some(d => !d || !Array.isArray(d.files))) {
-      throw new Error("GitHub commit details are incomplete. Retry or inspect manually.");
+    if (!sourceFiles.length) {
+      throw new Error("No attributable source-code patches match this assessment. Review the GitHub identity and target paths.");
     }
-    const commitDetails = details.filter(d => d.files.length > 0);
-    const validCodeExts = /\.(java|kt|kts|js|mjs|cjs|ts|tsx|jsx|py|cpp|c|h|cs|html|css|sql|xml|json|gradle)$/i;
-    const targetMatchers = pathsToScan.map(raw => {
-      const pattern = String(raw || "").replaceAll("\\", "/").replace(/^\.\//, "").replace(/^\/+/, "");
-      if (pattern === "*" || pattern === "**") return () => true;
-      if (!pattern || pattern.split("/").includes("..")) return () => false;
-      const esc = v => v.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
-      let regex = "^";
-      for (let i = 0; i < pattern.length;) {
-        if (pattern.slice(i, i + 3) === "**/") { regex += "(?:.*/)?"; i += 3; }
-        else if (pattern.slice(i, i + 2) === "**") { regex += ".*"; i += 2; }
-        else if (pattern[i] === "*") { regex += "[^/]*"; i++; }
-        else if (pattern[i] === "?") { regex += "[^/]"; i++; }
-        else { regex += esc(pattern[i]); i++; }
-      }
-      const matcher = new RegExp(regex + "$");
-      return path => matcher.test(path);
-    });
-    for (const detail of commitDetails) {
-      for (const file of detail.files) {
-        if (!file?.filename || !validCodeExts.test(file.filename) || file.status === "removed") continue;
-        if (![file.filename, file.previous_filename].filter(Boolean).some(p => targetMatchers.some(match => match(p)))) continue;
-        if (typeof file.patch !== "string" || !file.patch.trim()) {
-          throw new Error("A matching code patch is missing. Teacher review required.");
-        }
-        const item = matchedFilesMap.get(file.filename) || { path: file.filename, isPatchOnly: true, rawText: "" };
-        item.rawText += "\n" + file.patch;
-        matchedFilesMap.set(file.filename, item);
-      }
+    if (sourceFiles.length > 20) {
+      throw new Error("More than 20 relevant files need review. Automated scoring will not silently omit them.");
     }
-
-    if (diagnosticWarnings.length > 0) {
-      autoPenalties.push("Submission Format Error");
+    const reviewReasons = [
+      "GitHub account association has not been independently verified against the student record.",
+      ...evidence.warnings,
+      ...evidence.reviewCommits.map(c => "Commit " + c.sha.slice(0, 12) + ": " + c.reason),
+    ];
+    if (deadline) reviewReasons.push("Commit dates do not establish that code was pushed before the assessment deadline.");
+    const pathsFound = sourceFiles.map(f => f.path);
+    const displayPathText = pathsFound.length > 1
+      ? pathsFound[0].split("/").pop() + " (+" + (pathsFound.length - 1) + " files)"
+      : pathsFound[0].split("/").pop();
+    const fileRawText = sourceFiles.map(f => {
+      const patches = f.patches.slice().reverse().map(p =>
+        "Commit " + p.sha + "\n" + p.patch
+      ).join("\n\n");
+      return "--- ATTRIBUTED CHANGES: " + f.path + " ---\n" + patches;
+    }).join("\n\n");
+    if (fileRawText.length > 80000) {
+      throw new Error("Relevant changes exceed the AI context limit. Grading paused to avoid silently truncated evidence.");
     }
-
-    let filesToProcess = Array.from(matchedFilesMap.values());
-
-    // Sort files to put primary valid code extensions at the top to save context window space
-    filesToProcess.sort((a, b) => {
-      const aIsPrimary = validCodeExts.test(a.path);
-      const bIsPrimary = validCodeExts.test(b.path);
-      if (aIsPrimary && !bIsPrimary) return -1;
-      if (!aIsPrimary && bIsPrimary) return 1;
-      return 0;
-    });
-
-    filesToProcess = filesToProcess.slice(0, 20);
-
-    let forceFail = false;
-    let failMessage = "";
-    let pathsFound = [];
-    let fileRawText = "";
-    let displayPathText = pathsToScan.join(", ") || "Entire Repository";
-
-    // PHASE 4: Extract Code via Blob or Patch Fallback
-    if (filesToProcess.length === 0) {
-      throw new Error("No matching source changes verified for this student. Teacher review required.");
-    } else {
-      updateStatus(`Reading ${filesToProcess.length} File(s)...`);
-
-      const filePromises = filesToProcess.map(async (file) => {
-        if (file.isPatchOnly) {
-          return {
-            path: `${file.path} (Extracted from Commit Patch)`,
-            text: file.rawText,
-          };
-        }
-        try {
-          const fileRes = await fetch(
-            `https://api.github.com/repos/${owner}/${repo}/contents/${file.path}?ref=${currentSha}`,
-            {
-              headers: {
-                Authorization: `Bearer ${ghToken}`,
-                Accept: "application/vnd.github.v3.raw",
-              },
-            },
-          );
-          if (fileRes.ok)
-            return { path: file.path, text: await fileRes.text() };
-        } catch (e) {
-          return null;
-        }
-        return null;
-      });
-
-      const fetchedFiles = await Promise.all(filePromises);
-      fetchedFiles.forEach((fileObj) => {
-        if (fileObj && fileObj.text.trim()) {
-          fileRawText += `\n\n--- FILE: ${fileObj.path} ---\n${fileObj.text}`;
-          pathsFound.push(fileObj.path);
-        }
-      });
-
-      if (!fileRawText.trim()) {
-        throw new Error("Relevant source changes were unreadable. Teacher review required.");
-      } else {
-        if (pathsFound.length > 1)
-          displayPathText = `${pathsFound[0].split("/").pop()} (+${pathsFound.length - 1} files)`;
-        else if (pathsFound.length === 1)
-          displayPathText = pathsFound[0].split("/").pop();
-      }
-    }
+    const diagnosticWarnings = reviewReasons;
+    const autoPenalties = [];
 
     let finalScore = 0;
     let finalFeedback = failMessage;
@@ -322,7 +215,7 @@ window.startAutoCheck = async function (
             
             Student Code Collection:
             \`\`\`
-            ${fileRawText.substring(0, 80000)} 
+            ${fileRawText} 
             \`\`\`
       `;
 
@@ -352,7 +245,10 @@ window.startAutoCheck = async function (
         .trim();
       const parsed = JSON.parse(cleanJson);
 
-      let rawAiScore = parsed.score !== undefined ? parsed.score : floorScore;
+      const rawAiScore = Number(parsed.score);
+      if (!Number.isFinite(rawAiScore) || parsed.score == null || parsed.score === "") {
+        throw new Error("The AI returned an invalid score. Nothing was saved.");
+      }
       finalScore = Math.min(Math.max(rawAiScore, 0), maxScore);
 
       finalFeedback =
@@ -367,28 +263,40 @@ window.startAutoCheck = async function (
 
     updateStatus("Saving Grade...");
     const gradeDocId = `${studentId}_${taskId}`;
-    const existingGrade = await getDoc(doc(db, "student_grades", gradeDocId));
-    if (existingGrade.exists() && existingGrade.data().published === true) {
-      throw new Error("A published grade already exists. Unpublish it before regrading.");
-    }
+    const gradeRef = doc(db, "student_grades", gradeDocId);
     const durationMs = Math.round(performance.now() - checkStartTime);
 
-    await setDoc(
-      doc(db, "student_grades", gradeDocId),
-      {
-        studentId,
-        taskId,
-        score: finalScore,
-        maxScore: maxScore,
-        feedback: finalFeedback,
+    // A transaction prevents an AI run from overwriting a grade while a teacher publishes it.
+    // All AI results remain unpublished drafts requiring teacher verification.
+    await runTransaction(db, async transaction => {
+      const previous = await transaction.get(gradeRef);
+      if (previous.exists() && previous.data().published === true) {
+        throw new Error("A published grade exists. Unpublish and review it before replacing the score.");
+      }
+      transaction.set(gradeRef, {
+        studentId, taskId, score: finalScore, maxScore,
+        feedback: "[AI DRAFT - REVIEW CONTRIBUTIONS BEFORE PUBLISHING] " + finalFeedback,
         penaltyTags: finalTags,
         targetPath: displayPathText,
         gradingDurationMs: durationMs,
-        gradedSha: currentSha,
+        gradedSha: evidence.scannedRef,
         gradedAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
+        published: false,
+        gradingMode: "individual",
+        reviewRequired: true,
+        reviewReasons,
+        contributionEvidence: {
+          repository: repoFullName,
+          githubLogin: ghProfile.login,
+          githubUserId: ghProfile.id,
+          scannedSha: evidence.scannedRef,
+          matchedPaths: pathsFound,
+          acceptedCommitShas: evidence.acceptedCommits.map(c => c.sha),
+          reviewCommitShas: evidence.reviewCommits.map(c => c.sha),
+          deadlineVerified: false,
+        },
+      }, { merge: true });
+    });
 
     if (actionArea)
       renderGradeResult(
