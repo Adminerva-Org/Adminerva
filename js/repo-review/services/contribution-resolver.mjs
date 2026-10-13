@@ -96,7 +96,7 @@ export function scopeAssessmentFiles(files, { title = '', studentName = '' } = {
   }
   const exact = new RegExp('(?:^|[/_.-])(?:mini)?peta[_ -]*' + number + '(?:[/_.-]|$)', 'i');
   const any = /(?:^|[/_.-])(?:mini)?peta[_ -]*\d+(?:[/_.-]|$)/i;
-  const selected = files.filter(file => exact.test(file.path));
+  let selected = files.filter(file => exact.test(file.path));
   const wrong = files.some(file => any.test(file.path) && !exact.test(file.path));
   if (!selected.length && !wrong) {
     return { selected: files, excluded: [], warnings: [], scoped: false };
@@ -107,6 +107,27 @@ export function scopeAssessmentFiles(files, { title = '', studentName = '' } = {
     excluded.length + ' file(s) outside PETA ' + number +
     ' were excluded; confirm the task path.'
   ] : [];
+  const tokens = String(studentName || '').toLowerCase().split(/[^a-z]+/).filter(t => t.length >= 4);
+  function personalPrefix(item) {
+    const stem = item.path.split('/').pop().replace(/\.[^.]+$/, '');
+    const parts = stem.match(new RegExp('^(.*?)[_-]?(?:mini)?peta[_ -]*' + number + '$', 'i'));
+    return parts ? parts[1].replace(/[^a-z]/gi, '').toLowerCase() : null;
+  }
+  const own = selected.filter(file => {
+    const prefix = personalPrefix(file);
+    return prefix && tokens.some(t => prefix.includes(t));
+  });
+  if (own.length) {
+    const others = selected.filter(file => {
+      const prefix = personalPrefix(file);
+      return prefix && !tokens.some(t => prefix.includes(t));
+    });
+    if (others.length) {
+      selected = selected.filter(file => !others.includes(file));
+      excluded.push(...others);
+      warnings.push('Files individually named for other students were excluded from automatic grading; verify authorship.');
+    }
+  }
   return { selected, excluded, warnings, scoped: true };
 }
 function taskKeywords(patterns, assessment) {
