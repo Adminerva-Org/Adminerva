@@ -211,6 +211,8 @@ window.fetchAndSyncRepos = async function () {
         requiresUIRefresh = true;
         let updatedStats = {};
         group.members.forEach((m) => {
+          m.commitCount = 0;
+          m.latestSha = null;
           updatedStats[m.id] = {
             count: 0,
             latestSha: null,
