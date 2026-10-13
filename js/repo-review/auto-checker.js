@@ -1,5 +1,5 @@
 import { db } from "../core/firebase-core.js";
-import { resolveContributions } from "./services/contribution-resolver.mjs";
+import { resolveContributions, isGradableSource } from "./services/contribution-resolver.mjs";
 import { createGithubEvidenceClient, parseGithubRepository } from "./services/github-evidence-client.mjs";
 import {
   doc,
@@ -195,9 +195,7 @@ window.startAutoCheck = async function (
     }
     // A merge commit is intentionally omitted by the resolver. It may require
     // manual inspection before any AI suggestion is published.
-    const strictFiles = evidence.relevantFiles.filter(f =>
-      f.kind !== "asset" && f.kind !== "other" && f.patches.length > 0
-    );
+    const strictFiles = evidence.relevantFiles.filter(isGradableSource);
     const fallbackUsed = strictFiles.length === 0 &&
       evidence.fallback?.status === "candidate_found" &&
       evidence.fallback.selected.length > 0;
