@@ -132,6 +132,7 @@ async function fetchAssessments() {
       const data = docSnap.data();
       let isAssignedToStudent = false;
       let activeDeadline = null;
+      let noDeadline = false;
       let activePostDate = data.createdAt
         ? data.createdAt.toDate()
         : new Date();
@@ -142,7 +143,8 @@ async function fetchAssessments() {
         );
         if (deployment) {
           isAssignedToStudent = true;
-          if (deployment.deadline)
+          noDeadline = deployment.deadlineEnabled === false;
+          if (deployment.deadline && !noDeadline)
             activeDeadline = deployment.deadline.toDate
               ? deployment.deadline.toDate()
               : new Date(deployment.deadline);
@@ -164,12 +166,13 @@ async function fetchAssessments() {
       if (isAssignedToStudent) {
         const isUrgent = activeDeadline
           ? new Date(activeDeadline) < new Date()
-          : new Date() - activePostDate > 7 * 24 * 60 * 60 * 1000;
+          : false;
         allAssessments.push({
           id: docSnap.id,
           isUrgent: isUrgent,
           postedDate: activePostDate,
           dueDate: activeDeadline,
+          noDeadline,
           ...data,
         });
       }
@@ -236,7 +239,9 @@ function renderAssessments() {
         : `<span class="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full flex items-center gap-1">⏳ Pending Review</span>`;
     }
 
-    const deadlineString = ass.dueDate
+    const deadlineString = ass.noDeadline
+      ? '<span class="text-[10px] text-slate-500 font-medium ml-auto">No deadline</span>'
+      : ass.dueDate
       ? `<span class="text-[10px] text-slate-400 font-medium ml-auto">Due: ${ass.dueDate.toLocaleDateString()}</span>`
       : `<span class="text-[10px] text-slate-400 font-medium ml-auto">Posted: ${ass.postedDate.toLocaleDateString()}</span>`;
 
