@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { matchPath, classifyFile, attributeCommit, resolveContributions, scopeAssessmentFiles } from './contribution-resolver.mjs';
+import { matchPath, classifyFile, attributeCommit, resolveContributions, scopeAssessmentFiles, isGradableSource } from './contribution-resolver.mjs';
 
 const gradeRepoFile = 'app/src/test/java/com/example/gradingmadeeasy/quarter2/minipeta3/MainSystemTest.java';
 const campusExam = 'app/src/test/java/com/example/campusvoice/quarter2/PracticalExam/FastFoodMenu.java';
@@ -242,4 +242,36 @@ test('Q2 Peta 3 title helps find MiniPeta3 even when blueprint expects practical
   assert.equal(result.fallback.status,'candidate_found');
   assert.equal(result.fallback.selected.length,1);
   assert.equal(result.status,'requires_review');
+});
+
+
+test('comment-only edits to an existing Java file do not qualify as implementation evidence', async () => {
+  const r = await resolveContributions({
+    repository: project, student,
+    assessment: {id:'comment-only',title:'Practical Exam',targetPaths:['**/*.java'],investigationFallback:true},
+    commits:[commit('only-comment',323893681,'Belo-mcs')], historyComplete:true,
+    loadCommit:async()=>({parents:[{sha:'base'}],files:[
+      {filename:'src/PracticalExam.java',status:'modified',
+       patch:'@@ -1 +1 @@\n-// previous note\n+// a new note'}
+    ]})
+  });
+  assert.equal(r.relevantFiles.length,1);
+  assert.equal(r.lowSubstanceFiles.length,1);
+  assert.equal(r.relevantFiles.some(isGradableSource),false);
+  assert.match(r.warnings.join(' '),/whitespace\/comment-only/i);
+  assert.equal(r.status,'requires_review');
+});
+test('substantive implementation from another student is never credited due to a local comment change', async () => {
+  const r = await resolveContributions({
+    repository: project, student,
+    assessment: {id:'comment-only',title:'Practical Exam',targetPaths:['**/*.java']},
+    commits:[commit('member-implementation',910000,'Teammate'),commit('local-comment',323893681,'Belo-mcs')],
+    historyComplete:true,
+    loadCommit:async sha=>({parents:[{sha:'base'}],files:[
+      {filename:'src/PracticalExam.java',status:'modified',
+       patch:sha==='local-comment'?'@@ -1 +1 @@\n-// old\n+// new':'@@ -1 +1 @@\n-return false;\n+return true;'}
+    ]})
+  });
+  assert.deepEqual(r.acceptedCommits.map(c=>c.sha),['local-comment']);
+  assert.equal(r.relevantFiles.some(isGradableSource),false);
 });
