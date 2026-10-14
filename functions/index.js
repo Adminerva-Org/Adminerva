@@ -61,7 +61,7 @@ exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}
   await notifyMany(await teacherIds(),"submission_"+event.params.submissionId,{
     type:"submission",title:"Student submitted work",
     body:(item.studentName||"Student")+" · "+(item.assessmentTitle||"Assessment"),
-    sourceId:event.params.submissionId,target:"repofetch.html"
+    sourceId:event.params.submissionId,target:"submissions.html"
   });
 });
 exports.gradePublished=onDocumentUpdated("student_grades/{gradeId}",async event=>{
