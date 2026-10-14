@@ -132,8 +132,8 @@ service cloud.firestore {
           get(/databases/$(database)/documents/issues/$(issueId)).data.locked == false;
         allow update: if false;
         allow delete: if signedIn() &&
-          (resource.data.authorUid == request.auth.uid ||
-           (resource.data.authorEmail is string &&
+          (resource.data.get("authorUid", null) == request.auth.uid ||
+           (resource.data.get("authorEmail", "") is string &&
             resource.data.authorEmail != "" &&
             resource.data.authorEmail.lower() == request.auth.token.email.lower()));
       }
