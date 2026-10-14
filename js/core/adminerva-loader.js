@@ -326,8 +326,8 @@ window.initiateBugReport = async function () {
           return `
             <div class="bg-slate-800 p-3 rounded-lg border border-slate-600 shadow-sm">
                 <div class="flex items-center gap-2 mb-1.5">
-                    <span class="border ${statStyle} text-[10px] px-1.5 py-0.5 rounded font-bold uppercase">${iss.status}</span>
-                    <span class="text-slate-400 text-[10px] font-bold uppercase">${iss.category}</span>
+                    <span class="border ${statStyle} text-[10px] px-1.5 py-0.5 rounded font-bold uppercase">${encodeText(iss.status)}</span>
+                    <span class="text-slate-400 text-[10px] font-bold uppercase">${encodeText(iss.category)}</span>
                 </div>
                 <h4 class="font-bold text-sm text-cyan-300 line-clamp-1">${encodeText(iss.title)}</h4>
                 <p class="text-xs text-slate-400 mt-1 line-clamp-2">${encodeText(iss.description)}</p>
