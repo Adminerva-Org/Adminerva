@@ -314,6 +314,9 @@ window.initiateBugReport = async function () {
       similarIssues.sort((a, b) => b.matchCount - a.matchCount);
       const topMatches = similarIssues.slice(0, 3); // Grab top 3
 
+      const encodeText = v=>String(v||"").replace(/[&<>"']/g,c=>({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      })[c]);
       const listHTML = topMatches
         .map((iss) => {
           const statStyle =
@@ -326,8 +329,8 @@ window.initiateBugReport = async function () {
                     <span class="border ${statStyle} text-[10px] px-1.5 py-0.5 rounded font-bold uppercase">${iss.status}</span>
                     <span class="text-slate-400 text-[10px] font-bold uppercase">${iss.category}</span>
                 </div>
-                <h4 class="font-bold text-sm text-cyan-300 line-clamp-1">${iss.title}</h4>
-                <p class="text-xs text-slate-400 mt-1 line-clamp-2">${iss.description}</p>
+                <h4 class="font-bold text-sm text-cyan-300 line-clamp-1">${encodeText(iss.title)}</h4>
+                <p class="text-xs text-slate-400 mt-1 line-clamp-2">${encodeText(iss.description)}</p>
             </div>`;
         })
         .join("");
