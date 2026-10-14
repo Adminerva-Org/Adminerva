@@ -85,6 +85,7 @@ function fetchIssues() {
   );
 }
 
+window.renderIssuesFilter = () => renderIssues();
 function renderIssues() {
   const container = document.getElementById("issuesFeed");
   const catFilter = document.getElementById("filterCategory").value;
