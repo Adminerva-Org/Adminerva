@@ -3,7 +3,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/f
 import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const staffEmails = new Set(["babaynike2013@gmail.com", "josephsixson@mcstayuman.edu.ph"]);
-const state = { user:null, notifications:[], issues:[], submissions:[], unsubscribe:[], read:new Set(), filter:"all", open:false };
+const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], unsubscribe:[], read:new Set(), filter:"all", open:false };
 const el = id => document.getElementById(id);
 const make = (tag, className, text) => {
   const node=document.createElement(tag);
@@ -29,6 +29,12 @@ function collectionItems(){
     rows.push({key:"issue:"+issue.id,type:"issue",title:"Report: "+(issue.title||"Untitled"),
       body:(issue.status||"Open")+" · "+(issue.category||"Bug"),
       at:timeOf(issue.createdAt),target:"issues.html?issue="+encodeURIComponent(issue.id),saved:false});
+  }
+  for(const alert of state.gradingAlerts){
+    if(stored.has(alert.id))continue;
+    rows.push({key:"grading:"+alert.id,type:"grading",title:"A grading check needs attention",
+      body:(alert.repository||"Repository")+" · "+(alert.message||"Check failed"),
+      at:timeOf(alert.createdAt),target:"repofetch.html",saved:false});
   }
   for(const sub of state.submissions){
     if(stored.has(sub.id))continue;
@@ -75,7 +81,7 @@ async function markAllRead(){
 }
 function listen(user){
   state.unsubscribe.forEach(stop=>stop());state.unsubscribe=[];
-  state.user=user;state.notifications=[];state.issues=[];state.submissions=[];
+  state.user=user;state.notifications=[];state.issues=[];state.submissions=[];state.gradingAlerts=[];
   state.read=restoreRead();render();
   if(!user)return;
   const error=name=>err=>console.warn(name+" listener unavailable:",err.message);
@@ -88,6 +94,10 @@ function listen(user){
   state.unsubscribe.push(onSnapshot(iq,snap=>{
     state.issues=snap.docs.map(d=>({id:d.id,...d.data()}));render();
   },error("Issue reports")));
+  if(staff)state.unsubscribe.push(onSnapshot(
+    query(collection(db,"grading_alerts"),orderBy("createdAt","desc"),limit(30)),
+    snap=>{state.gradingAlerts=snap.docs.map(d=>({id:d.id,...d.data()}));render()},
+    error("Grading alerts")));
   if(staff)state.unsubscribe.push(onSnapshot(
     query(collection(db,"student_submissions"),orderBy("submittedAt","desc"),limit(40)),
     snap=>{state.submissions=snap.docs.map(d=>({id:d.id,...d.data()}));render()},
