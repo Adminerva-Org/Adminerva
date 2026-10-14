@@ -1,0 +1,28 @@
+name: Adminerva quality checks
+on:
+  push:
+    branches: [main, feature/grading-overhaul]
+  pull_request:
+    branches: [main]
+jobs:
+  javascript-regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Test grading evidence and feedback regressions
+        run: |
+          node --test js/core/feedback-format.test.mjs js/repo-review/services/commit-substance.test.mjs js/repo-review/services/contribution-resolver.test.mjs js/repo-review/services/inspector-helpers.test.mjs
+      - name: Check notification, issue, and submission module syntax
+        run: |
+          node --input-type=module --check < js/core/notifications.mjs
+          node --input-type=module --check < js/student/submission-receipts.mjs
+          node --input-type=module --check < js/core/issues.js
+          node --input-type=module --check < js/core/adminerva-loader.js
+          node --input-type=module --check < js/core/adminerva-nav.js
+          node --input-type=module --check < js/repo-review/auto-checker.js
+          node --check functions/index.js
