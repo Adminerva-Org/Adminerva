@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment, assertSucceeds, assertFails}
   from '@firebase/rules-unit-testing';
-import {doc, getDoc, setDoc, updateDoc, serverTimestamp}
+import {doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp}
   from 'firebase/firestore';
 
 let env;
@@ -130,4 +130,15 @@ test('new public issue and comment records do not require exposed student email'
     text:'Forged comment',authorEmail:'',authorUid:'alice',
     role:'student',createdAt:serverTimestamp()
   }));
+});
+
+test('legacy comments without authorUid remain deletable by original author',async()=>{
+  await env.withSecurityRulesDisabled(async ctx=>{
+    await setDoc(doc(ctx.firestore(),'issues','legacy'),{locked:false});
+    await setDoc(doc(ctx.firestore(),'issues','legacy','comments','old'),{
+      text:'Previous note',authorEmail:EMAIL_A,role:'student'
+    });
+  });
+  await assertFails(deleteDoc(doc(client('bob',EMAIL_B),'issues','legacy','comments','old')));
+  await assertSucceeds(deleteDoc(doc(client('alice',EMAIL_A),'issues','legacy','comments','old')));
 });
