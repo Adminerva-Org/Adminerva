@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Submission Inbox | Adminerva</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="css/adminerva-ui.css?v=2" />
+</head>
+<body class="bg-slate-50 min-h-screen">
+<div id="adminerva-nav" data-module="educator" data-page="submissions"></div>
+<main id="pageBody" class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-10">
+  <header class="mb-6">
+    <h1 class="font-extrabold text-2xl sm:text-3xl text-slate-900">Submission Inbox</h1>
+    <p class="text-sm text-slate-600 mt-2">Student-initiated review requests with pinned GitHub revisions. An ordinary push is not an assessment submission.</p>
+  </header>
+  <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 mb-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+    <div class="sm:col-span-2">
+      <label for="submissionSearch" class="block text-xs font-bold text-slate-600 mb-2">Search student, repository or assessment</label>
+      <input id="submissionSearch" type="search" placeholder="Search submitted work…" class="w-full px-3 py-3 rounded-lg border border-slate-300 text-slate-900" />
+    </div>
+    <div>
+      <label for="submissionSection" class="block text-xs font-bold text-slate-600 mb-2">Class section</label>
+      <select id="submissionSection" class="w-full px-3 py-3 rounded-lg border border-slate-300 bg-white text-slate-900">
+        <option value="all">All sections</option>
+      </select>
+    </div>
+  </div>
+  <p id="submissionStatus" role="status" class="text-sm text-slate-600 mb-4">Loading submissions…</p>
+  <div id="submissionFeed" class="grid grid-cols-1 gap-4">
+    <div class="animate-pulse bg-white rounded-xl border border-slate-200 h-24"></div>
+  </div>
+  <p class="text-xs text-slate-500 mt-5">Commit metadata identifies the revision being submitted, not who independently wrote every line. Check the contribution evidence before publishing an individual grade.</p>
+</main>
+<script src="js/core/adminerva-nav.js"></script>
+<script src="js/core/adminerva-loader.js"></script>
+<script type="module" src="js/core/auth-guard.js"></script>
+<script type="module" src="js/repo-review/submissions.mjs"></script>
+</body>
+</html>
