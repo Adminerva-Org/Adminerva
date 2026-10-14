@@ -142,3 +142,17 @@ test('legacy comments without authorUid remain deletable by original author',asy
   await assertFails(deleteDoc(doc(client('bob',EMAIL_B),'issues','legacy','comments','old')));
   await assertSucceeds(deleteDoc(doc(client('alice',EMAIL_A),'issues','legacy','comments','old')));
 });
+
+
+test('UID upvotes cannot be forged; legacy email votes can be removed',async()=>{
+  const alice=client('alice',EMAIL_A), ticket=doc(alice,'issues','vote-test');
+  await assertSucceeds(setDoc(ticket,report()));
+  await assertSucceeds(updateDoc(ticket,{upvotes:['alice']}));
+  await assertFails(updateDoc(ticket,{upvotes:['alice','bob']}));
+  await assertSucceeds(updateDoc(ticket,{upvotes:[]}));
+  await env.withSecurityRulesDisabled(async ctx=>{
+    await updateDoc(doc(ctx.firestore(),'issues','vote-test'),{upvotes:[EMAIL_A]});
+  });
+  await assertSucceeds(updateDoc(ticket,{upvotes:[]}));
+  await assertFails(updateDoc(ticket,{upvotes:[EMAIL_B]}));
+});
