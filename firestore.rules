@@ -135,6 +135,11 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    // Only instructors may read or write internal grading-failure diagnostics.
+    match /grading_alerts/{alertId} {
+      allow read, write: if isInstructor();
+    }
+
     // Student-initiated submission receipts are immutable, reviewable evidence.
     match /student_submissions/{submissionId} {
       allow read: if signedIn() && ownsStudentProfile(resource.data.studentId);
