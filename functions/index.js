@@ -90,3 +90,12 @@ exports.assessmentAssigned=onDocumentUpdated("assessments/{assessmentId}",async 
     });
   }
 });
+
+exports.gradingNeedsReview=onDocumentCreated("grading_alerts/{alertId}",async event=>{
+  const item=event.data?.data();if(!item)return;
+  await notifyMany(await teacherIds(),"grading_"+event.params.alertId,{
+    type:"grading",title:"Grading requires attention",
+    body:(item.repository||"Repository")+" · "+(item.message||"Check failed"),
+    sourceId:event.params.alertId,target:"repofetch.html"
+  });
+});
