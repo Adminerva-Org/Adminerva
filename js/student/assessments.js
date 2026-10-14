@@ -279,7 +279,13 @@ document.addEventListener("DOMContentLoaded", () => {
     ?.addEventListener("change", renderAssessments);
 });
 
+window.__adminervaSubmissionContext = () => ({
+  task: allAssessments.find(a => a.id === window.__adminervaViewedAssessmentId),
+  profile: userProfiles.find(p => p.section === currentSection),
+  section: currentSection
+});
 window.viewAssessmentDetails = function (id) {
+  window.__adminervaViewedAssessmentId = id;
   const ass = allAssessments.find((a) => a.id === id);
   if (!ass) return;
 
