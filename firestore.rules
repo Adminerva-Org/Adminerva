@@ -63,11 +63,96 @@ service cloud.firestore {
       allow read, create: if signedIn();
     }
 
+    // Reports are visible to signed-in users for duplicate discovery.
+    // Only trusted instructors may triage, prioritize, lock or delete reports.
     match /issues/{issueId} {
-      allow read, write: if signedIn();
+      allow read: if signedIn();
+      allow create: if signedIn() &&
+        request.resource.data.keys().hasOnly([
+          "title", "description", "category", "priority", "images",
+          "urlContext", "reporterEmail", "reporterUid", "reporterRole",
+          "status", "upvotes", "locked", "createdAt",
+          "module", "expectedBehavior", "actualBehavior", "reproductionSteps",
+          "clientContext"
+        ]) &&
+        request.resource.data.reporterUid == request.auth.uid &&
+        request.resource.data.reporterEmail.lower() == request.auth.token.email.lower() &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() >= 4 &&
+        request.resource.data.title.size() <= 160 &&
+        request.resource.data.description is string &&
+        request.resource.data.description.size() >= 5 &&
+        request.resource.data.description.size() <= 6000 &&
+        request.resource.data.images is list &&
+        request.resource.data.images.size() <= 5 &&
+        request.resource.data.status == "Open" &&
+        request.resource.data.locked == false &&
+        request.resource.data.upvotes.size() == 0 &&
+        request.resource.data.createdAt == request.time;
+      // Legacy upvote array compatibility; all other issue fields are immutable to students.
+      allow update: if signedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["upvotes"]) &&
+        request.resource.data.upvotes is list &&
+        request.resource.data.upvotes.size() <= 500 &&
+        (
+          (
+            !(request.auth.token.email.lower() in resource.data.upvotes) &&
+            request.auth.token.email.lower() in request.resource.data.upvotes &&
+            request.resource.data.upvotes.size() == resource.data.upvotes.size() + 1 &&
+            request.resource.data.upvotes.hasAll(resource.data.upvotes)
+          ) ||
+          (
+            request.auth.token.email.lower() in resource.data.upvotes &&
+            !(request.auth.token.email.lower() in request.resource.data.upvotes) &&
+            request.resource.data.upvotes.size() == resource.data.upvotes.size() - 1 &&
+            resource.data.upvotes.hasAll(request.resource.data.upvotes)
+          )
+        );
+      allow delete: if false;
       match /comments/{commentId} {
-        allow read, write: if signedIn();
+        allow read: if signedIn();
+        allow create: if signedIn() &&
+          request.resource.data.authorEmail is string &&
+          request.resource.data.authorEmail.lower() == request.auth.token.email.lower() &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() > 0 &&
+          request.resource.data.text.size() <= 2000 &&
+          request.resource.data.createdAt == request.time &&
+          get(/databases/$(database)/documents/issues/$(issueId)).data.locked == false;
+        allow update: if false;
+        allow delete: if signedIn() &&
+          resource.data.authorEmail.lower() == request.auth.token.email.lower();
       }
+    }
+
+    // Official notifications are created only by Firebase Admin SDK triggers.
+    // Recipients may mark their own notification as read, not forge an alert.
+    match /notifications/{uid}/items/{notificationId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow update: if signedIn() && request.auth.uid == uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readAt"]) &&
+        request.resource.data.readAt == request.time;
+      allow create, delete: if false;
+    }
+
+    // Student-initiated submission receipts are immutable, reviewable evidence.
+    match /student_submissions/{submissionId} {
+      allow read: if signedIn() && ownsStudentProfile(resource.data.studentId);
+      allow create: if signedIn() &&
+        request.resource.data.keys().hasOnly([
+          "studentId", "assessmentId", "submittedByUid",
+          "studentName", "assessmentTitle", "repoUrl", "githubLogin",
+          "revisionSha", "sourcePath", "submittedAt", "section"
+        ]) &&
+        request.resource.data.submittedByUid == request.auth.uid &&
+        ownsStudentProfile(request.resource.data.studentId) &&
+        request.resource.data.studentId is string &&
+        request.resource.data.assessmentId is string &&
+        request.resource.data.repoUrl is string &&
+        request.resource.data.revisionSha is string &&
+        request.resource.data.revisionSha.matches("^[a-fA-F0-9]{40}$") &&
+        request.resource.data.submittedAt == request.time;
+      allow update, delete: if false;
     }
   }
 }
