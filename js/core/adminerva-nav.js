@@ -237,6 +237,17 @@ document.addEventListener("DOMContentLoaded", () => {
         ${navTabsHTML}
     </nav>`;
 
+  // A single responsive inbox for bug reports, grading alerts and submissions.
+  const reportButton = navContainer.querySelector('button[title="Report Issue"]');
+  if (reportButton && !document.getElementById("adminerva-notifications")) {
+    const mountPoint = document.createElement("div");
+    mountPoint.id = "adminerva-notifications";
+    reportButton.parentNode.insertBefore(mountPoint, reportButton);
+    import("./notifications.mjs")
+      .then(module => module.mountNotificationCenter())
+      .catch(error => console.warn("Notification center unavailable:", error));
+  }
+
   // Announce active location to assistive technology and keep the selected
   // page visible in the horizontally scrolling mobile navigation.
   navContainer.querySelectorAll('a[class*="border-cyan-400"]').forEach(link => {
