@@ -135,6 +135,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <a href="repobank.html" class="${getStyle("repobank")}">RepoBank</a>
             <a href="temp-grading.html" class="${getStyle("activity-grader")}">Manual Grader</a>
             <a href="repofetch.html" class="${getStyle("repofetch")}">RepoFetch</a>
+            <a href="submissions.html" class="${getStyle("submissions")}">Submissions</a>
             <a href="contribution-inspector.html" class="${getStyle("contributions")}">Contributions</a>
             <a href="assessment-studio.html" class="${getStyle("studio")}">Assessment Studio</a>
             <a href="gradebook.html" class="${getStyle("gradebook")}">Gradebook</a>
