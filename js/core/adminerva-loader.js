@@ -241,7 +241,7 @@ window.initiateBugReport = async function () {
   btn.innerHTML = `<span class="animate-pulse">Checking records...</span>`;
 
   try {
-    const { collection, getDocs } =
+    const { collection, getDocs, query, orderBy, limit } =
       await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
     if (!window.db) throw new Error("No DB Connection");
 
@@ -286,7 +286,10 @@ window.initiateBugReport = async function () {
     }
 
     // 2. Fetch and Score Existing Issues
-    const snap = await getDocs(collection(window.db, "issues"));
+    // Compare against a bounded recent window instead of downloading every
+    // report in the database on each new submission.
+    const snap = await getDocs(query(collection(window.db, "issues"),
+      orderBy("createdAt", "desc"), limit(120)));
     let similarIssues = [];
 
     snap.forEach((doc) => {
