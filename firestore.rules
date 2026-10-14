@@ -76,7 +76,9 @@ service cloud.firestore {
           "clientContext"
         ]) &&
         request.resource.data.reporterUid == request.auth.uid &&
-        request.resource.data.reporterEmail.lower() == request.auth.token.email.lower() &&
+        request.resource.data.reporterEmail is string &&
+        (request.resource.data.reporterEmail == "" ||
+         request.resource.data.reporterEmail.lower() == request.auth.token.email.lower()) &&
         request.resource.data.reporterRole == "reporter" &&
         request.resource.data.category in ["Bug", "Access", "Feature", "UI", "Other"] &&
         request.resource.data.priority in ["Low", "Medium", "High", "Critical"] &&
@@ -120,7 +122,8 @@ service cloud.firestore {
           ]) &&
           request.resource.data.authorUid == request.auth.uid &&
           request.resource.data.authorEmail is string &&
-          request.resource.data.authorEmail.lower() == request.auth.token.email.lower() &&
+          (request.resource.data.authorEmail == "" ||
+           request.resource.data.authorEmail.lower() == request.auth.token.email.lower()) &&
           request.resource.data.role == "student" &&
           request.resource.data.text is string &&
           request.resource.data.text.size() > 0 &&
@@ -129,7 +132,10 @@ service cloud.firestore {
           get(/databases/$(database)/documents/issues/$(issueId)).data.locked == false;
         allow update: if false;
         allow delete: if signedIn() &&
-          resource.data.authorEmail.lower() == request.auth.token.email.lower();
+          (resource.data.authorUid == request.auth.uid ||
+           (resource.data.authorEmail is string &&
+            resource.data.authorEmail != "" &&
+            resource.data.authorEmail.lower() == request.auth.token.email.lower()));
       }
     }
 
