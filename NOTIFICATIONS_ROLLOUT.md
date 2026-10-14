@@ -2,11 +2,11 @@
 
 ## Deployment state
 
-The GitHub Pages frontend is committed on \`main\`. It includes a bell in the shared navigation, live report and submission previews, report improvements, and a **Submit for Review** panel.
+The GitHub Pages frontend is committed on `main`. It includes a bell in the shared navigation, live report and submission previews, report improvements, and a **Submit for Review** panel.
 
 **Not yet active until deployed separately:** Firestore Security Rules changes, server-originated durable notifications, and the rules permitting student submission receipts.
 
-The Firebase project is \`reporeview-e7ca4\`. Do not paste Firebase secrets or GitHub credentials into issues or reports. The frontend uses the existing public Firebase configuration.
+The Firebase project is `reporeview-e7ca4`. Do not paste Firebase secrets or GitHub credentials into issues or reports. The frontend uses the existing public Firebase configuration.
 
 ## Backend deployment (authorized Firebase project owner)
 
@@ -14,38 +14,38 @@ Prerequisites: Firebase CLI, Node 20, the appropriate Firebase project role, and
 
 From the repository root:
 
-\`\`\`powershell
+```powershell
 npm --prefix functions install
 npx firebase-tools login
 npx firebase-tools deploy --project reporeview-e7ca4 --only firestore:rules,functions
-\`\`\`
+```
 
-Review the proposed \`firestore.rules\` **in the emulator before production**. The rules continue to use two temporary staff allowlist emails; replace them with verified teacher claims when teacher accounts are introduced.
+Review the proposed `firestore.rules` **in the emulator before production**. The rules continue to use two temporary staff allowlist emails; replace them with verified teacher claims when teacher accounts are introduced.
 
-Functions source: \`functions/index.js\`. Functions v2 uses Cloud Firestore triggers. Official notification documents are stored at \`notifications/{uid}/items/{id}\`, and only a recipient may update their own \`readAt\`. Students cannot create them. Functions use the Firebase Admin SDK to create authenticated notifications.
+Functions source: `functions/index.js`. Functions v2 uses Cloud Firestore triggers. Official notification documents are stored at `notifications/{uid}/items/{id}`, and only a recipient may update their own `readAt`. Students cannot create them. Functions use the Firebase Admin SDK to create authenticated notifications.
 
 ### Core event sources
 
 | Event | Producer | Recipient | Notes |
 |---|---|---|---|
-| New bug report | \`issues/{id}\` created | Staff | Staff bell also previews new issues while logged in, even without Functions |
+| New bug report | `issues/{id}` created | Staff | Staff bell also previews new issues while logged in, even without Functions |
 | Report changed / comment | Issues and comments triggers | Reporter and relevant staff | Excludes comment author |
-| Submission for review | \`student_submissions/{id}\` created | Staff | Student creates an immutable receipt pinned to a Git commit SHA |
-| Published grade | \`student_grades/{id}\` updated | Student | Only false → true; draft grades never notify students |
-| New deployment | \`assessments/{id}\` updated | Students in newly deployed sections | Updates to existing deployments are not yet a notification event |
-| Grading check error | \`grading_alerts/{id}\` created | Staff | Auto-Checker records one alert per student/assessment/hour |
+| Submission for review | `student_submissions/{id}` created | Staff | Student creates an immutable receipt pinned to a Git commit SHA |
+| Published grade | `student_grades/{id}` updated | Student | Only false → true; draft grades never notify students |
+| New deployment | `assessments/{id}` updated | Students in newly deployed sections | Updates to existing deployments are not yet a notification event |
+| Grading check error | `grading_alerts/{id}` created | Staff | Auto-Checker records one alert per student/assessment/hour |
 
 ### Smoke tests in a test Firebase project first
 
 1. Sign in as a student. Report a small reproducible bug and verify the confirmation reference. Log in as staff and verify the bell shows the report; open it and comment.
 2. Verify students **cannot** edit report status, priority, locked flag, or a different student's notifications via SDK writes.
 3. Update report status as staff; verify reporter's notification opens the same issue.
-4. In Student Assessments, choose a public repository and select **Submit current GitHub revision**. Verify Firestore contains \`revisionSha\`, \`studentId\`, \`assessmentId\`, \`submittedAt\`, and the chosen source path. The same SHA must not create a duplicate receipt.
+4. In Student Assessments, choose a public repository and select **Submit current GitHub revision**. Verify Firestore contains `revisionSha`, `studentId`, `assessmentId`, `submittedAt`, and the chosen source path. The same SHA must not create a duplicate receipt.
 5. Confirm staff receives the submission alert. Check the identified revision in GitHub before grading.
 6. Publish one reviewed grade and verify only that student's notification appears. Test a draft/unpublished grade to confirm it does not create a student alert.
 7. Trigger an Auto-Checker failure and verify a teacher-only grading warning appears. Retry in the same hour and confirm no duplicate new alert.
 8. Test on a narrow mobile viewport (320px wide): navigation bell, inbox scroll, issue forms, the full-height assessment modal, and Submit for Review.
-9. Confirm new and old issue comments remain visible and role spoofing through \`Adminerva_Role\` in localStorage does not grant triage permissions.
+9. Confirm new and old issue comments remain visible and role spoofing through `Adminerva_Role` in localStorage does not grant triage permissions.
 
 ## Known boundaries
 
