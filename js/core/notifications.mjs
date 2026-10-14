@@ -3,7 +3,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/f
 import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const staffEmails = new Set(["babaynike2013@gmail.com", "josephsixson@mcstayuman.edu.ph"]);
-const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], unsubscribe:[], read:new Set(), filter:"all", open:false };
+const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), open:false };
 const el = id => document.getElementById(id);
 const make = (tag, className, text) => {
   const node=document.createElement(tag);
@@ -13,6 +13,9 @@ const make = (tag, className, text) => {
 };
 const timeOf = value => value && typeof value.toDate==="function" ? value.toDate().getTime() : (value?.seconds||0)*1000;
 const keyName = () => "Adminerva_notif_seen_"+(state.user?.uid||"anonymous");
+const settingsKey = () => "Adminerva_notif_preferences_"+(state.user?.uid||"anonymous");
+function restorePreferences(){try{return new Set(JSON.parse(localStorage.getItem(settingsKey())||"[]"))}catch{return new Set()}}
+function storePreferences(){try{localStorage.setItem(settingsKey(),JSON.stringify([...state.muted]))}catch{}}
 const targetUrl = value => /^(?:issues|student-assessments|gradebook|repofetch|student-dashboard)\.html(?:\?[A-Za-z0-9%_.=&-]+)?$/.test(String(value||"")) ? value : "issues.html";
 function restoreRead(){try{return new Set(JSON.parse(localStorage.getItem(keyName())||"[]"))}catch{return new Set()}}
 function storeRead(){try{localStorage.setItem(keyName(),JSON.stringify([...state.read].slice(-400)))}catch{}}
@@ -46,12 +49,15 @@ function collectionItems(){
 }
 function render(){
   const list=el("av-alert-list"),badge=el("av-alert-count");if(!list||!badge)return;
-  const items=collectionItems(),count=items.filter(unread).length;
+  const items=collectionItems(),count=items.filter(item=>!state.muted.has(item.type)&&unread(item)).length;
   badge.textContent=count>99?"99+":String(count);
   badge.classList.toggle("hidden",count===0);
   el("av-alert-toggle").setAttribute("aria-label",count+" unread notifications");
   list.replaceChildren();
-  const visible=items.filter(n=>state.filter==="all"||state.filter==="unread"&&unread(n)||state.filter==="issues"&&n.type==="issue");
+  const search=state.search.toLowerCase();
+  const visible=items.filter(n=>!state.muted.has(n.type) &&
+    (state.filter==="all"||state.filter==="unread"&&unread(n)||state.filter==="issues"&&n.type==="issue") &&
+    (!search||(n.title+" "+(n.body||"")).toLowerCase().includes(search)));
   if(!visible.length){list.append(make("p","p-5 text-sm text-slate-600","No notifications to display."));return}
   for(const n of visible){
     const link=make("a","block p-3 sm:p-4 border-b border-slate-100 hover:bg-slate-50");
@@ -82,7 +88,7 @@ async function markAllRead(){
 function listen(user){
   state.unsubscribe.forEach(stop=>stop());state.unsubscribe=[];
   state.user=user;state.notifications=[];state.issues=[];state.submissions=[];state.gradingAlerts=[];
-  state.read=restoreRead();render();
+  state.read=restoreRead();state.muted=restorePreferences();render();
   if(!user)return;
   const error=name=>err=>console.warn(name+" listener unavailable:",err.message);
   state.unsubscribe.push(onSnapshot(
@@ -123,7 +129,27 @@ export function mountNotificationCenter(){
     tab.type="button";tab.addEventListener("click",()=>{state.filter=filter;render()});tabs.append(tab);
   }
   panel.append(tabs);
-  const list=make("div","overflow-y-auto overscroll-contain max-h-[min(62dvh,420px)]");
+  const search=make("input","w-full border-0 border-b border-slate-200 bg-white px-4 py-3 text-sm text-slate-900");
+  search.type="search";search.placeholder="Search notifications";
+  search.setAttribute("aria-label","Search notifications");
+  search.addEventListener("input",()=>{state.search=search.value.trim();render()});
+  panel.append(search);
+  const prefs=make("details","border-b px-4 py-2");
+  prefs.append(make("summary","cursor-pointer text-xs font-bold text-slate-600","Notification preferences"));
+  const controls=make("div","grid grid-cols-2 gap-2 py-3");
+  for(const [type,label] of [["issue","Reports"],["grade","Grades"],["assessment","Assignments"],
+    ["submission","Submissions"],["grading","Grading alerts"]]){
+    const option=make("label","flex items-center gap-2 text-xs text-slate-700");
+    const check=make("input","h-4 w-4");check.type="checkbox";check.checked=!state.muted.has(type);
+    check.addEventListener("change",()=>{
+      if(check.checked)state.muted.delete(type);else state.muted.add(type);
+      storePreferences();render();
+    });
+    option.append(check,make("span","",label));controls.append(option);
+  }
+  prefs.append(controls);
+  panel.append(prefs);
+  const list=make("div","overflow-y-auto overscroll-contain max-h-[min(48dvh,335px)]");
   list.id="av-alert-list";list.setAttribute("aria-live","polite");panel.append(list);root.append(panel);
   button.addEventListener("click",()=>{state.open=!state.open;panel.classList.toggle("hidden",!state.open);
     button.setAttribute("aria-expanded",String(state.open))});
