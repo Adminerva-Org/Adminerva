@@ -88,7 +88,11 @@ async function markAllRead(){
 function listen(user){
   state.unsubscribe.forEach(stop=>stop());state.unsubscribe=[];
   state.user=user;state.notifications=[];state.issues=[];state.submissions=[];state.gradingAlerts=[];
-  state.read=restoreRead();state.muted=restorePreferences();render();
+  state.read=restoreRead();state.muted=restorePreferences();
+  document.querySelectorAll("#av-alert-panel input[data-alert-category]").forEach(input=>{
+    input.checked=!state.muted.has(input.dataset.alertCategory);
+  });
+  render();
   if(!user)return;
   const error=name=>err=>console.warn(name+" listener unavailable:",err.message);
   state.unsubscribe.push(onSnapshot(
@@ -140,7 +144,8 @@ export function mountNotificationCenter(){
   for(const [type,label] of [["issue","Reports"],["grade","Grades"],["assessment","Assignments"],
     ["submission","Submissions"],["grading","Grading alerts"]]){
     const option=make("label","flex items-center gap-2 text-xs text-slate-700");
-    const check=make("input","h-4 w-4");check.type="checkbox";check.checked=!state.muted.has(type);
+    const check=make("input","h-4 w-4");check.type="checkbox";
+    check.dataset.alertCategory=type;check.checked=!state.muted.has(type);
     check.addEventListener("change",()=>{
       if(check.checked)state.muted.delete(type);else state.muted.add(type);
       storePreferences();render();
