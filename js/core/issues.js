@@ -19,7 +19,8 @@ let currentUserEmail = "";
 
 // Role check
 const userRole = localStorage.getItem("Adminerva_Role") || "student";
-const isSuperAdmin = userRole === "superadmin";
+const trustedStaff = new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
+let isSuperAdmin = false; // Verified auth email; never a localStorage role.
 
 function escapeHTML(str) {
   if (!str) return "";
@@ -39,6 +40,7 @@ function escapeHTML(str) {
 onAuthStateChanged(auth, async (user) => {
   if (user) {
     currentUserEmail = user.email.toLowerCase();
+    isSuperAdmin = trustedStaff.has(currentUserEmail);
     fetchIssues();
   }
 });
@@ -60,6 +62,11 @@ function fetchIssues() {
       });
 
       renderIssues();
+      const deepLink = new URLSearchParams(location.search).get("issue");
+      if (deepLink && !currentOpenIssueId && allIssues.some(item=>item.id===deepLink)) {
+        window.openIssueModal(deepLink);
+        history.replaceState(null,"",location.pathname);
+      }
 
       // If the modal is currently open, dynamically refresh its stats (like upvotes or status changes) in real time too
       if (currentOpenIssueId) {
@@ -83,7 +90,9 @@ function renderIssues() {
   const catFilter = document.getElementById("filterCategory").value;
   const statFilter = document.getElementById("filterStatus").value;
 
+  const onlyMine = document.getElementById("filterMine")?.checked || false;
   const filtered = allIssues.filter((iss) => {
+    if (onlyMine && (iss.reporterEmail||"").toLowerCase() !== currentUserEmail) return false;
     const matchCat = catFilter === "All" || iss.category === catFilter;
     const matchStat = statFilter === "All" || iss.status === statFilter;
     return matchCat && matchStat;
@@ -173,24 +182,32 @@ window.openIssueModal = async function (id) {
 
   document.getElementById("modalIssueTitle").textContent = iss.title;
   document.getElementById("modalReporterData").textContent =
-    `${iss.reporterRole.toUpperCase()} - ${iss.reporterEmail}`;
+    (isSuperAdmin || (iss.reporterEmail||"").toLowerCase()===currentUserEmail)
+      ? (iss.reporterEmail||"Reporter") : "Report submitted by a community member";
   document.getElementById("modalDateData").textContent = dateStr;
-  document.getElementById("modalIssueDescription").textContent =
-    iss.description;
+  const details = [iss.description];
+  if(iss.module)details.push("Module: "+iss.module);
+  if(iss.reproductionSteps)details.push("Steps to reproduce:\n"+iss.reproductionSteps);
+  if(iss.expectedBehavior)details.push("Expected:\n"+iss.expectedBehavior);
+  if(iss.actualBehavior)details.push("Actual:\n"+iss.actualBehavior);
+  document.getElementById("modalIssueDescription").textContent = details.join("\n\n");
 
   // Handle Images
   const imgContainer = document.getElementById("modalScreenshots");
   imgContainer.innerHTML = "";
   if (iss.images && iss.images.length > 0) {
     iss.images.forEach((img) => {
-      imgContainer.insertAdjacentHTML(
-        "beforeend",
-        `
-          <div class="aspect-video bg-slate-100 rounded border border-slate-200 overflow-hidden cursor-pointer hover:opacity-80 transition" onclick="viewFullscreen('${img}')">
-             <img src="${img}" class="w-full h-full object-cover" />
-          </div>
-        `,
-      );
+      if(typeof img !== "string" || !/^data:image\/(?:png|jpeg|webp|gif);base64,/i.test(img)) return;
+      const wrapper=document.createElement("button");
+      wrapper.type="button";
+      wrapper.className="aspect-video bg-slate-100 rounded border border-slate-200 overflow-hidden hover:opacity-80";
+      const picture=document.createElement("img");
+      picture.src=img;
+      picture.alt="Issue screenshot";
+      picture.className="w-full h-full object-cover";
+      wrapper.append(picture);
+      wrapper.addEventListener("click",()=>window.viewFullscreen(img));
+      imgContainer.append(wrapper);
     });
   } else {
     imgContainer.innerHTML = `<span class="text-xs text-slate-400 italic">No evidence attached.</span>`;
@@ -308,7 +325,7 @@ function loadComments(issueId) {
         const timeStr = data.createdAt
           ? data.createdAt.toDate().toLocaleString()
           : "Just now";
-        const isAdmin = data.role === "superadmin";
+        const isAdmin = trustedStaff.has((data.authorEmail||"").toLowerCase());
         const tag = isAdmin
           ? `<span class="bg-cyan-100 text-cyan-800 text-[8px] font-bold px-1.5 py-0.5 rounded ml-2">ADMIN</span>`
           : "";
@@ -350,10 +367,11 @@ document
       await addDoc(collection(db, `issues/${currentOpenIssueId}/comments`), {
         text: text,
         authorEmail: currentUserEmail,
-        role: userRole,
+        role: isSuperAdmin ? "superadmin" : "student",
+        authorUid: auth.currentUser?.uid || null,
         createdAt: serverTimestamp(),
       });
-      loadComments(currentOpenIssueId); // Refresh list
+      // The live listener updates comments automatically.
     } catch (e) {
       alert("Failed to post comment.");
     }
@@ -380,6 +398,7 @@ document
 
     await updateDoc(doc(db, "issues", currentOpenIssueId), {
       status: newStatus,
+      updatedAt: serverTimestamp(),
     });
 
     // Change modal badge color immediately
@@ -398,6 +417,7 @@ document
 
     await updateDoc(doc(db, "issues", currentOpenIssueId), {
       priority: newPriority,
+      updatedAt: serverTimestamp(),
     });
     openIssueModal(currentOpenIssueId);
   });
