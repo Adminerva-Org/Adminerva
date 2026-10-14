@@ -377,7 +377,9 @@ window.finalizeBugReport = async function () {
       description,
       images: window.bugImages,
       urlContext: window.location.href,
-      reporterEmail: currentUser.email.toLowerCase(),
+      // Keep contact identifiers out of publicly readable issue documents.
+      // Notifications and ownership use the authenticated Firebase UID.
+      reporterEmail: "",
       reporterUid: currentUser.uid,
       module: document.getElementById("bug-module").value,
       reproductionSteps: document.getElementById("bug-reproduction").value.trim(),
