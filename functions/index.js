@@ -99,3 +99,48 @@ exports.gradingNeedsReview=onDocumentCreated("grading_alerts/{alertId}",async ev
     sourceId:event.params.alertId,target:"repofetch.html"
   });
 });
+
+// Cover blueprints deployed at creation time, including older targetSections.
+exports.assessmentCreated=onDocumentCreated("assessments/{assessmentId}",async event=>{
+  const data=event.data?.data();if(!data)return;
+  const sections=[...new Set([
+    ...(Array.isArray(data.deployments)?data.deployments.map(d=>d.section):[]),
+    ...(Array.isArray(data.targetSections)?data.targetSections:[])
+  ].filter(Boolean))];
+  for(const section of sections){
+    const students=await db.collection("students").where("section","==",section).get();
+    const uids=await Promise.all(students.docs.map(d=>byEmail(d.data().email)));
+    await notifyMany(uids,"assignment_"+event.params.assessmentId+"_"+cleanId(section),{
+      type:"assessment",title:"New assessment assigned",
+      body:data.title||"New assessment",sourceId:event.params.assessmentId,
+      target:"student-assessments.html"
+    });
+  }
+});
+// A small number of older workflows can create a grade already published.
+exports.gradeCreatedPublished=onDocumentCreated("student_grades/{gradeId}",async event=>{
+  const grade=event.data?.data();
+  if(!grade||grade.published!==true||!grade.studentId)return;
+  const student=await db.doc("students/"+grade.studentId).get();
+  if(!student.exists)return;
+  const uid=await byEmail(student.data().email);
+  await notify(uid,"grade_created_"+event.params.gradeId,{
+    type:"grade",title:"A reviewed grade is available",
+    body:"Open your assessments to read published feedback.",
+    sourceId:event.params.gradeId,target:"student-assessments.html"
+  });
+});
+// Notify only when an already-published grade is actually corrected.
+exports.gradeCorrection=onDocumentUpdated("student_grades/{gradeId}",async event=>{
+  const before=event.data?.before.data(),after=event.data?.after.data();
+  if(!before||!after||before.published!==true||after.published!==true)return;
+  if(before.score===after.score && before.feedback===after.feedback)return;
+  const student=await db.doc("students/"+after.studentId).get();
+  if(!student.exists)return;
+  const uid=await byEmail(student.data().email);
+  await notify(uid,"grade_correction_"+event.id,{
+    type:"grade",title:"Your published grade was updated",
+    body:"Open Assessments to see the latest score and feedback.",
+    sourceId:event.params.gradeId,target:"student-assessments.html"
+  });
+});
