@@ -225,7 +225,7 @@ window.openIssueModal = async function (id) {
   const btn = document.getElementById("upvoteBtn");
   document.getElementById("upvoteCount").textContent = upvotes.length;
 
-  if (upvotes.includes(currentUserEmail)) {
+  if (upvotes.includes(auth.currentUser?.uid) || upvotes.includes(currentUserEmail)) {
     btn.classList.add("bg-indigo-100", "text-indigo-700", "border-indigo-300");
   } else {
     btn.classList.remove(
@@ -278,13 +278,15 @@ document.getElementById("upvoteBtn").addEventListener("click", async () => {
   if (!currentOpenIssueId) return;
 
   const issIndex = allIssues.findIndex((i) => i.id === currentOpenIssueId);
-  let upvotes = allIssues[issIndex].upvotes || [];
-
-  if (upvotes.includes(currentUserEmail)) {
-    upvotes = upvotes.filter((e) => e !== currentUserEmail); // Remove vote
-  } else {
-    upvotes.push(currentUserEmail); // Add vote
-  }
+  const current = allIssues[issIndex];
+  const voteId = auth.currentUser?.uid;
+  if(!voteId)return;
+  let upvotes = [...(current.upvotes || [])];
+  // Old records stored emails; new votes contain opaque Firebase account IDs.
+  const existing = upvotes.includes(voteId) ? voteId
+    : upvotes.includes(currentUserEmail) ? currentUserEmail : null;
+  if (existing) upvotes = upvotes.filter(value => value !== existing);
+  else upvotes.push(voteId);
 
   allIssues[issIndex].upvotes = upvotes;
 
