@@ -42,6 +42,6 @@ jobs:
           distribution: temurin
           java-version: "17"
       - name: Install Firebase emulator and test SDK
-        run: npm install --no-audit --no-fund --no-save @firebase/rules-unit-testing@4 firebase@10.13.0 firebase-tools@14
+        run: npm install --no-audit --no-fund --no-save @firebase/rules-unit-testing@4 firebase@11 firebase-tools@14
       - name: Test Firestore permissions in an isolated emulator
         run: npx firebase emulators:exec --project demo-adminerva-security --only firestore 'node --test tests/firestore-rules.test.mjs'
