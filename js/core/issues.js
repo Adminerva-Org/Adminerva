@@ -21,6 +21,11 @@ let currentUserEmail = "";
 const userRole = localStorage.getItem("Adminerva_Role") || "student";
 const trustedStaff = new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
 let isSuperAdmin = false; // Verified auth email; never a localStorage role.
+function ownsIssue(issue) {
+  const uid=auth.currentUser?.uid;
+  return Boolean(uid && issue.reporterUid === uid) ||
+    Boolean(issue.reporterEmail && issue.reporterEmail.toLowerCase()===currentUserEmail);
+}
 
 function escapeHTML(str) {
   if (!str) return "";
@@ -93,7 +98,7 @@ function renderIssues() {
 
   const onlyMine = document.getElementById("filterMine")?.checked || false;
   const filtered = allIssues.filter((iss) => {
-    if (onlyMine && (iss.reporterEmail||"").toLowerCase() !== currentUserEmail) return false;
+    if (onlyMine && !ownsIssue(iss)) return false;
     const matchCat = catFilter === "All" || iss.category === catFilter;
     const matchStat = statFilter === "All" || iss.status === statFilter;
     return matchCat && matchStat;
@@ -142,7 +147,7 @@ function renderIssues() {
             <span class="text-[10px] text-slate-400 font-medium ml-auto">${dateStr}</span>
           </div>
           <h3 class="text-base font-bold text-slate-800 leading-tight group-hover:text-cyan-700 transition">${isLocked}${prioMarker}${escapeHTML(iss.title)}</h3>
-          <p class="text-xs text-slate-500 mt-1 truncate">Reported by ${isSuperAdmin || (iss.reporterEmail||"").toLowerCase()===currentUserEmail ? escapeHTML(iss.reporterEmail) : "Community member"}</p>
+          <p class="text-xs text-slate-500 mt-1 truncate">Reported by ${ownsIssue(iss) ? "You" : isSuperAdmin ? "Student / Staff member" : "Community member"}</p>
         </div>
       </div>
     `;
@@ -183,8 +188,9 @@ window.openIssueModal = async function (id) {
 
   document.getElementById("modalIssueTitle").textContent = iss.title;
   document.getElementById("modalReporterData").textContent =
-    (isSuperAdmin || (iss.reporterEmail||"").toLowerCase()===currentUserEmail)
-      ? (iss.reporterEmail||"Reporter") : "Report submitted by a community member";
+    ownsIssue(iss) ? "Report submitted by you" :
+    isSuperAdmin ? "Report submitted by an authenticated user" :
+    "Report submitted by a community member";
   document.getElementById("modalDateData").textContent = dateStr;
   const details = [iss.description];
   if(iss.module)details.push("Module: "+iss.module);
@@ -336,7 +342,7 @@ function loadComments(issueId) {
           `
                 <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-sm relative group">
                     <div class="flex justify-between items-start mb-1">
-                        <span class="text-xs font-bold text-slate-700 flex items-center">${escapeHTML(data.authorEmail.split("@")[0])} ${tag}</span>
+                        <span class="text-xs font-bold text-slate-700 flex items-center">${escapeHTML((data.authorEmail||"").split("@")[0] || "Member")} ${tag}</span>
                         <span class="text-[9px] text-slate-400">${timeStr}</span>
                     </div>
                     <p class="text-sm text-slate-600 whitespace-pre-wrap">${escapeHTML(data.text)}</p>
@@ -367,7 +373,7 @@ document
     try {
       await addDoc(collection(db, `issues/${currentOpenIssueId}/comments`), {
         text: text,
-        authorEmail: currentUserEmail,
+        authorEmail: isSuperAdmin ? currentUserEmail : "",
         role: isSuperAdmin ? "superadmin" : "student",
         authorUid: auth.currentUser?.uid || null,
         createdAt: serverTimestamp(),
