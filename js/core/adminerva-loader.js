@@ -62,14 +62,32 @@ document.addEventListener("DOMContentLoaded", () => {
 
                     <div>
                         <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Issue Summary</label>
-                        <input type="text" id="bug-title" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-400" placeholder="A brief title of the problem...">
+                        <input type="text" maxlength="160" id="bug-title" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-400" placeholder="A brief title of the problem...">
                     </div>
 
                     <div>
                         <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Detailed Description</label>
-                        <textarea id="bug-description" rows="3" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-400" placeholder="Please provide details or steps to reproduce the issue..."></textarea>
+                        <textarea id="bug-description" maxlength="6000" rows="3" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-400" placeholder="Please provide details or steps to reproduce the issue..."></textarea>
                     </div>
 
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div><label for="bug-module" class="block text-[10px] text-slate-300 font-bold mb-1">Affected module</label>
+                        <select id="bug-module" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm text-white">
+                          <option value="General">General</option><option value="Login">Login</option>
+                          <option value="Gradebook">Gradebook</option><option value="Assessments">Assessments</option>
+                          <option value="RepoFetch">RepoFetch</option><option value="Playground">Code Playground</option>
+                          <option value="Other">Other</option>
+                        </select></div>
+                      <div><label for="bug-reproduction" class="block text-[10px] text-slate-300 font-bold mb-1">Steps to reproduce</label>
+                        <textarea id="bug-reproduction" rows="2" maxlength="1500" placeholder="1. Open... 2. Click..." class="w-full bg-slate-900 text-white border border-slate-600 rounded p-2 text-sm"></textarea></div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div><label for="bug-expected" class="block text-[10px] text-slate-300 font-bold mb-1">Expected result</label>
+                        <textarea id="bug-expected" rows="2" maxlength="1400" class="w-full bg-slate-900 text-white border border-slate-600 rounded p-2 text-sm"></textarea></div>
+                      <div><label for="bug-actual" class="block text-[10px] text-slate-300 font-bold mb-1">What happened</label>
+                        <textarea id="bug-actual" rows="2" maxlength="1400" class="w-full bg-slate-900 text-white border border-slate-600 rounded p-2 text-sm"></textarea></div>
+                    </div>
+                    <p class="text-xs text-amber-200">Screenshots may contain names or other personal information. Crop or redact anything not necessary to diagnose the issue.</p>
                     <div class="bg-slate-900/50 p-3 rounded border border-slate-700 border-dashed">
                         <div class="flex justify-between items-center mb-2">
                             <label class="block text-[10px] font-bold text-cyan-500 uppercase tracking-wider">
@@ -163,7 +181,13 @@ function processBugFiles(files) {
   filesToProcess.forEach((file) => {
     const reader = new FileReader();
     reader.onload = (e) => {
-      window.bugImages.push(e.target.result);
+      const dataUrl = String(e.target.result || "");
+      const total = window.bugImages.reduce((n,v)=>n+v.length,0);
+      if (dataUrl.length + total > 550000) {
+        alert("Screenshots are too large for this report. Use smaller cropped images or submit without screenshots.");
+        return;
+      }
+      window.bugImages.push(dataUrl);
       renderBugThumbnails();
     };
     reader.readAsDataURL(file);
@@ -329,6 +353,9 @@ window.finalizeBugReport = async function () {
   const priority = document.getElementById("bug-priority").value;
   const title = document.getElementById("bug-title").value.trim();
   const description = document.getElementById("bug-description").value.trim();
+  const currentUser = window.auth?.currentUser;
+  if (!currentUser?.uid || !currentUser.email) return alert("Please sign in before submitting a report.");
+  if (title.length < 4 || description.length < 5) return alert("Add a clearer title and description.");
 
   // Hide overlay and show loader
   document.getElementById("bug-similarity-overlay").classList.add("hidden");
@@ -347,7 +374,13 @@ window.finalizeBugReport = async function () {
       description,
       images: window.bugImages,
       urlContext: window.location.href,
-      reporterEmail: window.auth?.currentUser?.email || "Anonymous",
+      reporterEmail: currentUser.email.toLowerCase(),
+      reporterUid: currentUser.uid,
+      module: document.getElementById("bug-module").value,
+      reproductionSteps: document.getElementById("bug-reproduction").value.trim(),
+      expectedBehavior: document.getElementById("bug-expected").value.trim(),
+      actualBehavior: document.getElementById("bug-actual").value.trim(),
+      clientContext: navigator.userAgent.slice(0,300),
       reporterRole: localStorage.getItem("Adminerva_Role") || "Unknown",
       status: "Open",
       upvotes: [],
@@ -355,19 +388,23 @@ window.finalizeBugReport = async function () {
       createdAt: serverTimestamp(),
     };
 
-    await addDoc(collection(window.db, "issues"), payload);
+    const receipt = await addDoc(collection(window.db, "issues"), payload);
 
     // Reset Form
     document.getElementById("bug-title").value = "";
     document.getElementById("bug-description").value = "";
     document.getElementById("bug-category").value = "Bug";
     document.getElementById("bug-priority").value = "Medium";
+    for (const id of ["bug-reproduction","bug-expected","bug-actual"]) {
+      document.getElementById(id).value = "";
+    }
     window.bugImages = [];
     renderBugThumbnails();
 
     document.getElementById("bug-modal").classList.add("hidden");
 
-    window.showSubtleLoader("Report submitted successfully!");
+    window.showSubtleLoader("Report received. Reference: " + receipt.id.slice(0,10));
+    alert("Report submitted successfully. Reference: " + receipt.id.slice(0,10) + ". You can follow updates in the notification center or Reports page.");
     setTimeout(() => window.hideSubtleLoader(), 3000);
   } catch (error) {
     console.error(error);
