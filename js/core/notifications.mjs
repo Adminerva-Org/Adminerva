@@ -84,7 +84,7 @@ function listen(user){
     snap=>{state.notifications=snap.docs.map(d=>({id:d.id,...d.data()}));render()},error("Notifications")));
   const staff=staffEmails.has((user.email||"").toLowerCase());
   const iq=staff?query(collection(db,"issues"),orderBy("createdAt","desc"),limit(40)):
-    query(collection(db,"issues"),where("reporterEmail","==",user.email||""));
+    query(collection(db,"issues"),where("reporterEmail","==",(user.email||"").toLowerCase()));
   state.unsubscribe.push(onSnapshot(iq,snap=>{
     state.issues=snap.docs.map(d=>({id:d.id,...d.data()}));render();
   },error("Issue reports")));
