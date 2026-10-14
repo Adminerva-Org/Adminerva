@@ -4,7 +4,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/f
 import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const staffEmails = new Set(["babaynike2013@gmail.com", "josephsixson@mcstayuman.edu.ph"]);
-const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), open:false };
+const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false };
 const el = id => document.getElementById(id);
 const make = (tag, className, text) => {
   const node=document.createElement(tag);
@@ -51,10 +51,18 @@ function collectionItems(){
 function render(){
   const list=el("av-alert-list"),badge=el("av-alert-count");if(!list||!badge)return;
   const items=collectionItems(),count=items.filter(item=>!state.muted.has(item.type)&&unread(item)).length;
-  badge.textContent=count>99?"99+":String(count);
-  badge.classList.toggle("hidden",count===0);
-  el("av-alert-toggle").setAttribute("aria-label",count+" unread notifications");
+  const degraded=state.errors.size>0;
+  badge.textContent=count>99?"99+":(count>0?String(count):"!");
+  badge.classList.toggle("hidden",count===0&&!degraded);
+  badge.classList.toggle("bg-amber-600",degraded&&count===0);
+  badge.classList.toggle("bg-blue-600",!(degraded&&count===0));
+  el("av-alert-toggle").setAttribute("aria-label",
+    count+" unread notifications"+(degraded?", some alerts are unavailable":""));
   list.replaceChildren();
+  if(state.errors.size){
+    list.append(make("p","p-3 text-xs font-semibold bg-amber-50 border-b border-amber-200 text-amber-900",
+      "Some notification sources are unavailable. Reports or submissions may not appear until the Firebase connection is restored."));
+  }
   const search=state.search.toLowerCase();
   const visible=items.filter(n=>!state.muted.has(n.type) &&
     (state.filter==="all"||state.filter==="unread"&&unread(n)||state.filter==="issues"&&n.type==="issue") &&
@@ -89,21 +97,26 @@ async function markAllRead(){
 function listen(user){
   state.unsubscribe.forEach(stop=>stop());state.unsubscribe=[];
   state.user=user;state.notifications=[];state.issues=[];state.submissions=[];state.gradingAlerts=[];
+  state.errors.clear();
   state.read=restoreRead();state.muted=restorePreferences();
   document.querySelectorAll("#av-alert-panel input[data-alert-category]").forEach(input=>{
     input.checked=!state.muted.has(input.dataset.alertCategory);
   });
   render();
   if(!user)return;
-  const error=name=>err=>console.warn(name+" listener unavailable:",err.message);
+  const error=name=>err=>{
+    console.warn(name+" listener unavailable:",err.message);
+    state.errors.add(name);render();
+  };
+  const success=name=>{state.errors.delete(name);render()};
   state.unsubscribe.push(onSnapshot(
     query(collection(db,"notifications",user.uid,"items"),orderBy("createdAt","desc"),limit(60)),
-    snap=>{state.notifications=snap.docs.map(d=>({id:d.id,...d.data()}));render()},error("Notifications")));
+    snap=>{state.notifications=snap.docs.map(d=>({id:d.id,...d.data()}));success("Notifications")},error("Notifications")));
   const staff=staffEmails.has((user.email||"").toLowerCase());
   if(staff){
     state.unsubscribe.push(onSnapshot(
       query(collection(db,"issues"),orderBy("createdAt","desc"),limit(40)),
-      snap=>{state.issues=snap.docs.map(d=>({id:d.id,...d.data()}));render()},
+      snap=>{state.issues=snap.docs.map(d=>({id:d.id,...d.data()}));success("Issue reports")},
       error("Issue reports")));
   }else{
     // New tickets use Firebase UID, legacy tickets may still have reporterEmail.
@@ -120,17 +133,18 @@ function listen(user){
       ["legacy",query(collection(db,"issues"),where("reporterEmail","==",(user.email||"").toLowerCase()))]
     ]){
       state.unsubscribe.push(onSnapshot(request,snap=>{
-        issueSets[kind]=snap.docs.map(d=>({id:d.id,...d.data()}));combineIssues();
+        issueSets[kind]=snap.docs.map(d=>({id:d.id,...d.data()}));
+        state.errors.delete("Reporter issues");combineIssues();
       },error("Reporter issues")));
     }
   }
   if(staff)state.unsubscribe.push(onSnapshot(
     query(collection(db,"grading_alerts"),orderBy("createdAt","desc"),limit(30)),
-    snap=>{state.gradingAlerts=snap.docs.map(d=>({id:d.id,...d.data()}));render()},
+    snap=>{state.gradingAlerts=snap.docs.map(d=>({id:d.id,...d.data()}));success("Grading alerts")},
     error("Grading alerts")));
   if(staff)state.unsubscribe.push(onSnapshot(
     query(collection(db,"student_submissions"),orderBy("submittedAt","desc"),limit(40)),
-    snap=>{state.submissions=snap.docs.map(d=>({id:d.id,...d.data()}));render()},
+    snap=>{state.submissions=snap.docs.map(d=>({id:d.id,...d.data()}));success("Student submissions")},
     error("Student submissions")));
 }
 export function mountNotificationCenter(){
