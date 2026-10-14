@@ -5,6 +5,7 @@ import { createGithubEvidenceClient, parseGithubRepository } from "./services/gi
 import {
   doc,
   collection,
+  setDoc,
   getDoc,
   runTransaction,
   serverTimestamp,
@@ -460,6 +461,14 @@ window.startAutoCheck = async function (
     return { success: true };
   } catch (error) {
     console.error("[Auto-Check] Failed:", error);
+    // One teacher-only alert per student/assessment/hour; a failed check never alters the grade.
+    const alertKey = studentId + "_" + taskId + "_" + new Date().toISOString().slice(0, 13).replace(/[^0-9]/g, "");
+    void setDoc(doc(db, "grading_alerts", alertKey), {
+      studentId, taskId, repository: String(owner || "") + "/" + String(repo || ""),
+      message: String(error?.message || "Assessment check failed").slice(0, 700),
+      createdAt: serverTimestamp()
+    }, { merge: true }).catch(reportError =>
+      console.warn("Teacher grading alert could not be recorded:", reportError.message));
     window.AdminervaGradingDiagnostics.set(
       studentId + ":" + taskId, String(error?.message || "Unknown grading error").slice(0, 2500)
     );
