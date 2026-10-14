@@ -142,7 +142,7 @@ function renderIssues() {
             <span class="text-[10px] text-slate-400 font-medium ml-auto">${dateStr}</span>
           </div>
           <h3 class="text-base font-bold text-slate-800 leading-tight group-hover:text-cyan-700 transition">${isLocked}${prioMarker}${escapeHTML(iss.title)}</h3>
-          <p class="text-xs text-slate-500 mt-1 truncate">Reported by ${escapeHTML(iss.reporterEmail)}</p>
+          <p class="text-xs text-slate-500 mt-1 truncate">Reported by ${isSuperAdmin || (iss.reporterEmail||"").toLowerCase()===currentUserEmail ? escapeHTML(iss.reporterEmail) : "Community member"}</p>
         </div>
       </div>
     `;
