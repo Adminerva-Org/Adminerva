@@ -113,3 +113,21 @@ test('students cannot access draft grades belonging to teachers',async()=>{
   await assertSucceeds(updateDoc(doc(client('staff',TEACHER),'student_grades','alice_peta'),{published:true}));
   await assertSucceeds(getDoc(target));
 });
+
+
+test('new public issue and comment records do not require exposed student email',async()=>{
+  const alice=client('alice',EMAIL_A);
+  const ticket=doc(alice,'issues','private-contact');
+  await assertSucceeds(setDoc(ticket,{...report(),reporterEmail:''}));
+  const publicView=await getDoc(doc(client('bob',EMAIL_B),'issues','private-contact'));
+  assert.equal(publicView.data().reporterEmail,'');
+  assert.equal(publicView.data().reporterUid,'alice');
+  await assertSucceeds(setDoc(doc(alice,'issues','private-contact','comments','c1'),{
+    text:'I can reproduce this.',authorEmail:'',authorUid:'alice',
+    role:'student',createdAt:serverTimestamp()
+  }));
+  await assertFails(setDoc(doc(client('bob',EMAIL_B),'issues','private-contact','comments','fake'),{
+    text:'Forged comment',authorEmail:'',authorUid:'alice',
+    role:'student',createdAt:serverTimestamp()
+  }));
+});
