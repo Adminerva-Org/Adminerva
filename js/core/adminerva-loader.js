@@ -384,7 +384,7 @@ window.finalizeBugReport = async function () {
       expectedBehavior: document.getElementById("bug-expected").value.trim(),
       actualBehavior: document.getElementById("bug-actual").value.trim(),
       clientContext: navigator.userAgent.slice(0,300),
-      reporterRole: localStorage.getItem("Adminerva_Role") || "Unknown",
+      reporterRole: "reporter",
       status: "Open",
       upvotes: [],
       locked: false,
