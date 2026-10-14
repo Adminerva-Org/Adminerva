@@ -37,7 +37,7 @@ function collectionItems(){
     if(stored.has(alert.id))continue;
     rows.push({key:"grading:"+alert.id,type:"grading",title:"A grading check needs attention",
       body:(alert.repository||"Repository")+" · "+(alert.message||"Check failed"),
-      at:timeOf(alert.createdAt),target:"submissions.html",saved:false});
+      at:timeOf(alert.createdAt),target:"repofetch.html",saved:false});
   }
   for(const sub of state.submissions){
     if(stored.has(sub.id))continue;
