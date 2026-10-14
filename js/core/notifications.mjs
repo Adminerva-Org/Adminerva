@@ -1,4 +1,5 @@
 import { auth, db } from "./firebase-core.js";
+import {notificationTarget,previewDestination} from "./notification-routing.mjs";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
@@ -16,7 +17,7 @@ const keyName = () => "Adminerva_notif_seen_"+(state.user?.uid||"anonymous");
 const settingsKey = () => "Adminerva_notif_preferences_"+(state.user?.uid||"anonymous");
 function restorePreferences(){try{return new Set(JSON.parse(localStorage.getItem(settingsKey())||"[]"))}catch{return new Set()}}
 function storePreferences(){try{localStorage.setItem(settingsKey(),JSON.stringify([...state.muted]))}catch{}}
-const targetUrl = value => /^(?:issues|student-assessments|gradebook|repofetch|submissions|student-dashboard)\.html(?:\?[A-Za-z0-9%_.=&-]+)?$/.test(String(value||"")) ? value : "issues.html";
+const targetUrl = notificationTarget;
 function restoreRead(){try{return new Set(JSON.parse(localStorage.getItem(keyName())||"[]"))}catch{return new Set()}}
 function storeRead(){try{localStorage.setItem(keyName(),JSON.stringify([...state.read].slice(-400)))}catch{}}
 function unread(item){return !item.readAt && !state.read.has(item.key)}
@@ -37,13 +38,13 @@ function collectionItems(){
     if(stored.has(alert.id))continue;
     rows.push({key:"grading:"+alert.id,type:"grading",title:"A grading check needs attention",
       body:(alert.repository||"Repository")+" · "+(alert.message||"Check failed"),
-      at:timeOf(alert.createdAt),target:"repofetch.html",saved:false});
+      at:timeOf(alert.createdAt),target:previewDestination("grading"),saved:false});
   }
   for(const sub of state.submissions){
     if(stored.has(sub.id))continue;
     rows.push({key:"submission:"+sub.id,type:"submission",title:"Work submitted for review",
       body:(sub.studentName||"Student")+" · "+(sub.assessmentTitle||"Assessment"),
-      at:timeOf(sub.submittedAt),target:"submissions.html",saved:false});
+      at:timeOf(sub.submittedAt),target:previewDestination("submission"),saved:false});
   }
   return rows.sort((a,b)=>b.at-a.at).slice(0,100);
 }
