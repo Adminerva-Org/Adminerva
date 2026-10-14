@@ -4,6 +4,7 @@ import {
   getDocs,
   doc,
   updateDoc,
+  runTransaction,
   deleteDoc,
   addDoc,
   query,
@@ -275,29 +276,38 @@ window.viewFullscreen = function (base64) {
 // 3. VOTING & COMMENTING LOGIC
 // ==========================================
 document.getElementById("upvoteBtn").addEventListener("click", async () => {
-  if (!currentOpenIssueId) return;
-
-  const issIndex = allIssues.findIndex((i) => i.id === currentOpenIssueId);
-  const current = allIssues[issIndex];
-  const voteId = auth.currentUser?.uid;
-  if(!voteId)return;
-  let upvotes = [...(current.upvotes || [])];
-  // Old records stored emails; new votes contain opaque Firebase account IDs.
-  const existing = upvotes.includes(voteId) ? voteId
-    : upvotes.includes(currentUserEmail) ? currentUserEmail : null;
-  if (existing) upvotes = upvotes.filter(value => value !== existing);
-  else upvotes.push(voteId);
-
-  allIssues[issIndex].upvotes = upvotes;
-
-  // Optimistic UI Update
-  document.getElementById("upvoteCount").textContent = upvotes.length;
-  document.getElementById("upvoteBtn").classList.toggle("bg-indigo-100");
-  document.getElementById("upvoteBtn").classList.toggle("text-indigo-700");
-  renderIssues(); // Update background list
-
-  // Database Sync
-  await updateDoc(doc(db, "issues", currentOpenIssueId), { upvotes });
+  if (!currentOpenIssueId || !auth.currentUser?.uid) return;
+  const button=document.getElementById("upvoteBtn");
+  const issueId=currentOpenIssueId, voterUid=auth.currentUser.uid;
+  button.disabled=true;
+  try {
+    // Read and update votes atomically. A simultaneous classmate vote cannot
+    // overwrite another user's vote or forge somebody else's identity.
+    const currentVotes=await runTransaction(db,async transaction=>{
+      const ref=doc(db,"issues",issueId);
+      const snapshot=await transaction.get(ref);
+      if(!snapshot.exists())throw new Error("This issue no longer exists.");
+      const votes=Array.isArray(snapshot.data().upvotes)?snapshot.data().upvotes:[];
+      const mine=votes.includes(voterUid)?voterUid:
+        votes.includes(currentUserEmail)?currentUserEmail:null;
+      const next=mine?votes.filter(value=>value!==mine):[...votes,voterUid];
+      transaction.update(ref,{upvotes:next});
+      return next;
+    });
+    const issue=allIssues.find(item=>item.id===issueId);
+    if(issue)issue.upvotes=currentVotes;
+    document.getElementById("upvoteCount").textContent=String(currentVotes.length);
+    const voted=currentVotes.includes(voterUid)||currentVotes.includes(currentUserEmail);
+    button.classList.toggle("bg-indigo-100",voted);
+    button.classList.toggle("text-indigo-700",voted);
+    button.classList.toggle("border-indigo-300",voted);
+    renderIssues();
+  } catch(error) {
+    console.warn("Could not update issue vote",error);
+    alert("Your vote could not be saved. Reload the report and try again.");
+  } finally {
+    button.disabled=false;
+  }
 });
 // ==========================================
 // 2. REAL-TIME COMMENTS LISTENER
