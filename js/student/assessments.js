@@ -1,4 +1,5 @@
 import { db, auth } from "../core/firebase-core.js";
+import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import {
   collection,
   getDocs,
@@ -304,7 +305,7 @@ window.viewAssessmentDetails = function (id) {
   if (myGrade) {
     document.getElementById("modalScoreValue").textContent = myGrade.score;
     document.getElementById("modalScoreFeedback").textContent =
-      myGrade.feedback || "No feedback provided.";
+      cleanGradeFeedback(myGrade.feedback) || "No feedback provided.";
     scoreArea.classList.remove("hidden");
   } else {
     scoreArea.classList.add("hidden");

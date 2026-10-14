@@ -1,4 +1,5 @@
 import { db } from "../core/firebase-core.js";
+import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import {
   collection,
   getDocs,
@@ -173,7 +174,7 @@ async function loadGrid() {
                     <div class="flex flex-col gap-1 w-64">
                         <span class="${sColor} px-2 py-0.5 rounded text-lg font-extrabold border inline-block w-12 text-center shadow-sm">${grade.score}</span>
                         ${tagsHtml}
-                        <p class="text-[10px] text-slate-500 whitespace-normal leading-tight line-clamp-2" title="${escapeHTML(grade.feedback)}">${escapeHTML(grade.feedback)}</p>
+                        <p class="text-[10px] text-slate-500 whitespace-normal leading-tight line-clamp-2" title="${escapeHTML(cleanGradeFeedback(grade.feedback))}">${escapeHTML(cleanGradeFeedback(grade.feedback))}</p>
                     </div>
                 `;
 
@@ -269,7 +270,7 @@ window.matrixTogglePub = async function (studentId, taskId, checkbox) {
     if (!gradeSnap.exists()) throw new Error("Grade does not exist.");
     if (wantsPublish && gradeSnap.data().reviewRequired === true) {
       const verified = window.confirm(
-        "This is an AI draft requiring teacher review. Have you checked the attributed commits, matched files, and deadline limitations before publishing?"
+        "This draft requires teacher review. Have you checked the attributed commits, matched files, and deadline limitations before publishing?"
       );
       if (!verified) { checkbox.checked = false; return; }
     }
@@ -478,7 +479,7 @@ window.bulkPublishCurrentGrid = async function () {
 
     if (publishedCount === 0) {
       alert(reviewSkippedCount
-        ? `No review-cleared grades to publish. ${reviewSkippedCount} AI draft(s) require individual teacher review.`
+        ? `No review-cleared grades to publish. ${reviewSkippedCount} draft(s) require individual teacher review.`
         : "No existing grades found to publish for this task.");
       return;
     }
@@ -487,7 +488,7 @@ window.bulkPublishCurrentGrid = async function () {
     await batch.commit();
 
     alert(
-      `📢 Publish Complete!\n\nSuccessfully made ${publishedCount} grades visible to students for "${taskName}".${reviewSkippedCount ? `\nSkipped ${reviewSkippedCount} AI draft(s) pending review.` : ""}`,
+      `📢 Publish Complete!\n\nSuccessfully made ${publishedCount} grades visible to students for "${taskName}".${reviewSkippedCount ? `\nSkipped ${reviewSkippedCount} draft(s) pending review.` : ""}`,
     );
 
     // Refresh UI matrix to reflect visible status

@@ -1,4 +1,5 @@
 import { auth, db } from "../core/firebase-core.js";
+import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import {
   collection, doc, getDoc, runTransaction, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
@@ -148,7 +149,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
     el("manualReviewScore").max=String(maxScore);
     el("manualReviewMax").value=String(maxScore);
     el("manualReviewScore").value=previous?.score!=null?String(previous.score):"";
-    el("manualReviewFeedback").value=previous?.feedback||"";
+    el("manualReviewFeedback").value=cleanGradeFeedback(previous?.feedback);
     el("manualReviewFiles").value=(previous?.contributionEvidence?.matchedPaths||[]).join("\n");
     state.active={studentId,taskId,owner,repo,base,student,assessment,previous,gradeRef:gradeDoc.ref,maxScore,login};
     el("manualReviewSave").disabled=!!previous?.published;
@@ -166,7 +167,7 @@ async function save(event) {
   const active=state.active;if(!active)return;
   const raw=el("manualReviewScore").value;
   const score=Number(raw);
-  const feedback=el("manualReviewFeedback").value.trim();
+  const feedback=cleanGradeFeedback(el("manualReviewFeedback").value);
   const reason=el("manualReviewReason").value.trim();
   const paths=[...new Set(el("manualReviewFiles").value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean))];
   if(!raw.trim()||!Number.isFinite(score)||score<0||score>active.maxScore)return message("Score must be between 0 and "+active.maxScore+".",true);

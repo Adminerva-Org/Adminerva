@@ -1,4 +1,5 @@
 import { db } from "../core/firebase-core.js";
+import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import { resolveContributions, isGradableSource, scopeAssessmentFiles } from "./services/contribution-resolver.mjs";
 import { createGithubEvidenceClient, parseGithubRepository } from "./services/github-evidence-client.mjs";
 import {
@@ -361,8 +362,9 @@ window.startAutoCheck = async function (
       }
       finalScore = Math.min(Math.max(rawAiScore, 0), maxScore);
 
-      finalFeedback =
-        parsed.teacher_note || parsed.feedback || "No feedback generated.";
+      finalFeedback = cleanGradeFeedback(
+        parsed.teacher_note || parsed.feedback || "No feedback generated."
+      );
 
       let aiTags = [];
       if (Array.isArray(parsed.penalty_tags)) aiTags = parsed.penalty_tags;
@@ -404,7 +406,8 @@ window.startAutoCheck = async function (
       }
       transaction.set(gradeRef, {
         studentId, taskId, score: finalScore, maxScore,
-        feedback: "[AI DRAFT - REVIEW CONTRIBUTIONS BEFORE PUBLISHING] " + finalFeedback,
+        feedback: finalFeedback,
+        gradeSource: "automated",
         penaltyTags: finalTags,
         targetPath: displayPathText,
         gradingDurationMs: durationMs,
@@ -535,13 +538,13 @@ function renderGradeResult(
             <div class="flex flex-col items-center ml-1 w-10 shrink-0 mt-1">
                 <div class="text-2xl font-bold ${scoreColor} leading-none text-center">${score}</div>
                 <div class="text-[8px] font-bold text-gray-400 mt-1">/ ${maxScore}</div>
-                <div class="text-[9px] font-extrabold mt-1 ${isProvisional ? "text-amber-700" : "text-blue-700"}">${isProvisional ? "PROVISIONAL" : "AI DRAFT"}</div>
+                <div class="text-[9px] font-extrabold mt-1 ${isProvisional ? "text-amber-700" : "text-blue-700"}">${isProvisional ? "PROVISIONAL" : "REVIEW DRAFT"}</div>
             </div>
             <div class="flex-1 min-w-0 border-l border-gray-200 pl-3 ml-1">
                 ${isProvisional ? '<p class="text-xs font-extrabold text-amber-800 bg-amber-50 border border-amber-200 p-2 mb-2 rounded">Alternative-file investigation: high-priority teacher review required</p>' : ""}
                 <p class="text-[9px] font-mono text-gray-500 break-all mb-1" title="${escapeHTML(exactPath)}">File(s): ${escapeHTML(exactPath)}</p>
                 ${tagsHtml}
-                <div class="text-[10px] text-gray-700 leading-relaxed max-h-24 overflow-y-auto pr-1 whitespace-pre-wrap">${escapeHTML(feedback)}</div>
+                <div class="text-[10px] text-gray-700 leading-relaxed max-h-24 overflow-y-auto pr-1 whitespace-pre-wrap">${escapeHTML(cleanGradeFeedback(feedback))}</div>
             </div>
             <div class="flex flex-col items-center justify-center border-l border-gray-200 pl-2 shrink-0 w-12 mt-1">
                 <span id="pub-lbl-${taskId}" class="text-[7px] font-bold text-gray-400 uppercase mb-1 tracking-wider">Hidden</span>

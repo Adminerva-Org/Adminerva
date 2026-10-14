@@ -213,3 +213,23 @@ body div[id$="Modal"] :where(.overflow-y-auto) { overscroll-behavior: contain; }
   html { scroll-behavior: auto; }
   #subtleLoader, body button, body a { transition-duration: .01ms !important; }
 }
+
+
+/* Keep the text caret visible in light forms. This does not modify Monaco's editor caret. */
+body input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.inputarea),
+body textarea:not(.inputarea),
+body [contenteditable="true"]:not(.monaco-editor *) {
+  caret-color: var(--av-ink);
+}
+/* Dark-background fields retain a contrasting light caret. */
+body :is(input, textarea)[class*="bg-slate-9"],
+body :is(input, textarea)[class*="bg-gray-9"],
+body :is(input, textarea)[class*="bg-slate-8"],
+body :is(input, textarea)[class*="bg-gray-8"],
+#bug-modal :is(input,textarea) {
+  caret-color: #f8fafc;
+}
+/* Code editors control their own caret color and input accessibility. */
+.monaco-editor :is(input,textarea), .monaco-editor .inputarea {
+  caret-color: auto;
+}

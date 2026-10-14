@@ -1,4 +1,5 @@
 import { auth, db } from "../core/firebase-core.js";
+import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   collection, doc, getDoc, getDocs, query, where, runTransaction,
@@ -182,7 +183,7 @@ function renderEvidence(student, task, grade) {
         f.path + " — " + (f.reasons || []).join("; ")));
     links(box, "Other candidate file paths", evidence.fallbackCandidatePaths || []);
   }
-  detailLine(box, "AI evaluation", grade.reviewRequired ? "Draft requires teacher review" : grade.published ? "Published" : "Unpublished");
+  detailLine(box, "Review status", grade.reviewRequired ? "Draft requires teacher review" : grade.published ? "Published" : "Unpublished");
   const breakdown = grade.criteriaScores || grade.rubricBreakdown || grade.criterionScores;
   if (breakdown) detailLine(box, "Rubric breakdown", JSON.stringify(breakdown));
   else detailLine(box, "Rubric breakdown", "Not stored by the current grader");
@@ -217,7 +218,7 @@ async function loadRevisions(entry) {
       add(wrap, "summary", "cursor-pointer text-slate-700 font-semibold", date + " — " + (version.reason || "Grade changed"));
       add(wrap, "p", "mt-2 text-slate-700", "Before: " + (version.before?.score ?? "n/a") +
         " • After: " + (version.after?.score ?? "n/a"));
-      if (version.before?.feedback) add(wrap, "p", "mt-1 break-words whitespace-pre-wrap", "Previous feedback: " + version.before.feedback);
+      if (version.before?.feedback) add(wrap, "p", "mt-1 break-words whitespace-pre-wrap", "Previous feedback: " + cleanGradeFeedback(version.before.feedback));
     }
   } catch (error) {
     historyBox.replaceChildren();
@@ -232,7 +233,7 @@ function openDetails(student, task, entry) {
     (repoInfo(student)?.name || "Unlinked repository");
   el("gbEditScore").value = Number(grade.score);
   el("gbEditMax").value = String(grade.maxScore || task.maxScore || 20);
-  el("gbEditFeedback").value = grade.feedback || "";
+  el("gbEditFeedback").value = cleanGradeFeedback(grade.feedback);
   el("gbEditReason").value = "";
   el("gbMarkReviewed").checked = !grade.reviewRequired;
   el("gbDetailStatus").textContent = grade.published ? "Published: changing the score will be visible to the student." :
@@ -252,7 +253,7 @@ async function saveDetails() {
   if (!active) return;
   const grade = active.entry.data;
   const score = Number(el("gbEditScore").value);
-  const feedback = el("gbEditFeedback").value.trim();
+  const feedback = cleanGradeFeedback(el("gbEditFeedback").value);
   const reason = el("gbEditReason").value.trim();
   const maxScore = Number(grade.maxScore || active.task.maxScore || 20);
   if (!el("gbEditScore").value.trim() || !Number.isFinite(score) || score < 0 || score > maxScore)
@@ -333,7 +334,7 @@ async function bulkVisibility(makePublished) {
     eligible.push(entry);
   }
   if (!eligible.length) return alert("No eligible grades to " + (makePublished ? "publish" : "unpublish") +
-    ". AI drafts requiring review are excluded from bulk publication.");
+    ". Drafts requiring teacher review are excluded from bulk publication.");
   if (!confirm((makePublished ? "Publish " : "Unpublish ") + eligible.length +
       " grade(s) for the selected quarter and section?")) return;
   try {

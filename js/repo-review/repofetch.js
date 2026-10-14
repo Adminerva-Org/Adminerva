@@ -1,4 +1,5 @@
 import { db } from "../core/firebase-core.js";
+import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import {
   collection,
   getDocs,
@@ -454,9 +455,9 @@ window.openGradingModal = async function (studentId, owner, repo) {
               <div class="flex items-center justify-end gap-3 bg-gray-50 p-2 rounded border border-gray-200 w-full sm:w-[360px] shadow-inner">
                   <div class="text-2xl font-bold ${scoreColor} leading-none ml-2 w-10 text-center">${gradeRecord.score}</div>
                   <div class="flex-1 min-w-0 border-l border-gray-200 pl-3 ml-1">
-                      <p class="text-[9px] font-bold text-gray-500 uppercase mb-1 tracking-wider">${isTeacherScore ? "Teacher Score" : gradeRecord.provisionalScore ? "Provisional AI Draft" : "Up to Date"}</p>
+                      <p class="text-[9px] font-bold text-gray-500 uppercase mb-1 tracking-wider">${isTeacherScore ? "Teacher Score" : gradeRecord.provisionalScore ? "Provisional Draft" : "Up to Date"}</p>
                       ${tagsHtml}
-                      <div class="text-[10px] text-gray-700 leading-relaxed max-h-24 overflow-y-auto pr-1 whitespace-pre-wrap">${escapeHTML(gradeRecord.feedback)}</div>
+                      <div class="text-[10px] text-gray-700 leading-relaxed max-h-24 overflow-y-auto pr-1 whitespace-pre-wrap">${escapeHTML(cleanGradeFeedback(gradeRecord.feedback))}</div>
                   </div>
                   <div class="flex flex-col items-center justify-center border-l border-gray-200 pl-2 shrink-0 w-12">
                       <span id="pub-lbl-${task.id}" class="text-[7px] font-bold ${isPub ? "text-blue-600" : "text-gray-400"} uppercase mb-1 tracking-wider">${isPub ? "Visible" : "Hidden"}</span>
@@ -571,7 +572,7 @@ window.togglePublishGrade = async function (studentId, taskId, checkbox) {
     const gradeSnap = await getDoc(gradeRef);
     if (!gradeSnap.exists()) throw new Error("Grade not found.");
     if (wantsPublish && gradeSnap.data().reviewRequired === true) {
-      if (!window.confirm("This AI draft requires teacher review. Have you verified the student's commits, matched code, and submission timing before publishing?")) {
+      if (!window.confirm("This draft requires teacher review. Have you verified the student's commits, matched code, and submission timing before publishing?")) {
         checkbox.checked = false;
         return;
       }

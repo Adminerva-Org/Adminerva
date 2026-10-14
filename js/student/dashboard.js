@@ -1,4 +1,5 @@
 import { db, auth } from "../core/firebase-core.js";
+import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import {
   collection,
   getDocs,
@@ -205,7 +206,7 @@ async function loadDashboardProfile(studentData) {
               <div class="text-3xl font-extrabold ${scoreColor} bg-white px-3 py-2 rounded-lg shadow-sm border border-slate-100 min-w-[70px] text-center">${latest.score}</div>
               <div class="flex-1 min-w-0">
                   <h4 class="font-bold text-slate-800 text-sm mb-1 uppercase tracking-wider text-[10px]">Score Breakdown</h4>
-                  <p class="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto pr-2">${escapeHTML(latest.feedback)}</p>
+                  <p class="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto pr-2">${escapeHTML(cleanGradeFeedback(latest.feedback))}</p>
               </div>
           </div>
         `;
@@ -733,7 +734,7 @@ window.viewAssessmentDetails = function (id) {
   if (myGrade) {
     document.getElementById("modalScoreValue").textContent = myGrade.score;
     document.getElementById("modalScoreFeedback").textContent =
-      myGrade.feedback || "No feedback provided.";
+      cleanGradeFeedback(myGrade.feedback) || "No feedback provided.";
     scoreArea.classList.remove("hidden");
   } else {
     scoreArea.classList.add("hidden");
