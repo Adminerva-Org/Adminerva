@@ -8,6 +8,10 @@ The GitHub Pages frontend is committed on `main`. It includes a bell in the shar
 
 The Firebase project is `reporeview-e7ca4`. Do not paste Firebase secrets or GitHub credentials into issues or reports. The frontend uses the existing public Firebase configuration.
 
+## Firestore rule regression tests
+
+GitHub Actions runs the JavaScript suite and a Firebase Firestore emulator test suite (see `.github/workflows/adminerva-quality.yml` and `tests/firestore-rules.test.mjs`). The emulator tests validate legitimate and forged issue submissions, comment authorization, recipient-only inbox access, immutable student submission receipts, published-grade visibility, and UID-based upvote permissions. CI green does not mean the rules have been deployed to the live Firebase project.
+
 ## Backend deployment (authorized Firebase project owner)
 
 Prerequisites: Firebase CLI, Node 20, the appropriate Firebase project role, and a Firebase plan capable of running Cloud Functions. Set up Firebase billing only with appropriate organizational authorization. Back up the currently deployed Firestore rules before replacement.
@@ -31,9 +35,10 @@ Functions source: `functions/index.js`. Functions v2 uses Cloud Firestore trigge
 | New bug report | `issues/{id}` created | Staff | Staff bell also previews new issues while logged in, even without Functions |
 | Report changed / comment | Issues and comments triggers | Reporter and relevant staff | Excludes comment author |
 | Submission for review | `student_submissions/{id}` created | Staff | Student creates an immutable receipt pinned to a Git commit SHA |
-| Published grade | `student_grades/{id}` updated | Student | Only false → true; draft grades never notify students |
-| New deployment | `assessments/{id}` updated | Students in newly deployed sections | Updates to existing deployments are not yet a notification event |
+| Published grade | `student_grades/{id}` created or updated | Student | First publication, including initially published records; draft grades never notify students |
+| New deployment | `assessments/{id}` created or updated | Students in newly deployed sections | Deployment at creation and newly added sections are covered |
 | Grading check error | `grading_alerts/{id}` created | Staff | Auto-Checker records one alert per student/assessment/hour |
+| Published grade correction | `student_grades/{id}` updated | Student | Notifies only when a published score or feedback changes |
 
 ### Smoke tests in a test Firebase project first
 
@@ -51,9 +56,9 @@ Functions source: `functions/index.js`. Functions v2 uses Cloud Firestore trigge
 
 * GitHub Pages does **not** deploy Cloud Functions or Firestore rules. Do not mistake a frontend commit for a complete Firebase release.
 * The student submission client currently resolves **public GitHub repositories** without reading browser-stored GitHub tokens. Private repositories need a secure backend.
-* In-app notification previews work only while a browser tab is open. Reliable event history requires deployed Functions. Email, background browser push and configurable notification-channel preferences are not enabled in this release.
-* Current report screenshots remain compressed/capped inline data in Firestore, rather than Firebase Storage; no image should contain sensitive student data. A future migration should move attachments into secured Storage.
-* The community issue board still exposes its report documents to signed-in users for duplicate discovery and upvotes. Hiding reporter email in the UI is not full data-access protection. A secure public/private report schema migration is required before accepting sensitive support reports.
+* In-app notification previews work only while a browser tab is open. Reliable event history requires deployed Functions. Category mutes and search are available locally; preferences do not sync across devices. Email and background browser push are not enabled.
+* New report screenshots are size-capped but remain inline data in Firestore, rather than Firebase Storage. Avoid uploading sensitive student data. A future migration should move attachments into secured Storage with access controls.
+* New reports and student comments use authenticated Firebase UIDs and omit student emails from new public records. New votes also use Firebase UIDs, not emails. **Historical issues, votes and comments may still contain email addresses** readable to signed-in users until a controlled database migration runs. New reports still expose their UID to signed-in readers, so do not place sensitive personal information in public tickets. A separate private support schema is recommended.
 * The report duplicate detector is a keyword-based hint, not automatic merging.
 * Use a short incident window for initial production monitoring: examine Firestore permission-denied errors and Cloud Functions execution logs.
 
