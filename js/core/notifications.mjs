@@ -100,11 +100,30 @@ function listen(user){
     query(collection(db,"notifications",user.uid,"items"),orderBy("createdAt","desc"),limit(60)),
     snap=>{state.notifications=snap.docs.map(d=>({id:d.id,...d.data()}));render()},error("Notifications")));
   const staff=staffEmails.has((user.email||"").toLowerCase());
-  const iq=staff?query(collection(db,"issues"),orderBy("createdAt","desc"),limit(40)):
-    query(collection(db,"issues"),where("reporterEmail","==",(user.email||"").toLowerCase()));
-  state.unsubscribe.push(onSnapshot(iq,snap=>{
-    state.issues=snap.docs.map(d=>({id:d.id,...d.data()}));render();
-  },error("Issue reports")));
+  if(staff){
+    state.unsubscribe.push(onSnapshot(
+      query(collection(db,"issues"),orderBy("createdAt","desc"),limit(40)),
+      snap=>{state.issues=snap.docs.map(d=>({id:d.id,...d.data()}));render()},
+      error("Issue reports")));
+  }else{
+    // New tickets use Firebase UID, legacy tickets may still have reporterEmail.
+    // Keep both until old public report documents have been migrated.
+    const issueSets={current:[],legacy:[]};
+    const combineIssues=()=>{
+      const merged=new Map();
+      for(const item of [...issueSets.current,...issueSets.legacy])merged.set(item.id,item);
+      state.issues=[...merged.values()].sort((a,b)=>timeOf(b.createdAt)-timeOf(a.createdAt)).slice(0,50);
+      render();
+    };
+    for(const [kind,request] of [
+      ["current",query(collection(db,"issues"),where("reporterUid","==",user.uid))],
+      ["legacy",query(collection(db,"issues"),where("reporterEmail","==",(user.email||"").toLowerCase()))]
+    ]){
+      state.unsubscribe.push(onSnapshot(request,snap=>{
+        issueSets[kind]=snap.docs.map(d=>({id:d.id,...d.data()}));combineIssues();
+      },error("Reporter issues")));
+    }
+  }
   if(staff)state.unsubscribe.push(onSnapshot(
     query(collection(db,"grading_alerts"),orderBy("createdAt","desc"),limit(30)),
     snap=>{state.gradingAlerts=snap.docs.map(d=>({id:d.id,...d.data()}));render()},
