@@ -56,10 +56,17 @@
             class="border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold bg-white text-slate-700 cursor-pointer focus:ring-2 focus:ring-cyan-500 outline-none flex-grow md:flex-grow-0"
           >
             <option value="All">All Statuses</option>
-            <option value="Open" selected>🟢 Open</option>
-            <option value="In Progress">🟡 In Progress</option>
-            <option value="Resolved">✅ Resolved</option>
+            <option value="Open" selected>Open</option>
+            <option value="Triaged">Triaged</option>
+            <option value="Waiting for Reporter">Waiting for Reporter</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Resolved">Resolved</option>
+            <option value="Closed (Won't Fix)">Closed</option>
           </select>
+          <label class="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-700">
+            <input id="filterMine" type="checkbox" onchange="window.renderIssuesFilter?.()" class="h-4 w-4" />
+            My reports
+          </label>
           <button
             onclick="
               document.getElementById('bug-modal').classList.remove('hidden')
@@ -132,6 +139,8 @@
               class="text-xs border border-amber-300 rounded px-2 py-1 font-bold bg-white text-slate-700 outline-none cursor-pointer"
             >
               <option value="Open">Status: Open</option>
+              <option value="Triaged">Status: Triaged</option>
+              <option value="Waiting for Reporter">Status: Waiting for Reporter</option>
               <option value="In Progress">Status: In Progress</option>
               <option value="Resolved">Status: Resolved</option>
               <option value="Closed (Won't Fix)">Status: Closed</option>
