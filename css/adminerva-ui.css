@@ -218,7 +218,7 @@ body div[id$="Modal"] :where(.overflow-y-auto) { overscroll-behavior: contain; }
 /* Keep the text caret visible in light forms. This does not modify Monaco's editor caret. */
 body input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(.inputarea),
 body textarea:not(.inputarea),
-body [contenteditable="true"]:not(.monaco-editor *) {
+body [contenteditable="true"]:not(.monaco-editor) {
   caret-color: var(--av-ink);
 }
 /* Dark-background fields retain a contrasting light caret. */
