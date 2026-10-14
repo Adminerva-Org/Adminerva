@@ -77,6 +77,9 @@ service cloud.firestore {
         ]) &&
         request.resource.data.reporterUid == request.auth.uid &&
         request.resource.data.reporterEmail.lower() == request.auth.token.email.lower() &&
+        request.resource.data.reporterRole == "reporter" &&
+        request.resource.data.category in ["Bug", "Access", "Feature", "UI", "Other"] &&
+        request.resource.data.priority in ["Low", "Medium", "High", "Critical"] &&
         request.resource.data.title is string &&
         request.resource.data.title.size() >= 4 &&
         request.resource.data.title.size() <= 160 &&
@@ -112,8 +115,13 @@ service cloud.firestore {
       match /comments/{commentId} {
         allow read: if signedIn();
         allow create: if signedIn() &&
+          request.resource.data.keys().hasOnly([
+            "text", "authorEmail", "authorUid", "role", "createdAt"
+          ]) &&
+          request.resource.data.authorUid == request.auth.uid &&
           request.resource.data.authorEmail is string &&
           request.resource.data.authorEmail.lower() == request.auth.token.email.lower() &&
+          request.resource.data.role == "student" &&
           request.resource.data.text is string &&
           request.resource.data.text.size() > 0 &&
           request.resource.data.text.size() <= 2000 &&
@@ -153,7 +161,14 @@ service cloud.firestore {
         ownsStudentProfile(request.resource.data.studentId) &&
         request.resource.data.studentId is string &&
         request.resource.data.assessmentId is string &&
+        exists(/databases/$(database)/documents/assessments/$(request.resource.data.assessmentId)) &&
+        request.resource.data.section is string &&
+        request.resource.data.section ==
+          get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.section &&
+        request.resource.data.sourcePath is string &&
+        request.resource.data.sourcePath.size() <= 240 &&
         request.resource.data.repoUrl is string &&
+        request.resource.data.repoUrl.matches("^https://github[.]com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$") &&
         request.resource.data.revisionSha is string &&
         request.resource.data.revisionSha.matches("^[a-fA-F0-9]{40}$") &&
         request.resource.data.submittedAt == request.time;
