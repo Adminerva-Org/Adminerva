@@ -37,23 +37,39 @@ async function submit(){
     const info=await githubJson(api);
     const commit=await githubJson(api+"/commits/"+encodeURIComponent(info.default_branch||"main"));
     if(!/^[a-f0-9]{40}$/i.test(commit.sha||""))throw Error("GitHub did not return a valid commit.");
-    const id=profile.id+"_"+task.id+"_"+commit.sha.slice(0,12);
+    // A missing document is not readable under owner-only Firestore rules.
+    // Create directly and handle the immutable existing receipt on rejection.
+    // Using the full SHA also avoids collisions between short SHA prefixes.
+    const id=profile.id+"_"+task.id+"_"+commit.sha;
     const ref=doc(db,"student_submissions",id);
-    if((await getDoc(ref)).exists()){
-      status.textContent="This exact revision was already submitted. Commit: "+commit.sha.slice(0,12);
-      return;
-    }
     if(!confirm("Submit "+task.title+" for review at commit "+commit.sha.slice(0,12)+
       "? This creates a submission record, not a grade.")){
       status.textContent="Submission cancelled.";return;
     }
-    await setDoc(ref,{
-      studentId:profile.id,assessmentId:task.id,submittedByUid:user.uid,
-      studentName:profile.name||"Student",assessmentTitle:task.title||"Assessment",
-      repoUrl:repository.url,githubLogin:profile.githubUsername||"",
-      revisionSha:commit.sha,sourcePath:relativePath,
-      section:context.section,submittedAt:serverTimestamp()
-    });
+    try {
+      await setDoc(ref,{
+        studentId:profile.id,assessmentId:task.id,submittedByUid:user.uid,
+        studentName:profile.name||"Student",assessmentTitle:task.title||"Assessment",
+        repoUrl:repository.url,githubLogin:profile.githubUsername||"",
+        revisionSha:commit.sha,sourcePath:relativePath,
+        section:context.section,submittedAt:serverTimestamp()
+      });
+    } catch (writeError) {
+      if (writeError?.code==="permission-denied") {
+        // Existing receipt reads are permitted to the original student.
+        // Other authorization failures must remain errors.
+        try {
+          const existing=await getDoc(ref);
+          if(existing.exists() && existing.data().submittedByUid===user.uid &&
+             existing.data().revisionSha===commit.sha) {
+            status.textContent="This revision was already submitted. Commit: "+commit.sha.slice(0,12);
+            button.textContent="Already submitted";
+            return;
+          }
+        } catch (_) { /* Do not hide the original write failure. */ }
+      }
+      throw writeError;
+    }
     status.textContent="Submitted successfully. Revision: "+commit.sha.slice(0,12)+
       ". Your teacher can review this exact commit.";
     button.textContent="Submission recorded";
