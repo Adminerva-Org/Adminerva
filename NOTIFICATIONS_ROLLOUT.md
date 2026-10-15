@@ -14,7 +14,7 @@ GitHub Actions runs the JavaScript suite and a Firebase Firestore emulator test 
 
 ## Backend deployment (authorized Firebase project owner)
 
-Prerequisites: Firebase CLI, Node 20, the appropriate Firebase project role, and a Firebase plan capable of running Cloud Functions. Set up Firebase billing only with appropriate organizational authorization. Back up the currently deployed Firestore rules before replacement.
+Prerequisites: Firebase CLI, Node.js 22, the appropriate Firebase project role, and a Firebase plan capable of running Cloud Functions. Set up Firebase billing only with appropriate organizational authorization. Back up the currently deployed Firestore rules before replacement.
 
 From the repository root:
 
@@ -23,6 +23,8 @@ npm --prefix functions install
 npx firebase-tools login
 npx firebase-tools deploy --project reporeview-e7ca4 --only firestore:rules,functions
 ```
+
+The repository now targets the Node.js 22 Cloud Functions runtime. Run the current Firestore emulator security suite and back up live rules before deploying. Verify the Firebase project's billing plan and inspect the deployment's resource/cost impact.
 
 Review the proposed `firestore.rules` **in the emulator before production**. The rules continue to use two temporary staff allowlist emails; replace them with verified teacher claims when teacher accounts are introduced.
 
