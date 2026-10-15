@@ -13,7 +13,7 @@ jobs:
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Test grading evidence and feedback regressions
         run: |
           node --test js/core/feedback-format.test.mjs js/repo-review/services/commit-substance.test.mjs js/repo-review/services/contribution-resolver.test.mjs js/repo-review/services/inspector-helpers.test.mjs js/core/notification-routing.test.mjs
@@ -35,7 +35,7 @@ jobs:
       - name: Set up Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
       - name: Set up Java for Firebase emulators
         uses: actions/setup-java@v4
         with:

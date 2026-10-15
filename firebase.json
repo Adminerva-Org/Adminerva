@@ -4,6 +4,6 @@
   },
   "functions": {
     "source": "functions",
-    "runtime": "nodejs20"
+    "runtime": "nodejs22"
   }
 }
