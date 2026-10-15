@@ -156,3 +156,15 @@ test('UID upvotes cannot be forged; legacy email votes can be removed',async()=>
   await assertSucceeds(updateDoc(ticket,{upvotes:[]}));
   await assertFails(updateDoc(ticket,{upvotes:[EMAIL_B]}));
 });
+
+
+test('first review submission is creatable without a read preflight; duplicate is immutable',async()=>{
+  const db=client('alice',EMAIL_A);
+  const receiptRef=doc(db,'student_submissions','alice_peta_'+SHA);
+  // No preflight is necessary: Firestore may reject reads of missing records
+  // when a read rule checks resource.data.studentId.
+  await assertSucceeds(setDoc(receiptRef,submission()));
+  await assertSucceeds(getDoc(receiptRef));
+  await assertFails(setDoc(receiptRef,{...submission(),sourcePath:'src/changed'}));
+  await assertFails(setDoc(receiptRef,{...submission(),sourcePath:'app/src'}));
+});
