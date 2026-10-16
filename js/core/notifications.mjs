@@ -82,7 +82,9 @@ function render(){
     if(n.at)link.append(make("p","text-[11px] text-slate-500 mt-1",new Date(n.at).toLocaleString()));
     link.addEventListener("click",async event=>{
       event.preventDefault();
-      await markRead(n);
+      // Read status persists locally immediately. Don't let a slow Firestore
+      // read update prevent navigation to the linked item.
+      void markRead(n);
       await Promise.race([remember(n,Boolean(n.pinned)),new Promise(resolve=>setTimeout(resolve,1300))]);
       window.location.assign(targetUrl(n.target));
     });
