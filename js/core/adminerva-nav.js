@@ -95,7 +95,6 @@ document.addEventListener("DOMContentLoaded", () => {
     centerLinks = `
             <a href="student-dashboard.html" class="${getStyle("dashboard")}">Dashboard</a>
             <a href="student-assessments.html" class="${getStyle("assessments")}">Assignments</a>
-            <a href="student-practice.html" class="${getStyle("practice")}">Practice Lab</a>
             <a href="student-settings.html" class="${getStyle("settings")}">Settings</a>
         `;
     rightSide = `
@@ -108,6 +107,20 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
             </div>
         `;
+    logoBlock = studentLogoBlock;
+  }
+  // Practice Lab is a separate student product area, not a Project Hub tab.
+  else if (activeModule === "student-practice") {
+    centerLinks = `<a href="student-practice.html" class="${getStyle("practice")}">Courses &amp; Missions</a>`;
+    rightSide = `
+      <div class="flex items-center">
+        ${reportIcon}
+        <div class="flex flex-col items-end justify-center border-l border-gray-700 pl-3 sm:pl-4 py-1">
+          <button id="signOutBtn" class="text-xs sm:text-sm text-gray-300 hover:text-white font-bold">Sign Out</button>
+          <span id="userEmailDisplay" class="text-[9px] sm:text-[10px] text-slate-400 truncate max-w-[130px]"></span>
+          <span class="text-[8px] font-bold text-cyan-500 uppercase tracking-widest">Student</span>
+        </div>
+      </div>`;
     logoBlock = studentLogoBlock;
   }
   // Student Code Playground Module
