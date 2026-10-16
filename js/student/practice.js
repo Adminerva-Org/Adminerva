@@ -1,6 +1,6 @@
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {collection,doc,getDocs,setDoc,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import {collection,doc,getDocs,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {COURSES,practiceQuestion} from "./practice-courses.mjs";
 import {makePracticeTransfer,readPracticeTransfer,practiceBridgeKey} from "./practice-playground-bridge.mjs";
 
@@ -40,14 +40,17 @@ async function syncCourse(courseId){
     // Merge with current cloud work inside a transaction so a second device
     // cannot replace earlier completions from another session.
     const ref=doc(db,"student_practice_progress",currentUid,"courses",courseId);
-    const remote=await getDoc(ref);
-    if(user?.uid!==currentUid)return false;
-    const existing=remote.exists()?remote.data():{};
-    const completedIds=[...new Set([...(existing.completed||[]),...localSet])]
-      .filter(id=>course.missions.some(m=>m.id===id));
-    const notes={...(existing.reflections||{}),...localNotes};
-    await setDoc(ref,{ownerUid:currentUid,courseId,completed:completedIds,
-      reflections:notes,updatedAt:serverTimestamp()});
+    const merged=await runTransaction(db,async tx=>{
+      const remote=await tx.get(ref);
+      const existing=remote.exists()?remote.data():{};
+      const completedIds=[...new Set([...(existing.completed||[]),...localSet])]
+        .filter(id=>course.missions.some(m=>m.id===id));
+      const notes={...(existing.reflections||{}),...localNotes};
+      tx.set(ref,{ownerUid:currentUid,courseId,completed:completedIds,
+        reflections:notes,updatedAt:serverTimestamp()});
+      return {completedIds,notes};
+    });
+    const {completedIds,notes}=merged;
     if(user?.uid!==currentUid)return false;
     completed.set(courseId,new Set(completedIds));
     reflections.set(courseId,notes);
