@@ -12,6 +12,7 @@ const PROJECT = 'demo-adminerva-security';
 const EMAIL_A = 'student-a@example.edu';
 const EMAIL_B = 'student-b@example.edu';
 const TEACHER = 'josephsixson@mcstayuman.edu.ph';
+const ADMIN = 'babaynike2013@gmail.com';
 const SHA = 'a'.repeat(40);
 
 before(async () => {
@@ -30,7 +31,7 @@ beforeEach(async () => {
       setDoc(doc(db,'students','bob'),{name:'Bob',email:EMAIL_B,section:'11-B'}),
       setDoc(doc(db,'assessments','peta'),{title:'Practical Exam',quarter:'Q2'}),
       setDoc(doc(db,'notifications','alice','items','note-1'),{
-        title:'Review update',type:'issue',createdAt:new Date(),readAt:null,
+        title:'Review update',type:'grade',createdAt:new Date(),readAt:null,
         target:'issues.html',body:'Your report is ready.'
       })
     ]);
@@ -40,7 +41,7 @@ function client(uid,email){return env.authenticatedContext(uid,{email}).firestor
 function report(uid='alice',email=EMAIL_A){
   return {
     title:'Compiler stops working',description:'The editor fails after selecting Run.',
-    category:'Bug',priority:'Medium',images:[],
+    category:'Bug',recipientRole:'admin',priority:'Medium',images:[],
     reporterUid:uid,reporterEmail:email,reporterRole:'reporter',
     urlContext:'https://example.com/student-playground.html',
     status:'Open',upvotes:[],locked:false,createdAt:serverTimestamp(),
@@ -63,6 +64,7 @@ test('students can file reports but cannot spoof reporter identity',async()=>{
   await assertSucceeds(setDoc(doc(db,'issues','a1'),report()));
   await assertFails(setDoc(doc(db,'issues','a2'),report('bob',EMAIL_B)));
   await assertFails(setDoc(doc(db,'issues','a3'),{...report(),reporterRole:'admin'}));
+  await assertFails(setDoc(doc(db,'issues','a4'),{...report(),recipientRole:'teacher'}));
 });
 test('only staff can triage or change report priority and lock state',async()=>{
   const db=client('alice',EMAIL_A);
@@ -70,7 +72,34 @@ test('only staff can triage or change report priority and lock state',async()=>{
   await assertFails(updateDoc(doc(db,'issues','ticket'),{priority:'Critical'}));
   await assertFails(updateDoc(doc(db,'issues','ticket'),{status:'Resolved'}));
   await assertFails(updateDoc(doc(db,'issues','ticket'),{locked:true}));
-  await assertSucceeds(updateDoc(doc(client('staff',TEACHER),'issues','ticket'),{status:'Resolved'}));
+  await assertFails(updateDoc(doc(client('staff',TEACHER),'issues','ticket'),{status:'Resolved'}));
+  await assertSucceeds(updateDoc(doc(client('admin',ADMIN),'issues','ticket'),{status:'Resolved'}));
+  await assertSucceeds(setDoc(doc(db,'issues','classroom'),{
+    ...report(),category:'Other',recipientRole:'teacher'
+  }));
+  await assertSucceeds(updateDoc(doc(client('staff',TEACHER),'issues','classroom'),{status:'Resolved'}));
+  await assertFails(updateDoc(doc(client('staff',TEACHER),'issues','classroom'),{recipientRole:'admin'}));
+});
+test('classroom reports are visible to teachers but not other students',async()=>{
+  const alice=client('alice',EMAIL_A);
+  await assertSucceeds(setDoc(doc(alice,'issues','teacher-report'),{
+    ...report(),category:'Other',recipientRole:'teacher'
+  }));
+  await assertSucceeds(getDoc(doc(client('staff',TEACHER),'issues','teacher-report')));
+  await assertFails(getDoc(doc(client('bob',EMAIL_B),'issues','teacher-report')));
+  await assertSucceeds(getDoc(doc(client('admin',ADMIN),'issues','teacher-report')));
+  await assertSucceeds(getDocs(query(collection(client('staff',TEACHER),'issues'),
+    where('recipientRole','==','teacher'))));
+});
+test('old bug notifications are unreadable to students and teachers',async()=>{
+  await env.withSecurityRulesDisabled(async ctx=>{
+    await setDoc(doc(ctx.firestore(),'notifications','alice','items','old-bug'),{
+      title:'Bug report',type:'issue',body:'Sensitive details',
+      target:'issues.html',createdAt:new Date(),readAt:null
+    });
+  });
+  await assertFails(getDoc(doc(client('alice',EMAIL_A),'notifications','alice','items','old-bug')));
+  await assertFails(getDoc(doc(client('staff',TEACHER),'notifications','alice','items','old-bug')));
 });
 test('comments must identify their actual author',async()=>{
   const db=client('alice',EMAIL_A);
@@ -116,13 +145,16 @@ test('students cannot access draft grades belonging to teachers',async()=>{
 });
 
 
-test('new public issue and comment records do not require exposed student email',async()=>{
+test('admin issue and comments are private to admin and reporter without exposed email',async()=>{
   const alice=client('alice',EMAIL_A);
   const ticket=doc(alice,'issues','private-contact');
   await assertSucceeds(setDoc(ticket,{...report(),reporterEmail:''}));
-  const publicView=await getDoc(doc(client('bob',EMAIL_B),'issues','private-contact'));
-  assert.equal(publicView.data().reporterEmail,'');
-  assert.equal(publicView.data().reporterUid,'alice');
+  await assertFails(getDoc(doc(client('bob',EMAIL_B),'issues','private-contact')));
+  await assertFails(getDoc(doc(client('staff',TEACHER),'issues','private-contact')));
+  const ownView=await getDoc(ticket);
+  assert.equal(ownView.data().reporterEmail,'');
+  assert.equal(ownView.data().reporterUid,'alice');
+  await assertSucceeds(getDoc(doc(client('admin',ADMIN),'issues','private-contact')));
   await assertSucceeds(setDoc(doc(alice,'issues','private-contact','comments','c1'),{
     text:'I can reproduce this.',authorEmail:'',authorUid:'alice',
     role:'student',createdAt:serverTimestamp()
@@ -135,7 +167,7 @@ test('new public issue and comment records do not require exposed student email'
 
 test('legacy comments without authorUid remain deletable by original author',async()=>{
   await env.withSecurityRulesDisabled(async ctx=>{
-    await setDoc(doc(ctx.firestore(),'issues','legacy'),{locked:false});
+    await setDoc(doc(ctx.firestore(),'issues','legacy'),{locked:false,reporterUid:'alice',category:'Bug'});
     await setDoc(doc(ctx.firestore(),'issues','legacy','comments','old'),{
       text:'Previous note',authorEmail:EMAIL_A,role:'student'
     });
@@ -227,7 +259,7 @@ test('notification history is private and save-for-later records persist across 
   const record={
     ownerUid:'alice',sourceKey:'issue:42',type:'issue',
     title:'Report update',body:'Revisit this response',target:'issues.html',
-    at:1234,savedForLater:true,
+    at:1234,savedForLater:true,recipientRole:'teacher',
     openedAt:serverTimestamp(),lastInteractedAt:serverTimestamp()
   };
   await assertSucceeds(setDoc(ref,record));
