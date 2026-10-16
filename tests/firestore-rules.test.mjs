@@ -263,6 +263,21 @@ test('reclaim is initially pending, owner-private and can only be withdrawn by c
   await assertFails(updateDoc(ref,{status:'pending'}));
 });
 
+test('instructor-only V2 grading config and admin-only reclaim decisions',async()=>{
+  const alice=client('alice',EMAIL_A),teacher=client('staff',TEACHER);
+  const admin=client('admin',ADMIN);
+  const privateRef=doc(teacher,'assessment_private','v2');
+  await assertSucceeds(setDoc(privateRef,{systemPersona:'Internal review instructions',
+    rules:[{type:'Required',value:'Activity'}]}));
+  await assertSucceeds(getDoc(privateRef));
+  await assertFails(getDoc(doc(alice,'assessment_private','v2')));
+  await assertFails(setDoc(doc(alice,'assessment_private','forged'),{systemPersona:'hijack'}));
+  const decision=doc(teacher,'commit_claim_decisions','audit1');
+  await assertFails(setDoc(decision,{reason:'false'}));
+  await assertSucceeds(setDoc(doc(admin,'commit_claim_decisions','audit1'),
+    {reason:'Verified after classroom review'}));
+  await assertFails(getDoc(doc(alice,'commit_claim_decisions','audit1')));
+});
 test('cloud Playground versions are immutable and owner-only',async()=>{
   const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
   const path='student_playground_workspaces/alice/versions/checkpoint1';
