@@ -70,6 +70,9 @@ async function submit(){
       }
       throw writeError;
     }
+    window.dispatchEvent(new CustomEvent("adminerva:submission-recorded",{
+      detail:{assessmentId:task.id,studentId:profile.id,revisionSha:commit.sha}
+    }));
     status.textContent="Submitted successfully. Revision: "+commit.sha.slice(0,12)+
       ". Your teacher can review this exact commit.";
     button.textContent="Submission recorded";
