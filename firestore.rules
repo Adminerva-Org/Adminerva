@@ -77,6 +77,86 @@ service cloud.firestore {
         ownsStudentProfile(resource.data.studentId);
     }
 
+
+    // V2 assessment evidence is student-proposed until reviewed by staff.
+    // Firestore cannot authenticate Git commits or prove push time. Never
+    // interpret a student-written SHA as verified authorship or a final grade.
+    function ownV2Evidence(data) {
+      return signedIn() &&
+        data.keys().hasOnly(["studentId","assessmentId","section","repository",
+          "selectedCommits","checkpointSha","status","submittedAt","updatedAt"]) &&
+        data.studentId is string && ownsStudentProfile(data.studentId) &&
+        data.assessmentId is string &&
+        exists(/databases/$(database)/documents/assessments/$(data.assessmentId)) &&
+        get(/databases/$(database)/documents/assessments/$(data.assessmentId)).data.get("schemaVersion",1) == 2 &&
+        data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
+        data.repository == get(/databases/$(database)/documents/students/$(data.studentId)).data.repoUrl &&
+        data.repository is string && data.repository.size() <= 300 &&
+        data.selectedCommits is list && data.selectedCommits.size() > 0 &&
+        data.selectedCommits.size() <= 20 &&
+        data.checkpointSha is string &&
+        data.checkpointSha.matches("^[a-fA-F0-9]{40}$") &&
+        data.selectedCommits.hasAny([data.checkpointSha]) &&
+        data.status == "submitted";
+    }
+
+    match /assessment_evidence/{evidenceId} {
+      allow read: if signedIn() && ownsStudentProfile(resource.data.studentId);
+      allow create: if ownV2Evidence(request.resource.data) &&
+        evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId &&
+        request.resource.data.submittedAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+      allow update: if ownV2Evidence(request.resource.data) &&
+        ownV2Evidence(resource.data) &&
+        request.resource.data.studentId == resource.data.studentId &&
+        request.resource.data.assessmentId == resource.data.assessmentId &&
+        request.resource.data.submittedAt == resource.data.submittedAt &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["selectedCommits","checkpointSha","updatedAt"]);
+      allow delete: if false;
+    }
+
+    // A reclaim is an unverified attribution request, not a transfer of
+    // authorship. Only staff can accept/reject it; students may withdraw.
+    match /commit_reclaims/{claimId} {
+      allow read: if signedIn() && ownsStudentProfile(resource.data.studentId);
+      allow create: if signedIn() &&
+        request.resource.data.keys().hasOnly(["studentId","assessmentId","section",
+          "repository","sha","detectedAuthorName","detectedAuthorLogin",
+          "explanation","status","createdAt"]) &&
+        request.resource.data.studentId is string &&
+        ownsStudentProfile(request.resource.data.studentId) &&
+        request.resource.data.assessmentId is string &&
+        exists(/databases/$(database)/documents/assessments/$(request.resource.data.assessmentId)) &&
+        get(/databases/$(database)/documents/assessments/$(request.resource.data.assessmentId)).data.get("schemaVersion",1) == 2 &&
+        request.resource.data.section ==
+          get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.section &&
+        request.resource.data.repository ==
+          get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.repoUrl &&
+        request.resource.data.repository is string &&
+        request.resource.data.repository.size() <= 300 &&
+        request.resource.data.sha is string &&
+        request.resource.data.sha.matches("^[a-fA-F0-9]{40}$") &&
+        claimId == request.resource.data.sha + "_" + request.resource.data.studentId &&
+        request.resource.data.explanation is string &&
+        request.resource.data.explanation.size() >= 10 &&
+        request.resource.data.explanation.size() <= 1500 &&
+        request.resource.data.detectedAuthorName is string &&
+        request.resource.data.detectedAuthorName.size() <= 120 &&
+        request.resource.data.detectedAuthorLogin is string &&
+        request.resource.data.detectedAuthorLogin.size() <= 80 &&
+        request.resource.data.status == "pending" &&
+        request.resource.data.createdAt == request.time;
+      allow update: if signedIn() && ownsStudentProfile(resource.data.studentId) &&
+        resource.data.status == "pending" &&
+        request.resource.data.status == "withdrawn" &&
+        request.resource.data.withdrawnAt == request.time &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["status","withdrawnAt"]);
+      allow delete: if false;
+    }
+
     match /student_dashboard_cache/{studentId} {
       allow read, write: if ownsStudentProfile(studentId);
     }
