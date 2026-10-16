@@ -328,52 +328,91 @@ function attachTabEvents() {
 // 4. STORAGE, ZIP, & SNAPSHOTS
 // ==========================================
 let autoSaveTimeout;
+let workspaceDirty = false;
+let localSaveFailed = false;
+function ownerUid() {
+  return auth.currentUser?.uid || null;
+}
+function currentState() {
+  const files = {};
+  for (const [name,file] of Object.entries(workspaceFiles))
+    files[name] = file.model.getValue();
+  return { lang:currentLang, files, fileOrder:[...fileOrder],
+    activeFilename, savedAt:new Date().toISOString() };
+}
+function showSaveStatus(text,failed=false) {
+  const indicator=document.getElementById("autoSaveIndicator");
+  if(!indicator)return;
+  indicator.textContent=text;
+  indicator.classList.remove("opacity-0","text-rose-400","text-emerald-400");
+  indicator.classList.add(failed?"text-rose-400":"text-emerald-400");
+}
 function persistWorkspace(){
   clearTimeout(autoSaveTimeout);
-  const state={lang:currentLang,files:{},fileOrder:[...fileOrder],
-    savedAt:new Date().toISOString()};
-  for(const [name,file] of Object.entries(workspaceFiles))state.files[name]=file.model.getValue();
+  autoSaveTimeout=null;
+  const uid=ownerUid();
+  if(!uid || !Object.keys(workspaceFiles).length) return false;
   try{
-    localStorage.setItem("Adminerva_Playground_Workspace",JSON.stringify(state));
-    const indicator=document.getElementById("autoSaveIndicator");
-    if(indicator){
-      indicator.textContent="Saved locally";
-      indicator.classList.remove("opacity-0","text-rose-400");
-      indicator.classList.add("text-emerald-400");
-    }
+    const state=currentState();
+    localStorage.setItem(playgroundWorkspaceKey(uid,currentLang),JSON.stringify(state));
+    localStorage.setItem(playgroundLanguageKey(uid),currentLang);
+    workspaceDirty=false;
+    localSaveFailed=false;
+    showSaveStatus("Saved on this device");
     return true;
   }catch(error){
     console.error("Workspace save failed:",error);
-    const indicator=document.getElementById("autoSaveIndicator");
-    if(indicator){
-      indicator.textContent="Not saved — local storage is unavailable or full";
-      indicator.classList.remove("opacity-0");
-      indicator.classList.add("text-rose-400");
-    }
+    localSaveFailed=true;
+    showSaveStatus("Not saved — storage unavailable or full",true);
     return false;
   }
 }
 function triggerAutoSave(){
   clearTimeout(autoSaveTimeout);
+  workspaceDirty=true;
   const indicator=document.getElementById("autoSaveIndicator");
   if(indicator){
-    indicator.textContent="Unsaved changes";
-    indicator.classList.remove("opacity-0");
-    indicator.classList.remove("text-emerald-400");
+    indicator.textContent="Saving locally…";
+    indicator.classList.remove("opacity-0","text-emerald-400");
+    indicator.classList.add("text-rose-400");
   }
   autoSaveTimeout=setTimeout(persistWorkspace,1000);
 }
-window.addEventListener("pagehide",()=>{if(autoSaveTimeout)persistWorkspace()});
+window.addEventListener("pagehide",()=>{
+  if (workspaceDirty || autoSaveTimeout) persistWorkspace();
+});
+window.addEventListener("beforeunload",event=>{
+  if (!localSaveFailed) return;
+  event.preventDefault();
+  event.returnValue="";
+});
 
-function loadLocalWorkspace() {
-  const saved = localStorage.getItem("Adminerva_Playground_Workspace");
-  if (saved) {
-    const state = JSON.parse(saved);
-    createWorkspace(state.lang, state.files, state.fileOrder);
-  } else {
-    createWorkspace("java");
-  }
+function loadLocalWorkspace(lang) {
+  const uid=ownerUid();
+  if(!uid) return false;
+  const preferred=lang || localStorage.getItem(playgroundLanguageKey(uid)) || "java";
+  const chosen=PLAYGROUND_LANGUAGES.includes(preferred)?preferred:"java";
+  const saved=readPlaygroundDraft(localStorage,uid,chosen);
+  createWorkspace(chosen,saved?.files,saved?.fileOrder,saved?.activeFilename);
+  workspaceDirty=false;
+  localSaveFailed=false;
+  showSaveStatus(saved?"Local draft loaded":"New workspace (not saved yet)");
+  return true;
 }
+
+window.adminervaImportLegacyPlayground = function () {
+  const uid=ownerUid();
+  if(!uid) return alert("Sign in before importing code.");
+  let state;
+  try { state=JSON.parse(localStorage.getItem("Adminerva_Playground_Workspace")||"null"); }
+  catch { return alert("Older browser draft is damaged and cannot be imported."); }
+  if(!validPlaygroundState(state)) return alert("No valid older browser draft is available.");
+  if(!confirm("This older browser draft is NOT linked to a student account. On a shared device it might belong to someone else. Import it only if it is yours. Continue?"))return;
+  if(!persistWorkspace())return alert("Current draft cannot be saved. Export ZIP before importing.");
+  if(!window.adminervaRestorePlayground(state))return alert("Import failed. Export ZIP before trying again.");
+  showSaveStatus("Older draft imported into your private local workspace");
+};
+
 
 async function exportZIP() {
   const btn = document.getElementById("exportZipBtn");
