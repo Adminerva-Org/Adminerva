@@ -168,3 +168,26 @@ test('first review submission is creatable without a read preflight; duplicate i
   await assertFails(setDoc(receiptRef,{...submission(),sourcePath:'src/changed'}));
   await assertFails(setDoc(receiptRef,{...submission(),sourcePath:'app/src'}));
 });
+
+
+test('cloud Playground versions are immutable and owner-only',async()=>{
+  const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
+  const path='student_playground_workspaces/alice/versions/checkpoint1';
+  const work={ownerUid:'alice',lang:'java',files:{'Main.java':'class Main{}'},
+    fileOrder:['Main.java'],savedAt:serverTimestamp()};
+  await assertSucceeds(setDoc(doc(alice,path),work));
+  await assertSucceeds(getDoc(doc(alice,path)));
+  await assertFails(getDoc(doc(bob,path)));
+  await assertFails(updateDoc(doc(alice,path),{lang:'python'}));
+  await assertFails(setDoc(doc(bob,'student_playground_workspaces/alice/versions/forged'),work));
+});
+test('shared snapshots require explicit visibility and verified ownership',async()=>{
+  const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
+  const path='playground_snapshots/link1';
+  const state={ownerUid:'alice',visibility:'link',lang:'java',files:{'Main.java':'class Main{}'},fileOrder:['Main.java']};
+  await assertSucceeds(setDoc(doc(alice,path),state));
+  await assertSucceeds(getDoc(doc(bob,path)));
+  await assertFails(setDoc(doc(bob,'playground_snapshots/spoof'),state));
+  await assertSucceeds(setDoc(doc(alice,'playground_snapshots/private'),{...state,visibility:'private'}));
+  await assertFails(getDoc(doc(bob,'playground_snapshots/private')));
+});
