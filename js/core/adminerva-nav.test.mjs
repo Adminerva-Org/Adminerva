@@ -135,6 +135,8 @@ test('student pages request an updated nav asset instead of a stale browser cach
   for (const path of ['student-dashboard.html','student-assessments.html',
     'student-practice.html','student-playground.html','student-settings.html']) {
     const page=readFileSync(path,'utf8');
-    assert.match(page,/adminerva-nav[.]js[?]v=2026[.]10[.]16[.]3/);
+    assert.match(page,/adminerva-nav[.]js[?]v=2026[.]10[.]16[.](?:3|6)/);
+    if(path==='student-assessments.html')
+      assert.match(page,/adminerva-nav[.]js[?]v=2026[.]10[.]16[.]6/);
   }
 });
