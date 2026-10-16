@@ -69,6 +69,37 @@ exports.issueCommentAdded=onDocumentCreated("issues/{issueId}/comments/{commentI
     reportCategory:item.category,reportAudience:reportAudience(item)
   });
 });
+// A reclaim never changes Git's recorded author. Administrators receive a
+// private review alert; overlapping claims on the same SHA are flagged once.
+exports.commitReclaimRequested=onDocumentCreated("commit_reclaims/{claimId}",async event=>{
+  const claim=event.data?.data();if(!claim||claim.status!=="pending")return;
+  const adminId=await byEmail(staffEmails[0]);
+  if(!adminId)return;
+  await notify(adminId,"reclaim_request_"+event.params.claimId,{
+    type:"reclaim",title:"Commit reclaim requires verification",
+    body:"Review an attribution correction for a student Git commit.",
+    sourceId:event.params.claimId,target:"assessment-evidence-review.html?student="+
+      encodeURIComponent(claim.studentId)+"&assessment="+encodeURIComponent(claim.assessmentId)
+  });
+  const claims=await db.collection("commit_reclaims").where("sha","==",claim.sha).get();
+  const relevant=claims.docs.filter(d=>{
+    const x=d.data();return x.repository===claim.repository&&
+      ["pending","approved","shared"].includes(x.status);
+  });
+  if(relevant.length<2)return;
+  await db.doc("commit_claim_conflicts/"+claim.sha).set({
+    sha:claim.sha,repository:claim.repository,
+    claimIds:relevant.map(d=>d.id),claimCount:relevant.length,
+    updatedAt:FieldValue.serverTimestamp()
+  },{merge:true});
+  await notify(adminId,"reclaim_conflict_"+claim.sha,{
+    type:"reclaim",title:"Conflicting commit reclaims",
+    body:"Multiple students requested credit for the same Git commit. Review both claims.",
+    sourceId:claim.sha,target:"assessment-evidence-review.html?student="+
+      encodeURIComponent(claim.studentId)+"&assessment="+encodeURIComponent(claim.assessmentId)
+  });
+});
+
 exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}",async event=>{
   const item=event.data?.data();if(!item)return;
   await notifyMany(await teacherIds(),"submission_"+event.params.submissionId,{
