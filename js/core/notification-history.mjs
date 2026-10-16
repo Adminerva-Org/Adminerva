@@ -6,6 +6,8 @@ export function historyRecord(item,ownerUid,savedForLater=false){
     ownerUid:String(ownerUid),
     sourceKey:String(item.key||"").slice(0,500),
     type:String(item.type||"notice").slice(0,32),
+    ...(item.reportCategory?{reportCategory:String(item.reportCategory).slice(0,32)}:{}),
+    ...(item.reportAudience?{reportAudience:String(item.reportAudience).slice(0,16)}:{}),
     title:String(item.title||"Notification").slice(0,240),
     body:String(item.body||"").slice(0,800),
     target:notificationTarget(item.target),

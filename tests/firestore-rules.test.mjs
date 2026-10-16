@@ -12,6 +12,7 @@ const PROJECT = 'demo-adminerva-security';
 const EMAIL_A = 'student-a@example.edu';
 const EMAIL_B = 'student-b@example.edu';
 const TEACHER = 'josephsixson@mcstayuman.edu.ph';
+const ADMIN = 'babaynike2013@gmail.com';
 const SHA = 'a'.repeat(40);
 
 before(async () => {
@@ -40,7 +41,7 @@ function client(uid,email){return env.authenticatedContext(uid,{email}).firestor
 function report(uid='alice',email=EMAIL_A){
   return {
     title:'Compiler stops working',description:'The editor fails after selecting Run.',
-    category:'Bug',priority:'Medium',images:[],
+    category:'Bug',audience:'admin',priority:'Medium',images:[],
     reporterUid:uid,reporterEmail:email,reporterRole:'reporter',
     urlContext:'https://example.com/student-playground.html',
     status:'Open',upvotes:[],locked:false,createdAt:serverTimestamp(),
@@ -63,15 +64,51 @@ test('students can file reports but cannot spoof reporter identity',async()=>{
   await assertSucceeds(setDoc(doc(db,'issues','a1'),report()));
   await assertFails(setDoc(doc(db,'issues','a2'),report('bob',EMAIL_B)));
   await assertFails(setDoc(doc(db,'issues','a3'),{...report(),reporterRole:'admin'}));
+  await assertFails(setDoc(doc(db,'issues','a4'),{...report(),audience:'teacher'}));
+  const legacyShape=report();delete legacyShape.audience;
+  await assertFails(setDoc(doc(db,'issues','a5'),legacyShape));
 });
-test('only staff can triage or change report priority and lock state',async()=>{
+test('teachers only triage teacher-directed reports; admins can triage bugs',async()=>{
   const db=client('alice',EMAIL_A);
   await assertSucceeds(setDoc(doc(db,'issues','ticket'),report()));
   await assertFails(updateDoc(doc(db,'issues','ticket'),{priority:'Critical'}));
   await assertFails(updateDoc(doc(db,'issues','ticket'),{status:'Resolved'}));
   await assertFails(updateDoc(doc(db,'issues','ticket'),{locked:true}));
-  await assertSucceeds(updateDoc(doc(client('staff',TEACHER),'issues','ticket'),{status:'Resolved'}));
+  await assertFails(updateDoc(doc(client('staff',TEACHER),'issues','ticket'),{status:'Resolved'}));
+  await assertSucceeds(updateDoc(doc(client('admin',ADMIN),'issues','ticket'),{status:'Resolved'}));
+  const teacherTicket={...report(),category:'Feature',audience:'teacher'};
+  await assertSucceeds(setDoc(doc(db,'issues','class-ticket'),teacherTicket));
+  await assertSucceeds(updateDoc(doc(client('staff',TEACHER),'issues','class-ticket'),{status:'In Progress'}));
+  await assertFails(updateDoc(doc(client('staff',TEACHER),'issues','class-ticket'),{audience:'admin'}));
 });
+test('recipient filtering is enforced for direct reads, list queries, and comments',async()=>{
+  const alice=client('alice',EMAIL_A), bob=client('bob',EMAIL_B);
+  const staff=client('teacher',TEACHER), admin=client('admin',ADMIN);
+  await assertSucceeds(setDoc(doc(alice,'issues','bug'),report()));
+  await assertSucceeds(setDoc(doc(alice,'issues','lesson'),{
+    ...report(),category:'Other',audience:'teacher'
+  }));
+  await assertSucceeds(setDoc(doc(alice,'issues','admin-request'),{
+    ...report(),category:'Feature',audience:'admin'
+  }));
+  await assertFails(getDoc(doc(staff,'issues','bug')));
+  await assertFails(getDoc(doc(staff,'issues','admin-request')));
+  await assertSucceeds(getDoc(doc(staff,'issues','lesson')));
+  await assertFails(getDoc(doc(bob,'issues','lesson')));
+  await assertSucceeds(getDoc(doc(alice,'issues','bug')));
+  await assertSucceeds(getDoc(doc(admin,'issues','bug')));
+  await assertFails(getDocs(collection(staff,'issues')));
+  const teacherList=await assertSucceeds(getDocs(query(collection(staff,'issues'),where('audience','==','teacher'))));
+  assert.equal(teacherList.size,1);
+  await assertFails(getDocs(collection(bob,'issues')));
+  const ownList=await assertSucceeds(getDocs(query(collection(alice,'issues'),where('reporterUid','==','alice'))));
+  assert.equal(ownList.size,3);
+  await assertFails(getDoc(doc(staff,'issues','bug','comments','c1')));
+  await assertFails(setDoc(doc(staff,'issues','bug','comments','c2'),{
+    text:'Not authorized',authorEmail:'',authorUid:'teacher',role:'student',createdAt:serverTimestamp()
+  }));
+});
+
 test('comments must identify their actual author',async()=>{
   const db=client('alice',EMAIL_A);
   await assertSucceeds(setDoc(doc(db,'issues','ticket'),report()));
@@ -116,13 +153,16 @@ test('students cannot access draft grades belonging to teachers',async()=>{
 });
 
 
-test('new public issue and comment records do not require exposed student email',async()=>{
+test('private reports need no exposed email and other students cannot read them',async()=>{
   const alice=client('alice',EMAIL_A);
   const ticket=doc(alice,'issues','private-contact');
   await assertSucceeds(setDoc(ticket,{...report(),reporterEmail:''}));
-  const publicView=await getDoc(doc(client('bob',EMAIL_B),'issues','private-contact'));
-  assert.equal(publicView.data().reporterEmail,'');
-  assert.equal(publicView.data().reporterUid,'alice');
+  const ownView=await getDoc(ticket);
+  assert.equal(ownView.data().reporterEmail,'');
+  assert.equal(ownView.data().reporterUid,'alice');
+  await assertFails(getDoc(doc(client('bob',EMAIL_B),'issues','private-contact')));
+  await assertFails(getDoc(doc(client('staff',TEACHER),'issues','private-contact')));
+  await assertSucceeds(getDoc(doc(client('admin',ADMIN),'issues','private-contact')));
   await assertSucceeds(setDoc(doc(alice,'issues','private-contact','comments','c1'),{
     text:'I can reproduce this.',authorEmail:'',authorUid:'alice',
     role:'student',createdAt:serverTimestamp()
@@ -135,7 +175,7 @@ test('new public issue and comment records do not require exposed student email'
 
 test('legacy comments without authorUid remain deletable by original author',async()=>{
   await env.withSecurityRulesDisabled(async ctx=>{
-    await setDoc(doc(ctx.firestore(),'issues','legacy'),{locked:false});
+    await setDoc(doc(ctx.firestore(),'issues','legacy'),{locked:false,reporterEmail:EMAIL_A});
     await setDoc(doc(ctx.firestore(),'issues','legacy','comments','old'),{
       text:'Previous note',authorEmail:EMAIL_A,role:'student'
     });

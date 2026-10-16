@@ -4,11 +4,30 @@ service cloud.firestore {
     function signedIn() {
       return request.auth != null && request.auth.token.email is string;
     }
-    // Temporary development instructor allowlist. Replace with teacher claims/roles.
+    // Verified Firebase Auth identity, never the browser's simulated role.
+    // Migrate this temporary email mapping to Firebase custom claims later.
+    function isAdmin() {
+      return signedIn() && request.auth.token.email.lower() == "babaynike2013@gmail.com";
+    }
+    function isTeacher() {
+      return signedIn() && request.auth.token.email.lower() == "josephsixson@mcstayuman.edu.ph";
+    }
     function isInstructor() {
-      return signedIn() &&
-        (request.auth.token.email.lower() == "babaynike2013@gmail.com" ||
-         request.auth.token.email.lower() == "josephsixson@mcstayuman.edu.ph");
+      return isAdmin() || isTeacher();
+    }
+    function mayReadIssue(issue) {
+      return signedIn() && (
+        isAdmin() ||
+        (isTeacher() && issue.get("audience", "admin") == "teacher") ||
+        issue.get("reporterUid", "") == request.auth.uid ||
+        (issue.get("reporterEmail", "") is string &&
+         issue.get("reporterEmail", "") != "" &&
+         issue.get("reporterEmail", "").lower() == request.auth.token.email.lower())
+      );
+    }
+    function mayReadIssueById(issueId) {
+      return exists(/databases/$(database)/documents/issues/$(issueId)) &&
+        mayReadIssue(get(/databases/$(database)/documents/issues/$(issueId)).data);
     }
     function ownsStudentProfile(studentId) {
       return signedIn() &&
@@ -17,8 +36,17 @@ service cloud.firestore {
           request.auth.token.email.lower();
     }
 
+    // Administrators retain existing system-wide maintenance privileges.
     match /{document=**} {
-      allow read, write: if isInstructor();
+      allow read, write: if isAdmin();
+    }
+    // Teachers retain their existing academic workflow permissions, but the
+    // catch-all must not override private report or notification rules.
+    match /{collection}/{document=**} {
+      allow read, write: if isTeacher() &&
+        collection != "issues" &&
+        collection != "notifications" &&
+        collection != "notification_history";
     }
 
     match /students/{studentId} {
@@ -85,18 +113,22 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Reports are visible to signed-in users for duplicate discovery.
-    // Only trusted instructors may triage, prioritize, lock or delete reports.
+    // Reports are private to their reporter and selected staff audience.
+    // Bug reports are ALWAYS admin-only (plus reporter access to My reports).
+    // Missing audience on legacy records means admin until migrated.
     match /issues/{issueId} {
-      allow read: if signedIn();
+      allow read: if mayReadIssue(resource.data);
       allow create: if signedIn() &&
         request.resource.data.keys().hasOnly([
           "title", "description", "category", "priority", "images",
           "urlContext", "reporterEmail", "reporterUid", "reporterRole",
           "status", "upvotes", "locked", "createdAt",
           "module", "expectedBehavior", "actualBehavior", "reproductionSteps",
-          "clientContext"
+          "clientContext", "audience"
         ]) &&
+        request.resource.data.audience in ["teacher", "admin"] &&
+        (request.resource.data.category != "Bug" ||
+         request.resource.data.audience == "admin") &&
         request.resource.data.reporterUid == request.auth.uid &&
         request.resource.data.reporterEmail is string &&
         (request.resource.data.reporterEmail == "" ||
@@ -118,7 +150,11 @@ service cloud.firestore {
         request.resource.data.createdAt == request.time;
       // New votes use Firebase UID; legacy email votes can still be removed.
       // Only adding/removing the authenticated user's single vote is allowed.
-      allow update: if signedIn() &&
+      allow update: if (isTeacher() &&
+        resource.data.get("audience", "admin") == "teacher" &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["status", "priority", "locked"])) ||
+        (mayReadIssue(resource.data) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(["upvotes"]) &&
         request.resource.data.upvotes is list &&
         request.resource.data.upvotes.size() <= 500 &&
@@ -141,11 +177,11 @@ service cloud.firestore {
             request.resource.data.upvotes.size() == resource.data.upvotes.size() - 1 &&
             resource.data.upvotes.hasAll(request.resource.data.upvotes)
           )
-        );
+        ));
       allow delete: if false;
       match /comments/{commentId} {
-        allow read: if signedIn();
-        allow create: if signedIn() &&
+        allow read: if mayReadIssueById(issueId);
+        allow create: if mayReadIssueById(issueId) &&
           request.resource.data.keys().hasOnly([
             "text", "authorEmail", "authorUid", "role", "createdAt"
           ]) &&
@@ -160,7 +196,7 @@ service cloud.firestore {
           request.resource.data.createdAt == request.time &&
           get(/databases/$(database)/documents/issues/$(issueId)).data.locked == false;
         allow update: if false;
-        allow delete: if signedIn() &&
+        allow delete: if mayReadIssueById(issueId) &&
           (resource.data.get("authorUid", null) == request.auth.uid ||
            (resource.data.get("authorEmail", "") is string &&
             resource.data.authorEmail != "" &&
@@ -209,7 +245,8 @@ service cloud.firestore {
       function validHistory() {
         return request.resource.data.keys().hasOnly([
             "ownerUid", "sourceKey", "type", "title", "body", "target",
-            "at", "savedForLater", "openedAt", "lastInteractedAt"
+            "at", "savedForLater", "openedAt", "lastInteractedAt",
+            "reportCategory", "reportAudience"
           ]) &&
           request.resource.data.keys().hasAll([
             "ownerUid", "sourceKey", "type", "title", "body", "target",

@@ -9,6 +9,7 @@ import {
   addDoc,
   query,
   orderBy,
+  where,
   onSnapshot,
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
@@ -19,9 +20,10 @@ let currentOpenIssueId = null;
 let currentUserEmail = "";
 
 // Role check
-const userRole = localStorage.getItem("Adminerva_Role") || "student";
 const trustedStaff = new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
 let isSuperAdmin = false; // Verified auth email; never a localStorage role.
+let isTeacher = false;
+let stopIssueListeners = [];
 function ownsIssue(issue) {
   const uid=auth.currentUser?.uid;
   return Boolean(uid && issue.reporterUid === uid) ||
@@ -43,11 +45,19 @@ function escapeHTML(str) {
   );
 }
 
-onAuthStateChanged(auth, async (user) => {
+onAuthStateChanged(auth, user => {
+  stopIssueListeners.forEach(stop => stop()); stopIssueListeners = [];
   if (user) {
-    currentUserEmail = user.email.toLowerCase();
-    isSuperAdmin = trustedStaff.has(currentUserEmail);
+    currentUserEmail = (user.email||"").toLowerCase();
+    isSuperAdmin = currentUserEmail === [...trustedStaff][0];
+    isTeacher = currentUserEmail === [...trustedStaff][1];
     fetchIssues();
+  } else {
+    allIssues = [];
+    currentUserEmail = "";
+    isSuperAdmin = false;
+    isTeacher = false;
+    renderIssues();
   }
 });
 // ==========================================
@@ -55,40 +65,44 @@ onAuthStateChanged(auth, async (user) => {
 // ==========================================
 function fetchIssues() {
   const container = document.getElementById("issuesFeed");
-
-  // onSnapshot listens continuously for any live changes in the database
-  const q = query(collection(db, "issues"), orderBy("createdAt", "desc"));
-
-  onSnapshot(
-    q,
-    (snapshot) => {
-      allIssues = [];
-      snapshot.forEach((docSnap) => {
-        allIssues.push({ id: docSnap.id, ...docSnap.data() });
-      });
-
-      renderIssues();
-      const deepLink = new URLSearchParams(location.search).get("issue");
-      if (deepLink && !currentOpenIssueId && allIssues.some(item=>item.id===deepLink)) {
-        window.openIssueModal(deepLink);
-        history.replaceState(null,"",location.pathname);
-      }
-
-      // If the modal is currently open, dynamically refresh its stats (like upvotes or status changes) in real time too
-      if (currentOpenIssueId) {
-        const activeIssue = allIssues.find((i) => i.id === currentOpenIssueId);
-        if (activeIssue) {
-          document.getElementById("upvoteCount").textContent = (
-            activeIssue.upvotes || []
-          ).length;
-        }
-      }
-    },
-    (error) => {
-      container.innerHTML = `<div class="p-5 text-center text-red-500 font-bold border border-red-200 bg-red-50 rounded-xl">Failed to load live issues.</div>`;
-      console.error(error);
-    },
-  );
+  const user = auth.currentUser;
+  if (!user) return;
+  // Query only documents the authenticated role may read.
+  const requests = isSuperAdmin
+    ? [query(collection(db, "issues"), orderBy("createdAt", "desc"))]
+    : isTeacher
+      ? [query(collection(db, "issues"), where("audience", "==", "teacher"))]
+      : [
+          query(collection(db, "issues"), where("reporterUid", "==", user.uid)),
+          query(collection(db, "issues"), where("reporterEmail", "==", currentUserEmail))
+        ];
+  const groups = requests.map(() => []);
+  const refresh = () => {
+    const merged = new Map();
+    groups.flat().forEach(item => merged.set(item.id, item));
+    allIssues = [...merged.values()].sort((a,b)=>
+      (b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
+    renderIssues();
+    const deepLink = new URLSearchParams(location.search).get("issue");
+    if (deepLink && !currentOpenIssueId && allIssues.some(item=>item.id===deepLink)) {
+      window.openIssueModal(deepLink);
+      history.replaceState(null,"",location.pathname);
+    }
+    if (currentOpenIssueId) {
+      const activeIssue = allIssues.find(item=>item.id===currentOpenIssueId);
+      if (activeIssue) document.getElementById("upvoteCount").textContent =
+        (activeIssue.upvotes||[]).length;
+    }
+  };
+  requests.forEach((request,index)=>{
+    stopIssueListeners.push(onSnapshot(request,snapshot=>{
+      groups[index]=snapshot.docs.map(d=>({id:d.id,...d.data()}));
+      refresh();
+    },error=>{
+      console.error("Report feed unavailable:",error);
+      container.textContent="Failed to load reports permitted for your account.";
+    }));
+  });
 }
 
 window.renderIssuesFilter = () => renderIssues();
@@ -98,8 +112,12 @@ function renderIssues() {
   const statFilter = document.getElementById("filterStatus").value;
 
   const onlyMine = document.getElementById("filterMine")?.checked || false;
+  const audienceFilter = document.getElementById("filterAudience")?.value || "All";
   const filtered = allIssues.filter((iss) => {
     if (onlyMine && !ownsIssue(iss)) return false;
+    if (isTeacher && iss.audience !== "teacher") return false;
+    if (!isSuperAdmin && !isTeacher && !ownsIssue(iss)) return false;
+    if (audienceFilter !== "All" && (iss.audience || "admin") !== audienceFilter) return false;
     const matchCat = catFilter === "All" || iss.category === catFilter;
     const matchStat = statFilter === "All" || iss.status === statFilter;
     return matchCat && matchStat;
@@ -145,6 +163,7 @@ function renderIssues() {
           <div class="flex items-center gap-2 mb-1.5 flex-wrap">
             <span class="${statStyle} text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">${escapeHTML(iss.status)}</span>
             <span class="text-[10px] font-bold text-slate-500 border border-slate-200 bg-slate-50 px-2 py-0.5 rounded uppercase">${escapeHTML(iss.category)}</span>
+            <span class="text-[10px] font-bold text-blue-800 border border-blue-200 bg-blue-50 px-2 py-0.5 rounded uppercase">To ${(iss.audience||"admin")==="teacher"?"Teacher":"Admin"}</span>
             <span class="text-[10px] text-slate-400 font-medium ml-auto">${dateStr}</span>
           </div>
           <h3 class="text-base font-bold text-slate-800 leading-tight group-hover:text-cyan-700 transition">${isLocked}${prioMarker}${escapeHTML(iss.title)}</h3>
@@ -161,6 +180,9 @@ document
   .addEventListener("change", renderIssues);
 document
   .getElementById("filterStatus")
+  .addEventListener("change", renderIssues);
+document
+  .getElementById("filterAudience")
   .addEventListener("change", renderIssues);
 
 // ==========================================
@@ -185,6 +207,7 @@ window.openIssueModal = async function (id) {
     <span class="${statStyle} text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">${escapeHTML(iss.status)}</span>
     <span class="text-[10px] font-bold text-slate-200 border border-slate-500 px-2 py-0.5 rounded uppercase">${escapeHTML(iss.category)}</span>
     <span class="text-[10px] font-bold text-slate-200 border border-slate-500 px-2 py-0.5 rounded uppercase">Priority: ${escapeHTML(iss.priority)}</span>
+    <span class="text-[10px] font-bold text-cyan-100 border border-cyan-500 px-2 py-0.5 rounded uppercase">To ${(iss.audience||"admin")==="teacher"?"Teacher":"Admin"}</span>
   `;
 
   document.getElementById("modalIssueTitle").textContent = iss.title;
@@ -237,7 +260,7 @@ window.openIssueModal = async function (id) {
   }
 
   // 🚀 ADMIN CONTROLS INJECTION
-  if (isSuperAdmin) {
+  if (isSuperAdmin || (isTeacher && iss.audience === "teacher")) {
     document.getElementById("adminControlPanel").classList.remove("hidden");
     document.getElementById("adminStatusSelect").value = iss.status || "Open";
     document.getElementById("adminPrioritySelect").value =
@@ -408,7 +431,7 @@ window.deleteComment = async function (commentId) {
 document
   .getElementById("adminStatusSelect")
   ?.addEventListener("change", async (e) => {
-    if (!isSuperAdmin || !currentOpenIssueId) return;
+    if (!(isSuperAdmin || isTeacher) || !currentOpenIssueId) return;
     const newStatus = e.target.value;
 
     const issIndex = allIssues.findIndex((i) => i.id === currentOpenIssueId);
@@ -427,7 +450,7 @@ document
 document
   .getElementById("adminPrioritySelect")
   ?.addEventListener("change", async (e) => {
-    if (!isSuperAdmin || !currentOpenIssueId) return;
+    if (!(isSuperAdmin || isTeacher) || !currentOpenIssueId) return;
     const newPriority = e.target.value;
 
     const issIndex = allIssues.findIndex((i) => i.id === currentOpenIssueId);
@@ -442,7 +465,7 @@ document
   });
 
 document.getElementById("adminLockBtn")?.addEventListener("click", async () => {
-  if (!isSuperAdmin || !currentOpenIssueId) return;
+  if (!(isSuperAdmin || isTeacher) || !currentOpenIssueId) return;
 
   const issIndex = allIssues.findIndex((i) => i.id === currentOpenIssueId);
   const isCurrentlyLocked = allIssues[issIndex].locked || false;

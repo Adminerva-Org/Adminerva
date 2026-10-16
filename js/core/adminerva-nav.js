@@ -95,8 +95,24 @@ document.addEventListener("DOMContentLoaded", () => {
     centerLinks = `
             <a href="student-dashboard.html" class="${getStyle("dashboard")}">Dashboard</a>
             <a href="student-assessments.html" class="${getStyle("assessments")}">Assignments</a>
-            <a href="student-practice.html" class="${getStyle("practice")}">Practice Lab</a>
             <a href="student-settings.html" class="${getStyle("settings")}">Settings</a>
+        `;
+    rightSide = `
+            <div class="flex items-center">
+                ${reportIcon}
+                <div class="flex flex-col items-end justify-center border-l border-gray-700 pl-3 sm:pl-4 py-1">
+                    <button id="signOutBtn" class="text-xs sm:text-sm text-gray-300 hover:text-white font-bold transition leading-tight cursor-pointer">Sign Out</button>
+                    <span id="userEmailDisplay" class="text-[9px] sm:text-[10px] text-slate-400 leading-tight truncate max-w-[130px] my-0.5"></span>
+                    <span class="text-[8px] sm:text-[9px] font-bold text-cyan-500 uppercase tracking-widest leading-tight">Student</span>
+                </div>
+            </div>
+        `;
+    logoBlock = studentLogoBlock;
+  }
+  // Dedicated Practice Lab navigation (not part of Project Hub tabs).
+  else if (activeModule === "student-practice") {
+    centerLinks = `
+            <a href="student-practice.html" class="${getStyle("practice")}">Practice Courses</a>
         `;
     rightSide = `
             <div class="flex items-center">
@@ -243,8 +259,8 @@ document.addEventListener("DOMContentLoaded", () => {
     </nav>`;
 
 
-  // Unified teacher/admin information architecture. Student navigation is
-  // unchanged. Native <details> supports pointer, keyboard and touch input.
+  // Staff menus are scoped by module; student modules also have independent tabs.
+  // Native <details> supports pointer, keyboard and touch input.
   const groupModules = ["educator", "repo", "settings", "admin", "lesson"];
   if (groupModules.includes(activeModule)) {
     const staffGroups = [

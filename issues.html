@@ -37,7 +37,7 @@
             <span class="text-cyan-600">🛠️</span> System Issue Tracker
           </h1>
           <p class="text-sm text-slate-500 mt-1 font-medium">
-            Report bugs, request features, and track system updates.
+            Send reports to a teacher or administrator, and track responses to reports you can access.
           </p>
         </div>
 
@@ -50,13 +50,20 @@
             <option value="Bug">🐛 Bugs</option>
             <option value="Feature">✨ Features</option>
             <option value="Access">🔐 Access</option>
+            <option value="UI">UI / Display</option>
+            <option value="Other">Other</option>
+          </select>
+          <select id="filterAudience" aria-label="Report recipient" class="border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold bg-white text-slate-700 cursor-pointer flex-grow md:flex-grow-0">
+            <option value="All">All Recipients</option>
+            <option value="teacher">Teacher Reports</option>
+            <option value="admin">Administrator Reports</option>
           </select>
           <select
             id="filterStatus"
             class="border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold bg-white text-slate-700 cursor-pointer focus:ring-2 focus:ring-cyan-500 outline-none flex-grow md:flex-grow-0"
           >
-            <option value="All">All Statuses</option>
-            <option value="Open" selected>Open</option>
+            <option value="All" selected>All Statuses</option>
+            <option value="Open">Open</option>
             <option value="Triaged">Triaged</option>
             <option value="Waiting for Reporter">Waiting for Reporter</option>
             <option value="In Progress">In Progress</option>
