@@ -171,7 +171,7 @@ async function submit(){
     const common={selectedCommits,checkpointSha,updatedAt:serverTimestamp()};
     if(saved){
       if(saved.status!=="submitted")throw Error("This evidence has been reviewed and is locked.");
-      await updateDoc(ref,common);
+      await updateDoc(ref,{...common,submittedAt:serverTimestamp()});
     }else{
       await setDoc(ref,{
         ...common,studentId:context.profile.id,assessmentId:context.task.id,
