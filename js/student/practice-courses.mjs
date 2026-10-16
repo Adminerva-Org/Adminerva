@@ -3,7 +3,14 @@
 const n=(seed,max,min=1)=>min+(Math.abs(seed)%max);
 function choices(answer,alternatives,seed){
   const items=[answer,...alternatives].map(String);
-  if(new Set(items).size!==items.length)throw Error("Duplicate practice choices");
+  // Numeric distractors are generated from the learner's values. Nudge an
+  // accidental duplicate instead of presenting two identical choices.
+  for(let i=1;i<items.length;i++){
+    while(items.slice(0,i).includes(items[i])){
+      items[i]=Number.isFinite(Number(items[i]))?
+        String(Number(items[i])+i+1):items[i]+" (alternative)";
+    }
+  }
   const shift=Math.abs(seed)%items.length;
   const shuffled=[...items.slice(shift),...items.slice(0,shift)];
   if(seed%2!==0)shuffled.reverse();
