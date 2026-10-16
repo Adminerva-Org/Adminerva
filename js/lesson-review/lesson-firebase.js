@@ -31,6 +31,8 @@ function escapeHTML(str) {
 window.fetchScheduleForLesson = async function (schoolYear, academicTerm) {
   const scope = scheduleScope(schoolYear, academicTerm);
   const local = () => localScheduleText(localStorage, schoolYear, academicTerm);
+  // A failed cloud save must not silently replace recent edits on this device.
+  if (localStorage.getItem(scope.pendingKey) === "1") return local();
   try {
     const selected = await getDoc(doc(db, "app_config", scope.id));
     if (selected.exists()) {
