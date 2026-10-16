@@ -137,6 +137,12 @@ window.handleSessionSelection = async function () {
   if (btnDelete) btnDelete.classList.add("hidden");
 
   if (sessionIdx !== "") {
+    if (window.adminervaPresentationDirty &&
+        !confirm("You have unsaved slide edits. Continue to another session without saving?")) {
+      const select=document.getElementById("presentationSessionSelect");
+      if(select)select.value=window.selectedSessionIndex ?? "";
+      return;
+    }
     window.selectedSessionIndex = sessionIdx;
     window.selectedSessionData = window.selectedPlanData.sessions[sessionIdx];
     btnGen.disabled = false;
@@ -164,6 +170,7 @@ window.handleSessionSelection = async function () {
             contentRight:window.sanitizePresentationHtml?.(slide.contentRight) ?? ""
           }));
             window.activeSlideIndex = 0;
+            window.adminervaPresentationDirty = false;
             if (typeof window.renderSlideBlocks === "function")
               window.renderSlideBlocks();
             if (typeof window.selectSlide === "function") window.selectSlide(0);
@@ -234,6 +241,7 @@ window.savePresentationToCloud = async function () {
       return "saved";
     });
 
+    window.adminervaPresentationDirty = false;
     const btnDelete = document.getElementById("btnDeletePresentation");
     if (btnDelete) btnDelete.classList.replace("hidden", "flex");
 
