@@ -1,4 +1,5 @@
 window.currentPresentationDeck = [];
+const safeSlideHTML=value=>window.sanitizePresentationHtml?.(value) ?? "";
 window.activeSlideIndex = -1;
 
 let quillStandard = null;
@@ -79,7 +80,7 @@ function initEditors() {
       flashWarning();
     } else {
       window.currentPresentationDeck[window.activeSlideIndex][key] =
-        editorRoot.innerHTML;
+        safeSlideHTML(editorRoot.innerHTML);
     }
   };
 
@@ -299,9 +300,9 @@ window.selectSlide = function (index) {
   document.getElementById("slideLayoutSelector").value = layout;
   applyLayoutView(layout);
 
-  if (quillStandard) quillStandard.root.innerHTML = slide.content || "";
-  if (quillLeft) quillLeft.root.innerHTML = slide.contentLeft || "";
-  if (quillRight) quillRight.root.innerHTML = slide.contentRight || "";
+  if (quillStandard) quillStandard.root.innerHTML = safeSlideHTML(slide.content);
+  if (quillLeft) quillLeft.root.innerHTML = safeSlideHTML(slide.contentLeft);
+  if (quillRight) quillRight.root.innerHTML = safeSlideHTML(slide.contentRight);
 };
 
 // 🚀 ADD SLIDE MODAL LOGIC
