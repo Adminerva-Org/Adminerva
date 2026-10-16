@@ -4,6 +4,12 @@ import {collection,getDocs,query,orderBy,limit,onSnapshot}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs";
 
+// RepoBank can open this inbox scoped to one linked repository.
+const initialRepo=new URLSearchParams(location.search).get("repo");
+if(initialRepo){
+  try{document.getElementById("submissionSearch").value=parseRepository(initialRepo).repo;}
+  catch{/* Keep the ordinary unfiltered inbox when the link is invalid. */}
+}
 const staff=new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
 const el=id=>document.getElementById(id);
 const make=(tag,style,text)=>{const n=document.createElement(tag);
