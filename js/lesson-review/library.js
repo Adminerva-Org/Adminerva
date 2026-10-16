@@ -256,10 +256,10 @@ window.deleteDocument = async function (docIndex) {
   if(!original)return;
   try{
     if(original._documentId){
-      await deleteDoc(doc(db,"reference_folders",activeFolderId,"documents",original._documentId));
-      await updateDoc(doc(db,"reference_folders",activeFolderId),{
-        documentCount:increment(-1)
-      });
+      const batch=writeBatch(db);
+      batch.delete(doc(db,"reference_folders",activeFolderId,"documents",original._documentId));
+      batch.update(doc(db,"reference_folders",activeFolderId),{documentCount:increment(-1)});
+      await batch.commit();
     }else{
       const legacy=folder.documents.filter(item=>!item._documentId&&item!==original);
       await updateDoc(doc(db,"reference_folders",activeFolderId),{documents:legacy});
@@ -504,12 +504,15 @@ window.extractPDF = async function () {
       const record={title:file.name,text:extractedText,updatedAt:new Date().toISOString()};
       if(new TextEncoder().encode(JSON.stringify(record)).length>850000)
         throw Error("Extracted text from "+file.name+" exceeds Firestore's safe document size. Split this PDF into smaller references.");
-      const created=await addDoc(collection(db,"reference_folders",targetFolderId,"documents"),record);
-      folder.documents.push({...record,_documentId:created.id});
-      uploadedCount++;
-      await updateDoc(doc(db,"reference_folders",targetFolderId),{
+      const newRef=doc(collection(db,"reference_folders",targetFolderId,"documents"));
+      const batch=writeBatch(db);
+      batch.set(newRef,record);
+      batch.update(doc(db,"reference_folders",targetFolderId),{
         documentCount:increment(1),updatedAt:new Date().toISOString()
       });
+      await batch.commit();
+      folder.documents.push({...record,_documentId:newRef.id});
+      uploadedCount++;
 
       // 4. INSTANT CLEANUP
       fetch(
