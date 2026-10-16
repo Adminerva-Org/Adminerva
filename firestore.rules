@@ -259,13 +259,14 @@ service cloud.firestore {
       function validHistory() {
         return request.resource.data.keys().hasOnly([
             "ownerUid", "sourceKey", "type", "title", "body", "target",
-            "at", "savedForLater", "openedAt", "lastInteractedAt"
+            "at", "savedForLater", "openedAt", "lastInteractedAt", "recipientRole"
           ]) &&
           request.resource.data.keys().hasAll([
             "ownerUid", "sourceKey", "type", "title", "body", "target",
-            "at", "savedForLater", "openedAt", "lastInteractedAt"
+            "at", "savedForLater", "openedAt", "lastInteractedAt", "recipientRole"
           ]) &&
           request.resource.data.ownerUid == uid &&
+          request.resource.data.recipientRole in ["admin", "teacher", "general"] &&
           request.resource.data.sourceKey is string &&
           request.resource.data.sourceKey.size() <= 500 &&
           request.resource.data.title is string &&
