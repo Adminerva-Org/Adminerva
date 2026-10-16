@@ -38,6 +38,8 @@ jobs:
           node --input-type=module --check < js/core/issues.js
           node --input-type=module --check < js/core/adminerva-loader.js
           node --input-type=module --check < js/core/adminerva-nav.js
+          node --input-type=module --check < js/repo-review/repofetch.js
+          node --input-type=module --check < js/repo-review/manual-review.mjs
           node --input-type=module --check < js/repo-review/auto-checker.js
           node --input-type=module --check < js/lesson-review/reference-context.mjs
           node --input-type=module --check < js/lesson-review/schedule.js
