@@ -13,6 +13,13 @@
 <label class="text-sm font-semibold">Assessment<select id="evidenceAssessment" class="mt-2 w-full p-3 border rounded-lg bg-white"><option value="">Select assessment</option></select></label></div>
 <button id="evidenceLoad" type="button" class="rounded bg-indigo-700 text-white font-bold px-5 py-3">Load evidence</button>
 <p id="evidenceReviewStatus" class="text-sm text-slate-700" role="status">Choose a student and assessment.</p></section>
+<section id="evidenceDiscovery" class="hidden bg-white mt-5 p-5 rounded-xl border space-y-3">
+<h2 class="font-bold text-lg">Discover historical GitHub evidence</h2>
+<p class="text-sm text-slate-600">For assessments already assigned in class: select relevant commits from the linked repository without asking the student to resubmit. This records an instructor-discovered proposal, not a student submission or proof of on-time work.</p>
+<button id="evidenceFindCommits" type="button" class="rounded bg-slate-800 text-white px-4 py-3 font-bold text-sm">Find repository commits</button>
+<div id="evidenceDiscoverList" class="space-y-2 max-h-80 overflow-y-auto"></div>
+<button id="evidenceSaveDiscovery" type="button" class="rounded bg-indigo-700 text-white px-4 py-3 font-bold text-sm">Save proposed historical evidence</button>
+</section>
 <section id="evidenceDetails" class="hidden bg-white mt-5 p-5 rounded-xl border space-y-4">
 <h2 id="evidenceTitle" class="text-lg font-bold"></h2>
 <p id="evidenceMetadata" class="text-sm text-slate-700 break-words"></p>
