@@ -6,6 +6,8 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  increment,
+  writeBatch,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 let libraryData = [];
@@ -168,7 +170,7 @@ function renderFolders() {
   });
 }
 
-window.selectFolder = function (folderId) {
+window.selectFolder = async function (folderId) {
   activeFolderId = folderId;
   renderFolders();
 
@@ -183,6 +185,17 @@ window.selectFolder = function (folderId) {
     document.getElementById("blankWorkspace").classList.add("hidden");
     document.getElementById("searchInput").value = "";
     renderDocuments(folder.documents);
+    try{
+      const snapshot=await getDocs(collection(db,"reference_folders",folderId,"documents"));
+      const legacy=folder.documents.filter(item=>!item._documentId);
+      folder.documents=[...legacy,...snapshot.docs.map(item=>({
+        ...item.data(),_documentId:item.id
+      }))];
+      if(activeFolderId===folderId)renderDocuments(folder.documents);
+    }catch(error){
+      console.warn("Additional folder documents unavailable:",error);
+      if(activeFolderId===folderId)alert("Some reference documents could not be loaded: "+error.message);
+    }
   }
 };
 
@@ -193,8 +206,8 @@ window.filterDocuments = function () {
 
   const filteredDocs = folder.documents.filter(
     (doc) =>
-      doc.title.toLowerCase().includes(query) ||
-      doc.text.toLowerCase().includes(query),
+      String(doc.title||"").toLowerCase().includes(query) ||
+      String(doc.text||"").toLowerCase().includes(query),
   );
   renderDocuments(filteredDocs);
 };
@@ -207,39 +220,46 @@ window.renameDocument = async function (docIndex) {
   const newTitle = prompt("Enter new document name:", oldTitle);
   if (!newTitle || newTitle.trim() === oldTitle) return;
 
-  const updatedDocs = [...folder.documents];
-  updatedDocs[docIndex].title = newTitle.trim();
-  updatedDocs[docIndex].updatedAt = new Date().toISOString();
-
-  try {
-    await updateDoc(doc(db, "reference_folders", activeFolderId), {
-      documents: updatedDocs,
-    });
-    folder.documents = updatedDocs;
-    localStorage.setItem("Adminerva_library", JSON.stringify(libraryData));
+  const original=folder.documents[docIndex];
+  const updated={...original,title:newTitle.trim(),updatedAt:new Date().toISOString()};
+  try{
+    if(original._documentId){
+      await updateDoc(doc(db,"reference_folders",activeFolderId,"documents",original._documentId),{
+        title:updated.title,updatedAt:updated.updatedAt
+      });
+    }else{
+      const legacy=folder.documents.filter(item=>!item._documentId);
+      const index=legacy.indexOf(original);
+      if(index<0)throw Error("Reference document no longer exists.");
+      legacy[index]=updated;
+      await updateDoc(doc(db,"reference_folders",activeFolderId),{documents:legacy});
+    }
+    folder.documents[docIndex]=updated;
     renderDocuments(folder.documents);
-  } catch (e) {
-    alert("Error renaming document: " + e.message);
-  }
+  }catch(error){alert("Error renaming document: "+error.message);}
+
 };
 
 window.deleteDocument = async function (docIndex) {
   if (!confirm("Are you sure you want to delete this document?")) return;
   const folder = libraryData.find((f) => f.id === activeFolderId);
 
-  const updatedDocs = [...folder.documents];
-  updatedDocs.splice(docIndex, 1);
-
-  try {
-    await updateDoc(doc(db, "reference_folders", activeFolderId), {
-      documents: updatedDocs,
-    });
-    folder.documents = updatedDocs;
-    localStorage.setItem("Adminerva_library", JSON.stringify(libraryData));
+  const original=folder.documents[docIndex];
+  if(!original)return;
+  try{
+    if(original._documentId){
+      await deleteDoc(doc(db,"reference_folders",activeFolderId,"documents",original._documentId));
+      await updateDoc(doc(db,"reference_folders",activeFolderId),{
+        documentCount:increment(-1)
+      });
+    }else{
+      const legacy=folder.documents.filter(item=>!item._documentId&&item!==original);
+      await updateDoc(doc(db,"reference_folders",activeFolderId),{documents:legacy});
+    }
+    folder.documents.splice(docIndex,1);
     renderDocuments(folder.documents);
-  } catch (e) {
-    alert("Error deleting document: " + e.message);
-  }
+  }catch(error){alert("Error deleting document: "+error.message);}
+
 };
 
 window.previewDocumentText = function (folderId, docIndex) {
@@ -267,6 +287,8 @@ function renderDocuments(documentsArray) {
     const safeTitle = escapeHTML(doc.title);
     const safeDate = escapeHTML(formatDate(doc.updatedAt));
     const safeFolderId = escapeHTML(activeFolderId);
+    const actualIndex=libraryData.find(item=>item.id===activeFolderId)?.documents.indexOf(doc) ?? -1;
+    if(actualIndex<0)return;
 
     docList.insertAdjacentHTML(
       "beforeend",
@@ -275,15 +297,15 @@ function renderDocuments(documentsArray) {
                 <div class="col-span-6 flex items-center gap-3 truncate">
                     <span class="text-xl">📄</span>
                     <div class="truncate">
-                        <p class="font-semibold text-gray-800 text-sm truncate cursor-pointer hover:text-blue-600" onclick="window.previewDocumentText('${safeFolderId}', ${index})">${safeTitle}</p>
+                        <p class="font-semibold text-gray-800 text-sm truncate cursor-pointer hover:text-blue-600" onclick="window.previewDocumentText('${safeFolderId}', ${actualIndex})">${safeTitle}</p>
                     </div>
                 </div>
                 <div class="col-span-4 text-sm text-gray-500">
                     ${safeDate}
                 </div>
                 <div class="col-span-2 text-right flex justify-end gap-3 group-hover-show">
-                    <button onclick="renameDocument(${index})" class="text-gray-400 hover:text-blue-600" title="Rename">✏️</button>
-                    <button onclick="deleteDocument(${index})" class="text-gray-400 hover:text-red-600" title="Delete">🗑️</button>
+                    <button onclick="renameDocument(${actualIndex})" class="text-gray-400 hover:text-blue-600" title="Rename">✏️</button>
+                    <button onclick="deleteDocument(${actualIndex})" class="text-gray-400 hover:text-red-600" title="Delete">🗑️</button>
                 </div>
             </div>
         `,
@@ -313,7 +335,7 @@ window.extractPDF = async function () {
 
   const targetFolderId = activeFolderId;
   const folder = libraryData.find((f) => f.id === targetFolderId);
-  let updatedDocs = [...(folder.documents || [])];
+  let uploadedCount=0;
 
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -471,10 +493,14 @@ window.extractPDF = async function () {
 
       const extractedText = result.candidates[0].content.parts[0].text;
 
-      updatedDocs.push({
-        title: file.name,
-        text: extractedText,
-        updatedAt: new Date().toISOString(),
+      const record={title:file.name,text:extractedText,updatedAt:new Date().toISOString()};
+      if(new TextEncoder().encode(JSON.stringify(record)).length>850000)
+        throw Error("Extracted text from "+file.name+" exceeds Firestore's safe document size. Split this PDF into smaller references.");
+      const created=await addDoc(collection(db,"reference_folders",targetFolderId,"documents"),record);
+      folder.documents.push({...record,_documentId:created.id});
+      uploadedCount++;
+      await updateDoc(doc(db,"reference_folders",targetFolderId),{
+        documentCount:increment(1),updatedAt:new Date().toISOString()
       });
 
       // 4. INSTANT CLEANUP
@@ -484,13 +510,7 @@ window.extractPDF = async function () {
       ).catch(() => {});
     }
 
-    await updateDoc(doc(db, "reference_folders", targetFolderId), {
-      documents: updatedDocs,
-      updatedAt: new Date().toISOString(),
-    });
-
-    folder.documents = updatedDocs;
-    localStorage.setItem("Adminerva_library", JSON.stringify(libraryData));
+    if(uploadedCount)console.info("Stored "+uploadedCount+" PDFs as independent records.");
   } catch (error) {
     alert("Bulk extraction stopped. Error: " + error.message);
   } finally {
