@@ -82,7 +82,8 @@ test('student navigation remains separate and includes playground links',()=>{
   const {container,desktop}=mount('student','assessments','student');
   assert.equal(desktop.children.length,0);
   assert.match(container.innerHTML,/student-assessments.html/);
-  assert.doesNotMatch(container.innerHTML,/<a href="student-practice.html" class=/);
+  const projectTabs=container.innerHTML.match(/id="av-desktop-nav"[^>]*>(.*?)<\/div>/s)?.[1]||"";
+  assert.doesNotMatch(projectTabs,/student-practice.html/);
   assert.doesNotMatch(container.innerHTML,/Menu · Modules/);
 });
 
