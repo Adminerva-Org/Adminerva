@@ -1,5 +1,6 @@
 import { db, auth } from "../core/firebase-core.js";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs";
+import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs";
 import {
   collection,
   addDoc,
@@ -59,6 +60,8 @@ let workspaceFiles = {};
 let fileOrder = [];
 let activeFilename = "";
 let draggedTabIndex = -1;
+let practiceMode = false;
+let practiceTransfer = null;
 
 // ==========================================
 // 2. INITIALIZATION
@@ -123,7 +126,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     document.getElementById("legacyImportBtn")?.classList.toggle("hidden",
       !localStorage.getItem("Adminerva_Playground_Workspace"));
-    if (snapshotId) await loadSnapshot(snapshotId);
+    const requestedPractice=urlParams.get("practice")==="1";
+    if(requestedPractice){
+      const transfer=readPracticeTransfer(sessionStorage,auth.currentUser.uid);
+      if(transfer){
+        practiceMode=true;
+        practiceTransfer=transfer;
+        const savedScratch=transfer.scratch;
+        const scratch=validPlaygroundState(savedScratch)&&savedScratch.lang===transfer.workspace.lang
+          ?savedScratch:transfer.workspace;
+        createWorkspace(scratch.lang,scratch.files,scratch.fileOrder,scratch.activeFilename);
+        enablePracticeSandbox();
+        showSaveStatus("Practice sandbox — separate from personal projects");
+      }else{
+        alert("This practice session expired or belongs to another account. Your personal workspace is unchanged.");
+        loadLocalWorkspace();
+      }
+    }else if (snapshotId) await loadSnapshot(snapshotId);
     else loadLocalWorkspace();
   });
 });
@@ -360,6 +379,16 @@ function persistWorkspace(){
   if(!uid || !Object.keys(workspaceFiles).length) return false;
   try{
     const state=currentState();
+    if(practiceMode){
+      if(!practiceTransfer)return false;
+      practiceTransfer.scratch={lang:state.lang,files:state.files,fileOrder:state.fileOrder,
+        activeFilename:state.activeFilename};
+      sessionStorage.setItem(practiceBridgeKey(uid),JSON.stringify(practiceTransfer));
+      workspaceDirty=false;
+      localSaveFailed=false;
+      showSaveStatus("Practice scratch saved in this tab");
+      return true;
+    }
     localStorage.setItem(playgroundWorkspaceKey(uid,currentLang),JSON.stringify(state));
     localStorage.setItem(playgroundLanguageKey(uid),currentLang);
     workspaceDirty=false;
@@ -444,11 +473,13 @@ async function exportZIP() {
 
 // Expose only an in-memory snapshot to the authenticated cloud backup module.
 window.adminervaPlaygroundState=function(){
+  if(practiceMode)return null;
   const state=currentState();
   return {lang:state.lang,files:state.files,fileOrder:state.fileOrder,
     activeFilename:state.activeFilename};
 };
 window.adminervaRestorePlayground=function(state){
+  if(practiceMode)return false;
   if(!validPlaygroundState(state))return false;
   const uid=ownerUid();
   if(!uid || !persistWorkspace())return false;
@@ -572,6 +603,7 @@ async function executeCode() {
       runBtn.classList.remove("opacity-50");
     }
     if (overlay) overlay.classList.add("hidden");
+    notePracticeExecution();
     return;
   }
 
@@ -628,6 +660,7 @@ async function executeCode() {
       runBtn.disabled = false;
       runBtn.classList.remove("opacity-50");
     }
+    notePracticeExecution();
   }
 }
 
@@ -781,6 +814,31 @@ async function askMinerva() {
 // ==========================================
 // 7. UI BINDINGS & RESIZER LOGIC
 // ==========================================
+function enablePracticeSandbox(){
+  const label=document.getElementById("practiceSandboxBanner");
+  const link=document.getElementById("practiceReturnLink");
+  if(label)label.classList.remove("hidden");
+  if(link)link.href=practiceReturnUrl(practiceTransfer);
+  // This workspace is temporary. Never allow saving it over personal projects
+  // or uploading it to the student's regular cloud version history.
+  for(const id of ["languageSelect","cloudSaveProjectBtn","cloudLoadProjectBtn",
+    "loadProjectBtn","snapshotBtn","legacyImportBtn","undoRestoreBtn"]){
+    const control=document.getElementById(id);
+    if(control){control.disabled=true;control.classList.add("hidden")}
+  }
+}
+function notePracticeExecution(){
+  if(!practiceMode || !practiceTransfer)return;
+  try{
+    persistWorkspace();
+    const output=document.getElementById("consoleOutput")?.textContent||"";
+    if(recordPracticeRun(sessionStorage,ownerUid(),output)){
+      practiceTransfer=readPracticeTransfer(sessionStorage,ownerUid());
+      const status=document.getElementById("practiceRunStatus");
+      if(status)status.textContent="Run attempted ("+practiceTransfer.runCount+"). Return to Practice Lab and describe what you observed.";
+    }
+  }catch(error){console.warn("Could not record practice run:",error)}
+}
 function bindUIEvents() {
   // Using optional chaining (?.) so missing buttons don't crash the script
   document
