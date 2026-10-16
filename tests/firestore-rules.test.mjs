@@ -30,6 +30,7 @@ beforeEach(async () => {
       setDoc(doc(db,'students','alice'),{name:'Alice',email:EMAIL_A,section:'11-A'}),
       setDoc(doc(db,'students','bob'),{name:'Bob',email:EMAIL_B,section:'11-B'}),
       setDoc(doc(db,'assessments','peta'),{title:'Practical Exam',quarter:'Q2'}),
+      setDoc(doc(db,'assessments','v2'),{title:'Mini PETA 1',quarter:'Q3',schemaVersion:2}),
       setDoc(doc(db,'notifications','alice','items','note-1'),{
         title:'Review update',type:'issue',createdAt:new Date(),readAt:null,
         target:'issues.html',body:'Your report is ready.'
@@ -210,6 +211,57 @@ test('first review submission is creatable without a read preflight; duplicate i
   await assertFails(setDoc(receiptRef,{...submission(),sourcePath:'app/src'}));
 });
 
+
+test('V2 evidence is individual, editable while submitted, and cannot self-approve',async()=>{
+  const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
+  const record={studentId:'alice',assessmentId:'v2',section:'11-A',
+    repository:'https://github.com/example/project',
+    selectedCommits:[SHA],checkpointSha:SHA,status:'submitted',
+    submittedAt:serverTimestamp(),updatedAt:serverTimestamp()};
+  await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'students','alice'),
+    {name:'Alice',email:EMAIL_A,section:'11-A',repoUrl:record.repository}));
+  const ref=doc(alice,'assessment_evidence','alice_v2');
+  await assertSucceeds(setDoc(ref,record));
+  await assertSucceeds(getDoc(ref));
+  await assertFails(getDoc(doc(bob,'assessment_evidence','alice_v2')));
+  await assertFails(setDoc(doc(bob,'assessment_evidence','bob_v2'),record));
+  await assertFails(setDoc(doc(alice,'assessment_evidence','alice_peta'),{...record,assessmentId:'peta'}));
+  await assertFails(updateDoc(ref,{status:'approved',reviewedBy:'alice'}));
+  await assertFails(updateDoc(ref,{repository:'https://github.com/other/repo'}));
+  await assertSucceeds(updateDoc(ref,{selectedCommits:[SHA],checkpointSha:SHA,updatedAt:serverTimestamp()}));
+});
+test('V2 evidence approval is staff-only',async()=>{
+  const alice=client('alice',EMAIL_A),staff=client('staff',TEACHER);
+  const repository='https://github.com/example/project';
+  await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'students','alice'),
+    {name:'Alice',email:EMAIL_A,section:'11-A',repoUrl:repository}));
+  const ref=doc(alice,'assessment_evidence','alice_v2');
+  await assertSucceeds(setDoc(ref,{studentId:'alice',assessmentId:'v2',section:'11-A',
+    repository,selectedCommits:[SHA],checkpointSha:SHA,status:'submitted',
+    submittedAt:serverTimestamp(),updatedAt:serverTimestamp()}));
+  await assertFails(updateDoc(ref,{status:'approved',reviewedBy:'alice'}));
+  await assertSucceeds(updateDoc(doc(staff,'assessment_evidence','alice_v2'),
+    {status:'approved',reviewedBy:'staff'}));
+  await assertFails(updateDoc(ref,{selectedCommits:[SHA],updatedAt:serverTimestamp()}));
+});
+test('reclaim is initially pending, owner-private and can only be withdrawn by claimant',async()=>{
+  const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B),staff=client('staff',TEACHER);
+  const repository='https://github.com/example/project';
+  await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'students','alice'),
+    {name:'Alice',email:EMAIL_A,section:'11-A',repoUrl:repository}));
+  const ref=doc(alice,'commit_reclaims',SHA+'_alice');
+  const claim={studentId:'alice',assessmentId:'v2',section:'11-A',
+    repository,sha:SHA,detectedAuthorName:'Old Laptop',
+    detectedAuthorLogin:'',explanation:'This was created with my old Git identity.',
+    status:'pending',createdAt:serverTimestamp()};
+  await assertSucceeds(setDoc(ref,claim));
+  await assertFails(getDoc(doc(bob,'commit_reclaims',SHA+'_alice')));
+  await assertFails(setDoc(doc(bob,'commit_reclaims',SHA+'_bob'),claim));
+  await assertFails(updateDoc(ref,{status:'approved'}));
+  await assertSucceeds(getDoc(doc(staff,'commit_reclaims',SHA+'_alice')));
+  await assertSucceeds(updateDoc(ref,{status:'withdrawn',withdrawnAt:serverTimestamp()}));
+  await assertFails(updateDoc(ref,{status:'pending'}));
+});
 
 test('cloud Playground versions are immutable and owner-only',async()=>{
   const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
