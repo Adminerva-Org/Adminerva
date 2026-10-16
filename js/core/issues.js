@@ -152,6 +152,7 @@ function renderIssues() {
           <div class="flex items-center gap-2 mb-1.5 flex-wrap">
             <span class="${statStyle} text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">${escapeHTML(iss.status)}</span>
             <span class="text-[10px] font-bold text-slate-500 border border-slate-200 bg-slate-50 px-2 py-0.5 rounded uppercase">${escapeHTML(iss.category)}</span>
+            <span class="text-[10px] text-slate-600 font-semibold">${audienceOf(iss)==="admin"?"For administrators":"For teachers"}</span>
             <span class="text-[10px] text-slate-400 font-medium ml-auto">${dateStr}</span>
           </div>
           <h3 class="text-base font-bold text-slate-800 leading-tight group-hover:text-cyan-700 transition">${isLocked}${prioMarker}${escapeHTML(iss.title)}</h3>
@@ -193,6 +194,7 @@ window.openIssueModal = async function (id) {
     <span class="${statStyle} text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">${escapeHTML(iss.status)}</span>
     <span class="text-[10px] font-bold text-slate-200 border border-slate-500 px-2 py-0.5 rounded uppercase">${escapeHTML(iss.category)}</span>
     <span class="text-[10px] font-bold text-slate-200 border border-slate-500 px-2 py-0.5 rounded uppercase">Priority: ${escapeHTML(iss.priority)}</span>
+    <span class="text-[10px] text-cyan-100 font-bold uppercase">For ${audienceOf(iss)==="admin"?"administrators":"teachers"}</span>
   `;
 
   document.getElementById("modalIssueTitle").textContent = iss.title;
@@ -366,7 +368,7 @@ function loadComments(issueId) {
                         <span class="text-[9px] text-slate-400">${timeStr}</span>
                     </div>
                     <p class="text-sm text-slate-600 whitespace-pre-wrap">${escapeHTML(data.text)}</p>
-                    ${isSuperAdmin ? `<button onclick="deleteComment('${docSnap.id}')" class="absolute top-2 right-2 text-red-300 hover:text-red-500 text-xs hidden group-hover:block">🗑️</button>` : ""}
+                    ${canManageIssue(allIssues.find(item=>item.id===issueId)||{}) ? `<button onclick="deleteComment('${docSnap.id}')" class="absolute top-2 right-2 text-red-300 hover:text-red-500 text-xs hidden group-hover:block">🗑️</button>` : ""}
                 </div>
             `,
         );
