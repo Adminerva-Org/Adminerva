@@ -74,10 +74,18 @@ window.generateAI_SlideDeck = async function () {
 
     // Inject the generated deck and mark everything visible
     const parsedDeck = JSON.parse(rawJson);
-    window.currentPresentationDeck = parsedDeck.map((s) => ({
-      ...s,
-      hidden: false,
-      mediaUrl: "",
+    if(!Array.isArray(parsedDeck)||parsedDeck.length===0||parsedDeck.length>60)
+      throw Error("The generated presentation has an invalid number of slides.");
+    const sanitize=window.sanitizePresentationHtml;
+    if(typeof sanitize!=="function")throw Error("Slide sanitizer failed to load.");
+    window.currentPresentationDeck = parsedDeck.map(slide => ({
+      layout:["standard","split","media"].includes(slide.layout)?slide.layout:"standard",
+      label:String(slide.label||"Slide").slice(0,120),
+      content:sanitize(slide.content),
+      contentLeft:sanitize(slide.contentLeft),
+      contentRight:sanitize(slide.contentRight),
+      hidden:false,
+      mediaUrl:""
     }));
     window.activeSlideIndex = 0;
 
