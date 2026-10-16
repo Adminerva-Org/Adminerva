@@ -25,22 +25,31 @@ window.initiateGenerationFlow = async function () {
     );
   }
 
-  const libraryData = JSON.parse(
-    localStorage.getItem("Adminerva_library") || "[]",
-  );
-  window.cachedCompiledText = "";
-
-  if (selectedCheckboxes.length > 0) {
-    selectedCheckboxes.forEach((cb) => {
-      const folder = libraryData.find((f) => f.id === cb.value);
-      if (folder && folder.documents) {
-        folder.documents.forEach((doc) => {
-          // 🚀 EXTRA SAFETY: Sanitize the reference text as well
-          const safeDocText = doc.text.replace(/"/g, "'");
-          window.cachedCompiledText += `\n\n--- DOCUMENT: ${doc.title} ---\n${safeDocText}`;
-        });
+  window.cachedCompiledText="";
+  if(selectedCheckboxes.length){
+    if(typeof window.fetchReferenceDocuments!=="function")
+      return alert("Reference Library is not ready. Reload and try again.");
+    try{
+      const documentsByFolder=await Promise.all(
+        Array.from(selectedCheckboxes,cb=>window.fetchReferenceDocuments(cb.value))
+      );
+      let totalLength=0;
+      for(const files of documentsByFolder){
+        for(const file of files){
+          const chunk="\n\n--- DOCUMENT: "+String(file.title||"Untitled")+" ---\n"+
+            String(file.text||"").replace(/"/g,"'");
+          totalLength+=chunk.length;
+          if(window.cachedCompiledText.length<25000)
+            window.cachedCompiledText+=chunk.slice(0,25000-window.cachedCompiledText.length);
+        }
       }
-    });
+      if(totalLength>25000&&!confirm(
+        "The selected references contain "+totalLength.toLocaleString()+
+        " characters. Only the first 25,000 characters fit the current AI context budget. Continue?"
+      ))return;
+    }catch(error){
+      return alert("Could not load selected reference documents: "+error.message);
+    }
   }
 
   const subject = localStorage.getItem("Adminerva_defaultSubject") || "Subject";
