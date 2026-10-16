@@ -44,3 +44,10 @@ export function localScheduleText(storage, schoolYear, academicTerm) {
   if (scoped !== null) return scoped;
   return scope.allowLegacy ? storage.getItem("Adminerva_schedule") || "" : "";
 }
+
+export function parseClockMinutes(clock) {
+  if (typeof clock !== "string" || !/^[0-9]{2}:[0-9]{2}$/.test(clock)) return null;
+  const [hours, minutes] = clock.split(":").map(Number);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
