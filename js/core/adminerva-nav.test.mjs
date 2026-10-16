@@ -48,10 +48,10 @@ function mount(module='educator', page='dashboard', role='teacher') {
 }
 test('teacher sees task-group menus instead of eight crowded links',()=>{
   const {desktop,mobile}=mount();
-  assert.equal(desktop.children.length,5);
+  assert.equal(desktop.children.length,3);
   assert.equal(desktop.children[0].href,'reporeviewDashboard.html');
   assert.deepEqual(desktop.children.slice(1).map(x=>x.children[0].textContent),
-    ['Grading ▾','Repositories ▾','Planning ▾','Manage ▾']);
+    ['Grading ▾','Repositories ▾']);
   assert.equal(mobile.children.length,1);
   assert.equal(mobile.children[0].children[0].textContent,'Menu · Analytics ▾');
 });
@@ -60,8 +60,9 @@ test('every grouped route exists in main and admin has directory',()=>{
   const links=desktop.children.flatMap(group=>group.tagName==='a'?[group]:group.children[1].children);
   for(const link of links)assert.equal(existsSync(link.href),true,'Missing route: '+link.href);
   assert.ok(links.some(link=>link.href==='users.html'));
-  assert.ok(links.some(link=>link.href==='gradebook.html'));
-  assert.ok(links.some(link=>link.href==='submissions.html'));
+  assert.ok(links.some(link=>link.href==='issues.html'));
+  assert.ok(!links.some(link=>link.href==='gradebook.html'));
+  assert.ok(!links.some(link=>link.href==='lesson-planner.html'));
 });
 test('only the active page is announced and its mobile section expands',()=>{
   const {desktop,mobile}=mount('educator','submissions');
@@ -82,4 +83,24 @@ test('student navigation remains separate and includes playground links',()=>{
   assert.equal(desktop.children.length,0);
   assert.match(container.innerHTML,/student-assessments.html/);
   assert.doesNotMatch(container.innerHTML,/Menu · Modules/);
+});
+
+test('Planning appears only in Lesson Review and retains school workflow links',()=>{
+  const lesson=mount('lesson','planner');
+  const groups=lesson.desktop.children.slice(1).map(x=>x.children[0].textContent);
+  assert.deepEqual(groups,['Planning ▾']);
+  const pages=lesson.desktop.children.slice(1).flatMap(x=>x.children[1].children.map(c=>c.href));
+  assert.ok(pages.includes('lesson-planner.html'));
+  assert.ok(pages.includes('presentation.html'));
+  assert.ok(pages.includes('schedule.html'));
+  assert.ok(pages.includes('library.html'));
+  assert.ok(!pages.includes('gradebook.html'));
+  assert.ok(!pages.includes('users.html'));
+});
+test('Manage appears in the admin and settings areas, not RepoFetch',()=>{
+  const settings=mount('settings','settings','teacher');
+  assert.deepEqual(settings.desktop.children.slice(1).map(x=>x.children[0].textContent),['Manage ▾']);
+  const repo=mount('repo','repofetch','teacher');
+  assert.deepEqual(repo.desktop.children.slice(1).map(x=>x.children[0].textContent),
+    ['Grading ▾','Repositories ▾']);
 });
