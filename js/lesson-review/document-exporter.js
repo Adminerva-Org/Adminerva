@@ -413,6 +413,7 @@ async function processAndUploadToDrive(accessToken) {
 
     const result = await response.json();
     const docId = result.id;
+    if(!docId)throw Error("Google Drive did not return a document ID.");
 
     const docResponse = await fetch(
       `https://docs.googleapis.com/v1/documents/${docId}`,
@@ -421,7 +422,9 @@ async function processAndUploadToDrive(accessToken) {
         headers: { Authorization: `Bearer ${accessToken}` },
       },
     );
+    if(!docResponse.ok)throw Error("Could not inspect the generated Google Doc: HTTP "+docResponse.status);
     const docData = await docResponse.json();
+    if(!Array.isArray(docData?.body?.content))throw Error("Google Docs returned an unexpected document structure.");
 
     const tables = [];
     for (const element of docData.body.content) {
@@ -483,7 +486,8 @@ async function processAndUploadToDrive(accessToken) {
       });
     }
 
-    await fetch(
+    if(tables.length<2)throw Error("The generated Google Doc is missing its curriculum or signature table. Check the export manually before submitting.");
+    const formattingResponse=await fetch(
       `https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`,
       {
         method: "POST",
@@ -494,6 +498,8 @@ async function processAndUploadToDrive(accessToken) {
         body: JSON.stringify({ requests }),
       },
     );
+    if(!formattingResponse.ok)
+      throw Error("Google Docs formatting was rejected (HTTP "+formattingResponse.status+"). Check the document before submitting.");
 
     if (typeof window.hideLoader === "function") window.hideLoader();
     window.open(`https://docs.google.com/document/d/${docId}/edit`, "_blank");
