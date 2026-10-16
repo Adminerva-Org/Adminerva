@@ -69,3 +69,31 @@ test("no-schedule generation cannot silently invent teaching times",()=>{
             source.includes("do NOT invent sections"));
   assert.ok(source.includes("Do not invent section names or meeting times."));
 });
+
+test("loading another subject never changes the saved lesson identity",()=>{
+  const ui=readFileSync("js/lesson-review/app-ui.js","utf8");
+  const save=readFileSync("js/lesson-review/lesson-firebase.js","utf8");
+  const generation=readFileSync("js/lesson-review/ai-engine.js","utf8");
+  const start=ui.indexOf("window.loadSpecificPlan = function");
+  const end=ui.indexOf('document.getElementById("lpSchoolYear").value',start);
+  assert.ok(start>=0 && end>start);
+  const context={
+    window:{currentPlan:[],currentPlanSubject:"",currentPlanTeacher:""},
+    localStorage:{getItem:key=>key==="Adminerva_defaultSubject"?"New Semester Subject":"Current Teacher"},
+    document:{getElementById:()=>({value:"Grade 11"})},
+    alert(){}
+  };
+  vm.runInNewContext(ui.slice(start,end)+"}",context);
+  context.window.loadSpecificPlan({
+    sessions:[{session_name:"Session 1"}],
+    grade_level:"Grade 11",
+    subject_title:"Previous Subject",
+    teacher_name:"Original Teacher"
+  });
+  assert.equal(context.window.currentPlanSubject,"Previous Subject");
+  assert.equal(context.window.currentPlanTeacher,"Original Teacher");
+  assert.ok(save.includes('const subject = window.currentPlanSubject ||'));
+  assert.ok(save.includes('const teacher = window.currentPlanTeacher ||'));
+  assert.ok(generation.includes('window.currentPlanSubject = subject;'));
+  assert.ok(generation.includes('window.currentPlanSubject = localStorage.getItem("Adminerva_defaultSubject")'));
+});
