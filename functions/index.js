@@ -5,20 +5,28 @@ const {getAuth}=require("firebase-admin/auth");
 const {onDocumentCreated,onDocumentUpdated}=require("firebase-functions/v2/firestore");
 initializeApp();
 const db=getFirestore();
-const staffEmails=["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"];
+const adminEmails=["babaynike2013@gmail.com"];
+const teacherEmails=["josephsixson@mcstayuman.edu.ph"];
+const staffEmails=[...adminEmails,...teacherEmails];
+const reportAudience=data=>data.category==="Bug"?"admin":(data.recipientRole==="teacher"?"teacher":"admin");
 const cleanId=value=>String(value||"").replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,150);
 async function byEmail(email){
   if(typeof email!=="string"||!email)return null;
   try{return (await getAuth().getUserByEmail(email.toLowerCase())).uid}
   catch(error){if(error.code!=="auth/user-not-found")console.warn("User resolution failed",error.code);return null}
 }
-async function teacherIds(){return [...new Set((await Promise.all(staffEmails.map(byEmail))).filter(Boolean))]}
+async function staffIds(){return [...new Set((await Promise.all(staffEmails.map(byEmail))).filter(Boolean))]}
+async function reportRecipients(audience){
+  const emails=audience==="teacher"?teacherEmails:adminEmails;
+  return [...new Set((await Promise.all(emails.map(byEmail))).filter(Boolean))];
+}
 async function notify(uid,id,item){
   if(!uid)return;
   const ref=db.doc("notifications/"+uid+"/items/"+cleanId(id));
   try{await ref.create({
     title:String(item.title||"Notification").slice(0,160),
     body:String(item.body||"").slice(0,300),type:item.type,
+    recipientRole:item.type==="issue"?(item.recipientRole||"admin"):"general",
     sourceId:item.sourceId||null,target:item.target||"issues.html",
     createdAt:FieldValue.serverTimestamp(),readAt:null
   })}
@@ -29,17 +37,21 @@ async function notifyMany(uids,id,payload){
 }
 exports.issueOpened=onDocumentCreated("issues/{issueId}",async event=>{
   const data=event.data?.data();if(!data)return;
-  await notifyMany(await teacherIds(),"report_new_"+event.params.issueId,{
-    type:"issue",title:"New issue report",body:data.title||"Untitled report",
+  const recipientRole=reportAudience(data);
+  await notifyMany(await reportRecipients(recipientRole),"report_new_"+event.params.issueId,{
+    type:"issue",recipientRole,title:"New issue report",body:data.title||"Untitled report",
     sourceId:event.params.issueId,target:"issues.html?issue="+event.params.issueId
   });
 });
 exports.issueStatusUpdated=onDocumentUpdated("issues/{issueId}",async event=>{
   const old=event.data?.before.data(),now=event.data?.after.data();
   if(!old||!now||old.status===now.status&&old.priority===now.priority)return;
+  const recipientRole=reportAudience(now);
+  // Bug and system tickets are admin-only notifications, including updates.
+  if(recipientRole==="admin")return;
   const uid=now.reporterUid||await byEmail(now.reporterEmail);
   await notify(uid,"report_update_"+event.id,{
-    type:"issue",title:"Your report was updated",
+    type:"issue",recipientRole,title:"Your report was updated",
     body:(now.title||"Issue")+" · "+(now.status||"Open"),
     sourceId:event.params.issueId,target:"issues.html?issue="+event.params.issueId
   });
@@ -49,16 +61,19 @@ exports.issueCommentAdded=onDocumentCreated("issues/{issueId}/comments/{commentI
   const issue=await db.doc("issues/"+event.params.issueId).get();if(!issue.exists)return;
   const item=issue.data(),reporter=item.reporterUid||await byEmail(item.reporterEmail);
   const actor=comment.authorUid||await byEmail(comment.authorEmail);
-  const recipients=(await teacherIds()).concat([reporter]).filter(uid=>uid!==actor);
+  const recipientRole=reportAudience(item);
+  const staff=await reportRecipients(recipientRole);
+  const recipients=(recipientRole==="teacher"?staff.concat([reporter]):staff)
+    .filter(uid=>uid!==actor);
   await notifyMany(recipients,"report_comment_"+event.params.commentId,{
-    type:"issue",title:"New comment on a report",
+    type:"issue",recipientRole,title:"New comment on a report",
     body:item.title||"Support report",sourceId:event.params.issueId,
     target:"issues.html?issue="+event.params.issueId
   });
 });
 exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}",async event=>{
   const item=event.data?.data();if(!item)return;
-  await notifyMany(await teacherIds(),"submission_"+event.params.submissionId,{
+  await notifyMany(await staffIds(),"submission_"+event.params.submissionId,{
     type:"submission",title:"Student submitted work",
     body:(item.studentName||"Student")+" · "+(item.assessmentTitle||"Assessment"),
     sourceId:event.params.submissionId,target:"submissions.html"
@@ -93,7 +108,7 @@ exports.assessmentAssigned=onDocumentUpdated("assessments/{assessmentId}",async 
 
 exports.gradingNeedsReview=onDocumentCreated("grading_alerts/{alertId}",async event=>{
   const item=event.data?.data();if(!item)return;
-  await notifyMany(await teacherIds(),"grading_"+event.params.alertId,{
+  await notifyMany(await staffIds(),"grading_"+event.params.alertId,{
     type:"grading",title:"Grading requires attention",
     body:(item.repository||"Repository")+" · "+(item.message||"Check failed"),
     sourceId:event.params.alertId,target:"repofetch.html"
