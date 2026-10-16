@@ -8,6 +8,11 @@ import {
   doc,
   setDoc,
   getDoc,
+  runTransaction,
+  serverTimestamp,
+  query,
+  orderBy,
+  limit,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 // 🔒 Security Patch: Helper to neutralize malicious HTML scripts from user input
@@ -159,8 +164,23 @@ window.saveLessonPlan = async function () {
       timestamp: new Date().toISOString(), // This is the key we use to find recent plans
     };
 
-    await setDoc(doc(db, "lesson_plans", safeDocId), planData);
-    alert(`✅ Lesson Plan saved successfully!`);
+    const currentRef=doc(db,"lesson_plans",safeDocId);
+    const revisionId=Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,10);
+    const historyRef=doc(db,"lesson_plans",safeDocId,"revisions",revisionId);
+    const action=await runTransaction(db,async tx=>{
+      const prior=await tx.get(currentRef);
+      const existing=prior.exists()?prior.data():null;
+      if(existing){
+        const same=Object.entries(planData).every(([key,value])=>
+          key==="timestamp" || JSON.stringify(value)===JSON.stringify(existing[key])
+        );
+        if(same)return "unchanged";
+        tx.set(historyRef,{...existing,archivedRevisionAt:serverTimestamp()});
+      }
+      tx.set(currentRef,{...planData,version:existing?Number(existing.version||1)+1:1});
+      return "saved";
+    });
+    alert(action==="unchanged"?"No changes since the last save.":"Lesson plan saved. The previous version is retained.");
     return true;
   } catch (e) {
     console.error("Error saving plan:", e);
@@ -342,7 +362,8 @@ window.openLoadPlanModal = async function () {
                             <td class="px-4 py-3 text-right">
                                 <div class="flex justify-end gap-2">
                                     <button onclick='loadSpecificPlan(${safeDataObjStr})' class="px-3 py-1.5 bg-blue-600 text-white font-bold text-[10px] rounded hover:bg-blue-700 shadow-sm transition">Load</button>
-                                    <button onclick="deleteLessonPlan('${safeId}')" class="px-2 py-1.5 bg-red-50 text-red-600 font-bold text-[10px] rounded hover:bg-red-100 transition" title="Delete">✖</button>
+                                    <button onclick="openLessonHistory('${safeId}')" class="px-2 py-1.5 bg-slate-100 text-slate-700 font-bold text-[10px] rounded hover:bg-slate-200" title="Previous saved versions">History</button>
+                                     <button onclick="deleteLessonPlan('${safeId}')" class="px-2 py-1.5 bg-red-50 text-red-600 font-bold text-[10px] rounded hover:bg-red-100 transition" title="Delete">✖</button>
                                 </div>
                             </td>
                         </tr>
@@ -382,6 +403,55 @@ window.openLoadPlanModal = async function () {
   } catch (e) {
     container.innerHTML = `<div class="p-4 bg-red-50 text-red-600 rounded-lg border border-red-200">Error: ${escapeHTML(e.message)}</div>`;
   }
+};
+
+// Earlier school records remain immutable; loading history only edits the
+// current local draft. Teachers must explicitly Save to restore it in Firestore.
+window.openLessonHistory=async function(planId){
+  let modal=document.getElementById("lessonHistoryModal");
+  if(!modal){
+    modal=document.createElement("div");
+    modal.id="lessonHistoryModal";
+    modal.className="fixed inset-0 z-[260] bg-slate-950/80 p-3 flex items-center justify-center";
+    modal.setAttribute("role","dialog");modal.setAttribute("aria-modal","true");
+    const panel=document.createElement("div");
+    panel.className="bg-white rounded-xl max-w-lg w-full p-5 max-h-[85dvh] overflow-y-auto";
+    const header=document.createElement("div");
+    header.className="flex justify-between items-center mb-4";
+    const title=document.createElement("h2");
+    title.textContent="Lesson plan versions";title.className="font-bold text-slate-900 text-lg";
+    const close=document.createElement("button");
+    close.textContent="Close";close.className="px-3 py-2 rounded bg-slate-200 text-slate-900";
+    close.addEventListener("click",()=>modal.classList.add("hidden"));
+    header.append(title,close);
+    const list=document.createElement("div");list.id="lessonHistoryList";list.className="space-y-2";
+    panel.append(header,list);modal.append(panel);document.body.append(modal);
+  }
+  modal.classList.remove("hidden");
+  const list=modal.querySelector("#lessonHistoryList");
+  list.textContent="Loading previous versions…";
+  try{
+    const records=await getDocs(query(collection(db,"lesson_plans",planId,"revisions"),
+      orderBy("archivedRevisionAt","desc"),limit(15)));
+    list.replaceChildren();
+    if(records.empty)list.textContent="No prior versions have been saved for this plan.";
+    records.forEach(record=>{
+      const original=record.data();
+      const row=document.createElement("div");
+      row.className="p-3 rounded-lg border flex gap-2 items-center justify-between";
+      const label=document.createElement("span");
+      label.className="text-sm text-slate-800";
+      label.textContent="Version "+String(original.version||"legacy")+" · "+String(original.timestamp||"Unknown time");
+      const restore=document.createElement("button");
+      restore.className="bg-blue-600 text-white px-3 py-2 font-semibold rounded-lg text-xs";
+      restore.textContent="Load draft";
+      restore.addEventListener("click",()=>{
+        if(!confirm("Load this earlier lesson into the editor? Save explicitly to restore it."))return;
+        window.loadSpecificPlan?.(original);modal.classList.add("hidden");
+      });
+      row.append(label,restore);list.append(row);
+    });
+  }catch(error){list.textContent="Could not retrieve lesson history: "+error.message;}
 };
 
 window.deleteLessonPlan = async function (docId) {
