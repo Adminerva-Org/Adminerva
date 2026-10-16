@@ -178,6 +178,68 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    // Formative student practice, separate from official assessments/grades.
+    // Teachers may inspect progress through the existing instructor privileges.
+    match /student_practice_progress/{uid}/courses/{courseId} {
+      function validProgress() {
+        return request.resource.data.keys().hasOnly([
+          "ownerUid", "courseId", "completed", "reflections", "updatedAt"
+        ]) &&
+        request.resource.data.keys().hasAll([
+          "ownerUid", "courseId", "completed", "reflections", "updatedAt"
+        ]) &&
+        request.resource.data.ownerUid == uid &&
+        request.resource.data.courseId == courseId &&
+        courseId in ["java","python","web","logic"] &&
+        request.resource.data.completed is list &&
+        request.resource.data.completed.size() <= 40 &&
+        request.resource.data.reflections is map &&
+        request.resource.data.reflections.size() <= 40 &&
+        request.resource.data.updatedAt == request.time;
+      }
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid &&
+        validProgress();
+      allow delete: if false;
+    }
+
+    // Personal read history and saved reminders. Students can retain a small
+    // notification summary for later; other users cannot inspect this inbox.
+    match /notification_history/{uid}/items/{notificationId} {
+      function validHistory() {
+        return request.resource.data.keys().hasOnly([
+            "ownerUid", "sourceKey", "type", "title", "body", "target",
+            "at", "savedForLater", "openedAt", "lastInteractedAt"
+          ]) &&
+          request.resource.data.keys().hasAll([
+            "ownerUid", "sourceKey", "type", "title", "body", "target",
+            "at", "savedForLater", "openedAt", "lastInteractedAt"
+          ]) &&
+          request.resource.data.ownerUid == uid &&
+          request.resource.data.sourceKey is string &&
+          request.resource.data.sourceKey.size() <= 500 &&
+          request.resource.data.title is string &&
+          request.resource.data.title.size() <= 240 &&
+          request.resource.data.body is string &&
+          request.resource.data.body.size() <= 800 &&
+          request.resource.data.type is string &&
+          request.resource.data.type.size() <= 32 &&
+          request.resource.data.target is string &&
+          request.resource.data.target.size() <= 220 &&
+          request.resource.data.at is number &&
+          request.resource.data.savedForLater is bool &&
+          request.resource.data.openedAt == request.time &&
+          request.resource.data.lastInteractedAt == request.time;
+      }
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid && validHistory();
+      allow update: if signedIn() && request.auth.uid == uid &&
+        resource.data.ownerUid == uid &&
+        resource.data.sourceKey == request.resource.data.sourceKey &&
+        validHistory();
+      allow delete: if false;
+    }
+
     // Only instructors may read or write internal grading-failure diagnostics.
     match /grading_alerts/{alertId} {
       allow read, write: if isInstructor();
