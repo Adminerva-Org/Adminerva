@@ -1,6 +1,7 @@
 // Import centralized database instead of initializing locally
 import { db } from "../core/firebase-core.js";
 import {legacyPlanId,schoolYearPlanId} from "./lesson-plan-helpers.mjs";
+import {scheduleScope,localScheduleText} from "./schedule-scope.mjs";
 import {
   collection,
   getDocs,
@@ -25,6 +26,32 @@ function escapeHTML(str) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
+
+// Resolve the timetable for the selected lesson school year and semester.
+window.fetchScheduleForLesson = async function (schoolYear, academicTerm) {
+  const scope = scheduleScope(schoolYear, academicTerm);
+  const local = () => localScheduleText(localStorage, schoolYear, academicTerm);
+  try {
+    const selected = await getDoc(doc(db, "app_config", scope.id));
+    if (selected.exists()) {
+      const text = String(selected.data().raw_text || "");
+      localStorage.setItem(scope.textKey, text);
+      return text;
+    }
+    if (localStorage.getItem(scope.textKey) !== null) return local();
+    if (scope.allowLegacy) {
+      const legacy = await getDoc(doc(db, "app_config", "master_schedule"));
+      if (legacy.exists()) {
+        const text = String(legacy.data().raw_text || "");
+        localStorage.setItem(scope.textKey, text);
+        return text;
+      }
+    }
+  } catch (error) {
+    console.warn("Could not load semester schedule from cloud; checking device cache:", error);
+  }
+  return local();
+};
 
 window.initFirebase = function () {
   if (window.loadLibraryFolders) {
@@ -155,7 +182,7 @@ window.saveLessonPlan = async function () {
       custom_instructions: document
         .getElementById("lpCustomInstructions")
         .value.trim(),
-      schedule: localStorage.getItem("Adminerva_schedule") || "",
+      schedule: await window.fetchScheduleForLesson(schoolYear, academicTerm),
       reference_folders: Array.from(
         document.querySelectorAll(".folder-checkbox:checked"),
       ).map((cb) => cb.value),
