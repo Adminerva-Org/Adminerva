@@ -1,6 +1,13 @@
 window.currentPresentationDeck = [];
 const safeSlideHTML=value=>window.sanitizePresentationHtml?.(value) ?? "";
 window.activeSlideIndex = -1;
+window.adminervaPresentationDirty = false;
+window.addEventListener("beforeunload", event => {
+  if (!window.adminervaPresentationDirty) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
+
 
 let quillStandard = null;
 let quillLeft = null;
@@ -81,6 +88,7 @@ function initEditors() {
     } else {
       window.currentPresentationDeck[window.activeSlideIndex][key] =
         safeSlideHTML(editorRoot.innerHTML);
+      window.adminervaPresentationDirty = true;
     }
   };
 
@@ -109,6 +117,7 @@ function flashWarning() {
 window.changeSlideLayout = function (layout) {
   if (window.activeSlideIndex < 0) return;
   window.currentPresentationDeck[window.activeSlideIndex].layout = layout;
+  window.adminervaPresentationDirty = true;
   applyLayoutView(layout);
   renderSlideBlocks(); // Update icon
 };
