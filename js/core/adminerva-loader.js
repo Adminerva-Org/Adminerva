@@ -38,6 +38,14 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
                 
                 <div class="overflow-y-auto pr-2 flex-1 space-y-4">
+                    <div class="mb-3">
+                      <label for="bug-recipient" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Send this report to</label>
+                      <select id="bug-recipient" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm text-slate-200">
+                        <option value="admin">Administrator — system errors and bug reports</option>
+                        <option value="teacher">Teacher — classroom and learning concerns</option>
+                      </select>
+                      <p id="bug-recipient-hint" class="text-xs text-slate-400 mt-1">Bug reports always go privately to administrators.</p>
+                    </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Category</label>
@@ -117,6 +125,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.body.insertAdjacentHTML("beforeend", loaderHTML);
   bindBugReporterLogic();
+  const recipient = document.getElementById("bug-recipient");
+  const category = document.getElementById("bug-category");
+  category.addEventListener("change", () => {
+    if (category.value === "Bug") recipient.value = "admin";
+    recipient.querySelector("option[value=teacher]").disabled = category.value === "Bug";
+  });
+  recipient.addEventListener("change", () => {
+    if (category.value === "Bug") recipient.value = "admin";
+  });
+  category.dispatchEvent(new Event("change"));
 });
 
 // ==========================================
@@ -288,8 +306,18 @@ window.initiateBugReport = async function () {
     // 2. Fetch and Score Existing Issues
     // Compare against a bounded recent window instead of downloading every
     // report in the database on each new submission.
-    const snap = await getDocs(query(collection(window.db, "issues"),
-      orderBy("createdAt", "desc"), limit(120)));
+    // Do not search across private reports. Only admins may compare the
+    // administrator inbox; teachers may compare teacher-directed reports.
+    const userEmail=(window.auth?.currentUser?.email||"").toLowerCase();
+    const isAdmin=userEmail==="babaynike2013@gmail.com";
+    const isTeacher=userEmail==="josephsixson@mcstayuman.edu.ph";
+    const recipient=document.getElementById("bug-recipient").value;
+    if(!isAdmin && !(isTeacher && recipient==="teacher"))return window.finalizeBugReport();
+    const {where}=await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
+    const matchesQuery=isAdmin
+      ? query(collection(window.db,"issues"),orderBy("createdAt","desc"),limit(120))
+      : query(collection(window.db,"issues"),where("recipientRole","==","teacher"),limit(120));
+    const snap = await getDocs(matchesQuery);
     let similarIssues = [];
 
     snap.forEach((doc) => {
@@ -356,6 +384,7 @@ window.initiateBugReport = async function () {
 
 window.finalizeBugReport = async function () {
   const category = document.getElementById("bug-category").value;
+  const recipientRole = category === "Bug" ? "admin" : document.getElementById("bug-recipient").value;
   const priority = document.getElementById("bug-priority").value;
   const title = document.getElementById("bug-title").value.trim();
   const description = document.getElementById("bug-description").value.trim();
@@ -375,6 +404,7 @@ window.finalizeBugReport = async function () {
 
     const payload = {
       category,
+      recipientRole,
       priority,
       title,
       description,
@@ -402,6 +432,8 @@ window.finalizeBugReport = async function () {
     document.getElementById("bug-title").value = "";
     document.getElementById("bug-description").value = "";
     document.getElementById("bug-category").value = "Bug";
+    document.getElementById("bug-recipient").value = "admin";
+    document.getElementById("bug-category").dispatchEvent(new Event("change"));
     document.getElementById("bug-priority").value = "Medium";
     for (const id of ["bug-reproduction","bug-expected","bug-actual"]) {
       document.getElementById(id).value = "";
@@ -412,7 +444,7 @@ window.finalizeBugReport = async function () {
     document.getElementById("bug-modal").classList.add("hidden");
 
     window.showSubtleLoader("Report received. Reference: " + receipt.id.slice(0,10));
-    alert("Report submitted successfully. Reference: " + receipt.id.slice(0,10) + ". You can follow updates in the notification center or Reports page.");
+    alert("Report submitted to " + (recipientRole==="admin"?"administrators":"teachers") + ". Reference: " + receipt.id.slice(0,10) + (recipientRole==="admin" ? ". System bug notifications are sent to administrators only; you may view your own ticket in Reports." : ". You can follow teacher-report updates in Notifications or Reports.") );
     setTimeout(() => window.hideSubtleLoader(), 3000);
   } catch (error) {
     console.error(error);
