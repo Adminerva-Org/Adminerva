@@ -1,6 +1,6 @@
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {collection,doc,getDoc,getDocs,query,where,updateDoc,runTransaction,serverTimestamp}
+import {collection,doc,getDoc,getDocs,setDoc,query,where,updateDoc,runTransaction,serverTimestamp}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {parseRepository,normalizeSelection,validSha}
   from "./services/assessment-evidence.mjs";
@@ -9,6 +9,7 @@ const STAFF=new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]
 const ADMIN="babaynike2013@gmail.com";
 const el=id=>document.getElementById(id);
 const state={students:[],assessments:[],evidence:null,student:null,assessment:null,claims:[],loaded:false,busy:false};
+const discovery={commits:[],selected:new Set(),checkpoint:""};
 function add(parent,tag,text,style=""){
   const x=document.createElement(tag);x.textContent=String(text??"");if(style)x.className=style;
   parent.append(x);return x;
@@ -52,10 +53,17 @@ async function loadDirectory(){
 }
 async function loadEvidence(){
   state.loaded=false;state.evidence=null;el("evidenceDetails").classList.add("hidden");
+  el("evidenceDiscovery").classList.add("hidden");
   try{
     const {student,assessment}=selection();state.student=student;state.assessment=assessment;
     const snap=await getDoc(doc(db,"assessment_evidence",student.id+"_"+assessment.id));
-    if(!snap.exists())throw Error("No student-selected evidence yet. Use GitHub contribution inspection for the historical assignment.");
+    if(!snap.exists()){
+      el("evidenceDiscovery").classList.remove("hidden");
+      el("evidenceDiscoverList").replaceChildren();
+      discovery.commits=[];discovery.selected=new Set();discovery.checkpoint="";
+      status("No student submission. You may discover historical commits without changing the student's GitHub history.");
+      return;
+    }
     const evidence=snap.data();
     normalizeSelection(evidence.selectedCommits,evidence.checkpointSha);
     if(evidence.studentId!==student.id||evidence.assessmentId!==assessment.id||
@@ -192,7 +200,7 @@ async function approve(){
     const ref=doc(db,"assessment_evidence",state.student.id+"_"+state.assessment.id);
     await runTransaction(db,async tx=>{
       const current=await tx.get(ref);
-      if(!current.exists()||current.data().status!=="submitted"||
+      if(!current.exists()||!["submitted","needs_review"].includes(current.data().status)||
         current.data().checkpointSha!==selection.checkpointSha||
         JSON.stringify(current.data().selectedCommits)!==JSON.stringify(selection.selectedCommits))
         throw Error("Student evidence changed; reload before approving.");
@@ -211,5 +219,70 @@ onAuthStateChanged(auth,user=>{
   }
   void loadDirectory().catch(e=>status("Directory failed: "+e.message));
 });
+async function findHistoricalCommits(){
+  const student=state.student;if(!student)return status("Choose student and assessment.");
+  try{
+    const repo=parseRepository(student.repoUrl);
+    const info=await github(api(repo));
+    const commits=await github(api(repo)+"/commits?sha="+encodeURIComponent(info.default_branch||"main")+
+      "&per_page=100");
+    if(!Array.isArray(commits))throw Error("Unexpected GitHub commits response");
+    discovery.commits=commits;discovery.selected=new Set();discovery.checkpoint="";
+    renderHistorical();
+    status("Showing "+commits.length+" recent commits. Use previews to confirm task relevance. Older commits may require further investigation.");
+  }catch(error){status("Historical discovery failed: "+error.message);}
+}
+function renderHistorical(){
+  const list=el("evidenceDiscoverList");list.replaceChildren();
+  for(const commit of discovery.commits){
+    const sha=String(commit.sha||"").toLowerCase();if(!validSha(sha))continue;
+    const row=add(list,"div","","p-3 border rounded-lg");
+    const line=add(row,"div","","flex flex-wrap items-center gap-3");
+    const check=document.createElement("input");check.type="checkbox";
+    check.checked=discovery.selected.has(sha);
+    check.setAttribute("aria-label","Select commit "+sha.slice(0,12)+" as historical evidence");
+    check.addEventListener("change",()=>{if(check.checked)discovery.selected.add(sha);
+      else{discovery.selected.delete(sha);if(discovery.checkpoint===sha)discovery.checkpoint="";}
+      renderHistorical();});
+    line.append(check);
+    const radio=document.createElement("input");radio.type="radio";
+    radio.name="historicalCheckpoint";radio.checked=discovery.checkpoint===sha;
+    radio.setAttribute("aria-label","Use "+sha.slice(0,12)+" as project checkpoint");
+    radio.addEventListener("change",()=>{discovery.checkpoint=sha;discovery.selected.add(sha);renderHistorical();});
+    line.append(radio);
+    add(line,"span",sha.slice(0,12),"text-xs font-mono text-indigo-700");
+    add(line,"strong",String(commit.commit?.message||"").split("\n")[0].slice(0,180),
+      "text-xs break-words");
+    add(row,"p",(commit.commit?.author?.name||"Unknown author")+" · "+
+      (commit.author?.login?"@"+commit.author.login:"GitHub login unknown"),
+      "text-xs text-slate-600 mt-2");
+    const preview=add(row,"button","Preview changed files","text-xs text-indigo-700 underline mt-2");
+    preview.type="button";
+    preview.addEventListener("click",()=>{void previewCommit(parseRepository(state.student.repoUrl),sha,row);});
+  }
+}
+async function saveDiscovery(){
+  const student=state.student,assessment=state.assessment;
+  if(!student||!assessment)return status("Choose a student and assessment.");
+  try{
+    const selection=normalizeSelection([...discovery.selected],discovery.checkpoint);
+    if(!discovery.commits.some(c=>String(c.sha||"").toLowerCase()===selection.checkpointSha))
+      throw Error("Checkpoint must belong to the retrieved repository commits.");
+    if(!confirm("Record historical evidence for "+student.name+
+      "? This is NOT a student submission, a verified push time, or an approved checkpoint."))return;
+    const ref=doc(db,"assessment_evidence",student.id+"_"+assessment.id);
+    await setDoc(ref,{
+      studentId:student.id,assessmentId:assessment.id,section:student.section,
+      repository:student.repoUrl,selectedCommits:selection.selectedCommits,
+      checkpointSha:selection.checkpointSha,status:"needs_review",
+      source:"teacher_discovered",discoveredBy:auth.currentUser.uid,
+      recordedAt:serverTimestamp(),updatedAt:serverTimestamp()
+    });
+    await loadEvidence();
+    status("Historical candidate evidence saved. Independently verify before approving; no submission date was asserted.");
+  }catch(error){status("Unable to save historical evidence: "+error.message);}
+}
+el("evidenceFindCommits").addEventListener("click",()=>{void findHistoricalCommits();});
+el("evidenceSaveDiscovery").addEventListener("click",()=>{void saveDiscovery();});
 el("evidenceLoad").addEventListener("click",()=>{void loadEvidence();});
 el("evidenceApprove").addEventListener("click",()=>{void approve();});
