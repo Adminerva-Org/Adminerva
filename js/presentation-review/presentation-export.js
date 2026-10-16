@@ -8,6 +8,7 @@ window.exportToPPTX = async function () {
   }
 
   const exportBtn = document.querySelector('button[onclick="exportToPPTX()"]');
+  if(!exportBtn)return alert("Export is unavailable.");
   const originalText = exportBtn.innerText;
   exportBtn.innerText = "⏳ Compiling PPTX...";
   exportBtn.disabled = true;
@@ -17,8 +18,12 @@ window.exportToPPTX = async function () {
   }
 
   try {
-    let pptx = new PptxGenJS();
-    pptx.layout = "LAYOUT_16x9";
+    let pptx=new PptxGenJS();
+    pptx.layout="LAYOUT_16x9";
+    const visible=window.currentPresentationDeck.filter(item=>!item.hidden);
+    if(!visible.length)throw Error("All slides are hidden.");
+    const overflows=visible.filter(slide=>[slide.content,slide.contentLeft,slide.contentRight].join(" ").replace(/<[^>]*>/g,"").length>1700);
+    if(overflows.length&&!confirm(overflows.length+" slide(s) may overflow in PowerPoint. Export anyway?"))return;
 
     const bgBase64 = localStorage.getItem("presentation_logo");
     const lessonData = window.selectedPlanData || {};
@@ -43,14 +48,14 @@ window.exportToPPTX = async function () {
         slide.addShape(pptx.ShapeType.rect, {
           x: 0,
           y: 0,
-          w: "100%",
+          w: 13.333,
           h: 0.6,
           fill: { color: "EFF6FF" },
         });
         slide.addText(subjectTitle.toUpperCase(), {
           x: 0.3,
           y: 0.1,
-          w: "50%",
+          w: 6.5,
           h: 0.25,
           fontSize: 12,
           bold: true,
@@ -60,7 +65,7 @@ window.exportToPPTX = async function () {
         slide.addText(topic, {
           x: 0.3,
           y: 0.3,
-          w: "50%",
+          w: 6.5,
           h: 0.2,
           fontSize: 9,
           color: "6B7280",
@@ -73,7 +78,7 @@ window.exportToPPTX = async function () {
         slide.addText(textElements, {
           x: 0.5,
           y: 0.8,
-          w: "90%",
+          w: 12.33,
           h: 4.5,
           valign: "top",
         });
@@ -84,14 +89,14 @@ window.exportToPPTX = async function () {
         slide.addText(leftElements, {
           x: 0.5,
           y: 0.8,
-          w: "43%",
+          w: 5.85,
           h: 4.5,
           valign: "top",
         });
         slide.addText(rightElements, {
-          x: 5.2,
+          x: 6.95,
           y: 0.8,
-          w: "43%",
+          w: 5.85,
           h: 4.5,
           valign: "top",
         });
@@ -101,16 +106,16 @@ window.exportToPPTX = async function () {
             data: slideData.mediaUrl,
             x: 0.2,
             y: 0.2,
-            w: "9.6",
-            h: "5.2",
+            w: 12.65,
+            h: 7.05,
             sizing: { type: "contain" },
           });
         } else {
           slide.addText("No Media Uploaded", {
             x: 0,
-            y: "40%",
-            w: "100%",
-            h: "20%",
+            y: 3.1,
+            w: 13.333,
+            h: 1.4,
             align: "center",
             fontSize: 24,
             color: "999999",
@@ -124,9 +129,10 @@ window.exportToPPTX = async function () {
   } catch (error) {
     console.error("PPTX Export Error:", error);
     alert("Failed to export PPTX: " + error.message);
-    if (typeof window.hideSubtleLoader === "function") {
-      window.hideSubtleLoader();
-    }
+  } finally {
+    exportBtn.innerText=originalText;
+    exportBtn.disabled=false;
+    if(typeof window.hideSubtleLoader==="function")window.hideSubtleLoader();
   }
 };
 
@@ -137,7 +143,7 @@ function parseHtmlToPptx(htmlString) {
   if (!htmlString) return [{ text: "" }];
 
   let tempDiv = document.createElement("div");
-  tempDiv.innerHTML = htmlString;
+  tempDiv.innerHTML=window.sanitizePresentationHtml?.(htmlString)??"";
   let pptxTextArray = [];
 
   Array.from(tempDiv.children).forEach((node) => {
