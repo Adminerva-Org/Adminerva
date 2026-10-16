@@ -154,8 +154,11 @@ window.saveLessonPlan = async function () {
     return false;
   }
 
-  const subject = localStorage.getItem("Adminerva_defaultSubject") || "Subject";
-  const teacher =
+  // A loaded lesson keeps its original identity even if global defaults
+  // were changed for a different subject or a new semester.
+  const subject = window.currentPlanSubject ||
+    localStorage.getItem("Adminerva_defaultSubject") || "Subject";
+  const teacher = window.currentPlanTeacher ||
     localStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
   const grade = window.currentTargetGrade || "Grade";
 
