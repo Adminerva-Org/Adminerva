@@ -8,6 +8,7 @@ import {
   deleteDoc,
   addDoc,
   query,
+  where,
   orderBy,
   onSnapshot,
   serverTimestamp,
@@ -19,9 +20,12 @@ let currentOpenIssueId = null;
 let currentUserEmail = "";
 
 // Role check
-const userRole = localStorage.getItem("Adminerva_Role") || "student";
-const trustedStaff = new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
-let isSuperAdmin = false; // Verified auth email; never a localStorage role.
+const ADMIN_EMAIL="babaynike2013@gmail.com";
+const TEACHER_EMAIL="josephsixson@mcstayuman.edu.ph";
+let isSuperAdmin=false, isTeacher=false;
+let issueUnsubscribers=[];
+const audienceOf=issue=>issue.category==="Bug"?"admin":(issue.recipientRole||"admin");
+const canManageIssue=issue=>isSuperAdmin||(isTeacher&&audienceOf(issue)==="teacher");
 function ownsIssue(issue) {
   const uid=auth.currentUser?.uid;
   return Boolean(uid && issue.reporterUid === uid) ||
@@ -46,7 +50,8 @@ function escapeHTML(str) {
 onAuthStateChanged(auth, async (user) => {
   if (user) {
     currentUserEmail = user.email.toLowerCase();
-    isSuperAdmin = trustedStaff.has(currentUserEmail);
+    isSuperAdmin = currentUserEmail === ADMIN_EMAIL;
+    isTeacher = currentUserEmail === TEACHER_EMAIL;
     fetchIssues();
   }
 });
@@ -54,41 +59,41 @@ onAuthStateChanged(auth, async (user) => {
 // 1. REAL-TIME FEED LISTENER
 // ==========================================
 function fetchIssues() {
-  const container = document.getElementById("issuesFeed");
-
-  // onSnapshot listens continuously for any live changes in the database
-  const q = query(collection(db, "issues"), orderBy("createdAt", "desc"));
-
-  onSnapshot(
-    q,
-    (snapshot) => {
-      allIssues = [];
-      snapshot.forEach((docSnap) => {
-        allIssues.push({ id: docSnap.id, ...docSnap.data() });
-      });
-
-      renderIssues();
-      const deepLink = new URLSearchParams(location.search).get("issue");
-      if (deepLink && !currentOpenIssueId && allIssues.some(item=>item.id===deepLink)) {
-        window.openIssueModal(deepLink);
-        history.replaceState(null,"",location.pathname);
-      }
-
-      // If the modal is currently open, dynamically refresh its stats (like upvotes or status changes) in real time too
-      if (currentOpenIssueId) {
-        const activeIssue = allIssues.find((i) => i.id === currentOpenIssueId);
-        if (activeIssue) {
-          document.getElementById("upvoteCount").textContent = (
-            activeIssue.upvotes || []
-          ).length;
-        }
-      }
-    },
-    (error) => {
-      container.innerHTML = `<div class="p-5 text-center text-red-500 font-bold border border-red-200 bg-red-50 rounded-xl">Failed to load live issues.</div>`;
-      console.error(error);
-    },
-  );
+  issueUnsubscribers.forEach(stop=>stop()); issueUnsubscribers=[];
+  const container=document.getElementById("issuesFeed"),uid=auth.currentUser?.uid;
+  if(!uid)return;
+  const feeds=new Map();
+  const refresh=()=>{
+    const merged=new Map();
+    for(const group of feeds.values())for(const issue of group)merged.set(issue.id,issue);
+    allIssues=[...merged.values()].sort((a,b)=>
+      (b.createdAt?.toMillis?.()||0)-(a.createdAt?.toMillis?.()||0));
+    renderIssues();
+    const deepLink=new URLSearchParams(location.search).get("issue");
+    if(deepLink && !currentOpenIssueId && allIssues.some(item=>item.id===deepLink)){
+      window.openIssueModal(deepLink); history.replaceState(null,"",location.pathname);
+    }
+    if(currentOpenIssueId){
+      const active=allIssues.find(item=>item.id===currentOpenIssueId);
+      if(active)document.getElementById("upvoteCount").textContent=(active.upvotes||[]).length;
+    }
+  };
+  const sources=isSuperAdmin
+    ? [["all",query(collection(db,"issues"),orderBy("createdAt","desc"))]]
+    : [
+      ...(isTeacher?[["forTeacher",query(collection(db,"issues"),
+        where("recipientRole","==","teacher"))]]:[]),
+      ["mine",query(collection(db,"issues"),where("reporterUid","==",uid))],
+      ["legacy",query(collection(db,"issues"),where("reporterEmail","==",currentUserEmail))]
+    ];
+  for(const [name,request] of sources){
+    issueUnsubscribers.push(onSnapshot(request,snapshot=>{
+      feeds.set(name,snapshot.docs.map(item=>({id:item.id,...item.data()})));refresh();
+    },error=>{
+      console.error("Report feed unavailable:",name,error);
+      container.textContent="Some reports could not be loaded.";
+    }));
+  }
 }
 
 window.renderIssuesFilter = () => renderIssues();
@@ -96,10 +101,12 @@ function renderIssues() {
   const container = document.getElementById("issuesFeed");
   const catFilter = document.getElementById("filterCategory").value;
   const statFilter = document.getElementById("filterStatus").value;
+  const recipientFilter = document.getElementById("filterRecipient").value;
 
   const onlyMine = document.getElementById("filterMine")?.checked || false;
   const filtered = allIssues.filter((iss) => {
     if (onlyMine && !ownsIssue(iss)) return false;
+    if (recipientFilter !== "All" && audienceOf(iss) !== recipientFilter) return false;
     const matchCat = catFilter === "All" || iss.category === catFilter;
     const matchStat = statFilter === "All" || iss.status === statFilter;
     return matchCat && matchStat;
@@ -162,6 +169,7 @@ document
 document
   .getElementById("filterStatus")
   .addEventListener("change", renderIssues);
+document.getElementById("filterRecipient").addEventListener("change", renderIssues);
 
 // ==========================================
 // 2. MODAL LOGIC & COMMENTS
@@ -237,7 +245,7 @@ window.openIssueModal = async function (id) {
   }
 
   // 🚀 ADMIN CONTROLS INJECTION
-  if (isSuperAdmin) {
+  if (canManageIssue(iss)) {
     document.getElementById("adminControlPanel").classList.remove("hidden");
     document.getElementById("adminStatusSelect").value = iss.status || "Open";
     document.getElementById("adminPrioritySelect").value =
@@ -344,7 +352,7 @@ function loadComments(issueId) {
         const timeStr = data.createdAt
           ? data.createdAt.toDate().toLocaleString()
           : "Just now";
-        const isAdmin = trustedStaff.has((data.authorEmail||"").toLowerCase());
+        const isAdmin = (data.authorEmail||"").toLowerCase()===ADMIN_EMAIL;
         const tag = isAdmin
           ? `<span class="bg-cyan-100 text-cyan-800 text-[8px] font-bold px-1.5 py-0.5 rounded ml-2">ADMIN</span>`
           : "";
@@ -385,8 +393,8 @@ document
     try {
       await addDoc(collection(db, `issues/${currentOpenIssueId}/comments`), {
         text: text,
-        authorEmail: isSuperAdmin ? currentUserEmail : "",
-        role: isSuperAdmin ? "superadmin" : "student",
+        authorEmail: (isSuperAdmin||isTeacher) ? currentUserEmail : "",
+        role: isSuperAdmin ? "superadmin" : isTeacher ? "teacher" : "student",
         authorUid: auth.currentUser?.uid || null,
         createdAt: serverTimestamp(),
       });
@@ -397,6 +405,7 @@ document
   });
 
 window.deleteComment = async function (commentId) {
+  if (!canManageIssue(allIssues.find(item=>item.id===currentOpenIssueId)||{})) return;
   if (!confirm("Delete this comment permanently?")) return;
   await deleteDoc(doc(db, `issues/${currentOpenIssueId}/comments`, commentId));
   loadComments(currentOpenIssueId);
@@ -408,7 +417,7 @@ window.deleteComment = async function (commentId) {
 document
   .getElementById("adminStatusSelect")
   ?.addEventListener("change", async (e) => {
-    if (!isSuperAdmin || !currentOpenIssueId) return;
+    if (!currentOpenIssueId || !canManageIssue(allIssues.find(item=>item.id===currentOpenIssueId)||{})) return;
     const newStatus = e.target.value;
 
     const issIndex = allIssues.findIndex((i) => i.id === currentOpenIssueId);
@@ -427,7 +436,7 @@ document
 document
   .getElementById("adminPrioritySelect")
   ?.addEventListener("change", async (e) => {
-    if (!isSuperAdmin || !currentOpenIssueId) return;
+    if (!currentOpenIssueId || !canManageIssue(allIssues.find(item=>item.id===currentOpenIssueId)||{})) return;
     const newPriority = e.target.value;
 
     const issIndex = allIssues.findIndex((i) => i.id === currentOpenIssueId);
@@ -442,7 +451,7 @@ document
   });
 
 document.getElementById("adminLockBtn")?.addEventListener("click", async () => {
-  if (!isSuperAdmin || !currentOpenIssueId) return;
+  if (!currentOpenIssueId || !canManageIssue(allIssues.find(item=>item.id===currentOpenIssueId)||{})) return;
 
   const issIndex = allIssues.findIndex((i) => i.id === currentOpenIssueId);
   const isCurrentlyLocked = allIssues[issIndex].locked || false;
@@ -458,7 +467,7 @@ document.getElementById("adminLockBtn")?.addEventListener("click", async () => {
 document
   .getElementById("adminDeleteBtn")
   ?.addEventListener("click", async () => {
-    if (!isSuperAdmin || !currentOpenIssueId) return;
+    if (!currentOpenIssueId || !canManageIssue(allIssues.find(item=>item.id===currentOpenIssueId)||{})) return;
     if (
       !confirm(
         "🚨 EXTREME WARNING: Are you sure you want to permanently delete this entire issue and all its comments? This cannot be undone.",
