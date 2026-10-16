@@ -5,6 +5,8 @@ window.db = null;
 window.currentPlan = [];
 window.currentWeeklyOverview = null;
 window.currentTargetGrade = "";
+window.currentPlanSubject = "";
+window.currentPlanTeacher = "";
 window.cachedCompiledText = "";
 window.cachedSchedule = "";
 window.cachedScope = "";
@@ -338,6 +340,12 @@ window.loadSpecificPlan = function (planData) {
       ? planData.weekly_overview
       : { topic: "", content_standard: "", performance_standard: "", materials: "" };
   window.currentPlan = planData.sessions;
+  // Preserve the original subject and teacher for an edited saved lesson.
+  // Defaults may have changed since this plan was first created.
+  window.currentPlanSubject = planData.subject_title ||
+    localStorage.getItem("Adminerva_defaultSubject") || "Subject";
+  window.currentPlanTeacher = planData.teacher_name ||
+    localStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
   window.currentTargetGrade = planData.grade_level || document.getElementById("lpGradeLevel")?.value || "Grade 11";
 
   document.getElementById("lpSchoolYear").value =
