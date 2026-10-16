@@ -1,4 +1,5 @@
 import { db, auth } from "../core/firebase-core.js";
+import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs";
 import {
   collection,
   addDoc,
@@ -63,7 +64,7 @@ let draggedTabIndex = -1;
 // 2. INITIALIZATION
 // ==========================================
 document.addEventListener("DOMContentLoaded", async () => {
-  document.getElementById("pageBody")?.classList.remove("hidden");
+  // Auth guard controls visibility. Do not expose a workspace while access is pending.
 
   require.config({
     paths: {
@@ -111,6 +112,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const snapshotId = urlParams.get("id");
 
+    try {
+      await auth.authStateReady();
+    } catch (error) {
+      console.warn("Unable to confirm sign-in:", error);
+    }
+    if (!auth.currentUser) {
+      alert("Sign in to open your private Playground workspace.");
+      return;
+    }
     if (snapshotId) await loadSnapshot(snapshotId);
     else loadLocalWorkspace();
   });
@@ -128,8 +138,11 @@ function createWorkspace(lang, initialFiles, initialOrder) {
   workspaceFiles = {};
   fileOrder = [];
 
+  const safeLang = PLAYGROUND_LANGUAGES.includes(lang) ? lang : "java";
+  currentLang = safeLang;
+  if (langSelect) langSelect.value = safeLang;
   const filesToCreate = initialFiles || {
-    [languageConfig[lang].defaultFile]: languageConfig[lang].defaultCode,
+    [languageConfig[safeLang].defaultFile]: languageConfig[safeLang].defaultCode,
   };
 
   const orderToUse = initialOrder || Object.keys(filesToCreate);
