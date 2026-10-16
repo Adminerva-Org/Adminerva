@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.16.4",
+  "version": "2026.10.16.5",
   "releasedAt": "2026-10-16",
-  "notes": "Fixed student settings layout and improved reference selection for long and legacy library documents."
+  "notes": "Allow original classroom assignment dates and validate extended deadlines in Assessment Studio."
 }

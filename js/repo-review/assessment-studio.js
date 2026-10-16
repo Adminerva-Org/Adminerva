@@ -1,4 +1,5 @@
 import { db } from "../core/firebase-core.js";
+import {validateDeploymentDates} from "./assessment-dates.mjs";
 import {
   collection,
   getDocs,
@@ -49,7 +50,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   fpInstance = flatpickr("#deployDateRange", {
     mode: "range",
-    minDate: "today",
+    // Historical issue dates are valid when assessments were assigned in class earlier.
     dateFormat: "M j, Y",
     onChange: function (selectedDates) {
       if (selectedDates.length === 2) {
@@ -511,9 +512,11 @@ window.saveDeployment = async function () {
   const postDate = deadlineEnabled ? document.getElementById("deployPostDate").value : null;
   const deadline = deadlineEnabled ? document.getElementById("deployDeadline").value : null;
 
-  if (deploySelectedSections.length === 0 || (deadlineEnabled && (!postDate || !deadline))) {
-    return alert("Select a class section and, when enabled, both schedule dates.");
+  if (deploySelectedSections.length === 0) {
+    return alert("Choose at least one class section.");
   }
+  const dateError=validateDeploymentDates({postDate,deadline,deadlineEnabled});
+  if(dateError)return alert(dateError);
 
   const item = assessments.find((a) => a.id === currentAssessmentId);
   let deployments = [...(item.deployments || [])];
