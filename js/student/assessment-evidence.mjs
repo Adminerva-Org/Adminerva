@@ -28,7 +28,7 @@ function contextForStudent(){
 }
 function render(){
   const list=el("evidenceCommitList");list.replaceChildren();
-  el("evidenceSubmit").disabled=saved?.status==="approved";
+  el("evidenceSubmit").disabled=Boolean(saved&&saved.status!=="submitted");
   if(!commits.length){add(list,"p","No commits returned. The repository may be empty or inaccessible.");return;}
   for(const commit of commits){
     const sha=String(commit.sha||"").toLowerCase();
@@ -156,6 +156,7 @@ async function load(){
       ?"Showing the 100 newest commits. Older commits may require staff assistance. Choose the relevant version, not simply the newest."
       :"Select relevant commits, choose a project checkpoint using the round selector, and submit. Reclaims remain pending staff review.");
     if(saved?.status==="approved")status("An instructor approved this checkpoint. Evidence is locked.");
+    else if(saved?.status==="needs_review")status("Your teacher discovered historical evidence for review. It is not a student submission, and it cannot be edited here.");
   }catch(error){if(seq===loadSequence)status("Unable to load evidence: "+error.message);}
 }
 async function submit(){
