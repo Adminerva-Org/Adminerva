@@ -129,7 +129,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 // ==========================================
 // 3. WORKSPACE & FILE MANAGEMENT
 // ==========================================
-function createWorkspace(lang, initialFiles, initialOrder) {
+function createWorkspace(lang, initialFiles, initialOrder, initialActive) {
   currentLang = lang;
   const langSelect = document.getElementById("languageSelect");
   if (langSelect) langSelect.value = lang;
@@ -153,7 +153,7 @@ function createWorkspace(lang, initialFiles, initialOrder) {
     }
   });
 
-  if (fileOrder.length > 0) switchTab(fileOrder[0]);
+  if (fileOrder.length > 0) switchTab(fileOrder.includes(initialActive) ? initialActive : fileOrder[0]);
   updateOutputView();
 }
 
@@ -221,6 +221,7 @@ window.renameFile = function (oldName) {
 };
 
 window.deleteFile = function (filename) {
+  if (fileOrder.length === 1) return alert("Keep at least one file in the workspace. Use Reset for a new project.");
   if (confirm(`Are you sure you want to delete ${filename}?`)) {
     workspaceFiles[filename].model.dispose();
     delete workspaceFiles[filename];
@@ -238,7 +239,10 @@ window.deleteFile = function (filename) {
 
 window.promptNewFile = function () {
   const name = prompt("Enter file name (e.g., Student.java, style.css):");
-  if (name && name.trim()) addFile(name.trim());
+  if (name && name.trim()) {
+    addFile(name.trim());
+    triggerAutoSave();
+  }
 };
 
 // ------------------------------------------
@@ -438,15 +442,45 @@ async function exportZIP() {
 
 // Expose only an in-memory snapshot to the authenticated cloud backup module.
 window.adminervaPlaygroundState=function(){
-  const files={};
-  for(const [name,file] of Object.entries(workspaceFiles))files[name]=file.model.getValue();
-  return {lang:currentLang,files,fileOrder:[...fileOrder]};
+  const state=currentState();
+  return {lang:state.lang,files:state.files,fileOrder:state.fileOrder,
+    activeFilename:state.activeFilename};
 };
 window.adminervaRestorePlayground=function(state){
-  if(!state?.lang||!state.files||typeof state.files!=="object")return false;
-  if(!persistWorkspace())return false;
-  createWorkspace(state.lang,state.files,state.fileOrder);
-  return persistWorkspace();
+  if(!validPlaygroundState(state))return false;
+  const uid=ownerUid();
+  if(!uid || !persistWorkspace())return false;
+  try{
+    const target=playgroundWorkspaceKey(uid,state.lang);
+    const previous=localStorage.getItem(target);
+    if(previous) localStorage.setItem(playgroundUndoKey(uid,state.lang),previous);
+    const next={...state,savedAt:new Date().toISOString()};
+    localStorage.setItem(target,JSON.stringify(next));
+    localStorage.setItem(playgroundLanguageKey(uid),state.lang);
+    createWorkspace(state.lang,state.files,state.fileOrder,state.activeFilename);
+    workspaceDirty=false;
+    localSaveFailed=false;
+    showSaveStatus("Restored and saved on this device");
+    return true;
+  }catch(error){
+    console.error("Could not restore workspace:",error);
+    showSaveStatus("Restore failed — storage unavailable or full",true);
+    return false;
+  }
+};
+window.adminervaUndoPlaygroundRestore=function(){
+  const uid=ownerUid();
+  if(!uid)return;
+  const raw=localStorage.getItem(playgroundUndoKey(uid,currentLang));
+  let previous=null;
+  try{previous=JSON.parse(raw||"null")}catch{}
+  if(!validPlaygroundState(previous)){
+    alert("No previous local draft for this language.");
+    return;
+  }
+  if(!confirm("Replace the current editor with the draft saved before the last restore?"))return;
+  if(!window.adminervaRestorePlayground(previous))
+    alert("Recovery failed. Try exporting your workspace as ZIP first.");
 };
 
 async function shareSnapshot() {
