@@ -13,6 +13,7 @@ test("semester and school-year timetables never share document or cache keys",()
   assert.notEqual(first.id,second.id);
   assert.notEqual(other.jsonKey,second.jsonKey);
   assert.notEqual(first.textKey,second.textKey);
+  assert.notEqual(first.pendingKey,second.pendingKey);
   assert.equal(scheduleSemester("SECOND SEMESTER/THIRD QUARTER"),"S2");
   assert.equal(scheduleSemester("FIRST SEMESTER/SECOND QUARTER"),"S1");
   assert.throws(()=>normalizeSchoolYear("2026-2026"),/valid school year/);
@@ -36,7 +37,8 @@ test("teacher schedule editor writes only the selected semester document",async(
   const values=new Map([["Adminerva_schedule","OLD FIRST SEMESTER"]]);
   const storage={
     getItem:key=>values.has(key)?values.get(key):null,
-    setItem:(key,value)=>values.set(key,String(value))
+    setItem:(key,value)=>values.set(key,String(value)),
+    removeItem:key=>values.delete(key)
   };
   const elements={
     scheduleSchoolYear:{value:"2026-2027"},
