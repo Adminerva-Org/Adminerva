@@ -121,6 +121,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       alert("Sign in to open your private Playground workspace.");
       return;
     }
+    document.getElementById("legacyImportBtn")?.classList.toggle("hidden",
+      !localStorage.getItem("Adminerva_Playground_Workspace"));
     if (snapshotId) await loadSnapshot(snapshotId);
     else loadLocalWorkspace();
   });
@@ -499,10 +501,17 @@ async function shareSnapshot() {
     state.files[name] = file.model.getValue();
 
   try {
+    if (!auth.currentUser) throw Error("Sign in before sharing.");
+    if (!validPlaygroundState(state)) throw Error("Add at least one valid file before sharing.");
     const docRef = await addDoc(collection(db, "playground_snapshots"), state);
     const link = `${window.location.origin}${window.location.pathname}?id=${docRef.id}`;
-    navigator.clipboard.writeText(link);
-    btn.innerHTML = `✅ Link Copied!`;
+    try {
+      await navigator.clipboard.writeText(link);
+      btn.innerHTML = "Link copied";
+    } catch (error) {
+      prompt("Copy this snapshot link:", link);
+      btn.innerHTML = "Snapshot created";
+    }
   } catch (error) {
     btn.innerHTML = `❌ Error`;
   }
@@ -514,14 +523,23 @@ async function loadSnapshot(id) {
     const docSnap = await getDoc(doc(db, "playground_snapshots", id));
     if (docSnap.exists()) {
       const data = docSnap.data();
-      createWorkspace(data.lang, data.files, data.fileOrder);
+      if (!validPlaygroundState(data)) throw Error("Shared snapshot is incomplete.");
+      if (confirm("Import this shared snapshot into your workspace? Your previous local draft will be kept as a recoverable copy.")) {
+        // Load the student's existing local draft first so a shared link
+        // never silently overwrites their current account's work.
+        loadLocalWorkspace();
+        if (!window.adminervaRestorePlayground(data))
+          alert("Snapshot import failed. Your existing workspace was kept.");
+      } else {
+        loadLocalWorkspace();
+      }
       window.history.replaceState({}, document.title, window.location.pathname);
     } else {
       alert("Snapshot not found.");
       loadLocalWorkspace();
     }
   } catch (error) {
-    alert("Error loading snapshot.");
+    alert("Error loading snapshot: " + error.message);
     loadLocalWorkspace();
   }
 }
