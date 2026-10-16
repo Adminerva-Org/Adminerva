@@ -267,6 +267,16 @@ document.addEventListener("DOMContentLoaded", () => {
         ["settings", "Settings", "settings.html"]
       ] }
     ];
+    // Only display links belonging to the current product area.
+    // Cross-module navigation remains available via the Adminerva logo.
+    if (activeModule === "lesson") {
+      staffGroups.splice(0, staffGroups.length, ...staffGroups.filter(group => group.name === "Planning"));
+    } else if (activeModule === "admin" || activeModule === "settings") {
+      staffGroups.splice(0, staffGroups.length, ...staffGroups.filter(group => group.name === "Manage"));
+    } else {
+      staffGroups.splice(0, staffGroups.length, ...staffGroups.filter(group =>
+        group.name === "Grading" || group.name === "Repositories"));
+    }
     const analytics = ["dashboard", "Analytics", "reporeviewDashboard.html"];
     const activeGroup = group => group.items.some(item => item[0] === activePage);
     const makeLink = (item, mobile) => {
@@ -334,7 +344,9 @@ document.addEventListener("DOMContentLoaded", () => {
         "font-bold text-sm text-cyan-100 min-h-11 cursor-pointer " +
         "focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400";
       const section = activePage === "dashboard" ? "Analytics" :
-        staffGroups.find(group => activeGroup(group))?.name || "Modules";
+        staffGroups.find(group => activeGroup(group))?.name ||
+        (activeModule === "lesson" ? "Planning" :
+         activeModule === "admin" || activeModule === "settings" ? "Manage" : "Grading");
       summary.textContent = "Menu · " + section + " ▾";
       details.append(summary);
       const panel = document.createElement("div");
