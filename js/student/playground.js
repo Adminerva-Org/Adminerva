@@ -406,6 +406,8 @@ async function shareSnapshot() {
     files: {},
     fileOrder: fileOrder,
     timestamp: new Date().toISOString(),
+    ownerUid: auth.currentUser?.uid || "",
+    visibility: "link",
   };
   for (const [name, file] of Object.entries(workspaceFiles))
     state.files[name] = file.model.getValue();
