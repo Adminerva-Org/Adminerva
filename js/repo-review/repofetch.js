@@ -65,6 +65,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           `<option value="${escapeHTML(sec)}">${escapeHTML(sec)}</option>`,
         ),
       );
+    const requested=new URLSearchParams(location.search).get("section");
+    if(requested&&uniqueSections.has(requested))select.value=requested;
   } catch (e) {
     console.error(e);
   }
@@ -274,6 +276,14 @@ window.fetchAndSyncRepos = async function () {
     if (requiresUIRefresh) {
       window.showSubtleLoader("Applying fresh updates to view...");
       renderGroupedUI(repoGroups);
+    }
+    const requested=new URLSearchParams(location.search);
+    if(requested.get("section")===currentClassSection){
+      const student=globalStudentsData[requested.get("student")];
+      if(student&&student.section===currentClassSection){
+        const info=parseRepoInfo(student.repoUrl);
+        if(info)await window.openGradingModal(student.id,info.owner,info.repo);
+      }
     }
   } catch (e) {
     alert("Execution Error: " + e.message);
@@ -554,6 +564,15 @@ window.openGradingModal = async function (studentId, owner, repo) {
         controlColumn.append(tools);
       }
     });
+    const requested=new URLSearchParams(location.search);
+    if(requested.get("student")===studentId){
+      const id=requested.get("assessment");
+      const card=id?document.getElementById("task-card-"+studentId+"-"+id):null;
+      if(card){
+        card.classList.add("ring-2","ring-indigo-400");
+        card.scrollIntoView({block:"center"});
+      }
+    }
   } catch (err) {
     console.error(err);
     listContainer.innerHTML = `<div class="text-center text-red-500 font-bold py-4 text-sm">Failed to load tasks.</div>`;
