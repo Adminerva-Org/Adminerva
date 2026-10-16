@@ -4,7 +4,7 @@ export const LEGACY_SCHEDULE_YEAR = "2026-2027";
 
 export function normalizeSchoolYear(value) {
   const year = String(value ?? "").trim();
-  const match = /^(\\d{4})-(\\d{4})$/.exec(year);
+  const match = /^(\[0-9]{4})-(\[0-9]{4})$/.exec(year);
   if (!match || Number(match[2]) !== Number(match[1]) + 1) {
     throw new Error("Use a valid school year, for example 2026-2027.");
   }
