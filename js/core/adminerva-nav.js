@@ -304,7 +304,8 @@ document.addEventListener("DOMContentLoaded", () => {
         ["evidence", "Assessment Evidence", "assessment-evidence-review.html"],
         ["studio", "Assessment Studio", "assessment-studio.html"],
         ["contributions", "Contribution Inspector", "contribution-inspector.html"],
-        ["activity-grader", "Manual Grader", "temp-grading.html"]
+        ["group-inspector", "Group Inspector", "temp-grading.html"],
+        ["activity-grader", "Legacy Manual Activity Grader", "temp-activity-grader.html"]
       ] },
       { name: "Repositories", items: [
         ["repobank", "RepoBank", "repobank.html"]
