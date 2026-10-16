@@ -113,10 +113,10 @@ service cloud.firestore {
         ownV2Evidence(resource.data) &&
         request.resource.data.studentId == resource.data.studentId &&
         request.resource.data.assessmentId == resource.data.assessmentId &&
-        request.resource.data.submittedAt == resource.data.submittedAt &&
+        request.resource.data.submittedAt == request.time &&
         request.resource.data.updatedAt == request.time &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["selectedCommits","checkpointSha","updatedAt"]);
+          .hasOnly(["selectedCommits","checkpointSha","submittedAt","updatedAt"]);
       allow delete: if false;
     }
 
