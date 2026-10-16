@@ -6,7 +6,8 @@ import vm from "node:vm";
 test("lesson tools use the common authentication guard",()=>{
   for (const path of ["lesson-planner.html","schedule.html","library.html","presentation.html"]) {
     const source=readFileSync(path,"utf8");
-    assert.match(source,/src="js\\/core\\/auth-guard[.]js(?:[?]v=[^"]+)?"/,path+" must protect instructor access");
+    assert.ok(source.includes('src="js/core/auth-guard.js"') ||
+      source.includes('src="js/core/auth-guard.js?v='),path+" must protect instructor access");
   }
 });
 
