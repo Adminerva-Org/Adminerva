@@ -201,3 +201,22 @@ test('student assessment page can query only its own submission receipts',async(
   const other=query(collection(bob,'student_submissions'),where('studentId','==','alice'));
   await assertFails(getDocs(other));
 });
+
+
+test('teacher lesson and presentation history stays inaccessible to students',async()=>{
+  const staff=client('staff',TEACHER),alice=client('alice',EMAIL_A);
+  const lesson=doc(staff,'lesson_plans','schoolyear_grade11_q2');
+  await assertSucceeds(setDoc(lesson,{grade_level:'Grade 11',school_year:'2026-2027',sessions:[]}));
+  const revision=doc(staff,'lesson_plans','schoolyear_grade11_q2','revisions','v1');
+  await assertSucceeds(setDoc(revision,{version:1,sessions:[]}));
+  await assertFails(getDoc(doc(alice,'lesson_plans','schoolyear_grade11_q2')));
+  await assertFails(getDoc(doc(alice,'lesson_plans','schoolyear_grade11_q2','revisions','v1')));
+  const presentation=doc(staff,'presentations','plan_session0','revisions','v1');
+  await assertSucceeds(setDoc(presentation,{deck:[],version:1}));
+  await assertFails(getDoc(doc(alice,'presentations','plan_session0','revisions','v1')));
+  const parent=doc(staff,'reference_folders','folder');
+  await assertSucceeds(setDoc(parent,{name:'Teacher materials',documents:[]}));
+  await assertSucceeds(setDoc(doc(staff,'reference_folders','folder','documents','pdf1'),
+    {title:'Chapter 1',text:'Course text'}));
+  await assertFails(getDoc(doc(alice,'reference_folders','folder','documents','pdf1')));
+});
