@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment, assertSucceeds, assertFails}
   from '@firebase/rules-unit-testing';
-import {doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp}
+import {doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp,
+  collection, getDocs, query, where}
   from 'firebase/firestore';
 
 let env;
@@ -190,4 +191,13 @@ test('shared snapshots require explicit visibility and verified ownership',async
   await assertFails(setDoc(doc(bob,'playground_snapshots/spoof'),state));
   await assertSucceeds(setDoc(doc(alice,'playground_snapshots/private'),{...state,visibility:'private'}));
   await assertFails(getDoc(doc(bob,'playground_snapshots/private')));
+});
+
+test('student assessment page can query only its own submission receipts',async()=>{
+  const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
+  await assertSucceeds(setDoc(doc(alice,'student_submissions','mine_peta'),submission()));
+  const own=query(collection(alice,'student_submissions'),where('studentId','==','alice'));
+  await assertSucceeds(getDocs(own));
+  const other=query(collection(bob,'student_submissions'),where('studentId','==','alice'));
+  await assertFails(getDocs(other));
 });
