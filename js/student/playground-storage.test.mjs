@@ -61,7 +61,7 @@ test("local autosave writes only to the active student's scoped key",()=>{
     window:{addEventListener(){},},
     document:{getElementById:()=>null},
     workspaceFiles:{"Main.java":{model:{getValue:()=>"new code"}}},
-    currentLang:"java",fileOrder:["Main.java"],activeFilename:"Main.java",
+    currentLang:"java",fileOrder:["Main.java"],activeFilename:"Main.java",practiceMode:false,
     playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,
     readPlaygroundDraft,validPlaygroundState,PLAYGROUND_LANGUAGES,
     createWorkspace:(...args)=>created.push(args),
@@ -88,7 +88,7 @@ test("restores retain a local undo copy before replacing a saved draft",()=>{
   const context={
     window:{},auth:{currentUser:{uid:"alice"}},localStorage:store,
     workspaceFiles:{"Main.java":{model:{getValue:()=>"old"}}},
-    currentLang:"java",fileOrder:["Main.java"],activeFilename:"Main.java",
+    currentLang:"java",fileOrder:["Main.java"],activeFilename:"Main.java",practiceMode:false,
     playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,
     persistWorkspace:()=>true,ownerUid:()=> "alice",
     createWorkspace:(...args)=>created.push(args),
