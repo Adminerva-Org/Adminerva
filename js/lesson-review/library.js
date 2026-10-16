@@ -121,7 +121,15 @@ window.deleteFolder = async function (e, folderId) {
     return;
 
   try {
-    await deleteDoc(doc(db, "reference_folders", folderId));
+    // Firestore does not cascade-delete subcollections.
+    // Remove owned child documents before removing the parent folder.
+    const children=await getDocs(collection(db,"reference_folders",folderId,"documents"));
+    for(let index=0;index<children.docs.length;index+=400){
+      const batch=writeBatch(db);
+      for(const child of children.docs.slice(index,index+400))batch.delete(child.ref);
+      await batch.commit();
+    }
+    await deleteDoc(doc(db,"reference_folders",folderId));
     libraryData = libraryData.filter((f) => f.id !== folderId);
     localStorage.setItem("Adminerva_library", JSON.stringify(libraryData));
 
