@@ -196,6 +196,13 @@ async function approve(){
   try{
     const repo=parseRepository(state.evidence.repository);
     const selection=normalizeSelection(state.evidence.selectedCommits,state.evidence.checkpointSha);
+    status("Checking for competing pending reclaim requests…");
+    for(const sha of selection.selectedCommits){
+      const competing=await getDocs(query(collection(db,"commit_reclaims"),where("sha","==",sha)));
+      if(competing.docs.some(d=>d.data().repository===state.evidence.repository&&
+        d.data().status==="pending"))
+        throw Error("A selected commit has an unresolved reclaim request. Ask the administrator to review the attribution before approving this student's checkpoint.");
+    }
     status("Verifying checkpoint ancestry with GitHub…");
     await verifyAncestry(repo,selection.checkpointSha,selection.selectedCommits);
     const ref=doc(db,"assessment_evidence",state.student.id+"_"+state.assessment.id);
