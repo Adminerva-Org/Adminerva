@@ -53,9 +53,18 @@ window.initiateGenerationFlow = async function () {
   }
 
   const subject = localStorage.getItem("Adminerva_defaultSubject") || "Subject";
-  window.cachedSchedule =
-    localStorage.getItem("Adminerva_schedule") || "No schedule provided.";
   const academicTerm = document.getElementById("lpAcademicTerm").value;
+  const schoolYear = document.getElementById("lpSchoolYear").value;
+  try {
+    window.cachedSchedule = typeof window.fetchScheduleForLesson === "function"
+      ? await window.fetchScheduleForLesson(schoolYear, academicTerm)
+      : "";
+  } catch (error) {
+    console.warn("Could not determine teaching schedule:", error);
+    window.cachedSchedule = "";
+  }
+  if (!window.cachedSchedule)
+    window.cachedSchedule = "No teacher schedule configured for this school year and semester.";
   const courseWeek = document.getElementById("lpCourseWeek").value;
   const dateRange =
     document.getElementById("lpDateRange").value || "No Dates Provided";
