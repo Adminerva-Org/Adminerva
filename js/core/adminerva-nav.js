@@ -25,13 +25,13 @@ document.addEventListener("DOMContentLoaded", () => {
     : "border-cyan-900 hover:border-cyan-400 text-gray-300 hover:text-cyan-50 hover:shadow-[0_0_15px_rgba(6,182,212,0.4)]";
 
   const settingsIcon = `
-        <a href="settings.html" class="bg-gray-800/80 border ${settingsIconStyle} p-2 sm:p-2 rounded transition-all duration-300 flex items-center justify-center mr-2 sm:mr-4" title="Global Settings">
+        <a href="settings.html" class="bg-gray-800/80 border ${settingsIconStyle} min-h-11 min-w-11 p-2 rounded transition-all duration-300 flex items-center justify-center mr-2 sm:mr-4" title="Global Settings">
             <span class="text-lg sm:text-xl leading-none">⚙️</span>
         </a>`;
 
   // Global Report Issue Icon
   const reportIcon = `
-        <button onclick="document.getElementById('bug-modal').classList.remove('hidden')" class="bg-gray-800/80 border border-gray-700 hover:border-rose-400 text-gray-400 hover:text-rose-400 p-2 sm:p-2 rounded transition-all duration-300 flex items-center justify-center mr-2 sm:mr-4" title="Report Issue">
+        <button onclick="document.getElementById('bug-modal').classList.remove('hidden')" class="bg-gray-800/80 border border-gray-700 hover:border-rose-400 text-gray-400 hover:text-rose-400 min-h-11 min-w-11 p-2 rounded transition-all duration-300 flex items-center justify-center mr-2 sm:mr-4" title="Report Issue">
             <span class="text-lg sm:text-xl leading-none">🐞</span>
         </button>`;
 
@@ -47,7 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="relative group cursor-pointer py-1">
             <div class="flex items-center gap-2 sm:gap-3 font-bold transition">
                 <img src="assets/New Adminerva logo.png" alt="Adminerva Logo" class="h-8 sm:h-10 w-auto object-contain mix-blend-lighten hover:scale-105 transition-transform duration-300 drop-shadow-[0_0_10px_rgba(6,182,212,0.3)]">
-                <span class="tracking-widest font-extrabold text-lg sm:text-2xl bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400 drop-shadow-md">ADMINERVA</span>
+                <span class="hidden sm:inline tracking-widest font-extrabold text-lg sm:text-2xl bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400 drop-shadow-md">ADMINERVA</span>
                 <span class="text-[10px] text-cyan-500 ml-1 opacity-70 group-hover:opacity-100 transition-opacity hidden sm:inline">▼</span>
             </div>
             <div class="absolute left-0 top-full w-56 sm:w-64 hidden group-hover:block z-[100] pt-3">
