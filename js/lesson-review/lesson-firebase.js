@@ -1,5 +1,6 @@
 // Import centralized database instead of initializing locally
 import { db } from "../core/firebase-core.js";
+import {legacyPlanId,schoolYearPlanId} from "./lesson-plan-helpers.mjs";
 import {
   collection,
   getDocs,
@@ -72,6 +73,7 @@ window.fetchPreviousPlan = async function (
   subject,
   academicTerm,
   currentCourseWeek,
+  schoolYear,
 ) {
   if (!db) return null;
 
@@ -79,24 +81,15 @@ window.fetchPreviousPlan = async function (
   if (currentWeekNum <= 1) return null;
 
   const prevWeekStr = `Week ${currentWeekNum - 1}`;
-  const qtrStr = academicTerm.includes("SECOND QUARTER")
-    ? "Q2"
-    : academicTerm.includes("THIRD QUARTER")
-      ? "Q3"
-      : academicTerm.includes("FOURTH QUARTER")
-        ? "Q4"
-        : "Q1";
-  const id = `${grade}_${subject}_${qtrStr}_${prevWeekStr}`.replace(
-    /[^a-zA-Z0-9_]/g,
-    "",
-  );
-
-  try {
-    const docSnap = await getDoc(doc(db, "lesson_plans", id));
-    return docSnap.exists() ? docSnap.data() : null;
-  } catch (e) {
-    return null;
+  // New school-year key first, then a compatible legacy key.
+  const options={grade,subject,term:academicTerm,week:prevWeekStr,schoolYear};
+  for(const id of [schoolYearPlanId(options),legacyPlanId(options)]){
+    try{
+      const result=await getDoc(doc(db,"lesson_plans",id));
+      if(result.exists()&&result.data().school_year===schoolYear)return result.data();
+    }catch(error){console.warn("Previous lesson lookup failed:",error);}
   }
+  return null;
 };
 
 window.saveLessonPlan = async function () {
@@ -126,18 +119,10 @@ window.saveLessonPlan = async function () {
   const courseWeek = document.getElementById("lpCourseWeek").value;
   const dateRange = document.getElementById("lpDateRange").value;
 
-  const qtrStr = academicTerm.includes("SECOND QUARTER")
-    ? "Q2"
-    : academicTerm.includes("THIRD QUARTER")
-      ? "Q3"
-      : academicTerm.includes("FOURTH QUARTER")
-        ? "Q4"
-        : "Q1";
-
-  const safeDocId = `${grade}_${subject}_${qtrStr}_${courseWeek}`.replace(
-    /[^a-zA-Z0-9_]/g,
-    "",
-  );
+  const schoolYear=document.getElementById("lpSchoolYear").value;
+  const safeDocId=schoolYearPlanId({
+    grade,subject,term:academicTerm,week:courseWeek,schoolYear
+  });
 
   if (typeof window.showSubtleLoader === "function") {
     window.showSubtleLoader("Syncing lesson plan securely to Firebase...");
@@ -392,7 +377,7 @@ window.openLoadPlanModal = async function () {
 window.deleteLessonPlan = async function (docId) {
   if (
     !confirm(
-      "Move this lesson plan to the Archive? It will be permanently deleted in 14 days.",
+      "Move this lesson plan to the Archive? It stays recoverable until manually deleted.",
     )
   )
     return;
@@ -440,7 +425,7 @@ window.openArchiveManager = async function () {
                 <div class="bg-white rounded-xl shadow-2xl max-w-3xl w-full p-6 relative flex flex-col max-h-[85vh]">
                     <button onclick="document.getElementById('archiveModal').classList.add('hidden')" class="absolute top-4 right-4 text-gray-400 hover:text-red-500 text-xl font-bold">✖</button>
                     <h3 class="text-xl font-black text-blue-900 mb-2 flex items-center gap-2"><span>🗑️</span> Cloud Recycle Bin</h3>
-                    <p class="text-sm text-gray-500 mb-4 border-b pb-4">Items here will be permanently deleted 14 days after archiving.</p>
+                    <p class="text-sm text-gray-500 mb-4 border-b pb-4">Archived files remain recoverable until permanently deleted by a teacher.</p>
                     
                     <div id="archiveListContainer" class="flex-1 overflow-y-auto space-y-3 pr-2">
                         <p class="text-gray-400 italic text-center py-8">Scanning for archived files...</p>
@@ -573,35 +558,4 @@ window.hardDeleteDocument = async function (collectionName, docId) {
   }
 };
 
-// Auto-purge routine
-setTimeout(async () => {
-  if (!db) return;
-  try {
-    const { collection, getDocs, doc, deleteDoc } =
-      await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
-    const [plansSnap, presSnap] = await Promise.all([
-      getDocs(collection(db, "lesson_plans")),
-      getDocs(collection(db, "presentations")),
-    ]);
-
-    const now = Date.now();
-    const checkAndPurge = async (snapshot, collName) => {
-      for (let document of snapshot.docs) {
-        const data = document.data();
-        if (data.is_archived && data.purge_at) {
-          if (now > new Date(data.purge_at).getTime()) {
-            await deleteDoc(doc(db, collName, document.id));
-            console.log(
-              `[Auto-Purge] Eradicated expired ${collName}: ${document.id}`,
-            );
-          }
-        }
-      }
-    };
-
-    await checkAndPurge(plansSnap, "lesson_plans");
-    await checkAndPurge(presSnap, "presentations");
-  } catch (e) {
-    console.warn("Auto-Purge check failed:", e);
-  }
-}, 5000);
+// Automatic deletion is disabled: opening a planner must never purge school records.
