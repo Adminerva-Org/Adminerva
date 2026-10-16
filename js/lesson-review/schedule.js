@@ -1,4 +1,5 @@
 import { db } from "../core/firebase-core.js";
+import { scheduleScope, parseScheduleRows } from "./schedule-scope.mjs";
 import {
   doc,
   getDoc,
@@ -9,11 +10,13 @@ let mySections = [];
 let mySubjects = [];
 let myEvents = [];
 let isEditing = false;
+let activeYear = "2026-2027";
+let activeSemester = "S1";
+let loadSerial = 0;
+let isSaving = false;
 
-// 🔒 Security Patch: Helper to neutralize malicious HTML scripts from user input
 function escapeHTML(str) {
-  if (!str) return "";
-  return String(str)
+  return String(str ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -21,44 +24,104 @@ function escapeHTML(str) {
     .replace(/'/g, "&#039;");
 }
 
-// --- FIREBASE INITIALIZATION & FETCH ---
-async function initFirebase() {
-  if (!db) {
-    alert(
-      "Firebase is not configured! Please configure it in Global Settings.",
-    );
-    renderTable();
-    return;
-  }
+function currentScope() {
+  return scheduleScope(activeYear, activeSemester);
+}
 
-  try {
-    await fetchScheduleFromCloud();
-  } catch (e) {
-    console.error("Firebase Initialization Failed:", e);
-    alert("Failed to connect to Firebase. Using local cache.");
-    renderTable();
+function cacheRows(scope, rows, rawText) {
+  localStorage.setItem(scope.jsonKey, JSON.stringify(rows));
+  localStorage.setItem(scope.textKey, rawText);
+}
+
+function cachedRows(scope) {
+  const local = localStorage.getItem(scope.jsonKey);
+  if (local !== null) return parseScheduleRows(local);
+  return scope.allowLegacy
+    ? parseScheduleRows(localStorage.getItem("Adminerva_schedule_json"))
+    : [];
+}
+
+function updateScopeStatus(message) {
+  const label = document.getElementById("scheduleScopeStatus");
+  if (label) label.textContent = activeYear + " · " +
+    (activeSemester === "S2" ? "Second Semester" : "First Semester") +
+    " — " + message;
+}
+
+function syncPeriodInputs() {
+  const year = document.getElementById("scheduleSchoolYear");
+  const semester = document.getElementById("scheduleSemester");
+  if (year) year.value = activeYear;
+  if (semester) semester.value = activeSemester;
+}
+
+function updateEditControls() {
+  const button = document.getElementById("editSaveBtn");
+  const badge = document.getElementById("modeBadge");
+  if (button) {
+    button.textContent = isEditing ? "Save Schedule" : "Edit Schedule";
+    button.className = isEditing
+      ? "bg-green-600 text-white px-6 py-2 rounded font-bold hover:bg-green-700 transition shadow-sm flex items-center gap-2"
+      : "bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700 transition shadow-sm flex items-center gap-2";
   }
+  if (badge) {
+    badge.textContent = isEditing ? "Editing Mode" : "Read-Only";
+    badge.className = isEditing
+      ? "bg-green-100 text-green-800 text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider"
+      : "bg-gray-200 text-gray-700 text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider";
+  }
+  for (const id of ["addClassBtn", "addEventBtn"]) {
+    const node = document.getElementById(id);
+    if (!node) continue;
+    node.classList.toggle("hidden", !isEditing);
+    node.classList.toggle("flex", isEditing);
+  }
+}
+
+async function initFirebase() {
+  await fetchScheduleFromCloud();
 }
 
 async function fetchScheduleFromCloud() {
-  if (!db) return;
-  window.showLoader("Loading schedule from cloud...");
-  try {
-    const docRef = doc(db, "app_config", "master_schedule");
-    const docSnap = await getDoc(docRef);
-
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      localStorage.setItem("Adminerva_schedule_json", data.json_data || "[]");
-      localStorage.setItem("Adminerva_schedule", data.raw_text || "");
+  const request = ++loadSerial;
+  const scope = currentScope();
+  let rows = cachedRows(scope);
+  let raw = localStorage.getItem(scope.textKey);
+  if (raw === null && scope.allowLegacy)
+    raw = localStorage.getItem("Adminerva_schedule");
+  let source = rows.length ? "Local copy" : "No schedule saved; choose Edit Schedule to enter one.";
+  if (db) {
+    window.showLoader("Loading selected semester schedule...");
+    try {
+      let snap = await getDoc(doc(db, "app_config", scope.id));
+      let fromLegacy = false;
+      // Existing first-semester timetables used one unscoped document.
+      // Never import that document into a different semester or school year.
+      if (!snap.exists() && scope.allowLegacy &&
+          localStorage.getItem(scope.jsonKey) === null) {
+        snap = await getDoc(doc(db, "app_config", "master_schedule"));
+        fromLegacy = snap.exists();
+      }
+      if (snap.exists()) {
+        const data = snap.data();
+        rows = parseScheduleRows(data.json_data);
+        raw = typeof data.raw_text === "string" ? data.raw_text : "";
+        source = fromLegacy ? "Legacy timetable loaded; save to store this semester independently."
+          : "Loaded from cloud.";
+      }
+    } catch (error) {
+      console.warn("Schedule cloud fetch failed; using local copy:", error);
+      source = "Cloud unavailable; showing local copy if available.";
+    } finally {
+      window.hideLoader();
     }
-  } catch (e) {
-    console.error("Error fetching schedule:", e);
-  } finally {
-    window.hideLoader();
-    renderTable();
   }
+  if (request !== loadSerial) return;
+  cacheRows(scope, rows, raw || "");
+  renderTable();
+  updateScopeStatus(source);
 }
+
 // --- CLOUD SYNC HELPERS (Subtle Loader Adapter) ---
 window.showLoader = function (msg = "Syncing schedule...") {
   if (typeof window.showSubtleLoader === "function") {
