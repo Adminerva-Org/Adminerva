@@ -244,7 +244,7 @@ window.renderOutput = function () {
       html += `
                 <div class="md:col-span-2 mb-2">
                     <label class="block text-[10px] font-extrabold text-blue-600 uppercase tracking-wider mb-1">Session Sub-Topic</label>
-                    <textarea class="session-input w-full p-2 border border-blue-200 rounded text-sm bg-white font-bold text-gray-800" rows="1" data-idx="${index}" data-key="topic">${escapeLessonText(session.topic || window.currentWeeklyOverview.topic || "")}</textarea>
+                    <textarea class="session-input w-full p-2 border border-blue-200 rounded text-sm bg-white font-bold text-gray-800" rows="1" data-idx="${index}" data-key="topic">${escapeLessonText(session.topic || window.currentWeeklyOverview?.topic || "")}</textarea>
                 </div>
                 <div>
                     <label class="block text-[10px] font-extrabold text-blue-600 uppercase tracking-wider mb-1">Learning Competencies</label>
@@ -327,9 +327,18 @@ window.closeLoadPlanModal = function () {
 };
 
 window.loadSpecificPlan = function (planData) {
-  window.currentWeeklyOverview = planData.weekly_overview;
+  // Older records may predate the weekly overview. Do not lose the open draft
+  // or crash the editor when a saved record has missing session data.
+  if (!planData || !Array.isArray(planData.sessions) || !planData.sessions.length) {
+    alert("This saved record has no editable lesson sessions.");
+    return;
+  }
+  window.currentWeeklyOverview =
+    planData.weekly_overview && typeof planData.weekly_overview === "object"
+      ? planData.weekly_overview
+      : { topic: "", content_standard: "", performance_standard: "", materials: "" };
   window.currentPlan = planData.sessions;
-  window.currentTargetGrade = planData.grade_level;
+  window.currentTargetGrade = planData.grade_level || document.getElementById("lpGradeLevel")?.value || "Grade 11";
 
   document.getElementById("lpSchoolYear").value =
     planData.school_year || "2026-2027";
