@@ -91,6 +91,11 @@ async function fetchScheduleFromCloud() {
   if (raw === null && scope.allowLegacy)
     raw = localStorage.getItem("Adminerva_schedule");
   let source = rows.length ? "Local copy" : "No schedule saved; choose Edit Schedule to enter one.";
+  if (localStorage.getItem(scope.pendingKey) === "1") {
+    renderTable();
+    updateScopeStatus("Unsynced edits from this device. Select Edit Schedule, then Save Schedule to retry.");
+    return;
+  }
   if (db) {
     window.showLoader("Loading selected semester schedule...");
     try {
@@ -634,6 +639,7 @@ window.saveScheduleData = async function (bypassValidation = false) {
   cacheRows(scope, jsonData, rawTextForAI);
 
   if (!db) {
+    localStorage.setItem(scope.pendingKey, "1");
     updateScopeStatus("Saved on this device only (cloud unavailable).");
     alert("Schedule saved locally. Connect Firebase to sync it across devices.");
     return true;
@@ -648,10 +654,12 @@ window.saveScheduleData = async function (bypassValidation = false) {
       raw_text: rawTextForAI,
       last_updated: new Date().toISOString(),
     });
+    localStorage.removeItem(scope.pendingKey);
     updateScopeStatus("Saved to cloud.");
     return true;
   } catch (error) {
     console.error("Schedule cloud save failed:", error);
+    localStorage.setItem(scope.pendingKey, "1");
     updateScopeStatus("Saved on this device only. Cloud save failed; retry.");
     alert("Cloud save failed. Your edits remain in this device. Please retry Save Schedule. " + error.message);
     return false;
