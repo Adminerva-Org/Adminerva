@@ -379,7 +379,7 @@ window.loadSpecificPlan = function (planData) {
   if (planData.grade_level)
     document.getElementById("lpGradeLevel").value = planData.grade_level;
   if (planData.schedule) {
-    localStorage.setItem("lessonReview_schedule", planData.schedule);
+    localStorage.setItem("Adminerva_schedule", planData.schedule);
   }
 
   window.renderOverview();
