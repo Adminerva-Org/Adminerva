@@ -24,7 +24,7 @@ window.generateAI_SlideDeck = async function () {
 
   try {
     const aiModelName =
-      localStorage.getItem("Adminerva_ai_model") || "gemini-1.5-flash";
+      localStorage.getItem("Adminerva_ai_model") || "gemini-2.5-flash";
     const prompt = `
             Act as an expert Masterclass Instructional Designer. Convert this lesson session into a highly engaging presentation slide deck.
             
