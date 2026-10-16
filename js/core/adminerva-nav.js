@@ -82,6 +82,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     <a href="student-playground.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 transition-all flex items-center gap-2">
                         <span class="text-cyan-500">⚡</span> Code Playground
                     </a>
+                    <a href="student-practice.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 transition-all flex items-center gap-2">
+                        <span class="text-cyan-500">🧩</span> Practice Lab
+                    </a>
                 </div>
             </div>
         </div>
@@ -92,6 +95,7 @@ document.addEventListener("DOMContentLoaded", () => {
     centerLinks = `
             <a href="student-dashboard.html" class="${getStyle("dashboard")}">Dashboard</a>
             <a href="student-assessments.html" class="${getStyle("assessments")}">Assignments</a>
+            <a href="student-practice.html" class="${getStyle("practice")}">Practice Lab</a>
             <a href="student-settings.html" class="${getStyle("settings")}">Settings</a>
         `;
     rightSide = `
