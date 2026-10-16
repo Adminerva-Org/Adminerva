@@ -46,6 +46,30 @@ window.loadLessonReviewSettings = async function () {
     }
   }
 
+  // Generation and export read these defaults from localStorage. Keep that
+  // cache aligned with the cloud document, including on a different device.
+  if (cloudData) {
+    const mapping = {
+      teacher_name: "Adminerva_defaultTeacher",
+      subject_title: "Adminerva_defaultSubject",
+      default_prelim: "Adminerva_defaultPrelim",
+      default_closing: "Adminerva_defaultClosing",
+      header_image_base64: "Adminerva_headerImage",
+      sig_teacher: "Adminerva_sig1Name",
+      sig_teacher_title: "Adminerva_sig1Title",
+      sig_subject_coord: "Adminerva_sig2Name",
+      sig_subject_coord_title: "Adminerva_sig2Title",
+      sig_grade_coord: "Adminerva_sig3Name",
+      sig_grade_coord_title: "Adminerva_sig3Title",
+      sig_principal: "Adminerva_sig4Name",
+      sig_principal_title: "Adminerva_sig4Title",
+    };
+    for (const [field, key] of Object.entries(mapping)) {
+      if (typeof cloudData[field] === "string")
+        localStorage.setItem(key, cloudData[field]);
+    }
+  }
+
   const data = {
     teacher_name:
       cloudData?.teacher_name ||
@@ -277,3 +301,10 @@ window.saveLessonReviewSettings = async function () {
     window.hideLoader();
   }
 };
+
+document.addEventListener("DOMContentLoaded", () => {
+  // Load teacher/subject defaults before lesson generation on a new device.
+  if (document.getElementById("lpGradeLevel"))
+    window.loadLessonReviewSettings().catch(error =>
+      console.warn("Could not refresh lesson defaults:", error));
+});
