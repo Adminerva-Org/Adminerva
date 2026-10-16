@@ -5,10 +5,34 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email is string;
     }
     // Temporary development instructor allowlist. Replace with teacher claims/roles.
+    function isAdmin() {
+      return signedIn() && request.auth.token.email.lower() == "babaynike2013@gmail.com";
+    }
+    function isTeacher() {
+      return signedIn() && request.auth.token.email.lower() == "josephsixson@mcstayuman.edu.ph";
+    }
     function isInstructor() {
+      return isAdmin() || isTeacher();
+    }
+    function reportAudience(issue) {
+      // Untagged legacy system tickets are administrator-directed.
+      return issue.get("category", "Bug") == "Bug" ? "admin" :
+        issue.get("recipientRole", "admin");
+    }
+    function reportOwner(issue) {
       return signedIn() &&
-        (request.auth.token.email.lower() == "babaynike2013@gmail.com" ||
-         request.auth.token.email.lower() == "josephsixson@mcstayuman.edu.ph");
+        (issue.get("reporterUid", "") == request.auth.uid ||
+         (issue.get("reporterEmail", "") is string &&
+          issue.get("reporterEmail", "") != "" &&
+          issue.get("reporterEmail", "").lower() == request.auth.token.email.lower()));
+    }
+    function canSeeReport(issue) {
+      return signedIn() &&
+        (isAdmin() || reportOwner(issue) ||
+         (isTeacher() && reportAudience(issue) == "teacher"));
+    }
+    function canManageReport(issue) {
+      return isAdmin() || (isTeacher() && reportAudience(issue) == "teacher");
     }
     function ownsStudentProfile(studentId) {
       return signedIn() &&
@@ -17,8 +41,14 @@ service cloud.firestore {
           request.auth.token.email.lower();
     }
 
-    match /{document=**} {
-      allow read, write: if isInstructor();
+    // Staff retains access to teaching data, but general staff access must
+    // never override private system reports or per-user notification rules.
+    match /{rootCollection}/{document=**} {
+      allow read, write: if isAdmin() ||
+        (isTeacher() &&
+         rootCollection != "issues" &&
+         rootCollection != "notifications" &&
+         rootCollection != "notification_history");
     }
 
     match /students/{studentId} {
@@ -85,18 +115,21 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Reports are visible to signed-in users for duplicate discovery.
-    // Only trusted instructors may triage, prioritize, lock or delete reports.
+    // Classroom reports go to teachers; system bugs go to administrators.
+    // Authors can view their own tickets, but not other users' private reports.
     match /issues/{issueId} {
-      allow read: if signedIn();
+      allow read: if canSeeReport(resource.data);
       allow create: if signedIn() &&
         request.resource.data.keys().hasOnly([
           "title", "description", "category", "priority", "images",
           "urlContext", "reporterEmail", "reporterUid", "reporterRole",
           "status", "upvotes", "locked", "createdAt",
           "module", "expectedBehavior", "actualBehavior", "reproductionSteps",
-          "clientContext"
+          "clientContext", "recipientRole"
         ]) &&
+        request.resource.data.recipientRole in ["admin", "teacher"] &&
+        (request.resource.data.category != "Bug" ||
+         request.resource.data.recipientRole == "admin") &&
         request.resource.data.reporterUid == request.auth.uid &&
         request.resource.data.reporterEmail is string &&
         (request.resource.data.reporterEmail == "" ||
@@ -118,7 +151,14 @@ service cloud.firestore {
         request.resource.data.createdAt == request.time;
       // New votes use Firebase UID; legacy email votes can still be removed.
       // Only adding/removing the authenticated user's single vote is allowed.
-      allow update: if signedIn() &&
+      allow update: if canManageReport(resource.data) &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["status", "priority", "locked", "updatedAt"]) &&
+        request.resource.data.status in ["Open", "Triaged", "Waiting for Reporter",
+          "In Progress", "Resolved", "Closed (Won't Fix)"] &&
+        request.resource.data.priority in ["Low", "Medium", "High", "Critical"] &&
+        request.resource.data.locked is bool;
+      allow update: if canSeeReport(resource.data) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(["upvotes"]) &&
         request.resource.data.upvotes is list &&
         request.resource.data.upvotes.size() <= 500 &&
@@ -142,9 +182,10 @@ service cloud.firestore {
             resource.data.upvotes.hasAll(request.resource.data.upvotes)
           )
         );
-      allow delete: if false;
+      allow delete: if canManageReport(resource.data);
       match /comments/{commentId} {
-        allow read: if signedIn();
+        allow read: if canSeeReport(
+          get(/databases/$(database)/documents/issues/$(issueId)).data);
         allow create: if signedIn() &&
           request.resource.data.keys().hasOnly([
             "text", "authorEmail", "authorUid", "role", "createdAt"
@@ -153,7 +194,10 @@ service cloud.firestore {
           request.resource.data.authorEmail is string &&
           (request.resource.data.authorEmail == "" ||
            request.resource.data.authorEmail.lower() == request.auth.token.email.lower()) &&
-          request.resource.data.role == "student" &&
+          ((request.resource.data.role == "student") ||
+           (request.resource.data.role == "teacher" && isTeacher()) ||
+           (request.resource.data.role == "superadmin" && isAdmin())) &&
+          canSeeReport(get(/databases/$(database)/documents/issues/$(issueId)).data) &&
           request.resource.data.text is string &&
           request.resource.data.text.size() > 0 &&
           request.resource.data.text.size() <= 2000 &&
@@ -161,7 +205,9 @@ service cloud.firestore {
           get(/databases/$(database)/documents/issues/$(issueId)).data.locked == false;
         allow update: if false;
         allow delete: if signedIn() &&
-          (resource.data.get("authorUid", null) == request.auth.uid ||
+          canSeeReport(get(/databases/$(database)/documents/issues/$(issueId)).data) &&
+          (canManageReport(get(/databases/$(database)/documents/issues/$(issueId)).data) ||
+           resource.data.get("authorUid", null) == request.auth.uid ||
            (resource.data.get("authorEmail", "") is string &&
             resource.data.authorEmail != "" &&
             resource.data.authorEmail.lower() == request.auth.token.email.lower()));
@@ -171,7 +217,11 @@ service cloud.firestore {
     // Official notifications are created only by Firebase Admin SDK triggers.
     // Recipients may mark their own notification as read, not forge an alert.
     match /notifications/{uid}/items/{notificationId} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      // Never expose admin-directed issue alerts to a non-admin, including
+      // old notifications accidentally delivered before audience routing.
+      allow read: if signedIn() && request.auth.uid == uid &&
+        (isAdmin() || resource.data.get("type", "") != "issue" ||
+         resource.data.get("recipientRole", "admin") == "teacher");
       allow update: if signedIn() && request.auth.uid == uid &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(["readAt"]) &&
         request.resource.data.readAt == request.time;
