@@ -10,6 +10,9 @@ window.cachedSchedule = "";
 window.cachedScope = "";
 window.cachedCustomInstructions = "";
 window.cachedPreviousPlan = null;
+const escapeLessonText=value=>String(value??"").replace(/[&<>"']/g,c=>({
+"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+})[c]);
 window.currentAnchoredWeek = 1;
 
 window.timerInterval = null;
@@ -173,27 +176,46 @@ window.renderOverview = function () {
             <div class="space-y-3">
                 <div>
                     <label class="block text-[10px] font-bold text-gray-500 uppercase">Topic / Content</label>
-                    <textarea class="w-full p-2 border border-transparent rounded text-sm bg-white font-bold text-gray-800" rows="1">${window.currentWeeklyOverview.topic || ""}</textarea>
+                    <textarea data-weekly-field="topic" class="w-full p-2 border border-transparent rounded text-sm bg-white font-bold text-gray-800" rows="1">${escapeLessonText(window.currentWeeklyOverview.topic || "")}</textarea>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                         <label class="block text-[10px] font-bold text-gray-500 uppercase">Content Standard</label>
-                        <textarea class="w-full p-2 border border-gray-200 rounded text-xs bg-white" rows="2">${window.currentWeeklyOverview.content_standard || ""}</textarea>
+                        <textarea data-weekly-field="content_standard" class="w-full p-2 border border-gray-200 rounded text-xs bg-white" rows="2">${escapeLessonText(window.currentWeeklyOverview.content_standard || "")}</textarea>
                     </div>
                     <div>
+                   <label class="block text-[10px] font-extrabold text-blue-600 uppercase tracking-wider mb-1">Learning Objectives</label>
+                   <textarea class="session-input w-full p-2 border border-blue-100 rounded text-sm bg-blue-50" rows="3" data-idx="${index}" data-key="objectives">${escapeLessonText(session.objectives || "")}</textarea>
+                 </div>
+                 <div>
                         <label class="block text-[10px] font-bold text-gray-500 uppercase">Performance Standard</label>
-                        <textarea class="w-full p-2 border border-gray-200 rounded text-xs bg-white" rows="2">${window.currentWeeklyOverview.performance_standard || ""}</textarea>
+                        <textarea data-weekly-field="performance_standard" class="w-full p-2 border border-gray-200 rounded text-xs bg-white" rows="2">${escapeLessonText(window.currentWeeklyOverview.performance_standard || "")}</textarea>
                     </div>
                 </div>
                 <div>
                     <label class="block text-[10px] font-bold text-gray-500 uppercase">Materials & Tech</label>
-                    <textarea class="w-full p-2 border border-gray-200 rounded text-xs bg-white" rows="1">${window.currentWeeklyOverview.materials || ""}</textarea>
+                    <textarea data-weekly-field="materials" class="w-full p-2 border border-gray-200 rounded text-xs bg-white" rows="1">${escapeLessonText(window.currentWeeklyOverview.materials || "")}</textarea>
                 </div>
             </div>
         </div>
     `;
+  container.querySelectorAll("[data-weekly-field]").forEach(input=>{
+    input.addEventListener("input",()=>{
+      window.currentWeeklyOverview[input.dataset.weeklyField]=input.value;
+    });
+  });
 };
-
+window.syncOutputToData=function(){
+  if(window.currentWeeklyOverview){
+    document.querySelectorAll("#weeklyOverviewContainer [data-weekly-field]").forEach(input=>{
+      window.currentWeeklyOverview[input.dataset.weeklyField]=input.value;
+    });
+  }
+  document.querySelectorAll("#outputContainer .session-input").forEach(input=>{
+    const index=Number(input.dataset.idx), key=input.dataset.key;
+    if(window.currentPlan?.[index]&&key)window.currentPlan[index][key]=input.value;
+  });
+};
 window.renderOutput = function () {
   const container = document.getElementById("outputContainer");
   const headerTitle = document.getElementById("planHeaderTitle");
@@ -216,62 +238,62 @@ window.renderOutput = function () {
     headerBadge.textContent = `${window.currentPlan.length} Sessions`;
 
   window.currentPlan.forEach((session, index) => {
-    const isFlex = session.session_name.toLowerCase().includes("flex");
+    const isFlex = String(session.session_name||"").toLowerCase().includes("flex");
 
     let html = `<div class="bg-white p-5 rounded border border-gray-200 shadow-sm mb-6">
-            <h3 class="text-lg font-bold ${isFlex ? "text-amber-600" : "text-blue-800"} mb-4 border-b pb-2">${session.session_name} ${isFlex ? "(Asynchronous)" : ""}</h3>
+            <h3 class="text-lg font-bold ${isFlex ? "text-amber-600" : "text-blue-800"} mb-4 border-b pb-2">${escapeLessonText(session.session_name)} ${isFlex ? "(Asynchronous)" : ""}</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">`;
 
     if (!isFlex) {
       html += `
                 <div class="md:col-span-2 mb-2">
                     <label class="block text-[10px] font-extrabold text-blue-600 uppercase tracking-wider mb-1">Session Sub-Topic</label>
-                    <textarea class="session-input w-full p-2 border border-blue-200 rounded text-sm bg-white font-bold text-gray-800" rows="1" data-idx="${index}" data-key="topic">${session.topic || window.currentWeeklyOverview.topic || ""}</textarea>
+                    <textarea class="session-input w-full p-2 border border-blue-200 rounded text-sm bg-white font-bold text-gray-800" rows="1" data-idx="${index}" data-key="topic">${escapeLessonText(session.topic || window.currentWeeklyOverview.topic || "")}</textarea>
                 </div>
                 <div>
                     <label class="block text-[10px] font-extrabold text-blue-600 uppercase tracking-wider mb-1">Learning Competencies</label>
-                    <textarea class="session-input w-full p-2 border border-blue-100 rounded text-sm bg-blue-50" rows="3" data-idx="${index}" data-key="competencies">${session.competencies || ""}</textarea>
+                    <textarea class="session-input w-full p-2 border border-blue-100 rounded text-sm bg-blue-50" rows="3" data-idx="${index}" data-key="competencies">${escapeLessonText(session.competencies || "")}</textarea>
                 </div>
                 <div>
                     <label class="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">Preliminary Action</label>
-                    <textarea class="session-input w-full p-2 border rounded text-sm bg-gray-50" rows="3" data-idx="${index}" data-key="preliminary">${session.preliminary || ""}</textarea>
+                    <textarea class="session-input w-full p-2 border rounded text-sm bg-gray-50" rows="3" data-idx="${index}" data-key="preliminary">${escapeLessonText(session.preliminary || "")}</textarea>
                 </div>
                 <div>
                     <label class="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">Motivation / Recall</label>
-                    <textarea class="session-input w-full p-2 border rounded text-sm bg-gray-50" rows="3" data-idx="${index}" data-key="motivation">${session.motivation || ""}</textarea>
+                    <textarea class="session-input w-full p-2 border rounded text-sm bg-gray-50" rows="3" data-idx="${index}" data-key="motivation">${escapeLessonText(session.motivation || "")}</textarea>
                 </div>`;
     }
 
     html += `
                 <div class="md:col-span-2">
                     <label class="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">Learning Activities</label>
-                    <textarea class="session-input w-full p-3 border border-gray-300 rounded text-sm bg-white font-mono leading-relaxed shadow-inner" rows="6" data-idx="${index}" data-key="learning_activities">${session.learning_activities || ""}</textarea>
+                    <textarea class="session-input w-full p-3 border border-gray-300 rounded text-sm bg-white font-mono leading-relaxed shadow-inner" rows="6" data-idx="${index}" data-key="learning_activities">${escapeLessonText(session.learning_activities || "")}</textarea>
                 </div>`;
 
     if (!isFlex) {
       html += `
                 <div>
                     <label class="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">Evaluation</label>
-                    <textarea class="session-input w-full p-2 border rounded text-sm bg-gray-50" rows="2" data-idx="${index}" data-key="evaluation">${session.evaluation || ""}</textarea>
+                    <textarea class="session-input w-full p-2 border rounded text-sm bg-gray-50" rows="2" data-idx="${index}" data-key="evaluation">${escapeLessonText(session.evaluation || "")}</textarea>
                 </div>
                 <div>
                     <label class="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">Closing Activities</label>
-                    <textarea class="session-input w-full p-2 border rounded text-sm bg-gray-50" rows="2" data-idx="${index}" data-key="closing">${session.closing || ""}</textarea>
+                    <textarea class="session-input w-full p-2 border rounded text-sm bg-gray-50" rows="2" data-idx="${index}" data-key="closing">${escapeLessonText(session.closing || "")}</textarea>
                 </div>
                 
                 <!-- 🚀 NEW: Formation Standard now natively integrated per session -->
                 <div>
                     <label class="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">Formation Standard</label>
-                    <textarea class="session-input w-full p-2 border rounded text-sm bg-gray-50" rows="2" data-idx="${index}" data-key="formation_standard">${session.formation_standard || ""}</textarea>
+                    <textarea class="session-input w-full p-2 border rounded text-sm bg-gray-50" rows="2" data-idx="${index}" data-key="formation_standard">${escapeLessonText(session.formation_standard || "")}</textarea>
                 </div>
                 <div>
                     <label class="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">Values Integration</label>
-                    <textarea class="session-input w-full p-2 border rounded text-sm bg-gray-50" rows="2" data-idx="${index}" data-key="values_integration">${session.values_integration || ""}</textarea>
+                    <textarea class="session-input w-full p-2 border rounded text-sm bg-gray-50" rows="2" data-idx="${index}" data-key="values_integration">${escapeLessonText(session.values_integration || "")}</textarea>
                 </div>
                 
                 <div class="md:col-span-2">
                     <label class="block text-[10px] font-extrabold text-amber-600 uppercase tracking-wider mb-1">Remarks / Intervention</label>
-                    <textarea class="session-input w-full p-2 border rounded text-sm bg-amber-50 border-amber-200" rows="2" data-idx="${index}" data-key="remarks">${session.remarks || ""}</textarea>
+                    <textarea class="session-input w-full p-2 border rounded text-sm bg-amber-50 border-amber-200" rows="2" data-idx="${index}" data-key="remarks">${escapeLessonText(session.remarks || "")}</textarea>
                 </div>`;
     }
 
