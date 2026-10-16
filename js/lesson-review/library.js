@@ -305,7 +305,7 @@ window.extractPDF = async function () {
 
   const gemKey = (localStorage.getItem("Adminerva_gemini_token") || "").trim();
   const modelName = (
-    localStorage.getItem("Adminerva_ai_model") || "gemini-1.5-flash"
+    localStorage.getItem("Adminerva_ai_model") || "gemini-2.5-flash"
   ).trim();
 
   if (!gemKey)
