@@ -324,6 +324,7 @@ window.exportToGoogleDocs = function () {
 };
 
 async function processAndUploadToDrive(accessToken) {
+  let uploadedDocumentId=null;
   const rawGrade = window.currentTargetGrade.replace(/\D/g, "") || "11";
   const rawSubject =
     localStorage.getItem("lessonReview_defaultSubject") || "Subject";
@@ -413,6 +414,7 @@ async function processAndUploadToDrive(accessToken) {
 
     const result = await response.json();
     const docId = result.id;
+    uploadedDocumentId=docId;
     if(!docId)throw Error("Google Drive did not return a document ID.");
 
     const docResponse = await fetch(
@@ -505,6 +507,8 @@ async function processAndUploadToDrive(accessToken) {
     window.open(`https://docs.google.com/document/d/${docId}/edit`, "_blank");
   } catch (e) {
     if (typeof window.hideLoader === "function") window.hideLoader();
-    alert("Failed to export to Google Docs: " + e.message);
+    alert("Google Docs export needs attention: " + e.message);
+    if(uploadedDocumentId && confirm("An unverified Google Doc was created. Open it for manual inspection?"))
+      window.open("https://docs.google.com/document/d/"+encodeURIComponent(uploadedDocumentId)+"/edit","_blank");
   }
 }
