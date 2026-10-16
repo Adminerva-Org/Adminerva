@@ -220,3 +220,35 @@ test('teacher lesson and presentation history stays inaccessible to students',as
     {title:'Chapter 1',text:'Course text'}));
   await assertFails(getDoc(doc(alice,'reference_folders','folder','documents','pdf1')));
 });
+
+test('notification history is private and save-for-later records persist across sessions',async()=>{
+  const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
+  const ref=doc(alice,'notification_history','alice','items','n_issue42');
+  const record={
+    ownerUid:'alice',sourceKey:'issue:42',type:'issue',
+    title:'Report update',body:'Revisit this response',target:'issues.html',
+    at:1234,savedForLater:true,
+    openedAt:serverTimestamp(),lastInteractedAt:serverTimestamp()
+  };
+  await assertSucceeds(setDoc(ref,record));
+  await assertSucceeds(getDoc(ref));
+  await assertFails(getDoc(doc(bob,'notification_history','alice','items','n_issue42')));
+  await assertFails(setDoc(doc(bob,'notification_history','alice','items','fake'),record));
+  await assertFails(deleteDoc(ref));
+  await assertFails(setDoc(ref,{...record,ownerUid:'bob'}));
+});
+
+test('practice completions are student-private and are not school grades',async()=>{
+  const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
+  const ref=doc(alice,'student_practice_progress','alice','courses','java');
+  const data={ownerUid:'alice',courseId:'java',completed:['j1'],
+    reflections:{j1:'I traced the variable updates in order.'},
+    updatedAt:serverTimestamp()};
+  await assertSucceeds(setDoc(ref,data));
+  await assertSucceeds(getDoc(ref));
+  await assertFails(getDoc(doc(bob,'student_practice_progress','alice','courses','java')));
+  await assertFails(setDoc(doc(bob,'student_practice_progress','alice','courses','python'),
+    {...data,courseId:'python'}));
+  await assertFails(setDoc(ref,{...data,courseId:'python'}));
+  await assertFails(deleteDoc(ref));
+});
