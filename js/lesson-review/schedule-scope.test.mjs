@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import vm from "node:vm";
-import {scheduleScope, scheduleSemester, normalizeSchoolYear, parseScheduleRows, localScheduleText} from "./schedule-scope.mjs";
+import {scheduleScope, scheduleSemester, normalizeSchoolYear, parseScheduleRows, localScheduleText, parseClockMinutes} from "./schedule-scope.mjs";
 
 test("semester and school-year timetables never share document or cache keys",()=>{
   const first=scheduleScope("2026-2027","S1");
@@ -63,7 +63,7 @@ test("teacher schedule editor writes only the selected semester document",async(
   };
   const writes=[];
   const context={
-    window:{showSubtleLoader(){},hideSubtleLoader(){}},
+    window:{showSubtleLoader(){},hideSubtleLoader(){},addEventListener(){}},
     localStorage:storage,db:{},
     document:{
       addEventListener(){},
@@ -71,7 +71,7 @@ test("teacher schedule editor writes only the selected semester document",async(
       querySelectorAll:selector=>selector==="#scheduleTableBody tr"?[row]:[],
       createElement:()=>({dataset:{},className:"",innerHTML:""})
     },
-    scheduleScope,parseScheduleRows,
+    scheduleScope,parseScheduleRows,parseClockMinutes,
     doc:(_db,_collection,id)=>({id}),
     getDoc:async()=>({exists:()=>false}),
     setDoc:async(ref,data)=>{writes.push({id:ref.id,data});},
@@ -101,4 +101,34 @@ test("lesson planner resolves schedules by academic term, not global legacy cach
   assert.match(generator,/await window\.fetchScheduleForLesson\(schoolYear, academicTerm\)/);
   for (const id of ["scheduleSchoolYear","scheduleSemester","scheduleScopeStatus"])
     assert.ok(page.includes('id="'+id+'"'),"Missing semester selector "+id);
+});
+
+test("start-time edits do not silently shorten existing lessons or labs",()=>{
+  const script=readFileSync("js/lesson-review/schedule.js","utf8");
+  const start=script.indexOf("window.autoFillEndTime = function");
+  const end=script.indexOf("function formatTimeToAMPM",start);
+  const context={window:{},Date};
+  vm.runInNewContext(script.slice(start,end),context);
+  const endTime={value:"11:00"};
+  const row={querySelector:selector=>selector===".time-end"?endTime:null};
+  const startTime={closest:selector=>selector==="tr"?row:null};
+  context.window.autoFillEndTime("08:30",startTime);
+  assert.equal(endTime.value,"11:00","Existing 3-hour class ending must be preserved");
+  endTime.value="";
+  context.window.autoFillEndTime("08:30",startTime);
+  assert.equal(endTime.value,"09:15","Empty end-time gets a helpful default");
+});
+
+test("time parsing validates real 24-hour times, not arbitrary strings",()=>{
+  assert.equal(parseClockMinutes("08:00"),480);
+  assert.equal(parseClockMinutes("13:45"),825);
+  for(const invalid of ["8:00","25:00","12:65","bad","",null]){
+    assert.equal(parseClockMinutes(invalid),null,String(invalid));
+  }
+});
+
+test("schedule edits warn before leaving the page without saving",()=>{
+  const schedule=readFileSync("js/lesson-review/schedule.js","utf8");
+  assert.match(schedule,/window\.addEventListener\("beforeunload"/);
+  assert.match(schedule,/if \(!isEditing\) return;/);
 });
