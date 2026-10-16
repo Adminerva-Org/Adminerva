@@ -479,6 +479,8 @@ window.openGradingModal = async function (studentId, owner, repo) {
                   ${isTeacherScore ? "" : `<button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${task.id}', '${currentStudentSha}')" class="text-gray-400 hover:text-blue-500 transition px-1 shrink-0 border-l border-gray-200 pl-2 ml-1" title="Force Re-evaluate">🔄</button>`}
               </div>
           `;
+      } else if(task.schemaVersion===2){
+        actionAreaHtml = `<span class="text-xs text-amber-800 font-semibold">V2: approve the assessment checkpoint, then use Manual Review &amp; Score.</span>`;
       } else {
         actionAreaHtml = `
               <button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${task.id}', '${currentStudentSha}')" class="${gradeRecord ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-700"} text-white px-4 py-1.5 rounded text-xs font-bold transition shadow-sm whitespace-nowrap flex items-center gap-2">
