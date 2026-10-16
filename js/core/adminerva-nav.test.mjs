@@ -123,8 +123,8 @@ test('signed-in home navigation is distinct from project and staff task tabs',()
   const teacher=mount('staff-home','home','teacher');
   assert.match(student.container.innerHTML,/Student Home/);
   assert.match(teacher.container.innerHTML,/Staff Home/);
-  const studentTabs=student.container.innerHTML.match(/id="av-desktop-nav"[^>]*>(.*?)<\\/div>/s)?.[1]||'';
-  const staffTabs=teacher.container.innerHTML.match(/id="av-desktop-nav"[^>]*>(.*?)<\\/div>/s)?.[1]||'';
+  const studentTabs=student.container.innerHTML.split('id="av-desktop-nav"')[1]?.split('</div>')[0]?.split('>')[1]||'';
+  const staffTabs=teacher.container.innerHTML.split('id="av-desktop-nav"')[1]?.split('</div>')[0]?.split('>')[1]||'';
   assert.equal(studentTabs,'');
   assert.equal(staffTabs,'');
   assert.doesNotMatch(studentTabs,/Practice Lab|Assignments/);
