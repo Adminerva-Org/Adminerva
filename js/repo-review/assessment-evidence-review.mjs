@@ -271,12 +271,16 @@ async function saveDiscovery(){
     if(!confirm("Record historical evidence for "+student.name+
       "? This is NOT a student submission, a verified push time, or an approved checkpoint."))return;
     const ref=doc(db,"assessment_evidence",student.id+"_"+assessment.id);
-    await setDoc(ref,{
+    await runTransaction(db,async tx=>{
+      const existing=await tx.get(ref);
+      if(existing.exists())throw Error("Evidence was submitted or discovered by someone else. Reload it.");
+      tx.set(ref,{
       studentId:student.id,assessmentId:assessment.id,section:student.section,
       repository:student.repoUrl,selectedCommits:selection.selectedCommits,
       checkpointSha:selection.checkpointSha,status:"needs_review",
       source:"teacher_discovered",discoveredBy:auth.currentUser.uid,
       recordedAt:serverTimestamp(),updatedAt:serverTimestamp()
+      });
     });
     await loadEvidence();
     status("Historical candidate evidence saved. Independently verify before approving; no submission date was asserted.");
