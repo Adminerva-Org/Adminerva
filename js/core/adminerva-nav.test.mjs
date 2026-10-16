@@ -85,6 +85,18 @@ test('student navigation remains separate and includes playground links',()=>{
   assert.doesNotMatch(container.innerHTML,/Menu · Modules/);
 });
 
+test('Practice Lab has its own navigation, separate from Project Hub',()=>{
+  const project=mount('student','dashboard','student').container.innerHTML;
+  const projectTabs=project.match(/id="av-desktop-nav"[^>]*>([\s\S]*?)<\/div>/)?.[1]||'';
+  assert.match(projectTabs,/student-dashboard\.html/);
+  assert.match(projectTabs,/student-assessments\.html/);
+  assert.doesNotMatch(projectTabs,/student-practice\.html/);
+  const practice=mount('student-practice','practice','student').container.innerHTML;
+  const practiceTabs=practice.match(/id="av-desktop-nav"[^>]*>([\s\S]*?)<\/div>/)?.[1]||'';
+  assert.match(practiceTabs,/student-practice\.html/);
+  assert.doesNotMatch(practiceTabs,/student-assessments\.html/);
+  assert.match(practice,/student-dashboard\.html/); // Project Hub is accessible from logo.
+});
 test('Planning appears only in Lesson Review and retains school workflow links',()=>{
   const lesson=mount('lesson','planner');
   const groups=lesson.desktop.children.slice(1).map(x=>x.children[0].textContent);
