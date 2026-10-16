@@ -1,5 +1,6 @@
 import { db, auth } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
+import {asDate,assessmentStatus} from "./assessment-state.mjs";
 import {
   collection,
   getDocs,
@@ -12,6 +13,8 @@ let allAssessments = [];
 let userProfiles = [];
 let currentSection = "";
 let myGrades = {};
+let mySubmitted = {};
+let submissionLookupSucceeded = false;
 
 function escapeHTML(str) {
   if (!str) return "";
@@ -103,6 +106,25 @@ async function fetchAssessments() {
   const studentId = studentProfile ? studentProfile.id : null;
 
   myGrades = {};
+  mySubmitted = {};
+  submissionLookupSucceeded = false;
+  if(studentId) {
+    try{
+      const submissionSnap=await getDocs(query(
+        collection(db,"student_submissions"),where("studentId","==",studentId)
+      ));
+      submissionSnap.forEach(item=>{
+        const entry=item.data();
+        const previous=mySubmitted[entry.assessmentId];
+        const timestamp=asDate(entry.submittedAt)?.getTime()||0;
+        if(!previous||timestamp>(asDate(previous.submittedAt)?.getTime()||0))
+          mySubmitted[entry.assessmentId]=entry;
+      });
+      submissionLookupSucceeded=true;
+    }catch(error){
+      console.warn("Submission receipts are not available; status remains unknown:",error);
+    }
+  }
   if (studentId) {
     try {
       const gradeSnap = await getDocs(
@@ -134,9 +156,7 @@ async function fetchAssessments() {
       let isAssignedToStudent = false;
       let activeDeadline = null;
       let noDeadline = false;
-      let activePostDate = data.createdAt
-        ? data.createdAt.toDate()
-        : new Date();
+      let activePostDate=asDate(data.createdAt)||new Date();
 
       if (data.deployments && Array.isArray(data.deployments)) {
         const deployment = data.deployments.find(
@@ -146,21 +166,15 @@ async function fetchAssessments() {
           isAssignedToStudent = true;
           noDeadline = deployment.deadlineEnabled === false;
           if (deployment.deadline && !noDeadline)
-            activeDeadline = deployment.deadline.toDate
-              ? deployment.deadline.toDate()
-              : new Date(deployment.deadline);
+            activeDeadline=asDate(deployment.deadline);
           if (deployment.postDate)
-            activePostDate = deployment.postDate.toDate
-              ? deployment.postDate.toDate()
-              : new Date(deployment.postDate);
+            activePostDate=asDate(deployment.postDate)||activePostDate;
         }
       } else if (data.targetSections && Array.isArray(data.targetSections)) {
         if (data.targetSections.includes(currentSection)) {
           isAssignedToStudent = true;
           if (data.dueDate)
-            activeDeadline = data.dueDate.toDate
-              ? data.dueDate.toDate()
-              : new Date(data.dueDate);
+            activeDeadline=asDate(data.dueDate);
         }
       }
 
@@ -169,12 +183,12 @@ async function fetchAssessments() {
           ? new Date(activeDeadline) < new Date()
           : false;
         allAssessments.push({
+          ...data,
           id: docSnap.id,
-          isUrgent: isUrgent,
+          isUrgent,
           postedDate: activePostDate,
           dueDate: activeDeadline,
           noDeadline,
-          ...data,
         });
       }
     });
@@ -196,7 +210,7 @@ function renderAssessments() {
 
   let filtered = allAssessments.filter((ass) => {
     const matchesSearch =
-      ass.title.toLowerCase().includes(searchQuery) ||
+      String(ass.title||"").toLowerCase().includes(searchQuery) ||
       (ass.taskContext || "").toLowerCase().includes(searchQuery);
     const matchesStatus =
       filterStatus === "all" ||
@@ -229,16 +243,21 @@ function renderAssessments() {
           ? "bg-green-100 text-green-700 border-green-200"
           : "bg-blue-100 text-blue-700 border-blue-200";
 
-    const myGrade = myGrades[ass.id];
-    let urgencyBadge = "";
-
-    if (myGrade) {
-      urgencyBadge = `<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full flex items-center gap-1">✅ Scored: ${myGrade.score}</span>`;
-    } else {
-      urgencyBadge = ass.isUrgent
-        ? `<span class="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full flex items-center gap-1">⚠️ Urgent / Past Due</span>`
-        : `<span class="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full flex items-center gap-1">⏳ Pending Review</span>`;
-    }
+    const myGrade=myGrades[ass.id];
+    const status=assessmentStatus({
+      grade:myGrade,submitted:Boolean(mySubmitted[ass.id]),
+      deadline:ass.noDeadline?null:ass.dueDate,
+      knownSubmissions:submissionLookupSucceeded
+    });
+    const colors={
+      graded:"text-emerald-800 bg-emerald-50 border-emerald-200",
+      revision:"text-amber-800 bg-amber-50 border-amber-200",
+      submitted:"text-blue-800 bg-blue-50 border-blue-200",
+      pastdue:"text-rose-700 bg-rose-50 border-rose-200",
+      notSubmitted:"text-slate-700 bg-slate-100 border-slate-200",
+      unknown:"text-amber-700 bg-amber-50 border-amber-200"
+    };
+    const urgencyBadge=`<span class="text-[10px] font-bold border rounded-full px-2 py-1 ${colors[status.kind]}">${escapeHTML(status.text)}${status.kind==="graded"?" · "+escapeHTML(myGrade.score):""}</span>`;
 
     const deadlineString = ass.noDeadline
       ? '<span class="text-[10px] text-slate-500 font-medium ml-auto">No deadline</span>'
@@ -266,6 +285,16 @@ function renderAssessments() {
     container.insertAdjacentHTML("beforeend", card);
   });
 }
+
+window.addEventListener("adminerva:submission-recorded",event=>{
+  const {assessmentId,studentId}=event.detail||{};
+  const profile=userProfiles.find(p=>p.section===currentSection);
+  if(profile?.id===studentId && assessmentId){
+    mySubmitted[assessmentId]={assessmentId,submittedAt:new Date()};
+    submissionLookupSucceeded=true;
+    renderAssessments();
+  }
+});
 
 document.addEventListener("DOMContentLoaded", () => {
   document
