@@ -15,9 +15,9 @@ service cloud.firestore {
       return isAdmin() || isTeacher();
     }
     function reportAudience(issue) {
-      // Untagged legacy system tickets are administrator-directed.
-      return issue.get("category", "Bug") == "Bug" ? "admin" :
-        issue.get("recipientRole", "admin");
+      // Legacy records lacked recipientRole; all are admin-directed.
+      // New Bug documents cannot be assigned to teachers (create rule below).
+      return issue.get("recipientRole", "admin");
     }
     function reportOwner(issue) {
       return signedIn() &&
