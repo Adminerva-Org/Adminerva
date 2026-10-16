@@ -30,6 +30,12 @@ jobs:
           node --input-type=module --check < js/lesson-review/app-ui.js
           node --input-type=module --check < js/lesson-review/document-exporter.js
           node --input-type=module --check < js/lesson-review/lesson-plan-helpers.mjs
+          node --input-type=module --check < js/presentation-review/presentation-firebase.js
+          node --input-type=module --check < js/presentation-review/presentation-ui.js
+          node --input-type=module --check < js/presentation-review/presentation-ai.js
+          node --input-type=module --check < js/presentation-review/sanitize.js
+          node --input-type=module --check < js/student/playground.js
+          node --input-type=module --check < js/student/playground-cloud.mjs
           node --check functions/index.js
   firestore-security:
     runs-on: ubuntu-latest
