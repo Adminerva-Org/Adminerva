@@ -377,6 +377,11 @@ document.addEventListener("DOMContentLoaded", () => {
       .catch(error => console.warn("Notification center unavailable:", error));
   }
 
+  // Lightweight update notifier. Never force reload while a student is coding.
+  import("./site-updates.mjs")
+    .then(module=>module.mountSiteUpdates())
+    .catch(error=>console.warn("Site update checks unavailable:",error));
+
   // Announce active location to assistive technology and keep the selected
   // page visible in the horizontally scrolling mobile navigation.
   navContainer.querySelectorAll('a[class*="border-b-2"]').forEach(link => {
