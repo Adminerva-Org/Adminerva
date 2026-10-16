@@ -1,4 +1,5 @@
 import { db, auth } from "../core/firebase-core.js";
+import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs";
 import {
   collection,
   addDoc,
@@ -63,7 +64,7 @@ let draggedTabIndex = -1;
 // 2. INITIALIZATION
 // ==========================================
 document.addEventListener("DOMContentLoaded", async () => {
-  document.getElementById("pageBody")?.classList.remove("hidden");
+  // Auth guard controls visibility. Do not expose a workspace while access is pending.
 
   require.config({
     paths: {
@@ -111,6 +112,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     const urlParams = new URLSearchParams(window.location.search);
     const snapshotId = urlParams.get("id");
 
+    try {
+      await auth.authStateReady();
+    } catch (error) {
+      console.warn("Unable to confirm sign-in:", error);
+    }
+    if (!auth.currentUser) {
+      alert("Sign in to open your private Playground workspace.");
+      return;
+    }
+    document.getElementById("legacyImportBtn")?.classList.toggle("hidden",
+      !localStorage.getItem("Adminerva_Playground_Workspace"));
     if (snapshotId) await loadSnapshot(snapshotId);
     else loadLocalWorkspace();
   });
@@ -119,7 +131,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 // ==========================================
 // 3. WORKSPACE & FILE MANAGEMENT
 // ==========================================
-function createWorkspace(lang, initialFiles, initialOrder) {
+function createWorkspace(lang, initialFiles, initialOrder, initialActive) {
   currentLang = lang;
   const langSelect = document.getElementById("languageSelect");
   if (langSelect) langSelect.value = lang;
@@ -128,8 +140,11 @@ function createWorkspace(lang, initialFiles, initialOrder) {
   workspaceFiles = {};
   fileOrder = [];
 
+  const safeLang = PLAYGROUND_LANGUAGES.includes(lang) ? lang : "java";
+  currentLang = safeLang;
+  if (langSelect) langSelect.value = safeLang;
   const filesToCreate = initialFiles || {
-    [languageConfig[lang].defaultFile]: languageConfig[lang].defaultCode,
+    [languageConfig[safeLang].defaultFile]: languageConfig[safeLang].defaultCode,
   };
 
   const orderToUse = initialOrder || Object.keys(filesToCreate);
@@ -140,7 +155,7 @@ function createWorkspace(lang, initialFiles, initialOrder) {
     }
   });
 
-  if (fileOrder.length > 0) switchTab(fileOrder[0]);
+  if (fileOrder.length > 0) switchTab(fileOrder.includes(initialActive) ? initialActive : fileOrder[0]);
   updateOutputView();
 }
 
@@ -208,6 +223,7 @@ window.renameFile = function (oldName) {
 };
 
 window.deleteFile = function (filename) {
+  if (fileOrder.length === 1) return alert("Keep at least one file in the workspace. Use Reset for a new project.");
   if (confirm(`Are you sure you want to delete ${filename}?`)) {
     workspaceFiles[filename].model.dispose();
     delete workspaceFiles[filename];
@@ -225,7 +241,10 @@ window.deleteFile = function (filename) {
 
 window.promptNewFile = function () {
   const name = prompt("Enter file name (e.g., Student.java, style.css):");
-  if (name && name.trim()) addFile(name.trim());
+  if (name && name.trim()) {
+    addFile(name.trim());
+    triggerAutoSave();
+  }
 };
 
 // ------------------------------------------
@@ -315,52 +334,91 @@ function attachTabEvents() {
 // 4. STORAGE, ZIP, & SNAPSHOTS
 // ==========================================
 let autoSaveTimeout;
+let workspaceDirty = false;
+let localSaveFailed = false;
+function ownerUid() {
+  return auth.currentUser?.uid || null;
+}
+function currentState() {
+  const files = {};
+  for (const [name,file] of Object.entries(workspaceFiles))
+    files[name] = file.model.getValue();
+  return { lang:currentLang, files, fileOrder:[...fileOrder],
+    activeFilename, savedAt:new Date().toISOString() };
+}
+function showSaveStatus(text,failed=false) {
+  const indicator=document.getElementById("autoSaveIndicator");
+  if(!indicator)return;
+  indicator.textContent=text;
+  indicator.classList.remove("opacity-0","text-rose-400","text-emerald-400");
+  indicator.classList.add(failed?"text-rose-400":"text-emerald-400");
+}
 function persistWorkspace(){
   clearTimeout(autoSaveTimeout);
-  const state={lang:currentLang,files:{},fileOrder:[...fileOrder],
-    savedAt:new Date().toISOString()};
-  for(const [name,file] of Object.entries(workspaceFiles))state.files[name]=file.model.getValue();
+  autoSaveTimeout=null;
+  const uid=ownerUid();
+  if(!uid || !Object.keys(workspaceFiles).length) return false;
   try{
-    localStorage.setItem("Adminerva_Playground_Workspace",JSON.stringify(state));
-    const indicator=document.getElementById("autoSaveIndicator");
-    if(indicator){
-      indicator.textContent="Saved locally";
-      indicator.classList.remove("opacity-0","text-rose-400");
-      indicator.classList.add("text-emerald-400");
-    }
+    const state=currentState();
+    localStorage.setItem(playgroundWorkspaceKey(uid,currentLang),JSON.stringify(state));
+    localStorage.setItem(playgroundLanguageKey(uid),currentLang);
+    workspaceDirty=false;
+    localSaveFailed=false;
+    showSaveStatus("Saved on this device");
     return true;
   }catch(error){
     console.error("Workspace save failed:",error);
-    const indicator=document.getElementById("autoSaveIndicator");
-    if(indicator){
-      indicator.textContent="Not saved — local storage is unavailable or full";
-      indicator.classList.remove("opacity-0");
-      indicator.classList.add("text-rose-400");
-    }
+    localSaveFailed=true;
+    showSaveStatus("Not saved — storage unavailable or full",true);
     return false;
   }
 }
 function triggerAutoSave(){
   clearTimeout(autoSaveTimeout);
+  workspaceDirty=true;
   const indicator=document.getElementById("autoSaveIndicator");
   if(indicator){
-    indicator.textContent="Unsaved changes";
-    indicator.classList.remove("opacity-0");
-    indicator.classList.remove("text-emerald-400");
+    indicator.textContent="Saving locally…";
+    indicator.classList.remove("opacity-0","text-emerald-400");
+    indicator.classList.add("text-rose-400");
   }
   autoSaveTimeout=setTimeout(persistWorkspace,1000);
 }
-window.addEventListener("pagehide",()=>{if(autoSaveTimeout)persistWorkspace()});
+window.addEventListener("pagehide",()=>{
+  if (workspaceDirty || autoSaveTimeout) persistWorkspace();
+});
+window.addEventListener("beforeunload",event=>{
+  if (!localSaveFailed) return;
+  event.preventDefault();
+  event.returnValue="";
+});
 
-function loadLocalWorkspace() {
-  const saved = localStorage.getItem("Adminerva_Playground_Workspace");
-  if (saved) {
-    const state = JSON.parse(saved);
-    createWorkspace(state.lang, state.files, state.fileOrder);
-  } else {
-    createWorkspace("java");
-  }
+function loadLocalWorkspace(lang) {
+  const uid=ownerUid();
+  if(!uid) return false;
+  const preferred=lang || localStorage.getItem(playgroundLanguageKey(uid)) || "java";
+  const chosen=PLAYGROUND_LANGUAGES.includes(preferred)?preferred:"java";
+  const saved=readPlaygroundDraft(localStorage,uid,chosen);
+  createWorkspace(chosen,saved?.files,saved?.fileOrder,saved?.activeFilename);
+  workspaceDirty=false;
+  localSaveFailed=false;
+  showSaveStatus(saved?"Local draft loaded":"New workspace (not saved yet)");
+  return true;
 }
+
+window.adminervaImportLegacyPlayground = function () {
+  const uid=ownerUid();
+  if(!uid) return alert("Sign in before importing code.");
+  let state;
+  try { state=JSON.parse(localStorage.getItem("Adminerva_Playground_Workspace")||"null"); }
+  catch { return alert("Older browser draft is damaged and cannot be imported."); }
+  if(!validPlaygroundState(state)) return alert("No valid older browser draft is available.");
+  if(!confirm("This older browser draft is NOT linked to a student account. On a shared device it might belong to someone else. Import it only if it is yours. Continue?"))return;
+  if(!persistWorkspace())return alert("Current draft cannot be saved. Export ZIP before importing.");
+  if(!window.adminervaRestorePlayground(state))return alert("Import failed. Export ZIP before trying again.");
+  showSaveStatus("Older draft imported into your private local workspace");
+};
+
 
 async function exportZIP() {
   const btn = document.getElementById("exportZipBtn");
@@ -386,15 +444,45 @@ async function exportZIP() {
 
 // Expose only an in-memory snapshot to the authenticated cloud backup module.
 window.adminervaPlaygroundState=function(){
-  const files={};
-  for(const [name,file] of Object.entries(workspaceFiles))files[name]=file.model.getValue();
-  return {lang:currentLang,files,fileOrder:[...fileOrder]};
+  const state=currentState();
+  return {lang:state.lang,files:state.files,fileOrder:state.fileOrder,
+    activeFilename:state.activeFilename};
 };
 window.adminervaRestorePlayground=function(state){
-  if(!state?.lang||!state.files||typeof state.files!=="object")return false;
-  if(!persistWorkspace())return false;
-  createWorkspace(state.lang,state.files,state.fileOrder);
-  return persistWorkspace();
+  if(!validPlaygroundState(state))return false;
+  const uid=ownerUid();
+  if(!uid || !persistWorkspace())return false;
+  try{
+    const target=playgroundWorkspaceKey(uid,state.lang);
+    const previous=localStorage.getItem(target);
+    if(previous) localStorage.setItem(playgroundUndoKey(uid,state.lang),previous);
+    const next={...state,savedAt:new Date().toISOString()};
+    localStorage.setItem(target,JSON.stringify(next));
+    localStorage.setItem(playgroundLanguageKey(uid),state.lang);
+    createWorkspace(state.lang,state.files,state.fileOrder,state.activeFilename);
+    workspaceDirty=false;
+    localSaveFailed=false;
+    showSaveStatus("Restored and saved on this device");
+    return true;
+  }catch(error){
+    console.error("Could not restore workspace:",error);
+    showSaveStatus("Restore failed — storage unavailable or full",true);
+    return false;
+  }
+};
+window.adminervaUndoPlaygroundRestore=function(){
+  const uid=ownerUid();
+  if(!uid)return;
+  const raw=localStorage.getItem(playgroundUndoKey(uid,currentLang));
+  let previous=null;
+  try{previous=JSON.parse(raw||"null")}catch{}
+  if(!validPlaygroundState(previous)){
+    alert("No previous local draft for this language.");
+    return;
+  }
+  if(!confirm("Replace the current editor with the draft saved before the last restore?"))return;
+  if(!window.adminervaRestorePlayground(previous))
+    alert("Recovery failed. Try exporting your workspace as ZIP first.");
 };
 
 async function shareSnapshot() {
@@ -413,10 +501,17 @@ async function shareSnapshot() {
     state.files[name] = file.model.getValue();
 
   try {
+    if (!auth.currentUser) throw Error("Sign in before sharing.");
+    if (!validPlaygroundState(state)) throw Error("Add at least one valid file before sharing.");
     const docRef = await addDoc(collection(db, "playground_snapshots"), state);
     const link = `${window.location.origin}${window.location.pathname}?id=${docRef.id}`;
-    navigator.clipboard.writeText(link);
-    btn.innerHTML = `✅ Link Copied!`;
+    try {
+      await navigator.clipboard.writeText(link);
+      btn.innerHTML = "Link copied";
+    } catch (error) {
+      prompt("Copy this snapshot link:", link);
+      btn.innerHTML = "Snapshot created";
+    }
   } catch (error) {
     btn.innerHTML = `❌ Error`;
   }
@@ -428,14 +523,23 @@ async function loadSnapshot(id) {
     const docSnap = await getDoc(doc(db, "playground_snapshots", id));
     if (docSnap.exists()) {
       const data = docSnap.data();
-      createWorkspace(data.lang, data.files, data.fileOrder);
+      if (!validPlaygroundState(data)) throw Error("Shared snapshot is incomplete.");
+      if (confirm("Import this shared snapshot into your workspace? Your previous local draft will be kept as a recoverable copy.")) {
+        // Load the student's existing local draft first so a shared link
+        // never silently overwrites their current account's work.
+        loadLocalWorkspace();
+        if (!window.adminervaRestorePlayground(data))
+          alert("Snapshot import failed. Your existing workspace was kept.");
+      } else {
+        loadLocalWorkspace();
+      }
       window.history.replaceState({}, document.title, window.location.pathname);
     } else {
       alert("Snapshot not found.");
       loadLocalWorkspace();
     }
   } catch (error) {
-    alert("Error loading snapshot.");
+    alert("Error loading snapshot: " + error.message);
     loadLocalWorkspace();
   }
 }
@@ -681,7 +785,15 @@ function bindUIEvents() {
   // Using optional chaining (?.) so missing buttons don't crash the script
   document
     .getElementById("languageSelect")
-    ?.addEventListener("change", (e) => createWorkspace(e.target.value));
+    ?.addEventListener("change", (e) => {
+      const nextLang=e.target.value;
+      if(nextLang===currentLang)return;
+      if(!persistWorkspace()) {
+        e.target.value=currentLang;
+        return alert("Current code was not saved. Export ZIP before changing languages.");
+      }
+      loadLocalWorkspace(nextLang);
+    });
   document.getElementById("runBtn")?.addEventListener("click", executeCode);
   document.getElementById("exportZipBtn")?.addEventListener("click", exportZIP);
   document.getElementById("saveProjectBtn")?.addEventListener("click", () => {
@@ -690,7 +802,12 @@ function bindUIEvents() {
   });
   document
     .getElementById("loadProjectBtn")
-    ?.addEventListener("click", loadLocalWorkspace);
+    ?.addEventListener("click", () => {
+      if(workspaceDirty && !confirm("Discard unsaved editor changes and reload the last saved local draft?"))return;
+      loadLocalWorkspace(currentLang);
+    });
+  document.getElementById("legacyImportBtn")?.addEventListener("click", window.adminervaImportLegacyPlayground);
+  document.getElementById("undoRestoreBtn")?.addEventListener("click", window.adminervaUndoPlaygroundRestore);
   document
     .getElementById("snapshotBtn")
     ?.addEventListener("click", shareSnapshot);
@@ -702,8 +819,11 @@ function bindUIEvents() {
 
   // Re-added reset logic for safety if you decide to put the button back later
   document.getElementById("resetBtn")?.addEventListener("click", () => {
-    if (confirm("Wipe all files and reset workspace?"))
+    if (confirm("Reset this language's files? The current version will remain in cloud history if you saved it there.")) {
+      if(!persistWorkspace())return alert("Current draft could not be saved. Export ZIP first.");
       createWorkspace(currentLang);
+      triggerAutoSave();
+    }
   });
 
   document.getElementById("clearConsoleBtn")?.addEventListener("click", () => {
