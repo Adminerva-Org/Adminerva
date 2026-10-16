@@ -82,6 +82,7 @@ test('student navigation remains separate and includes playground links',()=>{
   const {container,desktop}=mount('student','assessments','student');
   assert.equal(desktop.children.length,0);
   assert.match(container.innerHTML,/student-assessments.html/);
+  assert.doesNotMatch(container.innerHTML,/<a href="student-practice.html" class=/);
   assert.doesNotMatch(container.innerHTML,/Menu · Modules/);
 });
 
@@ -103,4 +104,15 @@ test('Manage appears in the admin and settings areas, not RepoFetch',()=>{
   const repo=mount('repo','repofetch','teacher');
   assert.deepEqual(repo.desktop.children.slice(1).map(x=>x.children[0].textContent),
     ['Grading ▾','Repositories ▾']);
+});
+
+test('Practice Lab uses its own tabs and remains in the student module switcher',()=>{
+  const practice=mount('student-practice','practice','student');
+  assert.match(practice.container.innerHTML,/Practice Courses/);
+  assert.match(practice.container.innerHTML,/student-practice.html/);
+  assert.doesNotMatch(practice.container.innerHTML,/student-assessments.html" class=/);
+  const project=mount('student','dashboard','student');
+  assert.match(project.container.innerHTML,/Student Modules/);
+  assert.match(project.container.innerHTML,/Practice Lab/);
+  assert.doesNotMatch(project.container.innerHTML,/Practice Courses/);
 });
