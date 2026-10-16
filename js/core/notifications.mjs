@@ -8,10 +8,18 @@ const staffEmails = new Set(["babaynike2013@gmail.com", "josephsixson@mcstayuman
 const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false };
 const isAdmin = () => (state.user?.email||"").toLowerCase() === [...staffEmails][0];
 const isTeacher = () => staffEmails.has((state.user?.email||"").toLowerCase()) && !isAdmin();
-// Old, untagged report alerts are conservatively hidden outside the admin inbox.
-const visibleForRole = item => item.type !== "issue" || isAdmin() ||
-  (item.reportCategory && item.reportCategory !== "Bug" &&
-   (!isTeacher() || item.reportAudience === "teacher"));
+// Resolve older issue notifications against only those reports this account
+// is authorized to read. Unresolvable legacy alerts stay hidden.
+const visibleForRole = item => {
+  if (item.type !== "issue" || isAdmin()) return true;
+  const match = String(item.target||"").match(/^issues[.]html[?]issue=([^&#]+)/);
+  const id = item.sourceId || (match ? decodeURIComponent(match[1]) : "");
+  const issue = state.issues.find(x=>x.id===id);
+  const category = item.reportCategory || issue?.category;
+  const audience = item.reportAudience || issue?.audience || "admin";
+  return Boolean(category && category !== "Bug" &&
+    (!isTeacher() || audience === "teacher"));
+};
 const el = id => document.getElementById(id);
 const make = (tag, className, text) => {
   const node=document.createElement(tag);
