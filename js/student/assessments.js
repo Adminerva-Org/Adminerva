@@ -347,4 +347,5 @@ window.viewAssessmentDetails = function (id) {
   }
 
   document.getElementById("assessmentModal").classList.remove("hidden");
+  window.dispatchEvent(new CustomEvent("adminerva:assessment-opened",{detail:{assessmentId:id}}));
 };
