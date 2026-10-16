@@ -628,32 +628,33 @@ window.saveScheduleData = async function (bypassValidation = false) {
     }
   });
 
-  // Save locally
-  localStorage.setItem("Adminerva_schedule_json", JSON.stringify(jsonData));
-  localStorage.setItem("Adminerva_schedule", rawTextForAI);
+  // Save this semester only; legacy master_schedule stays untouched.
+  const scope = currentScope();
+  cacheRows(scope, jsonData, rawTextForAI);
 
-  // Save to Firebase (Cloud Sync)
   if (!db) {
-    alert(
-      "Saved locally, but Firebase is not connected. Check Global Settings to enable cloud sync.",
-    );
+    updateScopeStatus("Saved on this device only (cloud unavailable).");
+    alert("Schedule saved locally. Connect Firebase to sync it across devices.");
     return true;
   }
 
-  window.showLoader("Saving schedule to Firebase...");
+  window.showLoader("Saving selected semester to Firebase...");
   try {
-    const docRef = doc(db, "app_config", "master_schedule");
-    await setDoc(docRef, {
+    await setDoc(doc(db, "app_config", scope.id), {
+      school_year: scope.year,
+      semester: scope.semester,
       json_data: JSON.stringify(jsonData),
       raw_text: rawTextForAI,
       last_updated: new Date().toISOString(),
     });
-  } catch (e) {
-    console.error("Firebase save error:", e);
-    alert("Error saving to cloud. Data saved locally only. " + e.message);
+    updateScopeStatus("Saved to cloud.");
+    return true;
+  } catch (error) {
+    console.error("Schedule cloud save failed:", error);
+    updateScopeStatus("Saved on this device only. Cloud save failed; retry.");
+    alert("Cloud save failed. Your edits remain in this device. Please retry Save Schedule. " + error.message);
+    return false;
   } finally {
     window.hideLoader();
   }
-
-  return true;
 };
