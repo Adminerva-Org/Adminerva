@@ -270,6 +270,7 @@ window.moveSlideUp = function (i) {
   const temp = window.currentPresentationDeck[i - 1];
   window.currentPresentationDeck[i - 1] = window.currentPresentationDeck[i];
   window.currentPresentationDeck[i] = temp;
+  window.adminervaPresentationDirty = true;
   window.selectSlide(i - 1);
 };
 window.moveSlideDown = function (i) {
@@ -277,11 +278,14 @@ window.moveSlideDown = function (i) {
   const temp = window.currentPresentationDeck[i + 1];
   window.currentPresentationDeck[i + 1] = window.currentPresentationDeck[i];
   window.currentPresentationDeck[i] = temp;
+  window.adminervaPresentationDirty = true;
   window.selectSlide(i + 1);
 };
 window.duplicateSlide = function (i) {
   const clone = JSON.parse(JSON.stringify(window.currentPresentationDeck[i]));
   window.currentPresentationDeck.splice(i + 1, 0, clone);
+  window.adminervaPresentationDirty = true;
+  window.adminervaPresentationDirty = true;
   window.selectSlide(i + 1);
 };
 window.deleteSlide = function (i) {
@@ -289,12 +293,14 @@ window.deleteSlide = function (i) {
     return alert("Cannot delete the last slide.");
   if (confirm("Delete this slide?")) {
     window.currentPresentationDeck.splice(i, 1);
+    window.adminervaPresentationDirty = true;
     window.selectSlide(Math.max(0, i - 1));
   }
 };
 window.toggleHideSlide = function (i) {
   window.currentPresentationDeck[i].hidden =
     !window.currentPresentationDeck[i].hidden;
+  window.adminervaPresentationDirty = true;
   renderSlideBlocks();
 };
 
@@ -322,6 +328,7 @@ window.closeAddSlideModal = function () {
   document.getElementById("addSlideModal").classList.replace("flex", "hidden");
 };
 window.confirmAddSlide = function (layoutType) {
+  window.adminervaPresentationDirty = true;
   window.currentPresentationDeck.push({
     layout: layoutType,
     type: "blank",
