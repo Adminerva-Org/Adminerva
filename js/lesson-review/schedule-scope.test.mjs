@@ -57,7 +57,7 @@ test("teacher schedule editor writes only the selected semester document",async(
   };
   const row={
     dataset:{rowType:"class"},
-    querySelector:selector=>inputs[selector] || {value:""}
+    querySelector:selector=>inputs[selector] || (selector.endsWith(".flatpickr-input") ? null : {value:""})
   };
   const writes=[];
   const context={
