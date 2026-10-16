@@ -178,6 +178,31 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    // Formative student practice, separate from official assessments/grades.
+    // Teachers may inspect progress through the existing instructor privileges.
+    match /student_practice_progress/{uid}/courses/{courseId} {
+      function validProgress() {
+        return request.resource.data.keys().hasOnly([
+          "ownerUid", "courseId", "completed", "reflections", "updatedAt"
+        ]) &&
+        request.resource.data.keys().hasAll([
+          "ownerUid", "courseId", "completed", "reflections", "updatedAt"
+        ]) &&
+        request.resource.data.ownerUid == uid &&
+        request.resource.data.courseId == courseId &&
+        courseId in ["java","python","web","logic"] &&
+        request.resource.data.completed is list &&
+        request.resource.data.completed.size() <= 40 &&
+        request.resource.data.reflections is map &&
+        request.resource.data.reflections.size() <= 40 &&
+        request.resource.data.updatedAt == request.time;
+      }
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid &&
+        validProgress();
+      allow delete: if false;
+    }
+
     // Personal read history and saved reminders. Students can retain a small
     // notification summary for later; other users cannot inspect this inbox.
     match /notification_history/{uid}/items/{notificationId} {
