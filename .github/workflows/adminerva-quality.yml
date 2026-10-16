@@ -16,7 +16,7 @@ jobs:
           node-version: "22"
       - name: Test grading evidence and feedback regressions
         run: |
-          node --test js/core/feedback-format.test.mjs js/repo-review/services/commit-substance.test.mjs js/repo-review/services/contribution-resolver.test.mjs js/repo-review/services/inspector-helpers.test.mjs js/core/notification-routing.test.mjs js/core/adminerva-nav.test.mjs js/lesson-review/lesson-plan-helpers.test.mjs js/lesson-review/lesson-editor.test.mjs js/lesson-review/schedule-scope.test.mjs js/lesson-review/lesson-workflow.test.mjs js/student/assessment-state.test.mjs js/student/playground-storage.test.mjs js/student/practice-courses.test.mjs tests/lesson-school-format.test.mjs
+          node --test js/core/feedback-format.test.mjs js/repo-review/services/commit-substance.test.mjs js/repo-review/services/contribution-resolver.test.mjs js/repo-review/services/inspector-helpers.test.mjs js/core/notification-routing.test.mjs js/core/adminerva-nav.test.mjs js/lesson-review/lesson-plan-helpers.test.mjs js/lesson-review/lesson-editor.test.mjs js/lesson-review/schedule-scope.test.mjs js/lesson-review/lesson-workflow.test.mjs js/student/assessment-state.test.mjs js/student/playground-storage.test.mjs js/student/practice-courses.test.mjs js/student/practice-playground-bridge.test.mjs tests/lesson-school-format.test.mjs
       - name: Check notification, issue, and submission module syntax
         run: |
           node --input-type=module --check < js/core/notifications.mjs
@@ -24,6 +24,7 @@ jobs:
           node --input-type=module --check < js/core/site-updates.mjs
           node --input-type=module --check < js/student/practice-courses.mjs
           node --input-type=module --check < js/student/practice.js
+          node --input-type=module --check < js/student/practice-playground-bridge.mjs
           node --input-type=module --check < js/student/submission-receipts.mjs
           node --input-type=module --check < js/lesson-review/library.js
           node --input-type=module --check < js/presentation-review/presentation-export.js

@@ -13,14 +13,16 @@
     <header class="mb-6">
       <p class="text-xs font-bold text-cyan-800 uppercase tracking-wider">Adminerva · Student Learning</p>
       <h1 class="text-3xl font-extrabold text-slate-900 my-2">Practice Lab</h1>
-      <p class="text-sm text-slate-600 max-w-3xl">Learn a small idea, predict the result of a new example, then explain your reasoning. Missions change between attempts and are for practice, not graded exams.</p>
+      <p class="text-sm text-slate-600 max-w-3xl">Understand a concept, predict an outcome, test the example in a separate Playground sandbox, then explain what happened. Each mission is formative practice, not a graded exam.</p>
     </header>
     <p id="practiceStatus" role="status" aria-live="polite" class="text-sm text-slate-600 mb-4">Loading your learning progress…</p>
+    <div id="practiceOverview" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5" aria-label="Practice progress overview"></div>
     <div id="practiceCourseList" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
     <section id="practiceMissionPanel" class="hidden bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-7 mt-5" aria-labelledby="practiceMissionTitle">
       <button type="button" id="practiceBackBtn" class="mb-4 text-sm font-bold text-blue-700 underline">← All courses</button>
       <p id="practiceCourseName" class="text-xs text-slate-600 font-bold uppercase tracking-widest"></p>
       <h2 id="practiceMissionTitle" class="text-2xl font-bold mt-2"></h2>
+      <p class="text-xs text-blue-800 font-bold mt-3" id="practiceStage">Step 1 of 3 · Predict</p>
       <p id="practiceConcept" class="text-sm text-slate-700 my-4"></p>
       <pre id="practiceCode" class="whitespace-pre-wrap break-words overflow-x-auto bg-slate-900 text-cyan-100 p-4 rounded-lg text-sm font-mono" aria-label="Code or algorithm example"></pre>
       <h3 id="practicePrompt" class="font-bold text-base text-slate-900 mt-5 mb-3"></h3>
@@ -34,12 +36,26 @@
         class="w-full p-3 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500"></textarea>
       <p class="text-xs text-slate-500 mt-1">Explain in your own words. This is a learning reflection, not an AI-detection test.</p>
       <div id="practiceFeedback" role="status" aria-live="polite" class="mt-4 text-sm font-semibold"></div>
+      <section id="practiceExperimentPanel" class="hidden mt-5 rounded-xl bg-blue-50 border border-blue-200 p-4" aria-labelledby="practiceExperimentTitle">
+        <h3 id="practiceExperimentTitle" class="font-bold text-blue-950">Step 2 · Test in Code Playground</h3>
+        <p class="text-sm text-blue-900 mt-1">Open a temporary practice sandbox and select Run. Your existing personal projects are not replaced. Return here to compare your prediction with what you observed.</p>
+        <a id="practiceExperimentLink" href="student-playground.html?practice=1"
+          class="inline-block bg-cyan-700 hover:bg-cyan-800 text-white rounded-lg px-4 py-3 font-bold mt-3 text-sm">Open practice sandbox →</a>
+        <p id="practiceExperimentStatus" class="text-xs text-blue-900 mt-3" role="status"></p>
+      </section>
+      <section id="practiceReflectionPanel" class="hidden mt-5" aria-labelledby="practiceReflectionTitle">
+        <h3 id="practiceReflectionTitle" class="font-bold text-slate-900">Step 3 · Compare and reflect</h3>
+        <label for="practiceObservation" class="block text-sm font-semibold mt-2 mb-2">What did you observe after running or previewing the example?</label>
+        <textarea id="practiceObservation" rows="3" maxlength="500" placeholder="Describe the output, behavior, or bug you observed. What matches or differs from your prediction?"
+          class="w-full border border-slate-300 rounded-lg p-3 text-sm"></textarea>
+        <p class="text-xs text-slate-500 mt-2">A Playground run is a learning activity, not proof that no AI assistance was used.</p>
+      </section>
       <div class="flex gap-3 mt-5 flex-wrap">
         <button id="practiceCheckBtn" type="button" class="bg-blue-700 text-white px-5 py-3 rounded-lg font-bold">Check prediction</button>
-        <button id="practiceFinishBtn" type="button" class="hidden bg-emerald-700 text-white px-5 py-3 rounded-lg font-bold">Complete mission</button>
+        <button id="practiceFinishBtn" type="button" class="hidden bg-emerald-700 text-white px-5 py-3 rounded-lg font-bold">Record completion</button>
         <button id="practiceRetryBtn" type="button" class="hidden px-4 py-3 rounded-lg border border-slate-300 font-bold">New example</button>
       </div>
-      <p class="mt-4 text-xs text-slate-500">Practice completions are saved to your account when Firebase is available. They do not alter school grades.</p>
+      <p class="mt-4 text-xs text-slate-500">Completions are saved locally and synced to your account when Firebase is available. Practice is not automatically scored toward school grades.</p>
     </section>
   </main>
   <script src="js/core/adminerva-nav.js"></script>
