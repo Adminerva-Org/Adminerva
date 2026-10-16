@@ -79,6 +79,9 @@ async function loadEvidence(){
       " · Commits submitted: "+evidence.selectedCommits.length;
     const links=el("evidenceLinks");links.replaceChildren();
     link(links,"Project at checkpoint ↗",base+"/tree/"+encodeURIComponent(evidence.checkpointSha));
+    link(links,"Open grading in RepoFetch →","repofetch.html?section="+
+      encodeURIComponent(student.section)+"&student="+encodeURIComponent(student.id)+
+      "&assessment="+encodeURIComponent(assessment.id));
     link(links,"Contribution Inspector ↗","contribution-inspector.html?section="+
       encodeURIComponent(student.section)+"&student="+encodeURIComponent(student.id)+
       "&assessment="+encodeURIComponent(assessment.id));
