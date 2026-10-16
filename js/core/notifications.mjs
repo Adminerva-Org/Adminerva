@@ -1,5 +1,6 @@
 import { auth, db } from "./firebase-core.js";
 import {notificationTarget,previewDestination} from "./notification-routing.mjs";
+import {notificationVisible,unreadNotificationCount} from "./notification-visibility.mjs";
 import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
@@ -7,19 +8,19 @@ import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, s
 const staffEmails = new Set(["babaynike2013@gmail.com", "josephsixson@mcstayuman.edu.ph"]);
 const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false };
 const isAdmin = () => (state.user?.email||"").toLowerCase() === [...staffEmails][0];
-const isTeacher = () => staffEmails.has((state.user?.email||"").toLowerCase()) && !isAdmin();
-// Resolve older issue notifications against only those reports this account
-// is authorized to read. Unresolvable legacy alerts stay hidden.
-const visibleForRole = item => {
-  if (item.type !== "issue" || isAdmin()) return true;
+const isTeacher = () => (state.user?.email||"").toLowerCase() === [...staffEmails][1];
+const verifiedRole = () => isAdmin() ? "admin" : isTeacher() ? "teacher" : "student";
+// Report alerts are authorization-filtered before reaching the visible inbox.
+function visibleForRole(item) {
   const match = String(item.target||"").match(/^issues[.]html[?]issue=([^&#]+)/);
   const id = item.sourceId || (match ? match[1] : "");
   const issue = state.issues.find(x=>x.id===id);
-  const category = item.reportCategory || issue?.category;
-  const audience = item.reportAudience || issue?.audience || "admin";
-  return Boolean(category && category !== "Bug" &&
-    (!isTeacher() || audience === "teacher"));
-};
+  return notificationVisible({
+    ...item,
+    reportCategory: item.reportCategory || issue?.category,
+    reportAudience: item.reportAudience || issue?.audience
+  },verifiedRole());
+}
 const el = id => document.getElementById(id);
 const make = (tag, className, text) => {
   const node=document.createElement(tag);
@@ -47,7 +48,9 @@ function collectionItems(){
     rows.push({...n,key:"saved:"+n.id,at:timeOf(n.createdAt),target:targetUrl(n.target),saved:true});
   }
   for(const issue of state.issues){
-    if(stored.has(issue.id) || (!isAdmin() && issue.category === "Bug"))continue;
+    if(stored.has(issue.id) || !visibleForRole({
+      type:"issue",reportCategory:issue.category,reportAudience:issue.audience
+    }))continue;
     rows.push({key:"issue:"+issue.id,type:"issue",title:"Report: "+(issue.title||"Untitled"),
       body:(issue.status||"Open")+" · "+(issue.category||"Bug"),
       at:timeOf(issue.createdAt),target:"issues.html?issue="+encodeURIComponent(issue.id),saved:false,
@@ -69,19 +72,13 @@ function collectionItems(){
 }
 function render(){
   const list=el("av-alert-list"),badge=el("av-alert-count");if(!list||!badge)return;
-  const items=collectionItems(),count=items.filter(item=>!state.muted.has(item.type)&&unread(item)).length;
-  const degraded=state.errors.size>0;
-  badge.textContent=count>99?"99+":(count>0?String(count):"!");
-  badge.classList.toggle("hidden",count===0&&!degraded);
-  badge.classList.toggle("bg-amber-600",degraded&&count===0);
-  badge.classList.toggle("bg-blue-600",!(degraded&&count===0));
-  el("av-alert-toggle").setAttribute("aria-label",
-    count+" unread notifications"+(degraded?", some alerts are unavailable":""));
+  const items=collectionItems(),count=unreadNotificationCount(items,state.muted,state.read);
+  // An inaccessible staff-only source is NOT an alert for a student.
+  // Never display exclamation badges for subscription failures.
+  badge.textContent=count>99?"99+":String(count);
+  badge.classList.toggle("hidden",count===0);
+  el("av-alert-toggle").setAttribute("aria-label",count+" unread notifications");
   list.replaceChildren();
-  if(state.errors.size){
-    list.append(make("p","p-3 text-xs font-semibold bg-amber-50 border-b border-amber-200 text-amber-900",
-      "Some notification sources are unavailable. Reports or submissions may not appear until the Firebase connection is restored."));
-  }
   const search=state.search.toLowerCase();
   const visible=items.filter(n=>!state.muted.has(n.type) &&
     (state.filter==="all"||state.filter==="unread"&&unread(n)||state.filter==="issues"&&n.type==="issue"||state.filter==="saved"&&n.pinned) &&
@@ -183,26 +180,9 @@ function listen(user){
       request,
       snap=>{state.issues=snap.docs.map(d=>({id:d.id,...d.data()}));success("Issue reports")},
       error("Issue reports")));
-  }else{
-    // New tickets use Firebase UID, legacy tickets may still have reporterEmail.
-    // Keep both until old public report documents have been migrated.
-    const issueSets={current:[],legacy:[]};
-    const combineIssues=()=>{
-      const merged=new Map();
-      for(const item of [...issueSets.current,...issueSets.legacy])merged.set(item.id,item);
-      state.issues=[...merged.values()].sort((a,b)=>timeOf(b.createdAt)-timeOf(a.createdAt)).slice(0,50);
-      render();
-    };
-    for(const [kind,request] of [
-      ["current",query(collection(db,"issues"),where("reporterUid","==",user.uid))],
-      ["legacy",query(collection(db,"issues"),where("reporterEmail","==",(user.email||"").toLowerCase()))]
-    ]){
-      state.unsubscribe.push(onSnapshot(request,snap=>{
-        issueSets[kind]=snap.docs.map(d=>({id:d.id,...d.data()}));
-        state.errors.delete("Reporter issues");combineIssues();
-      },error("Reporter issues")));
-    }
   }
+  // Students never subscribe to staff report feeds. Their notification center
+  // shows only records explicitly delivered to their own Firebase inbox.
   if(staff)state.unsubscribe.push(onSnapshot(
     query(collection(db,"grading_alerts"),orderBy("createdAt","desc"),limit(30)),
     snap=>{state.gradingAlerts=snap.docs.map(d=>({id:d.id,...d.data()}));success("Grading alerts")},

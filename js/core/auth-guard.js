@@ -84,10 +84,18 @@ onAuthStateChanged(auth, async (user) => {
     !isLoginPage &&
     !isIssuesPage
   ) {
-    window.location.href = "student-dashboard.html";
+    window.location.href = "student-home.html";
+    return;
   }
-  // 🚀 THE FIX: Teacher settings block removed. Teachers can now view settings.html freely.
+  if (activeRole !== "student" && currentPath.endsWith("/student-home.html")) {
+    window.location.href = "teacher-home.html";
+    return;
+  }
 
+  // Only verified administrator accounts see management shortcuts.
+  if (actualRole === "superadmin" && activeRole === "superadmin") {
+    document.querySelectorAll("[data-admin-only]").forEach(el => el.classList.remove("hidden"));
+  }
   // 5. Security cleared: Display the UI
   const pageBody = document.getElementById("pageBody");
   if (pageBody) pageBody.classList.remove("hidden");

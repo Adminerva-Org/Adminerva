@@ -117,3 +117,24 @@ test('Practice Lab uses its own tabs and remains in the student module switcher'
   assert.match(project.container.innerHTML,/Practice Lab/);
   assert.doesNotMatch(project.container.innerHTML,/Practice Courses/);
 });
+
+test('signed-in home navigation is distinct from project and staff task tabs',()=>{
+  const student=mount('student-home','home','student');
+  const teacher=mount('staff-home','home','teacher');
+  assert.match(student.container.innerHTML,/Student Home/);
+  assert.match(teacher.container.innerHTML,/Staff Home/);
+  const studentTabs=student.container.innerHTML.split('id="av-desktop-nav"')[1]?.split('</div>')[0]?.split('>')[1]||'';
+  const staffTabs=teacher.container.innerHTML.split('id="av-desktop-nav"')[1]?.split('</div>')[0]?.split('>')[1]||'';
+  assert.equal(studentTabs,'');
+  assert.equal(staffTabs,'');
+  assert.doesNotMatch(studentTabs,/Practice Lab|Assignments/);
+  assert.ok(existsSync('student-home.html'));
+  assert.ok(existsSync('teacher-home.html'));
+});
+test('student pages request an updated nav asset instead of a stale browser cache',()=>{
+  for (const path of ['student-dashboard.html','student-assessments.html',
+    'student-practice.html','student-playground.html','student-settings.html']) {
+    const page=readFileSync(path,'utf8');
+    assert.match(page,/adminerva-nav[.]js[?]v=2026[.]10[.]16[.]3/);
+  }
+});

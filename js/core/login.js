@@ -116,8 +116,8 @@ const handleOAuthLogin = async (provider, providerType) => {
         : "student",
     );
     window.location.href = isEducator
-      ? "reporeviewDashboard.html"
-      : "student-dashboard.html";
+      ? "teacher-home.html"
+      : "student-home.html";
   } catch (error) {
     await signOut(auth);
 

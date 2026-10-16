@@ -53,6 +53,9 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="absolute left-0 top-full w-56 sm:w-64 hidden group-hover:block z-[100] pt-3">
                 <div class="bg-gray-900/95 backdrop-blur-xl rounded-md shadow-[0_10px_30px_rgba(0,0,0,0.8)] border border-cyan-900/50 overflow-hidden">
                     <div class="px-4 py-2 bg-gray-800/50 border-b border-gray-700/50 text-[10px] font-bold text-cyan-500 uppercase tracking-widest">Adminerva Modules</div>
+                    <a href="teacher-home.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
+                        <span class="text-cyan-500">⌂</span> Staff Home
+                    </a>
                     <a href="reporeviewDashboard.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
                         <span class="text-cyan-500">💻</span> Educator Hub
                     </a>
@@ -76,6 +79,9 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="absolute left-0 top-full w-56 sm:w-64 hidden group-hover:block z-[100] pt-3">
                 <div class="bg-gray-900/95 backdrop-blur-xl rounded-md shadow-[0_10px_30px_rgba(0,0,0,0.8)] border border-cyan-900/50 overflow-hidden">
                     <div class="px-4 py-2 bg-gray-800/50 border-b border-gray-700/50 text-[10px] font-bold text-cyan-500 uppercase tracking-widest">Student Modules</div>
+                    <a href="student-home.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
+                        <span class="text-cyan-500">⌂</span> Student Home
+                    </a>
                     <a href="student-dashboard.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
                         <span class="text-cyan-500">📂</span> Project Hub
                     </a>
@@ -90,8 +96,35 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
     `;
 
+  // Home pages are separate from every module's task tabs.
+  if (activeModule === "student-home") {
+    centerLinks = "";
+    rightSide = `
+            <div class="flex items-center">
+                ${reportIcon}
+                <div class="flex flex-col items-end justify-center border-l border-gray-700 pl-3 sm:pl-4 py-1">
+                    <button id="signOutBtn" class="text-xs sm:text-sm text-gray-300 hover:text-white font-bold transition leading-tight cursor-pointer">Sign Out</button>
+                    <span id="userEmailDisplay" class="text-[9px] sm:text-[10px] text-slate-400 leading-tight truncate max-w-[130px] my-0.5"></span>
+                    <span class="text-[8px] sm:text-[9px] font-bold text-cyan-500 uppercase tracking-widest leading-tight">Student</span>
+                </div>
+            </div>
+        `;
+    logoBlock = studentLogoBlock;
+  } else if (activeModule === "staff-home") {
+    centerLinks = "";
+    rightSide = `
+            <div class="flex items-center">
+                ${reportIcon}${settingsIcon}
+                <div class="flex flex-col items-end justify-center border-l border-gray-700 pl-3 sm:pl-4 h-10">
+                    <button id="signOutBtn" class="text-xs sm:text-sm text-gray-300 hover:text-white font-bold transition leading-none py-1 cursor-pointer">Sign Out</button>
+                    <span class="text-[8px] sm:text-[10px] font-bold text-cyan-500 uppercase tracking-wider mt-1 leading-none">${isSuperAdmin ? "Super Admin" : "Teacher"}</span>
+                </div>
+            </div>
+        `;
+    logoBlock = adminLogoBlock;
+  }
   // Student Default Project Hub
-  if (activeModule === "student") {
+  else if (activeModule === "student") {
     centerLinks = `
             <a href="student-dashboard.html" class="${getStyle("dashboard")}">Dashboard</a>
             <a href="student-assessments.html" class="${getStyle("assessments")}">Assignments</a>
