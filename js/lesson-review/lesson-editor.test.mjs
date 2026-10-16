@@ -71,6 +71,6 @@ test("lesson generation schema requests school-required session fields",()=>{
 });
 test("print exporter uses the active Adminerva teacher and subject settings",()=>{
  const exporter=fs.readFileSync("js/lesson-review/document-exporter.js","utf8");
- assert.match(exporter,/localStorage\\.getItem\\("Adminerva_defaultSubject"\\)/);
- assert.match(exporter,/localStorage\\.getItem\\("Adminerva_defaultTeacher"\\)/);
+ assert.ok(exporter.includes('localStorage.getItem("Adminerva_defaultSubject")'));
+ assert.ok(exporter.includes('localStorage.getItem("Adminerva_defaultTeacher")'));
 });
