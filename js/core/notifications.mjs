@@ -13,7 +13,7 @@ const isTeacher = () => staffEmails.has((state.user?.email||"").toLowerCase()) &
 const visibleForRole = item => {
   if (item.type !== "issue" || isAdmin()) return true;
   const match = String(item.target||"").match(/^issues[.]html[?]issue=([^&#]+)/);
-  const id = item.sourceId || (match ? decodeURIComponent(match[1]) : "");
+  const id = item.sourceId || (match ? match[1] : "");
   const issue = state.issues.find(x=>x.id===id);
   const category = item.reportCategory || issue?.category;
   const audience = item.reportAudience || issue?.audience || "admin";
