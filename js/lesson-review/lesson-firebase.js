@@ -49,7 +49,7 @@ window.loadLibraryFolders = async function () {
     }
 
     libraryData.forEach((folder) => {
-      const docCount = folder.documents ? folder.documents.length : 0;
+      const docCount=(folder.documents?.length||0)+(folder.documentCount||0);
       const safeId = escapeHTML(folder.id);
       const safeName = escapeHTML(folder.name);
 
@@ -66,6 +66,16 @@ window.loadLibraryFolders = async function () {
   } catch (e) {
     container.innerHTML = `<div class="text-xs text-red-500 italic">Failed to load library: ${escapeHTML(e.message)}</div>`;
   }
+};
+
+// Read only the teacher-selected reference folders. Existing documents remain
+// in their legacy arrays; new PDFs are stored in child documents.
+window.fetchReferenceDocuments=async function(folderId){
+  const root=await getDoc(doc(db,"reference_folders",folderId));
+  if(!root.exists())throw Error("Selected reference folder no longer exists.");
+  const legacy=Array.isArray(root.data().documents)?root.data().documents:[];
+  const nested=await getDocs(collection(db,"reference_folders",folderId,"documents"));
+  return [...legacy,...nested.docs.map(record=>record.data())];
 };
 
 window.fetchPreviousPlan = async function (
