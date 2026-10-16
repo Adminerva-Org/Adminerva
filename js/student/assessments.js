@@ -14,6 +14,7 @@ let userProfiles = [];
 let currentSection = "";
 let myGrades = {};
 let mySubmitted = {};
+let myEvidence = {};
 let submissionLookupSucceeded = false;
 
 function escapeHTML(str) {
@@ -107,6 +108,7 @@ async function fetchAssessments() {
 
   myGrades = {};
   mySubmitted = {};
+  myEvidence = {};
   submissionLookupSucceeded = false;
   if(studentId) {
     try{
@@ -124,6 +126,13 @@ async function fetchAssessments() {
     }catch(error){
       console.warn("Submission receipts are not available; status remains unknown:",error);
     }
+  }
+  if(studentId){
+    try{
+      const evidenceSnap=await getDocs(query(collection(db,"assessment_evidence"),
+        where("studentId","==",studentId)));
+      evidenceSnap.forEach(item=>{const data=item.data();myEvidence[data.assessmentId]=data;});
+    }catch(error){console.warn("V2 assessment evidence status unavailable:",error);}
   }
   if (studentId) {
     try {
@@ -246,6 +255,7 @@ function renderAssessments() {
     const myGrade=myGrades[ass.id];
     const status=assessmentStatus({
       grade:myGrade,submitted:Boolean(mySubmitted[ass.id]),
+      evidenceStatus:myEvidence[ass.id]?.status||null,
       deadline:ass.noDeadline?null:ass.dueDate,
       knownSubmissions:submissionLookupSucceeded
     });
@@ -253,6 +263,8 @@ function renderAssessments() {
       graded:"text-emerald-800 bg-emerald-50 border-emerald-200",
       revision:"text-amber-800 bg-amber-50 border-amber-200",
       submitted:"text-blue-800 bg-blue-50 border-blue-200",
+      reviewed:"text-emerald-800 bg-emerald-50 border-emerald-200",
+      evidence:"text-indigo-800 bg-indigo-50 border-indigo-200",
       pastdue:"text-rose-700 bg-rose-50 border-rose-200",
       notSubmitted:"text-slate-700 bg-slate-100 border-slate-200",
       unknown:"text-amber-700 bg-amber-50 border-amber-200"
