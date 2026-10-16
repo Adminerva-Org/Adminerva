@@ -315,25 +315,42 @@ function attachTabEvents() {
 // 4. STORAGE, ZIP, & SNAPSHOTS
 // ==========================================
 let autoSaveTimeout;
-function triggerAutoSave() {
+function persistWorkspace(){
   clearTimeout(autoSaveTimeout);
-  autoSaveTimeout = setTimeout(() => {
-    const state = { lang: currentLang, files: {}, fileOrder: fileOrder };
-    for (const [name, file] of Object.entries(workspaceFiles)) {
-      state.files[name] = file.model.getValue();
+  const state={lang:currentLang,files:{},fileOrder:[...fileOrder],
+    savedAt:new Date().toISOString()};
+  for(const [name,file] of Object.entries(workspaceFiles))state.files[name]=file.model.getValue();
+  try{
+    localStorage.setItem("Adminerva_Playground_Workspace",JSON.stringify(state));
+    const indicator=document.getElementById("autoSaveIndicator");
+    if(indicator){
+      indicator.textContent="Saved locally";
+      indicator.classList.remove("opacity-0","text-rose-400");
+      indicator.classList.add("text-emerald-400");
     }
-    localStorage.setItem(
-      "Adminerva_Playground_Workspace",
-      JSON.stringify(state),
-    );
-
-    const indicator = document.getElementById("autoSaveIndicator");
-    if (indicator) {
+    return true;
+  }catch(error){
+    console.error("Workspace save failed:",error);
+    const indicator=document.getElementById("autoSaveIndicator");
+    if(indicator){
+      indicator.textContent="Not saved — local storage is unavailable or full";
       indicator.classList.remove("opacity-0");
-      setTimeout(() => indicator.classList.add("opacity-0"), 2000);
+      indicator.classList.add("text-rose-400");
     }
-  }, 1000);
+    return false;
+  }
 }
+function triggerAutoSave(){
+  clearTimeout(autoSaveTimeout);
+  const indicator=document.getElementById("autoSaveIndicator");
+  if(indicator){
+    indicator.textContent="Unsaved changes";
+    indicator.classList.remove("opacity-0");
+    indicator.classList.remove("text-emerald-400");
+  }
+  autoSaveTimeout=setTimeout(persistWorkspace,1000);
+}
+window.addEventListener("pagehide",()=>{if(autoSaveTimeout)persistWorkspace()});
 
 function loadLocalWorkspace() {
   const saved = localStorage.getItem("Adminerva_Playground_Workspace");
@@ -653,8 +670,8 @@ function bindUIEvents() {
   document.getElementById("runBtn")?.addEventListener("click", executeCode);
   document.getElementById("exportZipBtn")?.addEventListener("click", exportZIP);
   document.getElementById("saveProjectBtn")?.addEventListener("click", () => {
-    triggerAutoSave();
-    alert("Workspace Saved Locally!");
+    if(persistWorkspace())alert("Workspace saved on this device.");
+    else alert("Save failed. Please export a ZIP before leaving this page.");
   });
   document
     .getElementById("loadProjectBtn")
