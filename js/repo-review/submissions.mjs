@@ -53,7 +53,9 @@ function render(){
       hyperlink(links,"Review selected evidence →","assessment-evidence-review.html?student="+
         encodeURIComponent(item.studentId)+"&assessment="+encodeURIComponent(item.assessmentId));
       card.append(make("p","text-xs text-slate-500 mt-2",
-        d.source==="teacher_discovered"\n          ?"Instructor-discovered historical evidence; not a student submission."\n          :"Student-selected SHAs are unverified until checkpoint review."));
+        item.source==="teacher_discovered"
+          ?"Instructor-discovered historical evidence; not a student submission."
+          :"Student-selected SHAs are unverified until checkpoint review."));
     }else{
       hyperlink(links,"Open RepoFetch →","repofetch.html");
     }
