@@ -384,6 +384,19 @@ async function exportZIP() {
   btn.innerHTML = `📥 Export ZIP`;
 }
 
+// Expose only an in-memory snapshot to the authenticated cloud backup module.
+window.adminervaPlaygroundState=function(){
+  const files={};
+  for(const [name,file] of Object.entries(workspaceFiles))files[name]=file.model.getValue();
+  return {lang:currentLang,files,fileOrder:[...fileOrder]};
+};
+window.adminervaRestorePlayground=function(state){
+  if(!state?.lang||!state.files||typeof state.files!=="object")return false;
+  if(!persistWorkspace())return false;
+  createWorkspace(state.lang,state.files,state.fileOrder);
+  return persistWorkspace();
+};
+
 async function shareSnapshot() {
   const btn = document.getElementById("snapshotBtn");
   if (!btn) return;
