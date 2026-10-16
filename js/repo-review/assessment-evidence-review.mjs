@@ -70,7 +70,8 @@ async function loadEvidence(){
        evidence.repository!==student.repoUrl)throw Error("Submission identity or repository does not match the roster.");
     state.evidence=evidence;
     const claims=await getDocs(query(collection(db,"commit_reclaims"),where("studentId","==",student.id)));
-    state.claims=claims.docs.filter(d=>d.data().assessmentId===assessment.id).map(d=>({id:d.id,...d.data()}));
+    state.claims=claims.docs.filter(d=>d.data().repository===evidence.repository &&
+      evidence.selectedCommits.includes(d.data().sha)).map(d=>({id:d.id,...d.data()}));
     const repo=parseRepository(evidence.repository),base=repo.url;
     el("evidenceTitle").textContent=(student.name||student.id)+" — "+(assessment.title||assessment.id);
     el("evidenceMetadata").textContent="Status: "+evidence.status+
