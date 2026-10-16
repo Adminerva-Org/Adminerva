@@ -767,7 +767,15 @@ function bindUIEvents() {
   // Using optional chaining (?.) so missing buttons don't crash the script
   document
     .getElementById("languageSelect")
-    ?.addEventListener("change", (e) => createWorkspace(e.target.value));
+    ?.addEventListener("change", (e) => {
+      const nextLang=e.target.value;
+      if(nextLang===currentLang)return;
+      if(!persistWorkspace()) {
+        e.target.value=currentLang;
+        return alert("Current code was not saved. Export ZIP before changing languages.");
+      }
+      loadLocalWorkspace(nextLang);
+    });
   document.getElementById("runBtn")?.addEventListener("click", executeCode);
   document.getElementById("exportZipBtn")?.addEventListener("click", exportZIP);
   document.getElementById("saveProjectBtn")?.addEventListener("click", () => {
@@ -776,7 +784,12 @@ function bindUIEvents() {
   });
   document
     .getElementById("loadProjectBtn")
-    ?.addEventListener("click", loadLocalWorkspace);
+    ?.addEventListener("click", () => {
+      if(workspaceDirty && !confirm("Discard unsaved editor changes and reload the last saved local draft?"))return;
+      loadLocalWorkspace(currentLang);
+    });
+  document.getElementById("legacyImportBtn")?.addEventListener("click", window.adminervaImportLegacyPlayground);
+  document.getElementById("undoRestoreBtn")?.addEventListener("click", window.adminervaUndoPlaygroundRestore);
   document
     .getElementById("snapshotBtn")
     ?.addEventListener("click", shareSnapshot);
@@ -788,8 +801,11 @@ function bindUIEvents() {
 
   // Re-added reset logic for safety if you decide to put the button back later
   document.getElementById("resetBtn")?.addEventListener("click", () => {
-    if (confirm("Wipe all files and reset workspace?"))
+    if (confirm("Reset this language's files? The current version will remain in cloud history if you saved it there.")) {
+      if(!persistWorkspace())return alert("Current draft could not be saved. Export ZIP first.");
       createWorkspace(currentLang);
+      triggerAutoSave();
+    }
   });
 
   document.getElementById("clearConsoleBtn")?.addEventListener("click", () => {
