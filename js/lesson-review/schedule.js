@@ -136,8 +136,44 @@ window.hideLoader = function () {
 
 document.addEventListener("DOMContentLoaded", async () => {
   loadConfig();
-  initFirebase();
+  const year = localStorage.getItem("Adminerva_schedule_selected_year");
+  const semester = localStorage.getItem("Adminerva_schedule_selected_semester");
+  if (year) {
+    try { scheduleScope(year, semester || "S1"); activeYear = year; }
+    catch (error) { console.warn("Invalid saved school year:", error); }
+  }
+  if (semester === "S1" || semester === "S2") activeSemester = semester;
+  syncPeriodInputs();
+  document.getElementById("scheduleSchoolYear")?.addEventListener("change", window.changeSchedulePeriod);
+  document.getElementById("scheduleSemester")?.addEventListener("change", window.changeSchedulePeriod);
+  updateEditControls();
+  await initFirebase();
 });
+
+window.changeSchedulePeriod = async function () {
+  if (isSaving) { syncPeriodInputs(); return; }
+  const requestedYear = document.getElementById("scheduleSchoolYear")?.value.trim();
+  const requestedSemester = document.getElementById("scheduleSemester")?.value;
+  try {
+    scheduleScope(requestedYear, requestedSemester);
+  } catch (error) {
+    alert(error.message);
+    syncPeriodInputs();
+    return;
+  }
+  if (requestedYear === activeYear && requestedSemester === activeSemester) return;
+  if (isEditing && !confirm("Switch schedules and discard unsaved timetable edits? Save the current semester first if needed.")) {
+    syncPeriodInputs();
+    return;
+  }
+  isEditing = false;
+  updateEditControls();
+  activeYear = requestedYear;
+  activeSemester = requestedSemester;
+  localStorage.setItem("Adminerva_schedule_selected_year", activeYear);
+  localStorage.setItem("Adminerva_schedule_selected_semester", activeSemester);
+  await fetchScheduleFromCloud();
+};
 // --- MODAL & CONFIG LOGIC ---
 window.openSettingsModal = function () {
   document.getElementById("configSections").value =
@@ -172,8 +208,13 @@ window.saveSettingsConfig = async function () {
     document.getElementById("configEvents").value,
   );
 
+  // Keep existing unsaved edits when changing dropdown options. The user
+  // explicitly saves the timetable with Save Schedule after reviewing it.
+  if (isEditing) {
+    const draft = getTableDataFromDOM();
+    localStorage.setItem(currentScope().jsonKey, JSON.stringify(draft));
+  }
   loadConfig();
-  if (isEditing) await saveScheduleData(true);
   renderTable();
   closeSettingsModal();
 };
@@ -195,36 +236,20 @@ function loadConfig() {
 
 // --- EDIT/LOCK ENGINE ---
 window.toggleEditMode = async function () {
+  if (isSaving) return;
   if (isEditing) {
-    const saveSuccess = await saveScheduleData();
-    if (!saveSuccess) return;
-
-    isEditing = false;
-    document.getElementById("editSaveBtn").innerHTML =
-      "<span>✏️</span> Edit Schedule";
-    document.getElementById("editSaveBtn").className =
-      "bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700 transition shadow-sm flex items-center gap-2";
-    document.getElementById("modeBadge").className =
-      "bg-gray-200 text-gray-700 text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider";
-    document.getElementById("modeBadge").textContent = "🔒 Read-Only";
-
-    document.getElementById("addClassBtn").classList.add("hidden");
-    document.getElementById("addEventBtn").classList.add("hidden");
+    isSaving = true;
+    try {
+      const saved = await window.saveScheduleData();
+      if (!saved) return;
+      isEditing = false;
+    } finally {
+      isSaving = false;
+    }
   } else {
     isEditing = true;
-    document.getElementById("editSaveBtn").innerHTML =
-      "<span>💾</span> Save to Cloud";
-    document.getElementById("editSaveBtn").className =
-      "bg-green-600 text-white px-6 py-2 rounded font-bold hover:bg-green-700 transition shadow-sm flex items-center gap-2";
-    document.getElementById("modeBadge").className =
-      "bg-green-100 text-green-800 text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider animate-pulse";
-    document.getElementById("modeBadge").textContent = "🛠️ Editing Mode";
-
-    document.getElementById("addClassBtn").classList.remove("hidden");
-    document.getElementById("addClassBtn").classList.add("flex");
-    document.getElementById("addEventBtn").classList.remove("hidden");
-    document.getElementById("addEventBtn").classList.add("flex");
   }
+  updateEditControls();
   renderTable();
 };
 
