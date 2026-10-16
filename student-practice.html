@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>Practice Lab | Adminerva</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=2" />
+</head>
+<body id="pageBody" class="hidden bg-slate-100 min-h-screen text-slate-900 font-sans">
+  <div id="adminerva-nav" data-module="student" data-page="practice"></div>
+  <main class="max-w-5xl mx-auto px-4 py-7">
+    <header class="mb-6">
+      <p class="text-xs font-bold text-cyan-800 uppercase tracking-wider">Adminerva · Student Learning</p>
+      <h1 class="text-3xl font-extrabold text-slate-900 my-2">Practice Lab</h1>
+      <p class="text-sm text-slate-600 max-w-3xl">Learn a small idea, predict the result of a new example, then explain your reasoning. Missions change between attempts and are for practice, not graded exams.</p>
+    </header>
+    <p id="practiceStatus" role="status" aria-live="polite" class="text-sm text-slate-600 mb-4">Loading your learning progress…</p>
+    <div id="practiceCourseList" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+    <section id="practiceMissionPanel" class="hidden bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-7 mt-5" aria-labelledby="practiceMissionTitle">
+      <button type="button" id="practiceBackBtn" class="mb-4 text-sm font-bold text-blue-700 underline">← All courses</button>
+      <p id="practiceCourseName" class="text-xs text-slate-600 font-bold uppercase tracking-widest"></p>
+      <h2 id="practiceMissionTitle" class="text-2xl font-bold mt-2"></h2>
+      <p id="practiceConcept" class="text-sm text-slate-700 my-4"></p>
+      <pre id="practiceCode" class="whitespace-pre-wrap break-words overflow-x-auto bg-slate-900 text-cyan-100 p-4 rounded-lg text-sm font-mono" aria-label="Code or algorithm example"></pre>
+      <h3 id="practicePrompt" class="font-bold text-base text-slate-900 mt-5 mb-3"></h3>
+      <fieldset>
+        <legend class="text-xs text-slate-600 mb-3">Predict before checking. Choose one answer.</legend>
+        <div id="practiceChoices" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+      </fieldset>
+      <label for="practiceReasoning" class="block font-bold text-sm mt-5 mb-2">Your reasoning</label>
+      <textarea id="practiceReasoning" rows="3" maxlength="500"
+        placeholder="Explain which statement or condition caused your prediction (at least 25 characters)."
+        class="w-full p-3 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500"></textarea>
+      <p class="text-xs text-slate-500 mt-1">Explain in your own words. This is a learning reflection, not an AI-detection test.</p>
+      <div id="practiceFeedback" role="status" aria-live="polite" class="mt-4 text-sm font-semibold"></div>
+      <div class="flex gap-3 mt-5 flex-wrap">
+        <button id="practiceCheckBtn" type="button" class="bg-blue-700 text-white px-5 py-3 rounded-lg font-bold">Check prediction</button>
+        <button id="practiceFinishBtn" type="button" class="hidden bg-emerald-700 text-white px-5 py-3 rounded-lg font-bold">Complete mission</button>
+        <button id="practiceRetryBtn" type="button" class="hidden px-4 py-3 rounded-lg border border-slate-300 font-bold">New example</button>
+      </div>
+      <p class="mt-4 text-xs text-slate-500">Practice completions are saved to your account when Firebase is available. They do not alter school grades.</p>
+    </section>
+  </main>
+  <script src="js/core/adminerva-nav.js"></script>
+  <script src="js/core/adminerva-loader.js"></script>
+  <script type="module" src="js/core/auth-guard.js"></script>
+  <script type="module" src="js/student/practice.js"></script>
+</body>
+</html>
