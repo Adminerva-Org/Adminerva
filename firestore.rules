@@ -46,7 +46,10 @@ service cloud.firestore {
       allow read, write: if isTeacher() &&
         collection != "issues" &&
         collection != "notifications" &&
-        collection != "notification_history";
+        collection != "notification_history" &&
+        collection != "commit_reclaims" &&
+        collection != "commit_claim_decisions" &&
+        collection != "commit_claim_conflicts";
     }
 
     match /students/{studentId} {
@@ -120,7 +123,8 @@ service cloud.firestore {
     // A reclaim is an unverified attribution request, not a transfer of
     // authorship. Only staff can accept/reject it; students may withdraw.
     match /commit_reclaims/{claimId} {
-      allow read: if signedIn() && ownsStudentProfile(resource.data.studentId);
+      allow read: if isInstructor() ||
+        (signedIn() && ownsStudentProfile(resource.data.studentId));
       allow create: if signedIn() &&
         request.resource.data.keys().hasOnly(["studentId","assessmentId","section",
           "repository","sha","detectedAuthorName","detectedAuthorLogin",
@@ -155,6 +159,16 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["status","withdrawnAt"]);
       allow delete: if false;
+    }
+
+    // Staff review provenance. Decisions are administrator-controlled for now.
+    match /commit_claim_decisions/{decisionId} {
+      allow read: if isInstructor();
+      allow write: if isAdmin();
+    }
+    match /commit_claim_conflicts/{conflictId} {
+      allow read: if isInstructor();
+      allow write: if false; // Cloud Functions Admin SDK only.
     }
 
     match /student_dashboard_cache/{studentId} {
