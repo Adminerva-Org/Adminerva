@@ -1,8 +1,9 @@
+import {validateGeneratedLesson} from "./lesson-plan-helpers.mjs";
 window.initiateGenerationFlow = async function () {
   const engineMode = localStorage.getItem("Adminerva_engine_mode") || "cloud";
   const gemKey = localStorage.getItem("Adminerva_gemini_token");
   const model =
-    localStorage.getItem("Adminerva_ai_model") || "gemini-1.5-flash";
+    localStorage.getItem("Adminerva_ai_model") || "gemini-2.5-flash";
 
   if (engineMode === "cloud" && !gemKey) {
     return alert("Missing Gemini API Key in Global Settings.");
@@ -59,6 +60,7 @@ window.initiateGenerationFlow = async function () {
     subject,
     academicTerm,
     courseWeek,
+    document.getElementById("lpSchoolYear").value,
   );
 
   if (!window.cachedCustomInstructions) {
@@ -145,7 +147,7 @@ window.executeFinalGeneration = async function (userClarification) {
   const engineMode = localStorage.getItem("Adminerva_engine_mode") || "cloud";
   const gemKey = localStorage.getItem("Adminerva_gemini_token");
   const model =
-    localStorage.getItem("Adminerva_ai_model") || "gemini-1.5-flash";
+    localStorage.getItem("Adminerva_ai_model") || "gemini-2.5-flash";
   const schoolYear =
     document.getElementById("lpSchoolYear").value || "2026-2027";
   const subject = localStorage.getItem("Adminerva_defaultSubject") || "Subject";
@@ -391,6 +393,10 @@ Reference Text:\n${window.cachedCompiledText.substring(0, 25000)}`;
       planData = JSON.parse(rawJson);
     }
 
+    // Reject structurally invalid newly generated lessons rather than silently
+    // accepting missing school-required sessions, standards or objectives.
+    const problems=validateGeneratedLesson(planData,window.currentTargetGrade);
+    if(problems.length)throw Error("Generated lesson requires correction: "+problems.slice(0,6).join("; "));
     // 🚀 THE FIX: Standardized to the new Adminerva namespace
     const defaultPrelim =
       localStorage.getItem("Adminerva_defaultPrelim") ||
@@ -430,7 +436,7 @@ Reference Text:\n${window.cachedCompiledText.substring(0, 25000)}`;
     window.renderOutput();
   } catch (error) {
     console.error("Generation Crash:", error);
-    alert("Generation failed. Check console for details.");
+    alert("Generation failed: "+String(error.message||"Unknown error"));
   } finally {
     window.hideLoader();
   }
