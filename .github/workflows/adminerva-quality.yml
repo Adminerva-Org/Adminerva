@@ -21,6 +21,8 @@ jobs:
         run: |
           node --input-type=module --check < js/core/notifications.mjs
           node --input-type=module --check < js/student/submission-receipts.mjs
+          node --input-type=module --check < js/lesson-review/library.js
+          node --input-type=module --check < js/presentation-review/presentation-export.js
           node --input-type=module --check < js/core/issues.js
           node --input-type=module --check < js/core/adminerva-loader.js
           node --input-type=module --check < js/core/adminerva-nav.js
