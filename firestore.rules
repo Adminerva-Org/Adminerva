@@ -246,7 +246,6 @@ service cloud.firestore {
         return request.resource.data.keys().hasOnly([
             "ownerUid", "sourceKey", "type", "title", "body", "target",
             "at", "savedForLater", "openedAt", "lastInteractedAt",
-            "reportCategory", "reportAudience",
             "reportCategory", "reportAudience"
           ]) &&
           request.resource.data.keys().hasAll([
