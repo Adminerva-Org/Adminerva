@@ -6,6 +6,10 @@ const {onDocumentCreated,onDocumentUpdated}=require("firebase-functions/v2/fires
 initializeApp();
 const db=getFirestore();
 const staffEmails=["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"];
+// Bug reports are always administrator-directed. Legacy reports have admin scope.
+const reportAudience=issue=>issue.category==="Bug"?"admin":issue.audience==="teacher"?"teacher":"admin";
+const isBugReport=issue=>issue.category==="Bug";
+const audienceEmails=issue=>reportAudience(issue)==="admin"?[staffEmails[0]]:[staffEmails[1]];
 const cleanId=value=>String(value||"").replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,150);
 async function byEmail(email){
   if(typeof email!=="string"||!email)return null;
@@ -13,6 +17,9 @@ async function byEmail(email){
   catch(error){if(error.code!=="auth/user-not-found")console.warn("User resolution failed",error.code);return null}
 }
 async function teacherIds(){return [...new Set((await Promise.all(staffEmails.map(byEmail))).filter(Boolean))]}
+async function audienceIds(issue){
+  return [...new Set((await Promise.all(audienceEmails(issue).map(byEmail))).filter(Boolean))];
+}
 async function notify(uid,id,item){
   if(!uid)return;
   const ref=db.doc("notifications/"+uid+"/items/"+cleanId(id));
@@ -20,6 +27,8 @@ async function notify(uid,id,item){
     title:String(item.title||"Notification").slice(0,160),
     body:String(item.body||"").slice(0,300),type:item.type,
     sourceId:item.sourceId||null,target:item.target||"issues.html",
+    ...(item.reportCategory?{reportCategory:item.reportCategory}:{}),
+    ...(item.reportAudience?{reportAudience:item.reportAudience}:{}),
     createdAt:FieldValue.serverTimestamp(),readAt:null
   })}
   catch(error){if(error.code!==6&&error.code!=="already-exists")throw error}
@@ -29,19 +38,22 @@ async function notifyMany(uids,id,payload){
 }
 exports.issueOpened=onDocumentCreated("issues/{issueId}",async event=>{
   const data=event.data?.data();if(!data)return;
-  await notifyMany(await teacherIds(),"report_new_"+event.params.issueId,{
+  await notifyMany(await audienceIds(data),"report_new_"+event.params.issueId,{
     type:"issue",title:"New issue report",body:data.title||"Untitled report",
-    sourceId:event.params.issueId,target:"issues.html?issue="+event.params.issueId
+    sourceId:event.params.issueId,target:"issues.html?issue="+event.params.issueId,
+    reportCategory:data.category,reportAudience:reportAudience(data)
   });
 });
 exports.issueStatusUpdated=onDocumentUpdated("issues/{issueId}",async event=>{
   const old=event.data?.before.data(),now=event.data?.after.data();
   if(!old||!now||old.status===now.status&&old.priority===now.priority)return;
+  if(isBugReport(now))return;
   const uid=now.reporterUid||await byEmail(now.reporterEmail);
   await notify(uid,"report_update_"+event.id,{
     type:"issue",title:"Your report was updated",
     body:(now.title||"Issue")+" · "+(now.status||"Open"),
-    sourceId:event.params.issueId,target:"issues.html?issue="+event.params.issueId
+    sourceId:event.params.issueId,target:"issues.html?issue="+event.params.issueId,
+    reportCategory:now.category,reportAudience:reportAudience(now)
   });
 });
 exports.issueCommentAdded=onDocumentCreated("issues/{issueId}/comments/{commentId}",async event=>{
@@ -49,11 +61,12 @@ exports.issueCommentAdded=onDocumentCreated("issues/{issueId}/comments/{commentI
   const issue=await db.doc("issues/"+event.params.issueId).get();if(!issue.exists)return;
   const item=issue.data(),reporter=item.reporterUid||await byEmail(item.reporterEmail);
   const actor=comment.authorUid||await byEmail(comment.authorEmail);
-  const recipients=(await teacherIds()).concat([reporter]).filter(uid=>uid!==actor);
+  const recipients=(isBugReport(item)?await audienceIds(item):(await audienceIds(item)).concat([reporter])).filter(uid=>uid!==actor);
   await notifyMany(recipients,"report_comment_"+event.params.commentId,{
     type:"issue",title:"New comment on a report",
     body:item.title||"Support report",sourceId:event.params.issueId,
-    target:"issues.html?issue="+event.params.issueId
+    target:"issues.html?issue="+event.params.issueId,
+    reportCategory:item.category,reportAudience:reportAudience(item)
   });
 });
 exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}",async event=>{
