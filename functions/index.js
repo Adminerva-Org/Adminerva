@@ -94,7 +94,12 @@ exports.commitReclaimRequested=onDocumentCreated("commit_reclaims/{claimId}",asy
   if(detectedLogin&&/^[A-Za-z0-9-]{1,39}$/.test(detectedLogin)){
     const matches=await db.collection("students").where("githubUsername","==",detectedLogin)
       .limit(10).get();
-    const canonical=value=>String(value||"").toLowerCase().replace(/\\.git$/,"").replace(/\\/$/,"");
+    const canonical=value=>{
+      let normalized=String(value||"").toLowerCase().trim();
+      if(normalized.endsWith("/"))normalized=normalized.slice(0,-1);
+      if(normalized.endsWith(".git"))normalized=normalized.slice(0,-4);
+      return normalized;
+    };
     possibleOriginalStudents=matches.docs.filter(d=>d.id!==claim.studentId&&
       canonical(d.data().repoUrl)===canonical(claim.repository)).map(d=>d.id);
   }
