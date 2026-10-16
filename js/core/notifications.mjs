@@ -4,7 +4,9 @@ import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
-const staffEmails = new Set(["babaynike2013@gmail.com", "josephsixson@mcstayuman.edu.ph"]);
+const ADMIN_EMAIL="babaynike2013@gmail.com";
+const TEACHER_EMAIL="josephsixson@mcstayuman.edu.ph";
+const staffEmails = new Set([ADMIN_EMAIL, TEACHER_EMAIL]);
 const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false };
 const el = id => document.getElementById(id);
 const make = (tag, className, text) => {
@@ -27,16 +29,20 @@ function storeRead(){try{localStorage.setItem(keyName(),JSON.stringify([...state
 function unread(item){return !item.history && !item.readAt && !state.read.has(item.key)}
 function collectionItems(){
   const rows=[],stored=new Set();
+  const isAdmin=(state.user?.email||"").toLowerCase()===ADMIN_EMAIL;
+  const canNotifyIssue=item=>isAdmin ||
+    (item.category!=="Bug" && item.recipientRole==="teacher");
+
   for(const n of state.notifications){
-    if(!n.title)continue;
+    if(!n.title || (n.type==="issue" && !canNotifyIssue(n)))continue;
     if(n.sourceId)stored.add(n.sourceId);
     rows.push({...n,key:"saved:"+n.id,at:timeOf(n.createdAt),target:targetUrl(n.target),saved:true});
   }
   for(const issue of state.issues){
-    if(stored.has(issue.id))continue;
+    if(stored.has(issue.id) || !canNotifyIssue(issue))continue;
     rows.push({key:"issue:"+issue.id,type:"issue",title:"Report: "+(issue.title||"Untitled"),
       body:(issue.status||"Open")+" · "+(issue.category||"Bug"),
-      at:timeOf(issue.createdAt),target:"issues.html?issue="+encodeURIComponent(issue.id),saved:false});
+      at:timeOf(issue.createdAt),recipientRole:issue.recipientRole||"admin",target:"issues.html?issue="+encodeURIComponent(issue.id),saved:false});
   }
   for(const alert of state.gradingAlerts){
     if(stored.has(alert.id))continue;
@@ -50,7 +56,8 @@ function collectionItems(){
       body:(sub.studentName||"Student")+" · "+(sub.assessmentTitle||"Assessment"),
       at:timeOf(sub.submittedAt),target:previewDestination("submission"),saved:false});
   }
-  return mergeNotificationHistory(rows,state.history,state.read);
+  return mergeNotificationHistory(rows,state.history,state.read)
+    .filter(item=>item.type!=="issue" || canNotifyIssue(item));
 }
 function render(){
   const list=el("av-alert-list"),badge=el("av-alert-count");if(!list||!badge)return;
@@ -156,11 +163,35 @@ function listen(user){
     state.errors.add(name);render();
   };
   const success=name=>{state.errors.delete(name);render()};
-  state.unsubscribe.push(onSnapshot(
-    query(collection(db,"notifications",user.uid,"items"),orderBy("createdAt","desc"),limit(60)),
-    snap=>{state.notifications=snap.docs.map(d=>({id:d.id,...d.data()}));success("Notifications")},error("Notifications")));
-  const staff=staffEmails.has((user.email||"").toLowerCase());
-  if(staff){
+  const email=(user.email||"").toLowerCase();
+  const isAdmin=email===ADMIN_EMAIL;
+  const staff=staffEmails.has(email);
+  const notificationsCollection=collection(db,"notifications",user.uid,"items");
+  if(isAdmin){
+    state.unsubscribe.push(onSnapshot(
+      query(notificationsCollection,orderBy("createdAt","desc"),limit(60)),
+      snap=>{state.notifications=snap.docs.map(d=>({id:d.id,...d.data()}));success("Notifications")},error("Notifications")));
+  }else{
+    // Rules exclude admin issue alerts even from old non-admin inboxes.
+    // Issue and non-issue notifications need separate rule-safe queries.
+    const sets={general:[],teacher:[]};
+    const combine=()=>{
+      const merged=new Map();
+      for(const item of [...sets.general,...sets.teacher])merged.set(item.id,item);
+      state.notifications=[...merged.values()].sort((a,b)=>timeOf(b.createdAt)-timeOf(a.createdAt)).slice(0,120);
+      success("Notifications");
+    };
+    const requests=[
+      ["general",query(notificationsCollection,where("type","!=","issue"),limit(120))],
+      ["teacher",query(notificationsCollection,where("recipientRole","==","teacher"),limit(120))]
+    ];
+    for(const [kind,request] of requests){
+      state.unsubscribe.push(onSnapshot(request,snap=>{
+        sets[kind]=snap.docs.map(d=>({id:d.id,...d.data()}));combine();
+      },error("Notifications")));
+    }
+  }
+  if(isAdmin){
     state.unsubscribe.push(onSnapshot(
       query(collection(db,"issues"),orderBy("createdAt","desc"),limit(40)),
       snap=>{state.issues=snap.docs.map(d=>({id:d.id,...d.data()}));success("Issue reports")},
@@ -168,16 +199,18 @@ function listen(user){
   }else{
     // New tickets use Firebase UID, legacy tickets may still have reporterEmail.
     // Keep both until old public report documents have been migrated.
-    const issueSets={current:[],legacy:[]};
+    const issueSets={current:[],legacy:[],teacher:[]};
     const combineIssues=()=>{
       const merged=new Map();
-      for(const item of [...issueSets.current,...issueSets.legacy])merged.set(item.id,item);
+      for(const item of [...issueSets.current,...issueSets.legacy,...issueSets.teacher])merged.set(item.id,item);
       state.issues=[...merged.values()].sort((a,b)=>timeOf(b.createdAt)-timeOf(a.createdAt)).slice(0,50);
       render();
     };
     for(const [kind,request] of [
+      ...(email===TEACHER_EMAIL?[["teacher",query(collection(db,"issues"),
+        where("recipientRole","==","teacher"))]]:[]),
       ["current",query(collection(db,"issues"),where("reporterUid","==",user.uid))],
-      ["legacy",query(collection(db,"issues"),where("reporterEmail","==",(user.email||"").toLowerCase()))]
+      ["legacy",query(collection(db,"issues"),where("reporterEmail","==",email))]
     ]){
       state.unsubscribe.push(onSnapshot(request,snap=>{
         issueSets[kind]=snap.docs.map(d=>({id:d.id,...d.data()}));
