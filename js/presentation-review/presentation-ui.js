@@ -425,7 +425,7 @@ window.injectPrefab = function (icon, text, hexColor) {
 
   window.activeQuillInstance.clipboard.dangerouslyPasteHTML(
     range.index,
-    htmlSnippet,
+    safeSlideHTML(htmlSnippet),
   );
   window.closePrefabModal();
 };
