@@ -301,6 +301,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ["gradebook", "Gradebook", "gradebook.html"],
         ["repofetch", "RepoFetch / Auto-Check", "repofetch.html"],
         ["submissions", "Submission Inbox", "submissions.html"],
+        ["evidence", "Assessment Evidence", "assessment-evidence-review.html"],
         ["studio", "Assessment Studio", "assessment-studio.html"],
         ["contributions", "Contribution Inspector", "contribution-inspector.html"],
         ["activity-grader", "Manual Grader", "temp-grading.html"]
