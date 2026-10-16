@@ -10,6 +10,7 @@ let mySections = [];
 let mySubjects = [];
 let myEvents = [];
 let isEditing = false;
+let draftRows = null;
 let activeYear = "2026-2027";
 let activeSemester = "S1";
 let loadSerial = 0;
@@ -167,6 +168,7 @@ window.changeSchedulePeriod = async function () {
     return;
   }
   isEditing = false;
+  draftRows = null;
   updateEditControls();
   activeYear = requestedYear;
   activeSemester = requestedSemester;
@@ -210,10 +212,7 @@ window.saveSettingsConfig = async function () {
 
   // Keep existing unsaved edits when changing dropdown options. The user
   // explicitly saves the timetable with Save Schedule after reviewing it.
-  if (isEditing) {
-    const draft = getTableDataFromDOM();
-    localStorage.setItem(currentScope().jsonKey, JSON.stringify(draft));
-  }
+  if (isEditing) draftRows = getTableDataFromDOM();
   loadConfig();
   renderTable();
   closeSettingsModal();
@@ -243,10 +242,12 @@ window.toggleEditMode = async function () {
       const saved = await window.saveScheduleData();
       if (!saved) return;
       isEditing = false;
+      draftRows = null;
     } finally {
       isSaving = false;
     }
   } else {
+    draftRows = cachedRows(currentScope());
     isEditing = true;
   }
   updateEditControls();
@@ -335,14 +336,14 @@ window.addRow = function (type) {
     });
   }
 
-  localStorage.setItem(currentScope().jsonKey, JSON.stringify(savedJson));
+  draftRows = savedJson;
   renderTable();
 };
 
 window.deleteRow = function (index) {
   const data = getTableDataFromDOM();
   data.splice(index, 1);
-  localStorage.setItem(currentScope().jsonKey, JSON.stringify(data));
+  draftRows = data;
   renderTable();
 };
 
@@ -350,7 +351,7 @@ function renderTable() {
   const tbody = document.getElementById("scheduleTableBody");
   tbody.innerHTML = "";
 
-  const savedJson = cachedRows(currentScope());
+  const savedJson = isEditing && draftRows ? draftRows : cachedRows(currentScope());
 
   if (savedJson.length === 0 && !isEditing) {
     tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-gray-400 italic">No schedule configured. Click 'Edit Schedule' to begin.</td></tr>`;
