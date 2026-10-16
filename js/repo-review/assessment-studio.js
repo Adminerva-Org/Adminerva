@@ -9,6 +9,8 @@ import {
   deleteDoc,
   query,
   orderBy,
+  limit,
+  where,
   serverTimestamp,
   writeBatch,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
@@ -304,7 +306,25 @@ window.deleteAssessment = async function () {
   ) {
     window.showSubtleLoader("Deleting Blueprint...");
     try {
-      await deleteDoc(doc(db, "assessments", currentAssessmentId));
+      const item=assessments.find(a=>a.id===currentAssessmentId);
+      if(item?.schemaVersion===2){
+        if((item.deployments||[]).length)throw Error(
+          "Withdraw all deployments before deleting a V2 blueprint.");
+        const [evidence,grades]=await Promise.all([
+          getDocs(query(collection(db,"assessment_evidence"),
+            where("assessmentId","==",currentAssessmentId),limit(1))),
+          getDocs(query(collection(db,"student_grades"),
+            where("taskId","==",currentAssessmentId),limit(1)))
+        ]);
+        if(!evidence.empty||!grades.empty)throw Error(
+          "This assessment has evidence or grades and cannot be deleted. Archive it instead.");
+        const batch=writeBatch(db);
+        batch.delete(doc(db,"assessment_private",currentAssessmentId));
+        batch.delete(doc(db,"assessments",currentAssessmentId));
+        await batch.commit();
+      }else{
+        await deleteDoc(doc(db,"assessments",currentAssessmentId));
+      }
       window.closeModals();
       await loadAssessments();
     } catch (e) {
