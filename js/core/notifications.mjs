@@ -6,6 +6,12 @@ import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, s
 
 const staffEmails = new Set(["babaynike2013@gmail.com", "josephsixson@mcstayuman.edu.ph"]);
 const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false };
+const isAdmin = () => (state.user?.email||"").toLowerCase() === [...staffEmails][0];
+const isTeacher = () => staffEmails.has((state.user?.email||"").toLowerCase()) && !isAdmin();
+// Old, untagged report alerts are conservatively hidden outside the admin inbox.
+const visibleForRole = item => item.type !== "issue" || isAdmin() ||
+  (item.reportCategory && item.reportCategory !== "Bug" &&
+   (!isTeacher() || item.reportAudience === "teacher"));
 const el = id => document.getElementById(id);
 const make = (tag, className, text) => {
   const node=document.createElement(tag);
@@ -28,15 +34,16 @@ function unread(item){return !item.history && !item.readAt && !state.read.has(it
 function collectionItems(){
   const rows=[],stored=new Set();
   for(const n of state.notifications){
-    if(!n.title)continue;
+    if(!n.title || !visibleForRole(n))continue;
     if(n.sourceId)stored.add(n.sourceId);
     rows.push({...n,key:"saved:"+n.id,at:timeOf(n.createdAt),target:targetUrl(n.target),saved:true});
   }
   for(const issue of state.issues){
-    if(stored.has(issue.id))continue;
+    if(stored.has(issue.id) || (!isAdmin() && issue.category === "Bug"))continue;
     rows.push({key:"issue:"+issue.id,type:"issue",title:"Report: "+(issue.title||"Untitled"),
       body:(issue.status||"Open")+" · "+(issue.category||"Bug"),
-      at:timeOf(issue.createdAt),target:"issues.html?issue="+encodeURIComponent(issue.id),saved:false});
+      at:timeOf(issue.createdAt),target:"issues.html?issue="+encodeURIComponent(issue.id),saved:false,
+      reportCategory:issue.category||"Bug",reportAudience:issue.audience||"admin"});
   }
   for(const alert of state.gradingAlerts){
     if(stored.has(alert.id))continue;
@@ -50,7 +57,7 @@ function collectionItems(){
       body:(sub.studentName||"Student")+" · "+(sub.assessmentTitle||"Assessment"),
       at:timeOf(sub.submittedAt),target:previewDestination("submission"),saved:false});
   }
-  return mergeNotificationHistory(rows,state.history,state.read);
+  return mergeNotificationHistory(rows,state.history,state.read).filter(visibleForRole);
 }
 function render(){
   const list=el("av-alert-list"),badge=el("av-alert-count");if(!list||!badge)return;
@@ -160,9 +167,12 @@ function listen(user){
     query(collection(db,"notifications",user.uid,"items"),orderBy("createdAt","desc"),limit(60)),
     snap=>{state.notifications=snap.docs.map(d=>({id:d.id,...d.data()}));success("Notifications")},error("Notifications")));
   const staff=staffEmails.has((user.email||"").toLowerCase());
-  if(staff){
+  if(isAdmin() || isTeacher()){
+    const request = isAdmin()
+      ? query(collection(db,"issues"),orderBy("createdAt","desc"),limit(40))
+      : query(collection(db,"issues"),where("audience","==","teacher"),limit(40));
     state.unsubscribe.push(onSnapshot(
-      query(collection(db,"issues"),orderBy("createdAt","desc"),limit(40)),
+      request,
       snap=>{state.issues=snap.docs.map(d=>({id:d.id,...d.data()}));success("Issue reports")},
       error("Issue reports")));
   }else{
