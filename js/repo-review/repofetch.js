@@ -65,6 +65,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           `<option value="${escapeHTML(sec)}">${escapeHTML(sec)}</option>`,
         ),
       );
+    const requested=new URLSearchParams(location.search).get("section");
+    if(requested&&uniqueSections.has(requested))select.value=requested;
   } catch (e) {
     console.error(e);
   }
@@ -275,6 +277,14 @@ window.fetchAndSyncRepos = async function () {
       window.showSubtleLoader("Applying fresh updates to view...");
       renderGroupedUI(repoGroups);
     }
+    const requested=new URLSearchParams(location.search);
+    if(requested.get("section")===currentClassSection){
+      const student=globalStudentsData[requested.get("student")];
+      if(student&&student.section===currentClassSection){
+        const info=parseRepoInfo(student.repoUrl);
+        if(info)await window.openGradingModal(student.id,info.owner,info.repo);
+      }
+    }
   } catch (e) {
     alert("Execution Error: " + e.message);
   } finally {
@@ -469,6 +479,8 @@ window.openGradingModal = async function (studentId, owner, repo) {
                   ${isTeacherScore ? "" : `<button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${task.id}', '${currentStudentSha}')" class="text-gray-400 hover:text-blue-500 transition px-1 shrink-0 border-l border-gray-200 pl-2 ml-1" title="Force Re-evaluate">🔄</button>`}
               </div>
           `;
+      } else if(task.schemaVersion===2){
+        actionAreaHtml = `<span class="text-xs text-amber-800 font-semibold">V2: approve the assessment checkpoint, then use Manual Review &amp; Score.</span>`;
       } else {
         actionAreaHtml = `
               <button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${task.id}', '${currentStudentSha}')" class="${gradeRecord ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-700"} text-white px-4 py-1.5 rounded text-xs font-bold transition shadow-sm whitespace-nowrap flex items-center gap-2">
@@ -554,6 +566,15 @@ window.openGradingModal = async function (studentId, owner, repo) {
         controlColumn.append(tools);
       }
     });
+    const requested=new URLSearchParams(location.search);
+    if(requested.get("student")===studentId){
+      const id=requested.get("assessment");
+      const card=id?document.getElementById("task-card-"+studentId+"-"+id):null;
+      if(card){
+        card.classList.add("ring-2","ring-indigo-400");
+        card.scrollIntoView({block:"center"});
+      }
+    }
   } catch (err) {
     console.error(err);
     listContainer.innerHTML = `<div class="text-center text-red-500 font-bold py-4 text-sm">Failed to load tasks.</div>`;

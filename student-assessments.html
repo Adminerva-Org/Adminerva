@@ -157,7 +157,7 @@
               class="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed"
             ></p>
           </div>
-          <section class="bg-white border border-blue-200 rounded-xl p-4 shadow-sm" aria-labelledby="submitReviewHeading">
+          <section id="legacySubmitPanel" class="bg-white border border-blue-200 rounded-xl p-4 shadow-sm" aria-labelledby="submitReviewHeading">
             <h3 id="submitReviewHeading" class="text-sm font-bold text-slate-800 mb-2">Submit for teacher review</h3>
             <p class="text-xs text-slate-600 mb-3">Creates a timestamped submission receipt tied to the repository's latest commit. A push alone does not notify your teacher.</p>
             <label for="submissionSourcePath" class="block text-xs font-semibold text-slate-700 mb-1">Source folder or file (optional)</label>
@@ -169,14 +169,23 @@
             </button>
             <p id="submissionReviewStatus" role="status" class="text-xs text-slate-600 mt-3 break-words"></p>
           </section>
+          <section id="evidencePanel" class="hidden bg-white border border-indigo-200 rounded-xl p-4 mt-4" aria-labelledby="evidenceHeading">
+            <h3 id="evidenceHeading" class="font-bold text-indigo-900">Commit Evidence Selection</h3>
+            <p class="text-xs text-slate-600 my-2">Select your own relevant commits, preview the actual file changes, and choose one revision containing the project you want evaluated. A Git author name is not proof of individual authorship. Reclaim requests require staff verification.</p>
+            <p id="evidenceStatus" class="text-sm text-slate-600 mb-3" role="status"></p>
+            <div id="evidenceCommitList" class="max-h-72 overflow-y-auto space-y-2"></div>
+            <div id="evidencePreview" class="mt-4 max-h-80 overflow-y-auto whitespace-pre-wrap break-words font-mono text-xs bg-slate-50 border rounded p-3" aria-label="Selected commit changes"></div>
+            <button id="evidenceSubmit" type="button" class="mt-4 bg-indigo-700 hover:bg-indigo-800 text-white rounded px-4 py-3 font-bold text-sm">Submit selected evidence</button>
+          </section>
         </div>
       </div>
     </div>
 
-    <script src="js/core/adminerva-nav.js?v=2026.10.16.3"></script>
+    <script src="js/core/adminerva-nav.js?v=2026.10.16.6"></script>
     <script src="js/core/adminerva-loader.js?v=2026.10.16.3"></script>
     <script type="module" src="js/core/auth-guard.js?v=2026.10.16.3"></script>
-    <script type="module" src="js/student/assessments.js"></script>
+    <script type="module" src="js/student/assessments.js?v=2026.10.16.6"></script>
     <script type="module" src="js/student/submission-receipts.mjs"></script>
+    <script type="module" src="js/student/assessment-evidence.mjs?v=2026.10.16.6"></script>
   </body>
 </html>

@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.16.5",
+  "version": "2026.10.16.6",
   "releasedAt": "2026-10-16",
-  "notes": "Allow original classroom assignment dates and validate extended deadlines in Assessment Studio."
+  "notes": "Assessment V2 evidence foundation, GitHub commit previews, individual checkpoints, reclaim requests and instructor review; backend deployment required."
 }

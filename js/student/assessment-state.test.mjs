@@ -17,3 +17,16 @@ test("publication and explicit revision requests take precedence",()=>{
 test("missing submission query cannot silently assert non-submission",()=>{
   assert.equal(assessmentStatus({knownSubmissions:false}).kind,"unknown");
 });
+
+
+test('V2 evidence states are independent of legacy submission receipts',()=>{
+  assert.deepEqual(assessmentStatus({evidenceStatus:'needs_review'}),{
+    kind:'evidence',text:'Evidence discovered — awaiting review'
+  });
+  assert.deepEqual(assessmentStatus({evidenceStatus:'approved'}),{
+    kind:'reviewed',text:'Checkpoint approved'
+  });
+  assert.deepEqual(assessmentStatus({evidenceStatus:'submitted'}),{
+    kind:'submitted',text:'Evidence submitted for review'
+  });
+});

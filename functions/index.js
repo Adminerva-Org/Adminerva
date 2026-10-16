@@ -69,6 +69,89 @@ exports.issueCommentAdded=onDocumentCreated("issues/{issueId}/comments/{commentI
     reportCategory:item.category,reportAudience:reportAudience(item)
   });
 });
+// A reclaim never changes Git's recorded author. Administrators receive a
+// private review alert; overlapping claims on the same SHA are flagged once.
+exports.commitReclaimRequested=onDocumentCreated("commit_reclaims/{claimId}",async event=>{
+  const claim=event.data?.data();if(!claim||claim.status!=="pending")return;
+  const adminId=await byEmail(staffEmails[0]);
+  if(!adminId)return;
+  await notify(adminId,"reclaim_request_"+event.params.claimId,{
+    type:"reclaim",title:"Commit reclaim requires verification",
+    body:"Review an attribution correction for a student Git commit.",
+    sourceId:event.params.claimId,target:"assessment-evidence-review.html?student="+
+      encodeURIComponent(claim.studentId)+"&assessment="+encodeURIComponent(claim.assessmentId)
+  });
+  const claims=await db.collection("commit_reclaims").where("sha","==",claim.sha).get();
+  const relevant=claims.docs.filter(d=>{
+    const x=d.data();return x.repository===claim.repository&&
+      ["pending","approved","shared"].includes(x.status);
+  });
+  // The Git-detected author is a provisional first attribution. If another
+  // linked student currently uses that login, a new reclaim is potentially
+  // disputed even when the detected author did not file an explicit claim.
+  const detectedLogin=String(claim.detectedAuthorLogin||"").replace(/^@/,"").trim();
+  let possibleOriginalStudents=[];
+  if(detectedLogin&&/^[A-Za-z0-9-]{1,39}$/.test(detectedLogin)){
+    const matches=await db.collection("students").where("githubUsername","==",detectedLogin)
+      .limit(10).get();
+    const canonical=value=>{
+      let normalized=String(value||"").toLowerCase().trim();
+      if(normalized.endsWith("/"))normalized=normalized.slice(0,-1);
+      if(normalized.endsWith(".git"))normalized=normalized.slice(0,-4);
+      return normalized;
+    };
+    possibleOriginalStudents=matches.docs.filter(d=>d.id!==claim.studentId&&
+      canonical(d.data().repoUrl)===canonical(claim.repository)).map(d=>d.id);
+  }
+  if(relevant.length<2&&!possibleOriginalStudents.length)return;
+  await db.doc("commit_claim_conflicts/"+claim.sha).set({
+    sha:claim.sha,repository:claim.repository,
+    claimIds:relevant.map(d=>d.id),claimCount:relevant.length,
+    detectedAuthorLogin:detectedLogin,
+    possibleOriginalStudentIds:possibleOriginalStudents,
+    updatedAt:FieldValue.serverTimestamp()
+  },{merge:true});
+  await notify(adminId,"reclaim_conflict_"+claim.sha,{
+    type:"reclaim",title:"Commit attribution dispute",
+    body:"A reclaim overlaps another request or challenges a student linked to the detected Git author. Verify attribution before crediting.",
+    sourceId:claim.sha,target:"assessment-evidence-review.html?student="+
+      encodeURIComponent(claim.studentId)+"&assessment="+encodeURIComponent(claim.assessmentId)
+  });
+});
+
+// V2 evidence receipts are distinct from legacy submission receipts.
+exports.assessmentEvidenceSubmitted=onDocumentCreated("assessment_evidence/{evidenceId}",async event=>{
+  const item=event.data?.data();
+  if(!item||item.status!=="submitted"||item.source==="teacher_discovered")return;
+  await notifyMany(await teacherIds(),"evidence_new_"+event.params.evidenceId,{
+    type:"submission",title:"Assessment evidence submitted",
+    body:"Selected Git commits are awaiting checkpoint verification.",
+    sourceId:event.params.evidenceId,target:"submissions.html"
+  });
+});
+exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{evidenceId}",async event=>{
+  const before=event.data?.before.data(),after=event.data?.after.data();
+  if(!before||!after)return;
+  if(before.status!=="approved"&&after.status==="approved"){
+    if(!after.studentId)return;
+    const student=await db.doc("students/"+after.studentId).get();
+    if(!student.exists)return;
+    const uid=await byEmail(student.data().email);
+    await notify(uid,"evidence_review_"+event.id,{
+      type:"submission",title:"Assessment checkpoint approved",
+      body:"Your selected project revision has been verified. Grade publication is separate.",
+      sourceId:event.params.evidenceId,target:"student-assessments.html"
+    });
+  }else if(before.status==="submitted"&&after.status==="submitted"&&
+    before.submittedAt?.toMillis?.()!==after.submittedAt?.toMillis?.()){
+    await notifyMany(await teacherIds(),"evidence_resubmitted_"+event.id,{
+      type:"submission",title:"Assessment evidence updated",
+      body:"A student selected a new revision for assessment review.",
+      sourceId:event.params.evidenceId,target:"submissions.html"
+    });
+  }
+});
+
 exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}",async event=>{
   const item=event.data?.data();if(!item)return;
   await notifyMany(await teacherIds(),"submission_"+event.params.submissionId,{

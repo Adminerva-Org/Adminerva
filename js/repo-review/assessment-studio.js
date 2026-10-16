@@ -9,7 +9,10 @@ import {
   deleteDoc,
   query,
   orderBy,
+  limit,
+  where,
   serverTimestamp,
+  writeBatch,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 let targetPaths = [];
 let allSections = [];
@@ -99,9 +102,15 @@ async function loadAssessments() {
       collection(db, "assessments"),
       orderBy("createdAt", "desc"),
     );
-    const snap = await getDocs(q);
+    const [snap,privateSnap] = await Promise.all([
+      getDocs(q),getDocs(collection(db,"assessment_private"))
+    ]);
+    const privateById=new Map(privateSnap.docs.map(item=>[item.id,item.data()]));
     assessments = [];
-    snap.forEach((doc) => assessments.push({ id: doc.id, ...doc.data() }));
+    snap.forEach(item => assessments.push({
+      id:item.id,...item.data(),
+      ...(item.data().schemaVersion===2 ? (privateById.get(item.id)||{}) : {})
+    }));
     renderAssessmentGrid();
   } catch (e) {
     console.error("Error loading assessments: ", e);
@@ -175,6 +184,8 @@ window.openCreateModal = function () {
   document.getElementById("maxScore").value = "20";
   document.getElementById("assessType").value = "Mini PETA";
   document.getElementById("assessQuarter").value = "";
+  document.getElementById("assessV2").checked = true;
+  document.getElementById("assessV2").disabled = false;
   document.getElementById("assessExpectedExts").value = "";
   document.getElementById("assessInvestigationFallback").checked = true;
   document.getElementById("systemPersona").value =
@@ -200,6 +211,8 @@ window.openEditModal = function () {
   document.getElementById("maxScore").value = item.maxScore || 20;
   document.getElementById("assessType").value = item.type || "Mini PETA";
   document.getElementById("assessQuarter").value = item.quarter || "";
+  document.getElementById("assessV2").checked = item.schemaVersion === 2;
+  document.getElementById("assessV2").disabled = true; // Never silently convert a legacy record.
   document.getElementById("assessExpectedExts").value =
     Array.isArray(item.expectedExtensions) ? item.expectedExtensions.join(", ") : "";
   document.getElementById("assessInvestigationFallback").checked =
@@ -226,7 +239,10 @@ window.saveAssessment = async function () {
   const title = document.getElementById("assessTitle").value.trim();
   if (!title) return alert("Please enter an Assessment Title.");
 
+  const prior = currentAssessmentId ? assessments.find(a=>a.id===currentAssessmentId) : null;
+  const v2=prior ? prior.schemaVersion===2 : document.getElementById("assessV2").checked;
   const payload = {
+    ...(v2?{schemaVersion:2,evidenceMode:"commit_selection",checkpointMode:"individual"}:{}),
     title: title,
     type: document.getElementById("assessType").value,
     maxScore: parseInt(document.getElementById("maxScore").value) || 20,
@@ -238,21 +254,39 @@ window.saveAssessment = async function () {
     gradingMode: currentAssessmentId
       ? (assessments.find(a => a.id === currentAssessmentId)?.gradingMode || "individual")
       : "individual",
-    systemPersona: document.getElementById("systemPersona").value.trim(),
     taskContext: document.getElementById("taskContext").value.trim(),
     evalCriteria: document.getElementById("evalCriteria").value.trim(),
-    rules: objectiveRules,
   };
 
   window.showSubtleLoader("Saving Blueprint...");
 
   try {
-    if (currentAssessmentId) {
-      await updateDoc(doc(db, "assessments", currentAssessmentId), payload);
-    } else {
-      payload.deployments = [];
-      payload.createdAt = serverTimestamp();
-      await addDoc(collection(db, "assessments"), payload);
+    const teacherOnly={
+      systemPersona:document.getElementById("systemPersona").value.trim(),
+      rules:objectiveRules,updatedAt:serverTimestamp()
+    };
+    if(v2){
+      const ref=currentAssessmentId
+        ? doc(db,"assessments",currentAssessmentId)
+        : doc(collection(db,"assessments"));
+      const batch=writeBatch(db);
+      if(!currentAssessmentId){
+        payload.deployments=[];
+        payload.createdAt=serverTimestamp();
+      }
+      batch.set(ref,payload,{merge:Boolean(currentAssessmentId)});
+      batch.set(doc(db,"assessment_private",ref.id),teacherOnly);
+      await batch.commit();
+    }else if(currentAssessmentId){
+      await updateDoc(doc(db,"assessments",currentAssessmentId),{
+        ...payload,systemPersona:teacherOnly.systemPersona,rules:objectiveRules
+      });
+    }else{
+      payload.deployments=[];
+      payload.createdAt=serverTimestamp();
+      await addDoc(collection(db,"assessments"),{
+        ...payload,systemPersona:teacherOnly.systemPersona,rules:objectiveRules
+      });
     }
     window.closeModals();
     await loadAssessments();
@@ -272,7 +306,25 @@ window.deleteAssessment = async function () {
   ) {
     window.showSubtleLoader("Deleting Blueprint...");
     try {
-      await deleteDoc(doc(db, "assessments", currentAssessmentId));
+      const item=assessments.find(a=>a.id===currentAssessmentId);
+      if(item?.schemaVersion===2){
+        if((item.deployments||[]).length)throw Error(
+          "Withdraw all deployments before deleting a V2 blueprint.");
+        const [evidence,grades]=await Promise.all([
+          getDocs(query(collection(db,"assessment_evidence"),
+            where("assessmentId","==",currentAssessmentId),limit(1))),
+          getDocs(query(collection(db,"student_grades"),
+            where("taskId","==",currentAssessmentId),limit(1)))
+        ]);
+        if(!evidence.empty||!grades.empty)throw Error(
+          "This assessment has evidence or grades and cannot be deleted. Archive it instead.");
+        const batch=writeBatch(db);
+        batch.delete(doc(db,"assessment_private",currentAssessmentId));
+        batch.delete(doc(db,"assessments",currentAssessmentId));
+        await batch.commit();
+      }else{
+        await deleteDoc(doc(db,"assessments",currentAssessmentId));
+      }
       window.closeModals();
       await loadAssessments();
     } catch (e) {

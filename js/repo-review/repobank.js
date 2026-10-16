@@ -193,7 +193,8 @@ window.loadRepobankData = async function () {
                   <span class="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded border shadow-inner whitespace-nowrap inline-block mt-2">Upd: ${lastUpdated}</span>
                 </div>
                 
-                <div class="action-container shrink-0">
+                <div class="action-container shrink-0 flex flex-col gap-2">
+                    <a href="submissions.html?repo=${encodeURIComponent(repoData.url)}" class="border border-indigo-200 bg-indigo-50 text-indigo-800 px-3 py-2 rounded text-xs font-bold hover:bg-indigo-100">Assessment Evidence →</a>
                     <button onclick="window.updateRepoMemory('${repoId}', '${owner}', '${repoName}')" class="bg-slate-800 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-slate-900 transition shadow flex items-center gap-1">
                         🧠 Update Memory
                     </button>

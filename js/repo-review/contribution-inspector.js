@@ -100,6 +100,15 @@ async function load(){
   const [stuSnap,assSnap]=await Promise.all([getDocs(collection(db,'students')),getDocs(collection(db,'assessments'))]);
   state.students=stuSnap.docs.map(d=>({id:d.id,...d.data()}));state.assessments=assSnap.docs.map(d=>({id:d.id,...d.data()}));
   const sections=[...new Set(state.students.map(s=>s.section).filter(Boolean))].sort();const dropdown=el('section');dropdown.replaceChildren();option(dropdown,'','Select section');for(const section of sections)option(dropdown,section,section);
+  const params=new URLSearchParams(location.search);
+  const requestedSection=params.get('section')||'';
+  if(sections.includes(requestedSection)){
+    el('section').value=requestedSection;updateSelection();
+    const requestedStudent=params.get('student'),requestedAssessment=params.get('assessment');
+    if(state.students.some(x=>x.id===requestedStudent&&x.section===requestedSection))el('student').value=requestedStudent;
+    if(state.assessments.some(x=>x.id===requestedAssessment))el('assessment').value=requestedAssessment;
+    updateRepo();
+  }
   status('Ready. Select a section, assessment, and student.');
  }catch(e){status(`Unable to load roster: ${e.message}. Only teacher accounts with Firestore read permissions can use this inspector.`,true)}
 }

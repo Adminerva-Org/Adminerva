@@ -4,6 +4,7 @@ import {
   collection, doc, getDoc, runTransaction, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import { analyzePatchSubstance } from "./services/commit-substance.mjs";
+import {parseRepository,validSha} from "./services/assessment-evidence.mjs";
 
 const el = id => document.getElementById(id);
 const state = { active: null, token: 0, flags: [] };
@@ -46,11 +47,11 @@ async function githubGet(url, session) {
   if (!response.ok) throw new Error("GitHub HTTP "+response.status);
   return response.json();
 }
-async function sourceLinks(session, base, owner, repo, login) {
+async function sourceLinks(session, base, owner, repo, login, checkpointSha=null) {
   try {
-    const data=await githubGet("https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo),session);
+    const data=checkpointSha?null:await githubGet("https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo),session);
     if (session!==state.token) return;
-    const branch=encodeURIComponent(data.default_branch || "main");
+    const branch=encodeURIComponent(checkpointSha||data?.default_branch||"main");
     const links=el("manualReviewLinks");
     link(links,"app/src ↗",base+"/tree/"+branch+"/app/src");
     link(links,"app/src/test/java ↗",base+"/tree/"+branch+"/app/src/test/java");
@@ -126,6 +127,19 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
     if (session!==state.token) return;
     if (!studentDoc.exists() || !taskDoc.exists()) throw new Error("Student or assessment no longer exists.");
     const student=studentDoc.data(),assessment=taskDoc.data(),previous=gradeDoc.exists()?gradeDoc.data():null;
+    let checkpointSha=null,selectedEvidenceCommits=[];
+    if(assessment.schemaVersion===2){
+      const evidence=await getDoc(doc(db,"assessment_evidence",studentId+"_"+taskId));
+      if(session!==state.token)return;
+      if(!evidence.exists()||evidence.data().status!=="approved"||
+        !validSha(evidence.data().approvedCheckpointSha)||
+        evidence.data().approvedCheckpointSha!==evidence.data().checkpointSha)
+        throw Error("Approve the student's assessment checkpoint in Assessment Evidence Review before grading.");
+      if(parseRepository(evidence.data().repository).url!==parseRepository(base).url)
+        throw Error("Approved evidence belongs to a different repository. Review the student's linked repository.");
+      checkpointSha=evidence.data().approvedCheckpointSha;
+      selectedEvidenceCommits=evidence.data().selectedCommits||[];
+    }
     const maxScore=Number(assessment.maxScore || 20);
     if (!Number.isFinite(maxScore) || maxScore<=0) throw new Error("Assessment has an invalid maximum score.");
     const login=String(student.githubUsername||"").trim().replace(/^@/,"");
@@ -137,7 +151,13 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
     if (/^[A-Za-z0-9-]{1,39}$/.test(login)) {
       link(links,"Student's commits ↗",base+"/commits?author="+encodeURIComponent(login));
     } else flag("GitHub account is not linked or has an invalid login. Verify identity before scoring.");
-    link(links,"Contribution Inspector ↗","contribution-inspector.html");
+    link(links,"Contribution Inspector ↗","contribution-inspector.html?section="+
+      encodeURIComponent(student.section)+"&student="+encodeURIComponent(studentId)+
+      "&assessment="+encodeURIComponent(taskId));
+    if(checkpointSha){
+      link(links,"Approved project checkpoint ↗",base+"/tree/"+encodeURIComponent(checkpointSha));
+      flag("V2 assessment: inspect this pinned project revision, not the mutable latest branch.");
+    }
     if(diagnostic)flag("Auto-Checker: "+String(diagnostic).slice(0,2500));
     for(const issue of previous?.reviewReasons || [])flag(issue);
     for(const path of previous?.contributionEvidence?.excludedTaskOrClassmatePaths||[])flag("Excluded from automated evidence: "+path);
@@ -151,12 +171,12 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
     el("manualReviewScore").value=previous?.score!=null?String(previous.score):"";
     el("manualReviewFeedback").value=cleanGradeFeedback(previous?.feedback);
     el("manualReviewFiles").value=(previous?.contributionEvidence?.matchedPaths||[]).join("\n");
-    state.active={studentId,taskId,owner,repo,base,student,assessment,previous,gradeRef:gradeDoc.ref,maxScore,login};
+    state.active={studentId,taskId,owner,repo,base,student,assessment,previous,gradeRef:gradeDoc.ref,maxScore,login,checkpointSha,selectedEvidenceCommits};
     el("manualReviewSave").disabled=!!previous?.published;
-    el("manualReviewAnalyze").disabled=!login;
+    el("manualReviewAnalyze").disabled=!login||Boolean(checkpointSha);
     el("manualReviewAnalyze").onclick=()=>examineRecentCommits(session,owner,repo,login);
     message(previous?.published?"Published grade protected: unpublish it in Gradebook first.":"Manual changes will be saved unpublished and documented in grade revisions.");
-    void sourceLinks(session,base,owner,repo,login);
+    void sourceLinks(session,base,owner,repo,login,checkpointSha);
   }catch(error) {
     if (session!==state.token)return;
     message("Manual review failed: "+error.message,true);
@@ -203,12 +223,15 @@ async function save(event) {
         reviewReasons:[...new Set(state.flags.concat(previous?.reviewReasons || []))].slice(0,60),
         reviewedBy:auth.currentUser?.uid||null,
         reviewedAt:serverTimestamp(),gradedAt:serverTimestamp(),
+        ...(active.checkpointSha?{gradedSha:active.checkpointSha}:{}),
         targetPath:paths.length?paths.join(", "):"Manual review — see teacher note",
         contributionEvidence:{
           ...(previous?.contributionEvidence||{}),
           repository:active.owner+"/"+active.repo,
           githubLogin:active.login,
           matchedPaths:paths,
+          ...(active.checkpointSha?{approvedCheckpointSha:active.checkpointSha,
+            selectedCommits:active.selectedEvidenceCommits}:{}),
           manualEvidence:true,
           authorshipIndependentlyProven:false
         }
