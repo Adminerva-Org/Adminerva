@@ -90,7 +90,7 @@ test("restores retain a local undo copy before replacing a saved draft",()=>{
     workspaceFiles:{"Main.java":{model:{getValue:()=>"old"}}},
     currentLang:"java",fileOrder:["Main.java"],activeFilename:"Main.java",
     playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,
-    persistWorkspace:()=>true,
+    persistWorkspace:()=>true,ownerUid:()=> "alice",
     createWorkspace:(...args)=>created.push(args),
     showSaveStatus(){},alert(){},confirm:()=>true,Date,JSON,console
   };
