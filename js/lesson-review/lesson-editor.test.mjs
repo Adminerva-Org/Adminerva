@@ -53,7 +53,7 @@ test("older saved lessons can render without a weekly overview",()=>{
      querySelector:()=>null,
      createElement:()=>({value:"",textContent:""})
    },
-   localStorage:{setItem(){}},alert(){}
+   localStorage:{setItem(){},getItem(){return null;}},alert(){}
  };
  vm.runInNewContext(code,context);
  assert.doesNotThrow(()=>context.window.loadSpecificPlan({
