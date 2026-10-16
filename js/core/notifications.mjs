@@ -1,10 +1,11 @@
 import { auth, db } from "./firebase-core.js";
 import {notificationTarget,previewDestination} from "./notification-routing.mjs";
+import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const staffEmails = new Set(["babaynike2013@gmail.com", "josephsixson@mcstayuman.edu.ph"]);
-const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false };
+const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false };
 const el = id => document.getElementById(id);
 const make = (tag, className, text) => {
   const node=document.createElement(tag);
@@ -15,12 +16,15 @@ const make = (tag, className, text) => {
 const timeOf = value => value && typeof value.toDate==="function" ? value.toDate().getTime() : (value?.seconds||0)*1000;
 const keyName = () => "Adminerva_notif_seen_"+(state.user?.uid||"anonymous");
 const settingsKey = () => "Adminerva_notif_preferences_"+(state.user?.uid||"anonymous");
+const historyKey=()=> "Adminerva_notif_history_"+(state.user?.uid||"anonymous");
+function localHistory(){try{const data=JSON.parse(localStorage.getItem(historyKey())||"[]");return Array.isArray(data)?data:[]}catch{return []}}
+function rememberLocal(record){try{const items=localHistory().filter(x=>x.sourceKey!==record.sourceKey);items.unshift(record);localStorage.setItem(historyKey(),JSON.stringify(items.slice(0,NOTIFICATION_HISTORY_LIMIT)));}catch{}}
 function restorePreferences(){try{return new Set(JSON.parse(localStorage.getItem(settingsKey())||"[]"))}catch{return new Set()}}
 function storePreferences(){try{localStorage.setItem(settingsKey(),JSON.stringify([...state.muted]))}catch{}}
 const targetUrl = notificationTarget;
 function restoreRead(){try{return new Set(JSON.parse(localStorage.getItem(keyName())||"[]"))}catch{return new Set()}}
 function storeRead(){try{localStorage.setItem(keyName(),JSON.stringify([...state.read].slice(-400)))}catch{}}
-function unread(item){return !item.readAt && !state.read.has(item.key)}
+function unread(item){return !item.history && !item.readAt && !state.read.has(item.key)}
 function collectionItems(){
   const rows=[],stored=new Set();
   for(const n of state.notifications){
@@ -46,7 +50,7 @@ function collectionItems(){
       body:(sub.studentName||"Student")+" · "+(sub.assessmentTitle||"Assessment"),
       at:timeOf(sub.submittedAt),target:previewDestination("submission"),saved:false});
   }
-  return rows.sort((a,b)=>b.at-a.at).slice(0,100);
+  return mergeNotificationHistory(rows,state.history,state.read);
 }
 function render(){
   const list=el("av-alert-list"),badge=el("av-alert-count");if(!list||!badge)return;
@@ -65,7 +69,7 @@ function render(){
   }
   const search=state.search.toLowerCase();
   const visible=items.filter(n=>!state.muted.has(n.type) &&
-    (state.filter==="all"||state.filter==="unread"&&unread(n)||state.filter==="issues"&&n.type==="issue") &&
+    (state.filter==="all"||state.filter==="unread"&&unread(n)||state.filter==="issues"&&n.type==="issue"||state.filter==="saved"&&n.pinned) &&
     (!search||(n.title+" "+(n.body||"")).toLowerCase().includes(search)));
   if(!visible.length){list.append(make("p","p-5 text-sm text-slate-600","No notifications to display."));return}
   for(const n of visible){
@@ -76,9 +80,40 @@ function render(){
     if(unread(n))heading.append(make("span","text-xs text-blue-700 shrink-0","● New"));
     link.append(heading,make("p","text-xs text-slate-600 break-words mt-1",n.body||""));
     if(n.at)link.append(make("p","text-[11px] text-slate-500 mt-1",new Date(n.at).toLocaleString()));
-    link.addEventListener("click",()=>{void markRead(n)});
-    list.append(link);
+    link.addEventListener("click",async event=>{
+      event.preventDefault();
+      await markRead(n);
+      await Promise.race([remember(n,Boolean(n.pinned)),new Promise(resolve=>setTimeout(resolve,1300))]);
+      window.location.assign(targetUrl(n.target));
+    });
+    const save=make("button","text-xs font-semibold underline text-indigo-700 px-3 py-2",
+      n.pinned?"Remove reminder":"Save for later");
+    save.type="button";
+    save.addEventListener("click",event=>{
+      event.preventDefault();event.stopPropagation();
+      void remember(n,!n.pinned);
+    });
+    const wrapper=make("div","border-b border-slate-100");
+    link.classList.remove("border-b","border-slate-100");
+    wrapper.append(link,save);list.append(wrapper);
   }
+}
+async function remember(item,pinned){
+  if(!state.user)return;
+  const record=historyRecord(item,state.user.uid,pinned);
+  const withTime={...record,openedAt:Date.now(),lastInteractedAt:Date.now()};
+  rememberLocal(withTime);
+  state.history=mergeCachedHistory(state.history,withTime);
+  render();
+  try{
+    await setDoc(doc(db,"notification_history",state.user.uid,"items",historyDocId(item.key)),{
+      ...record,openedAt:serverTimestamp(),lastInteractedAt:serverTimestamp()
+    },{merge:true});
+  }catch(error){console.warn("Notification history is saved on this device; cloud sync failed:",error);}
+}
+function mergeCachedHistory(items,record){
+  return [record,...items.filter(x=>x.sourceKey!==record.sourceKey)]
+    .slice(0,NOTIFICATION_HISTORY_LIMIT);
 }
 async function markRead(item){
   if(!unread(item))return;
@@ -96,7 +131,7 @@ async function markAllRead(){
 }
 function listen(user){
   state.unsubscribe.forEach(stop=>stop());state.unsubscribe=[];
-  state.user=user;state.notifications=[];state.issues=[];state.submissions=[];state.gradingAlerts=[];
+  state.user=user;state.notifications=[];state.issues=[];state.submissions=[];state.gradingAlerts=[];state.history=user?localHistory():[];
   state.errors.clear();
   state.read=restoreRead();state.muted=restorePreferences();
   document.querySelectorAll("#av-alert-panel input[data-alert-category]").forEach(input=>{
@@ -104,6 +139,16 @@ function listen(user){
   });
   render();
   if(!user)return;
+  state.unsubscribe.push(onSnapshot(query(
+    collection(db,"notification_history",user.uid,"items"),
+    orderBy("lastInteractedAt","desc"),limit(NOTIFICATION_HISTORY_LIMIT)),
+    snap=>{
+      const records=snap.docs.map(d=>d.data());
+      const merged=new Map(state.history.map(item=>[item.sourceKey,item]));
+      for(const item of records)merged.set(item.sourceKey,item);
+      state.history=[...merged.values()].slice(0,NOTIFICATION_HISTORY_LIMIT);
+      state.errors.delete("History");render();
+    },err=>{console.warn("Notification history unavailable:",err);state.errors.add("History");render();}));
   const error=name=>err=>{
     console.warn(name+" listener unavailable:",err.message);
     state.errors.add(name);render();
@@ -162,7 +207,7 @@ export function mountNotificationCenter(){
   const all=make("button","text-xs text-blue-700 font-bold underline","Mark all read");
   all.type="button";all.addEventListener("click",()=>{void markAllRead()});header.append(all);panel.append(header);
   const tabs=make("div","flex border-b");
-  for(const [filter,label] of [["all","All"],["unread","Unread"],["issues","Reports"]]){
+  for(const [filter,label] of [["all","All"],["unread","Unread"],["saved","Saved"],["issues","Reports"]]){
     const tab=make("button","flex-1 py-3 text-xs text-slate-700 hover:bg-slate-50 font-semibold",label);
     tab.type="button";tab.addEventListener("click",()=>{state.filter=filter;render()});tabs.append(tab);
   }
