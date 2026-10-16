@@ -6,6 +6,7 @@ export function historyRecord(item,ownerUid,savedForLater=false){
     ownerUid:String(ownerUid),
     sourceKey:String(item.key||"").slice(0,500),
     type:String(item.type||"notice").slice(0,32),
+    recipientRole:item.type==="issue"?(item.recipientRole||"admin"):"general",
     title:String(item.title||"Notification").slice(0,240),
     body:String(item.body||"").slice(0,800),
     target:notificationTarget(item.target),
