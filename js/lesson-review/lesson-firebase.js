@@ -1,7 +1,7 @@
 // Import centralized database instead of initializing locally
 import { db } from "../core/firebase-core.js";
 import {legacyPlanId,schoolYearPlanId} from "./lesson-plan-helpers.mjs";
-import {scheduleScope,localScheduleText} from "./schedule-scope.mjs";
+import {scheduleScope,localScheduleText,normalizeSchoolYear} from "./schedule-scope.mjs";
 import {
   collection,
   getDocs,
@@ -163,10 +163,16 @@ window.saveLessonPlan = async function () {
   const courseWeek = document.getElementById("lpCourseWeek").value;
   const dateRange = document.getElementById("lpDateRange").value;
 
-  const schoolYear=document.getElementById("lpSchoolYear").value;
-  const safeDocId=schoolYearPlanId({
-    grade,subject,term:academicTerm,week:courseWeek,schoolYear
-  });
+  let schoolYear, safeDocId;
+  try {
+    schoolYear = normalizeSchoolYear(document.getElementById("lpSchoolYear").value);
+    safeDocId = schoolYearPlanId({
+      grade, subject, term: academicTerm, week: courseWeek, schoolYear
+    });
+  } catch (error) {
+    alert("Cannot save lesson plan: " + error.message);
+    return false;
+  }
 
   if (typeof window.showSubtleLoader === "function") {
     window.showSubtleLoader("Syncing lesson plan securely to Firebase...");
