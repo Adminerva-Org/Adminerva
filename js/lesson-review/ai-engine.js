@@ -64,13 +64,21 @@ window.initiateGenerationFlow = async function () {
   window.cachedScope = `${courseWeek}: ${dateRange} (${academicTerm})`;
   window.cachedCustomInstructions = customInstructionsText;
 
-  window.cachedPreviousPlan = await window.fetchPreviousPlan(
-    window.currentTargetGrade,
-    subject,
-    academicTerm,
-    courseWeek,
-    document.getElementById("lpSchoolYear").value,
-  );
+  // Lookback is helpful context, not a dependency for creating a new plan.
+  try {
+    window.cachedPreviousPlan = typeof window.fetchPreviousPlan === "function"
+      ? await window.fetchPreviousPlan(
+          window.currentTargetGrade,
+          subject,
+          academicTerm,
+          courseWeek,
+          document.getElementById("lpSchoolYear").value,
+        )
+      : null;
+  } catch (error) {
+    console.warn("Previous lesson unavailable; generating without lookback:", error);
+    window.cachedPreviousPlan = null;
+  }
 
   if (!window.cachedCustomInstructions) {
     window.executeFinalGeneration("");
@@ -312,7 +320,16 @@ Reference Text:\n${window.cachedCompiledText.substring(0, 25000)}`;
                           required: [
                             "session_name",
                             "topic",
+                            "competencies",
+                            "objectives",
+                            "preliminary",
+                            "motivation",
                             "learning_activities",
+                            "formation_standard",
+                            "evaluation",
+                            "closing",
+                            "values_integration",
+                            "remarks",
                           ],
                         },
                       },
