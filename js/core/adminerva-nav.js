@@ -217,11 +217,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   navContainer.innerHTML = `
     <nav aria-label="Adminerva main navigation" class="bg-gray-900/95 backdrop-blur-md text-white shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative z-50 border-b border-cyan-900/50 sticky top-0">
-        <div class="max-w-7xl mx-auto">
+        <div class="max-w-screen-2xl mx-auto">
             <!-- Top Row: Always visible -->
             <div class="flex justify-between items-center h-16 px-4 sm:px-6 lg:px-8">
                 ${logoBlock}
-                <div class="hidden lg:flex gap-6 text-sm font-bold tracking-wide items-center">${centerLinks}</div>
+                <div id="av-desktop-nav" class="hidden lg:flex gap-6 text-sm font-bold tracking-wide items-center">${centerLinks}</div>
                 <div class="flex items-center">${rightSide}</div>
             </div>
             
@@ -229,7 +229,7 @@ document.addEventListener("DOMContentLoaded", () => {
             ${
               centerLinks
                 ? `
-            <div class="lg:hidden flex overflow-x-auto px-4 pb-3 pt-1 gap-5 text-xs font-bold whitespace-nowrap border-t border-gray-800 scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+            <div id="av-mobile-nav" class="lg:hidden flex overflow-x-auto px-4 pb-3 pt-1 gap-5 text-xs font-bold whitespace-nowrap border-t border-gray-800 scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                 ${centerLinks}
             </div>`
                 : ""
@@ -237,6 +237,122 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
         ${navTabsHTML}
     </nav>`;
+
+
+  // Unified teacher/admin information architecture. Student navigation is
+  // unchanged. Native <details> supports pointer, keyboard and touch input.
+  const groupModules = ["educator", "repo", "settings", "admin", "lesson"];
+  if (groupModules.includes(activeModule)) {
+    const staffGroups = [
+      { name: "Grading", items: [
+        ["gradebook", "Gradebook", "gradebook.html"],
+        ["repofetch", "RepoFetch / Auto-Check", "repofetch.html"],
+        ["submissions", "Submission Inbox", "submissions.html"],
+        ["studio", "Assessment Studio", "assessment-studio.html"],
+        ["contributions", "Contribution Inspector", "contribution-inspector.html"],
+        ["activity-grader", "Manual Grader", "temp-grading.html"]
+      ] },
+      { name: "Repositories", items: [
+        ["repobank", "RepoBank", "repobank.html"]
+      ] },
+      { name: "Planning", items: [
+        ["planner", "Lesson Planner", "lesson-planner.html"],
+        ["presentation", "Slide Editor", "presentation.html"],
+        ["schedule", "Teacher Schedule", "schedule.html"],
+        ["library", "Reference Library", "library.html"]
+      ] },
+      { name: "Manage", items: [
+        ["issues", "Bug Reports", "issues.html"],
+        ...(isSuperAdmin ? [["directory", "User Directory", "users.html"]] : []),
+        ["settings", "Settings", "settings.html"]
+      ] }
+    ];
+    const analytics = ["dashboard", "Analytics", "reporeviewDashboard.html"];
+    const activeGroup = group => group.items.some(item => item[0] === activePage);
+    const makeLink = (item, mobile) => {
+      const a = document.createElement("a");
+      a.href = item[2]; a.textContent = item[1];
+      a.className = "block rounded-lg px-3 py-2.5 text-sm font-semibold " +
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 " +
+        (item[0] === activePage
+          ? "bg-cyan-900/50 text-cyan-100 border-l-2 border-cyan-400"
+          : "text-slate-200 hover:bg-slate-700 hover:text-white") +
+        (mobile ? " min-h-11 flex items-center" : "");
+      if (item[0] === activePage) a.setAttribute("aria-current","page");
+      return a;
+    };
+    const makeGroup = (group, mobile) => {
+      const details = document.createElement("details");
+      details.dataset.navGroup = mobile ? "mobile" : "desktop";
+      details.className = mobile
+        ? "rounded-lg border border-slate-700/80"
+        : "relative";
+      const summary = document.createElement("summary");
+      summary.className = "list-none cursor-pointer select-none font-bold " +
+        "rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 " +
+        (mobile
+          ? "text-slate-100 text-sm px-3 py-3 min-h-11"
+          : "text-sm px-3 py-2 " +
+            (activeGroup(group) ? "text-cyan-300 bg-slate-800"
+              : "text-slate-200 hover:text-cyan-300 hover:bg-slate-800"));
+      summary.textContent = group.name + " ▾";
+      summary.setAttribute("aria-label",group.name + " menu");
+      details.append(summary);
+      const wrapper = document.createElement("div");
+      wrapper.className = mobile
+        ? "p-2 space-y-1"
+        : "absolute left-0 top-full mt-2 w-64 z-[110] bg-slate-900 " +
+          "border border-slate-700 shadow-2xl rounded-xl p-2 max-h-[70dvh] overflow-y-auto";
+      for (const item of group.items) wrapper.append(makeLink(item,mobile));
+      details.append(wrapper);
+      if (mobile && activeGroup(group)) details.open = true;
+      return details;
+    };
+    const desktop = navContainer.querySelector("#av-desktop-nav");
+    const mobile = navContainer.querySelector("#av-mobile-nav");
+    if (desktop) {
+      desktop.className = "hidden xl:flex gap-1 items-center shrink-0";
+      desktop.replaceChildren(makeLink(analytics,false));
+      const menus = staffGroups.map(group => makeGroup(group,false));
+      desktop.append(...menus);
+      for(const menu of menus) {
+        menu.addEventListener("toggle", () => {
+          if (menu.open) for (const other of menus) if(other !== menu) other.open = false;
+        });
+      }
+      document.addEventListener("click", event => {
+        for(const menu of menus) if(menu.open && !menu.contains(event.target)) menu.open = false;
+      });
+    }
+    if (mobile) {
+      mobile.className = "xl:hidden border-t border-slate-700";
+      mobile.replaceChildren();
+      const details = document.createElement("details");
+      details.id = "av-mobile-staff-menu";
+      const summary = document.createElement("summary");
+      summary.className = "flex items-center justify-between px-4 sm:px-6 py-3 " +
+        "font-bold text-sm text-cyan-100 min-h-11 cursor-pointer " +
+        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400";
+      const section = activePage === "dashboard" ? "Analytics" :
+        staffGroups.find(group => activeGroup(group))?.name || "Modules";
+      summary.textContent = "Menu · " + section + " ▾";
+      details.append(summary);
+      const panel = document.createElement("div");
+      panel.className = "bg-slate-900 border-t border-slate-700 px-3 py-3 " +
+        "max-h-[65dvh] overflow-y-auto overscroll-contain space-y-2";
+      panel.append(makeLink(analytics,true));
+      for(const group of staffGroups) panel.append(makeGroup(group,true));
+      details.append(panel); mobile.append(details);
+    }
+    navContainer.addEventListener("keydown", event => {
+      if(event.key !== "Escape") return;
+      let closed = false;
+      navContainer.querySelectorAll("details[open]").forEach(menu => {
+        menu.open = false; closed = true;
+      });
+      if(closed) { event.preventDefault(); navContainer.querySelector("#av-mobile-staff-menu > summary")?.focus(); }
+    });
+  }
 
   // A single responsive inbox for bug reports, grading alerts and submissions.
   const reportButton = navContainer.querySelector('button[title="Report Issue"]');
