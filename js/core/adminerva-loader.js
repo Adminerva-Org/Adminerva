@@ -61,6 +61,15 @@ document.addEventListener("DOMContentLoaded", () => {
                     </div>
 
                     <div>
+                        <label for="bug-audience" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Send report to</label>
+                        <select id="bug-audience" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm text-slate-200" aria-describedby="bug-audience-note">
+                            <option value="teacher">Teacher — class / learning concerns</option>
+                            <option value="admin">Administrator — system / account concerns</option>
+                        </select>
+                        <p id="bug-audience-note" class="text-xs text-cyan-200 mt-1"></p>
+                    </div>
+
+                    <div>
                         <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Issue Summary</label>
                         <input type="text" maxlength="160" id="bug-title" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-400" placeholder="A brief title of the problem...">
                     </div>
@@ -151,8 +160,28 @@ window.hideSubtleLoader = function () {
 // ==========================================
 // BUG REPORTER LOGIC (Images & Paste)
 // ==========================================
+function syncReportAudience() {
+  const category = document.getElementById("bug-category")?.value;
+  const select = document.getElementById("bug-audience");
+  const note = document.getElementById("bug-audience-note");
+  if (!select || !note) return;
+  if (category === "Bug") {
+    select.value = "admin";
+    select.disabled = true;
+    select.dataset.forced = "true";
+    note.textContent = "System bug reports are sent only to administrators.";
+  } else {
+    if (select.dataset.forced === "true") select.value = "teacher";
+    select.dataset.forced = "false";
+    select.disabled = false;
+    note.textContent = "Only the selected staff role and you can view the report.";
+  }
+}
+
 function bindBugReporterLogic() {
   window.bugImages = [];
+  document.getElementById("bug-category").addEventListener("change", syncReportAudience);
+  syncReportAudience();
   const fileInput = document.getElementById("bug-image-upload");
   const modal = document.getElementById("bug-modal");
 
@@ -241,7 +270,7 @@ window.initiateBugReport = async function () {
   btn.innerHTML = `<span class="animate-pulse">Checking records...</span>`;
 
   try {
-    const { collection, getDocs, query, orderBy, limit } =
+    const { collection, getDocs, query, where, limit } =
       await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
     if (!window.db) throw new Error("No DB Connection");
 
@@ -286,14 +315,19 @@ window.initiateBugReport = async function () {
     }
 
     // 2. Fetch and Score Existing Issues
-    // Compare against a bounded recent window instead of downloading every
-    // report in the database on each new submission.
+    // Private reports must never be exposed by the similarity checker.
+    // Check only the signed-in reporter's own previous submissions.
+    const uid = window.auth?.currentUser?.uid;
+    if (!uid) throw new Error("Sign in to compare reports");
+    const selectedAudience = document.getElementById("bug-category").value === "Bug"
+      ? "admin" : document.getElementById("bug-audience").value;
     const snap = await getDocs(query(collection(window.db, "issues"),
-      orderBy("createdAt", "desc"), limit(120)));
+      where("reporterUid", "==", uid), limit(120)));
     let similarIssues = [];
 
     snap.forEach((doc) => {
       const data = doc.data();
+      if ((data.audience || "admin") !== selectedAudience) return;
       const issueText = (data.title + " " + data.description).toLowerCase();
 
       let matchCount = 0;
@@ -373,8 +407,11 @@ window.finalizeBugReport = async function () {
     const { collection, addDoc, serverTimestamp } =
       await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
 
+    const audience = category === "Bug" ? "admin" : document.getElementById("bug-audience").value;
+    if (!["admin", "teacher"].includes(audience)) throw new Error("Invalid report recipient");
     const payload = {
       category,
+      audience,
       priority,
       title,
       description,
@@ -402,6 +439,7 @@ window.finalizeBugReport = async function () {
     document.getElementById("bug-title").value = "";
     document.getElementById("bug-description").value = "";
     document.getElementById("bug-category").value = "Bug";
+    syncReportAudience();
     document.getElementById("bug-priority").value = "Medium";
     for (const id of ["bug-reproduction","bug-expected","bug-actual"]) {
       document.getElementById(id).value = "";
@@ -412,7 +450,7 @@ window.finalizeBugReport = async function () {
     document.getElementById("bug-modal").classList.add("hidden");
 
     window.showSubtleLoader("Report received. Reference: " + receipt.id.slice(0,10));
-    alert("Report submitted successfully. Reference: " + receipt.id.slice(0,10) + ". You can follow updates in the notification center or Reports page.");
+    alert("Report submitted successfully for " + (audience === "admin" ? "administrators" : "teachers") + ". Reference: " + receipt.id.slice(0,10) + ". Check My reports for its status.");
     setTimeout(() => window.hideSubtleLoader(), 3000);
   } catch (error) {
     console.error(error);
