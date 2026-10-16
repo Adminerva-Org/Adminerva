@@ -9,6 +9,30 @@ let user=null,completed=new Map(),reflections=new Map(),activeCourse=null,
   syncing=new Set(),progressLoadVersion=0;
 
 const el=id=>document.getElementById(id);
+const reflectionDraftKey=()=>user&&activeMission
+  ? "Adminerva_Practice_Draft_"+user.uid+"_"+activeMission.id+"_"+attempt:null;
+function storeReflectionDraft(){
+  const key=reflectionDraftKey();
+  if(!key)return;
+  try{
+    sessionStorage.setItem(key,JSON.stringify({
+      reasoning:el("practiceReasoning")?.value.slice(0,500)||"",
+      observation:el("practiceObservation")?.value.slice(0,500)||""
+    }));
+  }catch{}
+}
+function restoreReflectionDraft(){
+  const key=reflectionDraftKey();
+  if(!key)return;
+  try{
+    const draft=JSON.parse(sessionStorage.getItem(key)||"null");
+    if(draft){
+      if(typeof draft.reasoning==="string")el("practiceReasoning").value=draft.reasoning;
+      if(typeof draft.observation==="string")el("practiceObservation").value=draft.observation;
+    }
+  }catch{}
+}
+
 const status=msg=>{if(el("practiceStatus"))el("practiceStatus").textContent=msg};
 const node=(tag,classes,text)=>{
   const e=document.createElement(tag);
@@ -157,8 +181,11 @@ function openMission(course,mission){
   el("practiceConcept").textContent=mission.concept;
   el("practiceReasoning").value=reflections.get(course.id)?.[mission.id]||"";
   renderQuestion();
+  restoreReflectionDraft();
   if(pending?.courseId===course.id && pending.missionId===mission.id && pending.predictionCorrect){
     el("practiceReasoning").value=pending.reasoning||"";
+    // The student may have started the comparison on an earlier visit.
+    restoreReflectionDraft();
     choice=question.correct;
     revealExperiment();
     el("practiceExperimentStatus").textContent=pending.runCount>0
@@ -179,6 +206,7 @@ function renderQuestion(){
   el("practiceExperimentPanel").classList.add("hidden");
   el("practiceReflectionPanel").classList.add("hidden");
   el("practiceObservation").value="";
+  el("practiceExperimentStatus").textContent="";
   el("practiceCode").textContent=question.code;
   el("practicePrompt").textContent=question.prompt;
   el("practiceFeedback").textContent="";
@@ -253,10 +281,15 @@ async function finishMission(){
     console.warn("Practice cloud save failed:",error);
     status(localOkay?"Mission saved on this device; it will retry cloud sync on your next visit.":"Storage unavailable. Save your reflection elsewhere and retry.");
   }finally{el("practiceFinishBtn").disabled=false}
-  try{sessionStorage.removeItem(practiceBridgeKey(user.uid))}catch{}
+  try{
+    sessionStorage.removeItem(practiceBridgeKey(user.uid));
+    sessionStorage.removeItem(reflectionDraftKey());
+  }catch{}
   renderCourses();
 }
 el("practiceBackBtn")?.addEventListener("click",renderCourses);
+el("practiceReasoning")?.addEventListener("input",storeReflectionDraft);
+el("practiceObservation")?.addEventListener("input",storeReflectionDraft);
 el("practiceExperimentLink")?.addEventListener("click",openExperiment);
 el("practiceCheckBtn")?.addEventListener("click",checkPrediction);
 el("practiceRetryBtn")?.addEventListener("click",()=>{attempt++;renderQuestion()});
