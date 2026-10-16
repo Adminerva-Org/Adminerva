@@ -100,6 +100,39 @@ exports.commitReclaimRequested=onDocumentCreated("commit_reclaims/{claimId}",asy
   });
 });
 
+// V2 evidence receipts are distinct from legacy submission receipts.
+exports.assessmentEvidenceSubmitted=onDocumentCreated("assessment_evidence/{evidenceId}",async event=>{
+  const item=event.data?.data();
+  if(!item||item.status!=="submitted"||item.source==="teacher_discovered")return;
+  await notifyMany(await teacherIds(),"evidence_new_"+event.params.evidenceId,{
+    type:"submission",title:"Assessment evidence submitted",
+    body:"Selected Git commits are awaiting checkpoint verification.",
+    sourceId:event.params.evidenceId,target:"submissions.html"
+  });
+});
+exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{evidenceId}",async event=>{
+  const before=event.data?.before.data(),after=event.data?.after.data();
+  if(!before||!after)return;
+  if(before.status!=="approved"&&after.status==="approved"){
+    if(!after.studentId)return;
+    const student=await db.doc("students/"+after.studentId).get();
+    if(!student.exists)return;
+    const uid=await byEmail(student.data().email);
+    await notify(uid,"evidence_review_"+event.id,{
+      type:"submission",title:"Assessment checkpoint approved",
+      body:"Your selected project revision has been verified. Grade publication is separate.",
+      sourceId:event.params.evidenceId,target:"student-assessments.html"
+    });
+  }else if(before.status==="submitted"&&after.status==="submitted"&&
+    before.submittedAt?.toMillis?.()!==after.submittedAt?.toMillis?.()){
+    await notifyMany(await teacherIds(),"evidence_resubmitted_"+event.id,{
+      type:"submission",title:"Assessment evidence updated",
+      body:"A student selected a new revision for assessment review.",
+      sourceId:event.params.evidenceId,target:"submissions.html"
+    });
+  }
+});
+
 exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}",async event=>{
   const item=event.data?.data();if(!item)return;
   await notifyMany(await teacherIds(),"submission_"+event.params.submissionId,{
