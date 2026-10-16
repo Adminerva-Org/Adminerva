@@ -46,15 +46,23 @@ window.buildDocumentLayout = async function () {
   let rawTeacher =
     localStorage.getItem("Adminerva_defaultTeacher") || localStorage.getItem("lessonReview_defaultTeacher") || "TEACHER";
 
-  let s1Name = localStorage.getItem("lessonReview_sig1Name") || rawTeacher;
+  let s1Name = localStorage.getItem("Adminerva_sig1Name") ||
+    localStorage.getItem("lessonReview_sig1Name") || rawTeacher;
   let s1Title =
+    localStorage.getItem("Adminerva_sig1Title") ||
     localStorage.getItem("lessonReview_sig1Title") || "Subject Teacher";
-  let s2Name = localStorage.getItem("lessonReview_sig2Name") || "";
-  let s2Title = localStorage.getItem("lessonReview_sig2Title") || "";
-  let s3Name = localStorage.getItem("lessonReview_sig3Name") || "";
-  let s3Title = localStorage.getItem("lessonReview_sig3Title") || "";
-  let s4Name = localStorage.getItem("lessonReview_sig4Name") || "";
-  let s4Title = localStorage.getItem("lessonReview_sig4Title") || "";
+  let s2Name = localStorage.getItem("Adminerva_sig2Name") ||
+    localStorage.getItem("lessonReview_sig2Name") || "";
+  let s2Title = localStorage.getItem("Adminerva_sig2Title") ||
+    localStorage.getItem("lessonReview_sig2Title") || "";
+  let s3Name = localStorage.getItem("Adminerva_sig3Name") ||
+    localStorage.getItem("lessonReview_sig3Name") || "";
+  let s3Title = localStorage.getItem("Adminerva_sig3Title") ||
+    localStorage.getItem("lessonReview_sig3Title") || "";
+  let s4Name = localStorage.getItem("Adminerva_sig4Name") ||
+    localStorage.getItem("lessonReview_sig4Name") || "";
+  let s4Title = localStorage.getItem("Adminerva_sig4Title") ||
+    localStorage.getItem("lessonReview_sig4Title") || "";
 
   if (window.db) {
     try {
