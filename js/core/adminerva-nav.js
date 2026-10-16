@@ -350,7 +350,7 @@ document.addEventListener("DOMContentLoaded", () => {
       navContainer.querySelectorAll("details[open]").forEach(menu => {
         menu.open = false; closed = true;
       });
-      if(closed) { event.preventDefault(); navContainer.querySelector("#av-mobile-staff-menu > summary")?.focus(); }
+      if(closed) event.preventDefault();
     });
   }
 
@@ -367,7 +367,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Announce active location to assistive technology and keep the selected
   // page visible in the horizontally scrolling mobile navigation.
-  navContainer.querySelectorAll('a[class*="border-cyan-400"]').forEach(link => {
+  navContainer.querySelectorAll('a[class*="border-b-2"]').forEach(link => {
     link.setAttribute("aria-current", "page");
   });
   if (window.matchMedia?.("(max-width: 1023px)").matches) {
