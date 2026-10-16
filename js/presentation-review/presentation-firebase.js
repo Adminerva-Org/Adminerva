@@ -157,7 +157,12 @@ window.handleSessionSelection = async function () {
               "💾 A saved presentation was found in the cloud for this session! Would you like to load it?",
             )
           ) {
-            window.currentPresentationDeck = docSnap.data().deck;
+            window.currentPresentationDeck = (docSnap.data().deck||[]).map(slide=>({
+            ...slide,
+            content:window.sanitizePresentationHtml?.(slide.content) ?? "",
+            contentLeft:window.sanitizePresentationHtml?.(slide.contentLeft) ?? "",
+            contentRight:window.sanitizePresentationHtml?.(slide.contentRight) ?? ""
+          }));
             window.activeSlideIndex = 0;
             if (typeof window.renderSlideBlocks === "function")
               window.renderSlideBlocks();
