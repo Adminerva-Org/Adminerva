@@ -183,10 +183,6 @@ window.renderOverview = function () {
                         <label class="block text-[10px] font-bold text-gray-500 uppercase">Content Standard</label>
                         <textarea data-weekly-field="content_standard" class="w-full p-2 border border-gray-200 rounded text-xs bg-white" rows="2">${escapeLessonText(window.currentWeeklyOverview.content_standard || "")}</textarea>
                     </div>
-                    <div>
-                   <label class="block text-[10px] font-extrabold text-blue-600 uppercase tracking-wider mb-1">Learning Objectives</label>
-                   <textarea class="session-input w-full p-2 border border-blue-100 rounded text-sm bg-blue-50" rows="3" data-idx="${index}" data-key="objectives">${escapeLessonText(session.objectives || "")}</textarea>
-                 </div>
                  <div>
                         <label class="block text-[10px] font-bold text-gray-500 uppercase">Performance Standard</label>
                         <textarea data-weekly-field="performance_standard" class="w-full p-2 border border-gray-200 rounded text-xs bg-white" rows="2">${escapeLessonText(window.currentWeeklyOverview.performance_standard || "")}</textarea>
@@ -254,6 +250,10 @@ window.renderOutput = function () {
                     <label class="block text-[10px] font-extrabold text-blue-600 uppercase tracking-wider mb-1">Learning Competencies</label>
                     <textarea class="session-input w-full p-2 border border-blue-100 rounded text-sm bg-blue-50" rows="3" data-idx="${index}" data-key="competencies">${escapeLessonText(session.competencies || "")}</textarea>
                 </div>
+                <div>
+                   <label class="block text-[10px] font-extrabold text-blue-600 uppercase tracking-wider mb-1">Learning Objectives</label>
+                   <textarea class="session-input w-full p-2 border border-blue-100 rounded text-sm bg-blue-50" rows="3" data-idx="${index}" data-key="objectives">${escapeLessonText(session.objectives || "")}</textarea>
+                 </div>
                 <div>
                     <label class="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">Preliminary Action</label>
                     <textarea class="session-input w-full p-2 border rounded text-sm bg-gray-50" rows="3" data-idx="${index}" data-key="preliminary">${escapeLessonText(session.preliminary || "")}</textarea>
