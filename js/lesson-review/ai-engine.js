@@ -63,8 +63,14 @@ window.initiateGenerationFlow = async function () {
     console.warn("Could not determine teaching schedule:", error);
     window.cachedSchedule = "";
   }
-  if (!window.cachedSchedule)
-    window.cachedSchedule = "No teacher schedule configured for this school year and semester.";
+  if (!window.cachedSchedule) {
+    if (!confirm(
+      "No teacher timetable was found for " + schoolYear + " (" +
+      (academicTerm.includes("SECOND SEMESTER") ? "Second Semester" : "First Semester") +
+      "). Generate a lesson plan without timetable-based class remarks?"
+    )) return;
+    window.cachedSchedule = "No teacher schedule configured for this semester. Do not invent section names or meeting times.";
+  }
   const courseWeek = document.getElementById("lpCourseWeek").value;
   const dateRange =
     document.getElementById("lpDateRange").value || "No Dates Provided";
@@ -247,6 +253,7 @@ ${scheduleRules}
      * RULE D: List the schedule for ALL matching sections. Separate them with a semicolon (;).
      * RULE E: Format the schedule strictly using pipes (|) for line breaks. Example: [Section A] | [Full Date] | [Time Slot]
      * RULE F: After listing all sections, append any class suspensions, holidays, or custom instructions requested by the user.
+     * RULE G: If no teacher schedule is configured, do NOT invent class sections, time slots or dates. Mention missing timetable only when necessary.
 6. SESSION FLEX RULE: 
    - OFFLINE/ASYNCHRONOUS. Provide ONLY bulleted 'learning_activities'. Set all other fields to empty strings.
 8. STRICT JSON ESCAPING (CRITICAL): 
