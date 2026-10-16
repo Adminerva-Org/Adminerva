@@ -4,6 +4,8 @@ export function notificationVisible(item, role) {
   if (!item || !item.type) return false;
   if (role === "admin") return true;
   if (item.type === "issue") {
+    // Report responses remain accessible via My Reports, not student alerts.
+    if (role === "student") return false;
     // Missing metadata on older alerts is not proof of authorization.
     if (!item.reportCategory || item.reportCategory === "Bug") return false;
     return role === "teacher"
