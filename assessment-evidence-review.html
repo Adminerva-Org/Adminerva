@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assessment Evidence Review | Adminerva</title>
+<script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="css/adminerva-ui.css?v=2">
+</head><body class="bg-slate-50 min-h-screen">
+<div id="adminerva-nav" data-module="repo" data-page="evidence"></div>
+<main id="pageBody" class="hidden max-w-6xl mx-auto px-4 sm:px-6 py-8">
+<header class="mb-6"><h1 class="text-2xl font-extrabold text-slate-900">Assessment Evidence Review</h1>
+<p class="text-sm text-slate-600 mt-2">Verify selected GitHub commits and the project checkpoint before approving. Author names and Git dates alone do not prove student contribution or timely submission.</p></header>
+<section class="bg-white p-5 rounded-xl border space-y-4">
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<label class="text-sm font-semibold">Student<select id="evidenceStudent" class="mt-2 w-full p-3 border rounded-lg bg-white"><option value="">Select student</option></select></label>
+<label class="text-sm font-semibold">Assessment<select id="evidenceAssessment" class="mt-2 w-full p-3 border rounded-lg bg-white"><option value="">Select assessment</option></select></label></div>
+<button id="evidenceLoad" type="button" class="rounded bg-indigo-700 text-white font-bold px-5 py-3">Load evidence</button>
+<p id="evidenceReviewStatus" class="text-sm text-slate-700" role="status">Choose a student and assessment.</p></section>
+<section id="evidenceDetails" class="hidden bg-white mt-5 p-5 rounded-xl border space-y-4">
+<h2 id="evidenceTitle" class="text-lg font-bold"></h2>
+<p id="evidenceMetadata" class="text-sm text-slate-700 break-words"></p>
+<div id="evidenceLinks" class="flex flex-wrap gap-4 text-sm"></div>
+<h3 class="text-sm font-bold">Selected Git commits</h3>
+<div id="evidenceCommitDetails" class="space-y-3"></div>
+<h3 class="text-sm font-bold">Reclaim requests for this student</h3>
+<div id="evidenceReclaims" class="space-y-3"></div>
+<label class="block text-sm font-semibold" for="evidenceReviewNote">Teacher review note</label>
+<textarea id="evidenceReviewNote" rows="3" maxlength="3000" class="w-full border rounded-lg p-3" placeholder="Describe the commits, project state and attribution evidence you verified."></textarea>
+<label class="flex gap-2 items-start text-sm"><input id="evidenceConfirm" type="checkbox" class="mt-1">
+<span>I inspected the project at the selected revision, checked the relevant commits and addressed attribution uncertainties. Git timestamps alone were not used to prove push time.</span></label>
+<button id="evidenceApprove" type="button" class="px-5 py-3 bg-emerald-700 text-white font-bold rounded">Approve checkpoint</button>
+<p class="text-xs text-slate-500">Approval records the student's assessment checkpoint, not a score. Grading and grade publication remain separate instructor actions.</p>
+</section>
+</main>
+<script src="js/core/adminerva-nav.js?v=2026.10.16.3"></script>
+<script src="js/core/adminerva-loader.js?v=2026.10.16.3"></script>
+<script type="module" src="js/core/auth-guard.js?v=2026.10.16.3"></script>
+<script type="module" src="js/repo-review/assessment-evidence-review.mjs?v=2026.10.16.6"></script>
+</body></html>
