@@ -14,6 +14,7 @@ test('teacher notifications do not appear in student inboxes',()=>{
   assert.equal(notificationVisible({type:'grading'},'student'),false);
   assert.equal(notificationVisible({type:'submission'},'student'),false);
   assert.equal(notificationVisible(teacherReport,'teacher'),true);
+  assert.equal(notificationVisible(teacherReport,'student'),false);
   assert.equal(notificationVisible(adminReport,'teacher'),false);
   assert.equal(notificationVisible({type:'grade'},'student'),true);
   assert.equal(notificationVisible({type:'assessment'},'student'),true);
