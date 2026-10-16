@@ -78,6 +78,7 @@ window.generateAI_SlideDeck = async function () {
       throw Error("The generated presentation has an invalid number of slides.");
     const sanitize=window.sanitizePresentationHtml;
     if(typeof sanitize!=="function")throw Error("Slide sanitizer failed to load.");
+    window.adminervaPresentationDirty = true;
     window.currentPresentationDeck = parsedDeck.map(slide => ({
       layout:["standard","split","media"].includes(slide.layout)?slide.layout:"standard",
       label:String(slide.label||"Slide").slice(0,120),
