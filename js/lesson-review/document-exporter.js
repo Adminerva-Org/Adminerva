@@ -40,11 +40,11 @@ window.buildDocumentLayout = async function () {
     return false;
   }
 
-  let headerImgUrl = localStorage.getItem("lessonReview_headerImage") || "";
+  let headerImgUrl = localStorage.getItem("Adminerva_headerImage") || localStorage.getItem("lessonReview_headerImage") || "";
   let rawSubject =
-    localStorage.getItem("lessonReview_defaultSubject") || "SUBJECT";
+    localStorage.getItem("Adminerva_defaultSubject") || localStorage.getItem("lessonReview_defaultSubject") || "SUBJECT";
   let rawTeacher =
-    localStorage.getItem("lessonReview_defaultTeacher") || "TEACHER";
+    localStorage.getItem("Adminerva_defaultTeacher") || localStorage.getItem("lessonReview_defaultTeacher") || "TEACHER";
 
   let s1Name = localStorage.getItem("lessonReview_sig1Name") || rawTeacher;
   let s1Title =
