@@ -259,6 +259,11 @@
                   <option value="Q3">Quarter 3</option><option value="Q4">Quarter 4</option>
                 </select>
                 <p class="text-xs text-gray-500 mt-1">Organizes assessments in the quarter gradebook.</p>
+                <label class="flex gap-3 items-start p-3 mt-3 rounded-xl border border-blue-200 bg-blue-50 text-sm">
+                  <input id="assessV2" type="checkbox" checked class="mt-1 h-4 w-4" />
+                  <span><strong>New assessment evidence (Version 2)</strong>
+                  <span class="block text-xs text-slate-600 mt-1">Commit selection, individual checkpoints and reclaim review. Legacy blueprints stay unchanged. Teacher-only grading instructions are stored separately.</span></span>
+                </label>
               </div>
               <div class="mb-4">
                 <label
@@ -545,6 +550,6 @@
 
     <!-- Core Scripts -->
     <script src="js/core/adminerva-loader.js?v=2026.10.16.3"></script>
-    <script type="module" src="js/repo-review/assessment-studio.js?v=2026.10.16.5"></script>
+    <script type="module" src="js/repo-review/assessment-studio.js?v=2026.10.16.6"></script>
   </body>
 </html>
