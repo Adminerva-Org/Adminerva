@@ -2,6 +2,10 @@ import {
   doc,
   getDoc,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+const escapePrintText=value=>String(value??"").replace(/[&<>"']/g,c=>({
+"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+})[c]);
+const linesForPrint=value=>escapePrintText(value).replace(/\\n|\n/g,"<br>");
 const GOOGLE_CLIENT_ID =
   "396238862950-ctpihosaaetvf7agaftbucupbkot4n7r.apps.googleusercontent.com";
 
@@ -12,20 +16,21 @@ window.formatListForPrint = function (text, isOrdered = true) {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
   if (lines.length === 0) return "";
-  if (lines.length === 1 && !/^([-•*]|\d+[\.\)])/.test(lines[0])) return text;
+  if (lines.length === 1 && !/^([-•*]|\d+[\.\)])/.test(lines[0])) return linesForPrint(text);
 
   const tag = isOrdered ? "ol" : "ul";
   const type = isOrdered ? "decimal" : "disc";
   let html = `<${tag} style="margin: 0; padding-left: 20px; list-style-type: ${type};">`;
   lines.forEach((line) => {
     let cleanLine = line.replace(/^([-•*]|\d+[\.\)])\s*/, "").trim();
-    if (cleanLine) html += `<li style="margin-bottom: 4px;">${cleanLine}</li>`;
+    if (cleanLine) html += `<li style="margin-bottom: 4px;">${escapePrintText(cleanLine)}</li>`;
   });
   html += `</${tag}>`;
   return html;
 };
 
 window.buildDocumentLayout = async function () {
+  window.syncOutputToData?.();
   if (
     !window.currentPlan ||
     window.currentPlan.length === 0 ||
@@ -125,14 +130,14 @@ window.buildDocumentLayout = async function () {
   tbody.innerHTML = "";
 
   window.currentPlan.forEach((session, index) => {
-    const isFlex = session.session_name.toLowerCase().includes("flex");
-    const isLab = session.session_name.includes("4-6");
+    const isFlex = String(session.session_name||"").toLowerCase().includes("flex");
+    const isLab = String(session.session_name||"").includes("4-6");
     const taxonomyScrubber =
       /\s*[\(\[]?(?:Cognitive|Psychomotor|Affective)[\)\]]?\.?/gi;
 
     const compText = isFlex
       ? ""
-      : (session.competencies || "").replace(taxonomyScrubber, "");
+      : linesForPrint((session.competencies || "").replace(taxonomyScrubber, ""));
 
     const objText = isFlex
       ? ""
@@ -155,7 +160,7 @@ window.buildDocumentLayout = async function () {
       session.learning_activities || "",
       true,
     );
-    const cleanRemarks = String(session.remarks || "")
+    const cleanRemarks = escapePrintText(session.remarks || "")
       .replace(/\s*\|\s*/g, "<br>")
       .replace(/;/g, "<br>")
       .replace(/\\n|\n/g, "<br>");
@@ -163,7 +168,7 @@ window.buildDocumentLayout = async function () {
     let parts = [];
     parts.push({
       time: "",
-      content: `<div style="font-weight: bold;">${session.session_name}</div>`,
+      content: `<div style="font-weight: bold;">${escapePrintText(session.session_name)}</div>`,
     });
 
     if (isFlex) {
@@ -178,7 +183,7 @@ window.buildDocumentLayout = async function () {
       });
       parts.push({
         time: isLab ? "10 mins" : "5 mins",
-        content: `<strong>Motivation / Recall:</strong><br><div style="padding-left: 8px; white-space: pre-wrap;">${session.motivation || ""}</div>`,
+        content: `<strong>Motivation / Recall:</strong><br><div style="padding-left: 8px; white-space: pre-wrap;">${linesForPrint(session.motivation)}</div>`,
       });
       parts.push({
         time: isLab ? "110 mins" : "26 mins",
@@ -186,19 +191,19 @@ window.buildDocumentLayout = async function () {
       });
       parts.push({
         time: isLab ? "15 mins" : "10 mins",
-        content: `<strong>Evaluation:</strong><br><div style="padding-left: 8px; white-space: pre-wrap;">${session.evaluation || ""}</div>`,
+        content: `<strong>Evaluation:</strong><br><div style="padding-left: 8px; white-space: pre-wrap;">${linesForPrint(session.evaluation)}</div>`,
       });
 
       if (session.closing) {
         parts.push({
           time: isLab ? "5 mins" : "4 mins",
-          content: `<strong>Closing Activities:</strong><br><div style="padding-left: 8px; white-space: pre-wrap;">${session.closing || ""}</div>`,
+          content: `<strong>Closing Activities:</strong><br><div style="padding-left: 8px; white-space: pre-wrap;">${linesForPrint(session.closing)}</div>`,
         });
       }
       if (session.values_integration) {
         parts.push({
           time: "",
-          content: `<strong>Values Integration:</strong><br><div style="padding-left: 8px; white-space: pre-wrap;">${session.values_integration || ""}</div>`,
+          content: `<strong>Values Integration:</strong><br><div style="padding-left: 8px; white-space: pre-wrap;">${linesForPrint(session.values_integration)}</div>`,
         });
       }
     }
@@ -237,12 +242,12 @@ window.buildDocumentLayout = async function () {
         } else {
           // 🚀 FIX: Restored the missing Content/Topic column!
           rowHtml += `<td rowspan="${rowCount}" style="font-weight: bold; text-align: center; vertical-align: middle;">
-                        ${session.topic || window.currentWeeklyOverview.topic || ""}
+                        ${linesForPrint(session.topic || window.currentWeeklyOverview.topic)}
                       </td>`;
           rowHtml += `<td rowspan="${rowCount}" style="vertical-align: top;">
-                        <strong>Content Standard:</strong><br>${window.currentWeeklyOverview.content_standard || ""}<br><br>
-                        <strong>Performance Standard:</strong><br>${window.currentWeeklyOverview.performance_standard || ""}<br><br>
-                        <strong>Formation Standard:</strong><br>${session.formation_standard || "N/A"}
+                        <strong>Content Standard:</strong><br>${linesForPrint(window.currentWeeklyOverview.content_standard)}<br><br>
+                        <strong>Performance Standard:</strong><br>${linesForPrint(window.currentWeeklyOverview.performance_standard)}<br><br>
+                        <strong>Formation Standard:</strong><br>${linesForPrint(session.formation_standard || "N/A")}
                       </td>`;
           rowHtml += `<td rowspan="${rowCount}" style="vertical-align: top;">
                         <strong>The learners should be able to...</strong><br>${compText}<br><br>
