@@ -228,7 +228,9 @@ test('V2 evidence is individual, editable while submitted, and cannot self-appro
   await assertFails(setDoc(doc(alice,'assessment_evidence','alice_peta'),{...record,assessmentId:'peta'}));
   await assertFails(updateDoc(ref,{status:'approved',reviewedBy:'alice'}));
   await assertFails(updateDoc(ref,{repository:'https://github.com/other/repo'}));
-  await assertSucceeds(updateDoc(ref,{selectedCommits:[SHA],checkpointSha:SHA,updatedAt:serverTimestamp()}));
+  await assertFails(updateDoc(ref,{selectedCommits:[SHA],checkpointSha:SHA,updatedAt:serverTimestamp()}));
+  await assertSucceeds(updateDoc(ref,{selectedCommits:[SHA],checkpointSha:SHA,
+    submittedAt:serverTimestamp(),updatedAt:serverTimestamp()}));
 });
 test('V2 evidence approval is staff-only',async()=>{
   const alice=client('alice',EMAIL_A),staff=client('staff',TEACHER);
