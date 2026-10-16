@@ -87,22 +87,32 @@
             <button
               id="saveProjectBtn"
               class="text-xs font-bold text-slate-600 hover:text-cyan-600 bg-slate-100 hover:bg-cyan-50 px-3 py-1.5 rounded transition border border-slate-200 hover:border-cyan-200 flex items-center gap-1"
-              title="Save Workspace locally"
+              title="Save code for this signed-in student and programming language on this device"
             >
               💾 Save
             </button>
             <button type="button" id="cloudSaveProjectBtn"
               class="text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-2 rounded-lg min-h-11"
-              title="Save a private version of this workspace in Firebase">Save Cloud</button>
+              title="Save a private cloud version for access on another device">Save Cloud</button>
             <button type="button" id="cloudLoadProjectBtn"
               class="text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-2 rounded-lg min-h-11"
               title="Recover an earlier saved private version">Cloud Versions</button>
             <button
               id="loadProjectBtn"
               class="text-xs font-bold text-slate-600 hover:text-cyan-600 bg-slate-100 hover:bg-cyan-50 px-3 py-1.5 rounded transition border border-slate-200 hover:border-cyan-200 flex items-center gap-1"
-              title="Load Saved Workspace"
+              title="Reload this student's last local draft for the active programming language"
             >
               📂 Load
+            </button>
+            <button type="button" id="undoRestoreBtn"
+              class="text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-1.5 rounded"
+              title="Restore the local draft saved before your most recent import or cloud restore">
+              Undo Restore
+            </button>
+            <button type="button" id="legacyImportBtn"
+              class="hidden text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-3 py-1.5 rounded"
+              title="Manually import a browser-only draft created before account-specific saving">
+              Import Old Draft
             </button>
             <button
               id="exportZipBtn"
