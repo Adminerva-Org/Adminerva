@@ -448,6 +448,8 @@ Reference Text:\n${window.cachedCompiledText.substring(0, 25000)}`;
       "Summary of the Lesson\nClosing Prayer";
     const sessionsArray = planData.sessions || [];
 
+    window.currentPlanSubject = subject;
+    window.currentPlanTeacher = localStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
     window.currentPlan = sessionsArray.map((session) => {
       if (
         session &&
@@ -485,6 +487,8 @@ Reference Text:\n${window.cachedCompiledText.substring(0, 25000)}`;
 };
 
 window.generateBlankPlan = function () {
+  window.currentPlanSubject = localStorage.getItem("Adminerva_defaultSubject") || "Subject";
+  window.currentPlanTeacher = localStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
   window.currentTargetGrade =
     document.getElementById("lpGradeLevel")?.value || "Grade 11";
   window.currentWeeklyOverview = {
