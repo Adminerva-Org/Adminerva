@@ -1,5 +1,5 @@
 import { db } from "../core/firebase-core.js";
-import { scheduleScope, parseScheduleRows } from "./schedule-scope.mjs";
+import { scheduleScope, parseScheduleRows, parseClockMinutes } from "./schedule-scope.mjs";
 import {
   doc,
   getDoc,
@@ -156,6 +156,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   await initFirebase();
 });
 
+// Warn when the user leaves while an editable timetable may contain
+// unsaved changes. Semester switching has its own confirmation.
+window.addEventListener("beforeunload", event => {
+  if (!isEditing) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
+
 window.changeSchedulePeriod = async function () {
   if (isSaving) { syncPeriodInputs(); return; }
   const requestedYear = document.getElementById("scheduleSchoolYear")?.value.trim();
@@ -269,7 +277,11 @@ window.autoFillEndTime = function (dateStr, startInputElement) {
   const endInput = row.querySelector(".time-end");
   if (!endInput) return;
 
-  // ⏱️ UPDATED: 45-minute interval logic
+  // A teacher may be editing a 60-minute class or a 3-hour laboratory.
+  // Never silently replace an existing end time with a 45-minute slot.
+  if (String(endInput.value || "").trim()) return;
+
+  // Supply a default end time only for a new, incomplete row.
   const [hours, minutes] = dateStr.split(":").map(Number);
   const date = new Date();
   date.setHours(hours, minutes + 45, 0, 0);
@@ -560,12 +572,12 @@ window.saveScheduleData = async function (bypassValidation = false) {
         return false;
       }
 
-      const startMins =
-        Number(row.startTime.split(":")[0]) * 60 +
-        Number(row.startTime.split(":")[1]);
-      const endMins =
-        Number(row.endTime.split(":")[0]) * 60 +
-        Number(row.endTime.split(":")[1]);
+      const startMins = parseClockMinutes(row.startTime);
+      const endMins = parseClockMinutes(row.endTime);
+      if (startMins === null || endMins === null) {
+        alert(`Row ${i + 1} has an invalid time. Use a 24-hour time like 08:00 or 13:30.`);
+        return false;
+      }
 
       if (startMins >= endMins) {
         alert(
