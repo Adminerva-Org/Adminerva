@@ -6,6 +6,11 @@ import {
   setDoc,
   getDoc,
   deleteDoc,
+  runTransaction,
+  query,
+  orderBy,
+  limit,
+  serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 window.availablePlans = [];
@@ -43,6 +48,7 @@ function injectPlanSelectorUI() {
 
   const selectorHTML = `
         <div class="mb-4 bg-gray-50 p-3 rounded border border-gray-200 w-full relative">
+            <button onclick="openPresentationHistory()" class="absolute top-9 right-2 text-xs font-bold text-blue-700 hover:underline">Version history</button>
             <button onclick="openArchiveManager()" class="absolute top-2 right-2 text-gray-400 hover:text-red-500 text-xs font-bold transition flex items-center gap-1" title="Recycle Bin">
                 <span>🗑️</span> Archive
             </button>
@@ -196,17 +202,37 @@ window.savePresentationToCloud = async function () {
       session_index: sessionIdx,
       subject: window.selectedPlanData.subject_title || "Unknown",
       grade: window.selectedPlanData.grade_level || "Unknown",
-      deck: window.currentPresentationDeck,
+      deck: window.currentPresentationDeck.map(slide=>({
+        ...slide,
+        content:window.sanitizePresentationHtml?.(slide.content) ?? "",
+        contentLeft:window.sanitizePresentationHtml?.(slide.contentLeft) ?? "",
+        contentRight:window.sanitizePresentationHtml?.(slide.contentRight) ?? ""
+      })),
       updated_at: new Date().toISOString(),
       is_archived: false, // Ensure it saves as active
     };
 
-    await setDoc(doc(window.db, "presentations", presentationId), payload);
+    // Transactionally preserve the previous deck before replacing it.
+    // Restoring an earlier version requires a separate deliberate Save action.
+    const currentRef=doc(window.db,"presentations",presentationId);
+    const revisionId=Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,10);
+    const historyRef=doc(window.db,"presentations",presentationId,"revisions",revisionId);
+    const action=await runTransaction(window.db,async tx=>{
+      const previous=await tx.get(currentRef);
+      if(previous.exists()){
+        const before=previous.data();
+        if(JSON.stringify(before.deck||[])===JSON.stringify(payload.deck))return "unchanged";
+        tx.set(historyRef,{...before,archivedRevisionAt:serverTimestamp()});
+        payload.version=Number(before.version||1)+1;
+      }else payload.version=1;
+      tx.set(currentRef,payload);
+      return "saved";
+    });
 
     const btnDelete = document.getElementById("btnDeletePresentation");
     if (btnDelete) btnDelete.classList.replace("hidden", "flex");
 
-    alert("✅ Presentation successfully saved to Firebase!");
+    alert(action==="unchanged"?"No presentation changes since last save.":"Presentation saved with previous version retained.");
   } catch (e) {
     alert("Failed to save: " + e.message);
   } finally {
@@ -399,5 +425,70 @@ window.hardDeleteDocument = async function (collectionName, docId) {
     window.openArchiveManager(); // Refresh UI
   } catch (e) {
     alert("Failed to delete: " + e.message);
+  }
+};
+
+
+window.openPresentationHistory=async function(){
+  const planId=document.getElementById("presentationPlanSelect")?.value;
+  const session=window.selectedSessionIndex;
+  if(!planId||session===null||session===undefined)return alert("Select a lesson session first.");
+  const presentationId=planId+"_session"+session;
+  let modal=document.getElementById("presentationVersionsModal");
+  if(!modal){
+    modal=document.createElement("div");
+    modal.id="presentationVersionsModal";
+    modal.className="fixed inset-0 z-[250] bg-slate-900/75 p-3 sm:p-8 flex items-center justify-center";
+    modal.setAttribute("role","dialog");
+    modal.setAttribute("aria-modal","true");
+    const panel=document.createElement("div");
+    panel.className="bg-white rounded-xl max-w-xl w-full max-h-[85dvh] overflow-y-auto p-5";
+    const header=document.createElement("div");
+    header.className="flex justify-between items-center mb-4";
+    const title=document.createElement("h2");
+    title.className="font-bold text-lg text-slate-900";title.textContent="Presentation versions";
+    const close=document.createElement("button");
+    close.textContent="Close";close.className="px-3 py-2 bg-slate-200 rounded-lg text-sm font-bold";
+    close.addEventListener("click",()=>modal.classList.add("hidden"));
+    header.append(title,close);
+    const list=document.createElement("div");list.id="presentationVersionsList";list.className="space-y-3";
+    panel.append(header,list);modal.append(panel);document.body.append(modal);
+  }
+  modal.classList.remove("hidden");
+  const container=modal.querySelector("#presentationVersionsList");
+  container.textContent="Loading saved versions…";
+  try{
+    const snap=await getDocs(query(collection(db,"presentations",presentationId,"revisions"),
+      orderBy("archivedRevisionAt","desc"),limit(20)));
+    container.replaceChildren();
+    if(snap.empty)container.textContent="No earlier versions yet. Saving a changed deck will preserve the previous one.";
+    snap.forEach(docSnap=>{
+      const revision=docSnap.data();
+      const row=document.createElement("div");
+      row.className="border border-slate-200 rounded-lg px-3 py-3 flex items-center justify-between gap-3";
+      const info=document.createElement("p");
+      info.className="text-sm text-slate-700 break-words";
+      info.textContent="Version "+String(revision.version||"legacy")+" · "+
+        String(revision.updated_at||"Unknown date")+" · "+
+        String(revision.deck?.length||0)+" slides";
+      const restore=document.createElement("button");
+      restore.className="bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-lg shrink-0";
+      restore.textContent="Load draft";
+      restore.addEventListener("click",()=>{
+        if(!confirm("Load this earlier deck into the editor? Save afterward to keep the restoration."))return;
+        window.currentPresentationDeck=(revision.deck||[]).map(slide=>({
+          ...slide,content:window.sanitizePresentationHtml?.(slide.content)??"",
+          contentLeft:window.sanitizePresentationHtml?.(slide.contentLeft)??"",
+          contentRight:window.sanitizePresentationHtml?.(slide.contentRight)??""
+        }));
+        window.activeSlideIndex=window.currentPresentationDeck.length?0:-1;
+        window.renderSlideBlocks?.();
+        if(window.currentPresentationDeck.length)window.selectSlide?.(0);
+        modal.classList.add("hidden");
+      });
+      row.append(info,restore);container.append(row);
+    });
+  }catch(error){
+    container.textContent="Could not load version history: "+error.message;
   }
 };
