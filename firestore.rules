@@ -59,8 +59,30 @@ service cloud.firestore {
     }
 
     match /playground_snapshots/{snapshotId} {
-      // Existing link-sharing behavior; review snapshot privacy policy separately.
-      allow read, create: if signedIn();
+      // New snapshots are private unless explicitly shared by link.
+      // Legacy public-by-link records remain compatible until migration.
+      allow read: if signedIn() &&
+        (resource.data.get("visibility","legacy") == "legacy" ||
+         resource.data.get("visibility","") == "link" ||
+         resource.data.get("ownerUid","") == request.auth.uid);
+      allow create: if signedIn() &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.visibility in ["private","link"] &&
+        request.resource.data.files is map &&
+        request.resource.data.fileOrder is list;
+      allow update, delete: if false;
+    }
+
+    // Recoverable cloud code is visible only to the authenticated owner;
+    // revisions are immutable to prevent accidental multi-device overwrites.
+    match /student_playground_workspaces/{uid}/versions/{versionId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid &&
+        request.resource.data.ownerUid == uid &&
+        request.resource.data.files is map &&
+        request.resource.data.fileOrder is list &&
+        request.resource.data.lang in ["java","python","web","csharp","cpp","dart"];
+      allow update, delete: if false;
     }
 
     // Reports are visible to signed-in users for duplicate discovery.
