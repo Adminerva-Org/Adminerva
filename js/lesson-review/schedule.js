@@ -335,14 +335,14 @@ window.addRow = function (type) {
     });
   }
 
-  localStorage.setItem("Adminerva_schedule_json", JSON.stringify(savedJson));
+  localStorage.setItem(currentScope().jsonKey, JSON.stringify(savedJson));
   renderTable();
 };
 
 window.deleteRow = function (index) {
   const data = getTableDataFromDOM();
   data.splice(index, 1);
-  localStorage.setItem("Adminerva_schedule_json", JSON.stringify(data));
+  localStorage.setItem(currentScope().jsonKey, JSON.stringify(data));
   renderTable();
 };
 
@@ -350,9 +350,7 @@ function renderTable() {
   const tbody = document.getElementById("scheduleTableBody");
   tbody.innerHTML = "";
 
-  const savedJson = JSON.parse(
-    localStorage.getItem("Adminerva_schedule_json") || "[]",
-  );
+  const savedJson = cachedRows(currentScope());
 
   if (savedJson.length === 0 && !isEditing) {
     tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-gray-400 italic">No schedule configured. Click 'Edit Schedule' to begin.</td></tr>`;
@@ -366,9 +364,9 @@ function renderTable() {
 
     const timeInputHtml = isEditing
       ? `<div class="flex flex-col gap-1 items-center justify-center">
-                   <input type="text" class="time-start w-full p-1 border border-gray-300 rounded text-xs focus:ring-blue-500 font-bold text-gray-700 text-center cursor-pointer bg-white" value="${row.startTime || ""}" placeholder="Start Time">
+                   <input type="text" class="time-start w-full p-1 border border-gray-300 rounded text-xs focus:ring-blue-500 font-bold text-gray-700 text-center cursor-pointer bg-white" value="${escapeHTML(row.startTime || "")}" placeholder="Start Time">
                    <span class="text-[9px] text-gray-400 font-bold uppercase">To</span>
-                   <input type="text" class="time-end w-full p-1 border border-gray-300 rounded text-xs focus:ring-blue-500 font-bold text-gray-700 text-center cursor-pointer bg-white" value="${row.endTime || ""}" placeholder="End Time">
+                   <input type="text" class="time-end w-full p-1 border border-gray-300 rounded text-xs focus:ring-blue-500 font-bold text-gray-700 text-center cursor-pointer bg-white" value="${escapeHTML(row.endTime || "")}" placeholder="End Time">
                </div>`
       : `<div class="flex flex-col items-center justify-center text-center">
                    <span class="font-bold text-gray-800 text-xs">${formatTimeToAMPM(row.startTime) || '<span class="text-gray-300">--</span>'}</span>
@@ -379,7 +377,9 @@ function renderTable() {
     if (row.type === "constant") {
       if (isEditing) {
         let options = `<option value="">-- Select Event --</option>`;
-        myEvents.forEach((e) => {
+        const availableEvents = [...myEvents];
+        if (row.eventName && !availableEvents.includes(row.eventName)) availableEvents.push(row.eventName);
+        availableEvents.forEach((e) => {
           const safeE = escapeHTML(e); // 🔒 Security Patch
           options += `<option value="${safeE}" ${row.eventName === e ? "selected" : ""}>${safeE}</option>`;
         });
@@ -452,21 +452,29 @@ function renderTable() {
 
 function buildCellEdit(dayPrefix, savedData = {}) {
   // 🔒 Security Patch: Sanitize generated options
-  const secOptions = mySections
+  // A semester may reference sections/subjects removed from current settings.
+  // Keep saved values selectable so re-rendering cannot erase those classes.
+  const sections = [...mySections];
+  const subjects = [...mySubjects];
+  const events = [...myEvents];
+  if (savedData.sec && !sections.includes(savedData.sec)) sections.push(savedData.sec);
+  if (savedData.sub && !subjects.includes(savedData.sub)) subjects.push(savedData.sub);
+  if (savedData.evt && !events.includes(savedData.evt)) events.push(savedData.evt);
+  const secOptions = sections
     .map((s) => {
       const safeS = escapeHTML(s);
       return `<option value="${safeS}" ${savedData.sec === s ? "selected" : ""}>${safeS}</option>`;
     })
     .join("");
 
-  const subOptions = mySubjects
+  const subOptions = subjects
     .map((s) => {
       const safeS = escapeHTML(s);
       return `<option value="${safeS}" ${savedData.sub === s ? "selected" : ""}>${safeS}</option>`;
     })
     .join("");
 
-  const evtOptions = myEvents
+  const evtOptions = events
     .map((e) => {
       const safeE = escapeHTML(e);
       return `<option value="${safeE}" ${savedData.evt === e ? "selected" : ""}>${safeE}</option>`;
