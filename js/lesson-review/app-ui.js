@@ -387,9 +387,8 @@ window.loadSpecificPlan = function (planData) {
 
   if (planData.grade_level)
     document.getElementById("lpGradeLevel").value = planData.grade_level;
-  if (planData.schedule) {
-    localStorage.setItem("Adminerva_schedule", planData.schedule);
-  }
+  // Historical lessons retain their saved schedule as part of the plan.
+  // Loading one must not replace the active semester timetable.
 
   window.renderOverview();
   window.renderOutput();

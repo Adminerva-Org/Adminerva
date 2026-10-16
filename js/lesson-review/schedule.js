@@ -1,4 +1,5 @@
 import { db } from "../core/firebase-core.js";
+import { scheduleScope, parseScheduleRows } from "./schedule-scope.mjs";
 import {
   doc,
   getDoc,
@@ -9,11 +10,14 @@ let mySections = [];
 let mySubjects = [];
 let myEvents = [];
 let isEditing = false;
+let draftRows = null;
+let activeYear = "2026-2027";
+let activeSemester = "S1";
+let loadSerial = 0;
+let isSaving = false;
 
-// 🔒 Security Patch: Helper to neutralize malicious HTML scripts from user input
 function escapeHTML(str) {
-  if (!str) return "";
-  return String(str)
+  return String(str ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -21,44 +25,109 @@ function escapeHTML(str) {
     .replace(/'/g, "&#039;");
 }
 
-// --- FIREBASE INITIALIZATION & FETCH ---
-async function initFirebase() {
-  if (!db) {
-    alert(
-      "Firebase is not configured! Please configure it in Global Settings.",
-    );
-    renderTable();
-    return;
-  }
+function currentScope() {
+  return scheduleScope(activeYear, activeSemester);
+}
 
-  try {
-    await fetchScheduleFromCloud();
-  } catch (e) {
-    console.error("Firebase Initialization Failed:", e);
-    alert("Failed to connect to Firebase. Using local cache.");
-    renderTable();
+function cacheRows(scope, rows, rawText) {
+  localStorage.setItem(scope.jsonKey, JSON.stringify(rows));
+  localStorage.setItem(scope.textKey, rawText);
+}
+
+function cachedRows(scope) {
+  const local = localStorage.getItem(scope.jsonKey);
+  if (local !== null) return parseScheduleRows(local);
+  return scope.allowLegacy
+    ? parseScheduleRows(localStorage.getItem("Adminerva_schedule_json"))
+    : [];
+}
+
+function updateScopeStatus(message) {
+  const label = document.getElementById("scheduleScopeStatus");
+  if (label) label.textContent = activeYear + " · " +
+    (activeSemester === "S2" ? "Second Semester" : "First Semester") +
+    " — " + message;
+}
+
+function syncPeriodInputs() {
+  const year = document.getElementById("scheduleSchoolYear");
+  const semester = document.getElementById("scheduleSemester");
+  if (year) year.value = activeYear;
+  if (semester) semester.value = activeSemester;
+}
+
+function updateEditControls() {
+  const button = document.getElementById("editSaveBtn");
+  const badge = document.getElementById("modeBadge");
+  if (button) {
+    button.textContent = isEditing ? "Save Schedule" : "Edit Schedule";
+    button.className = isEditing
+      ? "bg-green-600 text-white px-6 py-2 rounded font-bold hover:bg-green-700 transition shadow-sm flex items-center gap-2"
+      : "bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700 transition shadow-sm flex items-center gap-2";
   }
+  if (badge) {
+    badge.textContent = isEditing ? "Editing Mode" : "Read-Only";
+    badge.className = isEditing
+      ? "bg-green-100 text-green-800 text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider"
+      : "bg-gray-200 text-gray-700 text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider";
+  }
+  for (const id of ["addClassBtn", "addEventBtn"]) {
+    const node = document.getElementById(id);
+    if (!node) continue;
+    node.classList.toggle("hidden", !isEditing);
+    node.classList.toggle("flex", isEditing);
+  }
+}
+
+async function initFirebase() {
+  await fetchScheduleFromCloud();
 }
 
 async function fetchScheduleFromCloud() {
-  if (!db) return;
-  window.showLoader("Loading schedule from cloud...");
-  try {
-    const docRef = doc(db, "app_config", "master_schedule");
-    const docSnap = await getDoc(docRef);
-
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      localStorage.setItem("Adminerva_schedule_json", data.json_data || "[]");
-      localStorage.setItem("Adminerva_schedule", data.raw_text || "");
-    }
-  } catch (e) {
-    console.error("Error fetching schedule:", e);
-  } finally {
-    window.hideLoader();
+  const request = ++loadSerial;
+  const scope = currentScope();
+  let rows = cachedRows(scope);
+  let raw = localStorage.getItem(scope.textKey);
+  if (raw === null && scope.allowLegacy)
+    raw = localStorage.getItem("Adminerva_schedule");
+  let source = rows.length ? "Local copy" : "No schedule saved; choose Edit Schedule to enter one.";
+  if (localStorage.getItem(scope.pendingKey) === "1") {
     renderTable();
+    updateScopeStatus("Unsynced edits from this device. Select Edit Schedule, then Save Schedule to retry.");
+    return;
   }
+  if (db) {
+    window.showLoader("Loading selected semester schedule...");
+    try {
+      let snap = await getDoc(doc(db, "app_config", scope.id));
+      let fromLegacy = false;
+      // Existing first-semester timetables used one unscoped document.
+      // Never import that document into a different semester or school year.
+      if (!snap.exists() && scope.allowLegacy &&
+          localStorage.getItem(scope.jsonKey) === null) {
+        snap = await getDoc(doc(db, "app_config", "master_schedule"));
+        fromLegacy = snap.exists();
+      }
+      if (snap.exists()) {
+        const data = snap.data();
+        rows = parseScheduleRows(data.json_data);
+        raw = typeof data.raw_text === "string" ? data.raw_text : "";
+        source = fromLegacy ? "Legacy timetable loaded; save to store this semester independently."
+          : "Loaded from cloud.";
+      }
+    } catch (error) {
+      console.warn("Schedule cloud fetch failed; using local copy:", error);
+      source = "Cloud unavailable; showing local copy if available.";
+    } finally {
+      window.hideLoader();
+    }
+  }
+  if (request !== loadSerial) return;
+  cacheRows(scope, rows, raw || "");
+  renderTable();
+  updateScopeStatus(source);
 }
+
 // --- CLOUD SYNC HELPERS (Subtle Loader Adapter) ---
 window.showLoader = function (msg = "Syncing schedule...") {
   if (typeof window.showSubtleLoader === "function") {
@@ -73,8 +142,45 @@ window.hideLoader = function () {
 
 document.addEventListener("DOMContentLoaded", async () => {
   loadConfig();
-  initFirebase();
+  const year = localStorage.getItem("Adminerva_schedule_selected_year");
+  const semester = localStorage.getItem("Adminerva_schedule_selected_semester");
+  if (year) {
+    try { scheduleScope(year, semester || "S1"); activeYear = year; }
+    catch (error) { console.warn("Invalid saved school year:", error); }
+  }
+  if (semester === "S1" || semester === "S2") activeSemester = semester;
+  syncPeriodInputs();
+  document.getElementById("scheduleSchoolYear")?.addEventListener("change", window.changeSchedulePeriod);
+  document.getElementById("scheduleSemester")?.addEventListener("change", window.changeSchedulePeriod);
+  updateEditControls();
+  await initFirebase();
 });
+
+window.changeSchedulePeriod = async function () {
+  if (isSaving) { syncPeriodInputs(); return; }
+  const requestedYear = document.getElementById("scheduleSchoolYear")?.value.trim();
+  const requestedSemester = document.getElementById("scheduleSemester")?.value;
+  try {
+    scheduleScope(requestedYear, requestedSemester);
+  } catch (error) {
+    alert(error.message);
+    syncPeriodInputs();
+    return;
+  }
+  if (requestedYear === activeYear && requestedSemester === activeSemester) return;
+  if (isEditing && !confirm("Switch schedules and discard unsaved timetable edits? Save the current semester first if needed.")) {
+    syncPeriodInputs();
+    return;
+  }
+  isEditing = false;
+  draftRows = null;
+  updateEditControls();
+  activeYear = requestedYear;
+  activeSemester = requestedSemester;
+  localStorage.setItem("Adminerva_schedule_selected_year", activeYear);
+  localStorage.setItem("Adminerva_schedule_selected_semester", activeSemester);
+  await fetchScheduleFromCloud();
+};
 // --- MODAL & CONFIG LOGIC ---
 window.openSettingsModal = function () {
   document.getElementById("configSections").value =
@@ -109,8 +215,10 @@ window.saveSettingsConfig = async function () {
     document.getElementById("configEvents").value,
   );
 
+  // Keep existing unsaved edits when changing dropdown options. The user
+  // explicitly saves the timetable with Save Schedule after reviewing it.
+  if (isEditing) draftRows = getTableDataFromDOM();
   loadConfig();
-  if (isEditing) await saveScheduleData(true);
   renderTable();
   closeSettingsModal();
 };
@@ -132,36 +240,22 @@ function loadConfig() {
 
 // --- EDIT/LOCK ENGINE ---
 window.toggleEditMode = async function () {
+  if (isSaving) return;
   if (isEditing) {
-    const saveSuccess = await saveScheduleData();
-    if (!saveSuccess) return;
-
-    isEditing = false;
-    document.getElementById("editSaveBtn").innerHTML =
-      "<span>✏️</span> Edit Schedule";
-    document.getElementById("editSaveBtn").className =
-      "bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700 transition shadow-sm flex items-center gap-2";
-    document.getElementById("modeBadge").className =
-      "bg-gray-200 text-gray-700 text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider";
-    document.getElementById("modeBadge").textContent = "🔒 Read-Only";
-
-    document.getElementById("addClassBtn").classList.add("hidden");
-    document.getElementById("addEventBtn").classList.add("hidden");
+    isSaving = true;
+    try {
+      const saved = await window.saveScheduleData();
+      if (!saved) return;
+      isEditing = false;
+      draftRows = null;
+    } finally {
+      isSaving = false;
+    }
   } else {
+    draftRows = cachedRows(currentScope());
     isEditing = true;
-    document.getElementById("editSaveBtn").innerHTML =
-      "<span>💾</span> Save to Cloud";
-    document.getElementById("editSaveBtn").className =
-      "bg-green-600 text-white px-6 py-2 rounded font-bold hover:bg-green-700 transition shadow-sm flex items-center gap-2";
-    document.getElementById("modeBadge").className =
-      "bg-green-100 text-green-800 text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider animate-pulse";
-    document.getElementById("modeBadge").textContent = "🛠️ Editing Mode";
-
-    document.getElementById("addClassBtn").classList.remove("hidden");
-    document.getElementById("addClassBtn").classList.add("flex");
-    document.getElementById("addEventBtn").classList.remove("hidden");
-    document.getElementById("addEventBtn").classList.add("flex");
   }
+  updateEditControls();
   renderTable();
 };
 
@@ -247,14 +341,14 @@ window.addRow = function (type) {
     });
   }
 
-  localStorage.setItem("Adminerva_schedule_json", JSON.stringify(savedJson));
+  draftRows = savedJson;
   renderTable();
 };
 
 window.deleteRow = function (index) {
   const data = getTableDataFromDOM();
   data.splice(index, 1);
-  localStorage.setItem("Adminerva_schedule_json", JSON.stringify(data));
+  draftRows = data;
   renderTable();
 };
 
@@ -262,9 +356,7 @@ function renderTable() {
   const tbody = document.getElementById("scheduleTableBody");
   tbody.innerHTML = "";
 
-  const savedJson = JSON.parse(
-    localStorage.getItem("Adminerva_schedule_json") || "[]",
-  );
+  const savedJson = isEditing && draftRows ? draftRows : cachedRows(currentScope());
 
   if (savedJson.length === 0 && !isEditing) {
     tbody.innerHTML = `<tr><td colspan="7" class="py-8 text-center text-gray-400 italic">No schedule configured. Click 'Edit Schedule' to begin.</td></tr>`;
@@ -278,9 +370,9 @@ function renderTable() {
 
     const timeInputHtml = isEditing
       ? `<div class="flex flex-col gap-1 items-center justify-center">
-                   <input type="text" class="time-start w-full p-1 border border-gray-300 rounded text-xs focus:ring-blue-500 font-bold text-gray-700 text-center cursor-pointer bg-white" value="${row.startTime || ""}" placeholder="Start Time">
+                   <input type="text" class="time-start w-full p-1 border border-gray-300 rounded text-xs focus:ring-blue-500 font-bold text-gray-700 text-center cursor-pointer bg-white" value="${escapeHTML(row.startTime || "")}" placeholder="Start Time">
                    <span class="text-[9px] text-gray-400 font-bold uppercase">To</span>
-                   <input type="text" class="time-end w-full p-1 border border-gray-300 rounded text-xs focus:ring-blue-500 font-bold text-gray-700 text-center cursor-pointer bg-white" value="${row.endTime || ""}" placeholder="End Time">
+                   <input type="text" class="time-end w-full p-1 border border-gray-300 rounded text-xs focus:ring-blue-500 font-bold text-gray-700 text-center cursor-pointer bg-white" value="${escapeHTML(row.endTime || "")}" placeholder="End Time">
                </div>`
       : `<div class="flex flex-col items-center justify-center text-center">
                    <span class="font-bold text-gray-800 text-xs">${formatTimeToAMPM(row.startTime) || '<span class="text-gray-300">--</span>'}</span>
@@ -291,7 +383,9 @@ function renderTable() {
     if (row.type === "constant") {
       if (isEditing) {
         let options = `<option value="">-- Select Event --</option>`;
-        myEvents.forEach((e) => {
+        const availableEvents = [...myEvents];
+        if (row.eventName && !availableEvents.includes(row.eventName)) availableEvents.push(row.eventName);
+        availableEvents.forEach((e) => {
           const safeE = escapeHTML(e); // 🔒 Security Patch
           options += `<option value="${safeE}" ${row.eventName === e ? "selected" : ""}>${safeE}</option>`;
         });
@@ -364,21 +458,29 @@ function renderTable() {
 
 function buildCellEdit(dayPrefix, savedData = {}) {
   // 🔒 Security Patch: Sanitize generated options
-  const secOptions = mySections
+  // A semester may reference sections/subjects removed from current settings.
+  // Keep saved values selectable so re-rendering cannot erase those classes.
+  const sections = [...mySections];
+  const subjects = [...mySubjects];
+  const events = [...myEvents];
+  if (savedData.sec && !sections.includes(savedData.sec)) sections.push(savedData.sec);
+  if (savedData.sub && !subjects.includes(savedData.sub)) subjects.push(savedData.sub);
+  if (savedData.evt && !events.includes(savedData.evt)) events.push(savedData.evt);
+  const secOptions = sections
     .map((s) => {
       const safeS = escapeHTML(s);
       return `<option value="${safeS}" ${savedData.sec === s ? "selected" : ""}>${safeS}</option>`;
     })
     .join("");
 
-  const subOptions = mySubjects
+  const subOptions = subjects
     .map((s) => {
       const safeS = escapeHTML(s);
       return `<option value="${safeS}" ${savedData.sub === s ? "selected" : ""}>${safeS}</option>`;
     })
     .join("");
 
-  const evtOptions = myEvents
+  const evtOptions = events
     .map((e) => {
       const safeE = escapeHTML(e);
       return `<option value="${safeE}" ${savedData.evt === e ? "selected" : ""}>${safeE}</option>`;
@@ -532,32 +634,36 @@ window.saveScheduleData = async function (bypassValidation = false) {
     }
   });
 
-  // Save locally
-  localStorage.setItem("Adminerva_schedule_json", JSON.stringify(jsonData));
-  localStorage.setItem("Adminerva_schedule", rawTextForAI);
+  // Save this semester only; legacy master_schedule stays untouched.
+  const scope = currentScope();
+  cacheRows(scope, jsonData, rawTextForAI);
 
-  // Save to Firebase (Cloud Sync)
   if (!db) {
-    alert(
-      "Saved locally, but Firebase is not connected. Check Global Settings to enable cloud sync.",
-    );
+    localStorage.setItem(scope.pendingKey, "1");
+    updateScopeStatus("Saved on this device only (cloud unavailable).");
+    alert("Schedule saved locally. Connect Firebase to sync it across devices.");
     return true;
   }
 
-  window.showLoader("Saving schedule to Firebase...");
+  window.showLoader("Saving selected semester to Firebase...");
   try {
-    const docRef = doc(db, "app_config", "master_schedule");
-    await setDoc(docRef, {
+    await setDoc(doc(db, "app_config", scope.id), {
+      school_year: scope.year,
+      semester: scope.semester,
       json_data: JSON.stringify(jsonData),
       raw_text: rawTextForAI,
       last_updated: new Date().toISOString(),
     });
-  } catch (e) {
-    console.error("Firebase save error:", e);
-    alert("Error saving to cloud. Data saved locally only. " + e.message);
+    localStorage.removeItem(scope.pendingKey);
+    updateScopeStatus("Saved to cloud.");
+    return true;
+  } catch (error) {
+    console.error("Schedule cloud save failed:", error);
+    localStorage.setItem(scope.pendingKey, "1");
+    updateScopeStatus("Saved on this device only. Cloud save failed; retry.");
+    alert("Cloud save failed. Your edits remain in this device. Please retry Save Schedule. " + error.message);
+    return false;
   } finally {
     window.hideLoader();
   }
-
-  return true;
 };
