@@ -86,15 +86,29 @@ exports.commitReclaimRequested=onDocumentCreated("commit_reclaims/{claimId}",asy
     const x=d.data();return x.repository===claim.repository&&
       ["pending","approved","shared"].includes(x.status);
   });
-  if(relevant.length<2)return;
+  // The Git-detected author is a provisional first attribution. If another
+  // linked student currently uses that login, a new reclaim is potentially
+  // disputed even when the detected author did not file an explicit claim.
+  const detectedLogin=String(claim.detectedAuthorLogin||"").replace(/^@/,"").trim();
+  let possibleOriginalStudents=[];
+  if(detectedLogin&&/^[A-Za-z0-9-]{1,39}$/.test(detectedLogin)){
+    const matches=await db.collection("students").where("githubUsername","==",detectedLogin)
+      .limit(10).get();
+    const canonical=value=>String(value||"").toLowerCase().replace(/\\.git$/,"").replace(/\\/$/,"");
+    possibleOriginalStudents=matches.docs.filter(d=>d.id!==claim.studentId&&
+      canonical(d.data().repoUrl)===canonical(claim.repository)).map(d=>d.id);
+  }
+  if(relevant.length<2&&!possibleOriginalStudents.length)return;
   await db.doc("commit_claim_conflicts/"+claim.sha).set({
     sha:claim.sha,repository:claim.repository,
     claimIds:relevant.map(d=>d.id),claimCount:relevant.length,
+    detectedAuthorLogin:detectedLogin,
+    possibleOriginalStudentIds:possibleOriginalStudents,
     updatedAt:FieldValue.serverTimestamp()
   },{merge:true});
   await notify(adminId,"reclaim_conflict_"+claim.sha,{
-    type:"reclaim",title:"Conflicting commit reclaims",
-    body:"Multiple students requested credit for the same Git commit. Review both claims.",
+    type:"reclaim",title:"Commit attribution dispute",
+    body:"A reclaim overlaps another request or challenges a student linked to the detected Git author. Verify attribution before crediting.",
     sourceId:claim.sha,target:"assessment-evidence-review.html?student="+
       encodeURIComponent(claim.studentId)+"&assessment="+encodeURIComponent(claim.assessmentId)
   });
