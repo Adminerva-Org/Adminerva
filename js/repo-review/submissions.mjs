@@ -53,7 +53,7 @@ function render(){
       hyperlink(links,"Review selected evidence →","assessment-evidence-review.html?student="+
         encodeURIComponent(item.studentId)+"&assessment="+encodeURIComponent(item.assessmentId));
       card.append(make("p","text-xs text-slate-500 mt-2",
-        "Student-selected SHAs are unverified until checkpoint review."));
+        d.source==="teacher_discovered"\n          ?"Instructor-discovered historical evidence; not a student submission."\n          :"Student-selected SHAs are unverified until checkpoint review."));
     }else{
       hyperlink(links,"Open RepoFetch →","repofetch.html");
     }
@@ -67,7 +67,7 @@ function refresh(){
       revisionSha:d.revisionSha||"",status:"submitted"})),
     ...snapshots.v2.map(d=>{
       const student=students.get(d.studentId)||{},assessment=assessments.get(d.assessmentId)||{};
-      return {...d,kind:"v2",date:d.updatedAt||d.submittedAt,revisionSha:d.checkpointSha,
+      return {...d,kind:"v2",date:d.updatedAt||d.recordedAt||d.submittedAt,revisionSha:d.checkpointSha,
         studentName:student.name||d.studentId,
         assessmentTitle:assessment.title||d.assessmentId,
         githubLogin:student.githubUsername||""};
