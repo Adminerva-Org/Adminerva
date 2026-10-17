@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.16.6",
-  "releasedAt": "2026-10-16",
-  "notes": "Assessment V2 evidence foundation, GitHub commit previews, individual checkpoints, reclaim requests and instructor review; backend deployment required."
+  "version": "2026.10.17.1",
+  "releasedAt": "2026-10-17",
+  "notes": "Assessment V2: retrieve older student and teacher commit history for evidence selection and retrospective review; backend rollout checks still required."
 }

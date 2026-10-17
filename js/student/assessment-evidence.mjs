@@ -3,10 +3,19 @@ import {doc,getDoc,getDocs,setDoc,updateDoc,collection,query,where,serverTimesta
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {parseRepository,normalizeSelection,detectedAuthor,attributionLabel,claimDocumentId,validSha}
   from "../repo-review/services/assessment-evidence.mjs";
+import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "../repo-review/services/commit-history.mjs";
 
 const el=id=>document.getElementById(id);
 let context=null,commits=[],selected=new Set(),checkpoint="",claims=new Map(),saved=null,loadSequence=0;
+let historyPage=0,hasOlderCommits=false,historyLoading=false;
 const status=text=>{el("evidenceStatus").textContent=text;};
+function refreshHistoryControl(){
+  const button=el("evidenceLoadOlder");
+  if(!button)return;
+  button.classList.toggle("hidden",!hasOlderCommits);
+  button.disabled=historyLoading;
+  button.textContent=historyLoading?"Loading older commits…":"Load older commits";
+}
 function add(parent,tag,text,className=""){
   const node=document.createElement(tag);node.textContent=String(text??"");
   if(className)node.className=className;parent.append(node);return node;
@@ -131,8 +140,9 @@ async function load(){
   const v2=raw?.task?.schemaVersion===2&&raw?.task?.evidenceMode==="commit_selection";
   el("evidencePanel").classList.toggle("hidden",!v2);
   el("legacySubmitPanel").classList.toggle("hidden",v2);
-  if(!v2)return;
+  if(!v2){hasOlderCommits=false;refreshHistoryControl();return;}
   context=null;commits=[];selected=new Set();checkpoint="";saved=null;claims=new Map();
+  historyPage=0;hasOlderCommits=false;historyLoading=false;refreshHistoryControl();
   el("evidenceCommitList").replaceChildren();el("evidencePreview").textContent="";
   status("Loading your linked repository's commits…");
   try{
@@ -147,17 +157,37 @@ async function load(){
       }
     }catch(error){if(error?.code!=="permission-denied")throw error;}
     await loadClaims(active.profile.id);
-    const result=await github(repositoryPath(repo)+"/commits?per_page=100");
+    const result=await github(commitPagePath(repositoryPath(repo),1));
     if(seq!==loadSequence)return;
-    if(!Array.isArray(result))throw Error("Unexpected commit response");
-    commits=result;
-    render();
-    status(result.length===100
-      ?"Showing the 100 newest commits. Older commits may require staff assistance. Choose the relevant version, not simply the newest."
-      :"Select relevant commits, choose a project checkpoint using the round selector, and submit. Reclaims remain pending staff review.");
+    commits=appendUniqueCommits([],result);
+    historyPage=1;hasOlderCommits=hasOlderCommitPage(historyPage,result.length);
+    refreshHistoryControl();render();
+    status(hasOlderCommits
+      ?"Showing "+commits.length+" recent commits. Select Load older commits to find historical evidence."
+      :"Select relevant commits, choose a project checkpoint, and submit. Reclaims remain pending staff review.");
     if(saved?.status==="approved")status("An instructor approved this checkpoint. Evidence is locked.");
     else if(saved?.status==="needs_review")status("Your teacher discovered historical evidence for review. It is not a student submission, and it cannot be edited here.");
   }catch(error){if(seq===loadSequence)status("Unable to load evidence: "+error.message);}
+}
+async function loadOlderCommits(){
+  if(historyLoading||!hasOlderCommits||!context)return;
+  const seq=loadSequence,active=context;
+  historyLoading=true;refreshHistoryControl();
+  try{
+    const repo=parseRepository(active.profile.repoUrl);
+    const page=historyPage+1;
+    const batch=await github(commitPagePath(repositoryPath(repo),page));
+    if(seq!==loadSequence||context!==active)return;
+    commits=appendUniqueCommits(commits,batch);
+    historyPage=page;hasOlderCommits=hasOlderCommitPage(historyPage,batch.length);
+    render();
+    status("Loaded "+commits.length+" unique commits. Selected evidence and checkpoint remain unchanged."+
+      (!hasOlderCommits&&batch.length===100?" History review limit reached; contact staff for older history.":""));
+  }catch(error){
+    if(seq===loadSequence)status("Could not load older commits: "+error.message);
+  }finally{
+    if(seq===loadSequence){historyLoading=false;refreshHistoryControl();}
+  }
 }
 async function submit(){
   if(!context)return;
@@ -188,3 +218,4 @@ async function submit(){
 }
 window.addEventListener("adminerva:assessment-opened",()=>{void load();});
 el("evidenceSubmit")?.addEventListener("click",()=>{void submit();});
+el("evidenceLoadOlder")?.addEventListener("click",()=>{void loadOlderCommits();});

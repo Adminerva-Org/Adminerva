@@ -50,6 +50,10 @@ Q3 Mini PETA 1 — Mobile App UI Prototype; type Mini PETA; max score 20; origin
 - Phase 3: teacher-authoritative individual contribution handling including more robust verified GitHub identity association, shared contributions, alternate branches, and authorized private repositories.
 - Phase 4: Project Evolution Timeline in RepoBank and student Project Hub, using approved checkpoints and published feedback, not unreviewed claims.
 - Phase 5: final RepoReview submodule navigation grouping and accessible mobile QA; preserve the Lesson Review and Admin Hub main-module boundaries.
-- Operational: retention/archival policy, more robust paginated history (first release shows up to 100 recent commits per student), rate-limit handling, strict server verification of GitHub revisions before automatic scoring, and production rollout.
+- Operational: retention/archival policy, further history coverage beyond the first five bounded 100-commit pages per view, GitHub rate-limit handling, strict server verification of GitHub revisions before automatic scoring, and production rollout.
 
 Approval to build features does **not** constitute approval to auto-publish grades or migrate legacy records.
+
+## Recent history-recovery improvement
+
+Student V2 commit selection and teacher historical discovery can load up to five pages (500 GitHub commits). Existing selections and the chosen checkpoint remain stable while older pages load. Review is rate-limited and only considers verified SHA strings. This does **not** certify original push times, Git identity or ownership, and does not replace the requirement to inspect evidence before checkpoint approval. The page count is a client-side discovery limit, not a retention guarantee; GitHub may return fewer commits or temporarily reject requests.
