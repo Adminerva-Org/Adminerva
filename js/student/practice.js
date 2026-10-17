@@ -82,6 +82,7 @@ async function syncCourse(courseId){
     return true;
   }catch(error){
     console.warn("Practice checkpoint sync failed:",error);
+    status("Cloud sync unavailable. Your local progress is retained; use Retry sync when online.");
     return false;
   }finally{syncing.delete(courseId)}
 }
@@ -287,6 +288,24 @@ async function finishMission(){
   }catch{}
   renderCourses();
 }
+el("practiceSyncBtn")?.addEventListener("click",async()=>{
+  if(!user)return;
+  const button=el("practiceSyncBtn");
+  button.disabled=true;
+  status("Checking pending course progress…");
+  try{
+    const pending=COURSES.filter(course=>safeLocal(course.id).needsSync);
+    if(!pending.length){status("All locally saved practice checkpoints are up to date.");return}
+    let successful=0;
+    for(const course of pending){
+      if(await syncCourse(course.id))successful++;
+    }
+    status(successful===pending.length
+      ? "All pending practice checkpoints are saved to your account."
+      : successful+" of "+pending.length+" pending courses synced. Retry when connected.");
+    renderCourses();
+  }finally{button.disabled=false}
+});
 el("practiceBackBtn")?.addEventListener("click",renderCourses);
 el("practiceReasoning")?.addEventListener("input",storeReflectionDraft);
 el("practiceObservation")?.addEventListener("input",storeReflectionDraft);
