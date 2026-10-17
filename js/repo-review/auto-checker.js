@@ -1,5 +1,6 @@
 import { db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
+import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs";
 import { resolveContributions, isGradableSource, scopeAssessmentFiles } from "./services/contribution-resolver.mjs";
 import { createGithubEvidenceClient, parseGithubRepository } from "./services/github-evidence-client.mjs";
 import {
@@ -402,7 +403,7 @@ window.startAutoCheck = async function (
           reason: "Automated regrade replaced an unpublished draft",
           editorUid: null,
           before: {
-            score: old.score, maxScore: old.maxScore, feedback: old.feedback || "",
+            ...pickDefinedGradeFields(old, ["score", "maxScore"]), feedback: old.feedback || "",
             published: !!old.published, reviewRequired: !!old.reviewRequired,
             gradedSha: old.gradedSha || null, gradedAt: old.gradedAt || null
           },
