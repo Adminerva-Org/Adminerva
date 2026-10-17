@@ -299,6 +299,19 @@ document.addEventListener("DOMContentLoaded", () => {
         ${navTabsHTML}
     </nav>`;
 
+  const moduleSwitch=navContainer.querySelector("details.group");
+  if(moduleSwitch){
+    document.addEventListener("click",event=>{
+      if(moduleSwitch.open&&!moduleSwitch.contains(event.target))moduleSwitch.open=false;
+    });
+    navContainer.addEventListener("keydown",event=>{
+      if(event.key==="Escape"&&moduleSwitch.open){
+        moduleSwitch.open=false;
+        moduleSwitch.querySelector("summary")?.focus();
+        event.preventDefault();
+      }
+    });
+  }
 
   // Staff menus are scoped by module; student modules also have independent tabs.
   // Native <details> supports pointer, keyboard and touch input.
