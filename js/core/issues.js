@@ -14,6 +14,7 @@ import {
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import { filterReports, ownsReport } from "./report-filters.mjs";
 
 let allIssues = [];
 let currentOpenIssueId = null;
@@ -25,9 +26,37 @@ let isSuperAdmin = false; // Verified auth email; never a localStorage role.
 let isTeacher = false;
 let stopIssueListeners = [];
 function ownsIssue(issue) {
-  const uid=auth.currentUser?.uid;
-  return Boolean(uid && issue.reporterUid === uid) ||
-    Boolean(issue.reporterEmail && issue.reporterEmail.toLowerCase()===currentUserEmail);
+  return ownsReport(issue,auth.currentUser?.uid,currentUserEmail);
+}
+const filterIds=["filterCategory","filterStatus","filterAudience","filterSort","filterMine","filterSearch"];
+function filterStoreKey(){return auth.currentUser?.uid
+  ?"Adminerva_ReportFilters_"+auth.currentUser.uid:null}
+function saveReportFilters(){
+  const key=filterStoreKey();if(!key)return;
+  const value={};
+  for(const id of filterIds){
+    const input=document.getElementById(id);
+    if(input)value[id]=input.type==="checkbox"?input.checked:input.value;
+  }
+  try{localStorage.setItem(key,JSON.stringify(value))}catch(error){
+    console.warn("Report filter preference could not be saved:",error);
+  }
+}
+function restoreReportFilters(){
+  const key=filterStoreKey();if(!key)return;
+  let stored;
+  try{stored=JSON.parse(localStorage.getItem(key)||"null")}catch{return}
+  if(!stored||typeof stored!=="object")return;
+  for(const id of filterIds){
+    const input=document.getElementById(id);
+    if(!input)continue;
+    if(input.type==="checkbox")input.checked=stored[id]===true;
+    else if(typeof stored[id]==="string"){
+      if(input.tagName==="SELECT"&&
+        ![...input.options].some(option=>option.value===stored[id]))continue;
+      input.value=stored[id];
+    }
+  }
 }
 
 function escapeHTML(str) {
@@ -51,12 +80,16 @@ onAuthStateChanged(auth, user => {
     currentUserEmail = (user.email||"").toLowerCase();
     isSuperAdmin = currentUserEmail === [...trustedStaff][0];
     isTeacher = currentUserEmail === [...trustedStaff][1];
+    restoreReportFilters();
     fetchIssues();
   } else {
     allIssues = [];
     currentUserEmail = "";
     isSuperAdmin = false;
     isTeacher = false;
+    currentOpenIssueId = null;
+    if(unsubscribeComments){unsubscribeComments();unsubscribeComments=null;}
+    document.getElementById("issueDetailsModal")?.classList.add("hidden");
     renderIssues();
   }
 });
@@ -71,7 +104,11 @@ function fetchIssues() {
   const requests = isSuperAdmin
     ? [query(collection(db, "issues"), orderBy("createdAt", "desc"))]
     : isTeacher
-      ? [query(collection(db, "issues"), where("audience", "==", "teacher"))]
+      ? [
+          query(collection(db,"issues"),where("audience","==","teacher")),
+          query(collection(db,"issues"),where("reporterUid","==",user.uid)),
+          query(collection(db,"issues"),where("reporterEmail","==",currentUserEmail))
+        ]
       : [
           query(collection(db, "issues"), where("reporterUid", "==", user.uid)),
           query(collection(db, "issues"), where("reporterEmail", "==", currentUserEmail))
@@ -105,24 +142,31 @@ function fetchIssues() {
   });
 }
 
-window.renderIssuesFilter = () => renderIssues();
+window.renderIssuesFilter = () => {saveReportFilters();renderIssues()};
+function resetReportFilters(){
+  for(const id of ["filterCategory","filterStatus","filterAudience"]){
+    const input=document.getElementById(id);if(input)input.value="All";
+  }
+  document.getElementById("filterSort").value="newest";
+  document.getElementById("filterSearch").value="";
+  document.getElementById("filterMine").checked=false;
+  saveReportFilters();renderIssues();
+}
 function renderIssues() {
   const container = document.getElementById("issuesFeed");
-  const catFilter = document.getElementById("filterCategory").value;
-  const statFilter = document.getElementById("filterStatus").value;
-
-  const onlyMine = document.getElementById("filterMine")?.checked || false;
-  const audienceFilter = document.getElementById("filterAudience")?.value || "All";
-  const filtered = allIssues.filter((iss) => {
-    if (onlyMine && !ownsIssue(iss)) return false;
-    if (isTeacher && iss.audience !== "teacher") return false;
-    if (!isSuperAdmin && !isTeacher && !ownsIssue(iss)) return false;
-    if (audienceFilter !== "All" && (iss.audience || "admin") !== audienceFilter) return false;
-    const matchCat = catFilter === "All" || iss.category === catFilter;
-    const matchStat = statFilter === "All" || iss.status === statFilter;
-    return matchCat && matchStat;
+  if(!container)return;
+  const filtered=filterReports(allIssues,{
+    role:isSuperAdmin?"admin":isTeacher?"teacher":"student",
+    uid:auth.currentUser?.uid||"",email:currentUserEmail,
+    category:document.getElementById("filterCategory")?.value||"All",
+    status:document.getElementById("filterStatus")?.value||"All",
+    audience:document.getElementById("filterAudience")?.value||"All",
+    onlyMine:document.getElementById("filterMine")?.checked||false,
+    search:document.getElementById("filterSearch")?.value||"",
+    sort:document.getElementById("filterSort")?.value||"newest"
   });
-
+  const summary=document.getElementById("issuesFeedSummary");
+  if(summary)summary.textContent=filtered.length+" of "+allIssues.length+" accessible reports shown";
   container.innerHTML = "";
 
   if (filtered.length === 0) {
@@ -175,15 +219,11 @@ function renderIssues() {
   });
 }
 
-document
-  .getElementById("filterCategory")
-  .addEventListener("change", renderIssues);
-document
-  .getElementById("filterStatus")
-  .addEventListener("change", renderIssues);
-document
-  .getElementById("filterAudience")
-  .addEventListener("change", renderIssues);
+for(const id of ["filterCategory","filterStatus","filterAudience","filterSort","filterMine"]){
+  document.getElementById(id)?.addEventListener("change",window.renderIssuesFilter);
+}
+document.getElementById("filterSearch")?.addEventListener("input",window.renderIssuesFilter);
+document.getElementById("resetReportFilters")?.addEventListener("click",resetReportFilters);
 
 // ==========================================
 // 2. MODAL LOGIC & COMMENTS
@@ -262,6 +302,9 @@ window.openIssueModal = async function (id) {
   // 🚀 ADMIN CONTROLS INJECTION
   if (isSuperAdmin || (isTeacher && iss.audience === "teacher")) {
     document.getElementById("adminControlPanel").classList.remove("hidden");
+    document.getElementById("adminControlLabel").textContent =
+      isSuperAdmin ? "Administrator controls:" : "Teacher controls:";
+    document.getElementById("adminDeleteBtn").classList.toggle("hidden",!isSuperAdmin);
     document.getElementById("adminStatusSelect").value = iss.status || "Open";
     document.getElementById("adminPrioritySelect").value =
       iss.priority || "Medium";
