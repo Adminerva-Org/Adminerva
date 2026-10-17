@@ -97,7 +97,7 @@ test('teachers can update assigned reports with server timestamps but cannot tri
   await assertFails(updateDoc(doc(teacher,'issues','admin-only'),{status:'Resolved',updatedAt:serverTimestamp()}));
 });
 
-test('teachers can reopen their own admin-directed reports without seeing anyone else\\'s',async()=>{
+test("teachers can reopen their own admin-directed reports without seeing anyone else's",async()=>{
   const teacher=client('staff',TEACHER),alice=client('alice',EMAIL_A);
   await assertSucceeds(setDoc(doc(teacher,'issues','own-admin'),{
     ...report('staff',TEACHER),category:'Access',audience:'admin'
