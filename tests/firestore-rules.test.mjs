@@ -82,6 +82,33 @@ test('teachers only triage teacher-directed reports; admins can triage bugs',asy
   await assertSucceeds(updateDoc(doc(client('staff',TEACHER),'issues','class-ticket'),{status:'In Progress'}));
   await assertFails(updateDoc(doc(client('staff',TEACHER),'issues','class-ticket'),{audience:'admin'}));
 });
+test('teachers can update assigned reports with server timestamps but cannot triage admin reports',async()=>{
+  const alice=client('alice',EMAIL_A),teacher=client('staff',TEACHER);
+  await assertSucceeds(setDoc(doc(alice,'issues','assigned'),{
+    ...report(),category:'Feature',audience:'teacher'
+  }));
+  const assigned=doc(teacher,'issues','assigned');
+  await assertSucceeds(updateDoc(assigned,{status:'In Progress',updatedAt:serverTimestamp()}));
+  await assertSucceeds(updateDoc(assigned,{priority:'High',updatedAt:serverTimestamp()}));
+  await assertSucceeds(updateDoc(assigned,{locked:true,updatedAt:serverTimestamp()}));
+  await assertFails(updateDoc(assigned,{status:'Closed (Won\\'t Fix)',updatedAt:new Date('2020-01-01')}));
+  await assertFails(updateDoc(assigned,{reporterUid:'staff',updatedAt:serverTimestamp()}));
+  await assertSucceeds(setDoc(doc(alice,'issues','admin-only'),report()));
+  await assertFails(updateDoc(doc(teacher,'issues','admin-only'),{status:'Resolved',updatedAt:serverTimestamp()}));
+});
+
+test('teachers can reopen their own admin-directed reports without seeing anyone else\\'s',async()=>{
+  const teacher=client('staff',TEACHER),alice=client('alice',EMAIL_A);
+  await assertSucceeds(setDoc(doc(teacher,'issues','own-admin'),{
+    ...report('staff',TEACHER),category:'Access',audience:'admin'
+  }));
+  await assertSucceeds(setDoc(doc(alice,'issues','other-admin'),report()));
+  const mine=await assertSucceeds(getDocs(query(collection(teacher,'issues'),where('reporterUid','==','staff'))));
+  assert.equal(mine.size,1);
+  await assertSucceeds(getDoc(doc(teacher,'issues','own-admin')));
+  await assertFails(getDoc(doc(teacher,'issues','other-admin')));
+});
+
 test('recipient filtering is enforced for direct reads, list queries, and comments',async()=>{
   const alice=client('alice',EMAIL_A), bob=client('bob',EMAIL_B);
   const staff=client('teacher',TEACHER), admin=client('admin',ADMIN);
