@@ -64,6 +64,7 @@ jobs:
           node --input-type=module --check < js/student/assessment-state.mjs
           node --input-type=module --check < js/student/submission-receipts.mjs
           node --check functions/index.js
+          npm --prefix functions run check
   firestore-security:
     runs-on: ubuntu-latest
     timeout-minutes: 15
