@@ -135,9 +135,7 @@ test('student pages request an updated nav asset instead of a stale browser cach
   for (const path of ['student-dashboard.html','student-assessments.html',
     'student-practice.html','student-playground.html','student-settings.html']) {
     const page=readFileSync(path,'utf8');
-    assert.match(page,/adminerva-nav[.]js[?]v=2026[.]10[.]16[.](?:3|6)/);
-    if(path==='student-assessments.html')
-      assert.match(page,/adminerva-nav[.]js[?]v=2026[.]10[.]16[.]6/);
+    assert.match(page,/adminerva-nav[.]js[?]v=2026[.]10[.]17[.]2/);
   }
 });
 
@@ -157,4 +155,17 @@ test('issues tracker has a predictable direct-link home fallback',()=>{
   assert.match(container.innerHTML,/Previous Page/);
   const staff=mount('global','issues','teacher');
   assert.match(staff.container.innerHTML,/href="teacher-home.html"/);
+});
+
+test('navigation never exposes a route that is missing from repository',()=>{
+  const roles=[['student','dashboard','student'],['student-playground','ide','student'],
+    ['student-practice','practice','student'],['educator','dashboard','teacher'],
+    ['admin','directory','superadmin'],['lesson','planner','teacher']];
+  for(const [module,page,role] of roles){
+    const {container}=mount(module,page,role);
+    const links=[...container.innerHTML.matchAll(/href="([^"]+\.html)"/g)].map(m=>m[1]);
+    for(const path of links){
+      assert.ok(existsSync(path),module+' links to missing route '+path);
+    }
+  }
 });
