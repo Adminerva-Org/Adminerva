@@ -240,10 +240,12 @@ onAuthStateChanged(auth,user=>{
 });
 async function findHistoricalCommits(){
   const student=state.student;if(!student)return status("Choose student and assessment.");
+  const sequence=++discovery.sequence;
+  discovery.loading=true;discovery.hasOlder=false;updateDiscoveryPaging();
   try{
     const repo=parseRepository(student.repoUrl);
     const info=await github(api(repo));
-    const sequence=++discovery.sequence;
+    if(sequence!==discovery.sequence)return;
     const branch=String(info.default_branch||"main");
     const commits=await github(commitPagePath(api(repo),1,{branch}));
     if(sequence!==discovery.sequence)return;
@@ -253,7 +255,8 @@ async function findHistoricalCommits(){
     discovery.hasOlder=hasOlderCommitPage(1,commits.length);
     updateDiscoveryPaging();renderHistorical();
     status("Showing "+discovery.commits.length+" commits. Use Load older commits for earlier work; Git author dates are not verified push dates.");
-  }catch(error){status("Historical discovery failed: "+error.message);}
+  }catch(error){if(sequence===discovery.sequence)status("Historical discovery failed: "+error.message);}
+  finally{if(sequence===discovery.sequence){discovery.loading=false;updateDiscoveryPaging()}}
 }
 async function loadOlderHistorical(){
   if(discovery.loading||!discovery.hasOlder||!state.student)return;
