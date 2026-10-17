@@ -469,71 +469,52 @@ window.deleteComment = async function (commentId) {
 };
 
 // ==========================================
-// 4. ADMIN SUPER CONTROLS
+// 4. AUTHORIZED REPORT TRIAGE
 // ==========================================
-document
-  .getElementById("adminStatusSelect")
-  ?.addEventListener("change", async (e) => {
-    if (!(isSuperAdmin || isTeacher) || !currentOpenIssueId) return;
-    const newStatus = e.target.value;
-
-    const issIndex = allIssues.findIndex((i) => i.id === currentOpenIssueId);
-    allIssues[issIndex].status = newStatus;
-    renderIssues();
-
-    await updateDoc(doc(db, "issues", currentOpenIssueId), {
-      status: newStatus,
-      updatedAt: serverTimestamp(),
+function canTriage(issue){
+  return isSuperAdmin || (isTeacher && issue?.audience==="teacher");
+}
+async function updateIssueField(field,value,{button}={}){
+  const id=currentOpenIssueId,issue=allIssues.find(item=>item.id===id);
+  if(!id||!issue||!canTriage(issue))return;
+  const previous=issue[field];
+  if(button)button.disabled=true;
+  issue[field]=value;
+  renderIssues();
+  try{
+    await updateDoc(doc(db,"issues",id),{
+      [field]:value,updatedAt:serverTimestamp()
     });
-
-    // Change modal badge color immediately
-    openIssueModal(currentOpenIssueId);
-  });
-
-document
-  .getElementById("adminPrioritySelect")
-  ?.addEventListener("change", async (e) => {
-    if (!(isSuperAdmin || isTeacher) || !currentOpenIssueId) return;
-    const newPriority = e.target.value;
-
-    const issIndex = allIssues.findIndex((i) => i.id === currentOpenIssueId);
-    allIssues[issIndex].priority = newPriority;
+    if(currentOpenIssueId===id)window.openIssueModal(id);
+  }catch(error){
+    console.warn("Report update failed:",error);
+    issue[field]=previous;
     renderIssues();
-
-    await updateDoc(doc(db, "issues", currentOpenIssueId), {
-      priority: newPriority,
-      updatedAt: serverTimestamp(),
-    });
-    openIssueModal(currentOpenIssueId);
-  });
-
-document.getElementById("adminLockBtn")?.addEventListener("click", async () => {
-  if (!(isSuperAdmin || isTeacher) || !currentOpenIssueId) return;
-
-  const issIndex = allIssues.findIndex((i) => i.id === currentOpenIssueId);
-  const isCurrentlyLocked = allIssues[issIndex].locked || false;
-
-  allIssues[issIndex].locked = !isCurrentlyLocked;
-
-  await updateDoc(doc(db, "issues", currentOpenIssueId), {
-    locked: !isCurrentlyLocked,
-  });
-  openIssueModal(currentOpenIssueId); // Refresh UI
+    if(currentOpenIssueId===id)window.openIssueModal(id);
+    alert("Report change could not be saved. Your previous value has been restored.");
+  }finally{
+    if(button)button.disabled=false;
+  }
+}
+document.getElementById("adminStatusSelect")?.addEventListener("change",e=>{
+  void updateIssueField("status",e.target.value,{button:e.target});
 });
-
-document
-  .getElementById("adminDeleteBtn")
-  ?.addEventListener("click", async () => {
-    if (!isSuperAdmin || !currentOpenIssueId) return;
-    if (
-      !confirm(
-        "🚨 EXTREME WARNING: Are you sure you want to permanently delete this entire issue and all its comments? This cannot be undone.",
-      )
-    )
-      return;
-
-    await deleteDoc(doc(db, "issues", currentOpenIssueId));
-    allIssues = allIssues.filter((i) => i.id !== currentOpenIssueId);
-    closeIssueModal();
-    renderIssues();
-  });
+document.getElementById("adminPrioritySelect")?.addEventListener("change",e=>{
+  void updateIssueField("priority",e.target.value,{button:e.target});
+});
+document.getElementById("adminLockBtn")?.addEventListener("click",e=>{
+  const issue=allIssues.find(item=>item.id===currentOpenIssueId);
+  if(issue)void updateIssueField("locked",!Boolean(issue.locked),{button:e.currentTarget});
+});
+document.getElementById("adminDeleteBtn")?.addEventListener("click",async()=>{
+  if(!isSuperAdmin||!currentOpenIssueId)return;
+  if(!confirm("Delete this report? Historical comments may remain in Firebase until separately removed. This cannot be undone."))return;
+  try{
+    await deleteDoc(doc(db,"issues",currentOpenIssueId));
+    allIssues=allIssues.filter(item=>item.id!==currentOpenIssueId);
+    window.closeIssueModal();renderIssues();
+  }catch(error){
+    console.warn("Unable to delete report:",error);
+    alert("Report deletion failed. No change was made.");
+  }
+});
