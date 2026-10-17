@@ -331,6 +331,8 @@ window.openIssueModal = async function (id) {
 window.closeIssueModal = function () {
   document.getElementById("issueDetailsModal").classList.add("hidden");
   currentOpenIssueId = null;
+  // Stop reading live comments after the report is closed (Firestore usage).
+  if(unsubscribeComments){unsubscribeComments();unsubscribeComments=null;}
 };
 
 window.viewFullscreen = function (base64) {
@@ -446,19 +448,22 @@ document
     const text = textObj.value.trim();
     if (!text || !currentOpenIssueId) return;
 
-    textObj.value = ""; // Clear immediately for UX
-
+    const issueId=currentOpenIssueId;
+    const button=document.getElementById("postCommentBtn");
+    button.disabled=true;
     try {
-      await addDoc(collection(db, `issues/${currentOpenIssueId}/comments`), {
+      await addDoc(collection(db, `issues/${issueId}/comments`), {
         text: text,
         authorEmail: isSuperAdmin ? currentUserEmail : "",
         role: isSuperAdmin ? "superadmin" : "student",
         authorUid: auth.currentUser?.uid || null,
         createdAt: serverTimestamp(),
       });
-      // The live listener updates comments automatically.
+      textObj.value=""; // Clear only after Firestore accepts the comment.
     } catch (e) {
-      alert("Failed to post comment.");
+      alert("Failed to post comment. Your draft is still in the comment box.");
+    } finally {
+      button.disabled=false;
     }
   });
 
