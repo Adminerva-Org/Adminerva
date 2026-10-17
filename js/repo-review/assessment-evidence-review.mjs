@@ -4,12 +4,19 @@ import {collection,doc,getDoc,getDocs,setDoc,query,where,updateDoc,runTransactio
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {parseRepository,normalizeSelection,validSha}
   from "./services/assessment-evidence.mjs";
+import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "./services/commit-history.mjs";
 
 const STAFF=new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
 const ADMIN="babaynike2013@gmail.com";
 const el=id=>document.getElementById(id);
 const state={students:[],assessments:[],evidence:null,student:null,assessment:null,claims:[],loaded:false,busy:false};
-const discovery={commits:[],selected:new Set(),checkpoint:""};
+const discovery={commits:[],selected:new Set(),checkpoint:"",page:0,hasOlder:false,loading:false,sequence:0,branch:""};
+function updateDiscoveryPaging(){
+  const button=el("evidenceFindOlder");if(!button)return;
+  button.classList.toggle("hidden",!discovery.hasOlder);
+  button.disabled=discovery.loading;
+  button.textContent=discovery.loading?"Loading older commits…":"Load older commits";
+}
 function add(parent,tag,text,style=""){
   const x=document.createElement(tag);x.textContent=String(text??"");if(style)x.className=style;
   parent.append(x);return x;
@@ -53,6 +60,7 @@ async function loadDirectory(){
 }
 async function loadEvidence(){
   state.loaded=false;state.evidence=null;el("evidenceDetails").classList.add("hidden");
+  discovery.sequence++;discovery.hasOlder=false;discovery.page=0;discovery.loading=false;updateDiscoveryPaging();
   el("evidenceDiscovery").classList.add("hidden");
   try{
     const {student,assessment}=selection();state.student=student;state.assessment=assessment;
@@ -235,13 +243,35 @@ async function findHistoricalCommits(){
   try{
     const repo=parseRepository(student.repoUrl);
     const info=await github(api(repo));
-    const commits=await github(api(repo)+"/commits?sha="+encodeURIComponent(info.default_branch||"main")+
-      "&per_page=100");
-    if(!Array.isArray(commits))throw Error("Unexpected GitHub commits response");
-    discovery.commits=commits;discovery.selected=new Set();discovery.checkpoint="";
-    renderHistorical();
-    status("Showing "+commits.length+" recent commits. Use previews to confirm task relevance. Older commits may require further investigation.");
+    const sequence=++discovery.sequence;
+    const branch=String(info.default_branch||"main");
+    const commits=await github(commitPagePath(api(repo),1,{branch}));
+    if(sequence!==discovery.sequence)return;
+    discovery.commits=appendUniqueCommits([],commits);
+    discovery.selected=new Set();discovery.checkpoint="";
+    discovery.page=1;discovery.branch=branch;
+    discovery.hasOlder=hasOlderCommitPage(1,commits.length);
+    updateDiscoveryPaging();renderHistorical();
+    status("Showing "+discovery.commits.length+" commits. Use Load older commits for earlier work; Git author dates are not verified push dates.");
   }catch(error){status("Historical discovery failed: "+error.message);}
+}
+async function loadOlderHistorical(){
+  if(discovery.loading||!discovery.hasOlder||!state.student)return;
+  discovery.loading=true;updateDiscoveryPaging();
+  const sequence=discovery.sequence;
+  try{
+    const repo=parseRepository(state.student.repoUrl);
+    const page=discovery.page+1;
+    const batch=await github(commitPagePath(api(repo),page,{branch:discovery.branch}));
+    if(sequence!==discovery.sequence)return;
+    discovery.commits=appendUniqueCommits(discovery.commits,batch);
+    discovery.page=page;
+    discovery.hasOlder=hasOlderCommitPage(page,batch.length);
+    renderHistorical();
+    status("Showing "+discovery.commits.length+" unique commits. Existing selected evidence is preserved."+
+      (!discovery.hasOlder&&batch.length===100?" History limit reached; inspect GitHub manually for earlier commits.":""));
+  }catch(error){if(sequence===discovery.sequence)status("Could not load older history: "+error.message)}
+  finally{if(sequence===discovery.sequence){discovery.loading=false;updateDiscoveryPaging()}}
 }
 function renderHistorical(){
   const list=el("evidenceDiscoverList");list.replaceChildren();
@@ -298,6 +328,7 @@ async function saveDiscovery(){
   }catch(error){status("Unable to save historical evidence: "+error.message);}
 }
 el("evidenceFindCommits").addEventListener("click",()=>{void findHistoricalCommits();});
+el("evidenceFindOlder")?.addEventListener("click",()=>{void loadOlderHistorical();});
 el("evidenceSaveDiscovery").addEventListener("click",()=>{void saveDiscovery();});
 el("evidenceLoad").addEventListener("click",()=>{void loadEvidence();});
 el("evidenceApprove").addEventListener("click",()=>{void approve();});
