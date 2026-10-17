@@ -169,7 +169,6 @@ document.addEventListener("DOMContentLoaded", () => {
   else if (activeModule === "student-playground") {
     centerLinks = `
             <a href="student-playground.html" class="${getStyle("ide")}">Live Editor</a>
-            <a href="student-xml-sim.html" class="${getStyle("xml")}">Mobile XML Sim</a>
         `;
     rightSide = `
             <div class="flex items-center">
