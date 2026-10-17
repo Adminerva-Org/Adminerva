@@ -78,6 +78,19 @@ window.generateAI_SlideDeck = async function () {
       throw Error("The generated presentation has an invalid number of slides.");
     const sanitize=window.sanitizePresentationHtml;
     if(typeof sanitize!=="function")throw Error("Slide sanitizer failed to load.");
+    if(parsedDeck.length<5||parsedDeck.length>15)
+      throw Error("The presentation must contain 5 to 15 slides. Please generate it again.");
+    for(const [index,slide] of parsedDeck.entries()){
+      if(!slide||typeof slide!=="object"||Array.isArray(slide))
+        throw Error(`Slide ${index+1} is not a valid slide object.`);
+      if(!["standard","split","media"].includes(slide.layout))
+        throw Error(`Slide ${index+1} has an unsupported layout.`);
+      if(typeof slide.label!=="string"||!slide.label.trim())
+        throw Error(`Slide ${index+1} needs a title.`);
+      const fields=slide.layout==="split"?["contentLeft","contentRight"]:["content"];
+      if(fields.some(key=>typeof slide[key]!=="string"||!slide[key].trim()))
+        throw Error(`Slide ${index+1} has missing content.`);
+    }
     window.adminervaPresentationDirty = true;
     window.currentPresentationDeck = parsedDeck.map(slide => ({
       layout:["standard","split","media"].includes(slide.layout)?slide.layout:"standard",
