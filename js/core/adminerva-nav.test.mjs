@@ -140,3 +140,21 @@ test('student pages request an updated nav asset instead of a stale browser cach
       assert.match(page,/adminerva-nav[.]js[?]v=2026[.]10[.]16[.]6/);
   }
 });
+
+test('module switcher works through native disclosure controls on touch and keyboard',()=>{
+  for(const [module,role] of [['lesson','teacher'],['student','student']]){
+    const {container}=mount(module,'dashboard',role);
+    assert.match(container.innerHTML,/<details class="relative group py-1">/);
+    assert.match(container.innerHTML,/<summary aria-label="Switch Adminerva modules"/);
+    assert.match(container.innerHTML,/hidden group-open:block/);
+    assert.doesNotMatch(container.innerHTML,/hidden group-hover:block/);
+    assert.match(container.innerHTML,/<a href="issues.html"[^>]*>/);
+  }
+});
+test('issues tracker has a predictable direct-link home fallback',()=>{
+  const {container}=mount('global','issues','student');
+  assert.match(container.innerHTML,/href="student-home.html"/);
+  assert.match(container.innerHTML,/Previous Page/);
+  const staff=mount('global','issues','teacher');
+  assert.match(staff.container.innerHTML,/href="teacher-home.html"/);
+});
