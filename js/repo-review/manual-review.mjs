@@ -1,5 +1,6 @@
 import { auth, db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
+import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs";
 import {
   collection, doc, getDoc, runTransaction, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
@@ -210,7 +211,7 @@ async function save(event) {
       tx.set(revision,{
         gradeId:active.gradeRef.id,studentId:active.studentId,taskId:active.taskId,
         editorUid:auth.currentUser?.uid||null,reason:"Manual teacher review: "+reason,
-        before:previous?{score:previous.score,feedback:previous.feedback,published:!!previous.published}:null,
+        before:previous?{...pickDefinedGradeFields(previous,["score","feedback"]),published:!!previous.published}:null,
         after:{score,feedback,published:false},
         createdAt:serverTimestamp()
       });
