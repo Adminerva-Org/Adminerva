@@ -135,8 +135,37 @@ test('student pages request an updated nav asset instead of a stale browser cach
   for (const path of ['student-dashboard.html','student-assessments.html',
     'student-practice.html','student-playground.html','student-settings.html']) {
     const page=readFileSync(path,'utf8');
-    assert.match(page,/adminerva-nav[.]js[?]v=2026[.]10[.]16[.](?:3|6)/);
-    if(path==='student-assessments.html')
-      assert.match(page,/adminerva-nav[.]js[?]v=2026[.]10[.]16[.]6/);
+    assert.match(page,/adminerva-nav[.]js[?]v=2026[.]10[.]17[.]2/);
+  }
+});
+
+test('module switcher works through native disclosure controls on touch and keyboard',()=>{
+  for(const [module,role] of [['lesson','teacher'],['student','student']]){
+    const {container}=mount(module,'dashboard',role);
+    assert.match(container.innerHTML,/<details class="relative group py-1">/);
+    assert.match(container.innerHTML,/<summary aria-label="Switch Adminerva modules"/);
+    assert.match(container.innerHTML,/hidden group-open:block/);
+    assert.doesNotMatch(container.innerHTML,/hidden group-hover:block/);
+    assert.match(container.innerHTML,/<a href="issues.html"[^>]*>/);
+  }
+});
+test('issues tracker has a predictable direct-link home fallback',()=>{
+  const {container}=mount('global','issues','student');
+  assert.match(container.innerHTML,/href="student-home.html"/);
+  assert.match(container.innerHTML,/Previous Page/);
+  const staff=mount('global','issues','teacher');
+  assert.match(staff.container.innerHTML,/href="teacher-home.html"/);
+});
+
+test('navigation never exposes a route that is missing from repository',()=>{
+  const roles=[['student','dashboard','student'],['student-playground','ide','student'],
+    ['student-practice','practice','student'],['educator','dashboard','teacher'],
+    ['admin','directory','superadmin'],['lesson','planner','teacher']];
+  for(const [module,page,role] of roles){
+    const {container}=mount(module,page,role);
+    const links=[...container.innerHTML.matchAll(/href="([^"]+\.html)"/g)].map(m=>m[1]);
+    for(const path of links){
+      assert.ok(existsSync(path),module+' links to missing route '+path);
+    }
   }
 });

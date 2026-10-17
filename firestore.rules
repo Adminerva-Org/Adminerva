@@ -247,7 +247,11 @@ service cloud.firestore {
       allow update: if (isTeacher() &&
         resource.data.get("audience", "admin") == "teacher" &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["status", "priority", "locked"])) ||
+          .hasOnly(["status", "priority", "locked", "updatedAt"]) &&
+        (
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(["updatedAt"]) ||
+          request.resource.data.updatedAt == request.time
+        )) ||
         (mayReadIssue(resource.data) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(["upvotes"]) &&
         request.resource.data.upvotes is list &&

@@ -44,13 +44,13 @@ document.addEventListener("DOMContentLoaded", () => {
     : "";
 
   const adminLogoBlock = `
-        <div class="relative group cursor-pointer py-1">
-            <div class="flex items-center gap-2 sm:gap-3 font-bold transition">
+        <details class="relative group py-1">
+            <summary aria-label="Switch Adminerva modules" class="flex items-center gap-2 sm:gap-3 font-bold transition list-none cursor-pointer rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
                 <img src="assets/New Adminerva logo.png" alt="Adminerva Logo" class="h-8 sm:h-10 w-auto object-contain mix-blend-lighten hover:scale-105 transition-transform duration-300 drop-shadow-[0_0_10px_rgba(6,182,212,0.3)]">
                 <span class="hidden sm:inline tracking-widest font-extrabold text-lg sm:text-2xl bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400 drop-shadow-md">ADMINERVA</span>
                 <span class="text-[10px] text-cyan-500 ml-1 opacity-70 group-hover:opacity-100 transition-opacity hidden sm:inline">▼</span>
-            </div>
-            <div class="absolute left-0 top-full w-56 sm:w-64 hidden group-hover:block z-[100] pt-3">
+            </summary>
+            <div class="absolute left-0 top-full w-56 sm:w-64 hidden group-open:block z-[100] pt-3">
                 <div class="bg-gray-900/95 backdrop-blur-xl rounded-md shadow-[0_10px_30px_rgba(0,0,0,0.8)] border border-cyan-900/50 overflow-hidden">
                     <div class="px-4 py-2 bg-gray-800/50 border-b border-gray-700/50 text-[10px] font-bold text-cyan-500 uppercase tracking-widest">Adminerva Modules</div>
                     <a href="teacher-home.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
@@ -62,21 +62,24 @@ document.addEventListener("DOMContentLoaded", () => {
                     <a href="lesson-planner.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
                         <span class="text-cyan-500">📘</span> Lesson Planner
                     </a>
+                    <a href="issues.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
+                        <span class="text-cyan-500">📋</span> Reports
+                    </a>
                     ${adminDropdownLink}
                 </div>
             </div>
-        </div>
+        </details>
     `;
 
   // Student Interactive Dropdown Block
   const studentLogoBlock = `
-        <div class="relative group cursor-pointer py-1">
-            <div class="flex items-center gap-2 sm:gap-3 font-bold transition">
+        <details class="relative group py-1">
+            <summary aria-label="Switch Adminerva modules" class="flex items-center gap-2 sm:gap-3 font-bold transition list-none cursor-pointer rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
                 <img src="assets/New Adminerva logo.png" alt="Adminerva Logo" class="h-8 sm:h-10 w-auto object-contain mix-blend-lighten hover:scale-105 transition-transform duration-300 drop-shadow-[0_0_10px_rgba(6,182,212,0.3)]">
                 <span class="tracking-widest font-extrabold text-lg sm:text-2xl bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400 drop-shadow-md">ADMINERVA</span>
                 <span class="text-[10px] text-cyan-500 ml-1 opacity-70 group-hover:opacity-100 transition-opacity hidden sm:inline">▼</span>
-            </div>
-            <div class="absolute left-0 top-full w-56 sm:w-64 hidden group-hover:block z-[100] pt-3">
+            </summary>
+            <div class="absolute left-0 top-full w-56 sm:w-64 hidden group-open:block z-[100] pt-3">
                 <div class="bg-gray-900/95 backdrop-blur-xl rounded-md shadow-[0_10px_30px_rgba(0,0,0,0.8)] border border-cyan-900/50 overflow-hidden">
                     <div class="px-4 py-2 bg-gray-800/50 border-b border-gray-700/50 text-[10px] font-bold text-cyan-500 uppercase tracking-widest">Student Modules</div>
                     <a href="student-home.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
@@ -91,9 +94,12 @@ document.addEventListener("DOMContentLoaded", () => {
                     <a href="student-practice.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 transition-all flex items-center gap-2">
                         <span class="text-cyan-500">🧩</span> Practice Lab
                     </a>
+                    <a href="issues.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 transition-all flex items-center gap-2">
+                        <span class="text-cyan-500">📋</span> My Reports
+                    </a>
                 </div>
             </div>
-        </div>
+        </details>
     `;
 
   // Home pages are separate from every module's task tabs.
@@ -163,7 +169,6 @@ document.addEventListener("DOMContentLoaded", () => {
   else if (activeModule === "student-playground") {
     centerLinks = `
             <a href="student-playground.html" class="${getStyle("ide")}">Live Editor</a>
-            <a href="student-xml-sim.html" class="${getStyle("xml")}">Mobile XML Sim</a>
         `;
     rightSide = `
             <div class="flex items-center">
@@ -258,9 +263,11 @@ document.addEventListener("DOMContentLoaded", () => {
     `;
     navTabsHTML = `
         <div class="bg-slate-800 border-t border-slate-700 px-4 sm:px-6 py-3 flex items-center shadow-md">
-            <button onclick="window.history.back()" class="text-cyan-400 hover:text-cyan-300 text-sm font-bold flex items-center gap-2 transition">
-                <span class="text-lg leading-none">←</span> Return to Previous Page
+            <button type="button" onclick="window.history.length > 1 ? window.history.back() : window.location.assign('${userRole === "student" ? "student-home.html" : "teacher-home.html"}')" class="text-cyan-400 hover:text-cyan-300 text-sm font-bold flex items-center gap-2 transition">
+                <span class="text-lg leading-none">←</span> Previous Page
             </button>
+            <a href="${userRole === "student" ? "student-home.html" : "teacher-home.html"}"
+               class="ml-4 text-cyan-400 hover:text-cyan-300 text-sm font-bold">Home</a>
             <span class="text-slate-500 text-xs font-bold uppercase tracking-widest ml-4 border-l border-slate-600 pl-4 hidden sm:inline-block">
                 System Support
             </span>
@@ -291,6 +298,19 @@ document.addEventListener("DOMContentLoaded", () => {
         ${navTabsHTML}
     </nav>`;
 
+  const moduleSwitch=navContainer.querySelector("details.group");
+  if(moduleSwitch){
+    document.addEventListener("click",event=>{
+      if(moduleSwitch.open&&!moduleSwitch.contains(event.target))moduleSwitch.open=false;
+    });
+    navContainer.addEventListener("keydown",event=>{
+      if(event.key==="Escape"&&moduleSwitch.open){
+        moduleSwitch.open=false;
+        moduleSwitch.querySelector("summary")?.focus();
+        event.preventDefault();
+      }
+    });
+  }
 
   // Staff menus are scoped by module; student modules also have independent tabs.
   // Native <details> supports pointer, keyboard and touch input.
