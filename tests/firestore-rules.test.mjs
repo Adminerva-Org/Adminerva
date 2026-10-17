@@ -91,7 +91,7 @@ test('teachers can update assigned reports with server timestamps but cannot tri
   await assertSucceeds(updateDoc(assigned,{status:'In Progress',updatedAt:serverTimestamp()}));
   await assertSucceeds(updateDoc(assigned,{priority:'High',updatedAt:serverTimestamp()}));
   await assertSucceeds(updateDoc(assigned,{locked:true,updatedAt:serverTimestamp()}));
-  await assertFails(updateDoc(assigned,{status:'Closed (Won\\'t Fix)',updatedAt:new Date('2020-01-01')}));
+  await assertFails(updateDoc(assigned,{status:"Closed (Won't Fix)",updatedAt:new Date('2020-01-01')}));
   await assertFails(updateDoc(assigned,{reporterUid:'staff',updatedAt:serverTimestamp()}));
   await assertSucceeds(setDoc(doc(alice,'issues','admin-only'),report()));
   await assertFails(updateDoc(doc(teacher,'issues','admin-only'),{status:'Resolved',updatedAt:serverTimestamp()}));
