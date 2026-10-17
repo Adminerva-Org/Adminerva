@@ -1,0 +1,23 @@
+// Bounded GitHub history pagination for V2 evidence review.
+// Older commits can be needed for retrospective assignments and reclaim claims.
+export const COMMIT_PAGE_SIZE=100;
+export const MAX_COMMIT_PAGES=5;
+export function commitPagePath(repoPath,page,{branch}={}){
+  if(!Number.isInteger(page)||page<1||page>MAX_COMMIT_PAGES)
+    throw Error("The review history limit has been reached.");
+  const url=repoPath+"/commits?per_page="+COMMIT_PAGE_SIZE+"&page="+page;
+  return branch?url+"&sha="+encodeURIComponent(branch):url;
+}
+export function appendUniqueCommits(existing,incoming){
+  if(!Array.isArray(existing)||!Array.isArray(incoming))
+    throw Error("GitHub returned an invalid commit list.");
+  const found=new Set();
+  return [...existing,...incoming].filter(commit=>{
+    const sha=String(commit?.sha||"").toLowerCase();
+    if(!/^[a-f0-9]{40}$/.test(sha)||found.has(sha))return false;
+    found.add(sha);return true;
+  });
+}
+export function hasOlderCommitPage(page,lastBatchLength){
+  return page<MAX_COMMIT_PAGES && lastBatchLength===COMMIT_PAGE_SIZE;
+}
