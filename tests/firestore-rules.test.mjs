@@ -362,6 +362,19 @@ test('unverified staff emails do not grant instructor authority',async()=>{
   }
 });
 
+test('twenty selected commits can be submitted, audited and approved within rule limits',async()=>{
+  const alice=client('alice',EMAIL_A),staff=client('staff',TEACHER);
+  const repository='https://github.com/example/project';
+  const selectedCommits=[SHA,...Array.from({length:19},(_,index)=>(index+1).toString(16).padStart(40,'0'))];
+  await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'students','alice'),{email:EMAIL_A,section:'11-A',repoUrl:repository}));
+  const record={studentId:'alice',assessmentId:'v2',section:'11-A',repository,selectedCommits,
+    checkpointSha:SHA,status:'submitted',submittedAt:serverTimestamp(),updatedAt:serverTimestamp()};
+  await assertSucceeds(setDoc(doc(alice,'assessment_evidence','alice_v2'),record));
+  await assertSucceeds(auditedEvidence(alice,{submittedAt:serverTimestamp()}));
+  await assertFails(auditedEvidence(alice,{selectedCommits:[...selectedCommits,'b'.repeat(40)],submittedAt:serverTimestamp()}));
+  await assertSucceeds(auditedEvidence(staff,approval(),{actor:'staff'}));
+});
+
 test('student cannot alter discovered evidence until instructor reopening; reopened discovery permits withdrawal and resubmission',async()=>{
   const alice=client('alice',EMAIL_A),staff=client('staff',TEACHER);
   const repository='https://github.com/example/project';
