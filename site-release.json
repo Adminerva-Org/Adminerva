@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.17.2",
-  "releasedAt": "2026-10-17",
-  "notes": "Report tracker filters, saved report preferences, teacher triage fixes, and accessible Adminerva module navigation. Report access remains account- and audience-restricted."
+  "version": "2026.10.18.1",
+  "releasedAt": "2026-10-18",
+  "notes": "RepoFetch becomes the primary Assessment V2 grading queue, with teacher-reviewed AI rubric suggestions from approved Git checkpoints and prefilled links to evidence review and inspector. Student grades remain unpublished until instructor action."
 }
