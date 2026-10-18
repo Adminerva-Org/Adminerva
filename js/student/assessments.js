@@ -1,6 +1,6 @@
 import { db, auth } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
-import {asDate,assessmentStatus,assessmentTargetDetails} from "./assessment-state.mjs?v=2026.10.18.1";
+import {asDate,assessmentStatus,assessmentTargetDetails} from "./assessment-state.mjs?v=2026.10.18.4";
 import {
   collection,
   getDocs,
@@ -301,10 +301,12 @@ function renderAssessments() {
 }
 
 window.addEventListener("adminerva:submission-recorded",event=>{
-  const {assessmentId,studentId}=event.detail||{};
+  const {assessmentId,studentId,evidenceStatus}=event.detail||{};
   const profile=userProfiles.find(p=>p.section===currentSection);
   if(profile?.id===studentId && assessmentId){
-    mySubmitted[assessmentId]={assessmentId,submittedAt:new Date()};
+    if(evidenceStatus)myEvidence[assessmentId]={...(myEvidence[assessmentId]||{}),status:evidenceStatus};
+    if(evidenceStatus==="withdrawn")delete mySubmitted[assessmentId];
+    else mySubmitted[assessmentId]={assessmentId,submittedAt:new Date()};
     submissionLookupSucceeded=true;
     renderAssessments();
   }
@@ -352,6 +354,8 @@ window.viewAssessmentDetails = function (id) {
 
   const scoreArea = document.getElementById("modalScoreArea");
   const myGrade = myGrades[id];
+  const provenance=document.getElementById("modalFeedbackProvenance");
+  if(provenance){provenance.open=false;provenance.classList.toggle("hidden",!myGrade?.aiAssistance);}
   if (myGrade) {
     document.getElementById("modalScoreValue").textContent = myGrade.score;
     document.getElementById("modalScoreFeedback").textContent =

@@ -41,7 +41,9 @@ Rules exclude evidence and V2 grades from staff catch-all write privileges. Staf
 
 ## Validation and activation
 
-CI runs JavaScript regressions (including simulated review UI flows), Firestore emulator permissions, syntax checks and CodeQL. Local emulator tests use only `demo-adminerva-security`.
+CI runs JavaScript regressions (including simulated review UI flows), Firestore emulator permissions, syntax checks, CodeQL, and a full browser lifecycle with real Auth/Firestore emulators. Isolated projects are `demo-adminerva-security` and `demo-adminerva-browser`; the browser uses production SDK version 10.13.0 with fixture identities and controlled GitHub/provider responses.
+
+The browser test covers student submission/resubmission/withdrawal and immediate assignment status, inline teacher approval, verified individual scope, provider errors, unscored criteria, explicit private save, publication visibility, protected reopening, same-SHA reapproval and stale publication rejection, noncontributor evaluation guards, and student privacy. It does not prove real provider quality or live account configuration. Reproduction and coordinated release steps are in [the release checklist](v2-release-checklist.md).
 
 **No Firebase deployment is authorized by this PR.** Review and explicitly approve rules deployment before activating these controls. Old deployed rules cannot accept the new audited student updates; coordinate frontend release with approved rules activation. Functions are unchanged. No live grade, assessment, evidence or repository history is migrated.
 

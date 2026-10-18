@@ -135,7 +135,9 @@ test('student pages request an updated nav asset instead of a stale browser cach
   for (const path of ['student-dashboard.html','student-assessments.html',
     'student-practice.html','student-playground.html','student-settings.html']) {
     const page=readFileSync(path,'utf8');
-    assert.match(page,/adminerva-nav[.]js[?]v=2026[.]10[.]17[.]2/);
+    const version=page.match(/adminerva-nav[.]js[?]v=(\d{4}[.]\d{2}[.]\d{2}[.]\d+)/)?.[1];
+    assert.ok(version&&version.localeCompare('2026.10.17.2','en',{numeric:true})>=0,
+      path+' must request the current or a newer nav asset');
   }
 });
 

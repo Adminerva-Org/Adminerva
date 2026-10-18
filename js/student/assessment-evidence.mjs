@@ -10,6 +10,7 @@ import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs";
 const el=id=>document.getElementById(id);
 let context=null,commits=[],selected=new Set(),checkpoint="",claims=new Map(),saved=null,loadSequence=0;
 let historyPage=0,hasOlderCommits=false,historyLoading=false;
+let evidenceBusy=false;
 const status=text=>{el("evidenceStatus").textContent=text;};
 function refreshHistoryControl(){
   const button=el("evidenceLoadOlder");
@@ -40,9 +41,9 @@ function contextForStudent(){
 function render(){
   const list=el("evidenceCommitList");list.replaceChildren();
   const editable=studentMayChangeEvidence(saved);
-  el("evidenceSubmit").disabled=!editable;
-  el("evidenceSubmit").textContent=saved?"Resubmit selected evidence":"Submit selected evidence";
-  el("evidenceWithdraw").disabled=!editable||!saved||saved.status==="withdrawn";
+  el("evidenceSubmit").disabled=!editable||evidenceBusy;
+  el("evidenceSubmit").textContent=evidenceBusy?"Saving evidence…":saved?"Resubmit selected evidence":"Submit selected evidence";
+  el("evidenceWithdraw").disabled=!editable||!saved||saved.status==="withdrawn"||evidenceBusy;
   const guidance=evidenceSelectionGuidance([...selected],checkpoint);
   const summary=el("evidenceSelectionSummary");
   if(summary)summary.textContent=guidance.message;
@@ -55,14 +56,14 @@ function render(){
     const top=add(row,"div","","flex flex-wrap items-center gap-3");
     const includeLabel=add(top,"label","","inline-flex items-center gap-1 text-xs text-slate-700 font-semibold cursor-pointer");
     const check=document.createElement("input");check.type="checkbox";check.checked=selected.has(sha);
-    check.disabled=!editable;check.setAttribute("aria-label","Include commit "+sha.slice(0,12)+" as evidence");
+    check.disabled=!editable||evidenceBusy;check.setAttribute("aria-label","Include commit "+sha.slice(0,12)+" as evidence");
     check.addEventListener("change",()=>{if(check.checked)selected.add(sha);
       else {selected.delete(sha);if(checkpoint===sha)checkpoint="";}
       render();});includeLabel.append(check);
     add(includeLabel,"span","Include commit");
     const checkpointLabel=add(top,"label","","inline-flex items-center gap-1 text-xs text-indigo-800 font-semibold cursor-pointer");
     const radio=document.createElement("input");radio.type="radio";radio.name="assessmentCheckpoint";
-    radio.checked=checkpoint===sha;radio.disabled=!editable;
+    radio.checked=checkpoint===sha;radio.disabled=!editable||evidenceBusy;
     radio.setAttribute("aria-label","Set commit "+sha.slice(0,12)+" as project checkpoint");
     radio.addEventListener("change",()=>{checkpoint=sha;selected.add(sha);render();});
     checkpointLabel.append(radio);
@@ -154,6 +155,7 @@ async function load(){
   el("legacySubmitPanel").classList.toggle("hidden",v2);
   if(!v2){hasOlderCommits=false;refreshHistoryControl();return;}
   context=null;commits=[];selected=new Set();checkpoint="";saved=null;claims=new Map();
+  evidenceBusy=false;
   historyPage=0;hasOlderCommits=false;historyLoading=false;refreshHistoryControl();
   el("evidenceCommitList").replaceChildren();el("evidencePreview").textContent="";
   const summary=el("evidenceSelectionSummary");if(summary)summary.textContent="No evidence commits selected yet.";
@@ -206,7 +208,8 @@ async function loadOlderCommits(){
   }
 }
 async function submit(){
-  if(!context)return;
+  if(!context||evidenceBusy)return;
+  const active=context;
   try{
     const guidance=evidenceSelectionGuidance([...selected],checkpoint);
     if(!guidance.ready){status(guidance.message);return;}
@@ -215,36 +218,46 @@ async function submit(){
       throw Error("Checkpoint not found in the loaded GitHub history.");
     if(!confirm("Submit "+selectedCommits.length+" commits as evidence at checkpoint "+checkpointSha.slice(0,12)+
       "? This is not a graded result."))return;
-    const ref=doc(db,"assessment_evidence",context.profile.id+"_"+context.task.id);
+    evidenceBusy=true;render();status("Submitting selected evidence…");
+    const ref=doc(db,"assessment_evidence",active.profile.id+"_"+active.task.id);
     const common={selectedCommits,checkpointSha,updatedAt:serverTimestamp()};
     if(saved){
       if(!studentMayChangeEvidence(saved))throw Error("Ask your instructor to reopen approved evidence first.");
       await changeEvidence(ref,saved,{...common,status:"submitted",submittedAt:serverTimestamp()},"Student resubmitted selected evidence");
     }else{
       await setDoc(ref,{
-        ...common,studentId:context.profile.id,assessmentId:context.task.id,
-        section:context.section,repository:context.profile.repoUrl,status:"submitted",
+        ...common,studentId:active.profile.id,assessmentId:active.task.id,
+        section:active.section,repository:active.profile.repoUrl,status:"submitted",
         submittedAt:serverTimestamp()
       });
     }
-    saved=(await getDoc(ref)).data();
+    const result=(await getDoc(ref)).data();
+    if(context!==active)return;
+    saved=result;
     render();
     status("Evidence submitted for teacher verification. This is not an approved contribution or grade.");
     window.dispatchEvent(new CustomEvent("adminerva:submission-recorded",{
-      detail:{assessmentId:context.task.id,studentId:context.profile.id,revisionSha:checkpointSha}
+      detail:{assessmentId:active.task.id,studentId:active.profile.id,revisionSha:checkpointSha,evidenceStatus:"submitted"}
     }));
-  }catch(error){status("Evidence submission failed: "+error.message);}
+  }catch(error){if(context===active)status("Evidence submission failed: "+error.message);}
+  finally{if(context===active){evidenceBusy=false;render();}}
 }
 async function withdrawEvidence(){
-  if(!context||!saved||!studentMayChangeEvidence(saved)||saved.status==="withdrawn")return;
+  if(!context||evidenceBusy||!saved||!studentMayChangeEvidence(saved)||saved.status==="withdrawn")return;
+  const active=context;
   if(!confirm("Withdraw this evidence from review? Previous commits and submission times remain in the audit history. You can resubmit before approval."))return;
   try{
-    const ref=doc(db,"assessment_evidence",context.profile.id+"_"+context.task.id);
+    evidenceBusy=true;render();status("Withdrawing evidence…");
+    const ref=doc(db,"assessment_evidence",active.profile.id+"_"+active.task.id);
     await changeEvidence(ref,saved,{status:"withdrawn"},"Student withdrew evidence before approval");
-    saved=(await getDoc(ref)).data();render();
+    const result=(await getDoc(ref)).data();if(context!==active)return;
+    saved=result;render();
     status("Evidence withdrawn; previous submission retained. Revise and resubmit when ready.");
-    window.dispatchEvent(new CustomEvent("adminerva:submission-recorded"));
-  }catch(error){status("Unable to withdraw: "+error.message);}
+    window.dispatchEvent(new CustomEvent("adminerva:submission-recorded",{
+      detail:{assessmentId:active.task.id,studentId:active.profile.id,evidenceStatus:"withdrawn"}
+    }));
+  }catch(error){if(context===active)status("Unable to withdraw: "+error.message);}
+  finally{if(context===active){evidenceBusy=false;render();}}
 }
 window.addEventListener("adminerva:assessment-opened",()=>{void load();});
 el("evidenceSubmit")?.addEventListener("click",()=>{void submit();});

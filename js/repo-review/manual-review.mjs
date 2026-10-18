@@ -7,7 +7,7 @@ import {
 import { analyzePatchSubstance } from "./services/commit-substance.mjs";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs";
 import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,parseSuggestedRubric}
-  from "./services/v2-grading-assistant.mjs";
+  from "./services/v2-grading-assistant.mjs?v=2026.10.18.4";
 import {evidenceRevision,gradeMatchesEvidence} from "./services/evidence-lifecycle.mjs";
 
 const el = id => document.getElementById(id);
@@ -455,6 +455,7 @@ function init() {
       event.data.studentId!==state.request.studentId||event.data.assessmentId!==state.request.taskId)return;
     window.dispatchEvent(new CustomEvent("adminerva:manual-grade-saved"));
     if(state.active&&(el("manualReviewScore").value||el("manualReviewFeedback").value)){
+      el("integratedEvidenceStatus").textContent="Evidence changed. Reload the checkpoint and grade status before continuing this review.";
       state.active=null;el("manualReviewSave").disabled=true;el("manualReviewAIGenerate").disabled=true;
       return message("Evidence changed. Displayed draft is stale and cannot be saved. Reload checkpoint / grade status to review again.",true);
     }
