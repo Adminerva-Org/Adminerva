@@ -22,6 +22,21 @@ export function normalizeSelection(commits,checkpoint,{maximum=20}={}){
     throw Error('Choose a project checkpoint from the selected commits.');
   return {selectedCommits:selected,checkpointSha:sha};
 }
+/**
+ * Explain the two separate student actions: include evidence commits and choose
+ * one selected SHA as the review checkpoint. Never choose on the student's behalf.
+ */
+export function evidenceSelectionGuidance(commits,checkpoint,{maximum=20}={}){
+  const selected=[...new Set((Array.isArray(commits)?commits:[])
+    .map(sha=>String(sha||"").toLowerCase()))];
+  const count=selected.length;
+  if(!count)return {ready:false,message:"No evidence commits selected. Check Include commit next to relevant work, then choose a project checkpoint using the round button."};
+  if(count>maximum)return {ready:false,message:"You selected "+count+" commits. Select no more than "+maximum+" evidence commits."};
+  const sha=String(checkpoint||"").toLowerCase();
+  if(!validSha(sha)||!selected.includes(sha))
+    return {ready:false,message:count+" commit"+(count===1?"":"s")+" selected. Choose one as the project checkpoint using its round button before submitting."};
+  return {ready:true,message:count+" commit"+(count===1?"":"s")+" selected. Project checkpoint: "+sha.slice(0,12)+". Ready for teacher review."};
+}
 export function detectedAuthor(commit){
   const git=commit?.commit?.author||{};
   return {name:String(git.name||'Unknown Git author').slice(0,120),

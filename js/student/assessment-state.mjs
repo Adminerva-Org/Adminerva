@@ -24,3 +24,23 @@ export function assessmentStatus({grade,submitted,evidenceStatus=null,deadline,n
     return {kind:"pastdue",text:"Past due — not submitted"};
   return {kind:"notSubmitted",text:"Not submitted"};
 }
+
+/**
+ * Present V2 target path patterns separately from expected file extensions.
+ * File types are guidance and must not be presented as an enforced path.
+ * Legacy blueprints stored a single targetPath instead of targetPaths[].
+ */
+export function assessmentTargetDetails(assessment={}) {
+  const paths=Array.isArray(assessment.targetPaths)
+    ? assessment.targetPaths.filter(p=>typeof p==="string"&&p.trim()).map(p=>p.trim())
+    : [];
+  if(!paths.length&&typeof assessment.targetPath==="string"&&assessment.targetPath.trim()){
+    paths.push(assessment.targetPath.trim());
+  }
+  const expectedTypes=Array.isArray(assessment.expectedExtensions)
+    ? [...new Set(assessment.expectedExtensions
+      .filter(e=>typeof e==="string"&&/^[a-z0-9]{1,12}$/i.test(e.trim().replace(/^\./,"")))
+      .map(e=>"."+e.trim().replace(/^\./,"").toLowerCase()))].join(", ")
+    : "";
+  return {paths:paths.length?paths.join(", "):"Any path",expectedTypes};
+}

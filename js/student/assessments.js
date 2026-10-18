@@ -1,6 +1,6 @@
 import { db, auth } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
-import {asDate,assessmentStatus} from "./assessment-state.mjs";
+import {asDate,assessmentStatus,assessmentTargetDetails} from "./assessment-state.mjs?v=2026.10.18.1";
 import {
   collection,
   getDocs,
@@ -252,6 +252,7 @@ function renderAssessments() {
           ? "bg-green-100 text-green-700 border-green-200"
           : "bg-blue-100 text-blue-700 border-blue-200";
 
+    const fileScope=assessmentTargetDetails(ass);
     const myGrade=myGrades[ass.id];
     const status=assessmentStatus({
       grade:myGrade,submitted:Boolean(mySubmitted[ass.id]),
@@ -289,8 +290,9 @@ function renderAssessments() {
           <p class="text-sm text-slate-500 mt-2 line-clamp-2">${escapeHTML(ass.taskContext || "No context provided.")}</p>
         </div>
         <div class="sm:border-l sm:border-slate-200 sm:pl-4 flex flex-row sm:flex-col items-center justify-between sm:justify-center w-full sm:w-32 gap-2 mt-2 sm:mt-0">
-          <span class="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Target File</span>
-          <span class="text-[10px] font-mono bg-slate-100 text-slate-600 px-2 py-1 rounded truncate max-w-full" title="${escapeHTML(ass.targetPath || "Any")}">${escapeHTML(ass.targetPath || "Any")}</span>
+          <span class="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Target Paths</span>
+          <span class="text-[10px] font-mono bg-slate-100 text-slate-600 px-2 py-1 rounded truncate max-w-full" title="${escapeHTML(fileScope.paths)}">${escapeHTML(fileScope.paths)}</span>
+          ${fileScope.expectedTypes ? `<span class="text-[10px] text-slate-600 text-center break-all">Expected: ${escapeHTML(fileScope.expectedTypes)}</span>` : ""}
         </div>
       </div>
     `;
@@ -340,8 +342,9 @@ window.viewAssessmentDetails = function (id) {
     `${typeColor} text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider mb-2 inline-block`;
   document.getElementById("modalAssType").textContent = ass.type;
   document.getElementById("modalAssTitle").textContent = ass.title;
+  const fileScope=assessmentTargetDetails(ass);
   document.getElementById("modalAssPath").textContent =
-    `Target File: ${ass.targetPath || "Any"}`;
+    `Target Paths: ${fileScope.paths}${fileScope.expectedTypes ? " · Expected file types: " + fileScope.expectedTypes : ""}`;
   document.getElementById("modalAssContext").textContent =
     ass.taskContext || "No instructions provided.";
   document.getElementById("modalAssRubric").textContent =

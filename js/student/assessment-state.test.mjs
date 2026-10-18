@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {asDate,assessmentStatus} from "./assessment-state.mjs";
+import {asDate,assessmentStatus,assessmentTargetDetails} from "./assessment-state.mjs";
 test("historical Firestore and ISO timestamps are safe",()=>{
   assert.equal(asDate({toDate:()=>new Date("2026-09-13T00:00:00Z")}).getUTCFullYear(),2026);
   assert.equal(asDate("2026-09-13T00:00:00Z").getUTCFullYear(),2026);
@@ -29,4 +29,26 @@ test('V2 evidence states are independent of legacy submission receipts',()=>{
   assert.deepEqual(assessmentStatus({evidenceStatus:'submitted'}),{
     kind:'submitted',text:'Evidence submitted for review'
   });
+});
+
+test("V2 assessment displays targetPaths even when legacy targetPath is absent",()=>{
+  assert.deepEqual(assessmentTargetDetails({
+    targetPaths:["**/res/layout/*.xml"],expectedExtensions:["xml"]
+  }),{paths:"**/res/layout/*.xml",expectedTypes:".xml"});
+});
+test("expected XML file type never masquerades as a target path",()=>{
+  assert.deepEqual(assessmentTargetDetails({targetPaths:[],expectedExtensions:["xml"]}),{
+    paths:"Any path",expectedTypes:".xml"
+  });
+});
+test("legacy targetPath remains visible and types are distinct",()=>{
+  assert.deepEqual(assessmentTargetDetails({targetPath:"src/Main.java"}),{
+    paths:"src/Main.java",expectedTypes:""
+  });
+});
+test("target display trims, joins and deduplicates valid extensions",()=>{
+  assert.deepEqual(assessmentTargetDetails({
+    targetPaths:[" app/src/main/res/layout/*.xml ","**/res/layout/*.xml",""],
+    expectedExtensions:["XML",".xml"," java ","bad!"]
+  }),{paths:"app/src/main/res/layout/*.xml, **/res/layout/*.xml",expectedTypes:".xml, .java"});
 });
