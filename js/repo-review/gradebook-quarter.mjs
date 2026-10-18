@@ -1,3 +1,4 @@
+/** Assessment authoring, repository evidence, individual review and protected grading: gradebook quarter. */
 import { auth, db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
@@ -309,7 +310,7 @@ async function togglePublish(makePublished) {
       const previous = gradeSnap.data();
       const isV2=active.task.schemaVersion===2;
       if(makePublished&&isV2){
-        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs");
+        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=2026.10.19.1");
         await verifyGradePublication(tx,active.entry.ref,previous);
       }
       if (makePublished && previous.reviewRequired && !el("gbMarkReviewed").checked) {

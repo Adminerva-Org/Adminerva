@@ -1,0 +1,67 @@
+{
+  "releases": [
+    {
+      "version": "2026.10.19.3",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-19",
+      "title": "Review, learning tools, Help and optional analytics",
+      "summary": "A clearer grading workspace, XML layout practice, lesson-linked slides, public guides and privacy-conscious learning activity.",
+      "changes": [
+        {"type":"Revised", "area":"Review & Grade", "text":"Review committed evidence and pinned source, use an optional Adminerva Auto Checker draft, and save teacher scores and feedback in one workspace. Copy suggestions deliberately and publish grades separately."},
+        {"type":"Fixed", "area":"Evidence editing", "text":"Older selected commits remain editable after withdrawal. Approved evidence needs instructor reopening, and review navigation no longer covers evidence buttons."},
+        {"type":"New", "area":"Learning tools", "text":"XML Layout Lab previews a supported Android XML subset in the browser. Practice has personal points, independent teacher review and optional alias-only class snapshots; these do not change assessment grades."},
+        {"type":"Updated", "area":"Lessons and slides", "text":"Saved lessons open editable slide starters with source-version details. Existing slide edits are not silently replaced."},
+        {"type":"New", "area":"Help and updates", "text":"Open contextual tutorials, the public Adminerva Wiki and curated patch history throughout the website. Published releases appear in the account notification inbox."},
+        {"type":"Updated", "area":"Analytics", "text":"Teacher learning summaries and administration monitoring are separate. Activity sharing is optional and excludes typed content and credentials. Activity observations never become grades."},
+        {"type":"New", "area":"Monitoring maintenance", "text":"Administrators can configure optional background cleanup and learning-summary refresh with recorded policy changes. The service needs separate server activation; saving settings does not deploy it. Consent changes are checked again before summaries are saved."},
+        {"type":"Fixed", "area":"Loading and navigation", "text":"Loading status stays visible while overlapping key processes finish. Clearer page names preserve existing links, and repeated preferences saves no longer inflate visit counts."}
+      ]
+    },
+    {
+      "version": "2026.10.19.2",
+      "status": "draft",
+      "public": true,
+      "releasedAt": "2026-10-19",
+      "title": "Help, learning activity and clearer analytics",
+      "summary": "Public tutorials, optional activity sharing, separate learning and system monitoring, and clearer loading feedback.",
+      "changes": [
+        {"type":"New", "area":"Help and tutorials", "text":"Open a page tutorial or browse the public Adminerva Wiki. Wiki and patch-history links are available throughout the website, including public pages."},
+        {"type":"Updated", "area":"Analytics", "text":"Teacher Analytics focuses on learning; Administration Analytics focuses on system monitoring and support. Administrators select configured instructors in the teacher view."},
+        {"type":"New", "area":"Activity preferences", "text":"Choose whether to share module visits and approximate active time. Optional diagnostic actions attach to administrator reports only when explicitly selected. Activity observations never become assessment grades."},
+        {"type":"Fixed", "area":"Loading", "text":"Account checks and key learning, review and analytics processes keep a visible status while overlapping work finishes."},
+        {"type":"Revised", "area":"Navigation", "text":"Teacher Analytics, Group Inspector and the older Activity Grader use clearer page names. Existing links continue to open the matching workspace."}
+      ]
+    },
+    {
+      "version": "2026.10.19.1",
+      "status": "draft",
+      "public": true,
+      "releasedAt": "2026-10-19",
+      "title": "Clearer review and student learning tools",
+      "summary": "Three clear teacher review sections, editable evidence selections, XML layout previews, practice points, and lesson-linked slide starters.",
+      "changes": [
+        {"type": "New", "area": "Website updates", "text": "Read public patch history and receive a notification for each published release in your account inbox."},
+        {"type": "Revised", "area": "Review & Grade", "text": "Review evidence, use an optional Adminerva Auto Checker draft, and enter the final teacher score in three sections. Suggestions copy only when accepted. Protected grades can be unpublished for revision in the same workspace."},
+        {"type": "Fixed", "area": "Project Hub", "text": "Previously selected older commits remain available for editing. Editable selections can be cleared before resubmission, and instructions and rubrics expand when needed."},
+        {"type": "New", "area": "XML Layout Lab", "text": "Edit Android layout XML and preview supported widgets, dimensions, colors and parent-edge constraints in a sandboxed browser view. The simulator is a learning approximation, not Android Studio."},
+        {"type": "New", "area": "Practice Lab", "text": "See personal practice points. Instructors can review missions and publish opt-in, alias-only class standings; practice points do not change assessment grades."},
+        {"type": "Updated", "area": "Lesson Planner and Slide Editor", "text": "Open a saved lesson in the Slide Editor and build editable starter slides without an external service. Saved decks retain their source lesson version; newer lesson versions do not silently replace slide edits."}
+      ]
+    },
+    {
+      "version": "2026.10.18.4",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-18",
+      "title": "Review & Grade workspace",
+      "summary": "A simpler teacher review workspace, individual contribution checks, and protected student evidence revisions.",
+      "changes": [
+        {"type": "New", "area": "Teacher review", "text": "Review selected evidence, checkpoint approval, evaluation drafts and group details from Review & Grade."},
+        {"type": "Updated", "area": "Adminerva Auto Checker", "text": "Evaluation drafts distinguish verified individual contributions from shared project completeness. Teacher review is required; grades are never published automatically."},
+        {"type": "Updated", "area": "Project Hub", "text": "Students can revise or withdraw evidence before approval. Approved evidence requires instructor reopening, with previous submissions retained."},
+        {"type": "Fixed", "area": "Navigation", "text": "Account controls fit narrow mobile screens more reliably."}
+      ]
+    }
+  ]
+}

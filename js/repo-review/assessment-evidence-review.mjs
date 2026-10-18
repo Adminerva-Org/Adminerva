@@ -1,3 +1,4 @@
+/** Instructor checkpoint approval, reopening and contribution verification. */
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,doc,getDoc,getDocs,setDoc,query,where,updateDoc,runTransaction,serverTimestamp}
@@ -6,7 +7,8 @@ import {parseRepository,normalizeSelection,validSha}
   from "./services/assessment-evidence.mjs";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "./services/commit-history.mjs";
 import {approvalContribution} from "./services/evidence-lifecycle.mjs";
-import {changeEvidence} from "./services/evidence-transaction.mjs";
+import {changeEvidence} from "./services/evidence-transaction.mjs?v=2026.10.19.1";
+import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=2026.10.19.1";
 
 const STAFF=new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
 const ADMIN="babaynike2013@gmail.com";
@@ -16,9 +18,14 @@ const discovery={commits:[],selected:new Set(),checkpoint:"",page:0,hasOlder:fal
 const embedded=new URLSearchParams(location.search).get("embedded")==="1";
 if(embedded){
   document.body.classList.add("evidence-embedded");
+  document.body.style.minHeight="0";
   document.getElementById("adminerva-nav")?.remove();
   document.querySelector("main > header")?.remove();
   document.querySelector("main > section")?.classList.add("hidden");
+  new ResizeObserver(()=>{
+    const height=Math.ceil(el("pageBody").getBoundingClientRect().height)+20;
+    window.parent.postMessage({type:"adminerva:evidence-height",height},location.origin);
+  }).observe(el("pageBody"));
 }
 function notifyWorkspace(){
   if(embedded)window.parent.postMessage({type:"adminerva:evidence-changed",studentId:state.student.id,assessmentId:state.assessment.id},location.origin);
@@ -33,7 +40,7 @@ function add(parent,tag,text,style=""){
   const x=document.createElement(tag);x.textContent=String(text??"");if(style)x.className=style;
   parent.append(x);return x;
 }
-function status(t){el("evidenceReviewStatus").textContent=t;}
+function status(t){el("evidenceReviewStatus").textContent=t;if(el("evidenceActionStatus"))el("evidenceActionStatus").textContent=t;}
 function link(parent,title,url){
   const a=add(parent,"a",title,"font-semibold text-indigo-700 hover:underline break-all");
   a.href=url;a.target="_blank";a.rel="noopener noreferrer";return a;
@@ -91,6 +98,7 @@ async function loadEvidence(){
     if(evidence.studentId!==student.id||evidence.assessmentId!==assessment.id||
        evidence.repository!==student.repoUrl)throw Error("Submission identity or repository does not match the roster.");
     state.evidence=evidence;
+    void showSnapshot(evidence,assessment);
     el("evidenceContributionScope").value=evidence.contributionScope||"";
     el("evidenceContributionScope").disabled=evidence.status==="approved";
     el("evidenceReviewNote").value="";el("evidenceConfirm").checked=false;
@@ -117,6 +125,7 @@ async function loadEvidence(){
       const preview=add(p,"button"," · Preview changes","ml-3 text-xs underline text-indigo-700");
       preview.type="button";
       preview.addEventListener("click",()=>{void previewCommit(repo,sha,p);});
+      void previewCommit(repo,sha,p);
       const label=add(p,"label","","flex gap-2 items-start text-xs mt-2");
       const verified=document.createElement("input");verified.type="checkbox";
       verified.dataset.contributionSha=sha;
@@ -149,6 +158,16 @@ async function previewCommit(repo,sha,row){
         (typeof f.patch==="string"?f.patch.slice(0,5000):"Binary or unavailable diff"));
     box.textContent=details.join("\n");
   }catch(e){box.textContent="Unable to preview commit: "+e.message;}
+}
+async function showSnapshot(evidence,assessment){
+  const target=el("evidenceSnapshot");target.textContent="Loading matching files at the pinned checkpoint…";
+  try{
+    const snapshot=await loadReviewSnapshot(evidence.repository,evidence.checkpointSha,assessment,{token:localStorage.getItem("Adminerva_github_token")});
+    if(state.evidence!==evidence)return;
+    target.replaceChildren();add(target,"p",snapshot.paths.length+" matching files at checkpoint "+evidence.checkpointSha.slice(0,12)+". Shared source is project context, not individual credit.","text-xs font-semibold");
+    for(const file of snapshot.files){const details=add(target,"details","","border rounded p-2 mt-2");details.open=true;add(details,"summary",file.path,"font-mono text-xs cursor-pointer");add(details,"pre",file.error||file.text,"whitespace-pre-wrap break-words text-xs max-h-64 overflow-auto mt-2");}
+    if(snapshot.partial)add(target,"p","Partial preview: at most 12 files and 30 KB per file. Unshown or unreadable files are not missing screens. Inspect remaining files at the pinned repository link.","text-xs text-amber-900 mt-2");
+  }catch(error){if(state.evidence===evidence)target.textContent="Pinned source preview unavailable: "+error.message+" No conclusion about missing work can be drawn.";}
 }
 async function renderClaims(){
   const target=el("evidenceReclaims");target.replaceChildren();

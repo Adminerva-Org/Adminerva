@@ -1,3 +1,4 @@
+/** Explicitly requested assisted slide generation and safe draft acceptance. */
 window.generateAI_SlideDeck = async function () {
   if (!window.selectedPlanData || !window.selectedSessionData) {
     alert("Please select a lesson plan and session first.");
@@ -11,6 +12,10 @@ window.generateAI_SlideDeck = async function () {
     alert("Gemini API Key missing. Please configure it in Global Settings.");
     return;
   }
+  if(!confirm("Create a system slide draft? The selected lesson session will be sent to your configured Gemini model for automated assistance. Review the generated material before saving or teaching."))return;
+  if(window.adminervaPresentationDirty&&!confirm("Replace the current unsaved slide draft? Save or export it first if needed."))return;
+  const sourcePlan=window.selectedPlanData,sourceSession=window.selectedSessionData;
+  const sourceDeck=JSON.stringify(window.currentPresentationDeck||[]);
 
   const genBtn = document.getElementById("btnGenerateSlides");
   if (genBtn) {
@@ -49,11 +54,12 @@ window.generateAI_SlideDeck = async function () {
             4. Use native HTML (<h1>, <h2>, <p>, <ul>, <li>) for text. Keep bullets concise. Use KaTeX ($E=mc^2$) for math.
         `;
 
+    if(!/^[A-Za-z0-9._-]{1,80}$/.test(aiModelName))throw Error("Invalid configured slide model.");
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${aiModelName}:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(aiModelName)}:generateContent`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-goog-api-key":apiKey },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
@@ -91,6 +97,9 @@ window.generateAI_SlideDeck = async function () {
       if(fields.some(key=>typeof slide[key]!=="string"||!slide[key].trim()))
         throw Error(`Slide ${index+1} has missing content.`);
     }
+    if(window.selectedPlanData!==sourcePlan||window.selectedSessionData!==sourceSession)throw Error("Lesson selection changed. The returned draft was not applied.");
+    if(JSON.stringify(window.currentPresentationDeck||[])!==sourceDeck)throw Error("Slide edits changed during generation. The returned draft was not applied.");
+    window.presentationSourceLessonVersion=Number(sourcePlan.version||1);
     window.adminervaPresentationDirty = true;
     window.currentPresentationDeck = parsedDeck.map(slide => ({
       layout:["standard","split","media"].includes(slide.layout)?slide.layout:"standard",
@@ -112,7 +121,7 @@ window.generateAI_SlideDeck = async function () {
     alert(`Generation Failed: ${e.message}`);
   } finally {
     if (genBtn) {
-      genBtn.innerHTML = "✨ Generate AI Slides";
+      genBtn.innerHTML = "Generate system slide draft";
       genBtn.disabled = false;
     }
     if (typeof window.hideSubtleLoader === "function") {

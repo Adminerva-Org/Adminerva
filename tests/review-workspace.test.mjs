@@ -1,3 +1,4 @@
+/** Regression coverage: Adminerva module: review workspace. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -37,13 +38,30 @@ function workspace(evidence){
     serverTimestamp:()=>1234,runTransaction:async(_db,callback)=>callback({get:async ref=>snapshot(ref),set:(ref,data)=>writes.push({ref,data})}),
     CustomEvent:class {constructor(type){this.type=type;}},localStorage:{getItem:()=>null},alert:()=>{},confirm:()=>true};
   const source=readFileSync('js/repo-review/manual-review.mjs','utf8').replace(/^import[\s\S]*?from\s+"[^"]+";\s*/gm,'');
-  vm.runInNewContext(source,context);
+  vm.runInNewContext(source+';window.fixtureState=state;',context);
   return {elements,records,writes,listeners,window,context,open:()=>window.openManualGradeReview({studentId:'alice',taskId:'v2',owner:'example',repo:'project'})};
 }
 const approved={status:'approved',checkpointSha:checkpoint,approvedCheckpointSha:checkpoint,
   selectedCommits:[checkpoint],verifiedContributionCommits:[checkpoint],
   contributionScope:'Alice is assigned the welcome screen; instructor observed her implementation.',
   repository:'https://github.com/example/project',revision:1};
+test('suggestions never replace teacher fields without a separate explicit copy',async()=>{
+  const page=workspace(approved);await page.open();
+  page.elements.get('manualReviewScore').value='12';page.elements.get('manualReviewFeedback').value='Teacher feedback';
+  page.window.fixtureState.active.aiDraft={score:17,feedback:'Suggested feedback',criteria:[]};
+  assert.equal(page.elements.get('manualReviewScore').value,'12');
+  page.elements.get('manualReviewUseScore').click();
+  assert.equal(page.elements.get('manualReviewScore').value,'17');assert.equal(page.elements.get('manualReviewFeedback').value,'Teacher feedback');
+  page.context.confirm=()=>false;page.elements.get('manualReviewUseFeedback').click();
+  assert.equal(page.elements.get('manualReviewFeedback').value,'Teacher feedback');assert.equal(page.writes.length,0);
+});
+test('missing checker setup explains the blocker without preventing manual grading',async()=>{
+  const page=workspace(approved);await page.open();await page.context.generateAIDraft();
+  assert.equal(page.elements.get('manualReviewCheckerSetup').open,true);
+  assert.match(page.elements.get('manualReviewAIStatus').textContent,/grade manually/);
+  assert.equal(page.elements.get('manualReviewSave').disabled,false);
+  assert.equal(page.elements.get('integratedEvidenceDetails').open,true);
+});
 
 test('unapproved and missing evidence open inline review without enabling grade save',async()=>{
   for(const evidence of [null,{...approved,status:'submitted'}]){

@@ -1,8 +1,10 @@
+/** Shared navigation, account access, reporting and release infrastructure: notification visibility. */
 // Notification badges and feeds are based on intended recipients, never
 // failed subscriptions or private reports the viewer cannot access.
 export function notificationVisible(item, role) {
   if (!item || !item.type) return false;
   if (role === "admin") return true;
+  if (item.type === "release") return role === "teacher" || role === "student";
   if (item.type === "issue") {
     // Report responses remain accessible via My Reports, not student alerts.
     if (role === "student") return false;

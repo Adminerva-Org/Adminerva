@@ -1,3 +1,4 @@
+/** Scoped product configuration and staff preferences: settings security. */
 import { auth, db } from "../core/firebase-core.js";
 import {
   collection,

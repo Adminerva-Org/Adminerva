@@ -10,6 +10,6 @@
     "firebase-functions": "^6.0.0"
   },
   "scripts": {
-    "check": "node --check index.js"
+    "check": "node --check index.js && node --check monitoring-model.js && node --check monitoring-service.js"
   }
 }

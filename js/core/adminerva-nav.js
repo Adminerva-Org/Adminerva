@@ -1,3 +1,4 @@
+/** Responsive module navigation, account controls and notifications. */
 document.addEventListener("DOMContentLoaded", () => {
   const navContainer = document.getElementById("adminerva-nav");
   if (!navContainer) return;
@@ -56,7 +57,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <a href="teacher-home.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
                         <span class="text-cyan-500">⌂</span> Staff Home
                     </a>
-                    <a href="reporeviewDashboard.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
+                    <a href="teacher-analytics.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
                         <span class="text-cyan-500">💻</span> Educator Hub
                     </a>
                     <a href="lesson-planner.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
@@ -189,9 +190,9 @@ document.addEventListener("DOMContentLoaded", () => {
     activeModule === "settings"
   ) {
     centerLinks = `
-            <a href="reporeviewDashboard.html" class="${getStyle("dashboard")}">Analytics</a>
+            <a href="teacher-analytics.html" class="${getStyle("dashboard")}">Analytics</a>
             <a href="repobank.html" class="${getStyle("repobank")}">RepoBank</a>
-            <a href="temp-grading.html" class="${getStyle("activity-grader")}">Manual Grader</a>
+            <a href="group-inspector.html" class="${getStyle("activity-grader")}">Manual Grader</a>
             <a href="repofetch.html" class="${getStyle("repofetch")}">RepoFetch</a>
             <a href="submissions.html" class="${getStyle("submissions")}">Submissions</a>
             <a href="contribution-inspector.html" class="${getStyle("contributions")}">Contributions</a>
@@ -321,13 +322,14 @@ document.addEventListener("DOMContentLoaded", () => {
         ["gradebook", "Gradebook", "gradebook.html"],
         ["repofetch", "Review & Grade", "repofetch.html"],
         ["studio", "Assessment Studio", "assessment-studio.html"],
-        ["activity-grader", "Legacy Manual Activity Grader", "temp-activity-grader.html"]
+        ["practice", "Practice Analytics", "practice-analytics.html"],
+        ["activity-grader", "Legacy Manual Activity Grader", "activity-grader.html"]
       ] },
       { name: "Evidence tools", items: [
         ["submissions", "Submission Inbox", "submissions.html"],
         ["evidence", "Assessment Evidence", "assessment-evidence-review.html"],
         ["contributions", "Contribution Inspector", "contribution-inspector.html"],
-        ["group-inspector", "Group Inspector", "temp-grading.html"]
+        ["group-inspector", "Group Inspector", "group-inspector.html"]
       ] },
       { name: "Repositories", items: [
         ["repobank", "RepoBank", "repobank.html"]
@@ -339,7 +341,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ["library", "Reference Library", "library.html"]
       ] },
       { name: "Manage", items: [
-        ["issues", "Bug Reports", "issues.html"],
+        ["issues", "Reports", "issues.html"],
         ...(isSuperAdmin ? [["directory", "User Directory", "users.html"]] : []),
         ["settings", "Settings", "settings.html"]
       ] }
@@ -354,7 +356,7 @@ document.addEventListener("DOMContentLoaded", () => {
       staffGroups.splice(0, staffGroups.length, ...staffGroups.filter(group =>
         group.name === "Grading" || group.name === "Repositories" || group.name === "Evidence tools"));
     }
-    const analytics = ["dashboard", "Analytics", "reporeviewDashboard.html"];
+    const analytics = ["dashboard", "Analytics", "teacher-analytics.html"];
     const activeGroup = group => group.items.some(item => item[0] === activePage);
     const makeLink = (item, mobile) => {
       const a = document.createElement("a");
@@ -445,11 +447,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // A single responsive inbox for bug reports, grading alerts and submissions.
   const reportButton = navContainer.querySelector('button[title="Report Issue"]');
+  if(reportButton){const notes=document.createElement("a");notes.href="patch-notes.html";notes.textContent="What's new";notes.className="hidden sm:inline-block text-xs font-bold text-cyan-300 px-2";reportButton.parentNode.insertBefore(notes,reportButton);}
   if (reportButton && !document.getElementById("adminerva-notifications")) {
     const mountPoint = document.createElement("div");
     mountPoint.id = "adminerva-notifications";
     reportButton.parentNode.insertBefore(mountPoint, reportButton);
-    import("./notifications.mjs")
+    import("./notifications.mjs?v=2026.10.19.1")
       .then(module => module.mountNotificationCenter())
       .catch(error => console.warn("Notification center unavailable:", error));
   }

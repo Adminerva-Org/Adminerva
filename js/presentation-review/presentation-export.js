@@ -1,3 +1,4 @@
+/** Editable slides, lesson provenance and safe slide export: presentation export. */
 window.exportToPPTX = async function () {
   if (
     !window.currentPresentationDeck ||

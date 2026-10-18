@@ -1,3 +1,4 @@
+/** Regression coverage: Assessment authoring, repository evidence, individual review and protected grading: contribution resolver. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { matchPath, classifyFile, attributeCommit, resolveContributions, scopeAssessmentFiles, isGradableSource } from './contribution-resolver.mjs';

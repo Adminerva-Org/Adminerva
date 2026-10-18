@@ -1,3 +1,4 @@
+/** Student submissions, practice progress and isolated code workspaces: settings. */
 import { db, auth } from "../core/firebase-core.js";
 import {
   collection,

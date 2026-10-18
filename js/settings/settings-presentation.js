@@ -1,3 +1,4 @@
+/** Scoped product configuration and staff preferences: settings presentation. */
 import {
   doc,
   getDoc,

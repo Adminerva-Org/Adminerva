@@ -1,3 +1,4 @@
+/** Shared navigation, account access, reporting and release infrastructure: report filters. */
 // Report filtering for the tracker. These checks improve the interface;
 // Firestore security rules remain the authority for which reports may be read.
 const priorities={Critical:4,High:3,Medium:2,Low:1};

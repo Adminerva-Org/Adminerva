@@ -1,3 +1,4 @@
+/** Assessment authoring, repository evidence, individual review and protected grading: app. */
 // ==========================================
 // GLOBAL DATA & STATE
 // ==========================================

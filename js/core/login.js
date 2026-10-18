@@ -1,3 +1,4 @@
+/** Approved-account sign-in and access feedback. */
 import { db, auth } from "../core/firebase-core.js";
 import {
   collection,

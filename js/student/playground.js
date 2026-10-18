@@ -1,3 +1,4 @@
+/** Isolated code editing, execution, persistence and practice handoffs. */
 import { db, auth } from "../core/firebase-core.js";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs";
@@ -67,6 +68,8 @@ let practiceTransfer = null;
 // 2. INITIALIZATION
 // ==========================================
 document.addEventListener("DOMContentLoaded", async () => {
+  const end = window.beginLoading?.("Preparing code editor…", document.getElementById("editorContainer")) || (() => {});
+  try {
   // Auth guard controls visibility. Do not expose a workspace while access is pending.
 
   require.config({
@@ -75,6 +78,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     },
   });
   require(["vs/editor/editor.main"], async function () {
+    try {
     monaco.editor.defineTheme("adminervaDark", {
       base: "vs-dark",
       inherit: true,
@@ -144,7 +148,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }else if (snapshotId) await loadSnapshot(snapshotId);
     else loadLocalWorkspace();
-  });
+    } finally { end(); }
+  }, () => { end(); document.getElementById("editorLoading").textContent = "Editor could not load. Check your connection and reload; saved drafts are unchanged."; });
+  } catch (error) { end(); document.getElementById("editorLoading").textContent = "Editor unavailable. Saved drafts are unchanged. Reload to retry."; }
 });
 
 // ==========================================
@@ -579,6 +585,8 @@ async function loadSnapshot(id) {
 // 5. EXECUTION ENGINE & DIAGNOSTICS
 // ==========================================
 async function executeCode() {
+  const end = window.beginLoading?.("Running code…") || (() => {});
+  try {
   const runBtn = document.getElementById("runBtn");
   const overlay = document.getElementById("executionOverlay");
   const consoleOut = document.getElementById("consoleOutput");
@@ -662,6 +670,7 @@ async function executeCode() {
     }
     notePracticeExecution();
   }
+  } finally { end(); }
 }
 
 function applyVisualDiagnostics(errorText, defaultFile) {

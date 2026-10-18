@@ -1,3 +1,4 @@
+/** Lesson-planner interface events and workflow coordination. */
 // ==========================================
 // 1. GLOBAL STATE MANAGER
 // ==========================================

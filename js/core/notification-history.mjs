@@ -1,4 +1,5 @@
-import {notificationTarget} from "./notification-routing.mjs";
+/** Shared navigation, account access, reporting and release infrastructure: notification history. */
+import {notificationTarget} from "./notification-routing.mjs?v=2026.10.19.1";
 export const NOTIFICATION_HISTORY_LIMIT=200;
 export const historyDocId=key=>"n_"+encodeURIComponent(String(key||"")).slice(0,900);
 export function historyRecord(item,ownerUid,savedForLater=false){

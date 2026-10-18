@@ -1,3 +1,4 @@
+/** Regression coverage: Assessment authoring, repository evidence, individual review and protected grading: evidence lifecycle. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {studentMayChangeEvidence,approvalContribution,assertSameEvidence,gradeMatchesEvidence} from './evidence-lifecycle.mjs';

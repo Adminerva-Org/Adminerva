@@ -1,3 +1,4 @@
+/** Scoped product configuration and staff preferences: settings repo. */
 import {
   collection,
   getDocs,

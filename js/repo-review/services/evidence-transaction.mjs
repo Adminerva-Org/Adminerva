@@ -1,3 +1,4 @@
+/** Assessment authoring, repository evidence, individual review and protected grading: evidence transaction. */
 import {auth,db} from "../../core/firebase-core.js";
 import {doc,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {assertSameEvidence,evidenceRevision,gradeMatchesEvidence} from "./evidence-lifecycle.mjs";
@@ -21,7 +22,7 @@ export async function changeEvidence(ref,opened,changes,reason){
     assertSameEvidence(current,opened);
     if(changes.status==="reopened"){
       const grade=await transaction.get(doc(db,"student_grades",ref.id));
-      if(grade.exists()&&grade.data().published)throw Error("Unpublish the protected grade in Gradebook before reopening evidence.");
+      if(grade.exists()&&grade.data().published)throw Error("Unpublish the protected grade in section 3 of Review & Grade (or Gradebook) before reopening evidence.");
     }
     const revision=evidenceRevision(current)+1;
     const after={...current,...changes,revision,updatedAt:serverTimestamp()};

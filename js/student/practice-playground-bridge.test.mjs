@@ -1,3 +1,4 @@
+/** Regression coverage: Student submissions, practice progress and isolated code workspaces: practice playground bridge. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";

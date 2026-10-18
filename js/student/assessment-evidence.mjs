@@ -1,3 +1,4 @@
+/** Committed-evidence selection, checkpoint provenance and evidence lifecycle. */
 import {auth,db} from "../core/firebase-core.js";
 import {doc,getDoc,getDocs,setDoc,updateDoc,collection,query,where,serverTimestamp}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
@@ -5,7 +6,7 @@ import {parseRepository,normalizeSelection,evidenceSelectionGuidance,detectedAut
   from "../repo-review/services/assessment-evidence.mjs?v=2026.10.18.1";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "../repo-review/services/commit-history.mjs";
 import {studentMayChangeEvidence} from "../repo-review/services/evidence-lifecycle.mjs";
-import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs";
+import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs?v=2026.10.19.1";
 
 const el=id=>document.getElementById(id);
 let context=null,commits=[],selected=new Set(),checkpoint="",claims=new Map(),saved=null,loadSequence=0;
@@ -44,6 +45,7 @@ function render(){
   el("evidenceSubmit").disabled=!editable||evidenceBusy;
   el("evidenceSubmit").textContent=evidenceBusy?"Saving evidence…":saved?"Resubmit selected evidence":"Submit selected evidence";
   el("evidenceWithdraw").disabled=!editable||!saved||saved.status==="withdrawn"||evidenceBusy;
+  if(el("evidenceClear"))el("evidenceClear").disabled=!editable||evidenceBusy;
   const guidance=evidenceSelectionGuidance([...selected],checkpoint);
   const summary=el("evidenceSelectionSummary");
   if(summary)summary.textContent=guidance.message;
@@ -69,6 +71,7 @@ function render(){
     checkpointLabel.append(radio);
     add(checkpointLabel,"span","Project checkpoint");
     add(top,"span",sha.slice(0,12),"font-mono text-xs text-indigo-800");
+    if(commit.unavailable)add(row,"p","Saved commit unavailable from GitHub. You can remove it, or ask your teacher to inspect the repository.","text-xs text-amber-800");
     add(top,"strong",String(commit.commit?.message||"No message").split("\n")[0].slice(0,170),
       "text-xs break-words");
     add(row,"p",author.name+" · "+(author.login?"@"+author.login:"Git login unavailable")+
@@ -116,7 +119,7 @@ async function preview(commit){
 }
 async function loadClaims(studentId){
   const results=await getDocs(query(collection(db,"commit_reclaims"),where("studentId","==",studentId)));
-  claims=new Map(results.docs.map(d=>[d.data().sha,d.data()]));
+  return new Map(results.docs.map(d=>[d.data().sha,d.data()]));
 }
 async function reclaimCommit(commit){
   if(!context)return;
@@ -152,6 +155,7 @@ async function load(){
   const seq=++loadSequence,raw=window.__adminervaSubmissionContext?.();
   const v2=raw?.task?.schemaVersion===2&&raw?.task?.evidenceMode==="commit_selection";
   el("evidencePanel").classList.toggle("hidden",!v2);
+  if(v2)el("evidencePanel").parentElement?.prepend(el("evidencePanel"));
   el("legacySubmitPanel").classList.toggle("hidden",v2);
   if(!v2){hasOlderCommits=false;refreshHistoryControl();return;}
   context=null;commits=[];selected=new Set();checkpoint="";saved=null;claims=new Map();
@@ -166,15 +170,23 @@ async function load(){
     const docId=active.profile.id+"_"+active.task.id;
     try{
       const prior=await getDoc(doc(db,"assessment_evidence",docId));
+      if(seq!==loadSequence)return;
       if(prior.exists()){
         saved=prior.data();selected=new Set(saved.selectedCommits||[]);
         checkpoint=saved.checkpointSha||"";
       }
     }catch(error){if(error?.code!=="permission-denied")throw error;}
-    await loadClaims(active.profile.id);
+    const loadedClaims=await loadClaims(active.profile.id);
     const result=await github(commitPagePath(repositoryPath(repo),1));
     if(seq!==loadSequence)return;
     commits=appendUniqueCommits([],result);
+    const missing=[...new Set([...selected,checkpoint].filter(validSha))].filter(sha=>!commits.some(commit=>commit.sha.toLowerCase()===sha));
+    const restored=await Promise.all(missing.map(async sha=>{
+      try{return await github(repositoryPath(repo)+"/commits/"+sha);}
+      catch{return {sha,unavailable:true,commit:{message:"Saved evidence selection"}};}
+    }));
+    if(seq!==loadSequence)return;
+    commits=appendUniqueCommits(restored,commits);claims=loadedClaims;
     historyPage=1;hasOlderCommits=hasOlderCommitPage(historyPage,result.length);
     refreshHistoryControl();render();
     status(hasOlderCommits
@@ -214,7 +226,7 @@ async function submit(){
     const guidance=evidenceSelectionGuidance([...selected],checkpoint);
     if(!guidance.ready){status(guidance.message);return;}
     const {selectedCommits,checkpointSha}=normalizeSelection([...selected],checkpoint);
-    if(!commits.some(c=>c.sha.toLowerCase()===checkpointSha))
+    if(!commits.some(c=>c.sha.toLowerCase()===checkpointSha&&!c.unavailable))
       throw Error("Checkpoint not found in the loaded GitHub history.");
     if(!confirm("Submit "+selectedCommits.length+" commits as evidence at checkpoint "+checkpointSha.slice(0,12)+
       "? This is not a graded result."))return;
@@ -263,3 +275,8 @@ window.addEventListener("adminerva:assessment-opened",()=>{void load();});
 el("evidenceSubmit")?.addEventListener("click",()=>{void submit();});
 el("evidenceLoadOlder")?.addEventListener("click",()=>{void loadOlderCommits();});
 el("evidenceWithdraw")?.addEventListener("click",()=>{void withdrawEvidence();});
+el("evidenceClear")?.addEventListener("click",()=>{
+  if(!studentMayChangeEvidence(saved)||evidenceBusy)return;
+  if(!confirm("Clear this editable selection? Saved evidence and audit history are unchanged until you resubmit."))return;
+  selected.clear();checkpoint="";render();status("Selection cleared locally. Choose your commits and a new checkpoint, then resubmit.");
+});

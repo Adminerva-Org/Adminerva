@@ -1,3 +1,4 @@
+/** Regression coverage: Student submissions, practice progress and isolated code workspaces: playground storage. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

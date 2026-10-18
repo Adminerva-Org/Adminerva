@@ -1,3 +1,4 @@
+/** Regression coverage: Responsive module navigation, account controls and notifications. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
@@ -49,7 +50,7 @@ function mount(module='educator', page='dashboard', role='teacher') {
 test('teacher sees task-group menus instead of eight crowded links',()=>{
   const {desktop,mobile}=mount();
   assert.equal(desktop.children.length,4);
-  assert.equal(desktop.children[0].href,'reporeviewDashboard.html');
+  assert.equal(desktop.children[0].href,'teacher-analytics.html');
   assert.deepEqual(desktop.children.slice(1).map(x=>x.children[0].textContent),
     ['Grading ▾','Evidence tools ▾','Repositories ▾']);
   assert.equal(mobile.children.length,1);

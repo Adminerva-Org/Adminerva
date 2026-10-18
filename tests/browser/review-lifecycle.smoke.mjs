@@ -1,3 +1,4 @@
+/** Regression coverage: Adminerva module: review lifecycle.smoke. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFile,mkdir,stat,writeFile} from "node:fs/promises";
@@ -9,6 +10,8 @@ import {expect as baseExpect} from "playwright/test";
 import {initializeTestEnvironment} from "@firebase/rules-unit-testing";
 import {initializeApp,deleteApp} from "firebase-admin/app";
 import {getAuth} from "firebase-admin/auth";
+import {getFirestore as getAdminFirestore, Timestamp, FieldValue} from "firebase-admin/firestore";
+import monitoringWorker from "../../functions/monitoring-service.js";
 import {doc,setDoc} from "firebase/firestore";
 import {accounts,password,assessment,repository,ownSha,groupSha,homePath,providerDraft,githubFixture} from "./review-fixtures.mjs";
 
@@ -56,7 +59,7 @@ async function waitRecord(page,recordPath,field,value){
   return (await browserRecord(page,recordPath)).data;
 }
 
-test("teacher and students complete the V2 evidence lifecycle using real Auth and Firestore emulators",{timeout:240000},async()=>{
+test("teacher and students complete the V2 evidence lifecycle using real Auth and Firestore emulators",{timeout:420000},async()=>{
   const firestoreHost=localEmulator("FIRESTORE_EMULATOR_HOST");
   const authHost=localEmulator("FIREBASE_AUTH_EMULATOR_HOST");
   assert.equal(process.env.GCLOUD_PROJECT,projectId,"The Firebase CLI must select the isolated demo project");
@@ -68,6 +71,8 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
   const contexts=[],errors=[],blockedRequests=[],dialogs=[],milestones=[];
   function validated(message){milestones.push(message);console.log("Validated: "+message);}
   let modelRequests=0;
+  let omitSavedCommit=false;
+  let interceptSummaryConfirmation=null;
   try{
     await environment.clearFirestore();
     const authAdmin=getAuth(adminApp);
@@ -113,14 +118,19 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
       await context.addInitScript(role=>{
         if(location.protocol!=="http:")return;
         localStorage.setItem("fixture-role",role);
-        localStorage.setItem("Adminerva_Role",role==="teacher"?"teacher":"student");
+        localStorage.setItem("Adminerva_Role",role==="teacher"?"teacher":role==="admin"?"superadmin":"student");
         if(role==="teacher")localStorage.setItem("Adminerva_gemini_token","fixture-key-never-valid-in-production");
       },role);
       await context.route("**/*",async route=>{
         const url=route.request().url(),parsed=new URL(url);
         if(assets.has(url))return route.fulfill({contentType:"text/javascript",body:assets.get(url)});
         if(parsed.hostname==="cdn.tailwindcss.com")return route.fulfill({contentType:"text/javascript",body:tailwind});
-        if(parsed.hostname==="api.github.com")return route.fulfill({json:githubFixture(url)});
+        if(url==="https://cdn.jsdelivr.net/npm/chart.js")return route.fulfill({contentType:"text/javascript",body:"window.Chart=class { destroy(){} };"});
+        if(url==="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css")return route.fulfill({contentType:"text/css",body:""});
+        if(parsed.hostname==="api.github.com"){
+          let fixture=githubFixture(url);if(omitSavedCommit&&Array.isArray(fixture))fixture=fixture.filter(commit=>commit.sha!==ownSha);
+          return route.fulfill({json:fixture});
+        }
         if(parsed.hostname==="generativelanguage.googleapis.com"){
           modelRequests++;
           const prompt=route.request().postDataJSON().contents[0].parts[0].text;
@@ -135,7 +145,13 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
       });
       context.on("page",page=>{
         page.on("pageerror",error=>errors.push(error.message));
-        page.on("dialog",async dialog=>{dialogs.push(dialog.message());await dialog.accept();});
+        page.on("dialog",async dialog=>{
+          dialogs.push(dialog.message());
+          if(interceptSummaryConfirmation&&dialog.message().startsWith("Replace the teacher's engagement summary")){
+            const action=interceptSummaryConfirmation;interceptSummaryConfirmation=null;await action();
+          }
+          await dialog.accept(dialog.type()==="prompt"?"Fixture teacher reviewed the evidence and documented this deliberate revision.":undefined);
+        });
       });
       return context;
     }
@@ -192,6 +208,13 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await student.locator("#evidenceWithdraw").click();
     await expect(student.locator("#evidenceStatus")).toContainText("Evidence withdrawn");
     await expect(student.locator("#assignmentsFeed")).toContainText("Evidence withdrawn");
+    omitSavedCommit=true;await openStudent(student);
+    const savedCommit=student.getByRole("checkbox",{name:"Include commit "+ownSha.slice(0,12)+" as evidence",exact:true});
+    await savedCommit.uncheck();await expect(savedCommit).not.toBeChecked();
+    await student.locator("#evidenceClear").click();
+    await expect(student.locator("#evidenceSelectionSummary")).toContainText("No evidence");
+    await student.getByRole("radio",{name:"Set commit "+groupSha.slice(0,12)+" as project checkpoint",exact:true}).check();
+    await savedCommit.check();omitSavedCommit=false;
     await student.locator("#evidenceSubmit").click();
     await expect(student.locator("#evidenceStatus")).toContainText("submitted for teacher verification");
     validated("student submit, resubmit, withdraw and resubmit");
@@ -213,6 +236,8 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     assert.equal((await browserRecord(teacher,"student_grades/alice_fixture-v2")).exists,false);
     await teacher.locator("#manualReviewAIGenerate").click();
     await expect(teacher.locator("#manualReviewAIScores")).toContainText("Teacher review needed");
+    await expect(teacher.locator("#manualReviewFeedback")).toHaveValue("");
+    await teacher.locator("#manualReviewUseFeedback").click();
     await expect(teacher.locator("#manualReviewScore")).toHaveValue("");
     assert.equal((await browserRecord(teacher,"student_grades/alice_fixture-v2")).exists,false);
     await saveReviewedGrade();
@@ -231,8 +256,10 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await evidenceFrame().locator("#evidenceReopen").click();
     await expect(evidenceFrame().locator("#evidenceReviewStatus")).toContainText("Unpublish");
     await waitRecord(teacher,"assessment_evidence/alice_fixture-v2","status","approved");
-    await openGrade();await gradebook.locator("#gbDetailUnpublish").click();
+    await teacher.locator("#manualReviewUnpublish").click();
     await waitRecord(gradebook,"student_grades/alice_fixture-v2","published",false);
+    await expect(evidenceFrame().locator("#evidenceTitle")).toContainText(assessment.title);
+    await evidenceFrame().locator("#evidenceReviewNote").fill("Instructor reopened at the student's request after explicitly unpublishing the protected grade.");
     await evidenceFrame().locator("#evidenceReopen").click();
     await waitRecord(teacher,"assessment_evidence/alice_fixture-v2","status","reopened");
     await openStudent(student);await expect(student.locator("#evidenceSubmit")).toBeEnabled();
@@ -245,7 +272,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await expect.poll(()=>dialogs.some(message=>message.includes("Evidence changed or needs review"))).toBe(true);
     assert.equal((await browserRecord(gradebook,"student_grades/alice_fixture-v2")).data.published,false);
     await saveReviewedGrade();
-    await openGrade();await gradebook.locator("#gbDetailPublish").click();
+    await teacher.locator("#manualReviewPublish").click();
     grade=await waitRecord(gradebook,"student_grades/alice_fixture-v2","published",true);
     assert.equal(grade.evidenceRevision,evidence.revision);
     await openStudent(student);await expect(student.locator("#modalScoreValue")).toHaveText("18");
@@ -269,6 +296,108 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await expect.poll(()=>student.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),
       {message:"Mobile layout must settle without horizontal overflow"}).toBe(true);
     await student.screenshot({path:path.join(output,"student-mobile.png")});
+    await student.setViewportSize({width:1360,height:1000});
+    await student.goto(origin+"/student-xml-lab.html");
+    await expect(student.locator("#xmlStatus")).toContainText("views translated");
+    await student.locator("#xmlEditor").fill('<ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent"><TextView android:layout_width="120dp" android:layout_height="48dp" android:text="Hello &lt;script&gt;" app:layout_constraintTop_toTopOf="parent" app:layout_constraintStart_toStartOf="parent" /></ConstraintLayout>');
+    await student.locator("#xmlRender").click();
+    await expect(student.locator("#xmlGenerated")).toHaveValue(/Hello &lt;script&gt;/);
+    await expect(student.locator("#xmlGenerated")).toHaveValue(/position:absolute/);
+    assert.equal(await student.locator("#xmlPreview").getAttribute("sandbox"),"");
+    await student.locator("#xmlEditor").fill('<!DOCTYPE view SYSTEM "https://example.com/private"><view/>');
+    await student.locator("#xmlRender").click();await expect(student.locator("#xmlStatus")).toContainText("Document types");
+    validated("safe Android XML translation, parent constraints and entity rejection");
+    await student.goto(origin+"/student-practice.html");
+    await student.locator("#av-alert-toggle").click();await expect(student.locator("#av-alert-list")).toContainText("Adminerva update");await student.locator("#av-alert-toggle").click();
+    await expect(student.locator("#practiceClass option")).toContainText(["fixture-11-A"]);
+    await student.getByText("My practice points and class standings",{exact:true}).click();
+    await student.locator("#practiceAlias").fill("Learner One");await student.locator("#practiceOptIn").check();await student.locator("#practiceSavePreferences").click();
+    await waitRecord(student,"practice_profiles/"+accounts.alice.uid,"leaderboardOptIn",true);
+    await teacher.goto(origin+"/practice-analytics.html");
+    await teacher.locator("#av-alert-toggle").click();await expect(teacher.locator("#av-alert-list")).toContainText("Adminerva update");await teacher.locator("#av-alert-toggle").click();
+    await expect(teacher.locator("#practiceAnalyticsSection option")).toContainText(["fixture-11-A"]);
+    await teacher.locator("#practiceAnalyticsLoad").click();
+    await teacher.locator("#practiceAnalyticsList article").filter({hasText:"Fixture alice"}).getByRole("button").click();
+    await teacher.locator('[data-reviewed-mission][value="j1"]').check();
+    await teacher.locator("#practicePointsNote").fill("Teacher observed the mission implementation and independently reviewed the student's explanation.");
+    await teacher.locator("#practiceAcceptPoints").click();await waitRecord(teacher,"practice_scores/alice","points",10);
+    await teacher.locator("#practicePublishStandings").click();await waitRecord(student,"practice_boards/alice","section","fixture-11-A");
+    await student.reload();await expect(student.locator("#practiceReviewedPoints")).toContainText("10 teacher-reviewed");await expect(student.locator("#practiceStandings")).toContainText("Learner One");
+    await student.getByText("My practice points and class standings",{exact:true}).click();await student.screenshot({path:path.join(output,"practice-class-points.png")});
+    assert.equal((await browserRecord(peer,"practice_scores/alice")).error,"permission-denied");
+    await student.goto(origin+"/patch-notes.html");await expect(student.locator("#patchList")).toContainText("Review & Grade");
+    validated("private teacher-reviewed practice points, opt-in alias class snapshot and public patch history");
+    await student.goto(origin+"/student-xml-lab.html");
+    await expect(student.locator("#activity-save")).toBeEnabled();
+    const beforeConsent=await browserRecord(student,"activity_preferences/"+accounts.alice.uid);
+    assert.equal(beforeConsent.exists,false);
+    await student.locator("#page-help-open").click();
+    await student.locator("#page-help-dialog details").evaluate(details=>{details.open=true;});
+    await student.locator("#activity-share").check();await student.locator("#activity-diagnostics").check();await student.locator("#activity-save").click();
+    await waitRecord(student,"activity_preferences/"+accounts.alice.uid,"enabled",true);
+    await student.locator("#page-help-dialog").getByText("Close help",{exact:true}).click();
+    await student.locator("#xmlRender").click();
+    await student.evaluate(()=>{window.fixtureLoading=[window.beginLoading("First operation",document.querySelector("main")),window.beginLoading("Second operation",document.querySelector("main"))];window.hideSubtleLoader();});
+    await expect(student.locator("#subtleLoader")).toBeVisible();
+    await student.evaluate(()=>window.fixtureLoading[0]());await expect(student.locator("#subtleLoaderText")).toContainText("Second operation");
+    assert.equal(await student.locator("main").getAttribute("aria-busy"),"true");
+    await student.evaluate(()=>{window.fixtureLoading[1]();window.fixtureLoading[1]();});await expect(student.locator("#subtleLoader")).toBeHidden();
+    assert.equal(await student.locator("main").getAttribute("aria-busy"),null);
+    await student.locator('[title="Report Issue"]').click();
+    await student.locator("#bug-title").fill("Fixture XML preview problem");await student.locator("#bug-description").fill("After Run, the fixture preview needs investigation.");
+    await student.locator("#bug-attach-diagnostics").check();await student.locator("#submit-bug-btn").click();
+    await expect(student.locator("#bug-modal")).toBeHidden();
+    const issueId=await student.evaluate(async()=>{
+      const {db,auth}=await import("/js/core/firebase-core.js");const {getDocs,collection,query,where}=await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
+      const reports=await getDocs(query(collection(db,"issues"),where("reporterUid","==",auth.currentUser.uid)));return reports.docs[0].id;
+    });
+    const admin=await (await newIdentity("admin")).newPage();
+    await admin.goto(origin+"/admin-analytics.html");await expect(admin.locator("#admin-analytics-status")).toContainText("Refreshed");
+    await expect(admin.locator("#raw-events")).toContainText("xml-lab");
+    const trail=await browserRecord(admin,"issue_diagnostics/"+issueId);assert.ok(trail.data.actions.includes("run"));
+    assert.equal((await browserRecord(teacher,"issue_diagnostics/"+issueId)).error,"permission-denied");
+    await admin.locator("#roster-sections").selectOption(["fixture-11-A"]);await admin.locator("#save-roster").click();await expect(admin.locator("#admin-analytics-status")).toContainText("Assignment saved");
+    await admin.locator("#publish-engagement").click();await expect(admin.locator("#admin-analytics-status")).toContainText("Teacher summary refreshed");
+    await admin.screenshot({path:path.join(output,"admin-analytics.png"),fullPage:true});
+    await teacher.goto(origin+"/reporeviewDashboard.html?range=week#engagement-heading");
+    await expect(teacher).toHaveURL(origin+"/teacher-analytics.html?range=week#engagement-heading");
+    await expect(teacher.locator("#analytics-teacher")).toBeDisabled();await expect(teacher.locator("#engagement-rows")).toContainText("alice");
+    const backendDb=getAdminFirestore(adminApp);
+    const maintenance=monitoringWorker.createMonitoringService({db:backendDb,Timestamp,FieldValue,resolveUsers:async uids=>(await authAdmin.getUsers(uids.map(uid=>({uid})))).users});
+    await expect(admin.locator("#maintenance-cleanup")).not.toBeChecked();await expect(admin.locator("#maintenance-summary")).not.toBeChecked();
+    assert.equal((await maintenance.runScheduled()).state,"disabled");
+    await admin.locator("#maintenance-cleanup").check();await admin.locator("#maintenance-summary").check();
+    await admin.locator("#maintenance-reason").fill("Fixture school privacy and bounded monitoring budget reviewed.");await admin.locator("#save-maintenance").click();
+    await expect(admin.locator("#admin-analytics-status")).toContainText("Maintenance policy saved");
+    assert.equal((await browserRecord(admin,"monitoring_control/runtime/revisions/1")).data.after.cleanupEnabled,true);
+    await backendDb.doc("activity_events/expired-fixture").set({ownerUid:accounts.alice.uid,studentId:"alice",sessionId:"c".repeat(36),page:"xml-lab",action:"page-open",activeSeconds:0,createdAt:Timestamp.fromMillis(Date.now()-31*86400000),expiresAt:Timestamp.fromMillis(Date.now()-1)});
+    const maintained=await maintenance.runScheduled();assert.equal(maintained.eventsRemoved,1);assert.equal(maintained.summaryRefreshed,true);
+    await expect(teacher.locator("#engagement-status")).toContainText("System refresh");await expect(teacher.locator("#engagement-rows")).toContainText("alice");
+    assert.equal(await teacher.locator("#bug-count").count(),0);
+    await teacher.screenshot({path:path.join(output,"teacher-analytics.png")});
+    await admin.goto(origin+"/teacher-analytics.html");await expect(admin.locator("#analytics-teacher")).toBeEnabled();
+    await expect(admin.locator("#engagement-rows")).toContainText("alice");
+    await admin.goto(origin+"/issues.html?issue="+issueId);await expect(admin.locator("#issue-diagnostics")).toContainText("xml-lab → run");
+    await teacher.goto(origin+"/admin-analytics.html");await expect(teacher.locator("#admin-analytics-status")).toContainText("No monitoring records were requested");await expect(teacher.locator("#operations")).toBeHidden();
+    await teacher.goto(origin+"/teacher-analytics.html");await expect(teacher.locator("#engagement-rows")).toContainText("alice");
+    interceptSummaryConfirmation=async()=>{
+      await student.locator("#page-help-open").click();await student.locator("#activity-share").uncheck();await student.locator("#activity-save").click();await waitRecord(student,"activity_preferences/"+accounts.alice.uid,"enabled",false);
+      assert.equal(await maintenance.applyConsentChange(accounts.alice.uid,"alice"),1);
+      await expect(teacher.locator("#engagement-rows tr")).toHaveCount(0);
+    };
+    await admin.goto(origin+"/admin-analytics.html");await expect(admin.locator("#admin-analytics-status")).toContainText("Refreshed");await admin.locator("#publish-engagement").click();await expect(admin.locator("#admin-analytics-status")).toContainText("Teacher summary refreshed");
+    const summary=await browserRecord(admin,"analytics_views/"+accounts.teacher.email);assert.deepEqual(summary.data.rows,[]);
+    await expect(teacher.locator("#engagement-rows tr")).toHaveCount(0);
+    await admin.locator("#maintenance-cleanup").uncheck();await admin.locator("#maintenance-summary").uncheck();await admin.locator("#maintenance-reason").fill("Fixture maintenance disabled after verification.");await admin.locator("#save-maintenance").click();await expect(admin.locator("#admin-analytics-status")).toContainText("Maintenance policy saved");
+    assert.equal((await maintenance.runScheduled()).state,"disabled");
+    const guest=await (await newIdentity("guest")).newPage();const guestRequests=[];guest.on("request",request=>guestRequests.push(request.url()));
+    await guest.goto(origin+"/wiki.html");await expect(guest.locator("h1")).toContainText("Adminerva Wiki");await guest.locator("#page-help-open").click();await expect(guest.locator("#activity-save")).toBeDisabled();
+    assert.ok(!guestRequests.some(url=>url.includes("firebase")||url.includes("activity_events")),"Guest help must not initialize tracking or Firebase");
+    await guest.locator("#page-help-dialog").getByText("Close help",{exact:true}).click();
+    await guest.setViewportSize({width:390,height:844});await expect.poll(()=>guest.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await guest.screenshot({path:path.join(output,"public-wiki-mobile.png"),fullPage:true});
+    validated("opt-in activity, admin-only trails, audited maintenance, real worker cleanup, live teacher summaries, consent race protection, public wiki, legacy redirects and concurrent loaders");
+    assert.deepEqual(blockedRequests,[]);assert.deepEqual(errors,[]);
     await writeFile(path.join(output,"result.json"),JSON.stringify({projectId,backend:"real Auth + Firestore emulators",sdkVersion:"10.13.0",externalServices:"GitHub and Gemini fixtures",milestones,modelRequests,errors,blockedRequests},null,2));
     console.log(JSON.stringify({passed:milestones,artifacts:output}));
   }catch(error){

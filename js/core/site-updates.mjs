@@ -1,3 +1,4 @@
+/** Shared navigation, account access, reporting and release infrastructure: site updates. */
 // A static website cannot hot-swap application code safely. Detect published
 // releases and offer an explicit reload, respecting unsaved work.
 const KEY="Adminerva_Current_Site_Release";

@@ -1,7 +1,9 @@
+/** Shared navigation, account access, reporting and release infrastructure: notifications. */
 import { auth, db } from "./firebase-core.js";
-import {notificationTarget,previewDestination} from "./notification-routing.mjs";
-import {notificationVisible,unreadNotificationCount} from "./notification-visibility.mjs";
-import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs";
+import {notificationTarget,previewDestination} from "./notification-routing.mjs?v=2026.10.19.1";
+import {notificationVisible,unreadNotificationCount} from "./notification-visibility.mjs?v=2026.10.19.1";
+import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs?v=2026.10.19.1";
+import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=2026.10.19.1";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
@@ -41,7 +43,7 @@ function restoreRead(){try{return new Set(JSON.parse(localStorage.getItem(keyNam
 function storeRead(){try{localStorage.setItem(keyName(),JSON.stringify([...state.read].slice(-400)))}catch{}}
 function unread(item){return !item.history && !item.readAt && !state.read.has(item.key)}
 function collectionItems(){
-  const rows=[],stored=new Set();
+  const rows=state.user?[...(state.releases||[])]:[],stored=new Set();
   for(const n of state.notifications){
     if(!n.title || !visibleForRole(n))continue;
     if(n.sourceId)stored.add(n.sourceId);
@@ -153,6 +155,7 @@ function listen(user){
   });
   render();
   if(!user)return;
+  void refreshReleases();
   state.unsubscribe.push(onSnapshot(query(
     collection(db,"notification_history",user.uid,"items"),
     orderBy("lastInteractedAt","desc"),limit(NOTIFICATION_HISTORY_LIMIT)),
@@ -191,6 +194,11 @@ function listen(user){
     query(collection(db,"student_submissions"),orderBy("submittedAt","desc"),limit(40)),
     snap=>{state.submissions=snap.docs.map(d=>({id:d.id,...d.data()}));success("Student submissions")},
     error("Student submissions")));
+}
+async function refreshReleases(){
+  const uid=state.user?.uid;if(!uid)return;
+  try{const releases=await loadPublicReleases();if(state.user?.uid!==uid)return;state.releases=releaseNotifications(releases);render();}
+  catch{ }
 }
 export function mountNotificationCenter(){
   const root=el("adminerva-notifications");if(!root||root.dataset.ready)return;
@@ -242,4 +250,6 @@ export function mountNotificationCenter(){
   document.addEventListener("keydown",e=>{if(e.key==="Escape"&&state.open){
     state.open=false;panel.classList.add("hidden");button.focus()}});
   onAuthStateChanged(auth,listen);
+  setInterval(()=>{void refreshReleases();},5*60*1000);
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")void refreshReleases();});
 }

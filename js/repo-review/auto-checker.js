@@ -1,3 +1,4 @@
+/** Automated evaluation assistance with instructor-controlled acceptance. */
 import { db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs";

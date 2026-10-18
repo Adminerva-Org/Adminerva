@@ -1,3 +1,4 @@
+/** Saved lesson records, version handling and lesson loading. */
 // Import centralized database instead of initializing locally
 import { db } from "../core/firebase-core.js";
 import {legacyPlanId,schoolYearPlanId} from "./lesson-plan-helpers.mjs";
@@ -400,6 +401,7 @@ window.openLoadPlanModal = async function () {
                             <td class="px-4 py-3 text-right">
                                 <div class="flex justify-end gap-2">
                                     <button onclick='loadSpecificPlan(${safeDataObjStr})' class="px-3 py-1.5 bg-blue-600 text-white font-bold text-[10px] rounded hover:bg-blue-700 shadow-sm transition">Load</button>
+                                    <a href="presentation.html?plan=${escapeHTML(encodeURIComponent(data.id))}" class="px-3 py-1.5 border border-indigo-300 text-indigo-800 font-bold text-[10px] rounded">Open in Slide Editor</a>
                                     <button onclick="openLessonHistory('${safeId}')" class="px-2 py-1.5 bg-slate-100 text-slate-700 font-bold text-[10px] rounded hover:bg-slate-200" title="Previous saved versions">History</button>
                                      <button onclick="deleteLessonPlan('${safeId}')" class="px-2 py-1.5 bg-red-50 text-red-600 font-bold text-[10px] rounded hover:bg-red-100 transition" title="Delete">✖</button>
                                 </div>

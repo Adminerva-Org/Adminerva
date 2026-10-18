@@ -1,3 +1,4 @@
+/** Regression coverage: Assessment authoring, repository evidence, individual review and protected grading: github evidence client. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseGithubRepository, createGithubEvidenceClient } from './github-evidence-client.mjs';

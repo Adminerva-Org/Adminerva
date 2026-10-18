@@ -1,15 +1,16 @@
 <!doctype html>
+<!-- Repository selection and entry into the teacher review workspace. -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Adminerva - RepoFetch Grader</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.18.4" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.19.3" />
 </head>
   <body class="bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="repo" data-page="repofetch"></div>
-    <script src="js/core/adminerva-nav.js?v=2026.10.18.4"></script>
+    <script src="js/core/adminerva-nav.js?v=2026.10.19.3"></script>
 
     <div class="max-w-screen-xl mx-auto w-full p-6 mt-4 flex-1">
       <div class="bg-white p-6 rounded-lg shadow-md border border-gray-200">
@@ -366,43 +367,62 @@
         <div class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
           <div class="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2">
             <p id="manualReviewTask" class="font-bold text-slate-900"></p>
-            <div id="manualReviewLinks" class="flex flex-wrap gap-x-4 gap-y-2 text-sm"></div>
+            <p id="manualReviewStepStatus" role="status" class="text-sm text-indigo-900"></p>
+            <details><summary class="text-xs font-semibold cursor-pointer">Repository shortcuts and older review tools</summary><div id="manualReviewLinks" class="flex flex-wrap gap-x-4 gap-y-2 text-sm mt-2"></div>
             <button type="button" id="manualReviewRefresh" class="rounded border border-indigo-200 bg-indigo-50 text-indigo-900 px-3 py-2 text-xs font-bold">Reload checkpoint / grade status</button>
             <button type="button" id="manualReviewAnalyze" disabled
               class="rounded-lg px-3 py-2 text-xs font-bold border border-amber-300 bg-white text-amber-900">
               Analyze recent commit patches
             </button>
-            <p class="text-xs text-slate-500">Commit links show GitHub account activity; verify actual authorship against the changed files. The source-folder shortcut opens the shared project.</p>
+            <p class="text-xs text-slate-500">Repository links are optional. Review the pinned evidence below before assigning individual credit.</p></details>
           </div>
-          <section id="integratedEvidence" class="hidden border rounded-xl p-3 space-y-3">
-            <h3 class="font-bold">1. Review evidence and individual contributions</h3>
+          <nav id="manualReviewSteps" aria-label="Review workspace sections" class="bg-white border rounded-lg p-2 flex flex-wrap gap-2 text-xs font-bold">
+            <button type="button" data-review-step="integratedEvidence" class="border rounded px-3 py-2">1 · Review</button><button type="button" data-review-step="manualReviewAISection" class="border rounded px-3 py-2">2 · System draft</button><button type="button" data-review-step="manualReviewForm" class="border rounded px-3 py-2">3 · Teacher grade</button>
+          </nav>
+          <section id="integratedEvidence" class="hidden border rounded-xl p-3 space-y-3" style="scroll-margin-top:64px">
+            <h3 class="font-bold">1. Review section</h3>
+            <button type="button" data-adminerva-help="evidence" class="text-xs underline">ⓘ Evidence review help</button>
             <p id="integratedEvidenceStatus" role="status" class="text-sm text-slate-700"></p>
-            <details id="integratedEvidenceDetails" class="border rounded p-2">
+            <details id="integratedEvidenceDetails" open class="border rounded p-2">
               <summary class="font-semibold cursor-pointer">Evidence, selected diffs, attribution and checkpoint approval</summary>
               <iframe id="integratedEvidenceFrame" title="Selected evidence and checkpoint review" class="w-full border-0 mt-2" style="height:650px"></iframe>
             </details>
             <details id="integratedGroupDetails" class="border rounded p-2"><summary class="font-semibold cursor-pointer">Shared group and submission status</summary><div id="integratedGroupSummary" class="text-sm space-y-2 p-3"></div><details id="integratedGroupInspectorDetails" class="p-2"><summary class="cursor-pointer font-semibold">Advanced group history</summary><p class="text-xs p-2">Broader repository history and activity counts are investigation aids. They do not establish individual credit at this checkpoint.</p><iframe id="integratedGroupInspectorFrame" title="Advanced group history" class="w-full border-0" style="height:600px"></iframe></details></details>
             <details id="integratedInspectorDetails" class="border rounded p-2"><summary class="font-semibold cursor-pointer">Advanced contribution investigation</summary><p class="text-xs p-2">Broader history can include other revisions. Only approved selected diffs and the pinned checkpoint support this evaluation.</p><iframe id="integratedInspectorFrame" title="Advanced contribution investigation" class="w-full border-0" style="height:600px"></iframe></details>
           </section>
-          <section class="rounded-xl border border-amber-200 bg-amber-50 p-4">
-            <h3 class="font-extrabold text-sm text-amber-900 mb-2">Evidence requiring attention</h3>
+          <details class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <summary class="font-extrabold text-sm text-amber-900 cursor-pointer">Review limitations and additional checks</summary>
             <div id="manualReviewFlags" class="text-xs text-amber-900 break-words whitespace-pre-wrap space-y-2"></div>
-          </section>
-          <section id="manualReviewAISection" class="hidden rounded-xl bg-indigo-50/70 border border-indigo-200 p-4 space-y-3">
+          </details>
+          <section id="manualReviewAISection" class="hidden rounded-xl bg-indigo-50/70 border border-indigo-200 p-4 space-y-3" style="scroll-margin-top:64px">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h3 class="font-extrabold text-indigo-950 text-sm">2. Evaluation draft</h3>
+                <h3 class="font-extrabold text-indigo-950 text-sm">2. System evaluation draft</h3>
+                <button type="button" data-adminerva-help="evaluation" class="text-xs underline">ⓘ Evaluation draft help</button>
+                <p class="text-xs font-semibold mt-1">Adminerva Auto Checker · optional, never a published grade</p>
                 <p class="text-xs text-slate-600 mt-1">Suggests criterion scores for verified individual work. Group completeness is shown separately. Uncertain criteria remain unscored for teacher review.</p>
                 <details class="text-xs text-slate-600 mt-2"><summary class="cursor-pointer font-semibold">How automated assistance works</summary><p class="mt-2">Evaluation drafts and initial feedback are generated by a Gemini AI model using instructor-verified selected diffs, documented responsibilities, and matching source at the pinned checkpoint. Relevant source is sent to your configured provider only after confirmation. The model cannot prove authorship, push time, compilation, runtime behavior, or visual quality. You are responsible for reviewing and editing the final feedback and score.</p></details>
               </div>
               <button id="manualReviewAIGenerate" type="button" disabled class="bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-xs px-4 py-2.5 font-bold disabled:opacity-50">Evaluate</button>
             </div>
             <div id="manualReviewAIScores" class="text-xs text-indigo-950 space-y-2" aria-live="polite"></div>
+            <p id="manualReviewAIFeedback" class="text-sm whitespace-pre-wrap"></p>
+            <div class="flex flex-wrap gap-2">
+              <button id="manualReviewUseScore" type="button" disabled class="rounded border border-indigo-300 bg-white px-3 py-2 text-xs font-bold disabled:opacity-50">Use suggested score</button>
+              <button id="manualReviewUseFeedback" type="button" disabled class="rounded border border-indigo-300 bg-white px-3 py-2 text-xs font-bold disabled:opacity-50">Use suggested feedback</button>
+            </div>
             <p id="manualReviewAIStatus" role="status" class="text-xs text-indigo-900">Approve checkpoint evidence to enable suggestions.</p>
+            <details id="manualReviewCheckerSetup" class="text-xs border rounded p-3"><summary class="cursor-pointer font-semibold">Checker setup and source-sharing details</summary>
+              <p class="my-2">An instructor-managed Gemini provider key is required. It stays in this browser, not in student records. Only evaluate after approving source sharing; never put a key in feedback. Automated generation assists your review and may be inaccurate.</p>
+              <label class="block">Provider key<input id="manualReviewCheckerKey" type="password" autocomplete="off" class="w-full border rounded p-2 mt-1" /></label>
+              <button id="manualReviewSaveChecker" type="button" class="mt-2 border rounded px-3 py-2 font-semibold">Save checker key on this device</button>
+            </details>
           </section>
-          <form id="manualReviewForm" class="space-y-4">
+          <form id="manualReviewForm" class="space-y-4" style="scroll-margin-top:64px">
             <h3 class="font-bold">3. Teacher score and feedback</h3>
-            <p class="text-xs text-slate-600">Feedback is editable. Saving stores a private teacher-reviewed grade draft; students see it only after an explicit publication in Gradebook.</p>
+            <button type="button" data-adminerva-help="scoring" class="text-xs underline">ⓘ Saving and publication help</button>
+            <p class="text-xs text-slate-600">Enter your own score and feedback, or explicitly copy a suggestion above. The checker never overwrites these fields. Save keeps the draft private; Publish is a separate confirmation.</p>
+            <button id="manualReviewUnpublish" type="button" class="hidden rounded border border-amber-400 px-3 py-2 text-sm font-bold">Unpublish protected grade for revision</button>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewScore">Teacher score</label>
@@ -428,7 +448,7 @@
                 class="w-full border border-slate-300 rounded-lg px-3 py-2.5"></textarea>
             </div>
             <div>
-              <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewReason">Teacher review note</label>
+              <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewReason">Private teacher review note (required)</label>
               <textarea id="manualReviewReason" rows="3" maxlength="3000" required
                 placeholder="Explain why you accepted or rejected the flagged evidence. This is saved in the grading audit trail."
                 class="w-full border border-slate-300 rounded-lg px-3 py-2.5"></textarea>
@@ -447,14 +467,15 @@
             class="rounded-lg px-4 py-2.5 font-bold text-sm bg-blue-600 text-white">
             Save unpublished grade
           </button>
+          <button type="button" id="manualReviewPublish" class="hidden rounded-lg px-4 py-2.5 font-bold text-sm bg-emerald-700 text-white">Publish reviewed grade</button>
         </div>
       </div>
     </div>
 
-    <script src="js/core/adminerva-loader.js?v=2026.10.16.3"></script>
-    <script type="module" src="js/repo-review/repofetch.js?v=2026.10.18.4"></script>
-    <script type="module" src="js/repo-review/auto-checker.js?v=2026.10.16.6"></script>
-    <script type="module" src="js/repo-review/manual-review.mjs?v=2026.10.18.4"></script>
-    <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=2026.10.18.3"></script>
+    <script src="js/core/adminerva-loader.js?v=2026.10.19.3"></script>
+    <script type="module" src="js/repo-review/repofetch.js?v=2026.10.19.3"></script>
+    <script type="module" src="js/repo-review/auto-checker.js?v=2026.10.19.3"></script>
+    <script type="module" src="js/repo-review/manual-review.mjs?v=2026.10.19.3"></script>
+    <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=2026.10.19.3"></script>
   </body>
 </html>

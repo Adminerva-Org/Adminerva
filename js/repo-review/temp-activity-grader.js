@@ -1,3 +1,4 @@
+/** Assessment authoring, repository evidence, individual review and protected grading: temp activity grader. */
 import { db } from "../core/firebase-core.js";
 import {
   collection,

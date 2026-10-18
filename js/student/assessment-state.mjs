@@ -1,3 +1,4 @@
+/** Student submissions, practice progress and isolated code workspaces: assessment state. */
 // Normalize legacy Firestore timestamps, ISO dates, and current Date objects.
 export function asDate(value){
   if(!value)return null;

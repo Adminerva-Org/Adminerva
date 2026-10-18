@@ -1,3 +1,4 @@
+/** Lesson reference folders and document management. */
 import { db } from "../core/firebase-core.js";
 import {
   collection,
@@ -32,6 +33,7 @@ function initFirebase() {
 }
 
 async function loadLibrary() {
+  const end = window.beginLoading?.("Loading reference library…") || (() => {});
   try {
     const snap = await getDocs(collection(db, "reference_folders"));
     libraryData = [];
@@ -49,7 +51,7 @@ async function loadLibrary() {
     }
   } catch (e) {
     console.error("Error loading library:", e);
-  }
+  } finally { end(); }
 }
 
 function formatDate(isoString) {

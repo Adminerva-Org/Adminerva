@@ -1,3 +1,4 @@
+/** Scoped product configuration and staff preferences: settings lesson. */
 import {
   doc,
   getDoc,

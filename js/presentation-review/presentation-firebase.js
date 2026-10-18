@@ -1,4 +1,6 @@
+/** Saved deck storage, lesson linking and source-version checks. */
 import { db } from "../core/firebase-core.js";
+import {lessonStarterDeck,lessonSourceChanged} from "./lesson-to-slides.mjs?v=2026.10.19.1";
 import {
   collection,
   getDocs,
@@ -18,6 +20,7 @@ window.selectedPlanData = null;
 window.selectedSessionData = null;
 window.selectedSessionIndex = null;
 window.db = db;
+let sessionLoadSequence=0;
 
 document.addEventListener("DOMContentLoaded", () => {
   injectPlanSelectorUI();
@@ -63,11 +66,24 @@ function injectPlanSelectorUI() {
             </select>
 
             <button onclick="generateAI_SlideDeck()" id="btnGenerateSlides" class="w-full bg-purple-600 text-white font-bold py-2 rounded text-sm hover:bg-purple-700 transition shadow-sm opacity-50 cursor-not-allowed" disabled>
-                ✨ Generate AI Slides
+                Generate system slide draft
             </button>
+            <button type="button" id="btnLessonStarter" class="w-full border border-blue-300 font-bold py-2 rounded text-sm mt-2">Build editable slides from lesson</button>
+            <p id="presentationSourceStatus" role="status" class="text-xs text-slate-700 mt-2">Choose a saved lesson and session. Starter slides need no external service; neither option saves automatically.</p>
         </div>
     `;
   listContainer.insertAdjacentHTML("beforebegin", selectorHTML);
+  document.getElementById("btnLessonStarter").addEventListener("click",()=>{
+    try{
+      if(window.selectedSessionIndex===null)throw Error("Select a lesson session first.");
+      if(window.currentPresentationDeck?.length&&!confirm("Replace the displayed slide draft with slides from this lesson? Save or export existing edits first; saved cloud versions are unchanged."))return;
+      const result=lessonStarterDeck(window.selectedPlanData,window.selectedSessionIndex);
+      window.currentPresentationDeck=result.deck;window.activeSlideIndex=0;window.adminervaPresentationDirty=true;
+      window.presentationSourceLessonVersion=result.source.lessonVersion;
+      window.renderSlideBlocks();window.selectSlide(0);
+      document.getElementById("presentationSourceStatus").textContent="Editable lesson starter created from version "+result.source.lessonVersion+". Review and save explicitly. No content was sent to an external provider.";
+    }catch(error){document.getElementById("presentationSourceStatus").textContent=error.message;}
+  });
 }
 
 window.fetchSavedLessonPlans = async function () {
@@ -94,6 +110,8 @@ window.fetchSavedLessonPlans = async function () {
       option.textContent = `${grade} - ${subject} (${week})`;
       select.appendChild(option);
     });
+    const requested=new URLSearchParams(location.search).get("plan");
+    if(window.availablePlans.some(plan=>plan.id===requested)){select.value=requested;window.handlePlanSelection();}
   } catch (e) {
     select.innerHTML = '<option value="">Error loading plans</option>';
   }
@@ -101,6 +119,10 @@ window.fetchSavedLessonPlans = async function () {
 
 window.handlePlanSelection = function () {
   const planId = document.getElementById("presentationPlanSelect").value;
+  if(window.adminervaPresentationDirty&&window.selectedPlanData?.id!==planId&&!confirm("Discard unsaved slide edits and choose another saved lesson?")){
+    document.getElementById("presentationPlanSelect").value=window.selectedPlanData?.id||"";return;
+  }
+  sessionLoadSequence++;window.selectedSessionIndex=null;window.selectedSessionData=null;
   const sessionSelect = document.getElementById("presentationSessionSelect");
   const btnGen = document.getElementById("btnGenerateSlides");
   const btnDelete = document.getElementById("btnDeletePresentation");
@@ -129,6 +151,7 @@ window.handlePlanSelection = function () {
 };
 
 window.handleSessionSelection = async function () {
+  const sequence=++sessionLoadSequence;
   const planId = document.getElementById("presentationPlanSelect").value;
   const sessionIdx = document.getElementById("presentationSessionSelect").value;
   const btnGen = document.getElementById("btnGenerateSlides");
@@ -145,6 +168,9 @@ window.handleSessionSelection = async function () {
     }
     window.selectedSessionIndex = sessionIdx;
     window.selectedSessionData = window.selectedPlanData.sessions[sessionIdx];
+    window.presentationSourceLessonVersion=null;
+    window.currentPresentationDeck=[{layout:"standard",type:"blank",label:"New session draft",content:"",hidden:false}];
+    window.adminervaPresentationDirty=false;window.renderSlideBlocks?.();window.selectSlide?.(0);
     btnGen.disabled = false;
     btnGen.classList.remove("opacity-50", "cursor-not-allowed");
 
@@ -154,6 +180,8 @@ window.handleSessionSelection = async function () {
         const docSnap = await getDoc(
           doc(window.db, "presentations", presentationId),
         );
+        if(sequence!==sessionLoadSequence)return;
+        document.getElementById("presentationSourceStatus").textContent=lessonSourceChanged(docSnap.data(),window.selectedPlanData)?"Saved deck has older or unknown lesson provenance. Slides are not overwritten by lesson updates. Review the source before rebuilding.":"Lesson version "+Number(window.selectedPlanData.version||1)+" selected. Slides remain editable; save explicitly.";
 
         if (docSnap.exists() && !docSnap.data().is_archived) {
           if (btnDelete) btnDelete.classList.replace("hidden", "flex");
@@ -163,6 +191,7 @@ window.handleSessionSelection = async function () {
               "💾 A saved presentation was found in the cloud for this session! Would you like to load it?",
             )
           ) {
+            window.presentationSourceLessonVersion=docSnap.data().source_lesson_version||null;
             window.currentPresentationDeck = (docSnap.data().deck||[]).map(slide=>({
             ...slide,
             content:window.sanitizePresentationHtml?.(slide.content) ?? "",
@@ -201,6 +230,7 @@ window.savePresentationToCloud = async function () {
 
   const saveBtn = document.getElementById("btnSavePresentation");
   const originalText = saveBtn.innerHTML;
+  const draftSnapshot=JSON.stringify(window.currentPresentationDeck);
   saveBtn.innerHTML = "⏳ Saving...";
   saveBtn.disabled = true;
   if (typeof window.showSubtleLoader === "function") {
@@ -211,6 +241,7 @@ window.savePresentationToCloud = async function () {
     const presentationId = `${planId}_session${sessionIdx}`;
     const payload = {
       plan_id: planId,
+      source_lesson_version: window.presentationSourceLessonVersion||null,
       session_index: sessionIdx,
       subject: window.selectedPlanData.subject_title || "Unknown",
       grade: window.selectedPlanData.grade_level || "Unknown",
@@ -233,7 +264,7 @@ window.savePresentationToCloud = async function () {
       const previous=await tx.get(currentRef);
       if(previous.exists()){
         const before=previous.data();
-        if(JSON.stringify(before.deck||[])===JSON.stringify(payload.deck))return "unchanged";
+        if(JSON.stringify(before.deck||[])===JSON.stringify(payload.deck)&&before.source_lesson_version===payload.source_lesson_version)return "unchanged";
         tx.set(historyRef,{...before,archivedRevisionAt:serverTimestamp()});
         payload.version=Number(before.version||1)+1;
       }else payload.version=1;
@@ -241,7 +272,7 @@ window.savePresentationToCloud = async function () {
       return "saved";
     });
 
-    window.adminervaPresentationDirty = false;
+    if(document.getElementById("presentationPlanSelect")?.value===planId&&window.selectedSessionIndex===sessionIdx&&JSON.stringify(window.currentPresentationDeck)===draftSnapshot)window.adminervaPresentationDirty=false;
     const btnDelete = document.getElementById("btnDeletePresentation");
     if (btnDelete) btnDelete.classList.replace("hidden", "flex");
 
@@ -489,6 +520,7 @@ window.openPresentationHistory=async function(){
       restore.textContent="Load draft";
       restore.addEventListener("click",()=>{
         if(!confirm("Load this earlier deck into the editor? Save afterward to keep the restoration."))return;
+        window.presentationSourceLessonVersion=revision.source_lesson_version||null;
         window.currentPresentationDeck=(revision.deck||[]).map(slide=>({
           ...slide,content:window.sanitizePresentationHtml?.(slide.content)??"",
           contentLeft:window.sanitizePresentationHtml?.(slide.contentLeft)??"",

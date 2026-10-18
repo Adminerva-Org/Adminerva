@@ -1,3 +1,4 @@
+/** Assessment authoring, repository evidence, individual review and protected grading: inspector helpers. */
 import { parseGithubRepository } from './github-evidence-client.mjs';
 
 export function normalizeAssessment(raw, section, id) {

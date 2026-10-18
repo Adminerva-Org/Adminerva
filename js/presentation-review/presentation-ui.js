@@ -1,3 +1,4 @@
+/** Slide authoring controls and deck editing state. */
 window.currentPresentationDeck = [];
 const safeSlideHTML=value=>window.sanitizePresentationHtml?.(value) ?? "";
 window.activeSlideIndex = -1;

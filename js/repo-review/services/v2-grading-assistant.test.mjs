@@ -1,3 +1,4 @@
+/** Regression coverage: Assessment authoring, repository evidence, individual review and protected grading: v2 grading assistant. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {

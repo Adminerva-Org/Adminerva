@@ -106,7 +106,7 @@ async function renderQueue(){
       heading.append(node("p",stateText,"text-xs font-semibold mt-1 "+stateClass));
       const actions=node("div","","flex flex-wrap items-center gap-3 sm:justify-end mt-3 sm:mt-0");
       let repo=null;try{repo=parseRepository(repoText);}catch{}
-      const review=node("button",grade?.published?"View grade":"Review & Grade",
+      const review=node("button",grade?.published?"Review published grade":"Review & Grade",
         "bg-blue-700 text-white rounded-lg px-4 py-2.5 text-xs font-bold disabled:opacity-50");
       review.type="button";review.disabled=!repo;
       review.addEventListener("click",()=>{
