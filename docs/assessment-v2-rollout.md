@@ -44,9 +44,26 @@ Project Hub → Assignments → V2 assessment → Commit Evidence Selection → 
 
 Q3 Mini PETA 1 — Mobile App UI Prototype; type Mini PETA; max score 20; original classroom assignment October 9, 2026; extended deadline October 23, 2026 (11:59 PM Asia/Manila). The supplied class presentation has three required screens, Android XML UI focus, and four five-point rubric criteria. Do not require Java backend, Firebase, arrays, or complete CRUD.
 
+## RepoFetch teacher grading workflow (October 18, 2026)
+
+RepoFetch now includes an Assessment V2 grading queue that filters students by section
+and assessment without requiring GitHub sync. From one student review dialog,
+the teacher can inspect approved checkpoint evidence, optionally generate
+**AI rubric suggestions** from SHA-pinned XML/source and selected commit diffs,
+adjust the score/feedback, write a teacher note, and save an **unpublished**
+reviewed grade. **AI does not automatically grade, save, or publish students.**
+
+Evidence Review and Contribution Inspector remain linked supporting pages with
+prefilled student/assessment parameters. The legacy automatic checker is
+**still disabled for V2**; only the separate, explicit teacher-requested
+checkpoint-aware suggestion feature supports V2. Production role, provider and
+workflow smoke tests are required before unrestricted use.
+
+See [RepoFetch V2 grading guide](repofetch-v2-grading.md).
+
 ## Remaining approved phases
 
-- Phase 2: checkpoint-aware automated rubric suggestions that inspect **approved** project versions; more complete teacher review-to-grading deep links and legacy workflow consolidation.
+- Phase 2: teacher-requested, checkpoint-aware AI rubric suggestions and prefilled RepoFetch deep links are implemented; remaining work is complete production smoke tests, optional dedicated student queue refinements, and cautious legacy workflow consolidation.
 - Phase 3: teacher-authoritative individual contribution handling including more robust verified GitHub identity association, shared contributions, alternate branches, and authorized private repositories.
 - Phase 4: Project Evolution Timeline in RepoBank and student Project Hub, using approved checkpoints and published feedback, not unreviewed claims.
 - Phase 5: final RepoReview submodule navigation grouping and accessible mobile QA; preserve the Lesson Review and Admin Hub main-module boundaries.
