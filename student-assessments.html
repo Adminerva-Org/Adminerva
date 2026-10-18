@@ -8,7 +8,7 @@
     />
     <title>Assignments | Student Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.18.4" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.19.1" />
 </head>
   <body
     class="bg-slate-50 font-sans text-slate-800 min-h-screen flex flex-col hidden"
@@ -139,28 +139,20 @@
               </details>
             </div>
           </div>
-          <div class="bg-white p-4 rounded border border-slate-200 shadow-sm">
-            <h3
-              class="font-bold text-sm text-indigo-800 mb-2 uppercase tracking-wider text-[10px]"
-            >
-              Task Instructions
-            </h3>
+          <details class="bg-white p-4 rounded border border-slate-200 shadow-sm">
+            <summary class="font-bold text-sm text-indigo-800 cursor-pointer">Task instructions — expand to read</summary>
             <p
               id="modalAssContext"
               class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed"
             ></p>
-          </div>
-          <div class="bg-white p-4 rounded border border-slate-200 shadow-sm">
-            <h3
-              class="font-bold text-sm text-emerald-800 mb-2 uppercase tracking-wider text-[10px]"
-            >
-              Grading Rubric / Criteria
-            </h3>
+          </details>
+          <details class="bg-white p-4 rounded border border-slate-200 shadow-sm">
+            <summary class="font-bold text-sm text-emerald-800 cursor-pointer">Grading rubric / criteria — expand to read</summary>
             <p
               id="modalAssRubric"
               class="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed"
             ></p>
-          </div>
+          </details>
           <section id="legacySubmitPanel" class="bg-white border border-blue-200 rounded-xl p-4 shadow-sm" aria-labelledby="submitReviewHeading">
             <h3 id="submitReviewHeading" class="text-sm font-bold text-slate-800 mb-2">Submit for teacher review</h3>
             <p class="text-xs text-slate-600 mb-3">Creates a timestamped submission receipt tied to the repository's latest commit. A push alone does not notify your teacher.</p>
@@ -183,17 +175,18 @@
             <div id="evidencePreview" class="mt-4 max-h-80 overflow-y-auto whitespace-pre-wrap break-words font-mono text-xs bg-slate-50 border rounded p-3" aria-label="Selected commit changes"></div>
             <button id="evidenceSubmit" type="button" class="mt-4 bg-indigo-700 hover:bg-indigo-800 text-white rounded px-4 py-3 font-bold text-sm">Submit selected evidence</button>
             <button id="evidenceWithdraw" type="button" disabled class="mt-4 border border-rose-300 text-rose-800 rounded px-4 py-3 font-bold text-sm disabled:opacity-50">Withdraw evidence</button>
+            <button id="evidenceClear" type="button" class="mt-4 border border-slate-300 rounded px-4 py-3 font-bold text-sm disabled:opacity-50">Clear editable selection</button>
             <p class="text-xs text-slate-600 mt-2">Before approval, you can resubmit or withdraw. After approval, your instructor must reopen evidence. Changes preserve an audit history and require fresh approval.</p>
           </section>
         </div>
       </div>
     </div>
 
-    <script src="js/core/adminerva-nav.js?v=2026.10.18.4"></script>
-    <script src="js/core/adminerva-loader.js?v=2026.10.16.3"></script>
-    <script type="module" src="js/core/auth-guard.js?v=2026.10.16.3"></script>
-    <script type="module" src="js/student/assessments.js?v=2026.10.18.4"></script>
-    <script type="module" src="js/student/submission-receipts.mjs"></script>
-    <script type="module" src="js/student/assessment-evidence.mjs?v=2026.10.18.4"></script>
+    <script src="js/core/adminerva-nav.js?v=2026.10.19.1"></script>
+    <script src="js/core/adminerva-loader.js?v=2026.10.19.1"></script>
+    <script type="module" src="js/core/auth-guard.js?v=2026.10.19.1"></script>
+    <script type="module" src="js/student/assessments.js?v=2026.10.19.1"></script>
+    <script type="module" src="js/student/submission-receipts.mjs?v=2026.10.19.1"></script>
+    <script type="module" src="js/student/assessment-evidence.mjs?v=2026.10.19.1"></script>
   </body>
 </html>

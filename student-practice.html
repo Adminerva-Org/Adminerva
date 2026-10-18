@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Practice Lab | Adminerva</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="css/adminerva-ui.css?v=2" />
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.19.1" />
 </head>
 <body id="pageBody" class="hidden bg-slate-100 min-h-screen text-slate-900 font-sans">
   <div id="adminerva-nav" data-module="student-practice" data-page="practice"></div>
@@ -18,6 +18,15 @@
     <button type="button" id="practiceSyncBtn" class="mb-3 px-3 py-2 text-sm font-bold border border-blue-300 text-blue-800 bg-white rounded-lg disabled:opacity-50">Retry cloud sync</button>
     <p id="practiceStatus" role="status" aria-live="polite" class="text-sm text-slate-600 mb-4">Loading your learning progress…</p>
     <div id="practiceOverview" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5" aria-label="Practice progress overview"></div>
+    <a href="student-xml-lab.html" class="inline-block mb-4 font-bold text-indigo-800 underline">Open XML Layout Lab →</a>
+    <details class="bg-white border rounded-xl p-4 mb-5"><summary class="font-bold cursor-pointer">My practice points and class standings</summary>
+      <p class="text-sm my-3">Completions earn 10 personal practice points per unique mission, not school grades. Class standings use only teacher-reviewed missions. Joining is optional; use an alias, not a real name or email. Opt-out changes take effect in the next published class snapshot.</p>
+      <label class="block text-sm">Practice class<select id="practiceClass" class="border rounded p-2 m-2"></select></label>
+      <label class="block text-sm">Class alias<input id="practiceAlias" maxlength="24" class="border rounded p-2 m-2" /></label>
+      <label class="block text-sm my-3"><input id="practiceOptIn" type="checkbox" /> Include my alias and reviewed points in my class standings</label>
+      <button id="practiceSavePreferences" type="button" class="border rounded px-3 py-2 font-bold">Save practice class preferences</button>
+      <p id="practiceReviewedPoints" class="font-bold mt-3">Not reviewed yet</p><p id="practiceClassStatus" role="status" class="text-sm my-2"></p><ol id="practiceStandings" class="space-y-1 text-sm"></ol>
+    </details>
     <div id="practiceCourseList" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
     <section id="practiceMissionPanel" class="hidden bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-7 mt-5" aria-labelledby="practiceMissionTitle">
       <button type="button" id="practiceBackBtn" class="mb-4 text-sm font-bold text-blue-700 underline">← All courses</button>
@@ -35,7 +44,7 @@
       <textarea id="practiceReasoning" rows="3" maxlength="500"
         placeholder="Explain which statement or condition caused your prediction (at least 25 characters)."
         class="w-full p-3 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500"></textarea>
-      <p class="text-xs text-slate-500 mt-1">Explain in your own words. This is a learning reflection, not an AI-detection test.</p>
+      <p class="text-xs text-slate-500 mt-1">Explain the result in your own words. This reflection supports your teacher's review.</p>
       <div id="practiceFeedback" role="status" aria-live="polite" class="mt-4 text-sm font-semibold"></div>
       <section id="practiceExperimentPanel" class="hidden mt-5 rounded-xl bg-blue-50 border border-blue-200 p-4" aria-labelledby="practiceExperimentTitle">
         <h3 id="practiceExperimentTitle" class="font-bold text-blue-950">Step 2 · Test in Code Playground</h3>
@@ -49,7 +58,7 @@
         <label for="practiceObservation" class="block text-sm font-semibold mt-2 mb-2">What did you observe after running or previewing the example?</label>
         <textarea id="practiceObservation" rows="3" maxlength="500" placeholder="Describe the output, behavior, or bug you observed. What matches or differs from your prediction?"
           class="w-full border border-slate-300 rounded-lg p-3 text-sm"></textarea>
-        <p class="text-xs text-slate-500 mt-2">A Playground run is a learning activity, not proof that no AI assistance was used.</p>
+        <p class="text-xs text-slate-500 mt-2">A Playground run is a learning activity, not proof of independent authorship.</p>
       </section>
       <div class="flex gap-3 mt-5 flex-wrap">
         <button id="practiceCheckBtn" type="button" class="bg-blue-700 text-white px-5 py-3 rounded-lg font-bold">Check prediction</button>
@@ -59,9 +68,10 @@
       <p class="mt-4 text-xs text-slate-500">Completions are saved locally and synced to your account when Firebase is available. Practice is not automatically scored toward school grades.</p>
     </section>
   </main>
-  <script src="js/core/adminerva-nav.js?v=2026.10.17.2"></script>
-  <script src="js/core/adminerva-loader.js?v=2026.10.16.3"></script>
-  <script type="module" src="js/core/auth-guard.js?v=2026.10.16.3"></script>
-  <script type="module" src="js/student/practice.js"></script>
+  <script src="js/core/adminerva-nav.js?v=2026.10.19.1"></script>
+  <script src="js/core/adminerva-loader.js?v=2026.10.19.1"></script>
+  <script type="module" src="js/core/auth-guard.js?v=2026.10.19.1"></script>
+  <script type="module" src="js/student/practice.js?v=2026.10.19.1"></script>
+  <script type="module" src="js/student/practice-standings.mjs?v=2026.10.19.1"></script>
 </body>
 </html>

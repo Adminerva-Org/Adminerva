@@ -1,0 +1,9 @@
+{
+  "score": 4,
+  "summary": "Scoped prototype audit: strict owner registration, verified instructor authority, exact known-mission totals, immutable reviewed-score audits and roster-private snapshots. Production rollout and operational privacy review remain necessary.",
+  "findings": [
+    {"check": "Snapshot consent", "severity": "minor", "issue": "Class snapshots are deliberate publications; opting out does not rewrite an already published snapshot, and preference changes can race the teacher's publication read.", "recommendation": "Disclose snapshot semantics, promptly republish on removal requests, and consider a separately designed server-maintained revocation flow before a real-time leaderboard."},
+    {"check": "Staff publication trust", "severity": "minor", "issue": "Rules restrict class publication to verified instructors and limit document size by row count, but do not independently certify each alias-only row against the separate reviewed score and current consent record.", "recommendation": "Use the curated publication path, retain trusted staff review, and design stronger server-side projection if untrusted staff or externally writable integrations are introduced."},
+    {"check": "Evidence quality", "severity": "minor", "issue": "Students control their private completion claims. Completion and reflection are not proof of correctness or independent work.", "recommendation": "Do not rank self-recorded totals. Require documented instructor verification of known mission IDs before trusted points are recorded."}
+  ]
+}

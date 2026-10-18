@@ -39,6 +39,38 @@ beforeEach(async () => {
   });
 });
 function client(uid,email){return env.authenticatedContext(uid,{email,email_verified:true}).firestore()}
+test('practice class registration requires own roster identity and does not permit self-scoring',async()=>{
+  const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
+  const profile={ownerUid:'alice',studentId:'alice',section:'11-A',alias:'Learner One',leaderboardOptIn:true,updatedAt:serverTimestamp()};
+  await assertSucceeds(setDoc(doc(alice,'practice_profiles','alice'),profile));
+  await assertFails(setDoc(doc(alice,'practice_profiles','bob'),{...profile,ownerUid:'bob'}));
+  await assertFails(updateDoc(doc(alice,'practice_profiles','alice'),{studentId:'bob',section:'11-B'}));
+  await assertFails(getDoc(doc(bob,'practice_profiles','alice')));
+  await assertFails(setDoc(doc(alice,'practice_scores','alice'),{points:160}));
+  await assertFails(setDoc(doc(alice,'practice_boards','alice'),{rows:[]}));
+});
+test('reviewed practice points require verified staff, exact mission totals and immutable audits',async()=>{
+  const teacher=client('staff',TEACHER),alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
+  const score={studentId:'alice',section:'11-A',verifiedMissionIds:['j1'],points:10,reviewedBy:'staff',reviewNote:'Reviewed implementation and explanation independently.',revision:1,updatedAt:serverTimestamp()};
+  const ref=doc(teacher,'practice_scores','alice');
+  await assertFails(setDoc(ref,score));
+  const batch=writeBatch(teacher);batch.set(ref,score);batch.set(doc(ref,'revisions','1'),{before:null,after:score,actorUid:'staff',createdAt:serverTimestamp()});await assertSucceeds(batch.commit());
+  await assertSucceeds(getDoc(doc(alice,'practice_scores','alice')));await assertFails(getDoc(doc(bob,'practice_scores','alice')));
+  await assertFails(updateDoc(doc(ref,'revisions','1'),{actorUid:'changed'}));
+  await assertFails(updateDoc(ref,{points:999}));
+  const before=(await getDoc(ref)).data(),after={...before,verifiedMissionIds:['j1','j2'],points:20,revision:2,updatedAt:serverTimestamp()};
+  const revision=writeBatch(teacher);revision.set(ref,after);revision.set(doc(ref,'revisions','2'),{before,after,actorUid:'staff',createdAt:serverTimestamp()});await assertSucceeds(revision.commit());
+  await assertFails(deleteDoc(doc(client('admin',ADMIN),'practice_scores','alice','revisions','1')));
+  const unverified=env.authenticatedContext('unverified',{email:TEACHER,email_verified:false}).firestore();
+  await assertFails(getDoc(doc(unverified,'practice_scores','alice')));
+});
+test('class snapshots are private to their roster owner and staff cannot target another section',async()=>{
+  const teacher=client('staff',TEACHER),alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
+  const board={section:'11-A',rows:[{alias:'Learner One',points:10,rank:1}],publishedBy:'staff',publishedAt:serverTimestamp()};
+  await assertSucceeds(setDoc(doc(teacher,'practice_boards','alice'),board));
+  await assertFails(setDoc(doc(teacher,'practice_boards','bob'),board));
+  await assertSucceeds(getDoc(doc(alice,'practice_boards','alice')));await assertFails(getDoc(doc(bob,'practice_boards','alice')));
+});
 async function auditedEvidence(db,changes,{actor='alice',reason='Evidence reviewed and updated by owner'}={}){
   const ref=doc(db,'assessment_evidence','alice_v2');
   const before=(await getDoc(ref)).data();

@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Assessment Evidence Review | Adminerva</title>
-<script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.18.4">
+<script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.19.1">
 <style>.evidence-embedded main{padding:0;margin:0;max-width:none}.evidence-embedded #evidenceDetails,.evidence-embedded #evidenceDiscovery{margin-top:0;padding:14px;border:0;box-shadow:none}</style>
 </head><body class="bg-slate-50 min-h-screen">
 <div id="adminerva-nav" data-module="repo" data-page="evidence"></div>
@@ -28,6 +28,7 @@
 <div id="evidenceLinks" class="flex flex-wrap gap-4 text-sm"></div>
 <h3 class="text-sm font-bold">Selected Git commits</h3>
 <div id="evidenceCommitDetails" class="space-y-3"></div>
+<details class="border rounded p-3" open><summary class="font-bold cursor-pointer">Pinned project source — shared context, not individual credit</summary><div id="evidenceSnapshot" class="mt-2"></div></details>
 <h3 class="text-sm font-bold">Reclaim requests for this student</h3>
 <div id="evidenceReclaims" class="space-y-3"></div>
 <label class="block text-sm font-semibold" for="evidenceContributionScope">Individual responsibilities and attribution basis</label>
@@ -39,12 +40,13 @@
 <span>I inspected the project at the selected revision, checked the relevant commits and addressed attribution uncertainties. Git timestamps alone were not used to prove push time.</span></label>
 <button id="evidenceApprove" type="button" class="px-5 py-3 bg-emerald-700 text-white font-bold rounded">Approve checkpoint</button>
 <button id="evidenceReopen" type="button" class="hidden px-5 py-3 border border-amber-500 text-amber-900 font-bold rounded">Reopen evidence for student</button>
+<p id="evidenceActionStatus" role="status" class="text-sm font-semibold text-indigo-900"></p>
 <p id="evidenceAuditSummary" class="text-xs text-slate-600"></p>
 <p class="text-xs text-slate-500">Approval records the student's assessment checkpoint, not a score. Grading and grade publication remain separate instructor actions.</p>
 </section>
 </main>
-<script src="js/core/adminerva-nav.js?v=2026.10.18.4"></script>
-<script src="js/core/adminerva-loader.js?v=2026.10.16.3"></script>
-<script type="module" src="js/core/auth-guard.js?v=2026.10.16.3"></script>
-<script type="module" src="js/repo-review/assessment-evidence-review.mjs?v=2026.10.18.3"></script>
+<script src="js/core/adminerva-nav.js?v=2026.10.19.1"></script>
+<script src="js/core/adminerva-loader.js?v=2026.10.19.1"></script>
+<script type="module" src="js/core/auth-guard.js?v=2026.10.19.1"></script>
+<script type="module" src="js/repo-review/assessment-evidence-review.mjs?v=2026.10.19.1"></script>
 </body></html>

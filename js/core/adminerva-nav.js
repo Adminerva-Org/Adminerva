@@ -321,6 +321,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ["gradebook", "Gradebook", "gradebook.html"],
         ["repofetch", "Review & Grade", "repofetch.html"],
         ["studio", "Assessment Studio", "assessment-studio.html"],
+        ["practice", "Practice Analytics", "practice-analytics.html"],
         ["activity-grader", "Legacy Manual Activity Grader", "temp-activity-grader.html"]
       ] },
       { name: "Evidence tools", items: [
@@ -445,11 +446,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // A single responsive inbox for bug reports, grading alerts and submissions.
   const reportButton = navContainer.querySelector('button[title="Report Issue"]');
+  if(reportButton){const notes=document.createElement("a");notes.href="patch-notes.html";notes.textContent="What's new";notes.className="hidden sm:inline-block text-xs font-bold text-cyan-300 px-2";reportButton.parentNode.insertBefore(notes,reportButton);}
   if (reportButton && !document.getElementById("adminerva-notifications")) {
     const mountPoint = document.createElement("div");
     mountPoint.id = "adminerva-notifications";
     reportButton.parentNode.insertBefore(mountPoint, reportButton);
-    import("./notifications.mjs")
+    import("./notifications.mjs?v=2026.10.19.1")
       .then(module => module.mountNotificationCenter())
       .catch(error => console.warn("Notification center unavailable:", error));
   }

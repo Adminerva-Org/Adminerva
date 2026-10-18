@@ -278,7 +278,7 @@ window.matrixTogglePub = async function (studentId, taskId, checkbox) {
       const latest = await tx.get(gradeRef);
       if (!latest.exists()) throw new Error("Grade was removed during publication.");
       if(wantsPublish){
-        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs");
+        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=2026.10.19.1");
         await verifyGradePublication(tx,gradeRef,{...latest.data(),taskId});
       }
       tx.update(gradeRef, {

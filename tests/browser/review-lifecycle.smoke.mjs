@@ -56,7 +56,7 @@ async function waitRecord(page,recordPath,field,value){
   return (await browserRecord(page,recordPath)).data;
 }
 
-test("teacher and students complete the V2 evidence lifecycle using real Auth and Firestore emulators",{timeout:240000},async()=>{
+test("teacher and students complete the V2 evidence lifecycle using real Auth and Firestore emulators",{timeout:420000},async()=>{
   const firestoreHost=localEmulator("FIRESTORE_EMULATOR_HOST");
   const authHost=localEmulator("FIREBASE_AUTH_EMULATOR_HOST");
   assert.equal(process.env.GCLOUD_PROJECT,projectId,"The Firebase CLI must select the isolated demo project");
@@ -68,6 +68,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
   const contexts=[],errors=[],blockedRequests=[],dialogs=[],milestones=[];
   function validated(message){milestones.push(message);console.log("Validated: "+message);}
   let modelRequests=0;
+  let omitSavedCommit=false;
   try{
     await environment.clearFirestore();
     const authAdmin=getAuth(adminApp);
@@ -120,7 +121,10 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
         const url=route.request().url(),parsed=new URL(url);
         if(assets.has(url))return route.fulfill({contentType:"text/javascript",body:assets.get(url)});
         if(parsed.hostname==="cdn.tailwindcss.com")return route.fulfill({contentType:"text/javascript",body:tailwind});
-        if(parsed.hostname==="api.github.com")return route.fulfill({json:githubFixture(url)});
+        if(parsed.hostname==="api.github.com"){
+          let fixture=githubFixture(url);if(omitSavedCommit&&Array.isArray(fixture))fixture=fixture.filter(commit=>commit.sha!==ownSha);
+          return route.fulfill({json:fixture});
+        }
         if(parsed.hostname==="generativelanguage.googleapis.com"){
           modelRequests++;
           const prompt=route.request().postDataJSON().contents[0].parts[0].text;
@@ -135,7 +139,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
       });
       context.on("page",page=>{
         page.on("pageerror",error=>errors.push(error.message));
-        page.on("dialog",async dialog=>{dialogs.push(dialog.message());await dialog.accept();});
+        page.on("dialog",async dialog=>{dialogs.push(dialog.message());await dialog.accept(dialog.type()==="prompt"?"Fixture teacher reviewed the evidence and documented this deliberate revision.":undefined);});
       });
       return context;
     }
@@ -192,6 +196,13 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await student.locator("#evidenceWithdraw").click();
     await expect(student.locator("#evidenceStatus")).toContainText("Evidence withdrawn");
     await expect(student.locator("#assignmentsFeed")).toContainText("Evidence withdrawn");
+    omitSavedCommit=true;await openStudent(student);
+    const savedCommit=student.getByRole("checkbox",{name:"Include commit "+ownSha.slice(0,12)+" as evidence",exact:true});
+    await savedCommit.uncheck();await expect(savedCommit).not.toBeChecked();
+    await student.locator("#evidenceClear").click();
+    await expect(student.locator("#evidenceSelectionSummary")).toContainText("No evidence");
+    await student.getByRole("radio",{name:"Set commit "+groupSha.slice(0,12)+" as project checkpoint",exact:true}).check();
+    await savedCommit.check();omitSavedCommit=false;
     await student.locator("#evidenceSubmit").click();
     await expect(student.locator("#evidenceStatus")).toContainText("submitted for teacher verification");
     validated("student submit, resubmit, withdraw and resubmit");
@@ -213,6 +224,8 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     assert.equal((await browserRecord(teacher,"student_grades/alice_fixture-v2")).exists,false);
     await teacher.locator("#manualReviewAIGenerate").click();
     await expect(teacher.locator("#manualReviewAIScores")).toContainText("Teacher review needed");
+    await expect(teacher.locator("#manualReviewFeedback")).toHaveValue("");
+    await teacher.locator("#manualReviewUseFeedback").click();
     await expect(teacher.locator("#manualReviewScore")).toHaveValue("");
     assert.equal((await browserRecord(teacher,"student_grades/alice_fixture-v2")).exists,false);
     await saveReviewedGrade();
@@ -231,8 +244,10 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await evidenceFrame().locator("#evidenceReopen").click();
     await expect(evidenceFrame().locator("#evidenceReviewStatus")).toContainText("Unpublish");
     await waitRecord(teacher,"assessment_evidence/alice_fixture-v2","status","approved");
-    await openGrade();await gradebook.locator("#gbDetailUnpublish").click();
+    await teacher.locator("#manualReviewUnpublish").click();
     await waitRecord(gradebook,"student_grades/alice_fixture-v2","published",false);
+    await expect(evidenceFrame().locator("#evidenceTitle")).toContainText(assessment.title);
+    await evidenceFrame().locator("#evidenceReviewNote").fill("Instructor reopened at the student's request after explicitly unpublishing the protected grade.");
     await evidenceFrame().locator("#evidenceReopen").click();
     await waitRecord(teacher,"assessment_evidence/alice_fixture-v2","status","reopened");
     await openStudent(student);await expect(student.locator("#evidenceSubmit")).toBeEnabled();
@@ -245,7 +260,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await expect.poll(()=>dialogs.some(message=>message.includes("Evidence changed or needs review"))).toBe(true);
     assert.equal((await browserRecord(gradebook,"student_grades/alice_fixture-v2")).data.published,false);
     await saveReviewedGrade();
-    await openGrade();await gradebook.locator("#gbDetailPublish").click();
+    await teacher.locator("#manualReviewPublish").click();
     grade=await waitRecord(gradebook,"student_grades/alice_fixture-v2","published",true);
     assert.equal(grade.evidenceRevision,evidence.revision);
     await openStudent(student);await expect(student.locator("#modalScoreValue")).toHaveText("18");
@@ -269,6 +284,38 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await expect.poll(()=>student.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),
       {message:"Mobile layout must settle without horizontal overflow"}).toBe(true);
     await student.screenshot({path:path.join(output,"student-mobile.png")});
+    await student.setViewportSize({width:1360,height:1000});
+    await student.goto(origin+"/student-xml-lab.html");
+    await expect(student.locator("#xmlStatus")).toContainText("views translated");
+    await student.locator("#xmlEditor").fill('<ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto" android:layout_width="match_parent" android:layout_height="match_parent"><TextView android:layout_width="120dp" android:layout_height="48dp" android:text="Hello &lt;script&gt;" app:layout_constraintTop_toTopOf="parent" app:layout_constraintStart_toStartOf="parent" /></ConstraintLayout>');
+    await student.locator("#xmlRender").click();
+    await expect(student.locator("#xmlGenerated")).toHaveValue(/Hello &lt;script&gt;/);
+    await expect(student.locator("#xmlGenerated")).toHaveValue(/position:absolute/);
+    assert.equal(await student.locator("#xmlPreview").getAttribute("sandbox"),"");
+    await student.locator("#xmlEditor").fill('<!DOCTYPE view SYSTEM "https://example.com/private"><view/>');
+    await student.locator("#xmlRender").click();await expect(student.locator("#xmlStatus")).toContainText("Document types");
+    validated("safe Android XML translation, parent constraints and entity rejection");
+    await student.goto(origin+"/student-practice.html");
+    await student.locator("#av-alert-toggle").click();await expect(student.locator("#av-alert-list")).toContainText("Adminerva update");await student.locator("#av-alert-toggle").click();
+    await expect(student.locator("#practiceClass option")).toContainText(["fixture-11-A"]);
+    await student.getByText("My practice points and class standings",{exact:true}).click();
+    await student.locator("#practiceAlias").fill("Learner One");await student.locator("#practiceOptIn").check();await student.locator("#practiceSavePreferences").click();
+    await waitRecord(student,"practice_profiles/"+accounts.alice.uid,"leaderboardOptIn",true);
+    await teacher.goto(origin+"/practice-analytics.html");
+    await teacher.locator("#av-alert-toggle").click();await expect(teacher.locator("#av-alert-list")).toContainText("Adminerva update");await teacher.locator("#av-alert-toggle").click();
+    await expect(teacher.locator("#practiceAnalyticsSection option")).toContainText(["fixture-11-A"]);
+    await teacher.locator("#practiceAnalyticsLoad").click();
+    await teacher.locator("#practiceAnalyticsList article").filter({hasText:"Fixture alice"}).getByRole("button").click();
+    await teacher.locator('[data-reviewed-mission][value="j1"]').check();
+    await teacher.locator("#practicePointsNote").fill("Teacher observed the mission implementation and independently reviewed the student's explanation.");
+    await teacher.locator("#practiceAcceptPoints").click();await waitRecord(teacher,"practice_scores/alice","points",10);
+    await teacher.locator("#practicePublishStandings").click();await waitRecord(student,"practice_boards/alice","section","fixture-11-A");
+    await student.reload();await expect(student.locator("#practiceReviewedPoints")).toContainText("10 teacher-reviewed");await expect(student.locator("#practiceStandings")).toContainText("Learner One");
+    await student.getByText("My practice points and class standings",{exact:true}).click();await student.screenshot({path:path.join(output,"practice-class-points.png")});
+    assert.equal((await browserRecord(peer,"practice_scores/alice")).error,"permission-denied");
+    await student.goto(origin+"/patch-notes.html");await expect(student.locator("#patchList")).toContainText("Review & Grade");
+    validated("private teacher-reviewed practice points, opt-in alias class snapshot and public patch history");
+    assert.deepEqual(blockedRequests,[]);assert.deepEqual(errors,[]);
     await writeFile(path.join(output,"result.json"),JSON.stringify({projectId,backend:"real Auth + Firestore emulators",sdkVersion:"10.13.0",externalServices:"GitHub and Gemini fixtures",milestones,modelRequests,errors,blockedRequests},null,2));
     console.log(JSON.stringify({passed:milestones,artifacts:output}));
   }catch(error){

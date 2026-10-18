@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.18.4",
-  "releasedAt": "2026-10-18",
-  "notes": "Review & Grade brings evidence approval, individual evaluation drafts and group details into one workspace. Student evidence changes preserve audit history; approved evidence requires instructor reopening. Scores and feedback stay private until explicit instructor publication. Reload existing tabs after the coordinated release."
+  "version": "2026.10.19.1",
+  "releasedAt": "2026-10-19",
+  "notes": "Clearer teacher review, evidence editing, XML Layout Lab, practice points and lesson-linked slide starters. Save your work before refreshing. See What's new for public patch history."
 }

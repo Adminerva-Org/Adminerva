@@ -309,7 +309,7 @@ async function togglePublish(makePublished) {
       const previous = gradeSnap.data();
       const isV2=active.task.schemaVersion===2;
       if(makePublished&&isV2){
-        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs");
+        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=2026.10.19.1");
         await verifyGradePublication(tx,active.entry.ref,previous);
       }
       if (makePublished && previous.reviewRequired && !el("gbMarkReviewed").checked) {

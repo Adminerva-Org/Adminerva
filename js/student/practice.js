@@ -132,7 +132,7 @@ function renderCourses(){
   const summaries=[
     [achieved+"/"+total,"Missions completed"],
     [COURSES.filter(c=>(completed.get(c.id)?.size||0)===c.missions.length).length+"/"+COURSES.length,"Courses finished"],
-    [Math.round(100*achieved/total)+"%","Practice progress"]
+    [achieved*10+" / "+total*10,"Personal practice points · self-recorded, not grades"]
   ];
   const overview=el("practiceOverview");
   if(overview){

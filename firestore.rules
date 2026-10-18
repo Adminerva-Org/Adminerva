@@ -38,7 +38,8 @@ service cloud.firestore {
 
     // Administrators retain existing system-wide maintenance privileges.
     match /{collection}/{document=**} {
-      allow read, write: if isAdmin() && collection != "assessment_evidence" && collection != "student_grades";
+      allow read, write: if isAdmin() && collection != "assessment_evidence" && collection != "student_grades" &&
+        !(collection in ["practice_profiles","practice_scores","practice_boards"]);
     }
     // Teachers retain their existing academic workflow permissions, but the
     // catch-all must not override private report or notification rules.
@@ -51,7 +52,8 @@ service cloud.firestore {
         collection != "commit_claim_decisions" &&
         collection != "commit_claim_conflicts" &&
         collection != "assessment_evidence" &&
-        collection != "student_grades";
+        collection != "student_grades" &&
+        !(collection in ["practice_profiles","practice_scores","practice_boards"]);
     }
 
     match /students/{studentId} {
@@ -422,6 +424,55 @@ service cloud.firestore {
 
     // Formative student practice, separate from official assessments/grades.
     // Teachers may inspect progress through the existing instructor privileges.
+    match /practice_profiles/{uid} {
+      function validPracticeProfile() {
+        let data = request.resource.data;
+        return data.keys().hasOnly(["ownerUid","studentId","section","alias","leaderboardOptIn","updatedAt"]) &&
+          data.ownerUid == uid && data.studentId is string && ownsStudentProfile(data.studentId) &&
+          data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
+          data.alias is string && data.alias.matches("^[A-Za-z0-9_ -]{3,24}$") &&
+          data.leaderboardOptIn is bool && data.updatedAt == request.time;
+      }
+      allow read: if isInstructor() || (signedIn() && request.auth.uid == uid);
+      allow create, update: if signedIn() && request.auth.uid == uid && validPracticeProfile();
+      allow delete: if false;
+    }
+    match /practice_scores/{studentId} {
+      function validPracticeScore() {
+        let data = request.resource.data;
+        let revision = exists(/databases/$(database)/documents/practice_scores/$(studentId)) ? resource.data.revision + 1 : 1;
+        let audit = getAfter(/databases/$(database)/documents/practice_scores/$(studentId)/revisions/$(string(revision))).data;
+        return data.keys().hasOnly(["studentId","section","verifiedMissionIds","points","reviewedBy","reviewNote","revision","updatedAt"]) &&
+          data.studentId == studentId && data.section == get(/databases/$(database)/documents/students/$(studentId)).data.section &&
+          data.verifiedMissionIds is list && data.verifiedMissionIds.size() <= 16 &&
+          data.verifiedMissionIds.toSet().size() == data.verifiedMissionIds.size() &&
+          data.verifiedMissionIds.hasOnly(["j1","j2","j3","j4","p1","p2","p3","p4","w1","w2","w3","w4","d1","d2","d3","d4"]) &&
+          data.points == data.verifiedMissionIds.size() * 10 && data.reviewedBy == request.auth.uid &&
+          data.reviewNote is string && data.reviewNote.size() >= 15 && data.reviewNote.size() <= 3000 &&
+          data.revision == revision && data.updatedAt == request.time && audit.after == data;
+      }
+      allow read: if isInstructor() || ownsStudentProfile(studentId);
+      allow create, update: if isInstructor() && validPracticeScore();
+      allow delete: if false;
+      match /revisions/{revisionId} {
+        allow read: if isInstructor() || ownsStudentProfile(studentId);
+        allow create: if isInstructor() && request.resource.data.keys().hasOnly(["before","after","actorUid","createdAt"]) &&
+          request.resource.data.actorUid == request.auth.uid && request.resource.data.createdAt == request.time &&
+          request.resource.data.before == (exists(/databases/$(database)/documents/practice_scores/$(studentId)) ? get(/databases/$(database)/documents/practice_scores/$(studentId)).data : null) &&
+          request.resource.data.after == getAfter(/databases/$(database)/documents/practice_scores/$(studentId)).data &&
+          revisionId == string(request.resource.data.after.revision) &&
+          request.resource.data.after.revision == (request.resource.data.before == null ? 1 : request.resource.data.before.revision + 1);
+        allow update, delete: if false;
+      }
+    }
+    match /practice_boards/{studentId} {
+      allow read: if isInstructor() || ownsStudentProfile(studentId);
+      allow create, update: if isInstructor() && request.resource.data.keys().hasOnly(["section","rows","publishedBy","publishedAt"]) &&
+        request.resource.data.section == get(/databases/$(database)/documents/students/$(studentId)).data.section &&
+        request.resource.data.rows is list && request.resource.data.rows.size() <= 200 &&
+        request.resource.data.publishedBy == request.auth.uid && request.resource.data.publishedAt == request.time;
+      allow delete: if isInstructor();
+    }
     match /student_practice_progress/{uid}/courses/{courseId} {
       function validProgress() {
         return request.resource.data.keys().hasOnly([

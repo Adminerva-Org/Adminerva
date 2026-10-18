@@ -16,6 +16,7 @@ jobs:
           node-version: "22"
       - name: Test grading evidence and feedback regressions
         run: |
+          node --test js/core/patch-history.test.mjs js/student/practice-points.test.mjs js/student/xml-layout.test.mjs js/presentation-review/lesson-to-slides.test.mjs js/repo-review/services/review-snapshot.test.mjs
           node --test js/repo-review/services/evidence-lifecycle.test.mjs tests/review-workspace.test.mjs
           node --test js/repo-review/services/v2-grading-assistant.test.mjs js/repo-review/services/grade-revision-snapshot.test.mjs js/core/feedback-format.test.mjs js/repo-review/services/commit-substance.test.mjs js/repo-review/services/contribution-resolver.test.mjs js/repo-review/services/assessment-evidence.test.mjs js/repo-review/services/commit-history.test.mjs js/repo-review/services/inspector-helpers.test.mjs js/core/notification-routing.test.mjs js/core/report-filters.test.mjs js/core/notification-visibility.test.mjs js/core/adminerva-nav.test.mjs js/lesson-review/lesson-plan-helpers.test.mjs js/lesson-review/reference-context.test.mjs js/lesson-review/lesson-editor.test.mjs js/lesson-review/schedule-scope.test.mjs js/lesson-review/lesson-workflow.test.mjs js/repo-review/assessment-dates.test.mjs js/student/assessment-state.test.mjs js/student/playground-storage.test.mjs js/student/practice-courses.test.mjs js/student/practice-playground-bridge.test.mjs tests/lesson-school-format.test.mjs
       - name: Check notification, issue, and submission module syntax
