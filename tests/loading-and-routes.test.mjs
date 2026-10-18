@@ -23,7 +23,10 @@ test("a legacy hide or completed job cannot dismiss another active operation", (
 test("renamed routes retain bounded same-site redirects including query and fragment", () => {
   for (const [oldName,newName] of [["reporeviewDashboard.html","teacher-analytics.html"],["temp-grading.html","group-inspector.html"],["temp-activity-grader.html","activity-grader.html"]]) {
     const source=readFileSync(oldName,"utf8");let destination;
-    vm.runInNewContext(source.match(/<script>(.*?)<\/script>/s)[1],{location:{search:"?student=alice",hash:"#review",replace:value=>destination=value}});
+    const start = source.indexOf("<script>") + "<script>".length;
+    const end = source.indexOf("</script>", start);
+    assert.ok(start >= "<script>".length && end > start, "Owned redirect fixture must contain its exact script block");
+    vm.runInNewContext(source.slice(start, end),{location:{search:"?student=alice",hash:"#review",replace:value=>destination=value}});
     assert.equal(destination,newName+"?student=alice#review");assert.ok(existsSync(newName));
   }
 });
