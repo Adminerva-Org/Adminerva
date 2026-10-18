@@ -15,6 +15,20 @@ service cloud.firestore {
     function isInstructor() {
       return isAdmin() || isTeacher();
     }
+    function monitoringCollection(name) {
+      return name in ["activity_preferences", "activity_events", "issue_diagnostics", "analytics_rosters", "analytics_views"];
+    }
+    function activityPages() {
+      return ["home", "project", "assessments", "playground", "xml-lab", "practice", "review", "grades", "lessons", "slides", "analytics", "reports", "settings", "other"];
+    }
+    function activityActions() {
+      return ["page-open", "active-time", "help-open", "run", "save", "evaluate", "submit", "withdraw"];
+    }
+    function monitoringExpiry(data) {
+      return data.createdAt == request.time && data.expiresAt is timestamp &&
+        data.expiresAt >= request.time + duration.value(29, "d") &&
+        data.expiresAt <= request.time + duration.value(31, "d");
+    }
     function mayReadIssue(issue) {
       return signedIn() && (
         isAdmin() ||
@@ -38,13 +52,13 @@ service cloud.firestore {
 
     // Administrators retain existing system-wide maintenance privileges.
     match /{collection}/{document=**} {
-      allow read, write: if isAdmin() && collection != "assessment_evidence" && collection != "student_grades" &&
+      allow read, write: if isAdmin() && !monitoringCollection(collection) && collection != "assessment_evidence" && collection != "student_grades" &&
         !(collection in ["practice_profiles","practice_scores","practice_boards"]);
     }
     // Teachers retain their existing academic workflow permissions, but the
     // catch-all must not override private report or notification rules.
     match /{collection}/{document=**} {
-      allow read, write: if isTeacher() &&
+      allow read, write: if isTeacher() && !monitoringCollection(collection) &&
         collection != "issues" &&
         collection != "notifications" &&
         collection != "notification_history" &&
@@ -56,6 +70,63 @@ service cloud.firestore {
         !(collection in ["practice_profiles","practice_scores","practice_boards"]);
     }
 
+    // Monitoring is opt-in, append-only, bounded and separate from academic permissions.
+    match /activity_preferences/{ownerUid} {
+      allow get: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
+      allow list: if isAdmin();
+      allow create, update: if signedIn() && request.auth.token.email_verified == true &&
+        request.auth.uid == ownerUid && request.resource.data.keys().hasOnly(["ownerUid", "studentId", "enabled", "updatedAt"]) &&
+        request.resource.data.ownerUid == ownerUid && request.resource.data.enabled is bool &&
+        request.resource.data.updatedAt == request.time && request.resource.data.studentId is string &&
+        ((isInstructor() && request.resource.data.studentId == "") || ownsStudentProfile(request.resource.data.studentId));
+      allow delete: if isAdmin();
+    }
+    match /activity_events/{eventId} {
+      allow read, delete: if isAdmin();
+      allow create: if signedIn() && request.auth.token.email_verified == true &&
+        request.resource.data.keys().hasOnly(["ownerUid", "studentId", "sessionId", "page", "action", "activeSeconds", "createdAt", "expiresAt"]) &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        get(/databases/$(database)/documents/activity_preferences/$(request.auth.uid)).data.enabled == true &&
+        request.resource.data.studentId == get(/databases/$(database)/documents/activity_preferences/$(request.auth.uid)).data.studentId &&
+        request.resource.data.sessionId is string && request.resource.data.sessionId.matches("^[a-f0-9-]{36}$") &&
+        request.resource.data.page in activityPages() && request.resource.data.action in activityActions() &&
+        request.resource.data.activeSeconds is int && request.resource.data.activeSeconds >= 0 && request.resource.data.activeSeconds <= 60 &&
+        (request.resource.data.action == "active-time" || request.resource.data.activeSeconds == 0) && monitoringExpiry(request.resource.data);
+      allow update: if false;
+    }
+    match /issue_diagnostics/{issueId} {
+      allow read, delete: if isAdmin();
+      allow create: if signedIn() && request.resource.data.keys().hasOnly(["ownerUid", "pages", "actions", "createdAt", "expiresAt"]) &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        getAfter(/databases/$(database)/documents/issues/$(issueId)).data.reporterUid == request.auth.uid &&
+        getAfter(/databases/$(database)/documents/issues/$(issueId)).data.audience == "admin" &&
+        request.resource.data.pages is list && request.resource.data.actions is list &&
+        request.resource.data.pages.size() > 0 && request.resource.data.pages.size() <= 20 &&
+        request.resource.data.pages.size() == request.resource.data.actions.size() &&
+        request.resource.data.pages.hasOnly(activityPages()) && request.resource.data.actions.hasOnly(activityActions()) &&
+        monitoringExpiry(request.resource.data);
+      allow update: if false;
+    }
+    match /analytics_rosters/{teacherEmail} {
+      allow get: if isAdmin() || (isTeacher() && teacherEmail == request.auth.token.email.lower());
+      allow list: if isAdmin();
+      allow create, update: if isAdmin() && teacherEmail == "josephsixson@mcstayuman.edu.ph" &&
+        request.resource.data.keys().hasOnly(["teacherEmail", "sections", "updatedBy", "updatedAt"]) &&
+        request.resource.data.teacherEmail == teacherEmail && request.resource.data.sections is list && request.resource.data.sections.size() <= 40 &&
+        request.resource.data.updatedBy == request.auth.uid && request.resource.data.updatedAt == request.time;
+      allow delete: if isAdmin();
+    }
+    match /analytics_views/{teacherEmail} {
+      allow get: if isAdmin() || (isTeacher() && teacherEmail == request.auth.token.email.lower());
+      allow list: if isAdmin();
+      allow create, update: if isAdmin() && teacherEmail == "josephsixson@mcstayuman.edu.ph" &&
+        request.resource.data.keys().hasOnly(["teacherEmail", "rows", "sections", "windowDays", "eventLimit", "publishedBy", "publishedAt"]) &&
+        request.resource.data.teacherEmail == teacherEmail && request.resource.data.rows is list && request.resource.data.rows.size() <= 100 &&
+        request.resource.data.sections == get(/databases/$(database)/documents/analytics_rosters/$(teacherEmail)).data.sections &&
+        request.resource.data.windowDays == 7 && request.resource.data.eventLimit == 500 &&
+        request.resource.data.publishedBy == request.auth.uid && request.resource.data.publishedAt == request.time;
+      allow delete: if isAdmin();
+    }
     match /students/{studentId} {
       allow read: if signedIn() && resource.data.email is string &&
         resource.data.email.lower() == request.auth.token.email.lower();

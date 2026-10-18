@@ -1,10 +1,11 @@
+/** Regression coverage: Adminerva module: firestore rules. */
 import test, {before, after, beforeEach} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment, assertSucceeds, assertFails}
   from '@firebase/rules-unit-testing';
 import {doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp,
-  collection, getDocs, query, where, writeBatch}
+  collection, getDocs, query, where, writeBatch, Timestamp}
   from 'firebase/firestore';
 
 let env;
@@ -39,6 +40,58 @@ beforeEach(async () => {
   });
 });
 function client(uid,email){return env.authenticatedContext(uid,{email,email_verified:true}).firestore()}
+function activityEvent() { return {ownerUid:'alice',studentId:'alice',sessionId:'a'.repeat(36),page:'playground',action:'active-time',activeSeconds:30,createdAt:serverTimestamp(),expiresAt:Timestamp.fromMillis(Date.now()+30*86400000)}; }
+function activityPreference(enabled=true) { return {ownerUid:'alice',studentId:'alice',enabled,updatedAt:serverTimestamp()}; }
+test('activity requires own informed opt-in; raw records stay admin-only and immutable', async()=>{
+  const alice=client('alice',EMAIL_A), teacher=client('staff',TEACHER), admin=client('admin',ADMIN);
+  await assertFails(setDoc(doc(alice,'activity_events','missing-consent'),activityEvent()));
+  await assertFails(setDoc(doc(alice,'activity_preferences','bob'),activityPreference()));
+  await assertFails(setDoc(doc(alice,'activity_preferences','alice'),{...activityPreference(),studentId:'bob'}));
+  await assertSucceeds(setDoc(doc(alice,'activity_preferences','alice'),activityPreference()));
+  await assertSucceeds(setDoc(doc(alice,'activity_events','valid'),activityEvent()));
+  await assertSucceeds(getDoc(doc(admin,'activity_events','valid')));
+  await assertFails(getDoc(doc(teacher,'activity_events','valid')));
+  await assertFails(getDoc(doc(client('bob',EMAIL_B),'activity_preferences','alice')));
+  await assertFails(getDocs(collection(teacher,'activity_preferences')));
+  await assertFails(updateDoc(doc(alice,'activity_events','valid'),{activeSeconds:60}));
+  await assertFails(updateDoc(doc(admin,'activity_events','valid'),{activeSeconds:60}));
+  for (const change of [{password:'secret'}, {activeSeconds:61}, {page:'https://private'}, {ownerUid:'bob'}, {createdAt:Timestamp.now()}, {expiresAt:Timestamp.fromMillis(Date.now()+365*86400000)}]) await assertFails(setDoc(doc(alice,'activity_events','invalid'),{...activityEvent(),...change}));
+  await assertSucceeds(setDoc(doc(alice,'activity_preferences','alice'),activityPreference(false)));
+  await assertFails(setDoc(doc(alice,'activity_events','stopped'),activityEvent()));
+  await assertFails(deleteDoc(doc(teacher,'activity_events','valid')));
+  await assertSucceeds(deleteDoc(doc(admin,'activity_events','valid')));
+});
+test('diagnostic trails cannot leak through teacher reports, spoof owners or carry free text',async()=>{
+  const alice=client('alice',EMAIL_A),admin=client('admin',ADMIN),teacher=client('staff',TEACHER);
+  const trail={ownerUid:'alice',pages:['playground'],actions:['run'],createdAt:serverTimestamp(),expiresAt:Timestamp.fromMillis(Date.now()+30*86400000)};
+  await assertFails(setDoc(doc(alice,'issue_diagnostics','ticket'),trail));
+  await assertSucceeds(setDoc(doc(alice,'issues','ticket'),report()));
+  await assertSucceeds(setDoc(doc(alice,'issue_diagnostics','ticket'),trail));
+  await assertFails(getDoc(doc(teacher,'issue_diagnostics','ticket')));
+  await assertSucceeds(getDoc(doc(admin,'issue_diagnostics','ticket')));
+  await assertFails(updateDoc(doc(admin,'issue_diagnostics','ticket'),{pages:['home']}));
+  await assertFails(setDoc(doc(client('bob',EMAIL_B),'issue_diagnostics','ticket'),{...trail,ownerUid:'bob'}));
+  await assertSucceeds(setDoc(doc(alice,'issues','class'),{...report(),category:'Feature',audience:'teacher'}));
+  await assertFails(setDoc(doc(alice,'issue_diagnostics','class'),trail));
+  await assertSucceeds(setDoc(doc(alice,'issues','extra'),report()));
+  for (const change of [{pages:['password=secret']}, {actions:['typed text']}, {pages:Array(21).fill('home'),actions:Array(21).fill('run')}, {actions:[]}]) await assertFails(setDoc(doc(alice,'issue_diagnostics','extra'),{...trail,...change}));
+});
+test('teacher summaries and assignments are admin-controlled; teachers cannot access others or raw diagnostics',async()=>{
+  const teacher=client('staff',TEACHER), admin=client('admin',ADMIN),alice=client('alice',EMAIL_A);
+  const roster={teacherEmail:TEACHER,sections:['11-A'],updatedBy:'admin',updatedAt:serverTimestamp()};
+  await assertFails(setDoc(doc(teacher,'analytics_rosters',TEACHER),roster));
+  await assertSucceeds(setDoc(doc(admin,'analytics_rosters',TEACHER),roster));
+  const summary={teacherEmail:TEACHER,sections:['11-A'],rows:[{studentId:'alice',visits:2,days:2,activeSeconds:60,modules:{playground:60}}],windowDays:7,eventLimit:500,publishedBy:'admin',publishedAt:serverTimestamp()};
+  await assertSucceeds(setDoc(doc(admin,'analytics_views',TEACHER),summary));
+  await assertSucceeds(getDoc(doc(teacher,'analytics_views',TEACHER)));
+  await assertFails(getDoc(doc(teacher,'analytics_views','other@example.edu')));
+  await assertFails(getDoc(doc(alice,'analytics_views',TEACHER)));
+  await assertFails(setDoc(doc(teacher,'analytics_views',TEACHER),{...summary,publishedBy:'staff'}));
+  await assertFails(setDoc(doc(admin,'analytics_views',TEACHER),{...summary,sections:['11-B']}));
+  await assertFails(setDoc(doc(admin,'analytics_views',TEACHER),{...summary,rows:Array(101).fill({})}));
+  await assertFails(getDocs(collection(teacher,'analytics_views')));
+  await assertFails(getDoc(doc(env.authenticatedContext('unverified',{email:ADMIN,email_verified:false}).firestore(),'activity_events','any')));
+});
 test('practice class registration requires own roster identity and does not permit self-scoring',async()=>{
   const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
   const profile={ownerUid:'alice',studentId:'alice',section:'11-A',alias:'Learner One',leaderboardOptIn:true,updatedAt:serverTimestamp()};

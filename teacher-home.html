@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- Staff module landing page and verified administrator shortcuts. -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -6,7 +7,7 @@
   <title>Staff Home | Adminerva</title>
   <meta name="description" content="Your Adminerva workspace and module shortcuts.">
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.19.1">
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.19.2">
 </head>
 <body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900 font-sans">
 
@@ -18,7 +19,7 @@
         <h1 id="staffTitle" class="mt-3 text-3xl sm:text-5xl font-extrabold leading-tight">Plan lessons. Review work. Keep teaching moving.</h1>
         <p class="text-slate-200 text-base sm:text-lg mt-5 leading-relaxed">Your starting point for classroom planning, repository reviews, assessments and feedback.</p>
         <div class="mt-8 flex flex-wrap gap-3">
-          <a href="reporeviewDashboard.html" class="bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-bold px-6 py-3 rounded-xl">Open Educator Hub →</a>
+          <a href="teacher-analytics.html" class="bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-bold px-6 py-3 rounded-xl">Open Educator Hub →</a>
           <a href="lesson-planner.html" class="border border-slate-500 hover:border-white hover:bg-white/10 font-bold px-6 py-3 rounded-xl">Lesson Planner</a>
         </div>
       </div>
@@ -28,7 +29,7 @@
       <p class="text-xs uppercase tracking-widest font-bold text-cyan-800">Quick access</p>
       <h2 id="teachingModules" class="text-2xl sm:text-3xl font-extrabold mt-1 mb-5">Teaching workspace</h2>
       <div class="grid sm:grid-cols-2 xl:grid-cols-4 gap-5">
-      <a href="reporeviewDashboard.html" class="group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-cyan-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
+      <a href="teacher-analytics.html" class="group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-cyan-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
         <span aria-hidden="true" class="text-3xl mb-5">📊</span>
         <h3 class="font-extrabold text-lg text-slate-900">Educator Hub</h3>
         <p class="text-slate-600 mt-2 text-sm leading-relaxed flex-grow">Track section progress and examine repository activity.</p>
@@ -84,13 +85,14 @@
       <p class="text-sm text-slate-700 mt-2">Manage platform accounts and review administrator-directed reports.</p>
       <div class="mt-4 flex flex-wrap gap-4">
         <a href="users.html" class="text-cyan-900 font-bold underline underline-offset-4">User directory →</a>
+        <a href="admin-analytics.html" class="text-cyan-900 font-bold underline underline-offset-4">Administration analytics →</a>
         <a href="issues.html" class="text-cyan-900 font-bold underline underline-offset-4">Admin reports →</a>
       </div>
     </section>
     <p class="text-xs text-slate-500 text-center mt-12">Adminerva · Staff workspace</p>
   </main>
-  <script src="js/core/adminerva-loader.js?v=2026.10.19.1"></script>
-  <script src="js/core/adminerva-nav.js?v=2026.10.19.1"></script>
-  <script type="module" src="js/core/auth-guard.js?v=2026.10.19.1"></script>
+  <script src="js/core/adminerva-loader.js?v=2026.10.19.2"></script>
+  <script src="js/core/adminerva-nav.js?v=2026.10.19.2"></script>
+  <script type="module" src="js/core/auth-guard.js?v=2026.10.19.2"></script>
 </body>
 </html>

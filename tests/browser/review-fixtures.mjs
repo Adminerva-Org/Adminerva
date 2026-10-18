@@ -1,3 +1,4 @@
+/** Regression coverage: Adminerva module: review fixtures. */
 export const ownSha="a".repeat(40);
 export const groupSha="b".repeat(40);
 export const repository="https://github.com/fixture-group/android";
@@ -5,6 +6,7 @@ export const welcomePath="app/src/main/res/layout/welcome.xml";
 export const homePath="app/src/main/res/layout/home.xml";
 export const password="local-emulator-fixture-only";
 export const accounts={
+  admin:{uid:"fixture-admin",email:"babaynike2013@gmail.com"},
   teacher:{uid:"fixture-teacher",email:"josephsixson@mcstayuman.edu.ph"},
   alice:{uid:"fixture-alice",email:"fixture-alice@example.test"},
   bob:{uid:"fixture-bob",email:"fixture-bob@example.test"}

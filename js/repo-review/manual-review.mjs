@@ -1,3 +1,4 @@
+/** Primary teacher evidence review, evaluation drafts and deliberate grade publication. */
 import { auth, db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs";
@@ -273,7 +274,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
       el("integratedGroupInspectorDetails").open=false;
       el("integratedGroupInspectorDetails").ontoggle=()=>{
         if(el("integratedGroupInspectorDetails").open&&!el("integratedGroupInspectorFrame").getAttribute("src"))
-          el("integratedGroupInspectorFrame").src="temp-grading.html?"+params;
+          el("integratedGroupInspectorFrame").src="group-inspector.html?"+params;
       };
       void groupSummary(student,taskId,session);
     }

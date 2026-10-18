@@ -1,3 +1,4 @@
+/** Unified review inbox for legacy receipts and committed evidence. */
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,getDocs,query,orderBy,limit,onSnapshot}
@@ -89,10 +90,11 @@ function refresh(){
   render();
 }
 onAuthStateChanged(auth,async user=>{
+  const end = window.beginLoading?.("Loading review inbox…", el("submissionFeed")) || (() => {});
   for(const stop of unsubscribe)stop();unsubscribe=[];snapshots={legacy:[],v2:[]};
   if(!user||!staff.has(String(user.email||"").toLowerCase())){
     el("submissionStatus").textContent="Authorized teacher sign-in required.";
-    el("submissionFeed").replaceChildren();return;
+    el("submissionFeed").replaceChildren();end();return;
   }
   try{
     const [roster,taskDocs]=await Promise.all([
@@ -102,14 +104,15 @@ onAuthStateChanged(auth,async user=>{
     students=new Map(roster.docs.map(d=>[d.id,d.data()]));
     assessments=new Map(taskDocs.docs.map(d=>[d.id,d.data()]));
     const request=(key,source,dateField)=>{
+      const loaded = window.beginLoading?.("Loading submitted evidence…") || (() => {});
       const stop=onSnapshot(query(collection(db,source),orderBy(dateField,"desc"),limit(200)),
-        snap=>{snapshots[key]=snap.docs.map(d=>({id:d.id,...d.data()}));refresh();},
-        error=>{el("submissionStatus").textContent=source+" unavailable: "+error.message;});
-      unsubscribe.push(stop);
+        snap=>{snapshots[key]=snap.docs.map(d=>({id:d.id,...d.data()}));refresh();loaded();},
+        error=>{loaded();el("submissionStatus").textContent=source+" unavailable: "+error.message;});
+      unsubscribe.push(()=>{loaded();stop();});
     };
     request("legacy","student_submissions","submittedAt");
     request("v2","assessment_evidence","updatedAt");
-  }catch(error){el("submissionStatus").textContent="Could not load review inbox: "+error.message;}
+  }catch(error){el("submissionStatus").textContent="Could not load review inbox: "+error.message;}finally{end();}
 });
 el("submissionSearch").addEventListener("input",render);
 el("submissionSection").addEventListener("change",render);

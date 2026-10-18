@@ -1,3 +1,41 @@
+/** Shared concurrent-job loading status, public help and privacy-conscious issue submission. */
+const loadingJobs = new Map();
+const earlyLoadingStatus = document.createElement("div");
+earlyLoadingStatus.id = "subtleLoader";
+earlyLoadingStatus.setAttribute("role", "status");
+earlyLoadingStatus.setAttribute("aria-live", "polite");
+earlyLoadingStatus.style.cssText = "position:fixed;right:1rem;bottom:1rem;z-index:9999;background:#0f172a;color:#fff;border:1px solid #64748b;border-radius:0.5rem;padding:1rem;max-width:90vw";
+const earlyLabel = document.createElement("span"); earlyLabel.id = "subtleLoaderText";
+earlyLoadingStatus.append(earlyLabel); document.documentElement.append(earlyLoadingStatus);
+let legacyLoading = null;
+let loaderSequence = 0;
+window.beginLoading = function(message = "Loading…", region) {
+  const token = ++loaderSequence;
+  loadingJobs.set(token, {message:String(message), region});
+  region?.setAttribute("aria-busy", "true");
+  updateLoadingStatus();
+  let ended = false;
+  return () => {
+    if (ended) return;
+    ended = true; loadingJobs.delete(token);
+    if (region && ![...loadingJobs.values()].some(job => job.region === region)) region.removeAttribute("aria-busy");
+    updateLoadingStatus();
+  };
+};
+function updateLoadingStatus() {
+  const loader = document.getElementById("subtleLoader");
+  if (!loader) return;
+  const jobs = [...loadingJobs.values()];
+  const message = jobs.at(-1)?.message || legacyLoading;
+  loader.hidden = !message;
+  loader.classList.toggle("hidden", !message);
+  loader.style.display = message ? "flex" : "none";
+  loader.style.opacity = message ? "1" : "0";
+  loader.style.transform = "none";
+  document.getElementById("subtleLoaderText").textContent = message || "Ready";
+}
+const endPageLoading = window.beginLoading("Opening page…");
+window.addEventListener("load", endPageLoading, {once:true});
 document.addEventListener("DOMContentLoaded", () => {
   const loaderHTML = `
         <!-- Unified nonblocking status loader -->
@@ -96,6 +134,8 @@ document.addEventListener("DOMContentLoaded", () => {
                       <div><label for="bug-actual" class="block text-[10px] text-slate-300 font-bold mb-1">What happened</label>
                         <textarea id="bug-actual" rows="2" maxlength="1400" class="w-full bg-slate-900 text-white border border-slate-600 rounded p-2 text-sm"></textarea></div>
                     </div>
+                    <label class="block text-xs text-slate-200"><input id="bug-attach-diagnostics" type="checkbox"> Attach my optional diagnostic actions from this page (administrator reports only)</label>
+                    <p class="text-xs text-slate-300">Enable diagnostic history in Help first. Only module/action identifiers are attached; never typed content, source code or credentials. Nothing is attached unless you tick the box.</p>
                     <p class="text-xs text-amber-200">Screenshots may contain names or other personal information. Crop or redact anything not necessary to diagnose the issue.</p>
                     <div class="bg-slate-900/50 p-3 rounded border border-slate-700 border-dashed">
                         <div class="flex justify-between items-center mb-2">
@@ -124,37 +164,26 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
     `;
 
+  earlyLoadingStatus.remove();
   document.body.insertAdjacentHTML("beforeend", loaderHTML);
+  document.documentElement.append(document.getElementById("subtleLoader"));
+  updateLoadingStatus();
+  if (document.readyState === "complete") endPageLoading();
+  import("../help/page-help.mjs?v=2026.10.19.2").then(module => module.mountHelp()).catch(() => {});
   bindBugReporterLogic();
 });
 
 // ==========================================
 // GLOBAL LOADER FUNCTIONS
 // ==========================================
-let subtleLoaderHideTimer = null;
-let subtleLoaderEnterTimer = null;
 window.showSubtleLoader = function (message = "Processing...") {
-  const loader = document.getElementById("subtleLoader");
-  const label = document.getElementById("subtleLoaderText");
-  if (!loader || !label) return;
-  clearTimeout(subtleLoaderHideTimer);
-  clearTimeout(subtleLoaderEnterTimer);
-  label.textContent = String(message);
-  loader.classList.remove("hidden");
-  subtleLoaderEnterTimer = setTimeout(() => {
-    loader.classList.remove("translate-y-20", "opacity-0");
-    loader.classList.add("translate-y-0", "opacity-100");
-  }, 10);
+  legacyLoading = String(message);
+  updateLoadingStatus();
 };
 
 window.hideSubtleLoader = function () {
-  const loader = document.getElementById("subtleLoader");
-  if (!loader) return;
-  clearTimeout(subtleLoaderEnterTimer);
-  clearTimeout(subtleLoaderHideTimer);
-  loader.classList.remove("translate-y-0", "opacity-100");
-  loader.classList.add("translate-y-20", "opacity-0");
-  subtleLoaderHideTimer = setTimeout(() => loader.classList.add("hidden"), 250);
+  legacyLoading = null;
+  updateLoadingStatus();
 };
 
 // ==========================================
@@ -176,11 +205,17 @@ function syncReportAudience() {
     select.disabled = false;
     note.textContent = "Only the selected staff role and you can view the report.";
   }
+  const attachment = document.getElementById("bug-attach-diagnostics");
+  if (attachment) {
+    attachment.disabled = select.value !== "admin";
+    if (attachment.disabled) attachment.checked = false;
+  }
 }
 
 function bindBugReporterLogic() {
   window.bugImages = [];
   document.getElementById("bug-category").addEventListener("change", syncReportAudience);
+  document.getElementById("bug-audience").addEventListener("change", syncReportAudience);
   syncReportAudience();
   const fileInput = document.getElementById("bug-image-upload");
   const modal = document.getElementById("bug-modal");
@@ -416,7 +451,7 @@ window.finalizeBugReport = async function () {
       title,
       description,
       images: window.bugImages,
-      urlContext: window.location.href,
+      urlContext: window.location.origin + window.location.pathname,
       // Keep contact identifiers out of publicly readable issue documents.
       // Notifications and ownership use the authenticated Firebase UID.
       reporterEmail: "",
@@ -434,6 +469,17 @@ window.finalizeBugReport = async function () {
     };
 
     const receipt = await addDoc(collection(window.db, "issues"), payload);
+    let diagnosticWarning = "";
+    if (audience === "admin" && document.getElementById("bug-attach-diagnostics")?.checked) {
+      const trail = window.adminervaActivity?.diagnostics();
+      if (trail?.actions.length) {
+        try {
+          const {setDoc, doc, Timestamp} = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
+          await setDoc(doc(window.db, "issue_diagnostics", receipt.id), {ownerUid:currentUser.uid, ...trail, createdAt:serverTimestamp(), expiresAt:Timestamp.fromMillis(Date.now() + 30 * 86400000)});
+        } catch { diagnosticWarning = " The report was saved, but its optional diagnostic trail could not be attached."; }
+      }
+    }
+    document.getElementById("bug-attach-diagnostics").checked = false;
 
     // Reset Form
     document.getElementById("bug-title").value = "";
@@ -450,7 +496,7 @@ window.finalizeBugReport = async function () {
     document.getElementById("bug-modal").classList.add("hidden");
 
     window.showSubtleLoader("Report received. Reference: " + receipt.id.slice(0,10));
-    alert("Report submitted successfully for " + (audience === "admin" ? "administrators" : "teachers") + ". Reference: " + receipt.id.slice(0,10) + ". Check My reports for its status.");
+    alert("Report submitted successfully for " + (audience === "admin" ? "administrators" : "teachers") + ". Reference: " + receipt.id.slice(0,10) + ". Check My reports for its status." + diagnosticWarning);
     setTimeout(() => window.hideSubtleLoader(), 3000);
   } catch (error) {
     console.error(error);

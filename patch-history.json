@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "2026.10.19.2",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-19",
+      "title": "Help, learning activity and clearer analytics",
+      "summary": "Public tutorials, optional activity sharing, separate learning and system monitoring, and clearer loading feedback.",
+      "changes": [
+        {"type":"New", "area":"Help and tutorials", "text":"Open a page tutorial or browse the public Adminerva Wiki. Wiki and patch-history links are available throughout the website, including public pages."},
+        {"type":"Updated", "area":"Analytics", "text":"Teacher Analytics focuses on learning; Administration Analytics focuses on system monitoring and support. Administrators select configured instructors in the teacher view."},
+        {"type":"New", "area":"Activity preferences", "text":"Choose whether to share module visits and approximate active time. Optional diagnostic actions attach to administrator reports only when explicitly selected. Activity observations never become assessment grades."},
+        {"type":"Fixed", "area":"Loading", "text":"Account checks and key learning, review and analytics processes keep a visible status while overlapping work finishes."},
+        {"type":"Revised", "area":"Navigation", "text":"Teacher Analytics, Group Inspector and the older Activity Grader use clearer page names. Existing links continue to open the matching workspace."}
+      ]
+    },
+    {
       "version": "2026.10.19.1",
       "status": "published",
       "public": true,

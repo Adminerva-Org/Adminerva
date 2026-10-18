@@ -1,3 +1,4 @@
+/** Student submissions, practice progress and isolated code workspaces: assessments. */
 import { db, auth } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import {asDate,assessmentStatus,assessmentTargetDetails} from "./assessment-state.mjs?v=2026.10.18.4";
@@ -34,6 +35,7 @@ function escapeHTML(str) {
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) return;
+  const end = window.beginLoading?.("Loading assessments and evidence…", document.getElementById("assignmentsFeed")) || (() => {});
 
   // ✨ UX FIX 1: Remove the white screen instantly!
   const pageBody = document.getElementById("pageBody");
@@ -96,11 +98,13 @@ onAuthStateChanged(auth, async (user) => {
     }
   } catch (error) {
     console.error("Error identifying student section:", error);
-  }
+  } finally { end(); }
 });
 
 async function fetchAssessments() {
   if (!currentSection) return;
+  const end = window.beginLoading?.("Loading assessment records…") || (() => {});
+  try {
   const container = document.getElementById("assignmentsFeed");
 
   const studentProfile = userProfiles.find((p) => p.section === currentSection);
@@ -207,6 +211,7 @@ async function fetchAssessments() {
     container.innerHTML = `<div class="p-5 text-center text-red-500 font-bold border border-red-200 bg-red-50 rounded-xl">Failed to load assignments. Check console.</div>`;
     console.error("Fetch Error:", error);
   }
+  } finally { end(); }
 }
 
 function renderAssessments() {

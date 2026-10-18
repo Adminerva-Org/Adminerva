@@ -1,4 +1,6 @@
+/** Verified account admission, workspace visibility and sign-out routing. */
 import { auth, db } from "./firebase-core.js";
+import {staffRole} from "./staff-role.mjs?v=2026.10.19.2";
 import {
   onAuthStateChanged,
   signOut,
@@ -20,6 +22,8 @@ const SUPER_ADMIN_EMAIL = "babaynike2013@gmail.com".toLowerCase();
 const TEACHER_EMAIL = "josephsixson@mcstayuman.edu.ph".toLowerCase();
 
 onAuthStateChanged(auth, async (user) => {
+  const endLoading = window.beginLoading?.("Checking account and page access…") || (() => {});
+  try {
   if (!user) {
     if (!isLoginPage) window.location.href = "login.html";
     return;
@@ -57,8 +61,8 @@ onAuthStateChanged(auth, async (user) => {
 
   // 2. Determine absolute hardware role based strictly on the verified email
   let actualRole = "student";
-  if (userEmail === SUPER_ADMIN_EMAIL) actualRole = "superadmin";
-  else if (userEmail === TEACHER_EMAIL) actualRole = "teacher";
+  if (staffRole(user) === "admin") actualRole = "superadmin";
+  else if (staffRole(user) === "teacher") actualRole = "teacher";
 
   let activeRole = actualRole;
 
@@ -107,6 +111,7 @@ onAuthStateChanged(auth, async (user) => {
       : "";
     emailDisplay.textContent = userEmail + mockNotice;
   }
+  } finally { endLoading(); }
 });
 
 // Centralized Sign Out

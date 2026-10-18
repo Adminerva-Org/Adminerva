@@ -1,3 +1,4 @@
+/** Regression coverage: Adminerva module: review lifecycle.smoke. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFile,mkdir,stat,writeFile} from "node:fs/promises";
@@ -114,13 +115,15 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
       await context.addInitScript(role=>{
         if(location.protocol!=="http:")return;
         localStorage.setItem("fixture-role",role);
-        localStorage.setItem("Adminerva_Role",role==="teacher"?"teacher":"student");
+        localStorage.setItem("Adminerva_Role",role==="teacher"?"teacher":role==="admin"?"superadmin":"student");
         if(role==="teacher")localStorage.setItem("Adminerva_gemini_token","fixture-key-never-valid-in-production");
       },role);
       await context.route("**/*",async route=>{
         const url=route.request().url(),parsed=new URL(url);
         if(assets.has(url))return route.fulfill({contentType:"text/javascript",body:assets.get(url)});
         if(parsed.hostname==="cdn.tailwindcss.com")return route.fulfill({contentType:"text/javascript",body:tailwind});
+        if(url==="https://cdn.jsdelivr.net/npm/chart.js")return route.fulfill({contentType:"text/javascript",body:"window.Chart=class { destroy(){} };"});
+        if(url==="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css")return route.fulfill({contentType:"text/css",body:""});
         if(parsed.hostname==="api.github.com"){
           let fixture=githubFixture(url);if(omitSavedCommit&&Array.isArray(fixture))fixture=fixture.filter(commit=>commit.sha!==ownSha);
           return route.fulfill({json:fixture});
@@ -315,6 +318,57 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     assert.equal((await browserRecord(peer,"practice_scores/alice")).error,"permission-denied");
     await student.goto(origin+"/patch-notes.html");await expect(student.locator("#patchList")).toContainText("Review & Grade");
     validated("private teacher-reviewed practice points, opt-in alias class snapshot and public patch history");
+    await student.goto(origin+"/student-xml-lab.html");
+    await expect(student.locator("#activity-save")).toBeEnabled();
+    const beforeConsent=await browserRecord(student,"activity_preferences/"+accounts.alice.uid);
+    assert.equal(beforeConsent.exists,false);
+    await student.locator("#page-help-open").click();
+    await student.locator("#page-help-dialog details").evaluate(details=>{details.open=true;});
+    await student.locator("#activity-share").check();await student.locator("#activity-diagnostics").check();await student.locator("#activity-save").click();
+    await waitRecord(student,"activity_preferences/"+accounts.alice.uid,"enabled",true);
+    await student.locator("#page-help-dialog").getByText("Close help",{exact:true}).click();
+    await student.locator("#xmlRender").click();
+    await student.evaluate(()=>{window.fixtureLoading=[window.beginLoading("First operation",document.querySelector("main")),window.beginLoading("Second operation",document.querySelector("main"))];window.hideSubtleLoader();});
+    await expect(student.locator("#subtleLoader")).toBeVisible();
+    await student.evaluate(()=>window.fixtureLoading[0]());await expect(student.locator("#subtleLoaderText")).toContainText("Second operation");
+    assert.equal(await student.locator("main").getAttribute("aria-busy"),"true");
+    await student.evaluate(()=>{window.fixtureLoading[1]();window.fixtureLoading[1]();});await expect(student.locator("#subtleLoader")).toBeHidden();
+    assert.equal(await student.locator("main").getAttribute("aria-busy"),null);
+    await student.locator('[title="Report Issue"]').click();
+    await student.locator("#bug-title").fill("Fixture XML preview problem");await student.locator("#bug-description").fill("After Run, the fixture preview needs investigation.");
+    await student.locator("#bug-attach-diagnostics").check();await student.locator("#submit-bug-btn").click();
+    await expect(student.locator("#bug-modal")).toBeHidden();
+    const issueId=await student.evaluate(async()=>{
+      const {db,auth}=await import("/js/core/firebase-core.js");const {getDocs,collection,query,where}=await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
+      const reports=await getDocs(query(collection(db,"issues"),where("reporterUid","==",auth.currentUser.uid)));return reports.docs[0].id;
+    });
+    const admin=await (await newIdentity("admin")).newPage();
+    await admin.goto(origin+"/admin-analytics.html");await expect(admin.locator("#admin-analytics-status")).toContainText("Refreshed");
+    await expect(admin.locator("#raw-events")).toContainText("xml-lab");
+    const trail=await browserRecord(admin,"issue_diagnostics/"+issueId);assert.ok(trail.data.actions.includes("run"));
+    assert.equal((await browserRecord(teacher,"issue_diagnostics/"+issueId)).error,"permission-denied");
+    await admin.locator("#roster-sections").selectOption(["fixture-11-A"]);await admin.locator("#save-roster").click();await expect(admin.locator("#admin-analytics-status")).toContainText("Assignment saved");
+    await admin.locator("#publish-engagement").click();await expect(admin.locator("#admin-analytics-status")).toContainText("Teacher summary refreshed");
+    await admin.screenshot({path:path.join(output,"admin-analytics.png"),fullPage:true});
+    await teacher.goto(origin+"/reporeviewDashboard.html?range=week#engagement-heading");
+    await expect(teacher).toHaveURL(origin+"/teacher-analytics.html?range=week#engagement-heading");
+    await expect(teacher.locator("#analytics-teacher")).toBeDisabled();await expect(teacher.locator("#engagement-rows")).toContainText("alice");
+    assert.equal(await teacher.locator("#bug-count").count(),0);
+    await teacher.screenshot({path:path.join(output,"teacher-analytics.png")});
+    await admin.goto(origin+"/teacher-analytics.html");await expect(admin.locator("#analytics-teacher")).toBeEnabled();
+    await expect(admin.locator("#engagement-rows")).toContainText("alice");
+    await admin.goto(origin+"/issues.html?issue="+issueId);await expect(admin.locator("#issue-diagnostics")).toContainText("xml-lab → run");
+    await teacher.goto(origin+"/admin-analytics.html");await expect(teacher.locator("#admin-analytics-status")).toContainText("No monitoring records were requested");await expect(teacher.locator("#operations")).toBeHidden();
+    await student.locator("#page-help-open").click();await student.locator("#activity-share").uncheck();await student.locator("#activity-save").click();await waitRecord(student,"activity_preferences/"+accounts.alice.uid,"enabled",false);
+    await admin.goto(origin+"/admin-analytics.html");await expect(admin.locator("#admin-analytics-status")).toContainText("Refreshed");await admin.locator("#publish-engagement").click();await expect(admin.locator("#admin-analytics-status")).toContainText("Teacher summary refreshed");
+    const summary=await browserRecord(admin,"analytics_views/"+accounts.teacher.email);assert.deepEqual(summary.data.rows,[]);
+    const guest=await (await newIdentity("guest")).newPage();const guestRequests=[];guest.on("request",request=>guestRequests.push(request.url()));
+    await guest.goto(origin+"/wiki.html");await expect(guest.locator("h1")).toContainText("Adminerva Wiki");await guest.locator("#page-help-open").click();await expect(guest.locator("#activity-save")).toBeDisabled();
+    assert.ok(!guestRequests.some(url=>url.includes("firebase")||url.includes("activity_events")),"Guest help must not initialize tracking or Firebase");
+    await guest.locator("#page-help-dialog").getByText("Close help",{exact:true}).click();
+    await guest.setViewportSize({width:390,height:844});await expect.poll(()=>guest.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await guest.screenshot({path:path.join(output,"public-wiki-mobile.png"),fullPage:true});
+    validated("opt-in minimized activity, admin-only report trails, teacher snapshots, consent refresh, public wiki, legacy redirect and concurrent loaders");
     assert.deepEqual(blockedRequests,[]);assert.deepEqual(errors,[]);
     await writeFile(path.join(output,"result.json"),JSON.stringify({projectId,backend:"real Auth + Firestore emulators",sdkVersion:"10.13.0",externalServices:"GitHub and Gemini fixtures",milestones,modelRequests,errors,blockedRequests},null,2));
     console.log(JSON.stringify({passed:milestones,artifacts:output}));

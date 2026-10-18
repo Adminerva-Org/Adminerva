@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<!-- Administrator operations dashboard. Academic performance stays in Teacher Analytics. -->
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Administration Analytics · Adminerva</title><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.19.2"></head>
+<body class="bg-slate-50 text-slate-900">
+  <div id="adminerva-nav" data-module="admin" data-page="analytics"></div>
+  <main class="max-w-6xl mx-auto p-5 space-y-6">
+    <h1 class="text-3xl font-extrabold">Administration analytics</h1>
+    <p>System usage and support, separate from <a class="underline" href="teacher-analytics.html">Teacher Analytics</a>. No scores, grades or leaderboards are changed here.</p>
+    <p id="admin-analytics-status" role="status">Checking administrator access…</p>
+    <div id="operations" hidden class="space-y-6">
+      <button id="refresh-analytics" class="bg-cyan-800 text-white p-3 rounded">Refresh monitoring</button>
+      <section class="grid sm:grid-cols-4 gap-4" aria-label="Observed activity in the last seven days">
+        <div class="p-4 bg-white border rounded">Observed students <strong id="usage-count" class="block text-2xl">—</strong></div>
+        <div class="p-4 bg-white border rounded">Returning on 2+ UTC days <strong id="return-count" class="block text-2xl">—</strong></div>
+        <div class="p-4 bg-white border rounded">Approximate active time <strong id="active-time" class="block text-2xl">—</strong></div>
+        <div class="p-4 bg-white border rounded">Unresolved bugs in sample <strong id="bug-count" class="block text-2xl">—</strong><a href="issues.html" class="underline">Open reports</a></div>
+      </section>
+      <section class="p-5 bg-white border rounded"><h2 class="font-bold text-xl">Module activity</h2><p>Optional, client-reported foreground use, not attendance, productivity or learning mastery. Idle time, hidden tabs and missing consent are not counted. Unsent final intervals can be lost.</p><table class="w-full mt-3"><thead><tr><th scope="col" class="text-left">Module</th><th scope="col" class="text-left">Active time</th></tr></thead><tbody id="module-usage"></tbody></table></section>
+      <details class="p-5 bg-white border rounded"><summary class="font-bold cursor-pointer">Advanced: diagnostic activity sample</summary><p>Latest 100 of up to 500 records. Account IDs are private operational data. This is an allowlisted action timeline, not a session recording; no text, code or clicked labels are collected.</p><div class="overflow-x-auto"><table class="w-full"><thead><tr><th>Time</th><th>Account ID</th><th>Module</th><th>Action</th><th>Seconds</th></tr></thead><tbody id="raw-events"></tbody></table></div></details>
+      <section class="p-5 bg-white border rounded space-y-3"><h2 class="font-bold text-xl">Teacher learning-activity access</h2><p>Configure the currently supported instructor account. Additional instructors require a reviewed authorization mapping first. Only assigned sections enter the coarse summary; no diagnostic trails or bug reports are shared.</p><p>Instructor: josephsixson@mcstayuman.edu.ph</p><label for="roster-sections" class="block font-bold">Assigned sections (select multiple as needed)</label><select id="roster-sections" multiple size="5" class="border p-3 w-full"></select><button id="save-roster" class="border rounded p-3">Save assignment</button> <button id="publish-engagement" class="bg-cyan-800 text-white rounded p-3">Refresh teacher summary</button><p>Saving an assignment does not rewrite an existing snapshot. Refresh the summary after changing sections or consent; the new snapshot replaces the old one.</p></section>
+      <section class="p-5 bg-white border rounded space-y-3"><h2 class="font-bold text-xl">Retention and cleanup</h2><p>Events and optional report trails carry a 30-day expiry. Expiry timestamps alone do not delete data. Automatic deletion needs separately approved Firestore TTL configuration. Until enabled, run cleanup regularly and repeat when batch limits are reached; arrange account-deletion requests with the administrator. Preferences and latest teacher summaries persist separately.</p><button id="purge-events" class="border border-rose-700 rounded p-3">Delete expired monitoring records</button></section>
+    </div>
+  </main>
+  <script src="js/core/adminerva-loader.js?v=2026.10.19.2"></script><script src="js/core/adminerva-nav.js?v=2026.10.19.2"></script><script type="module" src="js/analytics/admin-analytics.mjs?v=2026.10.19.2"></script>
+</body></html>

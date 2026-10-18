@@ -1,3 +1,4 @@
+/** Practice missions, private progress and personal completion points. */
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,doc,getDocs,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
@@ -87,6 +88,8 @@ async function syncCourse(courseId){
   }finally{syncing.delete(courseId)}
 }
 async function loadProgress(){
+  const end = window.beginLoading?.("Loading practice progress…") || (() => {});
+  try {
   const loadVersion=++progressLoadVersion;
   const uid=user.uid;
   const pending=[];
@@ -123,6 +126,7 @@ async function loadProgress(){
     const mission=course?.missions.find(m=>m.id===params.get("mission"));
     if(mission)openMission(course,mission);
   }
+  } finally { end(); }
 }
 function renderCourses(){
   const list=el("practiceCourseList");

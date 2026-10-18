@@ -1,6 +1,8 @@
+/** Role-separated report feed, triage and optional admin-only diagnostic trails. */
 import { db, auth } from "../core/firebase-core.js";
 import {
   collection,
+  getDoc,
   getDocs,
   doc,
   updateDoc,
@@ -15,13 +17,13 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { filterReports, ownsReport } from "./report-filters.mjs";
+import {staffRole} from "./staff-role.mjs?v=2026.10.19.2";
 
 let allIssues = [];
 let currentOpenIssueId = null;
 let currentUserEmail = "";
 
 // Role check
-const trustedStaff = new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
 let isSuperAdmin = false; // Verified auth email; never a localStorage role.
 let isTeacher = false;
 let stopIssueListeners = [];
@@ -75,12 +77,16 @@ function escapeHTML(str) {
 }
 
 onAuthStateChanged(auth, user => {
+  const trailPanel = document.getElementById("issue-diagnostics");
+  if (trailPanel) { trailPanel.textContent = ""; trailPanel.hidden = true; }
   stopIssueListeners.forEach(stop => stop()); stopIssueListeners = [];
   if (user) {
     currentUserEmail = (user.email||"").toLowerCase();
-    isSuperAdmin = currentUserEmail === [...trustedStaff][0];
-    isTeacher = currentUserEmail === [...trustedStaff][1];
+    isSuperAdmin = staffRole(user) === "admin";
+    isTeacher = staffRole(user) === "teacher";
+    document.getElementById("filterAudience")?.querySelector('option[value="admin"]')?.toggleAttribute("hidden", !isSuperAdmin);
     restoreReportFilters();
+    if (!isSuperAdmin && document.getElementById("filterAudience")?.value === "admin") document.getElementById("filterAudience").value = "All";
     fetchIssues();
   } else {
     allIssues = [];
@@ -132,13 +138,17 @@ function fetchIssues() {
     }
   };
   requests.forEach((request,index)=>{
-    stopIssueListeners.push(onSnapshot(request,snapshot=>{
+    const loaded = window.beginLoading?.("Loading permitted reports…", container) || (() => {});
+    const stop = onSnapshot(request,snapshot=>{
       groups[index]=snapshot.docs.map(d=>({id:d.id,...d.data()}));
       refresh();
+      loaded();
     },error=>{
       console.error("Report feed unavailable:",error);
       container.textContent="Failed to load reports permitted for your account.";
-    }));
+      loaded();
+    });
+    stopIssueListeners.push(()=>{loaded();stop();});
   });
 }
 
@@ -233,6 +243,21 @@ window.openIssueModal = async function (id) {
   if (!iss) return;
 
   currentOpenIssueId = id;
+  let diagnosticsPanel = document.getElementById("issue-diagnostics");
+  if (!diagnosticsPanel) {
+    diagnosticsPanel = document.createElement("pre"); diagnosticsPanel.id = "issue-diagnostics";
+    diagnosticsPanel.className = "whitespace-pre-wrap text-xs p-3 bg-slate-100 text-slate-900";
+    document.getElementById("adminControlPanel").after(diagnosticsPanel);
+  }
+  diagnosticsPanel.textContent = ""; diagnosticsPanel.hidden = !isSuperAdmin;
+  if (isSuperAdmin) {
+    const userUid = auth.currentUser.uid;
+    getDoc(doc(db, "issue_diagnostics", id)).then(snapshot => {
+      if (!isSuperAdmin || auth.currentUser?.uid !== userUid || currentOpenIssueId !== id) return;
+      const data = snapshot.data();
+      diagnosticsPanel.textContent = data ? "Optional diagnostic trail (this page only):\n" + data.actions.map((action, index) => (index + 1) + ". " + data.pages[index] + " → " + action).join("\n") : "No diagnostic trail attached.";
+    }).catch(() => { if (isSuperAdmin && currentOpenIssueId === id) diagnosticsPanel.textContent = "Optional diagnostic trail unavailable."; });
+  }
   const dateStr = iss.createdAt
     ? iss.createdAt.toDate().toLocaleString()
     : "Just now";
