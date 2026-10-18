@@ -9,8 +9,8 @@ const {createMonitoringService}=require("./monitoring-service.js");
 initializeApp();
 const db=getFirestore();
 const monitoring=createMonitoringService({db,Timestamp,FieldValue,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users});
-exports.monitoringMaintenance=onSchedule({schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},()=>monitoring.runScheduled());
-exports.activityConsentChanged=onDocumentWritten("activity_preferences/{ownerUid}",event=>monitoring.applyConsentChange(event.params.ownerUid,event.data?.before.data()?.studentId));
+exports.monitoringMaintenance=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},()=>monitoring.runScheduled());
+exports.activityConsentChanged=onDocumentWritten({document:"activity_preferences/{ownerUid}",region:"asia-southeast1",maxInstances:1,concurrency:1,timeoutSeconds:120},event=>monitoring.applyConsentChange(event.params.ownerUid,event.data?.before.data()?.studentId));
 const staffEmails=["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"];
 // Bug reports are always administrator-directed. Legacy reports have admin scope.
 const reportAudience=issue=>issue.category==="Bug"?"admin":issue.audience==="teacher"?"teacher":"admin";

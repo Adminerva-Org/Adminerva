@@ -84,7 +84,7 @@ jobs:
           FIREBASE_AUTH_EMULATOR_HOST: 127.0.0.1:9199
         run: |
           npm ci --prefix functions --no-audit --no-fund
-          node -e "const handlers=require('./functions/index.js'); if(typeof handlers.monitoringMaintenance.run!=='function'||typeof handlers.activityConsentChanged.run!=='function')throw Error('Missing monitoring handlers');"
+          node --test tests/monitoring-deployment.test.cjs
   firestore-security:
     runs-on: ubuntu-latest
     timeout-minutes: 15
