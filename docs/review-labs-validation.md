@@ -4,7 +4,7 @@ Validation uses synthetic accounts and repositories in local demo projects only.
 
 ## Local checks
 
-- 193 JavaScript regressions pass, including new public-release projection, role visibility, stable notification identity, safe routing, explicit suggestion copying, missing checker setup, known-mission point totals, consent/section filtering, tied standings, XML dimension/color sanitization, entity rejection, lesson starter text escaping, complete chunking and source-version drift tests.
+- 196 JavaScript regressions pass, including new public-release projection, role visibility, stable notification identity, safe routing, explicit suggestion copying, missing checker setup, known-mission point totals, consent/section filtering, tied standings, XML dimension/color sanitization, entity rejection, lesson starter text escaping, complete chunking, source-version drift and late-response/unsaved-edit protection tests.
 - 32 Firestore permission regressions pass. New coverage includes owner-only class registration, prevention of self-awarded reviewed points, verified instructor authority, exact reviewed-mission totals, mandatory immutable audit records, and roster-private class snapshots. Existing V2 evidence, protected grade, privacy and history regressions remain included.
 - The extended browser lifecycle passes against actual Auth and Firestore emulators using the application's Firebase SDK 10.13.0. GitHub and evaluation responses are fixtures; unexpected external requests are blocked. Screenshots were visually inspected.
 - Changed JavaScript/module syntax and whitespace checks pass.
