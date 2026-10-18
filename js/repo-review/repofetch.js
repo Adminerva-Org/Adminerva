@@ -437,9 +437,9 @@ window.openGradingModal = async function (studentId, owner, repo) {
     activeTasks.forEach((task) => {
       const taskCardId = `task-card-${studentId}-${task.id}`;
       const gradeRecord = existingGrades[task.id];
-      const isTeacherScore = gradeRecord?.gradeSource === "teacher_manual";
+      const isTeacherScore = ["teacher_manual","teacher_ai_reviewed"].includes(gradeRecord?.gradeSource);
       const isUpToDate =
-        gradeRecord && (gradeRecord.gradedSha === currentStudentSha || isTeacherScore);
+        gradeRecord && (task.schemaVersion===2 || gradeRecord.gradedSha === currentStudentSha || isTeacherScore);
 
       let actionAreaHtml = "";
 
@@ -465,7 +465,7 @@ window.openGradingModal = async function (studentId, owner, repo) {
               <div class="flex items-center justify-end gap-3 bg-gray-50 p-2 rounded border border-gray-200 w-full sm:w-[360px] shadow-inner">
                   <div class="text-2xl font-bold ${scoreColor} leading-none ml-2 w-10 text-center">${gradeRecord.score}</div>
                   <div class="flex-1 min-w-0 border-l border-gray-200 pl-3 ml-1">
-                      <p class="text-[9px] font-bold text-gray-500 uppercase mb-1 tracking-wider">${isTeacherScore ? "Teacher Score" : gradeRecord.provisionalScore ? "Provisional Draft" : "Up to Date"}</p>
+                      <p class="text-[9px] font-bold text-gray-500 uppercase mb-1 tracking-wider">${isTeacherScore ? (gradeRecord.gradeSource === "teacher_ai_reviewed" ? "AI-assisted / teacher reviewed" : "Teacher Score") : gradeRecord.provisionalScore ? "Provisional Draft" : "Up to Date"}</p>
                       ${tagsHtml}
                       <div class="text-[10px] text-gray-700 leading-relaxed max-h-24 overflow-y-auto pr-1 whitespace-pre-wrap">${escapeHTML(cleanGradeFeedback(gradeRecord.feedback))}</div>
                   </div>
@@ -476,11 +476,11 @@ window.openGradingModal = async function (studentId, owner, repo) {
                         <div class="w-6 h-3.5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-blue-500"></div>
                       </label>
                   </div>
-                  ${isTeacherScore ? "" : `<button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${task.id}', '${currentStudentSha}')" class="text-gray-400 hover:text-blue-500 transition px-1 shrink-0 border-l border-gray-200 pl-2 ml-1" title="Force Re-evaluate">🔄</button>`}
+                  ${isTeacherScore || task.schemaVersion===2 ? "" : `<button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${task.id}', '${currentStudentSha}')" class="text-gray-400 hover:text-blue-500 transition px-1 shrink-0 border-l border-gray-200 pl-2 ml-1" title="Force Re-evaluate">🔄</button>`}
               </div>
           `;
       } else if(task.schemaVersion===2){
-        actionAreaHtml = `<span class="text-xs text-amber-800 font-semibold">V2: approve the assessment checkpoint, then use Manual Review &amp; Score.</span>`;
+        actionAreaHtml = `<span class="text-xs text-amber-800 font-semibold">V2: review the checkpoint, then use Review &amp; AI Grade below.</span>`;
       } else {
         actionAreaHtml = `
               <button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${task.id}', '${currentStudentSha}')" class="${gradeRecord ? "bg-amber-500 hover:bg-amber-600" : "bg-blue-600 hover:bg-blue-700"} text-white px-4 py-1.5 rounded text-xs font-bold transition shadow-sm whitespace-nowrap flex items-center gap-2">
@@ -518,13 +518,14 @@ window.openGradingModal = async function (studentId, owner, repo) {
         const manual = document.createElement("button");
         manual.type = "button";
         manual.className = "bg-white hover:bg-amber-50 text-amber-900 border border-amber-300 rounded-lg px-3 py-2 text-xs font-bold";
-        manual.textContent = "Manual Review & Score";
+        manual.textContent = task.schemaVersion===2 ? "Review & AI Grade" : "Manual Review & Score";
         manual.addEventListener("click", () => {
           if (typeof window.openManualGradeReview !== "function") {
             alert("Manual grading tools are still loading. Refresh and try again.");
             return;
           }
           const diagnostic = window.AdminervaGradingDiagnostics?.get(studentId + ":" + task.id) || "";
+          if(task.schemaVersion===2)window.closeGradingModal();
           window.openManualGradeReview({ studentId, taskId: task.id, owner, repo, diagnostic });
         });
         tools.append(manual);
@@ -645,11 +646,11 @@ window.openBulkGradeModal = async function () {
       }
     });
 
+    // V2 grading is pinned to approved evidence. Never feed V2 into the legacy bulk checker.
+    activeTasks=activeTasks.filter(t=>t.schemaVersion!==2);
     if (activeTasks.length === 0) {
       window.hideSubtleLoader();
-      return alert(
-        `No active assignments found deployed to ${currentClassSection}.`,
-      );
+      return alert("No legacy assessments available for bulk Auto-Grade. Use the Assessment V2 Review & Grade queue above for approved checkpoint-aware suggestions.");
     }
 
     const select = document.getElementById("bulkAssessmentSelect");
