@@ -4,6 +4,8 @@ import {doc,getDoc,getDocs,setDoc,updateDoc,collection,query,where,serverTimesta
 import {parseRepository,normalizeSelection,evidenceSelectionGuidance,detectedAuthor,attributionLabel,claimDocumentId,validSha}
   from "../repo-review/services/assessment-evidence.mjs?v=2026.10.18.1";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "../repo-review/services/commit-history.mjs";
+import {studentMayChangeEvidence} from "../repo-review/services/evidence-lifecycle.mjs";
+import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs";
 
 const el=id=>document.getElementById(id);
 let context=null,commits=[],selected=new Set(),checkpoint="",claims=new Map(),saved=null,loadSequence=0;
@@ -37,7 +39,10 @@ function contextForStudent(){
 }
 function render(){
   const list=el("evidenceCommitList");list.replaceChildren();
-  el("evidenceSubmit").disabled=Boolean(saved&&saved.status!=="submitted");
+  const editable=studentMayChangeEvidence(saved);
+  el("evidenceSubmit").disabled=!editable;
+  el("evidenceSubmit").textContent=saved?"Resubmit selected evidence":"Submit selected evidence";
+  el("evidenceWithdraw").disabled=!editable||!saved||saved.status==="withdrawn";
   const guidance=evidenceSelectionGuidance([...selected],checkpoint);
   const summary=el("evidenceSelectionSummary");
   if(summary)summary.textContent=guidance.message;
@@ -50,14 +55,14 @@ function render(){
     const top=add(row,"div","","flex flex-wrap items-center gap-3");
     const includeLabel=add(top,"label","","inline-flex items-center gap-1 text-xs text-slate-700 font-semibold cursor-pointer");
     const check=document.createElement("input");check.type="checkbox";check.checked=selected.has(sha);
-    check.disabled=saved?.status==="approved";check.setAttribute("aria-label","Include commit "+sha.slice(0,12)+" as evidence");
+    check.disabled=!editable;check.setAttribute("aria-label","Include commit "+sha.slice(0,12)+" as evidence");
     check.addEventListener("change",()=>{if(check.checked)selected.add(sha);
       else {selected.delete(sha);if(checkpoint===sha)checkpoint="";}
       render();});includeLabel.append(check);
     add(includeLabel,"span","Include commit");
     const checkpointLabel=add(top,"label","","inline-flex items-center gap-1 text-xs text-indigo-800 font-semibold cursor-pointer");
     const radio=document.createElement("input");radio.type="radio";radio.name="assessmentCheckpoint";
-    radio.checked=checkpoint===sha;radio.disabled=saved?.status==="approved";
+    radio.checked=checkpoint===sha;radio.disabled=!editable;
     radio.setAttribute("aria-label","Set commit "+sha.slice(0,12)+" as project checkpoint");
     radio.addEventListener("change",()=>{checkpoint=sha;selected.add(sha);render();});
     checkpointLabel.append(radio);
@@ -173,7 +178,10 @@ async function load(){
     status(hasOlderCommits
       ?"Showing "+commits.length+" recent commits. Select Load older commits to find historical evidence."
       :"Select relevant commits, choose a project checkpoint, and submit. Reclaims remain pending staff review.");
-    if(saved?.status==="approved")status("An instructor approved this checkpoint. Evidence is locked.");
+    if(saved?.status==="approved")status("Checkpoint approved. Ask your instructor to reopen it before resubmitting or withdrawing. Your current evidence and grade remain protected.");
+    else if(saved?.status==="reopened")status("Your instructor reopened this evidence. Update your selection and resubmit for fresh approval. Previous evidence remains in the audit history.");
+    else if(saved?.status==="withdrawn")status("Evidence withdrawn. You may revise and resubmit; the previous submission remains in the audit history.");
+    else if(saved?.status==="submitted")status("Evidence submitted. Before approval you may revise and resubmit, or withdraw. Resubmission records a new server time and preserves prior evidence.");
     else if(saved?.status==="needs_review")status("Your teacher discovered historical evidence for review. It is not a student submission, and it cannot be edited here.");
   }catch(error){if(seq===loadSequence)status("Unable to load evidence: "+error.message);}
 }
@@ -210,8 +218,8 @@ async function submit(){
     const ref=doc(db,"assessment_evidence",context.profile.id+"_"+context.task.id);
     const common={selectedCommits,checkpointSha,updatedAt:serverTimestamp()};
     if(saved){
-      if(saved.status!=="submitted")throw Error("This evidence has been reviewed and is locked.");
-      await updateDoc(ref,{...common,submittedAt:serverTimestamp()});
+      if(!studentMayChangeEvidence(saved))throw Error("Ask your instructor to reopen approved evidence first.");
+      await changeEvidence(ref,saved,{...common,status:"submitted",submittedAt:serverTimestamp()},"Student resubmitted selected evidence");
     }else{
       await setDoc(ref,{
         ...common,studentId:context.profile.id,assessmentId:context.task.id,
@@ -219,7 +227,7 @@ async function submit(){
         submittedAt:serverTimestamp()
       });
     }
-    saved={...(saved||{}),status:"submitted",selectedCommits,checkpointSha};
+    saved=(await getDoc(ref)).data();
     render();
     status("Evidence submitted for teacher verification. This is not an approved contribution or grade.");
     window.dispatchEvent(new CustomEvent("adminerva:submission-recorded",{
@@ -227,6 +235,18 @@ async function submit(){
     }));
   }catch(error){status("Evidence submission failed: "+error.message);}
 }
+async function withdrawEvidence(){
+  if(!context||!saved||!studentMayChangeEvidence(saved)||saved.status==="withdrawn")return;
+  if(!confirm("Withdraw this evidence from review? Previous commits and submission times remain in the audit history. You can resubmit before approval."))return;
+  try{
+    const ref=doc(db,"assessment_evidence",context.profile.id+"_"+context.task.id);
+    await changeEvidence(ref,saved,{status:"withdrawn"},"Student withdrew evidence before approval");
+    saved=(await getDoc(ref)).data();render();
+    status("Evidence withdrawn; previous submission retained. Revise and resubmit when ready.");
+    window.dispatchEvent(new CustomEvent("adminerva:submission-recorded"));
+  }catch(error){status("Unable to withdraw: "+error.message);}
+}
 window.addEventListener("adminerva:assessment-opened",()=>{void load();});
 el("evidenceSubmit")?.addEventListener("click",()=>{void submit();});
 el("evidenceLoadOlder")?.addEventListener("click",()=>{void loadOlderCommits();});
+el("evidenceWithdraw")?.addEventListener("click",()=>{void withdrawEvidence();});

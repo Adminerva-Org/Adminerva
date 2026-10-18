@@ -252,6 +252,7 @@ async function saveDetails() {
   const active = state.active;
   if (!active) return;
   const grade = active.entry.data;
+  if(active.task.schemaVersion===2)return alert("Use Review & Grade in RepoFetch to adjust V2 scores and feedback against the current approved evidence. Unpublish a released grade before editing.");
   const score = Number(el("gbEditScore").value);
   const feedback = cleanGradeFeedback(el("gbEditFeedback").value);
   const reason = el("gbEditReason").value.trim();
@@ -306,6 +307,11 @@ async function togglePublish(makePublished) {
       const gradeSnap = await tx.get(active.entry.ref);
       if (!gradeSnap.exists()) throw new Error("Grade missing.");
       const previous = gradeSnap.data();
+      const isV2=active.task.schemaVersion===2;
+      if(makePublished&&isV2){
+        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs");
+        await verifyGradePublication(tx,active.entry.ref,previous);
+      }
       if (makePublished && previous.reviewRequired && !el("gbMarkReviewed").checked) {
         throw new Error("Teacher review is required.");
       }
@@ -319,7 +325,7 @@ async function togglePublish(makePublished) {
       });
       tx.update(active.entry.ref, {
         published: makePublished,
-        ...(makePublished ? { reviewRequired: false, reviewedAt: serverTimestamp() } : {})
+        ...(makePublished&&!isV2 ? { reviewRequired: false, reviewedAt: serverTimestamp() } : {})
       });
     });
     closeDetails(); await loadQuarter();
@@ -330,11 +336,12 @@ async function bulkVisibility(makePublished) {
   for (const student of state.rows) for (const task of state.tasks) {
     const entry = state.grades.get(student.id + "::" + task.id);
     if (!entry || !!entry.data.published === makePublished) continue;
+    if(makePublished&&task.schemaVersion===2)continue;
     if (makePublished && entry.data.reviewRequired) continue;
     eligible.push(entry);
   }
   if (!eligible.length) return alert("No eligible grades to " + (makePublished ? "publish" : "unpublish") +
-    ". Drafts requiring teacher review are excluded from bulk publication.");
+    ". V2 grades require individual publication; drafts requiring review are also excluded.");
   if (!confirm((makePublished ? "Publish " : "Unpublish ") + eligible.length +
       " grade(s) for the selected quarter and section?")) return;
   try {

@@ -1,5 +1,7 @@
 # RepoReview Assessment V2 — implementation and rollout
 
+> Current teacher workflow: [Review & Grade](review-grade-workspace.md). Its evidence revision rules require an explicitly approved, coordinated rules/frontend release; no Firebase deployment is performed by this PR.
+
 ## Scope and compatibility
 
 RepoReview, Lesson Review and Admin Hub remain independent main modules. RepoReview now supports an opt-in Version 2 blueprint for **new** assessments. Older assessments, receipts in `student_submissions`, grades in `student_grades`, and activity grades in `activity_grades` are not migrated.

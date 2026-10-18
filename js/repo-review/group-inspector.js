@@ -10,6 +10,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const CACHE_VERSION = 8; // Changes attribution and rejects mixed legacy cache documents
+const initialScope=new URLSearchParams(location.search);
+if(initialScope.get("embedded")==="1")document.getElementById("adminerva-nav")?.remove();
 
 let repoGroups = {};
 let studentStatsMap = {};
@@ -68,6 +70,8 @@ async function loadSections() {
           `<option value="${escapeHTML(sec)}">${escapeHTML(sec)}</option>`,
         ),
       );
+    if([...select.options].some(option=>option.value===initialScope.get("section")))
+      select.value=initialScope.get("section");
   } catch (e) {
     console.error(e);
   }

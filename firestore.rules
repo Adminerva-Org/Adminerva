@@ -7,10 +7,10 @@ service cloud.firestore {
     // Verified Firebase Auth identity, never the browser's simulated role.
     // Migrate this temporary email mapping to Firebase custom claims later.
     function isAdmin() {
-      return signedIn() && request.auth.token.email.lower() == "babaynike2013@gmail.com";
+      return signedIn() && request.auth.token.email_verified == true && request.auth.token.email.lower() == "babaynike2013@gmail.com";
     }
     function isTeacher() {
-      return signedIn() && request.auth.token.email.lower() == "josephsixson@mcstayuman.edu.ph";
+      return signedIn() && request.auth.token.email_verified == true && request.auth.token.email.lower() == "josephsixson@mcstayuman.edu.ph";
     }
     function isInstructor() {
       return isAdmin() || isTeacher();
@@ -37,8 +37,8 @@ service cloud.firestore {
     }
 
     // Administrators retain existing system-wide maintenance privileges.
-    match /{document=**} {
-      allow read, write: if isAdmin();
+    match /{collection}/{document=**} {
+      allow read, write: if isAdmin() && collection != "assessment_evidence" && collection != "student_grades";
     }
     // Teachers retain their existing academic workflow permissions, but the
     // catch-all must not override private report or notification rules.
@@ -49,7 +49,9 @@ service cloud.firestore {
         collection != "notification_history" &&
         collection != "commit_reclaims" &&
         collection != "commit_claim_decisions" &&
-        collection != "commit_claim_conflicts";
+        collection != "commit_claim_conflicts" &&
+        collection != "assessment_evidence" &&
+        collection != "student_grades";
     }
 
     match /students/{studentId} {
@@ -72,6 +74,36 @@ service cloud.firestore {
     }
 
     match /student_grades/{gradeId} {
+      function v2Grade(data) {
+        let taskId = data.get("taskId", "");
+        return taskId is string && taskId != "" &&
+          exists(/databases/$(database)/documents/assessments/$(taskId)) &&
+          get(/databases/$(database)/documents/assessments/$(taskId)).data.get("schemaVersion",1) == 2;
+      }
+      function currentEvidence(data) {
+        let evidence = getAfter(/databases/$(database)/documents/assessment_evidence/$(gradeId)).data;
+        return evidence.status == "approved" && data.studentId == evidence.studentId &&
+          data.taskId == evidence.assessmentId && data.gradedSha == evidence.approvedCheckpointSha &&
+          data.evidenceRevision == evidence.get("revision",0) &&
+          data.manuallyAdjusted == true && data.reviewRequired == false &&
+          data.reviewedBy is string && data.teacherReviewNote is string &&
+          data.teacherReviewNote.size() > 0 && data.score is number && data.maxScore is number &&
+          data.maxScore == get(/databases/$(database)/documents/assessments/$(data.taskId)).data.maxScore &&
+          data.score >= 0 && data.score <= data.maxScore;
+      }
+      allow read: if isInstructor();
+      allow create: if isInstructor() && (!v2Grade(request.resource.data) ||
+        (request.resource.data.published == false && currentEvidence(request.resource.data)));
+      allow update: if isInstructor() && (
+        (!v2Grade(resource.data) && !v2Grade(request.resource.data)) ||
+        (request.resource.data.studentId == resource.data.studentId &&
+         request.resource.data.taskId == resource.data.taskId &&
+         ((resource.data.published == true && request.resource.data.published == false &&
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(["published"])) ||
+          (resource.data.published == false && currentEvidence(request.resource.data) &&
+           (request.resource.data.published == false ||
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(["published"]))))));
+      allow delete: if isInstructor() && !v2Grade(resource.data);
       // Student queries must constrain BOTH studentId and published == true.
       // Do not infer privacy from frontend-only published checks.
       allow read: if signedIn() &&
@@ -84,10 +116,21 @@ service cloud.firestore {
     // V2 assessment evidence is student-proposed until reviewed by staff.
     // Firestore cannot authenticate Git commits or prove push time. Never
     // interpret a student-written SHA as verified authorship or a final grade.
+    function shaAt(commits,offset) {
+      return commits.size() <= offset ||
+        (commits[offset] is string && commits[offset].matches("^[a-fA-F0-9]{40}$"));
+    }
+    function validEvidenceCommits(commits) {
+      return commits is list && commits.size() > 0 && commits.size() <= 20 &&
+        commits.toSet().size() == commits.size() &&
+        shaAt(commits,0) && shaAt(commits,1) && shaAt(commits,2) && shaAt(commits,3) &&
+        shaAt(commits,4) && shaAt(commits,5) && shaAt(commits,6) && shaAt(commits,7) &&
+        shaAt(commits,8) && shaAt(commits,9) && shaAt(commits,10) && shaAt(commits,11) &&
+        shaAt(commits,12) && shaAt(commits,13) && shaAt(commits,14) && shaAt(commits,15) &&
+        shaAt(commits,16) && shaAt(commits,17) && shaAt(commits,18) && shaAt(commits,19);
+    }
     function ownV2Evidence(data) {
       return signedIn() &&
-        data.keys().hasOnly(["studentId","assessmentId","section","repository",
-          "selectedCommits","checkpointSha","status","submittedAt","updatedAt"]) &&
         data.studentId is string && ownsStudentProfile(data.studentId) &&
         data.assessmentId is string &&
         exists(/databases/$(database)/documents/assessments/$(data.assessmentId)) &&
@@ -95,29 +138,94 @@ service cloud.firestore {
         data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
         data.repository == get(/databases/$(database)/documents/students/$(data.studentId)).data.repoUrl &&
         data.repository is string && data.repository.size() <= 300 &&
-        data.selectedCommits is list && data.selectedCommits.size() > 0 &&
-        data.selectedCommits.size() <= 20 &&
+        validEvidenceCommits(data.selectedCommits) &&
         data.checkpointSha is string &&
         data.checkpointSha.matches("^[a-fA-F0-9]{40}$") &&
         data.selectedCommits.hasAny([data.checkpointSha]) &&
-        data.status == "submitted";
+        data.status in ["submitted","withdrawn"];
+    }
+
+    function evidenceAudit(evidenceId) {
+      let version = request.resource.data.revision;
+      let audit = getAfter(/databases/$(database)/documents/assessment_evidence/$(evidenceId)/revisions/$(string(version))).data;
+      return version is int && version == resource.data.get("revision",0) + 1 &&
+        audit.before == resource.data && audit.after == request.resource.data &&
+        audit.actorUid == request.auth.uid && audit.createdAt == request.time &&
+        audit.reason is string && audit.reason.size() >= 10 && audit.reason.size() <= 3000 &&
+        request.resource.data.updatedAt == request.time;
+    }
+
+    function instructorEvidenceChange(evidenceId) {
+      let before = resource.data;
+      let after = request.resource.data;
+      return isInstructor() && evidenceAudit(evidenceId) && (
+        (before.status in ["submitted","needs_review"] && after.status == "approved" &&
+         after.approvedCheckpointSha == before.checkpointSha && after.reviewedBy == request.auth.uid &&
+         after.reviewedAt == request.time && after.verificationNote is string &&
+         after.verificationNote.size() >= 15 && after.verificationNote.size() <= 3000 &&
+         after.contributionScope is string && after.contributionScope.size() >= 15 &&
+         after.contributionScope.size() <= 3000 && after.verifiedContributionCommits is list &&
+         after.verifiedContributionCommits.hasOnly(before.selectedCommits) &&
+         after.diff(before).affectedKeys().hasOnly(["status","approvedCheckpointSha","reviewedBy",
+           "reviewedAt","verificationNote","contributionScope","verifiedContributionCommits","revision","updatedAt"])) ||
+        (before.status == "approved" && after.status == "reopened" &&
+         (!exists(/databases/$(database)/documents/student_grades/$(evidenceId)) ||
+          get(/databases/$(database)/documents/student_grades/$(evidenceId)).data.published == false) &&
+         after.approvedCheckpointSha == null && after.verifiedContributionCommits == [] &&
+         after.contributionScope == "" && after.reopenedBy == request.auth.uid &&
+         after.reopenedAt == request.time && after.reopenReason is string &&
+         after.reopenReason.size() >= 15 && after.reopenReason.size() <= 3000 &&
+         after.diff(before).affectedKeys().hasOnly(["status","approvedCheckpointSha","verifiedContributionCommits",
+           "contributionScope","reopenedBy","reopenedAt","reopenReason","revision","updatedAt"])));
     }
 
     match /assessment_evidence/{evidenceId} {
+      allow read: if isInstructor();
       allow read: if signedIn() && ownsStudentProfile(resource.data.studentId);
       allow create: if ownV2Evidence(request.resource.data) &&
+        request.resource.data.keys().hasOnly(["studentId","assessmentId","section","repository",
+          "selectedCommits","checkpointSha","status","submittedAt","updatedAt"]) &&
+        request.resource.data.status == "submitted" &&
         evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId &&
         request.resource.data.submittedAt == request.time &&
         request.resource.data.updatedAt == request.time;
       allow update: if ownV2Evidence(request.resource.data) &&
-        ownV2Evidence(resource.data) &&
+        (resource.data.status == "reopened" ||
+          (resource.data.status in ["submitted","withdrawn"] &&
+            (resource.data.get("source","") != "teacher_discovered" || resource.data.get("reopenedBy",null) is string))) &&
+        evidenceAudit(evidenceId) &&
         request.resource.data.studentId == resource.data.studentId &&
         request.resource.data.assessmentId == resource.data.assessmentId &&
-        request.resource.data.submittedAt == request.time &&
+        (request.resource.data.status == "submitted" ? request.resource.data.submittedAt == request.time :
+          request.resource.data.get("submittedAt",null) == resource.data.get("submittedAt",null)) &&
         request.resource.data.updatedAt == request.time &&
         request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(["selectedCommits","checkpointSha","submittedAt","updatedAt"]);
+          .hasOnly(["selectedCommits","checkpointSha","status","submittedAt","updatedAt","revision"]);
+      allow update: if instructorEvidenceChange(evidenceId);
+      allow create: if isInstructor() && request.resource.data.keys().hasOnly([
+        "studentId","assessmentId","section","repository","selectedCommits","checkpointSha",
+        "status","source","discoveredBy","recordedAt","updatedAt"]) &&
+        evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId &&
+        request.resource.data.status == "needs_review" && request.resource.data.source == "teacher_discovered" &&
+        request.resource.data.discoveredBy == request.auth.uid && request.resource.data.recordedAt == request.time &&
+        request.resource.data.updatedAt == request.time &&
+        get(/databases/$(database)/documents/assessments/$(request.resource.data.assessmentId)).data.get("schemaVersion",1) == 2 &&
+        request.resource.data.repository == get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.repoUrl &&
+        request.resource.data.section == get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.section &&
+        request.resource.data.checkpointSha.matches("^[a-fA-F0-9]{40}$") &&
+        validEvidenceCommits(request.resource.data.selectedCommits) &&
+        request.resource.data.selectedCommits.hasAny([request.resource.data.checkpointSha]);
       allow delete: if false;
+      match /revisions/{revisionId} {
+        allow read: if isInstructor() || ownsStudentProfile(get(/databases/$(database)/documents/assessment_evidence/$(evidenceId)).data.studentId);
+        allow create: if signedIn() && request.resource.data.keys().hasOnly(["before","after","actorUid","reason","createdAt"]) &&
+          request.resource.data.actorUid == request.auth.uid && request.resource.data.createdAt == request.time &&
+          request.resource.data.before == get(/databases/$(database)/documents/assessment_evidence/$(evidenceId)).data &&
+          request.resource.data.after == getAfter(/databases/$(database)/documents/assessment_evidence/$(evidenceId)).data &&
+          revisionId == string(request.resource.data.after.revision) &&
+          request.resource.data.after.revision == request.resource.data.before.get("revision",0) + 1;
+        allow update, delete: if false;
+      }
     }
 
     // A reclaim is an unverified attribution request, not a transfer of

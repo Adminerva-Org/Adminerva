@@ -1,0 +1,24 @@
+{
+  "score": 4,
+  "summary": "Scoped V2 evidence and publication audit. Fixed staff catch-all bypasses, unverified-email staff authority, unaudited edits, missing controlled withdrawal/reopening, and stale-draft publication. Emulator regressions cover ownership, transitions, immutable history and protected grades. This is not a certification of all legacy collections or live deployment.",
+  "findings": [
+    {
+      "check": "Authority source and business logic",
+      "severity": "moderate",
+      "issue": "GitHub attribution and ancestry are instructor assertions checked in the browser. Firestore cannot authenticate Git evidence. Concurrent reclaim creation can require renewed review.",
+      "recommendation": "Retain explicit teacher verification and no automatic publication. Consider a trusted GitHub verification service and transactional claim coordination before unattended grading."
+    },
+    {
+      "check": "Authority source",
+      "severity": "minor",
+      "issue": "Roles retain the two verified-email mappings; provider credentials remain browser-managed and GitHub associations student-supplied.",
+      "recommendation": "Migrate institutional roles to managed custom claims and provider calls to a server proxy in a separately reviewed change."
+    },
+    {
+      "check": "Business logic vs rules",
+      "severity": "moderate",
+      "issue": "Audited student changes require coordinated rules activation. Old deployed rules reject revision fields and withdrawal/reopening.",
+      "recommendation": "Obtain explicit deployment confirmation, coordinate release, and smoke-test real roles. No deployment was performed."
+    }
+  ]
+}

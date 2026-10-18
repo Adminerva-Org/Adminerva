@@ -85,7 +85,7 @@ test('loads only selected XML at immutable approved SHA, not repository HEAD',as
     throw Error('Unexpected request: '+url);
   };
   const result=await loadPinnedV2Source({
-    repository:'https://github.com/example/android',selectedCommits:[A],
+    repository:'https://github.com/example/android',selectedCommits:[A],verifiedContributionCommits:[A],
     checkpointSha:A,assessment:assignment,fetchImpl
   });
   assert.deepEqual(result.files.map(f=>f.path),[XML]);
@@ -100,7 +100,7 @@ test('no matching student XML diffs means AI must abstain',async()=>{
     {filename:'app/src/main/java/MainActivity.java',status:'modified',patch:'+Main'}
   ]})});
   await assert.rejects(loadPinnedV2Source({
-    repository:'https://github.com/example/android',selectedCommits:[A],
+    repository:'https://github.com/example/android',selectedCommits:[A],verifiedContributionCommits:[A],
     checkpointSha:A,assessment:assignment,fetchImpl
   }),/No matching source changes/);
 });
@@ -110,7 +110,70 @@ test('incomplete GitHub commit file lists stop scoring instead of silently omitt
     filename:XML,status:'modified',patch:'+view'
   }))})});
   await assert.rejects(loadPinnedV2Source({
-    repository:'https://github.com/example/android',selectedCommits:[A],
+    repository:'https://github.com/example/android',selectedCommits:[A],verifiedContributionCommits:[A],
     checkpointSha:A,assessment:assignment,fetchImpl
   }),/incomplete or too large/);
+});
+
+test('contributing student is evaluated on verified responsibilities, not all group screens',()=>{
+  const prompt=buildRubricPrompt({assessment:assignment,criteria:parseWeightedRubric(assignment.evalCriteria,20),
+    checkpointSha:A,files:[{path:XML,text:'<TextView/>'}],
+    patches:[{sha:A,path:XML,patch:'+<TextView/>'}],contributionScope:'Student implements the welcome screen; other members implement the remaining screens.'});
+  assert.match(prompt,/Do not deduct points from an individual for teammates' missing screens/);
+  assert.match(prompt,/Student implements the welcome screen/);
+  assert.match(prompt,/not a three-screen requirement for each member/);
+  assert.match(prompt,/Missing evidence is not proof of no work/);
+  assert.match(prompt,/Do not invent an equal division/);
+});
+
+test('unresolved criteria stay unscored; project completeness does not alter individual scores',()=>{
+  const criteria=parseWeightedRubric(assignment.evalCriteria,20);
+  const evidence={patches:[{sha:A,path:XML,substantive:true}]};
+  const response={criteria:criteria.map(()=>({status:'supported',score:5,
+    evidence:[{sha:A,path:XML}],rationale:'Verified welcome-screen work meets the assigned individual responsibility.'})),
+    feedback:'The assigned welcome screen is demonstrated. Teacher must check runtime and visual quality.',
+    projectObservations:'Only one of three group screens exists; two teammates have not submitted.'};
+  assert.equal(parseSuggestedRubric(response,criteria,20,evidence).score,20);
+  const partial={...response,criteria:response.criteria.map((row,index)=>index===2?
+    {status:'needs_teacher_review',score:null,rationale:'Visual quality requires direct inspection by the instructor.'}:row)};
+  assert.equal(parseSuggestedRubric(partial,criteria,20,evidence).score,null);
+  assert.throws(()=>parseSuggestedRubric({...partial,criteria:partial.criteria.map((row,index)=>index===2?
+    {...row,score:0}:row)},criteria,20,evidence),/remain unscored/);
+  assert.throws(()=>parseSuggestedRubric(response,criteria,20,{patches:[]}),/verified substantive/);
+  assert.throws(()=>parseSuggestedRubric(response,criteria,20,{patches:[{sha:B,path:XML,substantive:true}]}),/verified substantive/);
+  assert.throws(()=>parseSuggestedRubric(response,criteria,20,{patches:[{sha:A,path:XML,substantive:false}]}),/verified substantive/);
+});
+
+test('noncontributors cannot use the checkpoint or teammates source as scoring evidence',async()=>{
+  let fetched=false;
+  await assert.rejects(loadPinnedV2Source({repository:'https://github.com/example/android',
+    selectedCommits:[A],checkpointSha:A,assessment:assignment,verifiedContributionCommits:[],
+    fetchImpl:async()=>{fetched=true;}}),/Verify this student's contributing commits/);
+  assert.equal(fetched,false);
+});
+
+test('matching teammate files are loaded at pinned checkpoint as context without attribution',async()=>{
+  const other='app/src/main/res/layout/home.xml';
+  const requests=[];
+  const response=data=>({ok:true,json:async()=>data});
+  const result=await loadPinnedV2Source({repository:'https://github.com/example/android',
+    selectedCommits:[A,B],verifiedContributionCommits:[A],checkpointSha:B,assessment:assignment,
+    fetchImpl:async url=>{
+      requests.push(url);
+      if(url.includes('/commits/'+A))return response({parents:[{sha:B}],files:[{filename:XML,patch:'+<TextView/>'}]});
+      if(url.includes('/git/trees/'+B))return response({tree:[XML,other].map(path=>({path,type:'blob'}))});
+      if(url.includes('/contents/')&&url.endsWith('?ref='+B))return response({type:'file',encoding:'base64',content:Buffer.from('<TextView/>').toString('base64')});
+      throw Error('Unexpected request '+url);
+    }});
+  assert.deepEqual(result.files.map(file=>file.path),[XML,other]);
+  assert.deepEqual(result.patches.map(patch=>patch.path),[XML]);
+  assert.equal(requests.some(url=>url.includes('/commits/'+B)),false);
+});
+
+test('merge and formatting-only commits cannot borrow shared implementation credit',async()=>{
+  const options={repository:'https://github.com/example/android',selectedCommits:[A],
+    verifiedContributionCommits:[A],checkpointSha:A,assessment:assignment};
+  await assert.rejects(loadPinnedV2Source({...options,fetchImpl:async()=>({ok:true,json:async()=>({parents:[{},{}]})})}),/Merge commits/);
+  await assert.rejects(loadPinnedV2Source({...options,fetchImpl:async()=>({ok:true,json:async()=>({files:[{
+    filename:XML,patch:'-<TextView/>\n+  <TextView/>'}]})})}),/No verified substantive changes/);
 });

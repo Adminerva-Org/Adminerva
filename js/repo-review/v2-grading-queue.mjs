@@ -8,6 +8,7 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {collection,getDocs,query,where}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {parseRepository} from "./services/assessment-evidence.mjs";
+import {gradeMatchesEvidence} from "./services/evidence-lifecycle.mjs";
 
 const STAFF=new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
 const el=id=>document.getElementById(id);
@@ -96,8 +97,9 @@ async function renderQueue(){
       heading.append(node("p",repoText||"No GitHub repository linked","text-xs text-slate-500 break-all"));
       let stateText="",stateClass="text-slate-600";
       if(grade?.published===true){published++;stateText="Published "+grade.score+"/"+(grade.maxScore||activeTask.maxScore);}
-      else if(grade){drafts++;stateText="Unpublished draft "+grade.score+"/"+(grade.maxScore||activeTask.maxScore);
-        if(grade.gradeSource==="teacher_ai_reviewed")stateText+=" · AI-assisted, teacher reviewed";}
+      else if(grade){drafts++;stateText=gradeMatchesEvidence(grade,ev)?
+        "Saved private grade draft · "+grade.score+"/"+(grade.maxScore||activeTask.maxScore):
+        "Grade draft requires fresh evidence review · publication blocked";}
       else if(eligibility(ev)){approved++;stateText="Checkpoint approved · ready to grade";stateClass="text-emerald-700";}
       else if(ev){pending++;stateText="Evidence "+String(ev.status||"needs review")+" · approval required";stateClass="text-amber-800";}
       else{pending++;stateText="No approved evidence";stateClass="text-slate-500";}
@@ -115,8 +117,6 @@ async function renderQueue(){
           owner:repo.owner,repo:repo.repo});
       });
       actions.append(review);
-      actions.append(link("Evidence Review ↗",scopedUrl("assessment-evidence-review.html",student,activeTask)));
-      actions.append(link("Contribution Inspector ↗",scopedUrl("contribution-inspector.html",student,activeTask)));
       row.append(heading,actions);container.append(row);
     }
     status(members.length+" students · "+approved+" approved checkpoints awaiting grading · "+

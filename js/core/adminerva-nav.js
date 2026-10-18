@@ -319,13 +319,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const staffGroups = [
       { name: "Grading", items: [
         ["gradebook", "Gradebook", "gradebook.html"],
-        ["repofetch", "RepoFetch / Auto-Check", "repofetch.html"],
+        ["repofetch", "Review & Grade", "repofetch.html"],
+        ["studio", "Assessment Studio", "assessment-studio.html"],
+        ["activity-grader", "Legacy Manual Activity Grader", "temp-activity-grader.html"]
+      ] },
+      { name: "Evidence tools", items: [
         ["submissions", "Submission Inbox", "submissions.html"],
         ["evidence", "Assessment Evidence", "assessment-evidence-review.html"],
-        ["studio", "Assessment Studio", "assessment-studio.html"],
         ["contributions", "Contribution Inspector", "contribution-inspector.html"],
-        ["group-inspector", "Group Inspector", "temp-grading.html"],
-        ["activity-grader", "Legacy Manual Activity Grader", "temp-activity-grader.html"]
+        ["group-inspector", "Group Inspector", "temp-grading.html"]
       ] },
       { name: "Repositories", items: [
         ["repobank", "RepoBank", "repobank.html"]
@@ -350,7 +352,7 @@ document.addEventListener("DOMContentLoaded", () => {
       staffGroups.splice(0, staffGroups.length, ...staffGroups.filter(group => group.name === "Manage"));
     } else {
       staffGroups.splice(0, staffGroups.length, ...staffGroups.filter(group =>
-        group.name === "Grading" || group.name === "Repositories"));
+        group.name === "Grading" || group.name === "Repositories" || group.name === "Evidence tools"));
     }
     const analytics = ["dashboard", "Analytics", "reporeviewDashboard.html"];
     const activeGroup = group => group.items.some(item => item[0] === activePage);
