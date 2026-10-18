@@ -258,7 +258,6 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
     const maxScore=Number(assessment.maxScore || 20);
     if (!Number.isFinite(maxScore) || maxScore<=0) throw new Error("Assessment has an invalid maximum score.");
     const login=String(student.githubUsername||"").trim().replace(/^@/,"");
-    const accountName=login||"Unlinked GitHub account";
     el("manualReviewStudent").textContent=(student.name||studentId)+" (@"+accountName+")";
     el("manualReviewTask").textContent=(assessment.title||taskId)+" — "+maxScore+" points";
     const links=el("manualReviewLinks");
