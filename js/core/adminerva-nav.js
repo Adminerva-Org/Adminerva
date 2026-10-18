@@ -282,7 +282,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="flex justify-between items-center h-16 px-4 sm:px-6 lg:px-8">
                 ${logoBlock}
                 <div id="av-desktop-nav" class="hidden lg:flex gap-6 text-sm font-bold tracking-wide items-center">${centerLinks}</div>
-                <div class="flex items-center">${rightSide}</div>
+                <div id="av-account-controls" class="flex items-center">${rightSide}</div>
             </div>
             
             <!-- Bottom Row: Mobile / Tablet Only (Horizontal Scroll) -->
