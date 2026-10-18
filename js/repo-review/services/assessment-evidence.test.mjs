@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseRepository,normalizeSelection,attributionLabel,claimDocumentId,detectedAuthor} from './assessment-evidence.mjs';
+import {parseRepository,normalizeSelection,evidenceSelectionGuidance,attributionLabel,claimDocumentId,detectedAuthor} from './assessment-evidence.mjs';
 const A='a'.repeat(40),B='b'.repeat(40);
 test('canonical GitHub repo URLs reject extra path, credentials and non-GitHub hosts',()=>{
   assert.equal(parseRepository('https://github.com/class/team.git').url,'https://github.com/class/team');
@@ -21,4 +21,27 @@ test('Git identity is detected but not treated as verified ownership',()=>{
   assert.match(attributionLabel(c,'someone'),/staff verification/);
   assert.equal(detectedAuthor(c).name,'Old Laptop');
   assert.equal(claimDocumentId(A,'alice'),A+'_alice');
+});
+
+test('evidence selection provides actionable checkpoint guidance',()=>{
+  let state=evidenceSelectionGuidance([], '');
+  assert.equal(state.ready,false);
+  assert.match(state.message,/Include commit/i);
+  state=evidenceSelectionGuidance([A], '');
+  assert.equal(state.ready,false);
+  assert.match(state.message,/round button/i);
+  state=evidenceSelectionGuidance([A], B);
+  assert.equal(state.ready,false);
+  state=evidenceSelectionGuidance([A,B], B);
+  assert.equal(state.ready,true);
+  assert.match(state.message,/Project checkpoint: b{12}/);
+  state=evidenceSelectionGuidance([A,A], A);
+  assert.equal(state.ready,true);
+  assert.match(state.message,/1 commit selected/);
+});
+test('evidence selection flags more than 20 distinct commits',()=>{
+  const many=Array.from({length:21},(_,i)=>String(i).padStart(40,'0'));
+  const state=evidenceSelectionGuidance(many,many[0]);
+  assert.equal(state.ready,false);
+  assert.match(state.message,/no more than 20/i);
 });

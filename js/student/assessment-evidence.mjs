@@ -1,8 +1,8 @@
 import {auth,db} from "../core/firebase-core.js";
 import {doc,getDoc,getDocs,setDoc,updateDoc,collection,query,where,serverTimestamp}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {parseRepository,normalizeSelection,detectedAuthor,attributionLabel,claimDocumentId,validSha}
-  from "../repo-review/services/assessment-evidence.mjs";
+import {parseRepository,normalizeSelection,evidenceSelectionGuidance,detectedAuthor,attributionLabel,claimDocumentId,validSha}
+  from "../repo-review/services/assessment-evidence.mjs?v=2026.10.18.1";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "../repo-review/services/commit-history.mjs";
 
 const el=id=>document.getElementById(id);
@@ -38,6 +38,9 @@ function contextForStudent(){
 function render(){
   const list=el("evidenceCommitList");list.replaceChildren();
   el("evidenceSubmit").disabled=Boolean(saved&&saved.status!=="submitted");
+  const guidance=evidenceSelectionGuidance([...selected],checkpoint);
+  const summary=el("evidenceSelectionSummary");
+  if(summary)summary.textContent=guidance.message;
   if(!commits.length){add(list,"p","No commits returned. The repository may be empty or inaccessible.");return;}
   for(const commit of commits){
     const sha=String(commit.sha||"").toLowerCase();
@@ -45,16 +48,20 @@ function render(){
     const author=detectedAuthor(commit);
     const row=add(list,"div","","rounded-lg border border-slate-200 p-3");
     const top=add(row,"div","","flex flex-wrap items-center gap-3");
+    const includeLabel=add(top,"label","","inline-flex items-center gap-1 text-xs text-slate-700 font-semibold cursor-pointer");
     const check=document.createElement("input");check.type="checkbox";check.checked=selected.has(sha);
-    check.disabled=saved?.status==="approved";check.setAttribute("aria-label","Select "+sha.slice(0,12)+" as evidence");
+    check.disabled=saved?.status==="approved";check.setAttribute("aria-label","Include commit "+sha.slice(0,12)+" as evidence");
     check.addEventListener("change",()=>{if(check.checked)selected.add(sha);
       else {selected.delete(sha);if(checkpoint===sha)checkpoint="";}
-      render();});top.append(check);
+      render();});includeLabel.append(check);
+    add(includeLabel,"span","Include commit");
+    const checkpointLabel=add(top,"label","","inline-flex items-center gap-1 text-xs text-indigo-800 font-semibold cursor-pointer");
     const radio=document.createElement("input");radio.type="radio";radio.name="assessmentCheckpoint";
     radio.checked=checkpoint===sha;radio.disabled=saved?.status==="approved";
-    radio.setAttribute("aria-label","Use "+sha.slice(0,12)+" as project checkpoint");
+    radio.setAttribute("aria-label","Set commit "+sha.slice(0,12)+" as project checkpoint");
     radio.addEventListener("change",()=>{checkpoint=sha;selected.add(sha);render();});
-    top.append(radio);
+    checkpointLabel.append(radio);
+    add(checkpointLabel,"span","Project checkpoint");
     add(top,"span",sha.slice(0,12),"font-mono text-xs text-indigo-800");
     add(top,"strong",String(commit.commit?.message||"No message").split("\n")[0].slice(0,170),
       "text-xs break-words");
@@ -144,6 +151,7 @@ async function load(){
   context=null;commits=[];selected=new Set();checkpoint="";saved=null;claims=new Map();
   historyPage=0;hasOlderCommits=false;historyLoading=false;refreshHistoryControl();
   el("evidenceCommitList").replaceChildren();el("evidencePreview").textContent="";
+  const summary=el("evidenceSelectionSummary");if(summary)summary.textContent="No evidence commits selected yet.";
   status("Loading your linked repository's commits…");
   try{
     const active=contextForStudent(),repo=parseRepository(active.profile.repoUrl);
@@ -192,6 +200,8 @@ async function loadOlderCommits(){
 async function submit(){
   if(!context)return;
   try{
+    const guidance=evidenceSelectionGuidance([...selected],checkpoint);
+    if(!guidance.ready){status(guidance.message);return;}
     const {selectedCommits,checkpointSha}=normalizeSelection([...selected],checkpoint);
     if(!commits.some(c=>c.sha.toLowerCase()===checkpointSha))
       throw Error("Checkpoint not found in the loaded GitHub history.");
@@ -210,6 +220,7 @@ async function submit(){
       });
     }
     saved={...(saved||{}),status:"submitted",selectedCommits,checkpointSha};
+    render();
     status("Evidence submitted for teacher verification. This is not an approved contribution or grade.");
     window.dispatchEvent(new CustomEvent("adminerva:submission-recorded",{
       detail:{assessmentId:context.task.id,studentId:context.profile.id,revisionSha:checkpointSha}
