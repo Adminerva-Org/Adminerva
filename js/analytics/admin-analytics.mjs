@@ -1,9 +1,9 @@
 /** Administrator-only operational monitoring, roster assignment and explicit coarse-summary publication. */
 import {auth, db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {collection, getDocs, getDoc, doc, query, orderBy, limit, where, setDoc, writeBatch, serverTimestamp, Timestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import {collection, getDocs, getDoc, doc, query, orderBy, limit, where, setDoc, writeBatch, runTransaction, serverTimestamp, Timestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {staffRole, TEACHER_EMAIL} from "../core/staff-role.mjs?v=2026.10.19.2";
-import {summarizeActivity} from "./activity-model.mjs?v=2026.10.19.2";
+import {summarizeActivity} from "./activity-model.mjs?v=2026.10.19.3";
 
 const field = id => document.getElementById(id);
 let records = [], preferences = [], students = [], selectedSections = [], epoch = 0;
@@ -23,13 +23,23 @@ async function refresh() {
     getDocs(query(collection(db, "issues"), orderBy("createdAt", "desc"), limit(200))),
     getDocs(query(collection(db, "activity_preferences"), limit(500))),
     getDocs(collection(db, "students")),
-    getDoc(doc(db, "analytics_rosters", TEACHER_EMAIL))
+    getDoc(doc(db, "analytics_rosters", TEACHER_EMAIL)),
+    getDoc(doc(db, "monitoring_control", "runtime")),
+    getDoc(doc(db, "monitoring_status", "runtime"))
   ]);
   if (current !== epoch || staffRole(auth.currentUser) !== "admin") return;
   records = snapshots[0].docs.map(record => ({id:record.id, ...record.data()}));
   preferences = snapshots[2].docs.map(record => record.data());
   students = snapshots[3].docs.map(record => ({id:record.id, ...record.data()}));
   selectedSections = snapshots[4].data()?.sections || [];
+  const policy = snapshots[5].data(), maintenance = snapshots[6].data();
+  field("maintenance-cleanup").checked = policy?.cleanupEnabled === true;
+  field("maintenance-summary").checked = policy?.summaryRefreshEnabled === true;
+  field("maintenance-status").textContent = maintenance ?
+    "Last server result: " + maintenance.state + ". " + (maintenance.finishedAt?.toDate().toLocaleString() || "Run in progress") +
+    ". Expired events removed: " + (maintenance.eventsRemoved || 0) + "; diagnostic trails removed: " + (maintenance.diagnosticsRemoved || 0) +
+    ". Summary refreshed: " + (maintenance.summaryRefreshed ? "yes" : "no") + (maintenance.cleanupCapped ? ". Cleanup limit reached; a backlog may remain." : "") :
+    "No server run is recorded. Saving policy does not deploy or confirm the availability of a backend worker.";
   const enabled = new Map(preferences.filter(profile => profile.enabled).map(profile => [profile.ownerUid, profile]));
   const events = records.filter(event => enabled.get(event.ownerUid)?.studentId === event.studentId);
   const summary = summarizeActivity(events);
@@ -64,13 +74,39 @@ field("save-roster").addEventListener("click", () => operation("Saving teacher a
 }));
 field("publish-engagement").addEventListener("click", () => operation("Preparing teacher summary…", async () => {
   await refresh();
-  const allowed = new Set(students.filter(student => selectedSections.includes(student.section)).map(student => student.id));
-  const consent = new Map(preferences.filter(profile => profile.enabled).map(profile => [profile.ownerUid, profile.studentId]));
-  const rows = summarizeActivity(records.filter(event => allowed.has(event.studentId) && consent.get(event.ownerUid) === event.studentId));
-  if (rows.length > 100) throw Error("Narrow the assigned sections before publishing.");
-  if (!confirm("Replace the teacher's engagement summary with " + rows.length + " opted-in students? This does not change grades or publish to students.")) return;
-  await setDoc(doc(db, "analytics_views", TEACHER_EMAIL), {teacherEmail:TEACHER_EMAIL, rows, sections:selectedSections, windowDays:7, eventLimit:500, publishedBy:auth.currentUser.uid, publishedAt:serverTimestamp()});
+  const captured = records.slice(), actor = auth.currentUser, generation = epoch;
+  if (!confirm("Replace the teacher's engagement summary from the current sample? Consent and assigned sections will be checked again before saving. This does not change grades or publish to students.")) return;
+  await runTransaction(db, async transaction => {
+    const roster = await transaction.get(doc(db, "analytics_rosters", TEACHER_EMAIL));
+    const sections = roster.data()?.sections || [];
+    const ownerUids = [...new Set(captured.map(event => event.ownerUid))];
+    const studentIds = [...new Set(captured.map(event => event.studentId).filter(Boolean))];
+    const currentPreferences = await Promise.all(ownerUids.map(uid => transaction.get(doc(db, "activity_preferences", uid))));
+    const currentStudents = await Promise.all(studentIds.map(studentId => transaction.get(doc(db, "students", studentId))));
+    const allowed = new Set(currentStudents.filter(student => sections.includes(student.data()?.section)).map(student => student.id));
+    const consent = new Map(currentPreferences.filter(preference => preference.data()?.enabled).map(preference => [preference.id, preference.data().studentId]));
+    const rows = summarizeActivity(captured.filter(event => allowed.has(event.studentId) && consent.get(event.ownerUid) === event.studentId));
+    if (rows.length > 100) throw Error("Narrow the assigned sections before publishing.");
+    if (generation !== epoch || auth.currentUser?.uid !== actor.uid) throw Error("Account changed.");
+    transaction.set(doc(db, "analytics_views", TEACHER_EMAIL), {teacherEmail:TEACHER_EMAIL, rows, sections, windowDays:7, eventLimit:500, publishedBy:actor.uid, publishedAt:serverTimestamp()});
+  });
   field("admin-analytics-status").textContent = "Teacher summary refreshed. Only coarse student learning activity is included, never diagnostic trails or bug reports.";
+}));
+field("save-maintenance").addEventListener("click", () => operation("Saving maintenance policy…", async () => {
+  const cleanupEnabled = field("maintenance-cleanup").checked, summaryRefreshEnabled = field("maintenance-summary").checked;
+  const reason = field("maintenance-reason").value.trim(), actor = auth.currentUser, generation = epoch;
+  if (reason.length < 12 || reason.length > 600) { field("admin-analytics-status").textContent = "Explain this policy change in 12–600 characters before saving."; return; }
+  if ((cleanupEnabled || summaryRefreshEnabled) && !confirm("Save this automatic-maintenance policy? Only an already approved and deployed backend can execute it. Review school privacy, cost and retention policy first. Grades and feedback are never published by maintenance.")) return;
+  await runTransaction(db, async transaction => {
+    const ref = doc(db, "monitoring_control", "runtime"), snapshot = await transaction.get(ref);
+    const before = snapshot.exists() ? snapshot.data() : null, revision = (before?.revision || 0) + 1;
+    const after = {cleanupEnabled, summaryRefreshEnabled, reason, revision, updatedBy:actor.uid, updatedAt:serverTimestamp()};
+    if (generation !== epoch || auth.currentUser?.uid !== actor.uid) throw Error("Account changed.");
+    transaction.set(ref, after);
+    transaction.set(doc(ref, "revisions", String(revision)), {before, after, reason, actorUid:actor.uid, createdAt:serverTimestamp()});
+  });
+  field("maintenance-reason").value = "";
+  field("admin-analytics-status").textContent = "Maintenance policy saved with an immutable audit record. This does not deploy a worker; check its recorded server result after activation.";
 }));
 field("purge-events").addEventListener("click", () => operation("Removing expired monitoring records…", async () => {
   if (!confirm("Permanently delete up to 500 expired events and 500 expired diagnostic attachments? Academic records are not affected.")) return;

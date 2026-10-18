@@ -1,5 +1,5 @@
 /** Public contextual tutorials and explicit activity preferences; never fetch protected data for guests. */
-import {pageForPath} from "../analytics/activity-model.mjs?v=2026.10.19.2";
+import {pageForPath} from "../analytics/activity-model.mjs?v=2026.10.19.3";
 const guides = {
   home:["Start with your workspace", "Choose a learning or teaching tool. Help, the public Wiki and patch history remain available from every page.", "getting-started"],
   project:["Submit your individual evidence", "Open an assessment, select your committed contributions and a checkpoint, then submit. Withdraw before approval to edit; approved evidence needs instructor reopening.", "evidence"],

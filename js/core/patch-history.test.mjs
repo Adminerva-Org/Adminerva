@@ -6,6 +6,14 @@ import {publicReleases,releaseNotifications} from './patch-history.mjs';
 import {notificationTarget} from './notification-routing.mjs';
 import {notificationVisible} from './notification-visibility.mjs';
 const release={version:'2026.10.18.4',status:'published',public:true,releasedAt:'2026-10-18',title:'Review update',summary:'Public improvement',changes:[{type:'Fixed',area:'Review',text:'Clearer controls'}]};
+test('prepared staging versions are not fabricated historical releases or account notices',()=>{
+  const history=JSON.parse(readFileSync('patch-history.json','utf8'));
+  const manifest=JSON.parse(readFileSync('site-release.json','utf8'));
+  const releases=publicReleases(history,Date.parse('2026-10-20'));
+  assert.ok(releases.some(item=>item.version===manifest.version));
+  for(const version of ['2026.10.19.1','2026.10.19.2'])assert.ok(!releaseNotifications(releases).some(notice=>notice.key==='release:'+version));
+  assert.ok(releases.some(item=>item.version==='2026.10.18.4'));
+});
 test('only explicitly published public releases produce one notification per version',()=>{
   const releases=publicReleases({releases:[release,release,{...release,version:'2026.10.18.5',public:false},{...release,version:'2026.10.18.6',status:'draft'},{...release,version:'2099.10.18.1',releasedAt:'2099-10-18'}]},Date.parse('2026-10-20'));
   assert.equal(releases.length,1);

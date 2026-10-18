@@ -2,7 +2,7 @@
 import {auth, db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {doc, getDoc, setDoc, addDoc, collection, getDocs, query, where, serverTimestamp, Timestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {pageForPath, safeStep, activeInterval, diagnosticPayload} from "./activity-model.mjs?v=2026.10.19.2";
+import {pageForPath, safeStep, activeInterval, diagnosticPayload} from "./activity-model.mjs?v=2026.10.19.3";
 
 const page = pageForPath(location.pathname);
 let owner = null, profile = null, steps = [], diagnostics = false, generation = 0;

@@ -31,7 +31,11 @@ Aliases preserve query strings and fragments. The old dashboard module is an imp
 - `assessment-studio.html`: Adminerva module: assessment studio.
 - `contribution-inspector.html`: Committed-change inspection and contribution-claim context.
 - `css/adminerva-ui.css`: Adminerva module: adminerva ui.
-- `functions/index.js`: Cloud Functions v2 report/submission notification handlers; deployment requires explicit separate approval.
+- `functions/index.js`: Cloud Functions v2 notifications and opt-in monitoring maintenance; deployment requires explicit separate approval.
+- `functions/monitoring-model.js`: Packaged minimized monitoring schema and non-grading summaries, parity-tested against the browser model.
+- `functions/monitoring-service.js`: Disabled-by-default scheduled cleanup, leased summary refresh and current-consent removal.
+- `tests/monitoring-model.test.mjs`: Browser/backend schema parity, visit deduplication and verified ownership regressions.
+- `tests/monitoring-maintenance.emulator.mjs`: Actual local Firestore worker tests, lease/cap/race checks and academic-record protection.
 - `gradebook.html`: Teacher grade administration, protected revisions and explicit publication.
 - `grading.html`: Adminerva module: grading.
 - `group-inspector.html`: Shared-project detail and individual contribution context.

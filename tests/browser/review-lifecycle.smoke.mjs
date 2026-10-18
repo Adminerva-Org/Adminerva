@@ -10,6 +10,8 @@ import {expect as baseExpect} from "playwright/test";
 import {initializeTestEnvironment} from "@firebase/rules-unit-testing";
 import {initializeApp,deleteApp} from "firebase-admin/app";
 import {getAuth} from "firebase-admin/auth";
+import {getFirestore as getAdminFirestore, Timestamp, FieldValue} from "firebase-admin/firestore";
+import monitoringWorker from "../../functions/monitoring-service.js";
 import {doc,setDoc} from "firebase/firestore";
 import {accounts,password,assessment,repository,ownSha,groupSha,homePath,providerDraft,githubFixture} from "./review-fixtures.mjs";
 
@@ -70,6 +72,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
   function validated(message){milestones.push(message);console.log("Validated: "+message);}
   let modelRequests=0;
   let omitSavedCommit=false;
+  let interceptSummaryConfirmation=null;
   try{
     await environment.clearFirestore();
     const authAdmin=getAuth(adminApp);
@@ -142,7 +145,13 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
       });
       context.on("page",page=>{
         page.on("pageerror",error=>errors.push(error.message));
-        page.on("dialog",async dialog=>{dialogs.push(dialog.message());await dialog.accept(dialog.type()==="prompt"?"Fixture teacher reviewed the evidence and documented this deliberate revision.":undefined);});
+        page.on("dialog",async dialog=>{
+          dialogs.push(dialog.message());
+          if(interceptSummaryConfirmation&&dialog.message().startsWith("Replace the teacher's engagement summary")){
+            const action=interceptSummaryConfirmation;interceptSummaryConfirmation=null;await action();
+          }
+          await dialog.accept(dialog.type()==="prompt"?"Fixture teacher reviewed the evidence and documented this deliberate revision.":undefined);
+        });
       });
       return context;
     }
@@ -353,22 +362,41 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await teacher.goto(origin+"/reporeviewDashboard.html?range=week#engagement-heading");
     await expect(teacher).toHaveURL(origin+"/teacher-analytics.html?range=week#engagement-heading");
     await expect(teacher.locator("#analytics-teacher")).toBeDisabled();await expect(teacher.locator("#engagement-rows")).toContainText("alice");
+    const backendDb=getAdminFirestore(adminApp);
+    const maintenance=monitoringWorker.createMonitoringService({db:backendDb,Timestamp,FieldValue,resolveUsers:async uids=>(await authAdmin.getUsers(uids.map(uid=>({uid})))).users});
+    await expect(admin.locator("#maintenance-cleanup")).not.toBeChecked();await expect(admin.locator("#maintenance-summary")).not.toBeChecked();
+    assert.equal((await maintenance.runScheduled()).state,"disabled");
+    await admin.locator("#maintenance-cleanup").check();await admin.locator("#maintenance-summary").check();
+    await admin.locator("#maintenance-reason").fill("Fixture school privacy and bounded monitoring budget reviewed.");await admin.locator("#save-maintenance").click();
+    await expect(admin.locator("#admin-analytics-status")).toContainText("Maintenance policy saved");
+    assert.equal((await browserRecord(admin,"monitoring_control/runtime/revisions/1")).data.after.cleanupEnabled,true);
+    await backendDb.doc("activity_events/expired-fixture").set({ownerUid:accounts.alice.uid,studentId:"alice",sessionId:"c".repeat(36),page:"xml-lab",action:"page-open",activeSeconds:0,createdAt:Timestamp.fromMillis(Date.now()-31*86400000),expiresAt:Timestamp.fromMillis(Date.now()-1)});
+    const maintained=await maintenance.runScheduled();assert.equal(maintained.eventsRemoved,1);assert.equal(maintained.summaryRefreshed,true);
+    await expect(teacher.locator("#engagement-status")).toContainText("System refresh");await expect(teacher.locator("#engagement-rows")).toContainText("alice");
     assert.equal(await teacher.locator("#bug-count").count(),0);
     await teacher.screenshot({path:path.join(output,"teacher-analytics.png")});
     await admin.goto(origin+"/teacher-analytics.html");await expect(admin.locator("#analytics-teacher")).toBeEnabled();
     await expect(admin.locator("#engagement-rows")).toContainText("alice");
     await admin.goto(origin+"/issues.html?issue="+issueId);await expect(admin.locator("#issue-diagnostics")).toContainText("xml-lab → run");
     await teacher.goto(origin+"/admin-analytics.html");await expect(teacher.locator("#admin-analytics-status")).toContainText("No monitoring records were requested");await expect(teacher.locator("#operations")).toBeHidden();
-    await student.locator("#page-help-open").click();await student.locator("#activity-share").uncheck();await student.locator("#activity-save").click();await waitRecord(student,"activity_preferences/"+accounts.alice.uid,"enabled",false);
+    await teacher.goto(origin+"/teacher-analytics.html");await expect(teacher.locator("#engagement-rows")).toContainText("alice");
+    interceptSummaryConfirmation=async()=>{
+      await student.locator("#page-help-open").click();await student.locator("#activity-share").uncheck();await student.locator("#activity-save").click();await waitRecord(student,"activity_preferences/"+accounts.alice.uid,"enabled",false);
+      assert.equal(await maintenance.applyConsentChange(accounts.alice.uid,"alice"),1);
+      await expect(teacher.locator("#engagement-rows tr")).toHaveCount(0);
+    };
     await admin.goto(origin+"/admin-analytics.html");await expect(admin.locator("#admin-analytics-status")).toContainText("Refreshed");await admin.locator("#publish-engagement").click();await expect(admin.locator("#admin-analytics-status")).toContainText("Teacher summary refreshed");
     const summary=await browserRecord(admin,"analytics_views/"+accounts.teacher.email);assert.deepEqual(summary.data.rows,[]);
+    await expect(teacher.locator("#engagement-rows tr")).toHaveCount(0);
+    await admin.locator("#maintenance-cleanup").uncheck();await admin.locator("#maintenance-summary").uncheck();await admin.locator("#maintenance-reason").fill("Fixture maintenance disabled after verification.");await admin.locator("#save-maintenance").click();await expect(admin.locator("#admin-analytics-status")).toContainText("Maintenance policy saved");
+    assert.equal((await maintenance.runScheduled()).state,"disabled");
     const guest=await (await newIdentity("guest")).newPage();const guestRequests=[];guest.on("request",request=>guestRequests.push(request.url()));
     await guest.goto(origin+"/wiki.html");await expect(guest.locator("h1")).toContainText("Adminerva Wiki");await guest.locator("#page-help-open").click();await expect(guest.locator("#activity-save")).toBeDisabled();
     assert.ok(!guestRequests.some(url=>url.includes("firebase")||url.includes("activity_events")),"Guest help must not initialize tracking or Firebase");
     await guest.locator("#page-help-dialog").getByText("Close help",{exact:true}).click();
     await guest.setViewportSize({width:390,height:844});await expect.poll(()=>guest.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await guest.screenshot({path:path.join(output,"public-wiki-mobile.png"),fullPage:true});
-    validated("opt-in minimized activity, admin-only report trails, teacher snapshots, consent refresh, public wiki, legacy redirect and concurrent loaders");
+    validated("opt-in activity, admin-only trails, audited maintenance, real worker cleanup, live teacher summaries, consent race protection, public wiki, legacy redirects and concurrent loaders");
     assert.deepEqual(blockedRequests,[]);assert.deepEqual(errors,[]);
     await writeFile(path.join(output,"result.json"),JSON.stringify({projectId,backend:"real Auth + Firestore emulators",sdkVersion:"10.13.0",externalServices:"GitHub and Gemini fixtures",milestones,modelRequests,errors,blockedRequests},null,2));
     console.log(JSON.stringify({passed:milestones,artifacts:output}));

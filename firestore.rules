@@ -16,7 +16,7 @@ service cloud.firestore {
       return isAdmin() || isTeacher();
     }
     function monitoringCollection(name) {
-      return name in ["activity_preferences", "activity_events", "issue_diagnostics", "analytics_rosters", "analytics_views"];
+      return name in ["activity_preferences", "activity_events", "issue_diagnostics", "analytics_rosters", "analytics_views", "monitoring_control", "monitoring_status"];
     }
     function activityPages() {
       return ["home", "project", "assessments", "playground", "xml-lab", "practice", "review", "grades", "lessons", "slides", "analytics", "reports", "settings", "other"];
@@ -88,6 +88,7 @@ service cloud.firestore {
         request.resource.data.ownerUid == request.auth.uid &&
         get(/databases/$(database)/documents/activity_preferences/$(request.auth.uid)).data.enabled == true &&
         request.resource.data.studentId == get(/databases/$(database)/documents/activity_preferences/$(request.auth.uid)).data.studentId &&
+        ((isInstructor() && request.resource.data.studentId == "") || ownsStudentProfile(request.resource.data.studentId)) &&
         request.resource.data.sessionId is string && request.resource.data.sessionId.matches("^[a-f0-9-]{36}$") &&
         request.resource.data.page in activityPages() && request.resource.data.action in activityActions() &&
         request.resource.data.activeSeconds is int && request.resource.data.activeSeconds >= 0 && request.resource.data.activeSeconds <= 60 &&
@@ -117,7 +118,10 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
     match /analytics_views/{teacherEmail} {
-      allow get: if isAdmin() || (isTeacher() && teacherEmail == request.auth.token.email.lower());
+      allow get: if isAdmin() || (isTeacher() && teacherEmail == request.auth.token.email.lower() &&
+        (!exists(/databases/$(database)/documents/analytics_views/$(teacherEmail)) ||
+          (resource.data.sections == get(/databases/$(database)/documents/analytics_rosters/$(teacherEmail)).data.sections &&
+           resource.data.publishedAt >= request.time - duration.value(30, "d"))));
       allow list: if isAdmin();
       allow create, update: if isAdmin() && teacherEmail == "josephsixson@mcstayuman.edu.ph" &&
         request.resource.data.keys().hasOnly(["teacherEmail", "rows", "sections", "windowDays", "eventLimit", "publishedBy", "publishedAt"]) &&
@@ -126,6 +130,34 @@ service cloud.firestore {
         request.resource.data.windowDays == 7 && request.resource.data.eventLimit == 500 &&
         request.resource.data.publishedBy == request.auth.uid && request.resource.data.publishedAt == request.time;
       allow delete: if isAdmin();
+    }
+    match /monitoring_control/{controlId} {
+      function auditedControl() {
+        let data = request.resource.data;
+        let priorRevision = resource == null ? 0 : resource.data.revision;
+        let audit = getAfter(/databases/$(database)/documents/monitoring_control/runtime/revisions/$(string(data.revision))).data;
+        return controlId == "runtime" && data.keys().hasOnly(["cleanupEnabled", "summaryRefreshEnabled", "revision", "updatedBy", "updatedAt", "reason"]) &&
+          data.cleanupEnabled is bool && data.summaryRefreshEnabled is bool && data.revision is int && data.revision == priorRevision + 1 &&
+          data.updatedBy == request.auth.uid && data.updatedAt == request.time && data.reason is string && data.reason.size() >= 12 && data.reason.size() <= 600 &&
+          audit.after == data && audit.before == (resource == null ? null : resource.data) && audit.actorUid == request.auth.uid && audit.reason == data.reason && audit.createdAt == request.time;
+      }
+      allow get: if isAdmin();
+      allow create, update: if isAdmin() && auditedControl();
+      allow delete, list: if false;
+      match /revisions/{revisionId} {
+        allow read: if isAdmin();
+        allow create: if isAdmin() && controlId == "runtime" &&
+          request.resource.data.keys().hasOnly(["before", "after", "actorUid", "reason", "createdAt"]) &&
+          request.resource.data.after == getAfter(/databases/$(database)/documents/monitoring_control/runtime).data &&
+          request.resource.data.before == (exists(/databases/$(database)/documents/monitoring_control/runtime) ? get(/databases/$(database)/documents/monitoring_control/runtime).data : null) &&
+          revisionId == string(request.resource.data.after.revision) && request.resource.data.actorUid == request.auth.uid &&
+          request.resource.data.reason == request.resource.data.after.reason && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+    match /monitoring_status/{statusId} {
+      allow get: if isAdmin() && statusId == "runtime";
+      allow list, create, update, delete: if false;
     }
     match /students/{studentId} {
       allow read: if signedIn() && resource.data.email is string &&

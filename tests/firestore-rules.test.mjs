@@ -42,6 +42,50 @@ beforeEach(async () => {
 function client(uid,email){return env.authenticatedContext(uid,{email,email_verified:true}).firestore()}
 function activityEvent() { return {ownerUid:'alice',studentId:'alice',sessionId:'a'.repeat(36),page:'playground',action:'active-time',activeSeconds:30,createdAt:serverTimestamp(),expiresAt:Timestamp.fromMillis(Date.now()+30*86400000)}; }
 function activityPreference(enabled=true) { return {ownerUid:'alice',studentId:'alice',enabled,updatedAt:serverTimestamp()}; }
+async function auditedMonitoringControl(db, {actor='admin', changes={}}={}) {
+  const ref=doc(db,'monitoring_control','runtime'), current=await getDoc(ref);
+  const before=current.exists()?current.data():null;
+  const after={cleanupEnabled:false,summaryRefreshEnabled:false,...before,...changes,revision:(before?.revision||0)+1,updatedBy:actor,updatedAt:serverTimestamp(),reason:'School policy and bounded operational budget reviewed.'};
+  const batch=writeBatch(db); batch.set(ref,after);
+  batch.set(doc(ref,'revisions',String(after.revision)),{before,after,actorUid:actor,reason:after.reason,createdAt:serverTimestamp()});
+  return batch.commit();
+}
+test('automatic monitoring requires verified admin control changes with immutable matching audits',async()=>{
+  const admin=client('admin',ADMIN), teacher=client('staff',TEACHER), alice=client('alice',EMAIL_A);
+  await assertFails(setDoc(doc(admin,'monitoring_control','runtime'),{cleanupEnabled:true}));
+  await assertSucceeds(auditedMonitoringControl(admin,{changes:{cleanupEnabled:true}}));
+  await assertSucceeds(auditedMonitoringControl(admin,{changes:{summaryRefreshEnabled:true}}));
+  await assertFails(auditedMonitoringControl(admin,{changes:{cleanupEnabled:'true'}}));
+  await assertFails(auditedMonitoringControl(admin,{changes:{adminCommands:true}}));
+  await assertFails(auditedMonitoringControl(admin,{actor:'staff'}));
+  await assertFails(updateDoc(doc(admin,'monitoring_control','runtime'),{cleanupEnabled:false}));
+  await assertFails(updateDoc(doc(admin,'monitoring_control','runtime','revisions','1'),{actorUid:'changed'}));
+  await assertFails(deleteDoc(doc(admin,'monitoring_control','runtime','revisions','1')));
+  await assertFails(deleteDoc(doc(admin,'monitoring_control','runtime')));
+  await assertFails(getDoc(doc(teacher,'monitoring_control','runtime')));
+  await assertFails(getDoc(doc(alice,'monitoring_control','runtime','revisions','1')));
+  await assertFails(setDoc(doc(teacher,'monitoring_control','runtime'),{cleanupEnabled:true}));
+  await assertFails(setDoc(doc(admin,'monitoring_status','runtime'),{state:'completed'}));
+  await assertFails(getDoc(doc(teacher,'monitoring_status','runtime')));
+  await assertFails(getDocs(collection(admin,'monitoring_status')));
+});
+test('roster changes and expired snapshots revoke teacher engagement access until refreshed',async()=>{
+  const teacher=client('staff',TEACHER),admin=client('admin',ADMIN);
+  await assertSucceeds(setDoc(doc(admin,'analytics_rosters',TEACHER),{teacherEmail:TEACHER,sections:['11-A'],updatedBy:'admin',updatedAt:serverTimestamp()}));
+  const snapshot={teacherEmail:TEACHER,sections:['11-A'],rows:[],windowDays:7,eventLimit:500,publishedBy:'admin',publishedAt:serverTimestamp()};
+  await assertSucceeds(setDoc(doc(admin,'analytics_views',TEACHER),snapshot));
+  await assertSucceeds(getDoc(doc(teacher,'analytics_views',TEACHER)));
+  await assertSucceeds(updateDoc(doc(admin,'analytics_rosters',TEACHER),{sections:['11-B'],updatedAt:serverTimestamp()}));
+  await assertFails(getDoc(doc(teacher,'analytics_views',TEACHER)));
+  await env.withSecurityRulesDisabled(async context=>setDoc(doc(context.firestore(),'analytics_views',TEACHER),{...snapshot,sections:['11-B'],publishedAt:Timestamp.fromMillis(Date.now()-31*86400000)}));
+  await assertFails(getDoc(doc(teacher,'analytics_views',TEACHER)));
+});
+test('a student profile reassignment invalidates old activity preferences for new event writes',async()=>{
+  const alice=client('alice',EMAIL_A),admin=client('admin',ADMIN);
+  await assertSucceeds(setDoc(doc(alice,'activity_preferences','alice'),activityPreference()));
+  await assertSucceeds(updateDoc(doc(admin,'students','alice'),{email:EMAIL_B}));
+  await assertFails(setDoc(doc(alice,'activity_events','old-owner'),activityEvent()));
+});
 test('activity requires own informed opt-in; raw records stay admin-only and immutable', async()=>{
   const alice=client('alice',EMAIL_A), teacher=client('staff',TEACHER), admin=client('admin',ADMIN);
   await assertFails(setDoc(doc(alice,'activity_events','missing-consent'),activityEvent()));

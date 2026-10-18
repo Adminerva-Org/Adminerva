@@ -28,14 +28,14 @@ export function summarizeActivity(events, {now = Date.now(), since = now - 7 * 8
     const time = event.createdAt?.toMillis?.() ?? event.createdAt;
     if (!Number.isFinite(time) || time < since || time > now || !event.studentId || !safeStep(event.page, event.action)) continue;
     let row = students.get(event.studentId);
-    if (!row) { row = {studentId:event.studentId, visits:0, activeSeconds:0, days:new Set(), modules:{}}; students.set(event.studentId, row); }
+    if (!row) { row = {studentId:event.studentId, sessions:new Set(), activeSeconds:0, days:new Set(), modules:{}}; students.set(event.studentId, row); }
     row.days.add(new Date(time).toISOString().slice(0, 10));
-    row.visits += event.action === "page-open" ? 1 : 0;
+    if (event.action === "page-open" && typeof event.sessionId === "string") row.sessions.add(event.sessionId + ":" + event.page);
     const seconds = event.action === "active-time" && Number.isInteger(event.activeSeconds) ? Math.max(0, Math.min(60, event.activeSeconds)) : 0;
     row.activeSeconds += seconds;
     row.modules[event.page] = (row.modules[event.page] || 0) + seconds;
   }
-  return [...students.values()].map(row => ({...row, days:row.days.size}));
+  return [...students.values()].map(({sessions, days, ...row}) => ({...row, visits:sessions.size, days:days.size}));
 }
 export function diagnosticPayload(steps) {
   const clean = steps.map(step => safeStep(step.page, step.action)).filter(Boolean).slice(-20);

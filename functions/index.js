@@ -1,11 +1,16 @@
-/** Cloud Functions v2 report/submission notification handlers; deployment requires explicit separate approval. */
+/** Cloud Functions v2 notifications and opt-in monitoring maintenance; deployment requires explicit separate approval. */
 // Firebase Cloud Functions v2. Requires separate Firebase deployment.
 const {initializeApp}=require("firebase-admin/app");
-const {getFirestore,FieldValue}=require("firebase-admin/firestore");
+const {getFirestore,FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {getAuth}=require("firebase-admin/auth");
-const {onDocumentCreated,onDocumentUpdated}=require("firebase-functions/v2/firestore");
+const {onDocumentCreated,onDocumentUpdated,onDocumentWritten}=require("firebase-functions/v2/firestore");
+const {onSchedule}=require("firebase-functions/v2/scheduler");
+const {createMonitoringService}=require("./monitoring-service.js");
 initializeApp();
 const db=getFirestore();
+const monitoring=createMonitoringService({db,Timestamp,FieldValue,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users});
+exports.monitoringMaintenance=onSchedule({schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},()=>monitoring.runScheduled());
+exports.activityConsentChanged=onDocumentWritten("activity_preferences/{ownerUid}",event=>monitoring.applyConsentChange(event.params.ownerUid,event.data?.before.data()?.studentId));
 const staffEmails=["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"];
 // Bug reports are always administrator-directed. Legacy reports have admin scope.
 const reportAudience=issue=>issue.category==="Bug"?"admin":issue.audience==="teacher"?"teacher":"admin";

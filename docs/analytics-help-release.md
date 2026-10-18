@@ -1,6 +1,8 @@
-# Analytics, help and organization — prepared release 2026.10.19.2
+# Analytics, help and organization — prepared release 2026.10.19.3
 
 This patch is stacked on PR #21. Neither patch is activated by this document. Do not merge/release the website before the matching Firestore permissions receive explicit owner approval and are activated. No Functions or rules deployment is authorized by this PR. The former deployment CLI session remains revoked.
+
+The continuation adds disabled-by-default maintenance and a consent-removal handler, prepared but not deployed. See [maintenance workflow and release gates](monitoring-maintenance.md). Staging manifests `.19.1` and `.19.2` were not live releases; their public notes are consolidated into `.19.3` rather than generating fictional historical notices.
 
 ## Short user guide
 
@@ -9,7 +11,7 @@ This patch is stacked on PR #21. Neither patch is activated by this document. Do
 - Reports: administrator reports can explicitly attach the current page's last 20 semantic actions. Teacher-directed reports never include that attachment. Clicks describe attempts, not successful completion. Review/crop screenshots separately.
 - Administrator: Staff Home → Administration analytics. Refresh the bounded operational sample, select the current instructor's assigned sections and Save assignment. Explicitly Refresh teacher summary to replace the private coarse snapshot. This never writes grades.
 - Teacher: Teacher Analytics displays the account's learning view; only administrators can choose another configured instructor. Existing academic charts remain separate from optional engagement. No raw monitoring or diagnostic controls are present.
-- Retention: run Delete expired monitoring records regularly until separately approved TTL policies on `activity_events.expiresAt` and `issue_diagnostics.expiresAt` are configured. Repeat cleanup if batch limits are reached. Expiry fields alone do not delete records. Latest teacher snapshots and account preferences are separate records; do not promise a 30-day blanket deletion policy.
+- Retention: use the optional, separately approved hourly worker, repeated manual cleanup or approved TTL policies. All application cleanup is bounded; check backlog warnings. Expiry fields alone do not delete records. Latest teacher snapshots and account preferences are separate records; do not promise a 30-day blanket deletion policy.
 
 ## Data and authorization
 
@@ -24,8 +26,8 @@ This patch is stacked on PR #21. Neither patch is activated by this document. Do
 - Foreground, focused intervals only; input resets a 60-second idle cutoff without inspecting key values. Large timer jumps are dropped. Heartbeats send at most 60 seconds, and this client caps writes per page at 120. A final partial interval can be lost when closing/navigating.
 - Client reports are forgeable/partial observations, not validated attendance, authorship, productivity, retention rate or mastery. They must never influence automated grades, discipline or ranking. Existing published grades/evidence protections remain unchanged.
 - Dashboard coverage is the newest 500 events, up to 500 preferences and 200 reports, not full-population counts. The displayed student activity window is seven days. Returning means observations on two or more distinct UTC days, not cohort retention. High-volume use can truncate even that window.
-- Stopping consent blocks future creates. Previously sent events persist until deletion. Teacher snapshots replace only on explicit administrator refresh; stop/roster changes do not silently rewrite the old snapshot. The UI explains this. A trusted administrator is responsible for snapshot accuracy and removal requests.
-- No server aggregator, automatic TTL configuration, strong write-rate budget or account-erasure workflow is deployed here. Schedule cleanup and establish a school-approved privacy/retention policy before enabling monitoring at scale. A trusted backend is required for reliable longitudinal reports or automated projections.
+- Stopping consent blocks future creates. Previously sent events persist until deletion. If the prepared consent handler is activated, it removes affected rows on processing; otherwise the administrator must refresh the snapshot. Manual saves now re-check consent transactionally, and teacher snapshot reads deny changed assignments or expired publication. A trusted administrator remains responsible for manual snapshot correctness and erasure requests.
+- The bounded worker and consent handler are prepared, not deployed. Automatic TTL configuration, strong write-rate budgets, longitudinal population aggregation and account-erasure automation remain outside this release. Establish a school-approved privacy/retention policy and verify operating capacity before enabling monitoring at scale.
 - Live listeners use first-result loading tokens, not perpetual loading indicators. Legacy show/hide calls remain one compatibility channel; newly instrumented jobs have independent idempotent completion tokens. Not every legacy network function has been refactored into this API.
 - The browser regression exposed the review step toolbar covering an embedded Reopen button during scrolling. Step navigation now stays in normal flow instead of overlaying evidence controls; the test uses real clicks, not forced clicks.
 

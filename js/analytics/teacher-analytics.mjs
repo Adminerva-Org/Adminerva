@@ -1,6 +1,6 @@
 /** Academic analytics for the selected instructor's configured sections; raw operations stay in the admin module. */
 import { db, auth } from "../core/firebase-core.js";
-import {selectedTeacherSections} from "./teacher-engagement.mjs?v=2026.10.19.2";
+import {selectedTeacherSections} from "./teacher-engagement.mjs?v=2026.10.19.3";
 import {staffRole} from "../core/staff-role.mjs?v=2026.10.19.2";
 import {
   collection,

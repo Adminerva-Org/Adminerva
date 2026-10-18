@@ -20,9 +20,9 @@ test("only active foreground intervals before idle cutoff count", () => {
   assert.equal(activeInterval({...state, previous:40000}), 0);
 });
 test("summaries distinguish returns from visits and reject expired or impossible signals", () => {
-  const now = Date.UTC(2026, 9, 19), base = {studentId:"alice", page:"playground", createdAt:now - 86400000, action:"page-open"};
+  const now = Date.UTC(2026, 9, 19), base = {studentId:"alice", sessionId:"first-session", page:"playground", createdAt:now - 86400000, action:"page-open"};
   const rows = summarizeActivity([base, base, {...base, createdAt:now}, {...base, action:"active-time", activeSeconds:6000}, {...base, createdAt:now - 8 * 86400000}, {...base, studentId:""}, {...base, createdAt:now + 1}], {now});
-  assert.equal(rows.length, 1); assert.equal(rows[0].visits, 3); assert.equal(rows[0].days, 2); assert.equal(rows[0].activeSeconds, 60);
+  assert.equal(rows.length, 1); assert.equal(rows[0].visits, 1); assert.equal(rows[0].days, 2); assert.equal(rows[0].activeSeconds, 60);
   assert.equal(rows[0].modules.playground, 60);
 });
 test("diagnostic attachments discard fields and contain only twenty allowlisted steps", () => {
