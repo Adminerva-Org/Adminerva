@@ -266,13 +266,26 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     assert.deepEqual(errors,[],"Unexpected browser runtime errors");
     await teacher.screenshot({path:path.join(output,"teacher-review.png")});
     await student.setViewportSize({width:390,height:844});
-    assert.equal(await student.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true);
+    await expect.poll(()=>student.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),
+      {message:"Mobile layout must settle without horizontal overflow"}).toBe(true);
     await student.screenshot({path:path.join(output,"student-mobile.png")});
     await writeFile(path.join(output,"result.json"),JSON.stringify({projectId,backend:"real Auth + Firestore emulators",sdkVersion:"10.13.0",externalServices:"GitHub and Gemini fixtures",milestones,modelRequests,errors,blockedRequests},null,2));
     console.log(JSON.stringify({passed:milestones,artifacts:output}));
   }catch(error){
+    const layouts=[];
     if(browser)for(const [index,context] of contexts.entries())for(const [pageIndex,page] of context.pages().entries())
+    {
       await page.screenshot({path:path.join(output,"failure-"+index+"-"+pageIndex+".png")}).catch(()=>{});
+      const layout=await page.evaluate(()=>({
+        viewport:innerWidth,scrollWidth:document.documentElement.scrollWidth,
+        overflow:[...document.querySelectorAll("body *")].map(element=>{
+          const rect=element.getBoundingClientRect();
+          return {id:element.id,tag:element.tagName,className:String(element.className).slice(0,220),left:rect.left,right:rect.right};
+        }).filter(element=>element.right>innerWidth+1||element.left< -1).slice(0,30)
+      })).catch(()=>null);
+      layouts.push({context:index,page:pageIndex,layout});
+    }
+    await writeFile(path.join(output,"failure-layouts.json"),JSON.stringify(layouts,null,2));
     await writeFile(path.join(output,"failure.json"),JSON.stringify({message:error.message,errors,blockedRequests,dialogs,milestones},null,2));
     throw error;
   }finally{
