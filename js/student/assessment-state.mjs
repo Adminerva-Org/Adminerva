@@ -15,6 +15,8 @@ export function assessmentStatus({grade,submitted,evidenceStatus=null,deadline,n
   if(evidenceStatus==="approved")return {kind:"reviewed",text:"Checkpoint approved"};
   if(evidenceStatus==="needs_review")return {kind:"evidence",text:"Evidence discovered — awaiting review"};
   if(evidenceStatus==="submitted")return {kind:"submitted",text:"Evidence submitted for review"};
+  if(evidenceStatus==="withdrawn")return {kind:"revision",text:"Evidence withdrawn — resubmission available"};
+  if(evidenceStatus==="reopened")return {kind:"revision",text:"Evidence reopened — resubmit for approval"};
   if(submitted)
     return {kind:"submitted",text:"Submitted for review"};
   if(!knownSubmissions)

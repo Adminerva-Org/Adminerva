@@ -6,6 +6,7 @@ import { createGithubEvidenceClient } from './services/github-evidence-client.mj
 import { normalizeAssessment, validateInspectorInput, summarizeEvidence } from './services/inspector-helpers.mjs';
 
 const el=id=>document.getElementById(id);
+if(new URLSearchParams(location.search).get('embedded')==='1')el('adminerva-nav')?.remove();
 const state={students:[],assessments:[],busy:false};
 const github=createGithubEvidenceClient({maxPages:10,maxCommitFilesPages:10,retryCount:1});
 function text(node,value){node.textContent=String(value??'');return node}

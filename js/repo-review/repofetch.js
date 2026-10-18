@@ -1,5 +1,6 @@
 import { db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
+import {gradeMatchesEvidence} from "./services/evidence-lifecycle.mjs";
 import {
   collection,
   getDocs,
@@ -602,6 +603,14 @@ window.togglePublishGrade = async function (studentId, taskId, checkbox) {
     await runTransaction(db, async tx => {
       const grade = await tx.get(gradeRef);
       if (!grade.exists()) throw new Error("Grade was deleted during publication.");
+      if(wantsPublish){
+        const assessment=await tx.get(doc(db,"assessments",taskId));
+        if(assessment.data()?.schemaVersion===2){
+          const evidence=await tx.get(doc(db,"assessment_evidence",studentId+"_"+taskId));
+          if(!evidence.exists()||!gradeMatchesEvidence(grade.data(),evidence.data()))
+            throw Error("Evidence changed or was reopened. Review and save a new private grade draft before publishing.");
+        }
+      }
       tx.update(gradeRef, {
         published: wantsPublish,
         ...(wantsPublish && grade.data().reviewRequired === true

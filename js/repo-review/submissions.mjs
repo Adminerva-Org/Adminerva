@@ -56,9 +56,7 @@ function render(){
       hyperlink(links,"Project at checkpoint ↗",repo.url+"/tree/"+rev);
     }
     if(item.kind==="v2"){
-      hyperlink(links,"Review selected evidence →","assessment-evidence-review.html?student="+
-        encodeURIComponent(item.studentId)+"&assessment="+encodeURIComponent(item.assessmentId));
-      hyperlink(links,"Grade in RepoFetch →","repofetch.html?section="+
+      hyperlink(links,"Review & Grade →","repofetch.html?section="+
         encodeURIComponent(item.section||"")+"&student="+encodeURIComponent(item.studentId)+
         "&assessment="+encodeURIComponent(item.assessmentId));
       card.append(make("p","text-xs text-slate-500 mt-2",

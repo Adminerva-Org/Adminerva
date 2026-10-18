@@ -65,6 +65,10 @@ body :where(.shadow-2xl, .shadow-xl) { box-shadow: 0 18px 48px rgba(14, 32, 59, 
   box-shadow: 0 3px 18px rgba(12, 24, 42, .22);
 }
 #adminerva-nav nav a { text-decoration: none; }
+#av-account-controls,
+#av-account-controls > div,
+#av-account-controls .border-l { min-width: 0; }
+#av-account-controls #userEmailDisplay { width: 130px; max-width: 100%; }
 #adminerva-nav nav a:focus-visible, #adminerva-nav nav button:focus-visible {
   outline-color: #6ecdf2;
 }

@@ -277,6 +277,10 @@ window.matrixTogglePub = async function (studentId, taskId, checkbox) {
     await runTransaction(db, async tx => {
       const latest = await tx.get(gradeRef);
       if (!latest.exists()) throw new Error("Grade was removed during publication.");
+      if(wantsPublish){
+        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs");
+        await verifyGradePublication(tx,gradeRef,{...latest.data(),taskId});
+      }
       tx.update(gradeRef, {
         published: wantsPublish,
         ...(wantsPublish && latest.data().reviewRequired === true
@@ -458,6 +462,8 @@ window.bulkPublishCurrentGrid = async function () {
     const gradesSnap = await getDocs(
       query(collection(db, "student_grades"), where("taskId", "==", taskId)),
     );
+    const assessment=await getDoc(doc(db,"assessments",taskId));
+    if(assessment.data()?.schemaVersion===2)return alert("V2 grades require individual review and publication. Open Review & Grade, verify the saved draft, then publish the student's grade individually.");
 
     // 3. Prepare the Firestore batch
     const batch = writeBatch(db);

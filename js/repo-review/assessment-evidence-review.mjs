@@ -5,12 +5,24 @@ import {collection,doc,getDoc,getDocs,setDoc,query,where,updateDoc,runTransactio
 import {parseRepository,normalizeSelection,validSha}
   from "./services/assessment-evidence.mjs";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "./services/commit-history.mjs";
+import {approvalContribution} from "./services/evidence-lifecycle.mjs";
+import {changeEvidence} from "./services/evidence-transaction.mjs";
 
 const STAFF=new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
 const ADMIN="babaynike2013@gmail.com";
 const el=id=>document.getElementById(id);
 const state={students:[],assessments:[],evidence:null,student:null,assessment:null,claims:[],loaded:false,busy:false};
 const discovery={commits:[],selected:new Set(),checkpoint:"",page:0,hasOlder:false,loading:false,sequence:0,branch:""};
+const embedded=new URLSearchParams(location.search).get("embedded")==="1";
+if(embedded){
+  document.body.classList.add("evidence-embedded");
+  document.getElementById("adminerva-nav")?.remove();
+  document.querySelector("main > header")?.remove();
+  document.querySelector("main > section")?.classList.add("hidden");
+}
+function notifyWorkspace(){
+  if(embedded)window.parent.postMessage({type:"adminerva:evidence-changed",studentId:state.student.id,assessmentId:state.assessment.id},location.origin);
+}
 function updateDiscoveryPaging(){
   const button=el("evidenceFindOlder");if(!button)return;
   button.classList.toggle("hidden",!discovery.hasOlder);
@@ -27,7 +39,9 @@ function link(parent,title,url){
   a.href=url;a.target="_blank";a.rel="noopener noreferrer";return a;
 }
 async function github(route){
-  const res=await fetch("https://api.github.com"+route,{headers:{Accept:"application/vnd.github+json"}});
+  const headers={Accept:"application/vnd.github+json"};
+  const token=localStorage.getItem("Adminerva_github_token");if(token)headers.Authorization="Bearer "+token;
+  const res=await fetch("https://api.github.com"+route,{headers});
   if(!res.ok)throw Error("GitHub HTTP "+res.status+" — verify the repository is publicly accessible.");
   return res.json();
 }
@@ -77,6 +91,9 @@ async function loadEvidence(){
     if(evidence.studentId!==student.id||evidence.assessmentId!==assessment.id||
        evidence.repository!==student.repoUrl)throw Error("Submission identity or repository does not match the roster.");
     state.evidence=evidence;
+    el("evidenceContributionScope").value=evidence.contributionScope||"";
+    el("evidenceContributionScope").disabled=evidence.status==="approved";
+    el("evidenceReviewNote").value="";el("evidenceConfirm").checked=false;
     const claims=await getDocs(query(collection(db,"commit_reclaims"),where("studentId","==",student.id)));
     state.claims=claims.docs.filter(d=>d.data().repository===evidence.repository &&
       evidence.selectedCommits.includes(d.data().sha)).map(d=>({id:d.id,...d.data()}));
@@ -87,10 +104,10 @@ async function loadEvidence(){
       " · Commits submitted: "+evidence.selectedCommits.length;
     const links=el("evidenceLinks");links.replaceChildren();
     link(links,"Project at checkpoint ↗",base+"/tree/"+encodeURIComponent(evidence.checkpointSha));
-    link(links,"Open grading in RepoFetch →","repofetch.html?section="+
+    if(!embedded)link(links,"Open grading in RepoFetch →","repofetch.html?section="+
       encodeURIComponent(student.section)+"&student="+encodeURIComponent(student.id)+
       "&assessment="+encodeURIComponent(assessment.id));
-    link(links,"Contribution Inspector ↗","contribution-inspector.html?section="+
+    if(!embedded)link(links,"Contribution Inspector ↗","contribution-inspector.html?section="+
       encodeURIComponent(student.section)+"&student="+encodeURIComponent(student.id)+
       "&assessment="+encodeURIComponent(assessment.id));
     const rows=el("evidenceCommitDetails");rows.replaceChildren();
@@ -100,9 +117,17 @@ async function loadEvidence(){
       const preview=add(p,"button"," · Preview changes","ml-3 text-xs underline text-indigo-700");
       preview.type="button";
       preview.addEventListener("click",()=>{void previewCommit(repo,sha,p);});
+      const label=add(p,"label","","flex gap-2 items-start text-xs mt-2");
+      const verified=document.createElement("input");verified.type="checkbox";
+      verified.dataset.contributionSha=sha;
+      verified.checked=(evidence.verifiedContributionCommits||[]).includes(sha);
+      verified.disabled=evidence.status==="approved";
+      label.append(verified);add(label,"span","I independently verified this commit's relevant changes as this student's work (including explained shared work).");
     }
     await renderClaims();
-    el("evidenceApprove").disabled=evidence.status==="approved";
+    el("evidenceApprove").disabled=!["submitted","needs_review"].includes(evidence.status);
+    el("evidenceReopen").classList.toggle("hidden",evidence.status!=="approved");
+    el("evidenceAuditSummary").textContent="Evidence revision: "+(evidence.revision||0)+". Changes preserve the previous record and reviewer identity. Reopening invalidates draft eligibility; published grades must be unpublished first.";
     el("evidenceApprove").textContent=evidence.status==="approved"?"Checkpoint approved":"Verify and approve checkpoint";
     el("evidenceDetails").classList.remove("hidden");
     state.loaded=true;
@@ -194,7 +219,7 @@ async function verifyAncestry(repo,checkpoint,selected){
   throw Error("The selected commits could not all be verified in the checkpoint's available ancestry. Choose another revision or inspect manually.");
 }
 async function approve(){
-  if(state.busy||!state.loaded||state.evidence?.status==="approved")return;
+  if(state.busy||!state.loaded||!["submitted","needs_review"].includes(state.evidence?.status))return;
   const note=el("evidenceReviewNote").value.trim();
   if(note.length<15||note.length>3000||!el("evidenceConfirm").checked){
     status("Provide a review note (15–3,000 characters) and confirm inspection.");return;
@@ -207,6 +232,9 @@ async function approve(){
   try{
     const repo=parseRepository(state.evidence.repository);
     const selection=normalizeSelection(state.evidence.selectedCommits,state.evidence.checkpointSha);
+    const contribution=approvalContribution(selection,
+      [...document.querySelectorAll("[data-contribution-sha]:checked")].map(node=>node.dataset.contributionSha),
+      el("evidenceContributionScope").value);
     status("Checking for competing pending reclaim requests…");
     for(const sha of selection.selectedCommits){
       const competing=await getDocs(query(collection(db,"commit_reclaims"),where("sha","==",sha)));
@@ -217,20 +245,29 @@ async function approve(){
     status("Verifying checkpoint ancestry with GitHub…");
     await verifyAncestry(repo,selection.checkpointSha,selection.selectedCommits);
     const ref=doc(db,"assessment_evidence",state.student.id+"_"+state.assessment.id);
-    await runTransaction(db,async tx=>{
-      const current=await tx.get(ref);
-      if(!current.exists()||!["submitted","needs_review"].includes(current.data().status)||
-        current.data().checkpointSha!==selection.checkpointSha||
-        JSON.stringify(current.data().selectedCommits)!==JSON.stringify(selection.selectedCommits))
-        throw Error("Student evidence changed; reload before approving.");
-      tx.update(ref,{status:"approved",reviewedBy:auth.currentUser.uid,
+    await changeEvidence(ref,state.evidence,{status:"approved",reviewedBy:auth.currentUser.uid,
         reviewedAt:serverTimestamp(),verificationNote:note,
-        approvedCheckpointSha:selection.checkpointSha});
-    });
+        approvedCheckpointSha:selection.checkpointSha,...contribution},note);
     status("Checkpoint approved. Grading remains a separate unpublished teacher step.");
     await loadEvidence();
+    notifyWorkspace();
   }catch(e){status("Approval failed: "+e.message);}
-  finally{state.busy=false;el("evidenceApprove").disabled=state.evidence?.status==="approved";}
+  finally{state.busy=false;el("evidenceApprove").disabled=!["submitted","needs_review"].includes(state.evidence?.status);}
+}
+async function reopen(){
+  if(state.busy||state.evidence?.status!=="approved")return;
+  const reason=el("evidenceReviewNote").value.trim();
+  if(reason.length<15||reason.length>3000)return status("Enter a reopening reason of 15–3,000 characters in the teacher review note.");
+  if(!confirm("Reopen this evidence for student changes? The approval is revoked, existing draft grades require fresh review, and prior evidence is retained."))return;
+  state.busy=true;
+  try{
+    await changeEvidence(doc(db,"assessment_evidence",state.student.id+"_"+state.assessment.id),state.evidence,{
+      status:"reopened",approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:"",
+      reopenedBy:auth.currentUser.uid,reopenedAt:serverTimestamp(),reopenReason:reason
+    },reason);
+    await loadEvidence();notifyWorkspace();status("Reopened for student changes. A new submission and approval are required before grading.");
+  }catch(error){status("Unable to reopen: "+error.message);}
+  finally{state.busy=false;}
 }
 onAuthStateChanged(auth,user=>{
   if(!user||!STAFF.has(String(user.email||"").toLowerCase())){
@@ -335,3 +372,4 @@ el("evidenceFindOlder")?.addEventListener("click",()=>{void loadOlderHistorical(
 el("evidenceSaveDiscovery").addEventListener("click",()=>{void saveDiscovery();});
 el("evidenceLoad").addEventListener("click",()=>{void loadEvidence();});
 el("evidenceApprove").addEventListener("click",()=>{void approve();});
+el("evidenceReopen").addEventListener("click",()=>{void reopen();});

@@ -48,10 +48,10 @@ function mount(module='educator', page='dashboard', role='teacher') {
 }
 test('teacher sees task-group menus instead of eight crowded links',()=>{
   const {desktop,mobile}=mount();
-  assert.equal(desktop.children.length,3);
+  assert.equal(desktop.children.length,4);
   assert.equal(desktop.children[0].href,'reporeviewDashboard.html');
   assert.deepEqual(desktop.children.slice(1).map(x=>x.children[0].textContent),
-    ['Grading ▾','Repositories ▾']);
+    ['Grading ▾','Evidence tools ▾','Repositories ▾']);
   assert.equal(mobile.children.length,1);
   assert.equal(mobile.children[0].children[0].textContent,'Menu · Analytics ▾');
 });
@@ -70,8 +70,8 @@ test('only the active page is announced and its mobile section expands',()=>{
   assert.deepEqual(all.filter(x=>x.attributes['aria-current']==='page').map(x=>x.href),
     ['submissions.html']);
   const outer=mobile.children[0], panel=outer.children[1];
-  assert.ok(panel.children[1].open, 'Grading section should be expanded');
-  assert.match(outer.children[0].textContent,/Grading/);
+  assert.ok(panel.children[2].open, 'Evidence tools section should be expanded');
+  assert.match(outer.children[0].textContent,/Evidence tools/);
 });
 test('ordinary teacher does not get Admin Hub directory in grouped navigation',()=>{
   const {desktop}=mount('educator','gradebook','teacher');
@@ -104,7 +104,7 @@ test('Manage appears in the admin and settings areas, not RepoFetch',()=>{
   assert.deepEqual(settings.desktop.children.slice(1).map(x=>x.children[0].textContent),['Manage ▾']);
   const repo=mount('repo','repofetch','teacher');
   assert.deepEqual(repo.desktop.children.slice(1).map(x=>x.children[0].textContent),
-    ['Grading ▾','Repositories ▾']);
+    ['Grading ▾','Evidence tools ▾','Repositories ▾']);
 });
 
 test('Practice Lab uses its own tabs and remains in the student module switcher',()=>{
@@ -135,7 +135,9 @@ test('student pages request an updated nav asset instead of a stale browser cach
   for (const path of ['student-dashboard.html','student-assessments.html',
     'student-practice.html','student-playground.html','student-settings.html']) {
     const page=readFileSync(path,'utf8');
-    assert.match(page,/adminerva-nav[.]js[?]v=2026[.]10[.]17[.]2/);
+    const version=page.match(/adminerva-nav[.]js[?]v=(\d{4}[.]\d{2}[.]\d{2}[.]\d+)/)?.[1];
+    assert.ok(version&&version.localeCompare('2026.10.17.2','en',{numeric:true})>=0,
+      path+' must request the current or a newer nav asset');
   }
 });
 

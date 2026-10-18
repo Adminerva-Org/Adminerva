@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {initializeTestEnvironment, assertSucceeds, assertFails}
   from '@firebase/rules-unit-testing';
 import {doc, getDoc, setDoc, updateDoc, deleteDoc, serverTimestamp,
-  collection, getDocs, query, where}
+  collection, getDocs, query, where, writeBatch}
   from 'firebase/firestore';
 
 let env;
@@ -30,7 +30,7 @@ beforeEach(async () => {
       setDoc(doc(db,'students','alice'),{name:'Alice',email:EMAIL_A,section:'11-A'}),
       setDoc(doc(db,'students','bob'),{name:'Bob',email:EMAIL_B,section:'11-B'}),
       setDoc(doc(db,'assessments','peta'),{title:'Practical Exam',quarter:'Q2'}),
-      setDoc(doc(db,'assessments','v2'),{title:'Mini PETA 1',quarter:'Q3',schemaVersion:2}),
+      setDoc(doc(db,'assessments','v2'),{title:'Mini PETA 1',quarter:'Q3',schemaVersion:2,maxScore:20}),
       setDoc(doc(db,'notifications','alice','items','note-1'),{
         title:'Review update',type:'issue',createdAt:new Date(),readAt:null,
         target:'issues.html',body:'Your report is ready.'
@@ -38,7 +38,20 @@ beforeEach(async () => {
     ]);
   });
 });
-function client(uid,email){return env.authenticatedContext(uid,{email}).firestore()}
+function client(uid,email){return env.authenticatedContext(uid,{email,email_verified:true}).firestore()}
+async function auditedEvidence(db,changes,{actor='alice',reason='Evidence reviewed and updated by owner'}={}){
+  const ref=doc(db,'assessment_evidence','alice_v2');
+  const before=(await getDoc(ref)).data();
+  const revision=(before.revision||0)+1;
+  const after={...before,...changes,revision,updatedAt:serverTimestamp()};
+  const batch=writeBatch(db);
+  batch.set(ref,after);
+  batch.set(doc(ref,'revisions',String(revision)),{before,after,actorUid:actor,reason,createdAt:serverTimestamp()});
+  return batch.commit();
+}
+function approval(){return {status:'approved',reviewedBy:'staff',reviewedAt:serverTimestamp(),
+  approvedCheckpointSha:SHA,verifiedContributionCommits:[SHA],contributionScope:'Assigned welcome screen; observed implementation by student.',
+  verificationNote:'Checked the selected source and individual contributions.'};}
 function report(uid='alice',email=EMAIL_A){
   return {
     title:'Compiler stops working',description:'The editor fails after selecting Run.',
@@ -255,9 +268,11 @@ test('V2 evidence is individual, editable while submitted, and cannot self-appro
   await assertFails(setDoc(doc(alice,'assessment_evidence','alice_peta'),{...record,assessmentId:'peta'}));
   await assertFails(updateDoc(ref,{status:'approved',reviewedBy:'alice'}));
   await assertFails(updateDoc(ref,{repository:'https://github.com/other/repo'}));
+  await assertFails(auditedEvidence(alice,{selectedCommits:[SHA,123],submittedAt:serverTimestamp()}));
+  await assertFails(auditedEvidence(alice,{selectedCommits:[SHA,'invalid'],submittedAt:serverTimestamp()}));
+  await assertFails(auditedEvidence(alice,{selectedCommits:[SHA,SHA],submittedAt:serverTimestamp()}));
   await assertFails(updateDoc(ref,{selectedCommits:[SHA],checkpointSha:SHA,updatedAt:serverTimestamp()}));
-  await assertSucceeds(updateDoc(ref,{selectedCommits:[SHA],checkpointSha:SHA,
-    submittedAt:serverTimestamp(),updatedAt:serverTimestamp()}));
+  await assertSucceeds(auditedEvidence(alice,{selectedCommits:[SHA],checkpointSha:SHA,submittedAt:serverTimestamp()}));
 });
 test('V2 evidence approval is staff-only',async()=>{
   const alice=client('alice',EMAIL_A),staff=client('staff',TEACHER);
@@ -269,9 +284,110 @@ test('V2 evidence approval is staff-only',async()=>{
     repository,selectedCommits:[SHA],checkpointSha:SHA,status:'submitted',
     submittedAt:serverTimestamp(),updatedAt:serverTimestamp()}));
   await assertFails(updateDoc(ref,{status:'approved',reviewedBy:'alice'}));
-  await assertSucceeds(updateDoc(doc(staff,'assessment_evidence','alice_v2'),
-    {status:'approved',reviewedBy:'staff'}));
+  await assertFails(updateDoc(doc(staff,'assessment_evidence','alice_v2'),approval()));
+  await assertSucceeds(auditedEvidence(staff,approval(),{actor:'staff'}));
   await assertFails(updateDoc(ref,{selectedCommits:[SHA],updatedAt:serverTimestamp()}));
+});
+
+test('student withdrawal and resubmission preserve immutable audit snapshots',async()=>{
+  const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B),staff=client('staff',TEACHER);
+  const repository='https://github.com/example/project';
+  await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'students','alice'),{email:EMAIL_A,section:'11-A',repoUrl:repository}));
+  const ref=doc(alice,'assessment_evidence','alice_v2');
+  await assertSucceeds(setDoc(ref,{studentId:'alice',assessmentId:'v2',section:'11-A',repository,
+    selectedCommits:[SHA],checkpointSha:SHA,status:'submitted',submittedAt:serverTimestamp(),updatedAt:serverTimestamp()}));
+  await assertFails(updateDoc(ref,{status:'withdrawn',updatedAt:serverTimestamp()}));
+  await assertSucceeds(auditedEvidence(alice,{status:'withdrawn'}));
+  const history=doc(ref,'revisions','1');
+  const audit=(await assertSucceeds(getDoc(history))).data();
+  assert.equal(audit.before.status,'submitted');assert.equal(audit.after.status,'withdrawn');
+  await assertFails(getDoc(doc(bob,'assessment_evidence','alice_v2','revisions','1')));
+  await assertFails(updateDoc(history,{reason:'Changed the history'}));
+  await assertFails(deleteDoc(doc(staff,'assessment_evidence','alice_v2','revisions','1')));
+  await assertFails(auditedEvidence(alice,{status:'submitted',submittedAt:new Date('2020-01-01')}));
+  await assertSucceeds(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
+  assert.equal((await getDoc(ref)).data().revision,2);
+});
+
+test('approved evidence requires instructor reopening; old drafts cannot publish after reapproval',async()=>{
+  const alice=client('alice',EMAIL_A),staff=client('staff',TEACHER);
+  const repository='https://github.com/example/project';
+  await env.withSecurityRulesDisabled(async ctx=>{
+    await setDoc(doc(ctx.firestore(),'students','alice'),{email:EMAIL_A,section:'11-A',repoUrl:repository});
+    await setDoc(doc(ctx.firestore(),'assessment_evidence','alice_v2'),{studentId:'alice',assessmentId:'v2',section:'11-A',repository,
+      selectedCommits:[SHA],checkpointSha:SHA,status:'submitted',submittedAt:new Date(),updatedAt:new Date()});
+  });
+  await assertFails(auditedEvidence(alice,approval()));
+  await assertSucceeds(auditedEvidence(staff,approval(),{actor:'staff'}));
+  const grade=doc(staff,'student_grades','alice_v2');
+  const record={studentId:'alice',taskId:'v2',gradedSha:SHA,evidenceRevision:1,score:15,maxScore:20,
+    feedback:'Verified assigned screen.',teacherReviewNote:'Inspected actual contribution.',reviewedBy:'staff',manuallyAdjusted:true,reviewRequired:false,published:false};
+  await assertFails(setDoc(grade,{...record,published:true}));
+  await assertFails(setDoc(grade,{...record,evidenceRevision:0}));
+  await assertSucceeds(setDoc(grade,record));
+  await assertFails(auditedEvidence(alice,{status:'withdrawn'}));
+  const reopen={status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',
+    reopenedBy:'staff',reopenedAt:serverTimestamp(),reopenReason:'Permit correction to the individual submission.'};
+  await assertFails(auditedEvidence(alice,{...reopen,reopenedBy:'alice'}));
+  await assertSucceeds(updateDoc(grade,{published:true}));
+  await assertFails(updateDoc(grade,{score:19}));
+  await assertFails(auditedEvidence(staff,reopen,{actor:'staff'}));
+  await assertSucceeds(updateDoc(grade,{published:false}));
+  await assertSucceeds(auditedEvidence(staff,reopen,{actor:'staff'}));
+  await assertFails(updateDoc(grade,{published:true}));
+  await assertSucceeds(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
+  await assertSucceeds(auditedEvidence(staff,approval(),{actor:'staff'}));
+  await assertFails(updateDoc(grade,{published:true}));
+  await assertSucceeds(updateDoc(grade,{evidenceRevision:4}));
+  await assertSucceeds(updateDoc(grade,{published:true}));
+  await assertFails(deleteDoc(doc(staff,'assessment_evidence','alice_v2')));
+});
+
+test('instructors cannot bypass evidence transitions or audit history using catch-all privileges',async()=>{
+  const staff=client('staff',TEACHER),admin=client('admin',ADMIN);
+  await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'assessment_evidence','alice_v2'),{
+    studentId:'alice',assessmentId:'v2',status:'approved',selectedCommits:[SHA],checkpointSha:SHA,approvedCheckpointSha:SHA}));
+  for(const db of [staff,admin]){
+    await assertFails(updateDoc(doc(db,'assessment_evidence','alice_v2'),{selectedCommits:['b'.repeat(40)]}));
+    await assertFails(deleteDoc(doc(db,'assessment_evidence','alice_v2')));
+    await assertFails(setDoc(doc(db,'assessment_evidence','alice_v2','revisions','fake'),{reason:'Forged audit'}));
+  }
+});
+
+test('unverified staff emails do not grant instructor authority',async()=>{
+  for(const email of [TEACHER,ADMIN]){
+    const unverified=env.authenticatedContext('unverified',{email,email_verified:false}).firestore();
+    await assertFails(setDoc(doc(unverified,'assessment_private','v2'),{rules:['Forged configuration']}));
+    await assertFails(setDoc(doc(unverified,'student_grades','alice_v2'),{studentId:'alice',taskId:'v2',score:20,published:true}));
+  }
+});
+
+test('twenty selected commits can be submitted, audited and approved within rule limits',async()=>{
+  const alice=client('alice',EMAIL_A),staff=client('staff',TEACHER);
+  const repository='https://github.com/example/project';
+  const selectedCommits=[SHA,...Array.from({length:19},(_,index)=>(index+1).toString(16).padStart(40,'0'))];
+  await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'students','alice'),{email:EMAIL_A,section:'11-A',repoUrl:repository}));
+  const record={studentId:'alice',assessmentId:'v2',section:'11-A',repository,selectedCommits,
+    checkpointSha:SHA,status:'submitted',submittedAt:serverTimestamp(),updatedAt:serverTimestamp()};
+  await assertSucceeds(setDoc(doc(alice,'assessment_evidence','alice_v2'),record));
+  await assertSucceeds(auditedEvidence(alice,{submittedAt:serverTimestamp()}));
+  await assertFails(auditedEvidence(alice,{selectedCommits:[...selectedCommits,'b'.repeat(40)],submittedAt:serverTimestamp()}));
+  await assertSucceeds(auditedEvidence(staff,approval(),{actor:'staff'}));
+});
+
+test('student cannot alter discovered evidence until instructor reopening; reopened discovery permits withdrawal and resubmission',async()=>{
+  const alice=client('alice',EMAIL_A),staff=client('staff',TEACHER);
+  const repository='https://github.com/example/project';
+  await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'students','alice'),{email:EMAIL_A,section:'11-A',repoUrl:repository}));
+  await assertSucceeds(setDoc(doc(staff,'assessment_evidence','alice_v2'),{
+    studentId:'alice',assessmentId:'v2',section:'11-A',repository,selectedCommits:[SHA],checkpointSha:SHA,
+    status:'needs_review',source:'teacher_discovered',discoveredBy:'staff',recordedAt:serverTimestamp(),updatedAt:serverTimestamp()}));
+  await assertFails(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
+  await assertSucceeds(auditedEvidence(staff,approval(),{actor:'staff'}));
+  await assertSucceeds(auditedEvidence(staff,{status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',
+    reopenedBy:'staff',reopenedAt:serverTimestamp(),reopenReason:'Allow student to correct discovered evidence.'},{actor:'staff'}));
+  await assertSucceeds(auditedEvidence(alice,{status:'withdrawn'}));
+  await assertSucceeds(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
 });
 test('reclaim is initially pending, owner-private and can only be withdrawn by claimant',async()=>{
   const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B),staff=client('staff',TEACHER);

@@ -2,15 +2,16 @@ import { auth, db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs";
 import {
-  collection, doc, getDoc, runTransaction, serverTimestamp
+  collection, doc, getDoc, getDocs, query, where, runTransaction, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import { analyzePatchSubstance } from "./services/commit-substance.mjs";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs";
 import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,parseSuggestedRubric}
-  from "./services/v2-grading-assistant.mjs";
+  from "./services/v2-grading-assistant.mjs?v=2026.10.18.4";
+import {evidenceRevision,gradeMatchesEvidence} from "./services/evidence-lifecycle.mjs";
 
 const el = id => document.getElementById(id);
-const state = { active: null, request: null, token: 0, flags: [], aiBusy: false };
+const state = { active: null, request: null, token: 0, flags: [], aiBusy: false, dirty:false };
 function message(text, error=false) {
   const node=el("manualReviewStatus");
   node.textContent=text; node.className=error ? "text-sm text-rose-700" : "text-sm text-slate-600";
@@ -37,10 +38,12 @@ function flag(text) {
   el("manualReviewFlags").append(p);
 }
 function close() {
+  if(state.dirty&&!confirm("Discard unsaved score or feedback changes?"))return;
   el("manualReviewModal").classList.add("hidden");
   state.active=null;
   state.request=null;
   state.aiBusy=false;
+  state.dirty=false;
   state.token++;
 }
 async function githubGet(url, session) {
@@ -119,14 +122,19 @@ function displayAISuggestion(draft){
     const row=document.createElement("div");
     row.className="bg-white rounded border border-indigo-100 p-3";
     const heading=document.createElement("strong");heading.className="text-sm";
-    heading.textContent=item.name+": "+item.score+"/"+item.maxScore;
+    heading.textContent=item.name+": "+(item.score===null?"Teacher review needed":item.score+"/"+item.maxScore);
     const rationale=document.createElement("p");rationale.className="mt-1 text-xs text-slate-700 whitespace-pre-wrap";
     rationale.textContent=item.rationale;
     row.append(heading,rationale);container.append(row);
   }
   const total=document.createElement("p");total.className="font-bold text-indigo-950";
-  total.textContent="AI suggested total: "+draft.score;
+  total.textContent=draft.score===null?"Suggested total unavailable — resolve unscored criteria before assigning a teacher score.":"Suggested score: "+draft.score+"/"+state.active.maxScore;
   container.append(total);
+  if(draft.projectObservations){
+    const observation=document.createElement("p");observation.className="text-xs text-slate-700";
+    observation.textContent="Shared project context (separate from individual score): "+draft.projectObservations;
+    container.append(observation);
+  }
   if(draft.limitations){
     const limitation=document.createElement("p");
     limitation.className="text-xs text-amber-900 whitespace-pre-wrap";
@@ -137,16 +145,16 @@ function displayAISuggestion(draft){
 async function generateAIDraft(){
   const active=state.active;
   if(!active||active.assessment.schemaVersion!==2||!active.checkpointSha||state.aiBusy){
-    return aiStatus("An approved V2 project checkpoint is required before AI suggestions.",true);
+    return aiStatus("Approve the checkpoint and verify individual contributions before evaluation.",true);
   }
   if(active.previous?.published)return aiStatus("Published grades are protected. No AI changes were made.",true);
   const token=localStorage.getItem("Adminerva_gemini_token");
   if(!token)return aiStatus("Configure your Gemini API key in Adminerva Settings before requesting AI suggestions.",true);
   const model=String(localStorage.getItem("Adminerva_ai_model")||"gemini-2.5-flash").trim();
   if(!/^[a-zA-Z0-9._-]{1,80}$/.test(model))return aiStatus("The configured AI model name is invalid.",true);
-  if(!confirm("Request an AI rubric suggestion for the approved Git checkpoint? The relevant student source code and selected diffs will be sent to your configured AI provider. You must verify and approve any score before saving."))return;
+  if(!confirm("Evaluate this approved checkpoint? Relevant student source and verified diffs will be sent to the configured Gemini AI provider to generate draft scores and feedback. Verify the result before saving."))return;
   if((el("manualReviewScore").value.trim()||el("manualReviewFeedback").value.trim()) &&
-     !confirm("Replace the currently displayed score and feedback with AI suggestions? No grade is saved until you confirm."))return;
+     !confirm("Replace the displayed score and feedback with a new evaluation draft? Saved grades remain unchanged until you save."))return;
   const session=state.token;
   state.aiBusy=true;
   const button=el("manualReviewAIGenerate");button.disabled=true;
@@ -157,13 +165,14 @@ async function generateAIDraft(){
     const evidence=await loadPinnedV2Source({
       repository:active.base,checkpointSha:active.checkpointSha,
       selectedCommits:active.selectedEvidenceCommits,assessment:active.assessment,
+      verifiedContributionCommits:active.evidence.verifiedContributionCommits,
       token:localStorage.getItem("Adminerva_github_token")
     });
     if(session!==state.token)return;
     aiStatus("Generating rubric suggestions. Existing student grades remain unchanged…");
     const prompt=buildRubricPrompt({
       assessment:active.assessment,criteria,checkpointSha:active.checkpointSha,
-      files:evidence.files,patches:evidence.patches
+      files:evidence.files,patches:evidence.patches,contributionScope:active.evidence.contributionScope
     });
     const response=await fetch(
       "https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{
@@ -181,20 +190,22 @@ async function generateAIDraft(){
     const output=aiData?.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("")||"";
     if(!output)throw Error("AI provider returned no grading suggestion.");
     const parsed=JSON.parse(output.replace(/^\x60{3}(?:json)?\s*/i,"").replace(/\s*\x60{3}$/,"").trim());
-    const draft=parseSuggestedRubric(parsed,criteria,active.maxScore);
+    const draft=parseSuggestedRubric(parsed,criteria,active.maxScore,evidence);
     if(session!==state.token||state.active!==active)return;
     active.aiDraft={model,checkpointSha:active.checkpointSha,...draft};
+    state.dirty=true;
     displayAISuggestion(draft);
-    el("manualReviewScore").value=String(draft.score);
+    el("manualReviewScore").value=draft.score===null?"":String(draft.score);
+    el("manualReviewConfirm").checked=false;
     el("manualReviewFeedback").value=draft.feedback;
     el("manualReviewFiles").value=evidence.files.map(f=>f.path).join("\n");
-    aiStatus("AI suggestions have filled the editable score and feedback fields. Review every criterion and source file. Add your own teacher review note and confirm inspection before saving.");
+    aiStatus("Unsaved evaluation draft. Review criterion evidence, edit feedback, resolve unscored criteria, and enter your teacher note before saving.");
   }catch(error){
-    if(session===state.token)aiStatus("AI suggestion unavailable: "+error.message,true);
+    if(session===state.token)aiStatus("Evaluation unavailable: "+error.message,true);
   }finally{
     if(session===state.token){
       state.aiBusy=false;button.disabled=Boolean(state.active?.previous?.published)||!state.active?.checkpointSha;
-      button.textContent="Generate AI rubric draft";
+      button.textContent="Evaluate";
     }
   }
 }
@@ -207,13 +218,21 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
   const session=++state.token;
   state.request={studentId,taskId,owner,repo,diagnostic};
   state.active=null;state.aiBusy=false;
+  state.dirty=false;
   el("manualReviewAISection").classList.add("hidden");
   el("manualReviewAIScores").replaceChildren();
   el("manualReviewAIGenerate").disabled=true;
-  el("manualReviewAIGenerate").textContent="Generate AI rubric draft";
+  el("manualReviewAIGenerate").textContent="Evaluate";
+  el("manualReviewSave").textContent="Save unpublished grade";
+  el("integratedEvidence").classList.add("hidden");
+  el("integratedEvidenceFrame").removeAttribute("src");
+  el("integratedInspectorFrame").removeAttribute("src");
+  el("integratedGroupInspectorFrame").removeAttribute("src");
   aiStatus("Approve checkpoint evidence to enable suggestions.");
   el("manualReviewModal").classList.remove("hidden");
   el("manualReviewForm").reset();
+  for(const id of ["manualReviewScore","manualReviewFeedback","manualReviewFiles","manualReviewReason","manualReviewConfirm"])
+    el(id).disabled=true;
   el("manualReviewFlags").replaceChildren();
   state.flags = [];
   el("manualReviewLinks").replaceChildren();
@@ -236,24 +255,36 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
     el("manualReviewTask").textContent=(assessment.title||taskId)+" — "+(assessment.maxScore||20)+" points";
     if(assessment.schemaVersion===2){
       el("manualReviewAISection").classList.remove("hidden");
-      link(el("manualReviewLinks"),"Assessment Evidence Review ↗","assessment-evidence-review.html?student="+
-        encodeURIComponent(studentId)+"&assessment="+encodeURIComponent(taskId));
-      link(el("manualReviewLinks"),"Contribution Inspector ↗","contribution-inspector.html?section="+
-        encodeURIComponent(student.section)+"&student="+encodeURIComponent(studentId)+
-        "&assessment="+encodeURIComponent(taskId));
+      el("integratedEvidence").classList.remove("hidden");
+      const params=new URLSearchParams({student:studentId,assessment:taskId,section:student.section,embedded:"1"});
+      el("integratedEvidenceFrame").src="assessment-evidence-review.html?"+params;
+      el("integratedInspectorDetails").open=false;
+      el("integratedInspectorDetails").ontoggle=()=>{
+        if(el("integratedInspectorDetails").open&&!el("integratedInspectorFrame").getAttribute("src"))
+          el("integratedInspectorFrame").src="contribution-inspector.html?"+params;
+      };
+      el("integratedGroupInspectorDetails").open=false;
+      el("integratedGroupInspectorDetails").ontoggle=()=>{
+        if(el("integratedGroupInspectorDetails").open&&!el("integratedGroupInspectorFrame").getAttribute("src"))
+          el("integratedGroupInspectorFrame").src="temp-grading.html?"+params;
+      };
+      void groupSummary(student,taskId,session);
     }
-    let checkpointSha=null,selectedEvidenceCommits=[];
+    let checkpointSha=null,selectedEvidenceCommits=[],approvedEvidence=null;
     if(assessment.schemaVersion===2){
       const evidence=await getDoc(doc(db,"assessment_evidence",studentId+"_"+taskId));
       if(session!==state.token)return;
+      el("integratedEvidenceStatus").textContent=evidence.exists()?"Evidence: "+evidence.data().status+". Review selected changes and verify each student's responsibilities below.":"No submission yet. Expand evidence to discover historical commits in this page.";
+      el("integratedEvidenceDetails").open=!evidence.exists()||evidence.data().status!=="approved";
       if(!evidence.exists()||evidence.data().status!=="approved"||
         !validSha(evidence.data().approvedCheckpointSha)||
         evidence.data().approvedCheckpointSha!==evidence.data().checkpointSha)
-        throw Error("Approve the student's assessment checkpoint in Assessment Evidence Review before grading.");
+        throw Error("Expand Evidence below and approve the checkpoint here before grading.");
       if(parseRepository(evidence.data().repository).url!==parseRepository(base).url)
         throw Error("Approved evidence belongs to a different repository. Review the student's linked repository.");
       checkpointSha=evidence.data().approvedCheckpointSha;
       selectedEvidenceCommits=evidence.data().selectedCommits||[];
+      approvedEvidence=evidence.data();
     }
     const maxScore=Number(assessment.maxScore || 20);
     if (!Number.isFinite(maxScore) || maxScore<=0) throw new Error("Assessment has an invalid maximum score.");
@@ -277,6 +308,8 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
     for(const path of previous?.contributionEvidence?.excludedTaskOrClassmatePaths||[])flag("Excluded from automated evidence: "+path);
     for(const item of previous?.contributionEvidence?.fallbackReasons||[])flag("Alternative file: "+item.path+" — "+(item.reasons||[]).join("; "));
     if (!previous)flag("No grade has been recorded. Inspect actual code and commits before assigning a score.");
+    if(previous&&approvedEvidence&&!gradeMatchesEvidence(previous,approvedEvidence))
+      flag("This saved grade draft predates the current evidence approval. Recheck its score and feedback; it cannot be published until a fresh review is saved.");
     if (previous?.provisionalScore)flag("Existing score is provisional; alternate source paths need confirmation.");
     if(previous?.published)flag("This grade is PUBLISHED. Unpublish it using Gradebook before replacing it manually.");
     flag("GitHub commit attribution alone cannot establish original authorship. Recommits changing only comments or formatting may not demonstrate new implementation.");
@@ -285,23 +318,27 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
     el("manualReviewScore").value=previous?.score!=null?String(previous.score):"";
     el("manualReviewFeedback").value=cleanGradeFeedback(previous?.feedback);
     el("manualReviewFiles").value=(previous?.contributionEvidence?.matchedPaths||[]).join("\n");
-    state.active={studentId,taskId,owner,repo,base,student,assessment,previous,gradeRef:gradeDoc.ref,maxScore,login,checkpointSha,selectedEvidenceCommits,aiDraft:null};
-    el("manualReviewAIGenerate").disabled=assessment.schemaVersion!==2||!!previous?.published;
-    if(assessment.schemaVersion===2)aiStatus("Approved checkpoint "+checkpointSha.slice(0,12)+". Generate a rubric suggestion or grade manually; scores are never auto-published.");
+    state.active={studentId,taskId,owner,repo,base,student,assessment,previous,gradeRef:gradeDoc.ref,maxScore,login,checkpointSha,selectedEvidenceCommits,evidence:approvedEvidence,aiDraft:null};
+    const verified=approvedEvidence?.verifiedContributionCommits?.length&&approvedEvidence?.contributionScope?.length>=15;
+    el("manualReviewAIGenerate").disabled=assessment.schemaVersion!==2||!!previous?.published||!verified;
+    if(assessment.schemaVersion===2)aiStatus((previous?.aiAssistance?"Saved feedback includes automated assistance reviewed by a teacher. ":"")+(verified?"Approved checkpoint "+checkpointSha.slice(0,12)+". Evaluate verified individual work or enter a teacher score.":"No independently verified contributions are recorded. Reopen evidence to verify responsibilities and commits, or grade manually with an explicit review note. Shared project screens cannot earn individual credit."));
     el("manualReviewSave").disabled=!!previous?.published;
+    for(const id of ["manualReviewScore","manualReviewFeedback","manualReviewFiles","manualReviewReason","manualReviewConfirm"])
+      el(id).disabled=!!previous?.published;
     el("manualReviewAnalyze").disabled=!login||Boolean(checkpointSha);
     el("manualReviewAnalyze").onclick=()=>examineRecentCommits(session,owner,repo,login);
     message(previous?.published?"Published grade protected: unpublish it in Gradebook first.":"Manual changes will be saved unpublished and documented in grade revisions.");
     void sourceLinks(session,base,owner,repo,login,checkpointSha);
   }catch(error) {
     if (session!==state.token)return;
-    message("Review is not ready: "+error.message+" Use Assessment Evidence Review, then click Reload checkpoint / grade status.",true);
-    aiStatus("No AI suggestion can run until the checkpoint is approved.",true);
+    message("Review is not ready: "+error.message,true);
+    aiStatus("Evaluation is available after evidence approval in this workspace.",true);
   }
 }
 async function save(event) {
   event.preventDefault();
   const active=state.active;if(!active)return;
+  if(state.aiBusy)return message("Wait for evaluation to finish before saving.",true);
   const raw=el("manualReviewScore").value;
   const score=Number(raw);
   const feedback=cleanGradeFeedback(el("manualReviewFeedback").value);
@@ -323,12 +360,13 @@ async function save(event) {
           evidence.checkpointSha!==active.checkpointSha||
           JSON.stringify(evidence.selectedCommits)!==JSON.stringify(active.selectedEvidenceCommits))
           throw Error("The approved evidence changed. Reload and re-check the checkpoint before saving.");
+        if(evidenceRevision(evidence)!==evidenceRevision(active.evidence))
+          throw Error("The evidence approval changed. Reload before saving.");
       }
       const latest=await tx.get(active.gradeRef);
       const previous=latest.exists()?latest.data():null;
       if(previous?.published)throw new Error("A published grade is protected. Unpublish in Gradebook first.");
-      if(active.previous && (!previous || Number(previous.score)!==Number(active.previous.score) ||
-          String(previous.feedback||"")!==String(active.previous.feedback||""))) {
+      if(active.previous && JSON.stringify(previous)!==JSON.stringify(active.previous)) {
         throw new Error("Grade changed after opening. Close and reopen the dialog.");
       }
       if(!active.previous && previous)throw new Error("Grade was created by another process. Reopen the dialog.");
@@ -336,25 +374,30 @@ async function save(event) {
         gradeId:active.gradeRef.id,studentId:active.studentId,taskId:active.taskId,
         editorUid:auth.currentUser?.uid||null,reason:"Manual teacher review: "+reason,
         before:previous?{...pickDefinedGradeFields(previous,["score","feedback"]),published:!!previous.published}:null,
-        after:{score,feedback,published:false,aiAssisted:Boolean(active.aiDraft)},
+        after:{score,feedback,published:false,aiAssisted:Boolean(active.aiDraft||previous?.aiAssistance)},
         createdAt:serverTimestamp()
       });
       tx.set(active.gradeRef,{
         studentId:active.studentId,taskId:active.taskId,score,maxScore:active.maxScore,
         feedback,published:false,reviewRequired:false,manuallyAdjusted:true,
-        gradeSource:active.aiDraft?"teacher_ai_reviewed":"teacher_manual",gradingMode:"individual",sourceSelectionMode:"teacher_manual",
+        gradeSource:active.aiDraft||previous?.aiAssistance?"teacher_ai_reviewed":"teacher_manual",gradingMode:"individual",sourceSelectionMode:"teacher_manual",
         aiAssistance:active.aiDraft?{
           model:active.aiDraft.model,checkpointSha:active.checkpointSha,
           suggestedScore:active.aiDraft.score,
           criterionScores:active.aiDraft.criteria.map(c=>({name:c.name,score:c.score,maxScore:c.maxScore})),
           generatedAt:serverTimestamp()
-        }:null,
+        }:(previous?.aiAssistance||null),
         reviewPriority:"teacher_verified",provisionalScore:false,
         teacherReviewNote:reason,
         reviewReasons:[...new Set(state.flags.concat(previous?.reviewReasons || []))].slice(0,60),
         reviewedBy:auth.currentUser?.uid||null,
         reviewedAt:serverTimestamp(),gradedAt:serverTimestamp(),
-        ...(active.checkpointSha?{gradedSha:active.checkpointSha}:{}),
+        ...(active.checkpointSha?{gradedSha:active.checkpointSha,evidenceRevision:evidenceRevision(active.evidence),
+          verifiedContributionCommits:active.evidence.verifiedContributionCommits||[],
+          contributionScope:active.evidence.contributionScope||"",evaluationDraft:active.aiDraft?{
+            criteria:active.aiDraft.criteria,projectObservations:active.aiDraft.projectObservations,
+            limitations:active.aiDraft.limitations,generatedBy:"Gemini automated assistance",teacherReviewed:true
+          }:(previous?.evaluationDraft||null)}:{}),
         targetPath:paths.length?paths.join(", "):"Manual review — see teacher note",
         contributionEvidence:{
           ...(previous?.contributionEvidence||{}),
@@ -370,18 +413,56 @@ async function save(event) {
     });
     message("Teacher-reviewed grade saved as UNPUBLISHED. RepoFetch grading queue will refresh automatically.");
     button.textContent="Saved";
+    state.dirty=false;
     state.active=null;
     window.dispatchEvent(new CustomEvent("adminerva:manual-grade-saved",{
       detail:{studentId:active.studentId,assessmentId:active.taskId}
     }));
   }catch(error){message("Unable to save: "+error.message,true);button.disabled=false;}
 }
+async function groupSummary(student,taskId,session){
+  const box=el("integratedGroupSummary");box.textContent="Loading group evidence status…";
+  try{
+    const [roster,evidence]=await Promise.all([
+      getDocs(query(collection(db,"students"),where("section","==",student.section))),
+      getDocs(query(collection(db,"assessment_evidence"),where("assessmentId","==",taskId)))
+    ]);
+    if(session!==state.token)return;
+    box.replaceChildren();
+    const entries=new Map(evidence.docs.map(snapshot=>[snapshot.data().studentId,snapshot.data()]));
+    for(const snapshot of roster.docs){
+      const member=snapshot.data();
+      let same=false;try{same=parseRepository(member.repoUrl).url.toLowerCase()===parseRepository(student.repoUrl).url.toLowerCase();}catch{}
+      if(!same)continue;
+      const record=entries.get(snapshot.id),row=document.createElement("p");
+      row.textContent=(member.name||snapshot.id)+": "+(record?.status||"No evidence submitted")+
+        " · "+(record?.verifiedContributionCommits?.length??"Unverified")+" verified contributing commits";
+      box.append(row);
+    }
+    const note=document.createElement("p");note.className="text-xs text-amber-900";
+    note.textContent="Members can have different checkpoints. Counts and shared files do not prove contribution. Missing submissions do not establish no work.";box.append(note);
+  }catch(error){if(session===state.token)box.textContent="Group status unavailable: "+error.message;}
+}
 function init() {
   el("manualReviewClose").addEventListener("click",close);
   el("manualReviewCancel").addEventListener("click",close);
   el("manualReviewForm").addEventListener("submit",save);
+  el("manualReviewForm").addEventListener("input",()=>{state.dirty=true;});
   el("manualReviewAIGenerate").addEventListener("click",()=>{void generateAIDraft();});
+  window.addEventListener("message",event=>{
+    if(event.origin!==location.origin||event.source!==el("integratedEvidenceFrame").contentWindow||
+      event.data?.type!=="adminerva:evidence-changed"||!state.request||
+      event.data.studentId!==state.request.studentId||event.data.assessmentId!==state.request.taskId)return;
+    window.dispatchEvent(new CustomEvent("adminerva:manual-grade-saved"));
+    if(state.active&&(el("manualReviewScore").value||el("manualReviewFeedback").value)){
+      el("integratedEvidenceStatus").textContent="Evidence changed. Reload the checkpoint and grade status before continuing this review.";
+      state.active=null;el("manualReviewSave").disabled=true;el("manualReviewAIGenerate").disabled=true;
+      return message("Evidence changed. Displayed draft is stale and cannot be saved. Reload checkpoint / grade status to review again.",true);
+    }
+    void open({...state.request});
+  });
   el("manualReviewRefresh").addEventListener("click",()=>{
+    if(state.dirty&&!confirm("Reload and discard unsaved score or feedback changes?"))return;
     if(state.request)void open({...state.request});
   });
   el("manualReviewModal").addEventListener("click",e=>{if(e.target===el("manualReviewModal"))close()});

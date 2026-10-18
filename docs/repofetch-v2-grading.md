@@ -1,5 +1,7 @@
 # RepoFetch — primary Assessment V2 grading workflow
 
+> Historical guide for the initial queue. The current workflow and release requirements are in [Review & Grade](review-grade-workspace.md), including integrated evidence review, individual scoring and audited reopening.
+
 ## Teacher flow (one primary grading page)
 
 1. Open **RepoFetch**. The **Assessment V2 · Review & Grade** queue loads section and assessment without requiring Fetch & Sync or a GitHub personal access token.
