@@ -1,3 +1,4 @@
+/** Assessment authoring, repository evidence, individual review and protected grading: review snapshot. */
 import {parseRepository,validSha} from "./assessment-evidence.mjs";
 import {relevantAssessmentFile} from "./v2-grading-assistant.mjs";
 export async function loadReviewSnapshot(repository,checkpoint,assessment,{token=null,fetchImpl=globalThis.fetch}={}){

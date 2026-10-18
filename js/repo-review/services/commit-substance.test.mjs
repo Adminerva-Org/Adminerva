@@ -1,3 +1,4 @@
+/** Regression coverage: Assessment authoring, repository evidence, individual review and protected grading: commit substance. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { analyzePatchSubstance, analyzeFileContributions } from './commit-substance.mjs';

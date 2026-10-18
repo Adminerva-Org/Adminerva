@@ -1,3 +1,4 @@
+/** Regression coverage: Editable lesson content, save state and export synchronization. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

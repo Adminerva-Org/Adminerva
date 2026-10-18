@@ -1,3 +1,4 @@
+/** Regression coverage: Editable slides, lesson provenance and safe slide export: lesson to slides. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {lessonStarterDeck,lessonSourceChanged} from './lesson-to-slides.mjs';

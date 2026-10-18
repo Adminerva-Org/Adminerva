@@ -1,3 +1,4 @@
+/** Student submissions, practice progress and isolated code workspaces: playground cloud. */
 import {auth,db} from "../core/firebase-core.js";
 import {addDoc,collection,getDocs,query,orderBy,limit,serverTimestamp}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";

@@ -1,3 +1,4 @@
+/** Cloud Functions v2 report/submission notification handlers; deployment requires explicit separate approval. */
 // Firebase Cloud Functions v2. Requires separate Firebase deployment.
 const {initializeApp}=require("firebase-admin/app");
 const {getFirestore,FieldValue}=require("firebase-admin/firestore");

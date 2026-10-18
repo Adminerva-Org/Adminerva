@@ -1,3 +1,4 @@
+/** Teacher schedule editing and scoped calendar workflow. */
 import { db } from "../core/firebase-core.js";
 import { scheduleScope, parseScheduleRows, parseClockMinutes } from "./schedule-scope.mjs";
 import {

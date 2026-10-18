@@ -1,3 +1,4 @@
+/** Student submissions, practice progress and isolated code workspaces: playground storage. */
 // Per-student, per-language local workspaces. Avoid sharing code between
 // students who sign in to the same computer and preserve each language's draft.
 export const PLAYGROUND_LANGUAGES = ["java","python","web","csharp","cpp","dart"];

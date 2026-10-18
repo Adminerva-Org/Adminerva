@@ -1,3 +1,4 @@
+/** Regression coverage: Student submissions, practice progress and isolated code workspaces: assessment state. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import {asDate,assessmentStatus,assessmentTargetDetails} from "./assessment-state.mjs";

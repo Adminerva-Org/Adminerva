@@ -1,3 +1,4 @@
+/** Regression coverage: Shared navigation, account access, reporting and release infrastructure: feedback format. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { cleanGradeFeedback } from './feedback-format.mjs';

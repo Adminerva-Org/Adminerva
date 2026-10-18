@@ -1,3 +1,4 @@
+/** Assessment authoring, repository evidence, individual review and protected grading: commit history. */
 // Bounded GitHub history pagination for V2 evidence review.
 // Older commits can be needed for retrospective assignments and reclaim claims.
 export const COMMIT_PAGE_SIZE=100;

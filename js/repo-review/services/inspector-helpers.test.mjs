@@ -1,3 +1,4 @@
+/** Regression coverage: Assessment authoring, repository evidence, individual review and protected grading: inspector helpers. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeAssessment, validateInspectorInput, summarizeEvidence } from './inspector-helpers.mjs';

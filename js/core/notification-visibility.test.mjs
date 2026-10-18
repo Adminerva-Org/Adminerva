@@ -1,3 +1,4 @@
+/** Regression coverage: Shared navigation, account access, reporting and release infrastructure: notification visibility. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {notificationVisible,unreadNotificationCount} from './notification-visibility.mjs';

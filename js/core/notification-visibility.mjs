@@ -1,3 +1,4 @@
+/** Shared navigation, account access, reporting and release infrastructure: notification visibility. */
 // Notification badges and feeds are based on intended recipients, never
 // failed subscriptions or private reports the viewer cannot access.
 export function notificationVisible(item, role) {

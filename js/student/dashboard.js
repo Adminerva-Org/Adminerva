@@ -1,3 +1,4 @@
+/** Legacy teacher analytics import compatibility entry. */
 import { db, auth } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import {

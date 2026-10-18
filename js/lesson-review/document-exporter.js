@@ -1,3 +1,4 @@
+/** School-format lesson document construction and export. */
 import {
   doc,
   getDoc,

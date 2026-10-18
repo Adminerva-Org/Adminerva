@@ -1,3 +1,4 @@
+/** Regression coverage: Shared navigation, account access, reporting and release infrastructure: patch history. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';

@@ -1,3 +1,4 @@
+/** Shared navigation, account access, reporting and release infrastructure: server. */
 import express from "express";
 import cors from "cors";
 

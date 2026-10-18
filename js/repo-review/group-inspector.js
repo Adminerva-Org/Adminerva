@@ -1,3 +1,4 @@
+/** Shared-project detail and individual contribution context. */
 import { db } from "../core/firebase-core.js";
 import {
   collection,

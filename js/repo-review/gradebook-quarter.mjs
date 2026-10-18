@@ -1,3 +1,4 @@
+/** Assessment authoring, repository evidence, individual review and protected grading: gradebook quarter. */
 import { auth, db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";

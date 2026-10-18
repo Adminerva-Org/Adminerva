@@ -1,3 +1,4 @@
+/** Shared navigation, account access, reporting and release infrastructure: patch history. */
 const categories=new Set(["New","Updated","Fixed","Revised","Removed"]);
 const text=(value,max)=>typeof value==="string"?value.trim().slice(0,max):"";
 const releaseTime=value=>Date.parse(value+"T00:00:00+08:00");

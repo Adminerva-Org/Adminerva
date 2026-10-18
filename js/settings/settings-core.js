@@ -1,3 +1,4 @@
+/** Scoped product configuration and staff preferences: settings core. */
 window.showLoader = function (msg = "Processing...") {
   if (typeof window.showSubtleLoader === "function") {
     window.showSubtleLoader(msg);

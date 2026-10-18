@@ -1,3 +1,4 @@
+/** Repository selection and entry into the teacher review workspace. */
 import { db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import {gradeMatchesEvidence} from "./services/evidence-lifecycle.mjs";

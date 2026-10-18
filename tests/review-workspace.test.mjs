@@ -1,3 +1,4 @@
+/** Regression coverage: Adminerva module: review workspace. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';

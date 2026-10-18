@@ -1,3 +1,4 @@
+/** Assessment authoring, repository evidence, individual review and protected grading: evidence lifecycle. */
 import {normalizeSelection} from "./assessment-evidence.mjs";
 
 export function studentMayChangeEvidence(evidence){

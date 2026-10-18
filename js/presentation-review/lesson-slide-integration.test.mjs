@@ -1,3 +1,4 @@
+/** Regression coverage: Editable slides, lesson provenance and safe slide export: lesson slide integration. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';

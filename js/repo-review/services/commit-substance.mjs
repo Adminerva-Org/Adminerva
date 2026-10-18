@@ -1,3 +1,4 @@
+/** Assessment authoring, repository evidence, individual review and protected grading: commit substance. */
 /*
  * Conservative commit-diff screening for shared-repository grading.
  * This is NOT an authorship detector. It only identifies patches that

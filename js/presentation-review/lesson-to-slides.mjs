@@ -1,3 +1,4 @@
+/** Editable slides, lesson provenance and safe slide export: lesson to slides. */
 const escape=value=>String(value||"").replace(/[&<>"']/g,character=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[character]));
 export function lessonStarterDeck(plan,sessionIndex){
   const session=plan?.sessions?.[sessionIndex];

@@ -1,3 +1,4 @@
+/** Saved lesson records, version handling and lesson loading. */
 // Import centralized database instead of initializing locally
 import { db } from "../core/firebase-core.js";
 import {legacyPlanId,schoolYearPlanId} from "./lesson-plan-helpers.mjs";

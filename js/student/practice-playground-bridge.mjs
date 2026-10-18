@@ -1,3 +1,4 @@
+/** Student submissions, practice progress and isolated code workspaces: practice playground bridge. */
 // Private, tab-scoped handoff between Practice Lab and the Code Playground.
 // No assessed-work submission or proof-of-authorship is implied by a run attempt.
 import {validPlaygroundState} from "./playground-storage.mjs";

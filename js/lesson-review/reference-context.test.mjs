@@ -1,3 +1,4 @@
+/** Regression coverage: Lesson planning, school schedules, references and document export: reference context. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';

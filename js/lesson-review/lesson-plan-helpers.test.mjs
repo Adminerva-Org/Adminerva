@@ -1,3 +1,4 @@
+/** Regression coverage: Lesson planning, school schedules, references and document export: lesson plan helpers. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import {quarterCode,schoolYearPlanId,legacyPlanId,expectedSessions,validateGeneratedLesson} from "./lesson-plan-helpers.mjs";

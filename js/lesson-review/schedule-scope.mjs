@@ -1,3 +1,4 @@
+/** Lesson planning, school schedules, references and document export: schedule scope. */
 // Keep schedules independent by school year and semester.
 // Legacy master_schedule may be used as the initial first-semester reference only.
 export const LEGACY_SCHEDULE_YEAR = "2026-2027";

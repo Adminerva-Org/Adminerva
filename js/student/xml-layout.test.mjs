@@ -1,3 +1,4 @@
+/** Regression coverage: Student submissions, practice progress and isolated code workspaces: xml layout. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {layoutDimension,layoutColor,compileAndroidLayout} from './xml-layout.mjs';

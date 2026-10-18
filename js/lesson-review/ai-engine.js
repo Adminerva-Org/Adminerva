@@ -1,3 +1,4 @@
+/** Explicitly requested lesson assistance with source and edit guards. */
 import {validateGeneratedLesson} from "./lesson-plan-helpers.mjs";
 import {buildReferenceContext,REFERENCE_CONTEXT_BUDGET} from "./reference-context.mjs";
 window.initiateGenerationFlow = async function () {

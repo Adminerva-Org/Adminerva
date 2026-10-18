@@ -1,3 +1,4 @@
+/** Editable slides, lesson provenance and safe slide export: sanitize. */
 // Sanitize only the subset of HTML used by the Quill slide editor.
 // Does not permit embedded scripts, event handlers, SVG, forms, iframe, etc.
 (function(){

@@ -1,3 +1,4 @@
+/** Regression coverage: Student submissions, practice progress and isolated code workspaces: practice points. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {practicePoints,classStandings,MISSION_IDS} from './practice-points.mjs';

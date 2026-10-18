@@ -1,3 +1,4 @@
+/** Committed-evidence selection, checkpoint provenance and evidence lifecycle. */
 import {auth,db} from "../core/firebase-core.js";
 import {doc,getDoc,getDocs,setDoc,updateDoc,collection,query,where,serverTimestamp}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";

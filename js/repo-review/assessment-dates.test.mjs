@@ -1,3 +1,4 @@
+/** Regression coverage: Assessment authoring, repository evidence, individual review and protected grading: assessment dates. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';

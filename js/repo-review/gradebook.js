@@ -1,3 +1,4 @@
+/** Teacher grade administration, protected revisions and explicit publication. */
 import { db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import {

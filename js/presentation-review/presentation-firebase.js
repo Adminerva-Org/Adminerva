@@ -1,3 +1,4 @@
+/** Saved deck storage, lesson linking and source-version checks. */
 import { db } from "../core/firebase-core.js";
 import {lessonStarterDeck,lessonSourceChanged} from "./lesson-to-slides.mjs?v=2026.10.19.1";
 import {

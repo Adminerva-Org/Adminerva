@@ -1,3 +1,4 @@
+/** Student submissions, practice progress and isolated code workspaces: practice analytics. */
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,doc,getDocs,query,where,runTransaction,writeBatch,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";

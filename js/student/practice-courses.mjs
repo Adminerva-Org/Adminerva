@@ -1,3 +1,4 @@
+/** Student submissions, practice progress and isolated code workspaces: practice courses. */
 // Adminerva Practice Lab — four original introductory tracks.
 // Practice is formative; correct choices do not constitute graded evidence.
 const n=(seed,max,min=1)=>min+(Math.abs(seed)%max);

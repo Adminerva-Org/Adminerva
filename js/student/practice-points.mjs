@@ -1,3 +1,4 @@
+/** Student submissions, practice progress and isolated code workspaces: practice points. */
 import {COURSES} from "./practice-courses.mjs";
 export const MISSION_IDS=COURSES.flatMap(course=>course.missions.map(mission=>mission.id));
 export function practicePoints(ids){

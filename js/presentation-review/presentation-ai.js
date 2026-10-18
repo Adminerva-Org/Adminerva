@@ -1,3 +1,4 @@
+/** Explicitly requested assisted slide generation and safe draft acceptance. */
 window.generateAI_SlideDeck = async function () {
   if (!window.selectedPlanData || !window.selectedSessionData) {
     alert("Please select a lesson plan and session first.");

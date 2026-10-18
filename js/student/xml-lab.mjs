@@ -1,3 +1,4 @@
+/** Safe Android XML subset browser preview and per-account drafts. */
 import {auth} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {compileAndroidLayout,XML_STARTER} from "./xml-layout.mjs?v=2026.10.19.1";

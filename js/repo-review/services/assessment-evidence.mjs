@@ -1,3 +1,4 @@
+/** Committed-evidence selection, checkpoint provenance and evidence lifecycle. */
 // Assessment Evidence V2: pure validation shared by the student and teacher UIs.
 // Git metadata identifies a detected author, not verified individual authorship.
 export const SHA_RE=/^[a-f0-9]{40}$/i;

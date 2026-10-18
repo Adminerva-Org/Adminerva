@@ -1,3 +1,4 @@
+/** Lesson planning, school schedules, references and document export: lesson plan helpers. */
 // Preserve school-defined lesson fields and printed headings.
 // New document IDs include the school year; existing documents remain untouched.
 export function quarterCode(term="") {

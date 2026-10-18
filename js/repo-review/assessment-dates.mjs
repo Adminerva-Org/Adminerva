@@ -1,3 +1,4 @@
+/** Assessment authoring, repository evidence, individual review and protected grading: assessment dates. */
 // Keep historical classroom issue dates when configuring a new digital deployment.
 export function validateDeploymentDates({postDate,deadline,deadlineEnabled}={}){
   if(!deadlineEnabled)return null;

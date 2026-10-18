@@ -1,3 +1,4 @@
+/** Assessment authoring, repository evidence, individual review and protected grading: assessment studio. */
 import { db } from "../core/firebase-core.js";
 import {validateDeploymentDates} from "./assessment-dates.mjs";
 import {

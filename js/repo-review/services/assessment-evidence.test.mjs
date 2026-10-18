@@ -1,3 +1,4 @@
+/** Regression coverage: Committed-evidence selection, checkpoint provenance and evidence lifecycle. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseRepository,normalizeSelection,evidenceSelectionGuidance,attributionLabel,claimDocumentId,detectedAuthor} from './assessment-evidence.mjs';

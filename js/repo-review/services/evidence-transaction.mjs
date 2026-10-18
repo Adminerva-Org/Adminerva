@@ -1,3 +1,4 @@
+/** Assessment authoring, repository evidence, individual review and protected grading: evidence transaction. */
 import {auth,db} from "../../core/firebase-core.js";
 import {doc,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {assertSameEvidence,evidenceRevision,gradeMatchesEvidence} from "./evidence-lifecycle.mjs";

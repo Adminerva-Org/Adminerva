@@ -1,3 +1,4 @@
+/** Public curated feature history without private operational details. */
 import {loadPublicReleases} from "./patch-history.mjs?v=2026.10.19.1";
 const node=(tag,text)=>{const element=document.createElement(tag);element.textContent=text;return element;};
 try{

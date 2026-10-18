@@ -1,3 +1,4 @@
+/** Regression coverage: Assessment authoring, repository evidence, individual review and protected grading: grade revision snapshot. */
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { pickDefinedGradeFields } from './grade-revision-snapshot.mjs';

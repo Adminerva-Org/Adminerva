@@ -1,3 +1,4 @@
+/** Shared navigation, account access, reporting and release infrastructure: notifications. */
 import { auth, db } from "./firebase-core.js";
 import {notificationTarget,previewDestination} from "./notification-routing.mjs?v=2026.10.19.1";
 import {notificationVisible,unreadNotificationCount} from "./notification-visibility.mjs?v=2026.10.19.1";
