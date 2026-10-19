@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {parseRepository,validSha} from '../js/repo-review/services/assessment-evidence.mjs';
-import {evidenceRevision,gradeMatchesEvidence} from '../js/repo-review/services/evidence-lifecycle.mjs';
+import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from '../js/repo-review/services/evidence-lifecycle.mjs';
 
 const checkpoint='a'.repeat(40);
 function workspace(evidence){
@@ -20,7 +20,6 @@ function workspace(evidence){
   }
   const html=readFileSync('repofetch.html','utf8');
   for(const match of html.matchAll(/id="([^"]+)"/g))elements.set(match[1],element());
-  elements.get('integratedEvidenceFrame').contentWindow={};
   const records=new Map([
     ['students/alice',{name:'Alice',section:'11-A',repoUrl:'https://github.com/example/project',githubUsername:'alice'}],
     ['assessments/v2',{schemaVersion:2,title:'Three group screens',maxScore:20}],
@@ -30,8 +29,10 @@ function workspace(evidence){
   const document={readyState:'complete',getElementById:id=>elements.get(id),createElement:()=>element(),addEventListener:()=>{}};
   const window={addEventListener:(type,handler)=>{listeners[type]=handler;},dispatchEvent:()=>{}};
   const snapshot=ref=>({ref,exists:()=>records.has(ref.path),data:()=>records.get(ref.path)});
-  const context={document,window,location:{origin:'https://example.test'},URLSearchParams,
-    auth:{currentUser:{uid:'teacher'}},db:{},parseRepository,validSha,evidenceRevision,gradeMatchesEvidence,
+  let panelOptions;
+  const context={document,window,location:{origin:'https://example.test'},URLSearchParams,AbortController,
+    auth:{currentUser:{uid:'teacher'}},db:{},parseRepository,validSha,evidenceRevision,gradeMatchesEvidence,sameEvidence,
+    createReviewRequests:()=>({}),mountReviewPanels:options=>{panelOptions=options;return {destroy(){},updateEvidence(){}};},
     cleanGradeFeedback:value=>String(value||''),pickDefinedGradeFields:(value,keys)=>Object.fromEntries(keys.filter(key=>value[key]!==undefined).map(key=>[key,value[key]])),
     collection:(_db,name)=>({path:name}),doc:(_db,...parts)=>({path:parts.join('/'),id:parts.at(-1)}),
     getDoc:async ref=>snapshot(ref),getDocs:async()=>({docs:[]}),query:()=>{},where:()=>{},
@@ -39,9 +40,9 @@ function workspace(evidence){
     CustomEvent:class {constructor(type){this.type=type;}},localStorage:{getItem:()=>null},alert:()=>{},confirm:()=>true};
   const source=readFileSync('js/repo-review/manual-review.mjs','utf8').replace(/^import[\s\S]*?from\s+"[^"]+";\s*/gm,'');
   vm.runInNewContext(source+';window.fixtureState=state;',context);
-  return {elements,records,writes,listeners,window,context,open:()=>window.openManualGradeReview({studentId:'alice',taskId:'v2',owner:'example',repo:'project'})};
+  return {elements,records,writes,listeners,window,context,change:record=>panelOptions.onEvidenceChange(record),open:()=>window.openManualGradeReview({studentId:'alice',taskId:'v2',owner:'example',repo:'project'})};
 }
-const approved={status:'approved',checkpointSha:checkpoint,approvedCheckpointSha:checkpoint,
+const approved={studentId:'alice',assessmentId:'v2',status:'approved',checkpointSha:checkpoint,approvedCheckpointSha:checkpoint,
   selectedCommits:[checkpoint],verifiedContributionCommits:[checkpoint],
   contributionScope:'Alice is assigned the welcome screen; instructor observed her implementation.',
   repository:'https://github.com/example/project',revision:1};
@@ -67,9 +68,9 @@ test('unapproved and missing evidence open inline review without enabling grade 
   for(const evidence of [null,{...approved,status:'submitted'}]){
     const page=workspace(evidence);await page.open();
     assert.equal(page.elements.get('integratedEvidenceDetails').open,true);
-    assert.match(page.elements.get('integratedEvidenceFrame').src,/student=alice&assessment=v2/);
+    assert.equal(page.elements.has('integratedEvidenceFrame'),false);
     assert.equal(page.elements.get('manualReviewSave').disabled,true);
-    assert.equal(page.elements.get('manualReviewAIGenerate').disabled,true);
+    assert.equal(page.elements.get('manualReviewAIGenerate').disabled,true,page.elements.get('manualReviewStatus').textContent);
     assert.equal(page.writes.length,0);
   }
 });
@@ -97,19 +98,19 @@ test('explicit save records an unpublished reviewed grade and revision; changed 
   await changed.elements.get('manualReviewForm').submit({preventDefault(){}});
   assert.equal(changed.writes.length,0);assert.match(changed.elements.get('manualReviewStatus').textContent,/approval changed/);
 });
-test('published grades are protected and evidence messages cannot silently replace an edited draft',async()=>{
+test('published grades are protected and live evidence changes keep teacher edits but invalidate eligibility',async()=>{
   const page=workspace(approved);
   page.records.set('student_grades/alice_v2',{score:12,feedback:'Protected feedback',published:true});
   await page.open();assert.equal(page.elements.get('manualReviewSave').disabled,true);
   assert.equal(page.elements.get('manualReviewAIGenerate').disabled,true);
-  page.listeners.message({origin:'https://attacker.test',data:{type:'adminerva:evidence-changed'}});
+  assert.equal(page.listeners.message,undefined);
   assert.equal(page.elements.get('manualReviewFeedback').value,'Protected feedback');
   const draft=workspace(approved);await draft.open();draft.elements.get('manualReviewFeedback').value='Teacher edits in progress';
-  draft.listeners.message({origin:'https://example.test',source:draft.elements.get('integratedEvidenceFrame').contentWindow,
-    data:{type:'adminerva:evidence-changed',studentId:'alice',assessmentId:'v2'}});
+  draft.change({...approved,status:'reopened',revision:2});
   assert.equal(draft.elements.get('manualReviewFeedback').value,'Teacher edits in progress');
   assert.equal(draft.elements.get('manualReviewSave').disabled,true);
-  assert.match(draft.elements.get('manualReviewStatus').textContent,/stale/);
+  assert.match(draft.elements.get('manualReviewStatus').textContent,/kept/);
+  assert.equal(draft.elements.get('manualReviewAIGenerate').disabled,true);
 });
 
 test('closing or refreshing an edited draft requires explicit discard confirmation',async()=>{

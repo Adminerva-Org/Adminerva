@@ -9,7 +9,7 @@
     />
     <title>Assignments | Student Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.19.3" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.19.4" />
 </head>
   <body
     class="bg-slate-50 font-sans text-slate-800 min-h-screen flex flex-col hidden"
@@ -171,6 +171,8 @@
             <p class="text-xs text-slate-600 my-2">Select your own relevant commits, preview the actual file changes, and choose one revision containing the project you want evaluated. A Git author name is not proof of individual authorship. Reclaim requests require staff verification.</p>
             <p id="evidenceStatus" class="text-sm text-slate-600 mb-2" role="status"></p>
             <p id="evidenceSelectionSummary" class="text-sm text-indigo-900 bg-indigo-50 border border-indigo-100 rounded px-3 py-2 mb-3" role="status" aria-live="polite">Choose evidence commits and one project checkpoint before submitting.</p>
+            <p id="evidenceEditability" role="status" class="text-sm font-bold text-indigo-900 my-2"></p>
+            <button id="evidenceRefresh" type="button" class="text-xs underline font-semibold mb-2">Refresh evidence status</button>
             <div id="evidenceCommitList" class="max-h-72 overflow-y-auto space-y-2"></div>
             <button id="evidenceLoadOlder" type="button" class="hidden mt-3 rounded border border-indigo-200 bg-indigo-50 text-indigo-800 font-bold text-xs px-4 py-3">Load older commits</button>
             <div id="evidencePreview" class="mt-4 max-h-80 overflow-y-auto whitespace-pre-wrap break-words font-mono text-xs bg-slate-50 border rounded p-3" aria-label="Selected commit changes"></div>
@@ -183,11 +185,11 @@
       </div>
     </div>
 
-    <script src="js/core/adminerva-nav.js?v=2026.10.19.3"></script>
-    <script src="js/core/adminerva-loader.js?v=2026.10.19.3"></script>
-    <script type="module" src="js/core/auth-guard.js?v=2026.10.19.3"></script>
-    <script type="module" src="js/student/assessments.js?v=2026.10.19.3"></script>
-    <script type="module" src="js/student/submission-receipts.mjs?v=2026.10.19.3"></script>
-    <script type="module" src="js/student/assessment-evidence.mjs?v=2026.10.19.3"></script>
+    <script src="js/core/adminerva-nav.js?v=2026.10.19.4"></script>
+    <script src="js/core/adminerva-loader.js?v=2026.10.19.4"></script>
+    <script type="module" src="js/core/auth-guard.js?v=2026.10.19.4"></script>
+    <script type="module" src="js/student/assessments.js?v=2026.10.19.4"></script>
+    <script type="module" src="js/student/submission-receipts.mjs?v=2026.10.19.4"></script>
+    <script type="module" src="js/student/assessment-evidence.mjs?v=2026.10.19.4"></script>
   </body>
 </html>

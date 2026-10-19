@@ -264,16 +264,20 @@ service cloud.firestore {
       let before = resource.data;
       let after = request.resource.data;
       return isInstructor() && evidenceAudit(evidenceId) && (
-        (before.status in ["submitted","needs_review"] && after.status == "approved" &&
+        (before.status in ["submitted","needs_review","approved"] && after.status == "approved" &&
+         (before.status != "approved" ||
+          !exists(/databases/$(database)/documents/student_grades/$(evidenceId)) ||
+          get(/databases/$(database)/documents/student_grades/$(evidenceId)).data.published == false) &&
          after.approvedCheckpointSha == before.checkpointSha && after.reviewedBy == request.auth.uid &&
          after.reviewedAt == request.time && after.verificationNote is string &&
          after.verificationNote.size() >= 15 && after.verificationNote.size() <= 3000 &&
          after.contributionScope is string && after.contributionScope.size() >= 15 &&
          after.contributionScope.size() <= 3000 && after.verifiedContributionCommits is list &&
+         after.verifiedContributionCommits.size() <= 20 &&
          after.verifiedContributionCommits.hasOnly(before.selectedCommits) &&
          after.diff(before).affectedKeys().hasOnly(["status","approvedCheckpointSha","reviewedBy",
            "reviewedAt","verificationNote","contributionScope","verifiedContributionCommits","revision","updatedAt"])) ||
-        (before.status == "approved" && after.status == "reopened" &&
+        (before.status in ["approved","needs_review"] && after.status == "reopened" &&
          (!exists(/databases/$(database)/documents/student_grades/$(evidenceId)) ||
           get(/databases/$(database)/documents/student_grades/$(evidenceId)).data.published == false) &&
          after.approvedCheckpointSha == null && after.verifiedContributionCommits == [] &&

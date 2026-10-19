@@ -6,11 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Adminerva - RepoFetch Grader</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.19.3" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.19.4" />
 </head>
   <body class="bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="repo" data-page="repofetch"></div>
-    <script src="js/core/adminerva-nav.js?v=2026.10.19.3"></script>
+    <script src="js/core/adminerva-nav.js?v=2026.10.19.4"></script>
 
     <div class="max-w-screen-xl mx-auto w-full p-6 mt-4 flex-1">
       <div class="bg-white p-6 rounded-lg shadow-md border border-gray-200">
@@ -385,10 +385,10 @@
             <p id="integratedEvidenceStatus" role="status" class="text-sm text-slate-700"></p>
             <details id="integratedEvidenceDetails" open class="border rounded p-2">
               <summary class="font-semibold cursor-pointer">Evidence, selected diffs, attribution and checkpoint approval</summary>
-              <iframe id="integratedEvidenceFrame" title="Selected evidence and checkpoint review" class="w-full border-0 mt-2" style="height:650px"></iframe>
+              <div id="integratedEvidencePanel" class="mt-2" aria-live="polite"></div>
             </details>
-            <details id="integratedGroupDetails" class="border rounded p-2"><summary class="font-semibold cursor-pointer">Shared group and submission status</summary><div id="integratedGroupSummary" class="text-sm space-y-2 p-3"></div><details id="integratedGroupInspectorDetails" class="p-2"><summary class="cursor-pointer font-semibold">Advanced group history</summary><p class="text-xs p-2">Broader repository history and activity counts are investigation aids. They do not establish individual credit at this checkpoint.</p><iframe id="integratedGroupInspectorFrame" title="Advanced group history" class="w-full border-0" style="height:600px"></iframe></details></details>
-            <details id="integratedInspectorDetails" class="border rounded p-2"><summary class="font-semibold cursor-pointer">Advanced contribution investigation</summary><p class="text-xs p-2">Broader history can include other revisions. Only approved selected diffs and the pinned checkpoint support this evaluation.</p><iframe id="integratedInspectorFrame" title="Advanced contribution investigation" class="w-full border-0" style="height:600px"></iframe></details>
+            <details id="integratedGroupDetails" class="border rounded p-2"><summary class="font-semibold cursor-pointer">Shared group and submission status</summary><div id="integratedGroupSummary" class="text-sm space-y-2 p-3">Loading group status…</div><details id="integratedGroupInspectorDetails" class="p-2"><summary class="cursor-pointer font-semibold">Advanced group history</summary><div id="integratedGroupHistory" class="text-xs space-y-2 p-2">Loading pinned history…</div></details></details>
+            <details id="integratedInspectorDetails" class="border rounded p-2"><summary class="font-semibold cursor-pointer">Advanced contribution investigation</summary><p class="text-xs p-2">Only independently verified selected diffs and the pinned checkpoint support individual evaluation.</p><div id="integratedContributionSummary" class="text-xs space-y-2 p-2">Loading selected contribution details…</div><div id="integratedAdvancedLinks" class="text-xs flex flex-wrap gap-3 p-2"></div></details>
           </section>
           <details class="rounded-xl border border-amber-200 bg-amber-50 p-4">
             <summary class="font-extrabold text-sm text-amber-900 cursor-pointer">Review limitations and additional checks</summary>
@@ -412,6 +412,7 @@
               <button id="manualReviewUseFeedback" type="button" disabled class="rounded border border-indigo-300 bg-white px-3 py-2 text-xs font-bold disabled:opacity-50">Use suggested feedback</button>
             </div>
             <p id="manualReviewAIStatus" role="status" class="text-xs text-indigo-900">Approve checkpoint evidence to enable suggestions.</p>
+            <button id="manualReviewVerifyContributions" type="button" class="hidden border border-indigo-300 rounded px-3 py-2 text-xs font-bold">Complete individual verification</button>
             <details id="manualReviewCheckerSetup" class="text-xs border rounded p-3"><summary class="cursor-pointer font-semibold">Checker setup and source-sharing details</summary>
               <p class="my-2">An instructor-managed Gemini provider key is required. It stays in this browser, not in student records. Only evaluate after approving source sharing; never put a key in feedback. Automated generation assists your review and may be inaccurate.</p>
               <label class="block">Provider key<input id="manualReviewCheckerKey" type="password" autocomplete="off" class="w-full border rounded p-2 mt-1" /></label>
@@ -472,10 +473,10 @@
       </div>
     </div>
 
-    <script src="js/core/adminerva-loader.js?v=2026.10.19.3"></script>
-    <script type="module" src="js/repo-review/repofetch.js?v=2026.10.19.3"></script>
-    <script type="module" src="js/repo-review/auto-checker.js?v=2026.10.19.3"></script>
-    <script type="module" src="js/repo-review/manual-review.mjs?v=2026.10.19.3"></script>
-    <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=2026.10.19.3"></script>
+    <script src="js/core/adminerva-loader.js?v=2026.10.19.4"></script>
+    <script type="module" src="js/repo-review/repofetch.js?v=2026.10.19.4"></script>
+    <script type="module" src="js/repo-review/auto-checker.js?v=2026.10.19.4"></script>
+    <script type="module" src="js/repo-review/manual-review.mjs?v=2026.10.19.4"></script>
+    <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=2026.10.19.4"></script>
   </body>
 </html>

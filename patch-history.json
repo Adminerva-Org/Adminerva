@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "2026.10.19.4",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-19",
+      "title": "Reliable evidence editing and a preloaded review workspace",
+      "summary": "Reopened commit selections update live, review panels load together, and older approvals can receive explicit individual verification.",
+      "changes": [
+        {"type":"Fixed", "area":"Student evidence", "text":"Instructor reopening updates the open student selection without requiring a page reload. Editable commit checkboxes and checkpoints remain available; approved evidence remains protected."},
+        {"type":"Fixed", "area":"Checkpoint approval", "text":"Equivalent saved evidence no longer causes a false changed-evidence warning because fields arrived in a different order. Real concurrent changes still block approval and keep unsaved review notes."},
+        {"type":"Revised", "area":"Review workspace", "text":"Evidence, pinned source, group status, history and contribution details preload in parallel using shared bounded reads. Opening accordions reveals results instead of starting nested page applications."},
+        {"type":"Updated", "area":"Individual verification", "text":"Instructors can explicitly revise contribution verification on older approvals without changing student-selected commits. Changes create an audit revision, invalidate older drafts and require unpublishing protected grades first."},
+        {"type":"Fixed", "area":"Adminerva Auto Checker", "text":"Evaluation explains missing approval or verification requirements and becomes available after an instructor records verified individual work. Scores and feedback remain private drafts until deliberate teacher publication."}
+      ]
+    },
+    {
       "version": "2026.10.19.3",
       "status": "published",
       "public": true,

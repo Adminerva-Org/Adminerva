@@ -317,6 +317,13 @@ window.addEventListener("adminerva:submission-recorded",event=>{
   }
 });
 
+window.addEventListener("adminerva:evidence-status",event=>{
+  const {assessmentId,studentId,evidenceStatus}=event.detail||{};
+  if(userProfiles.find(profile=>profile.section===currentSection)?.id!==studentId||!assessmentId)return;
+  myEvidence[assessmentId]={...(myEvidence[assessmentId]||{}),status:evidenceStatus};
+  renderAssessments();
+});
+
 document.addEventListener("DOMContentLoaded", () => {
   document
     .getElementById("searchAssInput")

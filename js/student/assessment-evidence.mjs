@@ -1,18 +1,43 @@
 /** Committed-evidence selection, checkpoint provenance and evidence lifecycle. */
 import {auth,db} from "../core/firebase-core.js";
-import {doc,getDoc,getDocs,setDoc,updateDoc,collection,query,where,serverTimestamp}
+import {doc,getDoc,getDocs,setDoc,updateDoc,collection,query,where,serverTimestamp,onSnapshot}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {parseRepository,normalizeSelection,evidenceSelectionGuidance,detectedAuthor,attributionLabel,claimDocumentId,validSha}
   from "../repo-review/services/assessment-evidence.mjs?v=2026.10.18.1";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "../repo-review/services/commit-history.mjs";
-import {studentMayChangeEvidence} from "../repo-review/services/evidence-lifecycle.mjs";
-import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs?v=2026.10.19.1";
+import {studentMayChangeEvidence,sameEvidence} from "../repo-review/services/evidence-lifecycle.mjs?v=2026.10.19.4";
+import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs?v=2026.10.19.4";
 
 const el=id=>document.getElementById(id);
 let context=null,commits=[],selected=new Set(),checkpoint="",claims=new Map(),saved=null,loadSequence=0;
 let historyPage=0,hasOlderCommits=false,historyLoading=false;
 let evidenceBusy=false;
+let stopEvidence=null,selectionDirty=false,evidenceSyncing=true;
 const status=text=>{el("evidenceStatus").textContent=text;};
+function stopLiveEvidence(){stopEvidence?.();stopEvidence=null;}
+function watchEvidence(ref,sequence){
+  stopLiveEvidence();
+  const owned=query(collection(db,"assessment_evidence"),where("studentId","==",context.profile.id),where("assessmentId","==",context.task.id));
+  stopEvidence=onSnapshot(owned,{includeMetadataChanges:true},snapshot=>{
+    if(sequence!==loadSequence||snapshot.metadata.hasPendingWrites)return;
+    evidenceSyncing=snapshot.metadata.fromCache;
+    const record=snapshot.docs.find(item=>item.id===ref.id);
+    const latest=record?record.data():null;
+    const changed=Boolean(saved&&!sameEvidence(saved,latest));
+    saved=latest;
+    if(!selectionDirty){selected=new Set(saved?.selectedCommits||[]);checkpoint=saved?.checkpointSha||"";}
+    for(const sha of [...selected,checkpoint].filter(validSha))if(!commits.some(commit=>commit.sha.toLowerCase()===sha))
+      commits.push({sha,unavailable:true,commit:{message:"Saved evidence selection"}});
+    render();
+    if(evidenceSyncing)return status("Checking current evidence status with the server. Editing resumes when connected.");
+    if(changed){
+      status(saved?.status==="reopened"?"Your instructor reopened this evidence. Change the commit checkboxes or checkpoint, then resubmit for fresh approval.":
+        saved?.status==="approved"?"Checkpoint approved. Selection is protected until your instructor reopens it.":
+        "Evidence status updated: "+(saved?.status||"not submitted")+". "+(selectionDirty?"Your unsaved selection was kept; review it before resubmitting.":"You can revise editable evidence."));
+      window.dispatchEvent(new CustomEvent("adminerva:evidence-status",{detail:{assessmentId:context.task.id,studentId:context.profile.id,evidenceStatus:saved?.status||null}}));
+    }
+  },error=>{if(sequence===loadSequence){evidenceSyncing=true;render();status("Cannot verify evidence status: "+error.message+". Reconnect or reload before editing.");}});
+}
 function refreshHistoryControl(){
   const button=el("evidenceLoadOlder");
   if(!button)return;
@@ -41,7 +66,10 @@ function contextForStudent(){
 }
 function render(){
   const list=el("evidenceCommitList");list.replaceChildren();
-  const editable=studentMayChangeEvidence(saved);
+  const editable=studentMayChangeEvidence(saved)&&!evidenceSyncing;
+  el("evidenceEditability").textContent=evidenceSyncing?"Checking current server status…":evidenceBusy?"Saving evidence…":editable?
+    "Editing enabled · "+(saved?.status==="reopened"?"Instructor reopened this evidence. Change the boxes and resubmit.":"Choose your commits and checkpoint, then submit."):
+    saved?.status==="approved"?"Approved · Ask your instructor to reopen before changing selections.":"Instructor release required for this historical proposal.";
   el("evidenceSubmit").disabled=!editable||evidenceBusy;
   el("evidenceSubmit").textContent=evidenceBusy?"Saving evidence…":saved?"Resubmit selected evidence":"Submit selected evidence";
   el("evidenceWithdraw").disabled=!editable||!saved||saved.status==="withdrawn"||evidenceBusy;
@@ -59,7 +87,7 @@ function render(){
     const includeLabel=add(top,"label","","inline-flex items-center gap-1 text-xs text-slate-700 font-semibold cursor-pointer");
     const check=document.createElement("input");check.type="checkbox";check.checked=selected.has(sha);
     check.disabled=!editable||evidenceBusy;check.setAttribute("aria-label","Include commit "+sha.slice(0,12)+" as evidence");
-    check.addEventListener("change",()=>{if(check.checked)selected.add(sha);
+    check.addEventListener("change",()=>{selectionDirty=true;if(check.checked)selected.add(sha);
       else {selected.delete(sha);if(checkpoint===sha)checkpoint="";}
       render();});includeLabel.append(check);
     add(includeLabel,"span","Include commit");
@@ -67,7 +95,7 @@ function render(){
     const radio=document.createElement("input");radio.type="radio";radio.name="assessmentCheckpoint";
     radio.checked=checkpoint===sha;radio.disabled=!editable||evidenceBusy;
     radio.setAttribute("aria-label","Set commit "+sha.slice(0,12)+" as project checkpoint");
-    radio.addEventListener("change",()=>{checkpoint=sha;selected.add(sha);render();});
+    radio.addEventListener("change",()=>{selectionDirty=true;checkpoint=sha;selected.add(sha);render();});
     checkpointLabel.append(radio);
     add(checkpointLabel,"span","Project checkpoint");
     add(top,"span",sha.slice(0,12),"font-mono text-xs text-indigo-800");
@@ -152,6 +180,7 @@ async function withdrawClaim(sha){
   }catch(error){status("Unable to withdraw: "+error.message);}
 }
 async function load(){
+  stopLiveEvidence();
   const seq=++loadSequence,raw=window.__adminervaSubmissionContext?.();
   const v2=raw?.task?.schemaVersion===2&&raw?.task?.evidenceMode==="commit_selection";
   el("evidencePanel").classList.toggle("hidden",!v2);
@@ -160,6 +189,7 @@ async function load(){
   if(!v2){hasOlderCommits=false;refreshHistoryControl();return;}
   context=null;commits=[];selected=new Set();checkpoint="";saved=null;claims=new Map();
   evidenceBusy=false;
+  selectionDirty=false;evidenceSyncing=true;
   historyPage=0;hasOlderCommits=false;historyLoading=false;refreshHistoryControl();
   el("evidenceCommitList").replaceChildren();el("evidencePreview").textContent="";
   const summary=el("evidenceSelectionSummary");if(summary)summary.textContent="No evidence commits selected yet.";
@@ -176,8 +206,8 @@ async function load(){
         checkpoint=saved.checkpointSha||"";
       }
     }catch(error){if(error?.code!=="permission-denied")throw error;}
-    const loadedClaims=await loadClaims(active.profile.id);
-    const result=await github(commitPagePath(repositoryPath(repo),1));
+    watchEvidence(doc(db,"assessment_evidence",docId),seq);
+    const [loadedClaims,result]=await Promise.all([loadClaims(active.profile.id),github(commitPagePath(repositoryPath(repo),1))]);
     if(seq!==loadSequence)return;
     commits=appendUniqueCommits([],result);
     const missing=[...new Set([...selected,checkpoint].filter(validSha))].filter(sha=>!commits.some(commit=>commit.sha.toLowerCase()===sha));
@@ -196,7 +226,8 @@ async function load(){
     else if(saved?.status==="reopened")status("Your instructor reopened this evidence. Update your selection and resubmit for fresh approval. Previous evidence remains in the audit history.");
     else if(saved?.status==="withdrawn")status("Evidence withdrawn. You may revise and resubmit; the previous submission remains in the audit history.");
     else if(saved?.status==="submitted")status("Evidence submitted. Before approval you may revise and resubmit, or withdraw. Resubmission records a new server time and preserves prior evidence.");
-    else if(saved?.status==="needs_review")status("Your teacher discovered historical evidence for review. It is not a student submission, and it cannot be edited here.");
+    else if(saved?.status==="needs_review")status("Your teacher proposed historical evidence, not a student submission. Ask them to Release proposal for student changes if you need to choose your own commits before approval.");
+    if(evidenceSyncing)status("Checking current evidence status with the server. Editing resumes when connected.");
   }catch(error){if(seq===loadSequence)status("Unable to load evidence: "+error.message);}
 }
 async function loadOlderCommits(){
@@ -220,7 +251,7 @@ async function loadOlderCommits(){
   }
 }
 async function submit(){
-  if(!context||evidenceBusy)return;
+  if(!context||evidenceBusy||evidenceSyncing)return;
   const active=context;
   try{
     const guidance=evidenceSelectionGuidance([...selected],checkpoint);
@@ -245,7 +276,7 @@ async function submit(){
     }
     const result=(await getDoc(ref)).data();
     if(context!==active)return;
-    saved=result;
+    saved=result;selectionDirty=false;
     render();
     status("Evidence submitted for teacher verification. This is not an approved contribution or grade.");
     window.dispatchEvent(new CustomEvent("adminerva:submission-recorded",{
@@ -263,7 +294,7 @@ async function withdrawEvidence(){
     const ref=doc(db,"assessment_evidence",active.profile.id+"_"+active.task.id);
     await changeEvidence(ref,saved,{status:"withdrawn"},"Student withdrew evidence before approval");
     const result=(await getDoc(ref)).data();if(context!==active)return;
-    saved=result;render();
+    saved=result;selectionDirty=false;render();
     status("Evidence withdrawn; previous submission retained. Revise and resubmit when ready.");
     window.dispatchEvent(new CustomEvent("adminerva:submission-recorded",{
       detail:{assessmentId:active.task.id,studentId:active.profile.id,evidenceStatus:"withdrawn"}
@@ -274,9 +305,17 @@ async function withdrawEvidence(){
 window.addEventListener("adminerva:assessment-opened",()=>{void load();});
 el("evidenceSubmit")?.addEventListener("click",()=>{void submit();});
 el("evidenceLoadOlder")?.addEventListener("click",()=>{void loadOlderCommits();});
+el("evidenceRefresh")?.addEventListener("click",()=>{
+  if(evidenceBusy)return;
+  if(selectionDirty&&!confirm("Reload saved evidence and discard your unsaved commit selection?"))return;
+  void load();
+});
 el("evidenceWithdraw")?.addEventListener("click",()=>{void withdrawEvidence();});
 el("evidenceClear")?.addEventListener("click",()=>{
   if(!studentMayChangeEvidence(saved)||evidenceBusy)return;
   if(!confirm("Clear this editable selection? Saved evidence and audit history are unchanged until you resubmit."))return;
-  selected.clear();checkpoint="";render();status("Selection cleared locally. Choose your commits and a new checkpoint, then resubmit.");
+  selected.clear();checkpoint="";selectionDirty=true;render();status("Selection cleared locally. Choose your commits and a new checkpoint, then resubmit.");
 });
+new MutationObserver(()=>{
+  if(el("assessmentModal").classList.contains("hidden")){stopLiveEvidence();loadSequence++;context=null;}
+}).observe(el("assessmentModal"),{attributes:true,attributeFilter:["class"]});

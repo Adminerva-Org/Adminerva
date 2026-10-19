@@ -1,0 +1,10 @@
+{
+  "scope": "2026.10.19.4 instructor re-verification transition and unchanged evidence/grade boundaries; not a whole-application certification",
+  "score": 4,
+  "summary": "Verified instructors may explicitly reverify an approved checkpoint or release a historical proposal for student revision only with a sequential immutable before/after audit, bounded fields, unchanged student selection/checkpoint/identity and no published protected grade. Student ownership and post-approval reopening requirements remain unchanged. Semantic concurrency checks reject actual data changes without depending on map-property order.",
+  "findings": [
+    {"check":"Update bypass and field-level ownership", "severity":"minor", "issue":"The new transition intentionally changes instructor verification metadata, never the student's selected SHAs, checkpoint, identity or submission time. Existing verified-email staff authority is retained.", "recommendation":"Keep the explicit audit and protected-grade checks; migrate broader institutional role/class authorization in a separately reviewed change."},
+    {"check":"Authority source", "severity":"moderate", "issue":"Authorship and GitHub ancestry remain instructor-verified browser evidence. The system cannot prove original authorship, upload time, runtime behavior or resolve a reclaim created concurrently after the last claim query.", "recommendation":"Do not enable automatic publication or infer individual credit from shared source. Consider trusted server GitHub verification and claim coordination before unattended grading."},
+    {"check":"Resource bounds and completeness", "severity":"minor", "issue":"The client cache and four-request budget apply per review, not as a trusted global rate limit. Inline history and source previews are bounded samples.", "recommendation":"Preserve explicit coverage warnings and manual review; add trusted ingestion/rate controls before scaling. Do not treat an unavailable or unshown file as missing student work."}
+  ]
+}

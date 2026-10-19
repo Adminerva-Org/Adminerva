@@ -4,6 +4,14 @@ import assert from 'node:assert/strict';
 import {studentMayChangeEvidence,approvalContribution,assertSameEvidence,gradeMatchesEvidence} from './evidence-lifecycle.mjs';
 
 const checkpoint='a'.repeat(40),other='b'.repeat(40);
+
+test('legacy evidence equality ignores map ordering, not timestamps, fields or selected commits',()=>{
+  const opened={status:'submitted',selectedCommits:[checkpoint,other],checkpointSha:other,updatedAt:{seconds:100,nanoseconds:5},nested:{first:1,second:2}};
+  const reordered={nested:{second:2,first:1},updatedAt:{nanoseconds:5,seconds:100},checkpointSha:other,selectedCommits:[checkpoint,other],status:'submitted'};
+  assert.doesNotThrow(()=>assertSameEvidence(reordered,opened));
+  for(const changes of [{status:'withdrawn'},{updatedAt:{seconds:100,nanoseconds:6}},{selectedCommits:[other,checkpoint]},{extra:true}])
+    assert.throws(()=>assertSameEvidence({...reordered,...changes},opened),error=>error.code==='evidence-changed');
+});
 test('student changes require instructor reopening after approval and discovery stays locked',()=>{
   assert.equal(studentMayChangeEvidence(null),true);
   for(const status of ['submitted','withdrawn','reopened'])assert.equal(studentMayChangeEvidence({status}),true);

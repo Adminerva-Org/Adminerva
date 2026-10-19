@@ -32,7 +32,7 @@ test("Student and teacher views retain selected evidence while paging",()=>{
   assert.match(student,/commits=appendUniqueCommits\(commits,batch\)/);
   assert.match(teacher,/discovery\.commits=appendUniqueCommits\(discovery\.commits,batch\)/);
   const studentHTML=readFileSync("student-assessments.html","utf8");
-  const staffHTML=readFileSync("assessment-evidence-review.html","utf8");
+  const staffHTML=readFileSync("js/repo-review/evidence-review-view.mjs","utf8");
   assert.ok(studentHTML.includes('id="evidenceLoadOlder"'));
   assert.ok(staffHTML.includes('id="evidenceFindOlder"'));
 });
