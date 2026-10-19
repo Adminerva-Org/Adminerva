@@ -181,6 +181,40 @@ async function auditedEvidence(db,changes,{actor='alice',reason='Evidence review
 function approval(){return {status:'approved',reviewedBy:'staff',reviewedAt:serverTimestamp(),
   approvedCheckpointSha:SHA,verifiedContributionCommits:[SHA],contributionScope:'Assigned welcome screen; observed implementation by student.',
   verificationNote:'Checked the selected source and individual contributions.'};}
+
+test('legacy approved checkpoints can be reverified only by instructors with immutable audits and no published grade',async()=>{
+  const staff=client('staff',TEACHER),alice=client('alice',EMAIL_A);
+  const repository='https://github.com/example/project';
+  await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'assessment_evidence','alice_v2'),{
+    studentId:'alice',assessmentId:'v2',section:'11-A',repository,selectedCommits:[SHA],checkpointSha:SHA,
+    approvedCheckpointSha:SHA,status:'approved',submittedAt:new Date(),updatedAt:new Date()}));
+  await assertFails(auditedEvidence(alice,approval(),{actor:'alice'}));
+  await assertFails(updateDoc(doc(staff,'assessment_evidence','alice_v2'),approval()));
+  await assertFails(auditedEvidence(staff,{...approval(),selectedCommits:['b'.repeat(40)]},{actor:'staff'}));
+  await assertFails(auditedEvidence(staff,{...approval(),verifiedContributionCommits:['b'.repeat(40)]},{actor:'staff'}));
+  await assertSucceeds(auditedEvidence(staff,approval(),{actor:'staff'}));
+  const ref=doc(staff,'assessment_evidence','alice_v2');
+  assert.equal((await getDoc(ref)).data().revision,1);
+  assert.deepEqual((await getDoc(ref)).data().selectedCommits,[SHA]);
+  await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'student_grades','alice_v2'),{studentId:'alice',taskId:'v2',published:true,score:18,feedback:'Protected'}));
+  await assertFails(auditedEvidence(staff,approval(),{actor:'staff'}));
+  await assertFails(deleteDoc(doc(staff,'assessment_evidence','alice_v2','revisions','1')));
+});
+
+test('an instructor may release a historical proposal for audited student revision before approval',async()=>{
+  const staff=client('staff',TEACHER),alice=client('alice',EMAIL_A),repository='https://github.com/example/project';
+  await env.withSecurityRulesDisabled(async ctx=>{
+    await updateDoc(doc(ctx.firestore(),'students','alice'),{repoUrl:repository});
+    await setDoc(doc(ctx.firestore(),'assessment_evidence','alice_v2'),{
+      studentId:'alice',assessmentId:'v2',section:'11-A',repository,selectedCommits:[SHA],checkpointSha:SHA,
+      source:'teacher_discovered',status:'needs_review',discoveredBy:'staff',recordedAt:new Date(),updatedAt:new Date()});
+  });
+  await assertFails(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
+  await assertSucceeds(auditedEvidence(staff,{status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',
+    reopenedBy:'staff',reopenedAt:serverTimestamp(),reopenReason:'Let the student choose their own committed evidence.'},{actor:'staff'}));
+  await assertSucceeds(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
+  assert.equal((await getDoc(doc(alice,'assessment_evidence','alice_v2'))).data().revision,2);
+});
 function report(uid='alice',email=EMAIL_A){
   return {
     title:'Compiler stops working',description:'The editor fails after selecting Run.',

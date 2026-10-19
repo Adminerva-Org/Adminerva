@@ -9,10 +9,23 @@ export function studentMayChangeEvidence(evidence){
 
 export function evidenceRevision(evidence){return Number(evidence?.revision||0);}
 
+function canonicalEvidence(value){
+  if(value instanceof Date)return ["date",value.getTime()];
+  if(Array.isArray(value))return value.map(canonicalEvidence);
+  if(value&&typeof value==="object")return Object.keys(value).sort().map(key=>[key,canonicalEvidence(value[key])]);
+  return [typeof value,value];
+}
+
+export function sameEvidence(first,second){
+  return Boolean(first&&second&&JSON.stringify(canonicalEvidence(first))===JSON.stringify(canonicalEvidence(second)));
+}
+
 export function assertSameEvidence(current,opened){
   if(!current||!opened||evidenceRevision(current)!==evidenceRevision(opened)||
-    JSON.stringify(current)!==JSON.stringify(opened))
-    throw Error("Evidence changed. Reload before continuing.");
+    !sameEvidence(current,opened)){
+    const error=Error("Evidence changed. Reload before continuing; your unsaved review has been kept.");
+    error.code="evidence-changed";throw error;
+  }
 }
 
 export function approvalContribution(selection,verifiedCommits,scope){

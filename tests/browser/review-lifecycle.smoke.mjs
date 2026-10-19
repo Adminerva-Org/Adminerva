@@ -157,21 +157,26 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     }
     const student=await (await newIdentity("alice")).newPage();
     const teacherContext=await newIdentity("teacher");
+    let teacherPinnedReads=0;
+    teacherContext.on("request",request=>{
+      const url=new URL(request.url());
+      if(url.hostname==="api.github.com"&&(/\/commits\/[a-f0-9]{40}$/.test(url.pathname)||url.pathname.includes("/git/trees/")))teacherPinnedReads++;
+    });
     const teacher=await teacherContext.newPage();
     const gradebook=await teacherContext.newPage();
     const peer=await (await newIdentity("bob")).newPage();
-    async function openStudent(page){
+    async function openStudent(page,taskId="fixture-v2"){
       await page.goto(origin+"/student-assessments.html");
       await expect(page.locator("#assignmentsFeed")).toContainText(assessment.title);
-      await page.locator('#assignmentsFeed [onclick*="viewAssessmentDetails"]').first().click();
+      await page.locator('#assignmentsFeed [onclick*="'+taskId+'"]').first().click();
       await expect(page.locator("#evidenceCommitList input[type=radio]")).toHaveCount(2);
     }
-    async function openTeacher(studentId="alice"){
-      await teacher.goto(origin+"/repofetch.html?section=fixture-11-A&student="+studentId+"&assessment=fixture-v2");
+    async function openTeacher(studentId="alice",taskId="fixture-v2"){
+      await teacher.goto(origin+"/repofetch.html?section=fixture-11-A&student="+studentId+"&assessment="+taskId);
       await expect(teacher.locator("#manualReviewStudent")).toContainText("Fixture "+studentId);
-      await expect(teacher.frameLocator("#integratedEvidenceFrame").locator("#evidenceTitle")).toContainText(assessment.title);
+      await expect(teacher.locator("#integratedEvidencePanel #evidenceTitle")).toContainText(assessment.title);
     }
-    function evidenceFrame(){return teacher.frameLocator("#integratedEvidenceFrame");}
+    function evidenceFrame(){return teacher.locator("#integratedEvidencePanel");}
     async function approve(withContribution=true){
       await teacher.locator("#integratedEvidenceDetails").evaluate(details=>{details.open=true;});
       const frame=evidenceFrame();
@@ -219,6 +224,23 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await expect(student.locator("#evidenceStatus")).toContainText("submitted for teacher verification");
     validated("student submit, resubmit, withdraw and resubmit");
     await openTeacher();
+    await expect(teacher.locator("#manualReviewModal iframe")).toHaveCount(0);
+    await expect(teacher.locator("#integratedContributionSummary")).toContainText("Detected GitHub account");
+    await expect(teacher.locator("#integratedGroupHistory")).toContainText(ownSha.slice(0,12));
+    await expect(teacher.locator("#integratedGroupSummary")).toContainText("Fixture alice");
+    for(const id of ["integratedEvidencePanel","integratedGroupSummary","integratedGroupHistory","integratedContributionSummary"])
+      await expect(teacher.locator("#"+id)).toHaveAttribute("aria-busy","false");
+    const readsBeforeExpansion=teacherPinnedReads;
+    for(const id of ["integratedGroupDetails","integratedGroupInspectorDetails","integratedInspectorDetails"])
+      await teacher.locator("#"+id).evaluate(async details=>{details.open=true;await new Promise(requestAnimationFrame);details.open=false;await new Promise(requestAnimationFrame);});
+    assert.equal(teacherPinnedReads,readsBeforeExpansion,"Opening preloaded accordions must not rerun evidence reads");
+    await evidenceFrame().locator("#evidenceReviewNote").fill("Unsaved review note must survive a genuine concurrent resubmission.");
+    await student.locator("#evidenceSubmit").click();
+    await expect(evidenceFrame().locator("#evidenceActionStatus")).toContainText("Evidence changed in another session");
+    await expect(evidenceFrame().locator("#evidenceReviewNote")).toHaveValue("Unsaved review note must survive a genuine concurrent resubmission.");
+    await expect(evidenceFrame().locator("#evidenceApprove")).toBeDisabled();
+    await evidenceFrame().locator("#evidenceReload").click();
+    await expect(evidenceFrame().locator("#evidenceApprove")).toBeEnabled();
     await expect(teacher.locator("#manualReviewSave")).toBeDisabled();
     await expect(teacher.locator("#manualReviewAIGenerate")).toBeDisabled();
     await approve();
@@ -254,7 +276,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await openTeacher();await teacher.locator("#integratedEvidenceDetails").evaluate(details=>{details.open=true;});
     await evidenceFrame().locator("#evidenceReviewNote").fill("Student requested correction; preserve the original published grade and audit history.");
     await evidenceFrame().locator("#evidenceReopen").click();
-    await expect(evidenceFrame().locator("#evidenceReviewStatus")).toContainText("Unpublish");
+    await expect(evidenceFrame().locator("#evidenceActionStatus")).toContainText("Unpublish");
     await waitRecord(teacher,"assessment_evidence/alice_fixture-v2","status","approved");
     await teacher.locator("#manualReviewUnpublish").click();
     await waitRecord(gradebook,"student_grades/alice_fixture-v2","published",false);
@@ -262,7 +284,11 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await evidenceFrame().locator("#evidenceReviewNote").fill("Instructor reopened at the student's request after explicitly unpublishing the protected grade.");
     await evidenceFrame().locator("#evidenceReopen").click();
     await waitRecord(teacher,"assessment_evidence/alice_fixture-v2","status","reopened");
-    await openStudent(student);await expect(student.locator("#evidenceSubmit")).toBeEnabled();
+    await expect(student.locator("#evidenceSubmit")).toBeEnabled();
+    await expect(student.locator("#evidenceStatus")).toContainText("reopened");
+    const reopenedSelection=student.getByRole("checkbox",{name:"Include commit "+ownSha.slice(0,12)+" as evidence",exact:true});
+    await reopenedSelection.uncheck();await expect(reopenedSelection).not.toBeChecked();
+    await reopenedSelection.check();await expect(reopenedSelection).toBeChecked();
     await student.locator("#evidenceSubmit").click();
     await expect(student.locator("#evidenceStatus")).toContainText("submitted for teacher verification");
     await openTeacher();await approve();
@@ -289,6 +315,46 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     assert.equal(audit.data.before.checkpointSha,ownSha);assert.equal(audit.data.after.checkpointSha,groupSha);
     assert.equal(audit.data.actorUid,accounts.alice.uid);
     validated("noncontributor evaluation blocked, student privacy and immutable revision provenance");
+    await getAdminFirestore(adminApp).doc("assessments/fixture-legacy").set({...assessment,title:assessment.title+" — legacy"});
+    const legacy={updatedAt:Timestamp.fromMillis(1000),submittedAt:Timestamp.fromMillis(900),status:"approved",approvedCheckpointSha:groupSha,
+      checkpointSha:groupSha,selectedCommits:[ownSha,groupSha],repository,section:"fixture-11-A",assessmentId:"fixture-legacy",studentId:"alice"};
+    await getAdminFirestore(adminApp).doc("assessment_evidence/alice_fixture-legacy").set(legacy);
+    await openTeacher("alice","fixture-legacy");
+    await expect(teacher.locator("#manualReviewAIGenerate")).toBeDisabled();
+    await teacher.locator("#manualReviewVerifyContributions").click();
+    await evidenceFrame().locator('[data-contribution-sha="'+ownSha+'"]').check();
+    await evidenceFrame().locator("#evidenceContributionScope").fill(fixtureScope);
+    await evidenceFrame().locator("#evidenceReviewNote").fill("Complete the old checkpoint approval with independently verified individual contributions.");
+    await evidenceFrame().locator("#evidenceConfirm").check();
+    await evidenceFrame().locator("#evidenceApprove").click();
+    await expect(teacher.locator("#manualReviewAIGenerate")).toBeEnabled();
+    const legacyUpdated=await waitRecord(teacher,"assessment_evidence/alice_fixture-legacy","revision",1);
+    assert.deepEqual(legacyUpdated.selectedCommits,legacy.selectedCommits);
+    assert.deepEqual(legacyUpdated.verifiedContributionCommits,[ownSha]);
+    const legacyAudit=(await browserRecord(teacher,"assessment_evidence/alice_fixture-legacy/revisions/1")).data;
+    assert.equal(legacyAudit.before.status,"approved");assert.equal(legacyAudit.before.verifiedContributionCommits,undefined);
+    await teacher.locator("#manualReviewAIGenerate").click();
+    await expect(teacher.locator("#manualReviewAIScores")).toContainText("Teacher review needed");
+    assert.equal((await browserRecord(teacher,"student_grades/alice_fixture-legacy")).exists,false);
+    await teacher.locator("#manualReviewAISection").scrollIntoViewIfNeeded();
+    await teacher.screenshot({path:path.join(output,"inline-legacy-evaluation.png"),fullPage:true});
+    validated("inline parallel review, real stale-edit protection, live reopened checkboxes and audited legacy contribution verification enable evaluation");
+    await getAdminFirestore(adminApp).doc("assessments/fixture-proposal").set({...assessment,title:assessment.title+" — proposal"});
+    await getAdminFirestore(adminApp).doc("assessment_evidence/alice_fixture-proposal").set({studentId:"alice",assessmentId:"fixture-proposal",section:"fixture-11-A",repository,
+      selectedCommits:[ownSha,groupSha],checkpointSha:groupSha,status:"needs_review",source:"teacher_discovered",discoveredBy:accounts.teacher.uid,recordedAt:Timestamp.now(),updatedAt:Timestamp.now()});
+    await openStudent(student,"fixture-proposal");await expect(student.locator("#evidenceSubmit")).toBeDisabled();
+    await openTeacher("alice","fixture-proposal");
+    await evidenceFrame().locator("#evidenceReviewNote").fill("Release this historical proposal so the student can choose their own actual changes.");
+    await evidenceFrame().locator("#evidenceReopen").click();
+    const released=await waitRecord(teacher,"assessment_evidence/alice_fixture-proposal","status","reopened");
+    assert.equal(released.submittedAt,undefined);
+    await expect(student.locator("#evidenceSubmit")).toBeEnabled();
+    await student.getByRole("checkbox",{name:"Include commit "+ownSha.slice(0,12)+" as evidence",exact:true}).uncheck();
+    await student.locator("#evidenceSubmit").click();
+    const adopted=await waitRecord(teacher,"assessment_evidence/alice_fixture-proposal","status","submitted");
+    assert.deepEqual(adopted.selectedCommits,[groupSha]);assert.equal(adopted.revision,2);assert.ok(adopted.submittedAt);
+    assert.equal((await browserRecord(teacher,"student_grades/alice_fixture-proposal")).exists,false);
+    validated("historical proposals require instructor release and a real student submission before approval");
     assert.deepEqual(blockedRequests,[],"Unexpected external requests were blocked");
     assert.deepEqual(errors,[],"Unexpected browser runtime errors");
     await teacher.screenshot({path:path.join(output,"teacher-review.png")});
