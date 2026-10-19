@@ -8,7 +8,8 @@ const escapePrintText=value=>String(value??"").replace(/[&<>"']/g,c=>({
 })[c]);
 const linesForPrint=value=>escapePrintText(value).replace(/\\n|\n/g,"<br>");
 const GOOGLE_CLIENT_ID =
-  "396238862950-ctpihosaaetvf7agaftbucupbkot4n7r.apps.googleusercontent.com";
+  "902176956124-i9vcin925le0d9jghr4afn56q7n53gl5.apps.googleusercontent.com";
+const GOOGLE_EXPORT_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 window.formatListForPrint = function (text, isOrdered = true) {
   if (!text) return "";
@@ -304,29 +305,41 @@ window.saveAndPrint = async function () {
 window.exportToGoogleDocs = function () {
   if (typeof htmlDocx === "undefined")
     return alert("The Document generator is still loading. Please wait.");
-  if (typeof google === "undefined")
+  if (typeof google === "undefined" ||
+      typeof google.accounts?.oauth2?.initTokenClient !== "function")
     return alert("Google scripts failed to load. Please refresh the page.");
 
   const tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: GOOGLE_CLIENT_ID,
-    scope:
-      "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/documents",
+    scope: GOOGLE_EXPORT_SCOPE,
+    include_granted_scopes: false,
+    error_callback: (error) => {
+      const message = error?.type === "popup_failed_to_open"
+        ? "Allow popups for this website, then try Export to Google Docs again."
+        : error?.type === "popup_closed"
+          ? "Google authorization was closed before access was granted. No document was created."
+          : "Google Docs authorization could not finish. Ask your administrator to check the export client's website address and Google API setup.";
+      alert(message);
+    },
     callback: async (tokenResponse) => {
-      if (tokenResponse.error !== undefined)
-        return alert("Google Authentication failed.");
-      if (typeof window.showSubtleLoader === "function") {
-        window.showSubtleLoader("Exporting and formatting Google Doc...");
+      if (tokenResponse?.error) {
+        const message = tokenResponse.error === "access_denied"
+          ? "Google Drive export permission was not granted. No document was created."
+          : "Google Docs authorization failed. Ask your administrator to check the export client's allowed website address and Google API setup.";
+        return alert(message);
       }
-
-      const isReady = await window.buildDocumentLayout();
-      if (!isReady) {
-        if (typeof window.hideSubtleLoader === "function") {
-          window.hideSubtleLoader();
-        }
-        return;
+      if (!tokenResponse?.access_token ||
+          !google.accounts.oauth2.hasGrantedAllScopes(tokenResponse, GOOGLE_EXPORT_SCOPE))
+        return alert("Google Drive export permission was not granted. No document was created.");
+      try {
+        window.showSubtleLoader?.("Exporting and formatting Google Doc...");
+        const isReady = await window.buildDocumentLayout();
+        if (isReady) await processAndUploadToDrive(tokenResponse.access_token);
+      } catch {
+        alert("Google Docs export could not be prepared. Your saved lesson was not changed; refresh the page and try again.");
+      } finally {
+        window.hideSubtleLoader?.();
       }
-
-      await processAndUploadToDrive(tokenResponse.access_token);
     },
   });
   tokenClient.requestAccessToken();

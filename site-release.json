@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.19.4",
+  "version": "2026.10.19.5",
   "releasedAt": "2026-10-19",
-  "notes": "Evidence reopening updates live, review panels preload together, and instructors can complete older contribution verification. Save your work and refresh existing tabs before continuing."
+  "notes": "Google Docs export uses the current website connection and requests access only to files used with Adminerva. Save your work and refresh the Lesson Planner before exporting."
 }
