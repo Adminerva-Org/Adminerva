@@ -1,6 +1,19 @@
 {
   "releases": [
     {
+      "version": "2026.10.19.5",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-19",
+      "title": "Google Docs export connection update",
+      "summary": "Lesson Planner export uses the current website connection, requests narrower file access and explains interrupted authorization.",
+      "changes": [
+        {"type":"Fixed", "area":"Lesson Planner", "text":"Google Docs export uses the current website authorization client instead of an older connection. Project services and user authorization are still required."},
+        {"type":"Updated", "area":"Export permissions", "text":"Exports request access only to files used with Adminerva, not all of your documents. Declined or missing permissions stop the export before a document is created."},
+        {"type":"Fixed", "area":"Export feedback", "text":"Blocked or closed authorization windows show clearer guidance, and the loading indicator finishes when export preparation or upload ends."}
+      ]
+    },
+    {
       "version": "2026.10.19.4",
       "status": "published",
       "public": true,
