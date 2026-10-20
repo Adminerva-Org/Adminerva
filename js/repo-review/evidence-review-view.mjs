@@ -4,7 +4,7 @@ export const evidenceReviewMarkup=`
 <h2 class="font-bold text-lg">Discover historical GitHub evidence</h2>
 <p class="text-sm text-slate-600">For assessments already assigned in class: select relevant commits from the linked repository without asking the student to resubmit. This records an instructor-discovered proposal, not a student submission or proof of on-time work.</p>
 <button id="evidenceFindCommits" type="button" class="rounded bg-slate-800 text-white px-4 py-3 font-bold text-sm">Find repository commits</button>
-<div id="evidenceDiscoverList" class="space-y-2 max-h-80 overflow-y-auto"></div>
+<div id="evidenceDiscoverList" class="space-y-2 "></div>
 <button id="evidenceFindOlder" type="button" class="hidden rounded border border-indigo-200 bg-indigo-50 text-indigo-900 px-4 py-3 text-sm font-bold">Load older commits</button>
 <button id="evidenceSaveDiscovery" type="button" class="rounded bg-indigo-700 text-white px-4 py-3 font-bold text-sm">Save proposed historical evidence</button>
 </section>

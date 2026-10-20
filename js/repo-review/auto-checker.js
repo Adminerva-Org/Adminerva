@@ -1,9 +1,13 @@
+import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=2026.10.20.1";
+import {createBackoffClient,evaluationJSON} from "./services/request-backoff.mjs?v=2026.10.20.1";
+import {feedbackChip,reviewNotice} from "./review-ui.mjs?v=2026.10.20.1";
+import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=2026.10.20.1";
 /** Automated evaluation assistance with instructor-controlled acceptance. */
-import { db } from "../core/firebase-core.js";
+import { auth, db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs";
-import { resolveContributions, isGradableSource, scopeAssessmentFiles } from "./services/contribution-resolver.mjs";
-import { createGithubEvidenceClient, parseGithubRepository } from "./services/github-evidence-client.mjs";
+import { resolveContributions, linkGithubProfile, isGradableSource, scopeAssessmentFiles } from "./services/contribution-resolver.mjs?v=2026.10.20.1";
+import { createGithubEvidenceClient, parseGithubRepository } from "./services/github-evidence-client.mjs?v=2026.10.20.1";
 import {
   doc,
   collection,
@@ -35,6 +39,9 @@ function sanitizePath(p) {
 
 // Share SHA-pinned GitHub evidence across checks in the same browser session.
 // Credentials and cached results are not persisted; a token change resets the client.
+let sessionEvaluationClient=null,sessionEvaluationKey=null;
+const runningChecks=new Set();
+const githubReads=createBackoffClient({github:true,scope:"github"});
 let sessionEvidenceClient = null;
 let sessionEvidenceToken = null;
 function getSessionEvidenceClient(token) {
@@ -64,9 +71,13 @@ window.startAutoCheck = async function (
     localStorage.getItem("Adminerva_ai_model") || "gemini-1.5-flash-latest";
 
   if (!ghToken || !geminiKey) {
-    alert("Missing API Keys!");
-    return;
+    reviewNotice("Checker setup is missing. Open Review & Grade to enter a teacher score manually.",true);
+    return {success:false,reason:"Checker setup required"};
   }
+  const jobKey=studentId+":"+taskId,actorUid=auth.currentUser?.uid;
+  if(runningChecks.has(jobKey))return {success:false,reason:"Evaluation is already running"};
+  runningChecks.add(jobKey);
+  if(sessionEvaluationKey!==geminiKey){sessionEvaluationKey=geminiKey;sessionEvaluationClient=createBackoffClient({scope:"evaluation"});}
 
   const checkStartTime = performance.now();
   const cardId = `task-card-${studentId}-${taskId}`;
@@ -82,8 +93,9 @@ window.startAutoCheck = async function (
 
   try {
     updateStatus("Fetching Context...");
-    const taskSnap = await getDoc(doc(db, "assessments", taskId));
-    const studentSnap = await getDoc(doc(db, "students", studentId));
+    const gradeRef=doc(db,"student_grades",studentId+"_"+taskId);
+    const [taskSnap,studentSnap,openedGradeSnap]=await Promise.all([getDoc(doc(db,"assessments",taskId)),getDoc(doc(db,"students",studentId)),getDoc(gradeRef)]);
+    const openedGrade=openedGradeSnap.exists()?openedGradeSnap.data():null;
 
     if (!taskSnap.exists()) throw new Error("Blueprint missing in database.");
     const taskData = taskSnap.data();
@@ -119,7 +131,7 @@ window.startAutoCheck = async function (
         throw new Error("The selected repository differs from the student's linked repository.");
       }
     }
-    const identityRes = await fetch(
+    const identityRes = await githubReads.fetch(
       "https://api.github.com/users/" + encodeURIComponent(ghName),
       { headers: { Authorization: "Bearer " + ghToken, Accept: "application/vnd.github+json" } },
     );
@@ -186,7 +198,7 @@ window.startAutoCheck = async function (
     const client = getSessionEvidenceClient(ghToken);
     const evidence = await client.resolveEvidence({
       repository: repoFullName,
-      student: { id: studentId, githubUsername: ghProfile.login, githubUserId: ghProfile.id },
+      student: linkGithubProfile({...studentData,id:studentId},ghProfile),
       assessment: {
         id: taskId, title: taskData.title || "", targetPaths,
         expectedExtensions: expectedExts,
@@ -338,58 +350,39 @@ window.startAutoCheck = async function (
             \`\`\`
       `;
 
-      const aiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${geminiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              response_mime_type: "application/json",
-              temperature: 0.2,
-            },
-          }),
-        },
-      );
-
-      if (!aiRes.ok)
-        throw new Error(
-          "Automated engine failed to respond. (Check console for API details)",
-        );
-      const aiData = await aiRes.json();
-      let cleanJson = aiData.candidates[0].content.parts[0].text
-        .replace(/^```(json)?\s*/i, "")
-        .replace(/\s*```$/i, "")
-        .trim();
-      const parsed = JSON.parse(cleanJson);
-
-      const rawAiScore = Number(parsed.score);
-      if (!Number.isFinite(rawAiScore) || parsed.score == null || parsed.score === "") {
-        throw new Error("The AI returned an invalid score. Nothing was saved.");
-      }
-      finalScore = Math.min(Math.max(rawAiScore, 0), maxScore);
-
-      finalFeedback = cleanGradeFeedback(
-        parsed.teacher_note || parsed.feedback || "No feedback generated."
-      );
+      if(!/^[a-zA-Z0-9._-]{1,80}$/.test(aiModel))throw Error("Invalid evaluation model setting.");
+      const aiRes=await sessionEvaluationClient.fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(aiModel)+":generateContent",{
+          method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":geminiKey},
+          signal:AbortSignal.timeout(60000),
+          body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{response_mime_type:"application/json",temperature:0.2}})
+        });
+      const parsed=await evaluationJSON(aiRes);
+      const rawAiScore=parsed.score,rawFeedback=parsed.teacher_note||parsed.feedback;
+      if(typeof rawAiScore!=="number"||!Number.isFinite(rawAiScore)||rawAiScore<0||rawAiScore>maxScore||typeof rawFeedback!=="string"||!rawFeedback.trim()||rawFeedback.length>6000)
+        throw Error("Evaluation schema was invalid. No score was saved; retry or grade manually.");
+      finalScore=rawAiScore;
+      finalFeedback=cleanGradeFeedback(rawFeedback);
 
       let aiTags = [];
       if (Array.isArray(parsed.penalty_tags)) aiTags = parsed.penalty_tags;
       else if (typeof parsed.penalty_tags === "string")
         aiTags = [parsed.penalty_tags];
+      if(aiTags.some(tag=>typeof tag!=="string"||tag.length>160)||aiTags.length>20)throw Error("Evaluation tags had an invalid format. No score was saved.");
       finalTags = [...new Set([...autoPenalties, ...aiTags])];
     }
 
     updateStatus("Saving Grade...");
     const gradeDocId = `${studentId}_${taskId}`;
-    const gradeRef = doc(db, "student_grades", gradeDocId);
+
     const durationMs = Math.round(performance.now() - checkStartTime);
 
     // A transaction prevents an AI run from overwriting a grade while a teacher publishes it.
     // All AI results remain unpublished drafts requiring teacher verification.
     await runTransaction(db, async transaction => {
+      if(!actorUid||auth.currentUser?.uid!==actorUid)throw Error("Account changed. Evaluation was not saved.");
       const previous = await transaction.get(gradeRef);
+      assertGradeVersion(previous.exists()?previous.data():null,openedGrade);
       if (previous.exists() && previous.data().published === true) {
         throw new Error("A published grade exists. Unpublish and review it before replacing the score.");
       }
@@ -402,18 +395,18 @@ window.startAutoCheck = async function (
         transaction.set(revisionRef, {
           studentId, taskId, gradeId: gradeDocId,
           reason: "Automated regrade replaced an unpublished draft",
-          editorUid: null,
+          editorUid: actorUid,
           before: {
             ...pickDefinedGradeFields(old, ["score", "maxScore"]), feedback: old.feedback || "",
             published: !!old.published, reviewRequired: !!old.reviewRequired,
             gradedSha: old.gradedSha || null, gradedAt: old.gradedAt || null
           },
-          after: { score: finalScore, maxScore, published: false, reviewed: false },
+          after: { score: finalScore, maxScore, published: false, reviewRequired: true },
           createdAt: serverTimestamp()
         });
       }
       transaction.set(gradeRef, {
-        studentId, taskId, score: finalScore, maxScore,
+        studentId, taskId, score: finalScore, maxScore,gradeVersion:nextGradeVersion(openedGrade),
         feedback: finalFeedback,
         gradeSource: "automated",
         penaltyTags: finalTags,
@@ -500,7 +493,7 @@ window.startAutoCheck = async function (
       summary.textContent = "View full diagnostic details";
       diagnostics.append(summary);
       const full = document.createElement("p");
-      full.className = "text-xs mt-2 p-2 bg-slate-50 rounded-lg border border-slate-200 break-all max-h-40 overflow-y-auto whitespace-pre-wrap";
+      full.className = "text-xs mt-2 p-2 bg-slate-50 rounded-lg border border-slate-200 break-all whitespace-pre-wrap";
       full.textContent = message;
       diagnostics.append(full);
       wrapper.append(diagnostics);
@@ -514,62 +507,24 @@ window.startAutoCheck = async function (
       const retry = document.createElement("button");
       retry.type = "button";
       retry.className = "text-xs text-blue-700 underline font-bold";
-      retry.textContent = "Retry";
+      retry.textContent = error.retryAt?"Retry with backoff after "+new Date(error.retryAt).toLocaleTimeString():"Retry with backoff";
       retry.addEventListener("click", () =>
         window.startAutoCheck(studentId, owner, repo, taskId, currentSha)
       );
       actions.append(retry);
+      const manual=document.createElement("button");manual.type="button";manual.className="text-xs font-bold underline";manual.textContent="Switch to manual grading";manual.addEventListener("click",()=>window.openManualGradeReview?.({studentId,taskId,owner,repo}));actions.append(manual);
       wrapper.append(actions);
       actionArea.replaceChildren(wrapper);
     }
     return { success: false, reason: error.message };
-  }
+  } finally {runningChecks.delete(jobKey);}
 };
 
-function renderGradeResult(
-  container,
-  score,
-  maxScore,
-  feedback,
-  penaltyTags,
-  exactPath,
-  studentId,
-  owner,
-  repo,
-  taskId,
-  currentSha,
-  isProvisional = false,
-) {
-  let scoreColor = "text-green-600";
-  if (score < maxScore * 0.75) scoreColor = "text-red-600";
-  else if (score < maxScore * 0.9) scoreColor = "text-yellow-600";
-
-  let tagsHtml = "";
-  if (penaltyTags && penaltyTags.length > 0) {
-    tagsHtml = `<div class="flex flex-wrap gap-1 mb-1 mt-1">${penaltyTags.map((t) => `<span class="bg-rose-50 text-rose-600 text-[8.5px] px-1.5 py-0.5 rounded border border-rose-200 font-extrabold uppercase tracking-wider shadow-sm whitespace-normal leading-tight text-left max-w-full">${escapeHTML(t)}</span>`).join("")}</div>`;
-  }
-
-  container.innerHTML = `
-        <div class="flex items-start justify-end gap-3 bg-gray-50 p-3 rounded border border-gray-200 w-full xl:w-[450px] shadow-inner">
-            <div class="flex flex-col items-center ml-1 w-10 shrink-0 mt-1">
-                <div class="text-2xl font-bold ${scoreColor} leading-none text-center">${score}</div>
-                <div class="text-[8px] font-bold text-gray-400 mt-1">/ ${maxScore}</div>
-                <div class="text-[9px] font-extrabold mt-1 ${isProvisional ? "text-amber-700" : "text-blue-700"}">${isProvisional ? "PROVISIONAL" : "REVIEW DRAFT"}</div>
-            </div>
-            <div class="flex-1 min-w-0 border-l border-gray-200 pl-3 ml-1">
-                ${isProvisional ? '<p class="text-xs font-extrabold text-amber-800 bg-amber-50 border border-amber-200 p-2 mb-2 rounded">Alternative-file investigation: high-priority teacher review required</p>' : ""}
-                <p class="text-[9px] font-mono text-gray-500 break-all mb-1" title="${escapeHTML(exactPath)}">File(s): ${escapeHTML(exactPath)}</p>
-                ${tagsHtml}
-                <div class="text-[10px] text-gray-700 leading-relaxed max-h-24 overflow-y-auto pr-1 whitespace-pre-wrap">${escapeHTML(cleanGradeFeedback(feedback))}</div>
-            </div>
-            <div class="flex flex-col items-center justify-center border-l border-gray-200 pl-2 shrink-0 w-12 mt-1">
-                <span id="pub-lbl-${taskId}" class="text-[7px] font-bold text-gray-400 uppercase mb-1 tracking-wider">Hidden</span>
-                <label class="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" class="sr-only peer" onchange="window.togglePublishGrade('${studentId}', '${taskId}', this)">
-                  <div class="w-6 h-3.5 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-blue-500"></div>
-                </label>
-            </div>
-            <button onclick="window.startAutoCheck('${studentId}', '${owner}', '${repo}', '${taskId}', '${currentSha}')" class="text-gray-400 hover:text-blue-500 transition px-1 shrink-0 border-l border-gray-200 pl-2 ml-1 mt-1" title="Force Re-evaluate">🔄</button>
-        </div>
-    `;
+function renderGradeResult(container,score,maxScore,feedback,penaltyTags,exactPath,studentId,owner,repo,taskId,currentSha,isProvisional=false) {
+  container.replaceChildren();
+  const chip=feedbackChip({score,maxScore,feedback},()=>openFeedbackDrawer({studentId,taskId,owner,repo}));
+  container.append(chip);
+  const status=document.createElement("span");status.className="text-xs text-slate-600";
+  status.textContent=isProvisional?"Evaluation draft · investigation required":"Evaluation draft · teacher review required";
+  container.append(status);
 }

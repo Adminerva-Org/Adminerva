@@ -1,3 +1,7 @@
+import {feedbackSummary,reviewNotice,inlineTask} from "./review-ui.mjs?v=2026.10.20.1";
+import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=2026.10.20.1";
+import {assertGradeVersion} from "./services/grade-version.mjs?v=2026.10.20.1";
+import {writePublicationRevision} from "./grade-publication.mjs?v=2026.10.20.1";
 /** Repository selection and entry into the teacher review workspace. */
 import { db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
@@ -50,7 +54,7 @@ function parseRepoInfo(repoUrl) {
   }
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
+async function initRepositorySections() {
   if (!db) return;
   try {
     const snap = await getDocs(collection(db, "students"));
@@ -72,17 +76,23 @@ document.addEventListener("DOMContentLoaded", async () => {
   } catch (e) {
     console.error(e);
   }
-});
+}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",initRepositorySections,{once:true});
+else void initRepositorySections();
 
+let repoSyncBusy=false;
 window.fetchAndSyncRepos = async function () {
+  if(repoSyncBusy)return;
   const ghToken = localStorage.getItem("Adminerva_github_token");
   if (!ghToken) return alert("Missing GitHub PAT in settings.");
 
   const section = document.getElementById("sectionSelect").value;
   if (!section) return;
   currentClassSection = section;
+  repoSyncBusy=true;document.getElementById("sectionSelect").disabled=true;
+  const finishSync=inlineTask("groupsContainer","Loading selected class repositories…");
 
-  window.showSubtleLoader(`Loading ${section} from database...`);
+  reviewNotice(`Loading ${section} from database...`);
   globalStudentsData = {};
 
   try {
@@ -161,7 +171,7 @@ window.fetchAndSyncRepos = async function () {
           group.apiError = "Private Repo or Broken Link (404)";
           requiresUIRefresh = true;
           processed++;
-          window.showSubtleLoader(
+          reviewNotice(
             `Syncing GitHub... ${processed}/${groupKeys.length}`,
           );
           return;
@@ -169,7 +179,7 @@ window.fetchAndSyncRepos = async function () {
           group.apiError = "API Rate Limit Reached (403)";
           requiresUIRefresh = true;
           processed++;
-          window.showSubtleLoader(
+          reviewNotice(
             `Syncing GitHub... ${processed}/${groupKeys.length}`,
           );
           return;
@@ -198,7 +208,7 @@ window.fetchAndSyncRepos = async function () {
               group.cachedIdentitySignature === identitySignature) {
             // The cached history is for precisely the same HEAD and student login mapping.
             processed++;
-            window.showSubtleLoader(`Syncing GitHub... ${processed}/${groupKeys.length} (unchanged)`);
+            reviewNotice(`Syncing GitHub... ${processed}/${groupKeys.length} (unchanged)`);
             return;
           }
           commits.push(...pageCommits);
@@ -208,7 +218,7 @@ window.fetchAndSyncRepos = async function () {
 
         if (commits.length === 0) {
           processed++;
-          window.showSubtleLoader(
+          reviewNotice(
             `Syncing GitHub... ${processed}/${groupKeys.length}`,
           );
           return;
@@ -262,7 +272,7 @@ window.fetchAndSyncRepos = async function () {
         requiresUIRefresh = true;
       }
       processed++;
-      window.showSubtleLoader(
+      reviewNotice(
         `Syncing GitHub... ${processed}/${groupKeys.length}`,
       );
     };
@@ -276,7 +286,7 @@ window.fetchAndSyncRepos = async function () {
       }
     }
     if (requiresUIRefresh) {
-      window.showSubtleLoader("Applying fresh updates to view...");
+      reviewNotice("Applying fresh updates to view...");
       renderGroupedUI(repoGroups);
     }
     const requested=new URLSearchParams(location.search);
@@ -290,7 +300,7 @@ window.fetchAndSyncRepos = async function () {
   } catch (e) {
     alert("Execution Error: " + e.message);
   } finally {
-    window.hideSubtleLoader();
+    repoSyncBusy=false;document.getElementById("sectionSelect").disabled=false;finishSync();
   }
 };
 
@@ -454,22 +464,12 @@ window.openGradingModal = async function (studentId, owner, repo) {
 
         const isPub = gradeRecord.published || false;
 
-        // NEW: Extract and render penalty tags directly into the UI
-        let tagsHtml = "";
-        const penaltyTags = gradeRecord.penaltyTags || [];
-        if (penaltyTags.length > 0) {
-          tagsHtml = `<div class="flex flex-wrap gap-1 mb-1 mt-1">
-                ${penaltyTags.map((t) => `<span class="bg-rose-50 text-rose-600 text-[8.5px] px-1.5 py-0.5 rounded border border-rose-200 font-extrabold uppercase tracking-wider shadow-sm">${escapeHTML(t)}</span>`).join("")}
-            </div>`;
-        }
-
         actionAreaHtml = `
               <div class="flex items-center justify-end gap-3 bg-gray-50 p-2 rounded border border-gray-200 w-full sm:w-[360px] shadow-inner">
                   <div class="text-2xl font-bold ${scoreColor} leading-none ml-2 w-10 text-center">${gradeRecord.score}</div>
                   <div class="flex-1 min-w-0 border-l border-gray-200 pl-3 ml-1">
-                      <p class="text-[9px] font-bold text-gray-500 uppercase mb-1 tracking-wider">${isTeacherScore ? (gradeRecord.gradeSource === "teacher_ai_reviewed" ? "AI-assisted / teacher reviewed" : "Teacher Score") : gradeRecord.provisionalScore ? "Provisional Draft" : "Up to Date"}</p>
-                      ${tagsHtml}
-                      <div class="text-[10px] text-gray-700 leading-relaxed max-h-24 overflow-y-auto pr-1 whitespace-pre-wrap">${escapeHTML(cleanGradeFeedback(gradeRecord.feedback))}</div>
+                      <p class="text-[9px] font-bold text-gray-500 uppercase mb-1 tracking-wider">${isTeacherScore ? "Teacher-reviewed score" : gradeRecord.provisionalScore ? "Provisional draft" : "Evaluation draft"}</p>
+                      <button type="button" class="av-feedback-chip" onclick="window.openRepoFeedback('${studentId}','${task.id}')">${escapeHTML(feedbackSummary(gradeRecord.feedback))}</button>
                   </div>
                   <div class="flex flex-col items-center justify-center border-l border-gray-200 pl-2 shrink-0 w-12">
                       <span id="pub-lbl-${task.id}" class="text-[7px] font-bold ${isPub ? "text-blue-600" : "text-gray-400"} uppercase mb-1 tracking-wider">${isPub ? "Visible" : "Hidden"}</span>
@@ -604,6 +604,7 @@ window.togglePublishGrade = async function (studentId, taskId, checkbox) {
     await runTransaction(db, async tx => {
       const grade = await tx.get(gradeRef);
       if (!grade.exists()) throw new Error("Grade was deleted during publication.");
+      assertGradeVersion(grade.data(),gradeSnap.data());
       if(wantsPublish){
         const assessment=await tx.get(doc(db,"assessments",taskId));
         if(assessment.data()?.schemaVersion===2){
@@ -612,6 +613,7 @@ window.togglePublishGrade = async function (studentId, taskId, checkbox) {
             throw Error("Evidence changed or was reopened. Review and save a new private grade draft before publishing.");
         }
       }
+      writePublicationRevision(tx,gradeRef,grade.data(),wantsPublish);
       tx.update(gradeRef, {
         published: wantsPublish,
         ...(wantsPublish && grade.data().reviewRequired === true
@@ -641,7 +643,7 @@ window.openBulkGradeModal = async function () {
       "No valid student repositories found to grade. Please fetch and sync first.",
     );
 
-  window.showSubtleLoader("Loading active assessments...");
+  reviewNotice("Loading active assessments...");
   try {
     const snap = await getDocs(collection(db, "assessments"));
     let activeTasks = [];
@@ -659,7 +661,7 @@ window.openBulkGradeModal = async function () {
     // V2 grading is pinned to approved evidence. Never feed V2 into the legacy bulk checker.
     activeTasks=activeTasks.filter(t=>t.schemaVersion!==2);
     if (activeTasks.length === 0) {
-      window.hideSubtleLoader();
+
       return alert("No legacy assessments available for bulk Auto-Grade. Use the Assessment V2 Review & Grade queue above for approved checkpoint-aware suggestions.");
     }
 
@@ -676,7 +678,7 @@ window.openBulkGradeModal = async function () {
   } catch (e) {
     alert("Failed to load assessments: " + e.message);
   } finally {
-    window.hideSubtleLoader();
+
   }
 };
 
@@ -693,7 +695,7 @@ window.executeBulkGrade = async function () {
     (s) => s.latestSha && s.repoUrl && s.repoUrl !== "unassigned",
   );
 
-  window.showSubtleLoader("Initializing Bulk Grader...");
+  reviewNotice("Initializing Bulk Grader...");
 
   let gradedList = [];
   let skippedList = [];
@@ -727,7 +729,7 @@ window.executeBulkGrade = async function () {
         continue;
       }
 
-      window.showSubtleLoader(
+      reviewNotice(
         `Grading Student ${i + 1} of ${studentsToGrade.length}: ${student.name} (Cooling down API 15s...)`,
       );
 
@@ -811,6 +813,8 @@ window.executeBulkGrade = async function () {
     console.error("Bulk Grading Error", e);
     alert("An error occurred during bulk grading: " + e.message);
   } finally {
-    window.hideSubtleLoader();
+
   }
 };
+
+window.openRepoFeedback=(studentId,taskId)=>{const info=parseRepoInfo(globalStudentsData[studentId]?.repoUrl);if(info)void openFeedbackDrawer({studentId,taskId,owner:info.owner,repo:info.repo});};

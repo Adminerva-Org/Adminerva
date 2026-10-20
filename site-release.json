@@ -1,5 +1,5 @@
 {
-  "version": "2026.10.19.5",
-  "releasedAt": "2026-10-19",
-  "notes": "Google Docs export uses the current website connection and requests access only to files used with Adminerva. Save your work and refresh the Lesson Planner before exporting."
+  "version": "2026.10.20.1",
+  "releasedAt": "2026-10-20",
+  "notes": "Personal teaching workspaces, clearer review and analytics, searchable evidence, a unified Help menu and optional home activity preferences. Save your work before refreshing. Grades are never published automatically."
 }

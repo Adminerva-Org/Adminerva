@@ -1,3 +1,5 @@
+import {requireCurrentVersion} from "../lesson-review/workspace-model.mjs?v=2026.10.20.1";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "../lesson-review/workspace-session.mjs?v=2026.10.20.1";
 /** Saved deck storage, lesson linking and source-version checks. */
 import { db } from "../core/firebase-core.js";
 import {lessonStarterDeck,lessonSourceChanged} from "./lesson-to-slides.mjs?v=2026.10.19.1";
@@ -22,7 +24,7 @@ window.selectedSessionIndex = null;
 window.db = db;
 let sessionLoadSequence=0;
 
-document.addEventListener("DOMContentLoaded", () => {
+workspaceOnReady( () => {
   injectPlanSelectorUI();
   initFirebase();
 });
@@ -91,7 +93,7 @@ window.fetchSavedLessonPlans = async function () {
   if (!window.db || !select) return;
 
   try {
-    const querySnapshot = await getDocs(collection(window.db, "lesson_plans"));
+    const querySnapshot = await getDocs(ownedCollection(window.db,"lesson_plans"));
     window.availablePlans = [];
     select.innerHTML = '<option value="">-- Choose a Lesson Plan --</option>';
 
@@ -178,7 +180,7 @@ window.handleSessionSelection = async function () {
       const presentationId = `${planId}_session${sessionIdx}`;
       try {
         const docSnap = await getDoc(
-          doc(window.db, "presentations", presentationId),
+          ownedDoc(window.db,"presentations", presentationId),
         );
         if(sequence!==sessionLoadSequence)return;
         document.getElementById("presentationSourceStatus").textContent=lessonSourceChanged(docSnap.data(),window.selectedPlanData)?"Saved deck has older or unknown lesson provenance. Slides are not overwritten by lesson updates. Review the source before rebuilding.":"Lesson version "+Number(window.selectedPlanData.version||1)+" selected. Slides remain editable; save explicitly.";
@@ -191,6 +193,7 @@ window.handleSessionSelection = async function () {
               "💾 A saved presentation was found in the cloud for this session! Would you like to load it?",
             )
           ) {
+            window.loadedPersonalDeck={id:presentationId,version:Number(docSnap.data().version||1)};
             window.presentationSourceLessonVersion=docSnap.data().source_lesson_version||null;
             window.currentPresentationDeck = (docSnap.data().deck||[]).map(slide=>({
             ...slide,
@@ -240,6 +243,7 @@ window.savePresentationToCloud = async function () {
   try {
     const presentationId = `${planId}_session${sessionIdx}`;
     const payload = {
+      ownerUid:workspaceUid(),
       plan_id: planId,
       source_lesson_version: window.presentationSourceLessonVersion||null,
       session_index: sessionIdx,
@@ -257,21 +261,23 @@ window.savePresentationToCloud = async function () {
 
     // Transactionally preserve the previous deck before replacing it.
     // Restoring an earlier version requires a separate deliberate Save action.
-    const currentRef=doc(window.db,"presentations",presentationId);
-    const revisionId=Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,10);
-    const historyRef=doc(window.db,"presentations",presentationId,"revisions",revisionId);
+    const currentRef=ownedDoc(window.db,"presentations",presentationId);
     const action=await runTransaction(window.db,async tx=>{
       const previous=await tx.get(currentRef);
+      const expected=window.loadedPersonalDeck?.id===presentationId?window.loadedPersonalDeck.version:0;
+      payload.version=requireCurrentVersion(previous.exists()?previous.data():null,expected);
+      assertWorkspaceAccount(payload.ownerUid);
       if(previous.exists()){
         const before=previous.data();
         if(JSON.stringify(before.deck||[])===JSON.stringify(payload.deck)&&before.source_lesson_version===payload.source_lesson_version)return "unchanged";
-        tx.set(historyRef,{...before,archivedRevisionAt:serverTimestamp()});
+        tx.set(ownedDoc(window.db,"presentations",presentationId,"revisions",String(before.version)),{...before,archivedRevisionAt:serverTimestamp()});
         payload.version=Number(before.version||1)+1;
       }else payload.version=1;
       tx.set(currentRef,payload);
       return "saved";
     });
 
+    if(action==="saved")window.loadedPersonalDeck={id:presentationId,version:payload.version};
     if(document.getElementById("presentationPlanSelect")?.value===planId&&window.selectedSessionIndex===sessionIdx&&JSON.stringify(window.currentPresentationDeck)===draftSnapshot)window.adminervaPresentationDirty=false;
     const btnDelete = document.getElementById("btnDeletePresentation");
     if (btnDelete) btnDelete.classList.replace("hidden", "flex");
@@ -315,7 +321,7 @@ window.deletePresentationFromCloud = async function () {
     ).toISOString();
 
     await setDoc(
-      doc(window.db, "presentations", presentationId),
+      ownedDoc(window.db,"presentations", presentationId),
       {
         is_archived: true,
         archived_at: new Date().toISOString(),
@@ -376,8 +382,8 @@ window.openArchiveManager = async function () {
 
   try {
     const [plansSnap, presSnap] = await Promise.all([
-      getDocs(collection(window.db, "lesson_plans")),
-      getDocs(collection(window.db, "presentations")),
+      getDocs(ownedCollection(window.db,"lesson_plans")),
+      getDocs(ownedCollection(window.db,"presentations")),
     ]);
 
     let archivedItems = [];
@@ -445,7 +451,7 @@ window.restoreDocument = async function (collectionName, docId) {
   if (!window.db) return;
   try {
     await setDoc(
-      doc(window.db, collectionName, docId),
+      ownedDoc(window.db, collectionName, docId),
       { is_archived: false },
       { merge: true },
     );
@@ -465,7 +471,7 @@ window.hardDeleteDocument = async function (collectionName, docId) {
   )
     return;
   try {
-    await deleteDoc(doc(window.db, collectionName, docId));
+    await deleteDoc(ownedDoc(window.db, collectionName, docId));
     window.openArchiveManager(); // Refresh UI
   } catch (e) {
     alert("Failed to delete: " + e.message);
@@ -502,7 +508,7 @@ window.openPresentationHistory=async function(){
   const container=modal.querySelector("#presentationVersionsList");
   container.textContent="Loading saved versions…";
   try{
-    const snap=await getDocs(query(collection(db,"presentations",presentationId,"revisions"),
+    const snap=await getDocs(query(ownedCollection(db,"presentations",presentationId,"revisions"),
       orderBy("archivedRevisionAt","desc"),limit(20)));
     container.replaceChildren();
     if(snap.empty)container.textContent="No earlier versions yet. Saving a changed deck will preserve the previous one.";

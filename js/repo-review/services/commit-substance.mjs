@@ -24,7 +24,6 @@ function meaningful(line, ext) {
   const text = line.trim();
   if (!text) return '';
   if (ext === 'xml') {
-    if (/^(?:<!--|-->|<\?xml\b)/.test(text) && !/^<(?:[a-z]|[A-Z]).*?>.*</.test(text)) return '';
     return text;
   }
   if (/^(?:\/\/|\/\*|\*|\*\/)/.test(text)) return '';
@@ -45,8 +44,9 @@ export function analyzePatchSubstance(patch, path) {
     return {kind:'unknown', substantive:null, reason:'No changed lines available'};
   }
   const ext = extension(path);
-  const before = lines.minus.map(line=>canonical(line,ext)).filter(Boolean);
-  const after = lines.plus.map(line=>canonical(line,ext)).filter(Boolean);
+  const semanticLines=items=>ext==='xml' ? items.join('\n').replace(/<!--[\s\S]*?(?:-->|$)/g,'').replace(/<\?xml\b[\s\S]*?\?>/g,'').split('\n') : items;
+  const before = semanticLines(lines.minus).map(line=>canonical(line,ext)).filter(Boolean);
+  const after = semanticLines(lines.plus).map(line=>canonical(line,ext)).filter(Boolean);
   if (!before.length && !after.length) {
     return {kind:'comments_or_whitespace',substantive:false,
       reason:'Only blank lines or full-line comments changed'};

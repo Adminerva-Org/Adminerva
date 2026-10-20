@@ -1,6 +1,8 @@
 /** Per-review bounded, cancellable GitHub reads and independent parallel panel loading. */
+import {createBackoffClient} from "./request-backoff.mjs?v=2026.10.20.1";
 export function createReviewRequests({token=null,fetchImpl=globalThis.fetch,signal,concurrency=4}={}){
   const cache=new Map(),queue=[];
+  const client=createBackoffClient({fetchImpl,github:true,scope:"github",signal});
   let running=0;
   function drain(){
     while(running<concurrency&&queue.length){
@@ -20,7 +22,7 @@ export function createReviewRequests({token=null,fetchImpl=globalThis.fetch,sign
     if(!cache.has(key)){
       const headers={Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"};
       if(token)headers.Authorization="Bearer "+token;
-      const pending=limited(()=>fetchImpl(key,{headers,signal}));
+      const pending=limited(()=>client.fetch(key,{headers,signal}));
       cache.set(key,pending);
       pending.then(response=>{if(!response.ok)cache.delete(key);},()=>cache.delete(key));
       if(cache.size>180)cache.delete(cache.keys().next().value);

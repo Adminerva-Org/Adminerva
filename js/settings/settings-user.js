@@ -1,3 +1,4 @@
+import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
 /** Scoped product configuration and staff preferences: settings user. */
 import { auth, db } from "../core/firebase-core.js";
 import {
@@ -33,13 +34,13 @@ function escapeHTML(str) {
 let allStudents = [];
 let currentSort = { col: "name", dir: "asc" };
 
-onAuthStateChanged(auth, (user) => {
+onAuthStateChanged(auth, async (user) => {
   if (!user) {
     window.location.href = "login.html";
     return;
   }
   const email = user.email.toLowerCase();
-  if (email !== SUPER_ADMIN_EMAIL && email !== TEACHER_EMAIL) {
+  if (!await resolveStaffRole(user)) {
     window.location.href = "student-dashboard.html";
   } else {
     const pageBody = document.getElementById("pageBody");

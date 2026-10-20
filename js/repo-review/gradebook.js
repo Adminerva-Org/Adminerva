@@ -1,3 +1,8 @@
+import {feedbackSummary,inlineTask,reviewNotice} from "./review-ui.mjs?v=2026.10.20.1";
+import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=2026.10.20.1";
+import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=2026.10.20.1";
+import {assertGradeVersion} from "./services/grade-version.mjs?v=2026.10.20.1";
+import {writePublicationRevision} from "./grade-publication.mjs?v=2026.10.20.1";
 /** Teacher grade administration, protected revisions and explicit publication. */
 import { db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
@@ -29,7 +34,9 @@ function escapeHTML(str) {
   );
 }
 
-let allStudents = [];
+let allStudents = [],gridEntries=[],gridSerial=0,publishBusy=false;
+function syncPublishButton(loading=false){const button=document.getElementById("gbLegacyPublish"),eligible=publicationCandidates(gridEntries);button.disabled=loading||publishBusy||!eligible.length;button.textContent="Publish ("+eligible.length+" Drafts)";const recovery=publicationRecovery("single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value);document.getElementById("gbLegacyRecovery").textContent=recovery?.pending.length?"Interrupted batch: "+recovery.pending.length+" pending. Reload grades and confirm Publish to try again.":"Only reviewed legacy drafts are eligible. V2 publication is individual.";}
+window.openGridFeedback=(studentId,taskId)=>void openFeedbackDrawer({studentId,taskId});
 let allAssessments = [];
 
 let legacyGradebookInitialized = false;
@@ -39,7 +46,7 @@ async function ensureLegacyGradebook() {
   await loadFilters();
 }
 window.addEventListener("adminerva:open-legacy-gradebook", ensureLegacyGradebook);
-document.addEventListener("DOMContentLoaded", async () => {
+async function initLegacyGradebook() {
   if (!document.getElementById("gbLegacyView")?.classList.contains("hidden")) {
     await ensureLegacyGradebook();
   }
@@ -48,10 +55,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     .addEventListener("change", updateAssessmentsForSection);
   document.getElementById("gbAssessment").addEventListener("change", loadGrid);
   document.getElementById("gbSort").addEventListener("change", loadGrid);
-});
+}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",initLegacyGradebook,{once:true});
+else void initLegacyGradebook();
 
 async function loadFilters() {
-  window.showSubtleLoader("Initializing Gradebook...");
+  const finish=inlineTask("gbTableBody","Loading gradebook filters…");
   try {
     const [stuSnap, assSnap] = await Promise.all([
       getDocs(collection(db, "students")),
@@ -86,7 +95,7 @@ async function loadFilters() {
   } catch (e) {
     console.error("Gradebook Load Error", e);
   } finally {
-    window.hideSubtleLoader();
+    finish();
   }
 }
 
@@ -95,14 +104,19 @@ async function loadGrid() {
   const taskId = document.getElementById("gbAssessment").value;
   const tbody = document.getElementById("gbTableBody");
 
-  if (!section || !taskId) return;
+  const serial=++gridSerial;gridEntries=[];syncPublishButton(true);
+  if (!section || !taskId) {syncPublishButton();return;}
 
-  tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-12 text-center"><div class="animate-spin inline-block rounded-full h-6 w-6 border-b-2 border-indigo-600 mb-2"></div><p class="text-slate-400 font-bold text-sm">Crunching data...</p></td></tr>`;
+  tbody.innerHTML = `<tr aria-busy="true"><td colspan="4" class="px-6 py-8"><div class="animate-pulse space-y-3"><div class="h-4 rounded bg-slate-200 w-1/3"></div><div class="h-4 rounded bg-slate-100 w-2/3"></div><span class="text-sm text-slate-500">Loading saved scores…</span></div></td></tr>`;
 
   try {
     const gradesSnap = await getDocs(
       query(collection(db, "student_grades"), where("taskId", "==", taskId)),
     );
+    if(serial!==gridSerial)return;
+    const schemaVersion=allAssessments.find(task=>task.id===taskId)?.schemaVersion;
+    const taskMaximum=allAssessments.find(task=>task.id===taskId)?.maxScore;
+    gridEntries=gradesSnap.docs.filter(record=>allStudents.some(student=>student.id===record.data().studentId&&student.section===section)).map(record=>({ref:record.ref,data:record.data(),schemaVersion,maxScore:taskMaximum}));syncPublishButton();
     const gradeMap = {};
     gradesSnap.forEach((d) => (gradeMap[d.data().studentId] = d.data()));
 
@@ -162,22 +176,7 @@ async function loadGrid() {
               ? "bg-amber-50 text-amber-700 border-amber-200"
               : "bg-emerald-50 text-emerald-700 border-emerald-200";
 
-        // NEW: Extract and render penalty tags for the Gradebook matrix UI
-        let tagsHtml = "";
-        const penaltyTags = grade.penaltyTags || [];
-        if (penaltyTags.length > 0) {
-          tagsHtml = `<div class="flex flex-wrap gap-1 mb-1 mt-1">
-                ${penaltyTags.map((t) => `<span class="bg-rose-50 text-rose-600 text-[8.5px] px-1.5 py-0.5 rounded border border-rose-200 font-extrabold uppercase tracking-wider shadow-sm">${escapeHTML(t)}</span>`).join("")}
-            </div>`;
-        }
-
-        scoreBadge = `
-                    <div class="flex flex-col gap-1 w-64">
-                        <span class="${sColor} px-2 py-0.5 rounded text-lg font-extrabold border inline-block w-12 text-center shadow-sm">${grade.score}</span>
-                        ${tagsHtml}
-                        <p class="text-[10px] text-slate-500 whitespace-normal leading-tight line-clamp-2" title="${escapeHTML(cleanGradeFeedback(grade.feedback))}">${escapeHTML(cleanGradeFeedback(grade.feedback))}</p>
-                    </div>
-                `;
+        scoreBadge = '<button type="button" class="av-feedback-chip" onclick="window.openGridFeedback(\''+student.id+'\',\''+taskId+'\')"><strong>'+escapeHTML(String(grade.score))+' / '+max+'</strong><span>'+escapeHTML(feedbackSummary(grade.feedback))+'</span></button>';
 
         const isPub = grade.published || false;
         pubToggle = `
@@ -258,6 +257,7 @@ async function loadGrid() {
       }
     }
   } catch (error) {
+    if(serial!==gridSerial)return;
     console.error(error);
     tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-12 text-center text-red-500 font-bold border border-red-200 bg-red-50">Failed to load matrix. Check permissions.</td></tr>`;
   }
@@ -278,10 +278,12 @@ window.matrixTogglePub = async function (studentId, taskId, checkbox) {
     await runTransaction(db, async tx => {
       const latest = await tx.get(gradeRef);
       if (!latest.exists()) throw new Error("Grade was removed during publication.");
+      assertGradeVersion(latest.data(),gradeSnap.data());
       if(wantsPublish){
         const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=2026.10.19.1");
         await verifyGradePublication(tx,gradeRef,{...latest.data(),taskId});
       }
+      writePublicationRevision(tx,gradeRef,latest.data(),wantsPublish);
       tx.update(gradeRef, {
         published: wantsPublish,
         ...(wantsPublish && latest.data().reviewRequired === true
@@ -396,6 +398,7 @@ async function fetchGitHubStats(student, elementId) {
 }
 
 function updateAssessmentsForSection() {
+  gridEntries=[];syncPublishButton();
   const section = document.getElementById("gbSection").value;
   const assSelect = document.getElementById("gbAssessment");
   const tbody = document.getElementById("gbTableBody");
@@ -427,83 +430,14 @@ function updateAssessmentsForSection() {
   });
 }
 
-window.bulkPublishCurrentGrid = async function () {
-  const section = document.getElementById("gbSection").value;
-  const taskId = document.getElementById("gbAssessment").value;
-  const taskSelect = document.getElementById("gbAssessment");
-
-  if (!section || !taskId) {
-    return alert("Please select a Class Section and Target Assessment first.");
-  }
-
-  const taskName = taskSelect.options[taskSelect.selectedIndex].text;
-
-  if (
-    !confirm(
-      `Are you sure you want to PUBLISH all grades for "${taskName}"?\n\nStudents in ${section} will immediately see their scores on their dashboard.`,
-    )
-  ) {
-    return;
-  }
-
-  window.showSubtleLoader("Publishing Grades...");
-
-  try {
-    // 1. Get the list of student IDs for this section
-    const sectionStudentIds = new Set(
-      allStudents.filter((s) => s.section === section).map((s) => s.id),
-    );
-
-    if (sectionStudentIds.size === 0) {
-      alert("No students found in this section.");
-      return;
-    }
-
-    // 2. ONE network call: Fetch all existing grades for this task
-    const gradesSnap = await getDocs(
-      query(collection(db, "student_grades"), where("taskId", "==", taskId)),
-    );
-    const assessment=await getDoc(doc(db,"assessments",taskId));
-    if(assessment.data()?.schemaVersion===2)return alert("V2 grades require individual review and publication. Open Review & Grade, verify the saved draft, then publish the student's grade individually.");
-
-    // 3. Prepare the Firestore batch
-    const batch = writeBatch(db);
-    let publishedCount = 0;
-    let reviewSkippedCount = 0;
-
-    gradesSnap.forEach((gradeDoc) => {
-      const data = gradeDoc.data();
-      // Only publish if the grade belongs to a student in this section
-      if (sectionStudentIds.has(data.studentId)) {
-        if (data.reviewRequired === true) {
-          reviewSkippedCount++;
-          return;
-        }
-        batch.update(gradeDoc.ref, { published: true });
-        publishedCount++;
-      }
-    });
-
-    if (publishedCount === 0) {
-      alert(reviewSkippedCount
-        ? `No review-cleared grades to publish. ${reviewSkippedCount} draft(s) require individual teacher review.`
-        : "No existing grades found to publish for this task.");
-      return;
-    }
-
-    // 4. ONE network call: Commit all updates simultaneously
-    await batch.commit();
-
-    alert(
-      `📢 Publish Complete!\n\nSuccessfully made ${publishedCount} grades visible to students for "${taskName}".${reviewSkippedCount ? `\nSkipped ${reviewSkippedCount} draft(s) pending review.` : ""}`,
-    );
-
-    // Refresh UI matrix to reflect visible status
-    await loadGrid();
-  } catch (e) {
-    console.error("Bulk Publish Error", e);
-    alert("An error occurred during publishing: " + e.message);
-  } finally {
-    window.hideSubtleLoader();
-  }
+window.bulkPublishCurrentGrid=async function(){
+  if(publishBusy)return;
+  const eligible=publicationCandidates(gridEntries);
+  if(!eligible.length)return reviewNotice("No reviewed legacy drafts are ready. V2 grades need individual publication.");
+  if(!confirm("Publish "+eligible.length+" reviewed legacy draft(s) in this section? Students will see the score and feedback."))return;
+  const context="single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value;
+  publishBusy=true;syncPublishButton();
+  try{const result=await publishGradeEntries(eligible,true,{context,onProgress:value=>reviewNotice("Publishing reviewed drafts: "+value.completed.length+" complete, "+value.pending.length+" pending.")});reviewNotice(result.pending.length?"Some drafts changed or failed. Reload and review before retrying.":"Reviewed drafts published.",Boolean(result.pending.length));}
+  catch(error){reviewNotice(error.message,true);}
+  finally{publishBusy=false;await loadGrid();syncPublishButton();}
 };

@@ -4,7 +4,7 @@ import {readFileSync} from "node:fs";
 import {runInNewContext} from "node:vm";
 
 const source=readFileSync("js/lesson-review/document-exporter.js","utf8")
-  .replace(/import\s*\{[^}]*\}\s*from\s*"https:[^"]+";/," ");
+  .replace(/import\s*\{[^}]*\}\s*from\s*"[^"]+";/g," ");
 const clientId="902176956124-i9vcin925le0d9jghr4afn56q7n53gl5.apps.googleusercontent.com";
 const scope="https://www.googleapis.com/auth/drive.file";
 
@@ -29,7 +29,7 @@ function exportHarness({granted=true,ready=true,prepareError=false,uploadStatus=
   const context={window,google,htmlDocx:{},
     alert:value=>alerts.push(value),confirm:()=>false,
     document:{getElementById:id=>elements[id]},
-    localStorage:{getItem:()=>null,setItem:(...args)=>storageWrites.push(args)},
+    lessonStorage:{getItem:()=>null,setItem:(...args)=>storageWrites.push(args)},
     fetch:async(url,options)=>{
       requests.push({url,options});
       if(url.startsWith("https://www.googleapis.com/upload/drive/"))
@@ -58,7 +58,7 @@ test("Docs export uses the owner-supplied web client and only per-file access",(
   assert.equal(harness.requested,1);
   assert.equal(harness.requests.length,0);
   assert.doesNotMatch(source,/396238862950-|https:\/\/www\.googleapis\.com\/auth\/documents/);
-  assert.match(readFileSync("lesson-planner.html","utf8"),/document-exporter\.js\?v=2026\.10\.19\.5/);
+  assert.match(readFileSync("lesson-planner.html","utf8"),/document-exporter\.js\?v=2026\.10\.20\.1/);
 });
 
 test("missing Google library does not start an export",()=>{

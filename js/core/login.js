@@ -1,12 +1,10 @@
+import {resolveAccountAccess} from "./staff-session.mjs?v=2026.10.20.1";
 /** Approved-account sign-in and access feedback. */
 import { db, auth } from "../core/firebase-core.js";
 import {
-  collection,
-  getDocs,
   doc,
   updateDoc,
-  query,
-  where,
+  setDoc,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {
   signOut,
@@ -15,8 +13,6 @@ import {
   signInWithPopup,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 
-const SUPER_ADMIN_EMAIL = "babaynike2013@gmail.com".toLowerCase();
-const TEACHER_EMAIL = "josephsixson@mcstayuman.edu.ph".toLowerCase();
 const errBox = document.getElementById("loginErrorBox");
 
 // ==========================================
@@ -64,16 +60,18 @@ const handleOAuthLogin = async (provider, providerType) => {
     }
 
     // 2. VERIFY IDENTITY against Firestore Directory
-    const isEducator = email === SUPER_ADMIN_EMAIL || email === TEACHER_EMAIL;
+    const access=await resolveAccountAccess(result.user),role=access.role;
+    const isEducator=!!role;
     let targetCollection = isEducator ? "teachers" : "students";
 
-    const q = query(
-      collection(db, targetCollection),
-      where("email", "==", email),
-    );
-    const snap = await getDocs(q);
+    if(access.needsTeacherApproval)throw Error("teacher-approval-required");
+    let profileDocs=isEducator?access.teachers:access.students;
+    if(isEducator && !profileDocs.length){
+      await setDoc(doc(db,"teachers",result.user.uid),{email,name:String(result.user.displayName||email).slice(0,120),uid:result.user.uid});
+      profileDocs=[{id:result.user.uid}];
+    }
 
-    if (snap.empty) {
+    if (!profileDocs.length && !isEducator) {
       await signOut(auth);
       throw new Error("unrecognized-email:" + email);
     }
@@ -92,7 +90,7 @@ const handleOAuthLogin = async (provider, providerType) => {
           result.user.reloadUserInfo?.screenName ||
           "";
 
-        const updatePromises = snap.docs.map((docSnap) =>
+        const updatePromises = profileDocs.map((docSnap) =>
           updateDoc(doc(db, targetCollection, docSnap.id), {
             githubToken: credential.accessToken,
             githubUsername: ghUsername,
@@ -111,7 +109,7 @@ const handleOAuthLogin = async (provider, providerType) => {
     localStorage.setItem(
       "Adminerva_Role",
       isEducator
-        ? email === SUPER_ADMIN_EMAIL
+        ? role === "admin"
           ? "superadmin"
           : "teacher"
         : "student",
@@ -125,7 +123,10 @@ const handleOAuthLogin = async (provider, providerType) => {
     let errorTitle = "Login Failed";
     let errorMessage = error.message.replace("Firebase:", "").trim();
 
-    if (error.message === "no-email") {
+    if (error.message === "teacher-approval-required") {
+      errorTitle="Teacher approval required";
+      errorMessage="Your teacher profile exists, but staff access is not active. Ask an administrator to authorize your verified email in Teacher Accounts. A directory entry alone does not grant staff permissions.";
+    } else if (error.message === "no-email") {
       errorMessage =
         "Your GitHub account does not expose a public email. Please sign in with Google.";
     } else if (error.message.startsWith("unrecognized-email:")) {
@@ -134,7 +135,7 @@ const handleOAuthLogin = async (provider, providerType) => {
       errorMessage = `Your email (${failedEmail}) is not recognized. If you clicked GitHub, your personal email might not match the school records. <strong>Please click "Continue with Google" instead.</strong>`;
     } else if (error.code === "auth/popup-blocked") {
       errorMessage =
-        "Your browser aggressively blocked the login window. <strong>Please check the URL bar, allow popups for teachernosxis.github.io</strong>, and try again.";
+        "Your browser aggressively blocked the login window. <strong>Please check the URL bar, allow popups for this website</strong>, and try again.";
     } else if (error.code === "auth/popup-closed-by-user") {
       errorMessage =
         "The login window was closed before finishing. Please try again.";
@@ -155,6 +156,7 @@ const handleOAuthLogin = async (provider, providerType) => {
 // ==========================================
 document.addEventListener("DOMContentLoaded", () => {
   const urlParams = new URLSearchParams(window.location.search);
+  if(urlParams.get("error")==="teacher-approval-required")showError("Teacher approval required","Ask an administrator to activate your verified email in Teacher Accounts. Your teacher directory profile is preserved.");
   if (urlParams.get("error") === "unauthorized") {
     showError("Session Expired", "Please sign in again to continue.");
     window.history.replaceState({}, document.title, window.location.pathname);

@@ -2,9 +2,11 @@
 import { auth, db } from '../core/firebase-core.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
 import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
-import { resolveContributions } from './services/contribution-resolver.mjs';
-import { createGithubEvidenceClient } from './services/github-evidence-client.mjs';
-import { normalizeAssessment, validateInspectorInput, summarizeEvidence } from './services/inspector-helpers.mjs';
+import { resolveContributions,linkGithubProfile } from './services/contribution-resolver.mjs?v=2026.10.20.1';
+import {createBackoffClient} from './services/request-backoff.mjs?v=2026.10.20.1';
+const identityReads=createBackoffClient({github:true,scope:"github"});
+import { createGithubEvidenceClient } from './services/github-evidence-client.mjs?v=2026.10.20.1';
+import { normalizeAssessment, validateInspectorInput, summarizeEvidence } from './services/inspector-helpers.mjs?v=2026.10.20.1';
 
 const el=id=>document.getElementById(id);
 if(new URLSearchParams(location.search).get('embedded')==='1')el('adminerva-nav')?.remove();
@@ -76,11 +78,11 @@ async function inspect(){
   const assessment=normalizeAssessment(raw,el('section').value,raw?.id);
   validateInspectorInput({student,assessment,acknowledgedNoCutoff:el('acknowledge').checked});
   state.busy=true;el('inspect').disabled=true;el('results').hidden=true;status('Checking public GitHub account identity…');
-  const response=await fetch(`https://api.github.com/users/${encodeURIComponent(student.githubUsername.trim())}`,{headers:{Accept:'application/vnd.github+json'}});
+  const response=await identityReads.fetch(`https://api.github.com/users/${encodeURIComponent(student.githubUsername.trim().replace(/^@/,''))}`,{headers:{Accept:'application/vnd.github+json'}});
   if(!response.ok)throw new Error(`GitHub profile lookup failed (HTTP ${response.status})`);
-  const profile=await response.json();if(!Number.isSafeInteger(profile.id)||profile.login?.toLowerCase()!==student.githubUsername.toLowerCase())throw new Error('GitHub identity response was inconsistent');
+  const profile=await response.json();
   status(`Retrieving commit history for ${student.name||student.id}… API rate limits may apply.`);
-  const result=await github.resolveEvidence({repository:student.repoUrl,student:{id:student.id,githubUsername:profile.login,githubUserId:profile.id},assessment,resolver:resolveContributions});
+  const result=await github.resolveEvidence({repository:student.repoUrl,student:linkGithubProfile(student,profile),assessment,resolver:resolveContributions});
   // A profile login identifies GitHub commits; it does not prove profile ownership.
   result.warnings.push('Saved GitHub login has not been independently verified as belonging to this student.');
   if (assessment.historicalStartIgnored) {

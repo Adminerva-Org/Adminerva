@@ -1,11 +1,12 @@
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.20.1";
 /** Explicitly requested lesson assistance with source and edit guards. */
 import {validateGeneratedLesson} from "./lesson-plan-helpers.mjs";
 import {buildReferenceContext,REFERENCE_CONTEXT_BUDGET} from "./reference-context.mjs";
 window.initiateGenerationFlow = async function () {
-  const engineMode = localStorage.getItem("Adminerva_engine_mode") || "cloud";
-  const gemKey = localStorage.getItem("Adminerva_gemini_token");
+  const engineMode = lessonStorage.getItem("Adminerva_engine_mode") || "cloud";
+  const gemKey = lessonStorage.getItem("Adminerva_gemini_token");
   const model =
-    localStorage.getItem("Adminerva_ai_model") || "gemini-2.5-flash";
+    lessonStorage.getItem("Adminerva_ai_model") || "gemini-2.5-flash";
 
   if (engineMode === "cloud" && !gemKey) {
     return alert("Missing Gemini API Key in Global Settings.");
@@ -43,7 +44,7 @@ window.initiateGenerationFlow = async function () {
       );
       const records=documentsByFolder.flat();
       const scope=[
-        localStorage.getItem("Adminerva_defaultSubject")||"",
+        lessonStorage.getItem("Adminerva_defaultSubject")||"",
         document.getElementById("lpGradeLevel")?.value||"",
         document.getElementById("lpCourseWeek")?.value||"",
         document.getElementById("lpAcademicTerm")?.value||"",
@@ -79,7 +80,7 @@ window.initiateGenerationFlow = async function () {
     }
   }
 
-  const subject = localStorage.getItem("Adminerva_defaultSubject") || "Subject";
+  const subject = lessonStorage.getItem("Adminerva_defaultSubject") || "Subject";
   const academicTerm = document.getElementById("lpAcademicTerm").value;
   const schoolYear = document.getElementById("lpSchoolYear").value;
   try {
@@ -203,13 +204,13 @@ window.submitClarificationAndProceed = function () {
 };
 
 window.executeFinalGeneration = async function (userClarification) {
-  const engineMode = localStorage.getItem("Adminerva_engine_mode") || "cloud";
-  const gemKey = localStorage.getItem("Adminerva_gemini_token");
+  const engineMode = lessonStorage.getItem("Adminerva_engine_mode") || "cloud";
+  const gemKey = lessonStorage.getItem("Adminerva_gemini_token");
   const model =
-    localStorage.getItem("Adminerva_ai_model") || "gemini-2.5-flash";
+    lessonStorage.getItem("Adminerva_ai_model") || "gemini-2.5-flash";
   const schoolYear =
     document.getElementById("lpSchoolYear").value || "2026-2027";
-  const subject = localStorage.getItem("Adminerva_defaultSubject") || "Subject";
+  const subject = lessonStorage.getItem("Adminerva_defaultSubject") || "Subject";
 
   let gradeSpecificRules = "";
   let scheduleRules = "";
@@ -468,15 +469,15 @@ Reference Text (selected excerpts only; the complete source documents remain in 
     if(problems.length)throw Error("Generated lesson requires correction: "+problems.slice(0,6).join("; "));
     // 🚀 THE FIX: Standardized to the new Adminerva namespace
     const defaultPrelim =
-      localStorage.getItem("Adminerva_defaultPrelim") ||
+      lessonStorage.getItem("Adminerva_defaultPrelim") ||
       "Opening Prayer\nAttendance Checking\nTECHNOTES";
     const defaultClosing =
-      localStorage.getItem("Adminerva_defaultClosing") ||
+      lessonStorage.getItem("Adminerva_defaultClosing") ||
       "Summary of the Lesson\nClosing Prayer";
     const sessionsArray = planData.sessions || [];
 
     window.currentPlanSubject = subject;
-    window.currentPlanTeacher = localStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
+    window.currentPlanTeacher = lessonStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
     window.currentPlan = sessionsArray.map((session) => {
       if (
         session &&
@@ -514,8 +515,8 @@ Reference Text (selected excerpts only; the complete source documents remain in 
 };
 
 window.generateBlankPlan = function () {
-  window.currentPlanSubject = localStorage.getItem("Adminerva_defaultSubject") || "Subject";
-  window.currentPlanTeacher = localStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
+  window.currentPlanSubject = lessonStorage.getItem("Adminerva_defaultSubject") || "Subject";
+  window.currentPlanTeacher = lessonStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
   window.currentTargetGrade =
     document.getElementById("lpGradeLevel")?.value || "Grade 11";
   window.currentWeeklyOverview = {
@@ -527,10 +528,10 @@ window.generateBlankPlan = function () {
 
   // 🚀 THE FIX: Updated these to Adminerva_ to match the main generation function
   const defaultPrelim =
-    localStorage.getItem("Adminerva_defaultPrelim") ||
+    lessonStorage.getItem("Adminerva_defaultPrelim") ||
     "Opening Prayer\nAttendance Checking\nTECHNOTES";
   const defaultClosing =
-    localStorage.getItem("Adminerva_defaultClosing") ||
+    lessonStorage.getItem("Adminerva_defaultClosing") ||
     "Summary of the Lesson\nClosing Prayer";
 
   let sessionNames = [];

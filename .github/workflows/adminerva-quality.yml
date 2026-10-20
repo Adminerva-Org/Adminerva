@@ -17,6 +17,11 @@ jobs:
       - name: Test grading evidence and feedback regressions
         run: |
           node --test tests/google-docs-export.test.mjs
+          node --test tests/staff-workspaces.test.mjs
+          node --test tests/review-resilience.test.mjs js/repo-review/services/github-evidence-client.test.mjs
+          node --test tests/evidence-readiness.test.mjs
+          node --test tests/student-search.test.mjs tests/help-access.test.mjs
+          node --test js/analytics/academic-model.test.mjs
           node --test js/analytics/activity-model.test.mjs tests/loading-and-routes.test.mjs tests/monitoring-model.test.mjs
           node --test js/core/patch-history.test.mjs js/student/practice-points.test.mjs js/student/xml-layout.test.mjs js/presentation-review/lesson-to-slides.test.mjs js/presentation-review/lesson-slide-integration.test.mjs js/repo-review/services/review-snapshot.test.mjs
           node --test js/repo-review/services/evidence-lifecycle.test.mjs js/repo-review/services/review-requests.test.mjs tests/review-workspace.test.mjs
@@ -25,6 +30,17 @@ jobs:
         run: |
           for file in js/analytics/*.mjs js/help/*.mjs js/core/staff-role.mjs; do node --check "$file"; done
           node --check js/repo-review/services/evidence-lifecycle.mjs
+          node --check js/core/staff-session.mjs
+          node --check js/repo-review/services/grade-version.mjs
+          node --check js/repo-review/services/request-backoff.mjs
+          node --check js/repo-review/services/publication-queue.mjs
+          node --check js/repo-review/grade-publication.mjs
+          node --check js/repo-review/review-ui.mjs
+          node --check js/repo-review/feedback-drawer.mjs
+          node --check js/core/teacher-accounts.mjs
+          node --check js/lesson-review/workspace-model.mjs
+          node --check js/lesson-review/workspace-session.mjs
+          node --check js/analytics/academic-model.mjs
           node --check js/repo-review/services/evidence-transaction.mjs
           node --check js/repo-review/gradebook-quarter.mjs
           node --input-type=module --check < js/repo-review/gradebook.js
@@ -107,4 +123,4 @@ jobs:
       - name: Install Firebase emulator and test SDK
         run: npm install --no-audit --no-fund --no-save @firebase/rules-unit-testing@4 firebase@11 firebase-tools@14 firebase-admin@13
       - name: Test Firestore permissions in an isolated emulator
-        run: npx firebase emulators:exec --project demo-adminerva-security --only firestore 'node --test --test-concurrency=1 tests/firestore-rules.test.mjs tests/monitoring-maintenance.emulator.mjs'
+        run: npx firebase emulators:exec --project demo-adminerva-security --only firestore 'node --test --test-concurrency=1 tests/firestore-rules.test.mjs tests/monitoring-maintenance.emulator.mjs tests/staff-workspaces.emulator.mjs'

@@ -16,7 +16,7 @@ test("weekly overview renders without referencing an absent session or index",()
    innerHTML:"",
    querySelectorAll(){return[]}
  };
- const context={window:{
+ const context={workspaceUid:()=>"teacher-fixture",ownedDoc:()=>({}),window:{
    currentWeeklyOverview:{
      topic:"Programming",content_standard:"Algorithms",
      performance_standard:"Working code",materials:"Laptop"
@@ -54,8 +54,9 @@ test("older saved lessons can render without a weekly overview",()=>{
      querySelector:()=>null,
      createElement:()=>({value:"",textContent:""})
    },
-   localStorage:{setItem(){},getItem(){return null;}},alert(){}
+   lessonStorage:{setItem(){},getItem(){return null;}},alert(){}
  };
+ context.workspaceUid=()=>"teacher-fixture";
  vm.runInNewContext(code,context);
  assert.doesNotThrow(()=>context.window.loadSpecificPlan({
    grade_level:"Grade 11",sessions:[{session_name:"Session 1",topic:"Algorithms"}]
@@ -72,6 +73,6 @@ test("lesson generation schema requests school-required session fields",()=>{
 });
 test("print exporter uses the active Adminerva teacher and subject settings",()=>{
  const exporter=fs.readFileSync("js/lesson-review/document-exporter.js","utf8");
- assert.ok(exporter.includes('localStorage.getItem("Adminerva_defaultSubject")'));
- assert.ok(exporter.includes('localStorage.getItem("Adminerva_defaultTeacher")'));
+ assert.ok(exporter.includes('lessonStorage.getItem("Adminerva_defaultSubject")'));
+ assert.ok(exporter.includes('lessonStorage.getItem("Adminerva_defaultTeacher")'));
 });

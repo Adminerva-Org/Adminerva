@@ -1,5 +1,5 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: inspector helpers. */
-import { parseGithubRepository } from './github-evidence-client.mjs';
+import { parseGithubRepository } from './github-evidence-client.mjs?v=2026.10.20.1';
 
 export function normalizeAssessment(raw, section, id) {
   if (!raw || !section) throw new Error('Assessment and section are required');

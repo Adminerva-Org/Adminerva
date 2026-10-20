@@ -1,13 +1,15 @@
+import {staffRole} from "../core/staff-role.mjs?v=2026.10.20.1";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
 /** Student submissions, practice progress and isolated code workspaces: practice analytics. */
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,doc,getDocs,query,where,runTransaction,writeBatch,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {COURSES} from "./practice-courses.mjs";
 import {practicePoints,classStandings} from "./practice-points.mjs?v=2026.10.19.1";
-const el=id=>document.getElementById(id),staff=new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
+const el=id=>document.getElementById(id);
 const make=(tag,text)=>{const node=document.createElement(tag);node.textContent=text;return node;};
 let roster=[],profiles=[],scores=[],active=null,generation=0,loadedSection="";
-const allowed=()=>auth.currentUser?.emailVerified&&staff.has(auth.currentUser.email?.toLowerCase());
+const allowed=()=>!!staffRole(auth.currentUser);
 const status=text=>{el("practiceAnalyticsStatus").textContent=text;};
 async function load(){
   if(!allowed())return;
@@ -86,6 +88,7 @@ el("practicePublishStandings").addEventListener("click",async()=>{
 el("practiceAnalyticsLoad").addEventListener("click",()=>{void load();});
 el("practiceAnalyticsSection").addEventListener("change",()=>{generation++;active=null;loadedSection="";el("practiceReview").classList.add("hidden");el("practiceAnalyticsList").replaceChildren();});
 onAuthStateChanged(auth,async()=>{
+  await resolveStaffRole(auth.currentUser);
   generation++;active=null;loadedSection="";el("practiceAnalyticsList").replaceChildren();el("practiceReview").classList.add("hidden");
   if(!allowed())return status("A verified instructor sign-in is required.");
   try{const records=await getDocs(collection(db,"students"));if(!allowed())return;roster=records.docs.map(snapshot=>({id:snapshot.id,...snapshot.data()}));el("practiceAnalyticsSection").replaceChildren();for(const section of [...new Set(roster.map(student=>student.section))].filter(Boolean).sort()){const option=make("option",section);option.value=section;el("practiceAnalyticsSection").append(option);}status("Choose a section and load its private practice analytics.");}

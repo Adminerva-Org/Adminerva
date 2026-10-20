@@ -1,3 +1,4 @@
+import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
 /** Unified review inbox for legacy receipts and committed evidence. */
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
@@ -11,7 +12,6 @@ if(initialRepo){
   try{document.getElementById("submissionSearch").value=parseRepository(initialRepo).repo;}
   catch{/* Keep the ordinary unfiltered inbox when the link is invalid. */}
 }
-const staff=new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
 const el=id=>document.getElementById(id);
 const make=(tag,style,text)=>{const n=document.createElement(tag);
   if(style)n.className=style;if(text!=null)n.textContent=String(text);return n;};
@@ -92,7 +92,7 @@ function refresh(){
 onAuthStateChanged(auth,async user=>{
   const end = window.beginLoading?.("Loading review inbox…", el("submissionFeed")) || (() => {});
   for(const stop of unsubscribe)stop();unsubscribe=[];snapshots={legacy:[],v2:[]};
-  if(!user||!staff.has(String(user.email||"").toLowerCase())){
+  if(!await resolveStaffRole(user)){
     el("submissionStatus").textContent="Authorized teacher sign-in required.";
     el("submissionFeed").replaceChildren();end();return;
   }
@@ -104,7 +104,7 @@ onAuthStateChanged(auth,async user=>{
     students=new Map(roster.docs.map(d=>[d.id,d.data()]));
     assessments=new Map(taskDocs.docs.map(d=>[d.id,d.data()]));
     const request=(key,source,dateField)=>{
-      const loaded = window.beginLoading?.("Loading submitted evidence…") || (() => {});
+      const loaded = window.beginLoading?.("Loading submitted evidence…",el("submissionFeed")) || (() => {});
       const stop=onSnapshot(query(collection(db,source),orderBy(dateField,"desc"),limit(200)),
         snap=>{snapshots[key]=snap.docs.map(d=>({id:d.id,...d.data()}));refresh();loaded();},
         error=>{loaded();el("submissionStatus").textContent=source+" unavailable: "+error.message;});

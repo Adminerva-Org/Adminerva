@@ -1,8 +1,9 @@
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.20.1";
 /** Lesson-planner interface events and workflow coordination. */
 // ==========================================
 // 1. GLOBAL STATE MANAGER
 // ==========================================
-window.db = null;
+
 window.currentPlan = [];
 window.currentWeeklyOverview = null;
 window.currentTargetGrade = "";
@@ -39,7 +40,7 @@ window.bibleVerses = [
 // ==========================================
 // 2. INITIALIZATION
 // ==========================================
-document.addEventListener("DOMContentLoaded", () => {
+workspaceOnReady( () => {
   if (window.initFirebase) window.initFirebase();
   window.generateRollingWeekDropdown();
 
@@ -330,6 +331,8 @@ window.closeLoadPlanModal = function () {
 };
 
 window.loadSpecificPlan = function (planData) {
+  window.loadedPersonalPlan=planData.ownerUid===workspaceUid() ? {id:planData.id,version:Number(planData.version||1)} : null;
+  window.legacySourcePlanId=planData.source_legacy_plan||null;
   // Older records may predate the weekly overview. Do not lose the open draft
   // or crash the editor when a saved record has missing session data.
   if (!planData || !Array.isArray(planData.sessions) || !planData.sessions.length) {
@@ -344,9 +347,9 @@ window.loadSpecificPlan = function (planData) {
   // Preserve the original subject and teacher for an edited saved lesson.
   // Defaults may have changed since this plan was first created.
   window.currentPlanSubject = planData.subject_title ||
-    localStorage.getItem("Adminerva_defaultSubject") || "Subject";
+    lessonStorage.getItem("Adminerva_defaultSubject") || "Subject";
   window.currentPlanTeacher = planData.teacher_name ||
-    localStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
+    lessonStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
   window.currentTargetGrade = planData.grade_level || document.getElementById("lpGradeLevel")?.value || "Grade 11";
 
   document.getElementById("lpSchoolYear").value =

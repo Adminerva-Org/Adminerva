@@ -1,7 +1,9 @@
 /** Academic analytics for the selected instructor's configured sections; raw operations stay in the admin module. */
 import { db, auth } from "../core/firebase-core.js";
-import {selectedTeacherSections} from "./teacher-engagement.mjs?v=2026.10.19.3";
-import {staffRole} from "../core/staff-role.mjs?v=2026.10.19.2";
+import {selectedTeacherSections} from "./teacher-engagement.mjs?v=2026.10.20.1";
+import {staffRole} from "../core/staff-role.mjs?v=2026.10.20.1";
+import {academicGradeEligible,queryGroups} from "./academic-model.mjs?v=2026.10.20.1";
+import {createReviewRequests} from "../repo-review/services/review-requests.mjs?v=2026.10.20.1";
 import {
   collection,
   getDocs,
@@ -14,6 +16,8 @@ let globalStudents = [];
 let globalGrades = [];
 let globalAssessments = {};
 let dashboardRequest = 0;
+let velocityRequest = null;
+let visibleGrades = [];
 
 window.showLoader = function (msg = "Processing...") {
   if (typeof window.showSubtleLoader === "function")
@@ -51,9 +55,11 @@ function getRepoId(repoUrl) {
 document.addEventListener("analytics-teacher-change", () => {
   initDashboard();
 });
+if(document.getElementById("analytics-teacher").value)void initDashboard();
 
 async function initDashboard() {
   const request = ++dashboardRequest;
+  velocityRequest?.abort();visibleGrades=[];
   globalStudents = []; globalGrades = []; globalAssessments = {};
   for (const id of ["statStudents", "statGrades", "statAvgTime", "statMastery", "tierList", "penaltyList", "criteriaList", "topStudentsList", "atRiskList", "ghostList", "equityList", "modalGradeHistory"]) document.getElementById(id).textContent = "—";
   document.getElementById("sectionSelect").replaceChildren();
@@ -63,6 +69,12 @@ async function initDashboard() {
   const end = window.beginLoading?.("Loading teacher analytics…") || (() => {});
   try {
     const sections = await selectedTeacherSections();
+    if(request!==dashboardRequest)return;
+    if (!sections.length) {
+      document.getElementById("sectionSelect").add(new Option("No assigned sections", ""));
+      document.getElementById("academic-status").textContent="Choose an instructor with assigned sections. Administrators can configure Teacher Accounts; no activity is not a failing score.";
+      return;
+    }
     if (request !== dashboardRequest) return;
     globalStudents = []; globalGrades = []; globalAssessments = {};
     document.getElementById("taskSelect").replaceChildren(new Option("All assessments", "ALL"));
@@ -81,7 +93,8 @@ async function initDashboard() {
     });
 
     // Fetch Sections
-    const snap = await getDocs(collection(db, "students"));
+    const rosterSnapshots=await Promise.all(queryGroups(sections).map(group=>getDocs(query(collection(db,"students"),where("section","in",group)))));
+    const snap={forEach:callback=>rosterSnapshots.flatMap(snapshot=>snapshot.docs).forEach(callback)};
     if (request !== dashboardRequest) return;
     const select = document.getElementById("sectionSelect");
     let uniqueSections = new Set();
@@ -118,6 +131,8 @@ window.loadDashboardData = async function () {
   const taskIdFilter = document.getElementById("taskSelect").value;
   if (!section) return;
   const request = ++dashboardRequest;
+  velocityRequest?.abort();visibleGrades=[];
+  for(const id of ["statGrades","statAvgTime","statMastery"])document.getElementById(id).textContent="—";
   const end = window.beginLoading?.("Analyzing learning records…") || (() => {});
   document.getElementById("academic-status").textContent = "Loading section records…";
 
@@ -129,7 +144,8 @@ window.loadDashboardData = async function () {
       sectionStudents.length;
 
     // 2. Fetch Grades (Live to catch recent manual grading updates)
-    const gradesSnap = await getDocs(collection(db, "student_grades"));
+    const gradeSnapshots=await Promise.all(queryGroups([...studentIds]).map(group=>getDocs(query(collection(db,"student_grades"),where("studentId","in",group)))));
+    const gradesSnap={forEach:callback=>gradeSnapshots.flatMap(snapshot=>snapshot.docs).forEach(callback)};
     if (request !== dashboardRequest) return;
     globalGrades = [];
     gradesSnap.forEach((d) => {
@@ -139,10 +155,13 @@ window.loadDashboardData = async function () {
     });
 
     // Filter by specific task if requested
-    const filteredGrades =
+    const matchingGrades =
       taskIdFilter === "ALL"
         ? globalGrades
         : globalGrades.filter((g) => g.taskId === taskIdFilter);
+    const includeDrafts=document.getElementById("analytics-grade-scope")?.value==="drafts";
+    const filteredGrades=matchingGrades.filter(grade=>academicGradeEligible(grade,globalAssessments[grade.taskId],includeDrafts));
+    visibleGrades=filteredGrades;
 
     // Analytics Trackers
     let totalLatency = 0,
@@ -222,7 +241,7 @@ window.loadDashboardData = async function () {
       filteredGrades.length > 0
         ? Math.round(totalMasteryPercentage / filteredGrades.length)
         : 0;
-    document.getElementById("statMastery").textContent = `${secAvg}%`;
+    document.getElementById("statMastery").textContent = filteredGrades.length ? `${secAvg}%` : "—";
 
     // 3. Process Student Rankings (Top 5 & At-Risk)
     const rankedStudents = Object.values(studentPerformance)
@@ -236,10 +255,10 @@ window.loadDashboardData = async function () {
     renderStudentRadar(rankedStudents);
 
     // 4. Group Repo Analytics (Equity & Ghost)
-    const cacheSnap = await getDocs(collection(db, "group_repo_cache"));
+    const cacheSnap = await getDocs(collection(db, "group_repo_cache")).catch(()=>null);
     if (request !== dashboardRequest) return;
     const repoCacheMap = {};
-    cacheSnap.forEach((d) => (repoCacheMap[d.id] = d.data()));
+    cacheSnap?.forEach((d) => (repoCacheMap[d.id] = d.data()));
 
     const groups = {};
     sectionStudents.forEach((s) => {
@@ -302,6 +321,7 @@ window.loadDashboardData = async function () {
     renderPenalties(penaltyCounts, filteredGrades.length);
     renderTaskAverages(taskAverages);
     renderRadarAlerts(ghostAlerts, equityAlerts);
+    if(!cacheSnap)for(const id of ["ghostList","equityList"])document.getElementById(id).textContent="Repository cache unavailable. Academic results are separate. Refresh to retry.";
 
     if (sectionStudents.length > 0) {
       await renderVelocityChart(sectionStudents, request);
@@ -310,7 +330,7 @@ window.loadDashboardData = async function () {
     }
     if (request === dashboardRequest) document.getElementById("academic-status").textContent = "Academic records loaded. Repository commit counts indicate activity only, not verified authorship, effort or individual mastery.";
   } catch (e) {
-    document.getElementById("academic-status").textContent = "Some academic records could not load. Retry your section selection.";
+    if(request===dashboardRequest)document.getElementById("academic-status").textContent = "Some academic records could not load. Use Refresh analytics to retry; no grades were changed.";
     console.error(e);
   } finally {
     end();
@@ -395,7 +415,7 @@ function renderPenalties(penaltyCounts, totalGrades) {
 
   if (sorted.length === 0) {
     list.innerHTML =
-      '<div class="text-center text-xs text-emerald-500 font-bold italic mt-4">Clean code! No penalties found.</div>';
+      '<div class="text-center text-xs text-slate-600 italic mt-4">No recorded penalty tags in this sample.</div>';
     return;
   }
   list.innerHTML = sorted
@@ -484,12 +504,12 @@ function renderRadarAlerts(ghostAlerts, equityAlerts) {
       </div>`,
           )
           .join("")
-      : '<div class="text-xs text-emerald-500 font-bold italic">Team commits are balanced.</div>';
+      : '<div class="text-xs text-slate-600 italic">No count-difference alert in the available sample. This is not proof of equal contribution.</div>';
 }
 
 window.openStudent360 = function (studentId) {
   const student = globalStudents.find((s) => s.id === studentId);
-  const sGrades = globalGrades.filter((g) => g.studentId === studentId);
+  const sGrades = visibleGrades.filter((g) => g.studentId === studentId);
   if (!student) return;
 
   document.getElementById("modalStudentName").textContent = student.name;
@@ -545,64 +565,39 @@ document.addEventListener("click", event => {
 
 // Chart Logic (Unchanged core, but encapsulated cleanly)
 async function renderVelocityChart(students, request) {
-  const ghToken = localStorage.getItem("Adminerva_github_token");
-  if (!ghToken) return renderEmptyChart();
-
-  const dates = [];
-  const dateCounts = {};
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split("T")[0];
-    dates.push(dateStr);
-    dateCounts[dateStr] = 0;
-  }
-
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const sinceIso = thirtyDaysAgo.toISOString();
-
-  const uniqueRepos = new Set();
-  students.forEach((s) => {
-    if (s.repoUrl && s.repoUrl !== "unassigned") {
-      uniqueRepos.add(s.repoUrl.trim().replace(/\/$/, "").replace(".git", ""));
-    }
-  });
-
-  const fetchPromises = Array.from(uniqueRepos).map(async (url) => {
-    try {
-      const urlParts = url.split("/");
-      const repo = urlParts.pop();
-      const owner = urlParts.pop();
-      const res = await fetch(
-        `https://api.github.com/repos/${owner}/${repo}/commits?since=${sinceIso}`,
-        {
-          headers: {
-            Authorization: `Bearer ${ghToken}`,
-            Accept: "application/vnd.github+json",
-          },
-        },
-      );
-      if (res.ok) {
-        const commits = await res.json();
-        commits.forEach((c) => {
-          const commitDateStr = c.commit.author.date.split("T")[0];
-          if (dateCounts[commitDateStr] !== undefined)
-            dateCounts[commitDateStr]++;
-        });
-      }
-    } catch (e) {}
-  });
-
-  await Promise.all(fetchPromises);
-  if (request !== dashboardRequest) return;
-  drawChart(
-    dates,
-    dates.map((d) => dateCounts[d]),
-  );
+  velocityRequest?.abort();
+  const controller=new AbortController();velocityRequest=controller;
+  const status=document.getElementById("velocity-status");
+  const ghToken=localStorage.getItem("Adminerva_github_token");
+  if(!ghToken){renderEmptyChart();status.textContent="Connect GitHub in Settings to load repository activity. No activity data is not a zero grade.";return;}
+  const dates=Array.from({length:30},(_,index)=>new Date(Date.now()-(29-index)*86400000).toISOString().slice(0,10));
+  const counts=Object.fromEntries(dates.map(date=>[date,0]));
+  const repositories=[...new Set(students.map(student=>student.repoUrl).filter(url=>url&&url!=="unassigned"))];
+  if(!repositories.length){renderEmptyChart();status.textContent="No linked repositories for this section.";return;}
+  status.textContent="Loading a bounded repository activity sample…";
+  const client=createReviewRequests({token:ghToken,signal:controller.signal,concurrency:3});
+  let failed=0,capped=repositories.length>20;
+  await Promise.all(repositories.slice(0,20).map(async url=>{
+    try{
+      const repository=new URL(url.replace(/\.git$/,""));
+      if(repository.hostname!=="github.com")throw Error("Unsupported repository");
+      const parts=repository.pathname.split("/").filter(Boolean);
+      if(parts.length!==2)throw Error("Invalid repository");
+      const commits=await client.json("/repos/"+parts.map(encodeURIComponent).join("/")+"/commits?per_page=100&since="+encodeURIComponent(new Date(Date.now()-30*86400000).toISOString()));
+      if(!Array.isArray(commits))throw Error("Incomplete activity response");
+      if(commits.length===100)capped=true;
+      for(const commit of commits){const date=commit.commit?.author?.date?.slice(0,10);if(date in counts)counts[date]++;}
+    }catch{failed++;}
+  }));
+  if(request!==dashboardRequest||controller.signal.aborted)return;
+  if(failed===Math.min(repositories.length,20)){renderEmptyChart();status.textContent="Repository activity unavailable. Check GitHub access or rate limits, then refresh later. Class grades are unaffected.";return;}
+  drawChart(dates,dates.map(date=>counts[date]));
+  status.textContent="Repository history sample: up to 20 repositories and 100 commits each; author dates are not push times or proof of contribution."+(failed?" Some repositories could not load; this chart is partial.":"")+(capped?" Sample limit reached.":"");
 }
 
 function drawChart(labels, data) {
+  if(typeof Chart!=="function")return;
+  document.getElementById("velocityChart").parentElement.hidden=false;
   const ctx = document.getElementById("velocityChart").getContext("2d");
   if (velocityChartInstance) velocityChartInstance.destroy();
   velocityChartInstance = new Chart(ctx, {
@@ -651,5 +646,6 @@ function drawChart(labels, data) {
   });
 }
 function renderEmptyChart() {
-  drawChart(["No Data"], [0]);
+  if(velocityChartInstance){velocityChartInstance.destroy();velocityChartInstance=null;}
+  document.getElementById("velocityChart").parentElement.hidden=true;
 }

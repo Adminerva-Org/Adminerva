@@ -26,6 +26,7 @@ export function scheduleScope(schoolYear, semesterOrTerm) {
     jsonKey: "Adminerva_schedule_json_" + id,
     textKey: "Adminerva_schedule_" + id,
     pendingKey: "Adminerva_schedule_pending_" + id,
+    versionKey: "Adminerva_schedule_version_" + id,
     allowLegacy: semester === "S1" && year === LEGACY_SCHEDULE_YEAR,
   };
 }

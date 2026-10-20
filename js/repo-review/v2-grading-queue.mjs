@@ -1,3 +1,4 @@
+import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
 /**
  * RepoFetch is the primary V2 assessment workspace.
  * Evidence and Contribution Inspector remain supporting pages with deep links.
@@ -10,7 +11,6 @@ import {collection,getDocs,query,where}
 import {parseRepository} from "./services/assessment-evidence.mjs";
 import {gradeMatchesEvidence} from "./services/evidence-lifecycle.mjs";
 
-const STAFF=new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
 const el=id=>document.getElementById(id);
 const node=(tag,content="",className="")=>{
   const item=document.createElement(tag);item.textContent=content;
@@ -36,7 +36,7 @@ function scopedUrl(path,student,task){
   return path+"?"+params.toString();
 }
 async function initialize(user){
-  if(!user||!STAFF.has(String(user.email||"").toLowerCase())){
+  if(!await resolveStaffRole(user)){
     status("Sign in with an authorized instructor account to review V2 submissions.");
     el("v2Queue").replaceChildren();return;
   }

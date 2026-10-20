@@ -16,6 +16,37 @@ const TEACHER = 'josephsixson@mcstayuman.edu.ph';
 const ADMIN = 'babaynike2013@gmail.com';
 const SHA = 'a'.repeat(40);
 
+test('grade revisions match the transaction and remain immutable even to administrators',async()=>{
+  const staff=client('staff',TEACHER),admin=client('admin',ADMIN),student=client('alice',EMAIL_A);
+  const grade=doc(staff,'student_grades','alice_peta'),audit=doc(staff,'grade_revisions','first-grade');
+  const before={studentId:'alice',taskId:'peta',score:10,feedback:'Original feedback',published:false};
+  await assertSucceeds(setDoc(grade,before));
+  const after={...before,score:12,feedback:'Reviewed feedback'};
+  const revision={gradeId:'alice_peta',studentId:'alice',taskId:'peta',editorUid:'staff',reason:'Teacher reviewed and adjusted this score',before:{score:10,feedback:before.feedback,published:false},after:{score:12,feedback:after.feedback,published:false},createdAt:serverTimestamp()};
+  const batch=writeBatch(staff);batch.set(grade,after);batch.set(audit,revision);await assertSucceeds(batch.commit());
+  for(const database of [staff,admin,student]){
+    await assertFails(updateDoc(doc(database,'grade_revisions','first-grade'),{reason:'Rewritten audit trail'}));
+    await assertFails(deleteDoc(doc(database,'grade_revisions','first-grade')));
+  }
+  const forged=writeBatch(staff);forged.update(grade,{score:15});forged.set(doc(staff,'grade_revisions','forged'),{...revision,editorUid:'admin'});await assertFails(forged.commit());
+  await assertFails(setDoc(doc(staff,'grade_revisions','no-grade-change'),{...revision,before:revision.after,after:revision.after}));
+  await assertFails(getDoc(doc(student,'grade_revisions','first-grade')));
+});
+test('broad staff matches cannot create or mutate arbitrary nested academic audit trails',async()=>{
+  for(const database of [client('staff',TEACHER),client('admin',ADMIN)])for(const parts of [['students','alice','revisions','forged'],['assessments','peta','audit','forged'],['student_grades','alice_peta','revisions','forged']])await assertFails(setDoc(doc(database,...parts),{reason:'Forged nested audit'}));
+  const admin=client('admin',ADMIN),decision=doc(admin,'commit_claim_decisions','immutable-decision');
+  await assertSucceeds(setDoc(decision,{reason:'Administrator claim resolution'}));
+  await assertFails(updateDoc(decision,{reason:'Replaced decision'}));await assertFails(deleteDoc(decision));
+});
+test('a directory-only teacher can inspect its own profile but cannot grant itself staff authority',async()=>{
+  await env.withSecurityRulesDisabled(async context=>setDoc(doc(context.firestore(),'teachers','directory-only'),{email:'directory.teacher@example.edu',role:'teacher',uid:'directory-only'}));
+  const teacher=client('directory-only','directory.teacher@example.edu');
+  await assertSucceeds(getDocs(query(collection(teacher,'teachers'),where('email','==','directory.teacher@example.edu'))));
+  await assertFails(updateDoc(doc(teacher,'teachers','directory-only'),{role:'admin'}));
+  await assertFails(setDoc(doc(teacher,'staff_workspaces','directory-only','preferences','defaults'),{name:'Unauthorized'}));
+  await assertFails(setDoc(doc(teacher,'staff_access','directory.teacher@example.edu'),{role:'teacher',status:'active'}));
+});
+
 before(async () => {
   env = await initializeTestEnvironment({
     projectId: PROJECT,
@@ -42,6 +73,15 @@ beforeEach(async () => {
 function client(uid,email){return env.authenticatedContext(uid,{email,email_verified:true}).firestore()}
 function activityEvent() { return {ownerUid:'alice',studentId:'alice',sessionId:'a'.repeat(36),page:'playground',action:'active-time',activeSeconds:30,createdAt:serverTimestamp(),expiresAt:Timestamp.fromMillis(Date.now()+30*86400000)}; }
 function activityPreference(enabled=true) { return {ownerUid:'alice',studentId:'alice',enabled,updatedAt:serverTimestamp()}; }
+
+test('home reminder suppression is private, typed and independent of activity consent',async()=>{
+  const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
+  await assertSucceeds(setDoc(doc(alice,'activity_preferences','alice'),{...activityPreference(false),promptDismissed:true}));
+  await assertFails(setDoc(doc(alice,'activity_events','hidden-prompt-not-consent'),activityEvent()));
+  await assertFails(updateDoc(doc(bob,'activity_preferences','alice'),{promptDismissed:false}));
+  await assertFails(setDoc(doc(alice,'activity_preferences','alice'),{...activityPreference(false),promptDismissed:'yes'}));
+  await assertSucceeds(setDoc(doc(alice,'activity_preferences','alice'),activityPreference(false)));
+});
 async function auditedMonitoringControl(db, {actor='admin', changes={}}={}) {
   const ref=doc(db,'monitoring_control','runtime'), current=await getDoc(ref);
   const before=current.exists()?current.data():null;
@@ -620,15 +660,16 @@ test('student assessment page can query only its own submission receipts',async(
 
 test('teacher lesson and presentation history stays inaccessible to students',async()=>{
   const staff=client('staff',TEACHER),alice=client('alice',EMAIL_A);
-  const lesson=doc(staff,'lesson_plans','schoolyear_grade11_q2');
-  await assertSucceeds(setDoc(lesson,{grade_level:'Grade 11',school_year:'2026-2027',sessions:[]}));
-  const revision=doc(staff,'lesson_plans','schoolyear_grade11_q2','revisions','v1');
-  await assertSucceeds(setDoc(revision,{version:1,sessions:[]}));
-  await assertFails(getDoc(doc(alice,'lesson_plans','schoolyear_grade11_q2')));
-  await assertFails(getDoc(doc(alice,'lesson_plans','schoolyear_grade11_q2','revisions','v1')));
-  const presentation=doc(staff,'presentations','plan_session0','revisions','v1');
-  await assertSucceeds(setDoc(presentation,{deck:[],version:1}));
-  await assertFails(getDoc(doc(alice,'presentations','plan_session0','revisions','v1')));
+  const lesson=doc(staff,'staff_workspaces','staff','lesson_plans','schoolyear_grade11_q2');
+  const before={ownerUid:'staff',version:1,subject_title:'Subject',weekly_overview:{},grade_level:'Grade 11',school_year:'2026-2027',sessions:[]};
+  await assertSucceeds(setDoc(lesson,before));
+  const batch=writeBatch(staff);batch.set(lesson,{...before,version:2});batch.set(doc(lesson,'revisions','1'),{...before,archivedRevisionAt:serverTimestamp()});await assertSucceeds(batch.commit());
+  await assertFails(getDoc(doc(alice,'staff_workspaces','staff','lesson_plans','schoolyear_grade11_q2')));
+  await assertFails(getDoc(doc(alice,'staff_workspaces','staff','lesson_plans','schoolyear_grade11_q2','revisions','1')));
+  const presentation=doc(staff,'staff_workspaces','staff','presentations','plan_session0');
+  const deck={ownerUid:'staff',deck:[],version:1};await assertSucceeds(setDoc(presentation,deck));
+  const slides=writeBatch(staff);slides.set(presentation,{...deck,version:2});slides.set(doc(presentation,'revisions','1'),{...deck,archivedRevisionAt:serverTimestamp()});await assertSucceeds(slides.commit());
+  await assertFails(getDoc(doc(alice,'staff_workspaces','staff','presentations','plan_session0','revisions','1')));
   const parent=doc(staff,'reference_folders','folder');
   await assertSucceeds(setDoc(parent,{name:'Teacher materials',documents:[]}));
   await assertSucceeds(setDoc(doc(staff,'reference_folders','folder','documents','pdf1'),

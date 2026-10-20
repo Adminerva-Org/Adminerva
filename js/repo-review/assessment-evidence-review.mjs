@@ -1,23 +1,24 @@
+import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
 /** Instructor checkpoint approval, reopening and contribution verification. */
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {collection,doc,getDoc,getDocs,setDoc,query,where,updateDoc,runTransaction,serverTimestamp,onSnapshot}
+import {collection,doc,getDoc,getDocFromServer,getDocs,setDoc,query,where,updateDoc,runTransaction,serverTimestamp,onSnapshot}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {parseRepository,normalizeSelection,validSha}
   from "./services/assessment-evidence.mjs";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "./services/commit-history.mjs";
 import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=2026.10.19.4";
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=2026.10.19.4";
-import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=2026.10.19.4";
+import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=2026.10.20.1";
 
-import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=2026.10.19.4";
+import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=2026.10.20.1";
+import {searchStudents} from "./services/student-search.mjs?v=2026.10.20.1";
 
 export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{}}={}){
-const STAFF=new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
 const ADMIN="babaynike2013@gmail.com";
 const el=id=>root.querySelector("#"+id);
 const state={students:[],assessments:[],evidence:null,student:null,assessment:null,claims:[],loaded:false,busy:false,sequence:0,editing:false,verificationEditing:false};
-let stopEvidence=null,watchedId=null,destroyed=false;
+let stopEvidence=null,watchedId=null,destroyed=false,resolveInitial=null,initialTimer=null,initialSnapshot=null,hasServerSnapshot=false;
 const discovery={commits:[],selected:new Set(),checkpoint:"",page:0,hasOlder:false,loading:false,sequence:0,branch:""};
 const embedded=new URLSearchParams(location.search).get("embedded")==="1";
 if(embedded&&!inlineContext){
@@ -76,34 +77,49 @@ async function loadDirectory(){
     getDocs(collection(db,"students")),getDocs(collection(db,"assessments"))]);
   state.students=students.docs.map(d=>({id:d.id,...d.data()}));
   state.assessments=assessments.docs.map(d=>({id:d.id,...d.data()})).filter(a=>a.schemaVersion===2);
-  const select=el("evidenceStudent");select.replaceChildren();option(select,"","Select student");
-  for(const student of state.students.sort((a,b)=>(a.name||"").localeCompare(b.name||"")))
-    option(select,student.id,(student.name||student.id)+" · "+(student.section||""));
+  const select=el("evidenceStudent");
+  const sections=el("evidenceSection");
+  if(sections){sections.replaceChildren();option(sections,"","All sections");for(const section of [...new Set(state.students.map(student=>student.section).filter(Boolean))].sort())option(sections,section,section);}
+  renderStudentSearch();
   const ass=el("evidenceAssessment");ass.replaceChildren();option(ass,"","Select V2 assessment");
   for(const item of state.assessments)option(ass,item.id,item.title||item.id);
   const url=new URLSearchParams(location.search);
-  if(state.students.some(s=>s.id===url.get("student")))select.value=url.get("student");
+  if(state.students.some(s=>s.id===url.get("student")))renderStudentSearch(url.get("student"));
   if(state.assessments.some(a=>a.id===url.get("assessment")))ass.value=url.get("assessment");
   if(select.value&&ass.value)await loadEvidence();
   else status("Select a student and V2 assessment.");
+}
+function renderStudentSearch(selected=el("evidenceStudent")?.value||""){
+  const select=el("evidenceStudent");if(!select)return;
+  const result=searchStudents(state.students,{section:el("evidenceSection")?.value,text:el("evidenceStudentSearch")?.value,selected});
+  select.replaceChildren();option(select,"","Select student");
+  for(const student of result.rows)option(select,student.id,(student.name||student.id)+" · "+(student.section||"No section"));
+  select.value=selected;
+  if(el("evidenceSearchStatus"))el("evidenceSearchStatus").textContent=result.total+" matching students. "+(result.truncated?"Showing the first 40; choose a section or refine your search. ":"")+ (selected?"Current selection is retained until you choose another student. Evidence only changes when you load it.":"");
 }
 async function loadEvidence(initialRecord){
   const sequence=++state.sequence;
   state.editing=false;state.verificationEditing=false;
   state.loaded=false;state.evidence=null;el("evidenceDetails").classList.add("hidden");
+  for(const id of ["evidenceContributionScope","evidenceReviewNote","evidenceConfirm","evidenceApprove","evidenceReopen","evidenceEditVerification"])el(id).disabled=true;
   discovery.sequence++;discovery.hasOlder=false;discovery.page=0;discovery.loading=false;updateDiscoveryPaging();
   el("evidenceDiscovery").classList.add("hidden");
   try{
     const {student,assessment}=selection();state.student=student;state.assessment=assessment;
-    const snap=initialRecord===undefined?await getDoc(doc(db,"assessment_evidence",student.id+"_"+assessment.id)):null;
-    if(destroyed||sequence!==state.sequence)return;
-    const record=snap?(snap.exists()?snap.data():null):initialRecord;
     const documentId=student.id+"_"+assessment.id;
-    if(watchedId!==documentId){stopEvidence?.();stopEvidence=null;watchedId=documentId;}
+    if(watchedId!==documentId){stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);stopEvidence=null;watchedId=documentId;}
+    let record=initialRecord;
     if(!stopEvidence){
+      hasServerSnapshot=false;
+      let waiting=true,rejectInitial,finishInitial;
+      const initial=new Promise((resolve,reject)=>{finishInitial=resolve;resolveInitial=resolve;rejectInitial=reject;});
+      initialSnapshot=initial;
+      const timer=setTimeout(()=>rejectInitial(Error("Live evidence confirmation timed out. Reload before approving; no evidence was changed.")),10000);initialTimer=timer;
       stopEvidence=onSnapshot(doc(db,"assessment_evidence",student.id+"_"+assessment.id),snapshot=>{
-        if(destroyed||watchedId!==documentId||state.busy||snapshot.metadata.hasPendingWrites||snapshot.metadata.fromCache)return;
+        if(destroyed||watchedId!==documentId||snapshot.metadata.hasPendingWrites||snapshot.metadata.fromCache)return;
         const current=snapshot.exists()?snapshot.data():null;
+        if(waiting){waiting=false;hasServerSnapshot=true;clearTimeout(timer);finishInitial(current);return;}
+        if(state.busy)return;
         if((!current&&!state.evidence)||sameEvidence(current,state.evidence))return;
         onChange(current);
         if(state.editing){
@@ -111,8 +127,16 @@ async function loadEvidence(initialRecord){
           el("evidenceReopen").disabled=true;
           status("Evidence changed in another session. Your review text is kept. Select Reload evidence before approving; nothing was overwritten.");
         }else void loadEvidence(current);
-      },error=>status("Live evidence status unavailable: "+error.message+". Reload before approving."));
+      },error=>{clearTimeout(timer);rejectInitial(error);status("Live evidence status unavailable: "+error.message+". Reload before approving.");});
+      record=await initial;
+    }else if(!hasServerSnapshot){
+      record=await initialSnapshot;
+    }else if(initialRecord===undefined){
+      const snapshot=await getDocFromServer(doc(db,"assessment_evidence",documentId));
+      record=snapshot.exists()?snapshot.data():null;
     }
+    if(destroyed||sequence!==state.sequence)return;
+    onChange(record);
     if(!record){
       el("evidenceDiscovery").classList.remove("hidden");
       el("evidenceDiscoverList").replaceChildren();
@@ -162,6 +186,7 @@ async function loadEvidence(initialRecord){
       label.append(verified);add(label,"span","I independently verified this commit's relevant changes as this student's work (including explained shared work).");
     }
     await renderClaims();
+    if(destroyed||sequence!==state.sequence)return;
     el("evidenceApprove").disabled=!["submitted","needs_review"].includes(evidence.status);
     el("evidenceReopen").classList.toggle("hidden",!["approved","needs_review"].includes(evidence.status));
     el("evidenceReopen").disabled=false;
@@ -171,15 +196,17 @@ async function loadEvidence(initialRecord){
     el("evidenceApprove").textContent=evidence.status==="approved"?"Checkpoint approved":"Verify and approve checkpoint";
     el("evidenceDetails").classList.remove("hidden");
     state.loaded=true;
+    el("evidenceContributionScope").disabled=evidence.status==="approved";
+    el("evidenceReviewNote").disabled=false;el("evidenceConfirm").disabled=false;el("evidenceEditVerification").disabled=false;
     status("Loaded "+evidence.selectedCommits.length+" selected commits. Approval will verify that they occur in the checkpoint's ancestry.");
     if(evidence.status==="reopened")status("Reopened: the student can change commit selections now. They must resubmit before a new approval. Contribution checks here verify authorship; they do not edit the student's selected commits.");
     else if(evidence.status==="approved")status(evidence.verifiedContributionCommits?.length?"Approved. Reopen for student selection changes, or revise contribution verification without changing their selection.":"Approved checkpoint has no verified individual contributions. Select Revise contribution verification to record independently checked work; otherwise evaluate manually without crediting teammates' screens.");
     await Promise.all(previews);
-  }catch(error){status("Unable to load evidence: "+error.message);}
+  }catch(error){if(!destroyed&&sequence===state.sequence)status("Unable to load evidence: "+error.message);}
 }
 async function previewCommit(repo,sha,row){
   let box=row.querySelector("pre");
-  if(!box)box=add(row,"pre","","max-h-72 overflow-auto whitespace-pre-wrap break-words text-xs bg-slate-50 p-3 mt-3");
+  if(!box)box=add(row,"pre","","whitespace-pre-wrap break-words text-xs bg-slate-50 p-3 mt-3");
   box.textContent="Loading commit diffs…";
   try{
     const data=await github(api(repo)+"/commits/"+sha+"?per_page=100");
@@ -431,24 +458,26 @@ el("evidenceEditVerification").addEventListener("click",()=>{
 });
 el("evidenceReload").addEventListener("click",()=>{
   if(state.editing&&!confirm("Reload evidence and discard unsaved verification notes? Grade fields are kept separately."))return;
-  stopEvidence?.();stopEvidence=null;void loadEvidence();
+  stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);stopEvidence=null;void loadEvidence();
 });
-root.addEventListener("input",()=>{state.editing=true;});
+root.addEventListener("input",event=>{if(event.target.closest?.("#evidenceDetails,#evidenceDiscovery"))state.editing=true;});
 el("evidenceFindCommits").addEventListener("click",()=>{void findHistoricalCommits();});
 el("evidenceFindOlder")?.addEventListener("click",()=>{void loadOlderHistorical();});
 el("evidenceSaveDiscovery").addEventListener("click",()=>{void saveDiscovery();});
-el("evidenceLoad")?.addEventListener("click",()=>{void loadEvidence();});
+el("evidenceStudentSearch")?.addEventListener("input",()=>renderStudentSearch());
+el("evidenceSection")?.addEventListener("change",()=>renderStudentSearch());
+el("evidenceLoad")?.addEventListener("click",()=>{if(state.editing&&!confirm("Discard unsaved review text and load the selected evidence?"))return;void loadEvidence();});
 el("evidenceApprove").addEventListener("click",()=>{void approve();});
 el("evidenceReopen").addEventListener("click",()=>{void reopen();});
 
-return {load:loadEvidence,loadDirectory,hasUnsavedChanges:()=>state.editing,destroy(){destroyed=true;stopEvidence?.();state.sequence++;state.loaded=false;state.evidence=null;discovery.sequence++;}};
+return {load:loadEvidence,loadDirectory,hasUnsavedChanges:()=>state.editing,destroy(){destroyed=true;stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);state.sequence++;state.loaded=false;state.evidence=null;discovery.sequence++;}};
 }
 
 if(document.getElementById("evidenceWorkspace")){
   document.getElementById("evidenceWorkspace").innerHTML=evidenceReviewMarkup;
   const review=createEvidenceReview();
-  onAuthStateChanged(auth,user=>{
-  if(!user||!user.emailVerified||!["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"].includes(String(user.email||"").toLowerCase())){
+  onAuthStateChanged(auth,async user=>{
+  if(!await resolveStaffRole(user)){
     document.getElementById("evidenceReviewStatus").textContent="Authorized teacher or administrator sign-in required.";return;
   }
   void review.loadDirectory().catch(error=>{document.getElementById("evidenceReviewStatus").textContent="Directory failed: "+error.message;});

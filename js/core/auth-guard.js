@@ -1,27 +1,24 @@
+import {resolveAccountAccess} from "./staff-session.mjs?v=2026.10.20.1";
 /** Verified account admission, workspace visibility and sign-out routing. */
-import { auth, db } from "./firebase-core.js";
-import {staffRole} from "./staff-role.mjs?v=2026.10.19.2";
+import { auth } from "./firebase-core.js";
 import {
   onAuthStateChanged,
   signOut,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const currentPath = window.location.pathname.toLowerCase();
 const isLoginPage = currentPath.includes("login.html");
+let admittedUid;
 
 // 🚨 TIER 1: The Master Key (Can access system API settings)
-const SUPER_ADMIN_EMAIL = "babaynike2013@gmail.com".toLowerCase();
 
 // 🚨 TIER 2: The Instructor (Can access grading and rosters)
-const TEACHER_EMAIL = "josephsixson@mcstayuman.edu.ph".toLowerCase();
 
 onAuthStateChanged(auth, async (user) => {
+  if(admittedUid!==undefined&&admittedUid!==(user?.uid||null)){
+    window.location.replace("login.html?error=account-changed");return;
+  }
+  admittedUid=user?.uid||null;
   const endLoading = window.beginLoading?.("Checking account and page access…") || (() => {});
   try {
   if (!user) {
@@ -30,25 +27,17 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   const userEmail = user.email.toLowerCase();
+  let access;
+  try {access=await resolveAccountAccess(user);}
+  catch {await signOut(auth);window.location.href="login.html?error=server";return;}
+  const admittedRole=access.role;
 
   // 1. Strict Whitelist Enforcement
-  if (userEmail !== SUPER_ADMIN_EMAIL && userEmail !== TEACHER_EMAIL) {
+  if (!admittedRole) {
     try {
-      const studentQuery = query(
-        collection(db, "students"),
-        where("email", "==", userEmail),
-      );
-      const studentSnap = await getDocs(studentQuery);
-
-      const teacherQuery = query(
-        collection(db, "teachers"),
-        where("email", "==", userEmail),
-      );
-      const teacherSnap = await getDocs(teacherQuery);
-
-      if (studentSnap.empty && teacherSnap.empty) {
+      if (access.needsTeacherApproval || !access.students.length) {
         await signOut(auth);
-        window.location.href = "login.html?error=unauthorized";
+        window.location.href = access.needsTeacherApproval ? "login.html?error=teacher-approval-required" : "login.html?error=unauthorized";
         return; // Halt execution
       }
     } catch (error) {
@@ -61,15 +50,15 @@ onAuthStateChanged(auth, async (user) => {
 
   // 2. Determine absolute hardware role based strictly on the verified email
   let actualRole = "student";
-  if (staffRole(user) === "admin") actualRole = "superadmin";
-  else if (staffRole(user) === "teacher") actualRole = "teacher";
+  if (admittedRole === "admin") actualRole = "superadmin";
+  else if (admittedRole === "teacher") actualRole = "teacher";
 
   let activeRole = actualRole;
 
   // 3. The Shape-Shifter Logic (ONLY permitted for authorized admins/teachers)
   if (actualRole === "superadmin" || actualRole === "teacher") {
     const mockRole = localStorage.getItem("Adminerva_Mock_Role");
-    if (mockRole) {
+    if ((actualRole === "superadmin" ? ["superadmin","teacher","student"] : ["teacher","student"]).includes(mockRole)) {
       activeRole = mockRole;
     }
     localStorage.setItem("Adminerva_Role", activeRole);
@@ -79,6 +68,7 @@ onAuthStateChanged(auth, async (user) => {
     localStorage.removeItem("Adminerva_Mock_Role");
     activeRole = "student";
   }
+  if (/\/(teacher-accounts|admin-analytics|admin-hub)\.html$/.test(currentPath) && admittedRole !== "admin") { window.location.href="teacher-home.html"; return; }
   const isIssuesPage = currentPath.includes("issues.html");
 
   // 4. Strict Routing Enforcement
