@@ -93,7 +93,8 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     const assets=new Map();
     for(const url of ["https://cdn.quilljs.com/1.3.6/quill.min.js","https://cdn.quilljs.com/1.3.6/quill.snow.css",
       "https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/libs/jszip.min.js","https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.min.js",
-      "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js","https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css"]){
+      "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js","https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css",
+      "https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"]){
       const response=await fetch(url);assert.equal(response.ok,true);assets.set(url,await response.text());
     }
     for(const name of ["firebase-app.js","firebase-auth.js","firebase-firestore.js"]){
