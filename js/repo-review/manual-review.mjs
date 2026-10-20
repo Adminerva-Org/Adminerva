@@ -11,11 +11,11 @@ import {
 import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=2026.10.20.1";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs";
 import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,parseSuggestedRubric}
-  from "./services/v2-grading-assistant.mjs?v=2026.10.20.1";
+  from "./services/v2-grading-assistant.mjs?v=2026.10.21.2-dev.1";
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=2026.10.19.4";
 import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=2026.10.19.4";
 import {createReviewRequests} from "./services/review-requests.mjs?v=2026.10.20.1";
-import {mountReviewPanels} from "./review-panels.mjs?v=2026.10.21.1-dev.1";
+import {mountReviewPanels} from "./review-panels.mjs?v=2026.10.21.2-dev.1";
 
 const el = id => document.getElementById(id);
 const state = { active: null, request: null, token: 0, flags: [], aiBusy: false, dirty:false, abort:null,panels:null,requests:null,aiAbort:null };
@@ -138,11 +138,15 @@ function displayAISuggestion(draft){
     heading.textContent=item.name+": "+(item.score===null?"Teacher review needed":item.score+"/"+item.maxScore);
     const rationale=document.createElement("p");rationale.className="mt-1 text-xs text-slate-700 whitespace-pre-wrap";
     rationale.textContent=item.rationale;
-    row.append(heading,rationale);container.append(row);
+    row.append(heading,rationale);
+    if(item.reviewAction){const action=document.createElement("p");action.className="mt-2 text-xs font-semibold text-amber-900";action.textContent="Next check: "+item.reviewAction;row.append(action);}
+    if(item.evidence?.length){const references=document.createElement("p");references.className="mt-2 text-xs font-mono break-words";references.textContent="Verified diff: "+item.evidence.map(reference=>reference.path+" @ "+reference.sha.slice(0,12)).join(" · ");row.append(references);}
+    container.append(row);
   }
   const total=document.createElement("p");total.className="font-bold text-indigo-950";
-  total.textContent=draft.score===null?"Suggested total unavailable — resolve unscored criteria before assigning a teacher score.":"Suggested score: "+draft.score+"/"+state.active.maxScore;
+  total.textContent=draft.score===null?(draft.scoredMaximum>0?"Partial draft: "+draft.partialScore+"/"+draft.scoredMaximum+" across supported criteria only. ":"No criteria have enough evidence for a suggested score yet. ")+draft.pendingCriteria+" criteria need teacher judgement. This is not a total out of "+state.active.maxScore+"; missing scores are not zero.":"Suggested score: "+draft.score+"/"+state.active.maxScore;
   container.append(total);
+  if(draft.score===null){const manual=document.createElement("button");manual.type="button";manual.className="border rounded px-3 py-2 font-semibold";manual.textContent="Finish the score in Teacher grade";manual.onclick=()=>{el("manualReviewForm").scrollIntoView({behavior:"smooth",block:"start"});el("manualReviewScore").focus();};container.append(manual);}
   if(draft.projectObservations){
     const observation=document.createElement("p");observation.className="text-xs text-slate-700";
     observation.textContent="Shared project context (separate from individual score): "+draft.projectObservations;
@@ -211,11 +215,11 @@ async function generateAIDraft(){
     active.aiDraft={model,checkpointSha:active.checkpointSha,...draft};
     state.dirty=true;
     displayAISuggestion(draft);
-    el("manualReviewAIFeedback").textContent=draft.feedback;
+    renderFeedbackMarkdown(el("manualReviewAIFeedback"),draft.feedback);
     el("manualReviewUseScore").disabled=draft.score===null;
     el("manualReviewUseFeedback").disabled=!draft.feedback;
     el("manualReviewFiles").value=evidence.files.map(f=>f.path).join("\n");
-    aiStatus("System draft ready. Your teacher fields are unchanged. Copy only suggestions you accept; resolve unscored criteria yourself before saving.");
+    aiStatus(draft.score===null?"Partial evaluation draft ready. You may grade manually now; pending criteria do not block your teacher score. Nothing was saved or published.":"System draft ready. Your teacher fields are unchanged. Copy only suggestions you accept; saving and publication remain separate.");
     el("manualReviewFallback").classList.add("hidden");
   }catch(error){
     if(session===state.token&&state.active===active){

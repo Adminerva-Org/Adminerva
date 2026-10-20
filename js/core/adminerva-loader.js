@@ -169,7 +169,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.documentElement.append(document.getElementById("subtleLoader"));
   updateLoadingStatus();
   if (document.readyState === "complete") endPageLoading();
-  import("../help/page-help.mjs?v=2026.10.20.1").then(module => module.mountHelp()).catch(() => {});
+  import("../help/page-help.mjs?v=2026.10.21.2-dev.1").then(module => module.mountHelp()).catch(() => {});
   bindBugReporterLogic();
 });
 

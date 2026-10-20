@@ -305,6 +305,23 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     providerMalformed=false;await teacher.locator("#manualReviewFeedback").fill("");
     await teacher.locator("#manualReviewRetry").click();
     await expect(teacher.locator("#manualReviewAIScores")).toContainText("Teacher review needed");
+    await expect(teacher.locator("#manualReviewAIScores")).toContainText("13/15");
+    await expect(teacher.locator("#manualReviewAIScores")).toContainText("narrow and wide widths");
+    await expect(teacher.locator("#manualReviewUseScore")).toBeDisabled();
+    await expect(teacher.locator("#manualReviewScore")).toBeEnabled();
+    for(const width of [1360,390]){
+      await teacher.setViewportSize({width,height:1000});
+      const bounds=await teacher.evaluate(()=>{
+        const steps=document.getElementById("manualReviewSteps"),body=document.getElementById("manualReviewBody");
+        body.scrollTop=200;
+        return {headerBottom:steps.previousElementSibling.getBoundingClientRect().bottom,navTop:steps.getBoundingClientRect().top,navBottom:steps.getBoundingClientRect().bottom,bodyTop:body.getBoundingClientRect().top,scroll:body.scrollTop};
+      });
+      assert.ok(Math.abs(bounds.headerBottom-bounds.navTop)<=1,"Review navigation must meet the header without a gap");
+      assert.ok(Math.abs(bounds.navBottom-bounds.bodyTop)<=1,"Only the unified body scrolls beneath the navigation");
+      assert.ok(bounds.scroll>0);
+    }
+    await teacher.screenshot({path:path.join(output,"review-navigation-mobile.png")});
+    await teacher.setViewportSize({width:1360,height:1000});
     await expect(teacher.locator("#manualReviewFeedback")).toHaveValue("");
     await teacher.locator("#manualReviewUseFeedback").click();
     await expect(teacher.locator("#manualReviewScore")).toHaveValue("");
@@ -420,12 +437,25 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await student.locator("#xmlEditor").fill('<!DOCTYPE view SYSTEM "https://example.com/private"><view/>');
     await student.locator("#xmlRender").click();await expect(student.locator("#xmlStatus")).toContainText("Document types");
     validated("safe Android XML translation, parent constraints and entity rejection");
+    await getAdminFirestore(adminApp).doc("student_practice_progress/"+accounts.alice.uid+"/courses/java").set({ownerUid:accounts.alice.uid,courseId:"java",completed:["j1"],reflections:{j1:"I predicted the value, ran the example and explained the observed result."},updatedAt:Timestamp.now()});
     await student.goto(origin+"/student-practice.html");
     await student.locator("#av-alert-toggle").click();await expect(student.locator("#av-alert-list")).toContainText("Adminerva update");await student.locator("#av-alert-toggle").click();
     await expect(student.locator("#practiceClass option")).toContainText(["fixture-11-A"]);
-    await student.getByText("My practice points and class standings",{exact:true}).click();
-    await student.locator("#practiceAlias").fill("Learner One");await student.locator("#practiceOptIn").check();await student.locator("#practiceSavePreferences").click();
-    await waitRecord(student,"practice_profiles/"+accounts.alice.uid,"leaderboardOptIn",true);
+    await expect(student.locator("#practiceOverview")).toContainText("1/300");
+    await expect(student.locator("#practiceCourseList [data-practice-module]")).toHaveCount(20);
+    assert.equal(await student.locator("#practiceOptIn,#practiceSavePreferences").count(),0);
+    await waitRecord(student,"student_practice_progress/"+accounts.alice.uid+"/courses/java","studentId","alice");
+    await waitRecord(student,"practice_rankings/alice","points",10);
+    assert.equal((await browserRecord(student,"activity_preferences/"+accounts.alice.uid)).data.enabled,false);
+    assert.equal((await browserRecord(student,"practice_profiles/"+accounts.alice.uid)).data.leaderboardOptIn,false);
+    await expect(student.locator("#practiceReviewedPoints")).toContainText("10 practice XP");
+    const classAlias=await student.locator("#practiceAlias").textContent();
+    await expect(student.locator("#practiceStandings .av-rank-current")).toContainText(classAlias);
+    await peer.goto(origin+"/student-practice.html");await expect(peer.locator("#practiceStandings")).toContainText(classAlias);
+    assert.equal((await browserRecord(peer,"student_practice_progress/"+accounts.alice.uid+"/courses/java")).error,"permission-denied");
+    await student.locator("#av-information-toggle").click();await student.locator("[data-information-help]").click();
+    await expect(student.locator("#page-help-dialog")).toBeVisible();
+    await student.locator("#page-help-dialog").getByText("Close help",{exact:true}).click();
     await teacher.goto(origin+"/practice-analytics.html");
     await teacher.locator("#av-alert-toggle").click();await expect(teacher.locator("#av-alert-list")).toContainText("Adminerva update");await teacher.locator("#av-alert-toggle").click();
     await expect(teacher.locator("#practiceAnalyticsSection option")).toContainText(["fixture-11-A"]);
@@ -434,12 +464,12 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await teacher.locator('[data-reviewed-mission][value="j1"]').check();
     await teacher.locator("#practicePointsNote").fill("Teacher observed the mission implementation and independently reviewed the student's explanation.");
     await teacher.locator("#practiceAcceptPoints").click();await waitRecord(teacher,"practice_scores/alice","points",10);
-    await teacher.locator("#practicePublishStandings").click();await waitRecord(student,"practice_boards/alice","section","fixture-11-A");
-    await student.reload();await expect(student.locator("#practiceReviewedPoints")).toContainText("10 teacher-reviewed");await expect(student.locator("#practiceStandings")).toContainText("Learner One");
-    await student.getByText("My practice points and class standings",{exact:true}).click();await student.screenshot({path:path.join(output,"practice-class-points.png")});
+    assert.equal((await browserRecord(student,"practice_boards/alice")).exists,false,"Automatic class XP does not require publishing legacy reviewed snapshots");
+    await student.reload();await expect(student.locator("#practiceReviewedPoints")).toContainText("10 practice XP");await expect(student.locator("#practiceStandings")).toContainText(classAlias);
+    await student.screenshot({path:path.join(output,"practice-class-points.png")});
     assert.equal((await browserRecord(peer,"practice_scores/alice")).error,"permission-denied");
     await student.goto(origin+"/patch-notes.html");await expect(student.locator("#patchList")).toContainText("Review & Grade");
-    validated("private teacher-reviewed practice points, opt-in alias class snapshot and public patch history");
+    validated("300 structured missions, legacy progress recovery, automatic class-only alias XP without activity consent or teacher publication, private reflections and consolidated help");
     await student.goto(origin+"/student-settings.html");
     await expect(student.locator("#activity-save")).toBeEnabled();
     const beforeConsent=await browserRecord(student,"activity_preferences/"+accounts.alice.uid);
@@ -648,7 +678,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await pending.goto(origin+"/guest-playground.html");await expect(pending.locator("#guest-content")).toBeVisible();
     await pending.locator("#guest-source").fill("<h1>Local guest draft</h1>");await pending.locator("#guest-save").click();await pending.reload();await expect(pending.locator("#guest-source")).toHaveValue("<h1>Local guest draft</h1>");
     await pending.locator("#guest-run").click();await expect(pending.frameLocator("#guest-preview").locator("h1")).toHaveText("Local guest draft");
-    await pending.goto(origin+"/guest-practice.html");await expect(pending.locator("#guest-missions section")).toHaveCount(4);
+    await pending.goto(origin+"/guest-practice.html");await expect(pending.locator("#guest-missions section")).toHaveCount(15);await expect(pending.locator("#guest-module option")).toHaveCount(5);
     assert.equal((await browserRecord(pending,"practice_progress/"+accounts.pending.uid)).error,"permission-denied");
     await pending.goto(origin+"/guest-home.html");await expect(pending.locator("#guest-request")).toBeVisible();await pending.locator("#guest-role").selectOption("teacher");await pending.locator("#guest-request button").click();await waitRecord(pending,"account_requests/"+accounts.pending.uid,"requestedRole","teacher");
     await admin.goto(origin+"/users.html");await expect(admin.locator("#admissions")).toBeVisible();await admin.locator("#admission-list button").filter({hasText:accounts.pending.email}).click();

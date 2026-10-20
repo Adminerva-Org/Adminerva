@@ -2,8 +2,9 @@
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,doc,getDocs,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {COURSES,practiceQuestion} from "./practice-courses.mjs";
-import {makePracticeTransfer,readPracticeTransfer,practiceBridgeKey} from "./practice-playground-bridge.mjs";
+import {COURSES,practiceQuestion} from "./practice-courses.mjs?v=2026.10.21.2-dev.1";
+import {makePracticeTransfer,readPracticeTransfer,practiceBridgeKey} from "./practice-playground-bridge.mjs?v=2026.10.21.2-dev.1";
+import {practiceMemberships} from "./practice-memberships.mjs?v=2026.10.21.2-dev.1";
 
 let user=null,completed=new Map(),reflections=new Map(),activeCourse=null,
   activeMission=null,attempt=0,question=null,choice=null,canFinish=false,
@@ -60,8 +61,11 @@ async function syncCourse(courseId){
   syncing.add(courseId);
   const currentUid=user.uid;
   const course=COURSES.find(c=>c.id===courseId);
-  const localSet=completed.get(courseId),localNotes=reflections.get(courseId);
+  const localSet=new Set(completed.get(courseId)),localNotes={...reflections.get(courseId)};
+  let repeatSync=false;
   try{
+    const memberships=await practiceMemberships(db,user);
+    if(!memberships.length)throw Error("An enrolled student profile is required for cloud progress.");
     // Merge with current cloud work inside a transaction so a second device
     // cannot replace earlier completions from another session.
     const ref=doc(db,"student_practice_progress",currentUid,"courses",courseId);
@@ -70,22 +74,32 @@ async function syncCourse(courseId){
       const existing=remote.exists()?remote.data():{};
       const completedIds=[...new Set([...(existing.completed||[]),...localSet])]
         .filter(id=>course.missions.some(m=>m.id===id));
-      const notes={...(existing.reflections||{}),...localNotes};
-      tx.set(ref,{ownerUid:currentUid,courseId,completed:completedIds,
+      const sourceNotes={...(existing.reflections||{}),...localNotes};
+      const notes=Object.fromEntries(completedIds.filter(id=>typeof sourceNotes[id]==="string").map(id=>[id,sourceNotes[id].slice(0,500)]));
+      if(user?.uid!==currentUid)throw Error("Account changed before saving.");
+      tx.set(ref,{ownerUid:currentUid,studentId:memberships[0].id,courseId,completed:completedIds,
         reflections:notes,updatedAt:serverTimestamp()});
       return {completedIds,notes};
     });
     const {completedIds,notes}=merged;
     if(user?.uid!==currentUid)return false;
-    completed.set(courseId,new Set(completedIds));
-    reflections.set(courseId,notes);
-    persistLocal(courseId,completedIds,notes,false);
+    const latestIds=[...new Set([...completedIds,...completed.get(courseId)])];
+    const sourceNotes={...notes,...reflections.get(courseId)};
+    const latestNotes=Object.fromEntries(latestIds.filter(id=>typeof sourceNotes[id]==="string").map(id=>[id,sourceNotes[id].slice(0,500)]));
+    repeatSync=latestIds.length!==completedIds.length||Object.entries(latestNotes).some(([id,note])=>notes[id]!==note);
+    completed.set(courseId,new Set(latestIds));
+    reflections.set(courseId,latestNotes);
+    persistLocal(courseId,latestIds,latestNotes,repeatSync);
+    window.dispatchEvent(new Event("adminerva:practice-synced"));
     return true;
   }catch(error){
     console.warn("Practice checkpoint sync failed:",error);
     status("Cloud sync unavailable. Your local progress is retained; use Retry sync when online.");
     return false;
-  }finally{syncing.delete(courseId)}
+  }finally{
+    syncing.delete(courseId);
+    if(repeatSync&&user?.uid===currentUid)queueMicrotask(()=>void syncCourse(courseId));
+  }
 }
 async function loadProgress(){
   const end = window.beginLoading?.("Loading practice progress…") || (() => {});
@@ -112,9 +126,11 @@ async function loadProgress(){
         if(course.missions.some(m=>m.id===id))set.add(id);
       reflections.set(course.id,{...(data.reflections||{}),...reflections.get(course.id)});
       persistLocal(course.id,[...set],reflections.get(course.id),pending.includes(course.id));
+      if(!data.studentId&&!pending.includes(course.id))pending.push(course.id);
     });
     for(const courseId of pending) await syncCourse(courseId);
     status(pending.length?"Local checkpoints checked for cloud sync.":"Your learning progress is ready.");
+    window.dispatchEvent(new Event("adminerva:practice-synced"));
   }catch(error){
     console.warn("Practice progress temporarily unavailable:",error);
     status("Cloud progress unavailable. Local progress is shown; completed work will sync on your next visit.");
@@ -136,7 +152,7 @@ function renderCourses(){
   const summaries=[
     [achieved+"/"+total,"Missions completed"],
     [COURSES.filter(c=>(completed.get(c.id)?.size||0)===c.missions.length).length+"/"+COURSES.length,"Courses finished"],
-    [achieved*10+" / "+total*10,"Personal practice points · self-recorded, not grades"]
+    [achieved*10+" / "+total*10,"Practice XP · recorded completions, not school grades"]
   ];
   const overview=el("practiceOverview");
   if(overview){
@@ -161,15 +177,23 @@ function renderCourses(){
     fill.style.width=(count/course.missions.length*100)+"%";
     progress.append(fill);card.append(progress);
     const entries=node("div","mt-4 flex flex-col gap-2");
-    course.missions.forEach((mission,index)=>{
+    course.modules.forEach((module,moduleIndex)=>{
+      const details=node("details","rounded-lg border border-slate-200 p-3");
+      details.dataset.practiceModule=module.id;
+      const moduleCount=module.missions.filter(mission=>completed.get(course.id).has(mission.id)).length;
+      details.append(node("summary","font-bold cursor-pointer",String(moduleIndex+1)+". "+module.title+" · "+moduleCount+"/"+module.missions.length));
+      const missionList=node("div","mt-3 grid gap-2");
+      module.missions.forEach((mission,index)=>{
       const done=completed.get(course.id).has(mission.id);
-      const locked=index>0&&!completed.get(course.id).has(course.missions[index-1].id);
+      const locked=!done&&index>0&&!completed.get(course.id).has(module.missions[index-1].id);
       const b=node("button","text-left rounded-lg border px-3 py-3 text-sm font-semibold "+
         (locked?"bg-slate-50 text-slate-400":done?"bg-emerald-50 text-emerald-900 border-emerald-200":"bg-blue-50 text-blue-800 border-blue-200"),
         (done?"✓ ":locked?"🔒 ":"→ ")+(index+1)+". "+mission.title);
       b.type="button";b.disabled=locked;
       b.addEventListener("click",()=>openMission(course,mission));
-      entries.append(b);
+      missionList.append(b);
+      });
+      details.append(missionList);entries.append(details);
     });
     card.append(entries);list.append(card);
   }

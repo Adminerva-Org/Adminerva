@@ -4,7 +4,7 @@ export function mountInformationMenu(button, root) {
   menu.className = "av-information-panel";
   menu.hidden = true;
   menu.setAttribute("aria-label", "Help and website information");
-  menu.innerHTML = '<strong>Help & updates</strong><a href="patch-notes.html">What’s new</a><button type="button" data-information-report>Report a problem</button><a href="issues.html">My reports & support</a><a href="wiki.html">Website Wiki & tutorials</a><a href="wiki.html#privacy">Privacy</a><a data-information-settings>Account & activity settings</a>';
+  menu.innerHTML = '<strong>Help & updates</strong><button type="button" data-information-help>Help with this page</button><a href="patch-notes.html">What’s new</a><button type="button" data-information-report>Report a problem</button><a href="issues.html">My reports & support</a><a href="wiki.html">Website Wiki & tutorials</a><a href="wiki.html#privacy">Privacy</a><a data-information-settings>Account & activity settings</a>';
   menu.querySelector("[data-information-settings]").href = root.dataset.module?.startsWith("student") ? "student-settings.html" : "settings.html";
   root.append(menu);
   button.title = "Help and updates";
@@ -24,6 +24,9 @@ export function mountInformationMenu(button, root) {
     document.dispatchEvent(new CustomEvent("adminerva-menu-open", {detail:menu.id}));
     menu.hidden = !opening;
     button.setAttribute("aria-expanded", String(opening));
+  });
+  menu.querySelector("[data-information-help]").addEventListener("click", () => {
+    close();document.getElementById("page-help-open")?.click();
   });
   menu.querySelector("[data-information-report]").addEventListener("click", () => {
     close();

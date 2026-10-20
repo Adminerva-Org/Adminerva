@@ -452,7 +452,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // A single responsive inbox for bug reports, grading alerts and submissions.
   const reportButton = navContainer.querySelector('button[title="Report Issue"]');
-  if(reportButton) import("./information-menu.mjs?v=2026.10.20.1")
+  if(reportButton) import("./information-menu.mjs?v=2026.10.21.2-dev.1")
     .then(module => module.mountInformationMenu(reportButton, navContainer))
     .catch(() => { reportButton.title = "Report Issue"; });
   if (reportButton && !document.getElementById("adminerva-notifications")) {

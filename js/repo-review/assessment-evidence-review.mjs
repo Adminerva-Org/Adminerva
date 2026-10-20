@@ -9,7 +9,7 @@ import {parseRepository,normalizeSelection,validSha}
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "./services/commit-history.mjs";
 import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=2026.10.19.4";
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=2026.10.19.4";
-import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=2026.10.20.1";
+import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=2026.10.21.2-dev.1";
 
 import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=2026.10.20.1";
 import {searchStudents} from "./services/student-search.mjs?v=2026.10.20.1";

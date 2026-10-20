@@ -697,7 +697,7 @@ test('notification history is private and save-for-later records persist across 
 test('practice completions are student-private and are not school grades',async()=>{
   const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
   const ref=doc(alice,'student_practice_progress','alice','courses','java');
-  const data={ownerUid:'alice',courseId:'java',completed:['j1'],
+  const data={ownerUid:'alice',studentId:'alice',courseId:'java',completed:['j1'],
     reflections:{j1:'I traced the variable updates in order.'},
     updatedAt:serverTimestamp()};
   await assertSucceeds(setDoc(ref,data));

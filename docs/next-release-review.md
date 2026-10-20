@@ -88,6 +88,11 @@ template is changed automatically from these references.
 
 ## Validation
 
+Follow-up in the same review branch: [practice and actionable evaluation feedback](practice-and-feedback-review.md)
+adds automatic class-only completion XP, a 300-mission course/module hierarchy,
+partial-score guidance, flush review navigation and consolidated page help.
+[Learning Arcade](learning-arcade-proposal.md) contains ideas only, not implemented games.
+
 Pure tests cover request/role boundaries, stale decisions, local storage isolation,
 frozen settings, stable release identities, source pinning, partial coverage and
 rejection of inferred member output. Emulator tests exercise positive admissions,

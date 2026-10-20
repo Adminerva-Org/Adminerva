@@ -50,7 +50,7 @@ export function githubFixture(url){
 }
 export const providerDraft={
   criteria:[4,5,null,4].map(score=>score===null?
-    {status:"needs_teacher_review",score:null,evidence:[],rationale:"Visual quality requires direct teacher observation before scoring."}:
+    {status:"needs_teacher_review",score:null,evidence:[],rationale:"Visual quality requires direct teacher observation before scoring.",reviewAction:"Inspect the approved welcome layout in Android Studio at narrow and wide widths."}:
     {status:"supported",score,evidence:[{sha:ownSha,path:welcomePath}],rationale:"Verified welcome-screen implementation meets the student's documented responsibility."}),
   feedback:"The assigned welcome screen is demonstrated. The teacher must check visual quality and runtime behavior directly.",
   limitations:"Individual attribution was teacher verified. Build and runtime behavior were not executed.",

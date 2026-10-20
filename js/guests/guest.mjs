@@ -4,7 +4,7 @@ import {doc,onSnapshot,updateDoc,serverTimestamp} from "https://www.gstatic.com/
 import {resolveAccountAccess} from "../core/staff-session.mjs?v=2026.10.20.1";
 import {ensureGuestRequest} from "../core/admission-service.mjs?v=2026.10.21.1-dev.1";
 import {admissionDestination,guestStorageKey} from "../core/admission-model.mjs?v=2026.10.21.1-dev.1";
-import {COURSES} from "../student/practice-courses.mjs?v=2026.10.20.1";
+import {COURSES} from "../student/practice-courses.mjs?v=2026.10.21.2-dev.1";
 const field=id=>document.getElementById(id),page=document.querySelector("[data-guest-page]").dataset.guestPage;
 let currentUid="",allowed=false;
 const status=message=>{field("guest-status").textContent=message;};
@@ -26,14 +26,16 @@ function tools(uid){
     const render=()=>{
       field("guest-missions").replaceChildren();count();
       const course=COURSES.find(item=>item.id===field("guest-course").value);
-      for(const mission of course.missions){
+      const module=course.modules.find(item=>item.id===field("guest-module").value)||course.modules[0];
+      for(const mission of module.missions){
         const exercise=mission.build(17),section=document.createElement("section"),title=document.createElement("h2"),prompt=document.createElement("p"),code=document.createElement("pre"),result=document.createElement("p");
         title.textContent=mission.title;prompt.textContent=exercise.prompt;code.textContent=exercise.code;section.append(title,prompt,code);
         exercise.choices.forEach((choice,index)=>{const button=document.createElement("button");button.type="button";button.textContent=choice;button.onclick=()=>{requireLocalAccess();result.textContent=exercise.why;if(index===exercise.correct&&!completed.includes(mission.id)){completed.push(mission.id);localWrite(key,completed);count();}};section.append(button);});
         result.setAttribute("role","status");section.append(result);field("guest-missions").append(section);
       }
     };
-    field("guest-course").onchange=render;render();
+    const chooseCourse=()=>{const course=COURSES.find(item=>item.id===field("guest-course").value);field("guest-module").replaceChildren(...course.modules.map(module=>new Option(module.title,module.id)));render();};
+    field("guest-course").onchange=chooseCourse;field("guest-module").onchange=render;chooseCourse();
   }
   field("guest-clear").onclick=()=>{requireLocalAccess();if(confirm("Clear only this account's local "+page+" draft/progress?")){localStorage.removeItem(key);location.reload();}};
 }

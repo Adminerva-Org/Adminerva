@@ -21,7 +21,7 @@ test("each introductory mission produces an isolated runnable sample",()=>{
     assert.ok(validPlaygroundState(sandbox),course.id+"/"+mission.id+" attempt "+attempt);
     assert.equal(sandbox.fileOrder.length,1);
     const code=Object.values(sandbox.files)[0];
-    assert.ok(code.length>25);
+    assert.ok(code.trim().length>5,"A runnable single print statement is valid: "+mission.id);
     if(course.id==="java"){
       assert.equal(sandbox.lang,"java");
       assert.ok(code.includes("public static void main"));

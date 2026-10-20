@@ -29,7 +29,7 @@ export function parseWeightedRubric(text,maximum) {
   }
   const total=criteria.reduce((sum,c)=>sum+c.maxScore,0);
   if(!criteria.length||Math.abs(total-max)>0.001)
-    throw Error("AI suggestions require numbered rubric criteria with point values totaling "+max+". Check Assessment Studio; manual grading remains available.");
+    throw Error("Evaluation suggestions require numbered rubric criteria with point values totaling "+max+". Check Assessment Studio; manual grading remains available.");
   return criteria;
 }
 
@@ -46,7 +46,7 @@ export function relevantAssessmentFile(path,assessment={}) {
 
 export function parseSuggestedRubric(data,criteria,maximum,evidence){
   if(!data||!Array.isArray(data.criteria)||data.criteria.length!==criteria.length)
-    throw Error("AI returned the wrong number of rubric criteria; no grade was changed.");
+    throw Error("Evaluation returned the wrong number of rubric criteria; no grade was changed.");
   const rows=criteria.map((criterion,index)=>{
     const result=data.criteria[index],points=result?.score;
     if(evidence){
@@ -62,18 +62,20 @@ export function parseSuggestedRubric(data,criteria,maximum,evidence){
     }
     if(!(evidence&&result.status==="needs_teacher_review")&&
       (typeof points!=="number"||!Number.isFinite(points)||points<0||points>criterion.maxScore))
-      throw Error("AI returned an invalid score for "+criterion.name+". Nothing was saved.");
+      throw Error("Evaluation returned an invalid score for "+criterion.name+". Nothing was saved.");
     const rationale=String(result.rationale||"").trim().slice(0,1200);
-    if(rationale.length<10)throw Error("AI must explain each suggested criterion score.");
-    return {name:criterion.name,score:points,maxScore:criterion.maxScore,rationale,
+    if(rationale.length<10)throw Error("Evaluation must explain each suggested criterion score.");
+    const reviewAction=String(result.reviewAction||"").trim().slice(0,600)||(points===null?"Teacher: check "+criterion.name+" against the approved evidence and rubric, obtain any missing demonstration, and enter the final score in Teacher grade.":"");
+    return {name:criterion.name,score:points,maxScore:criterion.maxScore,rationale,reviewAction,
       status:result.status||"supported",evidence:result.evidence||[]};
   });
   const total=rows.some(row=>row.score===null)?null:Number(rows.reduce((sum,row)=>sum+row.score,0).toFixed(2));
-  if(total>Number(maximum)||total<0)throw Error("AI suggestion exceeds the assessment maximum.");
+  if(total>Number(maximum)||total<0)throw Error("Suggested score exceeds the assessment maximum.");
   const feedback=String(data.feedback||"").trim().slice(0,6000);
-  if(feedback.length<20)throw Error("AI feedback is insufficient. Nothing was saved.");
+  if(feedback.length<20)throw Error("Suggested feedback is insufficient. Nothing was saved.");
   const limitations=String(data.limitations||"").trim().slice(0,1400);
-  return {criteria:rows,score:total,feedback,limitations,
+  const supported=rows.filter(row=>typeof row.score==="number");
+  return {criteria:rows,score:total,partialScore:Number(supported.reduce((sum,row)=>sum+row.score,0).toFixed(2)),scoredMaximum:supported.reduce((sum,row)=>sum+row.maxScore,0),pendingCriteria:rows.length-supported.length,feedback,limitations,
     projectObservations:String(data.projectObservations||"").trim().slice(0,2000)};
 }
 
@@ -83,13 +85,19 @@ export function buildRubricPrompt({assessment,criteria,checkpointSha,files,patch
   const patchText=patches.map(p=>"SELECTED COMMIT: "+p.sha+"\nFILE: "+p.path+"\n"+p.patch).join("\n\n----\n\n");
   return `You are assisting a classroom teacher with an assessment of an Android Studio project.
 This is a teacher-reviewed, unofficial SUGGESTION only. Do not publish or finalize grades.
-ONLY the instructor-approved immutable Git revision ${checkpointSha} is in scope.
+The shared project snapshot is pinned to instructor-approved checkpoint ${checkpointSha}.
+All supplied instructor-verified selected commit patches are in scope, including historical commits with a different SHA. Do not confuse the checkpoint with the only permitted contribution commit. Commits without a supplied verified patch cannot earn credit.
 The selected commit patches indicate candidate student changes. The full project snapshot can contain teammates' work; DO NOT give a student credit merely because code exists in the shared project.
 Score ONLY the student's instructor-verified substantive changes against their documented responsibilities. A checkpoint approval alone is not attribution verification.
 Do not deduct points from an individual for teammates' missing screens or missing group features. A three-screen group requirement is project context, not a three-screen requirement for each member.
 Keep project completeness observations separate from individual criterion scores. Do not infer a missing screen from one changed XML file: inspect the supplied full matching checkpoint source and state coverage limits.
 Apply completeness/compliance criteria to this student's verified assigned work only. Do not invent an equal division, normalize partial evidence to full marks, or silently reweight criteria.
 When responsibilities, individual evidence, visual quality or runtime behavior cannot support a criterion, return status needs_teacher_review with score null. Missing evidence is not proof of no work and is not an automatic zero.
+Assess each criterion independently. Unclear responsibility wording can block responsibility-dependent completeness/compliance scoring, but does not automatically invalidate instructor-verified attribution or observable technical findings in the supplied patches.
+Do not mark every criterion unresolved solely because a responsibility note is unclear. Score a criterion only if its actual rubric requirements are supported; otherwise provide specific code observations without inventing a score, discarding the criterion, or reducing marks for unknown checks.
+For every unresolved criterion, give a concrete reviewAction: what evidence is missing, who must check it, and how to resolve it. Say "Assigned responsibilities need clarification" rather than calling records corrupted. Never quote private teacher notes or unintelligible responsibility text in student feedback.
+Organize student feedback as demonstrated strengths, specific code issues (file/element and consequence), the next improvement, and a way to test it. Do not invent code defects just to fill a section. Distinguish source observations from execution or visual checks that were not performed.
+Scope project observations to the supplied matching files and assessment target paths. Say "not observed in the inspected source" rather than asserting features are absent from the entire project. XML filenames, reusable list rows and layout counts alone do not establish distinct runnable screens.
 Each supported criterion must cite at least one provided verified substantive patch by exact sha and path. Unverified, trivial, merge-only and teammate work cannot earn credit.
 Never infer authorship solely from Git author name or commit counts. Do not treat authored Git timestamps as verified push times.
 Do not assert the app runs, compiles, works on an emulator, or implements functional authentication without verified execution evidence.
@@ -114,7 +122,7 @@ ${patchText}
 </student-commit-patches>
 
 Return ONLY strict JSON:
-{"criteria":[{"status":"supported or needs_teacher_review","score":null,"evidence":[{"sha":"verified commit SHA","path":"changed source path"}],"rationale":"Specific individual evidence, responsibilities, and unresolved checks."}],
+{"criteria":[{"status":"supported or needs_teacher_review","score":null,"evidence":[{"sha":"verified commit SHA","path":"changed source path"}],"rationale":"Specific individual evidence and checks for this criterion.","reviewAction":"Concrete next check when unresolved; otherwise empty."}],
  "feedback":"Concise, constructive feedback for the student based on visible evidence; explicitly identify features that were not verifiable.",
  "projectObservations":"Shared project completeness only; do not use teammates' missing features to reduce this student's score.",
  "limitations":"What the teacher must personally verify, including attribution and runtime checks."}
@@ -151,7 +159,7 @@ export async function loadPinnedV2Source({
     const detail=await request("/commits/"+encodeURIComponent(sha)+"?per_page=100");
     if(detail.parents?.length>1)throw Error("Merge commits require manual attribution review; evaluation cannot credit a merged teammate's work.");
     if(!Array.isArray(detail.files)||detail.files.length>=100)
-      throw Error("A selected commit's file list is incomplete or too large for safe AI review. Use the evidence page.");
+      throw Error("A selected commit's file list is incomplete or too large for safe evaluation. Use the evidence section.");
     for(const file of detail.files){
       if(!file||typeof file.filename!=="string"||!relevantAssessmentFile(file.filename,assessment))continue;
       if(file.status==="removed")continue;
@@ -159,7 +167,7 @@ export async function loadPinnedV2Source({
         throw Error("A relevant commit has no readable text diff. Review this contribution manually.");
       patchChars+=file.patch.length;
       if(patchChars>MAX_PATCH_CHARS)
-        throw Error("The selected commit diffs exceed the AI context limit. Review evidence manually.");
+        throw Error("The selected commit diffs exceed the evaluation context limit. Review evidence manually.");
       paths.add(file.filename);
       patchRecords.push({sha,path:file.filename,patch:file.patch,
         substantive:analyzePatchSubstance(file.patch,file.filename).substantive});
@@ -170,10 +178,10 @@ export async function loadPinnedV2Source({
   if(!patchRecords.some(patch=>patch.substantive===true))
     throw Error("No verified substantive changes are available. Review manually; shared project files cannot earn individual credit.");
   if(paths.size>MAX_FILES)
-    throw Error("More than "+MAX_FILES+" relevant source files require inspection. AI grading paused rather than omit files.");
+    throw Error("More than "+MAX_FILES+" relevant source files require inspection. Evaluation paused rather than omit files.");
   const tree=await request("/git/trees/"+encodeURIComponent(selection.checkpointSha)+"?recursive=1");
   if(!Array.isArray(tree.tree)||tree.truncated)
-    throw Error("The approved project file tree was incomplete. AI grading paused.");
+    throw Error("The approved project file tree was incomplete. Evaluation paused.");
   const available=new Set(tree.tree.filter(f=>f.type==="blob").map(f=>f.path));
   if([...paths].some(path=>!available.has(path)))
     throw Error("Some selected source files are absent at the approved checkpoint. Inspect renames or deletions before grading.");
@@ -189,11 +197,11 @@ export async function loadPinnedV2Source({
       throw Error("GitHub did not return readable pinned source for "+path+".");
     const bytes=Uint8Array.from(atob(response.content.replace(/\s/g,"")),c=>c.charCodeAt(0));
     if(bytes.length>MAX_FILE_BYTES)
-      throw Error("Relevant source file "+path+" exceeds the AI context limit.");
+      throw Error("Relevant source file "+path+" exceeds the evaluation context limit.");
     const content=new TextDecoder("utf-8",{fatal:true}).decode(bytes);
     totalSource+=content.length;
     if(totalSource>MAX_TOTAL_SOURCE)
-      throw Error("Relevant source exceeds the AI context limit. Review manually.");
+      throw Error("Relevant source exceeds the evaluation context limit. Review manually.");
     files.push({path,text:content});
   }
   return {repository:repo.url,checkpointSha:selection.checkpointSha,

@@ -326,8 +326,15 @@ body { min-width: 0; }
 body:has(#manualReviewModal.flex) { overflow: hidden; }
 #manualReviewModal .overflow-y-auto { overscroll-behavior: contain; }
 #manualReviewModal > div { border-radius: 1.15rem; max-height: calc(100dvh - 1rem); max-width: 1440px; }
-#manualReviewSteps { position: sticky; top: 0; z-index: 15; box-shadow: 0 4px 12px #1538590c; }
-#manualReviewSteps button { flex: 1; min-height: 44px; background: #eef5fc; border-color: #ceddea; color: #143b62; }
+#manualReviewSteps { position: relative; flex-shrink: 0; z-index: 15; margin: 0; border-radius: 0; box-shadow: 0 4px 12px #1538590c; }
+#manualReviewSteps button { flex: 1 1 0; min-width: 0; min-height: 44px; background: #eef5fc; border-color: #ceddea; color: #143b62; }
+#manualReviewBody { min-height: 0; }
+.av-practice-podium { display: flex; flex-wrap: wrap; gap: .7rem; margin: 1rem 0; }
+.av-podium-place { flex: 1 1 150px; padding: 1rem; border: 1px solid #87d6db; border-radius: .8rem; background: linear-gradient(135deg,#ecfeff,#e0f2fe); font-weight: 750; }
+.av-rank-row { display: grid; grid-template-columns: 3rem minmax(0,1fr) auto; align-items: center; gap: .5rem; padding: .8rem; border: 1px solid #e2e8f0; border-radius: .65rem; overflow-wrap: anywhere; }
+.av-rank-current { border-color: #0891b2; background: #ecfeff; }
+.av-rank-row progress { grid-column: 2 / -1; width: 100%; height: .5rem; accent-color: #0891b2; }
+#manualReviewBody > :is(section,form) { scroll-margin-top: .75rem !important; }
 #manualReviewModal section { border-radius: .9rem; }
 #manualReviewModal input,#manualReviewModal select,#manualReviewModal textarea { max-width: 100%; font-size: max(16px,1em); }
 #manualReviewModal details > summary { padding: .65rem .25rem; line-height: 1.5; }

@@ -41,6 +41,7 @@ function workspace(evidence){
     serverTimestamp:()=>1234,runTransaction:async(_db,callback)=>callback({get:async ref=>snapshot(ref),set:(ref,data)=>writes.push({ref,data})}),
     CustomEvent:class {constructor(type){this.type=type;}},localStorage:{getItem:()=>null},alert:()=>{},confirm:()=>true};
   const source=readFileSync('js/repo-review/manual-review.mjs','utf8').replace(/^import[\s\S]*?from\s+"[^"]+";\s*/gm,'');
+  context.renderFeedbackMarkdown=(container,value)=>{container.textContent=value;};
   vm.runInNewContext(source+';window.fixtureState=state;',context);
   return {elements,records,writes,listeners,window,context,change:record=>panelOptions.onEvidenceChange(record),open:()=>window.openManualGradeReview({studentId:'alice',taskId:'v2',owner:'example',repo:'project'})};
 }

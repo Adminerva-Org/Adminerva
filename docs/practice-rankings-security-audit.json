@@ -1,0 +1,30 @@
+{
+  "score": 3,
+  "summary": "Scoped review prototype for automatic formative completion XP: verified enrollment, live selected-class reads, private reflections, exact catalog validation, derived totals, immutable ranking owner/alias and no grade publication. Existing staff-wide academic trust is not a complete tenant ACL. Not deployed.",
+  "findings": [
+    {
+      "check": "Authority of completion evidence",
+      "severity": "moderate",
+      "issue": "Owners can forge completion of known mission IDs through a modified client, even though arbitrary totals, duplicates and unknown IDs are denied. XP therefore records formative claims, not verified mastery.",
+      "recommendation": "Keep school grades and high-stakes rewards separate. Review a server-authoritative, idempotent attempt validator before treating game or mission scores as certified results. No Functions deployment is included."
+    },
+    {
+      "check": "Legacy staff scope",
+      "severity": "moderate",
+      "issue": "Existing academic instructor access remains broader than per-class authorization across all legacy modules. Analytics assignments alone do not establish tenant isolation.",
+      "recommendation": "Complete a separately reviewed tenant/section ACL migration before admitting unrelated institutions or untrusted instructors."
+    },
+    {
+      "check": "Alias privacy and lifecycle",
+      "severity": "minor",
+      "issue": "Class documents contain opaque roster/owner IDs in addition to UI aliases. Transferred or deleted roster profiles can leave stale alias rows until resynchronization or controlled cleanup.",
+      "recommendation": "Disclose that aliases are pseudonyms, not anonymity. Design an audited membership-lifecycle projection if stronger unlinkability or immediate row removal is required; do not enable unattended cleanup implicitly."
+    },
+    {
+      "check": "Read budgets and ranking completeness",
+      "severity": "minor",
+      "issue": "Client ranking synchronization reads four course records. Class lists are capped at 500 and cannot claim a global position when truncated.",
+      "recommendation": "Retain emulator budget coverage and the partial-list label. Reassess aggregate cost, paging and authoritative rank projections if classes or course catalogs expand."
+    }
+  ]
+}

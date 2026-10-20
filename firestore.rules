@@ -130,12 +130,12 @@ service cloud.firestore {
     // Administrators retain existing system-wide maintenance privileges.
     match /{collection}/{document} {
       allow read, write: if isAdmin() && !monitoringCollection(collection) && !personalCollection(collection) && collection != "assessment_evidence" && collection != "student_grades" &&
-        !(collection in ["practice_profiles","practice_scores","practice_boards"]);
+        !(collection in ["practice_profiles","practice_scores","practice_boards","practice_rankings"]);
     }
     // Teachers retain their existing academic workflow permissions, but the
     // catch-all must not override private report or notification rules.
     match /{collection}/{document} {
-      allow read, write: if isTeacher() && !monitoringCollection(collection) && !personalCollection(collection) &&
+      allow read, write: if collection != "practice_rankings" && isTeacher() && !monitoringCollection(collection) && !personalCollection(collection) &&
         collection != "issues" &&
         collection != "notifications" &&
         collection != "notification_history" &&
@@ -144,7 +144,7 @@ service cloud.firestore {
         collection != "commit_claim_conflicts" &&
         collection != "assessment_evidence" &&
         collection != "student_grades" &&
-        !(collection in ["practice_profiles","practice_scores","practice_boards"]);
+        !(collection in ["practice_profiles","practice_scores","practice_boards","practice_rankings"]);
     }
 
     match /account_requests/{ownerUid} {
@@ -731,6 +731,43 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    function practiceMissionIds(courseId) {
+      return courseId == "java" ? ["j1","java-m1-02","java-m1-03","java-m1-04","java-m1-05","java-m1-06","java-m1-07","java-m1-08","java-m1-09","java-m1-10","java-m1-11","java-m1-12","java-m1-13","java-m1-14","java-m1-15","j2","java-m2-02","java-m2-03","java-m2-04","java-m2-05","java-m2-06","java-m2-07","java-m2-08","java-m2-09","java-m2-10","java-m2-11","java-m2-12","java-m2-13","java-m2-14","java-m2-15","j3","java-m3-02","java-m3-03","java-m3-04","java-m3-05","java-m3-06","java-m3-07","java-m3-08","java-m3-09","java-m3-10","java-m3-11","java-m3-12","java-m3-13","java-m3-14","java-m3-15","j4","java-m4-02","java-m4-03","java-m4-04","java-m4-05","java-m4-06","java-m4-07","java-m4-08","java-m4-09","java-m4-10","java-m4-11","java-m4-12","java-m4-13","java-m4-14","java-m4-15","java-m5-01","java-m5-02","java-m5-03","java-m5-04","java-m5-05","java-m5-06","java-m5-07","java-m5-08","java-m5-09","java-m5-10","java-m5-11","java-m5-12","java-m5-13","java-m5-14","java-m5-15"] :
+        courseId == "python" ? ["p1","python-m1-02","python-m1-03","python-m1-04","python-m1-05","python-m1-06","python-m1-07","python-m1-08","python-m1-09","python-m1-10","python-m1-11","python-m1-12","python-m1-13","python-m1-14","python-m1-15","p2","python-m2-02","python-m2-03","python-m2-04","python-m2-05","python-m2-06","python-m2-07","python-m2-08","python-m2-09","python-m2-10","python-m2-11","python-m2-12","python-m2-13","python-m2-14","python-m2-15","p3","python-m3-02","python-m3-03","python-m3-04","python-m3-05","python-m3-06","python-m3-07","python-m3-08","python-m3-09","python-m3-10","python-m3-11","python-m3-12","python-m3-13","python-m3-14","python-m3-15","p4","python-m4-02","python-m4-03","python-m4-04","python-m4-05","python-m4-06","python-m4-07","python-m4-08","python-m4-09","python-m4-10","python-m4-11","python-m4-12","python-m4-13","python-m4-14","python-m4-15","python-m5-01","python-m5-02","python-m5-03","python-m5-04","python-m5-05","python-m5-06","python-m5-07","python-m5-08","python-m5-09","python-m5-10","python-m5-11","python-m5-12","python-m5-13","python-m5-14","python-m5-15"] :
+        courseId == "web" ? ["w1","web-m1-02","web-m1-03","web-m1-04","web-m1-05","web-m1-06","web-m1-07","web-m1-08","web-m1-09","web-m1-10","web-m1-11","web-m1-12","web-m1-13","web-m1-14","web-m1-15","w2","web-m2-02","web-m2-03","web-m2-04","web-m2-05","web-m2-06","web-m2-07","web-m2-08","web-m2-09","web-m2-10","web-m2-11","web-m2-12","web-m2-13","web-m2-14","web-m2-15","w3","web-m3-02","web-m3-03","web-m3-04","web-m3-05","web-m3-06","web-m3-07","web-m3-08","web-m3-09","web-m3-10","web-m3-11","web-m3-12","web-m3-13","web-m3-14","web-m3-15","w4","web-m4-02","web-m4-03","web-m4-04","web-m4-05","web-m4-06","web-m4-07","web-m4-08","web-m4-09","web-m4-10","web-m4-11","web-m4-12","web-m4-13","web-m4-14","web-m4-15","web-m5-01","web-m5-02","web-m5-03","web-m5-04","web-m5-05","web-m5-06","web-m5-07","web-m5-08","web-m5-09","web-m5-10","web-m5-11","web-m5-12","web-m5-13","web-m5-14","web-m5-15"] :
+        courseId == "logic" ? ["d1","logic-m1-02","logic-m1-03","logic-m1-04","logic-m1-05","logic-m1-06","logic-m1-07","logic-m1-08","logic-m1-09","logic-m1-10","logic-m1-11","logic-m1-12","logic-m1-13","logic-m1-14","logic-m1-15","d3","logic-m2-02","logic-m2-03","logic-m2-04","logic-m2-05","logic-m2-06","logic-m2-07","logic-m2-08","logic-m2-09","logic-m2-10","logic-m2-11","logic-m2-12","logic-m2-13","logic-m2-14","logic-m2-15","d2","logic-m3-02","logic-m3-03","logic-m3-04","logic-m3-05","logic-m3-06","logic-m3-07","logic-m3-08","logic-m3-09","logic-m3-10","logic-m3-11","logic-m3-12","logic-m3-13","logic-m3-14","logic-m3-15","logic-m4-01","logic-m4-02","logic-m4-03","logic-m4-04","logic-m4-05","logic-m4-06","logic-m4-07","logic-m4-08","logic-m4-09","logic-m4-10","logic-m4-11","logic-m4-12","logic-m4-13","logic-m4-14","logic-m4-15","d4","logic-m5-02","logic-m5-03","logic-m5-04","logic-m5-05","logic-m5-06","logic-m5-07","logic-m5-08","logic-m5-09","logic-m5-10","logic-m5-11","logic-m5-12","logic-m5-13","logic-m5-14","logic-m5-15"] :
+        [];
+    }
+    function practiceCourseCount(uid,courseId) {
+      let path = /databases/$(database)/documents/student_practice_progress/$(uid)/courses/$(courseId);
+      return exists(path) ? (get(path).data.completed is list && get(path).data.completed.hasOnly(practiceMissionIds(courseId)) ?
+        get(path).data.completed.toSet().size() : 0) : 0;
+    }
+    function practiceCompletionCount(uid) {
+      return practiceCourseCount(uid,"java") + practiceCourseCount(uid,"python") + practiceCourseCount(uid,"web") + practiceCourseCount(uid,"logic");
+    }
+    function canReadPracticeClass(section) {
+      let profile = get(/databases/$(database)/documents/practice_profiles/$(request.auth.uid)).data;
+      return profile.ownerUid == request.auth.uid && profile.section == section && ownsStudentProfile(profile.studentId) &&
+        profile.section == get(/databases/$(database)/documents/students/$(profile.studentId)).data.section;
+    }
+    match /practice_rankings/{studentId} {
+      function validRanking(data) {
+        return data.keys().hasOnly(["ownerUid","studentId","section","alias","completedCount","points","catalogMaximum","updatedAt"]) &&
+          data.ownerUid == request.auth.uid && data.studentId == studentId && ownsStudentProfile(studentId) &&
+          data.section == get(/databases/$(database)/documents/students/$(studentId)).data.section &&
+          data.alias is string && data.alias.matches("^Learner-[A-Z0-9]{7}$") &&
+          data.completedCount is int && data.completedCount >= 0 && data.completedCount <= 300 &&
+          data.completedCount == practiceCompletionCount(request.auth.uid) && data.points == data.completedCount * 10 &&
+          data.catalogMaximum == 300 && data.updatedAt == request.time;
+      }
+      allow read: if isInstructor() || (signedIn() && request.auth.token.email_verified == true &&
+        (ownsStudentProfile(studentId) || canReadPracticeClass(resource.data.section)));
+      allow create: if signedIn() && request.auth.token.email_verified == true && validRanking(request.resource.data);
+      allow update: if signedIn() && request.auth.token.email_verified == true && validRanking(request.resource.data) &&
+        resource.data.ownerUid == request.auth.uid && request.resource.data.alias == resource.data.alias;
+      allow delete: if false;
+    }
     // Formative student practice, separate from official assessments/grades.
     // Teachers may inspect progress through the existing instructor privileges.
     match /practice_profiles/{uid} {
@@ -753,9 +790,9 @@ service cloud.firestore {
         let audit = getAfter(/databases/$(database)/documents/practice_scores/$(studentId)/revisions/$(string(revision))).data;
         return data.keys().hasOnly(["studentId","section","verifiedMissionIds","points","reviewedBy","reviewNote","revision","updatedAt"]) &&
           data.studentId == studentId && data.section == get(/databases/$(database)/documents/students/$(studentId)).data.section &&
-          data.verifiedMissionIds is list && data.verifiedMissionIds.size() <= 16 &&
+          data.verifiedMissionIds is list && data.verifiedMissionIds.size() <= 300 &&
           data.verifiedMissionIds.toSet().size() == data.verifiedMissionIds.size() &&
-          data.verifiedMissionIds.hasOnly(["j1","j2","j3","j4","p1","p2","p3","p4","w1","w2","w3","w4","d1","d2","d3","d4"]) &&
+          data.verifiedMissionIds.hasOnly(practiceMissionIds("java").concat(practiceMissionIds("python")).concat(practiceMissionIds("web")).concat(practiceMissionIds("logic"))) &&
           data.points == data.verifiedMissionIds.size() * 10 && data.reviewedBy == request.auth.uid &&
           data.reviewNote is string && data.reviewNote.size() >= 15 && data.reviewNote.size() <= 3000 &&
           data.revision == revision && data.updatedAt == request.time && audit.after == data;
@@ -785,22 +822,26 @@ service cloud.firestore {
     match /student_practice_progress/{uid}/courses/{courseId} {
       function validProgress() {
         return request.resource.data.keys().hasOnly([
-          "ownerUid", "courseId", "completed", "reflections", "updatedAt"
+          "ownerUid", "studentId", "courseId", "completed", "reflections", "updatedAt"
         ]) &&
         request.resource.data.keys().hasAll([
-          "ownerUid", "courseId", "completed", "reflections", "updatedAt"
+          "ownerUid", "studentId", "courseId", "completed", "reflections", "updatedAt"
         ]) &&
         request.resource.data.ownerUid == uid &&
+        ownsStudentProfile(request.resource.data.studentId) &&
         request.resource.data.courseId == courseId &&
         courseId in ["java","python","web","logic"] &&
         request.resource.data.completed is list &&
-        request.resource.data.completed.size() <= 40 &&
+        request.resource.data.completed.size() <= 75 &&
+        request.resource.data.completed.toSet().size() == request.resource.data.completed.size() &&
+        request.resource.data.completed.hasOnly(practiceMissionIds(courseId)) &&
         request.resource.data.reflections is map &&
-        request.resource.data.reflections.size() <= 40 &&
+        request.resource.data.reflections.size() <= 75 &&
+        request.resource.data.reflections.keys().hasOnly(request.resource.data.completed) &&
         request.resource.data.updatedAt == request.time;
       }
       allow read: if isInstructor() || (signedIn() && request.auth.uid == uid);
-      allow create, update: if signedIn() && request.auth.uid == uid &&
+      allow create, update: if signedIn() && request.auth.token.email_verified == true && request.auth.uid == uid &&
         validProgress();
       allow delete: if false;
     }

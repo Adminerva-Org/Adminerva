@@ -1,7 +1,7 @@
 /** Inline review panels share bounded reads, preload independently and never run other page applications. */
 import {db} from "../core/firebase-core.js";
 import {collection,getDocs,query,where} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {createEvidenceReview} from "./assessment-evidence-review.mjs?v=2026.10.21.1-dev.1";
+import {createEvidenceReview} from "./assessment-evidence-review.mjs?v=2026.10.21.2-dev.1";
 import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=2026.10.20.1";
 import {parseRepository} from "./services/assessment-evidence.mjs";
 import {analyzePatchSubstance} from "./services/commit-substance.mjs?v=2026.10.20.1";

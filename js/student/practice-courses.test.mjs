@@ -6,12 +6,13 @@ import {COURSES,practiceQuestion,getCourse} from "./practice-courses.mjs";
 import {historyDocId,historyRecord,mergeNotificationHistory} from "../core/notification-history.mjs";
 import {shouldOfferSiteUpdate} from "../core/site-updates.mjs";
 
-test("four original tracks contain sixteen solvable varied missions",()=>{
+test("four courses retain legacy work and contain five modules with fifteen guided missions each",()=>{
   assert.equal(COURSES.length,4);
   assert.deepEqual(COURSES.map(x=>x.id),["java","python","web","logic"]);
   const all=new Set();
   for(const course of COURSES){
-    assert.equal(course.missions.length,4);
+    assert.equal(course.modules.length,5);assert.equal(course.missions.length,75);
+    assert.ok(course.modules.every(module=>module.missions.length===15));
     assert.equal(getCourse(course.id),course);
     for(const mission of course.missions){
       assert.ok(!all.has(mission.id));all.add(mission.id);
@@ -27,7 +28,8 @@ test("four original tracks contain sixteen solvable varied missions",()=>{
       }
     }
   }
-  assert.equal(all.size,16);
+  assert.equal(all.size,300);
+  for(const id of ["j1","j2","j3","j4","p1","p2","p3","p4","w1","w2","w3","w4","d1","d2","d3","d4"])assert.ok(all.has(id));
 });
 test("opened alerts remain recallable alongside the live unread inbox",()=>{
   const alert={key:"issue:42",type:"issue",title:"Report follow-up",body:"Teacher answered",target:"issues.html",at:9};

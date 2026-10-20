@@ -1,6 +1,6 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: review snapshot. */
 import {parseRepository,validSha} from "./assessment-evidence.mjs";
-import {relevantAssessmentFile} from "./v2-grading-assistant.mjs?v=2026.10.20.1";
+import {relevantAssessmentFile} from "./v2-grading-assistant.mjs?v=2026.10.21.2-dev.1";
 export async function loadReviewSnapshot(repository,checkpoint,assessment,{token=null,fetchImpl=globalThis.fetch}={}){
   if(!validSha(checkpoint))throw Error("A pinned checkpoint is required.");
   const repo=parseRepository(repository),base="https://api.github.com/repos/"+encodeURIComponent(repo.owner)+"/"+encodeURIComponent(repo.repo);
