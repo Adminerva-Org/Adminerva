@@ -56,9 +56,6 @@ function close() {
   state.token++;
 }
 async function githubGet(url, session) {
-  const headers={Accept:"application/vnd.github+json"};
-  const pat=localStorage.getItem("Adminerva_github_token");
-  if (pat) headers.Authorization="Bearer "+pat;
   const response=await state.requests.fetch(url);
   if (session!==state.token) throw new Error("Review was closed");
   if (!response.ok) throw new Error("GitHub HTTP "+response.status);
@@ -126,6 +123,12 @@ function aiStatus(text,error=false){
   target.textContent=text;
   target.className="text-xs "+(error?"text-rose-800":"text-indigo-900");
 }
+function stopEvaluation(text){
+  if(!state.active)return;
+  state.aiAbort?.abort();state.aiBusy=false;state.active={...state.active};
+  el("manualReviewAIGenerate").disabled=Boolean(state.active.previous?.published)||!state.active.checkpointSha||!state.active.evidence?.verifiedContributionCommits?.length;
+  el("manualReviewAIGenerate").textContent="Evaluate";aiStatus(text);
+}
 function displayAISuggestion(draft){
   const container=el("manualReviewAIScores");container.replaceChildren();
   for(const item of draft.criteria){
@@ -165,6 +168,14 @@ async function generateAIDraft(){
   if(!confirm("Evaluate this approved checkpoint? Relevant student source and verified diffs will be sent to the configured Gemini AI provider to generate draft scores and feedback. Verify the result before saving."))return;
   const session=state.token;
   state.aiBusy=true;
+  const controller=new AbortController();state.aiAbort=controller;
+  const evaluationTimeout=setTimeout(()=>{
+    controller.abort();
+    if(session===state.token&&state.active===active){
+      stopEvaluation("Evaluation timed out. Pending results are ignored and no score was saved. Retry or continue manually.");
+      el("manualReviewFallback").classList.remove("hidden");
+    }
+  },60000);
   const button=el("manualReviewAIGenerate");button.disabled=true;
   button.textContent="Generating…";
   try{
@@ -182,7 +193,7 @@ async function generateAIDraft(){
       assessment:active.assessment,criteria,checkpointSha:active.checkpointSha,
       files:evidence.files,patches:evidence.patches,contributionScope:active.evidence.contributionScope
     });
-    const controller=new AbortController();state.aiAbort=controller;
+    if(controller.signal.aborted)throw Error("Evaluation timed out. Continue manually or retry.");
     active.evaluationClient ||= createBackoffClient({signal:state.abort.signal,scope:"evaluation"});
     const response=await active.evaluationClient.fetch(
       "https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{
@@ -213,6 +224,7 @@ async function generateAIDraft(){
       el("manualReviewRetry").textContent=error.retryAt?"Retry with backoff (after "+new Date(error.retryAt).toLocaleTimeString()+")":"Retry with backoff";
     }
   }finally{
+    clearTimeout(evaluationTimeout);
     if(session===state.token&&state.active===active){
       state.aiBusy=false;button.disabled=Boolean(state.active?.previous?.published)||!state.active?.checkpointSha;
       button.textContent="Evaluate";
@@ -229,15 +241,16 @@ function applyEvidenceState(record,{initial=false}={}){
   const verified=approved&&Array.isArray(record.verifiedContributionCommits)&&record.verifiedContributionCommits.length>0&&
     record.verifiedContributionCommits.every(sha=>record.selectedCommits?.includes(sha))&&String(record.contributionScope||"").trim().length>=15;
   const protectedGrade=Boolean(active.previous?.published);
-  state.active={...active,evidence:record,checkpointSha:approved?record.approvedCheckpointSha:null,selectedEvidenceCommits:record?.selectedCommits||[],
+  const next={...active,evidence:record,checkpointSha:approved?record.approvedCheckpointSha:null,selectedEvidenceCommits:record?.selectedCommits||[],
     aiDraft:changed?null:active.aiDraft,aiApplied:changed?false:active.aiApplied};
+  state.active=changed?next:Object.assign(active,next);
   const blocker=protectedGrade?"Published grade protected. Unpublish for revision before evaluating or changing verification.":
     !approved?record?.status==="reopened"?"Evidence is reopened. The student can change selections now, then must resubmit for fresh approval.":
       "Approve the submitted checkpoint in Review before evaluating.":!verified?
       "Individual contributions have not been verified. Complete individual verification below, or grade manually. Shared group screens cannot establish individual credit.":
       "Approved, independently verified checkpoint "+record.approvedCheckpointSha.slice(0,12)+". Choose Evaluate to generate a private system draft.";
-  el("manualReviewAIGenerate").disabled=protectedGrade||!verified;el("manualReviewAIGenerate").textContent="Evaluate";
-  el("manualReviewAIGenerate").title=blocker;aiStatus((active.previous?.aiAssistance?"Saved feedback includes automated assistance reviewed by a teacher. ":"")+blocker,!verified);
+  el("manualReviewAIGenerate").disabled=state.aiBusy||protectedGrade||!verified;el("manualReviewAIGenerate").textContent=state.aiBusy?"Evaluating…":"Evaluate";
+  el("manualReviewAIGenerate").title=blocker;if(!state.aiBusy)aiStatus((active.previous?.aiAssistance?"Saved feedback includes automated assistance reviewed by a teacher. ":"")+blocker,!verified);
   el("manualReviewVerifyContributions").classList.toggle("hidden",!approved||verified||protectedGrade);
   el("manualReviewSave").disabled=protectedGrade||!approved;
   for(const id of ["manualReviewScore","manualReviewFeedback","manualReviewFiles","manualReviewReason","manualReviewConfirm"])el(id).disabled=protectedGrade||!approved;
@@ -513,7 +526,11 @@ function init() {
   el("manualReviewForm").addEventListener("input",()=>{state.dirty=true;if(state.active&&!state.active.previous?.published)el("manualReviewSave").disabled=false;});
   el("manualReviewAIGenerate").addEventListener("click",()=>{void generateAIDraft();});
   el("manualReviewRetry").addEventListener("click",()=>{void generateAIDraft();});
-  el("manualReviewManual").addEventListener("click",()=>{el("manualReviewForm").scrollIntoView({behavior:"smooth",block:"start"});el("manualReviewScore").focus();});
+  el("manualReviewManual").addEventListener("click",()=>{
+    if(!state.active?.checkpointSha)return message("Approve the submitted evidence before saving a teacher grade.",true);
+    stopEvaluation("Manual grading selected. Any pending evaluation result is ignored; your teacher fields are unchanged.");
+    el("manualReviewForm").scrollIntoView({behavior:"smooth",block:"start"});el("manualReviewScore").focus();
+  });
   el("manualReviewPreview").addEventListener("click",()=>{renderFeedbackMarkdown(el("manualReviewFeedbackPreview"),el("manualReviewFeedback").value);});
   el("manualReviewVerifyContributions").addEventListener("click",()=>{
     el("integratedEvidenceDetails").open=true;

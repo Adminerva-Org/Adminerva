@@ -411,8 +411,11 @@ function init() {
     const student=state.students.find(item=>item.id===studentId),task=state.assessments.find(item=>item.id===taskId);
     if(!student||!task)return reviewNotice("This record is not in the loaded roster. Reload the gradebook.",true);
     if(state.active&&!closeDetails())return;
-    const ref=doc(db,"student_grades",studentId+"_"+taskId),snapshot=await getDoc(ref);
-    if(snapshot.exists())openDetails(student,task,{ref,data:snapshot.data()});
+    try{
+      const ref=doc(db,"student_grades",studentId+"_"+taskId),snapshot=await getDoc(ref);
+      if(snapshot.exists())openDetails(student,task,{ref,data:snapshot.data()});
+      else reviewNotice("This saved grade is unavailable. Reload before continuing.",true);
+    }catch{reviewNotice("Feedback could not load. Check your connection and sign-in; no grade changed.",true);}
   };
   for(const id of ["gbEditScore","gbEditFeedback","gbEditReason","gbMarkReviewed"])el(id).addEventListener("input",()=>{detailsDirty=true;renderFeedbackMarkdown(el("gbFeedbackPreview"),el("gbEditFeedback").value);});
   el("gbViewQuarter").addEventListener("click", () => view("quarter"));

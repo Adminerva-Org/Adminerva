@@ -16,6 +16,7 @@ function workspace(evidence){
       classList:{add:name=>classes.add(name),remove:name=>classes.delete(name),contains:name=>classes.has(name),
         toggle:(name,force)=>force?classes.add(name):classes.delete(name)},
       append(...children){this.children.push(...children);},replaceChildren(){this.children=[];},
+      scrollIntoView(){},focus(){},
       setAttribute(name,value){this[name]=value;},getAttribute(name){return this[name]||null;},removeAttribute(name){delete this[name];},
       addEventListener(name,handler){this[name]=handler;},reset(){for(const node of elements.values()){node.value='';node.checked=false;}}};
   }
@@ -31,7 +32,7 @@ function workspace(evidence){
   const window={addEventListener:(type,handler)=>{listeners[type]=handler;},dispatchEvent:()=>{}};
   const snapshot=ref=>({ref,exists:()=>records.has(ref.path),data:()=>records.get(ref.path)});
   let panelOptions;
-  const context={document,window,location:{origin:'https://example.test'},URLSearchParams,AbortController,
+  const context={document,window,location:{origin:'https://example.test'},URLSearchParams,AbortController,setTimeout,clearTimeout,
     auth:{currentUser:{uid:'teacher'}},db:{},parseRepository,validSha,evidenceRevision,gradeMatchesEvidence,sameEvidence,assertGradeVersion,nextGradeVersion,
     createReviewRequests:()=>({}),mountReviewPanels:options=>{panelOptions=options;return {destroy(){},updateEvidence(){}};},
     cleanGradeFeedback:value=>String(value||''),pickDefinedGradeFields:(value,keys)=>Object.fromEntries(keys.filter(key=>value[key]!==undefined).map(key=>[key,value[key]])),
@@ -47,6 +48,25 @@ const approved={studentId:'alice',assessmentId:'v2',status:'approved',checkpoint
   selectedCommits:[checkpoint],verifiedContributionCommits:[checkpoint],
   contributionScope:'Alice is assigned the welcome screen; instructor observed her implementation.',
   repository:'https://github.com/example/project',revision:1};
+test('unchanged evidence snapshots do not strand a running evaluation; manual cancellation ignores late output',async()=>{
+  for(const cancel of [false,true,"timeout"]){
+    const page=workspace(approved);await page.open();let finish;
+    page.context.localStorage={getItem:key=>key==='Adminerva_gemini_token'?'synthetic-evaluation-key':null};
+    page.context.parseWeightedRubric=()=>[];
+    page.context.loadPinnedV2Source=()=>new Promise(resolve=>{finish=resolve;});
+    page.context.buildRubricPrompt=()=>'';page.context.createBackoffClient=()=>({fetch:async()=>({})});page.context.evaluationJSON=async()=>({});
+    page.context.parseSuggestedRubric=()=>({criteria:[],score:15,feedback:'Draft feedback'});
+    let expire;
+    if(cancel==="timeout"){page.context.setTimeout=callback=>{expire=callback;return 1;};page.context.clearTimeout=()=>{};}
+    const operation=page.context.generateAIDraft();
+    page.change({...approved,selectedCommits:[checkpoint]});
+    if(cancel==="timeout")expire();else if(cancel)page.elements.get('manualReviewManual').click();
+    finish({files:[{path:'screen.xml'}],patches:[]});await operation;
+    assert.equal(page.window.fixtureState.aiBusy,false);
+    assert.equal(Boolean(page.window.fixtureState.active.aiDraft),!cancel);
+    assert.equal(page.elements.get('manualReviewFeedback').value,'');assert.equal(page.writes.length,0);
+  }
+});
 test('suggestions never replace teacher fields without a separate explicit copy',async()=>{
   const page=workspace(approved);await page.open();
   page.elements.get('manualReviewScore').value='12';page.elements.get('manualReviewFeedback').value='Teacher feedback';
