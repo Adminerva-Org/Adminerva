@@ -1,3 +1,4 @@
+import {resolveStaffRole} from "./staff-session.mjs?v=2026.10.20.1";
 /** Role-separated report feed, triage and optional admin-only diagnostic trails. */
 import { db, auth } from "../core/firebase-core.js";
 import {
@@ -17,7 +18,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { filterReports, ownsReport } from "./report-filters.mjs";
-import {staffRole} from "./staff-role.mjs?v=2026.10.19.2";
+import {staffRole} from "./staff-role.mjs?v=2026.10.20.1";
 
 let allIssues = [];
 let currentOpenIssueId = null;
@@ -76,14 +77,15 @@ function escapeHTML(str) {
   );
 }
 
-onAuthStateChanged(auth, user => {
+onAuthStateChanged(auth, async user => {
   const trailPanel = document.getElementById("issue-diagnostics");
   if (trailPanel) { trailPanel.textContent = ""; trailPanel.hidden = true; }
   stopIssueListeners.forEach(stop => stop()); stopIssueListeners = [];
   if (user) {
     currentUserEmail = (user.email||"").toLowerCase();
-    isSuperAdmin = staffRole(user) === "admin";
-    isTeacher = staffRole(user) === "teacher";
+    const role=await resolveStaffRole(user);
+    isSuperAdmin = role === "admin";
+    isTeacher = role === "teacher";
     document.getElementById("filterAudience")?.querySelector('option[value="admin"]')?.toggleAttribute("hidden", !isSuperAdmin);
     restoreReportFilters();
     if (!isSuperAdmin && document.getElementById("filterAudience")?.value === "admin") document.getElementById("filterAudience").value = "All";

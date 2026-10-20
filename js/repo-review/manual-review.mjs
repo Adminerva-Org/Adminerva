@@ -12,7 +12,7 @@ import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,parseSuggestedR
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=2026.10.19.4";
 import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=2026.10.19.4";
 import {createReviewRequests} from "./services/review-requests.mjs?v=2026.10.19.4";
-import {mountReviewPanels} from "./review-panels.mjs?v=2026.10.19.4";
+import {mountReviewPanels} from "./review-panels.mjs?v=2026.10.20.1";
 
 const el = id => document.getElementById(id);
 const state = { active: null, request: null, token: 0, flags: [], aiBusy: false, dirty:false, abort:null,panels:null,requests:null,aiAbort:null };

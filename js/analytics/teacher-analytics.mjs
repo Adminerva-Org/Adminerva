@@ -1,7 +1,8 @@
 /** Academic analytics for the selected instructor's configured sections; raw operations stay in the admin module. */
 import { db, auth } from "../core/firebase-core.js";
-import {selectedTeacherSections} from "./teacher-engagement.mjs?v=2026.10.19.3";
-import {staffRole} from "../core/staff-role.mjs?v=2026.10.19.2";
+import {selectedTeacherSections} from "./teacher-engagement.mjs?v=2026.10.20.1";
+import {staffRole} from "../core/staff-role.mjs?v=2026.10.20.1";
+import {academicGradeEligible,queryGroups} from "./academic-model.mjs?v=2026.10.20.1";
 import {
   collection,
   getDocs,
@@ -63,6 +64,11 @@ async function initDashboard() {
   const end = window.beginLoading?.("Loading teacher analytics…") || (() => {});
   try {
     const sections = await selectedTeacherSections();
+    if (!sections.length) {
+      document.getElementById("sectionSelect").add(new Option("No assigned sections", ""));
+      document.getElementById("academic-status").textContent="Choose an instructor with assigned sections. Administrators can configure Teacher Accounts; no activity is not a failing score.";
+      return;
+    }
     if (request !== dashboardRequest) return;
     globalStudents = []; globalGrades = []; globalAssessments = {};
     document.getElementById("taskSelect").replaceChildren(new Option("All assessments", "ALL"));
@@ -81,7 +87,8 @@ async function initDashboard() {
     });
 
     // Fetch Sections
-    const snap = await getDocs(collection(db, "students"));
+    const rosterSnapshots=await Promise.all(queryGroups(sections).map(group=>getDocs(query(collection(db,"students"),where("section","in",group)))));
+    const snap={forEach:callback=>rosterSnapshots.flatMap(snapshot=>snapshot.docs).forEach(callback)};
     if (request !== dashboardRequest) return;
     const select = document.getElementById("sectionSelect");
     let uniqueSections = new Set();
@@ -129,7 +136,8 @@ window.loadDashboardData = async function () {
       sectionStudents.length;
 
     // 2. Fetch Grades (Live to catch recent manual grading updates)
-    const gradesSnap = await getDocs(collection(db, "student_grades"));
+    const gradeSnapshots=await Promise.all(queryGroups([...studentIds]).map(group=>getDocs(query(collection(db,"student_grades"),where("studentId","in",group)))));
+    const gradesSnap={forEach:callback=>gradeSnapshots.flatMap(snapshot=>snapshot.docs).forEach(callback)};
     if (request !== dashboardRequest) return;
     globalGrades = [];
     gradesSnap.forEach((d) => {
@@ -139,10 +147,12 @@ window.loadDashboardData = async function () {
     });
 
     // Filter by specific task if requested
-    const filteredGrades =
+    const matchingGrades =
       taskIdFilter === "ALL"
         ? globalGrades
         : globalGrades.filter((g) => g.taskId === taskIdFilter);
+    const includeDrafts=document.getElementById("analytics-grade-scope")?.value==="drafts";
+    const filteredGrades=matchingGrades.filter(grade=>academicGradeEligible(grade,globalAssessments[grade.taskId],includeDrafts));
 
     // Analytics Trackers
     let totalLatency = 0,
@@ -222,7 +232,7 @@ window.loadDashboardData = async function () {
       filteredGrades.length > 0
         ? Math.round(totalMasteryPercentage / filteredGrades.length)
         : 0;
-    document.getElementById("statMastery").textContent = `${secAvg}%`;
+    document.getElementById("statMastery").textContent = filteredGrades.length ? `${secAvg}%` : "—";
 
     // 3. Process Student Rankings (Top 5 & At-Risk)
     const rankedStudents = Object.values(studentPerformance)

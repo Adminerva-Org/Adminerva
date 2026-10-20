@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version": "2026.10.20.1",
+      "status": "draft",
+      "public": true,
+      "releasedAt": "2026-10-20",
+      "title": "Personal teaching workspaces and clearer mobile review",
+      "summary": "Separate teaching files by account, manage teacher access and use clearer analytics, navigation and Help links.",
+      "changes": [
+        {"type":"Fixed","area":"Teaching files","text":"Lessons, timetables, slides and planning defaults stay separate for each signed-in teacher. A newer save from another tab is not silently replaced. Older shared records remain preserved for administrator review."},
+        {"type":"New","area":"Teacher Accounts","text":"Administrators can authorize verified teacher emails, assign analytics sections and disable access without deleting saved teaching files. This does not send invitation emails or create passwords."},
+        {"type":"Updated","area":"Analytics","text":"Administrators select an instructor in Teacher Analytics. Published results are distinct from private drafts, and missing scores are not treated as zero. Operational reports and diagnostic trails remain in Administration Analytics."},
+        {"type":"Fixed","area":"Mobile navigation and Help","text":"The brand and account controls adjust on smaller screens, notifications stay inside the viewport, and a consistent footer links tutorials, the Wiki, public updates and privacy."},
+        {"type":"Revised","area":"Review & Grade","text":"Review steps stay easy to reach while scrolling, and save and publication actions wrap on small screens. Saving privately and publishing remain separate teacher decisions."}
+      ]
+    },
+    {
       "version": "2026.10.19.5",
       "status": "published",
       "public": true,

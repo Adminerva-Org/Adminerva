@@ -26,8 +26,8 @@ test("saved teacher, subject and signature defaults hydrate on new devices",asyn
     sig_teacher:"First Signer",
     sig_principal:"Final Signer"
   };
-  const context={
-    localStorage:{
+  const context={workspaceUid:()=>"teacher-fixture",ownedDoc:()=>({}),
+    lessonStorage:{
       getItem:key=>stored.has(key)?stored.get(key):null,
       setItem:(key,value)=>stored.set(key,value)
     },
@@ -45,13 +45,13 @@ test("saved teacher, subject and signature defaults hydrate on new devices",asyn
   assert.equal(stored.get("Adminerva_sig4Name"),data.sig_principal);
   assert.equal(stored.get("Adminerva_defaultPrelim"),data.default_prelim);
   assert.equal(stored.get("Adminerva_defaultClosing"),data.default_closing);
-  assert.match(source,/document\.addEventListener\("DOMContentLoaded"/);
+  assert.match(source,/workspaceOnReady\(/);
 });
 
 test("offline printing uses the same signature storage as lesson settings",()=>{
   const source=readFileSync("js/lesson-review/document-exporter.js","utf8");
   for(let i=1;i<=4;i++)for(const field of ["Name","Title"])
-    assert.ok(source.includes('localStorage.getItem("Adminerva_sig'+i+field+'")'));
+    assert.ok(source.includes('lessonStorage.getItem("Adminerva_sig'+i+field+'")'));
 });
 
 test("lesson save validates school year without throwing out of save handler",()=>{
@@ -81,10 +81,11 @@ test("loading another subject never changes the saved lesson identity",()=>{
   assert.ok(start>=0 && end>start);
   const context={
     window:{currentPlan:[],currentPlanSubject:"",currentPlanTeacher:""},
-    localStorage:{getItem:key=>key==="Adminerva_defaultSubject"?"New Semester Subject":"Current Teacher"},
+    lessonStorage:{getItem:key=>key==="Adminerva_defaultSubject"?"New Semester Subject":"Current Teacher"},
     document:{getElementById:()=>({value:"Grade 11"})},
     alert(){}
   };
+  context.workspaceUid=()=>"teacher-fixture";
   vm.runInNewContext(ui.slice(start,end)+"}",context);
   context.window.loadSpecificPlan({
     sessions:[{session_name:"Session 1"}],
@@ -97,5 +98,5 @@ test("loading another subject never changes the saved lesson identity",()=>{
   assert.ok(save.includes('const subject = window.currentPlanSubject ||'));
   assert.ok(save.includes('const teacher = window.currentPlanTeacher ||'));
   assert.ok(generation.includes('window.currentPlanSubject = subject;'));
-  assert.ok(generation.includes('window.currentPlanSubject = localStorage.getItem("Adminerva_defaultSubject")'));
+  assert.ok(generation.includes('window.currentPlanSubject = lessonStorage.getItem("Adminerva_defaultSubject")'));
 });

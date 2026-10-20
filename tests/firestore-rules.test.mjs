@@ -620,15 +620,16 @@ test('student assessment page can query only its own submission receipts',async(
 
 test('teacher lesson and presentation history stays inaccessible to students',async()=>{
   const staff=client('staff',TEACHER),alice=client('alice',EMAIL_A);
-  const lesson=doc(staff,'lesson_plans','schoolyear_grade11_q2');
-  await assertSucceeds(setDoc(lesson,{grade_level:'Grade 11',school_year:'2026-2027',sessions:[]}));
-  const revision=doc(staff,'lesson_plans','schoolyear_grade11_q2','revisions','v1');
-  await assertSucceeds(setDoc(revision,{version:1,sessions:[]}));
-  await assertFails(getDoc(doc(alice,'lesson_plans','schoolyear_grade11_q2')));
-  await assertFails(getDoc(doc(alice,'lesson_plans','schoolyear_grade11_q2','revisions','v1')));
-  const presentation=doc(staff,'presentations','plan_session0','revisions','v1');
-  await assertSucceeds(setDoc(presentation,{deck:[],version:1}));
-  await assertFails(getDoc(doc(alice,'presentations','plan_session0','revisions','v1')));
+  const lesson=doc(staff,'staff_workspaces','staff','lesson_plans','schoolyear_grade11_q2');
+  const before={ownerUid:'staff',version:1,subject_title:'Subject',weekly_overview:{},grade_level:'Grade 11',school_year:'2026-2027',sessions:[]};
+  await assertSucceeds(setDoc(lesson,before));
+  const batch=writeBatch(staff);batch.set(lesson,{...before,version:2});batch.set(doc(lesson,'revisions','1'),{...before,archivedRevisionAt:serverTimestamp()});await assertSucceeds(batch.commit());
+  await assertFails(getDoc(doc(alice,'staff_workspaces','staff','lesson_plans','schoolyear_grade11_q2')));
+  await assertFails(getDoc(doc(alice,'staff_workspaces','staff','lesson_plans','schoolyear_grade11_q2','revisions','1')));
+  const presentation=doc(staff,'staff_workspaces','staff','presentations','plan_session0');
+  const deck={ownerUid:'staff',deck:[],version:1};await assertSucceeds(setDoc(presentation,deck));
+  const slides=writeBatch(staff);slides.set(presentation,{...deck,version:2});slides.set(doc(presentation,'revisions','1'),{...deck,archivedRevisionAt:serverTimestamp()});await assertSucceeds(slides.commit());
+  await assertFails(getDoc(doc(alice,'staff_workspaces','staff','presentations','plan_session0','revisions','1')));
   const parent=doc(staff,'reference_folders','folder');
   await assertSucceeds(setDoc(parent,{name:'Teacher materials',documents:[]}));
   await assertSucceeds(setDoc(doc(staff,'reference_folders','folder','documents','pdf1'),

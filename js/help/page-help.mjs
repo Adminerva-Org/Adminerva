@@ -20,8 +20,21 @@ export function mountHelp() {
   if (document.getElementById("adminerva-help")) return;
   const [title, description, anchor] = guides[pageForPath(location.pathname)];
   const footer = document.createElement("footer"); footer.id = "adminerva-help";
-  footer.className = "p-4 border-t border-slate-300 bg-white text-slate-900 text-sm flex flex-wrap items-center justify-center gap-5";
-  footer.innerHTML = '<button type="button" class="font-bold underline" id="page-help-open">ⓘ Help / tutorial</button><a class="underline" href="wiki.html">Adminerva Wiki</a><a class="underline" href="patch-notes.html">Patch notes</a>';
+  footer.className = "av-site-footer";
+  footer.setAttribute("aria-label","Help, privacy and website updates");
+  footer.innerHTML = '<span class="av-footer-brand">ADMINERVA</span><nav aria-label="Website information"><button type="button" id="page-help-open">ⓘ Help / tutorial</button><a href="wiki.html">Wiki</a><a href="patch-notes.html">Patch notes</a><a href="wiki.html#privacy">Privacy</a></nav>';
+  document.body.classList.add("av-with-footer");
+  if (location.pathname.endsWith("/login.html")) {
+    const card=document.getElementById("googleLoginBtn")?.closest('[class*="max-w-"]');
+    if(card){const content=document.createElement("main");content.className="av-login-content";card.before(content);content.append(card);document.body.classList.add("av-login-page");}
+  }
+  const previousFooter=document.querySelector("body > footer");
+  if(previousFooter){
+    previousFooter.querySelectorAll('a[href="patch-notes.html"],a[href="wiki.html"]').forEach(link=>link.remove());
+    const credits=document.createElement("div");credits.className="av-footer-credits";
+    credits.append(...previousFooter.childNodes);if(credits.textContent.trim())footer.append(credits);
+    previousFooter.remove();
+  }
   document.body.append(footer);
   const dialog = document.createElement("dialog"); dialog.id = "page-help-dialog";
   dialog.className = "p-6 rounded-xl border border-slate-300 max-w-xl w-[95vw] text-slate-900 bg-white";
@@ -50,14 +63,14 @@ export function mountHelp() {
     dialog.querySelector("#page-help-title").textContent = title; dialog.querySelector("#page-help-description").textContent = description; dialog.querySelector("#page-help-guide").href = "wiki.html#" + anchor;
   });
   document.getElementById("page-help-open").addEventListener("click", () => { dialog.showModal(); window.adminervaActivity?.record("help-open"); });
-  const privatePage = Boolean(document.querySelector('script[src*="auth-guard.js"],script[src*="admin-analytics.mjs"]'));
+  const privatePage = Boolean(document.querySelector('script[src*="auth-guard.js?v=2026.10.20.1"],script[src*="admin-analytics.mjs?v=2026.10.20.1"]'));
   if (privatePage && window.self === window.top) {
     document.addEventListener("adminerva-activity-preferences", event => {
       document.getElementById("activity-share").checked = event.detail.enabled;
       document.getElementById("activity-diagnostics").checked = event.detail.diagnostics;
       document.getElementById("activity-save").disabled = false;
     });
-    import("../analytics/activity-client.mjs?v=2026.10.19.2").then(module => {
+    import("../analytics/activity-client.mjs?v=2026.10.20.1").then(module => {
       const save = document.getElementById("activity-save");
       document.getElementById("activity-status").textContent = "Optional: choose what to share, then save. These settings never affect grades.";
       save.addEventListener("click", async () => {

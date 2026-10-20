@@ -1,10 +1,14 @@
+import {requireCurrentVersion} from "./workspace-model.mjs?v=2026.10.20.1";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.20.1";
 /** Teacher schedule editing and scoped calendar workflow. */
 import { db } from "../core/firebase-core.js";
-import { scheduleScope, parseScheduleRows, parseClockMinutes } from "./schedule-scope.mjs";
+import { scheduleScope, parseScheduleRows, parseClockMinutes } from "./schedule-scope.mjs?v=2026.10.20.1";
 import {
   doc,
   getDoc,
   setDoc,
+  runTransaction,
+  serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 let mySections = [];
@@ -16,6 +20,8 @@ let activeYear = "2026-2027";
 let activeSemester = "S1";
 let loadSerial = 0;
 let isSaving = false;
+let cloudVersion=0;
+let loadingSchedule=false;
 
 function escapeHTML(str) {
   return String(str ?? "")
@@ -29,18 +35,45 @@ function escapeHTML(str) {
 function currentScope() {
   return scheduleScope(activeYear, activeSemester);
 }
+workspaceOnReady(() => {
+  const status=document.getElementById("scheduleScopeStatus");
+  if(!status)return;
+  const tools=document.createElement("div");tools.className="av-button-row my-3";
+  const reload=document.createElement("button");reload.type="button";reload.className="av-secondary-button";reload.textContent="Reload my saved schedule";
+  reload.addEventListener("click",async()=>{
+    if(isSaving)return;
+    if(!confirm("Reload your saved schedule and discard unsynced edits in this view?"))return;
+    const scope=currentScope();
+    for(const key of [scope.pendingKey,scope.jsonKey,scope.textKey])lessonStorage.removeItem(key);
+    isEditing=false;draftRows=null;updateEditControls();await fetchScheduleFromCloud();
+  });
+  const legacy=document.createElement("button");legacy.type="button";legacy.className="av-secondary-button";legacy.textContent="Import older shared timetable…";
+  legacy.addEventListener("click",async()=>{
+    if(isSaving)return;
+    const scope=currentScope(),ownerUid=workspaceUid();
+    if(!confirm("Copy the older shared timetable into your editable schedule? Nothing is saved until you choose Save Schedule. Existing shared records remain unchanged."))return;
+    try{
+      let snapshot=await getDoc(doc(db,"app_config",scope.id));
+      if(!snapshot.exists()&&scope.allowLegacy)snapshot=await getDoc(doc(db,"app_config","master_schedule"));
+      assertWorkspaceAccount(ownerUid);
+      if(currentScope().id!==scope.id)return;
+      if(!snapshot.exists()){updateScopeStatus("No older shared timetable exists for this period.");return;}
+      draftRows=parseScheduleRows(snapshot.data().json_data);isEditing=true;updateEditControls();renderTable();
+      updateScopeStatus("Shared timetable copied to your editor only. Review it, then Save Schedule into your own account.");
+    }catch{updateScopeStatus("The older shared timetable could not be read. Your personal schedule was not changed.");}
+  });
+  tools.append(reload,legacy);status.after(tools);
+});
 
 function cacheRows(scope, rows, rawText) {
-  localStorage.setItem(scope.jsonKey, JSON.stringify(rows));
-  localStorage.setItem(scope.textKey, rawText);
+  lessonStorage.setItem(scope.jsonKey, JSON.stringify(rows));
+  lessonStorage.setItem(scope.textKey, rawText);
 }
 
 function cachedRows(scope) {
-  const local = localStorage.getItem(scope.jsonKey);
+  const local = lessonStorage.getItem(scope.jsonKey);
   if (local !== null) return parseScheduleRows(local);
-  return scope.allowLegacy
-    ? parseScheduleRows(localStorage.getItem("Adminerva_schedule_json"))
-    : [];
+  return [];
 }
 
 function updateScopeStatus(message) {
@@ -61,6 +94,7 @@ function updateEditControls() {
   const button = document.getElementById("editSaveBtn");
   const badge = document.getElementById("modeBadge");
   if (button) {
+    button.disabled=loadingSchedule||isSaving;
     button.textContent = isEditing ? "Save Schedule" : "Edit Schedule";
     button.className = isEditing
       ? "bg-green-600 text-white px-6 py-2 rounded font-bold hover:bg-green-700 transition shadow-sm flex items-center gap-2"
@@ -86,13 +120,16 @@ async function initFirebase() {
 
 async function fetchScheduleFromCloud() {
   const request = ++loadSerial;
+  loadingSchedule=true;updateEditControls();
   const scope = currentScope();
+  const ownerUid=workspaceUid();
+  cloudVersion=Number(lessonStorage.getItem(scope.versionKey)||0);
   let rows = cachedRows(scope);
-  let raw = localStorage.getItem(scope.textKey);
-  if (raw === null && scope.allowLegacy)
-    raw = localStorage.getItem("Adminerva_schedule");
+  let raw = lessonStorage.getItem(scope.textKey);
+
   let source = rows.length ? "Local copy" : "No schedule saved; choose Edit Schedule to enter one.";
-  if (localStorage.getItem(scope.pendingKey) === "1") {
+  if (lessonStorage.getItem(scope.pendingKey) === "1") {
+    loadingSchedule=false;updateEditControls();
     renderTable();
     updateScopeStatus("Unsynced edits from this device. Select Edit Schedule, then Save Schedule to retry.");
     return;
@@ -100,15 +137,15 @@ async function fetchScheduleFromCloud() {
   if (db) {
     window.showLoader("Loading selected semester schedule...");
     try {
-      let snap = await getDoc(doc(db, "app_config", scope.id));
+      let snap = await getDoc(ownedDoc(db,"schedules",scope.id));
+      if(request!==loadSerial)return;
+      assertWorkspaceAccount(ownerUid);
       let fromLegacy = false;
       // Existing first-semester timetables used one unscoped document.
       // Never import that document into a different semester or school year.
-      if (!snap.exists() && scope.allowLegacy &&
-          localStorage.getItem(scope.jsonKey) === null) {
-        snap = await getDoc(doc(db, "app_config", "master_schedule"));
-        fromLegacy = snap.exists();
-      }
+
+      cloudVersion=snap.exists()?Number(snap.data().version||1):0;
+      lessonStorage.setItem(scope.versionKey,String(cloudVersion));
       if (snap.exists()) {
         const data = snap.data();
         rows = parseScheduleRows(data.json_data);
@@ -120,10 +157,13 @@ async function fetchScheduleFromCloud() {
       console.warn("Schedule cloud fetch failed; using local copy:", error);
       source = "Cloud unavailable; showing local copy if available.";
     } finally {
+      if(request===loadSerial){loadingSchedule=false;updateEditControls();}
       window.hideLoader();
     }
   }
   if (request !== loadSerial) return;
+  loadingSchedule=false;updateEditControls();
+  assertWorkspaceAccount(ownerUid);
   cacheRows(scope, rows, raw || "");
   renderTable();
   updateScopeStatus(source);
@@ -141,10 +181,10 @@ window.hideLoader = function () {
   }
 };
 
-document.addEventListener("DOMContentLoaded", async () => {
+workspaceOnReady( async () => {
   loadConfig();
-  const year = localStorage.getItem("Adminerva_schedule_selected_year");
-  const semester = localStorage.getItem("Adminerva_schedule_selected_semester");
+  const year = lessonStorage.getItem("Adminerva_schedule_selected_year");
+  const semester = lessonStorage.getItem("Adminerva_schedule_selected_semester");
   if (year) {
     try { scheduleScope(year, semester || "S1"); activeYear = year; }
     catch (error) { console.warn("Invalid saved school year:", error); }
@@ -186,18 +226,18 @@ window.changeSchedulePeriod = async function () {
   updateEditControls();
   activeYear = requestedYear;
   activeSemester = requestedSemester;
-  localStorage.setItem("Adminerva_schedule_selected_year", activeYear);
-  localStorage.setItem("Adminerva_schedule_selected_semester", activeSemester);
+  lessonStorage.setItem("Adminerva_schedule_selected_year", activeYear);
+  lessonStorage.setItem("Adminerva_schedule_selected_semester", activeSemester);
   await fetchScheduleFromCloud();
 };
 // --- MODAL & CONFIG LOGIC ---
 window.openSettingsModal = function () {
   document.getElementById("configSections").value =
-    localStorage.getItem("Adminerva_sections") || "";
+    lessonStorage.getItem("Adminerva_sections") || "";
   document.getElementById("configSubjects").value =
-    localStorage.getItem("Adminerva_subjects") || "";
+    lessonStorage.getItem("Adminerva_subjects") || "";
   document.getElementById("configEvents").value =
-    localStorage.getItem("Adminerva_events") || "";
+    lessonStorage.getItem("Adminerva_events") || "";
 
   const modal = document.getElementById("settingsModal");
   modal.classList.remove("hidden");
@@ -211,15 +251,15 @@ window.closeSettingsModal = function () {
 };
 
 window.saveSettingsConfig = async function () {
-  localStorage.setItem(
+  lessonStorage.setItem(
     "Adminerva_sections",
     document.getElementById("configSections").value,
   );
-  localStorage.setItem(
+  lessonStorage.setItem(
     "Adminerva_subjects",
     document.getElementById("configSubjects").value,
   );
-  localStorage.setItem(
+  lessonStorage.setItem(
     "Adminerva_events",
     document.getElementById("configEvents").value,
   );
@@ -233,15 +273,15 @@ window.saveSettingsConfig = async function () {
 };
 
 function loadConfig() {
-  mySections = (localStorage.getItem("Adminerva_sections") || "")
+  mySections = (lessonStorage.getItem("Adminerva_sections") || "")
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s !== "");
-  mySubjects = (localStorage.getItem("Adminerva_subjects") || "")
+  mySubjects = (lessonStorage.getItem("Adminerva_subjects") || "")
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s !== "");
-  myEvents = (localStorage.getItem("Adminerva_events") || "")
+  myEvents = (lessonStorage.getItem("Adminerva_events") || "")
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s !== "");
@@ -652,7 +692,7 @@ window.saveScheduleData = async function (bypassValidation = false) {
   cacheRows(scope, jsonData, rawTextForAI);
 
   if (!db) {
-    localStorage.setItem(scope.pendingKey, "1");
+    lessonStorage.setItem(scope.pendingKey, "1");
     updateScopeStatus("Saved on this device only (cloud unavailable).");
     alert("Schedule saved locally. Connect Firebase to sync it across devices.");
     return true;
@@ -660,19 +700,30 @@ window.saveScheduleData = async function (bypassValidation = false) {
 
   window.showLoader("Saving selected semester to Firebase...");
   try {
-    await setDoc(doc(db, "app_config", scope.id), {
+    const ownerUid=await requireStaffWorkspace();
+    const ref=ownedDoc(db,"schedules",scope.id);
+    const next=await runTransaction(db,async transaction=>{
+      const prior=await transaction.get(ref);
+      assertWorkspaceAccount(ownerUid);
+      const version=requireCurrentVersion(prior.exists()?prior.data():null,cloudVersion);
+      if(prior.exists())transaction.set(ownedDoc(db,"schedules",scope.id,"revisions",String(version-1)),{...prior.data(),archivedRevisionAt:serverTimestamp()});
+      transaction.set(ref, {ownerUid,version,
       school_year: scope.year,
       semester: scope.semester,
       json_data: JSON.stringify(jsonData),
       raw_text: rawTextForAI,
       last_updated: new Date().toISOString(),
+      });
+      return version;
     });
-    localStorage.removeItem(scope.pendingKey);
+    cloudVersion=next;
+    lessonStorage.setItem(scope.versionKey,String(next));
+    lessonStorage.removeItem(scope.pendingKey);
     updateScopeStatus("Saved to cloud.");
     return true;
   } catch (error) {
     console.error("Schedule cloud save failed:", error);
-    localStorage.setItem(scope.pendingKey, "1");
+    lessonStorage.setItem(scope.pendingKey, "1");
     updateScopeStatus("Saved on this device only. Cloud save failed; retry.");
     alert("Cloud save failed. Your edits remain in this device. Please retry Save Schedule. " + error.message);
     return false;

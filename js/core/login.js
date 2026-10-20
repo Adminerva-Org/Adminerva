@@ -1,3 +1,4 @@
+import {resolveStaffRole} from "./staff-session.mjs?v=2026.10.20.1";
 /** Approved-account sign-in and access feedback. */
 import { db, auth } from "../core/firebase-core.js";
 import {
@@ -5,6 +6,7 @@ import {
   getDocs,
   doc,
   updateDoc,
+  setDoc,
   query,
   where,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
@@ -15,8 +17,6 @@ import {
   signInWithPopup,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 
-const SUPER_ADMIN_EMAIL = "babaynike2013@gmail.com".toLowerCase();
-const TEACHER_EMAIL = "josephsixson@mcstayuman.edu.ph".toLowerCase();
 const errBox = document.getElementById("loginErrorBox");
 
 // ==========================================
@@ -64,16 +64,21 @@ const handleOAuthLogin = async (provider, providerType) => {
     }
 
     // 2. VERIFY IDENTITY against Firestore Directory
-    const isEducator = email === SUPER_ADMIN_EMAIL || email === TEACHER_EMAIL;
+    const role=await resolveStaffRole(result.user);
+    const isEducator=!!role;
     let targetCollection = isEducator ? "teachers" : "students";
 
     const q = query(
       collection(db, targetCollection),
       where("email", "==", email),
     );
-    const snap = await getDocs(q);
+    let snap = await getDocs(q);
+    if(isEducator && snap.empty){
+      await setDoc(doc(db,"teachers",result.user.uid),{email,name:String(result.user.displayName||email).slice(0,120),uid:result.user.uid});
+      snap=await getDocs(q);
+    }
 
-    if (snap.empty) {
+    if (snap.empty && !isEducator) {
       await signOut(auth);
       throw new Error("unrecognized-email:" + email);
     }
@@ -111,7 +116,7 @@ const handleOAuthLogin = async (provider, providerType) => {
     localStorage.setItem(
       "Adminerva_Role",
       isEducator
-        ? email === SUPER_ADMIN_EMAIL
+        ? role === "admin"
           ? "superadmin"
           : "teacher"
         : "student",
@@ -134,7 +139,7 @@ const handleOAuthLogin = async (provider, providerType) => {
       errorMessage = `Your email (${failedEmail}) is not recognized. If you clicked GitHub, your personal email might not match the school records. <strong>Please click "Continue with Google" instead.</strong>`;
     } else if (error.code === "auth/popup-blocked") {
       errorMessage =
-        "Your browser aggressively blocked the login window. <strong>Please check the URL bar, allow popups for teachernosxis.github.io</strong>, and try again.";
+        "Your browser aggressively blocked the login window. <strong>Please check the URL bar, allow popups for this website</strong>, and try again.";
     } else if (error.code === "auth/popup-closed-by-user") {
       errorMessage =
         "The login window was closed before finishing. Please try again.";

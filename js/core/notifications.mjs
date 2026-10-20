@@ -1,3 +1,5 @@
+import {staffRole} from "./staff-role.mjs?v=2026.10.20.1";
+import {resolveStaffRole} from "./staff-session.mjs?v=2026.10.20.1";
 /** Shared navigation, account access, reporting and release infrastructure: notifications. */
 import { auth, db } from "./firebase-core.js";
 import {notificationTarget,previewDestination} from "./notification-routing.mjs?v=2026.10.19.1";
@@ -7,10 +9,10 @@ import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=202
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
-const staffEmails = new Set(["babaynike2013@gmail.com", "josephsixson@mcstayuman.edu.ph"]);
+let listenEpoch=0;
 const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false };
-const isAdmin = () => (state.user?.email||"").toLowerCase() === [...staffEmails][0];
-const isTeacher = () => (state.user?.email||"").toLowerCase() === [...staffEmails][1];
+const isAdmin = () => staffRole(state.user)==="admin";
+const isTeacher = () => staffRole(state.user)==="teacher";
 const verifiedRole = () => isAdmin() ? "admin" : isTeacher() ? "teacher" : "student";
 // Report alerts are authorization-filtered before reaching the visible inbox.
 function visibleForRole(item) {
@@ -145,7 +147,8 @@ async function markAllRead(){
   await Promise.allSettled(pending.filter(n=>n.saved).map(n=>
     updateDoc(doc(db,"notifications",state.user.uid,"items",n.id),{readAt:serverTimestamp()})));
 }
-function listen(user){
+async function listen(user){
+  const current=++listenEpoch;
   state.unsubscribe.forEach(stop=>stop());state.unsubscribe=[];
   state.user=user;state.notifications=[];state.issues=[];state.submissions=[];state.gradingAlerts=[];state.history=user?localHistory():[];
   state.errors.clear();
@@ -155,6 +158,8 @@ function listen(user){
   });
   render();
   if(!user)return;
+  await resolveStaffRole(user);
+  if(current!==listenEpoch||state.user?.uid!==user.uid)return;
   void refreshReleases();
   state.unsubscribe.push(onSnapshot(query(
     collection(db,"notification_history",user.uid,"items"),
@@ -174,7 +179,7 @@ function listen(user){
   state.unsubscribe.push(onSnapshot(
     query(collection(db,"notifications",user.uid,"items"),orderBy("createdAt","desc"),limit(60)),
     snap=>{state.notifications=snap.docs.map(d=>({id:d.id,...d.data()}));success("Notifications")},error("Notifications")));
-  const staff=staffEmails.has((user.email||"").toLowerCase());
+  const staff=!!staffRole(user);
   if(isAdmin() || isTeacher()){
     const request = isAdmin()
       ? query(collection(db,"issues"),orderBy("createdAt","desc"),limit(40))

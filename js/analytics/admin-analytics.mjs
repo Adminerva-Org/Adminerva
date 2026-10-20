@@ -2,10 +2,11 @@
 import {auth, db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection, getDocs, getDoc, doc, query, orderBy, limit, where, setDoc, writeBatch, runTransaction, serverTimestamp, Timestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {staffRole, TEACHER_EMAIL} from "../core/staff-role.mjs?v=2026.10.19.2";
+import {staffRole, TEACHER_EMAIL} from "../core/staff-role.mjs?v=2026.10.20.1";
 import {summarizeActivity} from "./activity-model.mjs?v=2026.10.19.3";
 
 const field = id => document.getElementById(id);
+let teacherEmail=TEACHER_EMAIL;
 let records = [], preferences = [], students = [], selectedSections = [], epoch = 0;
 function textCell(row, value) { const cell = row.insertCell(); cell.textContent = String(value); }
 async function operation(message, work) {
@@ -23,7 +24,7 @@ async function refresh() {
     getDocs(query(collection(db, "issues"), orderBy("createdAt", "desc"), limit(200))),
     getDocs(query(collection(db, "activity_preferences"), limit(500))),
     getDocs(collection(db, "students")),
-    getDoc(doc(db, "analytics_rosters", TEACHER_EMAIL)),
+    getDoc(doc(db, "analytics_rosters", teacherEmail)),
     getDoc(doc(db, "monitoring_control", "runtime")),
     getDoc(doc(db, "monitoring_status", "runtime"))
   ]);
@@ -68,7 +69,7 @@ async function refresh() {
 field("refresh-analytics").addEventListener("click", () => operation("Loading monitoring…", refresh));
 field("save-roster").addEventListener("click", () => operation("Saving teacher assignment…", async () => {
   const sections = [...field("roster-sections").selectedOptions].map(option => option.value);
-  await setDoc(doc(db, "analytics_rosters", TEACHER_EMAIL), {teacherEmail:TEACHER_EMAIL, sections, updatedBy:auth.currentUser.uid, updatedAt:serverTimestamp()});
+  await setDoc(doc(db, "analytics_rosters", teacherEmail), {teacherEmail:teacherEmail, sections, updatedBy:auth.currentUser.uid, updatedAt:serverTimestamp()});
   selectedSections = sections;
   field("admin-analytics-status").textContent = "Assignment saved. Publish a fresh summary to replace the previous teacher snapshot.";
 }));
@@ -77,7 +78,7 @@ field("publish-engagement").addEventListener("click", () => operation("Preparing
   const captured = records.slice(), actor = auth.currentUser, generation = epoch;
   if (!confirm("Replace the teacher's engagement summary from the current sample? Consent and assigned sections will be checked again before saving. This does not change grades or publish to students.")) return;
   await runTransaction(db, async transaction => {
-    const roster = await transaction.get(doc(db, "analytics_rosters", TEACHER_EMAIL));
+    const roster = await transaction.get(doc(db, "analytics_rosters", teacherEmail));
     const sections = roster.data()?.sections || [];
     const ownerUids = [...new Set(captured.map(event => event.ownerUid))];
     const studentIds = [...new Set(captured.map(event => event.studentId).filter(Boolean))];
@@ -88,7 +89,7 @@ field("publish-engagement").addEventListener("click", () => operation("Preparing
     const rows = summarizeActivity(captured.filter(event => allowed.has(event.studentId) && consent.get(event.ownerUid) === event.studentId));
     if (rows.length > 100) throw Error("Narrow the assigned sections before publishing.");
     if (generation !== epoch || auth.currentUser?.uid !== actor.uid) throw Error("Account changed.");
-    transaction.set(doc(db, "analytics_views", TEACHER_EMAIL), {teacherEmail:TEACHER_EMAIL, rows, sections, windowDays:7, eventLimit:500, publishedBy:actor.uid, publishedAt:serverTimestamp()});
+    transaction.set(doc(db, "analytics_views", teacherEmail), {teacherEmail:teacherEmail, rows, sections, windowDays:7, eventLimit:500, publishedBy:actor.uid, publishedAt:serverTimestamp()});
   });
   field("admin-analytics-status").textContent = "Teacher summary refreshed. Only coarse student learning activity is included, never diagnostic trails or bug reports.";
 }));
@@ -123,6 +124,15 @@ onAuthStateChanged(auth, user => {
   epoch++; records = []; preferences = []; students = [];
   field("raw-events").replaceChildren(); field("module-usage").replaceChildren();
   field("operations").hidden = staffRole(user) !== "admin";
-  if (staffRole(user) === "admin") void operation("Loading monitoring…", refresh);
+  if (staffRole(user) === "admin") void operation("Loading monitoring…", async()=>{
+    const accounts=await getDocs(collection(db,"staff_access"));
+    const selector=field("roster-teacher");selector.replaceChildren();
+    const emails=new Set([TEACHER_EMAIL,user.email.toLowerCase(),...accounts.docs.filter(record=>record.data().status==="active").map(record=>record.id)]);
+    for(const email of emails)selector.add(new Option(email,email));
+    selector.value=teacherEmail;
+    await refresh();
+  });
   else field("admin-analytics-status").textContent = "Administrator access requires a verified authorized account. No monitoring records were requested.";
 });
+
+field("roster-teacher").addEventListener("change",()=>{teacherEmail=field("roster-teacher").value;epoch++;void operation("Loading selected instructor assignment…",refresh);});

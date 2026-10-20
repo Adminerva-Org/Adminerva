@@ -1,14 +1,16 @@
+import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
 /** Teacher-only coarse engagement snapshots; administrators select a teacher here, not in operations analytics. */
 import {auth, db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {doc, getDoc, collection, getDocs, onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {staffRole} from "../core/staff-role.mjs?v=2026.10.19.2";
+import {staffRole} from "../core/staff-role.mjs?v=2026.10.20.1";
 
 const selector = document.getElementById("analytics-teacher");
 let epoch = 0;
 let stopView = () => {};
 export async function selectedTeacherSections() {
   const current = epoch, email = selector.value;
+  if (!email || !auth.currentUser) return [];
   const roster = await getDoc(doc(db, "analytics_rosters", email));
   if (current !== epoch) return [];
   return roster.data()?.sections || [];
@@ -42,14 +44,20 @@ selector.addEventListener("change", () => { void renderEngagement(); document.di
 onAuthStateChanged(auth, async user => {
   stopView();
   epoch++; selector.replaceChildren(); document.getElementById("engagement-rows").replaceChildren();
-  const role = staffRole(user);
+  const role = await resolveStaffRole(user);
   selector.disabled = role !== "admin";
+  document.getElementById("instructor-selection")?.toggleAttribute("hidden",role!=="admin");
   if (!role) { document.dispatchEvent(new Event("analytics-teacher-change")); return; }
   try {
     if (role === "admin") {
       const current = epoch, rosters = await getDocs(collection(db, "analytics_rosters"));
       if (current !== epoch) return;
-      for (const roster of rosters.docs) selector.add(new Option(roster.id, roster.id));
+      const emails=new Set([...rosters.docs.map(record=>record.id),"josephsixson@mcstayuman.edu.ph",user.email.toLowerCase()]);
+      const accounts=await getDocs(collection(db,"staff_access"));
+      if(current!==epoch)return;
+      for(const account of accounts.docs)if(account.data().status==="active")emails.add(account.id);
+      const names=new Map(accounts.docs.map(record=>[record.id,record.data().displayName]));
+      for(const email of emails)selector.add(new Option(email===user.email.toLowerCase()?"My teaching sections":names.get(email)||email,email));
     } else selector.add(new Option(user.email.toLowerCase(), user.email.toLowerCase()));
     await renderEngagement();
     document.dispatchEvent(new Event("analytics-teacher-change"));

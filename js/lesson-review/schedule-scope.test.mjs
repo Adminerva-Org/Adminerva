@@ -1,3 +1,4 @@
+import {requireCurrentVersion,scopedStorage,workspacePath} from "./workspace-model.mjs";
 /** Regression coverage: Lesson planning, school schedules, references and document export: schedule scope. */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -65,7 +66,10 @@ test("teacher schedule editor writes only the selected semester document",async(
   const writes=[];
   const context={
     window:{showSubtleLoader(){},hideSubtleLoader(){},addEventListener(){}},
-    localStorage:storage,db:{},
+    localStorage:storage,lessonStorage:scopedStorage(storage,"teacher-fixture"),db:{},
+    workspaceOnReady(){},workspaceUid:()=>"teacher-fixture",requireStaffWorkspace:async()=>"teacher-fixture",assertWorkspaceAccount:uid=>assert.equal(uid,"teacher-fixture"),requireCurrentVersion,serverTimestamp:()=>"synthetic-timestamp",
+    ownedDoc:(_db,kind,id)=>({id,path:workspacePath("teacher-fixture",kind,id).join("/")}),
+    runTransaction:async(_db,work)=>work({get:async()=>({exists:()=>false}),set:(ref,data)=>writes.push({id:ref.id,path:ref.path,data})}),
     document:{
       addEventListener(){},
       getElementById:id=>elements[id]||null,
@@ -85,6 +89,8 @@ test("teacher schedule editor writes only the selected semester document",async(
   await context.window.changeSchedulePeriod();
   assert.equal(await context.window.saveScheduleData(),true);
   assert.equal(writes[0].id,"master_schedule_SY20262027_S2");
+  assert.match(writes[0].path,/staff_workspaces\/teacher-fixture\/schedules\//);
+  assert.equal(writes[0].data.ownerUid,"teacher-fixture");
   assert.match(writes[0].data.raw_text,/Grade 11-A \(Programming\)/);
   elements.scheduleSemester.value="S1";
   await context.window.changeSchedulePeriod();

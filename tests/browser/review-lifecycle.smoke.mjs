@@ -12,6 +12,7 @@ import {initializeApp,deleteApp} from "firebase-admin/app";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore as getAdminFirestore, Timestamp, FieldValue} from "firebase-admin/firestore";
 import monitoringWorker from "../../functions/monitoring-service.js";
+import {personalPlanId} from "../../js/lesson-review/workspace-model.mjs";
 import {doc,setDoc} from "firebase/firestore";
 import {accounts,password,assessment,repository,ownSha,groupSha,homePath,providerDraft,githubFixture} from "./review-fixtures.mjs";
 
@@ -118,7 +119,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
       await context.addInitScript(role=>{
         if(location.protocol!=="http:")return;
         localStorage.setItem("fixture-role",role);
-        localStorage.setItem("Adminerva_Role",role==="teacher"?"teacher":role==="admin"?"superadmin":"student");
+        localStorage.setItem("Adminerva_Role",role.startsWith("teacher")?"teacher":role==="admin"?"superadmin":"student");
         if(role==="teacher")localStorage.setItem("Adminerva_gemini_token","fixture-key-never-valid-in-production");
       },role);
       await context.route("**/*",async route=>{
@@ -141,6 +142,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
           return route.fulfill({json:{candidates:[{content:{parts:[{text:JSON.stringify(providerDraft)}]}}]}});
         }
         if(parsed.hostname==="127.0.0.1"||parsed.hostname==="localhost")return route.continue();
+        if(url==="https://accounts.google.com/gsi/client"||url==="https://cdn.jsdelivr.net/npm/html-docx-js/dist/html-docx.min.js")return route.fulfill({contentType:"text/javascript",body:""});
         blockedRequests.push(parsed.origin);return route.abort("blockedbyclient");
       });
       context.on("page",page=>{
@@ -463,6 +465,67 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await guest.setViewportSize({width:390,height:844});await expect.poll(()=>guest.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await guest.screenshot({path:path.join(output,"public-wiki-mobile.png"),fullPage:true});
     validated("opt-in activity, admin-only trails, audited maintenance, real worker cleanup, live teacher summaries, consent race protection, public wiki, legacy redirects and concurrent loaders");
+    await admin.goto(origin+"/teacher-accounts.html");
+    await expect(admin.locator("#staff-account-controls")).toBeVisible();
+    await admin.locator("#staff-email").fill(accounts.teacher2.email);
+    await admin.locator("#staff-name").fill("Second fixture teacher");
+    await admin.locator("#staff-sections").selectOption(["fixture-11-A"]);
+    await admin.locator("#staff-reason").fill("Authorize the second instructor and assign the fixture teaching section.");
+    await admin.locator('#staff-account-form button[type="submit"]').click();
+    await expect(admin.locator("#staff-account-status")).toContainText("saved with an audit record");
+    assert.equal((await browserRecord(admin,"staff_access/"+accounts.teacher2.email)).data.status,"active");
+    const secondContext=await newIdentity("teacher2"),secondTeacher=await secondContext.newPage(),staleLesson=await secondContext.newPage();
+    const lessonTerm="FIRST SEMESTER/FIRST QUARTER";
+    const lessonId=personalPlanId({grade:"Grade 11",subject:"Fixture subject",term:lessonTerm,week:"Week 1",schoolYear:"2026-2027"});
+    const lessonBase={school_year:"2026-2027",grade_level:"Grade 11",subject_title:"Fixture subject",teacher_name:"Second fixture teacher",academic_term:lessonTerm,course_week:"Week 1",date_range:"Fixture dates",timestamp:new Date().toISOString(),version:1,
+      weekly_overview:{topic:"Personal lesson",content_standard:"Fixture standard",performance_standard:"Fixture performance",materials:"Fixture materials"},
+      sessions:[{session_name:"Session 1",competencies:"Fixture competency",objectives:"Fixture objective",learning_activities:"Fixture activity",evaluation:"Fixture evaluation",remarks:""}]};
+    await environment.withSecurityRulesDisabled(async context=>{
+      await setDoc(doc(context.firestore(),"staff_workspaces",accounts.teacher2.uid,"lesson_plans",lessonId),{...lessonBase,ownerUid:accounts.teacher2.uid});
+      await setDoc(doc(context.firestore(),"staff_workspaces",accounts.admin.uid,"lesson_plans",lessonId),{...lessonBase,ownerUid:accounts.admin.uid,weekly_overview:{...lessonBase.weekly_overview,topic:"Administrator's separate lesson"}});
+    });
+    for(const page of [secondTeacher,staleLesson]){
+      await page.goto(origin+"/lesson-planner.html");
+      await page.evaluate(async record=>{await (await import("/js/core/staff-session.mjs?v=2026.10.20.1")).staffSessionReady;window.loadSpecificPlan(record);},{...lessonBase,id:lessonId,ownerUid:accounts.teacher2.uid});
+    }
+    await secondTeacher.locator('[data-weekly-field="topic"]').fill("Second teacher's reviewed topic");
+    assert.equal(await secondTeacher.evaluate(()=>window.saveLessonPlan()),true);
+    const personalPath="staff_workspaces/"+accounts.teacher2.uid+"/lesson_plans/"+lessonId;
+    assert.equal((await browserRecord(secondTeacher,personalPath)).data.weekly_overview.topic,"Second teacher's reviewed topic");
+    await staleLesson.locator('[data-weekly-field="topic"]').fill("Stale tab must not replace the newer topic");
+    assert.equal(await staleLesson.evaluate(()=>window.saveLessonPlan()),false);
+    assert.equal((await browserRecord(secondTeacher,personalPath)).data.version,2);
+    assert.equal((await browserRecord(admin,"staff_workspaces/"+accounts.admin.uid+"/lesson_plans/"+lessonId)).data.weekly_overview.topic,"Administrator's separate lesson");
+    await secondTeacher.goto(origin+"/teacher-analytics.html");
+    await expect(secondTeacher.locator("#sectionSelect")).toHaveValue("fixture-11-A");
+    await expect(secondTeacher.locator("#instructor-selection")).toBeHidden();
+    await expect(secondTeacher.locator("#academic-status")).not.toContainText("could not load");
+    const login=await teacherContext.newPage();await login.goto(origin+"/login.html");
+    for(const width of [320,360,390,640,768,1024]){
+      await teacher.setViewportSize({width,height:900});
+      const layout=await teacher.evaluate(()=>{
+        const brand=document.querySelector("#adminerva-nav summary"),controls=document.getElementById("av-account-controls");
+        return {width:innerWidth,scrollWidth:document.documentElement.scrollWidth,brandRight:brand?.getBoundingClientRect().right||0,controlsLeft:controls?.getBoundingClientRect().left||0};
+      });
+      assert.ok(layout.scrollWidth<=width,"Navigation must fit width "+width+": "+JSON.stringify(layout));
+      assert.ok(layout.brandRight<=layout.controlsLeft+1,"Brand and account controls must not overlap at "+width);
+      const bell=teacher.locator("#adminerva-notifications button").first();await bell.click();
+      const inbox=teacher.locator("#av-alert-panel");await expect(inbox).toBeVisible();
+      const bounds=await inbox.boundingBox();assert.ok(bounds.x>=0&&bounds.x+bounds.width<=width+1,"Notification inbox must stay inside the viewport");await bell.click();
+      await login.setViewportSize({width,height:900});
+      await expect(login.locator("#adminerva-help a[href='wiki.html#privacy']")).toBeVisible();
+      assert.equal(await login.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+    }
+    await login.setViewportSize({width:390,height:844});
+    await login.screenshot({path:path.join(output,"login-footer-mobile.png"),fullPage:true});
+    await secondTeacher.screenshot({path:path.join(output,"teacher-analytics-personal.png"),fullPage:true});
+    await admin.screenshot({path:path.join(output,"teacher-accounts-admin.png"),fullPage:true});
+    await teacher.setViewportSize({width:390,height:844});await openTeacher();
+    await expect(teacher.locator("#manualReviewModal")).toBeVisible();
+    const saveBounds=await teacher.locator("#manualReviewSave").boundingBox();
+    assert.ok(saveBounds.x>=0&&saveBounds.x+saveBounds.width<=390&&saveBounds.y+saveBounds.height<=844,"Review save actions must remain reachable on mobile");
+    await teacher.screenshot({path:path.join(output,"review-grade-mobile.png"),fullPage:true});
+    validated("audited second teacher admission, isolated same-week lesson saves, stale-tab protection, scoped analytics, responsive navigation and privacy footer");
     assert.deepEqual(blockedRequests,[]);assert.deepEqual(errors,[]);
     await writeFile(path.join(output,"result.json"),JSON.stringify({projectId,backend:"real Auth + Firestore emulators",sdkVersion:"10.13.0",externalServices:"GitHub and Gemini fixtures",milestones,modelRequests,errors,blockedRequests},null,2));
     console.log(JSON.stringify({passed:milestones,artifacts:output}));

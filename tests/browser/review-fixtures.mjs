@@ -8,6 +8,7 @@ export const password="local-emulator-fixture-only";
 export const accounts={
   admin:{uid:"fixture-admin",email:"babaynike2013@gmail.com"},
   teacher:{uid:"fixture-teacher",email:"josephsixson@mcstayuman.edu.ph"},
+  teacher2:{uid:"fixture-teacher-two",email:"second.teacher@example.test"},
   alice:{uid:"fixture-alice",email:"fixture-alice@example.test"},
   bob:{uid:"fixture-bob",email:"fixture-bob@example.test"}
 };

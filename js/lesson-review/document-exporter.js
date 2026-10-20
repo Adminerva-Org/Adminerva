@@ -1,3 +1,4 @@
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.20.1";
 /** School-format lesson document construction and export. */
 import {
   doc,
@@ -42,34 +43,34 @@ window.buildDocumentLayout = async function () {
     return false;
   }
 
-  let headerImgUrl = localStorage.getItem("Adminerva_headerImage") || localStorage.getItem("lessonReview_headerImage") || "";
+  let headerImgUrl = lessonStorage.getItem("Adminerva_headerImage") || lessonStorage.getItem("lessonReview_headerImage") || "";
   let rawSubject =
-    localStorage.getItem("Adminerva_defaultSubject") || localStorage.getItem("lessonReview_defaultSubject") || "SUBJECT";
+    lessonStorage.getItem("Adminerva_defaultSubject") || lessonStorage.getItem("lessonReview_defaultSubject") || "SUBJECT";
   let rawTeacher =
-    localStorage.getItem("Adminerva_defaultTeacher") || localStorage.getItem("lessonReview_defaultTeacher") || "TEACHER";
+    lessonStorage.getItem("Adminerva_defaultTeacher") || lessonStorage.getItem("lessonReview_defaultTeacher") || "TEACHER";
 
-  let s1Name = localStorage.getItem("Adminerva_sig1Name") ||
-    localStorage.getItem("lessonReview_sig1Name") || rawTeacher;
+  let s1Name = lessonStorage.getItem("Adminerva_sig1Name") ||
+    lessonStorage.getItem("lessonReview_sig1Name") || rawTeacher;
   let s1Title =
-    localStorage.getItem("Adminerva_sig1Title") ||
-    localStorage.getItem("lessonReview_sig1Title") || "Subject Teacher";
-  let s2Name = localStorage.getItem("Adminerva_sig2Name") ||
-    localStorage.getItem("lessonReview_sig2Name") || "";
-  let s2Title = localStorage.getItem("Adminerva_sig2Title") ||
-    localStorage.getItem("lessonReview_sig2Title") || "";
-  let s3Name = localStorage.getItem("Adminerva_sig3Name") ||
-    localStorage.getItem("lessonReview_sig3Name") || "";
-  let s3Title = localStorage.getItem("Adminerva_sig3Title") ||
-    localStorage.getItem("lessonReview_sig3Title") || "";
-  let s4Name = localStorage.getItem("Adminerva_sig4Name") ||
-    localStorage.getItem("lessonReview_sig4Name") || "";
-  let s4Title = localStorage.getItem("Adminerva_sig4Title") ||
-    localStorage.getItem("lessonReview_sig4Title") || "";
+    lessonStorage.getItem("Adminerva_sig1Title") ||
+    lessonStorage.getItem("lessonReview_sig1Title") || "Subject Teacher";
+  let s2Name = lessonStorage.getItem("Adminerva_sig2Name") ||
+    lessonStorage.getItem("lessonReview_sig2Name") || "";
+  let s2Title = lessonStorage.getItem("Adminerva_sig2Title") ||
+    lessonStorage.getItem("lessonReview_sig2Title") || "";
+  let s3Name = lessonStorage.getItem("Adminerva_sig3Name") ||
+    lessonStorage.getItem("lessonReview_sig3Name") || "";
+  let s3Title = lessonStorage.getItem("Adminerva_sig3Title") ||
+    lessonStorage.getItem("lessonReview_sig3Title") || "";
+  let s4Name = lessonStorage.getItem("Adminerva_sig4Name") ||
+    lessonStorage.getItem("lessonReview_sig4Name") || "";
+  let s4Title = lessonStorage.getItem("Adminerva_sig4Title") ||
+    lessonStorage.getItem("lessonReview_sig4Title") || "";
 
   if (window.db) {
     try {
       const docSnap = await getDoc(
-        doc(window.db, "global_settings", "lesson_review_config"),
+        ownedDoc(window.db,"preferences","lesson_review_config"),
       );
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -85,17 +86,17 @@ window.buildDocumentLayout = async function () {
         s4Name = data.sig_principal || s4Name;
         s4Title = data.sig_principal_title || s4Title;
 
-        localStorage.setItem("lessonReview_headerImage", headerImgUrl);
-        localStorage.setItem("lessonReview_defaultSubject", rawSubject);
-        localStorage.setItem("lessonReview_defaultTeacher", rawTeacher);
-        localStorage.setItem("lessonReview_sig1Name", s1Name);
-        localStorage.setItem("lessonReview_sig1Title", s1Title);
-        localStorage.setItem("lessonReview_sig2Name", s2Name);
-        localStorage.setItem("lessonReview_sig2Title", s2Title);
-        localStorage.setItem("lessonReview_sig3Name", s3Name);
-        localStorage.setItem("lessonReview_sig3Title", s3Title);
-        localStorage.setItem("lessonReview_sig4Name", s4Name);
-        localStorage.setItem("lessonReview_sig4Title", s4Title);
+        lessonStorage.setItem("lessonReview_headerImage", headerImgUrl);
+        lessonStorage.setItem("lessonReview_defaultSubject", rawSubject);
+        lessonStorage.setItem("lessonReview_defaultTeacher", rawTeacher);
+        lessonStorage.setItem("lessonReview_sig1Name", s1Name);
+        lessonStorage.setItem("lessonReview_sig1Title", s1Title);
+        lessonStorage.setItem("lessonReview_sig2Name", s2Name);
+        lessonStorage.setItem("lessonReview_sig2Title", s2Title);
+        lessonStorage.setItem("lessonReview_sig3Name", s3Name);
+        lessonStorage.setItem("lessonReview_sig3Title", s3Title);
+        lessonStorage.setItem("lessonReview_sig4Name", s4Name);
+        lessonStorage.setItem("lessonReview_sig4Title", s4Title);
       }
     } catch (e) {
       console.warn("Firestore fetch failed, using local defaults.", e);
@@ -349,7 +350,7 @@ async function processAndUploadToDrive(accessToken) {
   let uploadedDocumentId=null;
   const rawGrade = window.currentTargetGrade.replace(/\D/g, "") || "11";
   const rawSubject =
-    localStorage.getItem("lessonReview_defaultSubject") || "Subject";
+    lessonStorage.getItem("lessonReview_defaultSubject") || "Subject";
   const shortSubject = rawSubject
     .split(/\s+/)
     .map((w) => (w.match(/\d+/) ? w : w.substring(0, 4)))

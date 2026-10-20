@@ -1,8 +1,9 @@
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.20.1";
 /** Saved lesson records, version handling and lesson loading. */
 // Import centralized database instead of initializing locally
 import { db } from "../core/firebase-core.js";
-import {legacyPlanId,schoolYearPlanId} from "./lesson-plan-helpers.mjs";
-import {scheduleScope,localScheduleText,normalizeSchoolYear} from "./schedule-scope.mjs";
+import {personalPlanId,requireCurrentVersion} from "./workspace-model.mjs?v=2026.10.20.1";
+import {scheduleScope,localScheduleText,normalizeSchoolYear} from "./schedule-scope.mjs?v=2026.10.20.1";
 import {
   collection,
   getDocs,
@@ -33,23 +34,15 @@ window.fetchScheduleForLesson = async function (schoolYear, academicTerm) {
   const scope = scheduleScope(schoolYear, academicTerm);
   const local = () => localScheduleText(localStorage, schoolYear, academicTerm);
   // A failed cloud save must not silently replace recent edits on this device.
-  if (localStorage.getItem(scope.pendingKey) === "1") return local();
+  if (lessonStorage.getItem(scope.pendingKey) === "1") return local();
   try {
-    const selected = await getDoc(doc(db, "app_config", scope.id));
+    const selected = await getDoc(ownedDoc(db,"schedules",scope.id));
     if (selected.exists()) {
       const text = String(selected.data().raw_text || "");
-      localStorage.setItem(scope.textKey, text);
+      lessonStorage.setItem(scope.textKey, text);
       return text;
     }
-    if (localStorage.getItem(scope.textKey) !== null) return local();
-    if (scope.allowLegacy) {
-      const legacy = await getDoc(doc(db, "app_config", "master_schedule"));
-      if (legacy.exists()) {
-        const text = String(legacy.data().raw_text || "");
-        localStorage.setItem(scope.textKey, text);
-        return text;
-      }
-    }
+    if (lessonStorage.getItem(scope.textKey) !== null) return local();
   } catch (error) {
     console.warn("Could not load semester schedule from cloud; checking device cache:", error);
   }
@@ -61,6 +54,20 @@ window.initFirebase = function () {
     window.loadLibraryFolders();
   }
 };
+workspaceOnReady(async()=>{
+  const legacyId=new URLSearchParams(location.search).get("legacyPlan");
+  if(!legacyId)return;
+  if(!confirm("Open this older shared lesson for inspection? Saving creates your own separate copy; the shared record remains unchanged."))return;
+  try{
+    const uid=await requireStaffWorkspace();
+    const snapshot=await getDoc(doc(db,"lesson_plans",legacyId));
+    assertWorkspaceAccount(uid);
+    if(!snapshot.exists())throw Error("The older lesson no longer exists.");
+    window.loadSpecificPlan({...snapshot.data(),id:snapshot.id});
+    window.loadedPersonalPlan=null;window.legacySourcePlanId=legacyId;
+    alert("Older shared lesson loaded. Ownership is unverified. Inspect it before saving a separate personal copy.");
+  }catch(error){alert("Could not open the legacy lesson: "+error.message);}
+});
 
 window.loadLibraryFolders = async function () {
   const container = document.getElementById("libraryFolderContainer");
@@ -74,7 +81,7 @@ window.loadLibraryFolders = async function () {
     const libraryData = [];
     snap.forEach((d) => libraryData.push({ id: d.id, ...d.data() }));
 
-    localStorage.setItem("Adminerva_library", JSON.stringify(libraryData));
+    lessonStorage.setItem("Adminerva_library", JSON.stringify(libraryData));
 
     container.innerHTML = "";
     if (libraryData.length === 0) {
@@ -128,9 +135,9 @@ window.fetchPreviousPlan = async function (
   const prevWeekStr = `Week ${currentWeekNum - 1}`;
   // New school-year key first, then a compatible legacy key.
   const options={grade,subject,term:academicTerm,week:prevWeekStr,schoolYear};
-  for(const id of [schoolYearPlanId(options),legacyPlanId(options)]){
+  for(const id of [personalPlanId(options)]){
     try{
-      const result=await getDoc(doc(db,"lesson_plans",id));
+      const result=await getDoc(ownedDoc(db,"lesson_plans",id));
       if(result.exists()&&result.data().school_year===schoolYear)return result.data();
     }catch(error){console.warn("Previous lesson lookup failed:",error);}
   }
@@ -138,6 +145,8 @@ window.fetchPreviousPlan = async function (
 };
 
 window.saveLessonPlan = async function () {
+  let ownerUid;
+  try{ownerUid=await requireStaffWorkspace();}catch(error){alert(error.message);return false;}
   if (typeof window.syncOutputToData === "function") {
     window.syncOutputToData();
   }
@@ -158,9 +167,9 @@ window.saveLessonPlan = async function () {
   // A loaded lesson keeps its original identity even if global defaults
   // were changed for a different subject or a new semester.
   const subject = window.currentPlanSubject ||
-    localStorage.getItem("Adminerva_defaultSubject") || "Subject";
+    lessonStorage.getItem("Adminerva_defaultSubject") || "Subject";
   const teacher = window.currentPlanTeacher ||
-    localStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
+    lessonStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
   const grade = window.currentTargetGrade || "Grade";
 
   const academicTerm = document.getElementById("lpAcademicTerm").value;
@@ -170,7 +179,7 @@ window.saveLessonPlan = async function () {
   let schoolYear, safeDocId;
   try {
     schoolYear = normalizeSchoolYear(document.getElementById("lpSchoolYear").value);
-    safeDocId = schoolYearPlanId({
+    safeDocId = personalPlanId({
       grade, subject, term: academicTerm, week: courseWeek, schoolYear
     });
   } catch (error) {
@@ -184,6 +193,8 @@ window.saveLessonPlan = async function () {
 
   try {
     const planData = {
+      ownerUid,
+      ...(window.legacySourcePlanId ? {source_legacy_plan:window.legacySourcePlanId} : {}),
       teacher_name: teacher,
       subject_title: subject,
       school_year: document.getElementById("lpSchoolYear").value,
@@ -203,22 +214,25 @@ window.saveLessonPlan = async function () {
       timestamp: new Date().toISOString(), // This is the key we use to find recent plans
     };
 
-    const currentRef=doc(db,"lesson_plans",safeDocId);
-    const revisionId=Date.now().toString(36)+"_"+Math.random().toString(36).slice(2,10);
-    const historyRef=doc(db,"lesson_plans",safeDocId,"revisions",revisionId);
+    const currentRef=ownedDoc(db,"lesson_plans",safeDocId);
     const action=await runTransaction(db,async tx=>{
       const prior=await tx.get(currentRef);
       const existing=prior.exists()?prior.data():null;
+      assertWorkspaceAccount(ownerUid);
+      const expected=window.loadedPersonalPlan?.id===safeDocId ? window.loadedPersonalPlan.version : 0;
+      const version=requireCurrentVersion(existing,expected);
       if(existing){
         const same=Object.entries(planData).every(([key,value])=>
           key==="timestamp" || JSON.stringify(value)===JSON.stringify(existing[key])
         );
         if(same)return "unchanged";
-        tx.set(historyRef,{...existing,archivedRevisionAt:serverTimestamp()});
+        tx.set(ownedDoc(db,"lesson_plans",safeDocId,"revisions",String(existing.version)),{...existing,archivedRevisionAt:serverTimestamp()});
       }
-      tx.set(currentRef,{...planData,version:existing?Number(existing.version||1)+1:1});
+      tx.set(currentRef,{...planData,version});
+      window.pendingPersonalPlanVersion=version;
       return "saved";
     });
+    if(action==="saved")window.loadedPersonalPlan={id:safeDocId,version:window.pendingPersonalPlanVersion};
     alert(action==="unchanged"?"No changes since the last save.":"Lesson plan saved. The previous version is retained.");
     return true;
   } catch (e) {
@@ -250,7 +264,7 @@ window.openLoadPlanModal = async function () {
   }
 
   try {
-    const querySnapshot = await getDocs(collection(db, "lesson_plans"));
+    const querySnapshot = await getDocs(ownedCollection(db,"lesson_plans"));
     if (querySnapshot.empty) {
       container.innerHTML = `<div class="text-center py-12"><p class="text-gray-500 font-bold">No saved plans found.</p></div>`;
       return;
@@ -471,7 +485,7 @@ window.openLessonHistory=async function(planId){
   const list=modal.querySelector("#lessonHistoryList");
   list.textContent="Loading previous versions…";
   try{
-    const records=await getDocs(query(collection(db,"lesson_plans",planId,"revisions"),
+    const records=await getDocs(query(ownedCollection(db,"lesson_plans",planId,"revisions"),
       orderBy("archivedRevisionAt","desc"),limit(15)));
     list.replaceChildren();
     if(records.empty)list.textContent="No prior versions have been saved for this plan.";
@@ -512,7 +526,7 @@ window.deleteLessonPlan = async function (docId) {
     ).toISOString();
 
     await setDoc(
-      doc(db, "lesson_plans", docId),
+      ownedDoc(db,"lesson_plans", docId),
       {
         is_archived: true,
         archived_at: new Date().toISOString(),
@@ -566,8 +580,8 @@ window.openArchiveManager = async function () {
     const { collection, getDocs } =
       await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
     const [plansSnap, presSnap] = await Promise.all([
-      getDocs(collection(db, "lesson_plans")),
-      getDocs(collection(db, "presentations")),
+      getDocs(ownedCollection(db,"lesson_plans")),
+      getDocs(ownedCollection(db,"presentations")),
     ]);
 
     let archivedItems = [];
@@ -644,7 +658,7 @@ window.restoreDocument = async function (collectionName, docId) {
     const { doc, setDoc } =
       await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
     await setDoc(
-      doc(db, collectionName, docId),
+      ownedDoc(db, collectionName, docId),
       { is_archived: false },
       { merge: true },
     );
@@ -668,7 +682,7 @@ window.hardDeleteDocument = async function (collectionName, docId) {
   try {
     const { doc, deleteDoc } =
       await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
-    await deleteDoc(doc(db, collectionName, docId));
+    await deleteDoc(ownedDoc(db, collectionName, docId));
 
     window.openArchiveManager();
     if (typeof window.openLoadPlanModal === "function")

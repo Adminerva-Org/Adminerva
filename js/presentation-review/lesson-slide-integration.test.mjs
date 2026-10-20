@@ -11,6 +11,9 @@ function fixture(){
   const window={renderSlideBlocks(){},selectSlide(){},sanitizePresentationHtml:value=>String(value||'')};
   const context={window,db:{},document:{addEventListener(){},getElementById:id=>nodes.get(id),createElement:element},URLSearchParams,location:{search:''},confirm:()=>true,alert(){},console:{error(){},warn(){}},lessonStarterDeck,lessonSourceChanged,doc:(_db,...parts)=>({path:parts.join('/')}),getDoc:async()=>({exists:()=>false}),getDocs:async()=>({forEach(){}})};
   const source=readFileSync('js/presentation-review/presentation-firebase.js','utf8').replace(/^import[\s\S]*?from\s+"[^"]+";\s*/gm,'');
+  context.workspaceOnReady=()=>{};
+  context.workspaceUid=()=>"teacher-fixture";
+  context.ownedDoc=(_db,...parts)=>({path:["staff_workspaces","teacher-fixture",...parts].join("/")});
   vm.runInNewContext(source,context);
   return {window,context,nodes};
 }
@@ -28,8 +31,8 @@ test('a late saved-session response cannot replace the newly selected session de
   page.nodes.get('presentationSessionSelect').value='0';const first=page.window.handleSessionSelection();
   page.nodes.get('presentationSessionSelect').value='1';const second=page.window.handleSessionSelection();
   const snapshot=content=>({exists:()=>true,data:()=>({deck:[{content}],source_lesson_version:2})});
-  pending.get('presentations/saved_session1')(snapshot('Second session'));await second;
-  pending.get('presentations/saved_session0')(snapshot('Stale first session'));await first;
+  pending.get('staff_workspaces/teacher-fixture/presentations/saved_session1')(snapshot('Second session'));await second;
+  pending.get('staff_workspaces/teacher-fixture/presentations/saved_session0')(snapshot('Stale first session'));await first;
   assert.equal(page.window.currentPresentationDeck[0].content,'Second session');assert.equal(page.window.selectedSessionIndex,'1');assert.equal(page.window.presentationSourceLessonVersion,2);
 });
 test('a late system-generated deck does not overwrite edits made while waiting',async()=>{

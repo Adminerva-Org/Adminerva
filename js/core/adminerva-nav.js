@@ -41,7 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ? `
       <a href="users.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 transition-all flex items-center gap-2">
           <span class="text-cyan-500">🛡️</span> Admin Hub
-      </a>`
+      </a><a href="teacher-accounts.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:text-cyan-300">Teacher Accounts</a>`
     : "";
 
   const adminLogoBlock = `
@@ -280,7 +280,7 @@ document.addEventListener("DOMContentLoaded", () => {
     <nav aria-label="Adminerva main navigation" class="bg-gray-900/95 backdrop-blur-md text-white shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative z-50 border-b border-cyan-900/50 sticky top-0">
         <div class="max-w-screen-2xl mx-auto">
             <!-- Top Row: Always visible -->
-            <div class="flex justify-between items-center h-16 px-4 sm:px-6 lg:px-8">
+            <div class="av-nav-top flex justify-between items-center min-h-16 px-4 sm:px-6 lg:px-8">
                 ${logoBlock}
                 <div id="av-desktop-nav" class="hidden lg:flex gap-6 text-sm font-bold tracking-wide items-center">${centerLinks}</div>
                 <div id="av-account-controls" class="flex items-center">${rightSide}</div>
@@ -452,7 +452,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const mountPoint = document.createElement("div");
     mountPoint.id = "adminerva-notifications";
     reportButton.parentNode.insertBefore(mountPoint, reportButton);
-    import("./notifications.mjs?v=2026.10.19.1")
+    import("./notifications.mjs?v=2026.10.20.1")
       .then(module => module.mountNotificationCenter())
       .catch(error => console.warn("Notification center unavailable:", error));
   }

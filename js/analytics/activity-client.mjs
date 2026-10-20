@@ -1,3 +1,4 @@
+import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
 /** Opt-in activity client; never records text, URLs, selectors, code, credentials or anonymous visitors. */
 import {auth, db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
@@ -40,7 +41,7 @@ export async function savePreferences(enabled, keepDiagnostics) {
   const user = owner, epoch = generation;
   let studentId = "";
   const email = (user.email || "").toLowerCase();
-  if (!["babaynike2013@gmail.com", "josephsixson@mcstayuman.edu.ph"].includes(email)) {
+  if (!await resolveStaffRole(user)) {
     const matches = await getDocs(query(collection(db, "students"), where("email", "==", email)));
     if (matches.empty) throw Error("A linked student profile is required.");
     studentId = matches.docs[0].id;

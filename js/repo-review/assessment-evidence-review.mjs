@@ -1,3 +1,4 @@
+import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
 /** Instructor checkpoint approval, reopening and contribution verification. */
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
@@ -13,7 +14,6 @@ import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=2026.10.19.4"
 import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=2026.10.19.4";
 
 export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{}}={}){
-const STAFF=new Set(["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"]);
 const ADMIN="babaynike2013@gmail.com";
 const el=id=>root.querySelector("#"+id);
 const state={students:[],assessments:[],evidence:null,student:null,assessment:null,claims:[],loaded:false,busy:false,sequence:0,editing:false,verificationEditing:false};
@@ -447,8 +447,8 @@ return {load:loadEvidence,loadDirectory,hasUnsavedChanges:()=>state.editing,dest
 if(document.getElementById("evidenceWorkspace")){
   document.getElementById("evidenceWorkspace").innerHTML=evidenceReviewMarkup;
   const review=createEvidenceReview();
-  onAuthStateChanged(auth,user=>{
-  if(!user||!user.emailVerified||!["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"].includes(String(user.email||"").toLowerCase())){
+  onAuthStateChanged(auth,async user=>{
+  if(!await resolveStaffRole(user)){
     document.getElementById("evidenceReviewStatus").textContent="Authorized teacher or administrator sign-in required.";return;
   }
   void review.loadDirectory().catch(error=>{document.getElementById("evidenceReviewStatus").textContent="Directory failed: "+error.message;});
