@@ -16,6 +16,9 @@ const guides = {
   settings:["Change only your intended settings", "Check the scope before saving. Permission-dependent controls may be unavailable. Preserve local work before changing accounts.", "getting-started"],
   other:["Need a hand?", "Choose a guide in the public Wiki for this module. If loading fails, preserve your work and report the steps needed to reproduce it.", "getting-started"]
 };
+export function hasActivityPreferences(scripts) {
+  return [...scripts].some(script => /\/(auth-guard\.js|admin-analytics\.mjs|settings-security\.js)(?:[?]|$)/.test(script.src));
+}
 export function mountHelp() {
   if (document.getElementById("adminerva-help")) return;
   const [title, description, anchor] = guides[pageForPath(location.pathname)];
@@ -63,7 +66,7 @@ export function mountHelp() {
     dialog.querySelector("#page-help-title").textContent = title; dialog.querySelector("#page-help-description").textContent = description; dialog.querySelector("#page-help-guide").href = "wiki.html#" + anchor;
   });
   document.getElementById("page-help-open").addEventListener("click", () => { dialog.showModal(); window.adminervaActivity?.record("help-open"); });
-  const privatePage = [...document.scripts].some(script => /\/(auth-guard\.js|admin-analytics\.mjs)(?:[?]|$)/.test(script.src));
+  const privatePage = hasActivityPreferences(document.scripts);
   document.getElementById("help-settings-link").href = document.getElementById("adminerva-nav")?.dataset.module?.startsWith("student") ? "student-settings.html" : "settings.html";
   if (privatePage && window.self === window.top) {
     import("./activity-preferences.mjs?v=2026.10.20.1").then(module => module.mountActivityPreferences()).catch(() => {});
