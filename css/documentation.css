@@ -4,7 +4,7 @@ html{box-sizing:border-box}*,*:before,*:after{box-sizing:inherit}body{margin:0;b
 .av-documentation-nav{display:flex;flex-wrap:wrap;gap:1.25rem;font-size:.9rem;font-weight:650;margin-bottom:1.5rem}
 .av-doc-hero{padding:clamp(1.25rem,4vw,2.5rem);border-radius:1.25rem;background:linear-gradient(125deg,#102c46,#164e63);color:#e2edf6;margin-bottom:1.5rem}
 .av-doc-hero h1{color:white;font-size:clamp(1.8rem,5vw,2.8rem);font-weight:850;line-height:1.2;margin:.5rem 0 1rem}
-.av-doc-hero .av-eyebrow{color:#67e8f9}.av-doc-hero a{color:#a5f3fc;text-decoration:underline}.av-doc-hero p{max-width:80ch}
+.av-doc-hero .av-eyebrow{color:#67e8f9}.av-doc-hero a{color:#a5f3fc;text-decoration:underline}.av-doc-hero p{max-width:80ch;color:#d9e8f5}.av-doc-hero button{color:#d9e8f5}
 .av-doc-filters{display:flex;align-items:end;flex-wrap:wrap;gap:1rem;background:white;padding:1.25rem;border:1px solid #dce4f0;border-radius:1rem;margin-bottom:1rem}
 .av-doc-filters label{display:grid;gap:.4rem;font-weight:650;font-size:.9rem;flex:1;min-width:min(14rem,100%)}
 .av-doc-filters :is(input,select,button){border:1px solid #bfcde0;border-radius:.6rem;padding:.65rem;background:white;min-height:44px;max-width:100%}
