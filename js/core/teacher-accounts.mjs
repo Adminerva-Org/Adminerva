@@ -10,14 +10,15 @@ function status(message){field("staff-account-status").textContent=message;}
 function reset(){selectionEpoch++;field("staff-account-form").reset();field("staff-email").readOnly=false;opened=null;}
 async function refresh(){
   const current=epoch;
-  const [accounts,students,legacy]=await Promise.all([
+  const [accounts,students,legacy,catalog]=await Promise.all([
     getDocs(query(collection(db,"staff_access"),limit(100))),
     getDocs(query(collection(db,"students"),limit(1000))),
     getDocs(query(collection(db,"lesson_plans"),limit(25))),
+    getDocs(query(collection(db,"school_catalog","sections","records"),limit(200))),
   ]);
   if(current!==epoch)return;
   field("staff-directory").replaceChildren();field("staff-sections").replaceChildren();field("legacy-lesson-list").replaceChildren();
-  for(const section of [...new Set(students.docs.map(record=>record.data().section).filter(Boolean))].sort())field("staff-sections").add(new Option(section,section));
+  for(const section of [...new Set([...students.docs.map(record=>record.data().section),...catalog.docs.filter(record=>record.data().status==="active").map(record=>record.data().name)].filter(Boolean))].sort())field("staff-sections").add(new Option(section,section));
   const profiles=accounts.docs.map(record=>record.data());
   if(!profiles.some(profile=>profile.email===TEACHER_EMAIL))profiles.unshift({email:TEACHER_EMAIL,displayName:"Original instructor",status:"active",revision:0});
   for(const profile of profiles){

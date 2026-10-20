@@ -10,7 +10,8 @@ export const accounts={
   teacher:{uid:"fixture-teacher",email:"josephsixson@mcstayuman.edu.ph"},
   teacher2:{uid:"fixture-teacher-two",email:"second.teacher@example.test"},
   alice:{uid:"fixture-alice",email:"fixture-alice@example.test"},
-  bob:{uid:"fixture-bob",email:"fixture-bob@example.test"}
+  bob:{uid:"fixture-bob",email:"fixture-bob@example.test"},
+  pending:{uid:"fixture-pending",email:"fixture-pending@example.test"}
 };
 export const assessment={
   schemaVersion:2,evidenceMode:"commit_selection",checkpointMode:"individual",
@@ -37,6 +38,7 @@ export function githubFixture(url){
   if(route.endsWith("/commits"))return parsed.searchParams.get("sha")===ownSha?[commit(ownSha)]:[commit(groupSha),commit(ownSha)];
   if(route.endsWith("/commits/"+ownSha))return commit(ownSha);
   if(route.endsWith("/commits/"+groupSha))return commit(groupSha);
+  if(route.endsWith("/commits/main"))return commit(groupSha);
   if(route.includes("/git/trees/"))return {truncated:false,tree:Object.keys(contents).map(path=>({type:"blob",path}))};
   if(route.includes("/contents/")){
     const path=decodeURIComponent(route.split("/contents/")[1]);

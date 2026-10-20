@@ -28,7 +28,8 @@ test('public projection excludes private metadata and malformed releases',()=>{
 test('shipped patch manifest contains only curated public fields and system labels',()=>{
   const data=JSON.parse(readFileSync('patch-history.json','utf8'));
   for(const item of data.releases){
-    assert.deepEqual(Object.keys(item).sort(),['version','status','public','releasedAt','title','summary','changes'].sort());
+    assert.deepEqual(Object.keys(item).sort(),['version','status','public','releasedAt','title','summary','changes',...(item.displayVersion?['displayVersion']:[])].sort());
+    if(item.displayVersion)assert.match(item.displayVersion,/^\d+\.\d+\.\d+$/);
     assert.equal(item.public,true);assert.doesNotMatch(JSON.stringify(item),/\bAI\b|@|api[_ -]?key|ruleset|studentId|firebase/i);
     for(const change of item.changes)assert.deepEqual(Object.keys(change).sort(),['area','text','type']);
   }

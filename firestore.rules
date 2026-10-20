@@ -23,7 +23,7 @@ service cloud.firestore {
       return name in ["activity_preferences", "activity_events", "issue_diagnostics", "analytics_rosters", "analytics_views", "monitoring_control", "monitoring_status"];
     }
     function personalCollection(name) {
-      return name in ["staff_access","staff_workspaces","lesson_plans","presentations","app_config","global_settings","teachers","grade_revisions","commit_claim_decisions","commit_claim_conflicts"];
+      return name in ["staff_access","staff_workspaces","lesson_plans","presentations","app_config","global_settings","teachers","grade_revisions","commit_claim_decisions","commit_claim_conflicts","account_requests","school_catalog"];
     }
     match /staff_access/{email} {
       function validStaff() {
@@ -147,6 +147,83 @@ service cloud.firestore {
         !(collection in ["practice_profiles","practice_scores","practice_boards"]);
     }
 
+    match /account_requests/{ownerUid} {
+      function validRequest(data) {
+        return data.keys().hasOnly(["ownerUid","email","displayName","requestedRole","status","revision","createdAt","updatedAt","approvedRole","studentId","reason","decidedBy"]) &&
+          data.ownerUid == ownerUid && data.email is string && data.email.size() <= 254 &&
+          data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 120 &&
+          data.requestedRole in ["guest","student","teacher"] && data.status in ["pending","approved","rejected"] &&
+          data.revision is int && data.createdAt is timestamp && data.updatedAt == request.time;
+      }
+      function decisionMatches(data) {
+        return data.status == "rejected" ? data.approvedRole == null && data.studentId == null :
+          (data.status == "approved" && ((data.approvedRole == "teacher" && data.studentId == null &&
+            getAfter(/databases/$(database)/documents/staff_access/$(data.email)).data.status == "active" &&
+            getAfter(/databases/$(database)/documents/staff_access/$(data.email)).data.role == "teacher") ||
+           (data.approvedRole == "student" && data.studentId is string &&
+            getAfter(/databases/$(database)/documents/students/$(data.studentId)).data.email.lower() == data.email)));
+      }
+      function auditedDecision() {
+        let data = request.resource.data;
+        let audit = getAfter(/databases/$(database)/documents/account_requests/$(ownerUid)/revisions/$(string(data.revision))).data;
+        return data.revision == resource.data.revision + 1 && resource.data.status == "pending" &&
+          data.decidedBy == request.auth.uid && data.reason is string && data.reason.size() >= 12 && data.reason.size() <= 600 &&
+          data.diff(resource.data).affectedKeys().hasOnly(["status","revision","approvedRole","studentId","reason","decidedBy","updatedAt"]) &&
+          audit.before == resource.data && audit.after == data && audit.actorUid == request.auth.uid && audit.createdAt == request.time && decisionMatches(data);
+      }
+      allow get: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if signedIn() && request.auth.token.email_verified == true && request.auth.uid == ownerUid &&
+        validRequest(request.resource.data) && request.resource.data.email == request.auth.token.email.lower() &&
+        request.resource.data.status == "pending" && request.resource.data.revision == 0 && request.resource.data.createdAt == request.time &&
+        request.resource.data.keys().hasOnly(["ownerUid","email","displayName","requestedRole","status","revision","createdAt","updatedAt"]);
+      allow update: if validRequest(request.resource.data) &&
+        ((signedIn() && request.auth.token.email_verified == true && request.auth.uid == ownerUid &&
+          resource.data.status == "pending" && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["displayName","requestedRole","updatedAt"])) ||
+         (isAdmin() && auditedDecision()));
+      allow delete: if false;
+      match /revisions/{revision} {
+        allow read: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
+        allow create: if isAdmin() && request.resource.data.keys().hasOnly(["before","after","actorUid","createdAt"]) &&
+          request.resource.data.actorUid == request.auth.uid && request.resource.data.createdAt == request.time &&
+          request.resource.data.before == get(/databases/$(database)/documents/account_requests/$(ownerUid)).data &&
+          request.resource.data.after == getAfter(/databases/$(database)/documents/account_requests/$(ownerUid)).data &&
+          revision == string(request.resource.data.after.revision) && request.resource.data.after.revision == request.resource.data.before.revision + 1;
+        allow update, delete: if false;
+      }
+    }
+    match /school_catalog/{kind}/records/{recordId} {
+      function validCatalog(data) {
+        return kind in ["sections","subjects","programs"] && data.keys().hasOnly(["name","scheme","type","notes","status","revision","updatedBy","updatedAt","gradeLevel","schoolYear","programId"]) &&
+          data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+          data.scheme in ["legacy-shs","strengthened-shs","school-defined"] && data.type is string && data.type.size() <= 40 &&
+          data.notes is string && data.notes.size() <= 1000 && data.status in ["active","archived"] &&
+          data.get("gradeLevel","") is string && data.get("gradeLevel","").size() <= 30 &&
+          data.get("schoolYear","") is string && data.get("schoolYear","").size() <= 20 &&
+          data.get("programId","") is string && data.get("programId","").size() <= 150 &&
+          data.updatedBy == request.auth.uid && data.updatedAt == request.time && data.revision is int;
+      }
+      function catalogAudit() {
+        let data = request.resource.data;
+        let before = exists(/databases/$(database)/documents/school_catalog/$(kind)/records/$(recordId)) ? resource.data : null;
+        let audit = getAfter(/databases/$(database)/documents/school_catalog/$(kind)/records/$(recordId)/revisions/$(string(data.revision))).data;
+        return data.revision == (before == null ? 1 : before.revision + 1) && audit.before == before && audit.after == data &&
+          audit.actorUid == request.auth.uid && audit.createdAt == request.time;
+      }
+      allow read: if isInstructor();
+      allow create, update: if isAdmin() && validCatalog(request.resource.data) && catalogAudit();
+      allow delete: if false;
+      match /revisions/{revision} {
+        allow read: if isAdmin();
+        allow create: if isAdmin() && request.resource.data.keys().hasOnly(["before","after","actorUid","createdAt"]) &&
+          request.resource.data.actorUid == request.auth.uid && request.resource.data.createdAt == request.time &&
+          request.resource.data.after == getAfter(/databases/$(database)/documents/school_catalog/$(kind)/records/$(recordId)).data &&
+          request.resource.data.before == (exists(/databases/$(database)/documents/school_catalog/$(kind)/records/$(recordId)) ? get(/databases/$(database)/documents/school_catalog/$(kind)/records/$(recordId)).data : null) &&
+          revision == string(request.resource.data.after.revision) &&
+          request.resource.data.after.revision == (request.resource.data.before == null ? 1 : request.resource.data.before.revision + 1);
+        allow update, delete: if false;
+      }
+    }
     // Monitoring is opt-in, append-only, bounded and separate from academic permissions.
     match /activity_preferences/{ownerUid} {
       function validPreference() {

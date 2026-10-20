@@ -58,7 +58,7 @@ test("Docs export uses the owner-supplied web client and only per-file access",(
   assert.equal(harness.requested,1);
   assert.equal(harness.requests.length,0);
   assert.doesNotMatch(source,/396238862950-|https:\/\/www\.googleapis\.com\/auth\/documents/);
-  assert.match(readFileSync("lesson-planner.html","utf8"),/document-exporter\.js\?v=2026\.10\.20\.1/);
+  assert.match(readFileSync("lesson-planner.html","utf8"),/document-exporter\.js\?v=2026\.10\.21\.1-dev\.1/);
 });
 
 test("missing Google library does not start an export",()=>{

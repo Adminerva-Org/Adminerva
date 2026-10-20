@@ -1,4 +1,4 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.20.1";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.21.1-dev.1";
 /** Explicitly requested lesson assistance with source and edit guards. */
 import {validateGeneratedLesson} from "./lesson-plan-helpers.mjs";
 import {buildReferenceContext,REFERENCE_CONTEXT_BUDGET} from "./reference-context.mjs";
@@ -476,6 +476,7 @@ Reference Text (selected excerpts only; the complete source documents remain in 
       "Summary of the Lesson\nClosing Prayer";
     const sessionsArray = planData.sessions || [];
 
+    window.currentLessonSettings=null;
     window.currentPlanSubject = subject;
     window.currentPlanTeacher = lessonStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
     window.currentPlan = sessionsArray.map((session) => {
@@ -515,6 +516,7 @@ Reference Text (selected excerpts only; the complete source documents remain in 
 };
 
 window.generateBlankPlan = function () {
+  window.currentLessonSettings=null;
   window.currentPlanSubject = lessonStorage.getItem("Adminerva_defaultSubject") || "Subject";
   window.currentPlanTeacher = lessonStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
   window.currentTargetGrade =

@@ -141,6 +141,10 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
         if(parsed.hostname==="generativelanguage.googleapis.com"){
           modelRequests++;
           const prompt=route.request().postDataJSON().contents[0].parts[0].text;
+          if(prompt.startsWith("Summarize ONLY")){
+            assert.match(prompt,/Never infer individual roles/);
+            return route.fulfill({json:{candidates:[{content:{parts:[{text:JSON.stringify({concept:"Sampled Android layout prototype.",feedback:"Review layout behavior on a device; source samples do not prove runtime completeness."})}]}}]}});
+          }
           assert.match(prompt,/Do not deduct points from an individual for teammates' missing screens/);
           assert.match(prompt,new RegExp(homePath.replaceAll(".","\\.")));
           assert.ok(!prompt.includes("SELECTED COMMIT: "+groupSha),"Teammate changes must not be attributed to Alice");
@@ -506,7 +510,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await admin.locator("#maintenance-cleanup").uncheck();await admin.locator("#maintenance-summary").uncheck();await admin.locator("#maintenance-reason").fill("Fixture maintenance disabled after verification.");await admin.locator("#save-maintenance").click();await expect(admin.locator("#admin-analytics-status")).toContainText("Maintenance policy saved");
     assert.equal((await maintenance.runScheduled()).state,"disabled");
     const guest=await (await newIdentity("guest")).newPage();const guestRequests=[];guest.on("request",request=>guestRequests.push(request.url()));
-    await guest.goto(origin+"/wiki.html");await expect(guest.locator("h1")).toContainText("Adminerva Wiki");await guest.locator("#page-help-open").click();await expect(guest.locator("#activity-save")).toHaveCount(0);
+    await guest.goto(origin+"/wiki.html");await expect(guest.locator("h1")).toContainText("Find your next step");await guest.locator("#page-help-open").click();await expect(guest.locator("#activity-save")).toHaveCount(0);
     assert.ok(!guestRequests.some(url=>url.includes("firebase")||url.includes("activity_events")),"Guest help must not initialize tracking or Firebase");
     await guest.locator("#page-help-dialog").getByText("Close help",{exact:true}).click();
     await guest.setViewportSize({width:390,height:844});await expect.poll(()=>guest.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -525,6 +529,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     const lessonTerm="FIRST SEMESTER/FIRST QUARTER";
     const lessonId=personalPlanId({grade:"Grade 11",subject:"Fixture subject",term:lessonTerm,week:"Week 1",schoolYear:"2026-2027"});
     const lessonBase={school_year:"2026-2027",grade_level:"Grade 11",subject_title:"Fixture subject",teacher_name:"Second fixture teacher",academic_term:lessonTerm,course_week:"Week 1",date_range:"Fixture dates",timestamp:new Date().toISOString(),version:1,
+      document_settings:{subject_title:"Fixture subject",teacher_name:"Second fixture teacher",sig_grade_coord:"Saved Grade 11 coordinator",sig_grade_coord_title:"Grade 11 Coordinator"},
       weekly_overview:{topic:"Personal lesson",content_standard:"Fixture standard",performance_standard:"Fixture performance",materials:"Fixture materials"},
       sessions:[{session_name:"Session 1",competencies:"Fixture competency",objectives:"Fixture objective",learning_activities:"Fixture activity",evaluation:"Fixture evaluation",remarks:""}]};
     await environment.withSecurityRulesDisabled(async context=>{
@@ -533,12 +538,21 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     });
     for(const page of [secondTeacher,staleLesson]){
       await page.goto(origin+"/lesson-planner.html");
+      await page.waitForFunction(()=>typeof window.openLoadPlanModal==="function");
+      await page.evaluate(()=>window.openLoadPlanModal());
+      await expect(page.locator("#savedPlansListContainer")).not.toContainText("Account changed or not ready");
+      await expect(page.locator("#savedPlansListContainer")).toContainText("Fixture subject");
+      await page.evaluate(()=>window.closeLoadPlanModal());
       await page.evaluate(async record=>{await (await import("/js/core/staff-session.mjs?v=2026.10.20.1")).staffSessionReady;window.loadSpecificPlan(record);},{...lessonBase,id:lessonId,ownerUid:accounts.teacher2.uid});
+      await expect(page.locator("#lpGradeLevel")).toHaveValue("Grade 11");
+      await page.evaluate(()=>window.openMiniSettings());await expect(page.locator("#sigGradeCoord")).toHaveValue("Saved Grade 11 coordinator");
+      await page.evaluate(()=>window.closeMiniSettings());
     }
     await secondTeacher.locator('[data-weekly-field="topic"]').fill("Second teacher's reviewed topic");
     assert.equal(await secondTeacher.evaluate(()=>window.saveLessonPlan()),true);
     const personalPath="staff_workspaces/"+accounts.teacher2.uid+"/lesson_plans/"+lessonId;
     assert.equal((await browserRecord(secondTeacher,personalPath)).data.weekly_overview.topic,"Second teacher's reviewed topic");
+    assert.equal((await browserRecord(secondTeacher,personalPath)).data.document_settings.sig_grade_coord,"Saved Grade 11 coordinator");
     await staleLesson.locator('[data-weekly-field="topic"]').fill("Stale tab must not replace the newer topic");
     assert.equal(await staleLesson.evaluate(()=>window.saveLessonPlan()),false);
     assert.equal((await browserRecord(secondTeacher,personalPath)).data.version,2);
@@ -625,6 +639,42 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await gradebook.locator("#feedbackDrawerClose").click();
     await expect(gradebook.locator("#subtleLoader")).toBeHidden();
     validated("safe mobile feedback drawers, persistent draft counts, audited deliberate batch publication, review exclusions and refresh without automatic replay");
+    const pending=await (await newIdentity("pending")).newPage();
+    await pending.goto(origin+"/guest-home.html");await expect(pending.locator("#guest-content")).toBeVisible();
+    await expect(pending.locator("#guest-status")).toContainText("Pending administrator review");
+    assert.equal((await browserRecord(pending,"account_requests/"+accounts.pending.uid)).data.status,"pending");
+    assert.equal((await browserRecord(pending,"staff_access/"+accounts.pending.email)).exists,false);
+    assert.equal((await browserRecord(pending,"students/alice")).error,"permission-denied");
+    await pending.goto(origin+"/guest-playground.html");await expect(pending.locator("#guest-content")).toBeVisible();
+    await pending.locator("#guest-source").fill("<h1>Local guest draft</h1>");await pending.locator("#guest-save").click();await pending.reload();await expect(pending.locator("#guest-source")).toHaveValue("<h1>Local guest draft</h1>");
+    await pending.locator("#guest-run").click();await expect(pending.frameLocator("#guest-preview").locator("h1")).toHaveText("Local guest draft");
+    await pending.goto(origin+"/guest-practice.html");await expect(pending.locator("#guest-missions section")).toHaveCount(4);
+    assert.equal((await browserRecord(pending,"practice_progress/"+accounts.pending.uid)).error,"permission-denied");
+    await pending.goto(origin+"/guest-home.html");await expect(pending.locator("#guest-request")).toBeVisible();await pending.locator("#guest-role").selectOption("teacher");await pending.locator("#guest-request button").click();await waitRecord(pending,"account_requests/"+accounts.pending.uid,"requestedRole","teacher");
+    await admin.goto(origin+"/users.html");await expect(admin.locator("#admissions")).toBeVisible();await admin.locator("#admission-list button").filter({hasText:accounts.pending.email}).click();
+    await expect(admin.locator("#admission-form")).toBeVisible();await admin.locator("#admission-role").selectOption("teacher");await admin.locator("#admission-reason").fill("School verified this new teacher's sign-in and requested access.");await admin.locator("#admission-form button[value='approved']").click();
+    await waitRecord(pending,"account_requests/"+accounts.pending.uid,"status","approved");await expect(pending.locator("#guest-approved")).toBeVisible();await pending.locator("#guest-approved").click();await expect(pending).toHaveURL(/teacher-home\.html$/);
+    assert.equal((await browserRecord(admin,"account_requests/"+accounts.pending.uid+"/revisions/1")).data.actorUid,accounts.admin.uid);
+    await admin.goto(origin+"/manage-sections.html");await admin.locator("#catalog-name").fill("fixture-12-B");await admin.locator("#catalog-gradeLevel").fill("Grade 12");await admin.locator("#catalog-schoolYear").fill("2026-2027");await admin.locator("#catalog-save").click();await expect(admin.locator("#catalog-status")).toContainText("immutable revision");
+    await admin.goto(origin+"/teacher-accounts.html");await expect(admin.locator("#staff-sections option[value='fixture-12-B']")).toHaveCount(1);
+    await guest.goto(origin+"/wiki.html");await guest.locator("#wikiSearch").fill("checkpoint");await expect(guest.locator("#wikiSearchStatus")).toContainText("matching guides");await guest.locator("#wikiClear").click();
+    await guest.goto(origin+"/patch-notes.html");await expect(guest.locator(".av-version-label").first()).toHaveText("v1.0.0");
+    await guest.screenshot({path:path.join(output,"versioned-patch-notes-mobile.png"),fullPage:true});
+    await admin.goto(origin+"/manage-subjects.html");await admin.screenshot({path:path.join(output,"manage-subjects-admin.png"),fullPage:true});
+    validated("limited local guest tools, private verified requests, audited teacher approval, school catalog integration, public guide search and stable versioned release history");
+    const evidenceBefore=(await browserRecord(teacher,"assessment_evidence/alice_fixture-v2")).data;
+    const overviewPath="repobank/review:fixture-group%2Fandroid";
+    await teacher.goto(origin+"/repobank.html");await expect(teacher.locator("#repobankStatus")).toContainText("linked groups loaded");
+    const group=teacher.locator("#repobankContainer article").first();await group.getByRole("button",{name:"Refresh system overview",exact:true}).click();
+    await expect(group).toContainText("System overview draft");
+    assert.equal((await browserRecord(teacher,overviewPath)).exists,false,"Generating an overview must not save it");
+    await expect(group.locator("textarea").first()).toHaveValue("Sampled Android layout prototype.");
+    await group.getByRole("button",{name:"Save reviewed overview",exact:true}).click();await expect(group).toContainText("Reviewed overview saved");
+    const savedOverview=(await browserRecord(teacher,overviewPath)).data.overview;assert.equal(savedOverview.checkpoint,groupSha);assert.equal(savedOverview.reviewedBy,accounts.teacher.uid);
+    const generated=modelRequests;await group.getByRole("button",{name:"Refresh system overview",exact:true}).click();await expect(group).toContainText("no provider request was sent");assert.equal(modelRequests,generated);
+    assert.equal((await browserRecord(teacher,"assessment_evidence/alice_fixture-v2")).data.revision,evidenceBefore.revision);
+    await teacher.screenshot({path:path.join(output,"repobank-reviewed-overview.png"),fullPage:true});
+    validated("pinned sampled system project overview, explicit save, unchanged-checkpoint token reuse and independent approved individual evidence without grade mutations");
     assert.deepEqual(blockedRequests,[]);assert.deepEqual(errors,[]);
     await writeFile(path.join(output,"result.json"),JSON.stringify({projectId,backend:"real Auth + Firestore emulators",sdkVersion:"10.13.0",externalServices:"GitHub and Gemini fixtures",milestones,modelRequests,errors,blockedRequests},null,2));
     console.log(JSON.stringify({passed:milestones,artifacts:output}));

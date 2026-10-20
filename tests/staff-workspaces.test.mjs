@@ -33,6 +33,16 @@ test("device preferences never read another account or silently adopt shared leg
   assert.equal(second.getItem("Adminerva_defaultTeacher"),null);second.setItem("Adminerva_defaultTeacher","Second teacher");
   assert.equal(first.getItem("Adminerva_defaultTeacher"),"First teacher");second.removeItem("Adminerva_defaultTeacher");assert.equal(first.getItem("Adminerva_defaultTeacher"),"First teacher");
 });
+test("workspace reads wait for restored authentication and bind only a server-authorized identity",async()=>{
+  const user={uid:"restored",emailVerified:true};let restore,called=false;
+  const auth={currentUser:null,authStateReady:()=>new Promise(resolve=>{restore=resolve;})};
+  const context={auth,staffSessionReady:Promise.resolve({user:null,role:null}),resolveStaffRole:async identity=>{called=true;return identity===user?"teacher":null;},
+    onAuthStateChanged(){},workspacePath,scopedStorage,localStorage:{},location:{replace(){}},document:{readyState:"loading",addEventListener(){}},doc:(_database,...parts)=>parts,collection:(_database,...parts)=>parts};
+  const source=readFileSync("js/lesson-review/workspace-session.mjs","utf8").replace(/^import[^;]+;\s*/gm,"").replace(/\bexport\s+/g,"");
+  runInNewContext(source+"\nglobalThis.api={requireStaffWorkspace,workspaceUid};",context);
+  const ready=context.api.requireStaffWorkspace();assert.equal(called,false);auth.currentUser=user;restore();
+  assert.equal(await ready,"restored");assert.equal(context.api.workspaceUid(),"restored");
+});
 test("lesson identifiers preserve subject punctuation and the full academic term",()=>{
   const plan={grade:"11",subject:"A-B",term:"FIRST SEMESTER FIRST QUARTER",week:"Week 1",schoolYear:"2026-2027"};
   assert.notEqual(personalPlanId(plan),personalPlanId({...plan,subject:"AB"}));assert.notEqual(personalPlanId(plan),personalPlanId({...plan,term:"SECOND SEMESTER FIRST QUARTER"}));

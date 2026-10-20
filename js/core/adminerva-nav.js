@@ -41,7 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ? `
       <a href="users.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 transition-all flex items-center gap-2">
           <span class="text-cyan-500">🛡️</span> Admin Hub
-      </a><a href="teacher-accounts.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:text-cyan-300">Teacher Accounts</a>`
+      </a><a href="teacher-accounts.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:text-cyan-300">Manage Teachers</a>`
     : "";
 
   const adminLogoBlock = `
@@ -319,6 +319,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (groupModules.includes(activeModule)) {
     const staffGroups = [
       { name: "Grading", items: [
+        ...(isSuperAdmin ? [["dashboard", "Class analytics", "teacher-analytics.html"]] : []),
         ["gradebook", "Gradebook", "gradebook.html"],
         ["repofetch", "Review & Grade", "repofetch.html"],
         ["studio", "Assessment Studio", "assessment-studio.html"],
@@ -342,7 +343,11 @@ document.addEventListener("DOMContentLoaded", () => {
       ] },
       { name: "Manage", items: [
         ["issues", "Reports", "issues.html"],
-        ...(isSuperAdmin ? [["directory", "User Directory", "users.html"]] : []),
+        ...(isSuperAdmin ? [
+          ["directory", "User Directory", "users.html"],["teachers", "Manage Teachers", "teacher-accounts.html"],
+          ["sections", "Manage Sections", "manage-sections.html"],["programs", "Tracks & Pathways", "manage-programs.html"],
+          ["subjects", "Manage Subjects", "manage-subjects.html"]
+        ] : []),
         ["settings", "Settings", "settings.html"]
       ] }
     ];
@@ -356,7 +361,7 @@ document.addEventListener("DOMContentLoaded", () => {
       staffGroups.splice(0, staffGroups.length, ...staffGroups.filter(group =>
         group.name === "Grading" || group.name === "Repositories" || group.name === "Evidence tools"));
     }
-    const analytics = ["dashboard", "Analytics", "teacher-analytics.html"];
+    const analytics = isSuperAdmin ? ["analytics", "Administration analytics", "admin-analytics.html"] : ["dashboard", "Teacher analytics", "teacher-analytics.html"];
     const activeGroup = group => group.items.some(item => item[0] === activePage);
     const makeLink = (item, mobile) => {
       const a = document.createElement("a");
@@ -454,7 +459,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const mountPoint = document.createElement("div");
     mountPoint.id = "adminerva-notifications";
     reportButton.parentNode.insertBefore(mountPoint, reportButton);
-    import("./notifications.mjs?v=2026.10.20.1")
+    import("./notifications.mjs?v=2026.10.21.1-dev.1")
       .then(module => module.mountNotificationCenter())
       .catch(error => console.warn("Notification center unavailable:", error));
   }

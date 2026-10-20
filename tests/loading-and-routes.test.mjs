@@ -33,6 +33,11 @@ test("renamed routes retain bounded same-site redirects including query and frag
 test("all root application pages mount help and public routes load no authentication guard", () => {
   const aliases = new Set(["reporeviewDashboard.html","temp-grading.html","temp-activity-grader.html"]);
   for (const file of readdirSync(".").filter(file=>file.endsWith(".html")&&!aliases.has(file))) {
+    if(file.startsWith("guest-")){
+      const content=readFileSync(file,"utf8");
+      assert.match(content,/href="wiki\.html/);assert.doesNotMatch(content,/adminerva-loader\.js|activity-client|notifications\.mjs/);
+      continue;
+    }
     assert.ok(readFileSync(file,"utf8").includes("adminerva-loader.js"),file+" needs the shared help/loader entry");
   }
   for (const file of ["wiki.html","patch-notes.html","index.html"]) assert.ok(!readFileSync(file,"utf8").includes("auth-guard.js"));

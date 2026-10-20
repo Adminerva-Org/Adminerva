@@ -2,6 +2,7 @@
   "releases": [
     {
       "version": "2026.10.20.1",
+      "displayVersion": "1.0.0",
       "status": "published",
       "public": true,
       "releasedAt": "2026-10-20",

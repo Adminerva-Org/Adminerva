@@ -273,7 +273,12 @@ body { min-width: 0; }
 .av-analytics-hero { padding: clamp(1.25rem,3vw,2rem); border: 1px solid var(--av-border); border-radius: 1.2rem; background: linear-gradient(120deg,#fff,#eef6ff); box-shadow: var(--av-shadow); }
 .av-analytics-hero > p { max-width: 80ch; line-height: 1.6; }
 #instructor-selection { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
-#instructor-selection[hidden] { display: none; }
+#instructor-selection[hidden], #admissions[hidden], #admission-form[hidden] { display: none; }
+.av-btn { border: 1px solid #b9cadc; border-radius: .6rem; padding: .65rem 1rem; min-height: 44px; background: #eef5fb; color: #153d59; font-weight: 700; cursor: pointer; }
+.av-btn:hover { background: #dcecf6; }
+.av-btn:disabled { opacity: .5; cursor: default; }
+#admission-form label { display: grid; gap: .4rem; font-weight: 650; }
+#admission-form :is(input,select,textarea) { padding: .7rem; border: 1px solid #bfccdd; border-radius: .6rem; width: 100%; max-width: 100%; font-weight: 400; }
 #analytics-teacher { max-width: 100%; min-height: 44px; min-width: min(20rem,100%); background: white; padding: .65rem; border: 1px solid var(--av-border-strong); border-radius: .6rem; }
 .av-primary-button { padding: .65rem 1rem; border-radius: .65rem; background: var(--av-primary); color: white; font-weight: 700; }
 .av-learning-details { background: white; border: 1px solid var(--av-border); padding: 1rem; border-radius: .85rem; }

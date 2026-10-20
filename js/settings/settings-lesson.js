@@ -1,4 +1,4 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "../lesson-review/workspace-session.mjs?v=2026.10.20.1";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "../lesson-review/workspace-session.mjs?v=2026.10.21.1-dev.1";
 /** Scoped product configuration and staff preferences: settings lesson. */
 import {
   doc,
@@ -137,6 +137,13 @@ window.loadLessonReviewSettings = async function () {
       "",
   };
 
+  if(window.currentLessonSettings)Object.assign(data,window.currentLessonSettings);
+  let scope=document.getElementById("lesson-settings-scope");
+  if(!scope&&document.getElementById("setTeacherName")){
+    scope=document.createElement("p");scope.id="lesson-settings-scope";scope.className="text-sm text-blue-700 my-3";
+    document.getElementById("setTeacherName").closest("div")?.before(scope);
+  }
+  if(scope)scope.textContent=window.currentLessonSettings?"Editing this lesson's document settings only. Save the lesson afterward. Account defaults and header format stay unchanged.":"Editing account-wide planning defaults.";
   safeSet("setTeacherName", data.teacher_name);
   safeSet("setSubjectTitle", data.subject_title);
   safeSet("setPrelimActivities", data.default_prelim);
@@ -233,6 +240,14 @@ window.saveLessonReviewSettings = async function () {
     updated_at: new Date().toISOString(),
   };
 
+  if(window.currentLessonSettings){
+    const {header_image_base64,updated_at,...settings}=settingsData;
+    window.currentLessonSettings=settings;
+    window.currentPlanSubject=settings.subject_title;window.currentPlanTeacher=settings.teacher_name;
+    window.hideLoader?.();
+    alert("Document settings applied to this lesson only. Save the lesson to retain them. Account defaults and document format are unchanged.");
+    return;
+  }
   lessonStorage.setItem("Adminerva_defaultTeacher", settingsData.teacher_name);
   lessonStorage.setItem("Adminerva_teacherName", settingsData.teacher_name);
   lessonStorage.setItem("Adminerva_defaultSubject", settingsData.subject_title);

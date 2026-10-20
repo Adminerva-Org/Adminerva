@@ -26,6 +26,7 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
 
+  if(!user.emailVerified||!user.email){await signOut(auth);window.location.href="login.html?error=verified-email-required";return;}
   const userEmail = user.email.toLowerCase();
   let access;
   try {access=await resolveAccountAccess(user);}
@@ -36,8 +37,7 @@ onAuthStateChanged(auth, async (user) => {
   if (!admittedRole) {
     try {
       if (access.needsTeacherApproval || !access.students.length) {
-        await signOut(auth);
-        window.location.href = access.needsTeacherApproval ? "login.html?error=teacher-approval-required" : "login.html?error=unauthorized";
+        window.location.href = "guest-home.html";
         return; // Halt execution
       }
     } catch (error) {
@@ -68,7 +68,7 @@ onAuthStateChanged(auth, async (user) => {
     localStorage.removeItem("Adminerva_Mock_Role");
     activeRole = "student";
   }
-  if (/\/(teacher-accounts|admin-analytics|admin-hub)\.html$/.test(currentPath) && admittedRole !== "admin") { window.location.href="teacher-home.html"; return; }
+  if (/\/(teacher-accounts|admin-analytics|admin-hub|users|manage-sections|manage-programs|manage-subjects)\.html$/.test(currentPath) && admittedRole !== "admin") { window.location.href=actualRole==="student"?"student-home.html":"teacher-home.html"; return; }
   const isIssuesPage = currentPath.includes("issues.html");
 
   // 4. Strict Routing Enforcement

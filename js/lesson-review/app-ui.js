@@ -1,4 +1,5 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.20.1";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.21.1-dev.1";
+import {savedLessonSettings} from "./lesson-settings.mjs?v=2026.10.21.1-dev.1";
 /** Lesson-planner interface events and workflow coordination. */
 // ==========================================
 // 1. GLOBAL STATE MANAGER
@@ -331,14 +332,15 @@ window.closeLoadPlanModal = function () {
 };
 
 window.loadSpecificPlan = function (planData) {
-  window.loadedPersonalPlan=planData.ownerUid===workspaceUid() ? {id:planData.id,version:Number(planData.version||1)} : null;
-  window.legacySourcePlanId=planData.source_legacy_plan||null;
   // Older records may predate the weekly overview. Do not lose the open draft
   // or crash the editor when a saved record has missing session data.
   if (!planData || !Array.isArray(planData.sessions) || !planData.sessions.length) {
     alert("This saved record has no editable lesson sessions.");
     return;
   }
+  window.loadedPersonalPlan=planData.ownerUid===workspaceUid() ? {id:planData.id,version:Number(planData.version||1)} : null;
+  window.legacySourcePlanId=planData.source_legacy_plan||null;
+  window.currentLessonSettings=savedLessonSettings(planData);
   window.currentWeeklyOverview =
     planData.weekly_overview && typeof planData.weekly_overview === "object"
       ? planData.weekly_overview
@@ -405,7 +407,7 @@ window.loadSpecificPlan = function (planData) {
   window.renderOverview();
   window.renderOutput();
   window.closeLoadPlanModal();
-  alert("✅ Lesson plan loaded successfully!");
+  alert(planData.document_settings?"Lesson loaded with saved document settings. Account defaults are unchanged.":"Lesson loaded. This older plan has no saved coordinator settings; review signatories before exporting.");
 };
 
 window.generateRollingWeekDropdown = function () {

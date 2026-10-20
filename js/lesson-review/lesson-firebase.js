@@ -1,4 +1,5 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.20.1";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.21.1-dev.1";
+import {captureLessonSettings} from "./lesson-settings.mjs?v=2026.10.21.1-dev.1";
 /** Saved lesson records, version handling and lesson loading. */
 // Import centralized database instead of initializing locally
 import { db } from "../core/firebase-core.js";
@@ -202,6 +203,7 @@ window.saveLessonPlan = async function () {
       course_week: courseWeek,
       date_range: dateRange,
       grade_level: grade,
+      document_settings:captureLessonSettings(lessonStorage,{...window.currentLessonSettings,subject_title:subject,teacher_name:teacher}),
       custom_instructions: document
         .getElementById("lpCustomInstructions")
         .value.trim(),
@@ -232,7 +234,10 @@ window.saveLessonPlan = async function () {
       window.pendingPersonalPlanVersion=version;
       return "saved";
     });
-    if(action==="saved")window.loadedPersonalPlan={id:safeDocId,version:window.pendingPersonalPlanVersion};
+    if(action==="saved"){
+      window.loadedPersonalPlan={id:safeDocId,version:window.pendingPersonalPlanVersion};
+      window.currentLessonSettings=planData.document_settings;
+    }
     alert(action==="unchanged"?"No changes since the last save.":"Lesson plan saved. The previous version is retained.");
     return true;
   } catch (e) {
@@ -264,7 +269,9 @@ window.openLoadPlanModal = async function () {
   }
 
   try {
+    const ownerUid=await requireStaffWorkspace();
     const querySnapshot = await getDocs(ownedCollection(db,"lesson_plans"));
+    assertWorkspaceAccount(ownerUid);
     if (querySnapshot.empty) {
       container.innerHTML = `<div class="text-center py-12"><p class="text-gray-500 font-bold">No saved plans found.</p></div>`;
       return;
