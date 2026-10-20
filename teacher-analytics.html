@@ -16,16 +16,19 @@
   <body class="bg-slate-50 font-sans min-h-screen flex flex-col">
     <!-- Navigation -->
     <div id="adminerva-nav" data-module="repo" data-page="dashboard"></div>
-    <section class="av-analytics-intro space-y-3" aria-labelledby="engagement-heading">
+    <section class="av-analytics-intro av-analytics-hero space-y-3" aria-labelledby="engagement-heading">
+      <p class="av-eyebrow">Learning & class progress</p>
       <h1 id="engagement-heading" class="text-2xl font-bold">Teacher Analytics</h1>
       <div id="instructor-selection" hidden><label for="analytics-teacher" class="font-bold">Instructor</label>
       <select id="analytics-teacher" disabled class="border rounded p-2"></select><a href="teacher-accounts.html" class="underline" data-admin-only>Manage assignments</a></div>
-      <p>Administrators select an instructor here. Teachers stay in their own learning view. System bugs and diagnostic trails belong to Administration Analytics.</p>
-      <h2 class="text-xl font-bold">Optional learning activity</h2>
+      <p>Follow published results for your assigned sections. Optional activity is separate from grades; bugs and diagnostic trails stay in Administration Analytics.</p>
+      <button type="button" id="analytics-refresh" class="av-primary-button">Refresh analytics</button>
+      <details id="learning-activity" class="av-learning-details"><summary class="font-bold cursor-pointer">Optional learning activity</summary>
       <p class="av-muted">Optional activity is an incomplete sample; missing consent or activity does not establish poor engagement.</p>
       <p id="engagement-status" role="status">Checking learning-activity access…</p>
       <div class="overflow-x-auto"><div class="av-table-scroll"><table class="w-full text-left"><thead><tr><th>Student record</th><th>Visits</th><th>Active days</th><th>Active time</th><th>Modules</th></tr></thead><tbody id="engagement-rows"></tbody></table></div></div>
-      <p id="academic-status" role="status">Waiting for instructor assignment…</p>
+      </details>
+      <p id="academic-status" role="status" class="av-status-card">Waiting for instructor assignment…</p>
     </section>
 
     <div
@@ -141,9 +144,10 @@
               ↻ Refresh
             </button>
           </div>
-          <div class="flex-1 relative min-h-[250px]">
+          <div class="av-velocity-plot relative h-[230px]">
             <canvas id="velocityChart"></canvas>
           </div>
+          <p id="velocity-status" role="status" class="text-sm text-slate-600 mt-3">Select a section to load repository history. Counts are not evidence of individual effort.</p>
         </div>
 
         <!-- Mastery Tiers -->
@@ -155,7 +159,7 @@
           >
             Mastery Distribution
           </h3>
-          <div id="tierList" class="flex flex-col gap-4 flex-1 justify-center">
+          <div id="tierList" class="flex flex-col gap-4">
             <div class="text-center text-xs text-slate-400 italic">
               Select a section to load data.
             </div>

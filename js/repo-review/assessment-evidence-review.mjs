@@ -12,6 +12,7 @@ import {changeEvidence} from "./services/evidence-transaction.mjs?v=2026.10.19.4
 import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=2026.10.20.1";
 
 import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=2026.10.20.1";
+import {searchStudents} from "./services/student-search.mjs?v=2026.10.20.1";
 
 export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{}}={}){
 const ADMIN="babaynike2013@gmail.com";
@@ -76,16 +77,25 @@ async function loadDirectory(){
     getDocs(collection(db,"students")),getDocs(collection(db,"assessments"))]);
   state.students=students.docs.map(d=>({id:d.id,...d.data()}));
   state.assessments=assessments.docs.map(d=>({id:d.id,...d.data()})).filter(a=>a.schemaVersion===2);
-  const select=el("evidenceStudent");select.replaceChildren();option(select,"","Select student");
-  for(const student of state.students.sort((a,b)=>(a.name||"").localeCompare(b.name||"")))
-    option(select,student.id,(student.name||student.id)+" · "+(student.section||""));
+  const select=el("evidenceStudent");
+  const sections=el("evidenceSection");
+  if(sections){sections.replaceChildren();option(sections,"","All sections");for(const section of [...new Set(state.students.map(student=>student.section).filter(Boolean))].sort())option(sections,section,section);}
+  renderStudentSearch();
   const ass=el("evidenceAssessment");ass.replaceChildren();option(ass,"","Select V2 assessment");
   for(const item of state.assessments)option(ass,item.id,item.title||item.id);
   const url=new URLSearchParams(location.search);
-  if(state.students.some(s=>s.id===url.get("student")))select.value=url.get("student");
+  if(state.students.some(s=>s.id===url.get("student")))renderStudentSearch(url.get("student"));
   if(state.assessments.some(a=>a.id===url.get("assessment")))ass.value=url.get("assessment");
   if(select.value&&ass.value)await loadEvidence();
   else status("Select a student and V2 assessment.");
+}
+function renderStudentSearch(selected=el("evidenceStudent")?.value||""){
+  const select=el("evidenceStudent");if(!select)return;
+  const result=searchStudents(state.students,{section:el("evidenceSection")?.value,text:el("evidenceStudentSearch")?.value,selected});
+  select.replaceChildren();option(select,"","Select student");
+  for(const student of result.rows)option(select,student.id,(student.name||student.id)+" · "+(student.section||"No section"));
+  select.value=selected;
+  if(el("evidenceSearchStatus"))el("evidenceSearchStatus").textContent=result.total+" matching students. "+(result.truncated?"Showing the first 40; choose a section or refine your search. ":"")+ (selected?"Current selection is retained until you choose another student. Evidence only changes when you load it.":"");
 }
 async function loadEvidence(initialRecord){
   const sequence=++state.sequence;
@@ -450,11 +460,13 @@ el("evidenceReload").addEventListener("click",()=>{
   if(state.editing&&!confirm("Reload evidence and discard unsaved verification notes? Grade fields are kept separately."))return;
   stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);stopEvidence=null;void loadEvidence();
 });
-root.addEventListener("input",()=>{state.editing=true;});
+root.addEventListener("input",event=>{if(event.target.closest?.("#evidenceDetails,#evidenceDiscovery"))state.editing=true;});
 el("evidenceFindCommits").addEventListener("click",()=>{void findHistoricalCommits();});
 el("evidenceFindOlder")?.addEventListener("click",()=>{void loadOlderHistorical();});
 el("evidenceSaveDiscovery").addEventListener("click",()=>{void saveDiscovery();});
-el("evidenceLoad")?.addEventListener("click",()=>{void loadEvidence();});
+el("evidenceStudentSearch")?.addEventListener("input",()=>renderStudentSearch());
+el("evidenceSection")?.addEventListener("change",()=>renderStudentSearch());
+el("evidenceLoad")?.addEventListener("click",()=>{if(state.editing&&!confirm("Discard unsaved review text and load the selected evidence?"))return;void loadEvidence();});
 el("evidenceApprove").addEventListener("click",()=>{void approve();});
 el("evidenceReopen").addEventListener("click",()=>{void reopen();});
 

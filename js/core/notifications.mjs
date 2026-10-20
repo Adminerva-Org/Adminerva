@@ -215,6 +215,7 @@ export function mountNotificationCenter(){
   badge.id="av-alert-count";button.append(badge);root.append(button);
   const panel=make("section","hidden fixed right-2 sm:absolute sm:right-0 top-16 sm:top-12 w-[calc(100vw-16px)] sm:w-[390px] max-w-[95vw] rounded-xl bg-white border border-slate-200 shadow-2xl z-[130] overflow-hidden");
   panel.id="av-alert-panel";panel.setAttribute("aria-label","Notification center");
+  button.setAttribute("aria-controls",panel.id);
   const header=make("div","flex justify-between gap-2 items-center px-4 py-3 border-b");
   header.append(make("h2","font-bold text-base text-slate-900","Notifications"));
   const all=make("button","text-xs text-blue-700 font-bold underline","Mark all read");
@@ -248,12 +249,13 @@ export function mountNotificationCenter(){
   panel.append(prefs);
   const list=make("div","overflow-y-auto overscroll-contain max-h-[min(48dvh,335px)]");
   list.id="av-alert-list";list.setAttribute("aria-live","polite");panel.append(list);root.append(panel);
-  button.addEventListener("click",()=>{state.open=!state.open;panel.classList.toggle("hidden",!state.open);
+  document.addEventListener("adminerva-menu-open",event=>{if(event.detail!==panel.id){state.open=false;panel.classList.add("hidden");button.setAttribute("aria-expanded","false");}});
+  button.addEventListener("click",()=>{const opening=!state.open;document.dispatchEvent(new CustomEvent("adminerva-menu-open",{detail:panel.id}));state.open=opening;panel.classList.toggle("hidden",!state.open);
     button.setAttribute("aria-expanded",String(state.open))});
   document.addEventListener("click",e=>{if(state.open&&!root.contains(e.target)){
     state.open=false;panel.classList.add("hidden");button.setAttribute("aria-expanded","false")}});
   document.addEventListener("keydown",e=>{if(e.key==="Escape"&&state.open){
-    state.open=false;panel.classList.add("hidden");button.focus()}});
+    state.open=false;panel.classList.add("hidden");button.setAttribute("aria-expanded","false");button.focus()}});
   onAuthStateChanged(auth,listen);
   setInterval(()=>{void refreshReleases();},5*60*1000);
   document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")void refreshReleases();});

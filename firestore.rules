@@ -149,13 +149,17 @@ service cloud.firestore {
 
     // Monitoring is opt-in, append-only, bounded and separate from academic permissions.
     match /activity_preferences/{ownerUid} {
+      function validPreference() {
+        return request.resource.data.keys().hasOnly(["ownerUid", "studentId", "enabled", "promptDismissed", "updatedAt"]) &&
+          request.resource.data.ownerUid == ownerUid && request.resource.data.enabled is bool &&
+          request.resource.data.get("promptDismissed", false) is bool &&
+          request.resource.data.updatedAt == request.time && request.resource.data.studentId is string &&
+          ((isInstructor() && request.resource.data.studentId == "") || ownsStudentProfile(request.resource.data.studentId));
+      }
       allow get: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
       allow list: if isAdmin();
       allow create, update: if signedIn() && request.auth.token.email_verified == true &&
-        request.auth.uid == ownerUid && request.resource.data.keys().hasOnly(["ownerUid", "studentId", "enabled", "updatedAt"]) &&
-        request.resource.data.ownerUid == ownerUid && request.resource.data.enabled is bool &&
-        request.resource.data.updatedAt == request.time && request.resource.data.studentId is string &&
-        ((isInstructor() && request.resource.data.studentId == "") || ownsStudentProfile(request.resource.data.studentId));
+        request.auth.uid == ownerUid && validPreference();
       allow delete: if isAdmin();
     }
     match /activity_events/{eventId} {

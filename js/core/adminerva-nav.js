@@ -447,7 +447,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // A single responsive inbox for bug reports, grading alerts and submissions.
   const reportButton = navContainer.querySelector('button[title="Report Issue"]');
-  if(reportButton){const notes=document.createElement("a");notes.href="patch-notes.html";notes.textContent="What's new";notes.className="hidden sm:inline-block text-xs font-bold text-cyan-300 px-2";reportButton.parentNode.insertBefore(notes,reportButton);}
+  if(reportButton) import("./information-menu.mjs?v=2026.10.20.1")
+    .then(module => module.mountInformationMenu(reportButton, navContainer))
+    .catch(() => { reportButton.title = "Report Issue"; });
   if (reportButton && !document.getElementById("adminerva-notifications")) {
     const mountPoint = document.createElement("div");
     mountPoint.id = "adminerva-notifications";

@@ -2,11 +2,11 @@
   "releases": [
     {
       "version": "2026.10.20.1",
-      "status": "draft",
+      "status": "published",
       "public": true,
       "releasedAt": "2026-10-20",
-      "title": "Personal teaching workspaces and clearer mobile review",
-      "summary": "Separate teaching files by account, manage teacher access and use clearer analytics, navigation and Help links.",
+      "title": "Personal teaching workspaces, clearer review and simpler navigation",
+      "summary": "Separate teaching files by account, use a clearer review workspace, search student evidence and manage optional activity preferences from Account Settings.",
       "changes": [
         {"type":"Fixed","area":"Teaching files","text":"Lessons, timetables, slides and planning defaults stay separate for each signed-in teacher. A newer save from another tab is not silently replaced. Older shared records remain preserved for administrator review."},
         {"type":"New","area":"Teacher Accounts","text":"Administrators can authorize verified teacher emails, assign analytics sections and disable access without deleting saved teaching files. This does not send invitation emails or create passwords."},
@@ -14,7 +14,11 @@
         {"type":"Fixed","area":"Mobile navigation and Help","text":"The brand and account controls adjust on smaller screens, notifications stay inside the viewport, and a consistent footer links tutorials, the Wiki, public updates and privacy."},
         {"type":"Revised","area":"Review & Grade","text":"Review steps stay easy to reach while scrolling, and save and publication actions wrap on small screens. Saving privately and publishing remain separate teacher decisions."},
         {"type":"Fixed","area":"Adminerva Auto-Checker","text":"Temporary evaluation outages and incomplete responses keep teacher edits intact, explain retry timing and offer manual grading. Account and source limitations still require instructor verification."},
-        {"type":"Updated","area":"Gradebook","text":"Compact score previews open detailed feedback without crowding tables. Publication shows the number of reviewed drafts, checks each saved record again and reports interrupted work without automatically resuming."}
+        {"type":"Updated","area":"Gradebook","text":"Compact score previews open detailed feedback without crowding tables. Publication shows the number of reviewed drafts, checks each saved record again and reports interrupted work without automatically resuming."},
+        {"type":"Fixed","area":"Slide Editor","text":"Navigation and notifications stay above the slide toolbar. Opening a different menu closes the previous panel, and Escape returns to the menu button."},
+        {"type":"New","area":"Student evidence search","text":"Filter students by section and search names or GitHub usernames. Current selections stay visible while searching; loading another review remains a deliberate action."},
+        {"type":"Updated","area":"Help and preferences","text":"The question-mark menu brings together public updates, reporting, support and the Wiki. Optional activity choices appear on home visits, with an account-based reminder opt-out and controls in student and staff Account Settings. Hiding the reminder never enables sharing."},
+        {"type":"Fixed","area":"Analytics availability","text":"Clearer learning and operations views distinguish missing data from zero results, offer refresh controls and keep class results separate from unavailable activity sources. Repository history is labeled as a limited sample, not proof of individual contribution."}
       ]
     },
     {

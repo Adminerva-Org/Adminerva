@@ -17,9 +17,9 @@ async function operation(message, work) {
   try { await work(); } catch { if (current === epoch) field("admin-analytics-status").textContent = "Monitoring unavailable. Matching permissions and a connection are required; no academic data was changed. Try Refresh."; }
   finally { end(); if (current === epoch) field("operations").querySelectorAll("button").forEach(button => button.disabled = false); }
 }
-async function refresh() {
+async function refresh({requireComplete=false}={}) {
   const current = epoch;
-  const snapshots = await Promise.all([
+  const results = await Promise.allSettled([
     getDocs(query(collection(db, "activity_events"), orderBy("createdAt", "desc"), limit(500))),
     getDocs(query(collection(db, "issues"), orderBy("createdAt", "desc"), limit(200))),
     getDocs(query(collection(db, "activity_preferences"), limit(500))),
@@ -29,6 +29,10 @@ async function refresh() {
     getDoc(doc(db, "monitoring_status", "runtime"))
   ]);
   if (current !== epoch || staffRole(auth.currentUser) !== "admin") return;
+  const names=["optional activity","support reports","consent records","student directory","instructor assignment","maintenance policy","worker status"];
+  const missing=results.flatMap((result,index)=>result.status==="rejected"?[names[index]]:[]);
+  if(requireComplete&&missing.length)throw Error("Required monitoring sources unavailable");
+  const snapshots=results.map(result=>result.status==="fulfilled"?result.value:{docs:[],data:()=>null});
   records = snapshots[0].docs.map(record => ({id:record.id, ...record.data()}));
   preferences = snapshots[2].docs.map(record => record.data());
   students = snapshots[3].docs.map(record => ({id:record.id, ...record.data()}));
@@ -44,17 +48,19 @@ async function refresh() {
   const enabled = new Map(preferences.filter(profile => profile.enabled).map(profile => [profile.ownerUid, profile]));
   const events = records.filter(event => enabled.get(event.ownerUid)?.studentId === event.studentId);
   const summary = summarizeActivity(events);
-  field("usage-count").textContent = summary.length;
-  field("return-count").textContent = summary.filter(row => row.days > 1).length;
-  field("active-time").textContent = Math.round(summary.reduce((sum, row) => sum + row.activeSeconds, 0) / 60) + " min";
+  const usageReady=results[0].status==="fulfilled"&&results[2].status==="fulfilled";
+  field("usage-count").textContent = usageReady?summary.length:"—";
+  field("return-count").textContent = usageReady?summary.filter(row => row.days > 1).length:"—";
+  field("active-time").textContent = usageReady?Math.round(summary.reduce((sum, row) => sum + row.activeSeconds, 0) / 60) + " min":"—";
   const issues = snapshots[1].docs.map(record => record.data());
-  field("bug-count").textContent = issues.filter(issue => issue.category === "Bug" && issue.status !== "Resolved").length;
+  field("bug-count").textContent = results[1].status==="fulfilled"?issues.filter(issue => issue.category === "Bug" && issue.status !== "Resolved").length:"—";
   const moduleSeconds = {};
   for (const row of summary) for (const [page, seconds] of Object.entries(row.modules)) moduleSeconds[page] = (moduleSeconds[page] || 0) + seconds;
   field("module-usage").replaceChildren();
   for (const [page, seconds] of Object.entries(moduleSeconds).sort((first, second) => second[1] - first[1])) {
     const row = field("module-usage").insertRow(); textCell(row, page); textCell(row, Math.round(seconds / 60) + " min");
   }
+  if(!field("module-usage").rows.length){const row=field("module-usage").insertRow();const cell=row.insertCell();cell.colSpan=2;cell.textContent=usageReady?"No opted-in activity in this sample. This is not inactivity or poor engagement.":"Activity totals unavailable. Refresh to retry; missing data is not zero.";}
   field("raw-events").replaceChildren();
   for (const event of records.slice(0, 100)) {
     const row = field("raw-events").insertRow();
@@ -64,17 +70,19 @@ async function refresh() {
   for (const section of [...new Set(students.map(student => student.section).filter(Boolean))].sort()) {
     const option = new Option(section, section); option.selected = selectedSections.includes(section); field("roster-sections").add(option);
   }
-  field("admin-analytics-status").textContent = "Refreshed. Usage: last 7 days from at most 500 newest events; bug counts: at most 200 newest reports. These are partial, self-reported observations, not population totals or proof of learning.";
+  field("admin-analytics-status").textContent = (missing.length?"Partially refreshed. Unavailable: "+missing.join(", ")+". Use Refresh monitoring to retry. ":"Refreshed. ")+"Usage: last 7 days from at most 500 newest events; bug counts: at most 200 newest reports. These are partial, self-reported observations, not population totals or proof of learning.";
+  field("operations").dataset.unavailable=missing.join(",");
 }
 field("refresh-analytics").addEventListener("click", () => operation("Loading monitoring…", refresh));
 field("save-roster").addEventListener("click", () => operation("Saving teacher assignment…", async () => {
+  if(/instructor assignment|student directory/.test(field("operations").dataset.unavailable||""))throw Error("Reload the complete assignment first");
   const sections = [...field("roster-sections").selectedOptions].map(option => option.value);
   await setDoc(doc(db, "analytics_rosters", teacherEmail), {teacherEmail:teacherEmail, sections, updatedBy:auth.currentUser.uid, updatedAt:serverTimestamp()});
   selectedSections = sections;
   field("admin-analytics-status").textContent = "Assignment saved. Publish a fresh summary to replace the previous teacher snapshot.";
 }));
 field("publish-engagement").addEventListener("click", () => operation("Preparing teacher summary…", async () => {
-  await refresh();
+  await refresh({requireComplete:true});
   const captured = records.slice(), actor = auth.currentUser, generation = epoch;
   if (!confirm("Replace the teacher's engagement summary from the current sample? Consent and assigned sections will be checked again before saving. This does not change grades or publish to students.")) return;
   await runTransaction(db, async transaction => {
@@ -94,6 +102,7 @@ field("publish-engagement").addEventListener("click", () => operation("Preparing
   field("admin-analytics-status").textContent = "Teacher summary refreshed. Only coarse student learning activity is included, never diagnostic trails or bug reports.";
 }));
 field("save-maintenance").addEventListener("click", () => operation("Saving maintenance policy…", async () => {
+  if((field("operations").dataset.unavailable||"").includes("maintenance policy"))throw Error("Reload the maintenance policy first");
   const cleanupEnabled = field("maintenance-cleanup").checked, summaryRefreshEnabled = field("maintenance-summary").checked;
   const reason = field("maintenance-reason").value.trim(), actor = auth.currentUser, generation = epoch;
   if (reason.length < 12 || reason.length > 600) { field("admin-analytics-status").textContent = "Explain this policy change in 12–600 characters before saving."; return; }

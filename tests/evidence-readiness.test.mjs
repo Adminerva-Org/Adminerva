@@ -28,7 +28,7 @@ test("approval waits for a live server snapshot; stale initial data cannot clear
   page.emit({...page.evidence,revision:6},true);await Promise.resolve();assert.equal(page.elements.get("#evidenceApprove").disabled,true);
   page.emit(page.evidence);await loading;
   assert.equal(page.elements.get("#evidenceApprove").disabled,false);assert.equal(page.changes.at(-1).revision,7);
-  const note=page.elements.get("#evidenceReviewNote");note.value="Teacher notes in progress";page.root.input();
+  const note=page.elements.get("#evidenceReviewNote");note.value="Teacher notes in progress";page.root.input({target:{closest:()=>true}});
   page.emit({...page.evidence});assert.equal(note.value,"Teacher notes in progress");
   page.emit({...page.evidence,revision:8});assert.equal(note.value,"Teacher notes in progress");assert.equal(page.elements.get("#evidenceApprove").disabled,true);
   page.review.destroy();

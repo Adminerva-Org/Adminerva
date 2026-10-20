@@ -1,6 +1,6 @@
 # Review resilience, audit integrity and draft publication
 
-This extends the personal-teacher-workspace PR. It is **review-only**: no deployment, live permission changes, student-data migration, monitoring activation or grade publication is authorized.
+This extends the personal-teacher-workspace PR. The owner subsequently authorized deployment after checks pass. Release scope is the website and matching Firestore rules only; student-data migration, Functions deployment, monitoring activation and grade publication remain excluded.
 
 ## Findings against the actual code
 

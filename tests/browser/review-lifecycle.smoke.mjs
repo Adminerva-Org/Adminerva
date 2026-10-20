@@ -91,6 +91,11 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
       ]);
     });
     const assets=new Map();
+    for(const url of ["https://cdn.quilljs.com/1.3.6/quill.min.js","https://cdn.quilljs.com/1.3.6/quill.snow.css",
+      "https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/libs/jszip.min.js","https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.min.js",
+      "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js","https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css"]){
+      const response=await fetch(url);assert.equal(response.ok,true);assets.set(url,await response.text());
+    }
     for(const name of ["firebase-app.js","firebase-auth.js","firebase-firestore.js"]){
       const response=await fetch(sdkBase+name);
       assert.equal(response.ok,true,"Could not load the production-version Firebase SDK");
@@ -124,7 +129,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
       },role);
       await context.route("**/*",async route=>{
         const url=route.request().url(),parsed=new URL(url);
-        if(assets.has(url))return route.fulfill({contentType:"text/javascript",body:assets.get(url)});
+        if(assets.has(url))return route.fulfill({contentType:url.endsWith(".css")?"text/css":"text/javascript",body:assets.get(url)});
         if(parsed.hostname==="cdn.tailwindcss.com")return route.fulfill({contentType:"text/javascript",body:tailwind});
         if(url==="https://cdn.jsdelivr.net/npm/chart.js")return route.fulfill({contentType:"text/javascript",body:"window.Chart=class { destroy(){} };"});
         if(url==="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css")return route.fulfill({contentType:"text/css",body:""});
@@ -168,6 +173,28 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     const teacher=await teacherContext.newPage();
     const gradebook=await teacherContext.newPage();
     const peer=await (await newIdentity("bob")).newPage();
+    await student.goto(origin+"/student-home.html");
+    await expect(student.locator("#activity-preferences-dialog")).toBeVisible();
+    assert.equal((await browserRecord(student,"activity_preferences/"+accounts.alice.uid)).exists,false);
+    await expect(student.locator("#activity-share")).not.toBeChecked();
+    await student.locator("#activity-share").check();
+    await student.locator("#activity-never-show").check();
+    await student.locator("#activity-dismiss").click();
+    const dismissed=await waitRecord(student,"activity_preferences/"+accounts.alice.uid,"promptDismissed",true);
+    assert.equal(dismissed.enabled,false,"Hiding the reminder must not save an unsaved sharing choice");
+    await student.reload();await expect(student.locator("#activity-save")).toBeEnabled();
+    await expect(student.locator("#activity-preferences-dialog")).not.toBeVisible();
+    const otherDevice=await (await newIdentity("alice")).newPage();await otherDevice.goto(origin+"/student-home.html");
+    await expect(otherDevice.locator("#activity-save")).toBeEnabled();await expect(otherDevice.locator("#activity-preferences-dialog")).not.toBeVisible();
+    await otherDevice.goto(origin+"/student-settings.html");await otherDevice.locator("[data-activity-preferences]").click();
+    await expect(otherDevice.locator("#activity-save")).toBeEnabled();await otherDevice.locator("#activity-never-show").uncheck();await otherDevice.locator("#activity-save").click();
+    await waitRecord(otherDevice,"activity_preferences/"+accounts.alice.uid,"promptDismissed",false);await otherDevice.locator("#activity-dismiss").click();
+    await otherDevice.goto(origin+"/student-home.html");await expect(otherDevice.locator("#activity-preferences-dialog")).toBeVisible();
+    await otherDevice.locator("#activity-never-show").check();await otherDevice.locator("#activity-dismiss").click();
+    await waitRecord(otherDevice,"activity_preferences/"+accounts.alice.uid,"promptDismissed",true);await otherDevice.close();
+    await peer.goto(origin+"/student-home.html");await expect(peer.locator("#activity-preferences-dialog")).toBeVisible();
+    await peer.locator("#activity-dismiss").click();
+    validated("home reminder is account-scoped and dismissal never enables optional sharing");
     async function openStudent(page,taskId="fixture-v2"){
       await page.goto(origin+"/student-assessments.html");
       await expect(page.locator("#assignmentsFeed")).toContainText(assessment.title);
@@ -408,15 +435,15 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     assert.equal((await browserRecord(peer,"practice_scores/alice")).error,"permission-denied");
     await student.goto(origin+"/patch-notes.html");await expect(student.locator("#patchList")).toContainText("Review & Grade");
     validated("private teacher-reviewed practice points, opt-in alias class snapshot and public patch history");
-    await student.goto(origin+"/student-xml-lab.html");
+    await student.goto(origin+"/student-settings.html");
     await expect(student.locator("#activity-save")).toBeEnabled();
     const beforeConsent=await browserRecord(student,"activity_preferences/"+accounts.alice.uid);
-    assert.equal(beforeConsent.exists,false);
-    await student.locator("#page-help-open").click();
-    await student.locator("#page-help-dialog details").evaluate(details=>{details.open=true;});
+    assert.equal(beforeConsent.data.enabled,false);
+    await student.locator("[data-activity-preferences]").click();
     await student.locator("#activity-share").check();await student.locator("#activity-diagnostics").check();await student.locator("#activity-save").click();
     await waitRecord(student,"activity_preferences/"+accounts.alice.uid,"enabled",true);
-    await student.locator("#page-help-dialog").getByText("Close help",{exact:true}).click();
+    await student.locator("#activity-dismiss").click();
+    await student.goto(origin+"/student-xml-lab.html");
     await student.locator("#xmlRender").click();
     await student.evaluate(()=>{window.fixtureLoading=[window.beginLoading("First operation",document.querySelector("main")),window.beginLoading("Second operation",document.querySelector("main"))];window.hideSubtleLoader();});
     await expect(student.locator("#subtleLoader")).toBeVisible();
@@ -424,7 +451,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     assert.equal(await student.locator("main").getAttribute("aria-busy"),"true");
     await student.evaluate(()=>{window.fixtureLoading[1]();window.fixtureLoading[1]();});await expect(student.locator("#subtleLoader")).toBeHidden();
     assert.equal(await student.locator("main").getAttribute("aria-busy"),null);
-    await student.locator('[title="Report Issue"]').click();
+    await student.locator('#av-information-toggle').click();await student.locator('[data-information-report]').click();
     await student.locator("#bug-title").fill("Fixture XML preview problem");await student.locator("#bug-description").fill("After Run, the fixture preview needs investigation.");
     await student.locator("#bug-attach-diagnostics").check();await student.locator("#submit-bug-btn").click();
     await expect(student.locator("#bug-modal")).toBeHidden();
@@ -443,7 +470,13 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await teacher.goto(origin+"/reporeviewDashboard.html?range=week#engagement-heading");
     await expect(teacher).toHaveURL(origin+"/teacher-analytics.html?range=week#engagement-heading");
     await expect(teacher.locator("#analytics-teacher")).toBeDisabled();await expect(teacher.locator("#engagement-rows")).toContainText("alice");
+    await teacher.locator("#learning-activity summary").click();
     const backendDb=getAdminFirestore(adminApp);
+    const savedSnapshot=(await backendDb.doc("analytics_views/"+accounts.teacher.email).get()).data();
+    await backendDb.doc("analytics_views/"+accounts.teacher.email).update({publishedAt:null});
+    await expect(teacher.locator("#engagement-status")).toContainText("incomplete");
+    await expect(teacher.locator("#academic-status")).toContainText("Academic records loaded");
+    await backendDb.doc("analytics_views/"+accounts.teacher.email).set(savedSnapshot);
     const maintenance=monitoringWorker.createMonitoringService({db:backendDb,Timestamp,FieldValue,resolveUsers:async uids=>(await authAdmin.getUsers(uids.map(uid=>({uid})))).users});
     await expect(admin.locator("#maintenance-cleanup")).not.toBeChecked();await expect(admin.locator("#maintenance-summary")).not.toBeChecked();
     assert.equal((await maintenance.runScheduled()).state,"disabled");
@@ -462,7 +495,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await teacher.goto(origin+"/admin-analytics.html");await expect(teacher.locator("#admin-analytics-status")).toContainText("No monitoring records were requested");await expect(teacher.locator("#operations")).toBeHidden();
     await teacher.goto(origin+"/teacher-analytics.html");await expect(teacher.locator("#engagement-rows")).toContainText("alice");
     interceptSummaryConfirmation=async()=>{
-      await student.locator("#page-help-open").click();await student.locator("#activity-share").uncheck();await student.locator("#activity-save").click();await waitRecord(student,"activity_preferences/"+accounts.alice.uid,"enabled",false);
+      await student.goto(origin+"/student-settings.html");await student.locator("[data-activity-preferences]").click();await expect(student.locator("#activity-save")).toBeEnabled();await student.locator("#activity-share").uncheck();await student.locator("#activity-save").click();await waitRecord(student,"activity_preferences/"+accounts.alice.uid,"enabled",false);
       assert.equal(await maintenance.applyConsentChange(accounts.alice.uid,"alice"),1);
       await expect(teacher.locator("#engagement-rows tr")).toHaveCount(0);
     };
@@ -472,7 +505,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await admin.locator("#maintenance-cleanup").uncheck();await admin.locator("#maintenance-summary").uncheck();await admin.locator("#maintenance-reason").fill("Fixture maintenance disabled after verification.");await admin.locator("#save-maintenance").click();await expect(admin.locator("#admin-analytics-status")).toContainText("Maintenance policy saved");
     assert.equal((await maintenance.runScheduled()).state,"disabled");
     const guest=await (await newIdentity("guest")).newPage();const guestRequests=[];guest.on("request",request=>guestRequests.push(request.url()));
-    await guest.goto(origin+"/wiki.html");await expect(guest.locator("h1")).toContainText("Adminerva Wiki");await guest.locator("#page-help-open").click();await expect(guest.locator("#activity-save")).toBeDisabled();
+    await guest.goto(origin+"/wiki.html");await expect(guest.locator("h1")).toContainText("Adminerva Wiki");await guest.locator("#page-help-open").click();await expect(guest.locator("#activity-save")).toHaveCount(0);
     assert.ok(!guestRequests.some(url=>url.includes("firebase")||url.includes("activity_events")),"Guest help must not initialize tracking or Firebase");
     await guest.locator("#page-help-dialog").getByText("Close help",{exact:true}).click();
     await guest.setViewportSize({width:390,height:844});await expect.poll(()=>guest.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -513,6 +546,19 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await expect(secondTeacher.locator("#sectionSelect")).toHaveValue("fixture-11-A");
     await expect(secondTeacher.locator("#instructor-selection")).toBeHidden();
     await expect(secondTeacher.locator("#academic-status")).not.toContainText("could not load");
+    await teacher.goto(origin+"/assessment-evidence-review.html?student=alice&assessment=fixture-v2");
+    await expect(teacher.locator("#evidenceStudent")).toHaveValue("alice");
+    await teacher.locator("#evidenceStudentSearch").fill("bob");await expect(teacher.locator("#evidenceSearchStatus")).toContainText("1 matching");
+    await expect(teacher.locator("#evidenceStudent")).toHaveValue("alice");
+    await teacher.locator("#evidenceStudentSearch").fill("no-match");await expect(teacher.locator("#evidenceSearchStatus")).toContainText("0 matching");
+    await secondTeacher.goto(origin+"/settings.html");await secondTeacher.locator("[data-activity-preferences]").click();
+    await expect(secondTeacher.locator("#activity-share")).not.toBeChecked();await expect(secondTeacher.locator("#activity-save")).toBeEnabled();
+    await secondTeacher.locator("#activity-never-show").check();await secondTeacher.locator("#activity-save").click();
+    const staffPreferences=await waitRecord(secondTeacher,"activity_preferences/"+accounts.teacher2.uid,"promptDismissed",true);assert.equal(staffPreferences.enabled,false);
+    await secondTeacher.locator("#activity-dismiss").click();await secondTeacher.goto(origin+"/teacher-home.html");
+    await expect(secondTeacher.locator("#activity-save")).toBeEnabled();await expect(secondTeacher.locator("#activity-preferences-dialog")).not.toBeVisible();
+    await teacher.goto(origin+"/presentation.html");
+    await expect(teacher.locator(".ql-toolbar").first()).toBeVisible();
     const login=await teacherContext.newPage();await login.goto(origin+"/login.html");
     for(const width of [320,360,390,640,768,1024]){
       await teacher.setViewportSize({width,height:900});
@@ -525,13 +571,23 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
       const bell=teacher.locator("#adminerva-notifications button").first();await bell.click();
       const inbox=teacher.locator("#av-alert-panel");await expect(inbox).toBeVisible();
       const bounds=await inbox.boundingBox();assert.ok(bounds.x>=0&&bounds.x+bounds.width<=width+1,"Notification inbox must stay inside the viewport");await bell.click();
+      await teacher.locator("#av-information-toggle").click();
+      await expect(teacher.locator("#av-information-panel")).toBeVisible();
+      await bell.click();await expect(teacher.locator("#av-information-panel")).toBeHidden();
+      assert.equal(await teacher.locator("#av-alert-panel").evaluate(panel=>{
+        const rect=panel.getBoundingClientRect();return panel.contains(document.elementFromPoint(rect.x+rect.width/2,Math.min(rect.bottom-10,rect.y+200)));
+      }),true,"Slide tools must not paint above the inbox");
+      await teacher.keyboard.press("Escape");await expect(bell).toHaveAttribute("aria-expanded","false");
       await login.setViewportSize({width,height:900});
       await expect(login.locator("#adminerva-help a[href='wiki.html#privacy']")).toBeVisible();
       assert.equal(await login.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     }
     await login.setViewportSize({width:390,height:844});
     await login.screenshot({path:path.join(output,"login-footer-mobile.png"),fullPage:true});
+    await secondTeacher.goto(origin+"/teacher-analytics.html");await expect(secondTeacher.locator("#academic-status")).toContainText("Academic records loaded");
     await secondTeacher.screenshot({path:path.join(output,"teacher-analytics-personal.png"),fullPage:true});
+    await teacher.setViewportSize({width:1360,height:900});await teacher.locator("#av-alert-toggle").click();
+    await teacher.screenshot({path:path.join(output,"slide-navigation-layers.png")});await teacher.keyboard.press("Escape");
     await admin.screenshot({path:path.join(output,"teacher-accounts-admin.png"),fullPage:true});
     await teacher.setViewportSize({width:390,height:844});await openTeacher();
     await expect(teacher.locator("#manualReviewModal")).toBeVisible();

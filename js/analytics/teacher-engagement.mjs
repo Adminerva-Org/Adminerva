@@ -2,7 +2,7 @@ import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
 /** Teacher-only coarse engagement snapshots; administrators select a teacher here, not in operations analytics. */
 import {auth, db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {doc, getDoc, collection, getDocs, onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import {doc, getDocFromServer, collection, getDocs, onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {staffRole} from "../core/staff-role.mjs?v=2026.10.20.1";
 
 const selector = document.getElementById("analytics-teacher");
@@ -11,9 +11,9 @@ let stopView = () => {};
 export async function selectedTeacherSections() {
   const current = epoch, email = selector.value;
   if (!email || !auth.currentUser) return [];
-  const roster = await getDoc(doc(db, "analytics_rosters", email));
+  const roster = await getDocFromServer(doc(db, "analytics_rosters", email));
   if (current !== epoch) return [];
-  return roster.data()?.sections || [];
+  return Array.isArray(roster.data()?.sections) ? roster.data().sections : [];
 }
 async function renderEngagement() {
   stopView();
@@ -28,10 +28,11 @@ async function renderEngagement() {
     if (current !== epoch) return;
     const data = snapshot.data(); body.replaceChildren();
     if (!data) { status.textContent = "No engagement snapshot has been prepared by an administrator. Academic analytics below remain separate."; return; }
-    if (Date.now() - data.publishedAt.toMillis() > 30 * 86400000) { status.textContent = "Snapshot expired. Ask an administrator to refresh it."; return; }
+    const published=data.publishedAt?.toMillis?.();
+    if (!Number.isFinite(published) || Date.now() - published > 30 * 86400000 || !Array.isArray(data.rows)) { status.textContent = "Snapshot expired or incomplete. Ask an administrator to refresh it. Academic records load independently."; return; }
     for (const row of data.rows) {
       const element = body.insertRow();
-      for (const value of [row.studentId, row.visits, row.days, Math.round(row.activeSeconds / 60) + " min", Object.entries(row.modules).map(([page, seconds]) => page + ": " + Math.round(seconds / 60) + " min").join(" · ")]) element.insertCell().textContent = String(value);
+      for (const value of [row.studentId, row.visits, row.days, Math.round((row.activeSeconds || 0) / 60) + " min", Object.entries(row.modules || {}).map(([page, seconds]) => page + ": " + Math.round(seconds / 60) + " min").join(" · ")]) element.insertCell().textContent = String(value);
     }
     status.textContent = (data.source === "scheduled" ? "System refresh " : "Administrator snapshot ") + data.publishedAt.toDate().toLocaleString() + ". Last 7 days, capped at 500 events; opted-in students only. Active foreground time and returning days are approximate, not grades or evidence of effort. " + (data.truncated ? "Student display limit reached; this is a partial sample. " : "") + "Consent removal is processed by the optional backend handler or the next administrator refresh.";
   }, () => {
@@ -41,25 +42,33 @@ async function renderEngagement() {
   stopView = () => { unsubscribe(); end(); };
 }
 selector.addEventListener("change", () => { void renderEngagement(); document.dispatchEvent(new Event("analytics-teacher-change")); });
+document.getElementById("analytics-refresh")?.addEventListener("click",()=>{void renderEngagement();document.dispatchEvent(new Event("analytics-teacher-change"));});
 onAuthStateChanged(auth, async user => {
   stopView();
   epoch++; selector.replaceChildren(); document.getElementById("engagement-rows").replaceChildren();
+  const accountEpoch=epoch;
   const role = await resolveStaffRole(user);
+  if(accountEpoch!==epoch)return;
   selector.disabled = role !== "admin";
   document.getElementById("instructor-selection")?.toggleAttribute("hidden",role!=="admin");
   if (!role) { document.dispatchEvent(new Event("analytics-teacher-change")); return; }
   try {
     if (role === "admin") {
-      const current = epoch, rosters = await getDocs(collection(db, "analytics_rosters"));
+      const current = epoch;
+      const [rosters,accounts]=await Promise.all([getDocs(collection(db,"analytics_rosters")),getDocs(collection(db,"staff_access"))]);
       if (current !== epoch) return;
       const emails=new Set([...rosters.docs.map(record=>record.id),"josephsixson@mcstayuman.edu.ph",user.email.toLowerCase()]);
-      const accounts=await getDocs(collection(db,"staff_access"));
       if(current!==epoch)return;
       for(const account of accounts.docs)if(account.data().status==="active")emails.add(account.id);
       const names=new Map(accounts.docs.map(record=>[record.id,record.data().displayName]));
       for(const email of emails)selector.add(new Option(email===user.email.toLowerCase()?"My teaching sections":names.get(email)||email,email));
+      selector.value=rosters.docs.find(record=>record.data().sections?.length)?.id||user.email.toLowerCase();
     } else selector.add(new Option(user.email.toLowerCase(), user.email.toLowerCase()));
     await renderEngagement();
     document.dispatchEvent(new Event("analytics-teacher-change"));
-  } catch { document.getElementById("engagement-status").textContent = "Teacher assignments are not available yet."; }
+  } catch {
+    if(accountEpoch!==epoch)return;
+    if(!selector.options.length)selector.add(new Option(user.email.toLowerCase(),user.email.toLowerCase()));
+    void renderEngagement();document.dispatchEvent(new Event("analytics-teacher-change"));
+  }
 });

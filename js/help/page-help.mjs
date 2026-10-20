@@ -39,7 +39,7 @@ export function mountHelp() {
   const dialog = document.createElement("dialog"); dialog.id = "page-help-dialog";
   dialog.className = "p-6 rounded-xl border border-slate-300 max-w-xl w-[95vw] text-slate-900 bg-white";
   dialog.setAttribute("aria-labelledby", "page-help-title");
-  dialog.innerHTML = '<h2 id="page-help-title" class="text-xl font-bold"></h2><p id="page-help-description" class="my-4"></p><a id="page-help-guide" class="underline">Read the full guide</a><details class="my-5"><summary class="font-bold cursor-pointer">Activity preferences (optional)</summary><p class="my-3">No typed text, source code, credentials, full URLs or session recordings. Sharing is off by default. Administrators see operational records; teachers receive only assigned students’ coarse snapshots. Stopping does not delete earlier records. <a class="underline" href="wiki.html#privacy">Privacy and retention details</a></p><label class="block my-2"><input type="checkbox" id="activity-share"> Share module visits and approximate active time</label><label class="block my-2"><input type="checkbox" id="activity-diagnostics"> Keep up to 20 diagnostic actions in memory on this page; attach only when I explicitly choose</label><button id="activity-save" type="button" class="border rounded p-2" disabled>Save preferences</button><p id="activity-status" class="my-2" role="status">Sign in on a workspace page to manage preferences. Public pages do not collect activity.</p></details><form method="dialog"><button class="bg-cyan-800 text-white rounded p-3">Close help</button></form>';
+  dialog.innerHTML = '<h2 id="page-help-title" class="text-xl font-bold"></h2><p id="page-help-description" class="my-4"></p><a id="page-help-guide" class="underline">Read the full guide</a><p class="my-5">Optional activity sharing and the home reminder can be changed in your <a href="student-settings.html" id="help-settings-link" class="underline">Account Settings</a>. Public pages do not collect activity.</p><form method="dialog"><button class="bg-cyan-800 text-white rounded p-3">Close help</button></form>';
   dialog.querySelector("#page-help-title").textContent = title;
   dialog.querySelector("#page-help-description").textContent = description;
   dialog.querySelector("#page-help-guide").href = "wiki.html#" + anchor;
@@ -63,22 +63,9 @@ export function mountHelp() {
     dialog.querySelector("#page-help-title").textContent = title; dialog.querySelector("#page-help-description").textContent = description; dialog.querySelector("#page-help-guide").href = "wiki.html#" + anchor;
   });
   document.getElementById("page-help-open").addEventListener("click", () => { dialog.showModal(); window.adminervaActivity?.record("help-open"); });
-  const privatePage = Boolean(document.querySelector('script[src*="auth-guard.js?v=2026.10.20.1"],script[src*="admin-analytics.mjs?v=2026.10.20.1"]'));
+  const privatePage = [...document.scripts].some(script => /\/(auth-guard\.js|admin-analytics\.mjs)(?:[?]|$)/.test(script.src));
+  document.getElementById("help-settings-link").href = document.getElementById("adminerva-nav")?.dataset.module?.startsWith("student") ? "student-settings.html" : "settings.html";
   if (privatePage && window.self === window.top) {
-    document.addEventListener("adminerva-activity-preferences", event => {
-      document.getElementById("activity-share").checked = event.detail.enabled;
-      document.getElementById("activity-diagnostics").checked = event.detail.diagnostics;
-      document.getElementById("activity-save").disabled = false;
-    });
-    import("../analytics/activity-client.mjs?v=2026.10.20.1").then(module => {
-      const save = document.getElementById("activity-save");
-      document.getElementById("activity-status").textContent = "Optional: choose what to share, then save. These settings never affect grades.";
-      save.addEventListener("click", async () => {
-        save.disabled = true;
-        try { await module.savePreferences(document.getElementById("activity-share").checked, document.getElementById("activity-diagnostics").checked); }
-        catch { document.getElementById("activity-status").textContent = "Preferences could not be saved. Check your sign-in, connection and permissions; sharing has not been enabled."; }
-        finally { save.disabled = false; }
-      });
-    }).catch(() => {});
+    import("./activity-preferences.mjs?v=2026.10.20.1").then(module => module.mountActivityPreferences()).catch(() => {});
   }
 }

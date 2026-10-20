@@ -239,6 +239,20 @@ body :is(input, textarea)[class*="bg-gray-8"],
   caret-color: auto;
 }
 html { scroll-padding-top: 6rem; }
+#adminerva-nav { position: relative; z-index: 60; isolation: isolate; flex: none; }
+.av-information-panel { position: absolute; z-index: 140; right: .5rem; top: 4.5rem; width: min(21rem, calc(100vw - 1rem)); padding: .75rem; border: 1px solid var(--av-border); border-radius: 1rem; background: white; box-shadow: var(--av-shadow); color: var(--av-ink); }
+.av-information-panel strong { display: block; padding: .6rem .75rem; }
+.av-information-panel a,.av-information-panel button { display: block; width: 100%; padding: .7rem .75rem; text-align: left; border-radius: .5rem; font-size: .9rem; }
+.av-information-panel :is(a,button):hover { background: #eaf4fa; }
+#av-information-toggle { font-weight: 900; font-size: 1.25rem; }
+.av-preferences-dialog { width: min(36rem,calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); overflow-y: auto; padding: clamp(1rem,3vw,2rem); border: 1px solid var(--av-border); border-radius: 1rem; background: white; color: var(--av-ink); }
+.av-preferences-dialog::backdrop { background: #0c182a99; }
+.av-preferences-dialog label { display: flex; gap: .75rem; align-items: start; margin: 1rem 0; }
+.av-preferences-dialog input { margin-top: .3rem; flex: none; }
+.av-preferences-dialog p { margin: .8rem 0; color: var(--av-muted); font-size: .9rem; }
+.av-preferences-dialog h2 { font-size: 1.4rem; font-weight: 800; }
+.av-preferences-dialog button,.av-preferences-settings button { border: 1px solid var(--av-border-strong); border-radius: .6rem; padding: .7rem 1rem; margin: .3rem .3rem .3rem 0; }
+.av-preferences-settings { background: white; padding: 1.25rem; border: 1px solid var(--av-border); border-radius: 1rem; margin: 1rem 0; }
 body { min-width: 0; }
 .av-with-footer { display: flex; flex-direction: column; min-height: 100dvh; }
 .av-site-footer { margin-top: auto; padding: 1.25rem clamp(1rem,4vw,3rem); width: 100%; align-self: stretch; flex: none; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; background: #0d1b2d; color: #cbd5e1; border-top: 1px solid #26435a; font-size: .875rem; }
@@ -256,6 +270,22 @@ body { min-width: 0; }
 #userEmailDisplay { max-width: 18ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #av-alert-panel { position: fixed; right: .5rem; left: auto; top: 4.5rem; width: min(26rem,calc(100vw - 1rem)); max-height: calc(100dvh - 5.5rem); overflow-y: auto; }
 .av-account-page,.av-analytics-intro { width: min(100% - 2rem,1400px); margin: 1.75rem auto; }
+.av-analytics-hero { padding: clamp(1.25rem,3vw,2rem); border: 1px solid var(--av-border); border-radius: 1.2rem; background: linear-gradient(120deg,#fff,#eef6ff); box-shadow: var(--av-shadow); }
+.av-analytics-hero > p { max-width: 80ch; line-height: 1.6; }
+#instructor-selection { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+#instructor-selection[hidden] { display: none; }
+#analytics-teacher { max-width: 100%; min-height: 44px; min-width: min(20rem,100%); background: white; padding: .65rem; border: 1px solid var(--av-border-strong); border-radius: .6rem; }
+.av-primary-button { padding: .65rem 1rem; border-radius: .65rem; background: var(--av-primary); color: white; font-weight: 700; }
+.av-learning-details { background: white; border: 1px solid var(--av-border); padding: 1rem; border-radius: .85rem; }
+.av-learning-details > p { margin: .75rem 0; font-size: .9rem; color: var(--av-muted); }
+.av-status-card { padding: .85rem 1rem; background: #eaf2fb; color: #234367; border-radius: .7rem; font-size: .9rem; }
+.av-analytics-page { width: min(100%,1300px); }
+.av-operations-dashboard > :is(section,details) { border-radius: 1rem; box-shadow: var(--av-shadow); }
+.av-operations-dashboard section > p,.av-operations-dashboard details > p { color: var(--av-muted); font-size: .9rem; margin-block: .6rem; line-height: 1.6; max-width: 90ch; }
+.av-operations-dashboard table th,.av-operations-dashboard table td,.av-learning-details th,.av-learning-details td { text-align: left; padding: .7rem; border-bottom: 1px solid var(--av-border); font-size: .85rem; }
+.av-operations-dashboard section[aria-label] > div { border-radius: .9rem; }
+.av-operations-dashboard section[aria-label] strong { font-size: clamp(1.6rem,3vw,2.2rem); margin-top: .5rem; color: #165776; }
+.av-operations-dashboard button { min-height: 44px; }
 .av-page-heading { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
 .av-page-heading h1,.av-analytics-intro h1 { font-size: clamp(1.6rem,3vw,2.25rem); font-weight: 850; color: #122e4c; }
 .av-page-heading p { max-width: 65ch; color: #52657b; }
@@ -283,6 +313,9 @@ body { min-width: 0; }
 .av-grade-scope p { flex-basis: 100%; max-width: 65ch; }
 .av-table-scroll table { width: 100%; border-collapse: collapse; font-size: .875rem; }
 #velocityChart { width: 100% !important; max-width: 100%; }
+.av-velocity-plot { height: 230px; }
+.av-velocity-plot[hidden] { display: none; }
+.av-velocity-plot canvas { height: 100% !important; }
 .av-table-scroll th,.av-table-scroll td { padding: .8rem; text-align: left; border-bottom: 1px solid #e2e8f0; }
 #manualReviewModal { padding: clamp(.35rem,2vw,1.5rem); }
 body:has(#manualReviewModal.flex) { overflow: hidden; }

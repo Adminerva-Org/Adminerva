@@ -10,7 +10,7 @@
 <header class="mb-6"><h1 class="text-2xl font-extrabold text-slate-900">Assessment Evidence Review</h1>
 <p class="text-sm text-slate-600 mt-2">Verify selected GitHub commits and the project checkpoint before approving. Author names and Git dates alone do not prove student contribution or timely submission.</p></header>
 <section class="bg-white p-5 rounded-xl border space-y-4">
-<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4"><label class="text-sm font-semibold">Section<select id="evidenceSection" class="mt-2 w-full p-3 border rounded-lg"><option value="">All sections</option></select></label><label class="text-sm font-semibold">Search students<input id="evidenceStudentSearch" type="search" placeholder="Name or GitHub username" class="mt-2 w-full p-3 border rounded-lg" aria-describedby="evidenceSearchStatus"></label><p id="evidenceSearchStatus" role="status" class="text-sm text-slate-600 sm:col-span-2"></p>
 <label class="text-sm font-semibold">Student<select id="evidenceStudent" class="mt-2 w-full p-3 border rounded-lg bg-white"><option value="">Select student</option></select></label>
 <label class="text-sm font-semibold">Assessment<select id="evidenceAssessment" class="mt-2 w-full p-3 border rounded-lg bg-white"><option value="">Select assessment</option></select></label></div>
 <button id="evidenceLoad" type="button" class="rounded bg-indigo-700 text-white font-bold px-5 py-3">Load evidence</button>

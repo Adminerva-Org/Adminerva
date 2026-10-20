@@ -73,6 +73,15 @@ beforeEach(async () => {
 function client(uid,email){return env.authenticatedContext(uid,{email,email_verified:true}).firestore()}
 function activityEvent() { return {ownerUid:'alice',studentId:'alice',sessionId:'a'.repeat(36),page:'playground',action:'active-time',activeSeconds:30,createdAt:serverTimestamp(),expiresAt:Timestamp.fromMillis(Date.now()+30*86400000)}; }
 function activityPreference(enabled=true) { return {ownerUid:'alice',studentId:'alice',enabled,updatedAt:serverTimestamp()}; }
+
+test('home reminder suppression is private, typed and independent of activity consent',async()=>{
+  const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
+  await assertSucceeds(setDoc(doc(alice,'activity_preferences','alice'),{...activityPreference(false),promptDismissed:true}));
+  await assertFails(setDoc(doc(alice,'activity_events','hidden-prompt-not-consent'),activityEvent()));
+  await assertFails(updateDoc(doc(bob,'activity_preferences','alice'),{promptDismissed:false}));
+  await assertFails(setDoc(doc(alice,'activity_preferences','alice'),{...activityPreference(false),promptDismissed:'yes'}));
+  await assertSucceeds(setDoc(doc(alice,'activity_preferences','alice'),activityPreference(false)));
+});
 async function auditedMonitoringControl(db, {actor='admin', changes={}}={}) {
   const ref=doc(db,'monitoring_control','runtime'), current=await getDoc(ref);
   const before=current.exists()?current.data():null;
