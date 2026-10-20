@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {parseRepository,validSha} from '../js/repo-review/services/assessment-evidence.mjs';
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from '../js/repo-review/services/evidence-lifecycle.mjs';
+import {assertGradeVersion,nextGradeVersion} from '../js/repo-review/services/grade-version.mjs';
 
 const checkpoint='a'.repeat(40);
 function workspace(evidence){
@@ -31,7 +32,7 @@ function workspace(evidence){
   const snapshot=ref=>({ref,exists:()=>records.has(ref.path),data:()=>records.get(ref.path)});
   let panelOptions;
   const context={document,window,location:{origin:'https://example.test'},URLSearchParams,AbortController,
-    auth:{currentUser:{uid:'teacher'}},db:{},parseRepository,validSha,evidenceRevision,gradeMatchesEvidence,sameEvidence,
+    auth:{currentUser:{uid:'teacher'}},db:{},parseRepository,validSha,evidenceRevision,gradeMatchesEvidence,sameEvidence,assertGradeVersion,nextGradeVersion,
     createReviewRequests:()=>({}),mountReviewPanels:options=>{panelOptions=options;return {destroy(){},updateEvidence(){}};},
     cleanGradeFeedback:value=>String(value||''),pickDefinedGradeFields:(value,keys)=>Object.fromEntries(keys.filter(key=>value[key]!==undefined).map(key=>[key,value[key]])),
     collection:(_db,name)=>({path:name}),doc:(_db,...parts)=>({path:parts.join('/'),id:parts.at(-1)}),

@@ -104,7 +104,7 @@ onAuthStateChanged(auth,async user=>{
     students=new Map(roster.docs.map(d=>[d.id,d.data()]));
     assessments=new Map(taskDocs.docs.map(d=>[d.id,d.data()]));
     const request=(key,source,dateField)=>{
-      const loaded = window.beginLoading?.("Loading submitted evidence…") || (() => {});
+      const loaded = window.beginLoading?.("Loading submitted evidence…",el("submissionFeed")) || (() => {});
       const stop=onSnapshot(query(collection(db,source),orderBy(dateField,"desc"),limit(200)),
         snap=>{snapshots[key]=snap.docs.map(d=>({id:d.id,...d.data()}));refresh();loaded();},
         error=>{loaded();el("submissionStatus").textContent=source+" unavailable: "+error.message;});

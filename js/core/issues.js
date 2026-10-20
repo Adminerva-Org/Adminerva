@@ -482,7 +482,7 @@ document
       await addDoc(collection(db, `issues/${issueId}/comments`), {
         text: text,
         authorEmail: isSuperAdmin ? currentUserEmail : "",
-        role: isSuperAdmin ? "superadmin" : "student",
+        role: isSuperAdmin ? "superadmin" : isTeacher ? "teacher" : "student",
         authorUid: auth.currentUser?.uid || null,
         createdAt: serverTimestamp(),
       });

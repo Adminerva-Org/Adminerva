@@ -1,17 +1,20 @@
 /** Primary teacher evidence review, evaluation drafts and deliberate grade publication. */
 import { auth, db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
+import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=2026.10.20.1";
+import {createBackoffClient,evaluationJSON} from "./services/request-backoff.mjs?v=2026.10.20.1";
+import {renderFeedbackMarkdown} from "./review-ui.mjs?v=2026.10.20.1";
 import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs";
 import {
   collection, doc, getDoc, getDocs, query, where, runTransaction, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import { analyzePatchSubstance } from "./services/commit-substance.mjs";
+import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=2026.10.20.1";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs";
 import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,parseSuggestedRubric}
-  from "./services/v2-grading-assistant.mjs?v=2026.10.18.4";
+  from "./services/v2-grading-assistant.mjs?v=2026.10.20.1";
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=2026.10.19.4";
 import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=2026.10.19.4";
-import {createReviewRequests} from "./services/review-requests.mjs?v=2026.10.19.4";
+import {createReviewRequests} from "./services/review-requests.mjs?v=2026.10.20.1";
 import {mountReviewPanels} from "./review-panels.mjs?v=2026.10.20.1";
 
 const el = id => document.getElementById(id);
@@ -56,7 +59,7 @@ async function githubGet(url, session) {
   const headers={Accept:"application/vnd.github+json"};
   const pat=localStorage.getItem("Adminerva_github_token");
   if (pat) headers.Authorization="Bearer "+pat;
-  const response=await fetch(url,{headers});
+  const response=await state.requests.fetch(url);
   if (session!==state.token) throw new Error("Review was closed");
   if (!response.ok) throw new Error("GitHub HTTP "+response.status);
   return response.json();
@@ -65,7 +68,8 @@ async function sourceLinks(session, base, owner, repo, login, checkpointSha=null
   try {
     const data=checkpointSha?null:await githubGet("https://api.github.com/repos/"+encodeURIComponent(owner)+"/"+encodeURIComponent(repo),session);
     if (session!==state.token) return;
-    const branch=encodeURIComponent(checkpointSha||data?.default_branch||"main");
+    if(!checkpointSha&&!data?.default_branch)throw Error("No confirmed default branch");
+    const branch=encodeURIComponent(checkpointSha||data.default_branch);
     const links=el("manualReviewLinks");
     link(links,"app/src ↗",base+"/tree/"+branch+"/app/src");
     link(links,"app/src/test/java ↗",base+"/tree/"+branch+"/app/src/test/java");
@@ -179,7 +183,8 @@ async function generateAIDraft(){
       files:evidence.files,patches:evidence.patches,contributionScope:active.evidence.contributionScope
     });
     const controller=new AbortController();state.aiAbort=controller;
-    const response=await fetch(
+    active.evaluationClient ||= createBackoffClient({signal:state.abort.signal,scope:"evaluation"});
+    const response=await active.evaluationClient.fetch(
       "https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{
         method:"POST",signal:controller.signal,
         headers:{"Content-Type":"application/json","x-goog-api-key":token},
@@ -189,12 +194,7 @@ async function generateAIDraft(){
         })
       }
     );
-    if(!response.ok)throw Error("Evaluation provider returned HTTP "+response.status+
-      ". Check the model and key in Settings. No grade was saved.");
-    const aiData=await response.json();
-    const output=aiData?.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("")||"";
-    if(!output)throw Error("Evaluation provider returned no grading suggestion.");
-    const parsed=JSON.parse(output.replace(/^\x60{3}(?:json)?\s*/i,"").replace(/\s*\x60{3}$/,"").trim());
+    const parsed=await evaluationJSON(response);
     const draft=parseSuggestedRubric(parsed,criteria,active.maxScore,evidence);
     if(session!==state.token||state.active!==active)return;
     active.aiDraft={model,checkpointSha:active.checkpointSha,...draft};
@@ -205,8 +205,13 @@ async function generateAIDraft(){
     el("manualReviewUseFeedback").disabled=!draft.feedback;
     el("manualReviewFiles").value=evidence.files.map(f=>f.path).join("\n");
     aiStatus("System draft ready. Your teacher fields are unchanged. Copy only suggestions you accept; resolve unscored criteria yourself before saving.");
+    el("manualReviewFallback").classList.add("hidden");
   }catch(error){
-    if(session===state.token&&state.active===active)aiStatus("Evaluation unavailable: "+error.message,true);
+    if(session===state.token&&state.active===active){
+      aiStatus("Evaluation unavailable: "+error.message+" Your teacher fields and saved grade are unchanged.",true);
+      el("manualReviewFallback").classList.remove("hidden");
+      el("manualReviewRetry").textContent=error.retryAt?"Retry with backoff (after "+new Date(error.retryAt).toLocaleTimeString()+")":"Retry with backoff";
+    }
   }finally{
     if(session===state.token&&state.active===active){
       state.aiBusy=false;button.disabled=Boolean(state.active?.previous?.published)||!state.active?.checkpointSha;
@@ -256,6 +261,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
   el("manualReviewAISection").classList.add("hidden");
   el("manualReviewAIScores").replaceChildren();
   el("manualReviewAIFeedback").textContent="";
+  el("manualReviewFallback").classList.add("hidden");
   for(const id of ["manualReviewUseScore","manualReviewUseFeedback"])el(id).disabled=true;
   el("manualReviewUnpublish").classList.add("hidden");
   el("manualReviewPublish").classList.add("hidden");
@@ -404,10 +410,7 @@ async function save(event) {
       const latest=await tx.get(active.gradeRef);
       const previous=latest.exists()?latest.data():null;
       if(previous?.published)throw new Error("A published grade is protected. Unpublish in Gradebook first.");
-      if(active.previous && !sameEvidence(previous,active.previous)) {
-        throw new Error("Grade changed after opening. Close and reopen the dialog.");
-      }
-      if(!active.previous && previous)throw new Error("Grade was created by another process. Reopen the dialog.");
+      assertGradeVersion(previous,active.previous);
       tx.set(revision,{
         gradeId:active.gradeRef.id,studentId:active.studentId,taskId:active.taskId,
         editorUid:auth.currentUser?.uid||null,reason:"Manual teacher review: "+reason,
@@ -417,6 +420,7 @@ async function save(event) {
       });
       tx.set(active.gradeRef,{
         studentId:active.studentId,taskId:active.taskId,score,maxScore:active.maxScore,
+        gradeVersion:nextGradeVersion(previous),
         feedback,published:false,reviewRequired:false,manuallyAdjusted:true,
         gradeSource:acceptedDraft||previous?.aiAssistance?"teacher_ai_reviewed":"teacher_manual",gradingMode:"individual",sourceSelectionMode:"teacher_manual",
         aiAssistance:acceptedDraft?{
@@ -486,7 +490,8 @@ async function changePublication(published){
   try{
     await runTransaction(db,async transaction=>{
       const snapshot=await transaction.get(active.gradeRef),current=snapshot.data();
-      if(!snapshot.exists()||!sameEvidence(current,active.previous))throw Error("Grade changed. Reload before continuing.");
+      if(!snapshot.exists())throw Error("Grade missing. Reload before continuing.");
+      assertGradeVersion(current,active.previous);
       if(published)await verifyGradePublication(transaction,active.gradeRef,current);
       transaction.set(doc(collection(db,"grade_revisions")),{
         gradeId:active.gradeRef.id,studentId:active.studentId,taskId:active.taskId,
@@ -507,6 +512,9 @@ function init() {
   el("manualReviewForm").addEventListener("submit",save);
   el("manualReviewForm").addEventListener("input",()=>{state.dirty=true;if(state.active&&!state.active.previous?.published)el("manualReviewSave").disabled=false;});
   el("manualReviewAIGenerate").addEventListener("click",()=>{void generateAIDraft();});
+  el("manualReviewRetry").addEventListener("click",()=>{void generateAIDraft();});
+  el("manualReviewManual").addEventListener("click",()=>{el("manualReviewForm").scrollIntoView({behavior:"smooth",block:"start"});el("manualReviewScore").focus();});
+  el("manualReviewPreview").addEventListener("click",()=>{renderFeedbackMarkdown(el("manualReviewFeedbackPreview"),el("manualReviewFeedback").value);});
   el("manualReviewVerifyContributions").addEventListener("click",()=>{
     el("integratedEvidenceDetails").open=true;
     document.getElementById("evidenceEditVerification")?.click();

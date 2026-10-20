@@ -110,7 +110,7 @@
     >
       <!-- Update this wrapper line for the Grading Modal -->
       <div
-        class="bg-white rounded-xl shadow-2xl max-w-5xl w-full flex flex-col overflow-hidden max-h-[90vh]"
+        class="bg-white rounded-xl shadow-2xl max-w-5xl w-full flex flex-col overflow-hidden "
       >
         <div
           class="p-5 border-b bg-slate-800 flex justify-between items-center"
@@ -132,7 +132,7 @@
             &times;
           </button>
         </div>
-        <div class="p-6 overflow-y-auto max-h-[70vh] bg-gray-50">
+        <div class="p-6 overflow-y-auto  bg-gray-50">
           <div class="mb-5 bg-white p-4 border rounded shadow-sm">
             <span
               class="text-[10px] font-bold text-gray-400 uppercase tracking-wider"
@@ -252,7 +252,7 @@
       class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[120] flex items-center justify-center p-4"
     >
       <div
-        class="bg-white rounded-xl shadow-2xl max-w-2xl w-full flex flex-col overflow-hidden max-h-[90vh]"
+        class="bg-white rounded-xl shadow-2xl max-w-2xl w-full flex flex-col overflow-hidden "
       >
         <div
           class="p-5 border-b bg-emerald-600 flex justify-between items-center"
@@ -330,7 +330,7 @@
               <span>⚠️</span> Failure Diagnostics
             </h3>
             <div
-              class="bg-white border border-rose-100 rounded-lg p-1 shadow-inner max-h-64 overflow-y-auto"
+              class="bg-white border border-rose-100 rounded-lg p-1 shadow-inner "
             >
               <ul id="resFailedList" class="divide-y divide-slate-100"></ul>
             </div>
@@ -412,6 +412,7 @@
               <button id="manualReviewUseFeedback" type="button" disabled class="rounded border border-indigo-300 bg-white px-3 py-2 text-xs font-bold disabled:opacity-50">Use suggested feedback</button>
             </div>
             <p id="manualReviewAIStatus" role="status" class="text-xs text-indigo-900">Approve checkpoint evidence to enable suggestions.</p>
+            <div id="manualReviewFallback" class="hidden rounded border border-amber-200 bg-amber-50 p-3" role="status"><p class="text-sm">No replacement score was saved. Continue with your own score and feedback, or retry after the service cooldown.</p><div class="flex flex-wrap gap-3 mt-2"><button type="button" id="manualReviewRetry" class="border rounded px-3 py-2">Retry with backoff</button><button type="button" id="manualReviewManual" class="border rounded px-3 py-2">Switch to manual grading</button></div></div>
             <button id="manualReviewVerifyContributions" type="button" class="hidden border border-indigo-300 rounded px-3 py-2 text-xs font-bold">Complete individual verification</button>
             <details id="manualReviewCheckerSetup" class="text-xs border rounded p-3"><summary class="cursor-pointer font-semibold">Checker setup and source-sharing details</summary>
               <p class="my-2">An instructor-managed Gemini provider key is required. It stays in this browser, not in student records. Only evaluate after approving source sharing; never put a key in feedback. Automated generation assists your review and may be inaccurate.</p>
@@ -423,6 +424,7 @@
             <h3 class="font-bold">3. Teacher score and feedback</h3>
             <button type="button" data-adminerva-help="scoring" class="text-xs underline">ⓘ Saving and publication help</button>
             <p class="text-xs text-slate-600">Enter your own score and feedback, or explicitly copy a suggestion above. The checker never overwrites these fields. Save keeps the draft private; Publish is a separate confirmation.</p>
+            <details><summary class="cursor-pointer text-sm">Feedback preview</summary><button type="button" id="manualReviewPreview" class="border rounded px-3 py-2">Update preview</button><div id="manualReviewFeedbackPreview" class="mt-2 break-words"></div></details>
             <button id="manualReviewUnpublish" type="button" class="hidden rounded border border-amber-400 px-3 py-2 text-sm font-bold">Unpublish protected grade for revision</button>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
@@ -474,8 +476,8 @@
     </div>
 
     <script src="js/core/adminerva-loader.js?v=2026.10.20.1"></script>
-    <script type="module" src="js/repo-review/repofetch.js?v=2026.10.19.4"></script>
-    <script type="module" src="js/repo-review/auto-checker.js?v=2026.10.19.4"></script>
+    <script type="module" src="js/repo-review/repofetch.js?v=2026.10.20.1"></script>
+    <script type="module" src="js/repo-review/auto-checker.js?v=2026.10.20.1"></script>
     <script type="module" src="js/repo-review/manual-review.mjs?v=2026.10.20.1"></script>
     <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=2026.10.20.1"></script>
   </body>

@@ -16,6 +16,37 @@ const TEACHER = 'josephsixson@mcstayuman.edu.ph';
 const ADMIN = 'babaynike2013@gmail.com';
 const SHA = 'a'.repeat(40);
 
+test('grade revisions match the transaction and remain immutable even to administrators',async()=>{
+  const staff=client('staff',TEACHER),admin=client('admin',ADMIN),student=client('alice',EMAIL_A);
+  const grade=doc(staff,'student_grades','alice_peta'),audit=doc(staff,'grade_revisions','first-grade');
+  const before={studentId:'alice',taskId:'peta',score:10,feedback:'Original feedback',published:false};
+  await assertSucceeds(setDoc(grade,before));
+  const after={...before,score:12,feedback:'Reviewed feedback'};
+  const revision={gradeId:'alice_peta',studentId:'alice',taskId:'peta',editorUid:'staff',reason:'Teacher reviewed and adjusted this score',before:{score:10,feedback:before.feedback,published:false},after:{score:12,feedback:after.feedback,published:false},createdAt:serverTimestamp()};
+  const batch=writeBatch(staff);batch.set(grade,after);batch.set(audit,revision);await assertSucceeds(batch.commit());
+  for(const database of [staff,admin,student]){
+    await assertFails(updateDoc(doc(database,'grade_revisions','first-grade'),{reason:'Rewritten audit trail'}));
+    await assertFails(deleteDoc(doc(database,'grade_revisions','first-grade')));
+  }
+  const forged=writeBatch(staff);forged.update(grade,{score:15});forged.set(doc(staff,'grade_revisions','forged'),{...revision,editorUid:'admin'});await assertFails(forged.commit());
+  await assertFails(setDoc(doc(staff,'grade_revisions','no-grade-change'),{...revision,before:revision.after,after:revision.after}));
+  await assertFails(getDoc(doc(student,'grade_revisions','first-grade')));
+});
+test('broad staff matches cannot create or mutate arbitrary nested academic audit trails',async()=>{
+  for(const database of [client('staff',TEACHER),client('admin',ADMIN)])for(const parts of [['students','alice','revisions','forged'],['assessments','peta','audit','forged'],['student_grades','alice_peta','revisions','forged']])await assertFails(setDoc(doc(database,...parts),{reason:'Forged nested audit'}));
+  const admin=client('admin',ADMIN),decision=doc(admin,'commit_claim_decisions','immutable-decision');
+  await assertSucceeds(setDoc(decision,{reason:'Administrator claim resolution'}));
+  await assertFails(updateDoc(decision,{reason:'Replaced decision'}));await assertFails(deleteDoc(decision));
+});
+test('a directory-only teacher can inspect its own profile but cannot grant itself staff authority',async()=>{
+  await env.withSecurityRulesDisabled(async context=>setDoc(doc(context.firestore(),'teachers','directory-only'),{email:'directory.teacher@example.edu',role:'teacher',uid:'directory-only'}));
+  const teacher=client('directory-only','directory.teacher@example.edu');
+  await assertSucceeds(getDocs(query(collection(teacher,'teachers'),where('email','==','directory.teacher@example.edu'))));
+  await assertFails(updateDoc(doc(teacher,'teachers','directory-only'),{role:'admin'}));
+  await assertFails(setDoc(doc(teacher,'staff_workspaces','directory-only','preferences','defaults'),{name:'Unauthorized'}));
+  await assertFails(setDoc(doc(teacher,'staff_access','directory.teacher@example.edu'),{role:'teacher',status:'active'}));
+});
+
 before(async () => {
   env = await initializeTestEnvironment({
     projectId: PROJECT,

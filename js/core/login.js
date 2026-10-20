@@ -1,14 +1,10 @@
-import {resolveStaffRole} from "./staff-session.mjs?v=2026.10.20.1";
+import {resolveAccountAccess} from "./staff-session.mjs?v=2026.10.20.1";
 /** Approved-account sign-in and access feedback. */
 import { db, auth } from "../core/firebase-core.js";
 import {
-  collection,
-  getDocs,
   doc,
   updateDoc,
   setDoc,
-  query,
-  where,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {
   signOut,
@@ -64,21 +60,18 @@ const handleOAuthLogin = async (provider, providerType) => {
     }
 
     // 2. VERIFY IDENTITY against Firestore Directory
-    const role=await resolveStaffRole(result.user);
+    const access=await resolveAccountAccess(result.user),role=access.role;
     const isEducator=!!role;
     let targetCollection = isEducator ? "teachers" : "students";
 
-    const q = query(
-      collection(db, targetCollection),
-      where("email", "==", email),
-    );
-    let snap = await getDocs(q);
-    if(isEducator && snap.empty){
+    if(access.needsTeacherApproval)throw Error("teacher-approval-required");
+    let profileDocs=isEducator?access.teachers:access.students;
+    if(isEducator && !profileDocs.length){
       await setDoc(doc(db,"teachers",result.user.uid),{email,name:String(result.user.displayName||email).slice(0,120),uid:result.user.uid});
-      snap=await getDocs(q);
+      profileDocs=[{id:result.user.uid}];
     }
 
-    if (snap.empty && !isEducator) {
+    if (!profileDocs.length && !isEducator) {
       await signOut(auth);
       throw new Error("unrecognized-email:" + email);
     }
@@ -97,7 +90,7 @@ const handleOAuthLogin = async (provider, providerType) => {
           result.user.reloadUserInfo?.screenName ||
           "";
 
-        const updatePromises = snap.docs.map((docSnap) =>
+        const updatePromises = profileDocs.map((docSnap) =>
           updateDoc(doc(db, targetCollection, docSnap.id), {
             githubToken: credential.accessToken,
             githubUsername: ghUsername,
@@ -130,7 +123,10 @@ const handleOAuthLogin = async (provider, providerType) => {
     let errorTitle = "Login Failed";
     let errorMessage = error.message.replace("Firebase:", "").trim();
 
-    if (error.message === "no-email") {
+    if (error.message === "teacher-approval-required") {
+      errorTitle="Teacher approval required";
+      errorMessage="Your teacher profile exists, but staff access is not active. Ask an administrator to authorize your verified email in Teacher Accounts. A directory entry alone does not grant staff permissions.";
+    } else if (error.message === "no-email") {
       errorMessage =
         "Your GitHub account does not expose a public email. Please sign in with Google.";
     } else if (error.message.startsWith("unrecognized-email:")) {
@@ -160,6 +156,7 @@ const handleOAuthLogin = async (provider, providerType) => {
 // ==========================================
 document.addEventListener("DOMContentLoaded", () => {
   const urlParams = new URLSearchParams(window.location.search);
+  if(urlParams.get("error")==="teacher-approval-required")showError("Teacher approval required","Ask an administrator to activate your verified email in Teacher Accounts. Your teacher directory profile is preserved.");
   if (urlParams.get("error") === "unauthorized") {
     showError("Session Expired", "Please sign in again to continue.");
     window.history.replaceState({}, document.title, window.location.pathname);

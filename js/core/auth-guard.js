@@ -1,17 +1,10 @@
-import {resolveStaffRole} from "./staff-session.mjs?v=2026.10.20.1";
+import {resolveAccountAccess} from "./staff-session.mjs?v=2026.10.20.1";
 /** Verified account admission, workspace visibility and sign-out routing. */
-import { auth, db } from "./firebase-core.js";
-import {staffRole} from "./staff-role.mjs?v=2026.10.20.1";
+import { auth } from "./firebase-core.js";
 import {
   onAuthStateChanged,
   signOut,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const currentPath = window.location.pathname.toLowerCase();
 const isLoginPage = currentPath.includes("login.html");
@@ -34,21 +27,17 @@ onAuthStateChanged(auth, async (user) => {
   }
 
   const userEmail = user.email.toLowerCase();
-  const admittedRole=await resolveStaffRole(user);
+  let access;
+  try {access=await resolveAccountAccess(user);}
+  catch {await signOut(auth);window.location.href="login.html?error=server";return;}
+  const admittedRole=access.role;
 
   // 1. Strict Whitelist Enforcement
   if (!admittedRole) {
     try {
-      const studentQuery = query(
-        collection(db, "students"),
-        where("email", "==", userEmail),
-      );
-      const studentSnap = await getDocs(studentQuery);
-
-
-      if (studentSnap.empty) {
+      if (access.needsTeacherApproval || !access.students.length) {
         await signOut(auth);
-        window.location.href = "login.html?error=unauthorized";
+        window.location.href = access.needsTeacherApproval ? "login.html?error=teacher-approval-required" : "login.html?error=unauthorized";
         return; // Halt execution
       }
     } catch (error) {

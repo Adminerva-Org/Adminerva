@@ -16,6 +16,15 @@ function mock(handler) {
 }
 const SHA = 'a'.repeat(40);
 
+test('an explicit branch is resolved to a full SHA before paginating',async()=>{
+  const {calls,fetchImpl}=mock(url=>url.pathname==='/repos/foo/bar'?{default_branch:'trunk'}:url.pathname.endsWith('/commits/review%2Fstudent')?{sha:SHA}:[]);
+  const output=await createGithubEvidenceClient({fetchImpl}).resolveEvidence({repository:'foo/bar',student:{id:'s'},assessment:{id:'task'},ref:'review/student',resolver:async()=>({})});
+  assert.equal(output.scannedRef,SHA);assert.ok(calls.some(url=>url.searchParams.get('sha')===SHA));
+});
+test('missing default branches are not replaced with a guessed main or master branch',async()=>{
+  const {calls,fetchImpl}=mock(()=>({}));await assert.rejects(createGithubEvidenceClient({fetchImpl}).getBranchHead('foo/bar'),/confirmed default branch/);assert.equal(calls.length,1);
+});
+
 test('accepts GitHub repo URL and .git suffix', () => {
   assert.deepEqual(parseGithubRepository('https://github.com/Adminerva-Org/Adminerva.git'),
     {owner:'Adminerva-Org',repo:'Adminerva',fullName:'Adminerva-Org/Adminerva'});

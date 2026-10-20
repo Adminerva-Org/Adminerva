@@ -1,17 +1,30 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: gradebook quarter. */
 import { auth, db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
+import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=2026.10.20.1";
+import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=2026.10.20.1";
+import {renderFeedbackMarkdown,reviewNotice} from "./review-ui.mjs?v=2026.10.20.1";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   collection, doc, getDoc, getDocs, query, where, runTransaction,
   writeBatch, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import { parseGithubRepository } from "./services/github-evidence-client.mjs";
+import { parseGithubRepository } from "./services/github-evidence-client.mjs?v=2026.10.20.1";
 
 /* Companion view to the legacy single-assessment gradebook.
    It does not change existing document identifiers or grade schemas. */
 const el = id => document.getElementById(id);
 const state = { students: [], assessments: [], tasks: [], rows: [], grades: new Map(), active: null, ready: false, mode: "quarter", loading: false };
+let loadSerial=0,bulkBusy=false,detailsDirty=false;
+const publicationContext=()=>"quarter:"+el("gbQuarterSection").value+":"+el("gbQuarter").value;
+function queueEntries(){return [...state.grades.values()].map(entry=>({...entry,schemaVersion:state.tasks.find(task=>task.id===entry.data.taskId)?.schemaVersion,maxScore:state.tasks.find(task=>task.id===entry.data.taskId)?.maxScore}));}
+function syncPublication(){
+  const count=publicationCandidates(queueEntries()).length,button=el("gbQuarterPublish");
+  button.textContent="Publish ("+count+" Drafts)";button.disabled=state.loading||bulkBusy||!count;
+  el("gbQuarterUnpublish").disabled=state.loading||bulkBusy||![...state.grades.values()].some(entry=>entry.data.published);
+  const recovery=publicationRecovery(publicationContext());
+  el("gbQuarterRecovery").textContent=recovery?.pending.length?"Interrupted batch: "+recovery.pending.length+" pending. Reload and confirm to retry; nothing resumes automatically.":"Only reviewed legacy drafts are eligible for batch publishing. V2 grades are published individually.";
+}
 const add = (parent, tag, className = "", value = null) => {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -61,6 +74,7 @@ function heading(row, value, css = "") {
   return th;
 }
 function render() {
+  syncPublication();
   const table = el("gbQuarterTable");
   table.replaceChildren();
   const head = add(table, "thead", "bg-slate-800 text-white");
@@ -114,16 +128,17 @@ function render() {
   }
 }
 async function loadQuarter() {
-  if (!state.ready || state.mode !== "quarter" || state.loading) return;
+  if (!state.ready || state.mode !== "quarter") return;
+  const serial=++loadSerial;state.loading=true;syncPublication();
   const section = el("gbQuarterSection").value;
   const quarter = el("gbQuarter").value;
-  if (!section) { status("Choose a class section."); return; }
+  if (!section) { state.loading=false;state.tasks=[];state.rows=[];state.grades.clear();render();status("Choose a class section."); return; }
   const tasks = state.assessments.filter(a => inSection(a, section) && quarterOf(a) === quarter)
     .sort((a, b) => (a.title || "").localeCompare(b.title || ""));
   const students = state.students.filter(s => s.section === section)
     .sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   state.tasks = tasks; state.rows = students; state.grades = new Map(); render();
-  if (!tasks.length) { status("No assessments found for this quarter."); return; }
+  if (!tasks.length) { state.loading=false;syncPublication();status("No assessments found for this quarter."); return; }
   state.loading = true;
   status("Loading " + tasks.length + " assessment(s)…");
   try {
@@ -133,6 +148,7 @@ async function loadQuarter() {
       const batch = tasks.slice(i, i + 4);
       const snaps = await Promise.all(batch.map(task =>
         getDocs(query(collection(db, "student_grades"), where("taskId", "==", task.id)))));
+      if(serial!==loadSerial)return;
       snaps.forEach((snapshot, n) => {
         const task = batch[n];
         snapshot.forEach(d => {
@@ -146,8 +162,9 @@ async function loadQuarter() {
     render();
     status(students.length + " students • " + tasks.length + " assessments • click a score for details.");
   } catch (error) {
+    if(serial!==loadSerial)return;
     status("Gradebook loading failed: " + error.message, true);
-  } finally { state.loading = false; }
+  } finally { if(serial===loadSerial){state.loading = false;syncPublication();} }
 }
 function detailLine(container, label, value) {
   const p = add(container, "p", "text-sm text-slate-700");
@@ -227,6 +244,7 @@ async function loadRevisions(entry) {
   }
 }
 function openDetails(student, task, entry) {
+  detailsDirty=false;
   state.active = { student, task, entry };
   const grade = entry.data;
   el("gbDetailTitle").textContent = student.name + " — " + task.title;
@@ -235,9 +253,13 @@ function openDetails(student, task, entry) {
   el("gbEditScore").value = Number(grade.score);
   el("gbEditMax").value = String(grade.maxScore || task.maxScore || 20);
   el("gbEditFeedback").value = cleanGradeFeedback(grade.feedback);
+  renderFeedbackMarkdown(el("gbFeedbackPreview"),grade.feedback);
+  for(const id of ["gbEditScore","gbEditFeedback","gbEditReason","gbMarkReviewed","gbDetailSave"])el(id).disabled=grade.published===true||task.schemaVersion===2;
+  el("gbDetailReviewLink").classList.toggle("hidden",task.schemaVersion!==2);
+  el("gbDetailReviewLink").href="repofetch.html?"+new URLSearchParams({student:student.id,assessment:task.id,section:student.section||""});
   el("gbEditReason").value = "";
   el("gbMarkReviewed").checked = !grade.reviewRequired;
-  el("gbDetailStatus").textContent = grade.published ? "Published: changing the score will be visible to the student." :
+  el("gbDetailStatus").textContent = grade.published ? "Published grade protected. Unpublish before revising." :
     "Unpublished: save and review before publishing.";
   el("gbDetailPublish").classList.toggle("hidden", grade.published === true);
   el("gbDetailUnpublish").classList.toggle("hidden", grade.published !== true);
@@ -246,13 +268,16 @@ function openDetails(student, task, entry) {
   void loadRevisions(entry);
 }
 function closeDetails() {
+  if(detailsDirty&&!confirm("Discard unsaved teacher feedback or score changes?"))return false;
   el("gbDetailModal").classList.add("hidden");
   state.active = null;
+  return true;
 }
 async function saveDetails() {
   const active = state.active;
   if (!active) return;
   const grade = active.entry.data;
+  if(grade.published)return reviewNotice("Published grade protected. Unpublish before revising.",true);
   if(active.task.schemaVersion===2)return alert("Use Review & Grade in RepoFetch to adjust V2 scores and feedback against the current approved evidence. Unpublish a released grade before editing.");
   const score = Number(el("gbEditScore").value);
   const feedback = cleanGradeFeedback(el("gbEditFeedback").value);
@@ -271,11 +296,7 @@ async function saveDetails() {
       const latest = await tx.get(active.entry.ref);
       if (!latest.exists()) throw new Error("The grade no longer exists.");
       const before = latest.data();
-      if (Number(before.score) !== Number(grade.score) ||
-          String(before.feedback || "") !== String(grade.feedback || "") ||
-          Boolean(before.published) !== Boolean(grade.published)) {
-        throw new Error("The grade changed since you opened it. Refresh before editing.");
-      }
+      assertGradeVersion(before,grade);
       tx.set(revision, {
         studentId: active.student.id, taskId: active.task.id,
         gradeId: active.entry.ref.id, reason, editorUid: auth.currentUser?.uid || null,
@@ -284,11 +305,12 @@ async function saveDetails() {
         createdAt: serverTimestamp()
       });
       tx.update(active.entry.ref, {
-        score, feedback, reviewRequired: !reviewed, editedAt: serverTimestamp(),
+        score, feedback,gradeVersion:nextGradeVersion(before),reviewRequired: !reviewed, editedAt: serverTimestamp(),
         manuallyAdjusted: true, editedBy: auth.currentUser?.uid || null
       });
     });
     el("gbDetailStatus").textContent = "Saved. Previous score and feedback were archived in grade_revisions.";
+    detailsDirty=false;
     await loadQuarter();
     closeDetails();
   } catch (error) {
@@ -298,6 +320,7 @@ async function saveDetails() {
 async function togglePublish(makePublished) {
   if (!state.active) return;
   const active = state.active;
+  if(detailsDirty)return reviewNotice("Save or discard your edits before changing publication.",true);
   if (makePublished && active.entry.data.reviewRequired && !el("gbMarkReviewed").checked) {
     return alert("Review the evidence and check the teacher-review confirmation before publishing.");
   }
@@ -308,6 +331,7 @@ async function togglePublish(makePublished) {
       const gradeSnap = await tx.get(active.entry.ref);
       if (!gradeSnap.exists()) throw new Error("Grade missing.");
       const previous = gradeSnap.data();
+      assertGradeVersion(previous,active.entry.data);
       const isV2=active.task.schemaVersion===2;
       if(makePublished&&isV2){
         const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=2026.10.19.1");
@@ -333,26 +357,19 @@ async function togglePublish(makePublished) {
   } catch (error) { alert("Unable to change grade visibility: " + error.message); }
 }
 async function bulkVisibility(makePublished) {
-  const eligible = [];
-  for (const student of state.rows) for (const task of state.tasks) {
-    const entry = state.grades.get(student.id + "::" + task.id);
-    if (!entry || !!entry.data.published === makePublished) continue;
-    if(makePublished&&task.schemaVersion===2)continue;
-    if (makePublished && entry.data.reviewRequired) continue;
-    eligible.push(entry);
-  }
+  if(bulkBusy||state.loading)return;
+  const eligible=publicationCandidates(queueEntries(),makePublished);
   if (!eligible.length) return alert("No eligible grades to " + (makePublished ? "publish" : "unpublish") +
     ". V2 grades require individual publication; drafts requiring review are also excluded.");
   if (!confirm((makePublished ? "Publish " : "Unpublish ") + eligible.length +
       " grade(s) for the selected quarter and section?")) return;
+  bulkBusy=true;syncPublication();
   try {
-    for (let i = 0; i < eligible.length; i += 400) {
-      const batch = writeBatch(db);
-      for (const entry of eligible.slice(i, i + 400)) batch.update(entry.ref, { published: makePublished });
-      await batch.commit();
-    }
+    const result=await publishGradeEntries(eligible,makePublished,{context:publicationContext(),onProgress:value=>reviewNotice(value.completed.length+" processed; "+value.pending.length+" pending. You can continue reviewing.")});
+    reviewNotice(result.pending.length?"Some grades changed or failed. Reload and review before retrying.":"Batch complete.",Boolean(result.pending.length));
     await loadQuarter();
-  } catch (error) { alert("Bulk action failed: " + error.message); }
+  } catch (error) { reviewNotice("Batch paused: " + error.message,true); }
+  finally{bulkBusy=false;syncPublication();}
 }
 function tableData() {
   const header = ["Student name", "Repository"].concat(state.tasks.map(t => t.title));
@@ -390,6 +407,14 @@ function exportCSV() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function init() {
+  window.openGradebookFeedback=async({studentId,taskId})=>{
+    const student=state.students.find(item=>item.id===studentId),task=state.assessments.find(item=>item.id===taskId);
+    if(!student||!task)return reviewNotice("This record is not in the loaded roster. Reload the gradebook.",true);
+    if(state.active&&!closeDetails())return;
+    const ref=doc(db,"student_grades",studentId+"_"+taskId),snapshot=await getDoc(ref);
+    if(snapshot.exists())openDetails(student,task,{ref,data:snapshot.data()});
+  };
+  for(const id of ["gbEditScore","gbEditFeedback","gbEditReason","gbMarkReviewed"])el(id).addEventListener("input",()=>{detailsDirty=true;renderFeedbackMarkdown(el("gbFeedbackPreview"),el("gbEditFeedback").value);});
   el("gbViewQuarter").addEventListener("click", () => view("quarter"));
   el("gbViewSingle").addEventListener("click", () => view("single"));
   el("gbQuarterSection").addEventListener("change", loadQuarter);

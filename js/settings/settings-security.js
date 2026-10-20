@@ -7,7 +7,7 @@ import {
   getDocs,
   doc,
   updateDoc,
-  addDoc,
+  setDoc,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 window.initFirebase = function () {
@@ -111,14 +111,13 @@ window.saveSecuritySettings = async function () {
         });
       } else {
         // ✨ THE FIX: Profile doesn't exist, so we create one for this admin
-        await addDoc(collection(db, "teachers"), {
+        await setDoc(doc(db, "teachers",user.uid), {
           email: email,
-          role: "admin",
+          uid:user.uid,
           githubToken: githubToken,
           geminiKey: geminiKey,
           aiModel: aiModel,
           engineMode: engineMode,
-          createdAt: new Date().toISOString(),
         });
       }
     }

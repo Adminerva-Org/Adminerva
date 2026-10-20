@@ -2,10 +2,10 @@
 import {db} from "../core/firebase-core.js";
 import {collection,getDocs,query,where} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {createEvidenceReview} from "./assessment-evidence-review.mjs?v=2026.10.20.1";
-import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=2026.10.19.4";
+import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=2026.10.20.1";
 import {parseRepository} from "./services/assessment-evidence.mjs";
-import {analyzePatchSubstance} from "./services/commit-substance.mjs";
-import {preloadReviewPanels} from "./services/review-requests.mjs?v=2026.10.19.4";
+import {analyzePatchSubstance} from "./services/commit-substance.mjs?v=2026.10.20.1";
+import {preloadReviewPanels} from "./services/review-requests.mjs?v=2026.10.20.1";
 
 function add(parent,tag,text){const node=document.createElement(tag);node.textContent=String(text??"");parent.append(node);return node;}
 export function mountReviewPanels({root,student,assessment,evidence,requests,onEvidenceChange,signal}){

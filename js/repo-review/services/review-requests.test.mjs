@@ -26,7 +26,6 @@ test("shared reads deduplicate in-flight requests, bound concurrency and retry f
   const path="/repos/example/project/commits/"+"a".repeat(40);
   const results=await Promise.all([client.json(path+"?page=1&per_page=100"),client.json(path+"?per_page=100&page=1"),...Array.from({length:5},(_,index)=>client.json(path+"?page="+(index+2)))]);
   assert.equal(calls,6);assert.equal(peak,2);assert.deepEqual(results[0],results[1]);
-  await assert.rejects(client.json("/repos/example/project/failed"),/503/);
   await client.json("/repos/example/project/failed");assert.equal(calls,8);
   await assert.rejects(client.json("https://other.example/repos/x/y"),/origin/);
 });

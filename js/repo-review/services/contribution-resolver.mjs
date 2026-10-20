@@ -8,7 +8,7 @@
  * deadline. For official cutoff grading, use a trusted cutoff snapshot/webhook.
  */
 
-import { analyzeFileContributions } from './commit-substance.mjs';
+import { analyzeFileContributions } from './commit-substance.mjs?v=2026.10.20.1';
 
 const SOURCE_EXTS = new Set(['java', 'kt', 'kts', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'py', 'cpp', 'c', 'h', 'cs', 'html', 'css', 'sql', 'xml', 'json', 'gradle', 'md', 'txt', 'dart', 'swift', 'go', 'rs', 'rb', 'php', 'vue', 'svelte']);
 const ASSET_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif', 'ico', 'mp3', 'mp4', 'wav', 'pdf']);
@@ -238,11 +238,20 @@ export function selectFallbackCandidates(unmatchedFiles, patterns, assessment, {
  * Attribution requires verified account binding for auto-acceptance.
  * Fallback metadata may suggest a candidate, but never establishes ownership.
  */
+export function linkGithubProfile(student,profile) {
+  const expected=String(student.githubUsername||"").trim().replace(/^@/,"").toLowerCase();
+  if(!expected||String(profile?.login||"").toLowerCase()!==expected||!Number.isSafeInteger(profile?.id)||profile.id<=0)
+    throw Error("The linked GitHub login could not be resolved. Review the student's account before evaluating.");
+  if(student.githubUserId!=null&&String(student.githubUserId).trim()!==""&&Number(student.githubUserId)!==profile.id)
+    throw Error("The saved GitHub account ID differs from this login. Instructor identity review is required.");
+  return {...student,githubUsername:profile.login,githubUserId:profile.id};
+}
 export function attributeCommit(commit, student) {
-  const linkedId = student.githubUserId == null ? null : Number(student.githubUserId);
-  const actualId = commit.author?.id == null ? null : Number(commit.author.id);
+  const stableId=value=>Number.isSafeInteger(Number(value))&&Number(value)>0?Number(value):null;
+  const linkedId = stableId(student.githubUserId);
+  const actualId = stableId(commit.author?.id);
   const login = String(commit.author?.login || '').toLowerCase();
-  const expectedLogin = String(student.githubUsername || '').toLowerCase();
+  const expectedLogin = String(student.githubUsername || '').trim().replace(/^@/,'').toLowerCase();
   const commitEmail = String(commit.commit?.author?.email || '').toLowerCase();
   const verifiedEmails = (student.verifiedGitEmails || []).map(v => String(v).toLowerCase());
 

@@ -12,7 +12,9 @@
         {"type":"New","area":"Teacher Accounts","text":"Administrators can authorize verified teacher emails, assign analytics sections and disable access without deleting saved teaching files. This does not send invitation emails or create passwords."},
         {"type":"Updated","area":"Analytics","text":"Administrators select an instructor in Teacher Analytics. Published results are distinct from private drafts, and missing scores are not treated as zero. Operational reports and diagnostic trails remain in Administration Analytics."},
         {"type":"Fixed","area":"Mobile navigation and Help","text":"The brand and account controls adjust on smaller screens, notifications stay inside the viewport, and a consistent footer links tutorials, the Wiki, public updates and privacy."},
-        {"type":"Revised","area":"Review & Grade","text":"Review steps stay easy to reach while scrolling, and save and publication actions wrap on small screens. Saving privately and publishing remain separate teacher decisions."}
+        {"type":"Revised","area":"Review & Grade","text":"Review steps stay easy to reach while scrolling, and save and publication actions wrap on small screens. Saving privately and publishing remain separate teacher decisions."},
+        {"type":"Fixed","area":"Adminerva Auto-Checker","text":"Temporary evaluation outages and incomplete responses keep teacher edits intact, explain retry timing and offer manual grading. Account and source limitations still require instructor verification."},
+        {"type":"Updated","area":"Gradebook","text":"Compact score previews open detailed feedback without crowding tables. Publication shows the number of reviewed drafts, checks each saved record again and reports interrupted work without automatically resuming."}
       ]
     },
     {

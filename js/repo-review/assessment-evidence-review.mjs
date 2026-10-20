@@ -9,9 +9,9 @@ import {parseRepository,normalizeSelection,validSha}
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "./services/commit-history.mjs";
 import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=2026.10.19.4";
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=2026.10.19.4";
-import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=2026.10.19.4";
+import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=2026.10.20.1";
 
-import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=2026.10.19.4";
+import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=2026.10.20.1";
 
 export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{}}={}){
 const ADMIN="babaynike2013@gmail.com";
@@ -179,7 +179,7 @@ async function loadEvidence(initialRecord){
 }
 async function previewCommit(repo,sha,row){
   let box=row.querySelector("pre");
-  if(!box)box=add(row,"pre","","max-h-72 overflow-auto whitespace-pre-wrap break-words text-xs bg-slate-50 p-3 mt-3");
+  if(!box)box=add(row,"pre","","whitespace-pre-wrap break-words text-xs bg-slate-50 p-3 mt-3");
   box.textContent="Loading commit diffs…";
   try{
     const data=await github(api(repo)+"/commits/"+sha+"?per_page=100");

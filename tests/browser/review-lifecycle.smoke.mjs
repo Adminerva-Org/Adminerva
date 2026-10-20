@@ -71,7 +71,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
   let browser,server;
   const contexts=[],errors=[],blockedRequests=[],dialogs=[],milestones=[];
   function validated(message){milestones.push(message);console.log("Validated: "+message);}
-  let modelRequests=0;
+  let modelRequests=0,providerOutage=true,providerMalformed=false;
   let omitSavedCommit=false;
   let interceptSummaryConfirmation=null;
   try{
@@ -138,7 +138,8 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
           assert.match(prompt,/Do not deduct points from an individual for teammates' missing screens/);
           assert.match(prompt,new RegExp(homePath.replaceAll(".","\\.")));
           assert.ok(!prompt.includes("SELECTED COMMIT: "+groupSha),"Teammate changes must not be attributed to Alice");
-          if(modelRequests===1)return route.fulfill({status:503,json:{error:{message:"Fixture provider outage"}}});
+          if(providerOutage)return route.fulfill({status:503,json:{error:{message:"Fixture provider outage"}}});
+          if(providerMalformed)return route.fulfill({json:{candidates:[{content:{parts:[{text:"invalid response"}]}}]}});
           return route.fulfill({json:{candidates:[{content:{parts:[{text:JSON.stringify(providerDraft)}]}}]}});
         }
         if(parsed.hostname==="127.0.0.1"||parsed.hostname==="localhost")return route.continue();
@@ -257,8 +258,18 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await expect(student.locator("#modalScoreArea")).toBeHidden();
     await teacher.locator("#manualReviewAIGenerate").click();
     await expect(teacher.locator("#manualReviewAIStatus")).toContainText("503");
+    await expect(teacher.locator("#manualReviewFallback")).toBeVisible();
+    await expect(teacher.locator("#manualReviewManual")).toBeEnabled();
+    providerOutage=false;
     assert.equal((await browserRecord(teacher,"student_grades/alice_fixture-v2")).exists,false);
-    await teacher.locator("#manualReviewAIGenerate").click();
+    providerMalformed=true;
+    await teacher.locator("#manualReviewFeedback").fill("Private teacher notes kept through a service failure.");
+    await teacher.locator("#manualReviewRetry").click();
+    await expect(teacher.locator("#manualReviewAIStatus")).toContainText("invalid format");
+    await expect(teacher.locator("#manualReviewFeedback")).toHaveValue("Private teacher notes kept through a service failure.");
+    assert.equal((await browserRecord(teacher,"student_grades/alice_fixture-v2")).exists,false);
+    providerMalformed=false;await teacher.locator("#manualReviewFeedback").fill("");
+    await teacher.locator("#manualReviewRetry").click();
     await expect(teacher.locator("#manualReviewAIScores")).toContainText("Teacher review needed");
     await expect(teacher.locator("#manualReviewFeedback")).toHaveValue("");
     await teacher.locator("#manualReviewUseFeedback").click();
@@ -526,6 +537,35 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     assert.ok(saveBounds.x>=0&&saveBounds.x+saveBounds.width<=390&&saveBounds.y+saveBounds.height<=844,"Review save actions must remain reachable on mobile");
     await teacher.screenshot({path:path.join(output,"review-grade-mobile.png"),fullPage:true});
     validated("audited second teacher admission, isolated same-week lesson saves, stale-tab protection, scoped analytics, responsive navigation and privacy footer");
+    await getAdminFirestore(adminApp).doc("assessments/fixture-reviewed").set({...assessment,schemaVersion:1,title:"Fixture reviewed legacy draft"});
+    await getAdminFirestore(adminApp).doc("student_grades/alice_fixture-reviewed").set({studentId:"alice",taskId:"fixture-reviewed",score:11,maxScore:20,feedback:"# Welcome screen\nReviewed individual changes.\n<script>unsafe()</script>",reviewRequired:false,published:false,gradedAt:Timestamp.now()});
+    await getAdminFirestore(adminApp).doc("student_grades/bob_fixture-reviewed").set({studentId:"bob",taskId:"fixture-reviewed",score:9,maxScore:20,feedback:"Still awaiting individual review.",reviewRequired:true,published:false});
+    await gradebook.setViewportSize({width:390,height:844});
+    await gradebook.goto(origin+"/gradebook.html");
+    await gradebook.locator("#gbQuarterSection").selectOption("fixture-11-A");await gradebook.locator("#gbQuarter").selectOption("Q3");
+    await expect(gradebook.locator("#gbQuarterPublish")).toHaveText("Publish (1 Drafts)");
+    await gradebook.locator("#gbQuarterTable button").filter({hasText:"11 / 20"}).click();
+    await expect(gradebook.locator("#gbDetailModal")).toBeVisible();
+    assert.equal(await gradebook.locator("#gbFeedbackPreview script").count(),0);
+    const drawerBounds=await gradebook.locator("#gbDetailModal>div").boundingBox();assert.ok(drawerBounds.width<=390&&drawerBounds.height<=844);
+    await gradebook.screenshot({path:path.join(output,"grade-feedback-drawer-mobile.png")});
+    await gradebook.locator("#gbDetailClose").click();
+    await gradebook.locator("#gbQuarterPublish").click();
+    await waitRecord(gradebook,"student_grades/alice_fixture-reviewed","published",true);
+    assert.equal((await browserRecord(gradebook,"student_grades/bob_fixture-reviewed")).data.published,false);
+    await expect(gradebook.locator("#gbQuarterPublish")).toHaveText("Publish (0 Drafts)");
+    const publicationAudits=await getAdminFirestore(adminApp).collection("grade_revisions").where("gradeId","==","alice_fixture-reviewed").get();assert.equal(publicationAudits.size,1);
+    await gradebook.reload();await expect(gradebook.locator("#gbQuarterSection option")).toContainText(["fixture-11-A"]);
+    await gradebook.locator("#gbQuarter").selectOption("Q3");await expect(gradebook.locator("#gbQuarterPublish")).toBeDisabled();
+    await gradebook.locator("#gbViewSingle").click();await expect(gradebook.locator("#gbSection option")).toContainText(["fixture-11-A"]);
+    await gradebook.locator("#gbSection").selectOption("fixture-11-A");await gradebook.locator("#gbAssessment").selectOption("fixture-reviewed");
+    await gradebook.locator("#gbTableBody .av-feedback-chip").first().click();
+    await expect(gradebook.locator("#feedbackDrawer")).toBeVisible();
+    await expect(gradebook.locator("#feedbackDrawerBody")).toContainText("Reviewed individual changes");
+    assert.equal(await gradebook.locator("#feedbackDrawerBody script").count(),0);
+    await gradebook.locator("#feedbackDrawerClose").click();
+    await expect(gradebook.locator("#subtleLoader")).toBeHidden();
+    validated("safe mobile feedback drawers, persistent draft counts, audited deliberate batch publication, review exclusions and refresh without automatic replay");
     assert.deepEqual(blockedRequests,[]);assert.deepEqual(errors,[]);
     await writeFile(path.join(output,"result.json"),JSON.stringify({projectId,backend:"real Auth + Firestore emulators",sdkVersion:"10.13.0",externalServices:"GitHub and Gemini fixtures",milestones,modelRequests,errors,blockedRequests},null,2));
     console.log(JSON.stringify({passed:milestones,artifacts:output}));

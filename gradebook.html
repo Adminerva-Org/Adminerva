@@ -12,7 +12,7 @@
     <!-- Sidebar Navigation -->
     <div id="adminerva-nav" data-module="repo" data-page="gradebook"></div>
 
-    <main class="flex-1 px-4 sm:px-6 lg:px-10 py-6 sm:py-8 max-w-screen-2xl mx-auto w-full overflow-y-auto">
+    <main class="flex-1 px-4 sm:px-6 lg:px-10 py-6 sm:py-8 max-w-screen-2xl mx-auto w-full">
       <header class="mb-8">
         <h1
           class="text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3"
@@ -72,14 +72,15 @@
         </div>
         <div class="flex items-end">
           <button
-            onclick="window.bulkPublishCurrentGrid()"
+            id="gbLegacyPublish" disabled onclick="window.bulkPublishCurrentGrid()"
             class="bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] uppercase tracking-wider font-extrabold py-2.5 px-6 rounded-lg transition shadow-sm w-full md:w-auto h-[42px] flex items-center justify-center gap-2"
           >
-            📢 Publish All
+            Publish (0 Drafts)
           </button>
         </div>
       </div>
 
+      <p id="gbLegacyRecovery" role="status" class="text-sm text-slate-600 mb-3">Load reviewed drafts to prepare publication.</p>
       <!-- The Matrix Table -->
       <div
         class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden"
@@ -91,7 +92,7 @@
             <tr>
               <th class="px-6 py-4 rounded-tl-xl">Student Roster</th>
               <th class="px-6 py-4">Repository Status</th>
-              <th class="px-6 py-4">AI Evaluation</th>
+              <th class="px-6 py-4">Score and feedback</th>
               <th class="px-6 py-4 rounded-tr-xl">Student Visibility</th>
             </tr>
           </thead>
@@ -129,9 +130,9 @@
           </div>
         </div>
         <div class="flex flex-wrap items-center justify-between gap-3">
-          <p id="gbQuarterStatus" role="status" class="text-sm text-slate-600">Select a section to load quarter scores.</p>
+          <p id="gbQuarterRecovery" class="text-sm text-slate-600" role="status"></p><p id="gbQuarterStatus" role="status" class="text-sm text-slate-600">Select a section to load quarter scores.</p>
           <div class="flex flex-wrap gap-2">
-            <button type="button" id="gbQuarterPublish" class="border border-blue-600 text-blue-700 bg-white rounded-lg px-3 py-2 text-sm font-bold">Publish reviewed grades</button>
+            <button type="button" id="gbQuarterPublish" disabled class="border border-blue-600 text-blue-700 bg-white rounded-lg px-3 py-2 text-sm font-bold">Publish (0 Drafts)</button>
             <button type="button" id="gbQuarterUnpublish" class="border border-rose-300 text-rose-700 bg-white rounded-lg px-3 py-2 text-sm font-bold">Unpublish quarter</button>
           </div>
         </div>
@@ -141,7 +142,7 @@
         <p class="text-xs text-slate-500">Blank cells mean no grade is recorded. Copied or exported values contain scores only; teacher feedback remains in the details view.</p>
       </section>
 
-      <div id="gbDetailModal" class="hidden fixed inset-0 bg-slate-950/70 z-[160] p-2 sm:p-5 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="gbDetailTitle">
+      <div id="gbDetailModal" class="av-grade-drawer hidden fixed inset-0 bg-slate-950/70 z-[160] p-2 sm:p-5 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="gbDetailTitle">
         <div class="bg-white w-full max-w-3xl rounded-2xl overflow-hidden shadow-2xl flex flex-col" style="max-height:calc(100dvh - 20px)">
           <div class="bg-slate-800 p-4 sm:p-5 text-white flex items-start justify-between gap-4">
             <div><h2 id="gbDetailTitle" class="font-extrabold text-lg">Score details</h2><p id="gbDetailSubtitle" class="text-xs text-slate-300 mt-1"></p></div>
@@ -156,6 +157,7 @@
             </div>
             <div><label for="gbEditFeedback" class="block text-sm font-bold text-slate-700 mb-1">Student feedback</label>
               <textarea id="gbEditFeedback" rows="5" maxlength="6000" class="w-full border border-slate-300 rounded-lg px-3 py-3"></textarea></div>
+            <details><summary class="cursor-pointer text-sm font-bold">Formatted feedback preview</summary><div id="gbFeedbackPreview" class="mt-2 break-words"></div></details>
             <div><label for="gbEditReason" class="block text-sm font-bold text-slate-700 mb-1">Reason for editing (audit note)</label>
               <textarea id="gbEditReason" rows="2" placeholder="Explain any adjustment or consideration…" class="w-full border border-slate-300 rounded-lg px-3 py-3"></textarea></div>
             <section><h3 class="font-bold text-sm text-slate-700 mb-2">Rubric and contribution evidence</h3>
@@ -170,6 +172,7 @@
             <p id="gbDetailStatus" role="status" class="text-sm text-slate-600"></p>
           </div>
           <div class="border-t border-slate-200 p-4 bg-white flex flex-wrap justify-end gap-2">
+            <a id="gbDetailReviewLink" class="hidden border border-blue-300 px-4 py-2 rounded-lg" href="repofetch.html">Open Review &amp; Grade</a>
             <button type="button" id="gbDetailSave" class="bg-blue-600 text-white px-4 py-2.5 rounded-lg text-sm font-bold">Save changes</button>
             <button type="button" id="gbDetailPublish" class="border border-blue-300 text-blue-700 px-4 py-2.5 rounded-lg text-sm font-bold">Publish</button>
             <button type="button" id="gbDetailUnpublish" class="border border-rose-300 text-rose-700 px-4 py-2.5 rounded-lg text-sm font-bold">Unpublish</button>
@@ -182,7 +185,7 @@
     <script src="js/core/adminerva-nav.js?v=2026.10.20.1"></script>
     <script src="js/core/adminerva-loader.js?v=2026.10.20.1"></script>
     <script type="module" src="js/core/auth-guard.js?v=2026.10.20.1"></script>
-    <script type="module" src="js/repo-review/gradebook.js?v=2026.10.19.3"></script>
-    <script type="module" src="js/repo-review/gradebook-quarter.mjs?v=2026.10.19.3"></script>
+    <script type="module" src="js/repo-review/gradebook.js?v=2026.10.20.1"></script>
+    <script type="module" src="js/repo-review/gradebook-quarter.mjs?v=2026.10.20.1"></script>
   </body>
 </html>

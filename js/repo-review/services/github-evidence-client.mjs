@@ -3,6 +3,7 @@
  * No Firebase, credential persistence, AI calls or grade writes.
  * Caller MUST provide trusted cutoff evidence separately before final grading.
  */
+import {createBackoffClient} from './request-backoff.mjs?v=2026.10.20.1';
 const API = 'https://api.github.com';
 
 export function parseGithubRepository(value) {
@@ -21,22 +22,21 @@ export function parseGithubRepository(value) {
     [owner, repo] = parts;
   }
   repo = repo.replace(/\.git$/i, '');
-  if (!/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo) || owner === '.' || repo === '.') {
+  if (!/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo) || ['.','..'].includes(owner) || ['.','..'].includes(repo)) {
     throw new Error('Invalid GitHub owner or repository name');
   }
   return { owner, repo, fullName: `${owner}/${repo}` };
 }
 
-function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-
 export function createGithubEvidenceClient({ token = null, fetchImpl = globalThis.fetch, maxPages = 30,
-  maxCommitFilesPages = 30, retryCount = 2, retryDelayMs = 100 } = {}) {
+  maxCommitFilesPages = 30, retryCount = 2, signal, wait, maxWaitMs = 10000 } = {}) {
   if (typeof fetchImpl !== 'function') throw new TypeError('fetchImpl must be a function');
   if (!Number.isSafeInteger(maxPages) || maxPages < 1 || !Number.isSafeInteger(maxCommitFilesPages) || maxCommitFilesPages < 1) {
     throw new RangeError('Page limits must be positive integers');
   }
   const headers = { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' };
   if (token) headers.Authorization = `Bearer ${token}`;
+  const client=createBackoffClient({fetchImpl,github:true,scope:"github",attempts:retryCount+1,signal,wait,maxWaitMs});
   // Cache only Git objects addressed by immutable commit SHA, not mutable
   // branch references or repo metadata. Cache stays in this client instance.
   const immutableResponses = new Map();
@@ -61,19 +61,14 @@ export function createGithubEvidenceClient({ token = null, fetchImpl = globalThi
     if (stableRequest(url) && immutableResponses.has(url.href)) {
       return immutableResponses.get(url.href);
     }
-    for (let attempt = 0; ; attempt++) {
       let response;
-      try { response = await fetchImpl(url.toString(), { headers }); }
+      try { response = await client.fetch(url.toString(), { headers }); }
       catch (error) {
-        if (attempt < retryCount) { await sleep(retryDelayMs * 2 ** attempt); continue; }
+        if(error.code==="cooldown"||error.name==="AbortError")throw error;
         throw new Error(`GitHub request failed: ${error.message}`, { cause: error });
       }
       if (response.status === 404 && allow404) return null;
       if (!response.ok) {
-        // 403 may indicate exhausted rate limit; do not retry indefinitely.
-        if ([502, 503, 504].includes(response.status) && attempt < retryCount) {
-          await sleep(retryDelayMs * 2 ** attempt); continue;
-        }
         throw new Error(`GitHub API HTTP ${response.status} for ${url.pathname}`);
       }
       try {
@@ -81,7 +76,6 @@ export function createGithubEvidenceClient({ token = null, fetchImpl = globalThi
         rememberImmutable(url, data);
         return data;
       } catch { throw new Error(`GitHub API returned invalid JSON for ${url.pathname}`); }
-    }
   }
 
   function base(repo) {
@@ -138,6 +132,7 @@ export function createGithubEvidenceClient({ token = null, fetchImpl = globalThi
   async function getBranchHead(repository, ref = null) {
     const info = await repositoryInfo(repository);
     const branch = ref || info.default_branch;
+    if(typeof branch!=="string"||!branch.trim())throw Error("The repository has no confirmed default branch. Select a real branch or inspect the repository manually.");
     // Query the commit endpoint for the branch's full current SHA.
     const data = await request(`${base(repository)}/commits/${encodeURIComponent(branch)}`);
     if (!/^[a-f0-9]{40}$/i.test(data?.sha || '')) throw new Error('Invalid branch head response');
@@ -147,7 +142,7 @@ export function createGithubEvidenceClient({ token = null, fetchImpl = globalThi
   async function resolveEvidence({ repository, student, assessment, resolver, ref = null,
     verifiedCutoffCommitShas = null, cutoffSnapshotSha = null } = {}) {
     if (typeof resolver !== 'function') throw new TypeError('A contribution resolver function is required');
-    const head = ref ? { sha: ref, branch: null } : await getBranchHead(repository);
+    const head = /^[a-f0-9]{40}$/i.test(ref||"") ? { sha: ref, branch: null } : await getBranchHead(repository,ref);
     const history = await listCommits({ repository, ref: head.sha });
     const result = await resolver({ repository: parseGithubRepository(repository).fullName,
       student, assessment, commits: history.commits, historyComplete: history.historyComplete,

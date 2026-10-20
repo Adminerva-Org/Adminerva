@@ -23,7 +23,7 @@ service cloud.firestore {
       return name in ["activity_preferences", "activity_events", "issue_diagnostics", "analytics_rosters", "analytics_views", "monitoring_control", "monitoring_status"];
     }
     function personalCollection(name) {
-      return name in ["staff_access","staff_workspaces","lesson_plans","presentations","app_config","global_settings","teachers"];
+      return name in ["staff_access","staff_workspaces","lesson_plans","presentations","app_config","global_settings","teachers","grade_revisions","commit_claim_decisions","commit_claim_conflicts"];
     }
     match /staff_access/{email} {
       function validStaff() {
@@ -92,6 +92,9 @@ service cloud.firestore {
       allow read: if isInstructor();
       allow write: if isAdmin() && recordId != "lesson_review_config";
     }
+    match /reference_folders/{folderId}/documents/{documentId} {
+      allow read, write: if isInstructor();
+    }
     function activityPages() {
       return ["home", "project", "assessments", "playground", "xml-lab", "practice", "review", "grades", "lessons", "slides", "analytics", "reports", "settings", "other"];
     }
@@ -125,13 +128,13 @@ service cloud.firestore {
     }
 
     // Administrators retain existing system-wide maintenance privileges.
-    match /{collection}/{document=**} {
+    match /{collection}/{document} {
       allow read, write: if isAdmin() && !monitoringCollection(collection) && !personalCollection(collection) && collection != "assessment_evidence" && collection != "student_grades" &&
         !(collection in ["practice_profiles","practice_scores","practice_boards"]);
     }
     // Teachers retain their existing academic workflow permissions, but the
     // catch-all must not override private report or notification rules.
-    match /{collection}/{document=**} {
+    match /{collection}/{document} {
       allow read, write: if isTeacher() && !monitoringCollection(collection) && !personalCollection(collection) &&
         collection != "issues" &&
         collection != "notifications" &&
@@ -248,20 +251,23 @@ service cloud.firestore {
     }
 
     match /teachers/{teacherId} {
-      function ownTeacher() { return isTeacher() && resource.data.email.lower() == request.auth.token.email.lower(); }
+      function ownTeacher() { return signedIn() && request.auth.token.email_verified == true && resource.data.email.lower() == request.auth.token.email.lower(); }
       function validTeacherConnection() {
         let data=request.resource.data;
         return data.get("githubToken","") is string && data.get("githubToken","").size() <= 1000 &&
           data.get("githubUsername","") is string && data.get("githubUsername","").size() <= 100 &&
+          data.get("geminiKey","") is string && data.get("geminiKey","").size() <= 1000 &&
+          data.get("aiModel","") is string && data.get("aiModel","").size() <= 120 &&
+          data.get("engineMode","") is string && data.get("engineMode","").size() <= 40 &&
           data.get("name","") is string && data.get("name","").size() <= 120;
       }
       allow read: if isAdmin() || ownTeacher();
       allow create: if isAdmin() || (isTeacher() && teacherId == request.auth.uid &&
-        request.resource.data.keys().hasOnly(["email","name","uid","githubToken","githubUsername"]) &&
+        request.resource.data.keys().hasOnly(["email","name","uid","githubToken","githubUsername","geminiKey","aiModel","engineMode"]) &&
         request.resource.data.email == request.auth.token.email.lower() && request.resource.data.uid == request.auth.uid &&
         validTeacherConnection());
-      allow update: if isAdmin() || (ownTeacher() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["githubToken","githubUsername","name"]) &&
+      allow update: if isAdmin() || (isTeacher() && ownTeacher() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["githubToken","githubUsername","name","geminiKey","aiModel","engineMode"]) &&
         validTeacherConnection());
       allow delete: if isAdmin();
     }
@@ -303,6 +309,32 @@ service cloud.firestore {
         resource.data.published == true &&
         resource.data.studentId is string &&
         ownsStudentProfile(resource.data.studentId);
+    }
+
+    match /grade_revisions/{revisionId} {
+      function matchingRevision() {
+        let data = request.resource.data;
+        let path = /databases/$(database)/documents/student_grades/$(data.gradeId);
+        let before = exists(path) ? get(path).data : null;
+        let after = getAfter(path).data;
+        return data.keys().hasOnly(["gradeId","studentId","taskId","editorUid","reason","before","after","createdAt"]) &&
+          data.gradeId is string && data.gradeId.size() <= 500 && data.gradeId.matches("^[^/]+$") &&
+          data.studentId == after.studentId && data.taskId == after.taskId &&
+          data.editorUid == request.auth.uid && data.createdAt == request.time &&
+          data.reason is string && data.reason.size() >= 10 && data.reason.size() <= 3100 &&
+          (data.before == null ? before == null : (before != null && data.before is map &&
+            data.before.get("score",before.get("score",null)) == before.get("score",null) &&
+            data.before.get("feedback",before.get("feedback",null)) == before.get("feedback",null) &&
+            data.before.get("published",before.get("published",false)) == before.get("published",false))) &&
+          data.after is map && data.after.keys().hasAny(["score","feedback","published"]) &&
+          (before == null || after != before) &&
+          data.after.get("score",after.get("score",null)) == after.get("score",null) &&
+          data.after.get("feedback",after.get("feedback",null)) == after.get("feedback",null) &&
+          data.after.get("published",after.get("published",false)) == after.get("published",false);
+      }
+      allow read: if isInstructor();
+      allow create: if isInstructor() && matchingRevision();
+      allow update, delete: if false;
     }
 
 
@@ -469,7 +501,8 @@ service cloud.firestore {
     // Staff review provenance. Decisions are administrator-controlled for now.
     match /commit_claim_decisions/{decisionId} {
       allow read: if isInstructor();
-      allow write: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
     }
     match /commit_claim_conflicts/{conflictId} {
       allow read: if isInstructor();
@@ -592,7 +625,7 @@ service cloud.firestore {
           request.resource.data.authorEmail is string &&
           (request.resource.data.authorEmail == "" ||
            request.resource.data.authorEmail.lower() == request.auth.token.email.lower()) &&
-          request.resource.data.role == "student" &&
+          request.resource.data.role == (isAdmin() ? "superadmin" : isTeacher() ? "teacher" : "student") &&
           request.resource.data.text is string &&
           request.resource.data.text.size() > 0 &&
           request.resource.data.text.size() <= 2000 &&
@@ -685,7 +718,7 @@ service cloud.firestore {
         request.resource.data.reflections.size() <= 40 &&
         request.resource.data.updatedAt == request.time;
       }
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow read: if isInstructor() || (signedIn() && request.auth.uid == uid);
       allow create, update: if signedIn() && request.auth.uid == uid &&
         validProgress();
       allow delete: if false;
