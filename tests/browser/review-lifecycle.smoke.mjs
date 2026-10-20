@@ -473,7 +473,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await teacher.locator("#learning-activity summary").click();
     const backendDb=getAdminFirestore(adminApp);
     const savedSnapshot=(await backendDb.doc("analytics_views/"+accounts.teacher.email).get()).data();
-    await backendDb.doc("analytics_views/"+accounts.teacher.email).update({publishedAt:null});
+    await backendDb.doc("analytics_views/"+accounts.teacher.email).update({rows:null});
     await expect(teacher.locator("#engagement-status")).toContainText("incomplete");
     await expect(teacher.locator("#academic-status")).toContainText("Academic records loaded");
     await backendDb.doc("analytics_views/"+accounts.teacher.email).set(savedSnapshot);
