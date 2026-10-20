@@ -183,6 +183,8 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     async function approve(withContribution=true){
       await teacher.locator("#integratedEvidenceDetails").evaluate(details=>{details.open=true;});
       const frame=evidenceFrame();
+      await expect(frame.locator("#evidenceApprove")).toBeEnabled();
+      await expect(frame.locator("#evidenceReviewNote")).toBeEnabled();
       if(withContribution)await frame.locator('[data-contribution-sha="'+ownSha+'"]').check();
       await frame.locator("#evidenceContributionScope").fill(withContribution?fixtureScope:"No independent individual contribution has been verified for Bob; shared screens cannot earn credit.");
       await frame.locator("#evidenceReviewNote").fill("Inspected selected diffs, pinned source and independently verified the individual scope.");
