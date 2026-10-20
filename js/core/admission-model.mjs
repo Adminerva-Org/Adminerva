@@ -9,7 +9,7 @@ export function admissionDestination(access) {
   return "guest-home.html";
 }
 export function assertPendingRequest(current,opened) {
-  if(!current||current.status!=="pending"||current.revision!==opened.revision||current.ownerUid!==opened.ownerUid||current.email!==opened.email)
+  if(!current||current.status!=="pending"||current.revision!==opened.revision||current.ownerUid!==opened.ownerUid||current.email!==opened.email||current.displayName!==opened.displayName||current.requestedRole!==opened.requestedRole)
     throw Error("This request changed. Reload before deciding; no access was changed.");
 }
 export function guestStorageKey(uid,module) {

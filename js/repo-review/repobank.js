@@ -23,13 +23,13 @@ window.loadRepobankData=async function(){
       const card=add(field("repobankContainer"),"article","","bg-white rounded-xl border border-slate-200 p-5 flex flex-col gap-3");
       add(card,"h3",key,"text-lg font-bold");const link=add(card,"a","Open repository","underline text-blue-700");link.href="https://github.com/"+key;link.target="_blank";link.rel="noopener noreferrer";
       const message=add(card,"p","Loading saved context…","text-sm text-slate-500"),ref=doc(db,"repobank","review:"+encodeURIComponent(key));
-      let opened=null,draft=null;
+      let opened=null,draft=null,evaluating=false,saving=false;
       const concept=add(card,"textarea","","border rounded p-3 w-full");concept.rows=3;concept.setAttribute("aria-label","Project concept");
       const feedback=add(card,"textarea","","border rounded p-3 w-full");feedback.rows=4;feedback.setAttribute("aria-label","Group feedback");
       const actions=add(card,"div","","flex flex-wrap gap-2"),evaluate=add(actions,"button","Refresh system overview","av-btn"),save=add(actions,"button","Save reviewed overview","av-btn");
       save.disabled=true;
       const manual=add(actions,"button","Edit manually","av-btn");
-      manual.onclick=()=>{if(!signal.aborted){draft=null;save.disabled=false;message.textContent="Manual overview. Review source limitations before saving. Individual contribution records remain separate.";concept.focus();}};
+      manual.onclick=()=>{if(!signal.aborted&&!evaluating&&!saving){draft=null;save.disabled=false;message.textContent="Manual overview. Review source limitations before saving. Individual contribution records remain separate.";concept.focus();}};
       function stale(){return signal.aborted||epoch!==current||active()!==uid;}
       try{
         const [saved,legacy]=await Promise.all([getDoc(ref),getDoc(doc(db,"repobank",key.replace("/","_")))]);if(stale())return;
@@ -37,7 +37,9 @@ window.loadRepobankData=async function(){
         message.textContent=opened?"Reviewed overview · revision "+opened.revision+" · checkpoint "+(opened.checkpoint?.slice(0,12)||"not recorded"):"Earlier or unverified context. No individual roles are inferred from these notes.";
       }catch{message.textContent="Saved overview could not load. Reload before replacing it.";evaluate.disabled=true;manual.disabled=true;}
       evaluate.onclick=async()=>{
-        if(stale())return;evaluate.disabled=true;save.disabled=true;
+        if(stale()||evaluating||saving)return;
+        let canSave=!save.disabled;
+        evaluating=true;evaluate.disabled=true;save.disabled=true;manual.disabled=true;concept.disabled=true;feedback.disabled=true;
         const model=localStorage.getItem("Adminerva_ai_model")||"gemini-2.5-flash",keyValue=localStorage.getItem("Adminerva_gemini_token");
         try{
           if(!keyValue)throw Error("Configure an evaluation provider in Settings, or use Edit manually.");
@@ -51,13 +53,15 @@ window.loadRepobankData=async function(){
           const client=createBackoffClient({scope:"evaluation",signal});
           const response=await client.fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent?key="+encodeURIComponent(keyValue),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:overviewPrompt(sample.files)}]}],generationConfig:{responseMimeType:"application/json",temperature:0.2}})});
           const result=validateOverview(await evaluationJSON(response));if(stale())return;
-          draft={checkpoint:sample.checkpoint,coverage:sample.coverage,fingerprint,model,origin:"automated-assistance"};concept.value=result.concept;feedback.value=result.feedback;save.disabled=false;
+          draft={checkpoint:sample.checkpoint,coverage:sample.coverage,fingerprint,model,origin:"automated-assistance"};concept.value=result.concept;feedback.value=result.feedback;canSave=true;
           message.textContent="System overview draft · "+sample.checkpoint.slice(0,12)+" · "+sample.coverage.read+"/"+sample.coverage.eligible+" eligible files sampled; "+sample.coverage.failed+" unavailable"+(sample.coverage.truncated?"; Git tree truncated":"")+". Not a completeness or authorship assessment. Review and save deliberately.";
         }catch(error){if(stale())return;message.textContent=error.message+" Your fields are preserved. Retry after any cooldown or select Edit manually.";evaluate.textContent="Retry with backoff";}
-        finally{if(!stale())evaluate.disabled=false;}
+        finally{evaluating=false;if(!stale()){evaluate.disabled=false;manual.disabled=false;concept.disabled=false;feedback.disabled=false;save.disabled=!canSave;}}
       };
       save.onclick=async()=>{
-        if(stale())return;save.disabled=true;
+        if(stale()||evaluating||saving)return;
+        saving=true;let savedSuccessfully=false;
+        save.disabled=true;evaluate.disabled=true;manual.disabled=true;concept.disabled=true;feedback.disabled=true;
         try{
           const content=validateOverview({concept:concept.value,feedback:feedback.value});
           if(!confirm("Save this reviewed project overview? This will not grade students or change evidence approvals."))return;
@@ -69,9 +73,9 @@ window.loadRepobankData=async function(){
             transaction.set(ref,{overview:after},{merge:true});
             return after;
           });
-          if(!stale()){opened=savedOverview;draft=null;message.textContent="Reviewed overview saved · revision "+opened.revision+". No evidence or grades changed.";save.disabled=true;}
+          if(!stale()){opened=savedOverview;draft=null;savedSuccessfully=true;message.textContent="Reviewed overview saved · revision "+opened.revision+". No evidence or grades changed.";}
         }catch(error){if(!stale())message.textContent=error.message;}
-        finally{if(!stale())save.disabled=false;}
+        finally{saving=false;if(!stale()){save.disabled=savedSuccessfully;evaluate.disabled=false;manual.disabled=false;concept.disabled=false;feedback.disabled=false;}}
       };
       add(card,"h4","Verified individual evidence (not inferred roles)","font-bold border-t pt-3");
       for(const student of group.members){

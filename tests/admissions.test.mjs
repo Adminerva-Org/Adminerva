@@ -14,6 +14,8 @@ test("registration is a verified request, never self-assigned school authority",
 test("stale admissions cannot override a decided request and local guest drafts are account-isolated",()=>{
  const request=registrationProfile(user);assert.doesNotThrow(()=>assertPendingRequest(request,request));
  assert.throws(()=>assertPendingRequest({...request,status:"approved",revision:1},request),/changed/);
+ assert.throws(()=>assertPendingRequest({...request,requestedRole:"teacher"},request),/changed/);
+ assert.throws(()=>assertPendingRequest({...request,displayName:"Changed after review"},request),/changed/);
  assert.notEqual(guestStorageKey("one","practice"),guestStorageKey("two","practice"));assert.throws(()=>guestStorageKey("../other","practice"));assert.throws(()=>guestStorageKey("one","grades"));
 });
 test("saved lesson settings preserve blank signatories and original subject without mutating defaults",()=>{
