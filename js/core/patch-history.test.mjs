@@ -9,7 +9,7 @@ const release={version:'2026.10.18.4',status:'published',public:true,releasedAt:
 test('prepared staging versions are not fabricated historical releases or account notices',()=>{
   const history=JSON.parse(readFileSync('patch-history.json','utf8'));
   const manifest=JSON.parse(readFileSync('site-release.json','utf8'));
-  const releases=publicReleases(history,Date.parse('2026-10-20'));
+  const releases=publicReleases(history,Date.parse(manifest.releasedAt+'T23:59:59+08:00'));
   assert.ok(releases.some(item=>item.version===manifest.version));
   for(const version of ['2026.10.19.1','2026.10.19.2'])assert.ok(!releaseNotifications(releases).some(notice=>notice.key==='release:'+version));
   assert.ok(releases.some(item=>item.version==='2026.10.18.4'));

@@ -73,6 +73,12 @@ export function makePracticeTransfer(uid,courseId,missionId,attempt=0){
   if(!workspace)return null;
   return {uid,courseId,missionId,attempt,workspace,startedAt:Date.now(),runCount:0,observed:""};
 }
+export function makeCheckedPracticeTransfer(uid,checked){
+  if(!uid||!checked||checked.state!=="predicted"||!Number.isInteger(checked.correctChoice)||!/^[a-f0-9]{48}$/.test(checked.attemptId))return null;
+  const workspace=sandboxForQuestion(checked.courseId,checked.missionId,{...checked.question,correct:checked.correctChoice,workspace:checked.workspace});
+  if(!workspace)return null;
+  return {uid,courseId:checked.courseId,missionId:checked.missionId,attempt:0,serverAttemptId:checked.attemptId,workspace,startedAt:Date.now(),runCount:0,observed:"",predictionCorrect:true};
+}
 export function readPracticeTransfer(storage,uid,now=Date.now()){
   try{
     const transfer=JSON.parse(storage.getItem(practiceBridgeKey(uid))||"null");

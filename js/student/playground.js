@@ -1,7 +1,7 @@
 /** Isolated code editing, execution, persistence and practice handoffs. */
 import { db, auth } from "../core/firebase-core.js";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs";
-import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=2026.10.21.2-dev.1";
+import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.1.0";
 import {
   collection,
   addDoc,

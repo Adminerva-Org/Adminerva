@@ -1,4 +1,4 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.21.1-dev.1";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.1.0";
 /** Explicitly requested lesson assistance with source and edit guards. */
 import {validateGeneratedLesson} from "./lesson-plan-helpers.mjs";
 import {buildReferenceContext,REFERENCE_CONTEXT_BUDGET} from "./reference-context.mjs";

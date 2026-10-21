@@ -1,8 +1,9 @@
-# Next release — review only
+# Next release candidate
 
-This branch is not a release. Do not merge or deploy it without a separate approval.
-The installed release manifest is unchanged. No Functions, monitoring, migrations,
-grade publication or live account decisions are part of this change.
+This branch is a release candidate, not proof of deployment. The owner has requested
+completion and deployment after checks pass. Matching practice Functions, permission
+rules, indexes and approved access metadata preparation must precede website rollout.
+No grade publication, monitoring activation or unreviewed role assignments are included.
 
 ## Review sequence
 
@@ -59,10 +60,10 @@ grade publication or live account decisions are part of this change.
 - Legacy shared lessons have no reliable UID ownership and remain administrator
   read-only. Never assign them automatically by a teacher name. Recover/migrate
   individual records only after explicit ownership review and approval.
-- Existing academic staff permissions still trust authorized teachers broadly.
-  Analytics section assignments are not a complete per-class Firestore ACL for
-  every legacy academic module. Review this before onboarding unrelated schools or
-  teachers. Guest admission is not a substitute for a future tenant/section ACL migration.
+- Academic staff access now uses audited teaching-section assignments and safe
+  projections, not broad teacher catch-alls. Historical records need explicit
+  scope preparation. This is still not complete multi-institution tenancy; see
+  the access and sharing limitations in the follow-up document below.
 - Requests show the most recent 100; catalog lists are capped at 200; staff
   assignment discovery retains existing roster limits. No pagination migration.
 - Guest local storage is browser/account scoped, not encrypted storage or a cloud
@@ -76,7 +77,8 @@ grade publication or live account decisions are part of this change.
   teacher edits/saves are explicit. They do not score or verify individual work.
   Different members may use different checkpoints. Current overview saves preserve
   reviewer/version metadata and use optimistic concurrency, not a new append-only
-  RepoBank audit ledger; existing legacy RepoBank write permissions are unchanged.
+  RepoBank audit ledger. Teacher caches and reviewed notes now use private UID paths;
+  older shared material remains administrator-only pending explicit ownership review.
 
 ## Curriculum reference
 

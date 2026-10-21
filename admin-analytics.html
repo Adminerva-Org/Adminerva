@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- Administrator operations dashboard. Academic performance stays in Teacher Analytics. -->
 <html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Administration Analytics · Adminerva</title><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.21.2-dev.1"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Administration Analytics · Adminerva</title><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="css/adminerva-ui.css?v=1.1.0"></head>
 <body class="bg-slate-50 text-slate-900">
   <div id="adminerva-nav" data-module="admin" data-page="analytics"></div>
   <main class="av-analytics-page max-w-6xl mx-auto p-5 space-y-6">
@@ -23,5 +23,5 @@
       <section class="p-5 bg-white border rounded space-y-3"><h2 class="font-bold text-xl">Retention and cleanup</h2><p>Events and optional report trails carry a 30-day expiry. Expiry timestamps alone do not delete data. The separately approved hourly worker removes at most 600 expired records per collection per run. A recorded cleanup cap means backlog may remain; use manual cleanup or separately approved Firestore TTL for larger volumes. Arrange account-deletion requests with the administrator. Preferences and latest teacher summaries persist separately.</p><button id="purge-events" class="border border-rose-700 rounded p-3">Delete expired monitoring records</button></section>
     </div>
   </main>
-  <script src="js/core/adminerva-loader.js?v=2026.10.21.2-dev.1"></script><script src="js/core/adminerva-nav.js?v=2026.10.21.2-dev.1"></script><script type="module" src="js/analytics/admin-analytics.mjs?v=2026.10.20.1"></script>
+  <script src="js/core/adminerva-loader.js?v=1.1.0"></script><script src="js/core/adminerva-nav.js?v=1.1.0"></script><script type="module" src="js/analytics/admin-analytics.mjs?v=1.1.0"></script>
 </body></html>

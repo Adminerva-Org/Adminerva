@@ -7,7 +7,7 @@ const guides = {
   review:["Review → Evaluate → Teacher score", "Inspect the inline evidence and approve verified contributions. Evaluate for an optional draft, explicitly copy any suggestions you accept, then save your teacher score privately. Publication is a separate confirmation.", "review"],
   playground:["Edit, run and preserve your work", "Choose a language, edit your files and Run. Save or export before leaving. XML layouts have their own safe preview in XML Layout Lab.", "learning"],
   "xml-lab":["Try an Android layout", "Edit XML to preview supported widgets and attributes. This is a browser approximation, not an Android runtime. Inspect warnings for unsupported constraints.", "learning"],
-  practice:["Practise, save and follow your class progress", "Choose a course and module, predict, experiment and reflect. Student completions save automatically and earn class-only alias XP without activity consent or teacher approval. Completion XP is not verified mastery or a school grade.", "learning"],
+  practice:["Practise, save and follow your class progress", "Choose a course and module, predict, experiment and reflect. Server-checked completions save automatically and earn class-only alias XP without activity consent or teacher approval. Use controlled transfer with recent sign-in when moving an active scored session; saved points stay intact and shared devices are allowed. Completion XP is not verified mastery or a school grade.", "learning"],
   grades:["Drafts and published grades differ", "A saved private draft is not student-visible. Check evidence revision, instructor review and protection status before explicitly publishing.", "review"],
   lessons:["Save a lesson before creating slides", "Save your lesson, then open its Slide Editor link for an editable starter. Inspect content and source version before presenting.", "lessons"],
   slides:["Keep your slide edits", "Create a starter from a saved lesson, edit it and save. A newer lesson does not silently replace your slide edits.", "lessons"],
@@ -64,6 +64,6 @@ export function mountHelp() {
   const privatePage = hasActivityPreferences(document.scripts);
   document.getElementById("help-settings-link").href = document.getElementById("adminerva-nav")?.dataset.module?.startsWith("student") ? "student-settings.html" : "settings.html";
   if (privatePage && window.self === window.top) {
-    import("./activity-preferences.mjs?v=2026.10.20.1").then(module => module.mountActivityPreferences()).catch(() => {});
+    import("./activity-preferences.mjs?v=1.1.0").then(module => module.mountActivityPreferences()).catch(() => {});
   }
 }

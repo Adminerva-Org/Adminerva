@@ -1,88 +1,106 @@
-# Practice and evaluation follow-up — review only
+# Practice, evaluation and access safeguards
 
-No merge, deployment, public release notice, migration job, monitoring activation
-or grade publication is authorized by this change. The installed release manifest
-and lesson export formats are unchanged.
+This release candidate includes matching website, Firestore rules/indexes and
+practice Functions changes. Passing local checks is not a deployment. Wait for
+the exact-head CI result, approved access preparation and a coordinated rollout.
 
-## Teacher evaluation
+## Teacher review
 
-- Review navigation sits outside the one scrolling modal body, directly under the
-  title. It does not float below a margin or conceal the evidence status.
-- Approve the actual individual evidence, then choose Evaluate. Historical verified
-  diffs remain in scope even when their SHA differs from the project checkpoint;
-  the project source itself stays pinned to that checkpoint.
-- Each criterion is independent. An unclear responsibility note is not sufficient
-  to erase teacher-verified attribution or demonstrable technical findings.
-  It still cannot establish missing responsibilities, runtime behavior or a whole
-  project from one XML component. Shared group context earns no individual credit.
-- Feedback requests observed strengths, a file/element-specific issue, its effect,
-  an improvement and a way to test it. Uncertainty must be explained neutrally;
-  private unintelligible teacher notes should not be quoted to students.
-- Pending criteria show a concrete next check. Supported criteria can display a
-  partial subtotal, never a reweighted final total or missing-score zero. The
-  suggested full score remains unavailable until every criterion is supported.
-  Manual Teacher grade remains available; use the shortcut to enter the final
-  teacher score and feedback. Nothing is copied, saved or published automatically.
-- The screenshots do not establish that the student made no contribution. A row
-  layout is a component, not necessarily a full screen. Visual/runtime criteria
-  may require Android Studio or a demonstration. Clarify assigned responsibilities
-  rather than inventing scope or crediting a teammate's missing work.
+1. Review selected committed diffs and the source pinned to the approved checkpoint.
+   Approve only independently verified contributions and document individual scope.
+2. Choose **Evaluate** for a private system draft. Each criterion stands on its
+   own evidence. A missing teammate screen is shared project context, not an
+   automatic individual deduction; a noncontributor receives no shared credit.
+3. Pending criteria explain the missing evidence and the next teacher check.
+   A supported subtotal is not a reweighted final grade or a missing-score zero.
+   Resolve unsupported criteria manually, save privately, then deliberately publish.
+   Automated assistance and provider/source limitations remain disclosed in details.
 
-## Practice and class rankings
+The step bar sits directly below the modal heading, outside its single scrolling
+body. Reopening invalidates prior draft eligibility and updates student selections.
+Published grades must be explicitly unpublished before evidence can be reopened.
+One XML component cannot establish all screens, runtime behavior or authorship.
 
-- Four courses × five modules × fifteen missions = 300 guided missions. Existing
-  IDs/completions are retained; completed legacy missions do not become locked.
-  Module entries expose their counts; first missions are independently accessible.
-- Student progress merges cloud and local records transactionally. Work added
-  during a pending save remains queued and is drained without losing completions
-  or reflections. Offline progress remains in account-scoped local storage.
-- `practice_rankings/{studentId}` contains generated alias, completion count and
-  ten XP per distinct valid mission, plus owner/roster IDs, section and timestamps.
-  Classmates see aliases/XP in the UI, never private reflection text or emails.
-  Firestore documents include opaque record IDs; aliases are pseudonyms, not
-  anonymity guarantees. Authorized staff retain existing academic access.
-- Class reads require verified enrollment and a matching, live selected-section
-  membership. Unfiltered and other-class student queries are denied. Roster
-  transfers revoke the student's former-section read permission immediately.
-- Owners synchronize totals from four private course records in a transaction.
-  Rules validate both creates/updates, reject unknown/cross-course or duplicate
-  IDs and forged numeric totals, and preserve ranking owner/alias. No client can
-  overwrite a school grade through the ranking path. Old reviewed snapshots are
-  separate advanced records; their opt-in value is not silently enabled.
-- Limitations: completion of known IDs is still client-reported, not trustworthy
-  mastery. Rankings sync while Practice Lab is open; offline activity can lag.
-  Boards display at most 500 rows and explicitly label a capped subset. Records
-  for transferred/deleted profiles may remain in an old class until controlled
-  resynchronization/cleanup; no live cleanup is performed. Catalog IDs and rules
-  must change together; a regression test checks exact parity.
-- Existing academic instructor rights are broader than complete per-class tenant
-  isolation. Do not interpret this private student leaderboard as a full rewrite
-  of legacy staff access. Do not onboard unrelated institutions on that assumption.
+## Automatic practice XP
 
-## Help cleanup
+- Four courses, five modules each, fifteen missions per module: 300 missions.
+  Each module's first mission is available independently; subsequent missions
+  require the preceding verified completion, enforced on the server.
+- The server issues randomized, expiring attempts. It consumes one prediction;
+  incorrect answers require a new example. Correct predictions unlock the
+  experiment and written comparison. Accepted work automatically saves ten XP
+  per unique mission. Replays remain playable but never award duplicate XP.
+- Attempts, award receipts, verified progress and ranking totals are server-owned.
+  Editing browser storage, submitting a numeric total or claiming a known mission
+  ID cannot mint XP. Concurrent submissions and retry responses are idempotent.
+- Old self-recorded/local progress is retained separately, not silently converted
+  into verified XP. Offline reflections are private drafts, not earned points.
+  Pending completion retries remain tied to the account, attempt and scored session.
+- Class-only rankings use generated aliases and shared ranks for ties. Private
+  reflections stay separate. A 500-row display cap is explicitly labeled.
+  Aliases are pseudonyms, not anonymity; class documents contain opaque record IDs.
+- No teacher approval or activity-sharing consent is needed for automatic XP.
+  Optional legacy instructor practice notes/points are separate records and never
+  gate or replace the server-owned leaderboard. School grades are unchanged.
 
-Repeated heading-level links are removed. Use the navigation **? → Help with
-this page**, or **Help / tutorial** in the footer. Context-specific help inside
-Review/Evaluation/Teacher grade stays available. Wiki, privacy and patch history
-remain accessible from the footer and information menu.
+## Device changes and shared computers
 
-## Validation and future work
+One active scored session is maintained per account/browser installation. A
+different active session requires explicit transfer confirmation and recent sign-in,
+not teacher approval. The old lease cannot submit further scored work; previously
+saved XP stays intact and the user is not signed out of the rest of the website.
+Legitimate shared computers and device changes are allowed. Neutral handover events
+are not cheating verdicts and cause no automatic penalty.
 
-Pure regressions cover catalog/rules parity, all mission variants, aliases and
-ties, evidence scope, partial criteria and save races. Real local Auth/Firestore
-browser coverage exercises automatic XP before activity consent or teacher
-publication, legacy private-record recovery, peer reflection denial, desktop/mobile
-review header geometry and information-menu help. Security tests exercise ownership,
-valid/invalid completions, cross-class queries and all 300 IDs within rule budgets.
-GitHub and evaluation-provider behavior use fixtures, not proof of live model
-accuracy or live GitHub availability.
+A random resettable browser key is not a hardware fingerprint. It cannot prove
+physical device ownership, who typed an answer or whether somebody helped. The
+backend checks predictions and deduplicates rewards; it does not certify mastery,
+independent authorship or runtime execution. The client sandbox run marker is only
+a workflow aid. Do not use XP as high-stakes assessment evidence.
 
-The new rules are a review prototype, not a deployment or a guarantee. Review the
-new paths and existing staff permissions before broadly sharing. Games are
-proposals only: see [Learning Arcade](learning-arcade-proposal.md).
+Attempts expire after two hours; scored leases after thirty minutes and renew
+during visible practice. Handover events expire after thirty days. The matching
+Firestore TTL policies delete expired operational records asynchronously, not at
+an exact instant; expired records are rejected even before physical deletion.
+Award receipts and learning progress are retained separately. Platform request logs
+follow their configured provider retention. No monitoring consent is silently enabled.
 
-Local checks: 259 JavaScript/model regressions, 71 isolated permission/worker
-checks and the 14-milestone real Auth/Firestore browser lifecycle passed. Browser
-artifacts also cover the flush mobile review navigation and automatic class XP.
-Final hosted CI status is reported on the PR's exact head, not inferred from an
-earlier commit. No live external-provider accuracy claim is made.
+## Teacher access
+
+The audited staff registry's sections, not browser roles or analytics preferences,
+authorize academic access. Teachers query assigned sections and credential-free
+roster projections. Raw other-student connection records are administrator/owner-only.
+Private repository caches, notes and templates are namespaced to the teacher UID.
+Assessment ownership/deployment metadata and grade section metadata support scoped
+queries; unprepared historical records fail closed rather than exposing all classes.
+
+Explicit administrator preparation copies only credential-free roster fields and
+adds missing scope metadata. It preserves scores, feedback, publication states,
+evidence revisions and submissions, records immutable preparation audits, and
+rejects records changed after the dry run. Legacy assessments lacking an owner are
+marked administrator-custodied, not falsely attributed to their original creator.
+Original teacher assignments require an explicit administrator decision; no
+directory entry or analytics record can self-authorize teaching.
+
+This is not a complete multi-institution tenancy implementation. Public-by-link
+Playground behavior, school catalog sharing and existing signed-in assessment
+description visibility retain their documented legacy policies. Audit unrelated
+modules before admitting unrelated institutions. App Check and provider-side budget
+alerts remain separate operational setup; bounded instances and per-account example
+limits are not complete bot/collusion prevention.
+
+## Help and validation
+
+Use **? → Help with this page**, or footer **Help / tutorial**. Repeated heading
+links are removed. Wiki, privacy and patch history remain accessible.
+
+Pure tests cover catalog parity, scope queries, outbox/account races and preparation.
+Real local emulator tests cover forgery, replay, transfers, enrollment, assigned
+access, immutable audits and protected grading. Browser coverage uses real local
+Auth/Firestore and the production practice service behind a test callable gateway.
+GitHub/evaluation responses and sandbox execution markers use fixtures. The gateway
+does not prove production Functions routing or live provider accuracy; deployment
+contracts and post-deploy smoke checks remain necessary.
+
+Games remain proposals, and the PDF footer investigation remains deferred.
+See [Learning Arcade](learning-arcade-proposal.md) for game ideas.

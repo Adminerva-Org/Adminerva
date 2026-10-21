@@ -10,6 +10,6 @@
     "firebase-functions": "^6.0.0"
   },
   "scripts": {
-    "check": "node --check index.js && node --check monitoring-model.js && node --check monitoring-service.js"
+    "check": "node --check index.js && node --check monitoring-model.js && node --check monitoring-service.js && node --check practice-service.js && node --check teaching-access-service.js && node --check academic-preparation.js && node --check practice-courses.mjs && node --check practice-curriculum.mjs"
   }
 }

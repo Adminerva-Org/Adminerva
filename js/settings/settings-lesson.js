@@ -1,4 +1,4 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "../lesson-review/workspace-session.mjs?v=2026.10.21.1-dev.1";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "../lesson-review/workspace-session.mjs?v=1.1.0";
 /** Scoped product configuration and staff preferences: settings lesson. */
 import {
   doc,

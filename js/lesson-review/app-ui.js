@@ -1,4 +1,4 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.21.1-dev.1";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.1.0";
 import {savedLessonSettings} from "./lesson-settings.mjs?v=2026.10.21.1-dev.1";
 /** Lesson-planner interface events and workflow coordination. */
 // ==========================================

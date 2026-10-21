@@ -1,14 +1,14 @@
-import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
 /** Instructor checkpoint approval, reopening and contribution verification. */
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,doc,getDoc,getDocFromServer,getDocs,setDoc,query,where,updateDoc,runTransaction,serverTimestamp,onSnapshot}
-  from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+  from "../core/teaching-firestore.mjs?v=1.1.0";
 import {parseRepository,normalizeSelection,validSha}
   from "./services/assessment-evidence.mjs";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "./services/commit-history.mjs";
 import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=2026.10.19.4";
-import {changeEvidence} from "./services/evidence-transaction.mjs?v=2026.10.19.4";
+import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.1.0";
 import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=2026.10.21.2-dev.1";
 
 import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=2026.10.20.1";

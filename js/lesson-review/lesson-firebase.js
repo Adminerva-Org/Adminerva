@@ -1,4 +1,4 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.21.1-dev.1";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.1.0";
 import {captureLessonSettings} from "./lesson-settings.mjs?v=2026.10.21.1-dev.1";
 /** Saved lesson records, version handling and lesson loading. */
 // Import centralized database instead of initializing locally

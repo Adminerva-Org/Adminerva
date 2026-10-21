@@ -19,7 +19,7 @@ const SHA = 'a'.repeat(40);
 test('grade revisions match the transaction and remain immutable even to administrators',async()=>{
   const staff=client('staff',TEACHER),admin=client('admin',ADMIN),student=client('alice',EMAIL_A);
   const grade=doc(staff,'student_grades','alice_peta'),audit=doc(staff,'grade_revisions','first-grade');
-  const before={studentId:'alice',taskId:'peta',score:10,feedback:'Original feedback',published:false};
+  const before={studentId:'alice',taskId:'peta',section:'11-A',score:10,feedback:'Original feedback',published:false};
   await assertSucceeds(setDoc(grade,before));
   const after={...before,score:12,feedback:'Reviewed feedback'};
   const revision={gradeId:'alice_peta',studentId:'alice',taskId:'peta',editorUid:'staff',reason:'Teacher reviewed and adjusted this score',before:{score:10,feedback:before.feedback,published:false},after:{score:12,feedback:after.feedback,published:false},createdAt:serverTimestamp()};
@@ -59,10 +59,11 @@ beforeEach(async () => {
   await env.withSecurityRulesDisabled(async ctx => {
     const db=ctx.firestore();
     await Promise.all([
+      setDoc(doc(db,'staff_access',TEACHER),{email:TEACHER,role:'teacher',status:'active',sections:['11-A','11-B']}),
       setDoc(doc(db,'students','alice'),{name:'Alice',email:EMAIL_A,section:'11-A'}),
       setDoc(doc(db,'students','bob'),{name:'Bob',email:EMAIL_B,section:'11-B'}),
-      setDoc(doc(db,'assessments','peta'),{title:'Practical Exam',quarter:'Q2'}),
-      setDoc(doc(db,'assessments','v2'),{title:'Mini PETA 1',quarter:'Q3',schemaVersion:2,maxScore:20}),
+      setDoc(doc(db,'assessments','peta'),{ownerUid:'staff',sectionIds:['11-A','11-B'],deployments:[],title:'Practical Exam',quarter:'Q2'}),
+      setDoc(doc(db,'assessments','v2'),{ownerUid:'staff',sectionIds:['11-A','11-B'],deployments:[],title:'Mini PETA 1',quarter:'Q3',schemaVersion:2,maxScore:20}),
       setDoc(doc(db,'notifications','alice','items','note-1'),{
         title:'Review update',type:'issue',createdAt:new Date(),readAt:null,
         target:'issues.html',body:'Your report is ready.'
@@ -155,7 +156,7 @@ test('diagnostic trails cannot leak through teacher reports, spoof owners or car
   await assertSucceeds(getDoc(doc(admin,'issue_diagnostics','ticket')));
   await assertFails(updateDoc(doc(admin,'issue_diagnostics','ticket'),{pages:['home']}));
   await assertFails(setDoc(doc(client('bob',EMAIL_B),'issue_diagnostics','ticket'),{...trail,ownerUid:'bob'}));
-  await assertSucceeds(setDoc(doc(alice,'issues','class'),{...report(),category:'Feature',audience:'teacher'}));
+  await assertSucceeds(setDoc(doc(alice,'issues','class'),{...report(),category:'Feature',audience:'teacher',studentId:'alice',section:'11-A'}));
   await assertFails(setDoc(doc(alice,'issue_diagnostics','class'),trail));
   await assertSucceeds(setDoc(doc(alice,'issues','extra'),report()));
   for (const change of [{pages:['password=secret']}, {actions:['typed text']}, {pages:Array(21).fill('home'),actions:Array(21).fill('run')}, {actions:[]}]) await assertFails(setDoc(doc(alice,'issue_diagnostics','extra'),{...trail,...change}));
@@ -236,7 +237,7 @@ test('legacy approved checkpoints can be reverified only by instructors with imm
   const ref=doc(staff,'assessment_evidence','alice_v2');
   assert.equal((await getDoc(ref)).data().revision,1);
   assert.deepEqual((await getDoc(ref)).data().selectedCommits,[SHA]);
-  await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'student_grades','alice_v2'),{studentId:'alice',taskId:'v2',published:true,score:18,feedback:'Protected'}));
+  await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'student_grades','alice_v2'),{studentId:'alice',section:'11-A',taskId:'v2',published:true,score:18,feedback:'Protected'}));
   await assertFails(auditedEvidence(staff,approval(),{actor:'staff'}));
   await assertFails(deleteDoc(doc(staff,'assessment_evidence','alice_v2','revisions','1')));
 });
@@ -293,7 +294,7 @@ test('teachers only triage teacher-directed reports; admins can triage bugs',asy
   await assertFails(updateDoc(doc(db,'issues','ticket'),{locked:true}));
   await assertFails(updateDoc(doc(client('staff',TEACHER),'issues','ticket'),{status:'Resolved'}));
   await assertSucceeds(updateDoc(doc(client('admin',ADMIN),'issues','ticket'),{status:'Resolved'}));
-  const teacherTicket={...report(),category:'Feature',audience:'teacher'};
+  const teacherTicket={...report(),category:'Feature',audience:'teacher',studentId:'alice',section:'11-A'};
   await assertSucceeds(setDoc(doc(db,'issues','class-ticket'),teacherTicket));
   await assertSucceeds(updateDoc(doc(client('staff',TEACHER),'issues','class-ticket'),{status:'In Progress'}));
   await assertFails(updateDoc(doc(client('staff',TEACHER),'issues','class-ticket'),{audience:'admin'}));
@@ -301,7 +302,7 @@ test('teachers only triage teacher-directed reports; admins can triage bugs',asy
 test('teachers can update assigned reports with server timestamps but cannot triage admin reports',async()=>{
   const alice=client('alice',EMAIL_A),teacher=client('staff',TEACHER);
   await assertSucceeds(setDoc(doc(alice,'issues','assigned'),{
-    ...report(),category:'Feature',audience:'teacher'
+    ...report(),category:'Feature',audience:'teacher',studentId:'alice',section:'11-A'
   }));
   const assigned=doc(teacher,'issues','assigned');
   await assertSucceeds(updateDoc(assigned,{status:'In Progress',updatedAt:serverTimestamp()}));
@@ -330,7 +331,7 @@ test('recipient filtering is enforced for direct reads, list queries, and commen
   const staff=client('teacher',TEACHER), admin=client('admin',ADMIN);
   await assertSucceeds(setDoc(doc(alice,'issues','bug'),report()));
   await assertSucceeds(setDoc(doc(alice,'issues','lesson'),{
-    ...report(),category:'Other',audience:'teacher'
+    ...report(),category:'Other',audience:'teacher',studentId:'alice',section:'11-A'
   }));
   await assertSucceeds(setDoc(doc(alice,'issues','admin-request'),{
     ...report(),category:'Feature',audience:'admin'
@@ -342,7 +343,7 @@ test('recipient filtering is enforced for direct reads, list queries, and commen
   await assertSucceeds(getDoc(doc(alice,'issues','bug')));
   await assertSucceeds(getDoc(doc(admin,'issues','bug')));
   await assertFails(getDocs(collection(staff,'issues')));
-  const teacherList=await assertSucceeds(getDocs(query(collection(staff,'issues'),where('audience','==','teacher'))));
+  const teacherList=await assertSucceeds(getDocs(query(collection(staff,'issues'),where('audience','==','teacher'),where('section','==','11-A'))));
   assert.equal(teacherList.size,1);
   await assertFails(getDocs(collection(bob,'issues')));
   const ownList=await assertSucceeds(getDocs(query(collection(alice,'issues'),where('reporterUid','==','alice'))));
@@ -387,7 +388,7 @@ test('students can submit their own pinned revision, not another section or miss
 test('students cannot access draft grades belonging to teachers',async()=>{
   await env.withSecurityRulesDisabled(async ctx=>{
     await setDoc(doc(ctx.firestore(),'student_grades','alice_peta'),{
-      studentId:'alice',published:false,score:15
+      studentId:'alice',taskId:'peta',section:'11-A',published:false,score:15
     });
   });
   const target=doc(client('alice',EMAIL_A),'student_grades','alice_peta');
@@ -523,7 +524,7 @@ test('approved evidence requires instructor reopening; old drafts cannot publish
   await assertFails(auditedEvidence(alice,approval()));
   await assertSucceeds(auditedEvidence(staff,approval(),{actor:'staff'}));
   const grade=doc(staff,'student_grades','alice_v2');
-  const record={studentId:'alice',taskId:'v2',gradedSha:SHA,evidenceRevision:1,score:15,maxScore:20,
+  const record={studentId:'alice',section:'11-A',taskId:'v2',gradedSha:SHA,evidenceRevision:1,score:15,maxScore:20,
     feedback:'Verified assigned screen.',teacherReviewNote:'Inspected actual contribution.',reviewedBy:'staff',manuallyAdjusted:true,reviewRequired:false,published:false};
   await assertFails(setDoc(grade,{...record,published:true}));
   await assertFails(setDoc(grade,{...record,evidenceRevision:0}));
@@ -561,7 +562,7 @@ test('unverified staff emails do not grant instructor authority',async()=>{
   for(const email of [TEACHER,ADMIN]){
     const unverified=env.authenticatedContext('unverified',{email,email_verified:false}).firestore();
     await assertFails(setDoc(doc(unverified,'assessment_private','v2'),{rules:['Forged configuration']}));
-    await assertFails(setDoc(doc(unverified,'student_grades','alice_v2'),{studentId:'alice',taskId:'v2',score:20,published:true}));
+    await assertFails(setDoc(doc(unverified,'student_grades','alice_v2'),{studentId:'alice',section:'11-A',taskId:'v2',score:20,published:true}));
   }
 });
 
@@ -615,7 +616,7 @@ test('instructor-only V2 grading config and admin-only reclaim decisions',async(
   const alice=client('alice',EMAIL_A),teacher=client('staff',TEACHER);
   const admin=client('admin',ADMIN);
   const privateRef=doc(teacher,'assessment_private','v2');
-  await assertSucceeds(setDoc(privateRef,{systemPersona:'Internal review instructions',
+  await assertSucceeds(setDoc(privateRef,{ownerUid:'staff',sectionIds:['11-A','11-B'],systemPersona:'Internal review instructions',
     rules:[{type:'Required',value:'Activity'}]}));
   await assertSucceeds(getDoc(privateRef));
   await assertFails(getDoc(doc(alice,'assessment_private','v2')));
@@ -670,11 +671,11 @@ test('teacher lesson and presentation history stays inaccessible to students',as
   const deck={ownerUid:'staff',deck:[],version:1};await assertSucceeds(setDoc(presentation,deck));
   const slides=writeBatch(staff);slides.set(presentation,{...deck,version:2});slides.set(doc(presentation,'revisions','1'),{...deck,archivedRevisionAt:serverTimestamp()});await assertSucceeds(slides.commit());
   await assertFails(getDoc(doc(alice,'staff_workspaces','staff','presentations','plan_session0','revisions','1')));
-  const parent=doc(staff,'reference_folders','folder');
+  const parent=doc(staff,'teacher_materials','staff','reference_folders','folder');
   await assertSucceeds(setDoc(parent,{name:'Teacher materials',documents:[]}));
-  await assertSucceeds(setDoc(doc(staff,'reference_folders','folder','documents','pdf1'),
+  await assertSucceeds(setDoc(doc(staff,'teacher_materials','staff','reference_folders','folder','documents','pdf1'),
     {title:'Chapter 1',text:'Course text'}));
-  await assertFails(getDoc(doc(alice,'reference_folders','folder','documents','pdf1')));
+  await assertFails(getDoc(doc(alice,'teacher_materials','staff','reference_folders','folder','documents','pdf1')));
 });
 
 test('notification history is private and save-for-later records persist across sessions',async()=>{
@@ -700,7 +701,8 @@ test('practice completions are student-private and are not school grades',async(
   const data={ownerUid:'alice',studentId:'alice',courseId:'java',completed:['j1'],
     reflections:{j1:'I traced the variable updates in order.'},
     updatedAt:serverTimestamp()};
-  await assertSucceeds(setDoc(ref,data));
+  await assertFails(setDoc(ref,data));
+  await env.withSecurityRulesDisabled(context=>setDoc(doc(context.firestore(),'student_practice_progress','alice','courses','java'),data));
   await assertSucceeds(getDoc(ref));
   await assertFails(getDoc(doc(bob,'student_practice_progress','alice','courses','java')));
   await assertFails(setDoc(doc(bob,'student_practice_progress','alice','courses','python'),

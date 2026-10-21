@@ -1,9 +1,9 @@
-import {staffRole} from "../core/staff-role.mjs?v=2026.10.20.1";
-import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
+import {staffRole} from "../core/staff-role.mjs?v=1.1.0";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
 /** Student submissions, practice progress and isolated code workspaces: practice analytics. */
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {collection,doc,getDocs,query,where,limit,runTransaction,writeBatch,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import {collection,doc,getDocs,query,where,limit,runTransaction,writeBatch,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.1.0";
 import {COURSES} from "./practice-courses.mjs?v=2026.10.21.2-dev.1";
 import {practicePoints,classStandings} from "./practice-points.mjs?v=2026.10.21.2-dev.1";
 const el=id=>document.getElementById(id);
@@ -34,7 +34,7 @@ async function load(){
 async function review(student,profile){
   const sequence=generation;
   try{
-    const records=await getDocs(collection(db,"student_practice_progress",profile.uid,"courses"));
+    const records=await getDocs(collection(db,"practice_class_progress",student.id,"courses"));
     if(sequence!==generation||!allowed())return;
     active={student,profile};el("practiceReviewName").textContent=student.name||student.id;el("practiceReviewMissions").replaceChildren();el("practicePointsNote").value="";
     const prior=scores.find(score=>score.studentId===student.id);

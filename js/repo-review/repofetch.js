@@ -1,7 +1,7 @@
 import {feedbackSummary,reviewNotice,inlineTask} from "./review-ui.mjs?v=2026.10.20.1";
-import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=2026.10.20.1";
+import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=1.1.0";
 import {assertGradeVersion} from "./services/grade-version.mjs?v=2026.10.20.1";
-import {writePublicationRevision} from "./grade-publication.mjs?v=2026.10.20.1";
+import {writePublicationRevision} from "./grade-publication.mjs?v=1.1.0";
 /** Repository selection and entry into the teacher review workspace. */
 import { db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
@@ -16,7 +16,7 @@ import {
   where,
   runTransaction,
   serverTimestamp,
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+} from "../core/teaching-firestore.mjs?v=1.1.0";
 
 const CACHE_VERSION = 8; // RepoFetch schema: independent of Group Inspector
 let globalStudentsData = {};

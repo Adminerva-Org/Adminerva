@@ -8,7 +8,7 @@ import {
   getDoc,
   query,
   where,
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+} from "../core/teaching-firestore.mjs?v=1.1.0";
 
 const CACHE_VERSION = 8; // Changes attribution and rejects mixed legacy cache documents
 const initialScope=new URLSearchParams(location.search);
@@ -153,15 +153,6 @@ window.fetchGroupRepos = async function () {
               url.toLowerCase() !== actualUrl.toLowerCase() &&
               url.toLowerCase() !== repoInfo.html_url.toLowerCase()
             ) {
-              const updatePromises = group.members.map((m) =>
-                setDoc(
-                  doc(db, "students", m.id),
-                  { repoUrl: actualUrl },
-                  { merge: true },
-                ),
-              );
-              await Promise.all(updatePromises);
-
               owner = repoInfo.owner.login;
               repo = repoInfo.name;
               url = actualUrl;

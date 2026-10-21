@@ -1,7 +1,7 @@
 import {auth,db} from "./firebase-core.js";
 import {collection,getDocs,query,orderBy,limit} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {resolveStaffRole} from "./staff-session.mjs?v=2026.10.20.1";
-import {matchingStudentRecords,decideAdmission} from "./admission-service.mjs?v=2026.10.21.1-dev.1";
+import {resolveStaffRole} from "./staff-session.mjs?v=1.1.0";
+import {matchingStudentRecords,decideAdmission} from "./admission-service.mjs?v=1.1.0";
 const field=id=>document.getElementById(id);
 let opened=null,busy=false,selection=0;
 function status(message){field("admission-status").textContent=message;}

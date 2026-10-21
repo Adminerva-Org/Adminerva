@@ -22,7 +22,7 @@ jobs:
           node --test tests/review-resilience.test.mjs js/repo-review/services/github-evidence-client.test.mjs
           node --test tests/evidence-readiness.test.mjs
           node --test tests/student-search.test.mjs tests/help-access.test.mjs
-          node --test tests/practice-ranking-model.test.mjs
+          node --test tests/practice-ranking-model.test.mjs tests/teaching-firestore.test.mjs tests/academic-preparation.test.mjs
           node --test js/analytics/academic-model.test.mjs
           node --test js/analytics/activity-model.test.mjs tests/loading-and-routes.test.mjs tests/monitoring-model.test.mjs
           node --test js/core/patch-history.test.mjs js/student/practice-points.test.mjs js/student/xml-layout.test.mjs js/presentation-review/lesson-to-slides.test.mjs js/presentation-review/lesson-slide-integration.test.mjs js/repo-review/services/review-snapshot.test.mjs
@@ -99,6 +99,7 @@ jobs:
           node --input-type=module --check < js/student/submission-receipts.mjs
           node --check functions/index.js
           npm --prefix functions run check
+          node --check scripts/prepare-academic-access.cjs
       - name: Verify packaged backend handler exports without data operations
         env:
           GCLOUD_PROJECT: demo-adminerva-contract
@@ -125,4 +126,4 @@ jobs:
       - name: Install Firebase emulator and test SDK
         run: npm install --no-audit --no-fund --no-save @firebase/rules-unit-testing@4 firebase@11 firebase-tools@14 firebase-admin@13
       - name: Test Firestore permissions in an isolated emulator
-        run: npx firebase emulators:exec --project demo-adminerva-security --only firestore 'node --test --test-concurrency=1 tests/firestore-rules.test.mjs tests/monitoring-maintenance.emulator.mjs tests/staff-workspaces.emulator.mjs tests/admissions.emulator.mjs tests/practice-rankings.emulator.mjs'
+        run: npx firebase emulators:exec --project demo-adminerva-security --only firestore 'node --test --test-concurrency=1 tests/firestore-rules.test.mjs tests/monitoring-maintenance.emulator.mjs tests/staff-workspaces.emulator.mjs tests/admissions.emulator.mjs tests/practice-rankings.emulator.mjs tests/practice-authority.emulator.mjs'

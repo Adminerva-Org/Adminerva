@@ -2,8 +2,8 @@
 import {auth,db} from "./firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,doc,getDocs,getDoc,query,limit,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {resolveStaffRole} from "./staff-session.mjs?v=2026.10.20.1";
-import {ADMIN_EMAIL,TEACHER_EMAIL} from "./staff-role.mjs?v=2026.10.20.1";
+import {resolveStaffRole} from "./staff-session.mjs?v=1.1.0";
+import {ADMIN_EMAIL,TEACHER_EMAIL} from "./staff-role.mjs?v=1.1.0";
 const field=id=>document.getElementById(id);
 let epoch=0,opened=null,busy=false,selectionEpoch=0;
 function status(message){field("staff-account-status").textContent=message;}
@@ -28,11 +28,10 @@ async function refresh(){
     button.append(title,detail);button.addEventListener("click",async()=>{
       if(busy)return;
       const selection=++selectionEpoch;
-      const roster=await getDoc(doc(db,"analytics_rosters",profile.email));
       if(current!==epoch||selection!==selectionEpoch)return;
       opened={...profile};field("staff-email").value=profile.email;field("staff-email").readOnly=true;
       field("staff-name").value=profile.displayName;field("staff-status").value=profile.status;field("staff-reason").value="";
-      const sections=roster.data()?.sections||[];
+      const sections=Array.isArray(profile.sections)?profile.sections:[];
       for(const section of sections)if(![...field("staff-sections").options].some(option=>option.value===section))field("staff-sections").add(new Option(section,section));
       for(const option of field("staff-sections").options)option.selected=sections.includes(option.value);
       status("Editing "+profile.email+". Explain the change before saving.");
@@ -61,7 +60,7 @@ field("staff-account-form").addEventListener("submit",async event=>{
       const ref=doc(db,"staff_access",email),snapshot=await transaction.get(ref),before=snapshot.exists()?snapshot.data():null;
       if((before?.revision||0)!==(opened?.email===email?opened.revision:0))throw Error("This account changed. Reload the directory before saving.");
       if(current!==epoch||auth.currentUser?.uid!==actor.uid)throw Error("Account changed. Reload before continuing.");
-      const revision=(before?.revision||0)+1,after={email,displayName,role:"teacher",status:access,revision,reason,updatedBy:actor.uid,updatedAt:serverTimestamp()};
+      const revision=(before?.revision||0)+1,after={email,displayName,role:"teacher",status:access,sections,revision,reason,updatedBy:actor.uid,updatedAt:serverTimestamp()};
       transaction.set(ref,after);
       transaction.set(doc(ref,"revisions",String(revision)),{before,after,actorUid:actor.uid,createdAt:serverTimestamp()});
       transaction.set(doc(db,"analytics_rosters",email),{teacherEmail:email,sections,updatedBy:actor.uid,updatedAt:serverTimestamp()});

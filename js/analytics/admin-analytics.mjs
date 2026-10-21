@@ -2,7 +2,7 @@
 import {auth, db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection, getDocs, getDoc, doc, query, orderBy, limit, where, setDoc, writeBatch, runTransaction, serverTimestamp, Timestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {staffRole, TEACHER_EMAIL} from "../core/staff-role.mjs?v=2026.10.20.1";
+import {staffRole, TEACHER_EMAIL} from "../core/staff-role.mjs?v=1.1.0";
 import {summarizeActivity} from "./activity-model.mjs?v=2026.10.19.3";
 
 const field = id => document.getElementById(id);

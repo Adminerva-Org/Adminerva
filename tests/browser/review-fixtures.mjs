@@ -14,6 +14,7 @@ export const accounts={
   pending:{uid:"fixture-pending",email:"fixture-pending@example.test"}
 };
 export const assessment={
+  ownerUid:accounts.teacher.uid,sectionIds:["fixture-11-A"],
   schemaVersion:2,evidenceMode:"commit_selection",checkpointMode:"individual",
   title:"Q3 Fixture UI Prototype",quarter:"Q3",type:"Mini PETA",maxScore:20,
   targetPaths:["**/res/layout/*.xml"],expectedExtensions:["xml"],

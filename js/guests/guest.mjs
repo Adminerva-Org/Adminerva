@@ -1,8 +1,8 @@
 import {auth,db} from "../core/firebase-core.js";
 import {signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {doc,onSnapshot,updateDoc,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {resolveAccountAccess} from "../core/staff-session.mjs?v=2026.10.20.1";
-import {ensureGuestRequest} from "../core/admission-service.mjs?v=2026.10.21.1-dev.1";
+import {resolveAccountAccess} from "../core/staff-session.mjs?v=1.1.0";
+import {ensureGuestRequest} from "../core/admission-service.mjs?v=1.1.0";
 import {admissionDestination,guestStorageKey} from "../core/admission-model.mjs?v=2026.10.21.1-dev.1";
 import {COURSES} from "../student/practice-courses.mjs?v=2026.10.21.2-dev.1";
 const field=id=>document.getElementById(id),page=document.querySelector("[data-guest-page]").dataset.guestPage;

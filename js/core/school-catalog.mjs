@@ -1,6 +1,6 @@
 import {auth,db} from "./firebase-core.js";
 import {collection,doc,getDocs,query,limit,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {resolveStaffRole} from "./staff-session.mjs?v=2026.10.20.1";
+import {resolveStaffRole} from "./staff-session.mjs?v=1.1.0";
 const field=id=>document.getElementById(id),kind=document.querySelector("[data-catalog-kind]").dataset.catalogKind;
 const input=key=>field(key==="status"?"catalog-status-field":"catalog-"+key);
 let opened=null,busy=false;

@@ -6,7 +6,7 @@ import {parseRepository,normalizeSelection,evidenceSelectionGuidance,detectedAut
   from "../repo-review/services/assessment-evidence.mjs?v=2026.10.18.1";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "../repo-review/services/commit-history.mjs";
 import {studentMayChangeEvidence,sameEvidence} from "../repo-review/services/evidence-lifecycle.mjs?v=2026.10.19.4";
-import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs?v=2026.10.19.4";
+import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs?v=1.1.0";
 
 const el=id=>document.getElementById(id);
 let context=null,commits=[],selected=new Set(),checkpoint="",claims=new Map(),saved=null,loadSequence=0;

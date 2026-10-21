@@ -1,30 +1,30 @@
 {
-  "score": 3,
-  "summary": "Scoped review prototype for automatic formative completion XP: verified enrollment, live selected-class reads, private reflections, exact catalog validation, derived totals, immutable ranking owner/alias and no grade publication. Existing staff-wide academic trust is not a complete tenant ACL. Not deployed.",
+  "score": 4,
+  "summary": "Review prototype: server-owned practice attempts and receipts, automatic idempotent XP, controlled recent-sign-in transfers without penalties, assigned-section academic access, credential-free teaching projections and immutable metadata-preparation audits. Not a guarantee or proof of identity; rollout requires exact-head validation.",
   "findings": [
     {
-      "check": "Authority of completion evidence",
-      "severity": "moderate",
-      "issue": "Owners can forge completion of known mission IDs through a modified client, even though arbitrary totals, duplicates and unknown IDs are denied. XP therefore records formative claims, not verified mastery.",
-      "recommendation": "Keep school grades and high-stakes rewards separate. Review a server-authoritative, idempotent attempt validator before treating game or mission scores as certified results. No Functions deployment is included."
-    },
-    {
-      "check": "Legacy staff scope",
-      "severity": "moderate",
-      "issue": "Existing academic instructor access remains broader than per-class authorization across all legacy modules. Analytics assignments alone do not establish tenant isolation.",
-      "recommendation": "Complete a separately reviewed tenant/section ACL migration before admitting unrelated institutions or untrusted instructors."
-    },
-    {
-      "check": "Alias privacy and lifecycle",
+      "check": "Identity and collaboration limitations",
       "severity": "minor",
-      "issue": "Class documents contain opaque roster/owner IDs in addition to UI aliases. Transferred or deleted roster profiles can leave stale alias rows until resynchronization or controlled cleanup.",
-      "recommendation": "Disclose that aliases are pseudonyms, not anonymity. Design an audited membership-lifecycle projection if stronger unlinkability or immediate row removal is required; do not enable unattended cleanup implicitly."
+      "issue": "A random browser key is resettable/copyable. Correct predictions and reflections do not establish who answered, independent authorship or successful runtime execution.",
+      "recommendation": "Allow shared devices, treat handovers neutrally, keep high-stakes school grades separate, and retain teacher verification of assessment evidence."
     },
     {
-      "check": "Read budgets and ranking completeness",
+      "check": "Abuse and operational setup",
       "severity": "minor",
-      "issue": "Client ranking synchronization reads four course records. Class lists are capped at 500 and cannot claim a global position when truncated.",
-      "recommendation": "Retain emulator budget coverage and the partial-list label. Reassess aggregate cost, paging and authoritative rank projections if classes or course catalogs expand."
+      "issue": "Instance bounds, expiring attempts and twelve new examples per minute reduce abuse but do not eliminate bots, collusion or provider costs. App Check is not enforced.",
+      "recommendation": "Configure and validate App Check and billing alerts separately before broader onboarding. Deploy matching TTL policies and verify index readiness."
+    },
+    {
+      "check": "Legacy migration and tenancy",
+      "severity": "minor",
+      "issue": "Existing records need reviewed scope preparation and explicit staff assignments. Some unrelated legacy sharing policies remain outside this academic-access rewrite.",
+      "recommendation": "Apply only an approved audited preparation plan with version guards, preserve score/evidence fields, and do not claim full cross-institution isolation."
+    },
+    {
+      "check": "Pseudonym privacy and row limits",
+      "severity": "minor",
+      "issue": "Class documents contain opaque record identifiers. A capped 500-row display does not establish global rank.",
+      "recommendation": "Keep the partial-list warning and class-only rules; aliases are pseudonyms rather than anonymity."
     }
   ]
 }

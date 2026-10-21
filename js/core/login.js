@@ -1,5 +1,5 @@
-import {resolveAccountAccess} from "./staff-session.mjs?v=2026.10.20.1";
-import {ensureGuestRequest} from "./admission-service.mjs?v=2026.10.21.1-dev.1";
+import {resolveAccountAccess} from "./staff-session.mjs?v=1.1.0";
+import {ensureGuestRequest} from "./admission-service.mjs?v=1.1.0";
 /** Approved-account sign-in and access feedback. */
 import { db, auth } from "../core/firebase-core.js";
 import {

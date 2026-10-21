@@ -1,5 +1,5 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: assessment studio. */
-import { db } from "../core/firebase-core.js";
+import { db,auth } from "../core/firebase-core.js";
 import {validateDeploymentDates} from "./assessment-dates.mjs";
 import {
   collection,
@@ -14,7 +14,7 @@ import {
   where,
   serverTimestamp,
   writeBatch,
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+} from "../core/teaching-firestore.mjs?v=1.1.0";
 let targetPaths = [];
 let allSections = [];
 let objectiveRules = [];
@@ -243,6 +243,8 @@ window.saveAssessment = async function () {
   const prior = currentAssessmentId ? assessments.find(a=>a.id===currentAssessmentId) : null;
   const v2=prior ? prior.schemaVersion===2 : document.getElementById("assessV2").checked;
   const payload = {
+    ownerUid:prior?.ownerUid||auth.currentUser.uid,
+    sectionIds:prior?.sectionIds||[...new Set((prior?.deployments||[]).map(deployment=>deployment.section))],
     ...(v2?{schemaVersion:2,evidenceMode:"commit_selection",checkpointMode:"individual"}:{}),
     title: title,
     type: document.getElementById("assessType").value,
@@ -263,6 +265,7 @@ window.saveAssessment = async function () {
 
   try {
     const teacherOnly={
+      ownerUid:payload.ownerUid,sectionIds:payload.sectionIds,
       systemPersona:document.getElementById("systemPersona").value.trim(),
       rules:objectiveRules,updatedAt:serverTimestamp()
     };
@@ -300,6 +303,8 @@ window.saveAssessment = async function () {
 
 window.deleteAssessment = async function () {
   if (!currentAssessmentId) return;
+  if(assessments.find(item=>item.id===currentAssessmentId)?.schemaVersion===2)
+    return alert("V2 blueprints are retained to protect evidence and grade history. Remove their deployments to stop new submissions; do not delete the assessment.");
   if (
     confirm(
       "Are you sure you want to permanently delete this Assessment Blueprint? It will be immediately revoked from all deployed sections.",
@@ -599,9 +604,7 @@ window.saveDeployment = async function () {
 
   window.showSubtleLoader("Applying deployment schedule...");
   try {
-    await updateDoc(doc(db, "assessments", currentAssessmentId), {
-      deployments,
-    });
+    await saveDeploymentScope(item,deployments);
     document.getElementById("deployModal").classList.add("hidden");
     await loadAssessments();
     window.openViewModal(currentAssessmentId);
@@ -626,9 +629,7 @@ window.deleteDeployment = async function (deployId) {
 
     window.showSubtleLoader("Removing deployment...");
     try {
-      await updateDoc(doc(db, "assessments", currentAssessmentId), {
-        deployments,
-      });
+      await saveDeploymentScope(item,deployments);
       await loadAssessments();
       window.openViewModal(currentAssessmentId);
     } catch (e) {
@@ -638,6 +639,15 @@ window.deleteDeployment = async function (deployId) {
     }
   }
 };
+
+async function saveDeploymentScope(item,deployments){
+  if(deployments.length>20)throw Error("An assessment supports at most 20 deployments. Create another blueprint for additional sections.");
+  const sectionIds=[...new Set(deployments.map(deployment=>deployment.section))];
+  const batch=writeBatch(db);
+  batch.update(doc(db,"assessments",item.id),{deployments,sectionIds});
+  if(item.schemaVersion===2)batch.set(doc(db,"assessment_private",item.id),{ownerUid:item.ownerUid,sectionIds},{merge:true});
+  await batch.commit();
+}
 
 // ==========================================
 // DYNAMIC RULES BUILDER

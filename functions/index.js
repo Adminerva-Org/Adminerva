@@ -5,9 +5,26 @@ const {getFirestore,FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {getAuth}=require("firebase-admin/auth");
 const {onDocumentCreated,onDocumentUpdated,onDocumentWritten}=require("firebase-functions/v2/firestore");
 const {onSchedule}=require("firebase-functions/v2/scheduler");
+const {onCall,HttpsError}=require("firebase-functions/v2/https");
+const {createPracticeService,PracticeError}=require("./practice-service.js");
+const {createTeachingAccessService}=require("./teaching-access-service.js");
 const {createMonitoringService}=require("./monitoring-service.js");
 initializeApp();
 const db=getFirestore();
+const practice=createPracticeService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)});
+const teachingAccess=createTeachingAccessService({db,Timestamp});
+exports.teachingRosterChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},event=>teachingAccess.synchronize(event.params.studentId));
+const practiceOptions={region:"asia-southeast1",maxInstances:3,concurrency:20,timeoutSeconds:30,
+  cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
+for(const [name,action] of Object.entries({practiceSession:"acquire",practiceStart:"start",practicePredict:"predict",practiceComplete:"complete"}))
+  exports[name]=onCall(practiceOptions,async request=>{
+    try{return await practice[action](request);}
+    catch(error){
+      if(error instanceof PracticeError)throw new HttpsError(error.code,error.message,error.details);
+      console.error("Practice request failed",{action,code:error.code||"internal"});
+      throw new HttpsError("unavailable","Practice could not complete this request. Your score has not been published; retry the same challenge safely.");
+    }
+  });
 const monitoring=createMonitoringService({db,Timestamp,FieldValue,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users});
 exports.monitoringMaintenance=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},()=>monitoring.runScheduled());
 exports.activityConsentChanged=onDocumentWritten({document:"activity_preferences/{ownerUid}",region:"asia-southeast1",maxInstances:1,concurrency:1,timeoutSeconds:120},event=>monitoring.applyConsentChange(event.params.ownerUid,event.data?.before.data()?.studentId));
@@ -15,16 +32,21 @@ const staffEmails=["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"];
 // Bug reports are always administrator-directed. Legacy reports have admin scope.
 const reportAudience=issue=>issue.category==="Bug"?"admin":issue.audience==="teacher"?"teacher":"admin";
 const isBugReport=issue=>issue.category==="Bug";
-const audienceEmails=issue=>reportAudience(issue)==="admin"?[staffEmails[0]]:[staffEmails[1]];
 const cleanId=value=>String(value||"").replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,150);
 async function byEmail(email){
   if(typeof email!=="string"||!email)return null;
   try{return (await getAuth().getUserByEmail(email.toLowerCase())).uid}
   catch(error){if(error.code!=="auth/user-not-found")console.warn("User resolution failed",error.code);return null}
 }
-async function teacherIds(){return [...new Set((await Promise.all(staffEmails.map(byEmail))).filter(Boolean))]}
+async function teacherIds(section){
+  const administrator=await byEmail(staffEmails[0]);
+  if(typeof section!=="string"||!section)return [administrator].filter(Boolean);
+  const records=await db.collection("staff_access").where("sections","array-contains",section).get();
+  const emails=records.docs.map(record=>record.data()).filter(record=>record.role==="teacher"&&record.status==="active").map(record=>record.email);
+  return [...new Set([administrator,...await Promise.all(emails.map(byEmail))].filter(Boolean))];
+}
 async function audienceIds(issue){
-  return [...new Set((await Promise.all(audienceEmails(issue).map(byEmail))).filter(Boolean))];
+  return reportAudience(issue)==="admin"?[await byEmail(staffEmails[0])].filter(Boolean):teacherIds(issue.section);
 }
 async function notify(uid,id,item){
   if(!uid)return;
@@ -129,7 +151,7 @@ exports.commitReclaimRequested=onDocumentCreated("commit_reclaims/{claimId}",asy
 exports.assessmentEvidenceSubmitted=onDocumentCreated("assessment_evidence/{evidenceId}",async event=>{
   const item=event.data?.data();
   if(!item||item.status!=="submitted"||item.source==="teacher_discovered")return;
-  await notifyMany(await teacherIds(),"evidence_new_"+event.params.evidenceId,{
+  await notifyMany(await teacherIds(item.section),"evidence_new_"+event.params.evidenceId,{
     type:"submission",title:"Assessment evidence submitted",
     body:"Selected Git commits are awaiting checkpoint verification.",
     sourceId:event.params.evidenceId,target:"submissions.html"
@@ -150,7 +172,7 @@ exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{eviden
     });
   }else if(before.status==="submitted"&&after.status==="submitted"&&
     before.submittedAt?.toMillis?.()!==after.submittedAt?.toMillis?.()){
-    await notifyMany(await teacherIds(),"evidence_resubmitted_"+event.id,{
+    await notifyMany(await teacherIds(after.section),"evidence_resubmitted_"+event.id,{
       type:"submission",title:"Assessment evidence updated",
       body:"A student selected a new revision for assessment review.",
       sourceId:event.params.evidenceId,target:"submissions.html"
@@ -160,7 +182,7 @@ exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{eviden
 
 exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}",async event=>{
   const item=event.data?.data();if(!item)return;
-  await notifyMany(await teacherIds(),"submission_"+event.params.submissionId,{
+  await notifyMany(await teacherIds(item.section),"submission_"+event.params.submissionId,{
     type:"submission",title:"Student submitted work",
     body:(item.studentName||"Student")+" · "+(item.assessmentTitle||"Assessment"),
     sourceId:event.params.submissionId,target:"submissions.html"
@@ -195,7 +217,7 @@ exports.assessmentAssigned=onDocumentUpdated("assessments/{assessmentId}",async 
 
 exports.gradingNeedsReview=onDocumentCreated("grading_alerts/{alertId}",async event=>{
   const item=event.data?.data();if(!item)return;
-  await notifyMany(await teacherIds(),"grading_"+event.params.alertId,{
+  await notifyMany(await teacherIds(item.section),"grading_"+event.params.alertId,{
     type:"grading",title:"Grading requires attention",
     body:(item.repository||"Repository")+" · "+(item.message||"Check failed"),
     sourceId:event.params.alertId,target:"repofetch.html"

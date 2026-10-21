@@ -2,7 +2,7 @@
 import {auth} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {doc,collection} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {staffSessionReady,resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
+import {staffSessionReady,resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
 import {workspacePath,scopedStorage} from "./workspace-model.mjs?v=2026.10.20.1";
 let boundUid=null,invalidated=false;
 staffSessionReady.then(({user,role})=>{if(role&&user?.uid===auth.currentUser?.uid&&!invalidated)boundUid=user.uid;});

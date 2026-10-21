@@ -1,7 +1,7 @@
 import {auth,db} from "./firebase-core.js";
 import {doc,serverTimestamp,runTransaction,collection,query,where,getDocs} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {registrationProfile,assertPendingRequest} from "./admission-model.mjs?v=2026.10.21.1-dev.1";
-import {resolveStaffRole} from "./staff-session.mjs?v=2026.10.20.1";
+import {resolveStaffRole} from "./staff-session.mjs?v=1.1.0";
 export async function ensureGuestRequest(user,requestedRole="guest") {
   const profile=registrationProfile(user,requestedRole),ref=doc(db,"account_requests",user.uid);
   return runTransaction(db,async transaction=>{

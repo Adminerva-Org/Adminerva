@@ -64,6 +64,7 @@ test("student practice page requires authentication and does not grade exams",()
   assert.match(html,/practiceMissionPanel/);
   assert.match(html,/not a graded exam/);
   const app=readFileSync("js/student/practice.js","utf8");
-  assert.match(app,/student_practice_progress/);
-  assert.match(app,/serverTimestamp\(\)/);
+  assert.match(app,/practice_verified_progress/);
+  assert.match(app,/practiceRequest\("practiceComplete"/);
+  assert.doesNotMatch(app,/setDoc\(|runTransaction\(/);
 });

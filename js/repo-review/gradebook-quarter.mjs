@@ -2,13 +2,13 @@
 import { auth, db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
 import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=2026.10.20.1";
-import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=2026.10.20.1";
+import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.1.0";
 import {renderFeedbackMarkdown,reviewNotice} from "./review-ui.mjs?v=2026.10.20.1";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   collection, doc, getDoc, getDocs, query, where, runTransaction,
   writeBatch, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+} from "../core/teaching-firestore.mjs?v=1.1.0";
 import { parseGithubRepository } from "./services/github-evidence-client.mjs?v=2026.10.20.1";
 
 /* Companion view to the legacy single-assessment gradebook.
@@ -334,7 +334,7 @@ async function togglePublish(makePublished) {
       assertGradeVersion(previous,active.entry.data);
       const isV2=active.task.schemaVersion===2;
       if(makePublished&&isV2){
-        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=2026.10.19.1");
+        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=1.1.0");
         await verifyGradePublication(tx,active.entry.ref,previous);
       }
       if (makePublished && previous.reviewRequired && !el("gbMarkReviewed").checked) {

@@ -1,7 +1,7 @@
 import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=2026.10.20.1";
 import {createBackoffClient,evaluationJSON} from "./services/request-backoff.mjs?v=2026.10.20.1";
 import {feedbackChip,reviewNotice} from "./review-ui.mjs?v=2026.10.20.1";
-import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=2026.10.20.1";
+import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=1.1.0";
 /** Automated evaluation assistance with instructor-controlled acceptance. */
 import { auth, db } from "../core/firebase-core.js";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs";
@@ -15,7 +15,7 @@ import {
   getDoc,
   runTransaction,
   serverTimestamp,
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+} from "../core/teaching-firestore.mjs?v=1.1.0";
 
 function escapeHTML(str) {
   if (!str) return "";
@@ -80,6 +80,7 @@ window.startAutoCheck = async function (
   if(sessionEvaluationKey!==geminiKey){sessionEvaluationKey=geminiKey;sessionEvaluationClient=createBackoffClient({scope:"evaluation"});}
 
   const checkStartTime = performance.now();
+  let reviewSection=null;
   const cardId = `task-card-${studentId}-${taskId}`;
   const taskCard = document.getElementById(cardId);
   const actionArea = taskCard
@@ -110,6 +111,7 @@ window.startAutoCheck = async function (
     const studentData = studentSnap.exists()
       ? studentSnap.data()
       : { name: "Unknown Student", githubUsername: "Unknown" };
+    reviewSection=studentData.section||null;
 
     const maxScore = taskData.maxScore || 20;
     const floorScore = Math.round(maxScore * 0.2); // ✨ Updated: 20% Safety Net Floor
@@ -406,7 +408,7 @@ window.startAutoCheck = async function (
         });
       }
       transaction.set(gradeRef, {
-        studentId, taskId, score: finalScore, maxScore,gradeVersion:nextGradeVersion(openedGrade),
+        studentId, taskId, section:studentData.section,score: finalScore, maxScore,gradeVersion:nextGradeVersion(openedGrade),
         feedback: finalFeedback,
         gradeSource: "automated",
         penaltyTags: finalTags,
@@ -464,7 +466,7 @@ window.startAutoCheck = async function (
     // One teacher-only alert per student/assessment/hour; a failed check never alters the grade.
     const alertKey = studentId + "_" + taskId + "_" + new Date().toISOString().slice(0, 13).replace(/[^0-9]/g, "");
     void setDoc(doc(db, "grading_alerts", alertKey), {
-      studentId, taskId, repository: String(owner || "") + "/" + String(repo || ""),
+      studentId, taskId, section:reviewSection,repository: String(owner || "") + "/" + String(repo || ""),
       message: String(error?.message || "Assessment check failed").slice(0, 700),
       createdAt: serverTimestamp()
     }, { merge: true }).catch(reportError =>

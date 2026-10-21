@@ -12,6 +12,8 @@ import {initializeApp,deleteApp} from "firebase-admin/app";
 import {getAuth} from "firebase-admin/auth";
 import {getFirestore as getAdminFirestore, Timestamp, FieldValue} from "firebase-admin/firestore";
 import monitoringWorker from "../../functions/monitoring-service.js";
+import practiceBackend from "../../functions/practice-service.js";
+import teachingBackend from "../../functions/teaching-access-service.js";
 import {personalPlanId} from "../../js/lesson-review/workspace-model.mjs";
 import {doc,setDoc} from "firebase/firestore";
 import {accounts,password,assessment,repository,ownSha,groupSha,homePath,providerDraft,githubFixture} from "./review-fixtures.mjs";
@@ -77,19 +79,23 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
   try{
     await environment.clearFirestore();
     const authAdmin=getAuth(adminApp);
+    const practiceService=practiceBackend.createPracticeService({db:getAdminFirestore(adminApp),Timestamp,resolveUser:uid=>authAdmin.getUser(uid)});
     const users=await authAdmin.listUsers();
     if(users.users.length)await authAdmin.deleteUsers(users.users.map(user=>user.uid));
     for(const account of Object.values(accounts))await authAdmin.createUser({...account,password,emailVerified:true});
     await environment.withSecurityRulesDisabled(async context=>{
       const db=context.firestore();
       await Promise.all([
+        setDoc(doc(db,"staff_access",accounts.teacher.email),{email:accounts.teacher.email,displayName:"Fixture instructor",role:"teacher",status:"active",sections:["fixture-11-A"],revision:1}),
         ...["alice","bob"].map(studentId=>setDoc(doc(db,"students",studentId),{
           name:"Fixture "+studentId,email:accounts[studentId].email,section:"fixture-11-A",githubUsername:"fixture-"+studentId,repoUrl:repository
         })),
         setDoc(doc(db,"assessments","fixture-v2"),assessment),
-        setDoc(doc(db,"assessment_private","fixture-v2"),{systemPersona:"Private fixture instructions"})
+        setDoc(doc(db,"assessment_private","fixture-v2"),{ownerUid:accounts.teacher.uid,sectionIds:["fixture-11-A"],systemPersona:"Private fixture instructions"})
       ]);
     });
+    const teachingService=teachingBackend.createTeachingAccessService({db:getAdminFirestore(adminApp),Timestamp});
+    await Promise.all(["alice","bob"].map(studentId=>teachingService.synchronize(studentId)));
     const assets=new Map();
     for(const url of ["https://cdn.quilljs.com/1.3.6/quill.min.js","https://cdn.quilljs.com/1.3.6/quill.snow.css",
       "https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/libs/jszip.min.js","https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.min.js",
@@ -97,7 +103,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
       "https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"]){
       const response=await fetch(url);assert.equal(response.ok,true);assets.set(url,await response.text());
     }
-    for(const name of ["firebase-app.js","firebase-auth.js","firebase-firestore.js"]){
+    for(const name of ["firebase-app.js","firebase-auth.js","firebase-firestore.js","firebase-functions.js"]){
       const response=await fetch(sdkBase+name);
       assert.equal(response.ok,true,"Could not load the production-version Firebase SDK");
       assets.set(sdkBase+name,await response.text());
@@ -108,6 +114,18 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     server=http.createServer(async(request,response)=>{
       try{
         const pathname=decodeURIComponent(new URL(request.url,"http://localhost").pathname);
+        const practiceAction={practiceSession:"acquire",practiceStart:"start",practicePredict:"predict",practiceComplete:"complete"}[pathname.split("/").at(-1)];
+        if(practiceAction&&pathname.startsWith("/"+projectId+"/asia-southeast1/")){
+          response.setHeader("Content-Type","application/json");
+          try{
+            assert.equal(request.method,"POST");
+            const token=await authAdmin.verifyIdToken(String(request.headers.authorization||"").replace(/^Bearer /,""));
+            let body="";for await(const chunk of request){body+=chunk;if(body.length>16000)throw Error("Request too large");}
+            const result=await practiceService[practiceAction]({auth:{uid:token.uid,token},data:JSON.parse(body).data});
+            response.end(JSON.stringify({result}));
+          }catch(error){response.statusCode=400;response.end(JSON.stringify({error:{status:(error.code||"internal").toUpperCase().replaceAll("-","_"),message:error.message,details:error.details}}));}
+          return;
+        }
         if(pathname==="/js/core/firebase-core.js"){
           response.setHeader("Content-Type","text/javascript");response.end(coreModule(firestoreHost,authHost));return;
         }
@@ -122,12 +140,13 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     browser=await chromium.launch({headless:true,...(process.env.ADMINERVA_TEST_BROWSER_PATH?{executablePath:process.env.ADMINERVA_TEST_BROWSER_PATH}:{})});
     async function newIdentity(role){
       const context=await browser.newContext({viewport:{width:1360,height:1000}});contexts.push(context);
-      await context.addInitScript(role=>{
+      await context.addInitScript(({role,port})=>{
         if(location.protocol!=="http:")return;
         localStorage.setItem("fixture-role",role);
+        window.ADMINERVA_PRACTICE_EMULATOR=port;
         localStorage.setItem("Adminerva_Role",role.startsWith("teacher")?"teacher":role==="admin"?"superadmin":"student");
         if(role==="teacher")localStorage.setItem("Adminerva_gemini_token","fixture-key-never-valid-in-production");
-      },role);
+      },{role,port:server.address().port});
       await context.route("**/*",async route=>{
         const url=route.request().url(),parsed=new URL(url);
         if(assets.has(url))return route.fulfill({contentType:url.endsWith(".css")?"text/css":"text/javascript",body:assets.get(url)});
@@ -441,11 +460,42 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await student.goto(origin+"/student-practice.html");
     await student.locator("#av-alert-toggle").click();await expect(student.locator("#av-alert-list")).toContainText("Adminerva update");await student.locator("#av-alert-toggle").click();
     await expect(student.locator("#practiceClass option")).toContainText(["fixture-11-A"]);
-    await expect(student.locator("#practiceOverview")).toContainText("1/300");
+    await expect(student.locator("#practiceOverview")).toContainText("0/300");
     await expect(student.locator("#practiceCourseList [data-practice-module]")).toHaveCount(20);
     assert.equal(await student.locator("#practiceOptIn,#practiceSavePreferences").count(),0);
-    await waitRecord(student,"student_practice_progress/"+accounts.alice.uid+"/courses/java","studentId","alice");
+    await expect(student.locator("#practiceSessionStatus")).toContainText("active here");
+    await student.locator("#practiceCourseList [data-practice-module] summary").first().click();
+    await student.locator("#practiceCourseList [data-practice-module] button").first().click();
+    await expect(student.locator("#practiceChoices input")).toHaveCount(4);
+    const practiceDatabase=getAdminFirestore(adminApp);
+    const lease=(await practiceDatabase.doc("practice_sessions/"+accounts.alice.uid).get()).data();
+    const challenge=(await practiceDatabase.doc("practice_attempts/"+lease.activeAttemptId).get()).data();
+    await student.locator('#practiceChoices input[value="'+challenge.question.correct+'"]').check();
+    await student.locator("#practiceReasoning").fill("I traced the changes to the variable in sequence and predicted the final result.");
+    await student.locator("#practiceCheckBtn").click();
+    await expect(student.locator("#practiceExperimentPanel")).toBeVisible();
+    await student.evaluate(async({uid,attemptId,correctChoice,question})=>{
+      const {makeCheckedPracticeTransfer,practiceBridgeKey,recordPracticeRun}=await import("/js/student/practice-playground-bridge.mjs");
+      const transfer=makeCheckedPracticeTransfer(uid,{state:"predicted",attemptId,courseId:"java",missionId:"j1",correctChoice,question});
+      sessionStorage.setItem(practiceBridgeKey(uid),JSON.stringify(transfer));
+      recordPracticeRun(sessionStorage,uid,"Fixture sandbox execution attempt");
+    },{uid:accounts.alice.uid,attemptId:challenge.attemptId,correctChoice:challenge.question.correct,question:challenge.question});
+    await student.goto(origin+"/student-practice.html?course=java&mission=j1");
+    await expect(student.locator("#practiceReflectionPanel")).toBeVisible();
+    await student.locator("#practiceObservation").fill("I compared the variable changes and printed result with the prediction in the sandbox.");
+    await expect.poll(()=>Date.now()-challenge.createdAt.toMillis()).toBeGreaterThan(3200);
+    await student.locator("#practiceFinishBtn").click();
     await waitRecord(student,"practice_rankings/alice","points",10);
+    assert.equal((await browserRecord(student,"student_practice_progress/"+accounts.alice.uid+"/courses/java")).data.studentId,undefined,"Old self-reported progress must remain untouched");
+    const transferDevice=await (await newIdentity("alice")).newPage();
+    await transferDevice.goto(origin+"/student-practice.html");
+    await expect(transferDevice.locator("#practiceSessionStatus")).toContainText("controlled transfer");
+    await transferDevice.locator("#practiceTransferBtn").click();
+    await expect(transferDevice.locator("#practiceSessionStatus")).toContainText("transferred here");
+    await student.locator("#practiceSyncBtn").click();
+    await expect(student.locator("#practiceSessionStatus")).toContainText("controlled transfer");
+    assert.equal((await browserRecord(student,"practice_rankings/alice")).data.points,10,"Transfers must not erase or penalize saved XP");
+    await transferDevice.close();
     assert.equal((await browserRecord(student,"activity_preferences/"+accounts.alice.uid)).data.enabled,false);
     assert.equal((await browserRecord(student,"practice_profiles/"+accounts.alice.uid)).data.leaderboardOptIn,false);
     await expect(student.locator("#practiceReviewedPoints")).toContainText("10 practice XP");
@@ -469,7 +519,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await student.screenshot({path:path.join(output,"practice-class-points.png")});
     assert.equal((await browserRecord(peer,"practice_scores/alice")).error,"permission-denied");
     await student.goto(origin+"/patch-notes.html");await expect(student.locator("#patchList")).toContainText("Review & Grade");
-    validated("300 structured missions, legacy progress recovery, automatic class-only alias XP without activity consent or teacher publication, private reflections and consolidated help");
+    validated("300 structured missions, server-checked predictions, resumed sandbox handoff fixture, automatic class-only XP, controlled device transfer without penalties, private reflections and consolidated help");
     await student.goto(origin+"/student-settings.html");
     await expect(student.locator("#activity-save")).toBeEnabled();
     const beforeConsent=await browserRecord(student,"activity_preferences/"+accounts.alice.uid);
@@ -641,8 +691,8 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await teacher.screenshot({path:path.join(output,"review-grade-mobile.png"),fullPage:true});
     validated("audited second teacher admission, isolated same-week lesson saves, stale-tab protection, scoped analytics, responsive navigation and privacy footer");
     await getAdminFirestore(adminApp).doc("assessments/fixture-reviewed").set({...assessment,schemaVersion:1,title:"Fixture reviewed legacy draft"});
-    await getAdminFirestore(adminApp).doc("student_grades/alice_fixture-reviewed").set({studentId:"alice",taskId:"fixture-reviewed",score:11,maxScore:20,feedback:"# Welcome screen\nReviewed individual changes.\n<script>unsafe()</script>",reviewRequired:false,published:false,gradedAt:Timestamp.now()});
-    await getAdminFirestore(adminApp).doc("student_grades/bob_fixture-reviewed").set({studentId:"bob",taskId:"fixture-reviewed",score:9,maxScore:20,feedback:"Still awaiting individual review.",reviewRequired:true,published:false});
+    await getAdminFirestore(adminApp).doc("student_grades/alice_fixture-reviewed").set({studentId:"alice",section:"fixture-11-A",taskId:"fixture-reviewed",score:11,maxScore:20,feedback:"# Welcome screen\nReviewed individual changes.\n<script>unsafe()</script>",reviewRequired:false,published:false,gradedAt:Timestamp.now()});
+    await getAdminFirestore(adminApp).doc("student_grades/bob_fixture-reviewed").set({studentId:"bob",section:"fixture-11-A",taskId:"fixture-reviewed",score:9,maxScore:20,feedback:"Still awaiting individual review.",reviewRequired:true,published:false});
     await gradebook.setViewportSize({width:390,height:844});
     await gradebook.goto(origin+"/gradebook.html");
     await gradebook.locator("#gbQuarterSection").selectOption("fixture-11-A");await gradebook.locator("#gbQuarter").selectOption("Q3");
@@ -693,7 +743,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await admin.goto(origin+"/manage-subjects.html");await admin.screenshot({path:path.join(output,"manage-subjects-admin.png"),fullPage:true});
     validated("limited local guest tools, private verified requests, audited teacher approval, school catalog integration, public guide search and stable versioned release history");
     const evidenceBefore=(await browserRecord(teacher,"assessment_evidence/alice_fixture-v2")).data;
-    const overviewPath="repobank/review:fixture-group%2Fandroid";
+    const overviewPath="teacher_materials/"+accounts.teacher.uid+"/repobank/review:fixture-group%2Fandroid";
     await teacher.goto(origin+"/repobank.html");await expect(teacher.locator("#repobankStatus")).toContainText("linked groups loaded");
     const group=teacher.locator("#repobankContainer article").first();await group.getByRole("button",{name:"Refresh system overview",exact:true}).click();
     await expect(group).toContainText("System overview draft");

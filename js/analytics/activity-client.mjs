@@ -1,4 +1,4 @@
-import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
 /** Opt-in activity client; never records text, URLs, selectors, code, credentials or anonymous visitors. */
 import {auth, db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";

@@ -7,15 +7,15 @@ import {renderFeedbackMarkdown} from "./review-ui.mjs?v=2026.10.20.1";
 import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs";
 import {
   collection, doc, getDoc, getDocs, query, where, runTransaction, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+} from "../core/teaching-firestore.mjs?v=1.1.0";
 import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=2026.10.20.1";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs";
 import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,parseSuggestedRubric}
   from "./services/v2-grading-assistant.mjs?v=2026.10.21.2-dev.1";
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=2026.10.19.4";
-import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=2026.10.19.4";
+import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=1.1.0";
 import {createReviewRequests} from "./services/review-requests.mjs?v=2026.10.20.1";
-import {mountReviewPanels} from "./review-panels.mjs?v=2026.10.21.2-dev.1";
+import {mountReviewPanels} from "./review-panels.mjs?v=1.1.0";
 
 const el = id => document.getElementById(id);
 const state = { active: null, request: null, token: 0, flags: [], aiBusy: false, dirty:false, abort:null,panels:null,requests:null,aiAbort:null };
@@ -436,7 +436,7 @@ async function save(event) {
         createdAt:serverTimestamp()
       });
       tx.set(active.gradeRef,{
-        studentId:active.studentId,taskId:active.taskId,score,maxScore:active.maxScore,
+        studentId:active.studentId,taskId:active.taskId,section:active.student.section,score,maxScore:active.maxScore,
         gradeVersion:nextGradeVersion(previous),
         feedback,published:false,reviewRequired:false,manuallyAdjusted:true,
         gradeSource:acceptedDraft||previous?.aiAssistance?"teacher_ai_reviewed":"teacher_manual",gradingMode:"individual",sourceSelectionMode:"teacher_manual",

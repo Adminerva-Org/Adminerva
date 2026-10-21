@@ -30,29 +30,31 @@ test("help remains consolidated without injected page-heading links and review n
  assert.ok(html.indexOf('id="manualReviewSteps"')<html.indexOf('id="manualReviewBody"'));
 });
 
-function syncFixture(){
+function completionFixture(){
  const source=readFileSync("js/student/practice.js","utf8");
  let release;const gate=new Promise(resolve=>{release=resolve;});
- const writes=[],persisted=[];
- const context=vm.createContext({COURSES,Set,Map,Event,queueMicrotask,console,window:{dispatchEvent(){}},
-  practiceMemberships:async()=>[{id:"alice"}],db:{},doc:()=>({}),serverTimestamp:()=>"server-time",status(){},
-  persistLocal:(id,complete,notes,needsSync)=>persisted.push({id,complete:[...complete],notes:{...notes},needsSync}),
-  runTransaction:async(_db,callback)=>callback({get:async()=>{await gate;return {exists:()=>false};},set:(_ref,data)=>writes.push(data)})});
- vm.runInContext('let user={uid:"alice"},syncing=new Set(),completed=new Map([["java",new Set(["j1"])]]),reflections=new Map([["java",{j1:"First reflection"}]]);'+source.slice(source.indexOf("async function syncCourse("),source.indexOf("async function loadProgress(")),context);
- return {context,release,writes,persisted};
+ const requests=[],removed=[],loaded=[];
+ const context=vm.createContext({status(){},pendingKey:()=>"alice-pending",sessionStorage:{removeItem:key=>removed.push(key)},
+  practiceRequest:async(name,payload)=>{requests.push({name,payload});await gate;return {awarded:true};},loadProgress:async()=>loaded.push(true)});
+ vm.runInContext('let user={uid:"alice"};'+source.slice(source.indexOf("async function submitCompletion("),source.indexOf("async function finishMission(")),context);
+ return {context,release,requests,removed,loaded};
 }
-test("completion and reflection changes during an outstanding save are preserved and synchronized again",async()=>{
- const fixture=syncFixture(),saving=vm.runInContext('syncCourse("java")',fixture.context);
- await Promise.resolve();
- vm.runInContext('completed.get("java").add("java-m1-02");reflections.get("java")["java-m1-02"]="Second reflection";reflections.get("java").j1="Updated reflection";',fixture.context);
- fixture.release();await saving;await new Promise(resolve=>setImmediate(resolve));
- assert.equal(fixture.writes.length,2);
- assert.deepEqual([...fixture.writes[1].completed],["j1","java-m1-02"]);
- assert.equal(fixture.writes[1].reflections.j1,"Updated reflection");assert.equal(fixture.writes[1].reflections["java-m1-02"],"Second reflection");
- assert.equal(fixture.persisted.at(-1).needsSync,false);
+test("completion sends an attempt and reflection, never client-computed XP, and keeps the outbox until acknowledged",async()=>{
+ const fixture=completionFixture(),saving=vm.runInContext('submitCompletion({attemptId:"attempt",observation:"Observed result"})',fixture.context);
+ await Promise.resolve();assert.equal(fixture.removed.length,0);
+ assert.equal(fixture.requests[0].name,"practiceComplete");
+ assert.deepEqual(Object.keys(fixture.requests[0].payload),["attemptId","observation"]);
+ fixture.release();await saving;
+ assert.equal(fixture.removed.length,1);assert.equal(fixture.loaded.length,1);
 });
-test("an account change during a pending course save cannot write or replace another account's local state",async()=>{
- const fixture=syncFixture(),saving=vm.runInContext('syncCourse("java")',fixture.context);
+test("an account change during a pending completion cannot remove another account's outbox or display its progress",async()=>{
+ const fixture=completionFixture(),saving=vm.runInContext('submitCompletion({attemptId:"attempt",observation:"Observed result"})',fixture.context);
  await Promise.resolve();vm.runInContext('user={uid:"bob"};',fixture.context);fixture.release();
- assert.equal(await saving,false);assert.equal(fixture.writes.length,0);assert.equal(fixture.persisted.length,0);
+ await assert.rejects(saving,/Account changed/);assert.equal(fixture.removed.length,0);assert.equal(fixture.loaded.length,0);
+});
+test("deployable server curriculum matches the client curriculum exactly",()=>{
+ for(const name of ["practice-courses.mjs","practice-curriculum.mjs"]){
+  const normalize=source=>source.replace(/\r/g,"").replace(/\.\/practice-curriculum\.mjs(?:\?v=[^"']+)?/g,"./practice-curriculum.mjs");
+  assert.equal(normalize(readFileSync("functions/"+name,"utf8")),normalize(readFileSync("js/student/"+name,"utf8")),name);
+ }
 });

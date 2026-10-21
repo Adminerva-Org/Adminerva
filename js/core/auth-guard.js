@@ -1,4 +1,4 @@
-import {resolveAccountAccess} from "./staff-session.mjs?v=2026.10.20.1";
+import {resolveAccountAccess} from "./staff-session.mjs?v=1.1.0";
 /** Verified account admission, workspace visibility and sign-out routing. */
 import { auth } from "./firebase-core.js";
 import {

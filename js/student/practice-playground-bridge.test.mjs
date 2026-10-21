@@ -82,8 +82,9 @@ test("completion requires a run attempt and written comparison, with recoverable
   const html=readFileSync("student-practice.html","utf8");
   assert.match(app,/transfer\.runCount<1/);
   assert.match(app,/observation\.length<25/);
-  assert.match(app,/runTransaction\(db,async tx/);
-  assert.match(app,/needsSync/);
+  assert.match(app,/practiceRequest\("practiceComplete"/);
+  assert.match(app,/sessionStorage\.setItem\(pendingKey\(\)/);
+  assert.doesNotMatch(app,/runTransaction|setDoc\(|updateDoc\(/);
   assert.match(app,/practiceExperimentLink/);
   assert.match(html,/id="practiceObservation"/);
   assert.match(html,/id="practiceExperimentLink"/);
