@@ -1,5 +1,5 @@
 /** Student submissions, practice progress and isolated code workspaces: practice points. */
-import {COURSES} from "./practice-courses.mjs";
+import {COURSES} from "./practice-courses.mjs?v=2026.10.21.2-dev.1";
 export const MISSION_IDS=COURSES.flatMap(course=>course.missions.map(mission=>mission.id));
 export function practicePoints(ids){
   const missions=[...new Set(Array.isArray(ids)?ids:[])].filter(id=>MISSION_IDS.includes(id));

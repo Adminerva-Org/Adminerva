@@ -9,7 +9,7 @@
     />
     <title>User Management | Adminerva Educator</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.20.1" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.1.0" />
 </head>
   <body
     class="bg-slate-50 font-sans text-slate-800 min-h-screen flex flex-col hidden"
@@ -232,10 +232,24 @@
           </div>
         </div>
       </div>
+      <section id="admissions" hidden class="bg-white border rounded-2xl p-6 my-8">
+        <h2 class="text-2xl font-bold">Guest access requests</h2><p>New sign-ins request access here. Existing enrolled student records are preserved; do not import them again.</p>
+        <p id="admission-status" role="status"></p><button id="admission-refresh" type="button" class="av-btn">Refresh requests</button><div id="admission-list" class="grid gap-3 my-4"></div>
+        <form id="admission-form" hidden class="grid gap-4">
+          <h3 id="admission-name" class="font-bold"></h3>
+          <label>Approve as<select id="admission-role"><option value="student">Student</option><option value="teacher">Teacher</option></select></label>
+          <label>Student record (student approvals only)<select id="admission-student"></select></label>
+          <label>Section for a new student<input id="admission-section" maxlength="120" placeholder="Exact school section name"></label>
+          <label>Decision reason<textarea id="admission-reason" required minlength="12" maxlength="600"></textarea></label>
+          <div><button value="approved" class="av-btn">Approve selected access</button><button value="rejected" class="av-btn">Reject request</button></div>
+        </form>
+      </section>
     </main>
 
-    <script src="js/core/adminerva-nav.js?v=2026.10.20.1"></script>
-    <script type="module" src="js/settings/settings-user.js?v=2026.10.20.1"></script>
-    <script src="js/core/adminerva-loader.js?v=2026.10.20.1"></script>
+    <script src="js/core/adminerva-nav.js?v=1.1.0"></script>
+    <script type="module" src="js/settings/settings-user.js?v=1.1.0"></script>
+    <script type="module" src="js/core/auth-guard.js?v=1.1.0"></script>
+    <script type="module" src="js/core/user-admissions.mjs?v=1.1.0"></script>
+    <script src="js/core/adminerva-loader.js?v=1.1.0"></script>
   </body>
 </html>

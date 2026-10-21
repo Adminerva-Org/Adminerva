@@ -3,6 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import vm from "node:vm";
+import {savedLessonSettings} from "./lesson-settings.mjs";
 
 test("lesson tools use the common authentication guard",()=>{
   for (const path of ["lesson-planner.html","schedule.html","library.html","presentation.html"]) {
@@ -83,7 +84,7 @@ test("loading another subject never changes the saved lesson identity",()=>{
     window:{currentPlan:[],currentPlanSubject:"",currentPlanTeacher:""},
     lessonStorage:{getItem:key=>key==="Adminerva_defaultSubject"?"New Semester Subject":"Current Teacher"},
     document:{getElementById:()=>({value:"Grade 11"})},
-    alert(){}
+    alert(){},savedLessonSettings
   };
   context.workspaceUid=()=>"teacher-fixture";
   vm.runInNewContext(ui.slice(start,end)+"}",context);

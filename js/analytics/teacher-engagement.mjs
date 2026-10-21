@@ -1,9 +1,9 @@
-import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
 /** Teacher-only coarse engagement snapshots; administrators select a teacher here, not in operations analytics. */
 import {auth, db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {doc, getDocFromServer, collection, getDocs, onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {staffRole} from "../core/staff-role.mjs?v=2026.10.20.1";
+import {staffRole} from "../core/staff-role.mjs?v=1.1.0";
 
 const selector = document.getElementById("analytics-teacher");
 let epoch = 0;
@@ -11,7 +11,7 @@ let stopView = () => {};
 export async function selectedTeacherSections() {
   const current = epoch, email = selector.value;
   if (!email || !auth.currentUser) return [];
-  const roster = await getDocFromServer(doc(db, "analytics_rosters", email));
+  const roster = await getDocFromServer(doc(db, "staff_access", email));
   if (current !== epoch) return [];
   return Array.isArray(roster.data()?.sections) ? roster.data().sections : [];
 }

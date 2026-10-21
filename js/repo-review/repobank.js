@@ -1,398 +1,100 @@
-/** Assessment authoring, repository evidence, individual review and protected grading: repobank. */
-import { db } from "../core/firebase-core.js";
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-  doc,
-  getDoc,
-  setDoc,
-  serverTimestamp,
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-
-function escapeHTML(str) {
-  if (!str) return "";
-  return String(str).replace(
-    /[&<>"']/g,
-    (match) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#039;",
-      })[match],
-  );
-}
-
-window.showLoader = function (msg = "Processing...") {
-  if (typeof window.showSubtleLoader === "function")
-    window.showSubtleLoader(msg);
-};
-window.hideLoader = function () {
-  if (typeof window.hideSubtleLoader === "function") window.hideSubtleLoader();
-};
-
-document.addEventListener("DOMContentLoaded", () => {
-  loadSections();
-});
-
-async function loadSections() {
-  if (!db) return;
-  try {
-    const snap = await getDocs(collection(db, "students"));
-    const select = document.getElementById("sectionSelect");
-    select.innerHTML = "";
-
-    let uniqueSections = new Set();
-    snap.forEach((d) => {
-      const sectionName = d.data().section;
-      if (sectionName) uniqueSections.add(sectionName);
-    });
-
-    [...uniqueSections].sort().forEach((sec) => {
-      select.insertAdjacentHTML(
-        "beforeend",
-        `<option value="${escapeHTML(sec)}">${escapeHTML(sec)}</option>`,
-      );
-    });
-
-    if (uniqueSections.size > 0) {
-      window.loadRepobankData();
-    }
-  } catch (e) {
-    console.error("Failed to load sections", e);
-  }
-}
-
-function getRepoId(repoUrl) {
-  try {
-    const parts = repoUrl.replace(/\/$/, "").replace(".git", "").split("/");
-    return `${parts[parts.length - 2]}_${parts[parts.length - 1]}`;
-  } catch (e) {
-    return "unknown_repo";
-  }
-}
-
-let activeSectionStudents = [];
-
-window.loadRepobankData = async function () {
-  const section = document.getElementById("sectionSelect").value;
-  const container = document.getElementById("repobankContainer");
-  if (!section) return;
-
-  window.showLoader("Accessing Long-Term Memory...");
-  container.innerHTML = "";
-
-  try {
-    const qStudents = query(
-      collection(db, "students"),
-      where("section", "==", section),
-    );
-    const stuSnap = await getDocs(qStudents);
-    activeSectionStudents = [];
-    stuSnap.forEach((d) =>
-      activeSectionStudents.push({ id: d.id, ...d.data() }),
-    );
-
-    if (activeSectionStudents.length === 0) {
-      container.innerHTML = `<div class="text-gray-500 italic font-medium col-span-full">No students found in this section.</div>`;
-      return window.hideLoader();
-    }
-
-    const uniqueRepos = new Map();
-    activeSectionStudents.forEach((student) => {
-      if (student.repoUrl && student.repoUrl !== "unassigned") {
-        const id = getRepoId(student.repoUrl);
-        if (!uniqueRepos.has(id)) {
-          uniqueRepos.set(id, { url: student.repoUrl, members: [] });
-        }
-        uniqueRepos.get(id).members.push(student);
+import {auth,db} from "../core/firebase-core.js";
+import {collection,getDocs,query,where,doc,getDoc,runTransaction,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.1.0";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
+import {createReviewRequests} from "./services/review-requests.mjs?v=2026.10.20.1";
+import {createBackoffClient,evaluationJSON} from "./services/request-backoff.mjs?v=2026.10.20.1";
+import {repositoryKey,verifiedMemberEvidence,validateOverview,overviewPrompt,overviewFingerprint,collectOverview} from "./services/repobank-model.mjs?v=2026.10.21.1-dev.1";
+const field=id=>document.getElementById(id);
+let epoch=0,controller=null;
+const active=()=>auth.currentUser?.uid;
+function add(parent,tag,text,className=""){const node=document.createElement(tag);node.textContent=text;node.className=className;parent.append(node);return node;}
+function status(message){field("repobankStatus").textContent=message;}
+window.loadRepobankData=async function(){
+  const section=field("sectionSelect").value,current=++epoch,uid=active();controller?.abort();controller=new AbortController();const signal=controller.signal;
+  if(!section)return;
+  field("repobankContainer").replaceChildren();status("Loading group context and approved individual evidence…");
+  try{
+    const [students,evidence]=await Promise.all([getDocs(query(collection(db,"students"),where("section","==",section))),getDocs(query(collection(db,"assessment_evidence"),where("section","==",section)))]);
+    if(current!==epoch||active()!==uid)return;
+    const groups=new Map();
+    for(const record of students.docs){const student={id:record.id,...record.data()};try{const key=repositoryKey(student.repoUrl);if(!groups.has(key))groups.set(key,{repository:student.repoUrl,members:[]});groups.get(key).members.push(student);}catch{}}
+    const records=evidence.docs.map(record=>record.data());
+    await Promise.all([...groups].map(async([key,group])=>{
+      const card=add(field("repobankContainer"),"article","","bg-white rounded-xl border border-slate-200 p-5 flex flex-col gap-3");
+      add(card,"h3",key,"text-lg font-bold");const link=add(card,"a","Open repository","underline text-blue-700");link.href="https://github.com/"+key;link.target="_blank";link.rel="noopener noreferrer";
+      const message=add(card,"p","Loading saved context…","text-sm text-slate-500"),ref=doc(db,"repobank","review:"+encodeURIComponent(key));
+      let opened=null,draft=null,evaluating=false,saving=false;
+      const concept=add(card,"textarea","","border rounded p-3 w-full");concept.rows=3;concept.setAttribute("aria-label","Project concept");
+      const feedback=add(card,"textarea","","border rounded p-3 w-full");feedback.rows=4;feedback.setAttribute("aria-label","Group feedback");
+      const actions=add(card,"div","","flex flex-wrap gap-2"),evaluate=add(actions,"button","Refresh system overview","av-btn"),save=add(actions,"button","Save reviewed overview","av-btn");
+      save.disabled=true;
+      const manual=add(actions,"button","Edit manually","av-btn");
+      manual.onclick=()=>{if(!signal.aborted&&!evaluating&&!saving){draft=null;save.disabled=false;message.textContent="Manual overview. Review source limitations before saving. Individual contribution records remain separate.";concept.focus();}};
+      function stale(){return signal.aborted||epoch!==current||active()!==uid;}
+      try{
+        const [saved,legacy]=await Promise.all([getDoc(ref),getDoc(doc(db,"repobank",key.replace("/","_")))]);if(stale())return;
+        opened=saved.data()?.overview||null;concept.value=opened?.concept||legacy.data()?.concept||"";feedback.value=opened?.feedback||legacy.data()?.feedback||"";
+        message.textContent=opened?"Reviewed overview · revision "+opened.revision+" · checkpoint "+(opened.checkpoint?.slice(0,12)||"not recorded"):"Earlier or unverified context. No individual roles are inferred from these notes.";
+      }catch{message.textContent="Saved overview could not load. Reload before replacing it.";evaluate.disabled=true;manual.disabled=true;}
+      evaluate.onclick=async()=>{
+        if(stale()||evaluating||saving)return;
+        let canSave=!save.disabled;
+        evaluating=true;evaluate.disabled=true;save.disabled=true;manual.disabled=true;concept.disabled=true;feedback.disabled=true;
+        const model=localStorage.getItem("Adminerva_ai_model")||"gemini-2.5-flash",keyValue=localStorage.getItem("Adminerva_gemini_token");
+        try{
+          if(!keyValue)throw Error("Configure an evaluation provider in Settings, or use Edit manually.");
+          if(!/^[a-zA-Z0-9._-]+$/.test(model))throw Error("Choose a valid evaluation model.");
+          if(!confirm("Send a bounded source sample to the configured evaluation provider for a project overview? No individual contributions or grades will be inferred, saved or published automatically."))return;
+          message.textContent="Pinning the current project revision and reading a bounded source sample…";
+          const sample=await collectOverview(createReviewRequests({token:localStorage.getItem("Adminerva_github_token"),signal}),group.repository);
+          if(stale())return;
+          const fingerprint=overviewFingerprint(sample.checkpoint,model);
+          if(opened?.fingerprint===fingerprint){message.textContent="Checkpoint and evaluator unchanged. Reusing the reviewed overview; no provider request was sent.";return;}
+          const client=createBackoffClient({scope:"evaluation",signal});
+          const response=await client.fetch("https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent?key="+encodeURIComponent(keyValue),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:overviewPrompt(sample.files)}]}],generationConfig:{responseMimeType:"application/json",temperature:0.2}})});
+          const result=validateOverview(await evaluationJSON(response));if(stale())return;
+          draft={checkpoint:sample.checkpoint,coverage:sample.coverage,fingerprint,model,origin:"automated-assistance"};concept.value=result.concept;feedback.value=result.feedback;canSave=true;
+          message.textContent="System overview draft · "+sample.checkpoint.slice(0,12)+" · "+sample.coverage.read+"/"+sample.coverage.eligible+" eligible files sampled; "+sample.coverage.failed+" unavailable"+(sample.coverage.truncated?"; Git tree truncated":"")+". Not a completeness or authorship assessment. Review and save deliberately.";
+        }catch(error){if(stale())return;message.textContent=error.message+" Your fields are preserved. Retry after any cooldown or select Edit manually.";evaluate.textContent="Retry with backoff";}
+        finally{evaluating=false;if(!stale()){evaluate.disabled=false;manual.disabled=false;concept.disabled=false;feedback.disabled=false;save.disabled=!canSave;}}
+      };
+      save.onclick=async()=>{
+        if(stale()||evaluating||saving)return;
+        saving=true;let savedSuccessfully=false;
+        save.disabled=true;evaluate.disabled=true;manual.disabled=true;concept.disabled=true;feedback.disabled=true;
+        try{
+          const content=validateOverview({concept:concept.value,feedback:feedback.value});
+          if(!confirm("Save this reviewed project overview? This will not grade students or change evidence approvals."))return;
+          const savedOverview=await runTransaction(db,async transaction=>{
+            const record=await transaction.get(ref),prior=record.data()?.overview||null;
+            if((prior?.revision||0)!==(opened?.revision||0))throw Error("Another reviewer changed this overview. Reload before replacing it.");
+            if(stale())throw Error("Account or section changed; reload before saving.");
+            const after={...content,...(draft||{origin:"teacher",checkpoint:null,coverage:null,fingerprint:null,model:null}),revision:(prior?.revision||0)+1,reviewedBy:uid,reviewedAt:serverTimestamp()};
+            transaction.set(ref,{overview:after},{merge:true});
+            return after;
+          });
+          if(!stale()){opened=savedOverview;draft=null;savedSuccessfully=true;message.textContent="Reviewed overview saved · revision "+opened.revision+". No evidence or grades changed.";}
+        }catch(error){if(!stale())message.textContent=error.message;}
+        finally{saving=false;if(!stale()){save.disabled=savedSuccessfully;evaluate.disabled=false;manual.disabled=false;concept.disabled=false;feedback.disabled=false;}}
+      };
+      add(card,"h4","Verified individual evidence (not inferred roles)","font-bold border-t pt-3");
+      for(const student of group.members){
+        const detail=add(card,"details"),summary=add(detail,"summary",student.name,"font-semibold cursor-pointer");
+        const verified=verifiedMemberEvidence(records,student.id,group.repository);
+        if(!verified.length)add(detail,"p","No approved individual verification is available. This is not a zero score or proof of no work.");
+        for(const item of verified){add(detail,"p",item.commits.length+" verified contributing commits · assessment "+item.assessmentId+" · checkpoint "+item.checkpoint.slice(0,12)+" · evidence revision "+item.revision);add(detail,"p","Instructor-recorded scope: "+item.scope);if(!item.commits.length)add(detail,"p","No contribution was verified at this checkpoint; shared screens do not confer individual credit.");}
+        summary.title="Different assessments and members may have different pinned checkpoints.";
       }
-    });
-
-    if (uniqueRepos.size === 0) {
-      container.innerHTML = `<div class="text-gray-500 italic font-medium col-span-full">No valid repositories linked in this section.</div>`;
-      return window.hideLoader();
-    }
-
-    for (const [repoId, repoData] of uniqueRepos.entries()) {
-      try {
-        const snap = await getDoc(doc(db, "repobank", repoId));
-        let concept =
-          "Awaiting system processing. Click 'Update Memory' to initialize.";
-        let feedback = "No group feedback generated yet.";
-        let lastUpdated = "Never";
-
-        let owner = "";
-        let repoName = "Unknown Repo";
-        try {
-          const parts = repoData.url
-            .replace(/\/$/, "")
-            .replace(".git", "")
-            .split("/");
-          repoName = parts.pop();
-          owner = parts.pop();
-        } catch (e) {}
-
-        let membersData = {};
-
-        if (snap.exists()) {
-          const data = snap.data();
-          concept = data.concept || concept;
-          feedback = data.feedback || feedback;
-          membersData = data.members || {};
-          if (data.lastUpdated) {
-            lastUpdated = new Date(
-              data.lastUpdated.toDate
-                ? data.lastUpdated.toDate()
-                : data.lastUpdated,
-            ).toLocaleDateString(undefined, {
-              month: "short",
-              day: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            });
-          }
-        }
-
-        let membersHtml = `<div class="mt-4 space-y-3">`;
-        repoData.members.forEach((student) => {
-          const memAI = membersData[student.id] || {};
-          const overall =
-            memAI.overallContribution || "No overall role recorded.";
-          const recent =
-            memAI.recentContribution || "No recent activity logged.";
-
-          membersHtml += `
-                <div class="bg-gray-50 border border-gray-200 p-3 rounded-lg shadow-sm">
-                   <h5 class="font-bold text-gray-800 text-sm mb-2">${escapeHTML(student.name)} <span class="text-[10px] font-normal text-gray-500 font-mono">(@${escapeHTML(student.githubUsername || "unlinked")})</span></h5>
-                   <div class="grid grid-cols-1 gap-2">
-                      <div>
-                         <span class="text-[9px] font-extrabold uppercase tracking-wider text-emerald-600 block mb-0.5">Overall Role</span>
-                         <p class="text-xs text-gray-700 leading-relaxed">${escapeHTML(overall)}</p>
-                      </div>
-                      <div class="border-t border-gray-200 pt-2 mt-1">
-                         <span class="text-[9px] font-extrabold uppercase tracking-wider text-blue-600 block mb-0.5">Recent Contribution</span>
-                         <p class="text-xs text-gray-700 leading-relaxed">${escapeHTML(recent)}</p>
-                      </div>
-                   </div>
-                </div>
-             `;
-        });
-        membersHtml += `</div>`;
-
-        const cardId = `repobank-card-${repoId}`;
-        const html = `
-            <div id="${cardId}" class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm flex flex-col h-full relative">
-              <div class="flex flex-col sm:flex-row justify-between items-start mb-4 pb-3 border-b border-gray-100 gap-3">
-                <div class="flex-1 min-w-0">
-                  <a href="${escapeHTML(repoData.url)}" target="_blank" class="font-extrabold text-gray-800 text-lg hover:text-blue-600 transition flex items-center gap-2 truncate">
-                     📁 ${escapeHTML(repoName)}
-                  </a>
-                  <span class="text-[10px] font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded border shadow-inner whitespace-nowrap inline-block mt-2">Upd: ${lastUpdated}</span>
-                </div>
-                
-                <div class="action-container shrink-0 flex flex-col gap-2">
-                    <a href="submissions.html?repo=${encodeURIComponent(repoData.url)}" class="border border-indigo-200 bg-indigo-50 text-indigo-800 px-3 py-2 rounded text-xs font-bold hover:bg-indigo-100">Assessment Evidence →</a>
-                    <button onclick="window.updateRepoMemory('${repoId}', '${owner}', '${repoName}')" class="bg-slate-800 text-white px-3 py-1.5 rounded text-xs font-bold hover:bg-slate-900 transition shadow flex items-center gap-1">
-                        🧠 Update Memory
-                    </button>
-                </div>
-              </div>
-              
-              <div class="mb-4">
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-blue-500 block mb-1">Project Concept</span>
-                <p class="text-sm text-gray-700 leading-relaxed">${escapeHTML(concept)}</p>
-              </div>
-              
-              <div class="mb-5">
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-600 block mb-1">Whole Group Feedback</span>
-                <p class="text-sm text-gray-700 leading-relaxed">${escapeHTML(feedback)}</p>
-              </div>
-
-              <div class="border-t border-gray-200 pt-4 mt-auto">
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-gray-600 block mb-2">Team Members & Contributions</span>
-                ${membersHtml}
-              </div>
-            </div>
-          `;
-        container.insertAdjacentHTML("beforeend", html);
-      } catch (e) {
-        console.error(`Failed to load repobank for ${repoId}`, e);
-      }
-    }
-  } catch (e) {
-    console.error(e);
-    alert("Error loading Repobank data.");
-  } finally {
-    window.hideLoader();
-  }
+    }));
+    if(current===epoch)status(groups.size+" linked groups loaded. Project samples and individually approved evidence are separate; nothing publishes automatically.");
+  }catch{if(current===epoch)status("Group context could not load. Retry after checking your access and connection.");}
 };
-
-window.updateRepoMemory = async function (repoId, owner, repo) {
-  const ghToken = localStorage.getItem("Adminerva_github_token");
-  const geminiKey = localStorage.getItem("Adminerva_gemini_token");
-  // Default to Pro here since mapping takes a massive context window
-  const aiModel = localStorage.getItem("Adminerva_ai_model") || "gemini-3.5";
-
-  if (!ghToken || !geminiKey) {
-    alert(
-      "Missing API Keys! Please configure GitHub and Gemini tokens in your settings.",
-    );
-    return;
-  }
-
-  const cardId = `repobank-card-${repoId}`;
-  const taskCard = document.getElementById(cardId);
-  if (!taskCard) return;
-
-  const actionArea = taskCard.querySelector(".action-container");
-
-  const updateStatus = (message) => {
-    actionArea.innerHTML = `<span class="text-xs font-bold text-blue-500 flex items-center gap-2"><div class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div> ${message}</span>`;
-  };
-
-  try {
-    updateStatus("Fetching Repository...");
-    const repoRes = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}`,
-      { headers: { Authorization: `Bearer ${ghToken}` } },
-    );
-    if (!repoRes.ok) throw new Error("Repo inaccessible.");
-    const repoData = await repoRes.json();
-    const defaultBranch = repoData.default_branch;
-
-    updateStatus("Mapping Architecture...");
-    const treeRes = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`,
-      { headers: { Authorization: `Bearer ${ghToken}` } },
-    );
-    const treeData = await treeRes.json();
-
-    const allowedExts = /\.(java|kt|dart|xml|js|ts|json|gradle|sql|md)$/i;
-    const matchedFiles = (treeData.tree || []).filter(
-      (f) => f.type === "blob" && allowedExts.test(f.path),
-    );
-
-    matchedFiles.sort(
-      (a, b) => a.path.split("/").length - b.path.split("/").length,
-    );
-    const filesToProcess = matchedFiles.slice(0, 50);
-
-    updateStatus(`Reading ${filesToProcess.length} core files...`);
-    let combinedCode = "";
-
-    const filePromises = filesToProcess.map(async (file) => {
-      // FIXED CORS ERROR: Routing through main API with raw header
-      const fileRes = await fetch(
-        `https://api.github.com/repos/${owner}/${repo}/contents/${file.path}?ref=${defaultBranch}`,
-        {
-          headers: {
-            Authorization: `Bearer ${ghToken}`,
-            Accept: "application/vnd.github.v3.raw",
-          },
-        },
-      );
-      if (fileRes.ok) return { path: file.path, text: await fileRes.text() };
-      return null;
-    });
-
-    const fetchedFiles = await Promise.all(filePromises);
-    fetchedFiles.forEach((fileObj) => {
-      if (fileObj && fileObj.text.trim()) {
-        combinedCode += `\n\n--- FILE: ${fileObj.path} ---\n${fileObj.text}`;
-      }
-    });
-
-    const groupMembers = activeSectionStudents.filter(
-      (s) => getRepoId(s.repoUrl || "") === repoId,
-    );
-    const memberContext = groupMembers
-      .map((m) => `Name: ${m.name}, GitHub: ${m.githubUsername || "Unknown"}`)
-      .join("\n");
-
-    updateStatus("Analyzing App Structure...");
-
-    const prompt = `
-            You are a senior software architect assessing a student group project.
-            Analyze the following repository structure and source code to deduce the app's purpose, the overall quality, and what each member likely contributed (based on the code structure and their GitHub usernames if present in comments or typical separation of concerns).
-
-            Group Members:
-            ${memberContext}
-
-            Codebase Collection:
-            \`\`\`
-            ${combinedCode.substring(0, 80000)}
-            \`\`\`
-
-            Return ONLY a valid JSON object matching exactly this schema:
-            {
-                "concept": "<1 paragraph explaining what the app does and its tech stack>",
-                "feedback": "<1 paragraph of constructive feedback for the entire group regarding their code organization or logic>",
-                "members": {
-                    "<student_id_here>": {
-                        "overallContribution": "<1-2 sentences on what area of the app this student seems to be handling>",
-                        "recentContribution": "<1 sentence on any notable logic or UI element they appear to have worked on recently>"
-                    }
-                }
-            }
-
-            CRITICAL: Use the exact 'Name' provided in the Group Members list above to match the students to their contributions, but use their actual ID string for the keys in the "members" object. If you cannot determine specific contributions, provide a generic "Collaborated on app logic" response for them. 
-
-            Here are the exact IDs to use for the "members" object keys:
-            ${groupMembers.map((m) => `${m.name} ->${m.id}`).join("\n")}
-        `;
-
-    const aiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${aiModel}:generateContent?key=${geminiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            response_mime_type: "application/json",
-            temperature: 0.2,
-          },
-        }),
-      },
-    );
-
-    if (!aiRes.ok) throw new Error("Architectural mapping failed to respond.");
-    const aiData = await aiRes.json();
-
-    let cleanJson = aiData.candidates[0].content.parts[0].text;
-    cleanJson = cleanJson
-      .replace(/^```json\s*/i, "")
-      .replace(/\s*```$/i, "")
-      .trim();
-    const parsed = JSON.parse(cleanJson);
-
-    updateStatus("Committing to Memory...");
-
-    await setDoc(
-      doc(db, "repobank", repoId),
-      {
-        repoName: repo,
-        concept: parsed.concept || "App concept could not be determined.",
-        feedback: parsed.feedback || "No feedback generated.",
-        members: parsed.members || {},
-        lastUpdated: serverTimestamp(),
-      },
-      { merge: true },
-    );
-
-    actionArea.innerHTML = `<span class="text-xs font-bold text-green-600">✅ Memory Updated</span>`;
-    setTimeout(() => window.loadRepobankData(), 1500);
-  } catch (error) {
-    console.error("[RepoBank] Update Failed:", error);
-    actionArea.innerHTML = `
-            <div class="text-right flex flex-col items-end">
-                <span class="text-[10px] font-bold text-red-500">Mapping Failed</span>
-                <button onclick="window.updateRepoMemory('${repoId}', '${owner}', '${repo}')" class="mt-0.5 text-[9px] font-bold text-blue-500 hover:underline">Retry</button>
-            </div>
-        `;
-  }
-};
+await auth.authStateReady();
+if(!await resolveStaffRole(auth.currentUser)){location.replace("login.html");}
+else try{
+  const students=await getDocs(collection(db,"students"));
+  const sections=[...new Set(students.docs.map(record=>record.data().section).filter(Boolean))].sort();
+  field("sectionSelect").replaceChildren(...sections.map(section=>new Option(section,section)));
+  if(sections.length)await window.loadRepobankData();else status("No linked sections yet.");
+}catch{status("Sections could not load. Check your connection and staff permissions.");}
+window.addEventListener("pagehide",()=>controller?.abort());

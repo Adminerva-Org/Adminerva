@@ -2,7 +2,7 @@
 // Private, tab-scoped handoff between Practice Lab and the Code Playground.
 // No assessed-work submission or proof-of-authorship is implied by a run attempt.
 import {validPlaygroundState} from "./playground-storage.mjs";
-import {getCourse,practiceQuestion} from "./practice-courses.mjs";
+import {getCourse,practiceQuestion} from "./practice-courses.mjs?v=2026.10.21.2-dev.1";
 
 export const practiceBridgeKey=uid=>"Adminerva_Practice_Experiment_"+String(uid);
 const supported=new Set(["java","python","web","logic"]);
@@ -11,6 +11,7 @@ const escapeHtml=text=>String(text).replace(/[&<>"']/g,c=>
 
 export function sandboxForQuestion(courseId,missionId,question){
   if(!supported.has(courseId)||typeof question?.code!=="string")return null;
+  if(question.workspace)return validPlaygroundState(question.workspace)?structuredClone(question.workspace):null;
   const code=question.code;
   let lang=courseId,filename,content;
   if(courseId==="java"){
@@ -71,6 +72,12 @@ export function makePracticeTransfer(uid,courseId,missionId,attempt=0){
   const workspace=sandboxForQuestion(courseId,missionId,question);
   if(!workspace)return null;
   return {uid,courseId,missionId,attempt,workspace,startedAt:Date.now(),runCount:0,observed:""};
+}
+export function makeCheckedPracticeTransfer(uid,checked){
+  if(!uid||!checked||checked.state!=="predicted"||!Number.isInteger(checked.correctChoice)||!/^[a-f0-9]{48}$/.test(checked.attemptId))return null;
+  const workspace=sandboxForQuestion(checked.courseId,checked.missionId,{...checked.question,correct:checked.correctChoice,workspace:checked.workspace});
+  if(!workspace)return null;
+  return {uid,courseId:checked.courseId,missionId:checked.missionId,attempt:0,serverAttemptId:checked.attemptId,workspace,startedAt:Date.now(),runCount:0,observed:"",predictionCorrect:true};
 }
 export function readPracticeTransfer(storage,uid,now=Date.now()){
   try{

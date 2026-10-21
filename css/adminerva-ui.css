@@ -273,7 +273,12 @@ body { min-width: 0; }
 .av-analytics-hero { padding: clamp(1.25rem,3vw,2rem); border: 1px solid var(--av-border); border-radius: 1.2rem; background: linear-gradient(120deg,#fff,#eef6ff); box-shadow: var(--av-shadow); }
 .av-analytics-hero > p { max-width: 80ch; line-height: 1.6; }
 #instructor-selection { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
-#instructor-selection[hidden] { display: none; }
+#instructor-selection[hidden], #admissions[hidden], #admission-form[hidden] { display: none; }
+.av-btn { border: 1px solid #b9cadc; border-radius: .6rem; padding: .65rem 1rem; min-height: 44px; background: #eef5fb; color: #153d59; font-weight: 700; cursor: pointer; }
+.av-btn:hover { background: #dcecf6; }
+.av-btn:disabled { opacity: .5; cursor: default; }
+#admission-form label { display: grid; gap: .4rem; font-weight: 650; }
+#admission-form :is(input,select,textarea) { padding: .7rem; border: 1px solid #bfccdd; border-radius: .6rem; width: 100%; max-width: 100%; font-weight: 400; }
 #analytics-teacher { max-width: 100%; min-height: 44px; min-width: min(20rem,100%); background: white; padding: .65rem; border: 1px solid var(--av-border-strong); border-radius: .6rem; }
 .av-primary-button { padding: .65rem 1rem; border-radius: .65rem; background: var(--av-primary); color: white; font-weight: 700; }
 .av-learning-details { background: white; border: 1px solid var(--av-border); padding: 1rem; border-radius: .85rem; }
@@ -287,6 +292,7 @@ body { min-width: 0; }
 .av-operations-dashboard section[aria-label] strong { font-size: clamp(1.6rem,3vw,2.2rem); margin-top: .5rem; color: #165776; }
 .av-operations-dashboard button { min-height: 44px; }
 .av-page-heading { display: flex; align-items: start; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
+.av-scope-notice { margin: 1rem 0; padding: .75rem 1rem; border: 1px solid #b6cbe4; border-radius: .75rem; background: #eff6ff; color: #234366; font-size: .875rem; }
 .av-page-heading h1,.av-analytics-intro h1 { font-size: clamp(1.6rem,3vw,2.25rem); font-weight: 850; color: #122e4c; }
 .av-page-heading p { max-width: 65ch; color: #52657b; }
 .av-eyebrow { font-size: .75rem; text-transform: uppercase; letter-spacing: .12em; font-weight: 800; color: #0e7490; }
@@ -321,8 +327,15 @@ body { min-width: 0; }
 body:has(#manualReviewModal.flex) { overflow: hidden; }
 #manualReviewModal .overflow-y-auto { overscroll-behavior: contain; }
 #manualReviewModal > div { border-radius: 1.15rem; max-height: calc(100dvh - 1rem); max-width: 1440px; }
-#manualReviewSteps { position: sticky; top: 0; z-index: 15; box-shadow: 0 4px 12px #1538590c; }
-#manualReviewSteps button { flex: 1; min-height: 44px; background: #eef5fc; border-color: #ceddea; color: #143b62; }
+#manualReviewSteps { position: relative; flex-shrink: 0; z-index: 15; margin: 0; border-radius: 0; box-shadow: 0 4px 12px #1538590c; }
+#manualReviewSteps button { flex: 1 1 0; min-width: 0; min-height: 44px; background: #eef5fc; border-color: #ceddea; color: #143b62; }
+#manualReviewBody { min-height: 0; }
+.av-practice-podium { display: flex; flex-wrap: wrap; gap: .7rem; margin: 1rem 0; }
+.av-podium-place { flex: 1 1 150px; padding: 1rem; border: 1px solid #87d6db; border-radius: .8rem; background: linear-gradient(135deg,#ecfeff,#e0f2fe); font-weight: 750; }
+.av-rank-row { display: grid; grid-template-columns: 3rem minmax(0,1fr) auto; align-items: center; gap: .5rem; padding: .8rem; border: 1px solid #e2e8f0; border-radius: .65rem; overflow-wrap: anywhere; }
+.av-rank-current { border-color: #0891b2; background: #ecfeff; }
+.av-rank-row progress { grid-column: 2 / -1; width: 100%; height: .5rem; accent-color: #0891b2; }
+#manualReviewBody > :is(section,form) { scroll-margin-top: .75rem !important; }
 #manualReviewModal section { border-radius: .9rem; }
 #manualReviewModal input,#manualReviewModal select,#manualReviewModal textarea { max-width: 100%; font-size: max(16px,1em); }
 #manualReviewModal details > summary { padding: .65rem .25rem; line-height: 1.5; }

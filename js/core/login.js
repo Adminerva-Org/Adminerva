@@ -1,4 +1,5 @@
-import {resolveAccountAccess} from "./staff-session.mjs?v=2026.10.20.1";
+import {resolveAccountAccess} from "./staff-session.mjs?v=1.1.0";
+import {ensureGuestRequest} from "./admission-service.mjs?v=1.1.0";
 /** Approved-account sign-in and access feedback. */
 import { db, auth } from "../core/firebase-core.js";
 import {
@@ -42,8 +43,8 @@ const handleOAuthLogin = async (provider, providerType) => {
 
   try {
     if (providerType === "github") {
-      provider.addScope("repo");
       provider.addScope("read:user");
+      provider.addScope("user:email");
     }
 
     // 1. INSTANT POPUP
@@ -64,7 +65,11 @@ const handleOAuthLogin = async (provider, providerType) => {
     const isEducator=!!role;
     let targetCollection = isEducator ? "teachers" : "students";
 
-    if(access.needsTeacherApproval)throw Error("teacher-approval-required");
+    if(!isEducator&&(access.needsTeacherApproval||!access.students.length)){
+      await ensureGuestRequest(result.user,access.needsTeacherApproval?"teacher":"guest");
+      localStorage.setItem("Adminerva_Role","guest");localStorage.removeItem("Adminerva_Mock_Role");
+      window.location.href="guest-home.html";return;
+    }
     let profileDocs=isEducator?access.teachers:access.students;
     if(isEducator && !profileDocs.length){
       await setDoc(doc(db,"teachers",result.user.uid),{email,name:String(result.user.displayName||email).slice(0,120),uid:result.user.uid});
@@ -156,6 +161,7 @@ const handleOAuthLogin = async (provider, providerType) => {
 // ==========================================
 document.addEventListener("DOMContentLoaded", () => {
   const urlParams = new URLSearchParams(window.location.search);
+  if(urlParams.get("error")==="verified-email-required")showError("Verified email required","Use a Google or GitHub account with a verified email. No school access was granted.");
   if(urlParams.get("error")==="teacher-approval-required")showError("Teacher approval required","Ask an administrator to activate your verified email in Teacher Accounts. Your teacher directory profile is preserved.");
   if (urlParams.get("error") === "unauthorized") {
     showError("Session Expired", "Please sign in again to continue.");

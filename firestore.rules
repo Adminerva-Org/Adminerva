@@ -19,21 +19,44 @@ service cloud.firestore {
     function isInstructor() {
       return isAdmin() || isTeacher();
     }
+    function teacherSections() {
+      let path = /databases/$(database)/documents/staff_access/$(request.auth.token.email.lower());
+      return exists(path) ? get(path).data.get("sections",[]) : [];
+    }
+    function mayTeachSection(section) {
+      return isAdmin() || (isTeacher() && section is string && section in teacherSections());
+    }
+    function mayTeachStudent(studentId) {
+      return isAdmin() || (isTeacher() && studentId is string &&
+        mayTeachSection(get(/databases/$(database)/documents/students/$(studentId)).data.section));
+    }
+    function mayTeachAssessment(assessmentId) {
+      let data = get(/databases/$(database)/documents/assessments/$(assessmentId)).data;
+      return isAdmin() || (isTeacher() && (data.get("ownerUid","") == request.auth.uid || data.get("sectionIds",[]).hasAny(teacherSections())));
+    }
+    function mayGrade(data) {
+      return isAdmin() || (isTeacher() && data.section in teacherSections() &&
+        data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
+        data.section in get(/databases/$(database)/documents/assessments/$(data.taskId)).data.get("sectionIds",[]));
+    }
+    function serverOwned(name) {
+      return name in ["academic_access_preparations","teaching_roster","practice_sessions","practice_browser_sessions","practice_attempts","practice_awards","practice_verified_progress","practice_class_progress","practice_security_events"];
+    }
     function monitoringCollection(name) {
       return name in ["activity_preferences", "activity_events", "issue_diagnostics", "analytics_rosters", "analytics_views", "monitoring_control", "monitoring_status"];
     }
     function personalCollection(name) {
-      return name in ["staff_access","staff_workspaces","lesson_plans","presentations","app_config","global_settings","teachers","grade_revisions","commit_claim_decisions","commit_claim_conflicts"];
+      return name in ["staff_access","staff_workspaces","lesson_plans","presentations","app_config","global_settings","teachers","grade_revisions","commit_claim_decisions","commit_claim_conflicts","account_requests","school_catalog"];
     }
     match /staff_access/{email} {
       function validStaff() {
         let data = request.resource.data;
         let prior = resource == null ? null : resource.data;
         let audit = getAfter(/databases/$(database)/documents/staff_access/$(email)/revisions/$(string(data.revision))).data;
-        return data.keys().hasOnly(["email","displayName","role","status","revision","reason","updatedBy","updatedAt"]) &&
+        return data.keys().hasOnly(["email","displayName","role","status","revision","reason","updatedBy","updatedAt","sections"]) &&
           data.email == email && email == email.lower() && email.matches("^[^/@ ]+@[^/@ ]+\\.[^/@ ]+$") && email.size() <= 254 &&
           email != "babaynike2013@gmail.com" && data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 120 &&
-          data.role == "teacher" && data.status in ["active","disabled"] && data.revision is int &&
+          data.role == "teacher" && data.status in ["active","disabled"] && data.get("sections",[]) is list && data.get("sections",[]).size() <= 40 && data.revision is int &&
           data.revision == (prior == null ? 1 : prior.revision + 1) && data.reason is string && data.reason.size() >= 12 && data.reason.size() <= 600 &&
           data.updatedBy == request.auth.uid && data.updatedAt == request.time &&
           audit.before == prior && audit.after == data && audit.actorUid == request.auth.uid && audit.createdAt == request.time;
@@ -85,15 +108,32 @@ service cloud.firestore {
     match /lesson_plans/{record=**} { allow read: if isAdmin(); }
     match /presentations/{record=**} { allow read: if isAdmin(); }
     match /app_config/{recordId} {
-      allow read: if isInstructor();
-      allow write: if isInstructor() && !recordId.matches("^master_schedule.*");
+      allow read: if isAdmin();
+      allow write: if isAdmin() && !recordId.matches("^master_schedule.*");
     }
     match /global_settings/{recordId} {
-      allow read: if isInstructor();
+      allow read: if isAdmin();
       allow write: if isAdmin() && recordId != "lesson_review_config";
     }
     match /reference_folders/{folderId}/documents/{documentId} {
-      allow read, write: if isInstructor();
+      allow read, write: if isAdmin();
+    }
+    match /teacher_materials/{ownerUid}/{kind}/{recordId} {
+      allow read: if isAdmin() || (isTeacher() && request.auth.uid == ownerUid);
+      allow create, update: if isTeacher() && request.auth.uid == ownerUid && kind in ["repobank","group_repo_cache","github_stats_cache","system","templates","reference_folders"] && request.resource.data.keys().size() <= 50;
+      allow delete: if isTeacher() && request.auth.uid == ownerUid;
+      match /documents/{documentId} {
+        allow read: if isAdmin() || (isTeacher() && request.auth.uid == ownerUid);
+        allow write: if isTeacher() && request.auth.uid == ownerUid && kind == "reference_folders";
+      }
+    }
+    match /teaching_roster/{studentId} {
+      allow read: if mayTeachSection(resource.data.section);
+      allow write: if false;
+    }
+    match /academic_access_preparations/{runId}/changes/{changeId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
     function activityPages() {
       return ["home", "project", "assessments", "playground", "xml-lab", "practice", "review", "grades", "lessons", "slides", "analytics", "reports", "settings", "other"];
@@ -109,7 +149,7 @@ service cloud.firestore {
     function mayReadIssue(issue) {
       return signedIn() && (
         isAdmin() ||
-        (isTeacher() && issue.get("audience", "admin") == "teacher") ||
+        (isTeacher() && issue.get("audience", "admin") == "teacher" && mayTeachSection(issue.get("section",null))) ||
         issue.get("reporterUid", "") == request.auth.uid ||
         (issue.get("reporterEmail", "") is string &&
          issue.get("reporterEmail", "") != "" &&
@@ -129,24 +169,87 @@ service cloud.firestore {
 
     // Administrators retain existing system-wide maintenance privileges.
     match /{collection}/{document} {
-      allow read, write: if isAdmin() && !monitoringCollection(collection) && !personalCollection(collection) && collection != "assessment_evidence" && collection != "student_grades" &&
-        !(collection in ["practice_profiles","practice_scores","practice_boards"]);
-    }
-    // Teachers retain their existing academic workflow permissions, but the
-    // catch-all must not override private report or notification rules.
-    match /{collection}/{document} {
-      allow read, write: if isTeacher() && !monitoringCollection(collection) && !personalCollection(collection) &&
-        collection != "issues" &&
-        collection != "notifications" &&
-        collection != "notification_history" &&
-        collection != "commit_reclaims" &&
-        collection != "commit_claim_decisions" &&
-        collection != "commit_claim_conflicts" &&
-        collection != "assessment_evidence" &&
-        collection != "student_grades" &&
-        !(collection in ["practice_profiles","practice_scores","practice_boards"]);
+      allow read, write: if isAdmin() && !serverOwned(collection) && !monitoringCollection(collection) && !personalCollection(collection) && collection != "assessment_evidence" && collection != "student_grades" && collection != "assessments" && collection != "assessment_private" &&
+        !(collection in ["practice_profiles","practice_scores","practice_boards","practice_rankings"]);
     }
 
+    match /account_requests/{ownerUid} {
+      function validRequest(data) {
+        return data.keys().hasOnly(["ownerUid","email","displayName","requestedRole","status","revision","createdAt","updatedAt","approvedRole","studentId","reason","decidedBy"]) &&
+          data.ownerUid == ownerUid && data.email is string && data.email.size() <= 254 &&
+          data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 120 &&
+          data.requestedRole in ["guest","student","teacher"] && data.status in ["pending","approved","rejected"] &&
+          data.revision is int && data.createdAt is timestamp && data.updatedAt == request.time;
+      }
+      function decisionMatches(data) {
+        return data.status == "rejected" ? data.approvedRole == null && data.studentId == null :
+          (data.status == "approved" && ((data.approvedRole == "teacher" && data.studentId == null &&
+            getAfter(/databases/$(database)/documents/staff_access/$(data.email)).data.status == "active" &&
+            getAfter(/databases/$(database)/documents/staff_access/$(data.email)).data.role == "teacher") ||
+           (data.approvedRole == "student" && data.studentId is string &&
+            getAfter(/databases/$(database)/documents/students/$(data.studentId)).data.email.lower() == data.email)));
+      }
+      function auditedDecision() {
+        let data = request.resource.data;
+        let audit = getAfter(/databases/$(database)/documents/account_requests/$(ownerUid)/revisions/$(string(data.revision))).data;
+        return data.revision == resource.data.revision + 1 && resource.data.status == "pending" &&
+          data.decidedBy == request.auth.uid && data.reason is string && data.reason.size() >= 12 && data.reason.size() <= 600 &&
+          data.diff(resource.data).affectedKeys().hasOnly(["status","revision","approvedRole","studentId","reason","decidedBy","updatedAt"]) &&
+          audit.before == resource.data && audit.after == data && audit.actorUid == request.auth.uid && audit.createdAt == request.time && decisionMatches(data);
+      }
+      allow get: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
+      allow list: if isAdmin();
+      allow create: if signedIn() && request.auth.token.email_verified == true && request.auth.uid == ownerUid &&
+        validRequest(request.resource.data) && request.resource.data.email == request.auth.token.email.lower() &&
+        request.resource.data.status == "pending" && request.resource.data.revision == 0 && request.resource.data.createdAt == request.time &&
+        request.resource.data.keys().hasOnly(["ownerUid","email","displayName","requestedRole","status","revision","createdAt","updatedAt"]);
+      allow update: if validRequest(request.resource.data) &&
+        ((signedIn() && request.auth.token.email_verified == true && request.auth.uid == ownerUid &&
+          resource.data.status == "pending" && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["displayName","requestedRole","updatedAt"])) ||
+         (isAdmin() && auditedDecision()));
+      allow delete: if false;
+      match /revisions/{revision} {
+        allow read: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
+        allow create: if isAdmin() && request.resource.data.keys().hasOnly(["before","after","actorUid","createdAt"]) &&
+          request.resource.data.actorUid == request.auth.uid && request.resource.data.createdAt == request.time &&
+          request.resource.data.before == get(/databases/$(database)/documents/account_requests/$(ownerUid)).data &&
+          request.resource.data.after == getAfter(/databases/$(database)/documents/account_requests/$(ownerUid)).data &&
+          revision == string(request.resource.data.after.revision) && request.resource.data.after.revision == request.resource.data.before.revision + 1;
+        allow update, delete: if false;
+      }
+    }
+    match /school_catalog/{kind}/records/{recordId} {
+      function validCatalog(data) {
+        return kind in ["sections","subjects","programs"] && data.keys().hasOnly(["name","scheme","type","notes","status","revision","updatedBy","updatedAt","gradeLevel","schoolYear","programId"]) &&
+          data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+          data.scheme in ["legacy-shs","strengthened-shs","school-defined"] && data.type is string && data.type.size() <= 40 &&
+          data.notes is string && data.notes.size() <= 1000 && data.status in ["active","archived"] &&
+          data.get("gradeLevel","") is string && data.get("gradeLevel","").size() <= 30 &&
+          data.get("schoolYear","") is string && data.get("schoolYear","").size() <= 20 &&
+          data.get("programId","") is string && data.get("programId","").size() <= 150 &&
+          data.updatedBy == request.auth.uid && data.updatedAt == request.time && data.revision is int;
+      }
+      function catalogAudit() {
+        let data = request.resource.data;
+        let before = exists(/databases/$(database)/documents/school_catalog/$(kind)/records/$(recordId)) ? resource.data : null;
+        let audit = getAfter(/databases/$(database)/documents/school_catalog/$(kind)/records/$(recordId)/revisions/$(string(data.revision))).data;
+        return data.revision == (before == null ? 1 : before.revision + 1) && audit.before == before && audit.after == data &&
+          audit.actorUid == request.auth.uid && audit.createdAt == request.time;
+      }
+      allow read: if isInstructor();
+      allow create, update: if isAdmin() && validCatalog(request.resource.data) && catalogAudit();
+      allow delete: if false;
+      match /revisions/{revision} {
+        allow read: if isAdmin();
+        allow create: if isAdmin() && request.resource.data.keys().hasOnly(["before","after","actorUid","createdAt"]) &&
+          request.resource.data.actorUid == request.auth.uid && request.resource.data.createdAt == request.time &&
+          request.resource.data.after == getAfter(/databases/$(database)/documents/school_catalog/$(kind)/records/$(recordId)).data &&
+          request.resource.data.before == (exists(/databases/$(database)/documents/school_catalog/$(kind)/records/$(recordId)) ? get(/databases/$(database)/documents/school_catalog/$(kind)/records/$(recordId)).data : null) &&
+          revision == string(request.resource.data.after.revision) &&
+          request.resource.data.after.revision == (request.resource.data.before == null ? 1 : request.resource.data.before.revision + 1);
+        allow update, delete: if false;
+      }
+    }
     // Monitoring is opt-in, append-only, bounded and separate from academic permissions.
     match /activity_preferences/{ownerUid} {
       function validPreference() {
@@ -201,7 +304,7 @@ service cloud.firestore {
     match /analytics_views/{teacherEmail} {
       allow get: if isAdmin() || (isTeacher() && teacherEmail == request.auth.token.email.lower() &&
         (!exists(/databases/$(database)/documents/analytics_views/$(teacherEmail)) ||
-          (resource.data.sections == get(/databases/$(database)/documents/analytics_rosters/$(teacherEmail)).data.sections &&
+          (resource.data.sections == get(/databases/$(database)/documents/analytics_rosters/$(teacherEmail)).data.sections && resource.data.sections.hasOnly(teacherSections()) &&
            resource.data.publishedAt >= request.time - duration.value(30, "d"))));
       allow list: if isAdmin();
       allow create, update: if isAdmin() && teacherEmail.matches("^[^/@ ]+@[^/@ ]+\\.[^/@ ]+$") &&
@@ -277,6 +380,7 @@ service cloud.firestore {
     }
 
     match /student_grades/{gradeId} {
+      allow get: if isInstructor() && !exists(/databases/$(database)/documents/student_grades/$(gradeId));
       function v2Grade(data) {
         let taskId = data.get("taskId", "");
         return taskId is string && taskId != "" &&
@@ -294,10 +398,12 @@ service cloud.firestore {
           data.maxScore == get(/databases/$(database)/documents/assessments/$(data.taskId)).data.maxScore &&
           data.score >= 0 && data.score <= data.maxScore;
       }
-      allow read: if isInstructor();
-      allow create: if isInstructor() && (!v2Grade(request.resource.data) ||
+      allow read: if mayTeachSection(resource.data.get("section",null));
+      allow create: if mayGrade(request.resource.data) && (!v2Grade(request.resource.data) ||
         (request.resource.data.published == false && currentEvidence(request.resource.data)));
-      allow update: if isInstructor() && (
+      allow update: if mayGrade(request.resource.data) &&
+        request.resource.data.studentId == resource.data.studentId && request.resource.data.taskId == resource.data.taskId &&
+        request.resource.data.section == resource.data.section && (
         (!v2Grade(resource.data) && !v2Grade(request.resource.data)) ||
         (request.resource.data.studentId == resource.data.studentId &&
          request.resource.data.taskId == resource.data.taskId &&
@@ -306,7 +412,7 @@ service cloud.firestore {
           (resource.data.published == false && currentEvidence(request.resource.data) &&
            (request.resource.data.published == false ||
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(["published"]))))));
-      allow delete: if isInstructor() && !v2Grade(resource.data);
+      allow delete: if mayGrade(resource.data) && !v2Grade(resource.data);
       // Student queries must constrain BOTH studentId and published == true.
       // Do not infer privacy from frontend-only published checks.
       allow read: if signedIn() &&
@@ -336,8 +442,8 @@ service cloud.firestore {
           data.after.get("feedback",after.get("feedback",null)) == after.get("feedback",null) &&
           data.after.get("published",after.get("published",false)) == after.get("published",false);
       }
-      allow read: if isInstructor();
-      allow create: if isInstructor() && matchingRevision();
+      allow read: if mayTeachStudent(resource.data.studentId);
+      allow create: if mayTeachStudent(request.resource.data.studentId) && mayTeachAssessment(request.resource.data.taskId) && matchingRevision();
       allow update, delete: if false;
     }
 
@@ -387,7 +493,7 @@ service cloud.firestore {
     function instructorEvidenceChange(evidenceId) {
       let before = resource.data;
       let after = request.resource.data;
-      return isInstructor() && evidenceAudit(evidenceId) && (
+      return mayTeachStudent(before.studentId) && mayTeachAssessment(before.assessmentId) && evidenceAudit(evidenceId) && (
         (before.status in ["submitted","needs_review","approved"] && after.status == "approved" &&
          (before.status != "approved" ||
           !exists(/databases/$(database)/documents/student_grades/$(evidenceId)) ||
@@ -413,7 +519,8 @@ service cloud.firestore {
     }
 
     match /assessment_evidence/{evidenceId} {
-      allow read: if isInstructor();
+      allow get: if isInstructor() && !exists(/databases/$(database)/documents/assessment_evidence/$(evidenceId));
+      allow read: if mayTeachSection(resource.data.section);
       allow read: if signedIn() && ownsStudentProfile(resource.data.studentId);
       allow create: if ownV2Evidence(request.resource.data) &&
         request.resource.data.keys().hasOnly(["studentId","assessmentId","section","repository",
@@ -435,7 +542,7 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["selectedCommits","checkpointSha","status","submittedAt","updatedAt","revision"]);
       allow update: if instructorEvidenceChange(evidenceId);
-      allow create: if isInstructor() && request.resource.data.keys().hasOnly([
+      allow create: if mayTeachStudent(request.resource.data.studentId) && mayTeachAssessment(request.resource.data.assessmentId) && request.resource.data.keys().hasOnly([
         "studentId","assessmentId","section","repository","selectedCommits","checkpointSha",
         "status","source","discoveredBy","recordedAt","updatedAt"]) &&
         evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId &&
@@ -450,7 +557,7 @@ service cloud.firestore {
         request.resource.data.selectedCommits.hasAny([request.resource.data.checkpointSha]);
       allow delete: if false;
       match /revisions/{revisionId} {
-        allow read: if isInstructor() || ownsStudentProfile(get(/databases/$(database)/documents/assessment_evidence/$(evidenceId)).data.studentId);
+        allow read: if mayTeachStudent(get(/databases/$(database)/documents/assessment_evidence/$(evidenceId)).data.studentId) || ownsStudentProfile(get(/databases/$(database)/documents/assessment_evidence/$(evidenceId)).data.studentId);
         allow create: if signedIn() && request.resource.data.keys().hasOnly(["before","after","actorUid","reason","createdAt"]) &&
           request.resource.data.actorUid == request.auth.uid && request.resource.data.createdAt == request.time &&
           request.resource.data.before == get(/databases/$(database)/documents/assessment_evidence/$(evidenceId)).data &&
@@ -464,7 +571,7 @@ service cloud.firestore {
     // A reclaim is an unverified attribution request, not a transfer of
     // authorship. Only staff can accept/reject it; students may withdraw.
     match /commit_reclaims/{claimId} {
-      allow read: if isInstructor() ||
+      allow read: if mayTeachSection(resource.data.section) ||
         (signedIn() && ownsStudentProfile(resource.data.studentId));
       allow create: if signedIn() &&
         request.resource.data.keys().hasOnly(["studentId","assessmentId","section",
@@ -504,12 +611,12 @@ service cloud.firestore {
 
     // Staff review provenance. Decisions are administrator-controlled for now.
     match /commit_claim_decisions/{decisionId} {
-      allow read: if isInstructor();
+      allow read: if isAdmin() || mayTeachStudent(resource.data.get("studentId",""));
       allow create: if isAdmin();
       allow update, delete: if false;
     }
     match /commit_claim_conflicts/{conflictId} {
-      allow read: if isInstructor();
+      allow read: if isAdmin();
       allow write: if false; // Cloud Functions Admin SDK only.
     }
 
@@ -517,9 +624,75 @@ service cloud.firestore {
       allow read, write: if ownsStudentProfile(studentId);
     }
 
-    match /assessments/{assessmentPath=**} {
-      allow read: if signedIn();
-      // TODO: split hidden rubrics and AI instructions into instructor-only documents.
+    match /assessments/{assessmentId} {
+      function validAssessment(data) {
+        return data.get("ownerUid","") is string && data.get("sectionIds",[]) is list && data.sectionIds.size() <= 20 &&
+          data.get("deployments",[]) is list && data.deployments.size() <= 20 &&
+          data.get("targetSections",[]) is list && data.get("targetSections",[]).hasOnly(data.sectionIds) &&
+          (data.deployments.size() <= 0 || data.deployments[0].section in data.sectionIds) &&
+          (data.deployments.size() <= 1 || data.deployments[1].section in data.sectionIds) &&
+          (data.deployments.size() <= 2 || data.deployments[2].section in data.sectionIds) &&
+          (data.deployments.size() <= 3 || data.deployments[3].section in data.sectionIds) &&
+          (data.deployments.size() <= 4 || data.deployments[4].section in data.sectionIds) &&
+          (data.deployments.size() <= 5 || data.deployments[5].section in data.sectionIds) &&
+          (data.deployments.size() <= 6 || data.deployments[6].section in data.sectionIds) &&
+          (data.deployments.size() <= 7 || data.deployments[7].section in data.sectionIds) &&
+          (data.deployments.size() <= 8 || data.deployments[8].section in data.sectionIds) &&
+          (data.deployments.size() <= 9 || data.deployments[9].section in data.sectionIds) &&
+          (data.deployments.size() <= 10 || data.deployments[10].section in data.sectionIds) &&
+          (data.deployments.size() <= 11 || data.deployments[11].section in data.sectionIds) &&
+          (data.deployments.size() <= 12 || data.deployments[12].section in data.sectionIds) &&
+          (data.deployments.size() <= 13 || data.deployments[13].section in data.sectionIds) &&
+          (data.deployments.size() <= 14 || data.deployments[14].section in data.sectionIds) &&
+          (data.deployments.size() <= 15 || data.deployments[15].section in data.sectionIds) &&
+          (data.deployments.size() <= 16 || data.deployments[16].section in data.sectionIds) &&
+          (data.deployments.size() <= 17 || data.deployments[17].section in data.sectionIds) &&
+          (data.deployments.size() <= 18 || data.deployments[18].section in data.sectionIds) &&
+          (data.deployments.size() <= 19 || data.deployments[19].section in data.sectionIds) &&
+          (isAdmin() || (data.ownerUid == request.auth.uid && data.sectionIds.hasOnly(teacherSections())));
+      }
+      allow get, list: if isAdmin() || (isTeacher() &&
+        (resource.data.get("ownerUid","") == request.auth.uid || resource.data.get("sectionIds",[]).hasAny(teacherSections()))) ||
+        (signedIn() && !isInstructor());
+      allow create: if isInstructor() && validAssessment(request.resource.data);
+      allow update: if isInstructor() && validAssessment(request.resource.data) &&
+        (isAdmin() || (resource.data.get("ownerUid","") == request.auth.uid && request.resource.data.ownerUid == resource.data.ownerUid)) &&
+        request.resource.data.get("schemaVersion",1) == resource.data.get("schemaVersion",1);
+      allow delete: if isInstructor() && resource.data.get("schemaVersion",1) != 2 &&
+        (isAdmin() || resource.data.get("ownerUid","") == request.auth.uid);
+    }
+    match /assessment_private/{assessmentId} {
+      allow get: if mayTeachAssessment(assessmentId);
+      allow list: if isAdmin() || (isTeacher() &&
+        (resource.data.get("ownerUid","") == request.auth.uid || resource.data.get("sectionIds",[]).hasAny(teacherSections())));
+      allow create, update: if isAdmin() || (isTeacher() &&
+        getAfter(/databases/$(database)/documents/assessments/$(assessmentId)).data.ownerUid == request.auth.uid &&
+        request.resource.data.ownerUid == request.auth.uid && request.resource.data.sectionIds == getAfter(/databases/$(database)/documents/assessments/$(assessmentId)).data.sectionIds);
+      allow delete: if isAdmin();
+    }
+    match /grades/{gradeId} {
+      allow read: if mayTeachSection(resource.data.section);
+      allow create, update: if mayTeachStudent(request.resource.data.studentId) &&
+        request.resource.data.section == get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.section &&
+        (isAdmin() || (!exists(/databases/$(database)/documents/grades/$(gradeId)) ||
+          (resource.data.studentId == request.resource.data.studentId && resource.data.section == request.resource.data.section)));
+      allow delete: if isAdmin();
+    }
+    match /activity_grades/{gradeId} {
+      function validActivityGrade(data) {
+        return data.keys().hasOnly(["studentId","section","githubUsername","activity","score","maxScore","gradedAt"]) &&
+          data.studentId is string && data.section is string &&
+          data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
+          data.activity is string && data.activity.size() > 0 && data.activity.size() <= 300 &&
+          data.get("githubUsername","") is string && data.get("githubUsername","").size() <= 200 &&
+          data.score is number && data.maxScore is number && data.maxScore > 0 && data.maxScore <= 1000 &&
+          data.score >= 0 && data.score <= data.maxScore && data.gradedAt is string && data.gradedAt.size() <= 64;
+      }
+      allow read: if mayTeachSection(resource.data.section);
+      allow create: if mayTeachStudent(request.resource.data.studentId) && validActivityGrade(request.resource.data);
+      allow update: if mayTeachStudent(resource.data.studentId) && request.resource.data.studentId == resource.data.studentId &&
+        request.resource.data.section == resource.data.section && validActivityGrade(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     match /playground_snapshots/{snapshotId} {
@@ -560,9 +733,12 @@ service cloud.firestore {
           "urlContext", "reporterEmail", "reporterUid", "reporterRole",
           "status", "upvotes", "locked", "createdAt",
           "module", "expectedBehavior", "actualBehavior", "reproductionSteps",
-          "clientContext", "audience"
+          "clientContext", "audience", "studentId", "section"
         ]) &&
         request.resource.data.audience in ["teacher", "admin"] &&
+        (request.resource.data.audience == "admin" ||
+          (ownsStudentProfile(request.resource.data.get("studentId","")) &&
+           request.resource.data.section == get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.section)) &&
         (request.resource.data.category != "Bug" ||
          request.resource.data.audience == "admin") &&
         request.resource.data.reporterUid == request.auth.uid &&
@@ -588,6 +764,7 @@ service cloud.firestore {
       // Only adding/removing the authenticated user's single vote is allowed.
       allow update: if (isTeacher() &&
         resource.data.get("audience", "admin") == "teacher" &&
+        mayTeachSection(resource.data.get("section",null)) &&
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["status", "priority", "locked", "updatedAt"]) &&
         (
@@ -654,6 +831,39 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    function practiceMissionIds(courseId) {
+      return courseId == "java" ? ["j1","java-m1-02","java-m1-03","java-m1-04","java-m1-05","java-m1-06","java-m1-07","java-m1-08","java-m1-09","java-m1-10","java-m1-11","java-m1-12","java-m1-13","java-m1-14","java-m1-15","j2","java-m2-02","java-m2-03","java-m2-04","java-m2-05","java-m2-06","java-m2-07","java-m2-08","java-m2-09","java-m2-10","java-m2-11","java-m2-12","java-m2-13","java-m2-14","java-m2-15","j3","java-m3-02","java-m3-03","java-m3-04","java-m3-05","java-m3-06","java-m3-07","java-m3-08","java-m3-09","java-m3-10","java-m3-11","java-m3-12","java-m3-13","java-m3-14","java-m3-15","j4","java-m4-02","java-m4-03","java-m4-04","java-m4-05","java-m4-06","java-m4-07","java-m4-08","java-m4-09","java-m4-10","java-m4-11","java-m4-12","java-m4-13","java-m4-14","java-m4-15","java-m5-01","java-m5-02","java-m5-03","java-m5-04","java-m5-05","java-m5-06","java-m5-07","java-m5-08","java-m5-09","java-m5-10","java-m5-11","java-m5-12","java-m5-13","java-m5-14","java-m5-15"] :
+        courseId == "python" ? ["p1","python-m1-02","python-m1-03","python-m1-04","python-m1-05","python-m1-06","python-m1-07","python-m1-08","python-m1-09","python-m1-10","python-m1-11","python-m1-12","python-m1-13","python-m1-14","python-m1-15","p2","python-m2-02","python-m2-03","python-m2-04","python-m2-05","python-m2-06","python-m2-07","python-m2-08","python-m2-09","python-m2-10","python-m2-11","python-m2-12","python-m2-13","python-m2-14","python-m2-15","p3","python-m3-02","python-m3-03","python-m3-04","python-m3-05","python-m3-06","python-m3-07","python-m3-08","python-m3-09","python-m3-10","python-m3-11","python-m3-12","python-m3-13","python-m3-14","python-m3-15","p4","python-m4-02","python-m4-03","python-m4-04","python-m4-05","python-m4-06","python-m4-07","python-m4-08","python-m4-09","python-m4-10","python-m4-11","python-m4-12","python-m4-13","python-m4-14","python-m4-15","python-m5-01","python-m5-02","python-m5-03","python-m5-04","python-m5-05","python-m5-06","python-m5-07","python-m5-08","python-m5-09","python-m5-10","python-m5-11","python-m5-12","python-m5-13","python-m5-14","python-m5-15"] :
+        courseId == "web" ? ["w1","web-m1-02","web-m1-03","web-m1-04","web-m1-05","web-m1-06","web-m1-07","web-m1-08","web-m1-09","web-m1-10","web-m1-11","web-m1-12","web-m1-13","web-m1-14","web-m1-15","w2","web-m2-02","web-m2-03","web-m2-04","web-m2-05","web-m2-06","web-m2-07","web-m2-08","web-m2-09","web-m2-10","web-m2-11","web-m2-12","web-m2-13","web-m2-14","web-m2-15","w3","web-m3-02","web-m3-03","web-m3-04","web-m3-05","web-m3-06","web-m3-07","web-m3-08","web-m3-09","web-m3-10","web-m3-11","web-m3-12","web-m3-13","web-m3-14","web-m3-15","w4","web-m4-02","web-m4-03","web-m4-04","web-m4-05","web-m4-06","web-m4-07","web-m4-08","web-m4-09","web-m4-10","web-m4-11","web-m4-12","web-m4-13","web-m4-14","web-m4-15","web-m5-01","web-m5-02","web-m5-03","web-m5-04","web-m5-05","web-m5-06","web-m5-07","web-m5-08","web-m5-09","web-m5-10","web-m5-11","web-m5-12","web-m5-13","web-m5-14","web-m5-15"] :
+        courseId == "logic" ? ["d1","logic-m1-02","logic-m1-03","logic-m1-04","logic-m1-05","logic-m1-06","logic-m1-07","logic-m1-08","logic-m1-09","logic-m1-10","logic-m1-11","logic-m1-12","logic-m1-13","logic-m1-14","logic-m1-15","d3","logic-m2-02","logic-m2-03","logic-m2-04","logic-m2-05","logic-m2-06","logic-m2-07","logic-m2-08","logic-m2-09","logic-m2-10","logic-m2-11","logic-m2-12","logic-m2-13","logic-m2-14","logic-m2-15","d2","logic-m3-02","logic-m3-03","logic-m3-04","logic-m3-05","logic-m3-06","logic-m3-07","logic-m3-08","logic-m3-09","logic-m3-10","logic-m3-11","logic-m3-12","logic-m3-13","logic-m3-14","logic-m3-15","logic-m4-01","logic-m4-02","logic-m4-03","logic-m4-04","logic-m4-05","logic-m4-06","logic-m4-07","logic-m4-08","logic-m4-09","logic-m4-10","logic-m4-11","logic-m4-12","logic-m4-13","logic-m4-14","logic-m4-15","d4","logic-m5-02","logic-m5-03","logic-m5-04","logic-m5-05","logic-m5-06","logic-m5-07","logic-m5-08","logic-m5-09","logic-m5-10","logic-m5-11","logic-m5-12","logic-m5-13","logic-m5-14","logic-m5-15"] :
+        [];
+    }
+    function canReadPracticeClass(section) {
+      let profile = get(/databases/$(database)/documents/practice_profiles/$(request.auth.uid)).data;
+      return profile.ownerUid == request.auth.uid && profile.section == section && ownsStudentProfile(profile.studentId) &&
+        profile.section == get(/databases/$(database)/documents/students/$(profile.studentId)).data.section;
+    }
+    match /practice_rankings/{studentId} {
+      allow read: if mayTeachSection(resource.data.section) || (signedIn() && request.auth.token.email_verified == true &&
+        (ownsStudentProfile(studentId) || canReadPracticeClass(resource.data.section)));
+      allow write: if false;
+    }
+    match /practice_verified_progress/{uid}/courses/{courseId} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow write: if false;
+    }
+    match /practice_class_progress/{studentId}/courses/{courseId} {
+      allow read: if mayTeachStudent(studentId) || ownsStudentProfile(studentId);
+      allow write: if false;
+    }
+    match /practice_awards/{uid}/missions/{missionId} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow write: if false;
+    }
+    match /practice_sessions/{uid} { allow read: if isAdmin(); allow write: if false; }
+    match /practice_browser_sessions/{browserId} { allow read: if isAdmin(); allow write: if false; }
+    match /practice_attempts/{attemptId} { allow read: if isAdmin(); allow write: if false; }
+    match /practice_security_events/{eventId} { allow read: if isAdmin(); allow write: if false; }
     // Formative student practice, separate from official assessments/grades.
     // Teachers may inspect progress through the existing instructor privileges.
     match /practice_profiles/{uid} {
@@ -665,30 +875,31 @@ service cloud.firestore {
           data.alias is string && data.alias.matches("^[A-Za-z0-9_ -]{3,24}$") &&
           data.leaderboardOptIn is bool && data.updatedAt == request.time;
       }
-      allow read: if isInstructor() || (signedIn() && request.auth.uid == uid);
+      allow read: if mayTeachSection(resource.data.section) || (signedIn() && request.auth.uid == uid);
       allow create, update: if signedIn() && request.auth.uid == uid && validPracticeProfile();
       allow delete: if false;
     }
     match /practice_scores/{studentId} {
+      allow get: if mayTeachStudent(studentId);
       function validPracticeScore() {
         let data = request.resource.data;
         let revision = exists(/databases/$(database)/documents/practice_scores/$(studentId)) ? resource.data.revision + 1 : 1;
         let audit = getAfter(/databases/$(database)/documents/practice_scores/$(studentId)/revisions/$(string(revision))).data;
         return data.keys().hasOnly(["studentId","section","verifiedMissionIds","points","reviewedBy","reviewNote","revision","updatedAt"]) &&
           data.studentId == studentId && data.section == get(/databases/$(database)/documents/students/$(studentId)).data.section &&
-          data.verifiedMissionIds is list && data.verifiedMissionIds.size() <= 16 &&
+          data.verifiedMissionIds is list && data.verifiedMissionIds.size() <= 300 &&
           data.verifiedMissionIds.toSet().size() == data.verifiedMissionIds.size() &&
-          data.verifiedMissionIds.hasOnly(["j1","j2","j3","j4","p1","p2","p3","p4","w1","w2","w3","w4","d1","d2","d3","d4"]) &&
+          data.verifiedMissionIds.hasOnly(practiceMissionIds("java").concat(practiceMissionIds("python")).concat(practiceMissionIds("web")).concat(practiceMissionIds("logic"))) &&
           data.points == data.verifiedMissionIds.size() * 10 && data.reviewedBy == request.auth.uid &&
           data.reviewNote is string && data.reviewNote.size() >= 15 && data.reviewNote.size() <= 3000 &&
           data.revision == revision && data.updatedAt == request.time && audit.after == data;
       }
-      allow read: if isInstructor() || ownsStudentProfile(studentId);
-      allow create, update: if isInstructor() && validPracticeScore();
+      allow read: if mayTeachSection(resource.data.section) || ownsStudentProfile(studentId);
+      allow create, update: if mayTeachStudent(studentId) && validPracticeScore();
       allow delete: if false;
       match /revisions/{revisionId} {
-        allow read: if isInstructor() || ownsStudentProfile(studentId);
-        allow create: if isInstructor() && request.resource.data.keys().hasOnly(["before","after","actorUid","createdAt"]) &&
+        allow read: if mayTeachStudent(studentId) || ownsStudentProfile(studentId);
+        allow create: if mayTeachStudent(studentId) && request.resource.data.keys().hasOnly(["before","after","actorUid","createdAt"]) &&
           request.resource.data.actorUid == request.auth.uid && request.resource.data.createdAt == request.time &&
           request.resource.data.before == (exists(/databases/$(database)/documents/practice_scores/$(studentId)) ? get(/databases/$(database)/documents/practice_scores/$(studentId)).data : null) &&
           request.resource.data.after == getAfter(/databases/$(database)/documents/practice_scores/$(studentId)).data &&
@@ -698,38 +909,18 @@ service cloud.firestore {
       }
     }
     match /practice_boards/{studentId} {
-      allow read: if isInstructor() || ownsStudentProfile(studentId);
-      allow create, update: if isInstructor() && request.resource.data.keys().hasOnly(["section","rows","publishedBy","publishedAt"]) &&
+      allow read: if mayTeachSection(resource.data.section) || ownsStudentProfile(studentId);
+      allow create, update: if mayTeachStudent(studentId) && request.resource.data.keys().hasOnly(["section","rows","publishedBy","publishedAt"]) &&
         request.resource.data.section == get(/databases/$(database)/documents/students/$(studentId)).data.section &&
         request.resource.data.rows is list && request.resource.data.rows.size() <= 200 &&
         request.resource.data.publishedBy == request.auth.uid && request.resource.data.publishedAt == request.time;
-      allow delete: if isInstructor();
+      allow delete: if mayTeachStudent(studentId);
     }
     match /student_practice_progress/{uid}/courses/{courseId} {
-      function validProgress() {
-        return request.resource.data.keys().hasOnly([
-          "ownerUid", "courseId", "completed", "reflections", "updatedAt"
-        ]) &&
-        request.resource.data.keys().hasAll([
-          "ownerUid", "courseId", "completed", "reflections", "updatedAt"
-        ]) &&
-        request.resource.data.ownerUid == uid &&
-        request.resource.data.courseId == courseId &&
-        courseId in ["java","python","web","logic"] &&
-        request.resource.data.completed is list &&
-        request.resource.data.completed.size() <= 40 &&
-        request.resource.data.reflections is map &&
-        request.resource.data.reflections.size() <= 40 &&
-        request.resource.data.updatedAt == request.time;
-      }
-      allow read: if isInstructor() || (signedIn() && request.auth.uid == uid);
-      allow create, update: if signedIn() && request.auth.uid == uid &&
-        validProgress();
-      allow delete: if false;
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow write: if false;
     }
 
-    // Personal read history and saved reminders. Students can retain a small
-    // notification summary for later; other users cannot inspect this inbox.
     match /notification_history/{uid}/items/{notificationId} {
       function validHistory() {
         return request.resource.data.keys().hasOnly([
@@ -768,11 +959,14 @@ service cloud.firestore {
 
     // Only instructors may read or write internal grading-failure diagnostics.
     match /grading_alerts/{alertId} {
-      allow read, write: if isInstructor();
+      allow read: if mayTeachSection(resource.data.section);
+      allow create, update: if mayTeachStudent(request.resource.data.studentId) && request.resource.data.section == get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.section;
+      allow delete: if isAdmin();
     }
 
     // Student-initiated submission receipts are immutable, reviewable evidence.
     match /student_submissions/{submissionId} {
+      allow read: if mayTeachSection(resource.data.section);
       allow read: if signedIn() && ownsStudentProfile(resource.data.studentId);
       allow create: if signedIn() &&
         request.resource.data.keys().hasOnly([

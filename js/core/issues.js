@@ -1,4 +1,4 @@
-import {resolveStaffRole} from "./staff-session.mjs?v=2026.10.20.1";
+import {resolveStaffRole} from "./staff-session.mjs?v=1.1.0";
 /** Role-separated report feed, triage and optional admin-only diagnostic trails. */
 import { db, auth } from "../core/firebase-core.js";
 import {
@@ -18,7 +18,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { filterReports, ownsReport } from "./report-filters.mjs";
-import {staffRole} from "./staff-role.mjs?v=2026.10.20.1";
+import {staffRole,staffSections} from "./staff-role.mjs?v=1.1.0";
 
 let allIssues = [];
 let currentOpenIssueId = null;
@@ -113,7 +113,7 @@ function fetchIssues() {
     ? [query(collection(db, "issues"), orderBy("createdAt", "desc"))]
     : isTeacher
       ? [
-          query(collection(db,"issues"),where("audience","==","teacher")),
+          ...staffSections(user).map(section=>query(collection(db,"issues"),where("audience","==","teacher"),where("section","==",section))),
           query(collection(db,"issues"),where("reporterUid","==",user.uid)),
           query(collection(db,"issues"),where("reporterEmail","==",currentUserEmail))
         ]

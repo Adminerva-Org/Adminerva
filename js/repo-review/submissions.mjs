@@ -1,9 +1,9 @@
-import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
 /** Unified review inbox for legacy receipts and committed evidence. */
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,getDocs,query,orderBy,limit,onSnapshot}
-  from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+  from "../core/teaching-firestore.mjs?v=1.1.0";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs";
 
 // RepoBank can open this inbox scoped to one linked repository.

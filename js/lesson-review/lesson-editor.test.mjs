@@ -1,5 +1,6 @@
 /** Regression coverage: Editable lesson content, save state and export synchronization. */
 import test from "node:test";
+import {savedLessonSettings} from "./lesson-settings.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
@@ -54,7 +55,7 @@ test("older saved lessons can render without a weekly overview",()=>{
      querySelector:()=>null,
      createElement:()=>({value:"",textContent:""})
    },
-   lessonStorage:{setItem(){},getItem(){return null;}},alert(){}
+   lessonStorage:{setItem(){},getItem(){return null;}},alert(){},savedLessonSettings
  };
  context.workspaceUid=()=>"teacher-fixture";
  vm.runInNewContext(code,context);

@@ -1,7 +1,22 @@
 {
   "releases": [
     {
+      "version":"1.1.0","status":"published","public":true,"releasedAt":"2026-10-21",
+      "title":"Checked practice, clearer review and assigned teaching access",
+      "summary":"Practise across 300 guided missions, follow class-only alias rankings, move scored sessions safely and use a clearer individual review workflow.",
+      "changes":[
+        {"type":"New","area":"Practice Lab","text":"Four courses each contain five modules with fifteen missions. Checked completions earn automatic unique-mission XP without teacher approval or optional activity sharing. Replays remain playable without duplicate XP; earlier self-recorded progress stays separate."},
+        {"type":"New","area":"Scored session transfers","text":"Moving an active scored session requires your confirmation and recent sign-in. Saved points remain intact, older sessions cannot submit new credit, and shared devices do not cause automatic cheating penalties."},
+        {"type":"Updated","area":"Teacher access","text":"Administrators assign teaching sections explicitly. Teacher review and analytics use assigned class records and credential-free roster copies. Unprepared older shared records remain restricted for administrator review."},
+        {"type":"Fixed","area":"Review & Grade","text":"Approval and reopened selections refresh in place. The step bar aligns with the modal heading. Evaluation drafts distinguish supported subtotals from unscored criteria and explain the next teacher check. Shared group completeness does not establish individual credit."},
+        {"type":"New","area":"Guest access and school management","text":"Verified new accounts can request student or teacher access while using limited local guest tools. Administrators make audited role decisions and manage sections, subjects and pathways. Requests do not grant access automatically."},
+        {"type":"Updated","area":"Lesson Planner and RepoBank","text":"Saved lessons restore their document settings within each teacher workspace. Reviewed repository overviews use pinned source samples and explicit saves; they do not establish individual authorship or automatically change grades."},
+        {"type":"Updated","area":"Help and release history","text":"Use the question-mark menu for page help, support, the Wiki and public updates. Release versions are separate from their dates. School grades, optional activity sharing and practice XP remain distinct."}
+      ]
+    },
+    {
       "version": "2026.10.20.1",
+      "displayVersion": "1.0.0",
       "status": "published",
       "public": true,
       "releasedAt": "2026-10-20",

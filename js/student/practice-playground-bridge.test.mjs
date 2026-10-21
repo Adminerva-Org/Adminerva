@@ -21,7 +21,7 @@ test("each introductory mission produces an isolated runnable sample",()=>{
     assert.ok(validPlaygroundState(sandbox),course.id+"/"+mission.id+" attempt "+attempt);
     assert.equal(sandbox.fileOrder.length,1);
     const code=Object.values(sandbox.files)[0];
-    assert.ok(code.length>25);
+    assert.ok(code.trim().length>5,"A runnable single print statement is valid: "+mission.id);
     if(course.id==="java"){
       assert.equal(sandbox.lang,"java");
       assert.ok(code.includes("public static void main"));
@@ -82,8 +82,9 @@ test("completion requires a run attempt and written comparison, with recoverable
   const html=readFileSync("student-practice.html","utf8");
   assert.match(app,/transfer\.runCount<1/);
   assert.match(app,/observation\.length<25/);
-  assert.match(app,/runTransaction\(db,async tx/);
-  assert.match(app,/needsSync/);
+  assert.match(app,/practiceRequest\("practiceComplete"/);
+  assert.match(app,/sessionStorage\.setItem\(pendingKey\(\)/);
+  assert.doesNotMatch(app,/runTransaction|setDoc\(|updateDoc\(/);
   assert.match(app,/practiceExperimentLink/);
   assert.match(html,/id="practiceObservation"/);
   assert.match(html,/id="practiceExperimentLink"/);

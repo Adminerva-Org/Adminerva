@@ -1,7 +1,7 @@
 /** Server-backed staff admission; browser simulation and teacher-directory edits never grant authority. */
 import {auth,db} from "./firebase-core.js";
 import {doc,getDocFromServer,getDocsFromServer,collection,query,where} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {ADMIN_EMAIL,staffRole,rememberStaff} from "./staff-role.mjs?v=2026.10.20.1";
+import {ADMIN_EMAIL,staffRole,rememberStaff} from "./staff-role.mjs?v=1.1.0";
 const pending = new Map();
 const accountPending = new Map();
 export function resolveAccountAccess(user) {

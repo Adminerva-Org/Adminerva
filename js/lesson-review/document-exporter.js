@@ -1,4 +1,4 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=2026.10.20.1";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.1.0";
 /** School-format lesson document construction and export. */
 import {
   doc,
@@ -102,6 +102,14 @@ window.buildDocumentLayout = async function () {
       console.warn("Firestore fetch failed, using local defaults.", e);
     }
   }
+
+  const saved=window.currentLessonSettings||{};
+  rawSubject=saved.subject_title||(window.currentPlanSubject||rawSubject);
+  rawTeacher=saved.teacher_name||(window.currentPlanTeacher||rawTeacher);
+  s1Name=saved.sig_teacher??s1Name;s1Title=saved.sig_teacher_title??s1Title;
+  s2Name=saved.sig_subject_coord??s2Name;s2Title=saved.sig_subject_coord_title??s2Title;
+  s3Name=saved.sig_grade_coord??s3Name;s3Title=saved.sig_grade_coord_title??s3Title;
+  s4Name=saved.sig_principal??s4Name;s4Title=saved.sig_principal_title??s4Title;
 
   const headerImgEl = document.getElementById("printHeaderImage");
   const headerContainer = document.getElementById("printHeaderBannerContainer");

@@ -6,7 +6,7 @@ The continuation adds disabled-by-default maintenance and a consent-removal hand
 
 ## Short user guide
 
-- Students: open **Help with this page** near the heading, or **Help / tutorial** at the bottom. Wiki and Patch notes work without an account.
+- Students: open **? → Help with this page**, or **Help / tutorial** at the bottom. Repeated heading links have been removed. Wiki and Patch notes work without an account.
 - Optional activity: on a signed-in workspace page, expand Help → Activity preferences. Both switches default off. Choose sharing and/or this-page diagnostic memory, then Save preferences. Diagnostic history alone does not upload usage events.
 - Reports: administrator reports can explicitly attach the current page's last 20 semantic actions. Teacher-directed reports never include that attachment. Clicks describe attempts, not successful completion. Review/crop screenshots separately.
 - Administrator: Staff Home → Administration analytics. Refresh the bounded operational sample, select the current instructor's assigned sections and Save assignment. Explicitly Refresh teacher summary to replace the private coarse snapshot. This never writes grades.

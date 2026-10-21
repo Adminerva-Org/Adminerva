@@ -1,6 +1,7 @@
 /** Student submissions, practice progress and isolated code workspaces: practice courses. */
 // Adminerva Practice Lab — four original introductory tracks.
 // Practice is formative; correct choices do not constitute graded evidence.
+import {expandPracticeCourses} from "./practice-curriculum.mjs?v=2026.10.21.2-dev.1";
 const n=(seed,max,min=1)=>min+(Math.abs(seed)%max);
 function choices(answer,alternatives,seed){
   const items=[answer,...alternatives].map(String);
@@ -110,6 +111,7 @@ export const COURSES=[
           why:"Testing exactly "+limit+" checks the comparison boundary itself."}}}
    ]}
 ];
+expandPracticeCourses(COURSES);
 export const getCourse=id=>COURSES.find(course=>course.id===id)||null;
 export function hashSeed(text){
   let h=2166136261;

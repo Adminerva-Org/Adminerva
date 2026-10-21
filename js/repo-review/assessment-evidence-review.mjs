@@ -1,15 +1,15 @@
-import {resolveStaffRole} from "../core/staff-session.mjs?v=2026.10.20.1";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
 /** Instructor checkpoint approval, reopening and contribution verification. */
 import {auth,db} from "../core/firebase-core.js";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,doc,getDoc,getDocFromServer,getDocs,setDoc,query,where,updateDoc,runTransaction,serverTimestamp,onSnapshot}
-  from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+  from "../core/teaching-firestore.mjs?v=1.1.0";
 import {parseRepository,normalizeSelection,validSha}
   from "./services/assessment-evidence.mjs";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "./services/commit-history.mjs";
 import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=2026.10.19.4";
-import {changeEvidence} from "./services/evidence-transaction.mjs?v=2026.10.19.4";
-import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=2026.10.20.1";
+import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.1.0";
+import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=2026.10.21.2-dev.1";
 
 import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=2026.10.20.1";
 import {searchStudents} from "./services/student-search.mjs?v=2026.10.20.1";
@@ -201,7 +201,7 @@ async function loadEvidence(initialRecord){
     status("Loaded "+evidence.selectedCommits.length+" selected commits. Approval will verify that they occur in the checkpoint's ancestry.");
     if(evidence.status==="reopened")status("Reopened: the student can change commit selections now. They must resubmit before a new approval. Contribution checks here verify authorship; they do not edit the student's selected commits.");
     else if(evidence.status==="approved")status(evidence.verifiedContributionCommits?.length?"Approved. Reopen for student selection changes, or revise contribution verification without changing their selection.":"Approved checkpoint has no verified individual contributions. Select Revise contribution verification to record independently checked work; otherwise evaluate manually without crediting teammates' screens.");
-    await Promise.all(previews);
+    void Promise.all(previews);
   }catch(error){if(!destroyed&&sequence===state.sequence)status("Unable to load evidence: "+error.message);}
 }
 async function previewCommit(repo,sha,row){
@@ -331,9 +331,9 @@ async function approve(){
     await changeEvidence(ref,opened,{status:"approved",reviewedBy:auth.currentUser.uid,
         reviewedAt:serverTimestamp(),verificationNote:note,
         approvedCheckpointSha:selection.checkpointSha,...contribution},note);
-    status("Checkpoint approved. Grading remains a separate unpublished teacher step.");
     await loadEvidence();
     notifyWorkspace();
+    status(contribution.verifiedContributionCommits.length?"Checkpoint approved and the review controls refreshed. Evaluate is available for verified individual contributions; grades remain unpublished.":"Checkpoint approved with no verified individual contributions. No shared-project credit is inferred; use manual review. Grades remain unpublished.");
   }catch(e){if(e.code==="evidence-changed")state.loaded=false;status("Approval failed: "+e.message);}
   finally{state.busy=false;el("evidenceApprove").disabled=!state.loaded||(!["submitted","needs_review"].includes(state.evidence?.status)&&!(state.evidence?.status==="approved"&&state.verificationEditing));}
 }

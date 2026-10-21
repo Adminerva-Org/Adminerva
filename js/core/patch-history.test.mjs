@@ -9,7 +9,7 @@ const release={version:'2026.10.18.4',status:'published',public:true,releasedAt:
 test('prepared staging versions are not fabricated historical releases or account notices',()=>{
   const history=JSON.parse(readFileSync('patch-history.json','utf8'));
   const manifest=JSON.parse(readFileSync('site-release.json','utf8'));
-  const releases=publicReleases(history,Date.parse('2026-10-20'));
+  const releases=publicReleases(history,Date.parse(manifest.releasedAt+'T23:59:59+08:00'));
   assert.ok(releases.some(item=>item.version===manifest.version));
   for(const version of ['2026.10.19.1','2026.10.19.2'])assert.ok(!releaseNotifications(releases).some(notice=>notice.key==='release:'+version));
   assert.ok(releases.some(item=>item.version==='2026.10.18.4'));
@@ -28,7 +28,8 @@ test('public projection excludes private metadata and malformed releases',()=>{
 test('shipped patch manifest contains only curated public fields and system labels',()=>{
   const data=JSON.parse(readFileSync('patch-history.json','utf8'));
   for(const item of data.releases){
-    assert.deepEqual(Object.keys(item).sort(),['version','status','public','releasedAt','title','summary','changes'].sort());
+    assert.deepEqual(Object.keys(item).sort(),['version','status','public','releasedAt','title','summary','changes',...(item.displayVersion?['displayVersion']:[])].sort());
+    if(item.displayVersion)assert.match(item.displayVersion,/^\d+\.\d+\.\d+$/);
     assert.equal(item.public,true);assert.doesNotMatch(JSON.stringify(item),/\bAI\b|@|api[_ -]?key|ruleset|studentId|firebase/i);
     for(const change of item.changes)assert.deepEqual(Object.keys(change).sort(),['area','text','type']);
   }

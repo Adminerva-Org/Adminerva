@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {practicePoints,classStandings,MISSION_IDS} from './practice-points.mjs';
 test('points count each known mission once and ignore arbitrary client scores',()=>{
   assert.equal(practicePoints(['j1','j1','unknown','p2']).points,20);
-  assert.equal(practicePoints(MISSION_IDS).maximum,160);
+  assert.equal(practicePoints(MISSION_IDS).maximum,3000);
   assert.equal(practicePoints(null).points,0);
 });
 test('class standings require consent, section match and reviewed missions without exposing identities',()=>{

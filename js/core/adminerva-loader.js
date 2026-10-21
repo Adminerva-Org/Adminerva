@@ -169,7 +169,7 @@ document.addEventListener("DOMContentLoaded", () => {
   document.documentElement.append(document.getElementById("subtleLoader"));
   updateLoadingStatus();
   if (document.readyState === "complete") endPageLoading();
-  import("../help/page-help.mjs?v=2026.10.20.1").then(module => module.mountHelp()).catch(() => {});
+  import("../help/page-help.mjs?v=1.1.0").then(module => module.mountHelp()).catch(() => {});
   bindBugReporterLogic();
 });
 
@@ -442,9 +442,12 @@ window.finalizeBugReport = async function () {
     const { collection, addDoc, serverTimestamp } =
       await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
 
-    const audience = category === "Bug" ? "admin" : document.getElementById("bug-audience").value;
+    const {reportContext}=await import("./report-context.mjs?v=1.1.0");
+    const context=await reportContext(document.getElementById("bug-audience").value,category);
+    const audience=context.audience;
     if (!["admin", "teacher"].includes(audience)) throw new Error("Invalid report recipient");
     const payload = {
+      ...context,
       category,
       audience,
       priority,

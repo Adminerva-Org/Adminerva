@@ -1,0 +1,18 @@
+{
+  "score": 3,
+  "summary": "Prototype guest admission and catalog rules have strict ownership, administrator decisions and immutable revisions; inherited broad academic teacher permissions still require a separate least-privilege migration before broader onboarding.",
+  "findings": [
+    {
+      "check": "Authority source",
+      "severity": "moderate",
+      "issue": "Administrator-admitted teachers inherit existing trusted academic staff access across legacy modules; analytics section assignments do not constrain every academic collection.",
+      "recommendation": "Review trusted-teacher onboarding and design consistent tenant/section ACLs and compatible queries before opening access to unrelated teachers or schools."
+    },
+    {
+      "check": "Storage and discovery limits",
+      "severity": "minor",
+      "issue": "Directory and catalog discovery are bounded but do not yet paginate all older requests and catalogs.",
+      "recommendation": "Add cursor pagination before the configured bounds are reached."
+    }
+  ]
+}

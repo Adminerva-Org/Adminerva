@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Practice Lab | Adminerva</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="css/adminerva-ui.css?v=2026.10.20.1" />
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=1.1.0" />
 </head>
 <body id="pageBody" class="hidden bg-slate-100 min-h-screen text-slate-900 font-sans">
   <div id="adminerva-nav" data-module="student-practice" data-page="practice"></div>
@@ -16,17 +16,18 @@
       <h1 class="text-3xl font-extrabold text-slate-900 my-2">Practice Lab</h1>
       <p class="text-sm text-slate-600 max-w-3xl">Understand a concept, predict an outcome, test the example in a separate Playground sandbox, then explain what happened. Each mission is formative practice, not a graded exam.</p>
     </header>
-    <button type="button" id="practiceSyncBtn" class="mb-3 px-3 py-2 text-sm font-bold border border-blue-300 text-blue-800 bg-white rounded-lg disabled:opacity-50">Retry cloud sync</button>
+    <div class="flex flex-wrap gap-2 mb-3"><button type="button" id="practiceSyncBtn" class="px-3 py-2 text-sm font-bold border border-blue-300 text-blue-800 bg-white rounded-lg disabled:opacity-50">Resume / retry saved practice</button><button type="button" id="practiceTransferBtn" class="px-3 py-2 text-sm font-bold border border-amber-300 text-amber-900 bg-white rounded-lg">Sign in again / transfer scored session here</button></div>
+    <p id="practiceSessionStatus" role="status" class="text-sm my-3">Checking your scored practice session…</p>
     <p id="practiceStatus" role="status" aria-live="polite" class="text-sm text-slate-600 mb-4">Loading your learning progress…</p>
     <div id="practiceOverview" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5" aria-label="Practice progress overview"></div>
     <a href="student-xml-lab.html" class="inline-block mb-4 font-bold text-indigo-800 underline">Open XML Layout Lab →</a>
-    <details class="bg-white border rounded-xl p-4 mb-5"><summary class="font-bold cursor-pointer">My practice points and class standings</summary>
-      <p class="text-sm my-3">Completions earn 10 personal practice points per unique mission, not school grades. Class standings use only teacher-reviewed missions. Joining is optional; use an alias, not a real name or email. Opt-out changes take effect in the next published class snapshot.</p>
+    <p class="rounded-xl bg-cyan-50 border border-cyan-200 p-4 mb-4 text-sm">Accepted server-checked missions save automatically—no activity consent or teacher approval. One scored session is active per account. Shared computers and device changes are allowed with a controlled handover; they are not proof of cheating. A random browser key supports handovers, not hardware tracking. Offline reflections stay as drafts; expired or transferred challenges must be retried. XP is not a school grade or proof of who answered.</p>
+    <details open class="av-practice-board bg-white border rounded-xl p-4 mb-5"><summary class="font-bold cursor-pointer">Class leaderboard · automatic practice XP</summary>
+      <p class="text-sm my-3">Earn 10 XP per unique server-checked mission. Replaying cannot farm extra XP. Rankings are class-only generated aliases, not real names. Older self-recorded progress remains separate and does not become verified XP.</p>
       <label class="block text-sm">Practice class<select id="practiceClass" class="border rounded p-2 m-2"></select></label>
-      <label class="block text-sm">Class alias<input id="practiceAlias" maxlength="24" class="border rounded p-2 m-2" /></label>
-      <label class="block text-sm my-3"><input id="practiceOptIn" type="checkbox" /> Include my alias and reviewed points in my class standings</label>
-      <button id="practiceSavePreferences" type="button" class="border rounded px-3 py-2 font-bold">Save practice class preferences</button>
-      <p id="practiceReviewedPoints" class="font-bold mt-3">Not reviewed yet</p><p id="practiceClassStatus" role="status" class="text-sm my-2"></p><ol id="practiceStandings" class="space-y-1 text-sm"></ol>
+      <p class="text-sm">Your class alias: <strong id="practiceAlias">Loading…</strong></p>
+      <p id="practiceReviewedPoints" class="font-bold mt-3">Checking saved practice XP…</p><p id="practiceClassStatus" role="status" class="text-sm my-2"></p>
+      <div id="practicePodium" class="av-practice-podium" aria-label="Leading learners"></div><ol id="practiceStandings" class="space-y-2 text-sm" aria-label="Class rankings"></ol>
     </details>
     <div id="practiceCourseList" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
     <section id="practiceMissionPanel" class="hidden bg-white border border-slate-200 rounded-xl shadow-sm p-5 sm:p-7 mt-5" aria-labelledby="practiceMissionTitle">
@@ -69,10 +70,10 @@
       <p class="mt-4 text-xs text-slate-500">Completions are saved locally and synced to your account when Firebase is available. Practice is not automatically scored toward school grades.</p>
     </section>
   </main>
-  <script src="js/core/adminerva-nav.js?v=2026.10.20.1"></script>
-  <script src="js/core/adminerva-loader.js?v=2026.10.20.1"></script>
-  <script type="module" src="js/core/auth-guard.js?v=2026.10.20.1"></script>
-  <script type="module" src="js/student/practice.js?v=2026.10.19.3"></script>
-  <script type="module" src="js/student/practice-standings.mjs?v=2026.10.19.3"></script>
+  <script src="js/core/adminerva-nav.js?v=1.1.0"></script>
+  <script src="js/core/adminerva-loader.js?v=1.1.0"></script>
+  <script type="module" src="js/core/auth-guard.js?v=1.1.0"></script>
+  <script type="module" src="js/student/practice.js?v=1.1.0"></script>
+  <script type="module" src="js/student/practice-standings.mjs?v=1.1.0"></script>
 </body>
 </html>

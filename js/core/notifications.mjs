@@ -1,11 +1,11 @@
-import {staffRole} from "./staff-role.mjs?v=2026.10.20.1";
-import {resolveStaffRole} from "./staff-session.mjs?v=2026.10.20.1";
+import {staffRole} from "./staff-role.mjs?v=1.1.0";
+import {resolveStaffRole} from "./staff-session.mjs?v=1.1.0";
 /** Shared navigation, account access, reporting and release infrastructure: notifications. */
 import { auth, db } from "./firebase-core.js";
 import {notificationTarget,previewDestination} from "./notification-routing.mjs?v=2026.10.19.1";
 import {notificationVisible,unreadNotificationCount} from "./notification-visibility.mjs?v=2026.10.19.1";
 import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs?v=2026.10.19.1";
-import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=2026.10.19.1";
+import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=2026.10.21.1-dev.1";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 

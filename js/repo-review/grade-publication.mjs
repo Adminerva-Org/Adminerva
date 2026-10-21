@@ -1,6 +1,6 @@
 /** Transactional deliberate publication with immutable revisions and recoverable progress. */
 import {auth,db} from "../core/firebase-core.js";
-import {doc,collection,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import {doc,collection,runTransaction,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.1.0";
 import {assertGradeVersion} from "./services/grade-version.mjs?v=2026.10.20.1";
 import {publicationCandidates,publicationJournal} from "./services/publication-queue.mjs?v=2026.10.20.1";
 export {publicationCandidates};
