@@ -17,7 +17,7 @@ import {
   query,
   orderBy,
   limit,
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+} from "../core/teaching-firestore.mjs?v=1.1.0";
 
 // 🔒 Security Patch: Helper to neutralize malicious HTML scripts from user input
 function escapeHTML(str) {

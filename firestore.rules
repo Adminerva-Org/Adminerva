@@ -120,7 +120,7 @@ service cloud.firestore {
     }
     match /teacher_materials/{ownerUid}/{kind}/{recordId} {
       allow read: if isAdmin() || (isTeacher() && request.auth.uid == ownerUid);
-      allow create, update: if isTeacher() && request.auth.uid == ownerUid && kind in ["repobank","group_repo_cache","templates","reference_folders"] && request.resource.data.keys().size() <= 50;
+      allow create, update: if isTeacher() && request.auth.uid == ownerUid && kind in ["repobank","group_repo_cache","github_stats_cache","system","templates","reference_folders"] && request.resource.data.keys().size() <= 50;
       allow delete: if isTeacher() && request.auth.uid == ownerUid;
       match /documents/{documentId} {
         allow read: if isAdmin() || (isTeacher() && request.auth.uid == ownerUid);
@@ -676,6 +676,22 @@ service cloud.firestore {
         request.resource.data.section == get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.section &&
         (isAdmin() || (!exists(/databases/$(database)/documents/grades/$(gradeId)) ||
           (resource.data.studentId == request.resource.data.studentId && resource.data.section == request.resource.data.section)));
+      allow delete: if isAdmin();
+    }
+    match /activity_grades/{gradeId} {
+      function validActivityGrade(data) {
+        return data.keys().hasOnly(["studentId","section","githubUsername","activity","score","maxScore","gradedAt"]) &&
+          data.studentId is string && data.section is string &&
+          data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
+          data.activity is string && data.activity.size() > 0 && data.activity.size() <= 300 &&
+          data.get("githubUsername","") is string && data.get("githubUsername","").size() <= 200 &&
+          data.score is number && data.maxScore is number && data.maxScore > 0 && data.maxScore <= 1000 &&
+          data.score >= 0 && data.score <= data.maxScore && data.gradedAt is string && data.gradedAt.size() <= 64;
+      }
+      allow read: if mayTeachSection(resource.data.section);
+      allow create: if mayTeachStudent(request.resource.data.studentId) && validActivityGrade(request.resource.data);
+      allow update: if mayTeachStudent(resource.data.studentId) && request.resource.data.studentId == resource.data.studentId &&
+        request.resource.data.section == resource.data.section && validActivityGrade(request.resource.data);
       allow delete: if isAdmin();
     }
 

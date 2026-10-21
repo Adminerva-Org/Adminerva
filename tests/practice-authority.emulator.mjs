@@ -121,6 +121,14 @@ test("teachers see only assigned credential-free roster projections and cannot s
   await db.doc("staff_access/"+teacherEmail).update({sections:["B"]});
   await assertFails(getDoc(doc(teacher,"teaching_roster","alice")));await assertSucceeds(getDoc(doc(teacher,"teaching_roster","bob")));
 });
+test("legacy activity grading remains scoped and teacher cache writes cannot change global counters",async()=>{
+  const teacher=client("teacher",teacherEmail),grade={studentId:"alice",section:"A",githubUsername:"alice",activity:"Practice activity",score:5,maxScore:10,gradedAt:new Date().toISOString()};
+  const ref=doc(teacher,"activity_grades","alice_activity");await assertSucceeds(setDoc(ref,grade));
+  await assertFails(setDoc(doc(teacher,"activity_grades","bob_activity"),{...grade,studentId:"bob",section:"B"}));
+  await assertFails(updateDoc(ref,{studentId:"bob",section:"B"}));await assertFails(updateDoc(ref,{score:11}));
+  await assertFails(setDoc(doc(teacher,"system","ai_usage_today"),{requests:1}));
+  await assertSucceeds(setDoc(doc(teacher,"teacher_materials","teacher","system","ai_usage_today"),{requests:1}));
+});
 test("assessment scope cannot deploy to another class, change ownership or downgrade protected V2 semantics",async()=>{
   const teacher=client("teacher",teacherEmail),ref=doc(teacher,"assessments","owned");
   const task={ownerUid:"teacher",sectionIds:["A"],deployments:[{section:"A"}],title:"Owned",schemaVersion:2,maxScore:20};

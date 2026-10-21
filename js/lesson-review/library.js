@@ -9,7 +9,7 @@ import {
   doc,
   increment,
   writeBatch,
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+} from "../core/teaching-firestore.mjs?v=1.1.0";
 
 let libraryData = [];
 let activeFolderId = null;

@@ -17,10 +17,11 @@ function fixture({role="teacher",sections=["A","B"],authorization=async()=>role}
     onSnapshot:(source,callback)=>{const entry={source,callback,stopped:false};listeners.push(entry);return()=>{entry.stopped=true;};},
     runTransaction:async(_database,callback)=>callback({get:sdk.getDoc,set:sdk.setDoc,update:sdk.updateDoc,delete:sdk.deleteDoc})
   };
+  sdk.writeBatch=()=>({set:sdk.setDoc,update:sdk.updateDoc,delete:sdk.deleteDoc,commit:async()=>{}});
   sdk.getDocsFromServer=sdk.getDocs;sdk.getDocFromServer=sdk.getDoc;
   const context=vm.createContext({sdk,auth,db:{},resolveStaffRole:authorization,staffRole:()=>role,staffSections:()=>sections});
   const source=readFileSync("js/core/teaching-firestore.mjs","utf8").replace(/^export \* from .*;$/gm,"").replace(/^import .*;$/gm,"").replace(/\bexport /g,"");
-  vm.runInContext(source+";globalThis.api={collection,query,doc,getDoc,getDocs,setDoc,updateDoc,deleteDoc,addDoc,runTransaction,onSnapshot};",context);
+  vm.runInContext(source+";globalThis.api={collection,query,doc,getDoc,getDocs,setDoc,updateDoc,deleteDoc,addDoc,runTransaction,writeBatch,onSnapshot};",context);
   return {api:context.api,auth,calls,listeners,sdk};
 }
 test("teacher student reads use the credential-free projection and constrain every assigned class",async()=>{
@@ -50,6 +51,20 @@ test("private material reads, writes and transaction references stay in the inst
   await current.api.setDoc(ref,{});await current.api.getDoc(ref);
   await current.api.runTransaction({},async transaction=>{await transaction.get(ref);transaction.set(ref,{});});
   assert.ok(current.calls.every(call=>call.path==="teacher_materials/instructor/repobank/project"));
+});
+test("legacy activity and diagnostic caches retain assigned/private access without restoring a teacher wildcard",async()=>{
+  const current=fixture();await current.api.getDocs(current.api.collection({},"activity_grades"));
+  assert.deepEqual(current.calls.map(call=>call.constraints.at(-1).value),["A","B"]);
+  current.calls.length=0;
+  for(const collection of ["system","github_stats_cache"])await current.api.setDoc(current.api.doc({},collection,"cache"),{});
+  assert.ok(current.calls.every(call=>call.path.startsWith("teacher_materials/instructor/")));
+});
+test("reference-library batch writes retain the same owner namespace as single writes",async()=>{
+  const current=fixture(),batch=current.api.writeBatch({});
+  batch.update(current.api.doc({},"reference_folders","chapter"),{});
+  batch.delete(current.api.doc({},"reference_folders","chapter","documents","page"));
+  await batch.commit();
+  assert.ok(current.calls.every(call=>call.path.startsWith("teacher_materials/instructor/reference_folders/chapter")));
 });
 test("administrator queries remain unchanged and browser role strings are not consulted",async()=>{
   const current=fixture({role:"admin"});await current.api.getDocs(current.api.collection({},"students"));

@@ -5,8 +5,8 @@ import {auth,db} from "./firebase-core.js";
 import {resolveStaffRole} from "./staff-session.mjs?v=1.1.0";
 import {staffRole,staffSections} from "./staff-role.mjs?v=1.1.0";
 const descriptors=new WeakMap();
-const sectional=new Set(["teaching_roster","student_grades","grades","assessment_evidence","student_submissions","commit_reclaims","practice_profiles","practice_scores","practice_boards","practice_rankings","grading_alerts"]);
-const privateKinds=new Set(["repobank","group_repo_cache","templates","reference_folders"]);
+const sectional=new Set(["teaching_roster","student_grades","grades","activity_grades","assessment_evidence","student_submissions","commit_reclaims","practice_profiles","practice_scores","practice_boards","practice_rankings","grading_alerts"]);
+const privateKinds=new Set(["repobank","group_repo_cache","github_stats_cache","system","templates","reference_folders"]);
 let pending=null;
 const emptySnapshot=docs=>({docs,size:docs.length,empty:docs.length===0,forEach:callback=>docs.forEach(callback)});
 async function actor(){
@@ -94,6 +94,20 @@ export async function setDoc(reference,...args){return sdk.setDoc(writeDoc(refer
 export async function updateDoc(reference,...args){return sdk.updateDoc(writeDoc(reference,await actor()),...args);}
 export async function deleteDoc(reference){return sdk.deleteDoc(writeDoc(reference,await actor()));}
 export async function addDoc(reference,...args){const current=await actor(),path=materialPath(reference.path,current);return sdk.addDoc(path===reference.path?reference:sdk.collection(reference.firestore,path),...args);}
+export function writeBatch(database){
+  const operations=[];
+  const batch={
+    set(reference,...values){operations.push({action:"set",reference,values});return batch;},
+    update(reference,...values){operations.push({action:"update",reference,values});return batch;},
+    delete(reference){operations.push({action:"delete",reference,values:[]});return batch;},
+    async commit(){
+      const current=await actor(),target=sdk.writeBatch(database);
+      for(const operation of operations)target[operation.action](writeDoc(operation.reference,current),...operation.values);
+      return target.commit();
+    }
+  };
+  return batch;
+}
 export async function runTransaction(database,callback,...args){
   const current=await actor();
   return sdk.runTransaction(database,transaction=>{
