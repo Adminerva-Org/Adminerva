@@ -6,9 +6,9 @@
     {"collectionGroup":"assessment_evidence","queryScope":"COLLECTION","fields":[{"fieldPath":"section","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]}
   ],
   "fieldOverrides": [
-    {"collectionGroup":"practice_attempts","fieldPath":"expiresAt","ttl":true},
-    {"collectionGroup":"practice_sessions","fieldPath":"expiresAt","ttl":true},
-    {"collectionGroup":"practice_browser_sessions","fieldPath":"expiresAt","ttl":true},
-    {"collectionGroup":"practice_security_events","fieldPath":"expiresAt","ttl":true}
+    {"collectionGroup":"practice_attempts","fieldPath":"expiresAt","ttl":true,"indexes":[]},
+    {"collectionGroup":"practice_sessions","fieldPath":"expiresAt","ttl":true,"indexes":[]},
+    {"collectionGroup":"practice_browser_sessions","fieldPath":"expiresAt","ttl":true,"indexes":[]},
+    {"collectionGroup":"practice_security_events","fieldPath":"expiresAt","ttl":true,"indexes":[]}
   ]
 }

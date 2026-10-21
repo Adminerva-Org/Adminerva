@@ -55,6 +55,9 @@ preparation audits; do not turn old self-reported totals back into authoritative
 Metadata additions are additive and need not be erased to restore compatible UI.
 
 TTL expiry is asynchronous and billable according to the configured provider;
-server expiry checks apply immediately. Configure App Check and budget alerts
+server expiry checks apply immediately. Expiry fields have explicit empty index
+overrides because practice uses document lookups, not expiry-field queries. The
+override arrays are also required by the deployment configuration validator.
+Configure App Check and budget alerts
 separately before wider onboarding. Browser keys do not prove who answered; shared
 devices cause no automatic penalties. XP remains formative, not a school grade.

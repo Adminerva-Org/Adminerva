@@ -58,3 +58,13 @@ test("deployable server curriculum matches the client curriculum exactly",()=>{
   assert.equal(normalize(readFileSync("functions/"+name,"utf8")),normalize(readFileSync("js/student/"+name,"utf8")),name);
  }
 });
+
+test("practice expiry policies include the required index configuration and never target earned progress",()=>{
+ const configuration=JSON.parse(readFileSync("firestore.indexes.json","utf8"));
+ assert.deepEqual(configuration.fieldOverrides.map(field=>field.collectionGroup),["practice_attempts","practice_sessions","practice_browser_sessions","practice_security_events"]);
+ for(const field of configuration.fieldOverrides){
+  assert.equal(field.fieldPath,"expiresAt");assert.equal(field.ttl,true);assert.deepEqual(field.indexes,[]);
+ }
+ const service=readFileSync("functions/practice-service.js","utf8");
+ assert.doesNotMatch(service,/\.where\(["']expiresAt["']/);
+});
