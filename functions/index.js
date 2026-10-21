@@ -6,6 +6,8 @@ const {getAuth}=require("firebase-admin/auth");
 const {onDocumentCreated,onDocumentUpdated,onDocumentWritten}=require("firebase-functions/v2/firestore");
 const {onSchedule}=require("firebase-functions/v2/scheduler");
 const {onCall,HttpsError}=require("firebase-functions/v2/https");
+const {setGlobalOptions}=require("firebase-functions/v2");
+setGlobalOptions({region:"asia-southeast1"});
 const {createPracticeService,PracticeError}=require("./practice-service.js");
 const {createTeachingAccessService}=require("./teaching-access-service.js");
 const {createMonitoringService}=require("./monitoring-service.js");

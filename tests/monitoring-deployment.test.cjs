@@ -6,6 +6,10 @@ process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8181";
 process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9199";
 const handlers = require("../functions/index.js");
 
+test("existing notifications retain their deployed region instead of creating duplicate regional triggers",()=>{
+  for(const handler of Object.values(handlers))assert.deepEqual(handler.__endpoint.region,["asia-southeast1"]);
+});
+
 test("scored practice handlers are bounded authenticated callables and roster updates are colocated",()=>{
   for(const name of ["practiceSession","practiceStart","practicePredict","practiceComplete"]){
     assert.equal(typeof handlers[name].run,"function");
