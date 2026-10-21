@@ -15,6 +15,7 @@ import monitoringWorker from "../../functions/monitoring-service.js";
 import practiceBackend from "../../functions/practice-service.js";
 import teachingBackend from "../../functions/teaching-access-service.js";
 import {personalPlanId} from "../../js/lesson-review/workspace-model.mjs";
+import {releasePresentation} from "../../js/core/release-version.mjs";
 import {doc,setDoc} from "firebase/firestore";
 import {accounts,password,assessment,repository,ownSha,groupSha,homePath,providerDraft,githubFixture} from "./review-fixtures.mjs";
 
@@ -738,7 +739,8 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await admin.goto(origin+"/manage-sections.html");await admin.locator("#catalog-name").fill("fixture-12-B");await admin.locator("#catalog-gradeLevel").fill("Grade 12");await admin.locator("#catalog-schoolYear").fill("2026-2027");await admin.locator("#catalog-save").click();await expect(admin.locator("#catalog-status")).toContainText("immutable revision");
     await admin.goto(origin+"/teacher-accounts.html");await expect(admin.locator("#staff-sections option[value='fixture-12-B']")).toHaveCount(1);
     await guest.goto(origin+"/wiki.html");await guest.locator("#wikiSearch").fill("checkpoint");await expect(guest.locator("#wikiSearchStatus")).toContainText("matching guides");await guest.locator("#wikiClear").click();
-    await guest.goto(origin+"/patch-notes.html");await expect(guest.locator(".av-version-label").first()).toHaveText("v1.0.0");
+    const releaseManifest=JSON.parse(await readFile(path.join(root,"site-release.json"),"utf8"));
+    await guest.goto(origin+"/patch-notes.html");await expect(guest.locator(".av-version-label").first()).toHaveText(releasePresentation(releaseManifest).label);
     await guest.screenshot({path:path.join(output,"versioned-patch-notes-mobile.png"),fullPage:true});
     await admin.goto(origin+"/manage-subjects.html");await admin.screenshot({path:path.join(output,"manage-subjects-admin.png"),fullPage:true});
     validated("limited local guest tools, private verified requests, audited teacher approval, school catalog integration, public guide search and stable versioned release history");
