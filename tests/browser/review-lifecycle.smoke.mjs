@@ -484,8 +484,11 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await student.goto(origin+"/student-practice.html?course=java&mission=j1");
     await expect(student.locator("#practiceReflectionPanel")).toBeVisible();
     await student.locator("#practiceObservation").fill("I compared the variable changes and printed result with the prediction in the sandbox.");
-    await expect.poll(()=>Date.now()-challenge.createdAt.toMillis()).toBeGreaterThan(3200);
+    const predictedAttempt=(await practiceDatabase.doc("practice_attempts/"+challenge.attemptId).get()).data();
+    assert.equal(predictedAttempt.state,"predicted");
+    await expect.poll(()=>Date.now()-predictedAttempt.predictedAt.toMillis()).toBeGreaterThan(3200);
     await student.locator("#practiceFinishBtn").click();
+    await expect(student.locator("#practiceStatus")).toContainText("Mission complete!");
     await waitRecord(student,"practice_rankings/alice","points",10);
     assert.equal((await browserRecord(student,"student_practice_progress/"+accounts.alice.uid+"/courses/java")).data.studentId,undefined,"Old self-reported progress must remain untouched");
     const transferDevice=await (await newIdentity("alice")).newPage();
