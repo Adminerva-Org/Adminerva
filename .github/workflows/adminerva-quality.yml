@@ -19,7 +19,7 @@ jobs:
           node --test tests/google-docs-export.test.mjs
           node --test tests/staff-workspaces.test.mjs
           node --test tests/admissions.test.mjs
-          node --test tests/admin-setup.test.mjs tests/student-practice-ux.test.mjs tests/student-workspace-ux.test.mjs tests/practice-review-ux.test.mjs tests/settings-connections.test.mjs tests/library-processing.test.mjs js/core/report-dialog.test.mjs
+          node --test tests/admin-setup.test.mjs tests/student-practice-ux.test.mjs tests/student-workspace-ux.test.mjs tests/practice-review-ux.test.mjs tests/settings-connections.test.mjs tests/library-processing.test.mjs tests/pages-release.test.mjs js/core/report-dialog.test.mjs
           node --test tests/review-resilience.test.mjs js/repo-review/services/github-evidence-client.test.mjs
           node --test tests/evidence-readiness.test.mjs
           node --test tests/student-search.test.mjs tests/help-access.test.mjs
@@ -128,3 +128,19 @@ jobs:
         run: npm install --no-audit --no-fund --no-save @firebase/rules-unit-testing@4 firebase@11 firebase-tools@14 firebase-admin@13
       - name: Test Firestore permissions in an isolated emulator
         run: npx firebase emulators:exec --project demo-adminerva-security --only firestore 'node --test --test-concurrency=1 tests/firestore-rules.test.mjs tests/monitoring-maintenance.emulator.mjs tests/staff-workspaces.emulator.mjs tests/admissions.emulator.mjs tests/practice-rankings.emulator.mjs tests/practice-authority.emulator.mjs'
+  pages-release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [javascript-regressions, firestore-security]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the released revision
+        uses: actions/checkout@v4
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Confirm the public version and matching website files
+        run: node scripts/check-pages-release.mjs

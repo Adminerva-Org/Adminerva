@@ -97,11 +97,14 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     });
     const teachingService=teachingBackend.createTeachingAccessService({db:getAdminFirestore(adminApp),Timestamp});
     await Promise.all(["alice","bob"].map(studentId=>teachingService.synchronize(studentId)));
-    const assets=new Map();
+    const assets=new Map(),editorAssets=new Map();
     for(const url of ["https://cdn.quilljs.com/1.3.6/quill.min.js","https://cdn.quilljs.com/1.3.6/quill.snow.css",
       "https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/libs/jszip.min.js","https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.min.js",
       "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js","https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css",
-      "https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"]){
+      "https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js",
+      "https://cdn.jsdelivr.net/npm/flatpickr","https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css",
+      "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"]){
       const response=await fetch(url);assert.equal(response.ok,true);assets.set(url,await response.text());
     }
     for(const name of ["firebase-app.js","firebase-auth.js","firebase-firestore.js","firebase-functions.js"]){
@@ -151,6 +154,13 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
       await context.route("**/*",async route=>{
         const url=route.request().url(),parsed=new URL(url);
         if(assets.has(url))return route.fulfill({contentType:url.endsWith(".css")?"text/css":"text/javascript",body:assets.get(url)});
+        if(url.startsWith("https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/")){
+          if(!editorAssets.has(url))editorAssets.set(url,fetch(url,{signal:AbortSignal.timeout(20000)}).then(async response=>{
+            assert.equal(response.ok,true,"Could not load the pinned code editor asset: "+url);
+            return {body:Buffer.from(await response.arrayBuffer()),contentType:response.headers.get("content-type")||"application/octet-stream",headers:{"Access-Control-Allow-Origin":"*"}};
+          }));
+          return route.fulfill(await editorAssets.get(url));
+        }
         if(parsed.hostname==="cdn.tailwindcss.com")return route.fulfill({contentType:"text/javascript",body:tailwind});
         if(url==="https://cdn.jsdelivr.net/npm/chart.js")return route.fulfill({contentType:"text/javascript",body:"window.Chart=class { destroy(){} };"});
         if(url==="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css")return route.fulfill({contentType:"text/css",body:""});
@@ -174,7 +184,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
         }
         if(parsed.hostname==="127.0.0.1"||parsed.hostname==="localhost")return route.continue();
         if(url==="https://accounts.google.com/gsi/client"||url==="https://cdn.jsdelivr.net/npm/html-docx-js/dist/html-docx.min.js")return route.fulfill({contentType:"text/javascript",body:""});
-        blockedRequests.push(parsed.origin);return route.abort("blockedbyclient");
+        blockedRequests.push(url);return route.abort("blockedbyclient");
       });
       context.on("page",page=>{
         page.on("pageerror",error=>errors.push(error.message));
@@ -778,6 +788,11 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
         }
         if(route.startsWith("manage-"))await expect(page.locator("#catalog-status")).not.toContainText("Loading catalog");
         if(route==="teacher-accounts.html")await expect(page.locator("#staff-account-status")).toContainText("Teacher directory loaded");
+        if(route==="student-playground.html") {
+          await expect(page.locator("#editorLoading")).toBeHidden();await expect(page.locator(".monaco-editor")).toBeVisible();
+          await page.locator("#languageSelect").selectOption("web");await page.locator("#runBtn").click();
+          await expect(page.frameLocator("#webPreviewFrame").locator("h1")).toHaveText("Hello, Adminerva Web!");
+        }
         await expect(page.locator("#subtleLoader")).toBeHidden();
         await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),{message:route+" must fit a phone screen"}).toBe(true);
         await page.screenshot({path:path.join(output,"ux-mobile-"+route.replace(".html",".png")),fullPage:true});
