@@ -1,5 +1,5 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.1.0";
-import {savedLessonSettings} from "./lesson-settings.mjs?v=2026.10.21.1-dev.1";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.3.0";
+import {savedLessonSettings} from "./lesson-settings.mjs?v=1.3.0";
 /** Lesson-planner interface events and workflow coordination. */
 // ==========================================
 // 1. GLOBAL STATE MANAGER
@@ -353,6 +353,9 @@ window.loadSpecificPlan = function (planData) {
   window.currentPlanTeacher = planData.teacher_name ||
     lessonStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
   window.currentTargetGrade = planData.grade_level || document.getElementById("lpGradeLevel")?.value || "Grade 11";
+  if(document.getElementById("lpSubject"))document.getElementById("lpSubject").value=window.currentPlanSubject;
+  if(document.getElementById("lpProgram"))document.getElementById("lpProgram").value=planData.program_name||"";
+  window.loadedPersonalIdentity=JSON.stringify([planData.school_year||"2026-2027",planData.grade_level||window.currentTargetGrade,window.currentPlanSubject,planData.safeTerm||planData.academic_term||"FIRST SEMESTER/FIRST QUARTER",planData.safeWeek||planData.course_week||"Week 1"]);
 
   document.getElementById("lpSchoolYear").value =
     planData.school_year || "2026-2027";

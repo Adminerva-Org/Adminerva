@@ -1,5 +1,5 @@
 /** Reports reach teaching sections only through a verified enrolled reporter profile. */
-import {auth,db} from "./firebase-core.js";
+import {auth,db} from "./firebase-core.js?v=1.3.0";
 import {collection,getDocs,query,where} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 export async function reportContext(audience,category){
   if(audience!=="teacher"||category==="Bug")return {audience:"admin"};

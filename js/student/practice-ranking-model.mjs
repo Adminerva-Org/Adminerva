@@ -1,4 +1,4 @@
-import {COURSES,hashSeed} from "./practice-courses.mjs?v=2026.10.21.2-dev.1";
+import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.3.0";
 export const PRACTICE_MAXIMUM=COURSES.reduce((total,course)=>total+course.missions.length,0);
 export function practiceAlias(studentId){return "Learner-"+(hashSeed(studentId)>>>0).toString(36).toUpperCase().padStart(7,"0").slice(-7);}
 export function completionTotal(records){

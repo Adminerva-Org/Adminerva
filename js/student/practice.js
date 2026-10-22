@@ -1,10 +1,10 @@
 /** Server-checked practice with private drafts, explicit session transfers and no client-awarded XP. */
-import {auth,db} from "../core/firebase-core.js";
+import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,getDocs} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {COURSES} from "./practice-courses.mjs";
-import {makeCheckedPracticeTransfer,readPracticeTransfer,practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.1.0";
-import {resumePracticeSession,resetPracticeSession,activePracticeSession,practiceRequest} from "./practice-session.mjs?v=1.1.0";
+import {COURSES} from "./practice-courses.mjs?v=1.3.0";
+import {makeCheckedPracticeTransfer,readPracticeTransfer,practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.3.0";
+import {resumePracticeSession,resetPracticeSession,activePracticeSession,practiceRequest} from "./practice-session.mjs?v=1.3.0";
 let user=null,completed=new Map(),reflections=new Map(),activeCourse=null,activeMission=null,checked=null,choice=null,busy=false,epoch=0;
 const field=id=>document.getElementById(id);
 const status=message=>{field("practiceStatus").textContent=message;};

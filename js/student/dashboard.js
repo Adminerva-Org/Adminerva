@@ -1,6 +1,7 @@
+import {loadPublishedGrades} from "./published-grades.mjs?v=1.3.0";
 /** Legacy teacher analytics import compatibility entry. */
-import { db, auth } from "../core/firebase-core.js";
-import { cleanGradeFeedback } from "../core/feedback-format.mjs";
+import { db, auth } from "../core/firebase-core.js?v=1.3.0";
+import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {
   collection,
   getDocs,
@@ -166,12 +167,7 @@ async function loadDashboardProfile(studentData) {
   myPublishedGrades = {};
   if (gradeContainer) {
     try {
-      const gradeQuery = query(
-        collection(db, "student_grades"),
-        where("studentId", "==", studentData.docId),
-        where("published", "==", true),
-      );
-      const gradeSnap = await getDocs(gradeQuery);
+      const gradeSnap = await loadPublishedGrades(studentData.docId);
 
       let publishedGrades = [];
       gradeSnap.forEach((d) => {

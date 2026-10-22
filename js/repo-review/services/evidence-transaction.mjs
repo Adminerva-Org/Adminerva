@@ -1,7 +1,7 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: evidence transaction. */
-import {auth,db} from "../../core/firebase-core.js";
-import {doc,runTransaction,serverTimestamp} from "../../core/teaching-firestore.mjs?v=1.1.0";
-import {assertSameEvidence,evidenceRevision,gradeMatchesEvidence} from "./evidence-lifecycle.mjs?v=2026.10.19.4";
+import {auth,db} from "../../core/firebase-core.js?v=1.3.0";
+import {doc,runTransaction,serverTimestamp} from "../../core/teaching-firestore.mjs?v=1.3.0";
+import {assertSameEvidence,evidenceRevision,gradeMatchesEvidence} from "./evidence-lifecycle.mjs?v=1.3.0";
 
 export async function verifyGradePublication(transaction,gradeRef,grade){
   if(!grade.taskId)return false;

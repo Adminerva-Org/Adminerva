@@ -1,5 +1,5 @@
 {
-  "version": "1.2.0",
-  "releasedAt": "2026-10-22",
-  "notes": "Clearer navigation, task-focused home pages, accessible school setup, repaired directory import controls and recoverable practice actions. Save current work before refreshing."
+  "version": "1.3.0",
+  "releasedAt": "2026-10-23",
+  "notes": "A connected teaching workspace, difficulty-based Practice Points, public guest learning, persistent sign-in, project file explorer and improved XML design tools. Save current work before refreshing."
 }

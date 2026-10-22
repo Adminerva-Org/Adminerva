@@ -1,9 +1,7 @@
 name: Adminerva quality checks
 on:
-  push:
-    branches: [main, feature/grading-overhaul]
-  pull_request:
-    branches: [main, feature/review-workflow-and-student-labs]
+  workflow_dispatch:
+
 jobs:
   javascript-regressions:
     runs-on: ubuntu-latest

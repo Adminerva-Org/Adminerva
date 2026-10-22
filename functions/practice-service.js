@@ -1,5 +1,6 @@
 /** Server-owned practice attempts, session handovers and idempotent formative XP. */
 const {randomBytes,createHash}=require("node:crypto");
+const {createPracticeSeasonService}=require("./practice-season-service.js");
 const CATALOG_VERSION="2026.10.21.3";
 const id=()=>randomBytes(24).toString("hex");
 const hash=value=>createHash("sha256").update(value).digest("hex");
@@ -167,6 +168,6 @@ function createPracticeService({db,Timestamp,resolveUser,now=Date.now,randomId=i
       return {awarded:!award.exists,points:count*10,completedCount:count,alreadyRecorded:award.exists};
     });
   }
-  return {acquire,start,predict,complete};
+  return {acquire,start,predict,complete,...createPracticeSeasonService({db,Timestamp,resolveUser,now,randomId,catalog,reject})};
 }
 module.exports={createPracticeService,PracticeError,CATALOG_VERSION};

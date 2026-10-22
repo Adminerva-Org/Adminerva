@@ -1,15 +1,15 @@
 /** Academic analytics for the selected instructor's configured sections; raw operations stay in the admin module. */
-import { db, auth } from "../core/firebase-core.js";
-import {selectedTeacherSections} from "./teacher-engagement.mjs?v=1.1.0";
-import {staffRole} from "../core/staff-role.mjs?v=1.1.0";
-import {academicGradeEligible,queryGroups} from "./academic-model.mjs?v=2026.10.20.1";
-import {createReviewRequests} from "../repo-review/services/review-requests.mjs?v=2026.10.20.1";
+import { db, auth } from "../core/firebase-core.js?v=1.3.0";
+import {selectedTeacherSections} from "./teacher-engagement.mjs?v=1.3.0";
+import {staffRole} from "../core/staff-role.mjs?v=1.3.0";
+import {academicGradeEligible,queryGroups} from "./academic-model.mjs?v=1.3.0";
+import {createReviewRequests} from "../repo-review/services/review-requests.mjs?v=1.3.0";
 import {
   collection,
   getDocs,
   query,
   where,
-} from "../core/teaching-firestore.mjs?v=1.1.0";
+} from "../core/teaching-firestore.mjs?v=1.3.0";
 
 let velocityChartInstance = null;
 let globalStudents = [];

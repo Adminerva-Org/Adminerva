@@ -1,7 +1,8 @@
-import {resolveAccountAccess} from "./staff-session.mjs?v=1.1.0";
-import {activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "./connection-cache.mjs?v=1.2.0";
+import {resolveAccountAccess} from "./staff-session.mjs?v=1.3.0";
+import {activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "./connection-cache.mjs?v=1.3.0";
+import {rememberWorkspace} from "./session-destination.mjs?v=1.3.0";
 /** Verified account admission, workspace visibility and sign-out routing. */
-import { auth } from "./firebase-core.js";
+import { auth } from "./firebase-core.js?v=1.3.0";
 import {
   onAuthStateChanged,
   signOut,
@@ -10,26 +11,48 @@ import {
 const currentPath = window.location.pathname.toLowerCase();
 const isLoginPage = currentPath.includes("login.html");
 let admittedUid;
+let checkingAccess=false,accessGate=null,accessEpoch=0;
 const guardedSignOut = () => {
-  clearConnectionPreferences();
+  try{clearConnectionPreferences();}catch{}
   return signOut(auth);
 };
+
+function showAccessRecovery(message){
+  if(!accessGate){
+    accessGate=document.createElement("section");accessGate.id="account-access-recovery";
+    accessGate.setAttribute("role","dialog");accessGate.setAttribute("aria-modal","true");accessGate.setAttribute("aria-labelledby","access-recovery-title");
+    accessGate.style.cssText="position:fixed;inset:0;z-index:10000;display:grid;place-content:center;padding:24px;background:#eef3fa;color:#17324d;font:16px/1.6 system-ui;text-align:left;";
+    accessGate.innerHTML='<div style="max-width:520px;background:white;padding:32px;border:1px solid #cad7e8;border-radius:18px;box-shadow:0 14px 40px #16395812"><h1 id="access-recovery-title" style="font-size:24px;font-weight:750;margin:0 0 12px">Let’s reconnect your workspace</h1><p data-recovery-message role="status"></p><p style="font-size:14px;color:#567086">Your account stays signed in. School data remains protected while we check access.</p><div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:20px"><button type="button" data-recovery-retry style="padding:12px 18px;background:#2458bd;color:white;border:0;border-radius:8px;font-weight:700">Retry access check</button><a href="wiki.html#support" style="padding:12px;color:#2458bd">Read help</a><button type="button" data-recovery-signout style="padding:12px;background:white;border:1px solid #cad7e8;border-radius:8px">Sign out</button></div></div>';
+    document.documentElement.append(accessGate);
+    accessGate.querySelector("[data-recovery-retry]").onclick=()=>void checkAccess(auth.currentUser);
+    accessGate.querySelector("[data-recovery-signout]").onclick=async()=>{await guardedSignOut();location.assign("login.html?switch=1");};
+    accessGate.addEventListener("keydown",event=>{if(event.key!=="Tab")return;const controls=[...accessGate.querySelectorAll("button,a[href]")].filter(control=>!control.disabled),first=controls[0],last=controls.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}});
+  }
+  document.body.inert=true;
+  accessGate.hidden=false;accessGate.querySelector("[data-recovery-message]").textContent=message;
+  accessGate.querySelector("[data-recovery-retry]").disabled=false;
+  accessGate.querySelector("[data-recovery-retry]").focus();
+}
+function dismissAccessRecovery(){if(accessGate)accessGate.hidden=true;document.body.inert=false;}
 
 // 🚨 TIER 1: The Master Key (Can access system API settings)
 
 // 🚨 TIER 2: The Instructor (Can access grading and rosters)
 
-onAuthStateChanged(auth, async (user) => {
-  if (user?.uid) activateConnectionOwner(user.uid);
-  else clearConnectionPreferences();
+async function checkAccess(user){
+  if(checkingAccess)return;
+  checkingAccess=true;
+  const check=++accessEpoch;
+  if(accessGate)accessGate.querySelector("[data-recovery-retry]").disabled=true;
+  try{if (user?.uid) activateConnectionOwner(user.uid);else clearConnectionPreferences();}catch{}
   if(admittedUid!==undefined&&admittedUid!==(user?.uid||null)){
-    window.location.replace("login.html?error=account-changed");return;
+    window.location.replace("login.html?error=account-changed");checkingAccess=false;return;
   }
   admittedUid=user?.uid||null;
   const endLoading = window.beginLoading?.("Checking account and page access…") || (() => {});
   try {
   if (!user) {
-    if (!isLoginPage) window.location.href = "login.html";
+    if (!isLoginPage) {const destination=new URL("login.html",location.href);destination.searchParams.set("returnTo",location.pathname.split("/").pop()+location.search+location.hash);window.location.replace(destination.href);}
     return;
   }
 
@@ -37,10 +60,12 @@ onAuthStateChanged(auth, async (user) => {
   const userEmail = user.email.toLowerCase();
   let access;
   try {access=await resolveAccountAccess(user);}
-  catch {await guardedSignOut();window.location.href="login.html?error=server";return;}
+  catch {if(check===accessEpoch&&auth.currentUser?.uid===user.uid)showAccessRecovery("We couldn’t check your school access. Check your connection, then retry. If it continues, ask your school administrator to review access.");return;}
+  if(check!==accessEpoch||auth.currentUser?.uid!==user.uid)return;
+  if(access.staffLookupUnavailable){showAccessRecovery("Your school access check is temporarily unavailable. Your account remains signed in. Please retry before continuing.");return;}
   const admittedRole=access.role;
   if (["admin", "teacher"].includes(admittedRole) && auth.currentUser?.uid === user.uid) {
-    writeConnectionPreferences(user.uid, access.teachers?.[0]?.data?.() || {});
+    try{writeConnectionPreferences(user.uid, access.teachers?.[0]?.data?.() || {});}catch{}
   }
 
   // 1. Strict Whitelist Enforcement
@@ -52,8 +77,7 @@ onAuthStateChanged(auth, async (user) => {
       }
     } catch (error) {
       console.error("Database connection error:", error);
-      await guardedSignOut();
-      window.location.href = "login.html?error=server";
+      showAccessRecovery("Your school access could not be confirmed. Retry the check or contact your school administrator.");
       return;
     }
   }
@@ -115,13 +139,16 @@ onAuthStateChanged(auth, async (user) => {
     document.querySelectorAll("[data-admin-only]").forEach(el => el.classList.remove("hidden"));
   }
   // 5. Security cleared: Display the UI
+  dismissAccessRecovery();rememberWorkspace(user.uid);
   const pageBody = document.getElementById("pageBody");
   if (pageBody) pageBody.classList.remove("hidden");
 
   const emailDisplay = document.getElementById("userEmailDisplay");
   if (emailDisplay) emailDisplay.textContent = accountEmail;
-  } finally { endLoading(); }
-});
+  } finally { checkingAccess=false;endLoading(); }
+}
+onAuthStateChanged(auth,user=>{if(checkingAccess&&admittedUid!==(user?.uid||null)){accessEpoch++;checkingAccess=false;}void checkAccess(user);});
+window.addEventListener("online",()=>{if(accessGate&&!accessGate.hidden)void checkAccess(auth.currentUser);});
 
 // Centralized Sign Out
 document.addEventListener("click", (e) => {

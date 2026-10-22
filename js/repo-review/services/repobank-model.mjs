@@ -1,4 +1,4 @@
-import {parseGithubRepository} from "./github-evidence-client.mjs?v=2026.10.20.1";
+import {parseGithubRepository} from "./github-evidence-client.mjs?v=1.3.0";
 const shaPattern=/^[a-f0-9]{40}$/i;
 export function repositoryKey(url){return parseGithubRepository(url).fullName.toLowerCase();}
 export function verifiedMemberEvidence(records,studentId,repository){

@@ -1,3 +1,4 @@
+import {projectPath} from "./playground-project.mjs?v=1.3.0";
 /** Student submissions, practice progress and isolated code workspaces: playground storage. */
 // Per-student, per-language local workspaces. Avoid sharing code between
 // students who sign in to the same computer and preserve each language's draft.
@@ -21,8 +22,7 @@ export function validPlaygroundState(state) {
       Array.isArray(state.files)) return false;
   const names = Object.keys(state.files);
   return names.length > 0 && names.length <= 100 &&
-    names.every(name => name.length > 0 && name.length <= 255 &&
-      typeof state.files[name] === "string") &&
+    names.every(name => {try{return projectPath(name)===name && typeof state.files[name] === "string";}catch{return false;}}) &&
     Array.isArray(state.fileOrder) &&
     state.fileOrder.length === names.length &&
     new Set(state.fileOrder).size === names.length &&

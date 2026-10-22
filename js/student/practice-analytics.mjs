@@ -1,11 +1,11 @@
-import {staffRole} from "../core/staff-role.mjs?v=1.1.0";
-import {resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
+import {staffRole} from "../core/staff-role.mjs?v=1.3.0";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
 /** Student submissions, practice progress and isolated code workspaces: practice analytics. */
-import {auth,db} from "../core/firebase-core.js";
+import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {collection,doc,getDocs,query,where,limit,runTransaction,writeBatch,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.1.0";
-import {COURSES} from "./practice-courses.mjs?v=2026.10.21.2-dev.1";
-import {practicePoints,classStandings} from "./practice-points.mjs?v=2026.10.21.2-dev.1";
+import {collection,doc,getDocs,query,where,limit,runTransaction,writeBatch,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.3.0";
+import {COURSES} from "./practice-courses.mjs?v=1.3.0";
+import {practicePoints,classStandings} from "./practice-points.mjs?v=1.3.0";
 const el=id=>document.getElementById(id);
 const make=(tag,text)=>{const node=document.createElement(tag);node.textContent=text;return node;};
 let roster=[],profiles=[],scores=[],active=null,generation=0,loadedSection="",reviewSequence=0,reviewLoading=false,reviewSaving=false;

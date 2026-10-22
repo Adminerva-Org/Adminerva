@@ -1,9 +1,9 @@
-import {resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
 /** Teacher-only coarse engagement snapshots; administrators select a teacher here, not in operations analytics. */
-import {auth, db} from "../core/firebase-core.js";
+import {auth, db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {doc, getDocFromServer, collection, getDocs, onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {staffRole} from "../core/staff-role.mjs?v=1.1.0";
+import {staffRole} from "../core/staff-role.mjs?v=1.3.0";
 
 const selector = document.getElementById("analytics-teacher");
 let epoch = 0;

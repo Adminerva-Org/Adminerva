@@ -4,22 +4,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Adminerva - RepoFetch Grader</title>
+    <title>Teaching workspace | Adminerva</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.2.0" />
-</head>
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.3.0" />
+<link rel="stylesheet" href="css/teaching-workspace.css?v=1.3.0"></head>
   <body class="bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="repo" data-page="repofetch"></div>
-    <script src="js/core/adminerva-nav.js?v=1.2.0"></script>
+    <script src="js/core/adminerva-nav.js?v=1.3.0"></script>
 
     <div class="max-w-screen-xl mx-auto w-full p-6 mt-4 flex-1">
       <div class="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-        <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900">Review &amp; Grade</h1>
-        <p class="text-sm text-slate-600 mt-2 mb-5">Review each student's evidence, evaluation draft, score and feedback in one workspace.</p>
+        <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900">Teaching workspace</h1>
+        <p class="text-sm text-slate-600 mt-2 mb-5">Choose a class, assessment and group or learner. Keep the same context while reviewing submissions, source, evidence and individual grades.</p>
         <section id="v2GradingWorkspace" class="border border-indigo-200 rounded-xl bg-indigo-50/60 p-4 sm:p-5 mb-6 space-y-4" aria-labelledby="v2WorkspaceTitle">
           <div>
-            <h2 id="v2WorkspaceTitle" class="text-lg font-extrabold text-indigo-950">Assessment review queue</h2>
-            <p class="text-sm text-slate-600 mt-1">Choose a section, assessment, and student. Review evidence, approve individual contributions, evaluate, and save a private grade draft here. Expand details for deeper investigation.</p>
+            <h2 id="v2WorkspaceTitle" class="text-lg font-extrabold text-indigo-950">Choose your review context</h2>
+            <p class="text-sm text-slate-600 mt-1">Groups share a repository or an assigned group name. Grades and feedback stay individual. Repository-free tasks use Manual activity.</p>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1.5fr_auto] gap-3 items-end">
             <label class="block text-xs font-semibold text-slate-800" for="v2SectionSelect">Class section
@@ -30,8 +30,29 @@
             </label>
             <button id="v2RefreshQueue" type="button" class="rounded-lg bg-slate-800 text-white px-4 py-2.5 text-sm font-bold">Refresh queue</button>
           </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="block text-xs font-semibold text-slate-800" for="reviewTargetMode">Review mode<select id="reviewTargetMode" class="w-full mt-1 border rounded-lg p-2.5"><option value="group">Group</option><option value="individual">Individual</option></select></label>
+            <label class="block text-xs font-semibold text-slate-800" for="reviewTargetSelect">Group or learner<select id="reviewTargetSelect" class="w-full mt-1 border rounded-lg p-2.5"><option value="">Choose an assessment first</option></select></label>
+          </div>
           <p id="v2QueueStatus" role="status" class="text-sm text-slate-700">Loading assessments…</p>
-          <div id="v2Queue" class="grid grid-cols-1 gap-3" aria-live="polite"></div>
+          <details class="av-review-queue-details"><summary class="font-semibold cursor-pointer text-sm">Browse all targets in this class</summary><div id="v2Queue" class="av-review-target-grid mt-3" aria-live="polite"></div></details>
+        </section>
+        <section id="teachingWorkspace" class="av-teaching-workspace" hidden aria-labelledby="teaching-context-title">
+          <header class="av-teaching-context"><h2 id="teaching-context-title" data-review-context class="font-extrabold text-lg"></h2><p data-review-individual class="text-sm text-slate-600 mt-1"></p><label class="block text-sm font-semibold mt-3">Current learner<select data-review-member class="mt-1 w-full border rounded-lg p-2.5"></select></label></header>
+          <nav class="av-teaching-tabs" role="tablist" aria-label="Teaching workspace panels">
+            <button type="button" id="teaching-tab-inbox" role="tab" aria-controls="teaching-panel-inbox" data-teaching-tab="inbox" aria-selected="true">Inbox</button>
+            <button type="button" id="teaching-tab-repository" role="tab" aria-controls="teaching-panel-repository" data-teaching-tab="repository" aria-selected="false" tabindex="-1">Repository</button>
+            <button type="button" id="teaching-tab-evidence" role="tab" aria-controls="teaching-panel-review" data-teaching-tab="evidence" aria-selected="false" tabindex="-1">Evidence</button>
+            <button type="button" id="teaching-tab-contributions" role="tab" aria-controls="teaching-panel-contributions" data-teaching-tab="contributions" aria-selected="false" tabindex="-1">Contributions</button>
+            <button type="button" id="teaching-tab-grade" role="tab" aria-controls="teaching-panel-review" data-teaching-tab="grade" aria-selected="false" tabindex="-1">Review &amp; grade</button>
+            <button type="button" id="teaching-tab-activity" role="tab" aria-controls="teaching-panel-activity" data-teaching-tab="activity" aria-selected="false" tabindex="-1">Manual activity</button>
+          </nav>
+          <p data-workspace-status role="status" class="text-sm text-slate-600 my-3"></p>
+          <section id="teaching-panel-inbox" role="tabpanel" aria-labelledby="teaching-tab-inbox" data-teaching-panel="inbox"></section>
+          <section id="teaching-panel-repository" role="tabpanel" aria-labelledby="teaching-tab-repository" data-teaching-panel="repository" hidden></section>
+          <section id="teaching-panel-review" role="tabpanel" aria-labelledby="teaching-tab-grade" data-teaching-panel="review" hidden></section>
+          <section id="teaching-panel-contributions" role="tabpanel" aria-labelledby="teaching-tab-contributions" data-teaching-panel="contributions" hidden></section>
+          <section id="teaching-panel-activity" role="tabpanel" aria-labelledby="teaching-tab-activity" data-teaching-panel="activity" hidden></section>
         </section>
         <details id="legacyRepoTools" class="border border-slate-200 rounded-xl p-4">
           <summary class="font-semibold text-slate-700 cursor-pointer">Legacy repository sync and grading tools</summary>
@@ -351,11 +372,11 @@
     </div>
 
     <!-- Teacher-operated fallback when individual code attribution needs review. -->
-    <div id="manualReviewModal" role="dialog" aria-modal="true"
+    <div id="manualReviewModal" data-inline-review="true"
       aria-labelledby="manualReviewTitle"
-      class="hidden fixed inset-0 z-[155] bg-slate-950/70 backdrop-blur-sm p-2 sm:p-5 flex items-center justify-center">
+      class="hidden av-inline-review">
       <div class="bg-white rounded-2xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col"
-        style="max-height:calc(100dvh - 16px)">
+        >
         <div class="bg-slate-800 px-5 py-4 text-white flex justify-between items-start gap-4">
           <div>
             <h2 id="manualReviewTitle" class="text-lg font-extrabold">Review & Grade</h2>
@@ -415,11 +436,7 @@
             <p id="manualReviewAIStatus" role="status" class="text-xs text-indigo-900">Approve checkpoint evidence to enable suggestions.</p>
             <div id="manualReviewFallback" class="hidden rounded border border-amber-200 bg-amber-50 p-3" role="status"><p class="text-sm">No replacement score was saved. Continue with your own score and feedback, or retry after the service cooldown.</p><div class="flex flex-wrap gap-3 mt-2"><button type="button" id="manualReviewRetry" class="border rounded px-3 py-2">Retry with backoff</button></div></div>
             <button id="manualReviewVerifyContributions" type="button" class="hidden border border-indigo-300 rounded px-3 py-2 text-xs font-bold">Complete individual verification</button>
-            <details id="manualReviewCheckerSetup" class="text-xs border rounded p-3"><summary class="cursor-pointer font-semibold">Checker setup and source-sharing details</summary>
-              <p class="my-2">An instructor-managed Gemini provider key is required. It stays in this browser, not in student records. Only evaluate after approving source sharing; never put a key in feedback. Automated generation assists your review and may be inaccurate.</p>
-              <label class="block">Provider key<input id="manualReviewCheckerKey" type="password" autocomplete="off" class="w-full border rounded p-2 mt-1" /></label>
-              <button id="manualReviewSaveChecker" type="button" class="mt-2 border rounded px-3 py-2 font-semibold">Save checker key on this device</button>
-            </details>
+            <p id="manualReviewCheckerSetup" class="text-xs border rounded p-3">Evaluation uses the school’s configured AI connection. <a href="settings.html" class="underline font-semibold">View connection settings</a>. Your score and feedback stay under your control.</p>
           </section>
           <form id="manualReviewForm" class="space-y-4" style="scroll-margin-top:64px">
             <h3 class="font-bold">3. Teacher score and feedback</h3>
@@ -452,9 +469,9 @@
                 class="w-full border border-slate-300 rounded-lg px-3 py-2.5"></textarea>
             </div>
             <div>
-              <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewReason">Private teacher review note (required)</label>
-              <textarea id="manualReviewReason" rows="3" maxlength="3000" required
-                placeholder="Explain why you accepted or rejected the flagged evidence. This is saved in the grading audit trail."
+              <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewReason">Additional private note (optional)</label>
+              <textarea id="manualReviewReason" rows="2" maxlength="3000"
+                placeholder="Add context only when it helps explain your decision."
                 class="w-full border border-slate-300 rounded-lg px-3 py-2.5"></textarea>
             </div>
             <label class="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-slate-800">
@@ -476,10 +493,10 @@
       </div>
     </div>
 
-    <script src="js/core/adminerva-loader.js?v=1.2.0"></script>
-    <script type="module" src="js/repo-review/repofetch.js?v=1.1.0"></script>
-    <script type="module" src="js/repo-review/auto-checker.js?v=1.1.0"></script>
-    <script type="module" src="js/repo-review/manual-review.mjs?v=1.1.0"></script>
-    <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=1.1.0"></script>
+    <script src="js/core/adminerva-loader.js?v=1.3.0"></script>
+    <script type="module" src="js/repo-review/repofetch.js?v=1.3.0"></script>
+    <script type="module" src="js/repo-review/auto-checker.js?v=1.3.0"></script>
+    <script type="module" src="js/repo-review/manual-review.mjs?v=1.3.0"></script>
+    <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=1.3.0"></script>
   </body>
 </html>

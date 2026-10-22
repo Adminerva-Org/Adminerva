@@ -1,5 +1,5 @@
 /** Non-blocking task status, compact feedback and safe Markdown previews. */
-import {cleanGradeFeedback} from "../core/feedback-format.mjs";
+import {cleanGradeFeedback} from "../core/feedback-format.mjs?v=1.3.0";
 let noticeTimer;
 export function feedbackSummary(value) {
   return cleanGradeFeedback(value).replace(/[#*_`>]/g,"").replace(/\s+/g," ").split(/(?<=[.!?])\s/)[0].slice(0,160)||"Open feedback and review details";

@@ -1,8 +1,11 @@
-import {requireCurrentVersion} from "./workspace-model.mjs?v=2026.10.20.1";
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.1.0";
+import {requireCurrentVersion} from "./workspace-model.mjs?v=1.3.0";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.3.0";
 /** Teacher schedule editing and scoped calendar workflow. */
-import { db } from "../core/firebase-core.js";
-import { scheduleScope, parseScheduleRows, parseClockMinutes } from "./schedule-scope.mjs?v=2026.10.20.1";
+import { db } from "../core/firebase-core.js?v=1.3.0";
+import {loadSchoolOptions,fillSchoolDatalist} from "../core/school-options.mjs?v=1.3.0";
+import {auth} from "../core/firebase-core.js?v=1.3.0";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
+import { scheduleScope, parseScheduleRows, parseClockMinutes } from "./schedule-scope.mjs?v=1.3.0";
 import {
   doc,
   getDoc,
@@ -22,6 +25,17 @@ let loadSerial = 0;
 let isSaving = false;
 let cloudVersion=0;
 let loadingSchedule=false;
+let schoolOptions=null;
+async function refreshSchoolChoices(){
+  const label=document.getElementById("scheduleCatalogStatus");
+  try{
+    schoolOptions=await loadSchoolOptions({schoolYear:activeYear});loadConfig();
+    fillSchoolDatalist("scheduleSchoolYears",[activeYear,...schoolOptions.schoolYears]);
+    fillSchoolDatalist("scheduleSubjectChoices",schoolOptions.subjects);
+    if(label)label.textContent=schoolOptions.sections.length+" school sections and "+schoolOptions.subjects.length+" catalog subjects available."+(schoolOptions.warnings.length?" Some school records could not load; saved timetable values are preserved.":!schoolOptions.sections.length?" Ask an administrator to assign your exact roster sections before scheduling new classes.":"");
+  }catch{if(label)label.textContent="School choices could not load. Saved timetable values and personal options are preserved. Select Refresh school choices to retry.";}
+}
+window.refreshScheduleSchoolChoices=async()=>{if(isSaving)return;if(isEditing)draftRows=getTableDataFromDOM();await refreshSchoolChoices();renderTable();};
 
 function escapeHTML(str) {
   return String(str ?? "")
@@ -47,7 +61,8 @@ workspaceOnReady(() => {
     for(const key of [scope.pendingKey,scope.jsonKey,scope.textKey])lessonStorage.removeItem(key);
     isEditing=false;draftRows=null;updateEditControls();await fetchScheduleFromCloud();
   });
-  const legacy=document.createElement("button");legacy.type="button";legacy.className="av-secondary-button";legacy.textContent="Import older shared timetable…";
+  const legacy=document.createElement("button");legacy.type="button";legacy.className="av-secondary-button";legacy.textContent="Import older shared timetable…";legacy.hidden=true;
+  resolveStaffRole(auth.currentUser).then(role=>{legacy.hidden=role!=="admin";});
   legacy.addEventListener("click",async()=>{
     if(isSaving)return;
     const scope=currentScope(),ownerUid=workspaceUid();
@@ -182,6 +197,7 @@ window.hideLoader = function () {
 };
 
 workspaceOnReady( async () => {
+  try{const saved=await getDoc(ownedDoc(db,"preferences","schedule_options"));if(saved.exists())for(const [field,key] of [["subjects","Adminerva_subjects"],["events","Adminerva_events"]])if(typeof saved.data()[field]==="string")lessonStorage.setItem(key,saved.data()[field]);}catch{/* Personal device options remain usable offline. */}
   loadConfig();
   const year = lessonStorage.getItem("Adminerva_schedule_selected_year");
   const semester = lessonStorage.getItem("Adminerva_schedule_selected_semester");
@@ -191,6 +207,7 @@ workspaceOnReady( async () => {
   }
   if (semester === "S1" || semester === "S2") activeSemester = semester;
   syncPeriodInputs();
+  await refreshSchoolChoices();
   document.getElementById("scheduleSchoolYear")?.addEventListener("change", window.changeSchedulePeriod);
   document.getElementById("scheduleSemester")?.addEventListener("change", window.changeSchedulePeriod);
   updateEditControls();
@@ -228,12 +245,13 @@ window.changeSchedulePeriod = async function () {
   activeSemester = requestedSemester;
   lessonStorage.setItem("Adminerva_schedule_selected_year", activeYear);
   lessonStorage.setItem("Adminerva_schedule_selected_semester", activeSemester);
+  await refreshSchoolChoices();
   await fetchScheduleFromCloud();
 };
 // --- MODAL & CONFIG LOGIC ---
 window.openSettingsModal = function () {
   document.getElementById("configSections").value =
-    lessonStorage.getItem("Adminerva_sections") || "";
+    (schoolOptions?.sections||mySections).join(", ");
   document.getElementById("configSubjects").value =
     lessonStorage.getItem("Adminerva_subjects") || "";
   document.getElementById("configEvents").value =
@@ -252,10 +270,6 @@ window.closeSettingsModal = function () {
 
 window.saveSettingsConfig = async function () {
   lessonStorage.setItem(
-    "Adminerva_sections",
-    document.getElementById("configSections").value,
-  );
-  lessonStorage.setItem(
     "Adminerva_subjects",
     document.getElementById("configSubjects").value,
   );
@@ -269,11 +283,15 @@ window.saveSettingsConfig = async function () {
   if (isEditing) draftRows = getTableDataFromDOM();
   loadConfig();
   renderTable();
-  closeSettingsModal();
+  try{
+    const uid=await requireStaffWorkspace();
+    await setDoc(ownedDoc(db,"preferences","schedule_options"),{subjects:document.getElementById("configSubjects").value,events:document.getElementById("configEvents").value});
+    assertWorkspaceAccount(uid);window.closeSettingsModal();
+  }catch{const label=document.getElementById("scheduleOptionsStatus");if(label)label.textContent="Options saved on this device. Cloud sync failed; select Save options to retry. Your timetable draft is unchanged.";}
 };
 
 function loadConfig() {
-  mySections = (lessonStorage.getItem("Adminerva_sections") || "")
+  mySections = schoolOptions?.sections || (lessonStorage.getItem("Adminerva_sections") || "")
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s !== "");
@@ -281,6 +299,7 @@ function loadConfig() {
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s !== "");
+  mySubjects=[...new Set([...(schoolOptions?.subjects||[]),...mySubjects])].sort();
   myEvents = (lessonStorage.getItem("Adminerva_events") || "")
     .split(",")
     .map((s) => s.trim())

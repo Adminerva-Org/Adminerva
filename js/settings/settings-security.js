@@ -1,6 +1,7 @@
 /** Per-account integration preferences; the application connection is managed by deployment. */
-import { app, auth, db } from "../core/firebase-core.js";
-import {CONNECTION_DEFAULTS,activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "../core/connection-cache.mjs?v=1.2.0";
+import { app, auth, db } from "../core/firebase-core.js?v=1.3.0";
+import "./school-ai-settings.mjs?v=1.3.0";
+import {CONNECTION_DEFAULTS,activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "../core/connection-cache.mjs?v=1.3.0";
 import {collection,query,where,getDocs,doc,updateDoc,setDoc} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const field=id=>document.getElementById(id);
@@ -15,7 +16,7 @@ function feedback(message,tone="info"){
 function assertAccount(user){if(!user?.uid||auth.currentUser?.uid!==user.uid||formOwnerUid!==user.uid)throw Error("Your account changed. Reload this page before saving.");}
 function fillPreferences(values){for(const [id,key] of preferences)safeSet(id,values[key]);}
 function showAppConnection(){
-  safeSet("firebaseConfigInput",JSON.stringify({projectId:app.options.projectId||"",authDomain:app.options.authDomain||"",storageBucket:app.options.storageBucket||""},null,2));
+  safeSet("firebaseConfigInput",JSON.stringify(app.options,null,2));
   if(field("firebaseConfigInput"))field("firebaseConfigInput").readOnly=true;
 }
 field("panel-security")?.addEventListener("input",()=>{editRevision++;if(!saving)feedback("You have unsaved changes.");});

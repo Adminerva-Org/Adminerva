@@ -1,5 +1,5 @@
 /** Lesson reference folders and document management. */
-import { db } from "../core/firebase-core.js";
+import { db } from "../core/firebase-core.js?v=1.3.0";
 import {
   collection,
   getDocs,
@@ -9,7 +9,7 @@ import {
   doc,
   increment,
   writeBatch,
-} from "../core/teaching-firestore.mjs?v=1.1.0";
+} from "../core/teaching-firestore.mjs?v=1.3.0";
 
 let libraryData = [];
 let activeFolderId = null;

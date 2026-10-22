@@ -1,11 +1,32 @@
 /** Audited administrator-managed teacher admission, section assignments and read-only legacy recovery. */
-import {auth,db} from "./firebase-core.js";
+import {auth,db} from "./firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,doc,getDocs,getDoc,query,limit,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {resolveStaffRole} from "./staff-session.mjs?v=1.1.0";
-import {ADMIN_EMAIL,TEACHER_EMAIL} from "./staff-role.mjs?v=1.1.0";
+import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
+import {ADMIN_EMAIL,TEACHER_EMAIL} from "./staff-role.mjs?v=1.3.0";
+import {mountLegacyRecovery,restoreOriginalTeacherSections,legacyLessonRecovery} from "./legacy-lesson-recovery.mjs?v=1.3.0";
 const field=id=>document.getElementById(id);
 let epoch=0,opened=null,busy=false,selectionEpoch=0,sectionCounts=new Map();
+mountLegacyRecovery();
+let preparingOriginal=false;
+async function prepareOriginalTeacher(){
+  if(preparingOriginal)return;preparingOriginal=true;field("staff-legacy-setup").disabled=true;
+  field("original-teacher-status").textContent="Checking the original teacher’s legacy roster connection…";
+  try{
+    const result=await restoreOriginalTeacherSections();field("original-teacher-status").textContent=result.message;if(result.changed&&!opened)await refresh();
+    if(!result.disabled){
+      const preview=await legacyLessonRecovery({action:"preview"});let recovered=0;
+      for(let index=0;index<(preview.eligible||[]).length;index+=100){
+        const batch=preview.eligible.slice(index,index+100);field("original-teacher-status").textContent="Restoring lessons whose saved owner matches the verified original teacher…";
+        const response=await legacyLessonRecovery({action:"recover",recordIds:batch.map(record=>record.id),sourceVersions:Object.fromEntries(batch.map(record=>[record.id,record.sourceVersion])),reason:"Automatic recovery: saved owner identity matches the verified original teacher.",attestOriginalOwner:false});recovered+=response.recovered||0;
+      }
+      field("original-teacher-status").textContent=result.message+" "+recovered+" metadata-attributed lesson(s) recovered."+((preview.unattributed||[]).length?" "+preview.unattributed.length+" lessons have unverified ownership; review them in Recover older school lesson plans below.":"");
+    }
+  }
+  catch(error){field("original-teacher-status").textContent="Legacy class setup could not finish: "+error.message+". Existing student records and explicit teacher assignments were preserved.";}
+  finally{preparingOriginal=false;field("staff-legacy-setup").disabled=false;}
+}
+field("staff-legacy-setup").addEventListener("click",prepareOriginalTeacher);
 function status(message,tone="info"){for(const id of ["staff-account-status","staff-form-status"]){field(id).textContent=message;field(id).dataset.tone=tone;}}
 function renderSectionPicker(){
   const picker=field("staff-section-picker");picker.replaceChildren();
@@ -93,5 +114,5 @@ onAuthStateChanged(auth,async user=>{
   if(await resolveStaffRole(user)!=="admin"){status("Administrator access is required.");return;}
   if(current!==epoch)return;field("staff-account-controls").hidden=false;
   const end=window.beginLoading?.("Loading teacher access…")||(()=>{});
-  try{await refresh();}catch{status("Teacher access could not load. Matching permission rules and a connection are required; no account was changed.");}finally{end();}
+  try{await refresh();void prepareOriginalTeacher();}catch{status("Teacher access could not load. Matching permission rules and a connection are required; no account was changed.");}finally{end();}
 });

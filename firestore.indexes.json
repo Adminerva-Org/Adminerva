@@ -1,14 +1,98 @@
 {
   "indexes": [
-    {"collectionGroup":"assessments","queryScope":"COLLECTION","fields":[{"fieldPath":"ownerUid","order":"ASCENDING"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
-    {"collectionGroup":"assessments","queryScope":"COLLECTION","fields":[{"fieldPath":"sectionIds","arrayConfig":"CONTAINS"},{"fieldPath":"createdAt","order":"DESCENDING"}]},
-    {"collectionGroup":"student_submissions","queryScope":"COLLECTION","fields":[{"fieldPath":"section","order":"ASCENDING"},{"fieldPath":"submittedAt","order":"DESCENDING"}]},
-    {"collectionGroup":"assessment_evidence","queryScope":"COLLECTION","fields":[{"fieldPath":"section","order":"ASCENDING"},{"fieldPath":"updatedAt","order":"DESCENDING"}]}
+    {
+      "collectionGroup": "assessments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "assessments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "sectionIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "student_submissions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "section",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "submittedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "assessment_evidence",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "section",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "updatedAt",
+          "order": "DESCENDING"
+        }
+      ]
+    }
   ],
   "fieldOverrides": [
-    {"collectionGroup":"practice_attempts","fieldPath":"expiresAt","ttl":true,"indexes":[]},
-    {"collectionGroup":"practice_sessions","fieldPath":"expiresAt","ttl":true,"indexes":[]},
-    {"collectionGroup":"practice_browser_sessions","fieldPath":"expiresAt","ttl":true,"indexes":[]},
-    {"collectionGroup":"practice_security_events","fieldPath":"expiresAt","ttl":true,"indexes":[]}
+    {
+      "collectionGroup": "practice_attempts",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "practice_sessions",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "practice_browser_sessions",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "practice_security_events",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "practice_season_attempts",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "school_ai_results",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    }
   ]
 }

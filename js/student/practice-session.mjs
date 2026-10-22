@@ -1,5 +1,5 @@
 /** Account-bound scored-session control; random browser keys are not device fingerprints. */
-import {app,auth} from "../core/firebase-core.js";
+import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable,connectFunctionsEmulator} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {GoogleAuthProvider,GithubAuthProvider,reauthenticateWithPopup,getIdTokenResult} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 const functions=getFunctions(app,"asia-southeast1");
@@ -17,7 +17,7 @@ async function call(name,payload){
   if(auth.currentUser?.uid!==uid)throw Error("Account changed. Reload practice before continuing.");
   return result.data;
 }
-export async function resumePracticeSession({takeover=false,reauthenticate=false}={}){
+export async function resumePracticeSession({takeover=false,reauthenticate=false,season=false}={}){
   const user=auth.currentUser;if(!user)throw Error("Sign in to practise.");
   if(reauthenticate){
     const token=await getIdTokenResult(user),age=Date.now()-Number(token.claims.auth_time)*1000;
@@ -30,7 +30,7 @@ export async function resumePracticeSession({takeover=false,reauthenticate=false
     }
   }
   if(auth.currentUser?.uid!==user.uid)throw Error("Account changed. Resume under your current sign-in.");
-  const result=await call("practiceSession",{browserId:browserKey(),takeover});
+  const result=await call(season?"practiceSeasonSession":"practiceSession",{browserId:browserKey(),takeover});
   current={...result,uid:user.uid};return current;
 }
 export function resetPracticeSession(){current=null;}

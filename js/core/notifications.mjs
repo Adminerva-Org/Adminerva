@@ -1,11 +1,11 @@
-import {staffRole} from "./staff-role.mjs?v=1.1.0";
-import {resolveStaffRole} from "./staff-session.mjs?v=1.1.0";
+import {staffRole} from "./staff-role.mjs?v=1.3.0";
+import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
 /** Shared navigation, account access, reporting and release infrastructure: notifications. */
-import { auth, db } from "./firebase-core.js";
-import {notificationTarget,previewDestination} from "./notification-routing.mjs?v=2026.10.19.1";
-import {notificationVisible,unreadNotificationCount} from "./notification-visibility.mjs?v=2026.10.19.1";
-import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs?v=2026.10.19.1";
-import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=2026.10.21.1-dev.1";
+import { auth, db } from "./firebase-core.js?v=1.3.0";
+import {notificationTarget,previewDestination} from "./notification-routing.mjs?v=1.3.0";
+import {notificationVisible,unreadNotificationCount} from "./notification-visibility.mjs?v=1.3.0";
+import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs?v=1.3.0";
+import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=1.3.0";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
@@ -160,6 +160,8 @@ async function listen(user){
   if(!user)return;
   await resolveStaffRole(user);
   if(current!==listenEpoch||state.user?.uid!==user.uid)return;
+  const settingsLink=el("av-alert-preferences-link");
+  if(settingsLink)settingsLink.href=(staffRole(user)?"settings.html":"student-settings.html")+"#notifications";
   void refreshReleases();
   state.unsubscribe.push(onSnapshot(query(
     collection(db,"notification_history",user.uid,"items"),
@@ -231,22 +233,8 @@ export function mountNotificationCenter(){
   search.setAttribute("aria-label","Search notifications");
   search.addEventListener("input",()=>{state.search=search.value.trim();render()});
   panel.append(search);
-  const prefs=make("details","border-b px-4 py-2");
-  prefs.append(make("summary","cursor-pointer text-xs font-bold text-slate-600","Notification preferences"));
-  const controls=make("div","grid grid-cols-2 gap-2 py-3");
-  for(const [type,label] of [["issue","Reports"],["grade","Grades"],["assessment","Assignments"],
-    ["submission","Submissions"],["grading","Grading alerts"]]){
-    const option=make("label","flex items-center gap-2 text-xs text-slate-700");
-    const check=make("input","h-4 w-4");check.type="checkbox";
-    check.dataset.alertCategory=type;check.checked=!state.muted.has(type);
-    check.addEventListener("change",()=>{
-      if(check.checked)state.muted.delete(type);else state.muted.add(type);
-      storePreferences();render();
-    });
-    option.append(check,make("span","",label));controls.append(option);
-  }
-  prefs.append(controls);
-  panel.append(prefs);
+  const preferencesLink=make("a","block border-b px-4 py-3 text-xs font-semibold text-blue-700 underline","Notification settings →");
+  preferencesLink.id="av-alert-preferences-link";preferencesLink.href="student-settings.html#notifications";panel.append(preferencesLink);
   const list=make("div","overflow-y-auto overscroll-contain max-h-[min(48dvh,335px)]");
   list.id="av-alert-list";list.setAttribute("aria-live","polite");panel.append(list);root.append(panel);
   document.addEventListener("adminerva-menu-open",event=>{if(event.detail!==panel.id){state.open=false;panel.classList.add("hidden");button.setAttribute("aria-expanded","false");}});
@@ -257,6 +245,8 @@ export function mountNotificationCenter(){
   document.addEventListener("keydown",e=>{if(e.key==="Escape"&&state.open){
     state.open=false;panel.classList.add("hidden");button.setAttribute("aria-expanded","false");button.focus()}});
   onAuthStateChanged(auth,listen);
+  document.addEventListener("adminerva-notification-preferences",event=>{if(event.detail?.uid===state.user?.uid){state.muted=restorePreferences();render();}});
+  window.addEventListener("storage",event=>{if(event.key===settingsKey()){state.muted=restorePreferences();render();}});
   setInterval(()=>{void refreshReleases();},5*60*1000);
   document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")void refreshReleases();});
 }

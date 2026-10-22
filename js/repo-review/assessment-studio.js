@@ -1,6 +1,7 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: assessment studio. */
-import { db,auth } from "../core/firebase-core.js";
-import {validateDeploymentDates} from "./assessment-dates.mjs";
+import { db,auth } from "../core/firebase-core.js?v=1.3.0";
+import {validateDeploymentDates} from "./assessment-dates.mjs?v=1.3.0";
+import {loadSchoolOptions,fillSchoolDatalist} from "../core/school-options.mjs?v=1.3.0";
 import {
   collection,
   getDocs,
@@ -14,7 +15,7 @@ import {
   where,
   serverTimestamp,
   writeBatch,
-} from "../core/teaching-firestore.mjs?v=1.1.0";
+} from "../core/teaching-firestore.mjs?v=1.3.0";
 let targetPaths = [];
 let allSections = [];
 let objectiveRules = [];
@@ -22,6 +23,53 @@ let assessments = [];
 let currentAssessmentId = null;
 let deploySelectedSections = [];
 let fpInstance = null;
+let savingBlueprint=false,rubricSource="balanced",lastGeneratedRubric="";
+const rubricTemplates=new Map();
+const defaultPersona="Assist the teacher by checking supported evidence against the published task and rubric. Distinguish verified individual contributions from shared project work. Do not infer authorship or misconduct. Leave unsupported, visual and runtime criteria for teacher review. Suggested scores stay unpublished until teacher approval.";
+const balancedCriteria=[{name:"Task requirements",weight:40,description:"Requested features and outputs are demonstrated."},{name:"Correctness",weight:30,description:"The submitted work behaves or reasons correctly for the task."},{name:"Clarity and organization",weight:20,description:"The work is understandable, organized and appropriate for the task."},{name:"Explanation and supporting evidence",weight:10,description:"The student explains the approach and links relevant evidence of their own contribution."}];
+const blueprintStatus=message=>{document.getElementById("blueprintStatus").textContent=message;};
+function preparedTaskContext(){
+  const title=document.getElementById("assessTitle").value.trim(),subject=document.getElementById("assessSubject").value.trim();
+  return "Complete "+(title||"the assessment task")+(subject?" for "+subject:"")+". Submit the requested work and a brief explanation of your approach. Link relevant evidence of your own contribution. Your teacher will review the published rubric and submitted evidence.";
+}
+function updateContextPreview(){document.getElementById("assessmentContextPreview").textContent=document.getElementById("taskContext").value.trim()||preparedTaskContext();}
+function pointsRubric(criteria,maxScore){
+  const usable=criteria.filter(criterion=>typeof criterion.name==="string"&&criterion.name.trim()&&Number(criterion.weight)>0&&Number.isFinite(Number(criterion.weight)));
+  if(!usable.length)throw Error("This rubric template has no weighted criteria. Choose the balanced rubric or enter your own criteria.");
+  const total=usable.reduce((sum,criterion)=>sum+Number(criterion.weight),0);let assigned=0;
+  return usable.map((criterion,index)=>{const points=index===usable.length-1?Math.round((maxScore-assigned)*100)/100:Math.round(maxScore*Number(criterion.weight)/total*100)/100;assigned+=points;return (index+1)+". "+criterion.name.trim()+" — "+points+" point"+(points===1?"":"s")+(criterion.description?": "+String(criterion.description).trim():"");}).join("\n");
+}
+function refreshRubricChoices(){
+  const select=document.getElementById("assessmentRubricTemplate"),current=select.value;
+  select.replaceChildren(new Option("Balanced task rubric","balanced"));
+  for(const [id,template] of rubricTemplates)select.add(new Option("Saved template · "+template.name,id));
+  for(const assessment of assessments)if(typeof assessment.evalCriteria==="string"&&assessment.evalCriteria.trim())select.add(new Option("Reuse assessment · "+assessment.title,"assessment:"+assessment.id));
+  if([...select.options].some(option=>option.value===current))select.value=current;
+}
+window.applyAssessmentRubric=function(){
+  const score=Number(document.getElementById("maxScore").value),selected=document.getElementById("assessmentRubricTemplate").value;
+  if(!Number.isFinite(score)||score<1||score>1000){blueprintStatus("Enter a maximum score between 1 and 1,000 before preparing a rubric.");document.getElementById("maxScore").focus();return;}
+  try{
+    let text;
+    if(selected.startsWith("assessment:")){text=assessments.find(item=>item.id===selected.slice(11))?.evalCriteria||"";if(!text)throw Error("This assessment rubric is unavailable. Choose another rubric.");}
+    else text=pointsRubric(selected==="balanced"?balancedCriteria:rubricTemplates.get(selected)?.criteria||[],score);
+    document.getElementById("evalCriteria").value=text;rubricSource=selected;lastGeneratedRubric=text;
+    document.getElementById("assessmentRubricStatus").textContent=selected.startsWith("assessment:")?"Copied the existing assessment rubric. Check its point totals against this task’s maximum score.":"Prepared criteria total "+score+" points. Edit them to match this task before saving.";
+    blueprintStatus("");
+  }catch(error){blueprintStatus(error.message);}
+};
+async function loadBlueprintChoices(){
+  const results=await Promise.allSettled([getDocs(collection(db,"templates")),loadSchoolOptions()]);
+  if(results[0].status==="fulfilled")for(const record of results[0].value.docs){const data=record.data();if(Array.isArray(data.criteria)&&data.criteria.length)rubricTemplates.set("template:"+record.id,{name:data.name||"Saved rubric",criteria:data.criteria});}
+  if(results[1].status==="fulfilled")fillSchoolDatalist("assessmentSubjectChoices",results[1].value.subjects);
+  refreshRubricChoices();
+}
+for(const id of ["assessTitle","assessSubject","assessType","taskContext"])document.getElementById(id).addEventListener("input",updateContextPreview);
+document.getElementById("maxScore").addEventListener("input",()=>{
+  if(document.getElementById("evalCriteria").value===lastGeneratedRubric&&!rubricSource.startsWith("assessment:")&&rubricSource!=="manual")window.applyAssessmentRubric();
+  else document.getElementById("assessmentRubricStatus").textContent="Maximum score changed. Review the rubric’s point totals; your written criteria were preserved.";
+});
+document.getElementById("evalCriteria").addEventListener("input",()=>{document.getElementById("assessmentRubricStatus").textContent="Custom criteria. Check the point totals against the maximum score before saving.";});
 
 function escapeHTML(str) {
   if (!str) return "";
@@ -81,6 +129,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   window.showSubtleLoader("Loading Assessment Studio...");
   await fetchSectionsFromStudents();
   await loadAssessments();
+  void loadBlueprintChoices();
   window.hideSubtleLoader();
 });
 
@@ -113,6 +162,7 @@ async function loadAssessments() {
       ...(item.data().schemaVersion===2 ? (privateById.get(item.id)||{}) : {})
     }));
     renderAssessmentGrid();
+    refreshRubricChoices();
   } catch (e) {
     console.error("Error loading assessments: ", e);
   }
@@ -185,14 +235,21 @@ window.openCreateModal = function () {
   document.getElementById("maxScore").value = "20";
   document.getElementById("assessType").value = "Mini PETA";
   document.getElementById("assessQuarter").value = "";
+  document.getElementById("assessQuarter").value=assessments.find(item=>["Q1","Q2","Q3","Q4"].includes(item.quarter))?.quarter||"Q1";
+  document.getElementById("assessSubject").value="";
   document.getElementById("assessV2").checked = true;
   document.getElementById("assessV2").disabled = false;
   document.getElementById("assessExpectedExts").value = "";
   document.getElementById("assessInvestigationFallback").checked = true;
   document.getElementById("systemPersona").value =
-    "You are a strict Java high school programming teacher grading a student's code.";
+    defaultPersona;
   document.getElementById("taskContext").value = "";
   document.getElementById("evalCriteria").value = "";
+  refreshRubricChoices();
+  const equipped="template:"+(localStorage.getItem("Adminerva_active_template_id")||"");
+  document.getElementById("assessmentRubricTemplate").value=rubricTemplates.has(equipped)?equipped:"balanced";
+  window.applyAssessmentRubric();updateContextPreview();blueprintStatus("");
+  document.getElementById("blueprintAdvanced").open=false;document.getElementById("blueprintInstructions").open=false;
 
   objectiveRules = [];
   targetPaths = []; // Clear array
@@ -200,6 +257,7 @@ window.openCreateModal = function () {
   renderTargets(); // Render UI
 
   document.getElementById("createModal").classList.remove("hidden");
+  document.getElementById("assessTitle").focus();
 };
 window.openEditModal = function () {
   const item = assessments.find((a) => a.id === currentAssessmentId);
@@ -221,6 +279,12 @@ window.openEditModal = function () {
   document.getElementById("systemPersona").value = item.systemPersona || "";
   document.getElementById("taskContext").value = item.taskContext || "";
   document.getElementById("evalCriteria").value = item.evalCriteria || "";
+  document.getElementById("assessSubject").value="";rubricSource="manual";lastGeneratedRubric="";
+  refreshRubricChoices();document.getElementById("assessmentRubricTemplate").value="balanced";
+  if(!document.getElementById("evalCriteria").value.trim())window.applyAssessmentRubric();
+  if(!document.getElementById("systemPersona").value.trim())document.getElementById("systemPersona").value=defaultPersona;
+  updateContextPreview();blueprintStatus("");document.getElementById("assessmentRubricStatus").textContent="Your saved rubric is preserved. Use a template only if you want to replace it.";
+  document.getElementById("blueprintAdvanced").open=false;document.getElementById("blueprintInstructions").open=false;
 
   objectiveRules = [...(item.rules || [])];
   // Load array, or fallback to the old single string if it exists
@@ -237,18 +301,23 @@ window.openEditModal = function () {
 
 // 5. UPDATE saveAssessment to save the array instead of a string
 window.saveAssessment = async function () {
+  if(savingBlueprint)return;
   const title = document.getElementById("assessTitle").value.trim();
-  if (!title) return alert("Please enter an Assessment Title.");
+  if (!title){blueprintStatus("Enter an assessment title.");document.getElementById("assessTitle").focus();return;}
+  const score=Number(document.getElementById("maxScore").value),criteria=document.getElementById("evalCriteria").value.trim(),actor=auth.currentUser;
+  if(!actor?.uid){blueprintStatus("Sign in to your staff account before saving.");return;}
+  if(!Number.isFinite(score)||score<1||score>1000){blueprintStatus("Maximum score must be between 1 and 1,000.");document.getElementById("maxScore").focus();return;}
+  if(!criteria){blueprintStatus("Use a prepared rubric or enter your evaluation criteria before saving.");document.getElementById("evalCriteria").focus();return;}
 
   const prior = currentAssessmentId ? assessments.find(a=>a.id===currentAssessmentId) : null;
   const v2=prior ? prior.schemaVersion===2 : document.getElementById("assessV2").checked;
   const payload = {
-    ownerUid:prior?.ownerUid||auth.currentUser.uid,
+    ownerUid:prior?.ownerUid||actor.uid,
     sectionIds:prior?.sectionIds||[...new Set((prior?.deployments||[]).map(deployment=>deployment.section))],
     ...(v2?{schemaVersion:2,evidenceMode:"commit_selection",checkpointMode:"individual"}:{}),
     title: title,
     type: document.getElementById("assessType").value,
-    maxScore: parseInt(document.getElementById("maxScore").value) || 20,
+    maxScore: score,
     quarter: document.getElementById("assessQuarter").value,
     targetPaths: targetPaths, // Legacy path arrays are preserved.
     expectedExtensions: [...new Set(document.getElementById("assessExpectedExts").value
@@ -257,18 +326,20 @@ window.saveAssessment = async function () {
     gradingMode: currentAssessmentId
       ? (assessments.find(a => a.id === currentAssessmentId)?.gradingMode || "individual")
       : "individual",
-    taskContext: document.getElementById("taskContext").value.trim(),
-    evalCriteria: document.getElementById("evalCriteria").value.trim(),
+    taskContext: document.getElementById("taskContext").value.trim()||preparedTaskContext(),
+    evalCriteria: criteria,
   };
 
+  savingBlueprint=true;document.getElementById("saveAssessmentBtn").disabled=true;blueprintStatus("Saving the assessment and rubric…");
   window.showSubtleLoader("Saving Blueprint...");
 
   try {
     const teacherOnly={
       ownerUid:payload.ownerUid,sectionIds:payload.sectionIds,
-      systemPersona:document.getElementById("systemPersona").value.trim(),
+      systemPersona:document.getElementById("systemPersona").value.trim()||defaultPersona,
       rules:objectiveRules,updatedAt:serverTimestamp()
     };
+    if(auth.currentUser?.uid!==actor.uid)throw Error("Account changed. Reload before saving this assessment.");
     if(v2){
       const ref=currentAssessmentId
         ? doc(db,"assessments",currentAssessmentId)
@@ -295,8 +366,9 @@ window.saveAssessment = async function () {
     window.closeModals();
     await loadAssessments();
   } catch (e) {
-    alert("Failed to save: " + e.message);
+    blueprintStatus("Could not save: "+e.message+". Your entered task and rubric are preserved.");
   } finally {
+    savingBlueprint=false;document.getElementById("saveAssessmentBtn").disabled=false;
     window.hideSubtleLoader();
   }
 };

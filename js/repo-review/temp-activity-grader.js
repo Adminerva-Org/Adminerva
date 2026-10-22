@@ -1,5 +1,5 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: temp activity grader. */
-import { db } from "../core/firebase-core.js";
+import { db } from "../core/firebase-core.js?v=1.3.0";
 import {
   collection,
   getDocs,
@@ -7,7 +7,7 @@ import {
   setDoc,
   query,
   where,
-} from "../core/teaching-firestore.mjs?v=1.1.0";
+} from "../core/teaching-firestore.mjs?v=1.3.0";
 
 let currentStudents = [];
 let commitDataMap = {};

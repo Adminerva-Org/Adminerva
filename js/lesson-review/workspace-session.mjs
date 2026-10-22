@@ -1,9 +1,9 @@
 /** UID-owned planning storage; legacy device caches are never silently imported into another account. */
-import {auth} from "../core/firebase-core.js";
+import {auth} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {doc,collection} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {staffSessionReady,resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
-import {workspacePath,scopedStorage} from "./workspace-model.mjs?v=2026.10.20.1";
+import {staffSessionReady,resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
+import {workspacePath,scopedStorage} from "./workspace-model.mjs?v=1.3.0";
 let boundUid=null,invalidated=false;
 staffSessionReady.then(({user,role})=>{if(role&&user?.uid===auth.currentUser?.uid&&!invalidated)boundUid=user.uid;});
 onAuthStateChanged(auth,user=>{

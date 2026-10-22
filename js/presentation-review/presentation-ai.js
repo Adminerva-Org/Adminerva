@@ -1,3 +1,4 @@
+import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 /** Explicitly requested assisted slide generation and safe draft acceptance. */
 window.generateAI_SlideDeck = async function () {
   if (!window.selectedPlanData || !window.selectedSessionData) {
@@ -5,13 +6,6 @@ window.generateAI_SlideDeck = async function () {
     return;
   }
 
-  const apiKey =
-    localStorage.getItem("Adminerva_gemini_token") ||
-    localStorage.getItem("repoReview_gemini_token");
-  if (!apiKey) {
-    alert("Gemini API Key missing. Please configure it in Global Settings.");
-    return;
-  }
   if(!confirm("Create a system slide draft? The selected lesson session will be sent to your configured Gemini model for automated assistance. Review the generated material before saving or teaching."))return;
   if(window.adminervaPresentationDirty&&!confirm("Replace the current unsaved slide draft? Save or export it first if needed."))return;
   const sourcePlan=window.selectedPlanData,sourceSession=window.selectedSessionData;
@@ -55,24 +49,7 @@ window.generateAI_SlideDeck = async function () {
         `;
 
     if(!/^[A-Za-z0-9._-]{1,80}$/.test(aiModelName))throw Error("Invalid configured slide model.");
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(aiModelName)}:generateContent`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key":apiKey },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: "application/json",
-            temperature: 0.4,
-          },
-        }),
-      },
-    );
-
-    if (!response.ok) throw new Error(`Google API Error (${response.status})`);
-
-    const aiResult = await response.json();
+    const aiResult=await generateSchoolContent({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",temperature:0.4}},{purpose:"slides",signal:AbortSignal.timeout(100000)});
     let rawJson = aiResult.candidates[0].content.parts[0].text
       .replace(/^```json\s*/i, "")
       .replace(/\s*```$/i, "")

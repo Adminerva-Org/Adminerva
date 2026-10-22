@@ -1,5 +1,5 @@
-import {loadPublicReleases} from "./patch-history.mjs?v=2026.10.21.1-dev.1";
-import {releasePresentation,releaseMatches} from "./release-version.mjs?v=2026.10.21.1-dev.1";
+import {loadPublicReleases} from "./patch-history.mjs?v=1.3.0";
+import {releasePresentation,releaseMatches} from "./release-version.mjs?v=1.3.0";
 const field=id=>document.getElementById(id);
 const node=(tag,text,className="")=>{const element=document.createElement(tag);element.textContent=text;element.className=className;return element;};
 let releases=[];

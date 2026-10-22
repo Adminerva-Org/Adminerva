@@ -1,145 +1,107 @@
-import {resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
-/**
- * RepoFetch is the primary V2 assessment workspace.
- * Evidence and Contribution Inspector remain supporting pages with deep links.
- * No automatic grade writes or grade publication occur from this queue.
- */
-import {auth,db} from "../core/firebase-core.js";
+/** One class/assessment/target context for repository and offline activity review. */
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
+import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {collection,getDocs,query,where}
-  from "../core/teaching-firestore.mjs?v=1.1.0";
-import {parseRepository} from "./services/assessment-evidence.mjs";
-import {gradeMatchesEvidence} from "./services/evidence-lifecycle.mjs";
-
-const el=id=>document.getElementById(id);
-const node=(tag,content="",className="")=>{
-  const item=document.createElement(tag);item.textContent=content;
-  if(className)item.className=className;
-  return item;
-};
-const qs=new URLSearchParams(location.search);
-let roster=[],assessments=[],activeTask=null,loadId=0,initDeepLink=true;
+import {collection,getDocs,query,where} from "../core/teaching-firestore.mjs?v=1.3.0";
+import {parseRepository} from "./services/assessment-evidence.mjs?v=1.3.0";
+import {mountTeachingWorkspace} from "./teaching-workspace.mjs?v=1.3.0";
+const el=id=>document.getElementById(id),parameters=new URLSearchParams(location.search);
+const workspace=mountTeachingWorkspace(el("teachingWorkspace"));
+let roster=[],assessments=[],targets=[],activeTask=null,loadId=0,actorUid="",records={evidence:new Map(),grades:new Map(),activities:new Map(),receipts:[]},sourceWarnings=[];
 function status(text){el("v2QueueStatus").textContent=text;}
-function link(text,url){
-  const a=node("a",text,"text-indigo-700 underline font-semibold text-xs");
-  a.href=url;return a;
+function options(select,items,placeholder){select.replaceChildren(new Option(placeholder,""),...items.map(item=>new Option(item.label,item.value)));}
+function repoFor(student){try{return parseRepository(student.repoUrl);}catch{return null;}}
+function matchesSection(task,section){return task.deployments?.some(item=>item.section===section)||task.sectionIds?.includes(section)||task.targetSections?.includes(section)||task.section===section;}
+function title(student){return student.name||[student.firstName,student.lastName].filter(Boolean).join(" ")||student.id;}
+function buildTargets(){
+ const students=roster.filter(student=>student.section===el("v2SectionSelect").value).sort((a,b)=>title(a).localeCompare(title(b)));
+ if(el("reviewTargetMode").value==="individual")return students.map(student=>({id:"student:"+student.id,label:title(student),students:[student],repository:repoFor(student)}));
+ const grouped=new Map();
+ for(const student of students){
+  const repo=repoFor(student),actual=student.groupId??student.groupName??student.group??student.team;
+  const group=typeof actual==="string"||typeof actual==="number"?String(actual).trim():actual?.name||actual?.id||"";
+  const key=repo?"repository:"+repo.url.toLowerCase():group?"group:"+group:"student:"+student.id;
+  if(!grouped.has(key))grouped.set(key,{id:key,label:repo?repo.owner+"/"+repo.repo:group?"Group "+group:title(student),students:[],repository:repo});
+  grouped.get(key).students.push(student);
+ }
+ return [...grouped.values()];
 }
-function selectOptions(select,options,placeholder){
-  select.replaceChildren();
-  const empty=node("option",placeholder);empty.value="";select.append(empty);
-  for(const {value,label} of options){const opt=node("option",label);opt.value=value;select.append(opt);}
-}
-function scopedUrl(path,student,task){
-  const params=new URLSearchParams({
-    section:student.section,student:student.id,assessment:task.id
-  });
-  return path+"?"+params.toString();
+async function readActivityGrades(task){
+ const [modern,legacy]=await Promise.all([getDocs(query(collection(db,"activity_grades"),where("taskId","==",task.id))),getDocs(query(collection(db,"activity_grades"),where("activity","==",String(task.title||task.id).slice(0,300))))]);
+ const rows=new Map();for(const item of legacy.docs)if(!item.data().taskId||item.data().taskId===task.id)rows.set(item.id,item);for(const item of modern.docs)rows.set(item.id,item);return {docs:[...rows.values()]};
 }
 async function initialize(user){
-  if(!await resolveStaffRole(user)){
-    status("Sign in with an authorized instructor account to review V2 submissions.");
-    el("v2Queue").replaceChildren();return;
-  }
-  try{
-    status("Loading V2 assessments and student roster…");
-    const [studentsSnap,assessmentSnap]=await Promise.all([
-      getDocs(collection(db,"students")),getDocs(collection(db,"assessments"))
-    ]);
-    if(auth.currentUser?.uid!==user.uid)return;
-    roster=studentsSnap.docs.map(d=>({id:d.id,...d.data()}));
-    assessments=assessmentSnap.docs.map(d=>({id:d.id,...d.data()}))
-      .filter(a=>a.schemaVersion===2);
-    const sections=[...new Set(roster.map(s=>s.section).filter(s=>typeof s==="string"&&s))].sort();
-    selectOptions(el("v2SectionSelect"),sections.map(v=>({value:v,label:v})),"Choose section");
-    const requested=qs.get("section");
-    const fallback=el("sectionSelect")?.value;
-    el("v2SectionSelect").value=sections.includes(requested)?requested:
-      sections.includes(fallback)?fallback:(sections[0]||"");
-    await updateAssessments();
-  }catch(error){status("Could not load grading queue: "+error.message);}
+ const generation=++loadId;actorUid=user?.uid||"";
+ if(!user||!await resolveStaffRole(user)){status("An authorized staff account is required to open the teaching workspace.");return;}
+ try{
+  status("Loading your assigned classes and assessments…");
+  const [students,tasks]=await Promise.all([getDocs(collection(db,"students")),getDocs(collection(db,"assessments"))]);
+  if(generation!==loadId||auth.currentUser?.uid!==user.uid)return;
+  roster=students.docs.map(item=>({id:item.id,...item.data()}));assessments=tasks.docs.map(item=>({id:item.id,...item.data()}));
+  const sections=[...new Set(roster.map(student=>student.section).filter(value=>typeof value==="string"&&value.trim()))].sort();
+  options(el("v2SectionSelect"),sections.map(value=>({value,label:value})),"Choose class");
+  el("v2SectionSelect").value=sections.includes(parameters.get("section"))?parameters.get("section"):sections[0]||"";
+  el("reviewTargetMode").value=parameters.get("mode")==="individual"?"individual":"group";
+  await updateAssessments();
+ }catch(error){if(generation===loadId)status("Classes could not load. Check your connection and select Refresh. "+error.message);}
 }
 async function updateAssessments(){
-  const section=el("v2SectionSelect").value,select=el("v2AssessmentSelect");
-  const tasks=assessments.filter(a=>(a.deployments||[]).some(d=>d.section===section));
-  selectOptions(select,tasks.map(a=>({value:a.id,label:a.title||a.id})),"Choose V2 assessment");
-  select.value=tasks.some(a=>a.id===qs.get("assessment"))?qs.get("assessment"):(tasks[0]?.id||"");
-  await renderQueue();
+ const previous=el("v2AssessmentSelect").value,section=el("v2SectionSelect").value;
+ const tasks=assessments.filter(task=>matchesSection(task,section));
+ options(el("v2AssessmentSelect"),tasks.map(task=>({value:task.id,label:task.title||task.id})),"Choose assessment");
+ el("v2AssessmentSelect").value=tasks.some(task=>task.id===parameters.get("assessment"))?parameters.get("assessment"):tasks.some(task=>task.id===previous)?previous:tasks[0]?.id||"";
+ await renderQueue();
 }
-function eligibility(evidence){
-  return evidence?.status==="approved" &&
-    /^[a-f0-9]{40}$/i.test(evidence.approvedCheckpointSha||"") &&
-    evidence.approvedCheckpointSha===evidence.checkpointSha;
+async function renderQueue({preserve=true}={}){
+ const generation=++loadId,assessmentId=el("v2AssessmentSelect").value,section=el("v2SectionSelect").value,previous=preserve?el("reviewTargetSelect").value:"";
+ activeTask=assessments.find(task=>task.id===assessmentId);
+ if(!activeTask||!section){el("v2Queue").replaceChildren();options(el("reviewTargetSelect"),[],"Choose an assessment first");workspace.clear();status("Choose a class and an assessment. All assessment versions are supported.");return;}
+ el("v2RefreshQueue").disabled=true;status("Loading saved evidence, receipts and grades…");
+ try{
+  const sources=await Promise.allSettled([
+   getDocs(query(collection(db,"assessment_evidence"),where("assessmentId","==",assessmentId))),
+   getDocs(query(collection(db,"student_grades"),where("taskId","==",assessmentId))),
+   readActivityGrades(activeTask),
+   getDocs(query(collection(db,"student_submissions"),where("assessmentId","==",assessmentId)))
+  ]);
+  if(generation!==loadId||auth.currentUser?.uid!==actorUid)return;
+  const names=["evidence","grades","activities","receipts"];sourceWarnings=names.filter((name,index)=>sources[index].status!=="fulfilled");
+  const data=sources.map(result=>result.status==="fulfilled"?result.value.docs.map(item=>({id:item.id,...item.data()})):[]);
+  records={evidence:new Map(data[0].map(item=>[item.studentId,item])),grades:new Map(data[1].map(item=>[item.studentId,item])),activities:new Map(data[2].map(item=>[item.studentId,item])),receipts:data[3]};
+  targets=buildTargets();options(el("reviewTargetSelect"),targets.map(target=>({value:target.id,label:target.label+(el("reviewTargetMode").value==="group"?" · "+target.students.length+" learner"+(target.students.length===1?"":"s"):"")})),"Choose review target");
+  const requested=targets.find(target=>target.students.some(student=>student.id===parameters.get("student")));
+  el("reviewTargetSelect").value=targets.some(target=>target.id===previous)?previous:requested?.id||targets[0]?.id||"";
+  drawCards();activateTarget();
+  status(targets.length+" review targets · "+roster.filter(student=>student.section===section).length+" learners"+(sourceWarnings.length?". Some saved statuses could not load: "+sourceWarnings.join(", ")+". Missing statuses are not zero grades.":". Choose a target, then switch workspace panels below."));
+ }catch(error){if(generation===loadId)status("Review queue could not load. Retry with Refresh. "+error.message);}
+ finally{el("v2RefreshQueue").disabled=false;}
 }
-async function renderQueue(){
-  const sequence=++loadId;
-  const section=el("v2SectionSelect").value,assessmentId=el("v2AssessmentSelect").value;
-  const container=el("v2Queue");container.replaceChildren();
-  activeTask=assessments.find(a=>a.id===assessmentId);
-  if(!section||!activeTask){status("Choose a class section and V2 assessment.");return;}
-  status("Loading submission and grading status for "+(activeTask.title||assessmentId)+"…");
-  try{
-    const [evidenceSnap,gradeSnap]=await Promise.all([
-      getDocs(query(collection(db,"assessment_evidence"),where("assessmentId","==",assessmentId))),
-      getDocs(query(collection(db,"student_grades"),where("taskId","==",assessmentId)))
-    ]);
-    if(sequence!==loadId)return;
-    const evidence=new Map(evidenceSnap.docs.map(d=>[d.data().studentId,d.data()]));
-    const grades=new Map(gradeSnap.docs.map(d=>[d.data().studentId,d.data()]));
-    const members=roster.filter(s=>s.section===section)
-      .sort((a,b)=>(a.name||a.id).localeCompare(b.name||b.id));
-    let pending=0,approved=0,drafts=0,published=0;
-    for(const student of members){
-      const ev=evidence.get(student.id),grade=grades.get(student.id);
-      const row=node("article","","p-4 border border-slate-200 rounded-xl bg-white space-y-2 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-4");
-      const heading=node("div","","min-w-0");
-      heading.append(node("p",student.name||student.id,"text-sm font-bold text-slate-900 break-words"));
-      const repoText=String(student.repoUrl||"").trim();
-      heading.append(node("p",repoText||"No GitHub repository linked","text-xs text-slate-500 break-all"));
-      let stateText="",stateClass="text-slate-600";
-      if(grade?.published===true){published++;stateText="Published "+grade.score+"/"+(grade.maxScore||activeTask.maxScore);}
-      else if(grade){drafts++;stateText=gradeMatchesEvidence(grade,ev)?
-        "Saved private grade draft · "+grade.score+"/"+(grade.maxScore||activeTask.maxScore):
-        "Grade draft requires fresh evidence review · publication blocked";}
-      else if(eligibility(ev)){approved++;stateText="Checkpoint approved · ready to grade";stateClass="text-emerald-700";}
-      else if(ev){pending++;stateText="Evidence "+String(ev.status||"needs review")+" · approval required";stateClass="text-amber-800";}
-      else{pending++;stateText="No approved evidence";stateClass="text-slate-500";}
-      heading.append(node("p",stateText,"text-xs font-semibold mt-1 "+stateClass));
-      const actions=node("div","","flex flex-wrap items-center gap-3 sm:justify-end mt-3 sm:mt-0");
-      let repo=null;try{repo=parseRepository(repoText);}catch{}
-      const review=node("button",grade?.published?"Review published grade":"Review & Grade",
-        "bg-blue-700 text-white rounded-lg px-4 py-2.5 text-xs font-bold disabled:opacity-50");
-      review.type="button";review.disabled=!repo;
-      review.addEventListener("click",()=>{
-        if(typeof window.openManualGradeReview!=="function"){
-          status("Grading tools are still loading. Refresh and try again.");return;
-        }
-        window.openManualGradeReview({studentId:student.id,taskId:assessmentId,
-          owner:repo.owner,repo:repo.repo});
-      });
-      actions.append(review);
-      row.append(heading,actions);container.append(row);
-    }
-    status(members.length+" students · "+approved+" approved checkpoints awaiting grading · "+
-      drafts+" unpublished grades · "+published+" published · "+pending+" awaiting evidence/review");
-    if(!members.length)container.append(node("p","No students found in this section.","text-slate-600 text-sm p-4"));
-    if(initDeepLink){
-      initDeepLink=false;
-      const targetStudent=members.find(s=>s.id===qs.get("student"));
-      if(targetStudent&&activeTask.id===qs.get("assessment")){
-        const repoUrl=String(targetStudent.repoUrl||"");
-        try{
-          const repo=parseRepository(repoUrl);
-          window.openManualGradeReview?.({studentId:targetStudent.id,
-            taskId:activeTask.id,owner:repo.owner,repo:repo.repo});
-        }catch{status("Student repository is not linked; open Evidence Review to investigate.");}
-      }
-    }
-  }catch(error){
-    if(sequence===loadId)status("Unable to load grading queue: "+error.message);
-  }
+function drawCards(){
+ const container=el("v2Queue");container.replaceChildren();
+ for(const target of targets){
+  const card=document.createElement("button");card.type="button";card.className="av-review-target-card";card.setAttribute("aria-pressed",String(target.id===el("reviewTargetSelect").value));
+  const heading=document.createElement("strong"),detail=document.createElement("span"),state=document.createElement("span");
+  heading.textContent=target.label;detail.textContent=target.students.map(title).join(" · ");
+  const published=target.students.filter(student=>records.grades.get(student.id)?.published||records.activities.get(student.id)?.published).length;
+  state.textContent=published+" of "+target.students.length+" published · "+(target.repository?"Repository review":"Manual activity available");card.append(heading,detail,state);
+  card.onclick=()=>{if(!workspace.canLeave())return;el("reviewTargetSelect").value=target.id;activateTarget();drawCards();};container.append(card);
+ }
+ if(!targets.length){const empty=document.createElement("p");empty.textContent="No students are enrolled in this class. Ask your administrator to check the roster and teaching assignments.";container.append(empty);}
 }
-el("v2SectionSelect").addEventListener("change",()=>{void updateAssessments();});
-el("v2AssessmentSelect").addEventListener("change",()=>{void renderQueue();});
-el("v2RefreshQueue").addEventListener("click",()=>{void renderQueue();});
-window.addEventListener("adminerva:manual-grade-saved",()=>{void renderQueue();});
-onAuthStateChanged(auth,user=>{void initialize(user);});
+function activateTarget(){
+ const target=targets.find(item=>item.id===el("reviewTargetSelect").value);if(!target){workspace.clear();return;}
+ workspace.setContext({assessment:activeTask,target,students:target.students,repository:target.repository,evidence:records.evidence,grades:records.grades,activities:records.activities,receipts:records.receipts,sourceWarnings,mode:el("reviewTargetMode").value,requestedStudent:parameters.get("student")});
+ window.dispatchEvent(new CustomEvent("adminerva:review-target-selected",{detail:{assessment:activeTask,students:target.students,repository:target.repository,mode:el("reviewTargetMode").value}}));
+ const url=new URL(location.href);url.searchParams.set("section",el("v2SectionSelect").value);url.searchParams.set("assessment",activeTask.id);url.searchParams.set("mode",el("reviewTargetMode").value);url.searchParams.set("student",target.students[0].id);history.replaceState(null,"",url);
+}
+let previousSection="",previousAssessment="",previousMode="group",previousTarget="";
+function rememberSelectors(){previousSection=el("v2SectionSelect").value;previousAssessment=el("v2AssessmentSelect").value;previousMode=el("reviewTargetMode").value;previousTarget=el("reviewTargetSelect").value;}
+for(const id of ["v2SectionSelect","v2AssessmentSelect","reviewTargetMode","reviewTargetSelect"])el(id).addEventListener("focus",rememberSelectors);
+el("v2SectionSelect").onchange=()=>{if(!workspace.canLeave()){el("v2SectionSelect").value=previousSection;return;}void updateAssessments();};
+el("v2AssessmentSelect").onchange=()=>{if(!workspace.canLeave()){el("v2AssessmentSelect").value=previousAssessment;return;}void renderQueue({preserve:false});};
+el("reviewTargetMode").onchange=()=>{if(!workspace.canLeave()){el("reviewTargetMode").value=previousMode;return;}void renderQueue({preserve:false});};
+el("reviewTargetSelect").onchange=()=>{if(!workspace.canLeave()){el("reviewTargetSelect").value=previousTarget;return;}activateTarget();drawCards();};
+el("v2RefreshQueue").onclick=()=>void(!roster.length||!assessments.length?initialize(auth.currentUser):renderQueue());
+window.addEventListener("adminerva:manual-grade-saved",()=>void renderQueue());
+window.addEventListener("adminerva:activity-grade-saved",()=>void renderQueue());
+onAuthStateChanged(auth,user=>{workspace.clear({force:true});void initialize(user);});

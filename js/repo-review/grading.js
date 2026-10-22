@@ -1,5 +1,5 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: grading. */
-import { db } from "../core/firebase-core.js";
+import { db } from "../core/firebase-core.js?v=1.3.0";
 import {
   collection,
   getDocs,
@@ -9,7 +9,7 @@ import {
   where,
   getDoc,
   increment,
-} from "../core/teaching-firestore.mjs?v=1.1.0";
+} from "../core/teaching-firestore.mjs?v=1.3.0";
 
 // ==========================================
 // GLOBAL STATE

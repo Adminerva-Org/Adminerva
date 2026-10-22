@@ -1,16 +1,21 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.1.0";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.3.0";
+import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
+import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
+function connectionPreferences(){return activateConnectionOwner(workspaceUid());}
+const selectedSubject=()=>document.getElementById("lpSubject")?.value.trim()||lessonStorage.getItem("Adminerva_defaultSubject")||"Subject";
+async function lessonCloudFetch(_url,options){
+  const result=await generateSchoolContent(JSON.parse(options.body),{purpose:"lesson",signal:AbortSignal.timeout(120000)});
+  return {ok:true,status:200,json:async()=>result};
+}
 /** Explicitly requested lesson assistance with source and edit guards. */
-import {validateGeneratedLesson} from "./lesson-plan-helpers.mjs";
-import {buildReferenceContext,REFERENCE_CONTEXT_BUDGET} from "./reference-context.mjs";
+import {validateGeneratedLesson} from "./lesson-plan-helpers.mjs?v=1.3.0";
+import {buildReferenceContext,REFERENCE_CONTEXT_BUDGET} from "./reference-context.mjs?v=1.3.0";
 window.initiateGenerationFlow = async function () {
-  const engineMode = lessonStorage.getItem("Adminerva_engine_mode") || "cloud";
-  const gemKey = lessonStorage.getItem("Adminerva_gemini_token");
+  const engineMode = connectionPreferences().engineMode;
+  const gemKey = connectionPreferences().geminiKey;
   const model =
-    lessonStorage.getItem("Adminerva_ai_model") || "gemini-2.5-flash";
+    connectionPreferences().aiModel;
 
-  if (engineMode === "cloud" && !gemKey) {
-    return alert("Missing Gemini API Key in Global Settings.");
-  }
 
   // 🚀 THE FIX: Intercept and convert all double quotes to single quotes
   let customInstructionsText = document
@@ -44,7 +49,7 @@ window.initiateGenerationFlow = async function () {
       );
       const records=documentsByFolder.flat();
       const scope=[
-        lessonStorage.getItem("Adminerva_defaultSubject")||"",
+        selectedSubject(),
         document.getElementById("lpGradeLevel")?.value||"",
         document.getElementById("lpCourseWeek")?.value||"",
         document.getElementById("lpAcademicTerm")?.value||"",
@@ -80,7 +85,7 @@ window.initiateGenerationFlow = async function () {
     }
   }
 
-  const subject = lessonStorage.getItem("Adminerva_defaultSubject") || "Subject";
+  const subject = selectedSubject();
   const academicTerm = document.getElementById("lpAcademicTerm").value;
   const schoolYear = document.getElementById("lpSchoolYear").value;
   try {
@@ -143,7 +148,7 @@ Custom Instructions: ${window.cachedCustomInstructions}`;
     let aiReply = "";
 
     if (engineMode === "cloud") {
-      const response = await fetch(
+      const response = await lessonCloudFetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${gemKey}`,
         {
           method: "POST",
@@ -204,13 +209,13 @@ window.submitClarificationAndProceed = function () {
 };
 
 window.executeFinalGeneration = async function (userClarification) {
-  const engineMode = lessonStorage.getItem("Adminerva_engine_mode") || "cloud";
-  const gemKey = lessonStorage.getItem("Adminerva_gemini_token");
+  const engineMode = connectionPreferences().engineMode;
+  const gemKey = connectionPreferences().geminiKey;
   const model =
-    lessonStorage.getItem("Adminerva_ai_model") || "gemini-2.5-flash";
+    connectionPreferences().aiModel;
   const schoolYear =
     document.getElementById("lpSchoolYear").value || "2026-2027";
-  const subject = lessonStorage.getItem("Adminerva_defaultSubject") || "Subject";
+  const subject = selectedSubject();
 
   let gradeSpecificRules = "";
   let scheduleRules = "";
@@ -298,6 +303,7 @@ ${scheduleRules}
 ${lookbackContext}
 Target Scope: ${window.cachedScope}
 School Year: ${schoolYear}
+School offering: ${document.getElementById("lpProgram")?.value.trim()||"Not specified"}
 Custom Instructions: ${window.cachedCustomInstructions}
 User Clarification: ${userClarification || "None"}
 Teacher Schedule:\n${window.cachedSchedule}
@@ -314,7 +320,7 @@ Reference Text (selected excerpts only; the complete source documents remain in 
 
       while (retries >= 0 && !generationSuccess) {
         try {
-          const response = await fetch(
+          const response = await lessonCloudFetch(
             `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${gemKey}`,
             {
               method: "POST",
@@ -428,6 +434,7 @@ Reference Text (selected excerpts only; the complete source documents remain in 
 
           generationSuccess = true;
         } catch (error) {
+          if(error.noRetry||/permission.denied|failed.precondition|unauthenticated|not enabled|not configured/i.test((error.code||"")+" "+error.message))throw error;
           if (retries > 0) {
             console.warn(
               `[Generation Cutoff] The AI stopped mid-sentence. Retrying... (${retries} attempts left)`,
@@ -517,7 +524,7 @@ Reference Text (selected excerpts only; the complete source documents remain in 
 
 window.generateBlankPlan = function () {
   window.currentLessonSettings=null;
-  window.currentPlanSubject = lessonStorage.getItem("Adminerva_defaultSubject") || "Subject";
+  window.currentPlanSubject = selectedSubject();
   window.currentPlanTeacher = lessonStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
   window.currentTargetGrade =
     document.getElementById("lpGradeLevel")?.value || "Grade 11";

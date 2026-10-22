@@ -7,8 +7,8 @@
   <title>Student Home | Adminerva</title>
   <meta name="description" content="Your Adminerva workspace and module shortcuts.">
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="css/adminerva-ui.css?v=1.2.0">
-</head>
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=1.3.0">
+<link rel="stylesheet" href="css/workspace-navigation.css?v=1.3.0"></head>
 <body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900 font-sans">
 
   <div id="adminerva-nav" data-module="student-home" data-page="home"></div>
@@ -33,25 +33,25 @@
         <div><p class="text-xs uppercase tracking-widest font-bold text-cyan-800">Choose your next step</p><h2 id="areasHeading" class="text-2xl sm:text-3xl font-extrabold mt-1">Your learning workspace</h2></div>
       </div>
       <div class="grid sm:grid-cols-2 xl:grid-cols-4 gap-5">
-      <a href="student-dashboard.html" class="group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-cyan-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
+      <a href="student-dashboard.html" class="av-home-task group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-cyan-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
         <span aria-hidden="true" class="text-3xl mb-5">📁</span>
         <h3 class="font-extrabold text-lg text-slate-900">Project Hub</h3>
         <p class="text-slate-600 mt-2 text-sm leading-relaxed flex-grow">Connect your GitHub project and track your coding activity and progress.</p>
         <span class="text-cyan-700 font-bold text-sm mt-4">Open workspace <span aria-hidden="true">→</span></span>
       </a>
-      <a href="student-assessments.html" class="group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-blue-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
+      <a href="student-assessments.html" class="av-home-task group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-blue-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
         <span aria-hidden="true" class="text-3xl mb-5">📋</span>
         <h3 class="font-extrabold text-lg text-slate-900">Assignments</h3>
         <p class="text-slate-600 mt-2 text-sm leading-relaxed flex-grow">See tasks, submission information and instructor feedback.</p>
         <span class="text-blue-700 font-bold text-sm mt-4">View assignments <span aria-hidden="true">→</span></span>
       </a>
-      <a href="student-practice.html" class="group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-emerald-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
+      <a href="student-practice.html" class="av-home-task group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-emerald-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
         <span aria-hidden="true" class="text-3xl mb-5">🧩</span>
         <h3 class="font-extrabold text-lg text-slate-900">Practice Lab</h3>
         <p class="text-slate-600 mt-2 text-sm leading-relaxed flex-grow">Predict, run and reflect in short guided missions. Earn practice XP as you learn.</p>
         <span class="text-emerald-700 font-bold text-sm mt-4">Continue practice <span aria-hidden="true">→</span></span>
       </a>
-      <a href="student-playground.html" class="group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-indigo-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
+      <a href="student-playground.html" class="av-home-task group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-indigo-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
         <span aria-hidden="true" class="text-3xl mb-5">💻</span>
         <h3 class="font-extrabold text-lg text-slate-900">Code Playground</h3>
         <p class="text-slate-600 mt-2 text-sm leading-relaxed flex-grow">Write, test and save code in your personal coding environment.</p>
@@ -74,8 +74,8 @@
     </section>
     <p class="text-xs text-slate-500 text-center mt-12">Adminerva · Your school learning workspace</p>
   </main>
-  <script src="js/core/adminerva-loader.js?v=1.2.0"></script>
-  <script src="js/core/adminerva-nav.js?v=1.2.0"></script>
-  <script type="module" src="js/core/auth-guard.js?v=1.2.0"></script>
-</body>
+  <script src="js/core/adminerva-loader.js?v=1.3.0"></script>
+  <script src="js/core/adminerva-nav.js?v=1.3.0"></script>
+  <script type="module" src="js/core/auth-guard.js?v=1.3.0"></script>
+<script type="module" src="js/core/home-workspace.mjs?v=1.3.0"></script></body>
 </html>

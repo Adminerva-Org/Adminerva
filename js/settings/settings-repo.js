@@ -5,7 +5,7 @@ import {
   deleteDoc,
   doc,
   setDoc,
-} from "../core/teaching-firestore.mjs?v=1.1.0";
+} from "../core/teaching-firestore.mjs?v=1.3.0";
 
 // ==========================================
 // RUBRIC MANAGEMENT & REPOSITORY SETTINGS

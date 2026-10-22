@@ -1,8 +1,8 @@
-import {auth,db} from "../core/firebase-core.js";
+import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {doc,getDoc,setDoc,collection,query,where,limit,onSnapshot,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {practiceMemberships} from "./practice-memberships.mjs?v=2026.10.21.2-dev.1";
-import {practiceAlias,automaticStandings,PRACTICE_MAXIMUM} from "./practice-ranking-model.mjs?v=2026.10.21.2-dev.1";
+import {practiceMemberships} from "./practice-memberships.mjs?v=1.3.0";
+import {practiceAlias,automaticStandings,PRACTICE_MAXIMUM} from "./practice-ranking-model.mjs?v=1.3.0";
 const field=id=>document.getElementById(id);
 let user=null,profiles=[],stop=()=>{},epoch=0;
 const status=message=>{field("practiceClassStatus").textContent=message;};

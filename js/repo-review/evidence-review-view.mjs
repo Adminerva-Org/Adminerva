@@ -18,11 +18,11 @@ export const evidenceReviewMarkup=`
 <details class="border rounded p-3" open><summary class="font-bold cursor-pointer">Pinned project source — shared context, not individual credit</summary><div id="evidenceSnapshot" class="mt-2"></div></details>
 <h3 class="text-sm font-bold">Reclaim requests for this student</h3>
 <div id="evidenceReclaims" class="space-y-3"></div>
-<label class="block text-sm font-semibold" for="evidenceContributionScope">Individual responsibilities and attribution basis</label>
-<textarea id="evidenceContributionScope" rows="3" maxlength="3000" class="w-full border rounded-lg p-3" placeholder="Describe this student's assigned screens or tasks and how you verified their work. Explain shared work or no verified contribution. Do not assign every group screen to every member."></textarea>
+<label class="block text-sm font-semibold" for="evidenceContributionScope">Additional responsibilities and attribution notes (optional)</label>
+<textarea id="evidenceContributionScope" rows="3" maxlength="3000" class="w-full border rounded-lg p-3" placeholder="Add specific responsibilities or exceptions. Your selected verified commits are recorded automatically."></textarea>
 <p class="text-xs text-slate-600">Select only commits independently verified as this student's contribution. A selected project checkpoint may contain teammates' work. Leave all contribution boxes empty when no individual work is verified; evaluation will require manual review.</p>
-<label class="block text-sm font-semibold" for="evidenceReviewNote">Teacher review note</label>
-<textarea id="evidenceReviewNote" rows="3" maxlength="3000" class="w-full border rounded-lg p-3" placeholder="Describe the commits, project state and attribution evidence you verified."></textarea>
+<label class="block text-sm font-semibold" for="evidenceReviewNote">Additional review note (optional for approval)</label>
+<textarea id="evidenceReviewNote" rows="3" maxlength="3000" class="w-full border rounded-lg p-3" placeholder="Approval records your inspection automatically. Enter a reason here when reopening evidence."></textarea>
 <label class="flex gap-2 items-start text-sm"><input id="evidenceConfirm" type="checkbox" class="mt-1">
 <span>I inspected the project at the selected revision, checked the relevant commits and addressed attribution uncertainties. Git timestamps alone were not used to prove push time.</span></label>
 <button id="evidenceApprove" type="button" class="px-5 py-3 bg-emerald-700 text-white font-bold rounded">Approve checkpoint</button>

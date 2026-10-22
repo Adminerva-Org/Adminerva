@@ -1,7 +1,7 @@
 /** One accessible feedback preview; teacher edits remain in the protected review workflow. */
-import {auth,db} from "../core/firebase-core.js";
-import {doc,getDoc} from "../core/teaching-firestore.mjs?v=1.1.0";
-import {renderFeedbackMarkdown,reviewNotice} from "./review-ui.mjs?v=2026.10.20.1";
+import {auth,db} from "../core/firebase-core.js?v=1.3.0";
+import {doc,getDoc} from "../core/teaching-firestore.mjs?v=1.3.0";
+import {renderFeedbackMarkdown,reviewNotice} from "./review-ui.mjs?v=1.3.0";
 let active=null;
 function ensureDrawer() {
   let drawer=document.getElementById("feedbackDrawer");

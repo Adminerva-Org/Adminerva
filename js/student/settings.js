@@ -1,5 +1,5 @@
 /** Student submissions, practice progress and isolated code workspaces: settings. */
-import { db, auth } from "../core/firebase-core.js";
+import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {
   collection,
   getDocs,
