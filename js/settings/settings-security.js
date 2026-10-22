@@ -1,17 +1,19 @@
 /** Per-account integration preferences; the application connection is managed by deployment. */
 import { app, auth, db } from "../core/firebase-core.js";
+import {CONNECTION_DEFAULTS,activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "../core/connection-cache.mjs?v=1.2.0";
 import {collection,query,where,getDocs,doc,updateDoc,setDoc} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const field=id=>document.getElementById(id);
 const safeSet=(id,value)=>{if(field(id))field(id).value=value||"";};
 const safeGet=id=>field(id)?.value.trim()||"";
-const defaultModel="gemini-3.8-flash";
-let saving=false,unsubscribe=null,editRevision=0;
+const defaultModel=CONNECTION_DEFAULTS.aiModel;
+let saving=false,unsubscribe=null,editRevision=0,formOwnerUid=null;
 const preferences=[["adminGithubToken","githubToken","Adminerva_github_token"],["adminGeminiKey","geminiKey","Adminerva_gemini_token"],["adminAiModel","aiModel","Adminerva_ai_model"],["globalAiEngine","engineMode","Adminerva_engine_mode"]];
 function feedback(message,tone="info"){
   const region=field("security-save-status");if(region){region.textContent=message;region.dataset.tone=tone;}
 }
-function assertAccount(user){if(!user?.uid||auth.currentUser?.uid!==user.uid)throw Error("Your account changed. Reload this page before saving.");}
+function assertAccount(user){if(!user?.uid||auth.currentUser?.uid!==user.uid||formOwnerUid!==user.uid)throw Error("Your account changed. Reload this page before saving.");}
+function fillPreferences(values){for(const [id,key] of preferences)safeSet(id,values[key]);}
 function showAppConnection(){
   safeSet("firebaseConfigInput",JSON.stringify({projectId:app.options.projectId||"",authDomain:app.options.authDomain||"",storageBucket:app.options.storageBucket||""},null,2));
   if(field("firebaseConfigInput"))field("firebaseConfigInput").readOnly=true;
@@ -21,12 +23,13 @@ window.initFirebase=function(){
   window.db=db;showAppConnection();
   window.loadSectionsAndStudents?.();window.loadLessonReviewSettings?.();
 };
-window.db=db;showAppConnection();
+window.db=db;showAppConnection();fillPreferences(CONNECTION_DEFAULTS);
 
 window.saveSecuritySettings=async function(){
   if(saving)return;
   const user=auth.currentUser;
   if(!user?.uid||!user.email){feedback("Sign in to your staff account before saving connections.","error");return;}
+  if(formOwnerUid!==user.uid){feedback("Your account changed or settings have not loaded. Reload this page before saving.","error");return;}
   const values={githubToken:safeGet("adminGithubToken"),geminiKey:safeGet("adminGeminiKey"),aiModel:(safeGet("adminAiModel")||defaultModel).replace(/^models\//,""),engineMode:safeGet("globalAiEngine")||"cloud"};
   const button=field("saveSettingsBtn"),originalText=button?.textContent||"Save connections & keys";
   saving=true;editRevision++;if(button){button.disabled=true;button.textContent="Checking and saving…";}field("panel-security")?.setAttribute("aria-busy","true");
@@ -50,7 +53,7 @@ window.saveSecuritySettings=async function(){
     if(!snapshot.empty)await updateDoc(doc(db,"teachers",snapshot.docs[0].id),values);
     else await setDoc(doc(db,"teachers",user.uid),{email:user.email.toLowerCase(),uid:user.uid,...values});
     assertAccount(user);
-    for(const [,key,storage] of preferences)localStorage.setItem(storage,values[key]);
+    writeConnectionPreferences(user.uid,values);
     feedback("Connections saved to your teacher profile and this browser."+(values.engineMode==="cloud"&&!values.geminiKey?" No Gemini key is configured; add one before using cloud AI.":values.engineMode==="local"?" Local mode uses your running proxy.":" Gemini connection verified."),"success");
   }catch(error){feedback(error.name==="TimeoutError"?"The connection check timed out. Your settings were not saved; please try again.":"Settings could not be saved. "+(error.message||"Check your connection and try again."),"error");}
   finally{saving=false;if(button){button.disabled=false;button.textContent=originalText;}field("panel-security")?.removeAttribute("aria-busy");}
@@ -58,20 +61,19 @@ window.saveSecuritySettings=async function(){
 
 window.loadSecuritySettings=async function(){
   showAppConnection();
-  for(const [id,,storage] of preferences)safeSet(id,localStorage.getItem(storage)||(id==="adminAiModel"?defaultModel:id==="globalAiEngine"?"cloud":""));
   if(unsubscribe)return;
+  fillPreferences(CONNECTION_DEFAULTS);formOwnerUid=null;
   unsubscribe=auth.onAuthStateChanged(async user=>{
-    if(!user)return;
-    const revision=editRevision;
+    if((auth.currentUser?.uid||null)!==(user?.uid||null))return;
+    const revision=++editRevision;formOwnerUid=null;fillPreferences(CONNECTION_DEFAULTS);
+    if(!user){clearConnectionPreferences();return;}
     try{
+      if(auth.currentUser?.uid!==user.uid)return;
+      const owned=activateConnectionOwner(user.uid);formOwnerUid=user.uid;fillPreferences(owned);
       const snapshot=await getDocs(query(collection(db,"teachers"),where("email","==",user.email.toLowerCase())));
-      if(auth.currentUser?.uid!==user.uid||editRevision!==revision||saving)return;
-      if(!snapshot.empty){
-        const data=snapshot.docs[0].data();
-        for(const [id,key,storage] of preferences)if(typeof data[key]==="string"){
-          localStorage.setItem(storage,data[key]);safeSet(id,data[key]||(id==="adminAiModel"?defaultModel:id==="globalAiEngine"?"cloud":""));
-        }
-      }
+      if(auth.currentUser?.uid!==user.uid||formOwnerUid!==user.uid||editRevision!==revision||saving)return;
+      const data=snapshot.empty?{}:snapshot.docs[0].data();
+      fillPreferences(writeConnectionPreferences(user.uid,data));
     }catch{if(auth.currentUser?.uid===user.uid&&editRevision===revision&&!saving)feedback("Saved profile settings could not load. This browser’s current values are shown. Check your connection before saving.","error");}
   });
 };

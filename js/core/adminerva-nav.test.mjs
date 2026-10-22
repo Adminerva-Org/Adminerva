@@ -15,7 +15,7 @@ class Element {
   replaceChildren(...items) { this.children = []; this.append(...items); }
   setAttribute(key, value) { this.attributes[key] = value; }
   addEventListener(type, callback) { (this.events[type] ||= []).push(callback); }
-  dispatch(type, event = {}) { for (const callback of this.events[type] || []) callback({ target: this, ...event }); }
+  dispatch(type, event = {}) { return (this.events[type] || []).map(callback => callback({ target: this, ...event })); }
   contains(target) { return this === target || this.children.some(child => child.contains(target)); }
   querySelectorAll(query) {
     const matches = item => query === 'details' ? item.tagName === 'details'
@@ -25,12 +25,13 @@ class Element {
   }
   querySelector(query) { return query === 'summary' ? this.children.find(child => child.tagName === 'summary') : this.querySelectorAll(query)[0]; }
   closest(query) {
+    if (query === '#signOutBtn' && this.id === 'signOutBtn') return this;
     if (query === 'details[open]' && this.tagName === 'details' && this.open) return this;
     return this.parentNode?.closest(query) || null;
   }
   focus() { this.focused = true; }
 }
-function mount(module = 'educator', page = 'dashboard', role = 'teacher', storageThrows = false) {
+function mount(module = 'educator', page = 'dashboard', role = 'teacher', storageThrows = false, integrations = {}) {
   const desktop = new Element(), mobile = new Element(), moduleSwitch = new Element('details');
   moduleSwitch.append(new Element('summary'), new Element());
   const root = new Element(); root.append(moduleSwitch, desktop, mobile);
@@ -46,11 +47,11 @@ function mount(module = 'educator', page = 'dashboard', role = 'teacher', storag
   };
   const window = { location: { href: '' } };
   const localStorage = { getItem: () => { if (storageThrows) throw new Error('Unavailable'); return role; } };
-  vm.runInNewContext(source, { document, window, localStorage, console: { warn() {} } });
+  vm.runInNewContext(integrations.source || source, { document, window, localStorage, console: { warn() {} }, ...integrations });
   documentEvents.DOMContentLoaded[0]();
   const clickOutside = () => { for (const callback of documentEvents.click) callback({ target: new Element(), preventDefault() {} }); };
   const roleReady = role => { for (const callback of documentEvents['adminerva:role-ready'] || []) callback({ detail: { role } }); };
-  return { desktop, mobile, root, moduleSwitch, clickOutside, roleReady, documentEvents };
+  return { desktop, mobile, root, moduleSwitch, clickOutside, roleReady, documentEvents, window };
 }
 const links = element => element.querySelectorAll('a');
 const groupNames = element => element.children.map(group => group.children[0].textContent);
@@ -215,23 +216,30 @@ test('student tabs recover when an older staff role remains in browser storage',
   assert.equal(links(view.desktop).find(link => link.attributes['aria-current'] === 'page').href, 'student-xml-lab.html');
 });
 
-async function checkGuard({ role = 'admin', path = '/users.html', students = [], verified = true, mockRole = null } = {}) {
+async function checkGuard({ role = 'admin', path = '/users.html', students = [], verified = true, mockRole = null, signedIn = true, teacherPreferences = null, switchDuringLookup = false } = {}) {
   const guard = readFileSync('js/core/auth-guard.js', 'utf8').replace(/^import[\s\S]*?from\s+["'][^"']+["'];?\s*/gm, '');
   let authCallback;
-  const events = [], nav = { dataset: {} }, storage = new Map(mockRole ? [['Adminerva_Mock_Role', mockRole]] : []);
+  const events = [], cacheCalls = [], connectionWrites = [], documentEvents = {}, nav = { dataset: {} }, storage = new Map(mockRole ? [['Adminerva_Mock_Role', mockRole]] : []);
+  const user = signedIn ? { uid: 'test-user', email: 'staff@example.test', emailVerified: verified } : null;
+  const auth = { currentUser: user };
   const window = { location: { pathname: path, href: '', replace(value) { this.href = value; } }, beginLoading: () => () => {} };
   const document = {
     getElementById: id => id === 'adminerva-nav' ? nav : null,
-    querySelectorAll: () => [], addEventListener() {}, dispatchEvent: event => events.push(event)
+    querySelectorAll: () => [], addEventListener: (type, callback) => (documentEvents[type] ||= []).push(callback), dispatchEvent: event => events.push(event)
   };
   vm.runInNewContext(guard, {
-    auth: {}, onAuthStateChanged: (_auth, callback) => { authCallback = callback; }, signOut: async () => {},
-    resolveAccountAccess: async () => ({ role, students, needsTeacherApproval: false }),
+    auth, onAuthStateChanged: (_auth, callback) => { authCallback = callback; }, signOut: async () => { cacheCalls.push('signout'); },
+    activateConnectionOwner: uid => cacheCalls.push('activate:' + uid), clearConnectionPreferences: () => cacheCalls.push('clear'),
+    writeConnectionPreferences: (uid, preferences) => { cacheCalls.push('hydrate:' + uid); connectionWrites.push({ uid, preferences }); },
+    resolveAccountAccess: async () => {
+      cacheCalls.push('resolve'); if (switchDuringLookup) auth.currentUser = { uid: 'another-account' };
+      return { role, students, teachers: teacherPreferences ? [{ data: () => teacherPreferences }] : [], needsTeacherApproval: false };
+    },
     window, document, console, CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }
   });
-  await authCallback({ uid: 'test-user', email: 'staff@example.test', emailVerified: verified });
-  return { events, nav, window, storage };
+  await authCallback(user);
+  return { events, nav, window, storage, cacheCalls, connectionWrites, authCallback, documentEvents };
 }
 
 test('guard publishes verified presentation after successful admission and page authorization', async () => {
@@ -258,4 +266,61 @@ test('verified staff simulation preserves the restricted student presentation', 
   assert.equal(view.events[0].detail.role, 'student');
   assert.equal(view.storage.get('Adminerva_Role'), 'student');
   assert.match(view.nav.dataset.accountEmail, /Simulating: student/);
+});
+
+test('guard activates credential ownership before any asynchronous admission lookup', async () => {
+  const view = await checkGuard();
+  assert.deepEqual(view.cacheCalls.slice(0, 2), ['activate:test-user', 'resolve']);
+  await view.authCallback({ uid: 'next-account', email: 'next@example.test', emailVerified: true });
+  assert.equal(view.cacheCalls.at(-1), 'activate:next-account');
+  assert.match(view.window.location.href, /account-changed/);
+});
+
+test('staff connections hydrate from the already-fetched own teacher profile after owner activation', async () => {
+  const preferences = { githubToken: 'synthetic-own-key', geminiKey: 'synthetic-own-gemini-key', aiModel: 'saved-model', engineMode: 'cloud' };
+  const view = await checkGuard({ teacherPreferences: preferences });
+  assert.deepEqual(view.cacheCalls.slice(0, 3), ['activate:test-user', 'resolve', 'hydrate:test-user']);
+  assert.equal(view.connectionWrites.length, 1);
+  assert.equal(view.connectionWrites[0].uid, 'test-user');
+  assert.equal(view.connectionWrites[0].preferences, preferences);
+});
+
+test('student accounts and account changes during lookup never hydrate staff connections', async () => {
+  for (const options of [{ role: null, students: [{}] }, { switchDuringLookup: true }]) {
+    const view = await checkGuard({ ...options, teacherPreferences: { geminiKey: 'must-not-hydrate' } });
+    assert.equal(view.connectionWrites.length, 0);
+  }
+});
+
+test('guard clears cached credentials for signed-out accounts and before forced sign-out', async () => {
+  const signedOut = await checkGuard({ signedIn: false });
+  assert.deepEqual(signedOut.cacheCalls, ['clear']);
+  const unverified = await checkGuard({ verified: false });
+  assert.deepEqual(unverified.cacheCalls, ['activate:test-user', 'clear', 'signout']);
+});
+
+test('guard fallback sign-out clears credentials before calling Firebase and respects handled clicks', async () => {
+  const view = await checkGuard();
+  const click = view.documentEvents.click[0], before = view.cacheCalls.length;
+  click({ defaultPrevented: true, target: { id: 'signOutBtn' } });
+  assert.equal(view.cacheCalls.length, before);
+  click({ defaultPrevented: false, target: { id: 'signOutBtn' }, preventDefault() {} });
+  await Promise.resolve();
+  assert.deepEqual(view.cacheCalls.slice(-2), ['clear', 'signout']);
+});
+
+test('navigation sign-out clears cached connection credentials before Firebase signs out', async () => {
+  const calls = [];
+  const injected = source
+    .replace('import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js")', 'Promise.resolve(firebaseModule)')
+    .replace('import("./connection-cache.mjs?v=1.2.0")', 'Promise.resolve(connectionModule)');
+  const view = mount('repo', 'gradebook', 'teacher', false, {
+    source: injected,
+    firebaseModule: { getAuth: () => ({}), signOut: async () => calls.push('signout') },
+    connectionModule: { clearConnectionPreferences: () => calls.push('clear') }
+  });
+  const button = new Element('button'); button.id = 'signOutBtn'; view.root.append(button);
+  await Promise.all(view.root.dispatch('click', { target: button, preventDefault() {} }));
+  assert.deepEqual(calls, ['clear', 'signout']);
+  assert.equal(view.window.location.href, 'login.html');
 });

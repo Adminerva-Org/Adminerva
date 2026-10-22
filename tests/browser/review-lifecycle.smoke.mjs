@@ -72,7 +72,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
   const environment=await initializeTestEnvironment({projectId,firestore:{rules}});
   const adminApp=initializeApp({projectId},"browser-fixture-admin");
   let browser,server;
-  const contexts=[],errors=[],blockedRequests=[],dialogs=[],milestones=[];
+  const contexts=[],errors=[],blockedRequests=[],dialogs=[],milestones=[],consoleErrors=[],editorAssetRequests=[];
   function validated(message){milestones.push(message);console.log("Validated: "+message);}
   let modelRequests=0,providerOutage=true,providerMalformed=false;
   let omitSavedCommit=false;
@@ -88,6 +88,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
       const db=context.firestore();
       await Promise.all([
         setDoc(doc(db,"staff_access",accounts.teacher.email),{email:accounts.teacher.email,displayName:"Fixture instructor",role:"teacher",status:"active",sections:["fixture-11-A"],revision:1}),
+        setDoc(doc(db,"teachers",accounts.teacher.uid),{uid:accounts.teacher.uid,email:accounts.teacher.email,name:"Fixture instructor",geminiKey:"fixture-key-never-valid-in-production"}),
         ...["alice","bob"].map(studentId=>setDoc(doc(db,"students",studentId),{
           name:"Fixture "+studentId,email:accounts[studentId].email,section:"fixture-11-A",githubUsername:"fixture-"+studentId,repoUrl:repository
         })),
@@ -144,17 +145,19 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     browser=await chromium.launch({headless:true,...(process.env.ADMINERVA_TEST_BROWSER_PATH?{executablePath:process.env.ADMINERVA_TEST_BROWSER_PATH}:{})});
     async function newIdentity(role){
       const context=await browser.newContext({viewport:{width:1360,height:1000}});contexts.push(context);
-      await context.addInitScript(({role,port})=>{
+      await context.addInitScript(({role,port,uid})=>{
         if(location.protocol!=="http:")return;
         localStorage.setItem("fixture-role",role);
         window.ADMINERVA_PRACTICE_EMULATOR=port;
+        localStorage.setItem("Adminerva_connection_owner",uid);
         localStorage.setItem("Adminerva_Role",role.startsWith("teacher")?"teacher":role==="admin"?"superadmin":"student");
         if(role==="teacher")localStorage.setItem("Adminerva_gemini_token","fixture-key-never-valid-in-production");
-      },{role,port:server.address().port});
+      },{role,port:server.address().port,uid:accounts[role].uid});
       await context.route("**/*",async route=>{
         const url=route.request().url(),parsed=new URL(url);
         if(assets.has(url))return route.fulfill({contentType:url.endsWith(".css")?"text/css":"text/javascript",body:assets.get(url)});
         if(url.startsWith("https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/")){
+          editorAssetRequests.push(url);
           if(!editorAssets.has(url))editorAssets.set(url,fetch(url,{signal:AbortSignal.timeout(20000)}).then(async response=>{
             assert.equal(response.ok,true,"Could not load the pinned code editor asset: "+url);
             return {body:Buffer.from(await response.arrayBuffer()),contentType:response.headers.get("content-type")||"application/octet-stream",headers:{"Access-Control-Allow-Origin":"*"}};
@@ -188,6 +191,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
       });
       context.on("page",page=>{
         page.on("pageerror",error=>errors.push(error.message));
+        page.on("console",message=>{if(message.type()==="error")consoleErrors.push({page:page.url(),message:message.text().slice(0,1200)});});
         page.on("dialog",async dialog=>{
           dialogs.push(dialog.message());
           if(interceptSummaryConfirmation&&dialog.message().startsWith("Replace the teacher's engagement summary")){
@@ -789,7 +793,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
         if(route.startsWith("manage-"))await expect(page.locator("#catalog-status")).not.toContainText("Loading catalog");
         if(route==="teacher-accounts.html")await expect(page.locator("#staff-account-status")).toContainText("Teacher directory loaded");
         if(route==="student-playground.html") {
-          await expect(page.locator("#editorLoading")).toBeHidden();await expect(page.locator(".monaco-editor")).toBeVisible();
+          await expect(page.locator("#editorLoading")).toBeHidden({timeout:45000});await expect(page.locator(".monaco-editor")).toBeVisible();
           await page.locator("#languageSelect").selectOption("web");await page.locator("#runBtn").click();
           await expect(page.frameLocator("#webPreviewFrame").locator("h1")).toHaveText("Hello, Adminerva Web!");
           const exporting=page.waitForEvent("download");await page.locator("#exportZipBtn").click();
@@ -819,6 +823,7 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     await writeFile(path.join(output,"result.json"),JSON.stringify({projectId,backend:"real Auth + Firestore emulators",sdkVersion:"10.13.0",externalServices:"GitHub and Gemini fixtures",milestones,modelRequests,errors,blockedRequests},null,2));
     console.log(JSON.stringify({passed:milestones,artifacts:output}));
   }catch(error){
+    console.error("Browser failure diagnostics: "+JSON.stringify({message:error.message,errors,blockedRequests,editorAssetRequests,consoleErrors:consoleErrors.slice(-15)}));
     const layouts=[];
     if(browser)for(const [index,context] of contexts.entries())for(const [pageIndex,page] of context.pages().entries())
     {

@@ -1,5 +1,6 @@
 import {resolveAccountAccess} from "./staff-session.mjs?v=1.1.0";
 import {ensureGuestRequest} from "./admission-service.mjs?v=1.2.0";
+import {activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "./connection-cache.mjs?v=1.2.0";
 /** Approved-account sign-in and access feedback. */
 import { db, auth } from "../core/firebase-core.js";
 import {
@@ -54,6 +55,7 @@ const handleOAuthLogin = async (provider, providerType) => {
 
     // 1. INSTANT POPUP
     const result = await signInWithPopup(auth, provider);
+    activateConnectionOwner(result.user?.uid||null);
     const email = result.user.email?.toLowerCase().trim();
 
     if (!email) {
@@ -68,6 +70,8 @@ const handleOAuthLogin = async (provider, providerType) => {
     // 2. VERIFY IDENTITY against Firestore Directory
     const access=await resolveAccountAccess(result.user),role=access.role;
     const isEducator=!!role;
+    if(auth.currentUser?.uid!==result.user.uid)throw Error("account-changed");
+    if(!isEducator)clearConnectionPreferences();
     let targetCollection = isEducator ? "teachers" : "students";
 
     if(!isEducator&&(access.needsTeacherApproval||!access.students.length)){
@@ -79,6 +83,11 @@ const handleOAuthLogin = async (provider, providerType) => {
     if(isEducator && !profileDocs.length){
       await setDoc(doc(db,"teachers",result.user.uid),{email,name:String(result.user.displayName||email).slice(0,120),uid:result.user.uid});
       profileDocs=[{id:result.user.uid}];
+    }
+    if(isEducator){
+      if(!result.user.emailVerified||auth.currentUser?.uid!==result.user.uid)throw Error("account-changed");
+      const ownProfile=profileDocs.find(profile=>String(profile.data?.()?.email||"").toLowerCase()===email);
+      writeConnectionPreferences(result.user.uid,ownProfile?.data?.()||{});
     }
 
     if (!profileDocs.length && !isEducator) {
@@ -108,6 +117,11 @@ const handleOAuthLogin = async (provider, providerType) => {
         );
 
         await Promise.all(updatePromises);
+        if(auth.currentUser?.uid!==result.user.uid)throw Error("account-changed");
+        if(isEducator){
+          const own=activateConnectionOwner(result.user.uid);
+          writeConnectionPreferences(result.user.uid,{...own,githubToken:credential.accessToken});
+        }
       }
     }
 
@@ -128,6 +142,7 @@ const handleOAuthLogin = async (provider, providerType) => {
       ? "teacher-home.html"
       : "student-home.html";
   } catch (error) {
+    clearConnectionPreferences();
     await signOut(auth);
 
     let errorTitle = "Login Failed";

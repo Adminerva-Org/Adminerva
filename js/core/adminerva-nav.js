@@ -269,7 +269,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!button) return;
     event.preventDefault(); button.textContent = "Signing out…"; button.disabled = true;
     try {
-      const { getAuth, signOut } = await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js");
+      const [{ getAuth, signOut }] = await Promise.all([
+        import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js"),
+        import("./connection-cache.mjs?v=1.2.0").then(module => module.clearConnectionPreferences())
+      ]);
       await signOut(getAuth());
     } catch (error) { console.warn("Sign out background process skipped or failed.", error); }
     finally {

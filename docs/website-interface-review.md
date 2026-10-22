@@ -24,6 +24,8 @@ This update covers the shared interface across the 42 root HTML routes, with dee
 | Report dialogs allowed keyboard focus to leave the form. | Focus stays inside the open dialog; Escape preserves the draft and returns focus to Help. |
 | PDF reference imports could wait indefinitely after provider errors. | HTTP errors and invalid processing states stop immediately. Processing has a two-minute limit, restores the import control and supports selecting the same file to retry. |
 | The code editor's module loader captured JSZip before it could expose the global ZIP constructor. | JSZip loads before the editor loader. Browser validation opens the real editor, runs a Web Preview and downloads a ZIP archive. |
+| A delayed module could miss the editor's page-ready event. | The editor initializes immediately when the page is already ready, while retaining normal initialization for earlier loads. |
+| Shared-browser connection fields could carry over to another staff account. | One account owns the compatibility cache. Login and page admission restore only that account's own saved fields; switching accounts and signing out clear the previous values. |
 
 ## Intended setup and learning flows
 
