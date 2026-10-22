@@ -9,7 +9,7 @@
     />
     <title>Assignments | Student Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.1.0" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.2.0" />
 </head>
   <body
     class="bg-slate-50 font-sans text-slate-800 min-h-screen flex flex-col hidden"
@@ -35,9 +35,11 @@
         </div>
         <select
           id="sectionSelectorAssessments"
+          aria-label="Assignment section"
           class="hidden w-full sm:w-auto text-sm border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 font-bold bg-indigo-50 px-3 py-2.5 sm:py-2 text-indigo-700 cursor-pointer outline-none border transition"
         ></select>
       </header>
+      <div id="assignmentsNotice" class="av-status-message mb-4" role="status" aria-live="polite"><p id="assignmentsNoticeText">Loading your assignments…</p><button type="button" id="assignmentsRetry" class="hidden mt-2 font-bold underline">Retry loading assignments</button></div>
 
       <div
         class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col sm:flex-row gap-4 items-center justify-between"
@@ -50,6 +52,7 @@
           <input
             type="text"
             id="searchAssInput"
+            aria-label="Search assignments"
             placeholder="Search assignments..."
             class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none transition"
           />
@@ -57,14 +60,16 @@
         <div class="flex w-full sm:w-auto gap-3">
           <select
             id="filterStatus"
+            aria-label="Filter assignment status"
             class="w-full sm:w-auto border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold bg-slate-50 text-slate-700 cursor-pointer focus:ring-2 focus:ring-indigo-500 outline-none"
           >
             <option value="all">All Assignments</option>
             <option value="urgent">⚠️ Urgent / Past Due</option>
-            <option value="pending">⏳ Pending</option>
+            <option value="pending">⏳ Pending / needs my action</option>
           </select>
           <select
             id="sortDate"
+            aria-label="Sort assignments"
             class="w-full sm:w-auto border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold bg-slate-50 text-slate-700 cursor-pointer focus:ring-2 focus:ring-indigo-500 outline-none"
           >
             <option value="newest">Posted: Newest First</option>
@@ -185,10 +190,10 @@
       </div>
     </div>
 
-    <script src="js/core/adminerva-nav.js?v=1.1.0"></script>
-    <script src="js/core/adminerva-loader.js?v=1.1.0"></script>
-    <script type="module" src="js/core/auth-guard.js?v=1.1.0"></script>
-    <script type="module" src="js/student/assessments.js?v=2026.10.19.4"></script>
+    <script src="js/core/adminerva-nav.js?v=1.2.0"></script>
+    <script src="js/core/adminerva-loader.js?v=1.2.0"></script>
+    <script type="module" src="js/core/auth-guard.js?v=1.2.0"></script>
+    <script type="module" src="js/student/assessments.js?v=1.2.0"></script>
     <script type="module" src="js/student/submission-receipts.mjs?v=2026.10.19.4"></script>
     <script type="module" src="js/student/assessment-evidence.mjs?v=1.1.0"></script>
   </body>

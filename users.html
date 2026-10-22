@@ -9,7 +9,7 @@
     />
     <title>User Management | Adminerva Educator</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.1.0" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.2.0" />
 </head>
   <body
     class="bg-slate-50 font-sans text-slate-800 min-h-screen flex flex-col hidden"
@@ -25,13 +25,16 @@
         <h1
           class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight"
         >
-          Directory & Access
+          User directory
         </h1>
         <p class="text-sm sm:text-base text-slate-500 mt-1 font-medium">
-          Manage student rosters, access permissions, and instructor accounts.
+          Enroll students by section, review access requests, and connect the roster to teacher assignments.
         </p>
       </header>
 
+      <nav class="av-setup-nav" aria-label="School configuration"><a href="users.html" aria-current="page">User directory</a><a href="teacher-accounts.html">Teachers</a><a href="manage-sections.html">Sections</a><a href="manage-programs.html">Tracks & pathways</a><a href="manage-subjects.html">Subjects</a></nav>
+      <ol class="av-setup-steps" aria-label="School setup workflow"><li><a href="manage-sections.html"><strong>1. Define sections</strong><span>Create the exact class names.</span></a></li><li><a href="users.html" aria-current="step"><strong>2. Enroll students</strong><span>Import a roster with those section names.</span></a></li><li><a href="teacher-accounts.html"><strong>3. Assign teachers</strong><span>Choose who teaches each section.</span></a></li></ol>
+      <p id="directory-summary" class="av-status-message" role="status" aria-live="polite">Loading roster…</p>
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
         <!-- Left Column: CSV Upload -->
         <div class="lg:col-span-1 space-y-6">
@@ -44,43 +47,30 @@
               >
                 <span class="text-blue-500">📁</span> Import Roster
               </h3>
-              <p class="text-xs sm:text-sm text-slate-500 mb-4">
-                Upload a CSV file containing
-                <code class="bg-slate-100 text-slate-700 px-1 rounded"
-                  >email</code
-                >,
-                <code class="bg-slate-100 text-slate-700 px-1 rounded"
-                  >firstName</code
-                >, and
-                <code class="bg-slate-100 text-slate-700 px-1 rounded"
-                  >lastName</code
-                >.
-              </p>
-
+              <p class="text-xs sm:text-sm text-slate-500 mb-4">CSV columns: <code>email</code>, <code>firstName</code>, <code>lastName</code>, and <code>section</code>. Use the exact section names from your school setup. Each section creates a roster record.</p>
+              <p class="mb-4"><a class="text-blue-700 underline text-sm" href="data:text/csv;charset=utf-8,email%2CfirstName%2ClastName%2Csection%0Astudent%40example.edu%2CAna%2CSantos%2CGrade%2011%20ICT%20A%0A" download="adminerva-roster-template.csv">Download CSV template</a></p>
               <!-- Google Sheets Sync -->
               <div class="mb-6 sm:mb-8">
                 <h3
                   class="text-base sm:text-lg font-bold text-slate-800 mb-2 flex items-center gap-2"
                 >
-                  <span class="text-green-500">📊</span> Live Sheets Sync
+                  <span class="text-green-500">📊</span> School roster sheet
                 </h3>
                 <p class="text-xs sm:text-sm text-slate-500 mb-4">
-                  Automatically sync the class roster from your connected Google
-                  Form responses.
+                  Import the school’s configured Google Sheet roster when you need updated records.
                 </p>
                 <button
                   id="syncSheetBtn"
                   class="w-full bg-green-600 text-white font-bold py-3.5 sm:py-2.5 px-4 rounded-md hover:bg-green-700 transition shadow-sm text-sm"
                 >
-                  Sync Class Roster
+                  Import configured sheet
                 </button>
               </div>
 
               <hr class="border-slate-100 mb-6" />
 
               <div
-                class="border-2 border-dashed border-slate-300 rounded-lg p-6 sm:p-8 text-center hover:bg-slate-50 hover:border-blue-400 transition cursor-pointer"
-                id="dropzone"
+                id="dropzone" role="button" tabindex="0" aria-controls="csvFile" aria-describedby="csv-file-hint" class="av-dropzone border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer"
               >
                 <span class="text-3xl block mb-2">📥</span>
                 <p class="text-sm font-bold text-slate-700">
@@ -89,23 +79,24 @@
                 <p class="text-[10px] sm:text-xs text-slate-400 mt-1">
                   Maximum 500 records per upload
                 </p>
-                <input type="file" id="csvFile" accept=".csv" class="hidden" />
               </div>
+              <input type="file" id="csvFile" accept=".csv,text/csv" class="hidden" aria-label="Choose roster CSV file" />
+              <p id="csv-file-hint" class="av-form-hint">Choose a CSV file, or drop it here. Maximum 500 roster records per import.</p>
 
               <button
-                id="uploadBtn"
+                id="uploadBtn" type="button" disabled
                 class="w-full mt-4 bg-blue-600 text-white font-bold py-3.5 sm:py-2.5 px-4 rounded-md hover:bg-blue-700 transition shadow-sm disabled:opacity-50 text-sm"
               >
-                Sync to Database
+                Import selected CSV
               </button>
               <p
-                id="uploadStatus"
+                id="uploadStatus" role="status" aria-live="polite"
                 class="text-[10px] sm:text-xs font-bold text-center mt-3 hidden"
               ></p>
             </div>
 
             <!-- ISOLATED CLEAR BUTTON -->
-            <div class="mt-auto pt-8 sm:pt-12">
+            <details class="av-danger-zone mt-auto pt-8"><summary>Advanced: reset roster and grades</summary><p class="av-form-hint">This removes all student roster and grading records. Use only when intentionally clearing the school’s data.</p>
               <div class="border-t border-red-100 pt-4 flex justify-center">
                 <button
                   onclick="window.clearDirectory()"
@@ -115,7 +106,7 @@
                   Database
                 </button>
               </div>
-            </div>
+            </details>
           </div>
         </div>
 
@@ -128,16 +119,8 @@
             <div
               class="p-0 border-b border-slate-200 bg-slate-50 flex px-4 sm:px-6 pt-4 overflow-x-auto hide-scrollbar whitespace-nowrap"
             >
-              <button
-                class="pb-3 text-sm font-bold text-blue-600 border-b-2 border-blue-600 mr-6"
-              >
-                Enrolled Students
-              </button>
-              <button
-                class="pb-3 text-sm font-medium text-slate-500 hover:text-slate-800"
-              >
-                Instructors
-              </button>
+              <a href="users.html" aria-current="page" class="pb-3 text-sm font-bold text-blue-600 border-b-2 border-blue-600 mr-6">Enrolled students</a>
+              <a href="teacher-accounts.html" class="pb-3 text-sm font-medium text-slate-500 hover:text-slate-800">Manage teachers ↗</a>
             </div>
 
             <!-- Filter & Search Bar -->
@@ -146,13 +129,13 @@
             >
               <div class="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
                 <select
-                  id="sectionFilter"
+                  id="sectionFilter" aria-label="Filter by section"
                   class="w-full sm:w-auto text-base sm:text-sm border border-slate-300 rounded-md px-3 py-3 sm:py-1.5 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-slate-50 font-medium text-slate-700 cursor-pointer"
                 >
                   <option value="all">All Sections</option>
                 </select>
                 <select
-                  id="statusFilter"
+                  id="statusFilter" aria-label="Filter by GitHub setup status"
                   class="w-full sm:w-auto text-base sm:text-sm border border-slate-300 rounded-md px-3 py-3 sm:py-1.5 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-slate-50 font-medium text-slate-700 cursor-pointer"
                 >
                   <option value="all">All Statuses</option>
@@ -167,7 +150,7 @@
                 >
                 <input
                   type="text"
-                  id="searchInput"
+                  id="searchInput" aria-label="Search student name or email"
                   placeholder="Search name or email..."
                   class="w-full text-base sm:text-sm border border-slate-300 rounded-md pl-9 pr-3 py-3 sm:py-1.5 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                 />
@@ -186,24 +169,22 @@
                     <!-- Clickable Sort Headers -->
                     <th
                       class="px-4 sm:px-6 py-3 cursor-pointer hover:bg-slate-200 transition select-none"
-                      onclick="window.sortTable('name')"
+                      scope="col" aria-sort="ascending" id="sort-name-header"
                     >
-                      Student Name
-                      <span id="sort-name" class="ml-1 text-blue-500"></span>
+                      <button type="button" onclick="window.sortTable('name')">Student name <span id="sort-name" class="ml-1 text-blue-500" aria-hidden="true"></span></button>
                     </th>
                     <th
                       class="px-4 sm:px-6 py-3 cursor-pointer hover:bg-slate-200 transition select-none"
-                      onclick="window.sortTable('email')"
+                      scope="col" aria-sort="none" id="sort-email-header"
                     >
-                      Email Address
-                      <span id="sort-email" class="ml-1 text-blue-500"></span>
+                      <button type="button" onclick="window.sortTable('email')">Email address <span id="sort-email" class="ml-1 text-blue-500" aria-hidden="true"></span></button>
                     </th>
                     <th class="px-4 sm:px-6 py-3">GitHub Setup</th>
                     <th class="px-4 sm:px-6 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody id="userTableBody" class="text-sm">
-                  <!-- Rows inject here -->
+                  <tr><td colspan="4" class="p-6 text-center">Loading student roster…</td></tr>
                 </tbody>
               </table>
             </div>
@@ -235,21 +216,22 @@
       <section id="admissions" hidden class="bg-white border rounded-2xl p-6 my-8">
         <h2 class="text-2xl font-bold">Guest access requests</h2><p>New sign-ins request access here. Existing enrolled student records are preserved; do not import them again.</p>
         <p id="admission-status" role="status"></p><button id="admission-refresh" type="button" class="av-btn">Refresh requests</button><div id="admission-list" class="grid gap-3 my-4"></div>
-        <form id="admission-form" hidden class="grid gap-4">
+        <form id="admission-form" hidden class="grid gap-4 av-panel">
           <h3 id="admission-name" class="font-bold"></h3>
           <label>Approve as<select id="admission-role"><option value="student">Student</option><option value="teacher">Teacher</option></select></label>
-          <label>Student record (student approvals only)<select id="admission-student"></select></label>
-          <label>Section for a new student<input id="admission-section" maxlength="120" placeholder="Exact school section name"></label>
+          <div id="admission-student-fields"><label for="admission-student">Student record<select id="admission-student"></select></label>
+          <label id="admission-section-label" for="admission-section">Section for a new student<input id="admission-section" maxlength="120" placeholder="Exact school section name" list="admission-section-choices"><datalist id="admission-section-choices"></datalist><span class="av-form-hint">Use the same section name selected in teacher assignments.</span></label></div>
+          <p id="admission-teacher-hint" class="av-scope-notice" hidden>After approval, open <a href="teacher-accounts.html">Teachers</a> to assign teaching sections. Existing assignments are preserved.</p>
           <label>Decision reason<textarea id="admission-reason" required minlength="12" maxlength="600"></textarea></label>
-          <div><button value="approved" class="av-btn">Approve selected access</button><button value="rejected" class="av-btn">Reject request</button></div>
+          <div><button value="approved" class="av-btn">Approve selected access</button><button value="rejected" class="av-btn" formnovalidate>Reject request</button><button id="admission-cancel" type="button" class="av-secondary-button">Cancel</button></div>
         </form>
       </section>
     </main>
 
-    <script src="js/core/adminerva-nav.js?v=1.1.0"></script>
-    <script type="module" src="js/settings/settings-user.js?v=1.1.0"></script>
-    <script type="module" src="js/core/auth-guard.js?v=1.1.0"></script>
-    <script type="module" src="js/core/user-admissions.mjs?v=1.1.0"></script>
-    <script src="js/core/adminerva-loader.js?v=1.1.0"></script>
+    <script src="js/core/adminerva-nav.js?v=1.2.0"></script>
+    <script type="module" src="js/settings/settings-user.js?v=1.2.0"></script>
+    <script type="module" src="js/core/auth-guard.js?v=1.2.0"></script>
+    <script type="module" src="js/core/user-admissions.mjs?v=1.2.0"></script>
+    <script src="js/core/adminerva-loader.js?v=1.2.0"></script>
   </body>
 </html>

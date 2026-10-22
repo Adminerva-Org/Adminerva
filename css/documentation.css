@@ -20,3 +20,11 @@ html{box-sizing:border-box}*,*:before,*:after{box-sizing:inherit}body{margin:0;b
 .av-guide-content section[hidden]{display:none}
 @media(max-width:767px){.av-wiki-layout{grid-template-columns:1fr}.av-wiki-toc{position:static;display:flex;flex-wrap:wrap;gap:.3rem}.av-release-heading time{margin-left:0;flex-basis:100%}}
 @media(prefers-reduced-motion:reduce){.av-documentation{scroll-behavior:auto}}
+.av-documentation :is(button,select,input:not([type="checkbox"]):not([type="radio"]),textarea){font:inherit;max-width:100%;border:1px solid #bfcde0;border-radius:.6rem;padding:.65rem .8rem;min-height:44px;background:white;color:#18324c}
+.av-documentation button:hover{background:#eef5fc;border-color:#7696c0}.av-documentation button:disabled{opacity:.6;cursor:not-allowed}
+.av-documentation textarea{display:block;width:100%;min-height:7rem;resize:vertical}.av-documentation label{font-size:.9rem;font-weight:650}
+.av-documentation :is(button,a,input,select,textarea,summary):focus-visible{outline:3px solid #6086de;outline-offset:3px}
+.av-documentation pre{max-width:100%;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.av-documentation .av-guest-mission{padding:1rem;margin:.75rem 0}.av-guest-mission summary{cursor:pointer;min-height:44px;font-weight:700;padding:.4rem}
+.av-guest-mission button{margin:.35rem .35rem .35rem 0;text-align:left}.av-guest-mission :is(h2,h3){margin:.5rem 0}
+.av-documentation a.av-action-link{color:#fff}

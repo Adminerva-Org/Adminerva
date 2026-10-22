@@ -1,5 +1,6 @@
 import {resolveAccountAccess} from "./staff-session.mjs?v=1.1.0";
-import {ensureGuestRequest} from "./admission-service.mjs?v=1.1.0";
+import {ensureGuestRequest} from "./admission-service.mjs?v=1.2.0";
+import {activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "./connection-cache.mjs?v=1.2.0";
 /** Approved-account sign-in and access feedback. */
 import { db, auth } from "../core/firebase-core.js";
 import {
@@ -15,6 +16,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 
 const errBox = document.getElementById("loginErrorBox");
+let signingIn = false;
 
 // ==========================================
 // UI STATE MANAGERS
@@ -22,18 +24,22 @@ const errBox = document.getElementById("loginErrorBox");
 const showError = (title, message) => {
   if (typeof window.hideSubtleLoader === "function") window.hideSubtleLoader();
   if (!errBox) return;
-  errBox.innerHTML = `
-    <div class="text-red-500 text-3xl mb-2">⛔</div>
-    <h3 class="text-red-400 font-black text-lg uppercase tracking-wider mb-1">${title}</h3>
-    <p class="text-slate-300 text-sm font-medium mb-4">${message}</p>
-  `;
+  const heading = document.createElement("h3"), detail = document.createElement("p");
+  heading.textContent = title; detail.textContent = message;
+  errBox.replaceChildren(heading, detail);
   errBox.classList.remove("hidden");
+  errBox.focus();
 };
 
 // ==========================================
 // THE LOGIN ENGINE
 // ==========================================
 const handleOAuthLogin = async (provider, providerType) => {
+  if (signingIn) return;
+  signingIn = true;
+  const buttons = ["googleLoginBtn", "githubLoginBtn"].map(id => document.getElementById(id)).filter(Boolean);
+  buttons.forEach(button => button.disabled = true);
+  document.getElementById("loginForm")?.setAttribute("aria-busy", "true");
   if (errBox) errBox.classList.add("hidden");
 
   // Utilize the global loader from adminerva-loader.js
@@ -49,6 +55,7 @@ const handleOAuthLogin = async (provider, providerType) => {
 
     // 1. INSTANT POPUP
     const result = await signInWithPopup(auth, provider);
+    activateConnectionOwner(result.user?.uid||null);
     const email = result.user.email?.toLowerCase().trim();
 
     if (!email) {
@@ -63,6 +70,8 @@ const handleOAuthLogin = async (provider, providerType) => {
     // 2. VERIFY IDENTITY against Firestore Directory
     const access=await resolveAccountAccess(result.user),role=access.role;
     const isEducator=!!role;
+    if(auth.currentUser?.uid!==result.user.uid)throw Error("account-changed");
+    if(!isEducator)clearConnectionPreferences();
     let targetCollection = isEducator ? "teachers" : "students";
 
     if(!isEducator&&(access.needsTeacherApproval||!access.students.length)){
@@ -74,6 +83,11 @@ const handleOAuthLogin = async (provider, providerType) => {
     if(isEducator && !profileDocs.length){
       await setDoc(doc(db,"teachers",result.user.uid),{email,name:String(result.user.displayName||email).slice(0,120),uid:result.user.uid});
       profileDocs=[{id:result.user.uid}];
+    }
+    if(isEducator){
+      if(!result.user.emailVerified||auth.currentUser?.uid!==result.user.uid)throw Error("account-changed");
+      const ownProfile=profileDocs.find(profile=>String(profile.data?.()?.email||"").toLowerCase()===email);
+      writeConnectionPreferences(result.user.uid,ownProfile?.data?.()||{});
     }
 
     if (!profileDocs.length && !isEducator) {
@@ -103,6 +117,11 @@ const handleOAuthLogin = async (provider, providerType) => {
         );
 
         await Promise.all(updatePromises);
+        if(auth.currentUser?.uid!==result.user.uid)throw Error("account-changed");
+        if(isEducator){
+          const own=activateConnectionOwner(result.user.uid);
+          writeConnectionPreferences(result.user.uid,{...own,githubToken:credential.accessToken});
+        }
       }
     }
 
@@ -123,10 +142,11 @@ const handleOAuthLogin = async (provider, providerType) => {
       ? "teacher-home.html"
       : "student-home.html";
   } catch (error) {
+    clearConnectionPreferences();
     await signOut(auth);
 
     let errorTitle = "Login Failed";
-    let errorMessage = error.message.replace("Firebase:", "").trim();
+    let errorMessage = String(error.message || "Please try signing in again.").replace("Firebase:", "").trim();
 
     if (error.message === "teacher-approval-required") {
       errorTitle="Teacher approval required";
@@ -137,10 +157,10 @@ const handleOAuthLogin = async (provider, providerType) => {
     } else if (error.message.startsWith("unrecognized-email:")) {
       errorTitle = "Access Denied";
       const failedEmail = error.message.split(":")[1];
-      errorMessage = `Your email (${failedEmail}) is not recognized. If you clicked GitHub, your personal email might not match the school records. <strong>Please click "Continue with Google" instead.</strong>`;
+      errorMessage = `Your email (${failedEmail}) is not recognized. Your GitHub email might differ from your school record. Try Continue with Google using your school email.`;
     } else if (error.code === "auth/popup-blocked") {
       errorMessage =
-        "Your browser aggressively blocked the login window. <strong>Please check the URL bar, allow popups for this website</strong>, and try again.";
+        "The sign-in window was blocked. Allow popups for Adminerva using the browser address bar, then try again.";
     } else if (error.code === "auth/popup-closed-by-user") {
       errorMessage =
         "The login window was closed before finishing. Please try again.";
@@ -153,6 +173,10 @@ const handleOAuthLogin = async (provider, providerType) => {
     }
 
     showError(errorTitle, errorMessage);
+  } finally {
+    signingIn = false;
+    buttons.forEach(button => button.disabled = false);
+    document.getElementById("loginForm")?.removeAttribute("aria-busy");
   }
 };
 
@@ -163,6 +187,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const urlParams = new URLSearchParams(window.location.search);
   if(urlParams.get("error")==="verified-email-required")showError("Verified email required","Use a Google or GitHub account with a verified email. No school access was granted.");
   if(urlParams.get("error")==="teacher-approval-required")showError("Teacher approval required","Ask an administrator to activate your verified email in Teacher Accounts. Your teacher directory profile is preserved.");
+  if(urlParams.get("error")==="account-changed")showError("Account changed","Sign in with the account you want to use. Your saved work stays with its original account.");
+  if(urlParams.get("error")==="server")showError("Could not check your access","Check your connection and try signing in again. If it keeps happening, contact your school administrator.");
   if (urlParams.get("error") === "unauthorized") {
     showError("Session Expired", "Please sign in again to continue.");
     window.history.replaceState({}, document.title, window.location.pathname);

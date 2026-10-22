@@ -9,9 +9,9 @@
     />
     <title>Code Playground | Student Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
-    <!-- JSZip for bundling multi-file projects -->
+    <!-- Load the global ZIP dependency before Monaco installs its AMD loader. -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
     <style>
       @media (max-width: 767px) {
         #workspaceContainer { flex-direction: column; min-height: 0; }
@@ -42,7 +42,7 @@
         background: #475569;
       }
     </style>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.1.0" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.2.0" />
 </head>
   <body
     class="bg-slate-50 font-sans text-slate-800 h-[100dvh] flex flex-col hidden overflow-hidden"
@@ -337,10 +337,10 @@ Workspace loaded. Waiting for execution...</pre
       </div>
     </main>
 
-    <script src="js/core/adminerva-nav.js?v=1.1.0"></script>
-    <script src="js/core/adminerva-loader.js?v=1.1.0"></script>
-    <script type="module" src="js/core/auth-guard.js?v=1.1.0"></script>
-    <script type="module" src="js/student/playground.js?v=1.1.0"></script>
+    <script src="js/core/adminerva-nav.js?v=1.2.0"></script>
+    <script src="js/core/adminerva-loader.js?v=1.2.0"></script>
+    <script type="module" src="js/core/auth-guard.js?v=1.2.0"></script>
+    <script type="module" src="js/student/playground.js?v=1.2.0"></script>
     <script type="module" src="js/student/playground-cloud.mjs?v=2026.10.19.3"></script>
   </body>
 </html>

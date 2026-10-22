@@ -1,4 +1,5 @@
 import {resolveAccountAccess} from "./staff-session.mjs?v=1.1.0";
+import {activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "./connection-cache.mjs?v=1.2.0";
 /** Verified account admission, workspace visibility and sign-out routing. */
 import { auth } from "./firebase-core.js";
 import {
@@ -9,12 +10,18 @@ import {
 const currentPath = window.location.pathname.toLowerCase();
 const isLoginPage = currentPath.includes("login.html");
 let admittedUid;
+const guardedSignOut = () => {
+  clearConnectionPreferences();
+  return signOut(auth);
+};
 
 // 🚨 TIER 1: The Master Key (Can access system API settings)
 
 // 🚨 TIER 2: The Instructor (Can access grading and rosters)
 
 onAuthStateChanged(auth, async (user) => {
+  if (user?.uid) activateConnectionOwner(user.uid);
+  else clearConnectionPreferences();
   if(admittedUid!==undefined&&admittedUid!==(user?.uid||null)){
     window.location.replace("login.html?error=account-changed");return;
   }
@@ -26,12 +33,15 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
 
-  if(!user.emailVerified||!user.email){await signOut(auth);window.location.href="login.html?error=verified-email-required";return;}
+  if(!user.emailVerified||!user.email){await guardedSignOut();window.location.href="login.html?error=verified-email-required";return;}
   const userEmail = user.email.toLowerCase();
   let access;
   try {access=await resolveAccountAccess(user);}
-  catch {await signOut(auth);window.location.href="login.html?error=server";return;}
+  catch {await guardedSignOut();window.location.href="login.html?error=server";return;}
   const admittedRole=access.role;
+  if (["admin", "teacher"].includes(admittedRole) && auth.currentUser?.uid === user.uid) {
+    writeConnectionPreferences(user.uid, access.teachers?.[0]?.data?.() || {});
+  }
 
   // 1. Strict Whitelist Enforcement
   if (!admittedRole) {
@@ -42,7 +52,7 @@ onAuthStateChanged(auth, async (user) => {
       }
     } catch (error) {
       console.error("Database connection error:", error);
-      await signOut(auth);
+      await guardedSignOut();
       window.location.href = "login.html?error=server";
       return;
     }
@@ -86,6 +96,20 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
 
+  // Publish presentation state after admission and routing have succeeded.
+  // Navigation may have rendered from a stale role cached by an earlier visit.
+  const mockNotice = localStorage.getItem("Adminerva_Mock_Role")
+    ? ` (Simulating: ${activeRole})` : "";
+  const accountEmail = userEmail + mockNotice;
+  const navigation = document.getElementById("adminerva-nav");
+  if (navigation) {
+    navigation.dataset.verifiedRole = activeRole;
+    navigation.dataset.accountEmail = accountEmail;
+  }
+  document.dispatchEvent(new CustomEvent("adminerva:role-ready", {
+    detail: { role: activeRole }
+  }));
+
   // Only verified administrator accounts see management shortcuts.
   if (actualRole === "superadmin" && activeRole === "superadmin") {
     document.querySelectorAll("[data-admin-only]").forEach(el => el.classList.remove("hidden"));
@@ -95,19 +119,16 @@ onAuthStateChanged(auth, async (user) => {
   if (pageBody) pageBody.classList.remove("hidden");
 
   const emailDisplay = document.getElementById("userEmailDisplay");
-  if (emailDisplay) {
-    const mockNotice = localStorage.getItem("Adminerva_Mock_Role")
-      ? ` (Simulating: ${activeRole})`
-      : "";
-    emailDisplay.textContent = userEmail + mockNotice;
-  }
+  if (emailDisplay) emailDisplay.textContent = accountEmail;
   } finally { endLoading(); }
 });
 
 // Centralized Sign Out
 document.addEventListener("click", (e) => {
+  if (e.defaultPrevented) return;
   if (e.target && e.target.id === "signOutBtn") {
-    signOut(auth).then(() => {
+    e.preventDefault();
+    guardedSignOut().then(() => {
       localStorage.removeItem("Adminerva_Role");
       localStorage.removeItem("Adminerva_Mock_Role");
       window.location.href = "login.html";

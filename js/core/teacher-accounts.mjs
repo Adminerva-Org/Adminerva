@@ -5,27 +5,45 @@ import {collection,doc,getDocs,getDoc,query,limit,runTransaction,serverTimestamp
 import {resolveStaffRole} from "./staff-session.mjs?v=1.1.0";
 import {ADMIN_EMAIL,TEACHER_EMAIL} from "./staff-role.mjs?v=1.1.0";
 const field=id=>document.getElementById(id);
-let epoch=0,opened=null,busy=false,selectionEpoch=0;
-function status(message){field("staff-account-status").textContent=message;}
-function reset(){selectionEpoch++;field("staff-account-form").reset();field("staff-email").readOnly=false;opened=null;}
+let epoch=0,opened=null,busy=false,selectionEpoch=0,sectionCounts=new Map();
+function status(message,tone="info"){for(const id of ["staff-account-status","staff-form-status"]){field(id).textContent=message;field(id).dataset.tone=tone;}}
+function renderSectionPicker(){
+  const picker=field("staff-section-picker");picker.replaceChildren();
+  for(const option of field("staff-sections").options){
+    const label=document.createElement("label"),checkbox=document.createElement("input"),text=document.createElement("span"),name=document.createElement("strong"),hint=document.createElement("small");
+    label.className="av-section-option";checkbox.type="checkbox";checkbox.value=option.value;checkbox.checked=option.selected;
+    checkbox.addEventListener("change",()=>{option.selected=checkbox.checked;updateSectionSummary();});
+    name.textContent=option.value;const count=sectionCounts.get(option.value)||0;hint.textContent=count?count+" student record"+(count===1?"":"s"):"No enrolled student records";
+    text.append(name,hint);label.append(checkbox,text);picker.append(label);
+  }
+  if(!picker.children.length){const hint=document.createElement("p");hint.textContent="No sections yet. Add a section or import your student roster first.";picker.append(hint);}
+  field("staff-sections").hidden=true;picker.hidden=false;updateSectionSummary();
+}
+function updateSectionSummary(){const count=field("staff-sections").selectedOptions.length;field("staff-sections-summary").textContent=count+" section"+(count===1?"":"s")+" selected (up to 40).";}
+function reset(){selectionEpoch++;field("staff-account-form").reset();field("staff-email").readOnly=false;opened=null;field("staff-form-title").textContent="Add teacher access";for(const option of field("staff-sections").options)option.selected=false;renderSectionPicker();}
 async function refresh(){
   const current=epoch;
-  const [accounts,students,legacy,catalog]=await Promise.all([
+  const loaded=await Promise.allSettled([
     getDocs(query(collection(db,"staff_access"),limit(100))),
     getDocs(query(collection(db,"students"),limit(1000))),
     getDocs(query(collection(db,"lesson_plans"),limit(25))),
     getDocs(query(collection(db,"school_catalog","sections","records"),limit(200))),
   ]);
   if(current!==epoch)return;
+  if(loaded[0].status!=="fulfilled")throw loaded[0].reason;
+  const accounts=loaded[0].value,students=loaded[1].status==="fulfilled"?loaded[1].value:{docs:[]},legacy=loaded[2].status==="fulfilled"?loaded[2].value:{docs:[],empty:true},catalog=loaded[3].status==="fulfilled"?loaded[3].value:{docs:[]};
   field("staff-directory").replaceChildren();field("staff-sections").replaceChildren();field("legacy-lesson-list").replaceChildren();
-  for(const section of [...new Set([...students.docs.map(record=>record.data().section),...catalog.docs.filter(record=>record.data().status==="active").map(record=>record.data().name)].filter(Boolean))].sort())field("staff-sections").add(new Option(section,section));
+  sectionCounts=new Map();for(const record of students.docs){const section=record.data().section;if(typeof section==="string"&&section.trim())sectionCounts.set(section,(sectionCounts.get(section)||0)+1);}
+  for(const section of [...new Set([...sectionCounts.keys(),...catalog.docs.filter(record=>record.data().status==="active").map(record=>record.data().name)].filter(name=>typeof name==="string"&&name.trim()))].sort())field("staff-sections").add(new Option(section,section));
   const profiles=accounts.docs.map(record=>record.data());
   if(!profiles.some(profile=>profile.email===TEACHER_EMAIL))profiles.unshift({email:TEACHER_EMAIL,displayName:"Original instructor",status:"active",revision:0});
   for(const profile of profiles){
     const button=document.createElement("button");button.type="button";button.className="av-directory-card";
     const title=document.createElement("strong");title.textContent=profile.displayName;
-    const detail=document.createElement("span");detail.textContent=profile.email+" · "+profile.status+" · revision "+profile.revision;
-    button.append(title,detail);button.addEventListener("click",async()=>{
+    const detail=document.createElement("span");detail.textContent=profile.email;
+    const assignment=document.createElement("span");assignment.textContent=Array.isArray(profile.sections)&&profile.sections.length?profile.sections.join(" · "):"No explicit section assignments";
+    const badge=document.createElement("span");badge.className="av-badge";badge.dataset.tone=profile.status==="active"?"success":"neutral";badge.textContent=profile.status==="active"?"Active teacher":"Disabled";
+    button.append(title,detail,badge,assignment);button.addEventListener("click",async()=>{
       if(busy)return;
       const selection=++selectionEpoch;
       if(current!==epoch||selection!==selectionEpoch)return;
@@ -34,6 +52,7 @@ async function refresh(){
       const sections=Array.isArray(profile.sections)?profile.sections:[];
       for(const section of sections)if(![...field("staff-sections").options].some(option=>option.value===section))field("staff-sections").add(new Option(section,section));
       for(const option of field("staff-sections").options)option.selected=sections.includes(option.value);
+      renderSectionPicker();field("staff-form-title").textContent="Edit teacher access";field("staff-name").focus();field("staff-account-form").scrollIntoView({behavior:"auto",block:"nearest"});
       status("Editing "+profile.email+". Explain the change before saving.");
     });field("staff-directory").append(button);
   }
@@ -41,10 +60,12 @@ async function refresh(){
     const link=document.createElement("a");link.href="lesson-planner.html?legacyPlan="+encodeURIComponent(record.id);link.className="av-directory-card";
     link.textContent=[record.data().subject_title,record.data().course_week,record.data().teacher_name||"Owner unverified"].filter(Boolean).join(" · ");field("legacy-lesson-list").append(link);
   }
-  if(legacy.empty)field("legacy-lesson-list").textContent="No older shared lessons found.";
-  status("Showing up to 100 accounts, 1,000 roster records and 25 legacy lessons. Account access and personal workspaces are separate from student grades.");
+  if(legacy.empty)field("legacy-lesson-list").textContent=loaded[2].status==="fulfilled"?"No older shared lessons found.":"Older lessons could not load. Teacher access is still available.";
+  field("staff-directory-count").textContent=profiles.length+" teacher"+(profiles.length===1?"":"s");renderSectionPicker();
+  status("Teacher directory loaded. Select a teacher to edit their assigned sections."+(loaded[1].status!=="fulfilled"||loaded[3].status!=="fulfilled"?" Some section choices could not load; refresh to try again.":students.size===1000?" Section counts cover the first 1,000 student records.":""));
 }
-field("staff-reset").addEventListener("click",reset);
+field("staff-reset").addEventListener("click",()=>{reset();field("staff-email").focus();status("Enter a teacher’s verified Google email to add access.");});
+field("staff-refresh").addEventListener("click",async()=>{if(busy)return;field("staff-refresh").disabled=true;try{reset();await refresh();}catch{status("Teacher directory could not refresh. Check your connection and try again.","error");}finally{field("staff-refresh").disabled=false;}});
 field("staff-account-form").addEventListener("submit",async event=>{
   event.preventDefault();if(busy)return;
   const actor=auth.currentUser,current=epoch;
@@ -64,8 +85,8 @@ field("staff-account-form").addEventListener("submit",async event=>{
       transaction.set(ref,after);
       transaction.set(doc(ref,"revisions",String(revision)),{before,after,actorUid:actor.uid,createdAt:serverTimestamp()});
       transaction.set(doc(db,"analytics_rosters",email),{teacherEmail:email,sections,updatedBy:actor.uid,updatedAt:serverTimestamp()});
-    });reset();await refresh();status("Teacher access and assigned sections saved with an audit record. The teacher can now sign in using that verified Google email. Existing learning snapshots need a separate refresh.");
-  }catch(error){status("Not saved: "+error.message);}finally{busy=false;end();field("staff-account-form").querySelectorAll("button").forEach(button=>button.disabled=false);}
+    });reset();try{await refresh();status("Saved teacher access and "+sections.length+" section assignments. Ask the teacher to reload open pages. Refresh existing learning snapshots to update their contents.","success");}catch{status("Teacher access saved successfully. The directory could not refresh; select Refresh to try again.","success");}
+  }catch(error){status("Not saved: "+error.message,"error");}finally{busy=false;end();field("staff-account-form").querySelectorAll("button").forEach(button=>button.disabled=false);}
 });
 onAuthStateChanged(auth,async user=>{
   const current=++epoch;field("staff-account-controls").hidden=true;

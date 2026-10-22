@@ -48,7 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
         
         <!-- Bug Modal -->
-        <div id="bug-modal" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+        <div id="bug-modal" role="dialog" aria-modal="true" aria-labelledby="bug-dialog-title" tabindex="-1" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
           <div class="bg-slate-800 border border-cyan-900 rounded-xl shadow-2xl max-w-xl w-full relative text-white text-left max-h-[90vh] flex flex-col overflow-hidden">
             
             <!-- ✨ NEW: Similarity Intercept Overlay (Hidden by Default) -->
@@ -68,17 +68,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
             <!-- Standard Form -->
             <div class="p-6 flex flex-col flex-1 overflow-hidden">
-                <button onclick="document.getElementById('bug-modal').classList.add('hidden')" class="absolute top-4 right-4 text-slate-400 hover:text-cyan-400 transition text-xl">&times;</button>
+                <button type="button" aria-label="Close report dialog" onclick="document.getElementById('bug-modal').classList.add('hidden')" class="absolute top-4 right-4 text-slate-400 hover:text-cyan-400 transition text-xl">&times;</button>
                 
                 <div class="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
-                  <h2 class="text-xl font-bold text-cyan-400 flex items-center gap-2"><span>🚨</span> Report an Issue</h2>
+                  <h2 id="bug-dialog-title" class="text-xl font-bold text-cyan-400 flex items-center gap-2"><span aria-hidden="true">🚨</span> Report an Issue</h2>
                   <a href="issues.html" class="text-xs font-bold text-slate-400 hover:text-cyan-400 transition underline">View Known Issues</a>
                 </div>
                 
                 <div class="overflow-y-auto pr-2 flex-1 space-y-4">
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Category</label>
+                            <label for="bug-category" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Category</label>
                             <select id="bug-category" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-400 cursor-pointer">
                                 <option value="Bug">🐛 Bug / System Error</option>
                                 <option value="Access">🔐 Login / Access Issue</option>
@@ -88,7 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             </select>
                         </div>
                         <div>
-                            <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Priority</label>
+                            <label for="bug-priority" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Priority</label>
                             <select id="bug-priority" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-400 cursor-pointer">
                                 <option value="Low">🟢 Low</option>
                                 <option value="Medium" selected>🟡 Medium</option>
@@ -108,12 +108,12 @@ document.addEventListener("DOMContentLoaded", () => {
                     </div>
 
                     <div>
-                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Issue Summary</label>
+                        <label for="bug-title" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Issue Summary</label>
                         <input type="text" maxlength="160" id="bug-title" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-400" placeholder="A brief title of the problem...">
                     </div>
 
                     <div>
-                        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Detailed Description</label>
+                        <label for="bug-description" class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Detailed Description</label>
                         <textarea id="bug-description" maxlength="6000" rows="3" class="w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-400" placeholder="Please provide details or steps to reproduce the issue..."></textarea>
                     </div>
 
@@ -139,7 +139,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <p class="text-xs text-amber-200">Screenshots may contain names or other personal information. Crop or redact anything not necessary to diagnose the issue.</p>
                     <div class="bg-slate-900/50 p-3 rounded border border-slate-700 border-dashed">
                         <div class="flex justify-between items-center mb-2">
-                            <label class="block text-[10px] font-bold text-cyan-500 uppercase tracking-wider">
+                            <label for="bug-image-upload" class="block text-[10px] font-bold text-cyan-500 uppercase tracking-wider">
                                 Screenshots (<span id="bug-img-count">0</span>/5)
                             </label>
                             <div class="flex gap-2">
@@ -169,6 +169,15 @@ document.addEventListener("DOMContentLoaded", () => {
   document.documentElement.append(document.getElementById("subtleLoader"));
   updateLoadingStatus();
   if (document.readyState === "complete") endPageLoading();
+  const content = document.querySelector("main") || document.querySelector("h1");
+  if (content && !document.getElementById("av-skip-link")) {
+    if (!content.id) content.id = "av-main-content";
+    content.setAttribute("tabindex", "-1");
+    const skip = document.createElement("a");
+    skip.id = "av-skip-link"; skip.className = "av-skip-link";
+    skip.href = "#" + content.id; skip.textContent = "Skip to main content";
+    document.body.prepend(skip);
+  }
   import("../help/page-help.mjs?v=1.1.0").then(module => module.mountHelp()).catch(() => {});
   bindBugReporterLogic();
 });
@@ -219,6 +228,7 @@ function bindBugReporterLogic() {
   syncReportAudience();
   const fileInput = document.getElementById("bug-image-upload");
   const modal = document.getElementById("bug-modal");
+  bindReportDialogAccessibility(modal);
 
   fileInput.addEventListener("change", (e) => {
     processBugFiles(Array.from(e.target.files));
@@ -234,6 +244,62 @@ function bindBugReporterLogic() {
     }
     if (files.length > 0) processBugFiles(files);
   });
+}
+
+function bindReportDialogAccessibility(modal) {
+  if (!modal || modal.dataset.dialogReady) return;
+  modal.dataset.dialogReady = "true";
+  const focusSelector = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  const visible = element => Boolean(element && !element.closest("[hidden],.hidden") && element.getClientRects().length);
+  const isOpen = () => !modal.hidden && !modal.classList.contains("hidden") && modal.style.display !== "none";
+  let wasOpen = false, returnFocus = null, lastOutsideFocus = document.activeElement;
+  const scope = () => {
+    const similar = document.getElementById("bug-similarity-overlay");
+    return visible(similar) ? similar : modal;
+  };
+  const controls = () => [...scope().querySelectorAll(focusSelector)].filter(visible);
+  const focusInside = () => {
+    if (!isOpen() || scope().contains(document.activeElement) && visible(document.activeElement)) return;
+    const title = document.getElementById("bug-title");
+    (scope() === modal && visible(title) ? title : controls()[0] || modal).focus();
+  };
+  const sync = () => {
+    const open = isOpen();
+    if (open && !wasOpen) returnFocus = lastOutsideFocus;
+    const closed = wasOpen && !open;
+    wasOpen = open;
+    if (open) focusInside();
+    else if (closed) {
+      const fallback = document.getElementById("av-information-toggle") || document.getElementById("page-help-open");
+      (visible(returnFocus) && returnFocus.isConnected ? returnFocus : fallback)?.focus();
+    }
+  };
+  document.addEventListener("focusin", event => {
+    if (!modal.contains(event.target)) {
+      if (isOpen()) focusInside();
+      else lastOutsideFocus = event.target;
+    }
+  });
+  document.addEventListener("keydown", event => {
+    if (!isOpen()) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      modal.classList.add("hidden"); // Closing preserves the unsent report.
+      sync();
+    } else if (event.key === "Tab") {
+      const items = controls(), first = items[0], last = items.at(-1);
+      if (!first) { event.preventDefault(); modal.focus(); }
+      else if (event.shiftKey && (document.activeElement === first || !scope().contains(document.activeElement))) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !scope().contains(document.activeElement))) {
+        event.preventDefault(); first.focus();
+      }
+    }
+  });
+  // Existing callers open and close the dialog by changing its hidden class.
+  // Observe that contract, including the report comparison overlay.
+  new MutationObserver(sync).observe(modal, { attributes: true, attributeFilter: ["class", "hidden", "style"], subtree: true });
+  sync();
 }
 
 function processBugFiles(files) {
@@ -281,7 +347,7 @@ function renderBugThumbnails() {
       `
       <div class="relative w-16 h-16 shrink-0 rounded border-2 border-slate-600 overflow-hidden group shadow-sm">
           <img src="${imgBase64}" class="w-full h-full object-cover" />
-          <button onclick="window.removeBugImage(${index})" class="absolute top-0 right-0 bg-red-600/90 hover:bg-red-500 text-white w-5 h-5 flex items-center justify-center text-[10px] font-bold opacity-0 group-hover:opacity-100 transition shadow">✕</button>
+          <button type="button" aria-label="Remove screenshot ${index + 1}" onclick="window.removeBugImage(${index})" class="absolute top-0 right-0 bg-red-600/90 hover:bg-red-500 text-white w-5 h-5 flex items-center justify-center text-[10px] font-bold opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition shadow">✕</button>
       </div>
     `,
     );

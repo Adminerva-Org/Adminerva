@@ -8,12 +8,13 @@ import {COURSES} from "./practice-courses.mjs?v=2026.10.21.2-dev.1";
 import {practicePoints,classStandings} from "./practice-points.mjs?v=2026.10.21.2-dev.1";
 const el=id=>document.getElementById(id);
 const make=(tag,text)=>{const node=document.createElement(tag);node.textContent=text;return node;};
-let roster=[],profiles=[],scores=[],active=null,generation=0,loadedSection="";
+let roster=[],profiles=[],scores=[],active=null,generation=0,loadedSection="",reviewSequence=0,reviewLoading=false,reviewSaving=false;
 const allowed=()=>!!staffRole(auth.currentUser);
 const status=text=>{el("practiceAnalyticsStatus").textContent=text;};
+function clearReview(){reviewSequence++;reviewLoading=false;active=null;el("practiceReview").classList.add("hidden");el("practiceAcceptPoints").disabled=true;}
 async function load(){
   if(!allowed())return;
-  const section=el("practiceAnalyticsSection").value,sequence=++generation;active=null;loadedSection="";
+  const section=el("practiceAnalyticsSection").value,sequence=++generation;clearReview();loadedSection="";
   el("practiceReview").classList.add("hidden");el("practiceAnalyticsList").replaceChildren();
   try{
     const [registrations,reviewed,rankings]=await Promise.all([getDocs(query(collection(db,"practice_profiles"),where("section","==",section))),getDocs(query(collection(db,"practice_scores"),where("section","==",section))),getDocs(query(collection(db,"practice_rankings"),where("section","==",section),limit(500)))]);
@@ -25,19 +26,23 @@ async function load(){
       const ranking=rankings.docs.find(record=>record.id===student.id)?.data();
       const card=make("article","");card.className="bg-white border rounded p-4";
       card.append(make("h2",student.name||student.id),make("p",ranking?ranking.points+" automatic practice XP · "+ranking.completedCount+" missions recorded":"Practice XP has not synchronized yet; missing activity is not zero mastery."),make("p",score?score.points+" independently reviewed points (separate record)":"No separate instructor review recorded"));
-      if(profile){const button=make("button","Review missions and reflections");button.className="text-blue-800 underline text-sm mt-2";button.addEventListener("click",()=>{void review(student,profile);});card.append(button);}
+      const button=make("button","Review missions and reflections");button.type="button";button.className="text-blue-800 underline text-sm mt-2";button.addEventListener("click",()=>{void review(student,profile);});card.append(button);
       el("practiceAnalyticsList").append(card);
     }
     loadedSection=section;status(students.length+" students · "+rankings.size+" synchronized XP records"+(rankings.size===500?" (display capped at 500)":"")+" · "+scores.length+" separate instructor reviews. Student class rankings update automatically; no publication is required.");
   }catch{status("Class analytics unavailable. Check sign-in, connection and the approved class-points rules deployment.");}
 }
 async function review(student,profile){
-  const sequence=generation;
+  const sequence=generation,selection=++reviewSequence,uid=auth.currentUser?.uid;
+  const current=()=>selection===reviewSequence&&sequence===generation&&auth.currentUser?.uid===uid&&allowed();
+  active=null;reviewLoading=true;el("practiceAcceptPoints").disabled=true;el("practiceReview").classList.add("hidden");
+  status("Loading practice for "+(student.name||student.id)+"…");
   try{
     const records=await getDocs(collection(db,"practice_class_progress",student.id,"courses"));
-    if(sequence!==generation||!allowed())return;
-    active={student,profile};el("practiceReviewName").textContent=student.name||student.id;el("practiceReviewMissions").replaceChildren();el("practicePointsNote").value="";
+    if(!current())return;
+    active={student,profile};el("practiceReviewName").textContent=student.name||student.id;el("practiceReviewMissions").replaceChildren();
     const prior=scores.find(score=>score.studentId===student.id);
+    el("practicePointsNote").value=typeof prior?.reviewNote==="string"?prior.reviewNote:"";
     for(const course of COURSES){
       const progress=records.docs.find(snapshot=>snapshot.id===course.id)?.data();
       for(const mission of course.missions){
@@ -51,15 +56,17 @@ async function review(student,profile){
       }
     }
     el("practiceReview").classList.remove("hidden");el("practiceReview").scrollIntoView();
-  }catch{status("Private practice could not be loaded. No points changed.");}
+    status("Showing practice for "+(student.name||student.id)+". Review the missions and reflection before saving independent points.");
+  }catch{if(current())status("Private practice could not be loaded. Select Review missions and reflections to retry. No points changed.");}
+  finally{if(current()){reviewLoading=false;el("practiceAcceptPoints").disabled=reviewSaving||!active;}}
 }
 el("practiceAcceptPoints").addEventListener("click",async()=>{
-  if(!active||!allowed())return;
-  const current=active,note=el("practicePointsNote").value.trim();
+  if(reviewLoading||reviewSaving||!active||!allowed())return;
+  const current=active,note=el("practicePointsNote").value.trim(),selection=reviewSequence,uid=auth.currentUser.uid;
   if(note.length<15||note.length>3000)return status("Document your independent review in 15–3,000 characters.");
   const total=practicePoints([...document.querySelectorAll("[data-reviewed-mission]:checked")].map(input=>input.value));
   if(!confirm("Save "+total.points+" teacher-reviewed practice points? This does not change assessment grades or publish class standings."))return;
-  const button=el("practiceAcceptPoints");button.disabled=true;
+  const button=el("practiceAcceptPoints");reviewSaving=true;button.disabled=true;
   try{
     const ref=doc(db,"practice_scores",current.student.id);
     await runTransaction(db,async transaction=>{
@@ -67,9 +74,9 @@ el("practiceAcceptPoints").addEventListener("click",async()=>{
       const after={studentId:current.student.id,section:current.student.section,verifiedMissionIds:total.missions,points:total.points,reviewedBy:auth.currentUser.uid,reviewNote:note,revision,updatedAt:serverTimestamp()};
       transaction.set(doc(ref,"revisions",String(revision)),{before:before.exists()?before.data():null,after,actorUid:auth.currentUser.uid,createdAt:serverTimestamp()});transaction.set(ref,after);
     });
-    await load();status("Independent practice review saved privately. Automatic student XP and assessment grades are unchanged.");
-  }catch{status("Points were not saved. Check permissions and the class-points rules deployment.");}
-  finally{button.disabled=false;}
+    if(selection===reviewSequence&&auth.currentUser?.uid===uid){await load();status("Independent practice review saved privately. Automatic student XP and assessment grades are unchanged.");}
+  }catch{if(selection===reviewSequence&&auth.currentUser?.uid===uid)status("Points were not saved. Check permissions and the class-points rules deployment.");}
+  finally{reviewSaving=false;button.disabled=reviewLoading||!active;}
 });
 el("practicePublishStandings").addEventListener("click",async()=>{
   const section=el("practiceAnalyticsSection").value;
@@ -87,10 +94,10 @@ el("practicePublishStandings").addEventListener("click",async()=>{
   finally{button.disabled=false;}
 });
 el("practiceAnalyticsLoad").addEventListener("click",()=>{void load();});
-el("practiceAnalyticsSection").addEventListener("change",()=>{generation++;active=null;loadedSection="";el("practiceReview").classList.add("hidden");el("practiceAnalyticsList").replaceChildren();});
+el("practiceAnalyticsSection").addEventListener("change",()=>{generation++;clearReview();loadedSection="";el("practiceAnalyticsList").replaceChildren();});
 onAuthStateChanged(auth,async()=>{
   await resolveStaffRole(auth.currentUser);
-  generation++;active=null;loadedSection="";el("practiceAnalyticsList").replaceChildren();el("practiceReview").classList.add("hidden");
+  generation++;clearReview();loadedSection="";el("practiceAnalyticsList").replaceChildren();
   if(!allowed())return status("A verified instructor sign-in is required.");
   try{const records=await getDocs(collection(db,"students"));if(!allowed())return;roster=records.docs.map(snapshot=>({id:snapshot.id,...snapshot.data()}));el("practiceAnalyticsSection").replaceChildren();for(const section of [...new Set(roster.map(student=>student.section))].filter(Boolean).sort()){const option=make("option",section);option.value=section;el("practiceAnalyticsSection").append(option);}status("Choose a section and load its private practice analytics.");}
   catch{status("Unable to load class directory.");}

@@ -67,7 +67,7 @@ let practiceTransfer = null;
 // ==========================================
 // 2. INITIALIZATION
 // ==========================================
-document.addEventListener("DOMContentLoaded", async () => {
+async function initializePlayground() {
   const end = window.beginLoading?.("Preparing code editor…", document.getElementById("editorContainer")) || (() => {});
   try {
   // Auth guard controls visibility. Do not expose a workspace while access is pending.
@@ -151,7 +151,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     } finally { end(); }
   }, () => { end(); document.getElementById("editorLoading").textContent = "Editor could not load. Check your connection and reload; saved drafts are unchanged."; });
   } catch (error) { end(); document.getElementById("editorLoading").textContent = "Editor unavailable. Saved drafts are unchanged. Reload to retry."; }
-});
+}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",initializePlayground,{once:true});
+else void initializePlayground();
 
 // ==========================================
 // 3. WORKSPACE & FILE MANAGEMENT

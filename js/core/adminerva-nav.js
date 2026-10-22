@@ -1,510 +1,283 @@
-/** Responsive module navigation, account controls and notifications. */
+/** Shared, role-aware navigation. Page guards remain responsible for access. */
 document.addEventListener("DOMContentLoaded", () => {
-  const navContainer = document.getElementById("adminerva-nav");
-  if (!navContainer) return;
-
-  const activeModule = navContainer.getAttribute("data-module") || "lesson";
-  const activePage = navContainer.getAttribute("data-page") || "planner";
-
-  // Identify Role
-  const userRole = localStorage.getItem("Adminerva_Role") || "student";
+  const root = document.getElementById("adminerva-nav");
+  if (!root) return;
+  let currentRole, disclosures = [], utilitiesMounted = false;
+  const renderNavigation = userRole => {
+  // Retain mounted account utilities and their listeners during a verified-role
+  // refresh. Only links and menus are rebuilt; notifications subscribe once.
+  const accountControls = root.querySelector("#av-account-controls");
+  const informationPanel = root.querySelector("#av-information-panel");
+  const activeModule = root.getAttribute("data-module") || "lesson";
+  const activePage = root.getAttribute("data-page") || "planner";
+  const isStudent = userRole === "student" || (!userRole && activeModule.startsWith("student"));
   const isSuperAdmin = userRole === "superadmin";
+  currentRole = isStudent ? "student" : isSuperAdmin ? "superadmin" : "teacher";
+  const homeRoute = isStudent ? "student-home.html" : "teacher-home.html";
+  const homeLabel = isStudent ? "Student Home" : "Staff Home";
+  const roleLabel = isStudent ? "Student" : isSuperAdmin ? "Administrator" : "Teacher";
 
-  let centerLinks = "";
-  let rightSide = "";
-  let logoBlock = "";
-  let navTabsHTML = "";
-
-  const getStyle = (pageId) =>
-    activePage === pageId
-      ? "text-white border-b-2 border-cyan-400 pb-1.5 drop-shadow-[0_0_8px_rgba(6,182,212,0.8)] whitespace-nowrap"
-      : "text-gray-400 hover:text-cyan-300 transition-colors duration-300 pb-1.5 whitespace-nowrap";
-
-  const isSettingsPage = activePage === "settings";
-  const settingsIconStyle = isSettingsPage
-    ? "border-cyan-400 text-cyan-50 shadow-[0_0_15px_rgba(6,182,212,0.6)]"
-    : "border-cyan-900 hover:border-cyan-400 text-gray-300 hover:text-cyan-50 hover:shadow-[0_0_15px_rgba(6,182,212,0.4)]";
-
-  const settingsIcon = `
-        <a href="settings.html" class="bg-gray-800/80 border ${settingsIconStyle} min-h-11 min-w-11 p-2 rounded transition-all duration-300 flex items-center justify-center mr-2 sm:mr-4" title="Global Settings">
-            <span class="text-lg sm:text-xl leading-none">⚙️</span>
-        </a>`;
-
-  // Global Report Issue Icon
-  const reportIcon = `
-        <button onclick="document.getElementById('bug-modal').classList.remove('hidden')" class="bg-gray-800/80 border border-gray-700 hover:border-rose-400 text-gray-400 hover:text-rose-400 min-h-11 min-w-11 p-2 rounded transition-all duration-300 flex items-center justify-center mr-2 sm:mr-4" title="Report Issue">
-            <span class="text-lg sm:text-xl leading-none">🐞</span>
-        </button>`;
-
-  // Conditionally add the Admin Hub link to the dropdown if the user is a super admin
-  const adminDropdownLink = isSuperAdmin
-    ? `
-      <a href="users.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 transition-all flex items-center gap-2">
-          <span class="text-cyan-500">🛡️</span> Admin Hub
-      </a><a href="teacher-accounts.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:text-cyan-300">Manage Teachers</a>`
-    : "";
-
-  const adminLogoBlock = `
-        <details class="relative group py-1">
-            <summary aria-label="Switch Adminerva modules" class="flex items-center gap-2 sm:gap-3 font-bold transition list-none cursor-pointer rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
-                <img src="assets/New Adminerva logo.png" alt="Adminerva Logo" class="h-8 sm:h-10 w-auto object-contain mix-blend-lighten hover:scale-105 transition-transform duration-300 drop-shadow-[0_0_10px_rgba(6,182,212,0.3)]">
-                <span class="hidden sm:inline tracking-widest font-extrabold text-lg sm:text-2xl bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400 drop-shadow-md">ADMINERVA</span>
-                <span class="text-[10px] text-cyan-500 ml-1 opacity-70 group-hover:opacity-100 transition-opacity hidden sm:inline">▼</span>
-            </summary>
-            <div class="absolute left-0 top-full w-56 sm:w-64 hidden group-open:block z-[100] pt-3">
-                <div class="bg-gray-900/95 backdrop-blur-xl rounded-md shadow-[0_10px_30px_rgba(0,0,0,0.8)] border border-cyan-900/50 overflow-hidden">
-                    <div class="px-4 py-2 bg-gray-800/50 border-b border-gray-700/50 text-[10px] font-bold text-cyan-500 uppercase tracking-widest">Adminerva Modules</div>
-                    <a href="teacher-home.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
-                        <span class="text-cyan-500">⌂</span> Staff Home
-                    </a>
-                    <a href="teacher-analytics.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
-                        <span class="text-cyan-500">💻</span> Educator Hub
-                    </a>
-                    <a href="lesson-planner.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
-                        <span class="text-cyan-500">📘</span> Lesson Planner
-                    </a>
-                    <a href="issues.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
-                        <span class="text-cyan-500">📋</span> Reports
-                    </a>
-                    ${adminDropdownLink}
-                </div>
+  // Destinations and page labels share one source, including bookmarked tools.
+  const studentGroups = {
+    student: { name: "Project Hub", items: [
+      ["dashboard", "Projects", "student-dashboard.html"],
+      ["assessments", "Assignments", "student-assessments.html"],
+      ["settings", "Account settings", "student-settings.html"]
+    ] },
+    "student-practice": { name: "Practice Lab", items: [
+      ["practice", "Practice courses", "student-practice.html"],
+      ["xml", "XML Lab", "student-xml-lab.html"]
+    ] },
+    "student-playground": { name: "Code Playground", items: [
+      ["ide", "Live editor", "student-playground.html"]
+    ] }
+  };
+  const staffGroups = [
+    { name: "Teaching", area: "educator", items: [
+      ["dashboard", "Class analytics", "teacher-analytics.html"],
+      ["gradebook", "Gradebook", "gradebook.html"],
+      ["repofetch", "Review & grade", "repofetch.html"],
+      ["studio", "Assessment Studio", "assessment-studio.html"],
+      ["practice", "Practice analytics", "practice-analytics.html"]
+    ] },
+    { name: "Evidence", area: "educator", items: [
+      ["submissions", "Submission inbox", "submissions.html"],
+      ["evidence", "Assessment evidence", "assessment-evidence-review.html"],
+      ["contributions", "Contribution inspector", "contribution-inspector.html"],
+      ["group-inspector", "Group inspector", "group-inspector.html"],
+      ["repobank", "Repository bank", "repobank.html"]
+    ] },
+    { name: "More tools", area: "educator", secondary: true, items: [
+      ["activity-grader", "Manual activity grader", "activity-grader.html"],
+      ["grader", "Repository grader", "grading.html"]
+    ] },
+    { name: "Planning", area: "lesson", items: [
+      ["planner", "Lesson Planner", "lesson-planner.html"],
+      ["presentation", "Slide editor", "presentation.html"],
+      ["schedule", "Teacher schedule", "schedule.html"],
+      ["library", "Reference library", "library.html"]
+    ] },
+    { name: "School setup", area: "admin", items: isSuperAdmin ? [
+      ["analytics", "Administration analytics", "admin-analytics.html"],
+      ["directory", "User directory", "users.html"],
+      ["sections", "Sections", "manage-sections.html"],
+      ["teachers", "Teacher assignments", "teacher-accounts.html"],
+      ["programs", "Tracks & pathways", "manage-programs.html"],
+      ["subjects", "Subjects", "manage-subjects.html"]
+    ] : [] },
+    { name: "Account", area: "settings", items: [
+      ["settings", "Account & integrations", "settings.html"],
+      ["issues", "Reports & support", "issues.html"]
+    ] }
+  ];
+  const area = ["repo", "educator"].includes(activeModule) ? "educator" : activeModule;
+  const groups = isStudent ? [] : staffGroups.filter(group => group.items.length &&
+    (group.area === area || area === "admin" && group.area === "settings"));
+  const studentGroup = studentGroups[activeModule];
+  const areaNames = {
+    educator: "Educator Hub", lesson: "Lesson Planner", admin: "School administration",
+    settings: "Account settings", global: "Reports & support",
+    "student-home": "Your workspace", "staff-home": "Your workspace"
+  };
+  const allItems = isStudent ? Object.values(studentGroups).flatMap(group => group.items)
+    : staffGroups.flatMap(group => group.items);
+  const currentItem = (studentGroup?.items || groups.flatMap(group => group.items))
+    .find(item => item[0] === activePage) || allItems.find(item => item[0] === activePage);
+  const currentArea = studentGroup?.name || areaNames[area] || "Adminerva";
+  const currentPage = activePage === "home" ? homeLabel
+    : activeModule === "global" ? "Reports & support" : currentItem?.[1] || currentArea;
+  const currentRoute = activeModule.endsWith("home") ? homeRoute
+    : activeModule === "global" ? "issues.html" : currentItem?.[2];
+  const workspaceRoute = activeModule.endsWith("home") ? homeRoute
+    : activeModule === "global" ? "issues.html"
+    : isStudent ? studentGroup?.items[0]?.[2]
+    : area === "lesson" ? "lesson-planner.html"
+    : area === "admin" ? "users.html"
+    : area === "educator" ? "teacher-analytics.html" : null;
+  const escapeHTML = value => String(value).replace(/[&<>"']/g, char =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+  const modules = isStudent ? [
+    [homeLabel, homeRoute, "Start here and continue your work"],
+    ["Project Hub", "student-dashboard.html", "Projects and assignments"],
+    ["Practice Lab", "student-practice.html", "Courses, challenges and XML Lab"],
+    ["Code Playground", "student-playground.html", "Write and run code"],
+    ["My reports", "issues.html", "Report a problem or follow an update"]
+  ] : [
+    [homeLabel, homeRoute, "Your teaching workspace"],
+    ["Educator Hub", "teacher-analytics.html", "Assessments, evidence and grades"],
+    ["Lesson Planner", "lesson-planner.html", "Lessons, slides, schedule and references"],
+    ...(isSuperAdmin ? [["School administration", "users.html", "Students, sections and teacher assignments"]] : []),
+    ["Reports & support", "issues.html", "Follow reports and get help"]
+  ];
+  root.innerHTML = `
+    <nav aria-label="Adminerva main navigation" class="bg-gray-900/95 backdrop-blur-md text-white shadow-lg relative z-50 border-b border-cyan-900/50 sticky top-0">
+      <div class="max-w-screen-2xl mx-auto">
+        <div class="av-nav-top flex justify-between items-center min-h-16 px-4 sm:px-6 lg:px-8">
+          <div class="av-nav-brand flex items-center gap-3 min-w-0">
+            <a href="${homeRoute}" class="av-nav-home flex items-center gap-2 min-h-11 rounded-lg" aria-label="Adminerva · ${homeLabel}"${activePage === "home" ? ' aria-current="page"' : ""}>
+              <img src="assets/New Adminerva logo.png" alt="" class="h-9 w-9 object-contain">
+              <span class="av-nav-wordmark hidden sm:inline font-extrabold tracking-wide">ADMINERVA</span>
+              <span class="av-nav-home-label text-sm font-semibold text-cyan-100">Home</span>
+            </a>
+            <details class="av-module-switcher relative group">
+              <summary class="av-module-label flex items-center gap-2 list-none cursor-pointer rounded-lg px-3 py-2.5 min-h-11 text-sm font-bold text-cyan-100 border border-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400" aria-label="Switch workspace">
+                <span>Workspaces</span><span aria-hidden="true">▾</span>
+              </summary>
+              <div class="av-nav-menu-panel absolute left-0 top-full mt-2 w-72 max-w-[85vw] max-h-[75dvh] overflow-y-auto z-[110] rounded-xl bg-slate-900 border border-slate-600 shadow-2xl p-2">
+                <p class="px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">${isStudent ? "Student workspaces" : "Staff workspaces"}</p>
+                ${modules.map(([label, route, description]) => `<a href="${route}" class="av-nav-workspace-link block rounded-lg px-3 py-3 hover:bg-slate-800 text-slate-100${route === workspaceRoute ? " bg-slate-800" : ""}"${route === workspaceRoute ? ' aria-current="location"' : ""}><strong class="block text-sm">${escapeHTML(label)}</strong><span class="block text-xs text-slate-400 mt-1">${escapeHTML(description)}</span></a>`).join("")}
+              </div>
+            </details>
+          </div>
+          <div id="av-desktop-nav" class="hidden xl:flex gap-1 items-center"></div>
+          <div id="av-account-controls" class="av-nav-tools flex items-center gap-2">
+            <button type="button" title="Report Issue" aria-label="Help and updates" class="min-h-11 min-w-11 rounded-lg border border-slate-600 text-lg font-bold hover:bg-slate-800" onclick="document.getElementById('bug-modal')?.classList.remove('hidden')">?</button>
+            <a href="${isStudent ? "student-settings.html" : "settings.html"}" title="Account settings" aria-label="Account settings" class="min-h-11 min-w-11 flex items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800"><span aria-hidden="true">⚙</span></a>
+            <div class="flex flex-col items-end border-l border-slate-600 pl-3 min-w-0">
+              <button type="button" id="signOutBtn" class="min-h-8 text-xs sm:text-sm text-slate-100 hover:text-white font-bold">Sign out</button>
+              <span id="userEmailDisplay" class="text-[10px] text-slate-400 truncate max-w-[130px]"></span>
+              <span class="av-nav-role text-[10px] text-cyan-300">${roleLabel}</span>
             </div>
-        </details>
-    `;
-
-  // Student Interactive Dropdown Block
-  const studentLogoBlock = `
-        <details class="relative group py-1">
-            <summary aria-label="Switch Adminerva modules" class="flex items-center gap-2 sm:gap-3 font-bold transition list-none cursor-pointer rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400">
-                <img src="assets/New Adminerva logo.png" alt="Adminerva Logo" class="h-8 sm:h-10 w-auto object-contain mix-blend-lighten hover:scale-105 transition-transform duration-300 drop-shadow-[0_0_10px_rgba(6,182,212,0.3)]">
-                <span class="tracking-widest font-extrabold text-lg sm:text-2xl bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400 drop-shadow-md">ADMINERVA</span>
-                <span class="text-[10px] text-cyan-500 ml-1 opacity-70 group-hover:opacity-100 transition-opacity hidden sm:inline">▼</span>
-            </summary>
-            <div class="absolute left-0 top-full w-56 sm:w-64 hidden group-open:block z-[100] pt-3">
-                <div class="bg-gray-900/95 backdrop-blur-xl rounded-md shadow-[0_10px_30px_rgba(0,0,0,0.8)] border border-cyan-900/50 overflow-hidden">
-                    <div class="px-4 py-2 bg-gray-800/50 border-b border-gray-700/50 text-[10px] font-bold text-cyan-500 uppercase tracking-widest">Student Modules</div>
-                    <a href="student-home.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
-                        <span class="text-cyan-500">⌂</span> Student Home
-                    </a>
-                    <a href="student-dashboard.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 border-b border-gray-800 transition-all flex items-center gap-2">
-                        <span class="text-cyan-500">📂</span> Project Hub
-                    </a>
-                    <a href="student-playground.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 transition-all flex items-center gap-2">
-                        <span class="text-cyan-500">⚡</span> Code Playground
-                    </a>
-                    <a href="student-practice.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 transition-all flex items-center gap-2">
-                        <span class="text-cyan-500">🧩</span> Practice Lab
-                    </a>
-                    <a href="issues.html" class="block px-4 py-3 text-sm font-bold text-gray-300 hover:bg-cyan-900/30 hover:text-cyan-300 transition-all flex items-center gap-2">
-                        <span class="text-cyan-500">📋</span> My Reports
-                    </a>
-                </div>
-            </div>
-        </details>
-    `;
-
-  // Home pages are separate from every module's task tabs.
-  if (activeModule === "student-home") {
-    centerLinks = "";
-    rightSide = `
-            <div class="flex items-center">
-                ${reportIcon}
-                <div class="flex flex-col items-end justify-center border-l border-gray-700 pl-3 sm:pl-4 py-1">
-                    <button id="signOutBtn" class="text-xs sm:text-sm text-gray-300 hover:text-white font-bold transition leading-tight cursor-pointer">Sign Out</button>
-                    <span id="userEmailDisplay" class="text-[9px] sm:text-[10px] text-slate-400 leading-tight truncate max-w-[130px] my-0.5"></span>
-                    <span class="text-[8px] sm:text-[9px] font-bold text-cyan-500 uppercase tracking-widest leading-tight">Student</span>
-                </div>
-            </div>
-        `;
-    logoBlock = studentLogoBlock;
-  } else if (activeModule === "staff-home") {
-    centerLinks = "";
-    rightSide = `
-            <div class="flex items-center">
-                ${reportIcon}${settingsIcon}
-                <div class="flex flex-col items-end justify-center border-l border-gray-700 pl-3 sm:pl-4 h-10">
-                    <button id="signOutBtn" class="text-xs sm:text-sm text-gray-300 hover:text-white font-bold transition leading-none py-1 cursor-pointer">Sign Out</button>
-                    <span class="text-[8px] sm:text-[10px] font-bold text-cyan-500 uppercase tracking-wider mt-1 leading-none">${isSuperAdmin ? "Super Admin" : "Teacher"}</span>
-                </div>
-            </div>
-        `;
-    logoBlock = adminLogoBlock;
-  }
-  // Student Default Project Hub
-  else if (activeModule === "student") {
-    centerLinks = `
-            <a href="student-dashboard.html" class="${getStyle("dashboard")}">Dashboard</a>
-            <a href="student-assessments.html" class="${getStyle("assessments")}">Assignments</a>
-            <a href="student-settings.html" class="${getStyle("settings")}">Settings</a>
-        `;
-    rightSide = `
-            <div class="flex items-center">
-                ${reportIcon}
-                <div class="flex flex-col items-end justify-center border-l border-gray-700 pl-3 sm:pl-4 py-1">
-                    <button id="signOutBtn" class="text-xs sm:text-sm text-gray-300 hover:text-white font-bold transition leading-tight cursor-pointer">Sign Out</button>
-                    <span id="userEmailDisplay" class="text-[9px] sm:text-[10px] text-slate-400 leading-tight truncate max-w-[130px] my-0.5"></span>
-                    <span class="text-[8px] sm:text-[9px] font-bold text-cyan-500 uppercase tracking-widest leading-tight">Student</span>
-                </div>
-            </div>
-        `;
-    logoBlock = studentLogoBlock;
-  }
-  // Dedicated Practice Lab navigation (not part of Project Hub tabs).
-  else if (activeModule === "student-practice") {
-    centerLinks = `
-            <a href="student-practice.html" class="${getStyle("practice")}">Practice Courses</a>
-        `;
-    rightSide = `
-            <div class="flex items-center">
-                ${reportIcon}
-                <div class="flex flex-col items-end justify-center border-l border-gray-700 pl-3 sm:pl-4 py-1">
-                    <button id="signOutBtn" class="text-xs sm:text-sm text-gray-300 hover:text-white font-bold transition leading-tight cursor-pointer">Sign Out</button>
-                    <span id="userEmailDisplay" class="text-[9px] sm:text-[10px] text-slate-400 leading-tight truncate max-w-[130px] my-0.5"></span>
-                    <span class="text-[8px] sm:text-[9px] font-bold text-cyan-500 uppercase tracking-widest leading-tight">Student</span>
-                </div>
-            </div>
-        `;
-    logoBlock = studentLogoBlock;
-  }
-  // Student Code Playground Module
-  else if (activeModule === "student-playground") {
-    centerLinks = `
-            <a href="student-playground.html" class="${getStyle("ide")}">Live Editor</a>
-        `;
-    rightSide = `
-            <div class="flex items-center">
-                ${reportIcon}
-                <div class="flex flex-col items-end justify-center border-l border-gray-700 pl-3 sm:pl-4 py-1">
-                    <button id="signOutBtn" class="text-xs sm:text-sm text-gray-300 hover:text-white font-bold transition leading-tight cursor-pointer">Sign Out</button>
-                    <span id="userEmailDisplay" class="text-[9px] sm:text-[10px] text-slate-400 leading-tight truncate max-w-[130px] my-0.5"></span>
-                    <span class="text-[8px] sm:text-[9px] font-bold text-cyan-500 uppercase tracking-widest leading-tight">Student</span>
-                </div>
-            </div>
-        `;
-    logoBlock = studentLogoBlock;
-  }
-  // Standard Educator Hub
-  else if (
-    activeModule === "educator" ||
-    activeModule === "repo" ||
-    activeModule === "settings"
-  ) {
-    centerLinks = `
-            <a href="teacher-analytics.html" class="${getStyle("dashboard")}">Analytics</a>
-            <a href="repobank.html" class="${getStyle("repobank")}">RepoBank</a>
-            <a href="group-inspector.html" class="${getStyle("activity-grader")}">Manual Grader</a>
-            <a href="repofetch.html" class="${getStyle("repofetch")}">RepoFetch</a>
-            <a href="submissions.html" class="${getStyle("submissions")}">Submissions</a>
-            <a href="contribution-inspector.html" class="${getStyle("contributions")}">Contributions</a>
-            <a href="assessment-studio.html" class="${getStyle("studio")}">Assessment Studio</a>
-            <a href="gradebook.html" class="${getStyle("gradebook")}">Gradebook</a>
-        `;
-    rightSide = `
-            <div class="flex items-center">
-                ${reportIcon}${settingsIcon}
-                <div class="flex flex-col items-end justify-center border-l border-gray-700 pl-3 sm:pl-4 h-10">
-                    <button id="signOutBtn" class="text-xs sm:text-sm text-gray-300 hover:text-white font-bold transition leading-none py-1 cursor-pointer">Sign Out</button>
-                    <span class="text-[8px] sm:text-[10px] font-bold text-cyan-500 uppercase tracking-wider mt-1 leading-none">${isSuperAdmin ? "Super Admin" : "Teacher"}</span>
-                </div>
-            </div>
-        `;
-    logoBlock = adminLogoBlock;
-  }
-  // Dedicated Admin Hub
-  else if (activeModule === "admin") {
-    centerLinks = `
-            <a href="users.html" class="${getStyle("directory")}">Directory</a>
-            <a href="issues.html" class="${getStyle("issues")}">Reports</a>
-        `;
-    rightSide = `
-            <div class="flex items-center">
-                ${reportIcon}${settingsIcon}
-                <div class="flex flex-col items-end justify-center border-l border-gray-700 pl-3 sm:pl-4 h-10">
-                    <button id="signOutBtn" class="text-xs sm:text-sm text-gray-300 hover:text-white font-bold transition leading-none py-1 cursor-pointer">Sign Out</button>
-                    <!-- Dynamically check role instead of hardcoding -->
-                    <span class="text-[8px] sm:text-[10px] font-bold text-cyan-500 uppercase tracking-wider mt-1 leading-none">${isSuperAdmin ? "Super Admin" : "Teacher"}</span>
-                </div>
-            </div>
-        `;
-    logoBlock = adminLogoBlock;
-  }
-  // Lesson Planner Logic
-  else if (activeModule === "lesson") {
-    centerLinks = `
-            <a href="lesson-planner.html" class="${getStyle("planner")}">Curriculum Planner</a>
-            <a href="presentation.html" class="${getStyle("presentation")}">Slide Editor</a>
-            <a href="schedule.html" class="${getStyle("schedule")}">Teacher's Schedule</a>
-            <a href="library.html" class="${getStyle("library")}">Reference Library</a>
-        `;
-    rightSide = `
-            <div class="flex items-center">
-                ${reportIcon}${settingsIcon}
-                <div class="flex flex-col items-end justify-center border-l border-gray-700 pl-3 sm:pl-4 h-10">
-                    <button id="signOutBtn" class="text-xs sm:text-sm text-gray-300 hover:text-white font-bold transition leading-none py-1 cursor-pointer">Sign Out</button>
-                    <span class="text-[8px] sm:text-[10px] font-bold text-cyan-500 uppercase tracking-wider mt-1 leading-none">${isSuperAdmin ? "Super Admin" : "Teacher"}</span>
-                </div>
-            </div>
-        `;
-    logoBlock = adminLogoBlock;
-  } else if (activeModule === "global") {
-    logoBlock = `
-            <div class="flex items-center gap-2 sm:gap-3 font-bold">
-                <img src="assets/New Adminerva logo.png" alt="Adminerva Logo" class="h-8 sm:h-10 w-auto object-contain mix-blend-lighten drop-shadow-[0_0_10px_rgba(6,182,212,0.3)]">
-                <span class="tracking-widest font-extrabold text-lg sm:text-2xl bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-blue-400 drop-shadow-md">ADMINERVA</span>
-            </div>
-        `;
-    centerLinks = ``;
-    rightSide = `
-            <div class="flex items-center">
-                ${reportIcon}
-                <div class="flex flex-col items-end justify-center border-l border-gray-700 pl-3 sm:pl-4 py-1">
-                    <button id="signOutBtn" class="text-xs sm:text-sm text-gray-300 hover:text-white font-bold transition leading-tight cursor-pointer mb-1">Sign Out</button>
-                </div>
-            </div>
-    `;
-    navTabsHTML = `
-        <div class="bg-slate-800 border-t border-slate-700 px-4 sm:px-6 py-3 flex items-center shadow-md">
-            <button type="button" onclick="window.history.length > 1 ? window.history.back() : window.location.assign('${userRole === "student" ? "student-home.html" : "teacher-home.html"}')" class="text-cyan-400 hover:text-cyan-300 text-sm font-bold flex items-center gap-2 transition">
-                <span class="text-lg leading-none">←</span> Previous Page
-            </button>
-            <a href="${userRole === "student" ? "student-home.html" : "teacher-home.html"}"
-               class="ml-4 text-cyan-400 hover:text-cyan-300 text-sm font-bold">Home</a>
-            <span class="text-slate-500 text-xs font-bold uppercase tracking-widest ml-4 border-l border-slate-600 pl-4 hidden sm:inline-block">
-                System Support
-            </span>
+          </div>
         </div>
-    `;
-  }
-
-  navContainer.innerHTML = `
-    <nav aria-label="Adminerva main navigation" class="bg-gray-900/95 backdrop-blur-md text-white shadow-[0_4px_20px_rgba(0,0,0,0.5)] relative z-50 border-b border-cyan-900/50 sticky top-0">
-        <div class="max-w-screen-2xl mx-auto">
-            <!-- Top Row: Always visible -->
-            <div class="av-nav-top flex justify-between items-center min-h-16 px-4 sm:px-6 lg:px-8">
-                ${logoBlock}
-                <div id="av-desktop-nav" class="hidden lg:flex gap-6 text-sm font-bold tracking-wide items-center">${centerLinks}</div>
-                <div id="av-account-controls" class="flex items-center">${rightSide}</div>
-            </div>
-            
-            <!-- Bottom Row: Mobile / Tablet Only (Horizontal Scroll) -->
-            ${
-              centerLinks
-                ? `
-            <div id="av-mobile-nav" class="lg:hidden flex overflow-x-auto px-4 pb-3 pt-1 gap-5 text-xs font-bold whitespace-nowrap border-t border-gray-800 scroll-smooth [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                ${centerLinks}
-            </div>`
-                : ""
-            }
+        <div class="av-nav-location flex items-center gap-2 px-4 sm:px-6 lg:px-8 py-2 border-t border-slate-700 text-sm" aria-label="Current location">
+          <span class="av-nav-context text-slate-400">${escapeHTML(currentArea)}</span><span aria-hidden="true" class="text-slate-500">/</span>
+          <span class="av-nav-page font-semibold text-slate-100">${escapeHTML(currentPage)}</span>
         </div>
-        ${navTabsHTML}
+        <div id="av-mobile-nav" class="xl:hidden border-t border-slate-700"></div>
+      </div>
     </nav>`;
-
-  const moduleSwitch=navContainer.querySelector("details.group");
-  if(moduleSwitch){
-    document.addEventListener("click",event=>{
-      if(moduleSwitch.open&&!moduleSwitch.contains(event.target))moduleSwitch.open=false;
-    });
-    navContainer.addEventListener("keydown",event=>{
-      if(event.key==="Escape"&&moduleSwitch.open){
-        moduleSwitch.open=false;
-        moduleSwitch.querySelector("summary")?.focus();
-        event.preventDefault();
-      }
-    });
+  if (accountControls) {
+    root.querySelector("#av-account-controls").replaceWith(accountControls);
+    const roleDisplay = accountControls.querySelector(".av-nav-role");
+    if (roleDisplay) roleDisplay.textContent = roleLabel;
+    const settings = accountControls.querySelector('a[title="Account settings"]');
+    if (settings) settings.href = isStudent ? "student-settings.html" : "settings.html";
   }
+  if (informationPanel) root.append(informationPanel);
+  const emailDisplay = root.querySelector("#userEmailDisplay");
+  if (emailDisplay && root.dataset.accountEmail) emailDisplay.textContent = root.dataset.accountEmail;
+  const informationSettings = root.querySelector("[data-information-settings]");
+  if (informationSettings) informationSettings.href = isStudent ? "student-settings.html" : "settings.html";
 
-  // Staff menus are scoped by module; student modules also have independent tabs.
-  // Native <details> supports pointer, keyboard and touch input.
-  const groupModules = ["educator", "repo", "settings", "admin", "lesson"];
-  if (groupModules.includes(activeModule)) {
-    const staffGroups = [
-      { name: "Grading", items: [
-        ...(isSuperAdmin ? [["dashboard", "Class analytics", "teacher-analytics.html"]] : []),
-        ["gradebook", "Gradebook", "gradebook.html"],
-        ["repofetch", "Review & Grade", "repofetch.html"],
-        ["studio", "Assessment Studio", "assessment-studio.html"],
-        ["practice", "Practice Analytics", "practice-analytics.html"],
-        ["activity-grader", "Legacy Manual Activity Grader", "activity-grader.html"]
-      ] },
-      { name: "Evidence tools", items: [
-        ["submissions", "Submission Inbox", "submissions.html"],
-        ["evidence", "Assessment Evidence", "assessment-evidence-review.html"],
-        ["contributions", "Contribution Inspector", "contribution-inspector.html"],
-        ["group-inspector", "Group Inspector", "group-inspector.html"]
-      ] },
-      { name: "Repositories", items: [
-        ["repobank", "RepoBank", "repobank.html"]
-      ] },
-      { name: "Planning", items: [
-        ["planner", "Lesson Planner", "lesson-planner.html"],
-        ["presentation", "Slide Editor", "presentation.html"],
-        ["schedule", "Teacher Schedule", "schedule.html"],
-        ["library", "Reference Library", "library.html"]
-      ] },
-      { name: "Manage", items: [
-        ["issues", "Reports", "issues.html"],
-        ...(isSuperAdmin ? [
-          ["directory", "User Directory", "users.html"],["teachers", "Manage Teachers", "teacher-accounts.html"],
-          ["sections", "Manage Sections", "manage-sections.html"],["programs", "Tracks & Pathways", "manage-programs.html"],
-          ["subjects", "Manage Subjects", "manage-subjects.html"]
-        ] : []),
-        ["settings", "Settings", "settings.html"]
-      ] }
-    ];
-    // Only display links belonging to the current product area.
-    // Cross-module navigation remains available via the Adminerva logo.
-    if (activeModule === "lesson") {
-      staffGroups.splice(0, staffGroups.length, ...staffGroups.filter(group => group.name === "Planning"));
-    } else if (activeModule === "admin" || activeModule === "settings") {
-      staffGroups.splice(0, staffGroups.length, ...staffGroups.filter(group => group.name === "Manage"));
-    } else {
-      staffGroups.splice(0, staffGroups.length, ...staffGroups.filter(group =>
-        group.name === "Grading" || group.name === "Repositories" || group.name === "Evidence tools"));
-    }
-    const analytics = isSuperAdmin ? ["analytics", "Administration analytics", "admin-analytics.html"] : ["dashboard", "Teacher analytics", "teacher-analytics.html"];
-    const activeGroup = group => group.items.some(item => item[0] === activePage);
-    const makeLink = (item, mobile) => {
-      const a = document.createElement("a");
-      a.href = item[2]; a.textContent = item[1];
-      a.className = "block rounded-lg px-3 py-2.5 text-sm font-semibold " +
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 " +
-        (item[0] === activePage
-          ? "bg-cyan-900/50 text-cyan-100 border-l-2 border-cyan-400"
-          : "text-slate-200 hover:bg-slate-700 hover:text-white") +
-        (mobile ? " min-h-11 flex items-center" : "");
-      if (item[0] === activePage) a.setAttribute("aria-current","page");
-      return a;
-    };
-    const makeGroup = (group, mobile) => {
+  const makeLink = (item, mobile) => {
+    const link = document.createElement("a");
+    link.href = item[2]; link.textContent = item[1];
+    link.className = "av-nav-task-link block rounded-lg px-3 py-2.5 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 " +
+      (item[2] === currentRoute ? "bg-cyan-900/50 text-cyan-100 border-l-2 border-cyan-400" : "text-slate-200 hover:bg-slate-700 hover:text-white") +
+      (mobile ? " min-h-11 flex items-center" : "");
+    if (item[2] === currentRoute) link.setAttribute("aria-current", "page");
+    return link;
+  };
+  const isActiveGroup = group => group.items.some(item => item[2] === currentRoute);
+  const makeGroup = (group, mobile) => {
+    const details = document.createElement("details");
+    details.dataset.navGroup = mobile ? "mobile" : "desktop";
+    details.className = (mobile ? "rounded-lg border border-slate-700/80" : "relative") + (group.secondary ? " av-nav-secondary" : "");
+    const summary = document.createElement("summary");
+    summary.className = "list-none cursor-pointer select-none font-bold rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 " +
+      (mobile ? "text-slate-100 text-sm px-3 py-3 min-h-11" : "text-sm px-3 py-2.5 min-h-11 " +
+        (isActiveGroup(group) ? "text-cyan-300 bg-slate-800" : "text-slate-200 hover:text-cyan-300 hover:bg-slate-800"));
+    summary.textContent = group.name + " ▾";
+    summary.setAttribute("aria-label", group.name + " pages");
+    details.append(summary);
+    const panel = document.createElement("div");
+    panel.className = mobile ? "p-2 space-y-1" : "av-nav-menu-panel absolute left-0 top-full mt-2 w-64 z-[110] bg-slate-900 border border-slate-600 shadow-2xl rounded-xl p-2 max-h-[70dvh] overflow-y-auto";
+    for (const item of group.items) panel.append(makeLink(item, mobile));
+    details.append(panel);
+    if (mobile && isActiveGroup(group)) details.open = true;
+    return details;
+  };
+  const desktop = root.querySelector("#av-desktop-nav"), mobile = root.querySelector("#av-mobile-nav");
+  const taskItems = studentGroup?.items || [];
+  if (desktop) desktop.replaceChildren(...(isStudent ? taskItems.map(item => makeLink(item, false)) : groups.map(group => makeGroup(group, false))));
+  if (mobile) {
+    mobile.replaceChildren();
+    if (taskItems.length || groups.length) {
       const details = document.createElement("details");
-      details.dataset.navGroup = mobile ? "mobile" : "desktop";
-      details.className = mobile
-        ? "rounded-lg border border-slate-700/80"
-        : "relative";
+      details.id = "av-mobile-staff-menu"; // Retained for existing integration hooks.
       const summary = document.createElement("summary");
-      summary.className = "list-none cursor-pointer select-none font-bold " +
-        "rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 " +
-        (mobile
-          ? "text-slate-100 text-sm px-3 py-3 min-h-11"
-          : "text-sm px-3 py-2 " +
-            (activeGroup(group) ? "text-cyan-300 bg-slate-800"
-              : "text-slate-200 hover:text-cyan-300 hover:bg-slate-800"));
-      summary.textContent = group.name + " ▾";
-      summary.setAttribute("aria-label",group.name + " menu");
-      details.append(summary);
-      const wrapper = document.createElement("div");
-      wrapper.className = mobile
-        ? "p-2 space-y-1"
-        : "absolute left-0 top-full mt-2 w-64 z-[110] bg-slate-900 " +
-          "border border-slate-700 shadow-2xl rounded-xl p-2 max-h-[70dvh] overflow-y-auto";
-      for (const item of group.items) wrapper.append(makeLink(item,mobile));
-      details.append(wrapper);
-      if (mobile && activeGroup(group)) details.open = true;
-      return details;
-    };
-    const desktop = navContainer.querySelector("#av-desktop-nav");
-    const mobile = navContainer.querySelector("#av-mobile-nav");
-    if (desktop) {
-      desktop.className = "hidden xl:flex gap-1 items-center shrink-0";
-      desktop.replaceChildren(makeLink(analytics,false));
-      const menus = staffGroups.map(group => makeGroup(group,false));
-      desktop.append(...menus);
-      for(const menu of menus) {
-        menu.addEventListener("toggle", () => {
-          if (menu.open) for (const other of menus) if(other !== menu) other.open = false;
-        });
-      }
-      document.addEventListener("click", event => {
-        for(const menu of menus) if(menu.open && !menu.contains(event.target)) menu.open = false;
-      });
-    }
-    if (mobile) {
-      mobile.className = "xl:hidden border-t border-slate-700";
-      mobile.replaceChildren();
-      const details = document.createElement("details");
-      details.id = "av-mobile-staff-menu";
-      const summary = document.createElement("summary");
-      summary.className = "flex items-center justify-between px-4 sm:px-6 py-3 " +
-        "font-bold text-sm text-cyan-100 min-h-11 cursor-pointer " +
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400";
-      const section = activePage === "dashboard" ? "Analytics" :
-        staffGroups.find(group => activeGroup(group))?.name ||
-        (activeModule === "lesson" ? "Planning" :
-         activeModule === "admin" || activeModule === "settings" ? "Manage" : "Grading");
-      summary.textContent = "Menu · " + section + " ▾";
+      summary.className = "flex items-center justify-between px-4 sm:px-6 py-3 font-bold text-sm text-cyan-100 min-h-11 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400";
+      summary.textContent = "Pages · " + currentPage + " ▾";
       details.append(summary);
       const panel = document.createElement("div");
-      panel.className = "bg-slate-900 border-t border-slate-700 px-3 py-3 " +
-        "max-h-[65dvh] overflow-y-auto overscroll-contain space-y-2";
-      panel.append(makeLink(analytics,true));
-      for(const group of staffGroups) panel.append(makeGroup(group,true));
+      panel.className = "av-nav-mobile-panel bg-slate-900 border-t border-slate-700 px-3 py-3 max-h-[65dvh] overflow-y-auto overscroll-contain space-y-2";
+      if (isStudent) panel.append(...taskItems.map(item => makeLink(item, true)));
+      else panel.append(...groups.map(group => makeGroup(group, true)));
       details.append(panel); mobile.append(details);
-    }
-    navContainer.addEventListener("keydown", event => {
-      if(event.key !== "Escape") return;
-      let closed = false;
-      navContainer.querySelectorAll("details[open]").forEach(menu => {
-        menu.open = false; closed = true;
-      });
-      if(closed) event.preventDefault();
-    });
+    } else mobile.hidden = true;
   }
 
-  // A single responsive inbox for bug reports, grading alerts and submissions.
-  const reportButton = navContainer.querySelector('button[title="Report Issue"]');
-  if(reportButton) import("./information-menu.mjs?v=2026.10.21.2-dev.1")
-    .then(module => module.mountInformationMenu(reportButton, navContainer))
-    .catch(() => { reportButton.title = "Report Issue"; });
+  // Native disclosures support touch and keyboard. Peer menus close each other;
+  // nested mobile groups keep the parent menu open.
+  disclosures = [...root.querySelectorAll("details")];
+  for (const details of disclosures) details.addEventListener("toggle", () => {
+    if (!details.open) return;
+    for (const other of disclosures) if (other !== details && !other.contains(details) && !details.contains(other)) other.open = false;
+  });
+  if (utilitiesMounted) return;
+  utilitiesMounted = true;
+  const reportButton = root.querySelector('button[title="Report Issue"]');
+  if (reportButton) import("./information-menu.mjs?v=2026.10.21.2-dev.1")
+    .then(module => {
+      module.mountInformationMenu(reportButton, root);
+      // The shared support page has data-module="global" for both roles.
+      // Its account shortcut must still lead students to student settings.
+      const settingsLink = root.querySelector("[data-information-settings]");
+      if (settingsLink) settingsLink.href = currentRole === "student" ? "student-settings.html" : "settings.html";
+    })
+    .catch(() => {
+      reportButton.title = "Report Issue";
+      reportButton.setAttribute("aria-label", "Report a problem");
+    });
   if (reportButton && !document.getElementById("adminerva-notifications")) {
     const mountPoint = document.createElement("div");
     mountPoint.id = "adminerva-notifications";
     reportButton.parentNode.insertBefore(mountPoint, reportButton);
-    import("./notifications.mjs?v=1.1.0")
-      .then(module => module.mountNotificationCenter())
+    import("./notifications.mjs?v=1.1.0").then(module => module.mountNotificationCenter())
       .catch(error => console.warn("Notification center unavailable:", error));
   }
+  };
 
-  // Lightweight update notifier. Never force reload while a student is coding.
-  import("./site-updates.mjs")
-    .then(module=>module.mountSiteUpdates())
-    .catch(error=>console.warn("Site update checks unavailable:",error));
-
-  // Announce active location to assistive technology and keep the selected
-  // page visible in the horizontally scrolling mobile navigation.
-  navContainer.querySelectorAll('a[class*="border-b-2"]').forEach(link => {
-    link.setAttribute("aria-current", "page");
+  let initialRole = root.dataset.verifiedRole;
+  if (!initialRole) try { initialRole = localStorage.getItem("Adminerva_Role"); } catch { /* Presentation only; guards verify access. */ }
+  renderNavigation(initialRole);
+  // The guard emits this only after verified admission and page routing checks.
+  // This event changes presentation; it does not authorize any data operation.
+  document.addEventListener("adminerva:role-ready", event => {
+    const role = event.detail?.role;
+    if (!["student", "teacher", "superadmin"].includes(role)) return;
+    if (role !== currentRole) renderNavigation(role);
   });
-  if (window.matchMedia?.("(max-width: 1023px)").matches) {
-    const row = navContainer.querySelector('div[class*="overflow-x-auto"]');
-    const active = row?.querySelector('[aria-current="page"]');
-    if (row && active) {
-      requestAnimationFrame(() => {
-        row.scrollLeft = Math.max(0, active.offsetLeft - row.offsetLeft - row.clientWidth / 2 + active.clientWidth / 2);
-      });
-    }
-  }
+  document.addEventListener("click", event => {
+    for (const details of disclosures) if (details.open && !details.contains(event.target)) details.open = false;
+  });
+  root.addEventListener("keydown", event => {
+    if (event.key !== "Escape") return;
+    const details = event.target.closest?.("details[open]") || disclosures.find(item => item.open);
+    if (!details) return;
+    details.open = false;
+    details.querySelector("summary")?.focus();
+    event.preventDefault();
+  });
+  import("./site-updates.mjs").then(module => module.mountSiteUpdates())
+    .catch(error => console.warn("Site update checks unavailable:", error));
 
-  document.addEventListener("click", async (e) => {
-    const signOutTarget = e.target.closest("#signOutBtn");
-
-    if (signOutTarget) {
-      e.preventDefault();
-      signOutTarget.textContent = "Signing out...";
-      signOutTarget.classList.add("opacity-50", "pointer-events-none");
-
-      try {
-        const { getAuth, signOut } =
-          await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js");
-        const auth = getAuth();
-        await signOut(auth);
-      } catch (err) {
-        console.warn("Sign out background process skipped or failed.", err);
-      } finally {
-        localStorage.removeItem("Adminerva_Role");
-        localStorage.removeItem("Adminerva_Mock_Role");
-        localStorage.removeItem("Adminerva_Impersonate");
-        window.location.href = "login.html";
-      }
+  root.addEventListener("click", async event => {
+    if (event.defaultPrevented) return;
+    const button = event.target.closest("#signOutBtn");
+    if (!button) return;
+    event.preventDefault(); button.textContent = "Signing out…"; button.disabled = true;
+    try {
+      const [{ getAuth, signOut }] = await Promise.all([
+        import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js"),
+        import("./connection-cache.mjs?v=1.2.0").then(module => module.clearConnectionPreferences())
+      ]);
+      await signOut(getAuth());
+    } catch (error) { console.warn("Sign out background process skipped or failed.", error); }
+    finally {
+      try { for (const key of ["Adminerva_Role", "Adminerva_Mock_Role", "Adminerva_Impersonate"]) localStorage.removeItem(key); } catch { /* Continue to login if storage is disabled. */ }
+      window.location.href = "login.html";
     }
   });
 });

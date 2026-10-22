@@ -7,7 +7,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-    <title>Educator Hub - Global Settings</title>
+    <title>Account &amp; Integrations | Adminerva</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script
       src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"
@@ -31,11 +31,11 @@
         background: #a8a8a8;
       }
     </style>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.1.0" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.2.0" />
 </head>
   <body class="bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="settings" data-page="settings"></div>
-    <script src="js/core/adminerva-nav.js?v=1.1.0"></script>
+    <script src="js/core/adminerva-nav.js?v=1.2.0"></script>
 
     <!-- Main Workspace (Responsive Vertical Layout) -->
     <div
@@ -43,14 +43,14 @@
     >
       <!-- LEFT SIDEBAR -->
       <aside
-        class="w-full md:w-56 shrink-0 flex flex-col gap-1 overflow-x-auto md:overflow-visible"
+        aria-label="Settings categories" class="av-settings-nav w-full md:w-56 shrink-0 flex flex-col gap-1 overflow-x-auto md:overflow-visible"
       >
         <button
           onclick="switchSettingsCategory('security')"
           id="navBtn-security"
           class="sidebar-btn w-full text-left px-4 py-3.5 sm:py-3 text-sm font-bold transition-all flex items-center gap-3 justify-between bg-purple-50 text-purple-700 border-l-4 md:border-l-0 md:border-r-4 border-purple-600"
         >
-          <span>API & Security</span> <span class="text-lg opacity-60">🔒</span>
+          <span>Connections &amp; keys</span> <span class="text-lg opacity-60">🔒</span>
         </button>
 
         <div
@@ -86,7 +86,7 @@
         <div
           class="mt-4 md:mt-5 mb-1 px-3 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider"
         >
-          Upcoming Modules
+          Slide editor
         </div>
 
         <button
@@ -103,6 +103,7 @@
         class="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden min-h-[600px] flex flex-col"
       >
         <!-- PANEL: SECURITY -->
+        <header class="px-5 sm:px-8 pt-5"><p class="av-eyebrow">My workspace</p><h1 class="text-xl font-bold">Account &amp; integrations</h1></header>
         <div
           id="panel-security"
           class="settings-panel block p-5 sm:p-8 h-full overflow-y-auto"
@@ -110,7 +111,7 @@
           <h3
             class="text-lg sm:text-xl font-bold text-gray-800 border-b pb-3 mb-6"
           >
-            Database & API Credentials
+            Connections &amp; API keys
           </h3>
 
           <div class="space-y-6">
@@ -118,14 +119,14 @@
               <h4
                 class="text-xs sm:text-sm font-bold text-gray-800 uppercase tracking-wider mb-3 flex items-center gap-2"
               >
-                <span>🔥</span> Firebase Connection
+                <span aria-hidden="true">🔥</span> Application connection
               </h4>
               <textarea
-                id="firebaseConfigInput"
-                rows="7"
+                id="firebaseConfigInput" readonly aria-label="Application connection details" aria-describedby="firebase-connection-hint"
+                rows="5"
                 class="w-full p-3 sm:p-3 border rounded text-base sm:text-xs font-mono focus:ring-purple-500 focus:border-purple-500 bg-white"
-                placeholder='{"apiKey": "..."}'
               ></textarea>
+              <p id="firebase-connection-hint" class="av-form-hint">Read-only details for the application currently connected to your school. The connection is configured by the site deployment.</p>
             </div>
 
             <div class="p-4 sm:p-5 border rounded-lg bg-gray-50">
@@ -136,7 +137,7 @@
               </h4>
 
               <div class="mb-5">
-                <label class="block text-gray-700 text-sm font-bold mb-1.5"
+                <label for="globalAiEngine" class="block text-gray-700 text-sm font-bold mb-1.5"
                   >AI Processing Engine</label
                 >
                 <select
@@ -144,10 +145,10 @@
                   class="w-full p-3 sm:p-2 border border-gray-300 rounded text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-purple-600"
                 >
                   <option value="cloud">
-                    🌩️ Cloud (Google Gemini) - Fast & Stable
+                    Cloud · Google Gemini
                   </option>
                   <option value="local">
-                    💻 Local (Ollama Proxy) - In Development
+                    Local · Ollama proxy
                   </option>
                 </select>
                 <p class="text-[10px] sm:text-xs text-gray-500 mt-1">
@@ -157,8 +158,8 @@
               </div>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
                 <div>
-                  <label class="block text-xs font-semibold text-gray-700 mb-1"
-                    >GitHub PAT (Read/Write)</label
+                  <label for="adminGithubToken" class="block text-xs font-semibold text-gray-700 mb-1"
+                    >GitHub personal access token</label
                   >
                   <input
                     type="password"
@@ -167,8 +168,8 @@
                   />
                 </div>
                 <div>
-                  <label class="block text-xs font-semibold text-gray-700 mb-1"
-                    >Gemini API Key</label
+                  <label for="adminGeminiKey" class="block text-xs font-semibold text-gray-700 mb-1"
+                    >Gemini API key</label
                   >
                   <input
                     type="password"
@@ -178,42 +179,20 @@
                 </div>
               </div>
               <div>
-                <label class="block text-xs font-semibold text-gray-700 mb-1"
-                  >AI Engine Default</label
-                ><select
-                  id="adminAiModel"
-                  class="w-full p-3 sm:p-2 border rounded text-base sm:text-sm focus:ring-purple-500 bg-white"
-                >
-                  <option value="gemini-3.8-flash">
-                    Gemini 3.8 Flash (10K / day)
-                  </option>
-                  <option value="gemini-3.7-flash" selected>
-                    Gemini 3.7 Flash (10K / day)
-                  </option>
-                  <option value="gemini-3.6-flash">
-                    Gemini 3.6 Flash (10K / day)
-                  </option>
-                  <option value="gemini-3.5-flash">
-                    Gemini 3.5 Flash (10K / day)
-                  </option>
-                  <option value="gemini-3-flash-preview">
-                    Gemini 3 Flash Preview (10K / day)
-                  </option>
-                  <option value="gemini-3.1-pro-preview">
-                    Gemini 3.1 Pro Preview (250 / day)
-                  </option>
-                  <option value="gemini-3.1-pro-preview-customtools">
-                    Gemini 3.1 Pro Custom Tools (250 / day)
-                  </option>
-                </select>
+                <label for="adminAiModel" class="block text-xs font-semibold text-gray-700 mb-1">Default Gemini model ID</label>
+                <input id="adminAiModel" type="text" list="gemini-model-options" autocomplete="off" spellcheck="false" aria-describedby="gemini-model-hint" placeholder="gemini-3.8-flash" class="w-full p-3 sm:p-2 border rounded text-base sm:text-sm focus:ring-purple-500 bg-white">
+                <datalist id="gemini-model-options"><option value="gemini-3.8-flash"></option><option value="gemini-3.6-flash"></option><option value="gemini-3.1-pro-preview"></option></datalist>
+                <p id="gemini-model-hint" class="av-form-hint">Choose a suggestion or enter a model ID available to your API key. Availability and limits depend on your provider account. <a href="https://ai.google.dev/gemini-api/docs/models" target="_blank" rel="noopener noreferrer" class="underline">View Google’s model list</a>.</p>
               </div>
             </div>
 
-            <button
+            <p class="av-form-hint">API keys are stored on this browser and in your signed-in teacher profile. Cloud mode checks the Gemini key and selected model before saving.</p>
+            <p id="security-save-status" class="av-status-message" role="status" aria-live="polite"></p>
+            <button id="saveSettingsBtn" type="button"
               onclick="saveSecuritySettings()"
               class="w-full bg-green-600 text-white py-3.5 sm:py-3 rounded font-bold hover:bg-green-700 transition shadow text-sm"
             >
-              Save Security Settings
+              Save connections &amp; keys
             </button>
           </div>
         </div>
@@ -742,9 +721,9 @@
       </p>
     </div>
 
-    <script type="module" src="js/settings/settings-core.js?v=2026.10.19.3"></script>
-    <script src="js/core/adminerva-loader.js?v=1.1.0"></script>
-    <script type="module" src="js/settings/settings-security.js?v=2026.10.20.1"></script>
+    <script type="module" src="js/settings/settings-core.js?v=1.2.0"></script>
+    <script src="js/core/adminerva-loader.js?v=1.2.0"></script>
+    <script type="module" src="js/settings/settings-security.js?v=1.2.0"></script>
     <script type="module" src="js/settings/settings-repo.js?v=1.1.0"></script>
     <script type="module" src="js/settings/settings-lesson.js?v=1.1.0"></script>
     <script type="module" src="js/settings/settings-presentation.js?v=2026.10.19.3"></script>

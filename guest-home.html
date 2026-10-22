@@ -1,7 +1,32 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Guest Home · Adminerva</title><link rel="stylesheet" href="css/documentation.css?v=2026.10.21.1-dev.1"></head>
-<body><main class="av-documentation" data-guest-page="home"><nav class="av-documentation-nav"><a href="index.html">Adminerva</a><a href="wiki.html">Wiki</a><a href="patch-notes.html">What's new</a><a href="wiki.html#privacy">Privacy</a><button id="guest-signout">Sign out</button></nav>
-<header class="av-doc-hero"><p>YOUR STARTING WORKSPACE</p><h1>Welcome to Adminerva</h1><p id="guest-identity"></p><p>Explore while your school reviews your access. A requested role is not an approved role.</p></header><p id="guest-status" role="status">Checking your account…</p>
-<section id="guest-content" hidden><h2>Explore and practise</h2><p><a href="guest-playground.html">Open local playground →</a> · <a href="guest-practice.html">Open local practice →</a></p><p>Drafts and practice points stay in this browser, under this account. They are not cloud backups, school grades or class standings. No student rosters, private lessons, submissions or staff tools are available to guests.</p>
-<form id="guest-request"><label>Request access as <select id="guest-role"><option value="guest">Guest / exploring</option><option value="student">Student</option><option value="teacher">Teacher</option></select></label><button>Save request</button></form><p>An administrator verifies access. Existing students are linked only by matching verified email; use the account your school knows. Your directory record contains your name, verified email and request—not passwords or sign-in tokens.</p></section>
-<a id="guest-approved" hidden>Open approved workspace →</a></main><script type="module" src="js/guests/guest.mjs?v=1.1.0"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Guest Home · Adminerva</title>
+  <link rel="stylesheet" href="css/documentation.css?v=1.2.0">
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=1.2.0">
+</head>
+<body>
+  <main class="av-documentation" data-guest-page="home">
+    <nav class="av-documentation-nav" aria-label="Guest navigation"><a href="index.html">Adminerva</a><a href="wiki.html">Help &amp; guides</a><a href="patch-notes.html">What's new</a><a href="wiki.html#privacy">Privacy</a><button id="guest-signout" type="button">Sign out</button></nav>
+    <header class="av-doc-hero"><p class="av-eyebrow">YOUR GUEST WORKSPACE</p><h1>Start exploring Adminerva</h1><p id="guest-identity"></p><p>Try coding and practice while your school reviews your access request.</p></header>
+    <p id="guest-status" class="av-session-notice" role="status" aria-live="polite">Checking your account…</p>
+    <section id="guest-content" hidden aria-labelledby="guestExploreHeading">
+      <h2 id="guestExploreHeading">Choose something to try</h2>
+      <div class="av-learning-grid">
+        <a href="guest-playground.html" class="av-learning-card"><h3>Code Playground</h3><p>Write a small web page, run it, and save a draft on this device.</p><strong>Open playground →</strong></a>
+        <a href="guest-practice.html" class="av-learning-card"><h3>Practice Lab</h3><p>Explore short code challenges and learn from each answer.</p><strong>Try a practice mission →</strong></a>
+      </div>
+      <p>Your guest drafts and practice points stay in this browser under your account. They are not cloud backups or school grades.</p>
+      <hr>
+      <h2>Need access to your class?</h2>
+      <p>Choose the role you need and save your request. Your school administrator checks it before opening your student or teacher workspace.</p>
+      <form id="guest-request" class="av-doc-filters"><label for="guest-role">Requested role<select id="guest-role" aria-describedby="guestRequestHint"><option value="guest">Guest / exploring</option><option value="student">Student</option><option value="teacher">Teacher</option></select></label><button type="submit">Save access request</button></form>
+      <p id="guestRequestHint">Use the verified email your school knows. If you are a student, ask your teacher to check that this email and your section are in User Directory.</p>
+      <details><summary>What can guests access?</summary><p>Guests can use local practice, local code drafts and public guides. Class rosters, private lessons, assignments and staff tools become available only after school access is approved. Local guest drafts are not moved automatically to your approved workspace.</p></details>
+    </section>
+    <a id="guest-approved" class="av-action-link" hidden>Open approved workspace →</a>
+  </main>
+  <script type="module" src="js/guests/guest.mjs?v=1.2.0"></script>
+</body>
+</html>

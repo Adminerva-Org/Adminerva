@@ -1,5 +1,5 @@
 {
-  "version": "1.1.0",
-  "releasedAt": "2026-10-21",
-  "notes": "Clearer evaluation feedback, 300 practice missions with automatic checked XP, controlled scored-session transfers, assigned teacher access and limited guest sign-up. Save your work before refreshing. Grades are never published automatically."
+  "version": "1.2.0",
+  "releasedAt": "2026-10-22",
+  "notes": "Clearer navigation, task-focused home pages, accessible school setup, repaired directory import controls and recoverable practice actions. Save current work before refreshing."
 }

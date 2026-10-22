@@ -69,14 +69,21 @@ let selectedCsvFile = null;
 
 if (dropzone && fileInput) {
   dropzone.addEventListener("click", () => fileInput.click());
+  dropzone.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();fileInput.click();}});
+  for(const type of ["dragover","dragenter"])dropzone.addEventListener(type,event=>{event.preventDefault();dropzone.dataset.dragging="true";});
+  dropzone.addEventListener("dragleave",()=>{dropzone.dataset.dragging="false";});
+  dropzone.addEventListener("drop",event=>{event.preventDefault();dropzone.dataset.dragging="false";chooseCsvFile(event.dataTransfer?.files?.[0]);});
   fileInput.addEventListener("change", (e) => {
-    if (e.target.files.length > 0) {
-      selectedCsvFile = e.target.files[0];
-      // Note: selectedCsvFile.name is safe here as it's provided by the browser file system, but we escape it just in case
-      dropzone.innerHTML = `<span class="text-3xl block mb-2">✅</span><p class="text-sm font-bold text-green-600">${escapeHTML(selectedCsvFile.name)}</p>`;
-      uploadBtn.disabled = false;
-    }
+    chooseCsvFile(e.target.files?.[0]);
   });
+}
+function chooseCsvFile(file){
+  if(!file)return;
+  if(!/\.csv$/i.test(file.name)){showUploadError("Choose a CSV file ending in .csv.");return;}
+  selectedCsvFile=file;dropzone.replaceChildren();
+  const name=document.createElement("strong"),hint=document.createElement("p");name.textContent=file.name;hint.textContent="Ready to import. Click to choose a different file.";
+  dropzone.append(name,hint);uploadBtn.disabled=false;
+  uploadStatus.classList.remove("hidden");uploadStatus.textContent="File selected. Import when ready.";
 }
 
 if (uploadBtn) {
@@ -93,6 +100,7 @@ if (uploadBtn) {
       const text = e.target.result;
       await processCSV(text);
     };
+    reader.onerror=()=>showUploadError("This file could not be read. Choose the file again.");
     reader.readAsText(selectedCsvFile);
   });
 }
@@ -184,31 +192,35 @@ async function processCSV(csvText) {
         const docRef = doc(db, "students", compositeId);
         batch.set(docRef, studentData, { merge: true });
         count++;
+        if(count>500)throw Error("This import contains more than 500 roster records, including students in multiple sections. Split it into smaller files.");
       }
     }
 
+    if(!count)throw Error("No valid student records were found. Check the email and section columns.");
     await batch.commit();
 
     uploadStatus.className =
       "text-xs font-bold text-center mt-3 text-emerald-600";
-    uploadStatus.textContent = `✅ Successfully imported ${count} multi-section records!`;
+    uploadStatus.textContent = `Imported ${count} roster records. Assign these same section names to teachers next.`;
     selectedCsvFile = null;
+    fileInput.value="";
     dropzone.innerHTML = `<span class="text-3xl block mb-2">📥</span><p class="text-sm font-bold text-slate-700">Click or drag CSV here</p><p class="text-xs text-slate-400 mt-1">Maximum 500 records per upload</p>`;
 
     loadDirectory();
   } catch (error) {
     showUploadError("Database Sync Failed: " + error.message);
   } finally {
-    uploadBtn.textContent = "Sync to Database";
-    uploadBtn.disabled = false;
+    uploadBtn.textContent = "Import selected CSV";
+    uploadBtn.disabled = !selectedCsvFile;
   }
 }
 
 function showUploadError(msg) {
   uploadStatus.className = "text-xs font-bold text-center mt-3 text-red-500";
   uploadStatus.textContent = "❌ " + msg;
-  uploadBtn.textContent = "Sync to Database";
-  uploadBtn.disabled = false;
+  uploadStatus.classList.remove("hidden");
+  uploadBtn.textContent = "Import selected CSV";
+  uploadBtn.disabled = !selectedCsvFile;
 }
 // ==========================================
 // GOOGLE SHEETS LIVE SYNC
@@ -241,7 +253,7 @@ if (syncSheetBtn) {
       showUploadError("Failed to fetch Sheet: " + err.message);
     } finally {
       syncSheetBtn.disabled = false;
-      syncSheetBtn.textContent = "Sync Class Roster";
+      syncSheetBtn.textContent = "Import configured sheet";
     }
   });
 }
@@ -265,12 +277,14 @@ window.loadDirectory = async function () {
       if (data.email === SUPER_ADMIN_EMAIL || data.email === TEACHER_EMAIL)
         return;
 
-      uniqueSections.add(data.section);
+      if(typeof data.section==="string"&&data.section.trim())uniqueSections.add(data.section);
       const isLinked = !!(data.githubUsername && data.repoUrl);
 
       // Build local memory object
       allStudents.push({
         ...data,
+        name:data.name||[data.firstName,data.lastName].filter(Boolean).join(" ")||"Unnamed student",
+        email:data.email||"",
         id: documentSnapshot.id,
         isLinked: isLinked,
         pillId: `status_${documentSnapshot.id.replace(/[^a-zA-Z0-9]/g, "")}`,
@@ -296,6 +310,8 @@ window.loadDirectory = async function () {
     }
 
     applyFiltersAndRender();
+    const summary=document.getElementById("directory-summary");
+    if(summary){summary.textContent=allStudents.length+" student roster records across "+uniqueSections.size+" sections. Use these exact section names in teacher assignments.";summary.dataset.tone="info";}
 
     // Asynchronously verify GitHub status for linked accounts
     const ghToken = localStorage.getItem("Adminerva_github_token");
@@ -307,6 +323,7 @@ window.loadDirectory = async function () {
   } catch (error) {
     console.error(error);
     tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-red-500 font-bold">Error loading directory: ${escapeHTML(error.message)}</td></tr>`;
+    const summary=document.getElementById("directory-summary");if(summary){summary.textContent="The student roster could not load. Check your connection and use Refresh data to try again.";summary.dataset.tone="error";}
   }
 };
 
@@ -360,7 +377,7 @@ function applyFiltersAndRender() {
   tbody.innerHTML = "";
 
   if (filteredData.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-slate-400 font-medium">No records match your filters.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-slate-500 font-medium">${allStudents.length?"No students match these filters. Try another section or search.":"No student records yet. Import a CSV roster or approve a student access request to begin."}</td></tr>`;
   } else {
     paginatedData.forEach((data) => {
       // 🔒 Security Patch: Sanitize all variables before injecting into innerHTML/insertAdjacentHTML
@@ -376,7 +393,7 @@ function applyFiltersAndRender() {
 
       // Feature: Show GitHub URL if available safely
       let repoLinkHtml = "";
-      if (data.repoUrl) {
+      if (/^https:\/\/github\.com\//i.test(data.repoUrl||"")) {
         const safeRepoUrl = escapeHTML(data.repoUrl);
         let displayUrl = data.repoUrl.replace("https://github.com/", "");
         try {
@@ -384,7 +401,7 @@ function applyFiltersAndRender() {
           displayUrl = parsed.pathname.substring(1);
         } catch (e) {}
 
-        repoLinkHtml = `<a href="${safeRepoUrl}" target="_blank" class="text-[10px] font-mono text-blue-500 hover:underline block mt-1.5 truncate w-48" title="Visit Repository">🔗 ${escapeHTML(displayUrl)}</a>`;
+        repoLinkHtml = `<a href="${safeRepoUrl}" target="_blank" rel="noopener noreferrer" class="text-[10px] font-mono text-blue-500 hover:underline block mt-1.5 truncate w-48" title="Visit Repository">🔗 ${escapeHTML(displayUrl)}</a>`;
       }
 
       const tr = `
@@ -399,12 +416,13 @@ function applyFiltersAndRender() {
                       ${repoLinkHtml}
                     </td>
                     <td class="px-6 py-4 text-right align-top whitespace-nowrap space-x-1">
-                        <button onclick="window.viewAsStudent('${safeEmail}')" class="text-blue-600 hover:text-white border border-blue-200 bg-blue-50 hover:bg-blue-600 font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded transition shadow-sm">View As</button>
-                        <button onclick="window.revokeStudent('${safeId}')" class="text-red-500 hover:text-white font-bold text-[10px] uppercase tracking-wider border border-red-100 bg-red-50 hover:bg-red-500 px-3 py-1.5 rounded transition shadow-sm">Revoke</button>
+                        <button type="button" data-student-action="view" class="text-blue-600 hover:text-white border border-blue-200 bg-blue-50 hover:bg-blue-600 font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded transition shadow-sm">View As</button>
+                        <button type="button" data-student-action="revoke" class="text-red-500 hover:text-white font-bold text-[10px] uppercase tracking-wider border border-red-100 bg-red-50 hover:bg-red-500 px-3 py-1.5 rounded transition shadow-sm">Revoke</button>
                     </td>
                 </tr>
             `;
       tbody.insertAdjacentHTML("beforeend", tr);
+      const row=tbody.lastElementChild;row.querySelector('[data-student-action="view"]').addEventListener("click",()=>window.viewAsStudent(data.email));row.querySelector('[data-student-action="revoke"]').addEventListener("click",()=>window.revokeStudent(data.id));
     });
   }
 
@@ -429,6 +447,7 @@ function applyFiltersAndRender() {
     currentSort.col === "name" ? (currentSort.dir === "asc" ? "↑" : "↓") : "";
   document.getElementById("sort-email").textContent =
     currentSort.col === "email" ? (currentSort.dir === "asc" ? "↑" : "↓") : "";
+  for(const col of ["name","email"])document.getElementById("sort-"+col+"-header")?.setAttribute("aria-sort",currentSort.col===col?(currentSort.dir==="asc"?"ascending":"descending"):"none");
 }
 
 // Ensure filters reset to Page 1 when used
