@@ -1,6 +1,21 @@
 {
   "releases": [
     {
+      "version":"1.2.0","status":"published","public":true,"releasedAt":"2026-10-22",
+      "title":"A clearer workspace from sign-in to school setup",
+      "summary":"Find Home and Workspaces directly, follow clearer school setup, and recover interrupted practice with useful next steps.",
+      "changes":[
+        {"type":"Fixed","area":"Practice Lab","text":"Prediction and completion controls remain hidden until a server challenge is ready. A session conflict now leaves a clear message instead of a visible button that cannot act."},
+        {"type":"Updated","area":"Navigation and layout","text":"Home, workspace switching and the current page are visible across the website. Menus work with keyboard and touch, and shared forms, status messages and mobile layouts use consistent styles."},
+        {"type":"Fixed","area":"School setup","text":"Catalogs have search, filters and clearer forms. Teachers use section checkboxes with roster counts. Existing teacher assignments are preserved when an access request is approved."},
+        {"type":"Fixed","area":"User directory","text":"The Teachers link opens teacher management. CSV import supports keyboard selection, drag and drop, file replacement and a clear record limit."},
+        {"type":"Updated","area":"Home and sign-in","text":"Student and staff homes highlight the next task. Sign-in explains which email to use, prevents repeated sign-in windows and gives clearer recovery messages."},
+        {"type":"Fixed","area":"Account settings and references","text":"Connection preferences now save with clear verification feedback. Application connection details reflect the deployed configuration. Reference PDF processing stops after errors or a bounded wait and supports retry."},
+        {"type":"Fixed","area":"Student workspaces","text":"Pending assignments include unfinished revision work. Account loading errors offer retry, and learner practice reviews restore the selected student's notes without stale results."},
+        {"type":"Updated","area":"Practice progress","text":"The page now describes server-saved completions and tab-only reflection drafts accurately. Practice XP remains separate from school grades."}
+      ]
+    },
+    {
       "version":"1.1.0","status":"published","public":true,"releasedAt":"2026-10-21",
       "title":"Checked practice, clearer review and assigned teaching access",
       "summary":"Practise across 300 guided missions, follow class-only alias rankings, move scored sessions safely and use a clearer individual review workflow.",

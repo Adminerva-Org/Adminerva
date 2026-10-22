@@ -17,6 +17,14 @@ let myGrades = {};
 let mySubmitted = {};
 let myEvidence = {};
 let submissionLookupSucceeded = false;
+let profileGeneration=0,assessmentGeneration=0,assignmentOwnerUid="";
+const assignmentField=id=>document.getElementById(id);
+function assignmentsNotice(message,tone="info",retry=false){
+  assignmentField("assignmentsNoticeText").textContent=message;assignmentField("assignmentsNotice").dataset.tone=tone;
+  assignmentField("assignmentsNotice").classList.toggle("hidden",!message);assignmentField("assignmentsRetry").classList.toggle("hidden",!retry);
+}
+function assignmentsFeedState(title,message){assignmentField("assignmentsFeed").innerHTML=`<div class="bg-white border border-slate-200 rounded-xl p-6 text-center"><h2 class="font-bold text-slate-800">${escapeHTML(title)}</h2><p class="text-sm text-slate-600 mt-2">${escapeHTML(message)}</p></div>`;}
+function setAssignmentControls(loading){for(const id of ["searchAssInput","filterStatus","sortDate","sectionSelectorAssessments","assignmentsRetry"])assignmentField(id).disabled=loading;}
 
 function escapeHTML(str) {
   if (!str) return "";
@@ -33,25 +41,19 @@ function escapeHTML(str) {
   );
 }
 
-onAuthStateChanged(auth, async (user) => {
-  if (!user) return;
+async function loadStudentAssignments(user=auth.currentUser){
+  const version=++profileGeneration,previousSection=assignmentOwnerUid===user?.uid?currentSection:"";
+  assessmentGeneration++;allAssessments=[];userProfiles=[];currentSection="";myGrades={};mySubmitted={};myEvidence={};submissionLookupSucceeded=false;
+  assignmentOwnerUid=user?.uid||"";setAssignmentControls(true);assignmentField("assessmentModal").classList.add("hidden");
+  const selector=assignmentField("sectionSelectorAssessments");selector.replaceChildren();selector.classList.add("hidden");
+  if(!user?.email){assignmentsNotice("Sign in with your school account to view your assignments.");assignmentsFeedState("Sign in to continue","Your class assignments appear after you sign in.");setAssignmentControls(false);return;}
   const end = window.beginLoading?.("Loading assessments and evidence…", document.getElementById("assignmentsFeed")) || (() => {});
 
   // ✨ UX FIX 1: Remove the white screen instantly!
   const pageBody = document.getElementById("pageBody");
   if (pageBody) pageBody.classList.remove("hidden");
 
-  // ✨ UX FIX 2: Show the skeleton loader instantly while Firebase thinks!
-  const container = document.getElementById("assignmentsFeed");
-  if (container) {
-    container.innerHTML = `
-        <div class="animate-pulse bg-white p-5 rounded-xl border border-slate-200">
-          <div class="h-4 bg-slate-200 rounded w-1/4 mb-4"></div>
-          <div class="h-4 bg-slate-200 rounded w-3/4 mb-2"></div>
-          <div class="h-4 bg-slate-200 rounded w-1/2"></div>
-        </div>
-      `;
-  }
+  assignmentsNotice("Finding your class…");assignmentsFeedState("Loading your class","Your assignments will appear here shortly.");
 
   const targetEmail =
     localStorage.getItem("Adminerva_Impersonate") || user.email;
@@ -63,14 +65,13 @@ onAuthStateChanged(auth, async (user) => {
       where("email", "==", targetEmail.toLowerCase()),
     );
     const snap = await getDocs(q);
-
+    if(version!==profileGeneration||auth.currentUser?.uid!==user.uid)return;
     if (!snap.empty) {
       userProfiles = [];
       snap.forEach((d) => userProfiles.push({ id: d.id, ...d.data() }));
 
-      const selector = document.getElementById("sectionSelectorAssessments");
-      if (userProfiles.length > 1 && selector) {
-        selector.classList.remove("hidden");
+      if (selector) {
+        selector.classList.toggle("hidden",userProfiles.length<2);
         selector.innerHTML = "";
         userProfiles.forEach((profile, index) => {
           selector.insertAdjacentHTML(
@@ -78,65 +79,63 @@ onAuthStateChanged(auth, async (user) => {
             `<option value="${index}">${escapeHTML(profile.section)}</option>`,
           );
         });
-        selector.addEventListener("change", (e) => {
+        selector.onchange = (e) => {
           currentSection = userProfiles[e.target.value].section;
-
-          // Re-trigger the skeleton if they change sections
-          container.innerHTML = `
-            <div class="animate-pulse bg-white p-5 rounded-xl border border-slate-200">
-              <div class="h-4 bg-slate-200 rounded w-1/4 mb-4"></div>
-              <div class="h-4 bg-slate-200 rounded w-3/4 mb-2"></div>
-              <div class="h-4 bg-slate-200 rounded w-1/2"></div>
-            </div>
-          `;
-          fetchAssessments();
-        });
+          assignmentField("assessmentModal").classList.add("hidden");void fetchAssessments();
+        };
       }
-
-      currentSection = userProfiles[0].section;
-      fetchAssessments();
+      const index=Math.max(0,userProfiles.findIndex(profile=>profile.section===previousSection));selector.value=String(index);currentSection = userProfiles[index].section;
+      await fetchAssessments();
+    }else{
+      assignmentsNotice("Your school email is not linked to a class yet. Ask your teacher to check your email and section in User Directory, then retry.","info",true);
+      assignmentsFeedState("No student class linked","Your teacher needs to add your verified school email and section before assignments can appear.");
     }
   } catch (error) {
-    console.error("Error identifying student section:", error);
-  } finally { end(); }
-});
+    if(version===profileGeneration&&auth.currentUser?.uid===user.uid){assignmentsNotice("Your class could not load. Check your connection and retry.","error",true);assignmentsFeedState("Unable to load your class","Retry loading assignments when your connection is ready.");}
+  } finally { end();if(version===profileGeneration)setAssignmentControls(false); }
+}
+onAuthStateChanged(auth,user=>void loadStudentAssignments(user));
+assignmentField("assignmentsRetry").addEventListener("click",()=>void loadStudentAssignments());
 
 async function fetchAssessments() {
-  if (!currentSection) return;
+  const sequence=++assessmentGeneration,uid=auth.currentUser?.uid,section=currentSection;
+  const isCurrent=()=>sequence===assessmentGeneration&&uid===auth.currentUser?.uid&&section===currentSection;
+  if (!section){assignmentsNotice("Your student record has no section yet. Ask your teacher to assign a class in User Directory, then retry.","info",true);assignmentsFeedState("No section assigned","Your assignments will appear after your teacher links your class.");return;}
   const end = window.beginLoading?.("Loading assessment records…") || (() => {});
+  setAssignmentControls(true);assignmentsNotice("Loading assignments and review status…");assignmentsFeedState("Loading assignments","Checking your tasks, submissions and published feedback.");
   try {
   const container = document.getElementById("assignmentsFeed");
 
   const studentProfile = userProfiles.find((p) => p.section === currentSection);
   const studentId = studentProfile ? studentProfile.id : null;
 
-  myGrades = {};
-  mySubmitted = {};
-  myEvidence = {};
-  submissionLookupSucceeded = false;
+  const nextGrades={},nextSubmitted={},nextEvidence={},nextAssessments=[],lookupFailures=[];
+  let receiptsKnown=false;
   if(studentId) {
     try{
       const submissionSnap=await getDocs(query(
         collection(db,"student_submissions"),where("studentId","==",studentId)
       ));
+      if(!isCurrent())return;
       submissionSnap.forEach(item=>{
         const entry=item.data();
-        const previous=mySubmitted[entry.assessmentId];
+        const previous=nextSubmitted[entry.assessmentId];
         const timestamp=asDate(entry.submittedAt)?.getTime()||0;
         if(!previous||timestamp>(asDate(previous.submittedAt)?.getTime()||0))
-          mySubmitted[entry.assessmentId]=entry;
+          nextSubmitted[entry.assessmentId]=entry;
       });
-      submissionLookupSucceeded=true;
+      receiptsKnown=true;
     }catch(error){
-      console.warn("Submission receipts are not available; status remains unknown:",error);
+      lookupFailures.push("submissions");
     }
   }
   if(studentId){
     try{
       const evidenceSnap=await getDocs(query(collection(db,"assessment_evidence"),
         where("studentId","==",studentId)));
-      evidenceSnap.forEach(item=>{const data=item.data();myEvidence[data.assessmentId]=data;});
-    }catch(error){console.warn("V2 assessment evidence status unavailable:",error);}
+      if(!isCurrent())return;
+      evidenceSnap.forEach(item=>{const data=item.data();nextEvidence[data.assessmentId]=data;});
+    }catch(error){lookupFailures.push("evidence");}
   }
   if (studentId) {
     try {
@@ -147,23 +146,20 @@ async function fetchAssessments() {
         where("published", "==", true),
         ),
       );
+      if(!isCurrent())return;
       gradeSnap.forEach((d) => {
         const data = d.data();
-        if (data.published === true) myGrades[data.taskId] = data;
+        if (data.published === true) nextGrades[data.taskId] = data;
       });
     } catch (e) {
-      console.warn(
-        "Could not fetch grades - Check your Firestore Security Rules!",
-        e,
-      );
+      lookupFailures.push("published feedback");
     }
   }
 
   try {
     const q = query(collection(db, "assessments"));
     const snap = await getDocs(q);
-
-    allAssessments = [];
+    if(!isCurrent())return;
     snap.forEach((docSnap) => {
       const data = docSnap.data();
       let isAssignedToStudent = false;
@@ -173,7 +169,7 @@ async function fetchAssessments() {
 
       if (data.deployments && Array.isArray(data.deployments)) {
         const deployment = data.deployments.find(
-          (d) => d.section === currentSection,
+          (d) => d.section === section,
         );
         if (deployment) {
           isAssignedToStudent = true;
@@ -184,7 +180,7 @@ async function fetchAssessments() {
             activePostDate=asDate(deployment.postDate)||activePostDate;
         }
       } else if (data.targetSections && Array.isArray(data.targetSections)) {
-        if (data.targetSections.includes(currentSection)) {
+        if (data.targetSections.includes(section)) {
           isAssignedToStudent = true;
           if (data.dueDate)
             activeDeadline=asDate(data.dueDate);
@@ -195,7 +191,7 @@ async function fetchAssessments() {
         const isUrgent = activeDeadline
           ? new Date(activeDeadline) < new Date()
           : false;
-        allAssessments.push({
+        nextAssessments.push({
           ...data,
           id: docSnap.id,
           isUrgent,
@@ -206,13 +202,16 @@ async function fetchAssessments() {
       }
     });
 
-    renderAssessments();
+    allAssessments=nextAssessments;myGrades=nextGrades;mySubmitted=nextSubmitted;myEvidence=nextEvidence;submissionLookupSucceeded=receiptsKnown&&lookupFailures.length===0;
+    assignmentsNotice(lookupFailures.length?"Some "+lookupFailures.join(", ")+" could not load. Status may be incomplete. Retry to refresh these details.":"",lookupFailures.length?"error":"info",lookupFailures.length>0);renderAssessments();
   } catch (error) {
-    container.innerHTML = `<div class="p-5 text-center text-red-500 font-bold border border-red-200 bg-red-50 rounded-xl">Failed to load assignments. Check console.</div>`;
-    console.error("Fetch Error:", error);
+    if(isCurrent()){assignmentsNotice("Your assignments could not load. Check your connection and retry.","error",true);assignmentsFeedState("Unable to load assignments","Retry loading to reconnect to your class. No submissions or grades have changed.");}
   }
-  } finally { end(); }
+  } finally { end();if(isCurrent())setAssignmentControls(false); }
 }
+
+function assignmentStatusFor(ass){return assessmentStatus({grade:myGrades[ass.id],submitted:Boolean(mySubmitted[ass.id]),evidenceStatus:myEvidence[ass.id]?.status||null,deadline:ass.noDeadline?null:ass.dueDate,knownSubmissions:submissionLookupSucceeded});}
+function needsStudentAction(ass){return ["notSubmitted","pastdue","revision"].includes(assignmentStatusFor(ass).kind);}
 
 function renderAssessments() {
   const container = document.getElementById("assignmentsFeed");
@@ -229,7 +228,7 @@ function renderAssessments() {
     const matchesStatus =
       filterStatus === "all" ||
       (filterStatus === "urgent" && ass.isUrgent) ||
-      (filterStatus === "pending" && !ass.isUrgent);
+      (filterStatus === "pending" && needsStudentAction(ass));
     return matchesSearch && matchesStatus;
   });
 
@@ -245,7 +244,7 @@ function renderAssessments() {
 
   container.innerHTML = "";
   if (filtered.length === 0) {
-    container.innerHTML = `<div class="py-12 text-center text-slate-400 font-medium italic border-2 border-dashed border-slate-200 rounded-xl bg-white">No assignments found for ${escapeHTML(currentSection)}.</div>`;
+    assignmentsFeedState(allAssessments.length?"No assignments match these filters":"No assignments posted yet",allAssessments.length?"Try All Assignments or clear your search to see more tasks.":"Your teacher has not posted assignments for "+currentSection+" yet. You can explore Practice Lab while you wait.");
     return;
   }
 
@@ -259,12 +258,7 @@ function renderAssessments() {
 
     const fileScope=assessmentTargetDetails(ass);
     const myGrade=myGrades[ass.id];
-    const status=assessmentStatus({
-      grade:myGrade,submitted:Boolean(mySubmitted[ass.id]),
-      evidenceStatus:myEvidence[ass.id]?.status||null,
-      deadline:ass.noDeadline?null:ass.dueDate,
-      knownSubmissions:submissionLookupSucceeded
-    });
+    const status=assignmentStatusFor(ass);
     const colors={
       graded:"text-emerald-800 bg-emerald-50 border-emerald-200",
       revision:"text-amber-800 bg-amber-50 border-amber-200",

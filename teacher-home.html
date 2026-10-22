@@ -1,98 +1,19 @@
 <!doctype html>
-<!-- Staff module landing page and verified administrator shortcuts. -->
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Staff Home | Adminerva</title>
-  <meta name="description" content="Your Adminerva workspace and module shortcuts.">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="css/adminerva-ui.css?v=1.1.0">
-</head>
-<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900 font-sans">
-
-  <div id="adminerva-nav" data-module="staff-home" data-page="home"></div>
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
-    <section aria-labelledby="staffTitle" class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white p-8 sm:p-12 shadow-xl">
-      <div class="max-w-3xl relative z-10">
-        <p class="text-cyan-300 font-bold text-xs uppercase tracking-[.2em]">Adminerva / Staff home</p>
-        <h1 id="staffTitle" class="mt-3 text-3xl sm:text-5xl font-extrabold leading-tight">Plan lessons. Review work. Keep teaching moving.</h1>
-        <p class="text-slate-200 text-base sm:text-lg mt-5 leading-relaxed">Your starting point for classroom planning, repository reviews, assessments and feedback.</p>
-        <div class="mt-8 flex flex-wrap gap-3">
-          <a href="teacher-analytics.html" class="bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-bold px-6 py-3 rounded-xl">Open Educator Hub →</a>
-          <a href="lesson-planner.html" class="border border-slate-500 hover:border-white hover:bg-white/10 font-bold px-6 py-3 rounded-xl">Lesson Planner</a>
-        </div>
-      </div>
-      <div aria-hidden="true" class="absolute -right-24 -bottom-44 h-96 w-96 rounded-full border-[45px] border-cyan-500/10"></div>
-    </section>
-    <section class="mt-10" aria-labelledby="teachingModules">
-      <p class="text-xs uppercase tracking-widest font-bold text-cyan-800">Quick access</p>
-      <h2 id="teachingModules" class="text-2xl sm:text-3xl font-extrabold mt-1 mb-5">Teaching workspace</h2>
-      <div class="grid sm:grid-cols-2 xl:grid-cols-4 gap-5">
-      <a href="teacher-analytics.html" class="group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-cyan-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
-        <span aria-hidden="true" class="text-3xl mb-5">📊</span>
-        <h3 class="font-extrabold text-lg text-slate-900">Educator Hub</h3>
-        <p class="text-slate-600 mt-2 text-sm leading-relaxed flex-grow">Track section progress and examine repository activity.</p>
-        <span class="text-cyan-700 font-bold text-sm mt-4">Open analytics <span aria-hidden="true">→</span></span>
-      </a>
-      <a href="submissions.html" class="group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-blue-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
-        <span aria-hidden="true" class="text-3xl mb-5">📥</span>
-        <h3 class="font-extrabold text-lg text-slate-900">Submissions</h3>
-        <p class="text-slate-600 mt-2 text-sm leading-relaxed flex-grow">Review student submissions and the work awaiting attention.</p>
-        <span class="text-blue-700 font-bold text-sm mt-4">Open inbox <span aria-hidden="true">→</span></span>
-      </a>
-      <a href="assessment-studio.html" class="group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-indigo-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
-        <span aria-hidden="true" class="text-3xl mb-5">📝</span>
-        <h3 class="font-extrabold text-lg text-slate-900">Assessment Studio</h3>
-        <p class="text-slate-600 mt-2 text-sm leading-relaxed flex-grow">Prepare learning activities and organize assessment tasks.</p>
-        <span class="text-indigo-700 font-bold text-sm mt-4">Manage assessments <span aria-hidden="true">→</span></span>
-      </a>
-      <a href="gradebook.html" class="group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-emerald-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
-        <span aria-hidden="true" class="text-3xl mb-5">📘</span>
-        <h3 class="font-extrabold text-lg text-slate-900">Gradebook</h3>
-        <p class="text-slate-600 mt-2 text-sm leading-relaxed flex-grow">Review grades, published feedback and assessment records.</p>
-        <span class="text-emerald-700 font-bold text-sm mt-4">Open gradebook <span aria-hidden="true">→</span></span>
-      </a>
-      <a href="lesson-planner.html" class="group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-cyan-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
-        <span aria-hidden="true" class="text-3xl mb-5">🗂️</span>
-        <h3 class="font-extrabold text-lg text-slate-900">Lesson Planner</h3>
-        <p class="text-slate-600 mt-2 text-sm leading-relaxed flex-grow">Develop and organize lessons using your school workflow.</p>
-        <span class="text-cyan-700 font-bold text-sm mt-4">Plan lessons <span aria-hidden="true">→</span></span>
-      </a>
-      <a href="schedule.html" class="group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-blue-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
-        <span aria-hidden="true" class="text-3xl mb-5">🗓️</span>
-        <h3 class="font-extrabold text-lg text-slate-900">Teacher Schedule</h3>
-        <p class="text-slate-600 mt-2 text-sm leading-relaxed flex-grow">Review and update your teaching schedule for the current term.</p>
-        <span class="text-blue-700 font-bold text-sm mt-4">Open schedule <span aria-hidden="true">→</span></span>
-      </a>
-      <a href="library.html" class="group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-indigo-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
-        <span aria-hidden="true" class="text-3xl mb-5">📚</span>
-        <h3 class="font-extrabold text-lg text-slate-900">Reference Library</h3>
-        <p class="text-slate-600 mt-2 text-sm leading-relaxed flex-grow">Keep lesson and classroom reference materials within reach.</p>
-        <span class="text-indigo-700 font-bold text-sm mt-4">Browse library <span aria-hidden="true">→</span></span>
-      </a>
-      <a href="issues.html" class="group rounded-2xl bg-white border border-slate-200 p-6 shadow-sm hover:shadow-lg hover:border-emerald-300 focus-visible:ring-4 focus-visible:ring-cyan-200 transition flex flex-col min-h-48">
-        <span aria-hidden="true" class="text-3xl mb-5">🛠️</span>
-        <h3 class="font-extrabold text-lg text-slate-900">Reports</h3>
-        <p class="text-slate-600 mt-2 text-sm leading-relaxed flex-grow">Review reports addressed to your staff role and follow their status.</p>
-        <span class="text-emerald-700 font-bold text-sm mt-4">Open reports <span aria-hidden="true">→</span></span>
-      </a>
-      </div>
-    </section>
-    <section data-admin-only class="hidden mt-10 rounded-2xl border border-cyan-200 bg-cyan-50 p-6" aria-label="Administrator tools">
-      <p class="uppercase tracking-widest text-xs font-bold text-cyan-900">Administrator</p>
-      <h2 class="text-xl font-extrabold mt-2">System management</h2>
-      <p class="text-sm text-slate-700 mt-2">Manage platform accounts and review administrator-directed reports.</p>
-      <div class="mt-4 flex flex-wrap gap-4">
-        <a href="users.html" class="text-cyan-900 font-bold underline underline-offset-4">User directory →</a>
-        <a href="admin-analytics.html" class="text-cyan-900 font-bold underline underline-offset-4">Administration analytics →</a>
-        <a href="issues.html" class="text-cyan-900 font-bold underline underline-offset-4">Admin reports →</a>
-      </div>
-    </section>
-    <p class="text-xs text-slate-500 text-center mt-12">Adminerva · Staff workspace</p>
-  </main>
-  <script src="js/core/adminerva-loader.js?v=1.1.0"></script>
-  <script src="js/core/adminerva-nav.js?v=1.1.0"></script>
-  <script type="module" src="js/core/auth-guard.js?v=1.1.0"></script>
-</body>
-</html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Your teaching workspace | Adminerva</title><meta name="description" content="Plan lessons, review submissions and manage classroom feedback."><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="css/adminerva-ui.css?v=1.2.0"></head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="staff-home" data-page="home"></div>
+<main class="av-home">
+  <header class="av-home-hero"><p class="av-eyebrow">Staff workspace</p><h1 id="staffTitle">Your teaching day, organized.</h1><p>Start with the work you need to finish. Review submissions, prepare the next lesson, or follow your class progress.</p><div class="av-button-row mt-5"><a class="av-primary-button" href="repofetch.html">Review &amp; Grade →</a><a class="av-secondary-link" href="lesson-planner.html">Plan a lesson</a></div></header>
+  <section aria-labelledby="staffWorkflow"><div class="av-home-heading"><h2 id="staffWorkflow">From assignment to feedback</h2><a href="wiki.html#review" class="text-sm font-semibold text-blue-800 underline">Teaching guide</a></div><ol class="av-setup-steps"><li><a href="assessment-studio.html"><strong>1. Prepare an assessment</strong><span>Set the task, criteria and teaching sections.</span></a></li><li><a href="submissions.html"><strong>2. Review submitted work</strong><span>Open evidence and confirm each student's contribution.</span></a></li><li><a href="gradebook.html"><strong>3. Share reviewed feedback</strong><span>Save grades, review drafts, then choose what to publish.</span></a></li></ol></section>
+  <section aria-labelledby="teachingModules"><div class="av-home-heading"><h2 id="teachingModules">Your tools</h2></div><div class="av-home-grid">
+    <a href="teacher-analytics.html" class="av-home-task"><h3>Class analytics</h3><p>See progress and available results for your assigned sections.</p><span>View class progress →</span></a>
+    <a href="practice-analytics.html" class="av-home-task"><h3>Practice activity</h3><p>Follow practice XP and inspect learning reflections.</p><span>Open Practice Analytics →</span></a>
+    <a href="repobank.html" class="av-home-task"><h3>Repository library</h3><p>Find class repositories and save reviewed project overviews.</p><span>Browse RepoBank →</span></a>
+    <a href="schedule.html" class="av-home-task"><h3>Teaching schedule</h3><p>Organize your personal timetable and teaching weeks.</p><span>Open schedule →</span></a>
+    <a href="library.html" class="av-home-task"><h3>Reference library</h3><p>Keep the resources used for lesson planning together.</p><span>Browse references →</span></a>
+    <a href="issues.html" class="av-home-task"><h3>Reports &amp; support</h3><p>Follow reports shared with you and request help with a problem.</p><span>Open reports →</span></a>
+  </div></section>
+  <section data-admin-only class="hidden av-panel mt-8" aria-labelledby="schoolSetupTitle"><p class="av-eyebrow">Administrator</p><h2 id="schoolSetupTitle">Set up your school workspace</h2><p>Use the same section names on student records and teacher assignments so class access lines up.</p><ol class="av-setup-steps"><li><a href="manage-sections.html"><strong>1. Set up sections</strong><span>Check current roster names and maintain the section catalog.</span></a></li><li><a href="users.html"><strong>2. Enroll students</strong><span>Add the right email and section to each student record.</span></a></li><li><a href="teacher-accounts.html"><strong>3. Assign teachers</strong><span>Authorize instructors and choose their teaching sections.</span></a></li></ol><div class="av-button-row"><a class="av-secondary-link" href="admin-analytics.html">Administration analytics</a><a class="av-secondary-link" href="manage-subjects.html">Subjects</a><a class="av-secondary-link" href="manage-programs.html">Tracks &amp; pathways</a></div></section>
+</main>
+<script src="js/core/adminerva-loader.js?v=1.2.0"></script><script src="js/core/adminerva-nav.js?v=1.2.0"></script><script type="module" src="js/core/auth-guard.js?v=1.2.0"></script>
+</body></html>

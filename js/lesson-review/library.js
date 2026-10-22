@@ -13,6 +13,30 @@ import {
 
 let libraryData = [];
 let activeFolderId = null;
+let extractingPdf=false;
+// Clear only when reopening the chooser, so the same PDF can be selected to retry.
+document.getElementById("pdfFileInput")?.addEventListener("click",event=>{
+  if(extractingPdf){event.preventDefault();return;}
+  event.currentTarget.value="";
+});
+
+async function waitForProcessedPDF(fileInfo,fileName,key){
+  if(typeof fileInfo?.name!=="string"||typeof fileInfo?.uri!=="string")throw Error("Google returned incomplete upload details for "+fileName+". Select the PDF again to retry.");
+  const deadline=Date.now()+120000;
+  for(let attempt=0;attempt<40;attempt++){
+    const remaining=deadline-Date.now();
+    if(remaining<=0)break;
+    window.showSubtleLoader?.("Analyzing visual diagrams and OCR for "+fileName+"…");
+    const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileInfo.name}?key=${encodeURIComponent(key)}`,{signal:AbortSignal.timeout(Math.min(15000,remaining))});
+    if(!response.ok)throw Error("Google could not check PDF processing (status "+response.status+"). Select the remaining PDF files again to retry after checking your connection or provider limits.");
+    const result=await response.json();
+    if(result.state==="ACTIVE")return fileInfo.uri;
+    if(result.state==="FAILED")throw Error("Google could not process "+fileName+". Select the PDF again to retry.");
+    if(result.state!=="PROCESSING")throw Error("Google returned an unknown PDF processing status. Select the PDF again to retry.");
+    if(attempt<39&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,Math.min(3000,deadline-Date.now())));
+  }
+  throw Error("PDF processing did not finish within two minutes. Your saved references are preserved. Select the remaining PDF files again to retry.");
+}
 
 function escapeHTML(str) {
   if (!str) return "";
@@ -324,6 +348,7 @@ function renderDocuments(documentsArray) {
 }
 
 window.extractPDF = async function () {
+  if(extractingPdf)return;
   const fileInput = document.getElementById("pdfFileInput");
   if (!fileInput.files.length) return;
 
@@ -345,7 +370,10 @@ window.extractPDF = async function () {
 
   const targetFolderId = activeFolderId;
   const folder = libraryData.find((f) => f.id === targetFolderId);
+  if(!folder)return alert("Select a reference folder before importing PDFs.");
   let uploadedCount=0;
+  let completed=false;
+  extractingPdf=true;fileInput.disabled=true;
 
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -389,31 +417,8 @@ window.extractPDF = async function () {
       const uploadData = await uploadRes.json();
       const fileInfo = uploadData.file;
 
-      // 2. POLL SERVER UNTIL OCR IS COMPLETE
-      let isProcessing = true;
-      let activeFileUri = fileInfo.uri;
-
-      while (isProcessing) {
-        if (typeof window.showSubtleLoader === "function") {
-          window.showSubtleLoader(
-            `Analyzing visual diagrams and OCR for ${file.name}...`,
-          );
-        }
-
-        const checkUrl = `https://generativelanguage.googleapis.com/v1beta/${fileInfo.name}?key=${encodeURIComponent(gemKey)}`;
-        const checkRes = await fetch(checkUrl);
-        const checkData = await checkRes.json();
-
-        if (checkData.state === "ACTIVE") {
-          isProcessing = false;
-        } else if (checkData.state === "FAILED") {
-          throw new Error(
-            `Google failed to process the visuals inside ${file.name}.`,
-          );
-        } else {
-          await delay(3000);
-        }
-      }
+      // Processing checks are bounded and HTTP/provider failures stop immediately.
+      const activeFileUri=await waitForProcessedPDF(fileInfo,file.name,gemKey);
 
       // 3. EXTRACT ALL DATA USING THE PROCESSED FILE URI (FREE TIER RETRY LOGIC)
       if (typeof window.showSubtleLoader === "function") {
@@ -524,10 +529,12 @@ window.extractPDF = async function () {
     }
 
     if(uploadedCount)console.info("Stored "+uploadedCount+" PDFs as independent records.");
+    completed=true;
   } catch (error) {
-    alert("Bulk extraction stopped. Error: " + error.message);
+    alert("PDF import stopped. "+(error.name==="TimeoutError"?"The processing check timed out. Select the remaining PDFs again to retry.":error.message)+(uploadedCount?" "+uploadedCount+" completed reference(s) are already saved; retry only the remaining files.":" Your saved references are unchanged."));
   } finally {
-    fileInput.value = "";
+    extractingPdf=false;fileInput.disabled=false;
+    if(completed)fileInput.value = "";
     renderFolders();
 
     if (activeFolderId === targetFolderId) {

@@ -12,9 +12,16 @@ window.hideLoader = function () {
 };
 // 🚀 Vertical Sidebar Navigation (Dynamic Tailwind Injection)
 window.switchSettingsCategory = function (targetPanelId) {
+  const targetPanel = document.getElementById(`panel-${targetPanelId}`);
+  const targetBtn = document.getElementById(`navBtn-${targetPanelId}`);
+  if (!targetPanel || !targetBtn) return;
   // 1. Hide all right-side panels
   const panels = document.querySelectorAll(".settings-panel");
-  panels.forEach((p) => p.classList.replace("block", "hidden"));
+  panels.forEach(p => {
+    const selected = p === targetPanel;
+    p.classList.toggle("hidden", !selected); p.classList.toggle("block", selected);
+    p.setAttribute("aria-hidden", String(!selected));
+  });
 
   // 2. Define the exact Tailwind strings for our states
   const activeClasses = [
@@ -30,13 +37,16 @@ window.switchSettingsCategory = function (targetPanelId) {
   buttons.forEach((b) => {
     b.classList.remove(...activeClasses);
     b.classList.add(...inactiveClasses);
+    b.setAttribute("aria-controls", b.id.replace("navBtn-", "panel-"));
+    b.setAttribute("aria-expanded", String(b === targetBtn));
+    if (b === targetBtn) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
   });
 
   // 4. Show the target panel and apply the purple active state to the clicked button
-  const targetPanel = document.getElementById(`panel-${targetPanelId}`);
-  const targetBtn = document.getElementById(`navBtn-${targetPanelId}`);
-
   if (targetPanel && targetBtn) {
+    targetPanel.setAttribute("role", "region");
+    targetPanel.setAttribute("aria-labelledby", targetBtn.id);
     targetPanel.classList.replace("hidden", "block");
 
     // Strip the gray hover and rounded corners, add the purple highlight
@@ -93,6 +103,7 @@ window.closeStudentModal = () =>
 
 // Initialization
 document.addEventListener("DOMContentLoaded", () => {
+  window.switchSettingsCategory("security");
   if (window.loadSecuritySettings) window.loadSecuritySettings();
 
   // 1. Boot Firebase FIRST so window.db is established

@@ -86,6 +86,20 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
 
+  // Publish presentation state after admission and routing have succeeded.
+  // Navigation may have rendered from a stale role cached by an earlier visit.
+  const mockNotice = localStorage.getItem("Adminerva_Mock_Role")
+    ? ` (Simulating: ${activeRole})` : "";
+  const accountEmail = userEmail + mockNotice;
+  const navigation = document.getElementById("adminerva-nav");
+  if (navigation) {
+    navigation.dataset.verifiedRole = activeRole;
+    navigation.dataset.accountEmail = accountEmail;
+  }
+  document.dispatchEvent(new CustomEvent("adminerva:role-ready", {
+    detail: { role: activeRole }
+  }));
+
   // Only verified administrator accounts see management shortcuts.
   if (actualRole === "superadmin" && activeRole === "superadmin") {
     document.querySelectorAll("[data-admin-only]").forEach(el => el.classList.remove("hidden"));
@@ -95,18 +109,15 @@ onAuthStateChanged(auth, async (user) => {
   if (pageBody) pageBody.classList.remove("hidden");
 
   const emailDisplay = document.getElementById("userEmailDisplay");
-  if (emailDisplay) {
-    const mockNotice = localStorage.getItem("Adminerva_Mock_Role")
-      ? ` (Simulating: ${activeRole})`
-      : "";
-    emailDisplay.textContent = userEmail + mockNotice;
-  }
+  if (emailDisplay) emailDisplay.textContent = accountEmail;
   } finally { endLoading(); }
 });
 
 // Centralized Sign Out
 document.addEventListener("click", (e) => {
+  if (e.defaultPrevented) return;
   if (e.target && e.target.id === "signOutBtn") {
+    e.preventDefault();
     signOut(auth).then(() => {
       localStorage.removeItem("Adminerva_Role");
       localStorage.removeItem("Adminerva_Mock_Role");

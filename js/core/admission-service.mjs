@@ -32,7 +32,7 @@ export async function decideAdmission(opened,{role,studentId="",section="",reaso
     if(auth.currentUser?.uid!==actor.uid)throw Error("Account changed. Reload before continuing.");
     if(staff){
       const prior=staff.exists()?staff.data():null,revision=(prior?.revision||0)+1;
-      const after={email:before.email,displayName:before.displayName,role:"teacher",status:"active",revision,reason:reason.trim(),updatedBy:actor.uid,updatedAt:serverTimestamp()};
+      const after={email:before.email,displayName:before.displayName,role:"teacher",status:"active",sections:Array.isArray(prior?.sections)?[...prior.sections]:[],revision,reason:reason.trim(),updatedBy:actor.uid,updatedAt:serverTimestamp()};
       transaction.set(staffRef,after);transaction.set(doc(staffRef,"revisions",String(revision)),{before:prior,after,actorUid:actor.uid,createdAt:serverTimestamp()});
     }
     if(studentRef&&!student.exists())transaction.set(studentRef,{email:before.email,name:before.displayName,section:section.trim(),githubUsername:"",repoUrl:"unassigned"});

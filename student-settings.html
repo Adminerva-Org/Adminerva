@@ -9,7 +9,7 @@
     />
     <title>Settings | Student Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.1.0" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.2.0" />
 </head>
   <body
     class="bg-slate-50 font-sans text-slate-800 min-h-screen flex flex-col hidden"
@@ -27,10 +27,10 @@
 
       <div
         id="rosterError"
-        class="hidden mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg font-medium shadow-sm text-sm"
+        class="av-status-message mb-6" role="status" aria-live="polite"
       >
-        Your email is not currently registered in the class roster. Please
-        contact your instructor.
+        <p id="studentSettingsNotice">Loading your student profile…</p>
+        <button id="studentSettingsRetry" type="button" class="hidden mt-3 font-bold underline">Retry loading profile</button>
       </div>
 
       <section class="bg-white p-5 sm:p-6 rounded-xl shadow-sm border border-slate-200 mb-6" aria-labelledby="profileSettingsHeading">
@@ -46,7 +46,7 @@
               <option value="Non-binary">Non-binary</option><option value="Self-described">Self-described</option>
             </select>
           </div>
-          <button type="submit" id="saveStudentProfile" class="bg-blue-600 text-white rounded-lg px-4 py-3 text-sm font-bold">Save profile</button>
+          <button type="submit" id="saveStudentProfile" disabled class="bg-blue-600 text-white rounded-lg px-4 py-3 text-sm font-bold">Save profile</button>
         </form>
         <p id="profileSaveStatus" role="status" class="mt-2 text-xs text-slate-600"></p>
       </section>
@@ -121,7 +121,7 @@
             <h3 id="repoPickerHeading" class="text-sm font-extrabold text-slate-800">Repository selection</h3>
             <p class="text-xs text-slate-600">Browse repositories available to your linked GitHub account, or enter a repository URL above.</p>
             <div class="flex flex-col sm:flex-row gap-2">
-              <button type="button" id="discoverStudentRepos" class="rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 px-4 py-2.5 text-sm font-bold">Find my repositories</button>
+              <button type="button" id="discoverStudentRepos" disabled class="rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 px-4 py-2.5 text-sm font-bold">Find my repositories</button>
               <a href="student-dashboard.html" class="rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 px-4 py-2.5 text-sm font-bold text-center">Connect / reconnect GitHub ↗</a>
             </div>
             <select id="studentRepoChoices" aria-label="Accessible GitHub repositories" class="hidden w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-3 text-sm">
@@ -129,7 +129,7 @@
             </select>
             <p id="studentRepoStatus" role="status" aria-live="polite" class="text-xs text-slate-600">Private or collaborator repositories may require a GitHub connection with permission to access them.</p>
           </section>
-          <button type="submit" id="saveRepoBtn" class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-md hover:bg-blue-700 transition shadow-sm disabled:opacity-50">Save Configuration</button>
+          <button type="submit" id="saveRepoBtn" disabled class="w-full bg-blue-600 text-white font-bold py-3 px-4 rounded-md hover:bg-blue-700 transition shadow-sm disabled:opacity-50">Save Configuration</button>
           <p id="saveStatus" role="status" aria-live="polite" class="text-xs sm:text-sm font-medium text-center hidden mt-2"></p>
         </form>
 
@@ -163,9 +163,9 @@
       </div>
     </main>
 
-    <script type="module" src="js/student/settings.js?v=2026.10.19.3"></script>
-    <script type="module" src="js/core/auth-guard.js?v=1.1.0"></script>
-    <script src="js/core/adminerva-nav.js?v=1.1.0"></script>
-    <script src="js/core/adminerva-loader.js?v=1.1.0"></script>
+    <script type="module" src="js/student/settings.js?v=1.2.0"></script>
+    <script type="module" src="js/core/auth-guard.js?v=1.2.0"></script>
+    <script src="js/core/adminerva-nav.js?v=1.2.0"></script>
+    <script src="js/core/adminerva-loader.js?v=1.2.0"></script>
   </body>
 </html>

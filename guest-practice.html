@@ -1,3 +1,26 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Guest Practice · Adminerva</title><link rel="stylesheet" href="css/documentation.css?v=2026.10.21.1-dev.1"></head><body><main class="av-documentation" data-guest-page="practice">
-<nav class="av-documentation-nav"><a href="guest-home.html">Guest home</a><a href="wiki.html#learning">Help</a><button id="guest-signout">Sign out</button></nav><header class="av-doc-hero"><h1>Practise a little, learn a lot</h1><p id="guest-identity"></p><p>Local practice only. These points are not verified grades, class analytics or leaderboard entries.</p></header><p id="guest-status" role="status">Checking access…</p><section id="guest-content" hidden><p id="guest-points"></p><label>Course <select id="guest-course"></select></label><label>Module <select id="guest-module"></select></label><div id="guest-missions"></div><button id="guest-clear">Clear local progress</button></section><a id="guest-approved" hidden>Open approved workspace →</a></main><script type="module" src="js/guests/guest.mjs?v=1.1.0"></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Guest Practice · Adminerva</title>
+  <link rel="stylesheet" href="css/documentation.css?v=1.2.0">
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=1.2.0">
+</head>
+<body>
+  <main class="av-documentation" data-guest-page="practice">
+    <nav class="av-documentation-nav" aria-label="Guest navigation"><a href="guest-home.html">Guest home</a><a href="guest-playground.html">Code Playground</a><a href="wiki.html#learning">Help &amp; guides</a><button id="guest-signout" type="button">Sign out</button></nav>
+    <header class="av-doc-hero"><p class="av-eyebrow">GUEST PRACTICE LAB</p><h1>Small challenges. New skills.</h1><p id="guest-identity"></p><p>Choose a course and module, open a mission, and predict the result. Each answer includes an explanation to help you learn.</p></header>
+    <p id="guest-status" class="av-session-notice" role="status" aria-live="polite">Checking access…</p>
+    <section id="guest-content" hidden aria-labelledby="guestPracticeHeading">
+      <h2 id="guestPracticeHeading">Your practice missions</h2>
+      <p id="guest-points" role="status" aria-live="polite"></p>
+      <div class="av-doc-filters"><label for="guest-course">Course<select id="guest-course"></select></label><label for="guest-module">Module<select id="guest-module"></select></label></div>
+      <p>Start with the first unfinished mission. You can revisit any mission or change courses at any time.</p>
+      <div id="guest-missions"></div>
+      <details><summary>About guest progress</summary><p>These practice points are saved only in this browser for this account. They do not count toward school grades, class analytics or leaderboards. Clearing browser data removes them.</p><button id="guest-clear" type="button">Clear my local practice progress</button></details>
+    </section>
+    <a id="guest-approved" class="av-action-link" hidden>Open approved workspace →</a>
+  </main>
+  <script type="module" src="js/guests/guest.mjs?v=1.2.0"></script>
+</body>
+</html>

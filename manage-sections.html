@@ -1,7 +1,46 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Manage Sections · Adminerva</title><script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="css/adminerva-ui.css?v=1.1.0"><link rel="stylesheet" href="css/documentation.css?v=2026.10.21.1-dev.1"><script type="module" src="js/core/auth-guard.js?v=1.1.0"></script></head>
-<body data-module="admin" data-page="sections"><div id="adminerva-nav" data-module="admin" data-page="sections"></div><main class="av-documentation" data-catalog-kind="sections"><header class="av-doc-hero"><h1>Manage Sections</h1><p>School-managed catalog. Keep legacy and strengthened SHS offerings distinct. Creating or archiving entries does not move students, rewrite saved lessons or change teacher assignments.</p></header>
-<nav class="av-documentation-nav"><a href="users.html">User directory</a><a href="teacher-accounts.html">Manage Teachers</a><a href="manage-sections.html">Sections</a><a href="manage-programs.html">Tracks & pathways</a><a href="manage-subjects.html">Subjects</a></nav>
-<p id="catalog-status" role="status">Loading catalog…</p><button id="catalog-new" type="button">New entry</button><section id="catalog-list" class="grid gap-3"></section>
-<form id="catalog-form" class="av-doc-filters"><label>Name<input id="catalog-name" required maxlength="120"></label><label>Curriculum scheme<select id="catalog-scheme"><option value="strengthened-shs">Strengthened SHS</option><option value="legacy-shs">Legacy SHS</option><option value="school-defined">School-defined</option></select></label><label>Type<select id="catalog-type"><option>Section</option></select></label><label>Grade level<input id="catalog-gradeLevel" maxlength="30" placeholder="Grade 11"></label><label>School year<input id="catalog-schoolYear" maxlength="20" placeholder="2026-2027"></label><label>Notes<textarea id="catalog-notes" maxlength="1000"></textarea></label><label>Status<select id="catalog-status-field"><option value="active">Active</option><option value="archived">Archived</option></select></label><button id="catalog-save">Save catalog entry</button></form>
-<p>Catalog names are configured by your school, not automatically inferred from curriculum terminology. Review applicable DepEd guidance before adopting offerings.</p></main><script src="js/core/adminerva-nav.js?v=1.1.0"></script><script type="module" src="js/core/school-catalog.mjs?v=1.1.0"></script><script src="js/core/adminerva-loader.js?v=1.1.0"></script></body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sections · Adminerva</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="css/adminerva-ui.css?v=1.2.0"><link rel="stylesheet" href="css/documentation.css?v=1.2.0">
+<script type="module" src="js/core/auth-guard.js?v=1.2.0"></script>
+</head>
+<body data-module="admin" data-page="sections">
+<div id="adminerva-nav" data-module="admin" data-page="sections"></div>
+<main class="av-account-page" data-catalog-kind="sections">
+<header class="av-page-heading"><div><p class="av-eyebrow">School administration · Configuration</p><h1>Sections</h1><p>Create the class names your school uses, then connect students and teachers to those same names.</p></div><a href="teacher-home.html" class="av-secondary-link">Staff workspace</a></header>
+<nav class="av-setup-nav" aria-label="School configuration"><a href="users.html">User directory</a><a href="teacher-accounts.html">Teachers</a><a href="manage-sections.html" aria-current="page">Sections</a><a href="manage-programs.html">Tracks & pathways</a><a href="manage-subjects.html">Subjects</a></nav>
+<ol class="av-setup-steps" aria-label="School setup workflow">
+<li><a href="manage-sections.html"><strong>1. Define sections</strong><span>Create the exact class names.</span></a></li>
+<li><a href="users.html"><strong>2. Enroll students</strong><span>Import a roster with those section names.</span></a></li>
+<li><a href="teacher-accounts.html"><strong>3. Assign teachers</strong><span>Choose who teaches each section.</span></a></li>
+</ol>
+<p id="catalog-status" class="av-status-message" role="status" aria-live="polite">Loading catalog…</p>
+<div class="av-config-layout">
+<section class="av-panel" aria-labelledby="catalog-list-title">
+<div class="av-page-heading"><div><h2 id="catalog-list-title">Saved entries</h2><p id="catalog-count">Loading entries…</p></div><div class="av-button-row"><button id="catalog-new" type="button" class="av-primary-button">Add entry</button><button id="catalog-refresh" type="button" class="av-secondary-button">Refresh</button></div></div>
+<div class="av-config-toolbar"><label for="catalog-search">Search entries<input id="catalog-search" type="search" placeholder="Name, type or school year"></label><label for="catalog-filter">Status<select id="catalog-filter"><option value="all">All statuses</option><option value="active">Active</option><option value="archived">Archived</option></select></label></div>
+<div id="catalog-list" class="av-config-list" aria-label="Catalog entries"></div>
+</section>
+<form id="catalog-form" class="av-panel av-config-form" aria-labelledby="catalog-form-title">
+<h2 id="catalog-form-title">Add a new entry</h2><p>Fields marked * are required. You can add optional details later.</p>
+<div class="av-form-grid">
+<label class="av-field-wide" for="catalog-name">Section name *<input id="catalog-name" required maxlength="120" aria-describedby="catalog-name-hint"><span id="catalog-name-hint" class="av-form-hint">Use the exact name on student records, for example Grade 11 – ICT A.</span></label>
+<label for="catalog-scheme">Curriculum scheme<select id="catalog-scheme"><option value="strengthened-shs">Strengthened SHS</option><option value="legacy-shs">Legacy SHS</option><option value="school-defined">School-defined</option></select></label>
+<label for="catalog-type">Type<select id="catalog-type"><option>Section</option></select></label>
+<label for="catalog-gradeLevel">Grade level <span class="av-form-hint">Optional</span><input id="catalog-gradeLevel" maxlength="30" placeholder="e.g. Grade 11"></label>
+<label for="catalog-schoolYear">School year <span class="av-form-hint">Optional</span><input id="catalog-schoolYear" maxlength="20" placeholder="e.g. 2026-2027"></label>
+<label class="av-field-wide" for="catalog-notes">Notes <span class="av-form-hint">Optional</span><textarea id="catalog-notes" maxlength="1000" rows="3" placeholder="Add context for school staff"></textarea></label>
+<label for="catalog-status-field">Entry status<select id="catalog-status-field"><option value="active">Active</option><option value="archived">Archived</option></select><span class="av-form-hint">Archive entries your school no longer offers.</span></label>
+</div>
+<p id="catalog-form-status" class="av-status-message" role="status" aria-live="polite"></p>
+<div class="av-button-row"><button id="catalog-save" type="submit" class="av-primary-button">Create entry</button><button id="catalog-cancel" type="button" class="av-secondary-button" hidden>Cancel edit</button></div>
+</form>
+</div>
+<section class="av-panel" aria-labelledby="roster-sections-title"><h2 id="roster-sections-title">Sections on student records</h2><p>These are the exact names currently used in the roster. Choose these same names in teacher assignments. The catalog does not rename existing records.</p><ul id="catalog-roster-sections" class="list-disc pl-6"><li>Loading roster section names…</li></ul><p><a href="users.html" class="av-secondary-link">Open student roster</a></p></section>
+<p class="av-scope-notice">Creating or archiving a section does not enroll students, rename roster records, or change teacher assignments. Catalog names are configured by your school.</p>
+</main>
+<script src="js/core/adminerva-nav.js?v=1.2.0"></script><script type="module" src="js/core/school-catalog.mjs?v=1.2.0"></script><script src="js/core/adminerva-loader.js?v=1.2.0"></script>
+</body></html>
