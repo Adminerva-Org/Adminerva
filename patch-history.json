@@ -12,6 +12,7 @@
         {"type":"Updated","area":"Home and sign-in","text":"Student and staff homes highlight the next task. Sign-in explains which email to use, prevents repeated sign-in windows and gives clearer recovery messages."},
         {"type":"Fixed","area":"Account settings and references","text":"Connection preferences now save with clear verification feedback. Application connection details reflect the deployed configuration. Reference PDF processing stops after errors or a bounded wait and supports retry."},
         {"type":"Fixed","area":"Student workspaces","text":"Pending assignments include unfinished revision work. Account loading errors offer retry, and learner practice reviews restore the selected student's notes without stale results."},
+        {"type":"Fixed","area":"Code Playground","text":"The ZIP library loads before the code editor's module loader so project archive export and multi-file packaging can access the correct constructor."},
         {"type":"Updated","area":"Practice progress","text":"The page now describes server-saved completions and tab-only reflection drafts accurately. Practice XP remains separate from school grades."}
       ]
     },

@@ -4,6 +4,12 @@ import {readFileSync} from "node:fs";
 import vm from "node:vm";
 import {assessmentStatus,assessmentTargetDetails,asDate} from "../js/student/assessment-state.mjs";
 
+test("Playground installs the global ZIP constructor before the editor's AMD loader",()=>{
+  const html=readFileSync(new URL("../student-playground.html",import.meta.url),"utf8");
+  const zip=html.indexOf("/jszip/3.10.1/jszip.min.js"),loader=html.indexOf("/monaco-editor/0.44.0/min/vs/loader.min.js");
+  assert.ok(zip>=0&&loader>zip,"JSZip must load before define.amd can capture its constructor");
+});
+
 function fixture(filename){
   const fields=new Map(),reads=[],writes=[];let response={empty:true,forEach(){}};
   const field=id=>{if(!fields.has(id)){

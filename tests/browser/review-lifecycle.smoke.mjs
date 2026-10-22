@@ -792,6 +792,9 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
           await expect(page.locator("#editorLoading")).toBeHidden();await expect(page.locator(".monaco-editor")).toBeVisible();
           await page.locator("#languageSelect").selectOption("web");await page.locator("#runBtn").click();
           await expect(page.frameLocator("#webPreviewFrame").locator("h1")).toHaveText("Hello, Adminerva Web!");
+          const exporting=page.waitForEvent("download");await page.locator("#exportZipBtn").click();
+          const archive=await exporting;assert.match(archive.suggestedFilename(),/^Adminerva_Project_web\.zip$/);
+          await archive.saveAs(path.join(output,"fixture-playground-web.zip"));
         }
         await expect(page.locator("#subtleLoader")).toBeHidden();
         await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),{message:route+" must fit a phone screen"}).toBe(true);

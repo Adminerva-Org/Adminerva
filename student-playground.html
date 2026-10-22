@@ -9,9 +9,9 @@
     />
     <title>Code Playground | Student Portal</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
-    <!-- JSZip for bundling multi-file projects -->
+    <!-- Load the global ZIP dependency before Monaco installs its AMD loader. -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
     <style>
       @media (max-width: 767px) {
         #workspaceContainer { flex-direction: column; min-height: 0; }
