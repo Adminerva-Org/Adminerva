@@ -1,21 +1,22 @@
 /** Primary teacher evidence review, evaluation drafts and deliberate grade publication. */
-import { auth, db } from "../core/firebase-core.js";
-import { cleanGradeFeedback } from "../core/feedback-format.mjs";
-import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=2026.10.20.1";
-import {createBackoffClient,evaluationJSON} from "./services/request-backoff.mjs?v=2026.10.20.1";
-import {renderFeedbackMarkdown} from "./review-ui.mjs?v=2026.10.20.1";
-import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs";
+import { auth, db } from "../core/firebase-core.js?v=1.3.0";
+import {generateSchoolContent,schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
+import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
+import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
+import {createBackoffClient,evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
+import {renderFeedbackMarkdown} from "./review-ui.mjs?v=1.3.0";
+import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs?v=1.3.0";
 import {
   collection, doc, getDoc, getDocs, query, where, runTransaction, serverTimestamp
-} from "../core/teaching-firestore.mjs?v=1.1.0";
-import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=2026.10.20.1";
-import {parseRepository,validSha} from "./services/assessment-evidence.mjs";
+} from "../core/teaching-firestore.mjs?v=1.3.0";
+import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=1.3.0";
+import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
 import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,parseSuggestedRubric}
-  from "./services/v2-grading-assistant.mjs?v=2026.10.21.2-dev.1";
-import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=2026.10.19.4";
-import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=1.1.0";
-import {createReviewRequests} from "./services/review-requests.mjs?v=2026.10.20.1";
-import {mountReviewPanels} from "./review-panels.mjs?v=1.1.0";
+  from "./services/v2-grading-assistant.mjs?v=1.3.0";
+import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
+import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=1.3.0";
+import {createReviewRequests} from "./services/review-requests.mjs?v=1.3.0";
+import {mountReviewPanels} from "./review-panels.mjs?v=1.3.0";
 
 const el = id => document.getElementById(id);
 const state = { active: null, request: null, token: 0, flags: [], aiBusy: false, dirty:false, abort:null,panels:null,requests:null,aiAbort:null };
@@ -45,8 +46,8 @@ function flag(text) {
   if (state.flags.length < 60) state.flags.push(String(text).slice(0, 1200));
   el("manualReviewFlags").append(p);
 }
-function close() {
-  if((state.dirty||state.panels?.hasUnsavedReview?.())&&!confirm("Discard unsaved score, feedback or verification changes?"))return;
+function close({force=false,silent=false}={}) {
+  if(!force&&(state.dirty||state.panels?.hasUnsavedReview?.())&&!confirm("Discard unsaved score, feedback or verification changes?"))return false;
   el("manualReviewModal").classList.add("hidden");
   state.abort?.abort();state.aiAbort?.abort();state.panels?.destroy();state.panels=null;
   state.active=null;
@@ -54,6 +55,8 @@ function close() {
   state.aiBusy=false;
   state.dirty=false;
   state.token++;
+  if(!silent)window.dispatchEvent(new CustomEvent("adminerva:manual-review-closed"));
+  return true;
 }
 async function githubGet(url, session) {
   const response=await state.requests.fetch(url);
@@ -165,9 +168,8 @@ async function generateAIDraft(){
     return aiStatus("Approve the checkpoint and verify individual contributions before evaluation.",true);
   }
   if(active.previous?.published)return aiStatus("Published grade protected. Unpublish for revision below before evaluating.",true);
-  const token=localStorage.getItem("Adminerva_gemini_token");
-  if(!token){el("manualReviewCheckerSetup").open=true;return aiStatus("Checker setup required: enter your instructor provider key below, or grade manually in section 3.",true);}
-  const model=String(localStorage.getItem("Adminerva_ai_model")||"gemini-2.5-flash").trim();
+  let connection;try{connection=await schoolAIStatus();}catch(error){return aiStatus(error.message,true);}
+  const model=String(connection.configured?connection.model:localStorage.getItem("Adminerva_ai_model")||"gemini-3.8-flash").trim();
   if(!/^[a-zA-Z0-9._-]{1,80}$/.test(model))return aiStatus("The configured evaluation model name is invalid. Check provider settings.",true);
   if(!confirm("Evaluate this approved checkpoint? Relevant student source and verified diffs will be sent to the configured Gemini AI provider to generate draft scores and feedback. Verify the result before saving."))return;
   const session=state.token;
@@ -199,17 +201,8 @@ async function generateAIDraft(){
     });
     if(controller.signal.aborted)throw Error("Evaluation timed out. Continue manually or retry.");
     active.evaluationClient ||= createBackoffClient({signal:state.abort.signal,scope:"evaluation"});
-    const response=await active.evaluationClient.fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(model)+":generateContent",{
-        method:"POST",signal:controller.signal,
-        headers:{"Content-Type":"application/json","x-goog-api-key":token},
-        body:JSON.stringify({
-          contents:[{parts:[{text:prompt}]}],
-          generationConfig:{response_mime_type:"application/json",temperature:0.1}
-        })
-      }
-    );
-    const parsed=await evaluationJSON(response);
+    const result=await generateSchoolContent({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",temperature:0.1}},{signal:controller.signal,purpose:"evaluation"});
+    const parsed=await evaluationJSON({ok:true,json:async()=>result});
     const draft=parseSuggestedRubric(parsed,criteria,active.maxScore,evidence);
     if(session!==state.token||state.active!==active)return;
     active.aiDraft={model,checkpointSha:active.checkpointSha,...draft};
@@ -267,6 +260,7 @@ function applyEvidenceState(record,{initial=false}={}){
 async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
   if (!auth.currentUser) return alert("Sign in as a teacher before opening manual grading.");
   if (!studentId || !taskId) return alert("Select a student and an assessment.");
+  if(state.active&&(state.active.studentId!==studentId||state.active.taskId!==taskId)&&(state.dirty||state.panels?.hasUnsavedReview?.())&&!confirm("Discard unsaved review changes and open this learner?"))return false;
   let base;
   try { base=safeRepo(owner,repo); } catch(e){return alert(e.message);}
   const session=++state.token;
@@ -365,6 +359,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
     el("manualReviewScore").value=previous?.score!=null?String(previous.score):"";
     el("manualReviewFeedback").value=cleanGradeFeedback(previous?.feedback);
     el("manualReviewFiles").value=(previous?.contributionEvidence?.matchedPaths||[]).join("\n");
+    el("manualReviewReason").value=previous?.teacherReviewNote||"";
     state.active={studentId,taskId,owner,repo,base,student,assessment,previous,gradeRef:gradeDoc.ref,maxScore,login,checkpointSha,selectedEvidenceCommits,evidence:approvedEvidence,aiDraft:null,aiApplied:false};
     el("manualReviewUnpublish").classList.toggle("hidden",!previous?.published);
     el("manualReviewPublish").classList.toggle("hidden",!previous||previous.published||assessment.schemaVersion!==2);
@@ -403,10 +398,11 @@ async function save(event) {
   const raw=el("manualReviewScore").value;
   const score=Number(raw);
   const feedback=cleanGradeFeedback(el("manualReviewFeedback").value);
-  const reason=el("manualReviewReason").value.trim();
+  const customReason=el("manualReviewReason").value.trim();
+  const reason=customReason||active.evidence?.verificationNote||"Teacher reviewed the selected work and entered the score and student feedback.";
   const paths=[...new Set(el("manualReviewFiles").value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean))];
   if(!raw.trim()||!Number.isFinite(score)||score<0||score>active.maxScore)return message("Score must be between 0 and "+active.maxScore+".",true);
-  if(!feedback || !reason)return message("Feedback and teacher review note are required.",true);
+  if(!feedback)return message("Add feedback for the student before saving.",true);
   if(!el("manualReviewConfirm").checked)return message("Confirm you inspected the evidence before saving.",true);
   if(paths.length>40 || paths.some(p=>p.length>240 || p.startsWith("/") || p.split("/").includes("..")))
     return message("Provide at most 40 safe repository-relative file paths.",true);
@@ -499,7 +495,7 @@ async function changePublication(published){
   const active=state.active;
   if(!active?.previous||state.aiBusy)return;
   if(state.dirty)return message("Save or discard your teacher changes before changing publication.",true);
-  const reason=prompt(published?"Why is this reviewed draft ready for the student? (15–3,000 characters)":"Reason for unpublishing this protected grade for revision (15–3,000 characters)");
+  const reason=published?(active.previous.teacherReviewNote||"Teacher approved the saved score and feedback for publication."):prompt("Reason for unpublishing this protected grade for revision (15–3,000 characters)");
   if(reason===null)return;
   if(reason.trim().length<15||reason.length>3000)return message("Enter a reason of 15–3,000 characters.",true);
   if(!confirm(published?"Publish this teacher-reviewed score and feedback to this student now?":"Unpublish this grade? It will no longer be visible to the student. Its score, feedback and audit history will be retained."))return;
@@ -544,7 +540,7 @@ function init() {
   el("manualReviewUseFeedback").addEventListener("click",()=>applySuggestion("feedback"));
   el("manualReviewPublish").addEventListener("click",()=>{void changePublication(true);});
   el("manualReviewUnpublish").addEventListener("click",()=>{void changePublication(false);});
-  el("manualReviewSaveChecker").addEventListener("click",()=>{
+  el("manualReviewSaveChecker")?.addEventListener("click",()=>{
     const key=el("manualReviewCheckerKey").value.trim();
     if(key.length<15||key.length>500)return aiStatus("Enter a valid provider key. Do not enter it in feedback.",true);
     try{localStorage.setItem("Adminerva_gemini_token",key);el("manualReviewCheckerKey").value="";el("manualReviewCheckerSetup").open=false;aiStatus("Checker key saved on this device. Evaluate is available after contribution verification.");}
@@ -555,8 +551,10 @@ function init() {
     if(state.request)void open({...state.request});
   });
   el("manualReviewModal").addEventListener("click",e=>{if(e.target===el("manualReviewModal"))close()});
-  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!el("manualReviewModal").classList.contains("hidden"))close()});
+  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!el("manualReviewModal").hasAttribute("data-inline-review")&&!el("manualReviewModal").classList.contains("hidden"))close()});
 }
 window.openManualGradeReview=open;
+window.manualReviewHasUnsavedChanges=()=>Boolean(state.dirty||state.panels?.hasUnsavedReview?.());
+window.closeManualGradeReview=options=>close(options);
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);
 else init();

@@ -1,18 +1,18 @@
-import {resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
 /** Instructor checkpoint approval, reopening and contribution verification. */
-import {auth,db} from "../core/firebase-core.js";
+import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,doc,getDoc,getDocFromServer,getDocs,setDoc,query,where,updateDoc,runTransaction,serverTimestamp,onSnapshot}
-  from "../core/teaching-firestore.mjs?v=1.1.0";
+  from "../core/teaching-firestore.mjs?v=1.3.0";
 import {parseRepository,normalizeSelection,validSha}
-  from "./services/assessment-evidence.mjs";
-import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "./services/commit-history.mjs";
-import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=2026.10.19.4";
-import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.1.0";
-import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=2026.10.21.2-dev.1";
+  from "./services/assessment-evidence.mjs?v=1.3.0";
+import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "./services/commit-history.mjs?v=1.3.0";
+import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
+import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
+import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
-import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=2026.10.20.1";
-import {searchStudents} from "./services/student-search.mjs?v=2026.10.20.1";
+import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.0";
+import {searchStudents} from "./services/student-search.mjs?v=1.3.0";
 
 export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{}}={}){
 const ADMIN="babaynike2013@gmail.com";
@@ -302,9 +302,9 @@ async function approve(){
   if(state.busy||!state.loaded||(!["submitted","needs_review"].includes(state.evidence?.status)&&!(state.evidence?.status==="approved"&&state.verificationEditing)))return;
   const opened=state.evidence;
   const sequence=state.sequence,studentId=state.student.id,assessmentId=state.assessment.id;
-  const note=el("evidenceReviewNote").value.trim();
-  if(note.length<15||note.length>3000||!el("evidenceConfirm").checked){
-    status("Provide a review note (15–3,000 characters) and confirm inspection.");return;
+  const note=el("evidenceReviewNote").value.trim()||"Teacher inspected the selected changes and project checkpoint before approving this evidence.";
+  if(note.length>3000||!el("evidenceConfirm").checked){
+    status("Confirm that you inspected the selected evidence before approving.");return;
   }
   const pending=new Set(state.claims.filter(c=>c.status==="pending").map(c=>c.sha));
   if(state.evidence.selectedCommits.some(sha=>pending.has(sha))){
@@ -314,9 +314,9 @@ async function approve(){
   try{
     const repo=parseRepository(state.evidence.repository);
     const selection=normalizeSelection(state.evidence.selectedCommits,state.evidence.checkpointSha);
-    const contribution=approvalContribution(selection,
-      [...root.querySelectorAll("[data-contribution-sha]:checked")].map(node=>node.dataset.contributionSha),
-      el("evidenceContributionScope").value);
+    const verified=[...root.querySelectorAll("[data-contribution-sha]:checked")].map(node=>node.dataset.contributionSha);
+    const scope=el("evidenceContributionScope").value.trim()||(verified.length?"Instructor verified "+verified.length+" selected commit(s) for "+(state.student.name||state.student.id)+" at checkpoint "+selection.checkpointSha+". Individual review is limited to these selected changes; shared project features are context only.":"No individual contributing commits were verified. This checkpoint approval records shared project context only.");
+    const contribution=approvalContribution(selection,verified,scope);
     status("Checking for competing pending reclaim requests…");
     await Promise.all(selection.selectedCommits.map(async sha=>{
       const competing=await getDocs(query(collection(db,"commit_reclaims"),where("sha","==",sha)));

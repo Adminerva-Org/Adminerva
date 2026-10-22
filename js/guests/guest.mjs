@@ -1,10 +1,11 @@
-import {auth,db} from "../core/firebase-core.js";
+import {auth,db} from "../core/firebase-core.js?v=1.3.0";
+import {clearConnectionPreferences} from "../core/connection-cache.mjs?v=1.3.0";
 import {signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {doc,onSnapshot,updateDoc,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {resolveAccountAccess} from "../core/staff-session.mjs?v=1.1.0";
-import {ensureGuestRequest} from "../core/admission-service.mjs?v=1.2.0";
-import {admissionDestination,guestStorageKey} from "../core/admission-model.mjs?v=2026.10.21.1-dev.1";
-import {COURSES} from "../student/practice-courses.mjs?v=2026.10.21.2-dev.1";
+import {doc,getDoc,onSnapshot,updateDoc,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import {resolveAccountAccess} from "../core/staff-session.mjs?v=1.3.0";
+import {ensureGuestRequest} from "../core/admission-service.mjs?v=1.3.0";
+import {admissionDestination,guestStorageKey} from "../core/admission-model.mjs?v=1.3.0";
+import {COURSES} from "../student/practice-courses.mjs?v=1.3.0";
 const field=id=>document.getElementById(id),page=document.querySelector("[data-guest-page]").dataset.guestPage;
 let currentUid="",allowed=false;
 const status=message=>{field("guest-status").textContent=message;};
@@ -58,7 +59,38 @@ function tools(uid){
   }
   field("guest-clear").onclick=()=>{requireLocalAccess();if(confirm("Clear only this account's local "+page+" draft/progress?")){localStorage.removeItem(key);location.reload();}};
 }
-field("guest-signout").onclick=async()=>{const button=field("guest-signout");button.disabled=true;button.textContent="Signing out…";try{await signOut(auth);location.assign("login.html");}catch{button.disabled=false;button.textContent="Sign out";status("Sign out could not complete. Check your connection and try again.");}};
+async function publicHome(){
+  let stop=()=>{},generation=0;
+  onAuthStateChanged(auth,async user=>{
+    const version=++generation;stop();allowed=false;currentUid=user?.uid||"";
+    field("guest-content").hidden=false;field("guest-signout").hidden=!user;field("guest-account-request").hidden=true;field("guest-approved").hidden=true;field("guest-signin-link").hidden=Boolean(user?.emailVerified);
+    field("guest-identity").textContent=user?"Signed in as "+(user.displayName||user.email||"your account"):"No account needed for public learning tools.";
+    if(!user?.emailVerified){status("Explore freely. Sign in with your verified school email when you need class access.");return;}
+    try{
+      const access=await resolveAccountAccess(user);if(version!==generation||auth.currentUser?.uid!==user.uid)return;
+      if(access.staffLookupUnavailable)throw Error("School access is temporarily unavailable.");
+      const destination=admissionDestination(access);
+      if(destination!=="guest-home.html"){field("guest-approved").href=destination;field("guest-approved").hidden=false;status("Your school workspace is ready. Public learning tools remain available above.");return;}
+      field("guest-account-request").hidden=false;
+      const ref=doc(db,"account_requests",user.uid);
+      stop=onSnapshot(ref,snapshot=>{
+        if(version!==generation)return;const request=snapshot.data();allowed=!request||request.status==="pending";
+        field("guest-account-request").hidden=Boolean(request)&&request.status!=="pending";
+        if(request?.requestedRole)field("guest-role").value=request.requestedRole;
+        if(request?.status==="approved"){field("guest-approved").href=request.approvedRole==="teacher"?"teacher-home.html":"student-home.html";field("guest-approved").hidden=false;status("Your request was approved. Open your school workspace when ready.");}
+        else status(request?.status==="rejected"?"Your access request was not approved. Contact your school administrator. You can still use the public tools above.":request?"Your access request is awaiting school review. You can update the requested role below.":"Select the school role you need and save your request.");
+      },()=>connectionFailure("School access status could not load. The public learning tools above are still available."));
+      field("guest-request").onsubmit=async event=>{
+        event.preventDefault();if(!allowed||auth.currentUser?.uid!==user.uid)return;const button=event.currentTarget.querySelector("button");button.disabled=true;
+        try{const requested=field("guest-role").value,existing=await getDoc(ref);if(existing.exists())await updateDoc(ref,{requestedRole:requested,updatedAt:serverTimestamp()});else await ensureGuestRequest(user,requested);status("Access request saved. Your school administrator will review it.");}
+        catch{status("The request could not save. Check your connection and try again.");}finally{button.disabled=false;}
+      };
+    }catch{if(version===generation)connectionFailure("Your account stays signed in. School access could not be checked; public tools remain available.");}
+  });
+}
+field("guest-signout").onclick=async()=>{const button=field("guest-signout");button.disabled=true;button.textContent="Signing out…";try{try{clearConnectionPreferences();}catch{}await signOut(auth);location.assign("login.html?switch=1");}catch{button.disabled=false;button.textContent="Sign out";status("Sign out could not complete. Check your connection and try again.");}};
+if(page==="home"){await publicHome();}
+else{
 await auth.authStateReady();
 const user=auth.currentUser;
 if(!user?.emailVerified){location.replace("login.html?error=verified-email-required");}
@@ -91,3 +123,4 @@ else try{
     },()=>{allowed=false;field("guest-content").hidden=true;connectionFailure("Your access status could not load. Check your connection and retry.");});
   }
 }catch{connectionFailure("Your guest workspace could not load. Check your connection and retry.");}
+}

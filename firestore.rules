@@ -40,13 +40,37 @@ service cloud.firestore {
         data.section in get(/databases/$(database)/documents/assessments/$(data.taskId)).data.get("sectionIds",[]));
     }
     function serverOwned(name) {
-      return name in ["academic_access_preparations","teaching_roster","practice_sessions","practice_browser_sessions","practice_attempts","practice_awards","practice_verified_progress","practice_class_progress","practice_security_events"];
+      return name in ["academic_access_preparations","teaching_roster","practice_sessions","practice_browser_sessions","practice_attempts","practice_awards","practice_verified_progress","practice_class_progress","practice_security_events","system_private","school_ai_results","school_ai_usage","practice_public_rankings","practice_season_scores","practice_season_progress","practice_season_awards","practice_season_attempts","practice_class_season_rankings"];
     }
     function monitoringCollection(name) {
       return name in ["activity_preferences", "activity_events", "issue_diagnostics", "analytics_rosters", "analytics_views", "monitoring_control", "monitoring_status"];
     }
     function personalCollection(name) {
       return name in ["staff_access","staff_workspaces","lesson_plans","presentations","app_config","global_settings","teachers","grade_revisions","commit_claim_decisions","commit_claim_conflicts","account_requests","school_catalog"];
+    }
+    // School credentials, usage counters and cached AI responses never reach web clients.
+    match /system_private/{record=**} { allow read, write: if false; }
+    match /school_ai_results/{record=**} { allow read, write: if false; }
+    match /school_ai_usage/{record=**} { allow read, write: if false; }
+    // Public visibility is explicit opt-in. Only backend handlers may publish scores.
+    match /practice_public_rankings/{recordId} { allow read: if true; allow write: if false; }
+    match /practice_season_scores/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+      match /mission_state/{missionId} { allow read, write: if false; }
+    }
+    match /practice_season_progress/{uid}/courses/{courseId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+    match /practice_season_awards/{uid}/missions/{missionId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+    match /practice_season_attempts/{attemptId} { allow read, write: if false; }
+    match /practice_class_season_rankings/{studentId} {
+      allow read: if mayTeachSection(resource.data.section);
+      allow write: if false;
     }
     match /staff_access/{email} {
       function validStaff() {
@@ -680,19 +704,40 @@ service cloud.firestore {
     }
     match /activity_grades/{gradeId} {
       function validActivityGrade(data) {
-        return data.keys().hasOnly(["studentId","section","githubUsername","activity","score","maxScore","gradedAt"]) &&
+        return data.keys().hasOnly(["studentId","section","githubUsername","activity","score","maxScore","gradedAt","taskId","feedback","published","gradeVersion","reviewedBy","reviewNote","updatedAt"]) &&
           data.studentId is string && data.section is string &&
           data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
           data.activity is string && data.activity.size() > 0 && data.activity.size() <= 300 &&
           data.get("githubUsername","") is string && data.get("githubUsername","").size() <= 200 &&
           data.score is number && data.maxScore is number && data.maxScore > 0 && data.maxScore <= 1000 &&
-          data.score >= 0 && data.score <= data.maxScore && data.gradedAt is string && data.gradedAt.size() <= 64;
+          data.score >= 0 && data.score <= data.maxScore && data.gradedAt is string && data.gradedAt.size() <= 64 &&
+          data.get("feedback","") is string && data.get("feedback","").size() <= 6000 && data.get("published",false) is bool &&
+          data.get("taskId","") is string && data.get("taskId","").size() <= 200 &&
+          data.get("reviewNote","") is string && data.get("reviewNote","").size() <= 3000 &&
+          (!("gradeVersion" in data) || (data.gradeVersion is int && data.gradeVersion > 0 && data.reviewedBy == request.auth.uid && data.updatedAt == request.time));
+      }
+      function validActivityRevision(data) {
+        let version = data.get("gradeVersion",0);
+        let audit = version == 0 ? {} : getAfter(/databases/$(database)/documents/activity_grades/$(gradeId)/versions/$(string(version))).data;
+        return version == 0 || (audit.after == data && audit.actorUid == request.auth.uid && audit.createdAt == request.time &&
+          version == (resource == null ? 1 : resource.data.get("gradeVersion",0) + 1));
       }
       allow read: if mayTeachSection(resource.data.section);
-      allow create: if mayTeachStudent(request.resource.data.studentId) && validActivityGrade(request.resource.data);
+      allow read: if signedIn() && ownsStudentProfile(resource.data.studentId) && resource.data.get("published",false) == true;
+      allow create: if mayTeachStudent(request.resource.data.studentId) && validActivityGrade(request.resource.data) && validActivityRevision(request.resource.data);
       allow update: if mayTeachStudent(resource.data.studentId) && request.resource.data.studentId == resource.data.studentId &&
-        request.resource.data.section == resource.data.section && validActivityGrade(request.resource.data);
+        request.resource.data.section == resource.data.section && validActivityGrade(request.resource.data) && validActivityRevision(request.resource.data) &&
+        (resource.data.get("published",false) == false || (request.resource.data.published == false && request.resource.data.score == resource.data.score && request.resource.data.feedback == resource.data.feedback));
       allow delete: if isAdmin();
+      match /versions/{version} {
+        allow read: if mayTeachSection(resource.data.after.section);
+        allow create: if request.resource.data.keys().hasOnly(["before","after","actorUid","createdAt"]) &&
+          mayTeachStudent(request.resource.data.after.studentId) && request.resource.data.actorUid == request.auth.uid && request.resource.data.createdAt == request.time &&
+          request.resource.data.after == getAfter(/databases/$(database)/documents/activity_grades/$(gradeId)).data &&
+          version == string(request.resource.data.after.gradeVersion) &&
+          request.resource.data.before == (exists(/databases/$(database)/documents/activity_grades/$(gradeId)) ? get(/databases/$(database)/documents/activity_grades/$(gradeId)).data : null);
+        allow update, delete: if false;
+      }
     }
 
     match /playground_snapshots/{snapshotId} {

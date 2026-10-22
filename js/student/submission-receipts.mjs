@@ -1,5 +1,5 @@
 /** Student submissions, practice progress and isolated code workspaces: submission receipts. */
-import {auth,db} from "../core/firebase-core.js";
+import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {doc,getDoc,setDoc,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const el=id=>document.getElementById(id);

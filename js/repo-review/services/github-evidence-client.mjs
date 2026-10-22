@@ -3,7 +3,7 @@
  * No Firebase, credential persistence, AI calls or grade writes.
  * Caller MUST provide trusted cutoff evidence separately before final grading.
  */
-import {createBackoffClient} from './request-backoff.mjs?v=2026.10.20.1';
+import {createBackoffClient} from './request-backoff.mjs?v=1.3.0';
 const API = 'https://api.github.com';
 
 export function parseGithubRepository(value) {

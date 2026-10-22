@@ -178,7 +178,7 @@ document.addEventListener("DOMContentLoaded", () => {
     skip.href = "#" + content.id; skip.textContent = "Skip to main content";
     document.body.prepend(skip);
   }
-  import("../help/page-help.mjs?v=1.1.0").then(module => module.mountHelp()).catch(() => {});
+  import("../help/page-help.mjs?v=1.3.0").then(module => module.mountHelp()).catch(() => {});
   bindBugReporterLogic();
 });
 
@@ -508,7 +508,7 @@ window.finalizeBugReport = async function () {
     const { collection, addDoc, serverTimestamp } =
       await import("https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js");
 
-    const {reportContext}=await import("./report-context.mjs?v=1.1.0");
+    const {reportContext}=await import("./report-context.mjs?v=1.3.0");
     const context=await reportContext(document.getElementById("bug-audience").value,category);
     const audience=context.audience;
     if (!["admin", "teacher"].includes(audience)) throw new Error("Invalid report recipient");

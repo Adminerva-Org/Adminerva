@@ -3,9 +3,9 @@
  * These helpers do not authenticate Git identities or publish grades.
  * Teacher verification and explicit save are required after any AI suggestion.
  */
-import { matchPath } from "./contribution-resolver.mjs?v=2026.10.20.1";
-import { normalizeSelection, parseRepository, validSha } from "./assessment-evidence.mjs";
-import {analyzePatchSubstance} from "./commit-substance.mjs?v=2026.10.20.1";
+import { matchPath } from "./contribution-resolver.mjs?v=1.3.0";
+import { normalizeSelection, parseRepository, validSha } from "./assessment-evidence.mjs?v=1.3.0";
+import {analyzePatchSubstance} from "./commit-substance.mjs?v=1.3.0";
 
 const MAX_FILES=12;
 const MAX_FILE_BYTES=30000;

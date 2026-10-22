@@ -1,34 +1,168 @@
 {
   "releases": [
     {
-      "version":"1.2.0","status":"published","public":true,"releasedAt":"2026-10-22",
-      "title":"A clearer workspace from sign-in to school setup",
-      "summary":"Find Home and Workspaces directly, follow clearer school setup, and recover interrupted practice with useful next steps.",
-      "changes":[
-        {"type":"Fixed","area":"Practice Lab","text":"Prediction and completion controls remain hidden until a server challenge is ready. A session conflict now leaves a clear message instead of a visible button that cannot act."},
-        {"type":"Updated","area":"Navigation and layout","text":"Home, workspace switching and the current page are visible across the website. Menus work with keyboard and touch, and shared forms, status messages and mobile layouts use consistent styles."},
-        {"type":"Fixed","area":"School setup","text":"Catalogs have search, filters and clearer forms. Teachers use section checkboxes with roster counts. Existing teacher assignments are preserved when an access request is approved."},
-        {"type":"Fixed","area":"User directory","text":"The Teachers link opens teacher management. CSV import supports keyboard selection, drag and drop, file replacement and a clear record limit."},
-        {"type":"Updated","area":"Home and sign-in","text":"Student and staff homes highlight the next task. Sign-in explains which email to use, prevents repeated sign-in windows and gives clearer recovery messages."},
-        {"type":"Fixed","area":"Account settings and references","text":"Connection preferences now save with clear verification feedback. Application connection details reflect the deployed configuration. Reference PDF processing stops after errors or a bounded wait and supports retry."},
-        {"type":"Fixed","area":"Shared-browser accounts","text":"Connection fields belong to the signed-in account. Switching accounts or signing out clears the previous browser values, and staff pages restore only that account's own saved connection preferences."},
-        {"type":"Fixed","area":"Student workspaces","text":"Pending assignments include unfinished revision work. Account loading errors offer retry, and learner practice reviews restore the selected student's notes without stale results."},
-        {"type":"Fixed","area":"Code Playground","text":"The ZIP library loads before the code editor's module loader so project archive export and multi-file packaging can access the correct constructor."},
-        {"type":"Updated","area":"Practice progress","text":"The page now describes server-saved completions and tab-only reflection drafts accurately. Practice XP remains separate from school grades."}
+      "version": "1.3.0",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-23",
+      "title": "Connected classes, playful practice and one teaching workspace",
+      "summary": "Choose a class once, review and grade in one workspace, explore real project files, and earn Practice Points through varied missions.",
+      "changes": [
+        {
+          "type": "New",
+          "area": "Teaching workspace",
+          "text": "Class, assessment, Group/Individual and target selectors drive one inline inbox, source browser, contribution view, evidence review, teacher grade and manual activity tool. Switching panels retains the selected context."
+        },
+        {
+          "type": "Updated",
+          "area": "School setup and lesson access",
+          "text": "School catalogs and assigned roster sections now populate planning, scheduling and admissions. Administrator entry to Teachers restores missing original-teacher assignments and safely recovers metadata-attributed lessons. Unattributed records have an explicit recovery flow that preserves originals."
+        },
+        {
+          "type": "Fixed",
+          "area": "Sign-in and public guides",
+          "text": "Sessions persist across navigation. Existing accounts continue to their workspace, public guides provide return links, and temporary access failures offer retry without signing out."
+        },
+        {
+          "type": "New",
+          "area": "Shared school AI",
+          "text": "Lesson, slide and assessment generation share a server-managed school connection. The administrator saved connection can be reused without exposing the school key to teachers, with individual request allowances and bounded concurrent requests."
+        },
+        {
+          "type": "Updated",
+          "area": "Less teacher input",
+          "text": "Routine evidence and grading audit notes are prepared from the selected review. Additional notes are optional; exceptional revisions retain reasons. Assessment Studio starts with a usable rubric and optional student instructions."
+        },
+        {
+          "type": "New",
+          "area": "Practice Lab",
+          "text": "A shared mission map offers choice, exact-answer, ordering, matching and debugging activities. Missions award 20, 30 or 40 Practice Points with difficulty-based mistake deductions and a half-reward completion minimum. Replays do not duplicate rewards; earlier progress remains in history."
+        },
+        {
+          "type": "New",
+          "area": "Leaderboards and guests",
+          "text": "Visitors can preview missions and use the shared code editor. Verified signed-in guests can save ranked practice. Public alias rankings are optional; class progress and teacher season reports remain scoped to the class."
+        },
+        {
+          "type": "New",
+          "area": "Code Playground",
+          "text": "A real file and folder explorer supports moving, renaming, ZIP import/export and portable project paths. The toolbar groups secondary actions. Compiler runs show stages, support cancellation and stop waiting after 45 seconds while preserving drafts."
+        },
+        {
+          "type": "Updated",
+          "area": "XML Layout Lab",
+          "text": "Device size, orientation, zoom, component tree, property editing, templates and local resource values support layout experiments. Common sibling constraints, guidelines, cards and scroll containers have improved browser previews; unsupported Android behavior is identified."
+        },
+        {
+          "type": "Updated",
+          "area": "Home and preferences",
+          "text": "Public demo entry, role-home search and continuation, an optional owl interaction and long-page shortcuts make navigation easier. Notification and motion preferences live in account settings."
+        }
       ]
     },
     {
-      "version":"1.1.0","status":"published","public":true,"releasedAt":"2026-10-21",
-      "title":"Checked practice, clearer review and assigned teaching access",
-      "summary":"Practise across 300 guided missions, follow class-only alias rankings, move scored sessions safely and use a clearer individual review workflow.",
-      "changes":[
-        {"type":"New","area":"Practice Lab","text":"Four courses each contain five modules with fifteen missions. Checked completions earn automatic unique-mission XP without teacher approval or optional activity sharing. Replays remain playable without duplicate XP; earlier self-recorded progress stays separate."},
-        {"type":"New","area":"Scored session transfers","text":"Moving an active scored session requires your confirmation and recent sign-in. Saved points remain intact, older sessions cannot submit new credit, and shared devices do not cause automatic cheating penalties."},
-        {"type":"Updated","area":"Teacher access","text":"Administrators assign teaching sections explicitly. Teacher review and analytics use assigned class records and credential-free roster copies. Unprepared older shared records remain restricted for administrator review."},
-        {"type":"Fixed","area":"Review & Grade","text":"Approval and reopened selections refresh in place. The step bar aligns with the modal heading. Evaluation drafts distinguish supported subtotals from unscored criteria and explain the next teacher check. Shared group completeness does not establish individual credit."},
-        {"type":"New","area":"Guest access and school management","text":"Verified new accounts can request student or teacher access while using limited local guest tools. Administrators make audited role decisions and manage sections, subjects and pathways. Requests do not grant access automatically."},
-        {"type":"Updated","area":"Lesson Planner and RepoBank","text":"Saved lessons restore their document settings within each teacher workspace. Reviewed repository overviews use pinned source samples and explicit saves; they do not establish individual authorship or automatically change grades."},
-        {"type":"Updated","area":"Help and release history","text":"Use the question-mark menu for page help, support, the Wiki and public updates. Release versions are separate from their dates. School grades, optional activity sharing and practice XP remain distinct."}
+      "version": "1.2.0",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-22",
+      "title": "A clearer workspace from sign-in to school setup",
+      "summary": "Find Home and Workspaces directly, follow clearer school setup, and recover interrupted practice with useful next steps.",
+      "changes": [
+        {
+          "type": "Fixed",
+          "area": "Practice Lab",
+          "text": "Prediction and completion controls remain hidden until a server challenge is ready. A session conflict now leaves a clear message instead of a visible button that cannot act."
+        },
+        {
+          "type": "Updated",
+          "area": "Navigation and layout",
+          "text": "Home, workspace switching and the current page are visible across the website. Menus work with keyboard and touch, and shared forms, status messages and mobile layouts use consistent styles."
+        },
+        {
+          "type": "Fixed",
+          "area": "School setup",
+          "text": "Catalogs have search, filters and clearer forms. Teachers use section checkboxes with roster counts. Existing teacher assignments are preserved when an access request is approved."
+        },
+        {
+          "type": "Fixed",
+          "area": "User directory",
+          "text": "The Teachers link opens teacher management. CSV import supports keyboard selection, drag and drop, file replacement and a clear record limit."
+        },
+        {
+          "type": "Updated",
+          "area": "Home and sign-in",
+          "text": "Student and staff homes highlight the next task. Sign-in explains which email to use, prevents repeated sign-in windows and gives clearer recovery messages."
+        },
+        {
+          "type": "Fixed",
+          "area": "Account settings and references",
+          "text": "Connection preferences now save with clear verification feedback. Application connection details reflect the deployed configuration. Reference PDF processing stops after errors or a bounded wait and supports retry."
+        },
+        {
+          "type": "Fixed",
+          "area": "Shared-browser accounts",
+          "text": "Connection fields belong to the signed-in account. Switching accounts or signing out clears the previous browser values, and staff pages restore only that account's own saved connection preferences."
+        },
+        {
+          "type": "Fixed",
+          "area": "Student workspaces",
+          "text": "Pending assignments include unfinished revision work. Account loading errors offer retry, and learner practice reviews restore the selected student's notes without stale results."
+        },
+        {
+          "type": "Fixed",
+          "area": "Code Playground",
+          "text": "The ZIP library loads before the code editor's module loader so project archive export and multi-file packaging can access the correct constructor."
+        },
+        {
+          "type": "Updated",
+          "area": "Practice progress",
+          "text": "The page now describes server-saved completions and tab-only reflection drafts accurately. Practice XP remains separate from school grades."
+        }
+      ]
+    },
+    {
+      "version": "1.1.0",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-21",
+      "title": "Checked practice, clearer review and assigned teaching access",
+      "summary": "Practise across 300 guided missions, follow class-only alias rankings, move scored sessions safely and use a clearer individual review workflow.",
+      "changes": [
+        {
+          "type": "New",
+          "area": "Practice Lab",
+          "text": "Four courses each contain five modules with fifteen missions. Checked completions earn automatic unique-mission XP without teacher approval or optional activity sharing. Replays remain playable without duplicate XP; earlier self-recorded progress stays separate."
+        },
+        {
+          "type": "New",
+          "area": "Scored session transfers",
+          "text": "Moving an active scored session requires your confirmation and recent sign-in. Saved points remain intact, older sessions cannot submit new credit, and shared devices do not cause automatic cheating penalties."
+        },
+        {
+          "type": "Updated",
+          "area": "Teacher access",
+          "text": "Administrators assign teaching sections explicitly. Teacher review and analytics use assigned class records and credential-free roster copies. Unprepared older shared records remain restricted for administrator review."
+        },
+        {
+          "type": "Fixed",
+          "area": "Review & Grade",
+          "text": "Approval and reopened selections refresh in place. The step bar aligns with the modal heading. Evaluation drafts distinguish supported subtotals from unscored criteria and explain the next teacher check. Shared group completeness does not establish individual credit."
+        },
+        {
+          "type": "New",
+          "area": "Guest access and school management",
+          "text": "Verified new accounts can request student or teacher access while using limited local guest tools. Administrators make audited role decisions and manage sections, subjects and pathways. Requests do not grant access automatically."
+        },
+        {
+          "type": "Updated",
+          "area": "Lesson Planner and RepoBank",
+          "text": "Saved lessons restore their document settings within each teacher workspace. Reviewed repository overviews use pinned source samples and explicit saves; they do not establish individual authorship or automatically change grades."
+        },
+        {
+          "type": "Updated",
+          "area": "Help and release history",
+          "text": "Use the question-mark menu for page help, support, the Wiki and public updates. Release versions are separate from their dates. School grades, optional activity sharing and practice XP remain distinct."
+        }
       ]
     },
     {
@@ -40,17 +174,61 @@
       "title": "Personal teaching workspaces, clearer review and simpler navigation",
       "summary": "Separate teaching files by account, use a clearer review workspace, search student evidence and manage optional activity preferences from Account Settings.",
       "changes": [
-        {"type":"Fixed","area":"Teaching files","text":"Lessons, timetables, slides and planning defaults stay separate for each signed-in teacher. A newer save from another tab is not silently replaced. Older shared records remain preserved for administrator review."},
-        {"type":"New","area":"Teacher Accounts","text":"Administrators can authorize verified teacher emails, assign analytics sections and disable access without deleting saved teaching files. This does not send invitation emails or create passwords."},
-        {"type":"Updated","area":"Analytics","text":"Administrators select an instructor in Teacher Analytics. Published results are distinct from private drafts, and missing scores are not treated as zero. Operational reports and diagnostic trails remain in Administration Analytics."},
-        {"type":"Fixed","area":"Mobile navigation and Help","text":"The brand and account controls adjust on smaller screens, notifications stay inside the viewport, and a consistent footer links tutorials, the Wiki, public updates and privacy."},
-        {"type":"Revised","area":"Review & Grade","text":"Review steps stay easy to reach while scrolling, and save and publication actions wrap on small screens. Saving privately and publishing remain separate teacher decisions."},
-        {"type":"Fixed","area":"Adminerva Auto-Checker","text":"Temporary evaluation outages and incomplete responses keep teacher edits intact, explain retry timing and offer manual grading. Account and source limitations still require instructor verification."},
-        {"type":"Updated","area":"Gradebook","text":"Compact score previews open detailed feedback without crowding tables. Publication shows the number of reviewed drafts, checks each saved record again and reports interrupted work without automatically resuming."},
-        {"type":"Fixed","area":"Slide Editor","text":"Navigation and notifications stay above the slide toolbar. Opening a different menu closes the previous panel, and Escape returns to the menu button."},
-        {"type":"New","area":"Student evidence search","text":"Filter students by section and search names or GitHub usernames. Current selections stay visible while searching; loading another review remains a deliberate action."},
-        {"type":"Updated","area":"Help and preferences","text":"The question-mark menu brings together public updates, reporting, support and the Wiki. Optional activity choices appear on home visits, with an account-based reminder opt-out and controls in student and staff Account Settings. Hiding the reminder never enables sharing."},
-        {"type":"Fixed","area":"Analytics availability","text":"Clearer learning and operations views distinguish missing data from zero results, offer refresh controls and keep class results separate from unavailable activity sources. Repository history is labeled as a limited sample, not proof of individual contribution."}
+        {
+          "type": "Fixed",
+          "area": "Teaching files",
+          "text": "Lessons, timetables, slides and planning defaults stay separate for each signed-in teacher. A newer save from another tab is not silently replaced. Older shared records remain preserved for administrator review."
+        },
+        {
+          "type": "New",
+          "area": "Teacher Accounts",
+          "text": "Administrators can authorize verified teacher emails, assign analytics sections and disable access without deleting saved teaching files. This does not send invitation emails or create passwords."
+        },
+        {
+          "type": "Updated",
+          "area": "Analytics",
+          "text": "Administrators select an instructor in Teacher Analytics. Published results are distinct from private drafts, and missing scores are not treated as zero. Operational reports and diagnostic trails remain in Administration Analytics."
+        },
+        {
+          "type": "Fixed",
+          "area": "Mobile navigation and Help",
+          "text": "The brand and account controls adjust on smaller screens, notifications stay inside the viewport, and a consistent footer links tutorials, the Wiki, public updates and privacy."
+        },
+        {
+          "type": "Revised",
+          "area": "Review & Grade",
+          "text": "Review steps stay easy to reach while scrolling, and save and publication actions wrap on small screens. Saving privately and publishing remain separate teacher decisions."
+        },
+        {
+          "type": "Fixed",
+          "area": "Adminerva Auto-Checker",
+          "text": "Temporary evaluation outages and incomplete responses keep teacher edits intact, explain retry timing and offer manual grading. Account and source limitations still require instructor verification."
+        },
+        {
+          "type": "Updated",
+          "area": "Gradebook",
+          "text": "Compact score previews open detailed feedback without crowding tables. Publication shows the number of reviewed drafts, checks each saved record again and reports interrupted work without automatically resuming."
+        },
+        {
+          "type": "Fixed",
+          "area": "Slide Editor",
+          "text": "Navigation and notifications stay above the slide toolbar. Opening a different menu closes the previous panel, and Escape returns to the menu button."
+        },
+        {
+          "type": "New",
+          "area": "Student evidence search",
+          "text": "Filter students by section and search names or GitHub usernames. Current selections stay visible while searching; loading another review remains a deliberate action."
+        },
+        {
+          "type": "Updated",
+          "area": "Help and preferences",
+          "text": "The question-mark menu brings together public updates, reporting, support and the Wiki. Optional activity choices appear on home visits, with an account-based reminder opt-out and controls in student and staff Account Settings. Hiding the reminder never enables sharing."
+        },
+        {
+          "type": "Fixed",
+          "area": "Analytics availability",
+          "text": "Clearer learning and operations views distinguish missing data from zero results, offer refresh controls and keep class results separate from unavailable activity sources. Repository history is labeled as a limited sample, not proof of individual contribution."
+        }
       ]
     },
     {
@@ -61,9 +239,21 @@
       "title": "Google Docs export connection update",
       "summary": "Lesson Planner export uses the current website connection, requests narrower file access and explains interrupted authorization.",
       "changes": [
-        {"type":"Fixed", "area":"Lesson Planner", "text":"Google Docs export uses the current website authorization client instead of an older connection. Project services and user authorization are still required."},
-        {"type":"Updated", "area":"Export permissions", "text":"Exports request access only to files used with Adminerva, not all of your documents. Declined or missing permissions stop the export before a document is created."},
-        {"type":"Fixed", "area":"Export feedback", "text":"Blocked or closed authorization windows show clearer guidance, and the loading indicator finishes when export preparation or upload ends."}
+        {
+          "type": "Fixed",
+          "area": "Lesson Planner",
+          "text": "Google Docs export uses the current website authorization client instead of an older connection. Project services and user authorization are still required."
+        },
+        {
+          "type": "Updated",
+          "area": "Export permissions",
+          "text": "Exports request access only to files used with Adminerva, not all of your documents. Declined or missing permissions stop the export before a document is created."
+        },
+        {
+          "type": "Fixed",
+          "area": "Export feedback",
+          "text": "Blocked or closed authorization windows show clearer guidance, and the loading indicator finishes when export preparation or upload ends."
+        }
       ]
     },
     {
@@ -74,11 +264,31 @@
       "title": "Reliable evidence editing and a preloaded review workspace",
       "summary": "Reopened commit selections update live, review panels load together, and older approvals can receive explicit individual verification.",
       "changes": [
-        {"type":"Fixed", "area":"Student evidence", "text":"Instructor reopening updates the open student selection without requiring a page reload. Editable commit checkboxes and checkpoints remain available; approved evidence remains protected."},
-        {"type":"Fixed", "area":"Checkpoint approval", "text":"Equivalent saved evidence no longer causes a false changed-evidence warning because fields arrived in a different order. Real concurrent changes still block approval and keep unsaved review notes."},
-        {"type":"Revised", "area":"Review workspace", "text":"Evidence, pinned source, group status, history and contribution details preload in parallel using shared bounded reads. Opening accordions reveals results instead of starting nested page applications."},
-        {"type":"Updated", "area":"Individual verification", "text":"Instructors can explicitly revise contribution verification on older approvals without changing student-selected commits. Changes create an audit revision, invalidate older drafts and require unpublishing protected grades first."},
-        {"type":"Fixed", "area":"Adminerva Auto Checker", "text":"Evaluation explains missing approval or verification requirements and becomes available after an instructor records verified individual work. Scores and feedback remain private drafts until deliberate teacher publication."}
+        {
+          "type": "Fixed",
+          "area": "Student evidence",
+          "text": "Instructor reopening updates the open student selection without requiring a page reload. Editable commit checkboxes and checkpoints remain available; approved evidence remains protected."
+        },
+        {
+          "type": "Fixed",
+          "area": "Checkpoint approval",
+          "text": "Equivalent saved evidence no longer causes a false changed-evidence warning because fields arrived in a different order. Real concurrent changes still block approval and keep unsaved review notes."
+        },
+        {
+          "type": "Revised",
+          "area": "Review workspace",
+          "text": "Evidence, pinned source, group status, history and contribution details preload in parallel using shared bounded reads. Opening accordions reveals results instead of starting nested page applications."
+        },
+        {
+          "type": "Updated",
+          "area": "Individual verification",
+          "text": "Instructors can explicitly revise contribution verification on older approvals without changing student-selected commits. Changes create an audit revision, invalidate older drafts and require unpublishing protected grades first."
+        },
+        {
+          "type": "Fixed",
+          "area": "Adminerva Auto Checker",
+          "text": "Evaluation explains missing approval or verification requirements and becomes available after an instructor records verified individual work. Scores and feedback remain private drafts until deliberate teacher publication."
+        }
       ]
     },
     {
@@ -89,14 +299,46 @@
       "title": "Review, learning tools, Help and optional analytics",
       "summary": "A clearer grading workspace, XML layout practice, lesson-linked slides, public guides and privacy-conscious learning activity.",
       "changes": [
-        {"type":"Revised", "area":"Review & Grade", "text":"Review committed evidence and pinned source, use an optional Adminerva Auto Checker draft, and save teacher scores and feedback in one workspace. Copy suggestions deliberately and publish grades separately."},
-        {"type":"Fixed", "area":"Evidence editing", "text":"Older selected commits remain editable after withdrawal. Approved evidence needs instructor reopening, and review navigation no longer covers evidence buttons."},
-        {"type":"New", "area":"Learning tools", "text":"XML Layout Lab previews a supported Android XML subset in the browser. Practice has personal points, independent teacher review and optional alias-only class snapshots; these do not change assessment grades."},
-        {"type":"Updated", "area":"Lessons and slides", "text":"Saved lessons open editable slide starters with source-version details. Existing slide edits are not silently replaced."},
-        {"type":"New", "area":"Help and updates", "text":"Open contextual tutorials, the public Adminerva Wiki and curated patch history throughout the website. Published releases appear in the account notification inbox."},
-        {"type":"Updated", "area":"Analytics", "text":"Teacher learning summaries and administration monitoring are separate. Activity sharing is optional and excludes typed content and credentials. Activity observations never become grades."},
-        {"type":"New", "area":"Monitoring maintenance", "text":"Administrators can configure optional background cleanup and learning-summary refresh with recorded policy changes. The service needs separate server activation; saving settings does not deploy it. Consent changes are checked again before summaries are saved."},
-        {"type":"Fixed", "area":"Loading and navigation", "text":"Loading status stays visible while overlapping key processes finish. Clearer page names preserve existing links, and repeated preferences saves no longer inflate visit counts."}
+        {
+          "type": "Revised",
+          "area": "Review & Grade",
+          "text": "Review committed evidence and pinned source, use an optional Adminerva Auto Checker draft, and save teacher scores and feedback in one workspace. Copy suggestions deliberately and publish grades separately."
+        },
+        {
+          "type": "Fixed",
+          "area": "Evidence editing",
+          "text": "Older selected commits remain editable after withdrawal. Approved evidence needs instructor reopening, and review navigation no longer covers evidence buttons."
+        },
+        {
+          "type": "New",
+          "area": "Learning tools",
+          "text": "XML Layout Lab previews a supported Android XML subset in the browser. Practice has personal points, independent teacher review and optional alias-only class snapshots; these do not change assessment grades."
+        },
+        {
+          "type": "Updated",
+          "area": "Lessons and slides",
+          "text": "Saved lessons open editable slide starters with source-version details. Existing slide edits are not silently replaced."
+        },
+        {
+          "type": "New",
+          "area": "Help and updates",
+          "text": "Open contextual tutorials, the public Adminerva Wiki and curated patch history throughout the website. Published releases appear in the account notification inbox."
+        },
+        {
+          "type": "Updated",
+          "area": "Analytics",
+          "text": "Teacher learning summaries and administration monitoring are separate. Activity sharing is optional and excludes typed content and credentials. Activity observations never become grades."
+        },
+        {
+          "type": "New",
+          "area": "Monitoring maintenance",
+          "text": "Administrators can configure optional background cleanup and learning-summary refresh with recorded policy changes. The service needs separate server activation; saving settings does not deploy it. Consent changes are checked again before summaries are saved."
+        },
+        {
+          "type": "Fixed",
+          "area": "Loading and navigation",
+          "text": "Loading status stays visible while overlapping key processes finish. Clearer page names preserve existing links, and repeated preferences saves no longer inflate visit counts."
+        }
       ]
     },
     {
@@ -107,11 +349,31 @@
       "title": "Help, learning activity and clearer analytics",
       "summary": "Public tutorials, optional activity sharing, separate learning and system monitoring, and clearer loading feedback.",
       "changes": [
-        {"type":"New", "area":"Help and tutorials", "text":"Open a page tutorial or browse the public Adminerva Wiki. Wiki and patch-history links are available throughout the website, including public pages."},
-        {"type":"Updated", "area":"Analytics", "text":"Teacher Analytics focuses on learning; Administration Analytics focuses on system monitoring and support. Administrators select configured instructors in the teacher view."},
-        {"type":"New", "area":"Activity preferences", "text":"Choose whether to share module visits and approximate active time. Optional diagnostic actions attach to administrator reports only when explicitly selected. Activity observations never become assessment grades."},
-        {"type":"Fixed", "area":"Loading", "text":"Account checks and key learning, review and analytics processes keep a visible status while overlapping work finishes."},
-        {"type":"Revised", "area":"Navigation", "text":"Teacher Analytics, Group Inspector and the older Activity Grader use clearer page names. Existing links continue to open the matching workspace."}
+        {
+          "type": "New",
+          "area": "Help and tutorials",
+          "text": "Open a page tutorial or browse the public Adminerva Wiki. Wiki and patch-history links are available throughout the website, including public pages."
+        },
+        {
+          "type": "Updated",
+          "area": "Analytics",
+          "text": "Teacher Analytics focuses on learning; Administration Analytics focuses on system monitoring and support. Administrators select configured instructors in the teacher view."
+        },
+        {
+          "type": "New",
+          "area": "Activity preferences",
+          "text": "Choose whether to share module visits and approximate active time. Optional diagnostic actions attach to administrator reports only when explicitly selected. Activity observations never become assessment grades."
+        },
+        {
+          "type": "Fixed",
+          "area": "Loading",
+          "text": "Account checks and key learning, review and analytics processes keep a visible status while overlapping work finishes."
+        },
+        {
+          "type": "Revised",
+          "area": "Navigation",
+          "text": "Teacher Analytics, Group Inspector and the older Activity Grader use clearer page names. Existing links continue to open the matching workspace."
+        }
       ]
     },
     {
@@ -122,12 +384,36 @@
       "title": "Clearer review and student learning tools",
       "summary": "Three clear teacher review sections, editable evidence selections, XML layout previews, practice points, and lesson-linked slide starters.",
       "changes": [
-        {"type": "New", "area": "Website updates", "text": "Read public patch history and receive a notification for each published release in your account inbox."},
-        {"type": "Revised", "area": "Review & Grade", "text": "Review evidence, use an optional Adminerva Auto Checker draft, and enter the final teacher score in three sections. Suggestions copy only when accepted. Protected grades can be unpublished for revision in the same workspace."},
-        {"type": "Fixed", "area": "Project Hub", "text": "Previously selected older commits remain available for editing. Editable selections can be cleared before resubmission, and instructions and rubrics expand when needed."},
-        {"type": "New", "area": "XML Layout Lab", "text": "Edit Android layout XML and preview supported widgets, dimensions, colors and parent-edge constraints in a sandboxed browser view. The simulator is a learning approximation, not Android Studio."},
-        {"type": "New", "area": "Practice Lab", "text": "See personal practice points. Instructors can review missions and publish opt-in, alias-only class standings; practice points do not change assessment grades."},
-        {"type": "Updated", "area": "Lesson Planner and Slide Editor", "text": "Open a saved lesson in the Slide Editor and build editable starter slides without an external service. Saved decks retain their source lesson version; newer lesson versions do not silently replace slide edits."}
+        {
+          "type": "New",
+          "area": "Website updates",
+          "text": "Read public patch history and receive a notification for each published release in your account inbox."
+        },
+        {
+          "type": "Revised",
+          "area": "Review & Grade",
+          "text": "Review evidence, use an optional Adminerva Auto Checker draft, and enter the final teacher score in three sections. Suggestions copy only when accepted. Protected grades can be unpublished for revision in the same workspace."
+        },
+        {
+          "type": "Fixed",
+          "area": "Project Hub",
+          "text": "Previously selected older commits remain available for editing. Editable selections can be cleared before resubmission, and instructions and rubrics expand when needed."
+        },
+        {
+          "type": "New",
+          "area": "XML Layout Lab",
+          "text": "Edit Android layout XML and preview supported widgets, dimensions, colors and parent-edge constraints in a sandboxed browser view. The simulator is a learning approximation, not Android Studio."
+        },
+        {
+          "type": "New",
+          "area": "Practice Lab",
+          "text": "See personal practice points. Instructors can review missions and publish opt-in, alias-only class standings; practice points do not change assessment grades."
+        },
+        {
+          "type": "Updated",
+          "area": "Lesson Planner and Slide Editor",
+          "text": "Open a saved lesson in the Slide Editor and build editable starter slides without an external service. Saved decks retain their source lesson version; newer lesson versions do not silently replace slide edits."
+        }
       ]
     },
     {
@@ -138,10 +424,26 @@
       "title": "Review & Grade workspace",
       "summary": "A simpler teacher review workspace, individual contribution checks, and protected student evidence revisions.",
       "changes": [
-        {"type": "New", "area": "Teacher review", "text": "Review selected evidence, checkpoint approval, evaluation drafts and group details from Review & Grade."},
-        {"type": "Updated", "area": "Adminerva Auto Checker", "text": "Evaluation drafts distinguish verified individual contributions from shared project completeness. Teacher review is required; grades are never published automatically."},
-        {"type": "Updated", "area": "Project Hub", "text": "Students can revise or withdraw evidence before approval. Approved evidence requires instructor reopening, with previous submissions retained."},
-        {"type": "Fixed", "area": "Navigation", "text": "Account controls fit narrow mobile screens more reliably."}
+        {
+          "type": "New",
+          "area": "Teacher review",
+          "text": "Review selected evidence, checkpoint approval, evaluation drafts and group details from Review & Grade."
+        },
+        {
+          "type": "Updated",
+          "area": "Adminerva Auto Checker",
+          "text": "Evaluation drafts distinguish verified individual contributions from shared project completeness. Teacher review is required; grades are never published automatically."
+        },
+        {
+          "type": "Updated",
+          "area": "Project Hub",
+          "text": "Students can revise or withdraw evidence before approval. Approved evidence requires instructor reopening, with previous submissions retained."
+        },
+        {
+          "type": "Fixed",
+          "area": "Navigation",
+          "text": "Account controls fit narrow mobile screens more reliably."
+        }
       ]
     }
   ]

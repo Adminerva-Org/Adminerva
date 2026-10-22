@@ -1,8 +1,8 @@
 /** Transactional deliberate publication with immutable revisions and recoverable progress. */
-import {auth,db} from "../core/firebase-core.js";
-import {doc,collection,runTransaction,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.1.0";
-import {assertGradeVersion} from "./services/grade-version.mjs?v=2026.10.20.1";
-import {publicationCandidates,publicationJournal} from "./services/publication-queue.mjs?v=2026.10.20.1";
+import {auth,db} from "../core/firebase-core.js?v=1.3.0";
+import {doc,collection,runTransaction,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.3.0";
+import {assertGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
+import {publicationCandidates,publicationJournal} from "./services/publication-queue.mjs?v=1.3.0";
 export {publicationCandidates};
 export function writePublicationRevision(transaction,ref,before,published) {
   if(Boolean(before.published)===published)return;

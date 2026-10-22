@@ -1,6 +1,6 @@
-import {resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
 /** Scoped product configuration and staff preferences: settings user. */
-import { auth, db } from "../core/firebase-core.js";
+import { auth, db } from "../core/firebase-core.js?v=1.3.0";
 import {
   onAuthStateChanged,
   signOut,

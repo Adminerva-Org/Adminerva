@@ -1,32 +1,14 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Guest Home · Adminerva</title>
-  <link rel="stylesheet" href="css/documentation.css?v=1.2.0">
-  <link rel="stylesheet" href="css/adminerva-ui.css?v=1.2.0">
-</head>
-<body>
-  <main class="av-documentation" data-guest-page="home">
-    <nav class="av-documentation-nav" aria-label="Guest navigation"><a href="index.html">Adminerva</a><a href="wiki.html">Help &amp; guides</a><a href="patch-notes.html">What's new</a><a href="wiki.html#privacy">Privacy</a><button id="guest-signout" type="button">Sign out</button></nav>
-    <header class="av-doc-hero"><p class="av-eyebrow">YOUR GUEST WORKSPACE</p><h1>Start exploring Adminerva</h1><p id="guest-identity"></p><p>Try coding and practice while your school reviews your access request.</p></header>
-    <p id="guest-status" class="av-session-notice" role="status" aria-live="polite">Checking your account…</p>
-    <section id="guest-content" hidden aria-labelledby="guestExploreHeading">
-      <h2 id="guestExploreHeading">Choose something to try</h2>
-      <div class="av-learning-grid">
-        <a href="guest-playground.html" class="av-learning-card"><h3>Code Playground</h3><p>Write a small web page, run it, and save a draft on this device.</p><strong>Open playground →</strong></a>
-        <a href="guest-practice.html" class="av-learning-card"><h3>Practice Lab</h3><p>Explore short code challenges and learn from each answer.</p><strong>Try a practice mission →</strong></a>
-      </div>
-      <p>Your guest drafts and practice points stay in this browser under your account. They are not cloud backups or school grades.</p>
-      <hr>
-      <h2>Need access to your class?</h2>
-      <p>Choose the role you need and save your request. Your school administrator checks it before opening your student or teacher workspace.</p>
-      <form id="guest-request" class="av-doc-filters"><label for="guest-role">Requested role<select id="guest-role" aria-describedby="guestRequestHint"><option value="guest">Guest / exploring</option><option value="student">Student</option><option value="teacher">Teacher</option></select></label><button type="submit">Save access request</button></form>
-      <p id="guestRequestHint">Use the verified email your school knows. If you are a student, ask your teacher to check that this email and your section are in User Directory.</p>
-      <details><summary>What can guests access?</summary><p>Guests can use local practice, local code drafts and public guides. Class rosters, private lessons, assignments and staff tools become available only after school access is approved. Local guest drafts are not moved automatically to your approved workspace.</p></details>
-    </section>
-    <a id="guest-approved" class="av-action-link" hidden>Open approved workspace →</a>
-  </main>
-  <script type="module" src="js/guests/guest.mjs?v=1.2.0"></script>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Explore Adminerva</title><link rel="stylesheet" href="css/documentation.css?v=1.3.0"><link rel="stylesheet" href="css/adminerva-ui.css?v=1.3.0"><link rel="stylesheet" href="css/workspace-navigation.css?v=1.3.0"></head>
+<body><main class="av-documentation" data-guest-page="home">
+<nav class="av-documentation-nav" aria-label="Explore navigation"><a href="index.html">Adminerva home</a><a href="wiki.html">Help &amp; guides</a><a href="patch-notes.html">What's new</a><a href="login.html?continue=1" data-workspace-return>Sign in →</a><button id="guest-signout" type="button" hidden>Sign out</button></nav>
+<header class="av-doc-hero"><p class="av-eyebrow">TRY SOMETHING NEW</p><h1>A small idea. A place to try it.</h1><p>Explore coding, practice a concept, or build an XML layout. These tools are open to everyone.</p><p id="guest-identity"></p></header>
+<section id="guest-content" aria-labelledby="guestExploreHeading"><h2 id="guestExploreHeading">Choose something to try</h2><div class="av-learning-grid">
+<a href="guest-playground.html" class="av-learning-card"><h3>Code Playground</h3><p>Make a web page, run code and keep a local draft. No sign-in needed.</p><strong>Open playground →</strong></a>
+<a href="guest-practice.html" class="av-learning-card"><h3>Practice Lab</h3><p>Try short guided missions and learn from each answer.</p><strong>Try a practice mission →</strong></a>
+<a href="guest-xml-lab.html" class="av-learning-card"><h3>XML Layout Lab</h3><p>Explore Android layout structure in a supported browser preview.</p><strong>Build a layout →</strong></a></div><p>Public drafts and practice stay on this browser. They are separate from your school assignments and saved class XP.</p></section>
+<section class="av-home-companion" data-home-companion aria-label="Optional study break"><button type="button" data-companion-tap aria-label="Give the study owl a stretch">🦉</button><div><strong>A little pause for your next idea</strong><p data-companion-message role="status">Tap the owl for a short focus prompt.</p></div></section>
+<section class="av-panel" aria-labelledby="guestAccessHeading"><h2 id="guestAccessHeading">Need access to your class?</h2><p id="guest-status" class="av-session-notice" role="status" aria-live="polite">You can explore without signing in. Class access uses your verified school account.</p><a href="login.html" id="guest-signin-link" class="av-action-link">Sign in for school access →</a>
+<div id="guest-account-request" hidden><p>Choose the role you need. Your school administrator reviews access before your class workspace opens.</p><form id="guest-request" class="av-doc-filters"><label for="guest-role">Requested role<select id="guest-role" aria-describedby="guestRequestHint"><option value="guest">Guest / exploring</option><option value="student">Student</option><option value="teacher">Teacher</option></select></label><button type="submit">Save access request</button></form><p id="guestRequestHint">Use the verified email your school knows. Students should ask their teacher to check the email and section on their roster record.</p></div>
+<a id="guest-approved" class="av-action-link" hidden>Open my school workspace →</a></section></main>
+<script type="module" src="js/guests/guest.mjs?v=1.3.0"></script><script type="module" src="js/core/workspace-return.mjs?v=1.3.0"></script><script type="module" src="js/core/home-companion.mjs?v=1.3.0"></script></body></html>

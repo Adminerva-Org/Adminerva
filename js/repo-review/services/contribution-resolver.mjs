@@ -8,7 +8,7 @@
  * deadline. For official cutoff grading, use a trusted cutoff snapshot/webhook.
  */
 
-import { analyzeFileContributions } from './commit-substance.mjs?v=2026.10.20.1';
+import { analyzeFileContributions } from './commit-substance.mjs?v=1.3.0';
 
 const SOURCE_EXTS = new Set(['java', 'kt', 'kts', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'py', 'cpp', 'c', 'h', 'cs', 'html', 'css', 'sql', 'xml', 'json', 'gradle', 'md', 'txt', 'dart', 'swift', 'go', 'rs', 'rb', 'php', 'vue', 'svelte']);
 const ASSET_EXTS = new Set(['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif', 'ico', 'mp3', 'mp4', 'wav', 'pdf']);

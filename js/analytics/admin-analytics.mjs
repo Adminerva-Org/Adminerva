@@ -1,9 +1,9 @@
 /** Administrator-only operational monitoring, roster assignment and explicit coarse-summary publication. */
-import {auth, db} from "../core/firebase-core.js";
+import {auth, db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection, getDocs, getDoc, doc, query, orderBy, limit, where, setDoc, writeBatch, runTransaction, serverTimestamp, Timestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {staffRole, TEACHER_EMAIL} from "../core/staff-role.mjs?v=1.1.0";
-import {summarizeActivity} from "./activity-model.mjs?v=2026.10.19.3";
+import {staffRole, TEACHER_EMAIL} from "../core/staff-role.mjs?v=1.3.0";
+import {summarizeActivity} from "./activity-model.mjs?v=1.3.0";
 
 const field = id => document.getElementById(id);
 let teacherEmail=TEACHER_EMAIL;

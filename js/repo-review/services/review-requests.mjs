@@ -1,5 +1,5 @@
 /** Per-review bounded, cancellable GitHub reads and independent parallel panel loading. */
-import {createBackoffClient} from "./request-backoff.mjs?v=2026.10.20.1";
+import {createBackoffClient} from "./request-backoff.mjs?v=1.3.0";
 export function createReviewRequests({token=null,fetchImpl=globalThis.fetch,signal,concurrency=4}={}){
   const cache=new Map(),queue=[];
   const client=createBackoffClient({fetchImpl,github:true,scope:"github",signal});

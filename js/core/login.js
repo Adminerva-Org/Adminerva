@@ -1,8 +1,9 @@
-import {resolveAccountAccess} from "./staff-session.mjs?v=1.1.0";
-import {ensureGuestRequest} from "./admission-service.mjs?v=1.2.0";
-import {activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "./connection-cache.mjs?v=1.2.0";
+import {resolveAccountAccess} from "./staff-session.mjs?v=1.3.0";
+import {ensureGuestRequest} from "./admission-service.mjs?v=1.3.0";
+import {activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "./connection-cache.mjs?v=1.3.0";
+import {sessionDestination} from "./session-destination.mjs?v=1.3.0";
 /** Approved-account sign-in and access feedback. */
-import { db, auth } from "../core/firebase-core.js";
+import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {
   doc,
   updateDoc,
@@ -17,6 +18,31 @@ import {
 
 const errBox = document.getElementById("loginErrorBox");
 let signingIn = false;
+let continuing=false;
+function showExistingSession(){
+  const user=auth.currentUser,panel=document.getElementById("loginResumePanel");
+  if(!panel)return;
+  panel.hidden=!user;
+  document.getElementById("loginSessionIdentity").textContent=user?"Signed in as "+(user.email||"your account"):"";
+}
+async function continueWorkspace(){
+  const user=auth.currentUser;if(continuing||!user)return;
+  continuing=true;const button=document.getElementById("loginContinueBtn");button.disabled=true;button.textContent="Opening your workspace…";
+  try{
+    if(!user.emailVerified||!user.email)throw Error("Verify your account email or choose a different account to continue.");
+    const access=await resolveAccountAccess(user);
+    if(access.staffLookupUnavailable)throw Error("Your school access could not be checked. Check your connection, then select Continue to retry.");
+    if(auth.currentUser?.uid!==user.uid)throw Error("Your account changed. Continue with the account currently shown.");
+    activateConnectionOwner(user.uid);
+    if(access.role)writeConnectionPreferences(user.uid,access.teachers?.[0]?.data?.()||{});else clearConnectionPreferences();
+    localStorage.setItem("Adminerva_Role",access.role==="admin"?"superadmin":access.role==="teacher"?"teacher":access.students?.length?"student":"guest");
+    const parameters=new URLSearchParams(location.search);
+    let candidate=parameters.get("returnTo");
+    if(!candidate)try{candidate=sessionStorage.getItem("Adminerva_last_workspace_"+user.uid);}catch{}
+    location.replace(sessionDestination(candidate,access));
+  }catch(error){showError("Your account is still signed in",error.message||"We couldn’t check school access. Check your connection, then select Continue to retry.");showExistingSession();}
+  finally{continuing=false;button.disabled=false;button.textContent="Continue to my workspace →";}
+}
 
 // ==========================================
 // UI STATE MANAGERS
@@ -59,9 +85,11 @@ const handleOAuthLogin = async (provider, providerType) => {
     const email = result.user.email?.toLowerCase().trim();
 
     if (!email) {
+      clearConnectionPreferences();
       await signOut(auth);
       throw new Error("no-email");
     }
+    if(!result.user.emailVerified){clearConnectionPreferences();await signOut(auth);throw Error("Use an account with a verified email address.");}
 
     if (typeof window.showSubtleLoader === "function") {
       window.showSubtleLoader("Verifying Identity...");
@@ -69,6 +97,7 @@ const handleOAuthLogin = async (provider, providerType) => {
 
     // 2. VERIFY IDENTITY against Firestore Directory
     const access=await resolveAccountAccess(result.user),role=access.role;
+    if(access.staffLookupUnavailable)throw Error("Your account is signed in, but school access could not be checked. Check your connection and use Continue to retry.");
     const isEducator=!!role;
     if(auth.currentUser?.uid!==result.user.uid)throw Error("account-changed");
     if(!isEducator)clearConnectionPreferences();
@@ -138,13 +167,8 @@ const handleOAuthLogin = async (provider, providerType) => {
           : "teacher"
         : "student",
     );
-    window.location.href = isEducator
-      ? "teacher-home.html"
-      : "student-home.html";
+    window.location.href = sessionDestination(new URLSearchParams(location.search).get("returnTo"),access);
   } catch (error) {
-    clearConnectionPreferences();
-    await signOut(auth);
-
     let errorTitle = "Login Failed";
     let errorMessage = String(error.message || "Please try signing in again.").replace("Firebase:", "").trim();
 
@@ -154,7 +178,7 @@ const handleOAuthLogin = async (provider, providerType) => {
     } else if (error.message === "no-email") {
       errorMessage =
         "Your GitHub account does not expose a public email. Please sign in with Google.";
-    } else if (error.message.startsWith("unrecognized-email:")) {
+    } else if (String(error.message||"").startsWith("unrecognized-email:")) {
       errorTitle = "Access Denied";
       const failedEmail = error.message.split(":")[1];
       errorMessage = `Your email (${failedEmail}) is not recognized. Your GitHub email might differ from your school record. Try Continue with Google using your school email.`;
@@ -173,6 +197,7 @@ const handleOAuthLogin = async (provider, providerType) => {
     }
 
     showError(errorTitle, errorMessage);
+    showExistingSession();
   } finally {
     signingIn = false;
     buttons.forEach(button => button.disabled = false);
@@ -183,7 +208,12 @@ const handleOAuthLogin = async (provider, providerType) => {
 // ==========================================
 // EVENT LISTENERS
 // ==========================================
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  document.getElementById("loginContinueBtn").addEventListener("click",()=>void continueWorkspace());
+  document.getElementById("loginSwitchBtn").addEventListener("click",async()=>{
+    try{clearConnectionPreferences();await signOut(auth);for(const key of ["Adminerva_Role","Adminerva_Mock_Role","Adminerva_Impersonate"])localStorage.removeItem(key);location.replace("login.html?switch=1");}
+    catch{showError("Couldn’t switch accounts","Please retry signing out before choosing another account.");}
+  });
   const urlParams = new URLSearchParams(window.location.search);
   if(urlParams.get("error")==="verified-email-required")showError("Verified email required","Use a Google or GitHub account with a verified email. No school access was granted.");
   if(urlParams.get("error")==="teacher-approval-required")showError("Teacher approval required","Ask an administrator to activate your verified email in Teacher Accounts. Your teacher directory profile is preserved.");
@@ -207,4 +237,6 @@ document.addEventListener("DOMContentLoaded", () => {
       handleOAuthLogin(new GithubAuthProvider(), "github"),
     );
   }
+  try{await auth.authStateReady();showExistingSession();if(auth.currentUser&&!urlParams.has("switch"))await continueWorkspace();}
+  catch{showError("Couldn’t restore your session","Check your connection. You can retry Continue or choose a sign-in provider below.");}
 });

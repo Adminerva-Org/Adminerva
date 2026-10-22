@@ -1,11 +1,11 @@
 /** Assigned-section query adapter; Firestore rules remain the authorization boundary. */
 export * from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import * as sdk from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {auth,db} from "./firebase-core.js";
-import {resolveStaffRole} from "./staff-session.mjs?v=1.1.0";
-import {staffRole,staffSections} from "./staff-role.mjs?v=1.1.0";
+import {auth,db} from "./firebase-core.js?v=1.3.0";
+import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
+import {staffRole,staffSections} from "./staff-role.mjs?v=1.3.0";
 const descriptors=new WeakMap();
-const sectional=new Set(["teaching_roster","student_grades","grades","activity_grades","assessment_evidence","student_submissions","commit_reclaims","practice_profiles","practice_scores","practice_boards","practice_rankings","grading_alerts"]);
+const sectional=new Set(["teaching_roster","student_grades","grades","activity_grades","assessment_evidence","student_submissions","commit_reclaims","practice_profiles","practice_scores","practice_boards","practice_rankings","practice_class_season_rankings","grading_alerts"]);
 const privateKinds=new Set(["repobank","group_repo_cache","github_stats_cache","system","templates","reference_folders"]);
 let pending=null;
 const emptySnapshot=docs=>({docs,size:docs.length,empty:docs.length===0,forEach:callback=>docs.forEach(callback)});

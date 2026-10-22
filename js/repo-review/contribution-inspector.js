@@ -1,12 +1,12 @@
 /** Committed-change inspection and contribution-claim context. */
-import { auth, db } from '../core/firebase-core.js';
+import { auth, db } from '../core/firebase-core.js?v=1.3.0';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
-import { collection, getDocs } from '../core/teaching-firestore.mjs?v=1.1.0';
-import { resolveContributions,linkGithubProfile } from './services/contribution-resolver.mjs?v=2026.10.20.1';
-import {createBackoffClient} from './services/request-backoff.mjs?v=2026.10.20.1';
+import { collection, getDocs } from '../core/teaching-firestore.mjs?v=1.3.0';
+import { resolveContributions,linkGithubProfile } from './services/contribution-resolver.mjs?v=1.3.0';
+import {createBackoffClient} from './services/request-backoff.mjs?v=1.3.0';
 const identityReads=createBackoffClient({github:true,scope:"github"});
-import { createGithubEvidenceClient } from './services/github-evidence-client.mjs?v=2026.10.20.1';
-import { normalizeAssessment, validateInspectorInput, summarizeEvidence } from './services/inspector-helpers.mjs?v=2026.10.20.1';
+import { createGithubEvidenceClient } from './services/github-evidence-client.mjs?v=1.3.0';
+import { normalizeAssessment, validateInspectorInput, summarizeEvidence } from './services/inspector-helpers.mjs?v=1.3.0';
 
 const el=id=>document.getElementById(id);
 if(new URLSearchParams(location.search).get('embedded')==='1')el('adminerva-nav')?.remove();

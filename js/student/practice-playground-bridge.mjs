@@ -1,8 +1,8 @@
 /** Student submissions, practice progress and isolated code workspaces: practice playground bridge. */
 // Private, tab-scoped handoff between Practice Lab and the Code Playground.
 // No assessed-work submission or proof-of-authorship is implied by a run attempt.
-import {validPlaygroundState} from "./playground-storage.mjs";
-import {getCourse,practiceQuestion} from "./practice-courses.mjs?v=2026.10.21.2-dev.1";
+import {validPlaygroundState} from "./playground-storage.mjs?v=1.3.0";
+import {getCourse,practiceQuestion} from "./practice-courses.mjs?v=1.3.0";
 
 export const practiceBridgeKey=uid=>"Adminerva_Practice_Experiment_"+String(uid);
 const supported=new Set(["java","python","web","logic"]);
@@ -89,6 +89,7 @@ export function readPracticeTransfer(storage,uid,now=Date.now()){
       !getCourse(transfer.courseId)?.missions.some(m=>m.id===transfer.missionId)||
       !validPlaygroundState(transfer.workspace)||
       !Number.isInteger(transfer.runCount)||transfer.runCount<0)return null;
+    if(transfer.returnPage!==undefined&&!["student-practice.html","guest-practice.html"].includes(transfer.returnPage))return null;
     return transfer;
   }catch{return null}
 }
@@ -101,5 +102,5 @@ export function recordPracticeRun(storage,uid,observed=""){
   return true;
 }
 export const practiceReturnUrl=transfer=>
-  "student-practice.html?course="+encodeURIComponent(transfer.courseId)+
+  (transfer.returnPage==="guest-practice.html"?"guest-practice.html":"student-practice.html")+"?course="+encodeURIComponent(transfer.courseId)+
   "&mission="+encodeURIComponent(transfer.missionId);

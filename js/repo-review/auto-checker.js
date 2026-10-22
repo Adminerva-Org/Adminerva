@@ -1,13 +1,14 @@
-import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=2026.10.20.1";
-import {createBackoffClient,evaluationJSON} from "./services/request-backoff.mjs?v=2026.10.20.1";
-import {feedbackChip,reviewNotice} from "./review-ui.mjs?v=2026.10.20.1";
-import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=1.1.0";
+import {generateSchoolContent,schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
+import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
+import {createBackoffClient,evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
+import {feedbackChip,reviewNotice} from "./review-ui.mjs?v=1.3.0";
+import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=1.3.0";
 /** Automated evaluation assistance with instructor-controlled acceptance. */
-import { auth, db } from "../core/firebase-core.js";
-import { cleanGradeFeedback } from "../core/feedback-format.mjs";
-import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs";
-import { resolveContributions, linkGithubProfile, isGradableSource, scopeAssessmentFiles } from "./services/contribution-resolver.mjs?v=2026.10.20.1";
-import { createGithubEvidenceClient, parseGithubRepository } from "./services/github-evidence-client.mjs?v=2026.10.20.1";
+import { auth, db } from "../core/firebase-core.js?v=1.3.0";
+import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
+import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs?v=1.3.0";
+import { resolveContributions, linkGithubProfile, isGradableSource, scopeAssessmentFiles } from "./services/contribution-resolver.mjs?v=1.3.0";
+import { createGithubEvidenceClient, parseGithubRepository } from "./services/github-evidence-client.mjs?v=1.3.0";
 import {
   doc,
   collection,
@@ -15,7 +16,7 @@ import {
   getDoc,
   runTransaction,
   serverTimestamp,
-} from "../core/teaching-firestore.mjs?v=1.1.0";
+} from "../core/teaching-firestore.mjs?v=1.3.0";
 
 function escapeHTML(str) {
   if (!str) return "";
@@ -68,12 +69,8 @@ window.startAutoCheck = async function (
   const ghToken = localStorage.getItem("Adminerva_github_token");
   const geminiKey = localStorage.getItem("Adminerva_gemini_token");
   const aiModel =
-    localStorage.getItem("Adminerva_ai_model") || "gemini-1.5-flash-latest";
+    localStorage.getItem("Adminerva_ai_model") || "gemini-3.8-flash";
 
-  if (!ghToken || !geminiKey) {
-    reviewNotice("Checker setup is missing. Open Review & Grade to enter a teacher score manually.",true);
-    return {success:false,reason:"Checker setup required"};
-  }
   const jobKey=studentId+":"+taskId,actorUid=auth.currentUser?.uid;
   if(runningChecks.has(jobKey))return {success:false,reason:"Evaluation is already running"};
   runningChecks.add(jobKey);
@@ -353,13 +350,8 @@ window.startAutoCheck = async function (
       `;
 
       if(!/^[a-zA-Z0-9._-]{1,80}$/.test(aiModel))throw Error("Invalid evaluation model setting.");
-      const aiRes=await sessionEvaluationClient.fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(aiModel)+":generateContent",{
-          method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":geminiKey},
-          signal:AbortSignal.timeout(60000),
-          body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{response_mime_type:"application/json",temperature:0.2}})
-        });
-      const parsed=await evaluationJSON(aiRes);
+      const result=await generateSchoolContent({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",temperature:0.2}},{signal:AbortSignal.timeout(100000),purpose:"evaluation"});
+      const parsed=await evaluationJSON({ok:true,json:async()=>result});
       const rawAiScore=parsed.score,rawFeedback=parsed.teacher_note||parsed.feedback;
       if(typeof rawAiScore!=="number"||!Number.isFinite(rawAiScore)||rawAiScore<0||rawAiScore>maxScore||typeof rawFeedback!=="string"||!rawFeedback.trim()||rawFeedback.length>6000)
         throw Error("Evaluation schema was invalid. No score was saved; retry or grade manually.");

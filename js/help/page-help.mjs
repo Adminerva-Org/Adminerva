@@ -1,5 +1,5 @@
 /** Public contextual tutorials and explicit activity preferences; never fetch protected data for guests. */
-import {pageForPath} from "../analytics/activity-model.mjs?v=2026.10.19.3";
+import {pageForPath} from "../analytics/activity-model.mjs?v=1.3.0";
 const guides = {
   home:["Start with your workspace", "Choose a learning or teaching tool. Help, the public Wiki and patch history remain available from every page.", "getting-started"],
   project:["Submit your individual evidence", "Open an assessment, select your committed contributions and a checkpoint, then submit. Withdraw before approval to edit; approved evidence needs instructor reopening.", "evidence"],
@@ -21,11 +21,18 @@ export function hasActivityPreferences(scripts) {
 }
 export function mountHelp() {
   if (document.getElementById("adminerva-help")) return;
+  if(!document.querySelector('link[href*="workspace-navigation.css"]')){const styles=document.createElement("link");styles.rel="stylesheet";styles.href="css/workspace-navigation.css?v=1.3.0";document.head.append(styles);}
+  import("../core/display-preferences.mjs?v=1.3.0").catch(()=>{});
+  import("../core/section-navigation.mjs?v=1.3.0").then(module=>{module.mountSectionNavigation();document.addEventListener("adminerva:role-ready",()=>setTimeout(module.mountSectionNavigation,300),{once:true});}).catch(()=>{});
   const [title, description, anchor] = guides[pageForPath(location.pathname)];
   const footer = document.createElement("footer"); footer.id = "adminerva-help";
   footer.className = "av-site-footer";
   footer.setAttribute("aria-label","Help, privacy and website updates");
   footer.innerHTML = '<span class="av-footer-brand">ADMINERVA</span><nav aria-label="Website information"><button type="button" id="page-help-open">ⓘ Help / tutorial</button><a href="wiki.html">Wiki</a><a href="patch-notes.html">Patch notes</a><a href="wiki.html#privacy">Privacy</a></nav>';
+  if(!document.getElementById("adminerva-nav")){
+    const returnLink=document.createElement("a");returnLink.href="login.html?continue=1";returnLink.dataset.workspaceReturn="";returnLink.textContent="Return to my workspace →";footer.querySelector("nav").prepend(returnLink);
+    import("../core/workspace-return.mjs?v=1.3.0").then(module=>module.refreshWorkspaceReturn()).catch(()=>{});
+  }
   document.body.classList.add("av-with-footer");
   if (location.pathname.endsWith("/login.html")) {
     const card=document.getElementById("googleLoginBtn")?.closest('[class*="max-w-"]');
@@ -64,6 +71,6 @@ export function mountHelp() {
   const privatePage = hasActivityPreferences(document.scripts);
   document.getElementById("help-settings-link").href = document.getElementById("adminerva-nav")?.dataset.module?.startsWith("student") ? "student-settings.html" : "settings.html";
   if (privatePage && window.self === window.top) {
-    import("./activity-preferences.mjs?v=1.1.0").then(module => module.mountActivityPreferences()).catch(() => {});
+    import("./activity-preferences.mjs?v=1.3.0").then(module => module.mountActivityPreferences()).catch(() => {});
   }
 }

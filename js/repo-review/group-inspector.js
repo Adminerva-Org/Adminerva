@@ -1,5 +1,5 @@
 /** Shared-project detail and individual contribution context. */
-import { db } from "../core/firebase-core.js";
+import { db } from "../core/firebase-core.js?v=1.3.0";
 import {
   collection,
   getDocs,
@@ -8,7 +8,7 @@ import {
   getDoc,
   query,
   where,
-} from "../core/teaching-firestore.mjs?v=1.1.0";
+} from "../core/teaching-firestore.mjs?v=1.3.0";
 
 const CACHE_VERSION = 8; // Changes attribution and rejects mixed legacy cache documents
 const initialScope=new URLSearchParams(location.search);

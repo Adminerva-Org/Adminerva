@@ -1,11 +1,11 @@
-import {feedbackSummary,inlineTask,reviewNotice} from "./review-ui.mjs?v=2026.10.20.1";
-import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=1.1.0";
-import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.1.0";
-import {assertGradeVersion} from "./services/grade-version.mjs?v=2026.10.20.1";
-import {writePublicationRevision} from "./grade-publication.mjs?v=1.1.0";
+import {feedbackSummary,inlineTask,reviewNotice} from "./review-ui.mjs?v=1.3.0";
+import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=1.3.0";
+import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.0";
+import {assertGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
+import {writePublicationRevision} from "./grade-publication.mjs?v=1.3.0";
 /** Teacher grade administration, protected revisions and explicit publication. */
-import { db } from "../core/firebase-core.js";
-import { cleanGradeFeedback } from "../core/feedback-format.mjs";
+import { db } from "../core/firebase-core.js?v=1.3.0";
+import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {
   collection,
   getDocs,
@@ -17,7 +17,7 @@ import {
   writeBatch,
   runTransaction,
   serverTimestamp,
-} from "../core/teaching-firestore.mjs?v=1.1.0";
+} from "../core/teaching-firestore.mjs?v=1.3.0";
 
 function escapeHTML(str) {
   if (!str) return "";
@@ -280,7 +280,7 @@ window.matrixTogglePub = async function (studentId, taskId, checkbox) {
       if (!latest.exists()) throw new Error("Grade was removed during publication.");
       assertGradeVersion(latest.data(),gradeSnap.data());
       if(wantsPublish){
-        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=1.1.0");
+        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=1.3.0");
         await verifyGradePublication(tx,gradeRef,{...latest.data(),taskId});
       }
       writePublicationRevision(tx,gradeRef,latest.data(),wantsPublish);

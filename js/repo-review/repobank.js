@@ -1,9 +1,9 @@
-import {auth,db} from "../core/firebase-core.js";
-import {collection,getDocs,query,where,doc,getDoc,runTransaction,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.1.0";
-import {resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
-import {createReviewRequests} from "./services/review-requests.mjs?v=2026.10.20.1";
-import {createBackoffClient,evaluationJSON} from "./services/request-backoff.mjs?v=2026.10.20.1";
-import {repositoryKey,verifiedMemberEvidence,validateOverview,overviewPrompt,overviewFingerprint,collectOverview} from "./services/repobank-model.mjs?v=2026.10.21.1-dev.1";
+import {auth,db} from "../core/firebase-core.js?v=1.3.0";
+import {collection,getDocs,query,where,doc,getDoc,runTransaction,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.3.0";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
+import {createReviewRequests} from "./services/review-requests.mjs?v=1.3.0";
+import {createBackoffClient,evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
+import {repositoryKey,verifiedMemberEvidence,validateOverview,overviewPrompt,overviewFingerprint,collectOverview} from "./services/repobank-model.mjs?v=1.3.0";
 const field=id=>document.getElementById(id);
 let epoch=0,controller=null;
 const active=()=>auth.currentUser?.uid;

@@ -1,7 +1,8 @@
 /** Isolated code editing, execution, persistence and practice handoffs. */
-import { db, auth } from "../core/firebase-core.js";
-import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs";
-import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.1.0";
+import { db, auth } from "../core/firebase-core.js?v=1.3.0";
+import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.0";
+import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
+import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
 import {
   collection,
   addDoc,
@@ -63,6 +64,10 @@ let activeFilename = "";
 let draggedTabIndex = -1;
 let practiceMode = false;
 let practiceTransfer = null;
+const guestMode=document.body.dataset.playgroundAccess==="guest";
+let workspaceFolders=[],selectedProjectPath="",selectedProjectFolder=false;
+let executionController=null,executionSequence=0;
+let loadedOwnerUid=null;
 
 // ==========================================
 // 2. INITIALIZATION
@@ -124,22 +129,34 @@ async function initializePlayground() {
     } catch (error) {
       console.warn("Unable to confirm sign-in:", error);
     }
-    if (!auth.currentUser) {
+    if (!auth.currentUser && !guestMode) {
       alert("Sign in to open your private Playground workspace.");
       return;
     }
+    loadedOwnerUid=auth.currentUser?.uid||(guestMode?"public-visitor-v1":null);
+    auth.onAuthStateChanged(user=>{
+      const nextOwner=user?.uid||(guestMode?"public-visitor-v1":null);
+      if(nextOwner===loadedOwnerUid)return;
+      // Save only to the account that loaded this editor, then reopen cleanly.
+      persistWorkspace();
+      executionSequence++;
+      executionController?.abort();
+      clearTimeout(autoSaveTimeout);
+      document.getElementById("workspaceContainer")?.setAttribute("inert","");
+      window.location.reload();
+    });
     document.getElementById("legacyImportBtn")?.classList.toggle("hidden",
       !localStorage.getItem("Adminerva_Playground_Workspace"));
     const requestedPractice=urlParams.get("practice")==="1";
     if(requestedPractice){
-      const transfer=readPracticeTransfer(sessionStorage,auth.currentUser.uid);
+      const transfer=readPracticeTransfer(sessionStorage,ownerUid());
       if(transfer){
         practiceMode=true;
         practiceTransfer=transfer;
         const savedScratch=transfer.scratch;
         const scratch=validPlaygroundState(savedScratch)&&savedScratch.lang===transfer.workspace.lang
           ?savedScratch:transfer.workspace;
-        createWorkspace(scratch.lang,scratch.files,scratch.fileOrder,scratch.activeFilename);
+        createWorkspace(scratch.lang,scratch.files,scratch.fileOrder,scratch.activeFilename,scratch.folders);
         enablePracticeSandbox();
         showSaveStatus("Practice sandbox — separate from personal projects");
       }else{
@@ -158,7 +175,8 @@ else void initializePlayground();
 // ==========================================
 // 3. WORKSPACE & FILE MANAGEMENT
 // ==========================================
-function createWorkspace(lang, initialFiles, initialOrder, initialActive) {
+function createWorkspace(lang, initialFiles, initialOrder, initialActive,initialFolders=[]) {
+  if(executionController){executionSequence++;executionController.abort();}
   currentLang = lang;
   const langSelect = document.getElementById("languageSelect");
   if (langSelect) langSelect.value = lang;
@@ -166,6 +184,8 @@ function createWorkspace(lang, initialFiles, initialOrder, initialActive) {
   Object.values(workspaceFiles).forEach((f) => f.model.dispose());
   workspaceFiles = {};
   fileOrder = [];
+  workspaceFolders=Array.isArray(initialFolders)?initialFolders.filter(p=>{try{return projectPath(p)===p;}catch{return false;}}).slice(0,100):[];
+  selectedProjectPath="";selectedProjectFolder=false;
 
   const safeLang = PLAYGROUND_LANGUAGES.includes(lang) ? lang : "java";
   currentLang = safeLang;
@@ -187,6 +207,9 @@ function createWorkspace(lang, initialFiles, initialOrder, initialActive) {
 }
 
 function addFile(filename, content = "", autoSwitch = true) {
+  try{filename=projectPath(filename);}catch(error){alert(error.message);return;}
+  if(fileOrder.length>=100)return alert("A workspace supports up to 100 files. Export this project before starting another.");
+  if(workspaceFolders.includes(filename))return alert("A folder already uses that path.");
   if (workspaceFiles[filename]) return alert("File already exists!");
 
   let syntax = languageConfig[currentLang].monaco;
@@ -210,7 +233,9 @@ function addFile(filename, content = "", autoSwitch = true) {
 function switchTab(filename) {
   if (!workspaceFiles[filename]) return;
   activeFilename = filename;
+  selectedProjectPath=filename;selectedProjectFolder=false;
   editorInstance.setModel(workspaceFiles[filename].model);
+  const path=document.getElementById("activeFilePath");if(path)path.textContent=filename;
   renderTabs();
 }
 
@@ -218,8 +243,10 @@ function switchTab(filename) {
 // 3B. RENAME & DELETE LOGIC
 // ------------------------------------------
 window.renameFile = function (oldName) {
-  const newName = prompt(`Rename ${oldName} to:`, oldName);
+  let newName = prompt(`New file path for ${oldName}:`, oldName);
   if (!newName || newName.trim() === "" || newName === oldName) return;
+  try{newName=projectPath(newName);}catch(error){return alert(error.message);}
+  if(workspaceFolders.includes(newName))return alert("A folder already uses that path.");
   if (workspaceFiles[newName])
     return alert("A file with that name already exists!");
 
@@ -267,7 +294,8 @@ window.deleteFile = function (filename) {
 };
 
 window.promptNewFile = function () {
-  const name = prompt("Enter file name (e.g., Student.java, style.css):");
+  const folder=selectedProjectFolder?selectedProjectPath:activeFilename.split("/").slice(0,-1).join("/");
+  const name = prompt("New file path (for example src/Student.java or styles/main.css):",folder?folder+"/":"");
   if (name && name.trim()) {
     addFile(name.trim());
     triggerAutoSave();
@@ -288,17 +316,13 @@ function renderTabs() {
       ? "bg-[#0f172a] text-cyan-400 border-t-2 border-cyan-400"
       : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 border-t-2 border-transparent";
 
-    // Replaced dropdown with VS Code style hover-delete and double-click rename
-    const tabHTML = `
-      <div class="px-4 py-2 cursor-pointer flex items-center gap-2 text-xs font-bold transition relative group tab-element ${tabClass}" 
-           draggable="true" data-index="${index}" data-filename="${escapeHTML(filename)}"
-           ondblclick="window.renameFile('${escapeHTML(filename)}')">
-        <span class="pointer-events-none tracking-wide" title="Double-click to rename">${escapeHTML(filename)}</span>
-        
-        ${fileOrder.length > 1 ? `<button class="opacity-0 group-hover:opacity-100 hover:text-rose-400 transition-opacity ml-1" onclick="event.stopPropagation(); window.deleteFile('${escapeHTML(filename)}')">✕</button>` : ""}
-      </div>
-    `;
-    container.insertAdjacentHTML("beforeend", tabHTML);
+    const tab=document.createElement("div");tab.className="px-4 py-2 cursor-pointer flex items-center gap-2 text-xs font-bold transition relative group tab-element "+tabClass;
+    tab.draggable=true;tab.dataset.index=index;tab.dataset.filename=filename;tab.setAttribute("role","tab");tab.setAttribute("aria-selected",String(isActive));tab.tabIndex=isActive?0:-1;
+    const label=document.createElement("span");label.textContent=filename.split("/").at(-1);label.title=filename;tab.append(label);
+    tab.addEventListener("dblclick",()=>window.renameFile(filename));
+    tab.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();switchTab(filename);}});
+    if(fileOrder.length>1){const close=document.createElement("button");close.textContent="×";close.setAttribute("aria-label","Delete "+filename);close.onclick=event=>{event.stopPropagation();window.deleteFile(filename);};tab.append(close);}
+    container.append(tab);
   });
 
   container.insertAdjacentHTML(
@@ -309,6 +333,54 @@ function renderTabs() {
   );
 
   attachTabEvents();
+  renderFileTree();
+}
+
+function renderFileTree(){
+  const tree=document.getElementById("projectTree");if(!tree)return;
+  const open=new Set([...tree.querySelectorAll("details[open]")].map(n=>n.dataset.path));
+  tree.replaceChildren();
+  const folders=[...new Set([...workspaceFolders,...parentFolders([...fileOrder,...workspaceFolders.map(path=>path+"/.keep")])])].sort();
+  function children(box,parent=""){
+    for(const path of folders.filter(p=>p.split("/").slice(0,-1).join("/")===parent)){
+      const details=document.createElement("details");details.dataset.path=path;details.open=open.has(path)||activeFilename.startsWith(path+"/");
+      const summary=document.createElement("summary");summary.textContent="▱ "+path.split("/").at(-1);summary.title=path;
+      summary.addEventListener("click",()=>{selectedProjectPath=path;selectedProjectFolder=true;});
+      const nested=document.createElement("div");details.append(summary,nested);children(nested,path);box.append(details);
+    }
+    for(const path of fileOrder.filter(p=>p.split("/").slice(0,-1).join("/")===parent)){
+      const button=document.createElement("button");button.type="button";button.className="pg-file";button.setAttribute("aria-current",String(path===activeFilename));button.title=path;
+      const icon=document.createElement("span");icon.textContent=path.endsWith(".java")?"J":path.endsWith(".py")?"Py":path.endsWith(".html")?"◇":"·";
+      const label=document.createElement("span");label.textContent=path.split("/").at(-1);button.append(icon,label);button.onclick=()=>switchTab(path);box.append(button);
+    }
+  }
+  children(tree);
+  const count=document.getElementById("projectFileCount");if(count)count.textContent=fileOrder.length+" files · "+folders.length+" folders";
+}
+function newFolder(){
+  const raw=prompt("New folder path:",selectedProjectFolder?selectedProjectPath+"/":"src");if(!raw)return;
+  try{const path=projectPath(raw);if(workspaceFiles[path])throw Error("A file already uses that path.");if(workspaceFolders.length>=100)throw Error("Use up to 100 folders per workspace.");workspaceFolders=[...new Set([...workspaceFolders,path])];selectedProjectPath=path;selectedProjectFolder=true;renderFileTree();triggerAutoSave();}catch(error){alert(error.message);}
+}
+function renameSelection(){
+  if(!selectedProjectPath)return showSaveStatus("Select a file or folder first.");
+  if(!selectedProjectFolder)return window.renameFile(selectedProjectPath);
+  const old=selectedProjectPath,raw=prompt("New folder path:",old);if(!raw||raw===old)return;
+  try{
+    const target=projectPath(raw);if(target.startsWith(old+"/"))throw Error("Move a folder outside itself.");
+    const state=currentState(),mapping=p=>p===old?target:p.startsWith(old+"/")?target+p.slice(old.length):p;
+    const names=state.fileOrder.map(mapping);if(new Set(names).size!==names.length||workspaceFiles[target]||workspaceFolders.includes(target))throw Error("That destination already exists.");
+    const files=Object.fromEntries(Object.entries(state.files).map(([p,v])=>[mapping(p),v]));
+    createWorkspace(currentLang,files,names,mapping(activeFilename),workspaceFolders.map(mapping));triggerAutoSave();
+  }catch(error){alert(error.message);}
+}
+function deleteSelection(){
+  if(!selectedProjectPath)return;
+  if(!selectedProjectFolder)return window.deleteFile(selectedProjectPath);
+  const path=selectedProjectPath,names=fileOrder.filter(p=>!p.startsWith(path+"/"));
+  if(!names.length)return alert("Keep at least one file in this project.");
+  if(!confirm("Delete folder "+path+" and its files?"))return;
+  const state=currentState(),files=Object.fromEntries(names.map(p=>[p,state.files[p]]));
+  createWorkspace(currentLang,files,names,names.includes(activeFilename)?activeFilename:names[0],workspaceFolders.filter(p=>p!==path&&!p.startsWith(path+"/")));triggerAutoSave();
 }
 
 function attachTabEvents() {
@@ -364,14 +436,14 @@ let autoSaveTimeout;
 let workspaceDirty = false;
 let localSaveFailed = false;
 function ownerUid() {
-  return auth.currentUser?.uid || null;
+  return loadedOwnerUid;
 }
 function currentState() {
   const files = {};
   for (const [name,file] of Object.entries(workspaceFiles))
     files[name] = file.model.getValue();
   return { lang:currentLang, files, fileOrder:[...fileOrder],
-    activeFilename, savedAt:new Date().toISOString() };
+    activeFilename, folders:[...workspaceFolders], savedAt:new Date().toISOString() };
 }
 function showSaveStatus(text,failed=false) {
   const indicator=document.getElementById("autoSaveIndicator");
@@ -390,7 +462,7 @@ function persistWorkspace(){
     if(practiceMode){
       if(!practiceTransfer)return false;
       practiceTransfer.scratch={lang:state.lang,files:state.files,fileOrder:state.fileOrder,
-        activeFilename:state.activeFilename};
+        activeFilename:state.activeFilename,folders:state.folders};
       sessionStorage.setItem(practiceBridgeKey(uid),JSON.stringify(practiceTransfer));
       workspaceDirty=false;
       localSaveFailed=false;
@@ -433,10 +505,10 @@ window.addEventListener("beforeunload",event=>{
 function loadLocalWorkspace(lang) {
   const uid=ownerUid();
   if(!uid) return false;
-  const preferred=lang || localStorage.getItem(playgroundLanguageKey(uid)) || "java";
+  let preferred=lang||(guestMode?"web":"java");try{preferred=lang||localStorage.getItem(playgroundLanguageKey(uid))||preferred;}catch{}
   const chosen=PLAYGROUND_LANGUAGES.includes(preferred)?preferred:"java";
   const saved=readPlaygroundDraft(localStorage,uid,chosen);
-  createWorkspace(chosen,saved?.files,saved?.fileOrder,saved?.activeFilename);
+  createWorkspace(chosen,saved?.files,saved?.fileOrder,saved?.activeFilename,saved?.folders);
   workspaceDirty=false;
   localSaveFailed=false;
   showSaveStatus(saved?"Local draft loaded":"New workspace (not saved yet)");
@@ -463,6 +535,7 @@ async function exportZIP() {
   btn.innerHTML = `<span class="animate-spin">↻</span> Packing...`;
   try {
     const zip = new JSZip();
+    workspaceFolders.forEach(folder=>zip.folder(folder));
     for (const [name, file] of Object.entries(workspaceFiles)) {
       zip.file(name, file.model.getValue());
     }
@@ -481,13 +554,14 @@ async function exportZIP() {
 
 // Expose only an in-memory snapshot to the authenticated cloud backup module.
 window.adminervaPlaygroundState=function(){
-  if(practiceMode)return null;
+  if(practiceMode||!ownerUid()||(auth.currentUser?.uid||(guestMode?"public-visitor-v1":null))!==ownerUid())return null;
   const state=currentState();
   return {lang:state.lang,files:state.files,fileOrder:state.fileOrder,
-    activeFilename:state.activeFilename};
+    activeFilename:state.activeFilename,folders:state.folders};
 };
 window.adminervaRestorePlayground=function(state){
   if(practiceMode)return false;
+  if((auth.currentUser?.uid||(guestMode?"public-visitor-v1":null))!==ownerUid())return false;
   if(!validPlaygroundState(state))return false;
   const uid=ownerUid();
   if(!uid || !persistWorkspace())return false;
@@ -498,7 +572,7 @@ window.adminervaRestorePlayground=function(state){
     const next={...state,savedAt:new Date().toISOString()};
     localStorage.setItem(target,JSON.stringify(next));
     localStorage.setItem(playgroundLanguageKey(uid),state.lang);
-    createWorkspace(state.lang,state.files,state.fileOrder,state.activeFilename);
+    createWorkspace(state.lang,state.files,state.fileOrder,state.activeFilename,state.folders);
     workspaceDirty=false;
     localSaveFailed=false;
     showSaveStatus("Restored and saved on this device");
@@ -533,14 +607,14 @@ async function shareSnapshot() {
     files: {},
     fileOrder: fileOrder,
     timestamp: new Date().toISOString(),
-    ownerUid: auth.currentUser?.uid || "",
+    ownerUid: ownerUid() || "",
     visibility: "link",
   };
   for (const [name, file] of Object.entries(workspaceFiles))
     state.files[name] = file.model.getValue();
 
   try {
-    if (!auth.currentUser) throw Error("Sign in before sharing.");
+    if (!auth.currentUser || auth.currentUser.uid!==ownerUid()) throw Error("Sign in before sharing.");
     if (!validPlaygroundState(state)) throw Error("Add at least one valid file before sharing.");
     const docRef = await addDoc(collection(db, "playground_snapshots"), state);
     const link = `${window.location.origin}${window.location.pathname}?id=${docRef.id}`;
@@ -586,93 +660,72 @@ async function loadSnapshot(id) {
 // ==========================================
 // 5. EXECUTION ENGINE & DIAGNOSTICS
 // ==========================================
+function compilerEntry(){
+  const expected=languageConfig[currentLang].defaultFile;
+  const extension=expected.slice(expected.lastIndexOf('.'));
+  return workspaceFiles[expected]?expected:activeFilename.endsWith(extension)?activeFilename:fileOrder.find(path=>path.endsWith(extension));
+}
+async function executionPayload(){
+  const entry=compilerEntry();if(!entry)throw Error('Add a '+languageConfig[currentLang].defaultFile+' entry file before running.');
+  const stdin=document.getElementById('stdinInput')?.value||'';
+  if(fileOrder.length===1&&!entry.includes('/'))return {language_id:languageConfig[currentLang].judge0Id,source_code:workspaceFiles[entry].model.getValue(),stdin,cpu_time_limit:5,wall_time_limit:10};
+  if(workspaceFiles.compile||workspaceFiles.run)throw Error('The compiler reserves root files named compile and run. Rename those files before running this project.');
+  const quote=text=>"'"+text.replace(/'/g,"'\"'\"'")+"'";
+  const files=currentState().files,zip=new JSZip();
+  for(const [path,content] of Object.entries(files))zip.file(path,content);
+  let compile='',run='';
+  if(currentLang==='java'){
+    const javaFiles=fileOrder.filter(path=>path.endsWith('.java'));
+    compile='javac -d . '+javaFiles.map(quote).join(' ');
+    const source=files[entry],pkg=source.match(/^\s*package\s+([\w.]+)\s*;/m)?.[1];
+    const main=(pkg?pkg+'.':'')+entry.split('/').at(-1).replace(/\.java$/,'');
+    run='java '+quote(main);
+  }else if(currentLang==='python')run='export PYTHONPATH=".:\$'+'{PYTHONPATH:-}"\npython3 '+quote(entry);
+  else if(currentLang==='cpp')compile='g++ -std=c++17 -O0 -I . -I '+quote(entry.split('/').slice(0,-1).join('/')||'.')+' '+fileOrder.filter(path=>/\.(cpp|cc|cxx)$/.test(path)).map(quote).join(' ')+' -o adminerva-program',run='./adminerva-program';
+  else if(currentLang==='csharp')compile='mcs -out:adminerva-program.exe '+fileOrder.filter(path=>path.endsWith('.cs')).map(quote).join(' '),run='mono adminerva-program.exe';
+  else if(currentLang==='dart')run='dart '+quote(entry);
+  zip.file('compile','#!/bin/bash\nset -e\n'+(compile||'true')+'\n');zip.file('run','#!/bin/bash\nset -e\n'+run+'\n');
+  return {language_id:89,additional_files:await zip.generateAsync({type:'base64'}),stdin,cpu_time_limit:5,wall_time_limit:10};
+}
 async function executeCode() {
-  const end = window.beginLoading?.("Running code…") || (() => {});
-  try {
-  const runBtn = document.getElementById("runBtn");
-  const overlay = document.getElementById("executionOverlay");
-  const consoleOut = document.getElementById("consoleOutput");
-
-  if (runBtn) {
-    runBtn.disabled = true;
-    runBtn.classList.add("opacity-50");
-  }
-  if (overlay) overlay.classList.remove("hidden");
-
-  Object.values(workspaceFiles).forEach((f) =>
-    monaco.editor.setModelMarkers(f.model, "judge0", []),
-  );
-
-  if (currentLang === "web") {
-    if (consoleOut)
-      consoleOut.textContent =
-        "Web Preview Running...\n\n--- Console Logs ---\n";
-    executeWebPreview();
-    if (runBtn) {
-      runBtn.disabled = false;
-      runBtn.classList.remove("opacity-50");
+  if(executionController)return;
+  const runBtn=document.getElementById('runBtn'),overlay=document.getElementById('executionOverlay'),consoleOut=document.getElementById('consoleOutput'),label=document.getElementById('executionStage');
+  const sequence=++executionSequence,controller=new AbortController(),entry=compilerEntry(),runLanguage=currentLang;executionController=controller;
+  const start=Date.now();let stage='Preparing project';
+  const update=()=>{if(label)label.textContent=stage+' · '+Math.floor((Date.now()-start)/1000)+'s';};
+  const clock=setInterval(update,500),timeout=setTimeout(()=>{stage='Compiler timed out';controller.abort();},45000);
+  runBtn.disabled=true;overlay?.classList.remove('hidden');update();
+  try{
+    persistWorkspace();Object.values(workspaceFiles).forEach(file=>monaco.editor.setModelMarkers(file.model,'judge0',[]));
+    if(currentLang==='web'){
+      consoleOut.textContent='Local preview · no compiler queue\n\n';executeWebPreview();notePracticeExecution();return;
     }
-    if (overlay) overlay.classList.add("hidden");
-    notePracticeExecution();
-    return;
-  }
-
-  if (consoleOut) consoleOut.textContent = "";
-  try {
-    const config = languageConfig[currentLang];
-    let mainContent =
-      workspaceFiles[config.defaultFile]?.model.getValue() || "";
-    let base64Zip = null;
-    const fileKeys = Object.keys(workspaceFiles);
-
-    if (fileKeys.length > 1) {
-      const zip = new JSZip();
-      fileKeys.forEach((name) => {
-        if (name !== config.defaultFile)
-          zip.file(name, workspaceFiles[name].model.getValue());
-      });
-      base64Zip = await zip.generateAsync({ type: "base64" });
-    }
-
-    const payload = {
-      source_code: mainContent,
-      language_id: config.judge0Id,
-      stdin: document.getElementById("stdinInput")?.value || "",
+    consoleOut.textContent='';const payload=await executionPayload();
+    const request=async(url,options={})=>{
+      const response=await fetch(url,{...options,signal:controller.signal});
+      if(!response.ok)throw Error(response.status===429?'Compiler is busy. Please retry shortly.':response.status===401||response.status===403?'The compiler service is not accepting public requests. Export your project or try again later.':'Compiler service returned status '+response.status+'.');
+      return response.json();
     };
-    if (base64Zip) payload.additional_files = base64Zip;
-
-    const res = await fetch(
-      "https://ce.judge0.com/submissions?base64_encoded=false&wait=true",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      },
-    );
-    const result = await res.json();
-
-    if (consoleOut) {
-      if (result.stderr || result.compile_output) {
-        const errText = result.stderr || result.compile_output;
-        consoleOut.innerHTML = `<span class="text-rose-400">${escapeHTML(errText)}</span>\n${escapeHTML(result.stdout || "")}`;
-        applyVisualDiagnostics(errText, config.defaultFile);
-      } else {
-        consoleOut.textContent =
-          result.stdout || "Program exited with no output.";
-      }
+    stage='Sending to compiler';update();
+    let result=await request('https://ce.judge0.com/submissions?base64_encoded=false&wait=false',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    if(!result.token)throw Error('The compiler did not return a run token. Retry shortly.');
+    const token=result.token;
+    while(!result.status||result.status.id<=2){
+      stage=result.status?.id===2?'Compiling and running':'Waiting in compiler queue';update();
+      await new Promise((resolve,reject)=>{const onAbort=()=>{clearTimeout(timer);reject(new DOMException('Cancelled','AbortError'));};const timer=setTimeout(()=>{controller.signal.removeEventListener('abort',onAbort);resolve();},900);if(controller.signal.aborted)onAbort();else controller.signal.addEventListener('abort',onAbort,{once:true});});
+      result=await request('https://ce.judge0.com/submissions/'+encodeURIComponent(token)+'?base64_encoded=false&fields=stdout,stderr,compile_output,message,status,time,memory');
     }
-  } catch (error) {
-    if (consoleOut)
-      consoleOut.innerHTML = `<span class="text-rose-400">Execution Error: ${error.message}</span>`;
-  } finally {
-    if (overlay) overlay.classList.add("hidden");
-    if (runBtn) {
-      runBtn.disabled = false;
-      runBtn.classList.remove("opacity-50");
-    }
+    if(sequence!==executionSequence)return;
+    if(controller.signal.aborted)throw new DOMException('Cancelled','AbortError');
+    const error=result.compile_output||result.stderr;
+    consoleOut.textContent=(error?error+'\n':'')+(result.stdout||(!error?'Program exited with no output.':''))+'\n\n'+(result.status.description||'Finished')+(result.time?' · execution '+result.time+'s':'');
+    if(error&&currentLang===runLanguage)applyVisualDiagnostics(error,entry);
+    if(result.status.id>3&&!error)consoleOut.textContent+='\n'+String(result.message||'Review the execution status above.');
     notePracticeExecution();
-  }
-  } finally { end(); }
+  }catch(error){
+    if(sequence!==executionSequence)return;
+    consoleOut.textContent=controller.signal.aborted?(stage==='Compiler timed out'?'The compiler did not finish within 45 seconds. Your code is saved. Retry, or export the project to run locally.':'Run cancelled. Your code is unchanged. The remote service may finish the already submitted job.'):'Execution unavailable: '+error.message+'\nYour code is saved on this device when browser storage is available.';
+  }finally{clearTimeout(timeout);clearInterval(clock);executionController=null;runBtn.disabled=false;overlay?.classList.add('hidden');}
 }
 
 function applyVisualDiagnostics(errorText, defaultFile) {
@@ -705,54 +758,16 @@ function applyVisualDiagnostics(errorText, defaultFile) {
 }
 
 function executeWebPreview() {
-  let html = workspaceFiles["index.html"]?.model.getValue() || "";
-  let css = "",
-    js = "";
-
-  for (const [name, file] of Object.entries(workspaceFiles)) {
-    if (name.endsWith(".css")) css += `<style>${file.model.getValue()}</style>`;
-    if (name.endsWith(".js")) {
-      let guardedJS =
-        `window.__adminerva_loop_start = Date.now();\n` +
-        file.model
-          .getValue()
-          .replace(
-            /(for\s*\(.*?\)\s*\{|while\s*\(.*?\)\s*\{|do\s*\{)/g,
-            (match) => {
-              return (
-                match +
-                ` if (Date.now() - window.__adminerva_loop_start > 2000) { console.error('Adminerva Timeout Guard: Infinite loop broken.'); break; } `
-              );
-            },
-          );
-      js += `<script>${guardedJS}</script>`;
-    }
-  }
-
-  const consoleHook = `
-    <script>
-      const _log = console.log, _warn = console.warn, _err = console.error;
-      console.log = function(...args) { _log(...args); window.parent.postMessage({type: 'console', method: 'log', data: args.join(' ')}, '*'); };
-      console.warn = function(...args) { _warn(...args); window.parent.postMessage({type: 'console', method: 'warn', data: args.join(' ')}, '*'); };
-      console.error = function(...args) { _err(...args); window.parent.postMessage({type: 'console', method: 'error', data: args.join(' ')}, '*'); };
-      window.onerror = function(msg, url, line) { console.error(msg + ' (Line ' + line + ')'); return false; };
-    </script>
-  `;
-
-  if (html.includes("</head>"))
-    html = html.replace("</head>", consoleHook + css + "</head>");
-  else html = consoleHook + css + html;
-
-  if (html.includes("</body>")) html = html.replace("</body>", js + "</body>");
-  else html += js;
-
-  const iframe = document.getElementById("webPreviewFrame");
-  if (iframe) iframe.srcdoc = html;
+  const files=currentState().files,entry=activeFilename.endsWith('.html')?activeFilename:'index.html';
+  let html=bundleWebProject(files,entry);
+  const hook='<script>for(const method of ["log","warn","error"]){const original=console[method];console[method]=(...args)=>{original.apply(console,args);parent.postMessage({type:"console",method,data:args.map(x=>typeof x==="object"?JSON.stringify(x):String(x)).join(" ")},"*");};}window.onerror=(message)=>console.error(message);<\/script>';
+  html=html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/i,match=>match+hook);
+  const iframe=document.getElementById('webPreviewFrame');if(iframe)iframe.srcdoc=html;
 }
 
 function setupWebConsoleHook() {
   window.addEventListener("message", function (e) {
-    if (e.data && e.data.type === "console") {
+    if (e.source===document.getElementById("webPreviewFrame")?.contentWindow && e.data && e.data.type === "console") {
       const consoleOut = document.getElementById("consoleOutput");
       if (!consoleOut) return;
       let colorClass = "text-slate-300";
@@ -829,7 +844,7 @@ function enablePracticeSandbox(){
   const label=document.getElementById("practiceSandboxBanner");
   const link=document.getElementById("practiceReturnLink");
   if(label)label.classList.remove("hidden");
-  if(link)link.href=practiceReturnUrl(practiceTransfer);
+  if(link)link.href=practiceTransfer.returnPage==="guest-practice.html"?practiceReturnUrl(practiceTransfer).replace("student-practice.html","guest-practice.html"):practiceReturnUrl(practiceTransfer);
   // This workspace is temporary. Never allow saving it over personal projects
   // or uploading it to the student's regular cloud version history.
   for(const id of ["languageSelect","cloudSaveProjectBtn","cloudLoadProjectBtn",
@@ -851,7 +866,30 @@ function notePracticeExecution(){
   }catch(error){console.warn("Could not record practice run:",error)}
 }
 function bindUIEvents() {
-  // Using optional chaining (?.) so missing buttons don't crash the script
+  document.getElementById('newProjectFile')?.addEventListener('click',()=>window.promptNewFile());
+  document.getElementById('newProjectFolder')?.addEventListener('click',newFolder);
+  document.getElementById('renameProjectItem')?.addEventListener('click',renameSelection);
+  document.getElementById('deleteProjectItem')?.addEventListener('click',deleteSelection);
+  document.getElementById('cancelRunBtn')?.addEventListener('click',()=>executionController?.abort());
+  document.getElementById('importZipBtn')?.addEventListener('click',()=>document.getElementById('projectZipInput')?.click());
+  document.getElementById('projectZipInput')?.addEventListener('change',async event=>{
+    const upload=event.target.files[0];event.target.value='';if(!upload)return;
+    try{
+      if(upload.size>3000000)throw Error('Import a ZIP smaller than 3 MB.');
+      const zip=await JSZip.loadAsync(upload),files={},folders=[];let size=0;
+      for(const entry of Object.values(zip.files)){
+        const raw=entry.unsafeOriginalName||entry.name;const path=projectPath(raw.replace(/\/$/,''));
+        if(entry.dir){folders.push(path);continue;}
+        if(Object.keys(files).length>=100)throw Error('Import up to 100 files.');
+        const text=await entry.async('string');size+=text.length;if(size>700000)throw Error('Import up to 700,000 characters of source.');files[path]=text;
+      }
+      if(!Object.keys(files).length)throw Error('No files found in this ZIP.');
+      if(!confirm('Replace the editor with '+Object.keys(files).length+' imported files? Current work will be backed up on this device.'))return;
+      if(!window.adminervaRestorePlayground({...currentState(),files,folders,fileOrder:Object.keys(files),activeFilename:Object.keys(files)[0]}))throw Error('The current draft could not be backed up. Export it first.');
+    }catch(error){alert('Import failed: '+error.message);}
+  });
+  document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();persistWorkspace();}if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();void executeCode();}});
+  // Optional controls can be omitted in the guest interface.
   document
     .getElementById("languageSelect")
     ?.addEventListener("change", (e) => {
@@ -866,7 +904,7 @@ function bindUIEvents() {
   document.getElementById("runBtn")?.addEventListener("click", executeCode);
   document.getElementById("exportZipBtn")?.addEventListener("click", exportZIP);
   document.getElementById("saveProjectBtn")?.addEventListener("click", () => {
-    if(persistWorkspace())alert("Workspace saved on this device.");
+    if(persistWorkspace())showSaveStatus("Saved on this device");
     else alert("Save failed. Please export a ZIP before leaving this page.");
   });
   document

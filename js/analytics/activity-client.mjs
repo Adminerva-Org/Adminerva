@@ -1,9 +1,9 @@
-import {resolveStaffRole} from "../core/staff-session.mjs?v=1.1.0";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
 /** Opt-in activity client; never records text, URLs, selectors, code, credentials or anonymous visitors. */
-import {auth, db} from "../core/firebase-core.js";
+import {auth, db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {doc, getDocFromServer, setDoc, addDoc, collection, getDocs, query, where, serverTimestamp, Timestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {pageForPath, safeStep, activeInterval, diagnosticPayload} from "./activity-model.mjs?v=2026.10.19.3";
+import {pageForPath, safeStep, activeInterval, diagnosticPayload} from "./activity-model.mjs?v=1.3.0";
 
 const page = pageForPath(location.pathname);
 let owner = null, profile = null, steps = [], diagnostics = false, generation = 0;

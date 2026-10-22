@@ -1,4 +1,5 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "../lesson-review/workspace-session.mjs?v=1.1.0";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "../lesson-review/workspace-session.mjs?v=1.3.0";
+import {loadSchoolOptions,fillSchoolDatalist} from "../core/school-options.mjs?v=1.3.0";
 /** Scoped product configuration and staff preferences: settings lesson. */
 import {
   doc,
@@ -14,7 +15,7 @@ const safeSet = (id, val) => {
 const safeGet = (id) =>
   document.getElementById(id) ? document.getElementById(id).value.trim() : "";
 
-window.populateSettingsSubjectDropdown = function () {
+window.populateSettingsSubjectDropdown = async function () {
   const dataList = document.getElementById("savedSubjectsList");
   if (!dataList) return;
 
@@ -30,6 +31,7 @@ window.populateSettingsSubjectDropdown = function () {
     option.value = sub;
     dataList.appendChild(option);
   });
+  try{const options=await loadSchoolOptions({schoolYear:document.getElementById("lpSchoolYear")?.value||""});fillSchoolDatalist("savedSubjectsList",[...subjects,...options.subjects]);}catch{/* Existing personal subject suggestions remain available. */}
 };
 
 window.loadLessonReviewSettings = async function () {
@@ -146,6 +148,7 @@ window.loadLessonReviewSettings = async function () {
   if(scope)scope.textContent=window.currentLessonSettings?"Editing this lesson's document settings only. Save the lesson afterward. Account defaults and header format stay unchanged.":"Editing account-wide planning defaults.";
   safeSet("setTeacherName", data.teacher_name);
   safeSet("setSubjectTitle", data.subject_title);
+  const plannerSubject=document.getElementById("lpSubject");if(plannerSubject&&!plannerSubject.value)plannerSubject.value=data.subject_title;
   safeSet("setPrelimActivities", data.default_prelim);
   safeSet("setClosingActivities", data.default_closing);
   safeSet("sigTeacher", data.sig_teacher);

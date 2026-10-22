@@ -1,7 +1,8 @@
+import {loadPublishedGrades} from "./published-grades.mjs?v=1.3.0";
 /** Student submissions, practice progress and isolated code workspaces: assessments. */
-import { db, auth } from "../core/firebase-core.js";
-import { cleanGradeFeedback } from "../core/feedback-format.mjs";
-import {asDate,assessmentStatus,assessmentTargetDetails} from "./assessment-state.mjs?v=2026.10.18.4";
+import { db, auth } from "../core/firebase-core.js?v=1.3.0";
+import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
+import {asDate,assessmentStatus,assessmentTargetDetails} from "./assessment-state.mjs?v=1.3.0";
 import {
   collection,
   getDocs,
@@ -139,13 +140,7 @@ async function fetchAssessments() {
   }
   if (studentId) {
     try {
-      const gradeSnap = await getDocs(
-        query(
-          collection(db, "student_grades"),
-          where("studentId", "==", studentId),
-        where("published", "==", true),
-        ),
-      );
+      const gradeSnap = await loadPublishedGrades(studentId);
       if(!isCurrent())return;
       gradeSnap.forEach((d) => {
         const data = d.data();

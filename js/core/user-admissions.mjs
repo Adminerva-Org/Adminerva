@@ -1,7 +1,8 @@
-import {auth,db} from "./firebase-core.js";
+import {auth,db} from "./firebase-core.js?v=1.3.0";
 import {collection,getDocs,query,orderBy,limit} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {resolveStaffRole} from "./staff-session.mjs?v=1.1.0";
-import {matchingStudentRecords,decideAdmission} from "./admission-service.mjs?v=1.2.0";
+import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
+import {matchingStudentRecords,decideAdmission} from "./admission-service.mjs?v=1.3.0";
+import {loadSchoolOptions,fillSchoolDatalist} from "./school-options.mjs?v=1.3.0";
 const field=id=>document.getElementById(id);
 let opened=null,busy=false,selection=0;
 function status(message){field("admission-status").textContent=message;}
@@ -52,5 +53,5 @@ field("admission-form").onsubmit=async event=>{
 await auth.authStateReady();
 if(await resolveStaffRole(auth.currentUser)==="admin")try{
   field("admissions").hidden=false;await refresh();
-  try{const roster=await getDocs(query(collection(db,"students"),limit(1000))),names=[...new Set(roster.docs.map(record=>record.data().section).filter(name=>typeof name==="string"&&name.trim()))].sort();field("admission-section-choices").replaceChildren(...names.map(name=>new Option(name,name)));}catch{/* Section suggestions are optional; the administrator may enter an exact name. */}
+  try{const choices=await loadSchoolOptions();fillSchoolDatalist("admission-section-choices",choices.sections);}catch{/* Exact section names can still be entered when suggestions are unavailable. */}
 }catch{status("Guest requests could not load. Check your connection and administrator permissions.");}

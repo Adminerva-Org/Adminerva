@@ -1,8 +1,7 @@
 name: V2 review browser validation
 on:
-  pull_request:
-    branches: [main, feature/review-workflow-and-student-labs]
   workflow_dispatch:
+
 permissions:
   contents: read
 jobs:

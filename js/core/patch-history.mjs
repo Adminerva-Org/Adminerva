@@ -1,5 +1,5 @@
 /** Shared navigation, account access, reporting and release infrastructure: patch history. */
-import {validReleaseId} from "./release-version.mjs?v=2026.10.21.1-dev.1";
+import {validReleaseId} from "./release-version.mjs?v=1.3.0";
 const categories=new Set(["New","Updated","Fixed","Revised","Removed"]);
 const text=(value,max)=>typeof value==="string"?value.trim().slice(0,max):"";
 const releaseTime=value=>Date.parse(value+"T00:00:00+08:00");

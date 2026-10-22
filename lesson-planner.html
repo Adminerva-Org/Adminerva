@@ -72,11 +72,11 @@
         }
       }
     </style>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.2.0" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.3.0" />
 </head>
   <body class="bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="lesson" data-page="planner"></div>
-    <script src="js/core/adminerva-nav.js?v=1.2.0"></script>
+    <script src="js/core/adminerva-nav.js?v=1.3.0"></script>
 
     <!-- Main Workspace -->
     <div
@@ -124,7 +124,7 @@
             >
             <input
               type="text"
-              id="lpSchoolYear"
+              id="lpSchoolYear" list="plannerSchoolYears"
               value="2026-2027"
               class="w-full p-3 sm:p-2 border border-gray-300 rounded text-base sm:text-sm bg-gray-50 focus:ring-blue-500 focus:outline-none"
             />
@@ -202,6 +202,8 @@
           </div>
         </div>
 
+        <div class="av-form-grid mb-4"><label for="lpSubject" class="font-semibold text-sm">Subject for this lesson<input id="lpSubject" list="plannerSubjectChoices" placeholder="Select or enter the school subject" class="w-full p-3 border rounded"><datalist id="plannerSubjectChoices"></datalist></label><label for="lpProgram" class="font-semibold text-sm">Track or pathway <span class="av-form-hint">Optional school context</span><input id="lpProgram" list="plannerProgramChoices" placeholder="Choose an offering if relevant" class="w-full p-3 border rounded"><datalist id="plannerProgramChoices"></datalist></label></div><datalist id="plannerSchoolYears"></datalist>
+        <div class="av-button-row mb-4"><p id="plannerCatalogStatus" class="av-form-hint" role="status">Loading school subjects and sections…</p><button type="button" class="av-secondary-button" onclick="refreshPlannerSchoolChoices()">Refresh school choices</button></div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-5">
           <div>
             <label
@@ -613,13 +615,15 @@
           <div
             class="flex flex-wrap sm:flex-nowrap items-center gap-3 sm:gap-4 w-full sm:w-auto justify-between sm:justify-end"
           >
+            <label id="modalOwnerControl" hidden class="text-xs font-semibold">Teacher workspace<select id="modalOwnerFilter" onchange="changeLessonPlanOwner()" class="w-full p-2 border rounded"><option value="">My lesson plans</option></select></label>
+            <label for="modalSyFilter" class="text-xs font-semibold">School year
             <select
-              id="modalSyFilter"
+              id="modalSyFilter" aria-label="Filter saved lesson plans by school year"
               onchange="openLoadPlanModal()"
               class="flex-1 sm:flex-none p-3 sm:p-1.5 border border-gray-300 rounded text-base sm:text-sm font-bold text-blue-900 bg-blue-50 focus:ring-blue-500 shadow-sm cursor-pointer focus:outline-none"
-            ></select>
+            ><option value="">No saved school years yet</option></select></label>
             <div class="flex items-center gap-2 sm:gap-3">
-              <button
+              <button id="lessonArchiveBtn"
                 onclick="openArchiveManager()"
                 class="text-xs sm:text-xs bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 font-bold px-3 py-3 sm:py-1.5 rounded transition border border-gray-200 shadow-sm flex items-center gap-1"
               >
@@ -635,6 +639,8 @@
             </div>
           </div>
         </div>
+        <p id="savedPlanScope" class="av-form-hint" role="status">Your own saved plans, grouped by school year, academic term, subject and grade.</p>
+        <a id="savedPlanRecoveryLink" href="teacher-accounts.html#legacy-recovery" class="hidden text-sm underline text-blue-700 mb-3">Recover older school lessons into the original teacher’s workspace</a>
         <div
           id="savedPlansListContainer"
           class="overflow-y-auto space-y-3 flex-1 pr-1 sm:pr-2"
@@ -882,13 +888,14 @@
     </script>
 
     <script src="https://cdn.jsdelivr.net/npm/html-docx-js/dist/html-docx.min.js"></script>
-    <script type="module" src="js/lesson-review/app-ui.js?v=1.1.0"></script>
-    <script src="js/core/adminerva-loader.js?v=1.2.0"></script>
-    <script type="module" src="js/core/auth-guard.js?v=1.2.0"></script>
-    <script type="module" src="js/lesson-review/lesson-firebase.js?v=1.1.0"></script>
-    <script type="module" src="js/lesson-review/ai-engine.js?v=1.1.0"></script>
-    <script type="module" src="js/lesson-review/document-exporter.js?v=1.1.0"></script>
+    <script type="module" src="js/lesson-review/app-ui.js?v=1.3.0"></script>
+    <script src="js/core/adminerva-loader.js?v=1.3.0"></script>
+    <script type="module" src="js/core/auth-guard.js?v=1.3.0"></script>
+    <script type="module" src="js/lesson-review/lesson-firebase.js?v=1.3.0"></script>
+    <script type="module" src="js/lesson-review/planner-school-options.mjs?v=1.3.0"></script>
+    <script type="module" src="js/lesson-review/ai-engine.js?v=1.3.0"></script>
+    <script type="module" src="js/lesson-review/document-exporter.js?v=1.3.0"></script>
     <!-- 🚀 NEW: Importing the existing settings logic so we don't duplicate code -->
-    <script type="module" src="js/settings/settings-lesson.js?v=1.1.0"></script>
+    <script type="module" src="js/settings/settings-lesson.js?v=1.3.0"></script>
   </body>
 </html>
