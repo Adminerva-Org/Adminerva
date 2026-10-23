@@ -1,4 +1,6 @@
 import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.3.0";
+import { printLesson } from "./lesson-print.mjs?v=1.3.1";
+import {exportLessonToGoogleDocs,buildGoogleDocsSource} from "./google-docs-export.mjs?v=1.3.1";
 /** School-format lesson document construction and export. */
 import {
   doc,
@@ -8,9 +10,6 @@ const escapePrintText=value=>String(value??"").replace(/[&<>"']/g,c=>({
 "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
 })[c]);
 const linesForPrint=value=>escapePrintText(value).replace(/\\n|\n/g,"<br>");
-const GOOGLE_CLIENT_ID =
-  "902176956124-i9vcin925le0d9jghr4afn56q7n53gl5.apps.googleusercontent.com";
-const GOOGLE_EXPORT_SCOPE = "https://www.googleapis.com/auth/drive.file";
 
 window.formatListForPrint = function (text, isOrdered = true) {
   if (!text) return "";
@@ -119,12 +118,22 @@ window.buildDocumentLayout = async function () {
     headerImgEl.style.display = "block";
     headerImgEl.style.margin = "0 auto";
     if (headerContainer) headerContainer.classList.remove("hidden");
+  } else if (headerImgEl) {
+    headerImgEl.removeAttribute("src");
+    headerImgEl.classList.add("hidden");
+    if (headerContainer) headerContainer.classList.add("hidden");
   }
 
   const rawSY = document.getElementById("lpSchoolYear").value || "2026-2027";
   document.getElementById("printMainTitle").textContent =
     `CURRICULUM MAP / LEARNING PLAN IN ${rawSubject.toUpperCase()}`;
   document.getElementById("printSYHeader").textContent = `SCHOOL YEAR ${rawSY}`;
+  const contextLine = document.getElementById("printContextLine");
+  if (contextLine) contextLine.textContent = [
+    document.getElementById("lpGradeLevel")?.value,
+    document.getElementById("lpProgram")?.value,
+    rawTeacher,
+  ].filter(Boolean).join(" · ");
 
   const termStr = document.getElementById("lpAcademicTerm").value;
   const [semStr, qtrStr] = termStr.split("/");
@@ -292,254 +301,30 @@ window.buildDocumentLayout = async function () {
   return true;
 };
 
-window.exportPDF = async function () {
-  const isReady = await window.buildDocumentLayout();
-  if (isReady) {
-    setTimeout(() => {
-      window.print();
-    }, 300);
-  }
-};
-
-window.saveAndPrint = async function () {
-  const isSaved = await window.saveLessonPlan();
-  const isReady = await window.buildDocumentLayout();
-  if (isSaved && isReady) {
-    setTimeout(() => {
-      window.print();
-    }, 300);
-  }
-};
+window.exportPDF = () => printLesson();
+window.saveAndPrint = () => printLesson({ saveFirst: true });
 
 window.exportToGoogleDocs = function () {
-  if (typeof htmlDocx === "undefined")
-    return alert("The Document generator is still loading. Please wait.");
-  if (typeof google === "undefined" ||
-      typeof google.accounts?.oauth2?.initTokenClient !== "function")
-    return alert("Google scripts failed to load. Please refresh the page.");
-
-  const tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: GOOGLE_CLIENT_ID,
-    scope: GOOGLE_EXPORT_SCOPE,
-    include_granted_scopes: false,
-    error_callback: (error) => {
-      const message = error?.type === "popup_failed_to_open"
-        ? "Allow popups for this website, then try Export to Google Docs again."
-        : error?.type === "popup_closed"
-          ? "Google authorization was closed before access was granted. No document was created."
-          : "Google Docs authorization could not finish. Ask your administrator to check the export client's website address and Google API setup.";
-      alert(message);
-    },
-    callback: async (tokenResponse) => {
-      if (tokenResponse?.error) {
-        const message = tokenResponse.error === "access_denied"
-          ? "Google Drive export permission was not granted. No document was created."
-          : "Google Docs authorization failed. Ask your administrator to check the export client's allowed website address and Google API setup.";
-        return alert(message);
-      }
-      if (!tokenResponse?.access_token ||
-          !google.accounts.oauth2.hasGrantedAllScopes(tokenResponse, GOOGLE_EXPORT_SCOPE))
-        return alert("Google Drive export permission was not granted. No document was created.");
-      try {
-        window.showSubtleLoader?.("Exporting and formatting Google Doc...");
-        const isReady = await window.buildDocumentLayout();
-        if (isReady) await processAndUploadToDrive(tokenResponse.access_token);
-      } catch {
-        alert("Google Docs export could not be prepared. Your saved lesson was not changed; refresh the page and try again.");
-      } finally {
-        window.hideSubtleLoader?.();
-      }
+  if (!window.currentPlan?.length || !window.currentWeeklyOverview)
+    return alert("Generate or load a lesson plan before exporting.");
+  exportLessonToGoogleDocs({
+    accountUid: workspaceUid,
+    assertAccount: assertWorkspaceAccount,
+    loginHint: () => window.auth?.currentUser?.email || "",
+    prepare: async (uid) => {
+      const ready = await window.buildDocumentLayout();
+      assertWorkspaceAccount(uid);
+      if (!ready) throw Error("The lesson could not be prepared for export.");
+      const grade = String(window.currentTargetGrade || "11").replace(/\D/g, "") || "11";
+      const subject = window.currentLessonSettings?.subject_title || window.currentPlanSubject ||
+        lessonStorage.getItem("lessonReview_defaultSubject") || "Subject";
+      const shortSubject = String(subject).split(/\s+/).map(word => /\d/.test(word) ? word : word.slice(0, 4)).join("").replace(/[^a-zA-Z0-9]/g, "") || "Subject";
+      const term = document.getElementById("lpAcademicTerm")?.value || "";
+      const semester = term.includes("SECOND SEMESTER") ? "2" : "1";
+      const quarter = term.includes("FOURTH QUARTER") ? "4" : term.includes("THIRD QUARTER") ? "3" : term.includes("SECOND QUARTER") ? "2" : "1";
+      const week = (document.getElementById("lpCourseWeek")?.value || "").replace(/\D/g, "") || "1";
+      const filename = `${grade}-Sem${semester},Qtr${quarter},W${week}(${shortSubject})`;
+      return buildGoogleDocsSource(document.getElementById("printDocumentWrapper"), filename);
     },
   });
-  tokenClient.requestAccessToken();
 };
-
-async function processAndUploadToDrive(accessToken) {
-  let uploadedDocumentId=null;
-  const rawGrade = window.currentTargetGrade.replace(/\D/g, "") || "11";
-  const rawSubject =
-    lessonStorage.getItem("lessonReview_defaultSubject") || "Subject";
-  const shortSubject = rawSubject
-    .split(/\s+/)
-    .map((w) => (w.match(/\d+/) ? w : w.substring(0, 4)))
-    .join("")
-    .replace(/[^a-zA-Z0-9]/g, "");
-
-  const term = document.getElementById("lpAcademicTerm").value;
-  const semNum = term.includes("SECOND SEMESTER") ? "2" : "1";
-  let qtrNum = "1";
-  if (term.includes("SECOND QUARTER")) qtrNum = "2";
-  if (term.includes("THIRD QUARTER")) qtrNum = "3";
-  if (term.includes("FOURTH QUARTER")) qtrNum = "4";
-
-  const anchoredWeek = document
-    .getElementById("lpCourseWeek")
-    .value.replace(/\D/g, "");
-  const filename = `${rawGrade}-Sem${semNum},Qtr${qtrNum},W${anchoredWeek}(${shortSubject})`;
-
-  const printWrapper = document.getElementById("printDocumentWrapper");
-  let cleanHtml = printWrapper.innerHTML;
-  cleanHtml = cleanHtml.replace(/>\s+</g, "><");
-  cleanHtml = cleanHtml.replace(/(<\/div>|<img[^>]+>)\s*<br\s*\/?>/gi, "$1");
-  cleanHtml = cleanHtml.replace(
-    /<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi,
-    '<div style="font-weight: bold; text-align: center; margin: 0; padding: 0; font-size: 14pt;">$1</div>',
-  );
-  cleanHtml = cleanHtml.replace(
-    /<img /gi,
-    '<img height="80" style="margin: 0 auto; display: block;" ',
-  );
-  cleanHtml = cleanHtml.replace(/<th\b/gi, "<td").replace(/<\/th>/gi, "</td>");
-  cleanHtml = cleanHtml.replace(/#b4c6e7;/gi, "#b4c6e7; font-weight: bold;");
-
-  const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <style>
-                /* 🚀 FIX: Force zero margins on the body and all blocks */
-                body, div, p { margin: 0; padding: 0; font-family: 'Arial Narrow', Arial, sans-serif; font-size: 10pt; color: #333; }
-                table { border-collapse: collapse; margin-top: 10px; width: 100%; }
-                td { border: 1px solid #000; padding: 6px 8px; font-size: 10pt; vertical-align: top; }
-            </style>
-        </head>
-        <body>
-            ${cleanHtml}
-        </body> 
-        </html>
-    `;
-
-  const metadata = {
-    name: filename,
-    mimeType: "application/vnd.google-apps.document",
-  };
-
-  const boundary = "-------314159265358979323846";
-  const delimiter = "\r\n--" + boundary + "\r\n";
-  const close_delim = "\r\n--" + boundary + "--";
-
-  const multipartBody =
-    delimiter +
-    "Content-Type: application/json\r\n\r\n" +
-    JSON.stringify(metadata) +
-    delimiter +
-    "Content-Type: text/html\r\n\r\n" +
-    htmlContent +
-    close_delim;
-
-  try {
-    const response = await fetch(
-      "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": `multipart/related; boundary=${boundary}`,
-        },
-        body: multipartBody,
-      },
-    );
-
-    if (!response.ok) throw new Error(`Upload failed: ${response.statusText}`);
-
-    const result = await response.json();
-    const docId = result.id;
-    uploadedDocumentId=docId;
-    if(!docId)throw Error("Google Drive did not return a document ID.");
-
-    const docResponse = await fetch(
-      `https://docs.googleapis.com/v1/documents/${docId}`,
-      {
-        method: "GET",
-        headers: { Authorization: `Bearer ${accessToken}` },
-      },
-    );
-    if(!docResponse.ok)throw Error("Could not inspect the generated Google Doc: HTTP "+docResponse.status);
-    const docData = await docResponse.json();
-    if(!Array.isArray(docData?.body?.content))throw Error("Google Docs returned an unexpected document structure.");
-
-    const tables = [];
-    for (const element of docData.body.content) {
-      if (element.table) {
-        tables.push(element.startIndex);
-      }
-    }
-
-    const requests = [
-      {
-        updateDocumentStyle: {
-          documentStyle: {
-            pageSize: {
-              width: { magnitude: 936, unit: "PT" },
-              height: { magnitude: 612, unit: "PT" },
-            },
-            marginTop: { magnitude: 36, unit: "PT" },
-            marginBottom: { magnitude: 36, unit: "PT" },
-            marginLeft: { magnitude: 36, unit: "PT" },
-            marginRight: { magnitude: 36, unit: "PT" },
-          },
-          fields: "pageSize,marginTop,marginBottom,marginLeft,marginRight",
-        },
-      },
-    ];
-
-    if (tables.length > 0) {
-      // 🚀 FIX: Reduced Materials & Remarks from 121 to 90. Added the saved width to Activities (276 -> 338).
-      const mainWidths = [69, 121, 121, 35, 338, 90, 90];
-      mainWidths.forEach((width, index) => {
-        requests.push({
-          updateTableColumnProperties: {
-            tableStartLocation: { index: tables[0] },
-            columnIndices: [index],
-            tableColumnProperties: {
-              widthType: "FIXED_WIDTH",
-              width: { magnitude: width, unit: "PT" },
-            },
-            fields: "width,widthType",
-          },
-        });
-      });
-    }
-
-    if (tables.length > 1) {
-      const sigWidths = [216, 216, 216, 216];
-      sigWidths.forEach((width, index) => {
-        requests.push({
-          updateTableColumnProperties: {
-            tableStartLocation: { index: tables[1] },
-            columnIndices: [index],
-            tableColumnProperties: {
-              widthType: "FIXED_WIDTH",
-              width: { magnitude: width, unit: "PT" },
-            },
-            fields: "width,widthType",
-          },
-        });
-      });
-    }
-
-    if(tables.length<2)throw Error("The generated Google Doc is missing its curriculum or signature table. Check the export manually before submitting.");
-    const formattingResponse=await fetch(
-      `https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ requests }),
-      },
-    );
-    if(!formattingResponse.ok)
-      throw Error("Google Docs formatting was rejected (HTTP "+formattingResponse.status+"). Check the document before submitting.");
-
-    if (typeof window.hideLoader === "function") window.hideLoader();
-    window.open(`https://docs.google.com/document/d/${docId}/edit`, "_blank");
-  } catch (e) {
-    if (typeof window.hideLoader === "function") window.hideLoader();
-    alert("Google Docs export needs attention: " + e.message);
-    if(uploadedDocumentId && confirm("An unverified Google Doc was created. Open it for manual inspection?"))
-      window.open("https://docs.google.com/document/d/"+encodeURIComponent(uploadedDocumentId)+"/edit","_blank");
-  }
-}

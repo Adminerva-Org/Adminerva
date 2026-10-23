@@ -1,0 +1,100 @@
+/* Seven-column school format; independent rows let the next session use free space. */
+@page { size: A4 landscape; margin: 10mm; }
+@media screen {
+  #printDocumentWrapper { display: none !important; }
+}
+@media print {
+  html, body {
+    display: block !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    overflow: visible !important;
+  }
+  body > *:not(#printDocumentWrapper) { display: none !important; }
+  #printDocumentWrapper {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    color: black !important;
+    background: white !important;
+    font: 9pt/1.22 Arial, sans-serif !important;
+  }
+  #printDocumentWrapper, #printDocumentWrapper * {
+    visibility: visible !important;
+    box-sizing: border-box;
+    font-family: Arial, sans-serif !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  #printHeaderBannerContainer { margin: 0 0 2mm !important; }
+  #printHeaderImage { max-height: 17mm !important; max-width: 135mm !important; }
+  #printHeaderImage.hidden, #printHeaderBannerContainer.hidden { display: none !important; }
+  #printMainTitle { font-size: 11pt !important; }
+  #printContextLine { margin-top: 1mm; font-size: 9pt; }
+  #printContextLine:empty { display: none; }
+  .print-table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    margin-top: 3mm !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+  .print-table thead { display: table-header-group !important; }
+  .print-table tbody { display: table-row-group !important; break-inside: auto !important; }
+  .print-table th, .print-table td {
+    height: auto !important;
+    padding: 1.2mm !important;
+    border: .2mm solid #444 !important;
+    vertical-align: top !important;
+    text-align: left !important;
+    font-size: 9pt !important;
+    line-height: 1.22 !important;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+  .print-table thead th {
+    background: #dce6f2 !important;
+    font-size: 8.5pt !important;
+    text-align: center !important;
+    white-space: normal;
+  }
+  #printScopeHeader { font-size: 8pt !important; }
+  .print-table tr {
+    break-before: auto !important;
+    break-after: auto !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+  .print-table .lesson-print-session {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+  .print-table .lesson-print-session th {
+    padding: 1.5mm !important;
+    background: #edf2f7 !important;
+    font-size: 9.5pt !important;
+    white-space: normal;
+  }
+  .lesson-print-content-row + .lesson-print-content-row td { border-top-color: #b0b0b0 !important; }
+  .lesson-print-time { text-align: center !important; font-weight: bold; }
+  .lesson-print-activity-label { display: block; margin: 0 0 1mm; }
+  #printDocumentWrapper h2, #printDocumentWrapper p { margin: 0; padding: 0; }
+  .lesson-print-signatures {
+    width: 100% !important;
+    margin-top: 6mm !important;
+    border-collapse: collapse !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    font-size: 9pt !important;
+  }
+  .lesson-print-signatures td { padding: 0 2mm !important; }
+  .lesson-print-signatures td > div:first-child { margin-bottom: 7mm !important; }
+  .lesson-print-signatures td > div { font-size: 9pt !important; }
+}

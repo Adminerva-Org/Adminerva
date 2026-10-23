@@ -10,68 +10,7 @@
     <title>Adminerva - Curriculum Planner</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <style>
-      @media screen {
-        #printDocumentWrapper {
-          display: none !important;
-        }
-      }
-      @media print {
-        body,
-        html {
-          background: white !important;
-          margin: 0 !important;
-          padding: 0 !important;
-        }
-        body > *:not(#printDocumentWrapper) {
-          display: none !important;
-        }
-
-        #printDocumentWrapper {
-          display: block !important;
-          position: relative !important;
-          width: 100% !important;
-          background: white !important;
-        }
-        #printDocumentWrapper,
-        #printDocumentWrapper * {
-          visibility: visible !important;
-          font-family: "Arial Narrow", Arial, sans-serif !important;
-        }
-        .print-table {
-          width: 100% !important;
-          border-collapse: collapse !important;
-          margin-top: 10px !important;
-        }
-        .print-table th,
-        .print-table td {
-          border: 1px solid #000000 !important;
-          padding: 6px 8px !important;
-          vertical-align: top !important;
-          text-align: left;
-          font-size: 10pt !important;
-        }
-        .print-table th {
-          text-align: center !important;
-          background-color: #b4c6e7 !important;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-        .print-table tr {
-          page-break-inside: auto !important;
-          break-inside: auto !important;
-        }
-        .print-table thead {
-          display: table-row-group !important;
-        }
-        #printDocumentWrapper h2,
-        #printDocumentWrapper p {
-          margin: 0 !important;
-          padding: 0 !important;
-          line-height: 1.2 !important;
-        }
-      }
-    </style>
+    <link rel="stylesheet" href="css/lesson-print.css?v=1.3.1" />
     <link rel="stylesheet" href="css/adminerva-ui.css?v=1.3.0" />
 </head>
   <body class="bg-gray-100 font-sans min-h-screen flex flex-col">
@@ -299,17 +238,21 @@
             <span>💾</span> Save Draft
           </button>
           <button
-            onclick="exportPDF()"
+            onclick="exportPDF()" data-lesson-print aria-describedby="lessonPrintHelp"
             class="w-full sm:w-auto justify-center px-4 sm:px-6 py-3.5 sm:py-2.5 bg-slate-700 text-white font-bold rounded shadow-sm hover:bg-slate-800 transition flex items-center gap-2 text-sm sm:text-base"
           >
-            <span>🖨️</span> Print PDF Only
+            <span>🖨️</span> Print / Save PDF
           </button>
           <button
-            onclick="saveAndPrint()"
+            onclick="saveAndPrint()" data-lesson-print aria-describedby="lessonPrintHelp"
             class="w-full sm:w-auto justify-center px-4 sm:px-6 py-3.5 sm:py-2.5 bg-emerald-600 text-white font-bold rounded shadow-sm hover:bg-emerald-700 transition flex items-center gap-2 text-sm sm:text-base"
           >
             <span>✅</span> Save & Print
           </button>
+        </div>
+        <div class="px-4 sm:px-6 pb-4 bg-white">
+          <p id="lessonPrintHelp" class="text-xs text-slate-600 leading-relaxed">School print format: <strong>A4 · Landscape · 100% scale</strong>. Choose <strong>Save as PDF</strong> in the print dialog for a PDF. Turn off <strong>Headers and footers</strong> to remove the browser's date, page title and website address. All session content continues across pages automatically.</p>
+          <p id="lessonPrintStatus" class="av-status-message mt-2" role="status" aria-live="polite"></p>
         </div>
       </div>
     </div>
@@ -742,31 +685,32 @@
         >
           <span id="printSemester"></span> — <span id="printQuarter"></span>
         </div>
+        <div id="printContextLine"></div>
       </div>
       <table class="print-table">
-        <tbody
+        <thead
           style="-webkit-print-color-adjust: exact; print-color-adjust: exact"
         >
           <tr>
-            <th style="width: 8%">Content</th>
-            <th style="width: 14%">Learning Standards</th>
-            <th style="width: 14%">Learning Competencies</th>
-            <th style="width: 4%">Time Frame</th>
-            <th style="width: 32%">
+            <th scope="col" style="width: 9%">Content</th>
+            <th scope="col" style="width: 15%">Learning Standards</th>
+            <th scope="col" style="width: 15%">Learning Competencies</th>
+            <th scope="col" style="width: 6%">Time Frame</th>
+            <th scope="col" style="width: 31%">
               Learning Experiences & Activities<br /><span
                 id="printScopeHeader"
                 style="font-weight: normal; font-size: 10pt"
               ></span>
             </th>
-            <th style="width: 14%">
+            <th scope="col" style="width: 12%">
               Learning Materials &<br />Technology Integration
             </th>
-            <th style="width: 14%">Remarks and Interventions</th>
+            <th scope="col" style="width: 12%">Remarks and Interventions</th>
           </tr>
-        </tbody>
+        </thead>
         <tbody id="printTableBody"></tbody>
       </table>
-      <table
+      <table class="lesson-print-signatures"
         style="
           width: 100%;
           margin-top: 40px;
@@ -894,7 +838,7 @@
     <script type="module" src="js/lesson-review/lesson-firebase.js?v=1.3.0"></script>
     <script type="module" src="js/lesson-review/planner-school-options.mjs?v=1.3.0"></script>
     <script type="module" src="js/lesson-review/ai-engine.js?v=1.3.0"></script>
-    <script type="module" src="js/lesson-review/document-exporter.js?v=1.3.0"></script>
+    <script type="module" src="js/lesson-review/document-exporter.js?v=1.3.1"></script>
     <!-- 🚀 NEW: Importing the existing settings logic so we don't duplicate code -->
     <script type="module" src="js/settings/settings-lesson.js?v=1.3.0"></script>
   </body>
