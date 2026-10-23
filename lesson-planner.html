@@ -10,12 +10,12 @@
     <title>Adminerva - Curriculum Planner</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <link rel="stylesheet" href="css/lesson-print.css?v=1.3.1" />
+    <link rel="stylesheet" href="css/lesson-print.css?v=1.3.3" />
     <link rel="stylesheet" href="css/adminerva-ui.css?v=1.3.0" />
 </head>
   <body class="bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="lesson" data-page="planner"></div>
-    <script src="js/core/adminerva-nav.js?v=1.3.0"></script>
+    <script src="js/core/adminerva-nav.js?v=1.3.3"></script>
 
     <!-- Main Workspace -->
     <div
@@ -251,7 +251,7 @@
           </button>
         </div>
         <div class="px-4 sm:px-6 pb-4 bg-white">
-          <p id="lessonPrintHelp" class="text-xs text-slate-600 leading-relaxed">School print format: <strong>A4 · Landscape · 100% scale</strong>. Choose <strong>Save as PDF</strong> in the print dialog for a PDF. Turn off <strong>Headers and footers</strong> to remove the browser's date, page title and website address. All session content continues across pages automatically.</p>
+          <p id="lessonPrintHelp" class="text-xs text-slate-600 leading-relaxed">Legacy school print format: choose <strong>Landscape</strong> and your school’s required paper size in the print dialog, or <strong>Save as PDF</strong> for a PDF. Enable <strong>Background graphics</strong> for the original blue headings; turn off <strong>Headers and footers</strong> to remove browser dates and website addresses. Merged columns are retained and column headings appear once.</p>
           <p id="lessonPrintStatus" class="av-status-message mt-2" role="status" aria-live="polite"></p>
         </div>
       </div>
@@ -696,29 +696,28 @@
         >
           <span id="printSemester"></span> — <span id="printQuarter"></span>
         </div>
-        <div id="printContextLine"></div>
       </div>
       <table class="print-table">
-        <thead
+        <tbody
           style="-webkit-print-color-adjust: exact; print-color-adjust: exact"
         >
           <tr>
-            <th scope="col" style="width: 9%">Content</th>
-            <th scope="col" style="width: 15%">Learning Standards</th>
-            <th scope="col" style="width: 15%">Learning Competencies</th>
-            <th scope="col" style="width: 6%">Time Frame</th>
-            <th scope="col" style="width: 31%">
+            <th scope="col" style="width: 8%">Content</th>
+            <th scope="col" style="width: 14%">Learning Standards</th>
+            <th scope="col" style="width: 14%">Learning Competencies</th>
+            <th scope="col" style="width: 4%">Time Frame</th>
+            <th scope="col" style="width: 32%">
               Learning Experiences & Activities<br /><span
                 id="printScopeHeader"
                 style="font-weight: normal; font-size: 10pt"
               ></span>
             </th>
-            <th scope="col" style="width: 12%">
+            <th scope="col" style="width: 14%">
               Learning Materials &<br />Technology Integration
             </th>
-            <th scope="col" style="width: 12%">Remarks and Interventions</th>
+            <th scope="col" style="width: 14%">Remarks and Interventions</th>
           </tr>
-        </thead>
+        </tbody>
         <tbody id="printTableBody"></tbody>
       </table>
       <table class="lesson-print-signatures"
@@ -849,7 +848,7 @@
     <script type="module" src="js/lesson-review/lesson-firebase.js?v=1.3.2"></script>
     <script type="module" src="js/lesson-review/planner-school-options.mjs?v=1.3.0"></script>
     <script type="module" src="js/lesson-review/ai-engine.js?v=1.3.0"></script>
-    <script type="module" src="js/lesson-review/document-exporter.js?v=1.3.1"></script>
+    <script type="module" src="js/lesson-review/document-exporter.js?v=1.3.3"></script>
     <!-- 🚀 NEW: Importing the existing settings logic so we don't duplicate code -->
     <script type="module" src="js/settings/settings-lesson.js?v=1.3.0"></script>
   </body>

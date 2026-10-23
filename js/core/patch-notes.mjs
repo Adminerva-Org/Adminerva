@@ -1,4 +1,4 @@
-import {loadPublicReleases} from "./patch-history.mjs?v=1.3.0";
+import {loadPublicReleases} from "./patch-history.mjs?v=1.3.3";
 import {releasePresentation,releaseMatches} from "./release-version.mjs?v=1.3.0";
 const field=id=>document.getElementById(id);
 const node=(tag,text,className="")=>{const element=document.createElement(tag);element.textContent=text;element.className=className;return element;};

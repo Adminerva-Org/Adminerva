@@ -1,5 +1,6 @@
 {
-  "version": "1.3.2",
+  "version": "1.3.3",
   "releasedAt": "2026-10-23",
-  "notes": "Older lesson plans now recover directly into the original teacher account. Saved Plans shows all school years, recovery status and archived counts. Save current work before refreshing."
+  "notes": "The original school lesson-plan format is restored for printing and document export, including merged cells, blue headings and compact header sizing. Save current work before refreshing.",
+  "publishedAt": "2026-10-23T07:46:36.319Z"
 }

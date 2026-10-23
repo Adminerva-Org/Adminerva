@@ -5,7 +5,7 @@ import { auth, db } from "./firebase-core.js?v=1.3.0";
 import {notificationTarget,previewDestination} from "./notification-routing.mjs?v=1.3.0";
 import {notificationVisible,unreadNotificationCount} from "./notification-visibility.mjs?v=1.3.0";
 import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs?v=1.3.0";
-import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=1.3.0";
+import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=1.3.3";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
@@ -95,7 +95,15 @@ function render(){
     heading.append(make("strong","text-sm text-slate-900 break-words",n.title));
     if(unread(n))heading.append(make("span","text-xs text-blue-700 shrink-0","● New"));
     link.append(heading,make("p","text-xs text-slate-600 break-words mt-1",n.body||""));
-    if(n.at)link.append(make("p","text-[11px] text-slate-500 mt-1",new Date(n.at).toLocaleString()));
+    if(n.at){
+      const date=new Date(n.at);
+      // Legacy release records only establish a calendar date. Do not turn
+      // their sorting timestamp into a fabricated midnight publication time.
+      const label=n.type==="release"&&!n.publishedAt
+        ?date.toLocaleDateString(undefined,{timeZone:"Asia/Manila"})
+        :date.toLocaleString();
+      link.append(make("p","text-[11px] text-slate-500 mt-1",label));
+    }
     link.addEventListener("click",async event=>{
       event.preventDefault();
       // Read status persists locally immediately. Don't let a slow Firestore
