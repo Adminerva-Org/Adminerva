@@ -10,7 +10,8 @@ export async function restoreOriginalTeacherSections(){
 }
 export async function legacyLessonRecovery(payload){
   const actor=auth.currentUser;
-  if(await resolveStaffRole(actor)!=="admin")throw Error("Administrator access is required to recover school records.");
+  const role=await resolveStaffRole(actor),own=payload?.action==="recover-own";
+  if(own?role!=="teacher"||!actor?.emailVerified||actor.email?.toLowerCase()!=="josephsixson@mcstayuman.edu.ph":role!=="admin")throw Error(own?"Sign in with the original teacher account to restore its saved lessons.":"Administrator access is required to recover school records.");
   const result=await request(payload);
   if(auth.currentUser?.uid!==actor.uid)throw Error("Account changed. Reload to see recovery results.");
   return result.data;
