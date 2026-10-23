@@ -1,5 +1,6 @@
 import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.3.0";
 import {captureLessonSettings} from "./lesson-settings.mjs?v=1.3.0";
+import {resolveReferenceLibrary,assertReferenceOwner,referenceFolders,referenceFolder,normalizeReferenceFolder,cacheReferenceFolders} from "./reference-library.mjs?v=1.3.4";
 /** Saved lesson records, version handling and lesson loading. */
 // Import centralized database instead of initializing locally
 import { auth,db } from "../core/firebase-core.js?v=1.3.0";
@@ -87,24 +88,37 @@ workspaceOnReady(async()=>{
   }catch(error){alert("Could not open the legacy lesson: "+error.message);}
 });
 
+let referenceFolderLoadSerial=0;
 window.loadLibraryFolders = async function () {
+  const serial=++referenceFolderLoadSerial;
   const container = document.getElementById("libraryFolderContainer");
   if (!container) return;
+  const selectionAtStart=window.currentLessonReferenceFolders;
+  const existingCheckboxes=[...container.querySelectorAll(".folder-checkbox")];
+  const selectedIds=new Set(existingCheckboxes.length?existingCheckboxes.filter(input=>input.checked).map(input=>input.value):(window.currentLessonReferenceFolders||[]));
+  const refresh=document.getElementById("refreshPlannerReferencesBtn");if(refresh)refresh.disabled=true;
 
   container.innerHTML =
     '<div class="text-xs text-gray-500 italic">Fetching folders from cloud...</div>';
 
   try {
-    const snap = await getDocs(collection(db, "reference_folders"));
+    const scope=await resolveReferenceLibrary();
+    const snap = await getDocs(referenceFolders(scope));
+    assertReferenceOwner(scope);if(serial!==referenceFolderLoadSerial)return;
     const libraryData = [];
-    snap.forEach((d) => libraryData.push({ id: d.id, ...d.data() }));
+    snap.forEach((d) => libraryData.push(normalizeReferenceFolder(d.id,d.data())));
+    libraryData.sort((a,b)=>a.name.localeCompare(b.name));
+    // A lesson may have loaded while its folders were still being fetched.
+    if(window.currentLessonReferenceFolders!==selectionAtStart){selectedIds.clear();for(const id of window.currentLessonReferenceFolders||[])selectedIds.add(id);}
 
-    lessonStorage.setItem("Adminerva_library", JSON.stringify(libraryData));
+    cacheReferenceFolders(scope,libraryData);
+    const scopeLabel=document.getElementById("plannerLibraryScope");if(scopeLabel)scopeLabel.textContent=scope.label+" · "+scope.email;
 
     container.innerHTML = "";
     if (libraryData.length === 0) {
+      window.currentLessonReferenceFolders=[];
       container.innerHTML =
-        '<div class="text-xs text-gray-500 italic">No folders found in Firebase.</div>';
+        '<div class="text-xs text-gray-500 italic">No reference folders in this account yet. Open Reference Library to add documents, or refresh after older references are restored.</div>';
       return;
     }
 
@@ -117,24 +131,33 @@ window.loadLibraryFolders = async function () {
         "beforeend",
         `
                 <label class="flex items-center gap-2 cursor-pointer group">
-                    <input type="checkbox" value="${safeId}" class="folder-checkbox w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 bg-white">
+                    <input type="checkbox" value="${safeId}" ${selectedIds.has(folder.id)?"checked":""} class="folder-checkbox w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 bg-white">
                     <span class="text-sm font-bold text-blue-900 group-hover:text-blue-700 transition">📁 ${safeName} <span class="text-[10px] text-gray-500 font-normal">(${docCount} docs)</span></span>
                 </label>
             `,
       );
     });
+    const saveSelections=()=>{window.currentLessonReferenceFolders=[...container.querySelectorAll(".folder-checkbox:checked")].map(input=>input.value);};
+    container.onchange=saveSelections;
+    saveSelections();
   } catch (e) {
+    if(serial!==referenceFolderLoadSerial)return;
     container.innerHTML = `<div class="text-xs text-red-500 italic">Failed to load library: ${escapeHTML(e.message)}</div>`;
+  }finally{
+    if(serial===referenceFolderLoadSerial&&refresh)refresh.disabled=false;
   }
 };
 
 // Read only the teacher-selected reference folders. Existing documents remain
 // in their legacy arrays; new PDFs are stored in child documents.
 window.fetchReferenceDocuments=async function(folderId){
-  const root=await getDoc(doc(db,"reference_folders",folderId));
+  const scope=await resolveReferenceLibrary();
+  const root=await getDoc(referenceFolder(scope,folderId));
+  assertReferenceOwner(scope);
   if(!root.exists())throw Error("Selected reference folder no longer exists.");
   const legacy=Array.isArray(root.data().documents)?root.data().documents:[];
-  const nested=await getDocs(collection(db,"reference_folders",folderId,"documents"));
+  const nested=await getDocs(referenceFolders(scope,folderId,"documents"));
+  assertReferenceOwner(scope);
   return [...legacy,...nested.docs.map(record=>record.data())];
 };
 

@@ -1,6 +1,6 @@
 {
-  "version": "1.3.3",
+  "version": "1.3.4",
   "releasedAt": "2026-10-23",
-  "notes": "The original school lesson-plan format is restored for printing and document export, including merged cells, blue headings and compact header sizing. Save current work before refreshing.",
-  "publishedAt": "2026-10-23T07:46:36.319Z"
+  "notes": "Legacy reference folders are restored to the original teacher account. The reference library waits for sign-in, shows account scope and offers refresh when loading needs attention. Save current work before refreshing.",
+  "publishedAt": "2026-10-23T08:16:52.460Z"
 }

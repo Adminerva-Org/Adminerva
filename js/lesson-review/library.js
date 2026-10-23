@@ -1,7 +1,7 @@
 /** Lesson reference folders and document management. */
 import { db } from "../core/firebase-core.js?v=1.3.0";
+import {resolveReferenceLibrary,assertReferenceOwner,referenceFolders,referenceFolder,normalizeReferenceFolder,cacheReferenceFolders} from "./reference-library.mjs?v=1.3.4";
 import {
-  collection,
   getDocs,
   addDoc,
   updateDoc,
@@ -14,6 +14,10 @@ import {
 let libraryData = [];
 let activeFolderId = null;
 let extractingPdf=false;
+let libraryScope=null,libraryLoadSerial=0;
+function currentLibraryScope(){if(!libraryScope)throw Error("Wait for your reference library to load, then try again.");assertReferenceOwner(libraryScope);return libraryScope;}
+function cacheLibrary(){cacheReferenceFolders(currentLibraryScope(),libraryData);}
+function libraryStatus(message,tone=""){const status=document.getElementById("libraryStatus");if(status){status.textContent=message;status.dataset.tone=tone;}}
 // Clear only when reopening the chooser, so the same PDF can be selected to retry.
 document.getElementById("pdfFileInput")?.addEventListener("click",event=>{
   if(extractingPdf){event.preventDefault();return;}
@@ -48,34 +52,42 @@ function escapeHTML(str) {
     .replace(/'/g, "&#039;");
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  initFirebase();
-});
-
-function initFirebase() {
-  loadLibrary();
-}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>void loadLibrary(),{once:true});
+else void loadLibrary();
+window.refreshReferenceLibrary=()=>loadLibrary();
 
 async function loadLibrary() {
+  if(extractingPdf){libraryStatus("Finish the current PDF import before refreshing your references.");return;}
+  const serial=++libraryLoadSerial;
   const end = window.beginLoading?.("Loading reference library…") || (() => {});
+  const refresh=document.getElementById("refreshLibraryBtn");if(refresh)refresh.disabled=true;
+  libraryStatus("Loading reference folders for your signed-in staff account…");
   try {
-    const snap = await getDocs(collection(db, "reference_folders"));
+    const scope=await resolveReferenceLibrary();
+    const snap = await getDocs(referenceFolders(scope));
+    assertReferenceOwner(scope);if(serial!==libraryLoadSerial)return;
+    libraryScope=scope;
     libraryData = [];
 
     snap.forEach((docSnap) => {
-      libraryData.push({ id: docSnap.id, ...docSnap.data() });
+      libraryData.push(normalizeReferenceFolder(docSnap.id,docSnap.data()));
     });
 
     libraryData.sort((a, b) => a.name.localeCompare(b.name));
-    localStorage.setItem("Adminerva_library", JSON.stringify(libraryData));
+    cacheLibrary();
+    const scopeLabel=document.getElementById("libraryScope");if(scopeLabel)scopeLabel.textContent=scope.label+" · "+scope.email;
+    const inlineCount=libraryData.reduce((sum,folder)=>sum+folder.documents.length,0),nestedCount=libraryData.reduce((sum,folder)=>sum+(Number(folder.documentCount)||0),0);
+    libraryStatus(libraryData.length+" reference folder"+(libraryData.length===1?"":"s")+" · "+(inlineCount+nestedCount)+" document"+(inlineCount+nestedCount===1?"":"s")+". Select a folder to view its references.");
 
     renderFolders();
     if (activeFolderId && libraryData.find((f) => f.id === activeFolderId)) {
-      selectFolder(activeFolderId);
+      await window.selectFolder(activeFolderId);
     }
   } catch (e) {
-    console.error("Error loading library:", e);
-  } finally { end(); }
+    if(serial!==libraryLoadSerial)return;
+    libraryStatus("Reference folders could not load: "+e.message+". Your saved cloud references were preserved. Choose Refresh references to retry.","error");
+    if(!libraryData.length)document.getElementById("folderList").innerHTML='<p class="text-sm text-red-700 p-2">References could not load. Use Refresh references to try again.</p>';
+  } finally { if(serial===libraryLoadSerial&&refresh)refresh.disabled=false;end(); }
 }
 
 function formatDate(isoString) {
@@ -95,7 +107,7 @@ window.createFolder = async function () {
   if (!folderName) return;
 
   try {
-    const docRef = await addDoc(collection(db, "reference_folders"), {
+    const docRef = await addDoc(referenceFolders(currentLibraryScope()), {
       name: folderName,
       updatedAt: new Date().toISOString(),
       documents: [],
@@ -108,7 +120,7 @@ window.createFolder = async function () {
       documents: [],
     });
     libraryData.sort((a, b) => a.name.localeCompare(b.name));
-    localStorage.setItem("Adminerva_library", JSON.stringify(libraryData));
+    cacheLibrary();
 
     input.value = "";
     renderFolders();
@@ -121,17 +133,18 @@ window.createFolder = async function () {
 window.renameFolder = async function (e, folderId) {
   e.stopPropagation();
   const folder = libraryData.find((f) => f.id === folderId);
+  if(!folder)return;
   const newName = prompt("Enter new folder name:", folder.name);
   if (!newName || newName.trim() === folder.name) return;
 
   try {
-    await updateDoc(doc(db, "reference_folders", folderId), {
+    await updateDoc(referenceFolder(currentLibraryScope(), folderId), {
       name: newName.trim(),
       updatedAt: new Date().toISOString(),
     });
     folder.name = newName.trim();
     libraryData.sort((a, b) => a.name.localeCompare(b.name));
-    localStorage.setItem("Adminerva_library", JSON.stringify(libraryData));
+    cacheLibrary();
     renderFolders();
     if (activeFolderId === folderId) selectFolder(folderId);
   } catch (error) {
@@ -149,15 +162,15 @@ window.deleteFolder = async function (e, folderId) {
   try {
     // Firestore does not cascade-delete subcollections.
     // Remove owned child documents before removing the parent folder.
-    const children=await getDocs(collection(db,"reference_folders",folderId,"documents"));
+    const children=await getDocs(referenceFolders(currentLibraryScope(),folderId,"documents"));
     for(let index=0;index<children.docs.length;index+=400){
       const batch=writeBatch(db);
       for(const child of children.docs.slice(index,index+400))batch.delete(child.ref);
       await batch.commit();
     }
-    await deleteDoc(doc(db,"reference_folders",folderId));
+    await deleteDoc(referenceFolder(currentLibraryScope(),folderId));
     libraryData = libraryData.filter((f) => f.id !== folderId);
-    localStorage.setItem("Adminerva_library", JSON.stringify(libraryData));
+    cacheLibrary();
 
     if (activeFolderId === folderId) {
       activeFolderId = null;
@@ -176,6 +189,7 @@ window.deleteFolder = async function (e, folderId) {
 function renderFolders() {
   const folderList = document.getElementById("folderList");
   folderList.innerHTML = "";
+  if(!libraryData.length){folderList.innerHTML='<p class="text-sm text-slate-600 p-2">No reference folders in this library yet. Create a folder, or refresh after your older references are restored.</p>';return;}
 
   libraryData.forEach((folder) => {
     const isActive = folder.id === activeFolderId;
@@ -220,7 +234,7 @@ window.selectFolder = async function (folderId) {
     document.getElementById("searchInput").value = "";
     renderDocuments(folder.documents);
     try{
-      const snapshot=await getDocs(collection(db,"reference_folders",folderId,"documents"));
+      const snapshot=await getDocs(referenceFolders(currentLibraryScope(),folderId,"documents"));
       const legacy=folder.documents.filter(item=>!item._documentId);
       folder.documents=[...legacy,...snapshot.docs.map(item=>({
         ...item.data(),_documentId:item.id
@@ -258,7 +272,7 @@ window.renameDocument = async function (docIndex) {
   const updated={...original,title:newTitle.trim(),updatedAt:new Date().toISOString()};
   try{
     if(original._documentId){
-      await updateDoc(doc(db,"reference_folders",activeFolderId,"documents",original._documentId),{
+      await updateDoc(referenceFolder(currentLibraryScope(),activeFolderId,"documents",original._documentId),{
         title:updated.title,updatedAt:updated.updatedAt
       });
     }else{
@@ -266,7 +280,7 @@ window.renameDocument = async function (docIndex) {
       const index=legacy.indexOf(original);
       if(index<0)throw Error("Reference document no longer exists.");
       legacy[index]=updated;
-      await updateDoc(doc(db,"reference_folders",activeFolderId),{documents:legacy});
+      await updateDoc(referenceFolder(currentLibraryScope(),activeFolderId),{documents:legacy});
     }
     folder.documents[docIndex]=updated;
     renderDocuments(folder.documents);
@@ -283,12 +297,12 @@ window.deleteDocument = async function (docIndex) {
   try{
     if(original._documentId){
       const batch=writeBatch(db);
-      batch.delete(doc(db,"reference_folders",activeFolderId,"documents",original._documentId));
-      batch.update(doc(db,"reference_folders",activeFolderId),{documentCount:increment(-1)});
+      batch.delete(referenceFolder(currentLibraryScope(),activeFolderId,"documents",original._documentId));
+      batch.update(referenceFolder(currentLibraryScope(),activeFolderId),{documentCount:increment(-1)});
       await batch.commit();
     }else{
       const legacy=folder.documents.filter(item=>!item._documentId&&item!==original);
-      await updateDoc(doc(db,"reference_folders",activeFolderId),{documents:legacy});
+      await updateDoc(referenceFolder(currentLibraryScope(),activeFolderId),{documents:legacy});
     }
     folder.documents.splice(docIndex,1);
     renderDocuments(folder.documents);
@@ -301,7 +315,7 @@ window.previewDocumentText = function (folderId, docIndex) {
   if (folder && folder.documents[docIndex]) {
     alert(
       "PREVIEW:\n\n" +
-        folder.documents[docIndex].text.substring(0, 500) +
+        String(folder.documents[docIndex].text||"").substring(0, 500) +
         "...",
     );
   }
@@ -511,10 +525,10 @@ window.extractPDF = async function () {
       const record={title:file.name,text:extractedText,updatedAt:new Date().toISOString()};
       if(new TextEncoder().encode(JSON.stringify(record)).length>850000)
         throw Error("Extracted text from "+file.name+" exceeds Firestore's safe document size. Split this PDF into smaller references.");
-      const newRef=doc(collection(db,"reference_folders",targetFolderId,"documents"));
+      const newRef=doc(referenceFolders(currentLibraryScope(),targetFolderId,"documents"));
       const batch=writeBatch(db);
       batch.set(newRef,record);
-      batch.update(doc(db,"reference_folders",targetFolderId),{
+      batch.update(referenceFolder(currentLibraryScope(),targetFolderId),{
         documentCount:increment(1),updatedAt:new Date().toISOString()
       });
       await batch.commit();

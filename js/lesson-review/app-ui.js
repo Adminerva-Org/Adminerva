@@ -341,6 +341,7 @@ window.loadSpecificPlan = function (planData) {
   window.loadedPersonalPlan=planData.ownerUid===workspaceUid() ? {id:planData.id,version:Number(planData.version||1)} : null;
   window.legacySourcePlanId=planData.source_legacy_plan||null;
   window.currentLessonSettings=savedLessonSettings(planData);
+  window.currentLessonReferenceFolders=Array.isArray(planData.reference_folders)?[...planData.reference_folders]:[];
   window.currentWeeklyOverview =
     planData.weekly_overview && typeof planData.weekly_overview === "object"
       ? planData.weekly_overview

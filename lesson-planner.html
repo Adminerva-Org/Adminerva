@@ -157,10 +157,11 @@
             ></textarea>
           </div>
           <div>
-            <label
-              class="block text-[10px] sm:text-xs font-extrabold text-blue-700 uppercase mb-2"
-              >Select Reference Folders</label
-            >
+            <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
+              <span class="text-[10px] sm:text-xs font-extrabold text-blue-700 uppercase">Select Reference Folders</span>
+              <button id="refreshPlannerReferencesBtn" type="button" onclick="loadLibraryFolders()" class="px-2 py-1 border border-blue-200 rounded text-xs text-blue-800 hover:bg-blue-50">Refresh references</button>
+            </div>
+            <p id="plannerLibraryScope" class="text-xs text-slate-600 mb-2 break-words">Your selected folders are read from your signed-in reference library.</p>
             <div
               id="libraryFolderContainer"
               class="bg-blue-50 border border-blue-200 rounded p-3 h-32 sm:h-28 overflow-y-auto space-y-2 shadow-inner flex flex-wrap gap-4"
@@ -842,10 +843,10 @@
     </script>
 
     <script src="https://cdn.jsdelivr.net/npm/html-docx-js/dist/html-docx.min.js"></script>
-    <script type="module" src="js/lesson-review/app-ui.js?v=1.3.0"></script>
+    <script type="module" src="js/lesson-review/app-ui.js?v=1.3.4"></script>
     <script src="js/core/adminerva-loader.js?v=1.3.0"></script>
     <script type="module" src="js/core/auth-guard.js?v=1.3.0"></script>
-    <script type="module" src="js/lesson-review/lesson-firebase.js?v=1.3.2"></script>
+    <script type="module" src="js/lesson-review/lesson-firebase.js?v=1.3.4"></script>
     <script type="module" src="js/lesson-review/planner-school-options.mjs?v=1.3.0"></script>
     <script type="module" src="js/lesson-review/ai-engine.js?v=1.3.0"></script>
     <script type="module" src="js/lesson-review/document-exporter.js?v=1.3.3"></script>
