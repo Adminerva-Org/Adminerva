@@ -62,9 +62,22 @@ workspaceOnReady(async()=>{
   const parameters=new URLSearchParams(location.search),legacyId=parameters.get("legacyPlan");
   if(!legacyId&&parameters.get("saved")==="1"){await window.openLoadPlanModal();return;}
   if(!legacyId)return;
-  if(!confirm("Open this older shared lesson for inspection? Saving creates your own separate copy; the shared record remains unchanged."))return;
   try{
+    if(legacyId.includes("/")||legacyId.length>1500)throw Error("This older-lesson link has an invalid record ID. Open Saved Lesson Plans instead.");
     const uid=await requireStaffWorkspace();
+    if(originalTeacherSignedIn(uid)){
+      await recoverOwnLegacyLessons(uid);
+      assertWorkspaceAccount(uid);
+      const plans=await getDocs(ownedCollection(db,"lesson_plans"));
+      assertWorkspaceAccount(uid);
+      const recovered=plans.docs.find(record=>record.data().source_legacy_plan===legacyId);
+      if(!recovered)throw Error("This older lesson is not yet available in your teacher workspace. Open Saved Lesson Plans and retry older-lesson recovery.");
+      window.loadSpecificPlan({...recovered.data(),id:recovered.id,ownerUid:uid});
+      return;
+    }
+    if(await resolveStaffRole(auth.currentUser)!=="admin")throw Error("This older lesson belongs to the original teacher. Open your own Saved Lesson Plans.");
+    assertWorkspaceAccount(uid);
+    if(!confirm("Open this older shared lesson for inspection? Saving creates your own separate copy; the shared record remains unchanged."))return;
     const snapshot=await getDoc(doc(db,"lesson_plans",legacyId));
     assertWorkspaceAccount(uid);
     if(!snapshot.exists())throw Error("The older lesson no longer exists.");
