@@ -1,6 +1,26 @@
 {
   "releases": [
     {
+      "version": "1.3.1",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-23",
+      "title": "Clearer lesson printing and Google Docs export",
+      "summary": "Print complete lesson plans with continuous landscape tables and keep a usable export even when Google needs attention.",
+      "changes": [
+        {
+          "type": "Fixed",
+          "area": "Lesson-plan PDF",
+          "text": "Landscape printing uses bounded table rows and repeated column headers instead of session-wide rowspans, reducing mostly empty continuation pages while preserving lesson content and signatures."
+        },
+        {
+          "type": "Fixed",
+          "area": "Google Docs export",
+          "text": "Google Drive authorization is reused during the current page session. Upload failures show Google's response and HTTP status. A created document remains accessible when final formatting needs review, with Word and HTML downloads available as alternatives."
+        }
+      ]
+    },
+    {
       "version": "1.3.0",
       "status": "published",
       "public": true,
