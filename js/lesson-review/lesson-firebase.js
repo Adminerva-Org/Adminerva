@@ -4,7 +4,8 @@ import {captureLessonSettings} from "./lesson-settings.mjs?v=1.3.0";
 // Import centralized database instead of initializing locally
 import { auth,db } from "../core/firebase-core.js?v=1.3.0";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
-import {legacyLessonRecovery} from "../core/legacy-lesson-recovery.mjs?v=1.3.0";
+import {TEACHER_EMAIL} from "../core/staff-role.mjs?v=1.3.0";
+import {legacyLessonRecovery} from "../core/legacy-lesson-recovery.mjs?v=1.3.2";
 import {personalPlanId,requireCurrentVersion} from "./workspace-model.mjs?v=1.3.0";
 import {scheduleScope,localScheduleText,normalizeSchoolYear} from "./schedule-scope.mjs?v=1.3.0";
 import {
@@ -58,11 +59,25 @@ window.initFirebase = function () {
   }
 };
 workspaceOnReady(async()=>{
-  const legacyId=new URLSearchParams(location.search).get("legacyPlan");
+  const parameters=new URLSearchParams(location.search),legacyId=parameters.get("legacyPlan");
+  if(!legacyId&&parameters.get("saved")==="1"){await window.openLoadPlanModal();return;}
   if(!legacyId)return;
-  if(!confirm("Open this older shared lesson for inspection? Saving creates your own separate copy; the shared record remains unchanged."))return;
   try{
+    if(legacyId.includes("/")||legacyId.length>1500)throw Error("This older-lesson link has an invalid record ID. Open Saved Lesson Plans instead.");
     const uid=await requireStaffWorkspace();
+    if(originalTeacherSignedIn(uid)){
+      await recoverOwnLegacyLessons(uid);
+      assertWorkspaceAccount(uid);
+      const plans=await getDocs(ownedCollection(db,"lesson_plans"));
+      assertWorkspaceAccount(uid);
+      const recovered=plans.docs.find(record=>record.data().source_legacy_plan===legacyId);
+      if(!recovered)throw Error("This older lesson is not yet available in your teacher workspace. Open Saved Lesson Plans and retry older-lesson recovery.");
+      window.loadSpecificPlan({...recovered.data(),id:recovered.id,ownerUid:uid});
+      return;
+    }
+    if(await resolveStaffRole(auth.currentUser)!=="admin")throw Error("This older lesson belongs to the original teacher. Open your own Saved Lesson Plans.");
+    assertWorkspaceAccount(uid);
+    if(!confirm("Open this older shared lesson for inspection? Saving creates your own separate copy; the shared record remains unchanged."))return;
     const snapshot=await getDoc(doc(db,"lesson_plans",legacyId));
     assertWorkspaceAccount(uid);
     if(!snapshot.exists())throw Error("The older lesson no longer exists.");
@@ -255,13 +270,60 @@ window.saveLessonPlan = async function () {
 };
 
 let savedPlanSerial=0,ownersLoadedFor=null;
+let ownRecoveryAttemptedFor=null,ownRecoveryPromise=null;
+const ALL_SCHOOL_YEARS="__all__",UNKNOWN_SCHOOL_YEAR="School year not recorded";
+const originalTeacherSignedIn=uid=>auth.currentUser?.uid===uid&&auth.currentUser.emailVerified===true&&auth.currentUser.email?.toLowerCase()===TEACHER_EMAIL;
+const recoveryCount=value=>Array.isArray(value)?value.length:Number(value)||0;
+async function recoverOwnLegacyLessons(uid,{retry=false}={}){
+  if(!originalTeacherSignedIn(uid))return;
+  const panel=document.getElementById("teacherLessonRecoveryPanel"),status=document.getElementById("teacherLessonRecoveryStatus"),button=document.getElementById("teacherLessonRecoveryBtn");
+  if(panel)panel.hidden=false;
+  if(ownRecoveryPromise)return ownRecoveryPromise;
+  if(ownRecoveryAttemptedFor===uid&&!retry)return;
+  ownRecoveryAttemptedFor=uid;
+  if(status){status.dataset.tone="";status.textContent="Checking older school lessons for your verified teacher account. Recovered copies are saved to "+TEACHER_EMAIL+"; originals and existing personal lessons are preserved.";}
+  if(button){button.disabled=true;button.setAttribute("aria-busy","true");}
+  ownRecoveryPromise=(async()=>{
+    try{
+      const result=await legacyLessonRecovery({action:"recover-own"});
+      assertWorkspaceAccount(uid);
+      if(result.ownerUid!==uid)throw Error("Recovery returned a different workspace. Reload your teacher account before continuing.");
+      const recovered=recoveryCount(result.recovered),already=recoveryCount(result.alreadyRecovered),blocked=recoveryCount(result.blocked);
+      if(status){
+        status.dataset.tone="success";
+        status.textContent=(result.message||`${recovered} older lesson(s) recovered; ${already} already available in your teacher workspace.`)+` Account: ${TEACHER_EMAIL}.`+(blocked?` ${blocked} record(s) could not be recovered because ownership or editable content needs review.`:"")+(result.hasMore?" More legacy records remain; choose Recover more older lessons.":"");
+      }
+      if(button)button.textContent=result.hasMore?"Recover more older lessons":"Check for older lessons again";
+    }catch(error){
+      if(auth.currentUser?.uid===uid&&status){status.dataset.tone="error";status.textContent="Older-lesson recovery could not finish: "+error.message+" Your current personal lessons remain available below. Retry recovery to check again.";}
+      if(button)button.textContent="Retry older-lesson recovery";
+    }finally{
+      ownRecoveryPromise=null;
+      if(auth.currentUser?.uid===uid&&button){button.disabled=false;button.removeAttribute("aria-busy");}
+    }
+  })();
+  return ownRecoveryPromise;
+}
+window.recoverMyOlderLessonPlans=async()=>{
+  try{
+    const uid=await requireStaffWorkspace();if(!originalTeacherSignedIn(uid))throw Error("Sign in with the original verified teacher account to recover its lessons.");
+    await recoverOwnLegacyLessons(uid,{retry:true});
+    assertWorkspaceAccount(uid);
+    await window.openLoadPlanModal();
+  }catch(error){alert(error.message);}
+};
 async function preparePlanOwners(viewerUid){
   const role=await resolveStaffRole(auth.currentUser),select=document.getElementById("modalOwnerFilter"),control=document.getElementById("modalOwnerControl");
+  assertWorkspaceAccount(viewerUid);
   control.hidden=role!=="admin";
   document.getElementById("savedPlanRecoveryLink").classList.toggle("hidden",role!=="admin");
+  const identity=document.getElementById("savedPlanIdentity");
+  if(identity)identity.textContent="Signed in as "+auth.currentUser.email+" · "+(role==="admin"?"Administrator":"Teacher");
+  const recoveryPanel=document.getElementById("teacherLessonRecoveryPanel");
+  if(recoveryPanel)recoveryPanel.hidden=!originalTeacherSignedIn(viewerUid);
   if(role!=="admin")return viewerUid;
   if(ownersLoadedFor!==viewerUid){
-    select.replaceChildren(new Option("My workspace · "+auth.currentUser.email,viewerUid));
+    select.replaceChildren(new Option("My administrator workspace · "+auth.currentUser.email,viewerUid));
     let profiles={docs:[]};try{profiles=await getDocs(collection(db,"teachers"));}catch{/* Own saved plans remain available when the optional teacher directory cannot load. */}
     assertWorkspaceAccount(viewerUid);
     const known=new Set([viewerUid]);
@@ -271,7 +333,7 @@ async function preparePlanOwners(viewerUid){
   }
   return select.value||viewerUid;
 }
-window.changeLessonPlanOwner=()=>{const filter=document.getElementById("modalSyFilter");filter.replaceChildren();window.openLoadPlanModal();};
+window.changeLessonPlanOwner=()=>{const filter=document.getElementById("modalSyFilter");filter.replaceChildren(new Option("All school years",ALL_SCHOOL_YEARS));window.openLoadPlanModal();};
 window.openLoadPlanModal = async function () {
   const serial=++savedPlanSerial;
   const modal = document.getElementById("loadPlanModal");
@@ -279,6 +341,7 @@ window.openLoadPlanModal = async function () {
   modal.classList.replace("hidden", "flex");
 
   const container = document.getElementById("savedPlansListContainer");
+  const summary=document.getElementById("savedPlanSummary");if(summary)summary.textContent="";
   container.innerHTML = `
         <div class="flex flex-col items-center justify-center py-12">
             <div class="animate-spin rounded-full h-10 w-10 border-t-4 border-b-4 border-blue-500 mb-4"></div>
@@ -293,28 +356,32 @@ window.openLoadPlanModal = async function () {
 
   try {
     const viewerUid=await requireStaffWorkspace(),ownerUid=await preparePlanOwners(viewerUid),foreign=ownerUid!==viewerUid;
+    if(originalTeacherSignedIn(viewerUid))await recoverOwnLegacyLessons(viewerUid);
+    assertWorkspaceAccount(viewerUid);if(serial!==savedPlanSerial)return;
     const querySnapshot = await getDocs(collection(db,"staff_workspaces",ownerUid,"lesson_plans"));
     assertWorkspaceAccount(viewerUid);if(serial!==savedPlanSerial)return;
     const ownerLabel=document.getElementById("modalOwnerFilter")?.selectedOptions[0]?.textContent||"My workspace";
-    document.getElementById("savedPlanScope").textContent=foreign?"Viewing "+ownerLabel+". Load creates a draft for your own workspace; the teacher’s saved record is read-only here.":"Your own saved plans. Filter by school year, then open an academic term and subject.";
+    document.getElementById("savedPlanScope").textContent=foreign?"Viewing "+ownerLabel+". Load creates a draft for your own workspace; the teacher’s saved record is read-only here.":"These saved plans belong to "+auth.currentUser.email+". All school years are shown by default; recovered lessons carry a Recovered label.";
     if(document.getElementById("lessonArchiveBtn"))document.getElementById("lessonArchiveBtn").hidden=foreign;
     if (querySnapshot.empty) {
-      const filter=document.getElementById("modalSyFilter");filter.replaceChildren(new Option("No saved school years yet",""));filter.disabled=true;
-      container.innerHTML = `<div class="text-center py-12"><p class="text-gray-500 font-bold">No personal lesson plans in this workspace yet.</p><p class="text-sm text-slate-600 mt-2">Older shared school lessons need recovery into the original teacher’s workspace. New plans appear here after Save.</p></div>`;
+      const filter=document.getElementById("modalSyFilter");filter.replaceChildren(new Option("All school years",ALL_SCHOOL_YEARS));filter.disabled=true;
+      const hint=originalTeacherSignedIn(viewerUid)?"Use the older-lesson recovery status above and Retry if needed. Recovered lessons appear in this teacher account; originals remain in the school archive.":foreign?"This teacher has no saved personal lesson plans yet.":"Plans appear here after Save Draft. An administrator’s workspace and each teacher’s workspace have separate saved lessons.";
+      container.innerHTML = `<div class="text-center py-12"><p class="text-gray-500 font-bold">No saved lesson plans in this workspace yet.</p><p class="text-sm text-slate-600 mt-2">${escapeHTML(hint)}</p></div>`;
       return;
     }
 
     const allFetchedPlans = [];
     const uniqueSYs = new Set();
+    let archivedCount=0;
 
     querySnapshot.forEach((docSnap) => {
       const data = docSnap.data();
-      if (data.is_archived) return;
+      if (data.is_archived) {archivedCount++;return;}
 
-      const sy = data.school_year || "2026-2027";
+      const sy = typeof data.school_year==="string"&&data.school_year.trim()?data.school_year.trim():UNKNOWN_SCHOOL_YEAR;
       uniqueSYs.add(sy);
 
-      let safeTerm = data.academic_term || "";
+      let safeTerm = String(data.academic_term || "");
       if (!safeTerm) {
         const sem = /2|second/i.test(data.semester || "")
           ? "SECOND SEMESTER"
@@ -326,7 +393,7 @@ window.openLoadPlanModal = async function () {
         safeTerm = `${sem}/${qtr}`;
       }
 
-      let safeWeek = data.course_week || "";
+      let safeWeek = String(data.course_week || "");
       if (!safeWeek) safeWeek = `Week ${data.absoluteWeek || 1}`;
 
       allFetchedPlans.push({
@@ -336,7 +403,7 @@ window.openLoadPlanModal = async function () {
         safeSY: sy,
         safeTerm: safeTerm,
         safeWeek: safeWeek,
-        safeDate: data.date_range || "No physical dates",
+        safeDate: String(data.date_range || "No physical dates"),
         subjectGrade: `${data.subject_title || "Subject"} — ${data.grade_level || "Grade"}`,
       });
     });
@@ -344,11 +411,8 @@ window.openLoadPlanModal = async function () {
     const syFilter = document.getElementById("modalSyFilter");
     if (syFilter) {
       syFilter.disabled=uniqueSYs.size===0;
-      const mainUiSy =
-        document.getElementById("lpSchoolYear")?.value || "2026-2027";
-      const currentSelection = syFilter.value || mainUiSy;
-
-      syFilter.innerHTML = "";
+      const currentSelection = syFilter.value || ALL_SCHOOL_YEARS;
+      syFilter.replaceChildren(new Option("All school years",ALL_SCHOOL_YEARS));
       Array.from(uniqueSYs)
         .sort()
         .reverse()
@@ -357,18 +421,19 @@ window.openLoadPlanModal = async function () {
           const safeSy = escapeHTML(sy);
           syFilter.insertAdjacentHTML(
             "beforeend",
-            `<option value="${safeSy}" ${selected}>SY: ${safeSy}</option>`,
+            `<option value="${safeSy}" ${selected}>${sy===UNKNOWN_SCHOOL_YEAR?safeSy:"SY: "+safeSy}</option>`,
           );
         });
-      if(!uniqueSYs.size)syFilter.add(new Option("All plans are archived",""));
+      if(!uniqueSYs.size)syFilter.replaceChildren(new Option("All plans are archived",ALL_SCHOOL_YEARS));
     }
 
-    const activeSY = syFilter ? syFilter.value : "2026-2027";
-    const allPlans = allFetchedPlans.filter((p) => p.safeSY === activeSY);
+    const activeSY = syFilter ? syFilter.value : ALL_SCHOOL_YEARS;
+    const allPlans = allFetchedPlans.filter((p) => activeSY===ALL_SCHOOL_YEARS||p.safeSY === activeSY);
     container.innerHTML = "";
+    if(summary){const recovered=allPlans.filter(plan=>plan.source_legacy_plan||plan.recovery_provenance).length;summary.textContent=allPlans.length+" saved lesson"+(allPlans.length===1?"":"s")+" shown"+(recovered?" · "+recovered+" recovered from the older school archive":"")+" · "+(activeSY===ALL_SCHOOL_YEARS?"All school years":activeSY)+(archivedCount?" · "+archivedCount+" archived"+(foreign?"":" in Recycle Bin"):"");}
 
     if (allPlans.length === 0) {
-      container.innerHTML = `<div class="text-center py-12"><p class="text-gray-500 font-bold">No plans found for School Year ${escapeHTML(activeSY)}.</p></div>`;
+      container.innerHTML = `<div class="text-center py-12"><p class="text-gray-500 font-bold">${allFetchedPlans.length?"No saved plans found for "+escapeHTML(activeSY)+".":"All saved plans in this workspace are archived. Open Recycle Bin to restore them."}</p></div>`;
       return;
     }
 
@@ -383,14 +448,15 @@ window.openLoadPlanModal = async function () {
         latestPlan = p;
       }
     });
-    const latestTerm = latestPlan ? latestPlan.safeTerm : null;
+    const termKey=plan=>plan.safeSY+" · "+plan.safeTerm;
+    const latestTerm = latestPlan ? termKey(latestPlan) : null;
     const latestSubject = latestPlan ? latestPlan.subjectGrade : null;
 
-    const groupedPlans = {};
+    const groupedPlans = Object.create(null);
     allPlans.forEach((plan) => {
-      const term = plan.safeTerm;
+      const term = termKey(plan);
       const subjectGrade = plan.subjectGrade;
-      if (!groupedPlans[term]) groupedPlans[term] = {};
+      if (!groupedPlans[term]) groupedPlans[term] = Object.create(null);
       if (!groupedPlans[term][subjectGrade])
         groupedPlans[term][subjectGrade] = [];
       groupedPlans[term][subjectGrade].push(plan);
@@ -447,7 +513,7 @@ window.openLoadPlanModal = async function () {
 
               rowsHTML += `
                         <tr class="border-b border-gray-100 ${isLatestRow} transition">
-                            <td class="px-4 py-3 font-bold text-blue-900 w-1/4">${safeWeekStr}</td>
+                            <td class="px-4 py-3 font-bold text-blue-900 w-1/4">${safeWeekStr}${data.source_legacy_plan||data.recovery_provenance?'<span class="block mt-1 text-[10px] font-semibold text-emerald-700">Recovered · older school archive</span>':""}</td>
                             <td class="px-4 py-3 text-xs text-gray-600 font-medium">🗓️ ${safeDateStr}</td>
                             <td class="px-4 py-3 text-right">
                                 <div class="flex justify-end gap-2">
@@ -494,6 +560,7 @@ window.openLoadPlanModal = async function () {
     for(const button of container.querySelectorAll("[data-plan-history]"))button.addEventListener("click",()=>window.openLessonHistory(button.dataset.planHistory,ownerUid));
     for(const button of container.querySelectorAll("[data-plan-archive]"))button.addEventListener("click",()=>window.deleteLessonPlan(button.dataset.planArchive));
   } catch (e) {
+    if(serial!==savedPlanSerial)return;
     container.innerHTML = `<div class="p-4 bg-red-50 text-red-600 rounded-lg border border-red-200">Error: ${escapeHTML(e.message)}</div>`;
   }
 };

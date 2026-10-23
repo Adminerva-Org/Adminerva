@@ -4,7 +4,7 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {collection,doc,getDocs,getDoc,query,limit,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
 import {ADMIN_EMAIL,TEACHER_EMAIL} from "./staff-role.mjs?v=1.3.0";
-import {mountLegacyRecovery,restoreOriginalTeacherSections,legacyLessonRecovery} from "./legacy-lesson-recovery.mjs?v=1.3.0";
+import {mountLegacyRecovery,restoreOriginalTeacherSections,legacyLessonRecovery} from "./legacy-lesson-recovery.mjs?v=1.3.2";
 const field=id=>document.getElementById(id);
 let epoch=0,opened=null,busy=false,selectionEpoch=0,sectionCounts=new Map();
 mountLegacyRecovery();

@@ -1,6 +1,26 @@
 {
   "releases": [
     {
+      "version": "1.3.2",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-23",
+      "title": "Legacy lessons in the original teacher account",
+      "summary": "Recover older saved lessons directly in the teacher workspace, with clearer account ownership and all school years visible.",
+      "changes": [
+        {
+          "type": "Fixed",
+          "area": "Teacher lesson recovery",
+          "text": "The verified original teacher can recover earlier school lessons when opening Saved Plans without visiting the administrator account. Recovery always targets that teacher's UID, preserves existing saves and avoids duplicate legacy copies."
+        },
+        {
+          "type": "Updated",
+          "area": "Saved lesson plans",
+          "text": "All school years are shown by default. The signed-in account, recovery results, recovered labels and archived counts make lesson ownership and availability clearer, with a retry action when recovery cannot finish."
+        }
+      ]
+    },
+    {
       "version": "1.3.1",
       "status": "published",
       "public": true,
