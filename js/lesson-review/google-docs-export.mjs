@@ -70,21 +70,68 @@ function explain(error){
  return message;
 }
 
-export function buildGoogleDocsSource(wrapper,filename){
+async function boundedExportImage(image,original,notes){
+ const source=image.getAttribute('src');
+ if(!source||image.hidden||image.classList.contains('hidden')){image.remove();return;}
+ try{
+  const bitmap=original?.complete&&original.naturalWidth>0?original:await new Promise((resolve,reject)=>{
+   const loaded=new Image(),timer=setTimeout(()=>{loaded.onload=null;loaded.onerror=null;reject(Error('Image load timed out.'));},8000);
+   loaded.onload=()=>{clearTimeout(timer);resolve(loaded);};loaded.onerror=()=>{clearTimeout(timer);reject(Error('Image could not load.'));};loaded.src=source;
+  });
+  const naturalWidth=Number(bitmap.naturalWidth),naturalHeight=Number(bitmap.naturalHeight);
+  if(!(naturalWidth>0&&naturalHeight>0))throw Error('Image has no readable dimensions.');
+  const scale=Math.min(1,500/naturalWidth,80/naturalHeight),width=Math.max(1,Math.floor(naturalWidth*scale)),height=Math.max(1,Math.floor(naturalHeight*scale));
+  // Resize the embedded pixels as well: importers may ignore CSS max-width/max-height.
+  try{
+   const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+   const context=canvas.getContext('2d');if(!context)throw Error('Canvas is unavailable.');
+   context.drawImage(bitmap,0,0,width,height);const embedded=canvas.toDataURL('image/png');
+   if(!embedded.startsWith('data:image/png'))throw Error('Image conversion is unavailable.');
+   image.setAttribute('src',embedded);
+  }catch{
+   // Never embed a full-size data image if its pixel dimensions could not be bounded.
+   if(source.startsWith('data:'))throw Error('Embedded image could not be resized.');
+   notes.push('The linked school header has explicit export dimensions; Google must still be able to load that image.');
+  }
+  image.removeAttribute('srcset');image.removeAttribute('sizes');image.setAttribute('width',String(width));image.setAttribute('height',String(height));
+  image.setAttribute('style',`width:${width}px;height:${height}px;max-width:${width}px;max-height:${height}px;margin:0 auto;display:block;border:0;`);
+ }catch{image.remove();notes.push('The school header image could not be prepared and was omitted from this export. The lesson text is preserved.');}
+}
+
+export async function buildGoogleDocsSource(wrapper,filename){
  if(!wrapper)throw Error('The lesson document is unavailable. Reload the planner and try again.');
- const copy=wrapper.cloneNode(true);
- for(const image of copy.querySelectorAll('img')){
-  if(!image.getAttribute('src')||image.hidden||image.classList.contains('hidden')){image.remove();continue;}
-  image.style.maxHeight='80px';image.style.maxWidth='500px';image.style.height='auto';image.style.width='auto';
+ const copy=wrapper.cloneNode(true),notes=[],originalImages=[...wrapper.querySelectorAll('img')];
+ await Promise.all([...copy.querySelectorAll('img')].map((image,index)=>boundedExportImage(image,originalImages[index],notes)));
+ for(const hidden of copy.querySelectorAll('.hidden,[hidden]'))hidden.remove();
+ copy.querySelector('#printContextLine')?.remove();
+ // Legacy exports use an ordinary blue first row, never a repeating table header.
+ for(const head of copy.querySelectorAll('thead')){const body=document.createElement('tbody');body.append(...head.childNodes);head.replaceWith(body);}
+ for(const heading of copy.querySelectorAll('h1,h2,h3,h4,h5,h6')){const block=document.createElement('div');block.setAttribute('style','font-weight:bold;text-align:center;margin:0;padding:0;font-size:14pt;');block.append(...heading.childNodes);heading.replaceWith(block);}
+ const main=copy.querySelector('table.print-table')||copy.querySelector('table');
+ const header=main?.rows[0];
+ if(header)for(const cell of [...header.cells]){
+  const replacement=document.createElement('td');for(const attribute of cell.attributes)if(attribute.name!=='scope')replacement.setAttribute(attribute.name,attribute.value);
+  replacement.append(...cell.childNodes);replacement.setAttribute('bgcolor','#b4c6e7');replacement.style.backgroundColor='#b4c6e7';replacement.style.fontWeight='bold';replacement.style.textAlign='center';cell.replaceWith(replacement);
+ }
+ for(const cell of copy.querySelectorAll('th')){const replacement=document.createElement('td');for(const attribute of cell.attributes)if(attribute.name!=='scope')replacement.setAttribute(attribute.name,attribute.value);replacement.append(...cell.childNodes);cell.replaceWith(replacement);}
+ for(const block of copy.querySelectorAll('div,p'))block.setAttribute('style','margin:0;padding:0;font-family:"Arial Narrow",Arial,sans-serif;font-size:10pt;color:#333;'+(block.getAttribute('style')||''));
+ for(const table of copy.querySelectorAll('table')){
+  const signature=table!==main;table.setAttribute('style','border-collapse:collapse;width:100%;margin-top:10px;font-family:"Arial Narrow",Arial,sans-serif;font-size:10pt;'+(table.getAttribute('style')||''));
+  table.setAttribute('cellspacing','0');table.setAttribute('cellpadding','0');table.setAttribute('border',signature?'0':'1');
+  for(const cell of table.querySelectorAll('td'))cell.setAttribute('style','border:1px solid #000;padding:6px 8px;font-size:10pt;vertical-align:top;'+(cell.getAttribute('style')||'')+(signature?';border:none;':''));
+  if(signature){table.style.border='none';table.style.marginTop='40px';}
  }
  const tables=[...copy.querySelectorAll('table')].map(table=>{
   const row=table.rows[0],cells=row?[...row.cells]:[],percent=cells.map(cell=>Number.parseFloat(cell.style.width)||0),total=percent.reduce((sum,value)=>sum+value,0);
-  return {columns:cells.length,widths:percent.every(value=>value>0)&&total?percent.map(value=>864*value/total):cells.map(()=>864/cells.length)};
+  const widths=table===main&&cells.length===7?[69,121,121,35,338,90,90]:percent.every(value=>value>0)&&total?percent.map(value=>864*value/total):cells.map(()=>864/cells.length);
+  cells.forEach((cell,index)=>{cell.style.width=(widths[index]/864*100).toFixed(4)+'%';cell.setAttribute('width',String(Math.round(widths[index]*4/3)));});
+  return {columns:cells.length,widths};
  });
+ for(const node of copy.querySelectorAll('[class]'))node.removeAttribute('class');
  const html='<!doctype html><html><head><meta charset="utf-8"><title>'+escape(filename)+'</title><style>'+ 
-  '@page{size:13in 8.5in;margin:.5in}body{margin:0;font:10pt Arial,sans-serif;color:#222}div,p{margin:0}table{border-collapse:collapse;width:100%;margin-top:10px;table-layout:fixed}td,th{border:1px solid #000;padding:6px 8px;font-size:10pt;vertical-align:top;overflow-wrap:break-word}th{background:#b4c6e7;font-weight:bold}tr{break-inside:avoid}thead{display:table-header-group}img{max-width:100%}.hidden{display:none}'+
-  '</style></head><body>'+copy.innerHTML+'</body></html>';
- return {filename,html,tables};
+  '@page{size:13in 8.5in;margin:.5in}body{margin:0;padding:0;font-family:"Arial Narrow",Arial,sans-serif;font-size:10pt;color:#333}table{border-collapse:collapse;margin-top:10px;width:100%}tbody{display:table-row-group}td{overflow-wrap:break-word}'+
+  '</style></head><body style="margin:0;padding:0;font-family:&quot;Arial Narrow&quot;,Arial,sans-serif;font-size:10pt;color:#333;">'+copy.innerHTML+'</body></html>';
+ return {filename,html,tables,notes:[...new Set(notes)]};
 }
 
 async function uploadDocument(source,token){
@@ -160,16 +207,17 @@ export function exportLessonToGoogleDocs(options){
    created=await uploadDocument(source,tokenResult.value);
    assertAccount();
    if(!created.id)throw Error('Google returned no document ID after upload. Check Drive before retrying to avoid a duplicate.');
-   ui.open.href='https://docs.google.com/document/d/'+encodeURIComponent(created.id)+'/edit';ui.open.hidden=false;
+   ui.open.href='https://docs.google.com/document/d/'+encodeURIComponent(created.id)+'/edit';
    ui.status.textContent='Google Doc created. Applying page and table settings…';
-   try{await formatDocument(created.id,source,tokenResult.value,assertAccount);ui.status.textContent='Your Google Doc is ready. Open it to review the layout before sharing.';}
+   try{await formatDocument(created.id,source,tokenResult.value,assertAccount);ui.status.textContent='Your lesson was uploaded and the legacy page settings were applied. Open the Google Doc to review it before sharing.';}
    catch(error){ui.status.textContent='Your Google Doc was created. Its final formatting needs review.\n\n'+explain(error);}
    assertAccount();
+   ui.open.hidden=false;
    if(outputTab&&!outputTab.closed)outputTab.location.replace(ui.open.href);
   }catch(error){
    if(outputTab&&!outputTab.closed)outputTab.close();
    ui.status.textContent=explain(error);
    if(!created?.id){ui.retry.hidden=false;ui.retry.onclick=()=>{ui.dialog.close();exportLessonToGoogleDocs(options);};}
-  }finally{ui.close.disabled=false;activeExport=null;ui.close.focus();}
+  }finally{if(source?.notes?.length)ui.status.textContent+='\n\n'+source.notes.join('\n');ui.close.disabled=false;activeExport=null;ui.close.focus();}
  })();
 }

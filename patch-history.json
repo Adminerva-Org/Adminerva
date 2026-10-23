@@ -1,6 +1,32 @@
 {
   "releases": [
     {
+      "version": "1.3.3",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-23",
+      "title": "Original school lesson-plan formatting restored",
+      "summary": "Print and export lessons using the familiar merged school table, original blue headings and a compact school banner.",
+      "changes": [
+        {
+          "type": "Fixed",
+          "area": "Lesson-plan print format",
+          "text": "Restores the legacy merged table cells, Arial Narrow typography, original blue heading color and column proportions. Removes the added session strips, fragmented text rows and repeated column headings."
+        },
+        {
+          "type": "Fixed",
+          "area": "Google Docs formatting",
+          "text": "Exports the school banner with explicit proportional dimensions and applies the original table styling directly to exported cells, keeping the signature table borderless and retaining useful export results and downloads."
+        },
+        {
+          "type": "Fixed",
+          "area": "Update notification times",
+          "text": "Updates with a recorded publication timestamp display their actual date and time. Earlier date-only releases show the date without an invented midnight time."
+        }
+      ],
+      "publishedAt": "2026-10-23T07:46:36.319Z"
+    },
+    {
       "version": "1.3.2",
       "status": "published",
       "public": true,
@@ -18,7 +44,8 @@
           "area": "Saved lesson plans",
           "text": "All school years are shown by default. The signed-in account, recovery results, recovered labels and archived counts make lesson ownership and availability clearer, with a retry action when recovery cannot finish."
         }
-      ]
+      ],
+      "publishedAt": "2026-10-23T07:27:39Z"
     },
     {
       "version": "1.3.1",
@@ -38,7 +65,8 @@
           "area": "Google Docs export",
           "text": "Google Drive authorization is reused during the current page session. Upload failures show Google's response and HTTP status. A created document remains accessible when final formatting needs review, with Word and HTML downloads available as alternatives."
         }
-      ]
+      ],
+      "publishedAt": "2026-10-23T05:06:23Z"
     },
     {
       "version": "1.3.0",
