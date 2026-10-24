@@ -7,7 +7,7 @@ import {notificationVisible,unreadNotificationCount} from "./notification-visibi
 import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs?v=1.3.0";
 import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=1.3.3";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "./teaching-firestore.mjs?v=1.3.1";
+import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "./teaching-firestore.mjs?v=1.3.2";
 
 let listenEpoch=0;
 const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false };
@@ -201,10 +201,15 @@ async function listen(user){
   }
   // Students never subscribe to staff report feeds. Their notification center
   // shows only records explicitly delivered to their own Firebase inbox.
-  if(staff)state.unsubscribe.push(onSnapshot(
-    query(collection(db,"grading_alerts"),orderBy("createdAt","desc"),limit(30)),
-    snap=>{state.gradingAlerts=snap.docs.map(d=>({id:d.id,...d.data()}));success("Grading alerts")},
-    error("Grading alerts")));
+  if(staff){
+    const gradingRequest=isAdmin()
+      ? query(collection(db,"grading_alerts"),orderBy("createdAt","desc"),limit(30))
+      : query(collection(db,"grading_alerts"),limit(30));
+    state.unsubscribe.push(onSnapshot(
+      gradingRequest,
+      snap=>{state.gradingAlerts=snap.docs.map(d=>({id:d.id,...d.data()}));success("Grading alerts")},
+      error("Grading alerts")));
+  }
   if(staff)state.unsubscribe.push(onSnapshot(
     query(collection(db,"student_submissions"),orderBy("submittedAt","desc"),limit(40)),
     snap=>{state.submissions=snap.docs.map(d=>({id:d.id,...d.data()}));success("Student submissions")},
