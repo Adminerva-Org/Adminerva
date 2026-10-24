@@ -15,6 +15,46 @@ window.cachedSchedule = "";
 window.cachedScope = "";
 window.cachedCustomInstructions = "";
 window.cachedPreviousPlan = null;
+const LESSON_DRAFT_KEY="Adminerva_lesson_editor_draft_v1";
+let lessonDraftDirty=false,lessonDraftTimer=null;
+function lessonDraftStatus(message,tone="info"){
+  let node=document.getElementById("adminervaLessonDraftStatus");
+  if(!node){
+    node=document.createElement("p");node.id="adminervaLessonDraftStatus";node.className="av-form-hint my-2";
+    const output=document.getElementById("outputContainer");output?.parentElement?.insertBefore(node,output);
+  }
+  if(node){node.textContent=message;node.dataset.tone=tone;}
+}
+function lessonDraftForm(){
+  const value=id=>document.getElementById(id)?.value||"";
+  return {schoolYear:value("lpSchoolYear"),academicTerm:value("lpAcademicTerm"),courseWeek:value("lpCourseWeek"),
+    dateRange:value("lpDateRange"),program:value("lpProgram"),subject:value("lpSubject"),grade:value("lpGradeLevel"),
+    customInstructions:value("lpCustomInstructions")};
+}
+function persistLessonDraft(){
+  if(!window.currentPlan?.length||!window.currentWeeklyOverview)return;
+  try{
+    window.syncOutputToData?.();
+    lessonStorage.setItem(LESSON_DRAFT_KEY,JSON.stringify({
+      savedAt:new Date().toISOString(),sessions:window.currentPlan,weeklyOverview:window.currentWeeklyOverview,
+      targetGrade:window.currentTargetGrade,planSubject:window.currentPlanSubject,planTeacher:window.currentPlanTeacher,
+      lessonSettings:window.currentLessonSettings||null,referenceFolders:window.currentLessonReferenceFolders||[],
+      loadedPersonalPlan:window.loadedPersonalPlan||null,legacySourcePlanId:window.legacySourcePlanId||null,
+      loadedPersonalIdentity:window.loadedPersonalIdentity||null,form:lessonDraftForm()
+    }));
+    lessonDraftStatus("Unsaved edits are protected in a recovery draft on this device.","warning");
+  }catch(error){console.warn("Lesson draft could not be cached:",error);}
+}
+function markLessonDraftDirty(){
+  lessonDraftDirty=true;clearTimeout(lessonDraftTimer);
+  lessonDraftTimer=setTimeout(persistLessonDraft,300);
+  lessonDraftStatus("Unsaved changes · recovery draft pending","warning");
+}
+function clearLessonDraft(){
+  lessonDraftDirty=false;clearTimeout(lessonDraftTimer);lessonDraftTimer=null;
+  try{lessonStorage.removeItem(LESSON_DRAFT_KEY);}catch{}
+  lessonDraftStatus("Saved to your teaching workspace.","success");
+}
 const escapeLessonText=value=>String(value??"").replace(/[&<>"']/g,c=>({
 "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
 })[c]);
@@ -203,6 +243,7 @@ window.renderOverview = function () {
   container.querySelectorAll("[data-weekly-field]").forEach(input=>{
     input.addEventListener("input",()=>{
       window.currentWeeklyOverview[input.dataset.weeklyField]=input.value;
+      markLessonDraftDirty();
     });
   });
 };
@@ -311,6 +352,7 @@ window.renderOutput = function () {
       const idx = e.target.getAttribute("data-idx");
       const key = e.target.getAttribute("data-key");
       window.currentPlan[idx][key] = e.target.value;
+      markLessonDraftDirty();
 
       e.target.style.height = "auto";
       e.target.style.height = e.target.scrollHeight + "px";
@@ -332,6 +374,11 @@ window.closeLoadPlanModal = function () {
 };
 
 window.loadSpecificPlan = function (planData) {
+  const replacingUnsaved=window.currentPlan?.length&&(lessonDraftDirty||!window.loadedPersonalPlan);
+  if(replacingUnsaved){
+    persistLessonDraft();
+    if(!confirm("You have an unsaved lesson draft. It has been protected on this device. Open the selected saved lesson anyway?"))return;
+  }
   // Older records may predate the weekly overview. Do not lose the open draft
   // or crash the editor when a saved record has missing session data.
   if (!planData || !Array.isArray(planData.sessions) || !planData.sessions.length) {
@@ -410,6 +457,8 @@ window.loadSpecificPlan = function (planData) {
 
   window.renderOverview();
   window.renderOutput();
+  lessonDraftDirty=false;
+  lessonDraftStatus("Saved lesson loaded. Edits will be protected automatically.","info");
   window.closeLoadPlanModal();
   alert(planData.document_settings?"Lesson loaded with saved document settings. Account defaults are unchanged.":"Lesson loaded. This older plan has no saved coordinator settings; review signatories before exporting.");
 };
@@ -455,3 +504,26 @@ window.generateRollingWeekDropdown = function () {
     selectEl.appendChild(opt);
   }
 };
+
+document.addEventListener("adminerva:lesson-saved",clearLessonDraft);
+window.addEventListener("beforeunload",()=>{if(lessonDraftDirty)persistLessonDraft();});
+workspaceOnReady(()=>{
+  let draft=null;
+  try{draft=JSON.parse(lessonStorage.getItem(LESSON_DRAFT_KEY)||"null");}catch{}
+  if(!draft?.sessions?.length||!draft.weeklyOverview)return;
+  const when=draft.savedAt?new Date(draft.savedAt).toLocaleString():"an earlier session";
+  lessonDraftStatus("A recoverable unsaved lesson draft is available from "+when+".","warning");
+  if(window.currentPlan?.length||!confirm("Recover the unsaved lesson draft from "+when+"?"))return;
+  const form=draft.form||{},set=(id,value)=>{const field=document.getElementById(id);if(field&&value!==undefined)field.value=value;};
+  set("lpSchoolYear",form.schoolYear);set("lpAcademicTerm",form.academicTerm);set("lpCourseWeek",form.courseWeek);
+  set("lpDateRange",form.dateRange);set("lpProgram",form.program);set("lpSubject",form.subject);set("lpGradeLevel",form.grade);
+  set("lpCustomInstructions",form.customInstructions);
+  window.currentPlan=draft.sessions;window.currentWeeklyOverview=draft.weeklyOverview;
+  window.currentTargetGrade=draft.targetGrade||form.grade||"";window.currentPlanSubject=draft.planSubject||form.subject||"";
+  window.currentPlanTeacher=draft.planTeacher||"";window.currentLessonSettings=draft.lessonSettings||window.currentLessonSettings;
+  window.currentLessonReferenceFolders=Array.isArray(draft.referenceFolders)?draft.referenceFolders:[];
+  window.loadedPersonalPlan=draft.loadedPersonalPlan||null;window.legacySourcePlanId=draft.legacySourcePlanId||null;
+  window.loadedPersonalIdentity=draft.loadedPersonalIdentity||null;lessonDraftDirty=true;
+  window.renderOverview?.();window.renderOutput?.();
+  lessonDraftStatus("Recovered unsaved lesson draft · save when ready","warning");
+});
