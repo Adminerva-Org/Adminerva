@@ -205,7 +205,7 @@ function renderAssessmentGrid() {
                         <span class="${getTypeStyle(item.type)} text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider">${escapeHTML(item.type)}</span>
                         <span class="text-slate-400 hover:text-white transition">⋮</span>
                     </div>
-                    <h3 class="font-bold text-white text-lg truncate" title="${escapeHTML(item.title)}">${escapeHTML(item.title)}</h3>
+                    <h3 class="font-bold text-white text-lg truncate" title="${escapeHTML(item.title)}">${escapeHTML(item.title)}</h3>\n                    ${item.subject ? `<p class="text-xs text-cyan-200 mt-1 truncate">${escapeHTML(item.subject)}</p>` : ""}
                 </div>
                 <div class="p-4 flex-1 flex flex-col">
                     <p class="text-sm text-gray-600 line-clamp-2 mb-4">${escapeHTML(item.taskContext || "No context provided.")}</p>
@@ -279,7 +279,7 @@ window.openEditModal = function () {
   document.getElementById("systemPersona").value = item.systemPersona || "";
   document.getElementById("taskContext").value = item.taskContext || "";
   document.getElementById("evalCriteria").value = item.evalCriteria || "";
-  document.getElementById("assessSubject").value="";rubricSource="manual";lastGeneratedRubric="";
+  document.getElementById("assessSubject").value=item.subject||"";rubricSource="manual";lastGeneratedRubric="";
   refreshRubricChoices();document.getElementById("assessmentRubricTemplate").value="balanced";
   if(!document.getElementById("evalCriteria").value.trim())window.applyAssessmentRubric();
   if(!document.getElementById("systemPersona").value.trim())document.getElementById("systemPersona").value=defaultPersona;
@@ -319,6 +319,7 @@ window.saveAssessment = async function () {
     type: document.getElementById("assessType").value,
     maxScore: score,
     quarter: document.getElementById("assessQuarter").value,
+    subject: document.getElementById("assessSubject").value.trim(),
     targetPaths: targetPaths, // Legacy path arrays are preserved.
     expectedExtensions: [...new Set(document.getElementById("assessExpectedExts").value
       .split(",").map(e => e.trim().toLowerCase().replace(/^\./, "")).filter(e => /^[a-z0-9]{1,12}$/.test(e)))],
@@ -335,7 +336,7 @@ window.saveAssessment = async function () {
 
   try {
     const teacherOnly={
-      ownerUid:payload.ownerUid,sectionIds:payload.sectionIds,
+      ownerUid:payload.ownerUid,sectionIds:payload.sectionIds,subject:payload.subject,
       systemPersona:document.getElementById("systemPersona").value.trim()||defaultPersona,
       rules:objectiveRules,updatedAt:serverTimestamp()
     };

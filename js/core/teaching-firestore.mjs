@@ -3,7 +3,7 @@ export * from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js"
 import * as sdk from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {auth,db} from "./firebase-core.js?v=1.3.0";
 import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
-import {staffRole,staffSections} from "./staff-role.mjs?v=1.3.0";
+import {staffRole,staffSections,staffSubjects} from "./staff-role.mjs?v=1.3.10";
 const descriptors=new WeakMap();
 const sectional=new Set(["teaching_roster","student_grades","grades","activity_grades","assessment_evidence","student_submissions","commit_reclaims","practice_profiles","practice_scores","practice_boards","practice_rankings","practice_class_season_rankings","grading_alerts","issues"]);
 const privateKinds=new Set(["repobank","group_repo_cache","github_stats_cache","system","templates","reference_folders"]);
@@ -12,14 +12,16 @@ const emptySnapshot=docs=>({docs,size:docs.length,empty:docs.length===0,forEach:
 async function actor(){
   await auth.authStateReady();const user=auth.currentUser;
   if(!pending||pending.uid!==user?.uid){
-    const operation=resolveStaffRole(user).then(role=>({uid:user?.uid,role,sections:staffSections(user)}));
+    const operation=resolveStaffRole(user).then(role=>({uid:user?.uid,role,sections:staffSections(user),subjects:staffSubjects(user)}));
     pending={uid:user?.uid,operation};operation.finally(()=>{if(pending?.operation===operation)pending=null;}).catch(()=>{});
   }
   const current=await pending.operation;
   if(auth.currentUser?.uid!==current.uid)throw Error("Account changed. Reload the teaching workspace.");
   if(current.role==="teacher"&&typeof document!=="undefined"&&!document.getElementById("teaching-access-notice")){
     const notice=document.createElement("p");notice.id="teaching-access-notice";notice.className="av-scope-notice";
-    notice.textContent=current.sections.length?"Assigned-section access is enforced. Older shared records may need administrator access review; missing records are not zero scores.":"No teaching sections are assigned. Ask an administrator to use Manage Teachers; private planning remains available.";
+    notice.textContent=current.sections.length
+      ? "Assigned-section access is enforced. "+(current.subjects.length?"Workspace subject focus: "+current.subjects.join(", ")+". ":"")+"Older shared records may need administrator access review; missing records are not zero scores."
+      : "No teaching sections are assigned. Ask an administrator to use Manage Teachers; private planning remains available.";
     document.querySelector("main")?.prepend(notice);
   }
   return current;
@@ -51,7 +53,13 @@ async function plans(source,current=null){
   if(path==="students")path="teaching_roster";
   const base=sdk.collection(db,path);
   if(sectional.has(path))return current.sections.map(section=>sdk.query(base,...constraints,sdk.where("section","==",section)));
-  if(path==="assessments"||path==="assessment_private")return [sdk.query(base,...constraints,sdk.where("ownerUid","==",current.uid)),
+  if(path==="assessments"){
+    const owner=sdk.query(base,...constraints,sdk.where("ownerUid","==",current.uid));
+    if(!current.subjects.length)return [owner,...current.sections.map(section=>sdk.query(base,...constraints,sdk.where("sectionIds","array-contains",section)))];
+    return [owner,...current.sections.flatMap(section=>current.subjects.map(subject=>
+      sdk.query(base,...constraints,sdk.where("sectionIds","array-contains",section),sdk.where("subject","==",subject))))];
+  }
+  if(path==="assessment_private")return [sdk.query(base,...constraints,sdk.where("ownerUid","==",current.uid)),
     ...current.sections.map(section=>sdk.query(base,...constraints,sdk.where("sectionIds","array-contains",section)))];
   if(/^practice_verified_progress\/[^/]+\/courses$/.test(path))return current.sections.map(section=>sdk.query(base,...constraints,sdk.where("sections","array-contains",section)));
   return [source];

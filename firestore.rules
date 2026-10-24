@@ -77,10 +77,11 @@ service cloud.firestore {
         let data = request.resource.data;
         let prior = resource == null ? null : resource.data;
         let audit = getAfter(/databases/$(database)/documents/staff_access/$(email)/revisions/$(string(data.revision))).data;
-        return data.keys().hasOnly(["email","displayName","role","status","revision","reason","updatedBy","updatedAt","sections"]) &&
+        return data.keys().hasOnly(["email","displayName","role","status","revision","reason","updatedBy","updatedAt","sections","subjects"]) &&
           data.email == email && email == email.lower() && email.matches("^[^/@ ]+@[^/@ ]+\\.[^/@ ]+$") && email.size() <= 254 &&
           email != "babaynike2013@gmail.com" && data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 120 &&
-          data.role == "teacher" && data.status in ["active","disabled"] && data.get("sections",[]) is list && data.get("sections",[]).size() <= 40 && data.revision is int &&
+          data.role == "teacher" && data.status in ["active","disabled"] && data.get("sections",[]) is list && data.get("sections",[]).size() <= 40 &&
+          data.get("subjects",[]) is list && data.get("subjects",[]).size() <= 40 && data.revision is int &&
           data.revision == (prior == null ? 1 : prior.revision + 1) && data.reason is string && data.reason.size() >= 12 && data.reason.size() <= 600 &&
           data.updatedBy == request.auth.uid && data.updatedAt == request.time &&
           audit.before == prior && audit.after == data && audit.actorUid == request.auth.uid && audit.createdAt == request.time;

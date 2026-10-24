@@ -10,6 +10,11 @@ export function staffSections(user) {
   return staffRole(user)==="teacher"&&Array.isArray(profile?.sections)
     ? [...new Set(profile.sections.filter(section=>typeof section==="string"&&section.length>0&&section.length<=120))].slice(0,40):[];
 }
+export function staffSubjects(user) {
+  const profile=resolved.get(user?.uid);
+  return staffRole(user)==="teacher"&&Array.isArray(profile?.subjects)
+    ? [...new Set(profile.subjects.filter(subject=>typeof subject==="string"&&subject.length>0&&subject.length<=120))].slice(0,40):[];
+}
 export function staffRole(user) {
   if (!user?.emailVerified) return null;
   const email = (user.email || "").toLowerCase();
