@@ -55,7 +55,8 @@ document.addEventListener("DOMContentLoaded", () => {
       ["repobank", "Repository bank", "repobank.html"]
     ] },
     { name: "Insights", area: "educator", items: [
-      ["dashboard", "Analytics", "teacher-analytics.html"]
+      ["dashboard", "Analytics", "teacher-analytics.html"],
+      ["followup", "Learning follow-up", "learning-follow-up.html"]
     ] },
     { name: "Planning", area: "lesson", items: [
       ["planner", "Lesson planner", "lesson-planner.html"],
