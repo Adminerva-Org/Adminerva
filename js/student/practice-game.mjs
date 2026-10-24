@@ -4,7 +4,7 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {collection,query,orderBy,limit,onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.3.0";
-import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.3.0";
+import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.3.7";
 import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest} from "./practice-session.mjs?v=1.3.0";
 import {practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.3.0";
 const functions=getFunctions(app,"asia-southeast1"),field=id=>document.getElementById(id),guestPage=document.body.dataset.practiceAccess==="public";
