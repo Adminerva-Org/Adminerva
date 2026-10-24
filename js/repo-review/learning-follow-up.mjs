@@ -1,7 +1,6 @@
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
-import {collection,doc,getDocs,query,where,setDoc,updateDoc,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import {collection,doc,getDocs,query,where,setDoc,updateDoc,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.3.2";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
-import {staffSections} from "../core/staff-role.mjs?v=1.3.0";
 import {COURSES} from "../student/practice-courses.mjs?v=1.3.0";
 const el=id=>document.getElementById(id),id=()=>crypto.randomUUID();
 let students=[],packs=[],projects=[],plans=[],mode="";
@@ -54,17 +53,18 @@ async function save(event){
 async function load(){
  const sec=section(),person=student(),user=auth.currentUser;if(!user)return;
  const [studentSnap,packSnap,projectSnap]=await Promise.all([
-  getDocs(query(collection(db,"students"),where("section","==",sec))),
+  getDocs(collection(db,"students")),
   getDocs(query(collection(db,"practice_packs"),where("sectionIds","array-contains",sec))),
   getDocs(query(collection(db,"student_projects"),where("sectionIds","array-contains",sec)))
  ]);
- students=studentSnap.docs.map(r=>({id:r.id,...r.data()}));packs=packSnap.docs.map(r=>({id:r.id,...r.data()}));projects=projectSnap.docs.map(r=>({id:r.id,...r.data()}));
+ students=studentSnap.docs.map(r=>({id:r.id,...r.data()})).filter(item=>item.section===sec);packs=packSnap.docs.map(r=>({id:r.id,...r.data()}));projects=projectSnap.docs.map(r=>({id:r.id,...r.data()}));
  const prior=person?.id||el("followupStudent").value;el("followupStudent").replaceChildren(new Option("Choose learner",""),...students.map(s=>new Option(s.name||s.id,s.id)));if(prior&&students.some(s=>s.id===prior))el("followupStudent").value=prior;
  const selected=student();plans=selected?(await getDocs(collection(db,"improvement_plans",selected.id,"items"))).docs.map(r=>({id:r.id,...r.data()})):[];
  render();el("followupStatus").textContent=students.length+" learners · "+packs.length+" packs · "+projects.length+" named projects.";
 }
 await auth.authStateReady();const user=auth.currentUser,role=await resolveStaffRole(user);if(!role)location.replace("login.html");
-const sections=staffSections(user);el("followupSection").replaceChildren(...sections.map(value=>new Option(value,value)));if(sections.length)await load();else el("followupStatus").textContent="No assigned sections.";
+let sections=[];try{const roster=await getDocs(collection(db,"students"));sections=[...new Set(roster.docs.map(record=>record.data().section).filter(Boolean))].sort();}catch{}
+el("followupSection").replaceChildren(...sections.map(value=>new Option(value,value)));if(sections.length)await load();else el("followupStatus").textContent="No assigned sections.";
 el("followupSection").addEventListener("change",()=>void load());el("followupStudent").addEventListener("change",()=>void load());
 el("newPracticePack").onclick=()=>open("pack");el("newStudentProject").onclick=()=>open("project");el("newImprovementPlan").onclick=()=>open("plan");
 el("followupClose").onclick=el("followupCancel").onclick=()=>el("followupDialog").close();el("followupForm").addEventListener("submit",save);
