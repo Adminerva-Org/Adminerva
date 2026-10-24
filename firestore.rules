@@ -662,6 +662,24 @@ service cloud.firestore {
       allow read, write: if ownsStudentProfile(studentId);
     }
 
+    match /teacher_evaluation_drafts/{ownerUid}/items/{draftId} {
+      function validDraft() {
+        let data=request.resource.data;
+        return isInstructor() && request.auth.uid == ownerUid &&
+          data.keys().hasOnly(["ownerUid","studentId","taskId","section","evidenceRevision","checkpointSha","model","draft","createdAt","status"]) &&
+          data.ownerUid == ownerUid && data.studentId is string && data.taskId is string &&
+          mayTeachStudent(data.studentId) && mayTeachAssessment(data.taskId) &&
+          data.section is string && data.evidenceRevision is int && data.evidenceRevision >= 0 &&
+          data.checkpointSha is string && data.checkpointSha.matches("^[a-fA-F0-9]{40}$") &&
+          data.model is string && data.model.size() <= 120 && data.draft is map &&
+          data.status == "private_suggestion" && data.createdAt == request.time;
+      }
+      allow read: if isInstructor() && request.auth.uid == ownerUid;
+      allow create: if validDraft();
+      allow update: if false;
+      allow delete: if isInstructor() && request.auth.uid == ownerUid;
+    }
+
     match /assessments/{assessmentId} {
       function validAssessment(data) {
         return data.get("ownerUid","") is string && data.get("sectionIds",[]) is list && data.sectionIds.size() <= 20 &&

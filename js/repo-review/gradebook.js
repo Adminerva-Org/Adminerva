@@ -110,7 +110,7 @@ async function loadGrid() {
   const serial=++gridSerial;gridEntries=[];syncPublishButton(true);
   if (!section || !taskId) {syncPublishButton();return;}
 
-  tbody.innerHTML = `<tr aria-busy="true"><td colspan="4" class="px-6 py-8"><div class="animate-pulse space-y-3"><div class="h-4 rounded bg-slate-200 w-1/3"></div><div class="h-4 rounded bg-slate-100 w-2/3"></div><span class="text-sm text-slate-500">Loading saved scores…</span></div></td></tr>`;
+  tbody.innerHTML = `<tr aria-busy="true"><td colspan="5" class="px-6 py-8"><div class="animate-pulse space-y-3"><div class="h-4 rounded bg-slate-200 w-1/3"></div><div class="h-4 rounded bg-slate-100 w-2/3"></div><span class="text-sm text-slate-500">Loading saved scores…</span></div></td></tr>`;
 
   try {
     const gradesSnap = await getDocs(
@@ -194,21 +194,27 @@ async function loadGrid() {
       tbody.insertAdjacentHTML(
         "beforeend",
         `
-                <tr class="hover:bg-indigo-50/50 transition">
-                    <td class="px-6 py-4">
+                <tr class="hover:bg-indigo-50/50 transition" data-student-id="${student.id}">
+                    <td class="px-5 py-4">
                         <div class="font-extrabold text-slate-800 text-base">${escapeHTML(student.name)}</div>
                         <div class="text-[10px] text-slate-400 font-mono mt-0.5">@${escapeHTML(student.githubUsername || "unlinked")}</div>
                     </td>
-                    <td class="px-6 py-4">${repoStatus}</td>
-                    <td class="px-6 py-4">${scoreBadge}</td>
-                    <td class="px-6 py-4">${pubToggle}</td>
+                    <td class="px-5 py-4"><div data-review-state="${student.id}" class="min-w-40 text-xs text-slate-500">Checking…</div></td>
+                    <td class="px-5 py-4">${repoStatus}</td>
+                    <td class="px-5 py-4">${scoreBadge}</td>
+                    <td class="px-5 py-4">${pubToggle}</td>
                 </tr>
         `,
       );
     });
 
+    window.dispatchEvent(new CustomEvent("adminerva:gradebook-grid-loaded",{detail:{
+      section,taskId,schemaVersion,students:classStudents.map(student=>({id:student.id,name:student.name,section:student.section,repoUrl:student.repoUrl,githubUsername:student.githubUsername,email:student.email})),
+      grades:Object.fromEntries(classStudents.filter(student=>gradeMap[student.id]).map(student=>[student.id,gradeMap[student.id]]))
+    }}));
+
     if (classStudents.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-12 text-center text-slate-400 font-medium italic">No students found in this section.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-12 text-center text-slate-400 font-medium italic">No students found in this section.</td></tr>`;
       return;
     }
 
@@ -262,7 +268,7 @@ async function loadGrid() {
   } catch (error) {
     if(serial!==gridSerial)return;
     console.error(error);
-    tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-12 text-center text-red-500 font-bold border border-red-200 bg-red-50">Failed to load matrix. Check permissions.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-12 text-center text-red-500 font-bold border border-red-200 bg-red-50">Failed to load matrix. Check permissions.</td></tr>`;
   }
 }
 
@@ -408,7 +414,7 @@ function updateAssessmentsForSection() {
 
   assSelect.innerHTML =
     "<option value='' disabled selected>Select an assessment...</option>";
-  tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-12 text-center text-slate-400 font-medium italic">Select an Assessment above to load the matrix.</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-12 text-center text-slate-400 font-medium italic">Select an Assessment above to load the matrix.</td></tr>`;
 
   if (!section) return;
 
