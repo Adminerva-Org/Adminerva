@@ -5,13 +5,13 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {collection,doc,getDoc,getDocFromServer,getDocs,setDoc,query,where,updateDoc,runTransaction,serverTimestamp,onSnapshot}
   from "../core/teaching-firestore.mjs?v=1.3.0";
 import {parseRepository,normalizeSelection,validSha}
-  from "./services/assessment-evidence.mjs?v=1.3.0";
+  from "./services/assessment-evidence.mjs?v=1.3.1";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.3.1";
-import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
+import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.1";
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
-import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.1";
+import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.2";
 import {searchStudents} from "./services/student-search.mjs?v=1.3.0";
 
 export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{}}={}){
