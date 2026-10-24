@@ -17,13 +17,13 @@ window.cachedCustomInstructions = "";
 window.cachedPreviousPlan = null;
 const LESSON_DRAFT_KEY="Adminerva_lesson_editor_draft_v1";
 let lessonDraftDirty=false,lessonDraftTimer=null;
-function lessonDraftStatus(message,tone="info"){
-  let node=document.getElementById("adminervaLessonDraftStatus");
-  if(!node){
-    node=document.createElement("p");node.id="adminervaLessonDraftStatus";node.className="av-form-hint my-2";
-    const output=document.getElementById("outputContainer");output?.parentElement?.insertBefore(node,output);
-  }
-  if(node){node.textContent=message;node.dataset.tone=tone;}
+function lessonDraftStatus(label,tone="info",detail=""){
+  const node=document.getElementById("lessonDraftStatusBadge");
+  if(!node)return;
+  node.hidden=!label;
+  node.textContent=label||"";
+  node.dataset.tone=tone;
+  if(detail)node.title=detail;else node.removeAttribute("title");
 }
 function lessonDraftForm(){
   const value=id=>document.getElementById(id)?.value||"";
@@ -42,18 +42,18 @@ function persistLessonDraft(){
       loadedPersonalPlan:window.loadedPersonalPlan||null,legacySourcePlanId:window.legacySourcePlanId||null,
       loadedPersonalIdentity:window.loadedPersonalIdentity||null,form:lessonDraftForm()
     }));
-    lessonDraftStatus("Unsaved edits are protected in a recovery draft on this device.","warning");
+    lessonDraftStatus("Draft protected","warning","Unsaved edits are recoverable on this device.");
   }catch(error){console.warn("Lesson draft could not be cached:",error);}
 }
 function markLessonDraftDirty(){
   lessonDraftDirty=true;clearTimeout(lessonDraftTimer);
   lessonDraftTimer=setTimeout(persistLessonDraft,300);
-  lessonDraftStatus("Unsaved changes · recovery draft pending","warning");
+  lessonDraftStatus("Saving…","warning","Protecting unsaved lesson changes on this device.");
 }
 function clearLessonDraft(){
   lessonDraftDirty=false;clearTimeout(lessonDraftTimer);lessonDraftTimer=null;
   try{lessonStorage.removeItem(LESSON_DRAFT_KEY);}catch{}
-  lessonDraftStatus("Saved to your teaching workspace.","success");
+  lessonDraftStatus("Saved","success","Saved to your teaching workspace.");
 }
 const escapeLessonText=value=>String(value??"").replace(/[&<>"']/g,c=>({
 "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
@@ -458,7 +458,7 @@ window.loadSpecificPlan = function (planData) {
   window.renderOverview();
   window.renderOutput();
   lessonDraftDirty=false;
-  lessonDraftStatus("Saved lesson loaded. Edits will be protected automatically.","info");
+  lessonDraftStatus("Saved plan","info","Edits will be protected automatically.");
   window.closeLoadPlanModal();
   alert(planData.document_settings?"Lesson loaded with saved document settings. Account defaults are unchanged.":"Lesson loaded. This older plan has no saved coordinator settings; review signatories before exporting.");
 };
@@ -512,7 +512,6 @@ workspaceOnReady(()=>{
   try{draft=JSON.parse(lessonStorage.getItem(LESSON_DRAFT_KEY)||"null");}catch{}
   if(!draft?.sessions?.length||!draft.weeklyOverview)return;
   const when=draft.savedAt?new Date(draft.savedAt).toLocaleString():"an earlier session";
-  lessonDraftStatus("A recoverable unsaved lesson draft is available from "+when+".","warning");
   if(window.currentPlan?.length||!confirm("Recover the unsaved lesson draft from "+when+"?"))return;
   const form=draft.form||{},set=(id,value)=>{const field=document.getElementById(id);if(field&&value!==undefined)field.value=value;};
   set("lpSchoolYear",form.schoolYear);set("lpAcademicTerm",form.academicTerm);set("lpCourseWeek",form.courseWeek);
@@ -525,5 +524,5 @@ workspaceOnReady(()=>{
   window.loadedPersonalPlan=draft.loadedPersonalPlan||null;window.legacySourcePlanId=draft.legacySourcePlanId||null;
   window.loadedPersonalIdentity=draft.loadedPersonalIdentity||null;lessonDraftDirty=true;
   window.renderOverview?.();window.renderOutput?.();
-  lessonDraftStatus("Recovered unsaved lesson draft · save when ready","warning");
+  lessonDraftStatus("Recovered","warning","Recovered unsaved lesson draft. Save when ready.");
 });

@@ -2,11 +2,11 @@
   "releases": [
     {
       "version": "1.3.6",
-      "status": "draft",
-      "public": false,
+      "status": "published",
+      "public": true,
       "releasedAt": "2026-10-24",
-      "title": "Simpler evidence review and resubmission alerts",
-      "summary": "Draft notes for the next evidence-workflow patch: compact teacher verification and clearer student awareness when evidence is reopened.",
+      "title": "Safer evidence, notifications and release reliability",
+      "summary": "Evidence review, resubmission and push alerts are more reliable, student access is tighter, saved work is safer across accounts, and new status messages stay compact instead of crowding the page.",
       "changes": [
         {
           "type": "Updated",
@@ -82,8 +82,29 @@
           "type": "New",
           "area": "Push test ping",
           "text": "Student Settings includes a Send test ping action for the signed-in account's registered devices. Test pings bypass Adminerva notification history, use a short-lived test tag, and attempt to close after about 15 seconds so device delivery can be checked without leaving permanent inbox entries."
+        },
+        {
+          "type": "Fixed",
+          "area": "Notification reliability",
+          "text": "Device push opt-out now persists, sign-out removes the current account registration without silently becoming a permanent opt-out, account switches cannot reuse another user's registration, and reconnect attempts are bounded."
+        },
+        {
+          "type": "Fixed",
+          "area": "Student access",
+          "text": "Student assessment reads are prepared for section-scoped authorization, private repository evidence can use the student's linked GitHub access, and suspended roster entries preserve history without retaining student workspace admission."
+        },
+        {
+          "type": "Fixed",
+          "area": "Saved work and account scope",
+          "text": "Lesson edits gain a local recovery draft, schedule fallbacks and presentation defaults stay with the signed-in teacher, and personal coding-assistance keys stay separated by Adminerva account on shared browsers."
+        },
+        {
+          "type": "Updated",
+          "area": "Interface cleanup",
+          "text": "Lesson recovery state now appears as a compact header badge, notification settings use shorter device states, and duplicate roster-import guidance is hidden from the visual layout while remaining available to assistive technology."
         }
-      ]
+      ],
+      "publishedAt": "2026-10-24T19:55:00+08:00"
     },
     {
       "version": "1.3.5",

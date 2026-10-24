@@ -1,6 +1,6 @@
 {
-  "version": "1.3.5",
+  "version": "1.3.6",
   "releasedAt": "2026-10-24",
-  "notes": "Review & Grade now uses fuller verified repository evidence, partial-score proposals with clear teacher checks, and a simpler reopen-for-student-changes workflow. Save current work before refreshing.",
-  "publishedAt": "2026-10-24T15:28:00+08:00"
+  "notes": "Evidence review, push notifications, student access and saved-work recovery are more reliable. Notification and lesson-status UI is also more compact.",
+  "publishedAt": "2026-10-24T19:55:00+08:00"
 }

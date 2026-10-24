@@ -18,7 +18,7 @@
 
 This repository deliberately has no checked-in `.firebaserc` default project. Explicit `--project reporeview-e7ca4` on each production command helps avoid accidentally deploying to the wrong Firebase project.
 
-The 13 exported functions are Firestore-triggered, second-generation functions; no HTTP endpoint or API key is needed. Function code uses Admin SDK service identity within Firebase and resolves authorized staff recipients through Firebase Authentication. Do not commit a service-account JSON key.
+The current backend exports 31 second-generation functions in `asia-southeast1`: HTTPS callables, Firestore triggers, and one scheduled maintenance function. This includes the practice service callables plus student-access, notification, monitoring, lesson-recovery, school setup, grading, evidence, and issue handlers. Function code uses Admin SDK service identity within Firebase and resolves authorized users through Firebase Authentication. Do not commit a service-account JSON key.
 
 ## 1. Confirm console ownership and prerequisites
 
@@ -75,32 +75,42 @@ Use **demo-adminerva-local** for testing, not the live project ID. You may need 
 
 ## 4. Production deployment — only after authorization
 
-**This step modifies production Firebase services.** Check the project ID twice, ensure that the test suite passes, and schedule the update when students are not submitting work. The Firebase CLI may ask for approval to delete or replace existing functions; do not approve deletions without reviewing the list.
+**This step modifies production Firebase services.** Check the project ID twice and do not approve deletion of existing functions without reviewing the list.
 
-Security Rules: publish the version in this repository, after comparing the console's existing rules and taking a backup.
-
-```bash
-firebase deploy --only firestore:rules --project reporeview-e7ca4
-```
-
-Cloud Functions: deploy in two small batches to reduce Cloud Build quota failures. Each batch uses the same `functions/index.js` source, but only updates the named functions:
+Deploy Firestore rules and indexes explicitly:
 
 ```bash
-firebase deploy --only functions:issueOpened,functions:issueStatusUpdated,functions:issueCommentAdded,functions:submissionReceived,functions:assessmentAssigned,functions:assessmentCreated --project reporeview-e7ca4
+firebase deploy --only firestore:rules,firestore:indexes --project reporeview-e7ca4
 ```
+
+Deploy Functions in small batches so failures are easier to isolate. These commands cover all 31 exports currently in `functions/index.js`.
+
+Core account, school, notification, access and monitoring services:
 
 ```bash
-firebase deploy --only functions:commitReclaimRequested,functions:assessmentEvidenceSubmitted,functions:assessmentEvidenceUpdated,functions:gradingNeedsReview,functions:gradePublished,functions:gradeCreatedPublished,functions:gradeCorrection --project reporeview-e7ca4
+firebase deploy --only functions:schoolAI,functions:legacyLessonRecovery,functions:legacySchoolSetup,functions:pushTestPing,functions:refreshStudentAccess,functions:studentAccessChanged,functions:teachingRosterChanged,functions:monitoringMaintenance,functions:activityConsentChanged --project reporeview-e7ca4
 ```
 
-All 13 deployed functions should then appear under:
+Practice services:
+
+```bash
+firebase deploy --only functions:practiceSession,functions:practiceStart,functions:practicePredict,functions:practiceComplete,functions:practiceHub,functions:practiceSeasonSession,functions:practiceMissionStart,functions:practiceMissionSubmit,functions:practicePreferences --project reporeview-e7ca4
+```
+
+Issue, evidence, submission and grading services:
+
+```bash
+firebase deploy --only functions:issueOpened,functions:issueStatusUpdated,functions:issueCommentAdded,functions:commitReclaimRequested,functions:assessmentEvidenceSubmitted,functions:assessmentEvidenceUpdated,functions:submissionReceived,functions:gradePublished,functions:assessmentAssigned,functions:gradingNeedsReview,functions:assessmentCreated,functions:gradeCreatedPublished,functions:gradeCorrection --project reporeview-e7ca4
+```
+
+Then confirm the deployed inventory:
 
 ```bash
 firebase functions:list --project reporeview-e7ca4
 firebase functions:log --project reporeview-e7ca4
 ```
 
-The first deployment of second-generation triggers can require API enablement and several minutes of provisioning. If deployment fails, save the *non-secret error message* and confirm whether the affected function is still listed before retrying. Do not assume a partial deploy completed the entire batch.
+The first deployment of second-generation services can require API enablement and provisioning. If a batch fails, keep the non-secret error output, confirm which functions are actually listed, and retry only the failed batch. A GitHub Pages deployment does not prove that Firebase Functions, Rules, indexes, or TTL configuration are live.
 
 ## 5. Role-based production smoke tests
 
