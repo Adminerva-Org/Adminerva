@@ -420,7 +420,7 @@ function renderHistorical(){
     const radio=document.createElement("input");radio.type="radio";
     radio.name="historicalCheckpoint";radio.checked=discovery.checkpoint===sha;
     radio.setAttribute("aria-label","Use "+sha.slice(0,12)+" as project checkpoint");
-    radio.addEventListener("change",()=>{discovery.checkpoint=sha;discovery.selected.add(sha);renderHistorical();});
+    radio.addEventListener("change",()=>{discovery.checkpoint=sha;renderHistorical();});
     line.append(radio);
     add(line,"span",sha.slice(0,12),"text-xs font-mono text-indigo-700");
     add(line,"strong",String(commit.commit?.message||"").split("\n")[0].slice(0,180),
