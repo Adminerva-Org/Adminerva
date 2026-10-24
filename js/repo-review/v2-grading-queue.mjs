@@ -4,8 +4,9 @@ import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,getDocs,query,where} from "../core/teaching-firestore.mjs?v=1.3.0";
 import {parseRepository} from "./services/assessment-evidence.mjs?v=1.3.0";
-import {mountTeachingWorkspace} from "./teaching-workspace.mjs?v=1.3.0";
+import {mountTeachingWorkspace} from "./teaching-workspace.mjs?v=1.3.10";
 const el=id=>document.getElementById(id),parameters=new URLSearchParams(location.search);
+let requestedPanel=parameters.get("view")||"";
 const workspace=mountTeachingWorkspace(el("teachingWorkspace"));
 let roster=[],assessments=[],targets=[],activeTask=null,loadId=0,actorUid="",subjectFocus=[],records={evidence:new Map(),grades:new Map(),activities:new Map(),receipts:[]},sourceWarnings=[];
 function status(text){el("v2QueueStatus").textContent=text;}
@@ -99,8 +100,9 @@ function drawCards(){
 function activateTarget(){
  const target=targets.find(item=>item.id===el("reviewTargetSelect").value);if(!target){workspace.clear();return;}
  workspace.setContext({assessment:activeTask,target,students:target.students,repository:target.repository,evidence:records.evidence,grades:records.grades,activities:records.activities,receipts:records.receipts,sourceWarnings,mode:el("reviewTargetMode").value,requestedStudent:parameters.get("student")});
+ if(requestedPanel==="grade"){requestedPanel="";void workspace.show("grade");}
  window.dispatchEvent(new CustomEvent("adminerva:review-target-selected",{detail:{assessment:activeTask,students:target.students,repository:target.repository,mode:el("reviewTargetMode").value}}));
- const url=new URL(location.href);url.searchParams.set("section",el("v2SectionSelect").value);if(el("v2SubjectSelect").value!=="all")url.searchParams.set("subject",el("v2SubjectSelect").value);else url.searchParams.delete("subject");url.searchParams.set("assessment",activeTask.id);url.searchParams.set("mode",el("reviewTargetMode").value);url.searchParams.set("student",target.students[0].id);history.replaceState(null,"",url);
+ const url=new URL(location.href);url.searchParams.delete("view");url.searchParams.set("section",el("v2SectionSelect").value);if(el("v2SubjectSelect").value!=="all")url.searchParams.set("subject",el("v2SubjectSelect").value);else url.searchParams.delete("subject");url.searchParams.set("assessment",activeTask.id);url.searchParams.set("mode",el("reviewTargetMode").value);url.searchParams.set("student",target.students[0].id);history.replaceState(null,"",url);
 }
 let previousSection="",previousAssessment="",previousMode="group",previousTarget="";
 function rememberSelectors(){previousSection=el("v2SectionSelect").value;previousAssessment=el("v2AssessmentSelect").value;previousMode=el("reviewTargetMode").value;previousTarget=el("reviewTargetSelect").value;}

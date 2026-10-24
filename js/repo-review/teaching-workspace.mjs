@@ -151,5 +151,5 @@ export function mountTeachingWorkspace(root){
  root.addEventListener("click",event=>{const target=event.target.closest("[data-review-step],#manualReviewVerifyContributions");if(target)void show(target.dataset.reviewStep==="integratedEvidence"||target.id==="manualReviewVerifyContributions"?"evidence":"grade");},true);
   panels.activity.addEventListener("change",event=>{if(event.target.matches("[data-activity-student]")){const next=context?.students.find(item=>item.id===event.target.value);if(next){student=next;member.value=next.id;reviewKey="";root.querySelector("[data-review-individual]").textContent="Individual review: "+name(student)+". Scores remain separate for each learner.";}}});
  window.addEventListener("adminerva:manual-review-closed",()=>{reviewKey="";if(context&&view==="grade")void show("inbox");});
- return {setContext,canLeave,clear};
+ return {setContext,canLeave,clear,show};
 }
