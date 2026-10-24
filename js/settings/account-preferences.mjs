@@ -1,4 +1,4 @@
-import {auth} from "../core/firebase-core.js?v=1.3.0";
+import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   getPushPreferences,savePushPreferences,getDevicePushState,
@@ -179,7 +179,7 @@ if(root){
     try{
       const response=await fetch("patch-history.json",{cache:"no-store"}),data=await response.json(),release=(data.releases||[]).find(item=>item.public===true&&item.status==="published");
       if(!release)throw Error("No published release found.");
-      const call=httpsCallable(getFunctions(undefined,"asia-southeast1"),"releaseAnnouncement");
+      const call=httpsCallable(getFunctions(app,"asia-southeast1"),"releaseAnnouncement");
       const result=await call({version:release.version,title:release.title,summary:release.summary});
       status.textContent="Release notification sent to "+(result.data?.recipients||0)+" account(s).";
     }catch(error){status.textContent="Release notification failed: "+error.message;}
