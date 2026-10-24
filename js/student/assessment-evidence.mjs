@@ -4,7 +4,7 @@ import {doc,getDoc,getDocs,setDoc,updateDoc,collection,query,where,serverTimesta
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {parseRepository,normalizeSelection,evidenceSelectionGuidance,detectedAuthor,attributionLabel,claimDocumentId,validSha}
   from "../repo-review/services/assessment-evidence.mjs?v=1.3.0";
-import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "../repo-review/services/commit-history.mjs?v=1.3.0";
+import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,verifyCheckpointAncestry} from "../repo-review/services/commit-history.mjs?v=1.3.1";
 import {studentMayChangeEvidence,sameEvidence} from "../repo-review/services/evidence-lifecycle.mjs?v=1.3.0";
 import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs?v=1.3.0";
 
@@ -95,9 +95,9 @@ function render(){
     const radio=document.createElement("input");radio.type="radio";radio.name="assessmentCheckpoint";
     radio.checked=checkpoint===sha;radio.disabled=!editable||evidenceBusy;
     radio.setAttribute("aria-label","Set commit "+sha.slice(0,12)+" as project checkpoint");
-    radio.addEventListener("change",()=>{selectionDirty=true;checkpoint=sha;selected.add(sha);render();});
+    radio.addEventListener("change",()=>{selectionDirty=true;checkpoint=sha;render();});
     checkpointLabel.append(radio);
-    add(checkpointLabel,"span","Project checkpoint");
+    add(checkpointLabel,"span","Use as project checkpoint");
     add(top,"span",sha.slice(0,12),"font-mono text-xs text-indigo-800");
     if(commit.unavailable)add(row,"p","Saved commit unavailable from GitHub. You can remove it, or ask your teacher to inspect the repository.","text-xs text-amber-800");
     add(top,"strong",String(commit.commit?.message||"No message").split("\n")[0].slice(0,170),
@@ -220,13 +220,13 @@ async function load(){
     historyPage=1;hasOlderCommits=hasOlderCommitPage(historyPage,result.length);
     refreshHistoryControl();render();
     status(hasOlderCommits
-      ?"Showing "+commits.length+" recent commits. Select Load older commits to find historical evidence."
-      :"Select relevant commits, choose a project checkpoint, and submit. Reclaims remain pending staff review.");
+      ?"Showing "+commits.length+" recent commits. Select your own evidence commits, then choose any later project checkpoint that contains them. Use Load older commits to find historical evidence."
+      :"Select your own relevant commits, choose a project checkpoint that contains them, and submit. The checkpoint may belong to a teammate. Reclaims remain pending staff review.");
     if(saved?.status==="approved")status("Checkpoint approved. Ask your instructor to reopen it before resubmitting or withdrawing. Your current evidence and grade remain protected.");
     else if(saved?.status==="reopened")status("Your instructor reopened this evidence. Update your selection and resubmit for fresh approval. Previous evidence remains in the audit history.");
     else if(saved?.status==="withdrawn")status("Evidence withdrawn. You may revise and resubmit; the previous submission remains in the audit history.");
     else if(saved?.status==="submitted")status("Evidence submitted. Before approval you may revise and resubmit, or withdraw. Resubmission records a new server time and preserves prior evidence.");
-    else if(saved?.status==="needs_review")status("Your teacher proposed historical evidence, not a student submission. Ask them to Release proposal for student changes if you need to choose your own commits before approval.");
+    else if(saved?.status==="needs_review")status("Your teacher proposed historical evidence, not a student submission. Ask them to reopen it for student changes if you need to choose your own evidence commits and checkpoint before approval.");
     if(evidenceSyncing)status("Checking current evidence status with the server. Editing resumes when connected.");
   }catch(error){if(seq===loadSequence)status("Unable to load evidence: "+error.message);}
 }
@@ -259,9 +259,18 @@ async function submit(){
     const {selectedCommits,checkpointSha}=normalizeSelection([...selected],checkpoint);
     if(!commits.some(c=>c.sha.toLowerCase()===checkpointSha&&!c.unavailable))
       throw Error("Checkpoint not found in the loaded GitHub history.");
-    if(!confirm("Submit "+selectedCommits.length+" commits as evidence at checkpoint "+checkpointSha.slice(0,12)+
-      "? This is not a graded result."))return;
-    evidenceBusy=true;render();status("Submitting selected evidence…");
+    evidenceBusy=true;render();status("Checking that the project checkpoint contains all selected evidence…");
+    const repo=parseRepository(active.profile.repoUrl);
+    const ancestry=await verifyCheckpointAncestry({
+      selectedCommits,checkpointSha,
+      fetchPage:page=>github(repositoryPath(repo)+"/commits?sha="+encodeURIComponent(checkpointSha)+"&per_page=100&page="+page)
+    });
+    if(!ancestry.ok){
+      throw Error("The project checkpoint "+checkpointSha.slice(0,12)+" does not contain selected evidence commit"+(ancestry.missing.length===1?" ":"s ")+ancestry.missing.map(sha=>sha.slice(0,12)).join(", ")+". Choose a newer project checkpoint that contains your selected work.");
+    }
+    if(!confirm("Submit "+selectedCommits.length+" evidence commit"+(selectedCommits.length===1?"":"s")+" using project checkpoint "+checkpointSha.slice(0,12)+
+      "? The checkpoint may be a teammate's later project commit; it is project context, not individual credit."))return;
+    status("Submitting selected evidence…");
     const ref=doc(db,"assessment_evidence",active.profile.id+"_"+active.task.id);
     const common={selectedCommits,checkpointSha,updatedAt:serverTimestamp()};
     if(saved){
