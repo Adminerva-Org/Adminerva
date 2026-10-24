@@ -1,0 +1,9 @@
+{
+  "enabled": false,
+  "vapidPublicKey": "",
+  "defaultCategories": {
+    "assessment": true,
+    "submission": true,
+    "grade": true
+  }
+}
