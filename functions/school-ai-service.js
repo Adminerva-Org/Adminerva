@@ -14,7 +14,7 @@ function createSchoolAI({db,FieldValue,Timestamp,resolveUser,fetchImpl=fetch}){
     if(record.exists?record.data().status!=="active"||record.data().role!=="teacher"||record.data().email!==email:email!==ORIGINAL_TEACHER)problem("permission-denied","School AI is available to authorized teachers.");
     return {...actor,email,admin:false};
   }
-  function publicSettings(data){return {configured:Boolean(data?.enabled&&data?.apiKey),enabled:Boolean(data?.enabled),model:data?.model||"gemini-3.8-flash",dailyLimit:data?.dailyLimit||100,perMinute:data?.perMinute||6,maxConcurrent:data?.maxConcurrent||6};}
+  function publicSettings(data){return {configured:Boolean(data?.enabled&&data?.apiKey),enabled:Boolean(data?.enabled),model:data?.model||"gemini-3.8-flash",dailyLimit:data?.dailyLimit||100,perMinute:data?.perMinute||6,maxConcurrent:data?.maxConcurrent||6,capabilities:{inlineImages:true,structuredRubric:true}};}
   return async request=>{
     const actor=await staff(request),input=request.data||{},action=input.action||"status";
     let snapshot=await connection.get(),saved=snapshot.data();
@@ -49,11 +49,22 @@ function createSchoolAI({db,FieldValue,Timestamp,resolveUser,fetchImpl=fetch}){
     if(!saved?.enabled||!saved.apiKey)problem("failed-precondition","School AI has not been configured. Your administrator can enable it in Settings → Connections.");
     const payload=input.payload;
     if(!payload||!Array.isArray(payload.contents)||payload.contents.length<1||payload.contents.length>30||Buffer.byteLength(JSON.stringify(payload))>700000)problem("invalid-argument","The AI request is too large or incomplete.");
+    let inlineImageBytes=0;
+    const imageTypes=new Set(["image/jpeg","image/png","image/webp"]);
     const contents=payload.contents.map(content=>{
-      if(!Array.isArray(content.parts)||content.parts.length>15)problem("invalid-argument","Invalid AI request parts.");
+      if(!Array.isArray(content.parts)||content.parts.length>15)problem("invalid-argument","Invalid evaluation request parts.");
       return {role:content.role==="model"?"model":"user",parts:content.parts.map(part=>{
         if(typeof part.text==="string"&&part.text.length<=600000)return {text:part.text};
-        problem("invalid-argument","School AI currently accepts text and extracted document text.");
+        const inline=part.inlineData||part.inline_data;
+        if(inline&&imageTypes.has(String(inline.mimeType||inline.mime_type||""))&&typeof inline.data==="string"){
+          const mimeType=String(inline.mimeType||inline.mime_type),data=inline.data.replace(/\s/g,"");
+          if(!data||data.length%4!==0||!/^[A-Za-z0-9+/]+={0,2}$/.test(data))problem("invalid-argument","A repository image could not be read safely.");
+          const bytes=Buffer.from(data,"base64");
+          inlineImageBytes+=bytes.length;
+          if(bytes.length>240000||inlineImageBytes>360000)problem("invalid-argument","Repository images exceed the bounded evaluation size. Continue with source checks or inspect the image manually.");
+          return {inlineData:{mimeType,data}};
+        }
+        problem("invalid-argument","The evaluation service accepts bounded text and supported repository images only.");
       })};
     });
     const cfg=payload.generationConfig||{},generationConfig={temperature:Math.max(0,Math.min(1,Number(cfg.temperature)||0.3)),maxOutputTokens:Math.min(16384,Math.max(1024,Number(cfg.maxOutputTokens)||8192))};
