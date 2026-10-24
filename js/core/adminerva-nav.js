@@ -60,6 +60,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["library", "Reference library", "library.html"]
     ] },
     { name: "School setup", area: "admin", items: isSuperAdmin ? [
+      ["home", "Administration overview", "school-admin.html"],
       ["analytics", "Administration analytics", "admin-analytics.html"],
       ["directory", "User directory", "users.html"],
       ["sections", "Sections", "manage-sections.html"],
@@ -94,7 +95,7 @@ document.addEventListener("DOMContentLoaded", () => {
     : activeModule === "global" ? "issues.html"
     : isStudent ? studentGroup?.items[0]?.[2]
     : area === "lesson" ? "lesson-planner.html"
-    : area === "admin" ? "users.html"
+    : area === "admin" ? "school-admin.html"
     : area === "educator" ? "assessment-studio.html" : null;
   const escapeHTML = value => String(value).replace(/[&<>"']/g, char =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -108,7 +109,7 @@ document.addEventListener("DOMContentLoaded", () => {
     [homeLabel, homeRoute, "Your teaching workspace"],
     ["Repository Management", "assessment-studio.html", "Assessments, submissions, grading and repositories"],
     ["Lesson Planning", "lesson-planner.html", "Lessons, slides, schedule and references"],
-    ...(isSuperAdmin ? [["School administration", "users.html", "Students, sections and teacher assignments"]] : []),
+    ...(isSuperAdmin ? [["School administration", "school-admin.html", "Students, staff, catalogs, reports and operations"]] : []),
     ["Reports & support", "issues.html", "Follow reports and get help"]
   ];
   root.innerHTML = `
