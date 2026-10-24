@@ -152,10 +152,14 @@ async function fetchAssessments() {
   }
 
   try {
-    const q = query(collection(db, "assessments"));
-    const snap = await getDocs(q);
+    const [sectionSnap,legacySnap] = await Promise.all([
+      getDocs(query(collection(db, "assessments"),where("sectionIds","array-contains",section))),
+      getDocs(query(collection(db, "assessments"),where("targetSections","array-contains",section)))
+    ]);
     if(!isCurrent())return;
-    snap.forEach((docSnap) => {
+    const assignedDocs=new Map();
+    for(const docSnap of [...sectionSnap.docs,...legacySnap.docs])assignedDocs.set(docSnap.id,docSnap);
+    assignedDocs.forEach((docSnap) => {
       const data = docSnap.data();
       let isAssignedToStudent = false;
       let activeDeadline = null;
