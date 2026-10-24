@@ -16,20 +16,27 @@
   <body class="bg-slate-50 font-sans min-h-screen flex flex-col">
     <!-- Navigation -->
     <div id="adminerva-nav" data-module="repo" data-page="dashboard"></div>
-    <section class="av-analytics-intro av-analytics-hero space-y-3" aria-labelledby="engagement-heading">
+    <div class="av-educator-layout"><aside class="av-educator-nav" data-educator-hub-nav data-current="analytics"></aside><div class="av-educator-content">
+    <header class="av-analytics-intro space-y-3" aria-labelledby="engagement-heading">
       <p class="av-eyebrow">Learning & class progress</p>
-      <h1 id="engagement-heading" class="text-2xl font-bold">Teacher Analytics</h1>
-      <div id="instructor-selection" hidden><label for="analytics-teacher" class="font-bold">Instructor</label>
-      <select id="analytics-teacher" disabled class="border rounded p-2"></select><a href="teacher-accounts.html" class="underline" data-admin-only>Manage assignments</a></div>
-      <p>Follow published results for your assigned sections. Optional activity is separate from grades; bugs and diagnostic trails stay in Administration Analytics.</p>
-      <button type="button" id="analytics-refresh" class="av-primary-button">Refresh analytics</button>
-      <details id="learning-activity" class="av-learning-details"><summary class="font-bold cursor-pointer">Optional learning activity</summary>
-      <p class="av-muted">Optional activity is an incomplete sample; missing consent or activity does not establish poor engagement.</p>
-      <p id="engagement-status" role="status">Checking learning-activity access…</p>
-      <div class="overflow-x-auto"><div class="av-table-scroll"><table class="w-full text-left"><thead><tr><th>Student record</th><th>Visits</th><th>Active days</th><th>Active time</th><th>Modules</th></tr></thead><tbody id="engagement-rows"></tbody></table></div></div>
+      <h1 id="engagement-heading" class="text-2xl sm:text-3xl font-extrabold">Analytics</h1>
+      <p class="text-sm text-slate-600 max-w-3xl">Class results, Practice progress and optional learning activity are kept together here. Practice rewards remain separate from assessment grades.</p>
+      <div id="instructor-selection" hidden class="flex flex-wrap items-center gap-2"><label for="analytics-teacher" class="font-bold text-sm">Instructor</label><select id="analytics-teacher" disabled class="border rounded p-2"></select><a href="teacher-accounts.html" class="underline text-sm" data-admin-only>Manage assignments</a></div>
+      <nav class="av-analytics-section-nav" aria-label="Analytics views">
+        <button type="button" data-analytics-tab="academic" aria-selected="true">Class results</button>
+        <button type="button" data-analytics-tab="practice" aria-selected="false" tabindex="-1">Practice & learning</button>
+      </nav>
+    </header>
+    <section class="av-analytics-panel" data-analytics-panel="academic">
+      <div class="flex flex-wrap items-center gap-3 mb-4">
+        <button type="button" id="analytics-refresh" class="av-primary-button">Refresh class results</button>
+        <p id="academic-status" role="status" class="av-status-card flex-1 min-w-[220px]">Waiting for instructor assignment…</p>
+      </div>
+      <details id="learning-activity" class="av-learning-details mb-5"><summary class="font-bold cursor-pointer">Optional learning activity</summary>
+        <p class="av-muted">Optional activity is an incomplete sample; missing consent or activity does not establish poor engagement.</p>
+        <p id="engagement-status" role="status">Checking learning-activity access…</p>
+        <div class="overflow-x-auto"><div class="av-table-scroll"><table class="w-full text-left"><thead><tr><th>Student record</th><th>Visits</th><th>Active days</th><th>Active time</th><th>Modules</th></tr></thead><tbody id="engagement-rows"></tbody></table></div></div>
       </details>
-      <p id="academic-status" role="status" class="av-status-card">Waiting for instructor assignment…</p>
-    </section>
 
     <div
       class="max-w-screen-2xl mx-auto w-full p-4 sm:p-6 flex-1 flex flex-col gap-6"
@@ -251,6 +258,28 @@
         </div>
       </div>
     </div>
+    </section>
+    <section class="av-analytics-panel" data-analytics-panel="practice" hidden>
+      <section id="seasonAnalyticsPanel" class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-6" aria-labelledby="seasonAnalyticsHeading" aria-busy="true">
+        <div class="flex flex-wrap justify-between items-center gap-3 mb-4"><div><p class="av-eyebrow">Practice Lab</p><h2 id="seasonAnalyticsHeading" class="text-lg sm:text-xl font-extrabold">Current season · Practice Points</h2><p class="text-xs text-slate-500 mt-1">Private class progress. Practice Points never change assessment grades.</p></div><a href="student-practice.html" class="text-sm font-bold text-blue-800 underline">Open Practice Lab ↗</a></div>
+        <div class="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto_auto] gap-3 items-end">
+          <label class="text-sm font-bold" for="seasonAnalyticsSection">Assigned class<select id="seasonAnalyticsSection" disabled class="block w-full mt-2 border border-slate-300 bg-white rounded-lg p-3"></select></label>
+          <label class="text-sm font-bold" for="seasonAnalyticsSort">Sort<select id="seasonAnalyticsSort" class="block w-full mt-2 border border-slate-300 bg-white rounded-lg p-3"><option value="points">Most points</option><option value="name">Student name</option></select></label>
+          <button id="seasonAnalyticsRefresh" type="button" disabled class="border border-blue-300 bg-blue-50 text-blue-800 rounded-lg px-4 py-3 text-sm font-bold">Refresh Practice</button>
+        </div>
+        <p id="seasonAnalyticsStatus" role="status" aria-live="polite" class="av-status-message my-4">Loading your assigned classes…</p>
+        <div id="seasonAnalyticsSummary" class="grid grid-cols-1 sm:grid-cols-3 gap-3 my-5"></div>
+        <div class="overflow-x-auto border border-slate-200 rounded-xl"><table class="w-full text-left"><caption class="sr-only">Private class Practice Points and mission progress for the current season</caption><thead class="bg-slate-50"><tr class="text-xs text-slate-500"><th scope="col" class="px-4 py-3">Rank</th><th scope="col" class="px-4 py-3">Student / alias</th><th scope="col" class="px-4 py-3">Practice Points</th><th scope="col" class="px-4 py-3">Missions</th><th scope="col" class="px-4 py-3">Progress</th></tr></thead><tbody id="seasonAnalyticsRows"></tbody></table></div>
+        <details class="mt-4 text-xs text-slate-600"><summary class="font-bold cursor-pointer">Scoring and privacy</summary><p class="mt-2 leading-relaxed">Only scored Practice answers change mission rewards. Public leaderboard participation is optional and uses aliases; this authorized class view maps aliases to roster names privately.</p><p class="mt-2">No season record means a saved current-season total is unavailable; it is not a zero grade or proof of weak mastery.</p></details>
+      </section>
+      <details class="mt-5 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"><summary class="font-extrabold cursor-pointer">Earlier Practice history · advanced</summary><p class="text-sm my-3 text-slate-600">Older XP records and independent teacher reviews are preserved for reference. They do not control current-season Practice Points.</p>
+        <div class="flex flex-wrap items-end gap-3"><label class="text-sm font-bold">Earlier class history<select id="practiceAnalyticsSection" class="block border rounded p-2 mt-2"></select></label><button id="practiceAnalyticsLoad" class="border rounded bg-white px-4 py-2">Load earlier history</button></div>
+        <details class="my-3"><summary class="text-sm font-bold cursor-pointer">Legacy reviewed snapshot</summary><p class="text-sm my-2">This preserves the original opt-in snapshot workflow.</p><button id="practicePublishStandings" class="border rounded px-4 py-2">Publish legacy reviewed snapshot</button></details>
+        <p id="practiceAnalyticsStatus" role="status" class="my-3 text-sm"></p><div id="practiceAnalyticsList" class="space-y-3"></div>
+        <section id="practiceReview" class="hidden bg-white border rounded-xl p-4 mt-4"><h2 id="practiceReviewName" class="font-bold"></h2><p class="text-sm mt-2">Check only earlier missions you independently reviewed. Reflections and completion claims alone do not certify correctness.</p><div id="practiceReviewMissions" class="space-y-3 my-3"></div><label class="text-sm font-bold">Private teacher review note<textarea id="practicePointsNote" maxlength="3000" class="border rounded w-full p-3 mt-2" rows="3"></textarea></label><button id="practiceAcceptPoints" class="bg-blue-700 text-white rounded px-4 py-2 mt-3">Save earlier teacher-reviewed points</button></section>
+      </details>
+    </section>
+    </div></div>
 
     <!-- Student 360 Modal -->
     <div
@@ -348,6 +377,10 @@
     <script src="js/core/adminerva-loader.js?v=1.3.0"></script>
     <script src="js/core/adminerva-nav.js?v=1.3.8"></script>
     <script type="module" src="js/core/auth-guard.js?v=1.3.0"></script>
-    <script type="module" src="js/analytics/teacher-analytics.mjs?v=1.3.0"></script>
+    <script type="module" src="js/core/educator-hub-nav.mjs?v=1.3.8"></script>
+    <script type="module" src="js/analytics/teacher-analytics-tabs.mjs?v=1.3.8"></script>
+    <script type="module" src="js/analytics/teacher-analytics.mjs?v=1.3.8"></script>
+    <script type="module" src="js/student/practice-analytics.mjs?v=1.3.8"></script>
+    <script type="module" src="js/student/practice-season-analytics.mjs?v=1.3.8"></script>
   </body>
 </html>
