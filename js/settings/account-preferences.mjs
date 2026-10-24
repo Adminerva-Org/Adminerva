@@ -3,7 +3,7 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {
   getPushPreferences,savePushPreferences,getDevicePushState,
   enableDevicePush,disableDevicePush,syncDevicePush,sendTestPush
-} from "../core/push-notifications.mjs?v=1.3.0";
+} from "../core/push-notifications.mjs?v=1.3.1";
 
 const root=document.querySelector("[data-account-preferences]");
 if(root){
