@@ -6,7 +6,7 @@
       "public": true,
       "releasedAt": "2026-10-24",
       "title": "Reliable push alerts and cleaner mobile notifications",
-      "summary": "Real assessment and teaching alerts use the same proven background delivery path as the test ping, notification cards are more compact and identifiable, and shared mobile layouts are more resilient.",
+      "summary": "Real assessment and teaching alerts use the same proven background delivery path as the test ping, notification cards are more compact and identifiable, Practice prompts are clearer, and shared mobile layouts are more resilient.",
       "changes": [
         {
           "type": "Fixed",
@@ -37,11 +37,6 @@
           "type": "Fixed",
           "area": "Practice exact-answer prompts",
           "text": "Write-the-output missions now explicitly ask for only the exact output or requested value; the explanation is shown after a correct answer instead of being requested inside an exact-match field."
-        },
-        {
-          "type": "Fixed",
-          "area": "Firestore rule warnings",
-          "text": "Nullable audit comparisons were rewritten to use explicit create/update branches so production rule compilation no longer relies on nullable map expressions."
         }
       ]
     },
