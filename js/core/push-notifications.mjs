@@ -96,6 +96,8 @@ export async function savePushPreferences(values,uid=auth.currentUser?.uid){
     assessment:values?.assessment!==false,
     submission:values?.submission!==false,
     grade:values?.grade!==false,
+    grading:values?.grading!==false,
+    issue:values?.issue!==false,
     updatedAt:serverTimestamp()
   };
   await setDoc(doc(db,"push_preferences",uid),data,{merge:true});
