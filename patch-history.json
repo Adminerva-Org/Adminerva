@@ -5,8 +5,8 @@
       "status": "draft",
       "public": true,
       "releasedAt": "2026-10-24",
-      "title": "More accurate grade and evidence notifications",
-      "summary": "Grade publication stays separate from evidence reopening, reopen pushes require a verified audited return action, and Gradebook no longer shows obsolete warnings that contradict a current published grade.",
+      "title": "Notification wiring and Gradebook accuracy",
+      "summary": "Grade and evidence notifications now follow the correct audited state transitions, teacher and student alert routing is aligned end to end, and the Gradebook details modal is centered with clearer current-state notes.",
       "changes": [
         {
           "type": "Fixed",
@@ -22,6 +22,51 @@
           "type": "Updated",
           "area": "Gradebook clarity",
           "text": "Published records label retained cautions as Review notes so valid provenance warnings remain visible without implying that the current grade is missing or unpublished."
+        },
+        {
+          "type": "Fixed",
+          "area": "Gradebook modal",
+          "text": "The score-details view is treated as a centered modal instead of inheriting the right-side drawer layout. Desktop and mobile bounds keep it centered and within the viewport."
+        },
+        {
+          "type": "Fixed",
+          "area": "Evidence resubmission alerts",
+          "text": "Teacher alerts now recognize both ordinary resubmissions and the important reopened-to-submitted transition, so a corrected student evidence package does not disappear from the teacher notification flow."
+        },
+        {
+          "type": "Fixed",
+          "area": "Grade visibility alerts",
+          "text": "Publishing and unpublishing a grade now use grade notifications. Unpublishing reports that the released grade was withdrawn for revision instead of being confused with an evidence return."
+        },
+        {
+          "type": "Fixed",
+          "area": "Report and reply alerts",
+          "text": "Report status changes and replies notify the original reporter, including private bug reports, while staff audiences still receive the appropriate report notifications."
+        },
+        {
+          "type": "Fixed",
+          "area": "Notification destinations",
+          "text": "Commit-reclaim alerts can open Assessment Evidence Review directly, and backend push destinations use the same allowlisted Adminerva pages as the in-app notification router."
+        },
+        {
+          "type": "Fixed",
+          "area": "Student notification inbox",
+          "text": "Student submission updates and recipient-scoped report replies are no longer hidden by the notification visibility filter. Returned-for-changes alerts come only from audited backend records rather than client-side evidence-state inference."
+        },
+        {
+          "type": "Updated",
+          "area": "Notification preferences",
+          "text": "Device push preferences separate submissions, grading alerts and report replies instead of routing unrelated events through the submission switch. Existing accounts default the new categories on until changed."
+        },
+        {
+          "type": "Fixed",
+          "area": "Assessment assignment alerts",
+          "text": "Assignment notifications now cover both deployment and target-section changes and can notify again when a section is legitimately re-added later."
+        },
+        {
+          "type": "Fixed",
+          "area": "Teacher notification listeners",
+          "text": "Teachers rely on their per-user notification feed instead of broad section-restricted Firestore collection listeners that could fail authorization. Administrators retain broad fallback feeds for historical records."
         }
       ]
     },
