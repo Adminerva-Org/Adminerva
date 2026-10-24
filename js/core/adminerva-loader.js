@@ -53,7 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
         
         <!-- Bug Modal -->
-        <div id="bug-modal" hidden role="dialog" aria-modal="true" aria-labelledby="bug-dialog-title" tabindex="-1" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+        <div id="bug-modal" role="dialog" aria-modal="true" aria-labelledby="bug-dialog-title" tabindex="-1" hidden class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
           <div class="bg-slate-800 border border-cyan-900 rounded-xl shadow-2xl max-w-xl w-full relative text-white text-left max-h-[90vh] flex flex-col overflow-hidden">
             
             <!-- ✨ NEW: Similarity Intercept Overlay (Hidden by Default) -->
