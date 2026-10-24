@@ -77,6 +77,11 @@
           "type": "Updated",
           "area": "Notification delivery",
           "text": "The existing authoritative notification pipeline now supports optional push fan-out. Push is best-effort and does not replace Adminerva's in-app notification history. Device registrations are account-scoped and removed from the current browser when the user signs out."
+        },
+        {
+          "type": "New",
+          "area": "Push test ping",
+          "text": "Student Settings includes a Send test ping action for the signed-in account's registered devices. Test pings bypass Adminerva notification history, use a short-lived test tag, and attempt to close after about 15 seconds so device delivery can be checked without leaving permanent inbox entries."
         }
       ]
     },
