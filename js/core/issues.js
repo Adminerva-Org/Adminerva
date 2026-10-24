@@ -160,7 +160,7 @@ function fetchIssues() {
 
 window.renderIssuesFilter = () => {saveReportFilters();renderIssues()};
 function resetReportFilters(){
-  for(const id of ["filterCategory","filterStatus","filterAudience"]){
+  for(const id of ["filterCategory","filterStatus","filterAudience","filterReportType"]){
     const input=document.getElementById(id);if(input)input.value="All";
   }
   document.getElementById("filterSort").value="newest";
@@ -573,15 +573,14 @@ document.getElementById("adminLockBtn")?.addEventListener("click",e=>{
   const issue=allIssues.find(item=>item.id===currentOpenIssueId);
   if(issue)void updateIssueField("locked",!Boolean(issue.locked),{button:e.currentTarget});
 });
-document.getElementById("adminDeleteBtn")?.addEventListener("click",async()=>{
+document.getElementById("adminDeleteBtn")?.addEventListener("click",async event=>{
   if(!isSuperAdmin||!currentOpenIssueId)return;
-  if(!confirm("Delete this report? Historical comments may remain in Firebase until separately removed. This cannot be undone."))return;
+  const issue=allIssues.find(item=>item.id===currentOpenIssueId);if(!issue)return;
+  if(!confirm("Close this report and lock further comments? The report and discussion will be preserved for history and support export."))return;
+  const button=event.currentTarget;button.disabled=true;
   try{
-    await deleteDoc(doc(db,"issues",currentOpenIssueId));
-    allIssues=allIssues.filter(item=>item.id!==currentOpenIssueId);
-    window.closeIssueModal();renderIssues();
-  }catch(error){
-    console.warn("Unable to delete report:",error);
-    alert("Report deletion failed. No change was made.");
-  }
+    await updateDoc(doc(db,"issues",currentOpenIssueId),{status:"Closed (Won't Fix)",locked:true,updatedAt:serverTimestamp()});
+    issue.status="Closed (Won't Fix)";issue.locked=true;renderIssues();window.openIssueModal(issue.id);
+  }catch(error){console.warn("Unable to close report:",error);alert("Report could not be closed. No change was made.");}
+  finally{button.disabled=false;}
 });
