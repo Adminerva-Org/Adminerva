@@ -31,7 +31,7 @@ export function mountTeachingWorkspace(root){
    if(!receipts.length)card.append(make("p","No repository submission receipt is loaded.","text-xs text-slate-500"));
    for(const [label,saved]of [["Repository grade",grade],["Activity grade",activityGrade]])if(saved)card.append(make("p",label+": "+saved.score+" / "+saved.maxScore+" · "+(saved.published?"Published":"Private draft"),"text-sm font-semibold"));
    const actions=make("div","","flex flex-wrap gap-2 mt-3");
-   for(const [label,next]of [["Review evidence","evidence"],["Teacher grade","grade"],["Manual activity","activity"]]){const button=make("button",label,"av-secondary-button");button.type="button";button.onclick=()=>{if(student?.id!==learner.id&&!canLeave())return;selectMember(learner);void show(next);};actions.append(button);}card.append(actions);box.append(card);
+   for(const [label,next]of [["Review evidence","evidence"],["Teacher grade","grade"],["Observed activity","activity"]]){const button=make("button",label,"av-secondary-button");button.type="button";button.onclick=()=>{if(student?.id!==learner.id&&!canLeave())return;selectMember(learner);void show(next);};actions.append(button);}card.append(actions);box.append(card);
   }
  }
  function selectMember(next){
@@ -42,7 +42,7 @@ export function mountTeachingWorkspace(root){
   root.querySelector("[data-review-individual]").textContent="Individual review: "+name(student)+". Scores remain separate for each learner.";
  }
  async function openReview(){
-  if(!context?.repository){updateStatus("This target has no linked repository. Use Manual activity to record an observed task.");return;}
+  if(!context?.repository){updateStatus("This target has no linked repository. Use Observed activity to record a teacher-observed task.");return;}
   const key=context.assessment.id+":"+student.id;
   if(reviewKey===key&&!manual.classList.contains("hidden"))return;
   if(typeof window.openManualGradeReview!=="function"){updateStatus("The review editor is still loading. Select this panel again in a moment.");return;}
@@ -52,7 +52,7 @@ export function mountTeachingWorkspace(root){
  }
  async function repository(){
   const box=panels.repository,generation=revision;box.replaceChildren();
-  if(!context?.repository){box.append(make("p","No repository is linked to this target. Manual activity grading is available."));return;}
+  if(!context?.repository){box.append(make("p","No repository is linked to this target. Observed activity is available."));return;}
   const repo=context.repository,evidence=context.evidence.get(student.id),checkpoint=validSha(evidence?.checkpointSha)?evidence.checkpointSha:null;
   box.append(make("h3",repo.owner+"/"+repo.repo,"font-bold text-lg"),make("p",checkpoint?"Files at selected checkpoint "+checkpoint.slice(0,12):"Repository discovery view · current default branch. This is not verified student evidence.","text-sm text-slate-600"));
   const browser=make("div","","mt-4"),output=make("div","","mt-4");box.append(browser,output);
@@ -83,7 +83,7 @@ export function mountTeachingWorkspace(root){
  }
  async function contributions(){
   const box=panels.contributions,generation=revision;box.replaceChildren();
-  if(!context?.repository){box.append(make("p","No repository is linked. Record observed work in Manual activity."));return;}
+  if(!context?.repository){box.append(make("p","No repository is linked. Record observed work in Observed activity."));return;}
   const evidence=context.evidence.get(student.id),commits=evidence?.selectedCommits||[];
   box.append(make("h3","Selected contribution diffs · "+name(student),"font-bold text-lg"),make("p","Detected Git identities and change counts are investigation aids. They do not establish individual authorship. Verify contributions in Evidence before evaluation.","text-sm text-slate-600"));
   if(!commits.length){box.append(make("p","No commits are selected for this learner. Open Evidence to review a submission or discover historical evidence.","av-status-message"));return;}
@@ -109,7 +109,7 @@ export function mountTeachingWorkspace(root){
   panels.review.setAttribute("aria-labelledby",next==="evidence"?"teaching-tab-evidence":"teaching-tab-grade");
   updateStatus((context.assessment.title||context.assessment.id)+" · "+context.target.label+" · "+name(student));
   if(next==="inbox")summary();
-  else if(review){await openReview();if(next==="evidence"&&context.assessment.schemaVersion!==2)updateStatus("This assessment uses submission receipts. See Inbox for saved receipts, Repository to inspect files, or Review & grade to record a teacher score.");}
+  else if(review){await openReview();if(next==="evidence"&&context.assessment.schemaVersion!==2)updateStatus("This assessment uses submission receipts. Use Inbox for receipts and Review & grade for the teacher score.");}
   else if(next==="repository")await repository();
   else if(next==="contributions")await contributions();
   else if(next==="activity")await mountActivity();
