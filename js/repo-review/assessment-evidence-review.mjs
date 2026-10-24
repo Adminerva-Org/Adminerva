@@ -5,9 +5,9 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {collection,doc,getDoc,getDocFromServer,getDocs,setDoc,query,where,updateDoc,runTransaction,serverTimestamp,onSnapshot}
   from "../core/teaching-firestore.mjs?v=1.3.0";
 import {parseRepository,normalizeSelection,validSha}
-  from "./services/assessment-evidence.mjs?v=1.3.0";
-import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "./services/commit-history.mjs?v=1.3.0";
-import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
+  from "./services/assessment-evidence.mjs?v=1.3.1";
+import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.3.1";
+import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.1";
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
@@ -302,17 +302,12 @@ async function decideClaim(claim,decision){
   }catch(e){status("Unable to decide claim: "+e.message);}
 }
 async function verifyAncestry(repo,checkpoint,selected){
-  // Read commit graph pinned to the checkpoint, not mutable default HEAD.
-  const remaining=new Set(selected);
-  for(let page=1;page<=10;page++){
-    const items=await github(api(repo)+"/commits?sha="+encodeURIComponent(checkpoint)+
-      "&per_page=100&page="+page);
-    if(!Array.isArray(items))throw Error("Invalid commit ancestry response");
-    for(const item of items)remaining.delete(String(item.sha||"").toLowerCase());
-    if(!remaining.size)return;
-    if(items.length<100)break;
-  }
-  throw Error("The selected commits could not all be verified in the checkpoint's available ancestry. Choose another revision or inspect manually.");
+  const result=await verifyCheckpointAncestry({
+    selectedCommits:selected,checkpointSha:checkpoint,
+    fetchPage:page=>github(api(repo)+"/commits?sha="+encodeURIComponent(checkpoint)+"&per_page=100&page="+page)
+  });
+  if(result.ok)return;
+  throw Error("Project checkpoint "+checkpoint.slice(0,12)+" does not contain selected evidence commit"+(result.missing.length===1?" ":"s ")+result.missing.map(sha=>sha.slice(0,12)).join(", ")+". Reopen the submission so the student can choose a newer project checkpoint.");
 }
 async function approve(){
   if(state.busy||!state.loaded||(!["submitted","needs_review"].includes(state.evidence?.status)&&!(state.evidence?.status==="approved"&&state.verificationEditing)))return;
@@ -424,7 +419,7 @@ function renderHistorical(){
     const radio=document.createElement("input");radio.type="radio";
     radio.name="historicalCheckpoint";radio.checked=discovery.checkpoint===sha;
     radio.setAttribute("aria-label","Use "+sha.slice(0,12)+" as project checkpoint");
-    radio.addEventListener("change",()=>{discovery.checkpoint=sha;discovery.selected.add(sha);renderHistorical();});
+    radio.addEventListener("change",()=>{discovery.checkpoint=sha;renderHistorical();});
     line.append(radio);
     add(line,"span",sha.slice(0,12),"text-xs font-mono text-indigo-700");
     add(line,"strong",String(commit.commit?.message||"").split("\n")[0].slice(0,180),
