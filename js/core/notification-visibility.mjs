@@ -6,16 +6,13 @@ export function notificationVisible(item, role) {
   if (role === "admin") return true;
   if (item.type === "release") return role === "teacher" || role === "student";
   if (item.type === "issue") {
-    // Report responses remain accessible via My Reports, not student alerts.
-    if (role === "student") return false;
-    // Missing metadata on older alerts is not proof of authorization.
-    if (!item.reportCategory || item.reportCategory === "Bug") return false;
-    return role === "teacher"
-      ? item.reportAudience === "teacher"
-      : role === "student" && ["teacher", "admin"].includes(item.reportAudience);
+    // Source issue feeds are already audience-scoped, while official notification
+    // records are private to the recipient. Missing metadata remains hidden.
+    if (!item.reportCategory || !["teacher", "admin"].includes(item.reportAudience)) return false;
+    return role === "teacher" || role === "student";
   }
   if (role === "teacher") return ["submission", "grading", "grade", "assessment"].includes(item.type);
-  if (role === "student") return ["grade", "assessment"].includes(item.type);
+  if (role === "student") return ["submission", "grade", "assessment"].includes(item.type);
   return false;
 }
 export function unreadNotificationCount(items, muted, readKeys) {

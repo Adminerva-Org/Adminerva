@@ -40,25 +40,18 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   const staffGroups = [
     { name: "Teaching", area: "educator", items: [
-      ["dashboard", "Class analytics", "teacher-analytics.html"],
-      ["gradebook", "Gradebook", "gradebook.html"],
-      ["repofetch", "Review & grade", "repofetch.html"],
-      ["studio", "Assessment Studio", "assessment-studio.html"],
-      ["practice", "Practice analytics", "practice-analytics.html"]
+      ["home", "Educator Hub", "teacher-home.html"],
+      ["planner", "Lesson planner", "lesson-planner.html"],
+      ["studio", "Assessment studio", "assessment-studio.html"],
+      ["dashboard", "Analytics", "teacher-analytics.html"]
     ] },
-    { name: "Evidence", area: "educator", items: [
+    { name: "Review", area: "educator", items: [
       ["submissions", "Submission inbox", "submissions.html"],
-      ["evidence", "Assessment evidence", "assessment-evidence-review.html"],
-      ["contributions", "Contribution inspector", "contribution-inspector.html"],
-      ["group-inspector", "Group inspector", "group-inspector.html"],
+      ["repofetch", "Review & grade", "repofetch.html"],
+      ["gradebook", "Gradebook", "gradebook.html"],
       ["repobank", "Repository bank", "repobank.html"]
     ] },
-    { name: "More tools", area: "educator", secondary: true, items: [
-      ["activity-grader", "Manual activity grader", "activity-grader.html"],
-      ["grader", "Repository grader", "grading.html"]
-    ] },
-    { name: "Planning", area: "lesson", items: [
-      ["planner", "Lesson Planner", "lesson-planner.html"],
+    { name: "Resources", area: "lesson", items: [
       ["presentation", "Slide editor", "presentation.html"],
       ["schedule", "Teacher schedule", "schedule.html"],
       ["library", "Reference library", "library.html"]
@@ -99,7 +92,7 @@ document.addEventListener("DOMContentLoaded", () => {
     : isStudent ? studentGroup?.items[0]?.[2]
     : area === "lesson" ? "lesson-planner.html"
     : area === "admin" ? "users.html"
-    : area === "educator" ? "teacher-analytics.html" : null;
+    : area === "educator" ? "teacher-home.html" : null;
   const escapeHTML = value => String(value).replace(/[&<>"']/g, char =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
   const modules = isStudent ? [
@@ -110,7 +103,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ["My reports", "issues.html", "Report a problem or follow an update"]
   ] : [
     [homeLabel, homeRoute, "Your teaching workspace"],
-    ["Educator Hub", "teacher-analytics.html", "Assessments, evidence and grades"],
+    ["Educator Hub", "teacher-home.html", "Teaching, review, grading and analytics"],
     ["Lesson Planner", "lesson-planner.html", "Lessons, slides, schedule and references"],
     ...(isSuperAdmin ? [["School administration", "users.html", "Students, sections and teacher assignments"]] : []),
     ["Reports & support", "issues.html", "Follow reports and get help"]
@@ -240,7 +233,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const mountPoint = document.createElement("div");
     mountPoint.id = "adminerva-notifications";
     reportButton.parentNode.insertBefore(mountPoint, reportButton);
-    import("./notifications.mjs?v=1.3.7").then(module => module.mountNotificationCenter())
+    import("./notifications.mjs?v=1.3.8").then(module => module.mountNotificationCenter())
       .catch(error => console.warn("Notification center unavailable:", error));
   }
   };
@@ -268,7 +261,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   import("./site-updates.mjs?v=1.3.0").then(module => module.mountSiteUpdates())
     .catch(error => console.warn("Site update checks unavailable:", error));
-  import("./push-notifications.mjs?v=1.3.7").then(module => module.startPushSync())
+  import("./push-notifications.mjs?v=1.3.8").then(module => module.startPushSync())
     .catch(error => console.warn("Device notification sync unavailable:", error));
 
   root.addEventListener("click", async event => {
@@ -281,7 +274,7 @@ document.addEventListener("DOMContentLoaded", () => {
         import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js"),
         import("./connection-cache.mjs?v=1.3.0").then(module => module.clearConnectionPreferences())
       ]);
-      try{const push=await import("./push-notifications.mjs?v=1.3.7");await push.departPushAccount();}catch{}
+      try{const push=await import("./push-notifications.mjs?v=1.3.8");await push.departPushAccount();}catch{}
       await signOut(getAuth());
     } catch (error) { console.warn("Sign out background process skipped or failed.", error); }
     finally {

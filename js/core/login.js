@@ -1,7 +1,7 @@
 import {resolveAccountAccess} from "./staff-session.mjs?v=1.3.0";
 import {ensureGuestRequest} from "./admission-service.mjs?v=1.3.0";
 import {activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "./connection-cache.mjs?v=1.3.0";
-import {sessionDestination} from "./session-destination.mjs?v=1.3.0";
+import {sessionDestination} from "./session-destination.mjs?v=1.3.8";
 /** Approved-account sign-in and access feedback. */
 import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {

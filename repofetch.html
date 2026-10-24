@@ -7,12 +7,13 @@
     <title>Teaching workspace | Adminerva</title>
     <link rel="icon" type="image/png" href="assets/New%20Adminerva%20logo.png" />
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.3.7" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.3.8" />
 <link rel="stylesheet" href="css/teaching-workspace.css?v=1.3.0"></head>
   <body class="bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="repo" data-page="repofetch"></div>
-    <script src="js/core/adminerva-nav.js?v=1.3.7"></script>
+    <script src="js/core/adminerva-nav.js?v=1.3.8"></script>
 
+    <div class="av-educator-layout"><aside class="av-educator-nav" data-educator-hub-nav data-current="review"></aside><div class="av-educator-content">
     <div class="max-w-screen-xl mx-auto w-full p-6 mt-4 flex-1">
       <div class="bg-white p-6 rounded-lg shadow-md border border-gray-200">
         <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900">Teaching workspace</h1>
@@ -42,11 +43,9 @@
           <header class="av-teaching-context"><h2 id="teaching-context-title" data-review-context class="font-extrabold text-lg"></h2><p data-review-individual class="text-sm text-slate-600 mt-1"></p><label class="block text-sm font-semibold mt-3">Current learner<select data-review-member class="mt-1 w-full border rounded-lg p-2.5"></select></label></header>
           <nav class="av-teaching-tabs" role="tablist" aria-label="Teaching workspace panels">
             <button type="button" id="teaching-tab-inbox" role="tab" aria-controls="teaching-panel-inbox" data-teaching-tab="inbox" aria-selected="true">Inbox</button>
-            <button type="button" id="teaching-tab-repository" role="tab" aria-controls="teaching-panel-repository" data-teaching-tab="repository" aria-selected="false" tabindex="-1">Repository</button>
             <button type="button" id="teaching-tab-evidence" role="tab" aria-controls="teaching-panel-review" data-teaching-tab="evidence" aria-selected="false" tabindex="-1">Evidence</button>
-            <button type="button" id="teaching-tab-contributions" role="tab" aria-controls="teaching-panel-contributions" data-teaching-tab="contributions" aria-selected="false" tabindex="-1">Contributions</button>
             <button type="button" id="teaching-tab-grade" role="tab" aria-controls="teaching-panel-review" data-teaching-tab="grade" aria-selected="false" tabindex="-1">Review &amp; grade</button>
-            <button type="button" id="teaching-tab-activity" role="tab" aria-controls="teaching-panel-activity" data-teaching-tab="activity" aria-selected="false" tabindex="-1">Manual activity</button>
+            <button type="button" id="teaching-tab-activity" role="tab" aria-controls="teaching-panel-activity" data-teaching-tab="activity" aria-selected="false" tabindex="-1">Observed activity</button>
           </nav>
           <p data-workspace-status role="status" class="text-sm text-slate-600 my-3"></p>
           <section id="teaching-panel-inbox" role="tabpanel" aria-labelledby="teaching-tab-inbox" data-teaching-panel="inbox"></section>
@@ -56,7 +55,7 @@
           <section id="teaching-panel-activity" role="tabpanel" aria-labelledby="teaching-tab-activity" data-teaching-panel="activity" hidden></section>
         </section>
         <details id="legacyRepoTools" class="border border-slate-200 rounded-xl p-4">
-          <summary class="font-semibold text-slate-700 cursor-pointer">Legacy repository sync and grading tools</summary>
+          <summary class="font-semibold text-slate-700 cursor-pointer">Advanced legacy repository tools</summary>
           <div class="mt-4">
         <!-- ✨ UPDATED HEADER WITH RIGHT-ALIGNED BUTTONS -->
         <header
@@ -76,13 +75,7 @@
 
           <!-- Action Buttons aligned to the right -->
           <div class="flex flex-wrap gap-2">
-            <a href="contribution-inspector.html" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded transition shadow-sm text-sm flex items-center">Inspect Contributions</a>
-            <button
-              onclick="window.openBulkGradeModal()"
-              class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded transition shadow-sm flex items-center gap-2 text-sm"
-            >
-              ✨ Bulk Auto-Grade
-            </button>
+            <button onclick="window.openBulkGradeModal()" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded transition shadow-sm flex items-center gap-2 text-sm">Batch evaluation · legacy</button>
           </div>
         </header>
 
@@ -121,6 +114,8 @@
         </details>
       </div>
     </div>
+
+    </div></div>
 
     <!-- Grading Modal -->
     <div
@@ -204,7 +199,7 @@
           class="p-5 border-b bg-purple-700 flex justify-between items-center"
         >
           <h2 class="text-lg font-bold text-white flex items-center gap-2">
-            ✨ Bulk Auto-Grader
+            Legacy batch evaluation
           </h2>
           <button
             onclick="
@@ -421,9 +416,9 @@
               <div>
                 <h3 class="font-extrabold text-indigo-950 text-sm">2. System evaluation draft</h3>
                 <button type="button" data-adminerva-help="evaluation" class="text-xs underline">ⓘ Evaluation draft help</button>
-                <p class="text-xs font-semibold mt-1">Adminerva Auto Checker · optional, never a published grade</p>
+                <p class="text-xs font-semibold mt-1">Adminerva evaluation draft · optional, never a published grade</p>
                 <p class="text-xs text-slate-600 mt-1">Builds a proposed score from verified individual work and flags only the remaining points that need teacher confirmation. Group completeness stays separate.</p>
-                <details class="text-xs text-slate-600 mt-2"><summary class="cursor-pointer font-semibold">How automated assistance works</summary><p class="mt-2">Evaluation drafts use verified commit diffs, the student’s primary screen, supporting Android files and referenced resources at the approved checkpoint. Adminerva also runs bounded XML and resource checks before evaluation. When supported, referenced repository images may be inspected for visible labels and artwork. Exact native rendering, compilation and runtime behavior still require separate evidence. You remain responsible for the final published score.</p></details>
+                <details class="text-xs text-slate-600 mt-2"><summary class="cursor-pointer font-semibold">How the evaluation draft works</summary><p class="mt-2">Evaluation drafts use verified commit diffs, the student’s primary screen, supporting Android files and referenced resources at the approved checkpoint. Adminerva also runs bounded XML and resource checks before evaluation. When supported, referenced repository images may be inspected for visible labels and artwork. Exact native rendering, compilation and runtime behavior still require separate evidence. You remain responsible for the final published score.</p></details>
               </div>
               <button id="manualReviewAIGenerate" type="button" disabled class="bg-indigo-700 hover:bg-indigo-800 text-white rounded-lg text-xs px-4 py-2.5 font-bold disabled:opacity-50">Evaluate</button>
               <button type="button" id="manualReviewManual" class="border rounded px-3 py-2 text-sm">Switch to manual grading</button>
@@ -495,6 +490,8 @@
     </div>
 
     <script src="js/core/adminerva-loader.js?v=1.3.0"></script>
+    <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
+    <script type="module" src="js/core/educator-hub-nav.mjs?v=1.3.8"></script>
     <script type="module" src="js/repo-review/repofetch.js?v=1.3.2"></script>
     <script type="module" src="js/repo-review/auto-checker.js?v=1.3.0"></script>
     <script type="module" src="js/repo-review/manual-review.mjs?v=1.3.9"></script>

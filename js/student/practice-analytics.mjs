@@ -1,4 +1,4 @@
-import {staffRole} from "../core/staff-role.mjs?v=1.3.0";
+import {staffRole,staffSections} from "../core/staff-role.mjs?v=1.3.0";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
 /** Student submissions, practice progress and isolated code workspaces: practice analytics. */
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
@@ -9,6 +9,12 @@ import {practicePoints,classStandings} from "./practice-points.mjs?v=1.3.0";
 const el=id=>document.getElementById(id);
 const make=(tag,text)=>{const node=document.createElement(tag);node.textContent=text;return node;};
 let roster=[],profiles=[],scores=[],active=null,generation=0,loadedSection="",reviewSequence=0,reviewLoading=false,reviewSaving=false;
+const groups=values=>{const list=[...new Set(values.filter(Boolean))],out=[];for(let i=0;i<list.length;i+=10)out.push(list.slice(i,i+10));return out;};
+async function accessibleRoster(user,role){
+  if(role==="admin")return getDocs(collection(db,"students"));
+  const snapshots=await Promise.all(groups(staffSections(user)).map(group=>getDocs(query(collection(db,"students"),where("section","in",group)))));
+  return {docs:snapshots.flatMap(snapshot=>snapshot.docs)};
+}
 const allowed=()=>!!staffRole(auth.currentUser);
 const status=text=>{el("practiceAnalyticsStatus").textContent=text;};
 function clearReview(){reviewSequence++;reviewLoading=false;active=null;el("practiceReview").classList.add("hidden");el("practiceAcceptPoints").disabled=true;}
@@ -96,9 +102,15 @@ el("practicePublishStandings").addEventListener("click",async()=>{
 el("practiceAnalyticsLoad").addEventListener("click",()=>{void load();});
 el("practiceAnalyticsSection").addEventListener("change",()=>{generation++;clearReview();loadedSection="";el("practiceAnalyticsList").replaceChildren();});
 onAuthStateChanged(auth,async()=>{
-  await resolveStaffRole(auth.currentUser);
+  const role=await resolveStaffRole(auth.currentUser);
   generation++;clearReview();loadedSection="";el("practiceAnalyticsList").replaceChildren();
   if(!allowed())return status("A verified instructor sign-in is required.");
-  try{const records=await getDocs(collection(db,"students"));if(!allowed())return;roster=records.docs.map(snapshot=>({id:snapshot.id,...snapshot.data()}));el("practiceAnalyticsSection").replaceChildren();for(const section of [...new Set(roster.map(student=>student.section))].filter(Boolean).sort()){const option=make("option",section);option.value=section;el("practiceAnalyticsSection").append(option);}status("Choose a section and load its private practice analytics.");}
-  catch{status("Unable to load class directory.");}
+  try{
+    const records=await accessibleRoster(auth.currentUser,role);if(!allowed())return;
+    roster=records.docs.map(snapshot=>({id:snapshot.id,...snapshot.data()}));
+    el("practiceAnalyticsSection").replaceChildren();
+    const sections=role==="teacher"?staffSections(auth.currentUser):[...new Set(roster.map(student=>student.section))].filter(Boolean).sort();
+    for(const section of sections){const option=make("option",section);option.value=section;el("practiceAnalyticsSection").append(option);}
+    status("Choose a section and load its private practice analytics.");
+  }catch{status("Unable to load your assigned class directory.");}
 });

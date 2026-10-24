@@ -106,7 +106,6 @@ exports.activityConsentChanged=onDocumentWritten({document:"activity_preferences
 const staffEmails=["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"];
 // Bug reports are always administrator-directed. Legacy reports have admin scope.
 const reportAudience=issue=>issue.category==="Bug"?"admin":issue.audience==="teacher"?"teacher":"admin";
-const isBugReport=issue=>issue.category==="Bug";
 const cleanId=value=>String(value||"").replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,150);
 async function byEmail(email){
   if(typeof email!=="string"||!email)return null;
@@ -125,17 +124,22 @@ async function audienceIds(issue){
 }
 const pushTypes=new Set(["assessment","submission","grade","grading","issue"]);
 const pushBaseUrl="https://adminerva-org.github.io/Adminerva/";
+const pushPages=new Set([
+  "issues.html","student-assessments.html","gradebook.html","repofetch.html",
+  "submissions.html","student-dashboard.html","patch-notes.html","assessment-evidence-review.html"
+]);
 function pushTarget(target){
   const value=String(target||"").trim();
-  return /^[A-Za-z0-9_.-]+[.]html(?:[?][^#\\s]*)?$/.test(value)?pushBaseUrl+value:pushBaseUrl+"student-home.html";
+  const match=value.match(/^([A-Za-z0-9_.-]+[.]html)(?:[?][^#\\s]*)?$/);
+  return match&&pushPages.has(match[1])?pushBaseUrl+value:pushBaseUrl+"student-home.html";
 }
 async function pushAllowed(uid,type){
-  if(!pushTypes.has(String(type||"")))return false;
+  const category=String(type||"");
+  if(!pushTypes.has(category))return false;
   const snapshot=await db.doc("push_preferences/"+uid).get();
   if(!snapshot.exists)return true;
   const data=snapshot.data()||{};
-  const preferenceType=["grading","issue"].includes(String(type||""))?"submission":type;
-  return data.enabled!==false&&data[preferenceType]!==false;
+  return data.enabled!==false&&data[category]!==false;
 }
 async function pushToUser(uid,item){
   if(!uid||item.push!==true||!await pushAllowed(uid,item.type))return;
@@ -208,7 +212,6 @@ exports.issueOpened=onDocumentCreated("issues/{issueId}",async event=>{
 exports.issueStatusUpdated=onDocumentUpdated("issues/{issueId}",async event=>{
   const old=event.data?.before.data(),now=event.data?.after.data();
   if(!old||!now||old.status===now.status&&old.priority===now.priority)return;
-  if(isBugReport(now))return;
   const uid=now.reporterUid||await byEmail(now.reporterEmail);
   await notify(uid,"report_update_"+event.id,{
     type:"issue",push:true,title:"Your report was updated",
@@ -222,7 +225,7 @@ exports.issueCommentAdded=onDocumentCreated("issues/{issueId}/comments/{commentI
   const issue=await db.doc("issues/"+event.params.issueId).get();if(!issue.exists)return;
   const item=issue.data(),reporter=item.reporterUid||await byEmail(item.reporterEmail);
   const actor=comment.authorUid||await byEmail(comment.authorEmail);
-  const recipients=(isBugReport(item)?await audienceIds(item):(await audienceIds(item)).concat([reporter])).filter(uid=>uid!==actor);
+  const recipients=(await audienceIds(item)).concat([reporter]).filter(uid=>uid&&uid!==actor);
   await notifyMany(recipients,"report_comment_"+event.params.commentId,{
     type:"issue",push:true,title:"New comment on a report",
     body:item.title||"Support report",sourceId:event.params.issueId,
@@ -337,8 +340,8 @@ exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{eviden
       body:"Your selected project revision has been verified. Grade publication is separate.",
       sourceId:event.params.evidenceId,target:"student-assessments.html"
     });
-  }else if(before.status==="submitted"&&after.status==="submitted"&&
-    before.submittedAt?.toMillis?.()!==after.submittedAt?.toMillis?.()){
+  }else if(after.status==="submitted"&&
+    (before.status!=="submitted"||before.submittedAt?.toMillis?.()!==after.submittedAt?.toMillis?.())){
     const labels=await evidenceLabels(after);
     await notifyMany(await teacherIds(after.section),"evidence_resubmitted_"+event.id,{
       type:"submission",push:true,title:"Evidence updated — "+labels.studentName,
@@ -358,24 +361,34 @@ exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}
 });
 exports.gradePublished=onDocumentUpdated("student_grades/{gradeId}",async event=>{
   const old=event.data?.before.data(),now=event.data?.after.data();
-  if(!old||!now||now.published!==true||old.published===true||!now.studentId)return;
+  if(!old||!now||old.published===now.published||!now.studentId)return;
   const student=await db.doc("students/"+now.studentId).get();if(!student.exists)return;
   const uid=await byEmail(student.data().email);
-  await notify(uid,"grade_published_"+event.id,{
-    type:"grade",push:true,title:"A reviewed grade is available",
-    body:"Open your assessments to read the published feedback.",
+  const published=now.published===true;
+  await notify(uid,(published?"grade_published_":"grade_unpublished_")+event.id,{
+    type:"grade",push:true,
+    title:published?"A reviewed grade is available":"A published grade was withdrawn for revision",
+    body:published
+      ?"Open your assessments to read the published feedback."
+      :"Your teacher unpublished this grade while it is being revised. It will appear again after publication.",
     sourceId:event.params.gradeId,target:"student-assessments.html"
   });
 });
+function assessmentSections(data){
+  return [...new Set([
+    ...(Array.isArray(data?.deployments)?data.deployments.map(item=>item?.section):[]),
+    ...(Array.isArray(data?.targetSections)?data.targetSections:[])
+  ].filter(Boolean))];
+}
 exports.assessmentAssigned=onDocumentUpdated("assessments/{assessmentId}",async event=>{
   const old=event.data?.before.data(),now=event.data?.after.data();
   if(!old||!now)return;
-  const previous=new Set((old.deployments||[]).map(d=>d.section));
-  const added=[...new Set((now.deployments||[]).map(d=>d.section))].filter(x=>x&&!previous.has(x));
+  const previous=new Set(assessmentSections(old));
+  const added=assessmentSections(now).filter(section=>!previous.has(section));
   for(const section of added){
     const students=await db.collection("students").where("section","==",section).get();
     const uids=await Promise.all(students.docs.map(d=>byEmail(d.data().email)));
-    await notifyMany(uids,"assignment_"+event.params.assessmentId+"_"+cleanId(section),{
+    await notifyMany(uids,"assignment_"+cleanId(event.id)+"_"+cleanId(event.params.assessmentId)+"_"+cleanId(section),{
       type:"assessment",push:true,title:"New assessment assigned",
       body:now.title||"New assessment",sourceId:event.params.assessmentId,
       target:"student-assessments.html"
@@ -395,14 +408,11 @@ exports.gradingNeedsReview=onDocumentCreated("grading_alerts/{alertId}",async ev
 // Cover blueprints deployed at creation time, including older targetSections.
 exports.assessmentCreated=onDocumentCreated("assessments/{assessmentId}",async event=>{
   const data=event.data?.data();if(!data)return;
-  const sections=[...new Set([
-    ...(Array.isArray(data.deployments)?data.deployments.map(d=>d.section):[]),
-    ...(Array.isArray(data.targetSections)?data.targetSections:[])
-  ].filter(Boolean))];
+  const sections=assessmentSections(data);
   for(const section of sections){
     const students=await db.collection("students").where("section","==",section).get();
     const uids=await Promise.all(students.docs.map(d=>byEmail(d.data().email)));
-    await notifyMany(uids,"assignment_"+event.params.assessmentId+"_"+cleanId(section),{
+    await notifyMany(uids,"assignment_"+cleanId(event.id)+"_"+cleanId(event.params.assessmentId)+"_"+cleanId(section),{
       type:"assessment",push:true,title:"New assessment assigned",
       body:data.title||"New assessment",sourceId:event.params.assessmentId,
       target:"student-assessments.html"

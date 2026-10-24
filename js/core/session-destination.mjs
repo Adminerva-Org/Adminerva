@@ -19,3 +19,33 @@ export function rememberWorkspace(uid){
   if(/\/(student|teacher)-home\.html$/.test(location.pathname))return;
   try{sessionStorage.setItem("Adminerva_last_workspace_"+uid,location.pathname.split("/").pop()+location.search+location.hash);}catch{}
 }
+
+export function roleHome(role){
+  return role==="student"?"student-home.html":
+    role==="teacher"||role==="superadmin"?"teacher-home.html":
+    role==="guest"?"guest-home.html":"";
+}
+function cachedRoleAllows(page,role){
+  if(page==="issues.html")return role==="student"||role==="teacher"||role==="superadmin";
+  if(role==="student")return studentPages.has(page);
+  if(role==="teacher")return staffPages.has(page);
+  if(role==="superadmin")return staffPages.has(page)||adminPages.has(page);
+  if(role==="guest")return guestPages.has(page);
+  return false;
+}
+/** Fast navigation hint for an already-authenticated session. Auth Guard still verifies access on protected pages. */
+export function cachedWorkspaceDestination(user){
+  if(!user?.uid)return "";
+  let role="";
+  try{role=localStorage.getItem("Adminerva_Role")||"";}catch{}
+  const fallback=roleHome(role);
+  if(!fallback)return "";
+  let candidate="";
+  try{candidate=sessionStorage.getItem("Adminerva_last_workspace_"+user.uid)||"";}catch{}
+  if(!candidate)return fallback;
+  try{
+    const base=new URL(".",location.href),target=new URL(candidate,base),page=target.pathname.slice(base.pathname.length);
+    if(target.origin!==base.origin||!target.pathname.startsWith(base.pathname)||page.includes("/")||!cachedRoleAllows(page,role))return fallback;
+    return page+target.search+target.hash;
+  }catch{return fallback;}
+}
