@@ -12,7 +12,8 @@ import {
 import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=1.3.0";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
 import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,buildRubricResponseSchema,parseSuggestedRubric}
-  from "./services/v2-grading-assistant.mjs?v=1.3.1";
+  from "./services/v2-grading-assistant.mjs?v=1.3.2";
+import {isAndroidUiAssessment} from "./services/android-evidence.mjs?v=1.3.0";
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
 import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {createReviewRequests} from "./services/review-requests.mjs?v=1.3.0";
@@ -126,6 +127,11 @@ function aiStatus(text,error=false){
   target.textContent=text;
   target.className="text-xs "+(error?"text-rose-800":"text-indigo-900");
 }
+function evaluationResponsibilityReady(assessment,evidence){
+  const commits=Array.isArray(evidence?.verifiedContributionCommits)?evidence.verifiedContributionCommits:[];
+  if(!commits.length||commits.some(sha=>!evidence?.selectedCommits?.includes(sha)))return false;
+  return String(evidence?.contributionScope||"").trim().length>=15||isAndroidUiAssessment(assessment);
+}
 function stopEvaluation(text){
   if(!state.active)return;
   state.aiAbort?.abort();state.aiBusy=false;state.active={...state.active};
@@ -138,18 +144,32 @@ function displayAISuggestion(draft){
     const row=document.createElement("div");
     row.className="bg-white rounded border border-indigo-100 p-3";
     const heading=document.createElement("strong");heading.className="text-sm";
-    heading.textContent=item.name+": "+(item.score===null?"Teacher review needed":item.score+"/"+item.maxScore);
+    heading.textContent=item.score===null
+      ?item.name+": teacher confirmation · up to "+item.pendingPoints+" / "+item.maxScore+" pts"
+      :item.name+": "+item.score+"/"+item.maxScore+(item.pendingPoints>0?" · +"+item.pendingPoints+" pt"+(item.pendingPoints===1?"":"s")+" pending":"");
+    const confidence=document.createElement("span");confidence.className="ml-2 text-[11px] font-semibold text-slate-500";
+    confidence.textContent="Confidence: "+item.confidence.replace("_"," ");
     const rationale=document.createElement("p");rationale.className="mt-1 text-xs text-slate-700 whitespace-pre-wrap";
     rationale.textContent=item.rationale;
-    row.append(heading,rationale);
-    if(item.reviewAction){const action=document.createElement("p");action.className="mt-2 text-xs font-semibold text-amber-900";action.textContent="Next check: "+item.reviewAction;row.append(action);}
-    if(item.evidence?.length){const references=document.createElement("p");references.className="mt-2 text-xs font-mono break-words";references.textContent="Verified diff: "+item.evidence.map(reference=>reference.path+" @ "+reference.sha.slice(0,12)).join(" · ");row.append(references);}
+    row.append(heading,confidence,rationale);
+    if(item.reviewAction){const action=document.createElement("p");action.className="mt-2 text-xs font-semibold text-amber-900";action.textContent="Teacher confirmation: "+item.reviewAction;row.append(action);}
+    if(item.evidence?.length){const references=document.createElement("p");references.className="mt-2 text-xs font-mono break-words";references.textContent="Verified evidence: "+item.evidence.map(reference=>reference.path+" @ "+reference.sha.slice(0,12)).join(" · ");row.append(references);}
     container.append(row);
   }
-  const total=document.createElement("p");total.className="font-bold text-indigo-950";
-  total.textContent=draft.score===null?(draft.scoredMaximum>0?"Partial draft: "+draft.partialScore+"/"+draft.scoredMaximum+" across supported criteria only. ":"No criteria have enough evidence for a suggested score yet. ")+draft.pendingCriteria+" criteria need teacher judgement. This is not a total out of "+state.active.maxScore+"; missing scores are not zero.":"Suggested score: "+draft.score+"/"+state.active.maxScore;
+  const total=document.createElement("div");total.className="rounded-lg border border-indigo-200 bg-white p-3";
+  const main=document.createElement("p");main.className="font-extrabold text-indigo-950";
+  main.textContent="Proposed score: "+draft.score+"/"+state.active.maxScore;
+  total.append(main);
+  if(draft.pendingPoints>0){
+    const range=document.createElement("p");range.className="text-xs text-amber-900 mt-1";
+    range.textContent=draft.pendingPoints+" point"+(draft.pendingPoints===1?"":"s")+" still need teacher confirmation · possible range "+draft.score+"–"+draft.potentialScore+"/"+state.active.maxScore+".";
+    total.append(range);
+  }else{
+    const complete=document.createElement("p");complete.className="text-xs text-emerald-800 mt-1";
+    complete.textContent="No rubric points remain pending from this evidence package.";
+    total.append(complete);
+  }
   container.append(total);
-  if(draft.score===null){const manual=document.createElement("button");manual.type="button";manual.className="border rounded px-3 py-2 font-semibold";manual.textContent="Finish the score in Teacher grade";manual.onclick=()=>{el("manualReviewForm").scrollIntoView({behavior:"smooth",block:"start"});el("manualReviewScore").focus();};container.append(manual);}
   if(draft.projectObservations){
     const observation=document.createElement("p");observation.className="text-xs text-slate-700";
     observation.textContent="Shared project context (separate from individual score): "+draft.projectObservations;
@@ -158,7 +178,7 @@ function displayAISuggestion(draft){
   if(draft.limitations){
     const limitation=document.createElement("p");
     limitation.className="text-xs text-amber-900 whitespace-pre-wrap";
-    limitation.textContent="Teacher must verify: "+draft.limitations;
+    limitation.textContent="Remaining teacher checks: "+draft.limitations;
     container.append(limitation);
   }
 }
@@ -191,7 +211,8 @@ async function generateAIDraft(){
     aiStatus("Generating rubric suggestions. Existing student grades remain unchanged…");
     const prompt=buildRubricPrompt({
       assessment:active.assessment,criteria,checkpointSha:active.checkpointSha,
-      files:evidence.files,patches:evidence.patches,contributionScope:active.evidence.contributionScope
+      files:evidence.files,patches:evidence.patches,contributionScope:active.evidence.contributionScope,
+      analysis:evidence.analysis,visualAssetsIncluded:Boolean(evidence.assets?.length&&(!connection.configured||connection.capabilities?.inlineImages===true))
     });
     if(controller.signal.aborted)throw Error("Evaluation timed out. Continue manually or retry.");
     // Start the evaluation timeout only after source/evidence retrieval finishes.
@@ -211,7 +232,13 @@ async function generateAIDraft(){
     let parsed;
     for(let attempt=0;attempt<2;attempt++){
       const retryInstruction=attempt===0?"":"\n\nRETRY FORMAT: Return the same JSON structure, but keep each rationale under 240 characters, each reviewAction under 160 characters, feedback under 800 characters, projectObservations under 500 characters, and limitations under 500 characters. Do not add prose outside JSON.";
-      const evaluationPayload={contents:[{parts:[{text:prompt+retryInstruction}]}],generationConfig:{
+      const parts=[{text:prompt+retryInstruction}];
+      const allowImages=Boolean(evidence.assets?.length&&(!connection.configured||connection.capabilities?.inlineImages===true));
+      if(allowImages)for(const asset of evidence.assets){
+        parts.push({text:"REPOSITORY IMAGE ASSET: "+asset.path+" · student-changed: "+(asset.studentChanged?"yes":"no")});
+        parts.push({inlineData:{mimeType:asset.mimeType,data:asset.data}});
+      }
+      const evaluationPayload={contents:[{parts}],generationConfig:{
         responseMimeType:"application/json",responseSchema:buildRubricResponseSchema(criteria),
         maxOutputTokens:12000,temperature:0.1
       }};
@@ -233,8 +260,8 @@ async function generateAIDraft(){
     renderFeedbackMarkdown(el("manualReviewAIFeedback"),draft.feedback);
     el("manualReviewUseScore").disabled=draft.score===null;
     el("manualReviewUseFeedback").disabled=!draft.feedback;
-    el("manualReviewFiles").value=evidence.files.map(f=>f.path).join("\n");
-    aiStatus(draft.score===null?"Partial evaluation draft ready. You may grade manually now; pending criteria do not block your teacher score. Nothing was saved or published.":"System draft ready. Your teacher fields are unchanged. Copy only suggestions you accept; saving and publication remain separate.");
+    el("manualReviewFiles").value=[...new Set(evidence.patches.filter(p=>p.substantive===true).map(p=>p.path))].join("\n");
+    aiStatus(draft.pendingPoints>0?"System proposal ready. "+draft.pendingPoints+" point"+(draft.pendingPoints===1?"":"s")+" still need teacher confirmation; the proposed score can be adjusted in Teacher grade. Nothing was saved or published.":"System proposal ready with no pending rubric points. Your teacher fields are unchanged; saving and publication remain separate.");
     el("manualReviewFallback").classList.add("hidden");
   }catch(error){
     if(session===state.token&&state.active===active){
@@ -257,8 +284,7 @@ function applyEvidenceState(record,{initial=false}={}){
   if(changed){state.aiAbort?.abort();state.aiBusy=false;el("manualReviewUseScore").disabled=true;el("manualReviewUseFeedback").disabled=true;el("manualReviewConfirm").checked=false;}
   let approved=record?.status==="approved"&&validSha(record.approvedCheckpointSha)&&record.approvedCheckpointSha===record.checkpointSha;
   try{approved=approved&&record.studentId===active.studentId&&record.assessmentId===active.taskId&&parseRepository(record.repository).url===parseRepository(active.base).url;}catch{approved=false;}
-  const verified=approved&&Array.isArray(record.verifiedContributionCommits)&&record.verifiedContributionCommits.length>0&&
-    record.verifiedContributionCommits.every(sha=>record.selectedCommits?.includes(sha))&&String(record.contributionScope||"").trim().length>=15;
+  const verified=approved&&evaluationResponsibilityReady(active.assessment,record);
   const protectedGrade=Boolean(active.previous?.published);
   const next={...active,evidence:record,checkpointSha:approved?record.approvedCheckpointSha:null,selectedEvidenceCommits:record?.selectedCommits||[],
     aiDraft:changed?null:active.aiDraft,aiApplied:changed?false:active.aiApplied};
@@ -266,7 +292,7 @@ function applyEvidenceState(record,{initial=false}={}){
   const blocker=protectedGrade?"Published grade protected. Unpublish for revision before evaluating or changing verification.":
     !approved?record?.status==="reopened"?"Evidence is reopened. The student can change selections now, then must resubmit for fresh approval.":
       "Approve the submitted checkpoint in Review before evaluating.":!verified?
-      "Individual contributions have not been verified. Complete individual verification below, or grade manually. Shared group screens cannot establish individual credit.":
+      "Individual contributing commits have not been verified. Complete commit verification below, or grade manually.":
       "Approved, independently verified checkpoint "+record.approvedCheckpointSha.slice(0,12)+". Choose Evaluate to generate a private system draft.";
   el("manualReviewAIGenerate").disabled=state.aiBusy||protectedGrade||!verified;el("manualReviewAIGenerate").textContent=state.aiBusy?"Evaluating…":"Evaluate";
   el("manualReviewAIGenerate").title=blocker;if(!state.aiBusy)aiStatus((active.previous?.aiAssistance?"Saved feedback includes automated assistance reviewed by a teacher. ":"")+blocker,!verified);
@@ -385,9 +411,9 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
     state.active={studentId,taskId,owner,repo,base,student,assessment,previous,gradeRef:gradeDoc.ref,maxScore,login,checkpointSha,selectedEvidenceCommits,evidence:approvedEvidence,aiDraft:null,aiApplied:false};
     el("manualReviewUnpublish").classList.toggle("hidden",!previous?.published);
     el("manualReviewPublish").classList.toggle("hidden",!previous||previous.published||assessment.schemaVersion!==2);
-    const verified=Boolean(checkpointSha)&&approvedEvidence?.status==="approved"&&approvedEvidence?.verifiedContributionCommits?.length&&approvedEvidence?.contributionScope?.length>=15;
+    const verified=Boolean(checkpointSha)&&approvedEvidence?.status==="approved"&&evaluationResponsibilityReady(assessment,approvedEvidence);
     el("manualReviewAIGenerate").disabled=assessment.schemaVersion!==2||!!previous?.published||!verified;
-    if(assessment.schemaVersion===2)aiStatus((previous?.aiAssistance?"Saved feedback includes automated assistance reviewed by a teacher. ":"")+(verified?"Approved checkpoint "+checkpointSha.slice(0,12)+". Evaluate verified individual work or enter a teacher score.":"No independently verified contributions are recorded. Reopen evidence to verify responsibilities and commits, or grade manually with an explicit review note. Shared project screens cannot earn individual credit."));
+    if(assessment.schemaVersion===2)aiStatus((previous?.aiAssistance?"Saved feedback includes a prior system evaluation reviewed by a teacher. ":"")+(verified?"Approved checkpoint "+checkpointSha.slice(0,12)+". Evaluate the verified student screen and supporting changes, or enter a teacher score.":"No verified contributing commits are recorded. Reopen evidence to verify the student commits, or grade manually."));
     el("manualReviewSave").disabled=!!previous?.published;
     for(const id of ["manualReviewScore","manualReviewFeedback","manualReviewFiles","manualReviewReason","manualReviewConfirm"])
       el(id).disabled=!!previous?.published;
@@ -421,7 +447,7 @@ async function save(event) {
   const score=Number(raw);
   const feedback=cleanGradeFeedback(el("manualReviewFeedback").value);
   const customReason=el("manualReviewReason").value.trim();
-  const reason=customReason||active.evidence?.verificationNote||"Teacher reviewed the selected work and entered the score and student feedback.";
+  const adjustment=acceptedDraft&&Math.abs(score-acceptedDraft.score)>0.001?"Teacher adjusted the system proposal from "+acceptedDraft.score+" to "+score+" after reviewing the remaining evidence or classroom observation.":"";\n  const reason=customReason||adjustment||active.evidence?.verificationNote||"Teacher reviewed the selected work and entered the score and student feedback.";
   const paths=[...new Set(el("manualReviewFiles").value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean))];
   if(!raw.trim()||!Number.isFinite(score)||score<0||score>active.maxScore)return message("Score must be between 0 and "+active.maxScore+".",true);
   if(!feedback)return message("Add feedback for the student before saving.",true);
@@ -461,7 +487,7 @@ async function save(event) {
         aiAssistance:acceptedDraft?{
           model:acceptedDraft.model,checkpointSha:active.checkpointSha,
           suggestedScore:acceptedDraft.score,
-          criterionScores:acceptedDraft.criteria.map(c=>({name:c.name,score:c.score,maxScore:c.maxScore})),
+          criterionScores:acceptedDraft.criteria.map(c=>({name:c.name,score:c.score,maxScore:c.maxScore,pendingPoints:c.pendingPoints,confidence:c.confidence})),\n          pendingPoints:acceptedDraft.pendingPoints,potentialScore:acceptedDraft.potentialScore,
           generatedAt:serverTimestamp()
         }:(previous?.aiAssistance||null),
         reviewPriority:"teacher_verified",provisionalScore:false,
@@ -473,7 +499,7 @@ async function save(event) {
           verifiedContributionCommits:active.evidence.verifiedContributionCommits||[],
           contributionScope:active.evidence.contributionScope||"",evaluationDraft:acceptedDraft?{
             criteria:acceptedDraft.criteria,projectObservations:acceptedDraft.projectObservations,
-            limitations:acceptedDraft.limitations,generatedBy:"Gemini automated assistance",teacherReviewed:true
+            limitations:acceptedDraft.limitations,pendingPoints:acceptedDraft.pendingPoints,potentialScore:acceptedDraft.potentialScore,generatedBy:"Adminerva system evaluation",teacherReviewed:true
           }:(previous?.evaluationDraft||null)}:{}),
         targetPath:paths.length?paths.join(", "):"Manual review — see teacher note",
         contributionEvidence:{
