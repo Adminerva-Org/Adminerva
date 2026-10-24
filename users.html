@@ -96,14 +96,14 @@
             </div>
 
             <!-- ISOLATED CLEAR BUTTON -->
-            <details class="av-danger-zone mt-auto pt-8"><summary>Advanced: reset roster and grades</summary><p class="av-form-hint">This removes all student roster and grading records. Use only when intentionally clearing the school’s data.</p>
+            <details class="av-danger-zone mt-auto pt-8"><summary>Advanced: suspend current roster access</summary><p class="av-form-hint">This disables student workspace admission while preserving roster records, grades, submissions, evidence, and history. Re-importing or restoring a student can reactivate access.</p>
               <div class="border-t border-red-100 pt-4 flex justify-center">
                 <button
                   onclick="window.clearDirectory()"
                   class="text-[10px] sm:text-xs font-bold text-red-400 hover:text-red-700 transition flex items-center gap-1.5 opacity-80 sm:opacity-60 hover:opacity-100 p-2"
                 >
-                  <span class="text-sm sm:text-base">⚠️</span> Hard Reset
-                  Database
+                  <span class="text-sm sm:text-base">⚠️</span> Suspend All
+                  Student Access
                 </button>
               </div>
             </details>
@@ -141,6 +141,8 @@
                   <option value="all">All Statuses</option>
                   <option value="linked">GitHub Linked</option>
                   <option value="missing">Missing Info</option>
+                  <option value="active">Access Active</option>
+                  <option value="suspended">Access Suspended</option>
                 </select>
               </div>
               <div class="w-full md:w-64 relative mt-2 md:mt-0">

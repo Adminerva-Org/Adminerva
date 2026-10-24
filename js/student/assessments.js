@@ -3,6 +3,7 @@ import {loadPublishedGrades} from "./published-grades.mjs?v=1.3.0";
 import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {asDate,assessmentStatus,assessmentTargetDetails} from "./assessment-state.mjs?v=1.3.0";
+import {ensureStudentAccessProjection} from "./student-access.mjs?v=1.3.6";
 import {
   collection,
   getDocs,
@@ -152,10 +153,16 @@ async function fetchAssessments() {
   }
 
   try {
-    const q = query(collection(db, "assessments"));
-    const snap = await getDocs(q);
+    await ensureStudentAccessProjection();
     if(!isCurrent())return;
-    snap.forEach((docSnap) => {
+    const [sectionSnap,legacySnap] = await Promise.all([
+      getDocs(query(collection(db, "assessments"),where("sectionIds","array-contains",section))),
+      getDocs(query(collection(db, "assessments"),where("targetSections","array-contains",section)))
+    ]);
+    if(!isCurrent())return;
+    const assignedDocs=new Map();
+    for(const docSnap of [...sectionSnap.docs,...legacySnap.docs])assignedDocs.set(docSnap.id,docSnap);
+    assignedDocs.forEach((docSnap) => {
       const data = docSnap.data();
       let isAssignedToStudent = false;
       let activeDeadline = null;

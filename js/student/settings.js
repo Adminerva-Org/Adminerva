@@ -252,7 +252,7 @@ document.getElementById("studentRepoChoices")?.addEventListener("change", event 
 // ==========================================
 // BYOK: GEMINI API KEY MANAGEMENT
 // ==========================================
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   const keyInput = document.getElementById("geminiApiKeyInput");
   const toggleBtn = document.getElementById("toggleKeyVisibilityBtn");
   const form = document.getElementById("geminiKeyForm");
@@ -260,9 +260,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const statusBox = document.getElementById("apiKeyStatus");
 
   if (!form || !keyInput) return;
+  await auth.authStateReady();
+  const ownerUid=auth.currentUser?.uid;
+  if(!ownerUid)return;
+  const keyStorage="Adminerva_Gemini_Key_"+ownerUid;
 
-  // Load existing key from localStorage if present
-  const storedKey = localStorage.getItem("Adminerva_Gemini_Key");
+  // Load only the key owned by this signed-in account.
+  const storedKey = localStorage.getItem(keyStorage);
   if (storedKey) {
     keyInput.value = storedKey;
     removeBtn?.classList.remove("hidden");
@@ -297,7 +301,9 @@ document.addEventListener("DOMContentLoaded", () => {
       statusBox.classList.remove("hidden");
     }
 
-    localStorage.setItem("Adminerva_Gemini_Key", val);
+    if(auth.currentUser?.uid!==ownerUid){statusBox.textContent="Account changed. Reload before saving this key.";return;}
+    localStorage.setItem(keyStorage, val);
+    localStorage.removeItem("Adminerva_Gemini_Key");
     removeBtn?.classList.remove("hidden");
 
     statusBox.textContent = "✅ Gemini API Key saved locally!";
@@ -309,6 +315,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Remove Key
   removeBtn?.addEventListener("click", () => {
+    if(auth.currentUser?.uid!==ownerUid)return;
+    localStorage.removeItem(keyStorage);
     localStorage.removeItem("Adminerva_Gemini_Key");
     keyInput.value = "";
     removeBtn.classList.add("hidden");

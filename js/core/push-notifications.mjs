@@ -22,6 +22,9 @@ function configUrl(){return new URL("../../push-config.json",import.meta.url);}
 function swUrl(){return new URL("../../firebase-messaging-sw.js",import.meta.url);}
 function swScope(){return new URL("../../",import.meta.url).pathname;}
 function localDeviceKey(uid){return "Adminerva_push_device_"+uid;}
+function localOptOutKey(uid){return "Adminerva_push_optout_"+uid;}
+function deviceOptedOut(uid){try{return localStorage.getItem(localOptOutKey(uid))==="1";}catch{return false;}}
+function setDeviceOptOut(uid,value){try{if(value)localStorage.setItem(localOptOutKey(uid),"1");else localStorage.removeItem(localOptOutKey(uid));}catch{}}
 
 export async function loadPushConfig(){
   if(!configPromise)configPromise=fetch(configUrl(),{cache:"no-store"}).then(async response=>{
@@ -65,7 +68,7 @@ async function showForegroundTestPing(data){
   const closeAfter=Math.min(30000,Math.max(5000,Number(data?.autoCloseMs)||15000));
   await registration.showNotification(data?.title||"Adminerva test notification",{
     body:data?.body||"Push notifications are working on this device.",
-    icon:"assets/New%20Adminerva%20logo.png",badge:"assets/New%20Adminerva%20logo.png",
+    icon:"assets/New%20Adminerva%20logo.png",badge:"assets/adminerva-notification-badge.png",
     tag,renotify:true,data:{target:data?.target||"student-settings.html#notifications",adminervaKind:"test_ping"}
   });
   setTimeout(()=>{void registration.getNotifications({tag}).then(items=>items.forEach(item=>item.close())).catch(()=>{});},closeAfter);
@@ -95,15 +98,20 @@ export async function savePushPreferences(values,uid=auth.currentUser?.uid){
 export async function getDevicePushState(){
   const config=await loadPushConfig(),supported=await pushSupported();
   const permission=typeof Notification==="undefined"?"unsupported":Notification.permission;
+  const uid=auth.currentUser?.uid||"";
   return {
     supported,configured:Boolean(config.enabled&&config.vapidPublicKey),
     permission,
-    registered:Boolean(auth.currentUser?.uid&&remembered(auth.currentUser.uid)),
+    registered:Boolean(uid&&remembered(uid)),
+    deviceOptedOut:Boolean(uid&&deviceOptedOut(uid)),
     setupError:config.error||""
   };
 }
-export async function enableDevicePush({requestPermission=true}={}){
+export async function enableDevicePush({requestPermission=true,explicit=true}={}){
   const user=auth.currentUser;if(!user)throw Error("Sign in before enabling device notifications.");
+  const uid=user.uid;
+  if(!explicit&&deviceOptedOut(uid))return {enabled:false,permission:typeof Notification==="undefined"?"unsupported":Notification.permission,reason:"device-opted-out"};
+  if(explicit)setDeviceOptOut(uid,false);
   const config=await loadPushConfig();
   if(!config.enabled||!config.vapidPublicKey)throw Error("Device notifications are not configured for this Adminerva deployment yet.");
   if(!await pushSupported())throw Error("This browser does not support Adminerva device notifications.");
@@ -116,11 +124,13 @@ export async function enableDevicePush({requestPermission=true}={}){
   const registration=await worker();
   const pushMessaging=await messaging();
   const token=await getToken(pushMessaging,{vapidKey:config.vapidPublicKey,serviceWorkerRegistration:registration});
+  if(auth.currentUser?.uid!==uid)throw Error("Account changed before device notification setup finished.");
   if(!token)throw Error("Firebase did not return a device registration. Retry after checking the browser notification permission.");
   const id=await deviceId(token),ref=doc(db,"push_devices",id);
+  if(auth.currentUser?.uid!==uid)throw Error("Account changed before device notification setup finished.");
   try{
     await setDoc(ref,{
-      ownerUid:user.uid,token,enabled:true,platform:devicePlatform(),
+      ownerUid:uid,token,enabled:true,platform:devicePlatform(),
       userAgent:String(navigator.userAgent||"").slice(0,500),updatedAt:serverTimestamp()
     },{merge:true});
   }catch(error){
@@ -128,9 +138,10 @@ export async function enableDevicePush({requestPermission=true}={}){
       throw Error("This browser may already be linked to another Adminerva account for device alerts. Sign in to that account and disable device notifications first.");
     throw error;
   }
-  remember(user.uid,id);
-  const preferences=await getPushPreferences(user.uid);
-  if(preferences.enabled===false)await savePushPreferences({...preferences,enabled:true},user.uid);
+  if(auth.currentUser?.uid!==uid)throw Error("Account changed before device notification setup finished.");
+  remember(uid,id);
+  const preferences=await getPushPreferences(uid);
+  if(preferences.enabled===false&&explicit)await savePushPreferences({...preferences,enabled:true},uid);
   if(!foregroundBound){
     foregroundBound=true;
     onMessage(pushMessaging,payload=>{
@@ -138,24 +149,40 @@ export async function enableDevicePush({requestPermission=true}={}){
       document.dispatchEvent(new CustomEvent("adminerva-push-message",{detail:payload}));
     });
   }
-  document.dispatchEvent(new CustomEvent("adminerva-push-device",{detail:{uid:user.uid,enabled:true}}));
+  document.dispatchEvent(new CustomEvent("adminerva-push-device",{detail:{uid,enabled:true}}));
   return {enabled:true,permission:"granted",deviceId:id};
+}
+async function currentDeviceId(uid){
+  let id=remembered(uid);
+  if(id)return id;
+  const config=await loadPushConfig();
+  if(config.enabled&&config.vapidPublicKey&&await pushSupported()&&Notification.permission==="granted"){
+    try{
+      const token=await getToken(await messaging(),{vapidKey:config.vapidPublicKey,serviceWorkerRegistration:await worker()});
+      if(auth.currentUser?.uid!==uid)return "";
+      if(token)id=await deviceId(token);
+    }catch{}
+  }
+  return id;
+}
+export async function departPushAccount(uid=auth.currentUser?.uid){
+  if(!uid||auth.currentUser?.uid!==uid)return {removed:false};
+  const id=await currentDeviceId(uid);
+  if(auth.currentUser?.uid!==uid)return {removed:false};
+  if(id)await deleteDoc(doc(db,"push_devices",id));
+  forget(uid);
+  document.dispatchEvent(new CustomEvent("adminerva-push-device",{detail:{uid,enabled:false,departing:true}}));
+  return {removed:Boolean(id)};
 }
 export async function disableDevicePush(){
   const user=auth.currentUser;if(!user)throw Error("Sign in before changing device notifications.");
-  let id=remembered(user.uid);
-  if(!id){
-    const config=await loadPushConfig();
-    if(config.enabled&&config.vapidPublicKey&&await pushSupported()&&Notification.permission==="granted"){
-      try{
-        const token=await getToken(await messaging(),{vapidKey:config.vapidPublicKey,serviceWorkerRegistration:await worker()});
-        if(token)id=await deviceId(token);
-      }catch{}
-    }
-  }
+  const uid=user.uid;
+  setDeviceOptOut(uid,true);
+  const id=await currentDeviceId(uid);
+  if(auth.currentUser?.uid!==uid)throw Error("Account changed before device notifications were disabled.");
   if(id)await deleteDoc(doc(db,"push_devices",id));
-  forget(user.uid);
-  document.dispatchEvent(new CustomEvent("adminerva-push-device",{detail:{uid:user.uid,enabled:false}}));
+  forget(uid);
+  document.dispatchEvent(new CustomEvent("adminerva-push-device",{detail:{uid,enabled:false}}));
   return {enabled:false};
 }
 export async function sendTestPush(){
@@ -163,7 +190,10 @@ export async function sendTestPush(){
   const state=await getDevicePushState();
   if(!state.supported||!state.configured)throw Error("Device notifications are not ready on this browser.");
   if(state.permission!=="granted")throw Error("Enable notifications on this device before sending a test ping.");
-  if(!state.registered)await syncDevicePush();
+  if(!state.registered){
+    const synced=await syncDevicePush();
+    if(!synced?.enabled)throw Error(synced?.reason==="device-opted-out"?"Notifications are disabled on this device. Select Enable notifications first.":"This device could not be reconnected for push notifications.");
+  }
   const call=httpsCallable(functions(),"pushTestPing");
   const result=await call({});
   const sent=Number(result.data?.sent||0);
@@ -172,10 +202,16 @@ export async function sendTestPush(){
 }
 
 export async function syncDevicePush(){
-  const user=auth.currentUser;if(!user||typeof Notification==="undefined"||Notification.permission!=="granted")return;
-  const preferences=await getPushPreferences(user.uid);
-  if(preferences.enabled===false)return;
-  try{await enableDevicePush({requestPermission:false});}catch(error){console.warn("Device notification sync skipped:",error.message);}
+  const user=auth.currentUser;
+  if(!user)return {enabled:false,reason:"signed-out"};
+  const uid=user.uid;
+  if(typeof Notification==="undefined"||Notification.permission!=="granted")return {enabled:false,reason:"permission-not-granted"};
+  if(deviceOptedOut(uid))return {enabled:false,reason:"device-opted-out"};
+  const preferences=await getPushPreferences(uid);
+  if(auth.currentUser?.uid!==uid)return {enabled:false,reason:"account-changed"};
+  if(preferences.enabled===false)return {enabled:false,reason:"account-disabled"};
+  try{return await enableDevicePush({requestPermission:false,explicit:false});}
+  catch(error){console.warn("Device notification sync skipped:",error.message);return {enabled:false,reason:"registration-error",error:error.message};}
 }
 export function startPushSync(){
   if(syncStarted)return;syncStarted=true;

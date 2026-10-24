@@ -10,10 +10,13 @@ export function resolveAccountAccess(user) {
   if(!accountPending.has(user.uid)) {
     const email=String(user.email||"").toLowerCase();
     const profiles=name=>getDocsFromServer(query(collection(db,name),where("email","==",email)));
-    const operation=Promise.all([resolveStaffRole(user),profiles("teachers"),profiles("students")]).then(([role,teachers,students])=>({
-      role,teachers:teachers.docs,students:students.docs,needsTeacherApproval:!role&&!teachers.empty,
-      staffLookupUnavailable:unavailableStaffLookups.has(user.uid)
-    })).finally(()=>accountPending.delete(user.uid));
+    const operation=Promise.all([resolveStaffRole(user),profiles("teachers"),profiles("students")]).then(([role,teachers,students])=>{
+      const activeStudents=students.docs.filter(record=>!["suspended","archived"].includes(String(record.data()?.status||"active")));
+      return {
+        role,teachers:teachers.docs,students:activeStudents,needsTeacherApproval:!role&&!teachers.empty,
+        staffLookupUnavailable:unavailableStaffLookups.has(user.uid)
+      };
+    }).finally(()=>accountPending.delete(user.uid));
     accountPending.set(user.uid,operation);
   }
   return accountPending.get(user.uid);

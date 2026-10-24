@@ -137,7 +137,7 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
           <div id="av-desktop-nav" class="hidden xl:flex gap-1 items-center"></div>
           <div id="av-account-controls" class="av-nav-tools flex items-center gap-2">
-            <button type="button" title="Report Issue" aria-label="Help and updates" class="min-h-11 min-w-11 rounded-lg border border-slate-600 text-lg font-bold hover:bg-slate-800" onclick="document.getElementById('bug-modal')?.classList.remove('hidden')">?</button>
+            <button type="button" title="Report Issue" aria-label="Help and updates" class="min-h-11 min-w-11 rounded-lg border border-slate-600 text-lg font-bold hover:bg-slate-800" onclick="const m=document.getElementById('bug-modal');if(m){m.hidden=false;m.classList.remove('hidden')}">?</button>
             <a href="${isStudent ? "student-settings.html" : "settings.html"}" title="Account settings" aria-label="Account settings" class="min-h-11 min-w-11 flex items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800"><span aria-hidden="true">⚙</span></a>
             <div class="flex flex-col items-end border-l border-slate-600 pl-3 min-w-0">
               <button type="button" id="signOutBtn" class="min-h-8 text-xs sm:text-sm text-slate-100 hover:text-white font-bold">Sign out</button>
@@ -281,7 +281,7 @@ document.addEventListener("DOMContentLoaded", () => {
         import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js"),
         import("./connection-cache.mjs?v=1.3.0").then(module => module.clearConnectionPreferences())
       ]);
-      try{const push=await import("./push-notifications.mjs?v=1.3.1");await push.disableDevicePush();}catch{}
+      try{const push=await import("./push-notifications.mjs?v=1.3.6");await push.departPushAccount();}catch{}
       await signOut(getAuth());
     } catch (error) { console.warn("Sign out background process skipped or failed.", error); }
     finally {

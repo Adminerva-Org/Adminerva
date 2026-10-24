@@ -103,7 +103,7 @@ window.closeStudentModal = () =>
 
 // Initialization
 document.addEventListener("DOMContentLoaded", () => {
-  window.switchSettingsCategory("security");
+  window.switchSettingsCategory(location.hash==="#notifications"?"account":"security");
   if (window.loadSecuritySettings) window.loadSecuritySettings();
 
   // 1. Boot Firebase FIRST so window.db is established

@@ -22,7 +22,7 @@ messaging.onBackgroundMessage(payload=>{
   return self.registration.showNotification(data.title||"Adminerva test notification",{
     body:data.body||"Push notifications are working on this device.",
     icon:"assets/New%20Adminerva%20logo.png",
-    badge:"assets/New%20Adminerva%20logo.png",
+    badge:"assets/adminerva-notification-badge.png",
     tag,
     renotify:true,
     data:{target:data.target||"student-settings.html#notifications",adminervaKind:"test_ping"}

@@ -19,6 +19,11 @@ import {
 const errBox = document.getElementById("loginErrorBox");
 let signingIn = false;
 let continuing=false;
+async function signOutWithPushCleanup(){
+  try{const push=await import("./push-notifications.mjs?v=1.3.6");await push.departPushAccount();}
+  catch(error){console.warn("Push registration cleanup skipped during sign-out:",error?.message||error);}
+  return signOut(auth);
+}
 function showExistingSession(){
   const user=auth.currentUser,panel=document.getElementById("loginResumePanel");
   if(!panel)return;
@@ -86,10 +91,10 @@ const handleOAuthLogin = async (provider, providerType) => {
 
     if (!email) {
       clearConnectionPreferences();
-      await signOut(auth);
+      await signOutWithPushCleanup();
       throw new Error("no-email");
     }
-    if(!result.user.emailVerified){clearConnectionPreferences();await signOut(auth);throw Error("Use an account with a verified email address.");}
+    if(!result.user.emailVerified){clearConnectionPreferences();await signOutWithPushCleanup();throw Error("Use an account with a verified email address.");}
 
     if (typeof window.showSubtleLoader === "function") {
       window.showSubtleLoader("Verifying Identity...");
@@ -120,7 +125,7 @@ const handleOAuthLogin = async (provider, providerType) => {
     }
 
     if (!profileDocs.length && !isEducator) {
-      await signOut(auth);
+      await signOutWithPushCleanup();
       throw new Error("unrecognized-email:" + email);
     }
 
@@ -211,7 +216,7 @@ const handleOAuthLogin = async (provider, providerType) => {
 document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("loginContinueBtn").addEventListener("click",()=>void continueWorkspace());
   document.getElementById("loginSwitchBtn").addEventListener("click",async()=>{
-    try{clearConnectionPreferences();await signOut(auth);for(const key of ["Adminerva_Role","Adminerva_Mock_Role","Adminerva_Impersonate"])localStorage.removeItem(key);location.replace("login.html?switch=1");}
+    try{clearConnectionPreferences();await signOutWithPushCleanup();for(const key of ["Adminerva_Role","Adminerva_Mock_Role","Adminerva_Impersonate"])localStorage.removeItem(key);location.replace("login.html?switch=1");}
     catch{showError("Couldn’t switch accounts","Please retry signing out before choosing another account.");}
   });
   const urlParams = new URLSearchParams(window.location.search);

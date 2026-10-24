@@ -76,9 +76,10 @@ async function readDocument(reference,reader){
 export async function getDoc(reference){return readDocument(reference,sdk.getDoc);}
 export async function getDocFromServer(reference){return readDocument(reference,sdk.getDocFromServer);}
 export function onSnapshot(source,...args){
-  const uid=auth.currentUser?.uid;
   let active=true,stops=[];const callbackIndex=args.findIndex(value=>typeof value==="function"),callback=args[callbackIndex],failure=args[callbackIndex+1];
-  void plans(source).then(requests=>{
+  void actor().then(async current=>{
+    if(!active)return;
+    const uid=current.uid,requests=await plans(source,current);
     if(!active||auth.currentUser?.uid!==uid)return;
     if(source.type==="document"){const bound=[...args];bound[callbackIndex]=snapshot=>{if(active&&auth.currentUser?.uid===uid)callback(snapshot);};stops.push(sdk.onSnapshot(requests[0],...bound));return;}
     if(!requests.length){callback(emptySnapshot([]));return;}

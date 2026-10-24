@@ -37,7 +37,7 @@ function escapeHTML(str) {
 // Resolve the timetable for the selected lesson school year and semester.
 window.fetchScheduleForLesson = async function (schoolYear, academicTerm) {
   const scope = scheduleScope(schoolYear, academicTerm);
-  const local = () => localScheduleText(localStorage, schoolYear, academicTerm);
+  const local = () => localScheduleText(lessonStorage, schoolYear, academicTerm);
   // A failed cloud save must not silently replace recent edits on this device.
   if (lessonStorage.getItem(scope.pendingKey) === "1") return local();
   try {
@@ -281,6 +281,7 @@ window.saveLessonPlan = async function () {
       window.currentLessonSettings=planData.document_settings;
     }
     alert(action==="unchanged"?"No changes since the last save.":"Lesson plan saved. The previous version is retained.");
+    document.dispatchEvent(new CustomEvent("adminerva:lesson-saved",{detail:{id:safeDocId,action}}));
     return true;
   } catch (e) {
     console.error("Error saving plan:", e);

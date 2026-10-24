@@ -1,4 +1,5 @@
 /** Scoped product configuration and staff preferences: settings presentation. */
+import {auth} from "../core/firebase-core.js?v=1.3.0";
 import {
   doc,
   getDoc,
@@ -145,35 +146,39 @@ window.updateSlideSequence = function () {
   renderSlideSequence();
 };
 
+const presentationLocalKey=(uid,name)=>"Adminerva_presentation_"+uid+"_"+name;
+
 window.loadPresentationSettings = async function () {
+  await auth.authStateReady();
+  const uid=auth.currentUser?.uid;
+  if(!uid)return;
   let cloudData = null;
 
   if (window.db) {
     try {
       const docSnap = await getDoc(
-        doc(window.db, "global_settings", "presentation_config"),
+        doc(window.db, "staff_workspaces", uid, "preferences", "presentation"),
       );
       if (docSnap.exists()) cloudData = docSnap.data();
     } catch (e) {
       console.warn(
-        "Firestore unreachable for Presentations. Falling back to local storage.",
+        "Personal presentation defaults could not load from Firestore. Falling back to this account's device cache.",
         e,
       );
     }
   }
 
   const theme =
-    cloudData?.theme || localStorage.getItem("presentation_theme") || "light";
+    cloudData?.theme || localStorage.getItem(presentationLocalKey(uid,"theme")) || "light";
   const logoBase64 =
-    cloudData?.logo_base64 || localStorage.getItem("presentation_logo") || "";
+    cloudData?.logo_base64 || localStorage.getItem(presentationLocalKey(uid,"logo")) || "";
   const savedSequence =
     cloudData?.slide_sequence ||
-    JSON.parse(localStorage.getItem("presentation_slide_sequence") || "null");
+    JSON.parse(localStorage.getItem(presentationLocalKey(uid,"slide_sequence")) || "null");
 
   safeSet("setSlideTheme", theme);
   safeSet("slideLogoBase64", logoBase64);
 
-  // 🔥 POPULATE PREVIEW ON LOAD
   if (logoBase64) {
     const previewImg = document.getElementById("slideBgPreview");
     const placeholder = document.getElementById("slideBgPlaceholder");
@@ -182,44 +187,44 @@ window.loadPresentationSettings = async function () {
       previewImg.classList.remove("hidden");
       placeholder.classList.add("hidden");
     }
-    localStorage.setItem("presentation_logo", logoBase64);
   }
 
-  if (savedSequence && Array.isArray(savedSequence)) {
-    slideSequence = savedSequence;
-  }
+  if (savedSequence && Array.isArray(savedSequence)) slideSequence = savedSequence;
   renderSlideSequence();
 };
 
 window.savePresentationSettings = async function () {
   if (typeof window.showLoader === "function")
-    window.showLoader("Saving Presentation Defaults...");
+    window.showLoader("Saving Personal Presentation Defaults...");
   window.updateSlideSequence();
 
-  const settingsData = {
-    theme: safeGet("setSlideTheme") || "light",
-    logo_base64: safeGet("slideLogoBase64"),
-    slide_sequence: slideSequence,
-    updated_at: new Date().toISOString(),
-  };
-
   try {
-    localStorage.setItem("presentation_theme", settingsData.theme);
-    localStorage.setItem("presentation_logo", settingsData.logo_base64);
+    await auth.authStateReady();
+    const uid=auth.currentUser?.uid;
+    if(!uid)throw Error("Sign in before saving presentation defaults.");
+    const settingsData = {
+      theme: safeGet("setSlideTheme") || "light",
+      logo_base64: safeGet("slideLogoBase64"),
+      slide_sequence: slideSequence,
+      updated_at: new Date().toISOString(),
+    };
+
+    localStorage.setItem(presentationLocalKey(uid,"theme"), settingsData.theme);
+    localStorage.setItem(presentationLocalKey(uid,"logo"), settingsData.logo_base64);
     localStorage.setItem(
-      "presentation_slide_sequence",
+      presentationLocalKey(uid,"slide_sequence"),
       JSON.stringify(settingsData.slide_sequence),
     );
 
     if (window.db) {
       await setDoc(
-        doc(window.db, "global_settings", "presentation_config"),
+        doc(window.db, "staff_workspaces", uid, "preferences", "presentation"),
         settingsData,
         { merge: true },
       );
-      alert("✅ Presentation settings saved locally and synced to Firebase.");
+      alert("✅ Personal presentation defaults saved for this account.");
     } else {
-      alert("✅ Presentation settings saved locally (Firebase offline).");
+      alert("✅ Personal presentation defaults saved on this device.");
     }
   } catch (e) {
     alert(`⚠️ Error saving settings: ${e.message}`);

@@ -40,7 +40,7 @@ service cloud.firestore {
         data.section in get(/databases/$(database)/documents/assessments/$(data.taskId)).data.get("sectionIds",[]));
     }
     function serverOwned(name) {
-      return name in ["academic_access_preparations","teaching_roster","practice_sessions","practice_browser_sessions","practice_attempts","practice_awards","practice_verified_progress","practice_class_progress","practice_security_events","system_private","school_ai_results","school_ai_usage","practice_public_rankings","practice_season_scores","practice_season_progress","practice_season_awards","practice_season_attempts","practice_class_season_rankings"];
+      return name in ["academic_access_preparations","teaching_roster","student_access","practice_sessions","practice_browser_sessions","practice_attempts","practice_awards","practice_verified_progress","practice_class_progress","practice_security_events","system_private","school_ai_results","school_ai_usage","practice_public_rankings","practice_season_scores","practice_season_progress","practice_season_awards","practice_season_attempts","practice_class_season_rankings"];
     }
     function monitoringCollection(name) {
       return name in ["activity_preferences", "activity_events", "issue_diagnostics", "analytics_rosters", "analytics_views", "monitoring_control", "monitoring_status"];
@@ -188,13 +188,26 @@ service cloud.firestore {
       return signedIn() &&
         exists(/databases/$(database)/documents/students/$(studentId)) &&
         get(/databases/$(database)/documents/students/$(studentId)).data.email.lower() ==
-          request.auth.token.email.lower();
+          request.auth.token.email.lower() &&
+        get(/databases/$(database)/documents/students/$(studentId)).data.get("status","active") == "active";
+    }
+    function mayReadStudentAssessment(data) {
+      let path=/databases/$(database)/documents/student_access/$(request.auth.uid);
+      let sections=exists(path)?get(path).data.get("sections",[]):[];
+      return signedIn() && !isInstructor() && exists(path) &&
+        (data.get("sectionIds",[]).hasAny(sections) || data.get("targetSections",[]).hasAny(sections));
     }
 
     // Administrators retain existing system-wide maintenance privileges.
     match /{collection}/{document} {
       allow read, write: if isAdmin() && !serverOwned(collection) && !monitoringCollection(collection) && !personalCollection(collection) && collection != "assessment_evidence" && collection != "student_grades" && collection != "assessments" && collection != "assessment_private" &&
         !(collection in ["practice_profiles","practice_scores","practice_boards","practice_rankings"]);
+    }
+
+    match /student_access/{ownerUid} {
+      allow get: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
     }
 
     match /account_requests/{ownerUid} {
@@ -375,6 +388,7 @@ service cloud.firestore {
       // migrate that token to a secure backend in a later release.
       allow update: if signedIn() && resource.data.email is string &&
         resource.data.email.lower() == request.auth.token.email.lower() &&
+        resource.data.get("status","active") == "active" &&
         request.resource.data.email == resource.data.email &&
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["githubUsername", "repoUrl", "githubToken", "gender"]);
@@ -675,7 +689,7 @@ service cloud.firestore {
       }
       allow get, list: if isAdmin() || (isTeacher() &&
         (resource.data.get("ownerUid","") == request.auth.uid || resource.data.get("sectionIds",[]).hasAny(teacherSections()))) ||
-        (signedIn() && !isInstructor());
+        mayReadStudentAssessment(resource.data);
       allow create: if isInstructor() && validAssessment(request.resource.data);
       allow update: if isInstructor() && validAssessment(request.resource.data) &&
         (isAdmin() || (resource.data.get("ownerUid","") == request.auth.uid && request.resource.data.ownerUid == resource.data.ownerUid)) &&
