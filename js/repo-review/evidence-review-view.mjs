@@ -13,7 +13,7 @@ export const evidenceReviewMarkup=`
 <p id="evidenceMetadata" class="text-sm text-slate-700 break-words"></p>
 <div id="evidenceLinks" class="flex flex-wrap gap-4 text-sm"></div>
 <h3 class="text-sm font-bold">Selected evidence commits</h3>
-<p class="text-xs text-slate-600">These are the commits the student submitted for individual review.</p>
+<p class="text-xs text-slate-600">These are the commits the student submitted for individual review. The project checkpoint is separate and may be a later teammate commit.</p>
 <label class="flex gap-2 items-start rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-950">
 <input id="evidenceVerifyAll" type="checkbox" class="mt-1">
 <span>Verify all submitted evidence commits as this student's relevant work.</span>

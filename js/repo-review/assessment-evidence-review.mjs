@@ -5,9 +5,9 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {collection,doc,getDoc,getDocFromServer,getDocs,setDoc,query,where,updateDoc,runTransaction,serverTimestamp,onSnapshot}
   from "../core/teaching-firestore.mjs?v=1.3.0";
 import {parseRepository,normalizeSelection,validSha}
-  from "./services/assessment-evidence.mjs?v=1.3.0";
-import {commitPagePath,appendUniqueCommits,hasOlderCommitPage} from "./services/commit-history.mjs?v=1.3.0";
-import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
+  from "./services/assessment-evidence.mjs?v=1.3.1";
+import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.3.1";
+import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.1";
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
@@ -197,14 +197,14 @@ async function loadEvidence(initialRecord){
     await renderClaims();
     if(destroyed||sequence!==state.sequence)return;
     el("evidenceApprove").disabled=!["submitted","needs_review"].includes(evidence.status);
-    const canReopen=["approved","needs_review"].includes(evidence.status);
+    const canReopen=["submitted","approved","needs_review"].includes(evidence.status);
     const reviewLabel=el("evidenceReviewNoteLabel"),reviewNote=el("evidenceReviewNote");
     el("evidenceReopen").classList.toggle("hidden",!canReopen);
     el("evidenceReopen").disabled=false;
-    el("evidenceReopen").textContent="Reopen for student changes";
-    if(reviewLabel)reviewLabel.textContent=canReopen?"Reason for reopening / allowing student changes (required)":"Additional review note (optional for approval)";
+    el("evidenceReopen").textContent=evidence.status==="submitted"?"Return for student changes":"Reopen for student changes";
+    if(reviewLabel)reviewLabel.textContent=canReopen?(evidence.status==="submitted"?"Reason for returning submission to student (required)":"Reason for reopening / allowing student changes (required)"):"Additional review note (optional for approval)";
     if(reviewNote)reviewNote.placeholder=canReopen
-      ?"Example: Student has new commits and needs to replace the previous evidence selection."
+      ?(evidence.status==="submitted"?"Example: Selected evidence is not contained in the chosen checkpoint. Choose a newer checkpoint and resubmit.":"Example: Student has new commits and needs to replace the previous evidence selection.")
       :"Approval records your inspection automatically.";
     el("evidenceEditVerification").classList.toggle("hidden",evidence.status!=="approved");
     el("evidenceAuditSummary").textContent="Evidence revision: "+(evidence.revision||0)+". Changes preserve the previous record and reviewer identity. Reopening invalidates draft eligibility; published grades must be unpublished first.";
@@ -215,6 +215,7 @@ async function loadEvidence(initialRecord){
     el("evidenceReviewNote").disabled=false;el("evidenceConfirm").disabled=false;el("evidenceVerifyAll").disabled=evidence.status==="approved";el("evidenceEditVerification").disabled=false;
     status("Loaded "+evidence.selectedCommits.length+" selected commits. Approval will verify that they occur in the checkpoint's ancestry.");
     if(evidence.status==="reopened")status("Reopened: the student can change commit selections now. They must resubmit before a new approval. Contribution checks here verify authorship; they do not edit the student's selected commits.");
+    else if(evidence.status==="submitted")status("Student evidence is awaiting review. If approval fails or the selection needs correction, enter a reason below and choose Return for student changes.");
     else if(evidence.status==="approved")status(evidence.verifiedContributionCommits?.length?"Approved. To let the student submit different commits, enter a reopening reason below and choose Reopen for student changes.":"Approved checkpoint has no verified individual contributions. To let the student change commits, enter a reopening reason below and choose Reopen for student changes.");
     else if(evidence.status==="needs_review")status("This is an instructor-discovered evidence proposal, so the student cannot edit it yet. To let the student choose different commits and a new checkpoint, enter a reason below and choose Reopen for student changes.");
     void Promise.all(previews);
@@ -302,17 +303,12 @@ async function decideClaim(claim,decision){
   }catch(e){status("Unable to decide claim: "+e.message);}
 }
 async function verifyAncestry(repo,checkpoint,selected){
-  // Read commit graph pinned to the checkpoint, not mutable default HEAD.
-  const remaining=new Set(selected);
-  for(let page=1;page<=10;page++){
-    const items=await github(api(repo)+"/commits?sha="+encodeURIComponent(checkpoint)+
-      "&per_page=100&page="+page);
-    if(!Array.isArray(items))throw Error("Invalid commit ancestry response");
-    for(const item of items)remaining.delete(String(item.sha||"").toLowerCase());
-    if(!remaining.size)return;
-    if(items.length<100)break;
-  }
-  throw Error("The selected commits could not all be verified in the checkpoint's available ancestry. Choose another revision or inspect manually.");
+  const result=await verifyCheckpointAncestry({
+    selectedCommits:selected,checkpointSha:checkpoint,
+    fetchPage:page=>github(api(repo)+"/commits?sha="+encodeURIComponent(checkpoint)+"&per_page=100&page="+page)
+  });
+  if(result.ok)return;
+  throw Error("Project checkpoint "+checkpoint.slice(0,12)+" does not contain selected evidence commit"+(result.missing.length===1?" ":"s ")+result.missing.map(sha=>sha.slice(0,12)).join(", ")+". Reopen the submission so the student can choose a newer project checkpoint.");
 }
 async function approve(){
   if(state.busy||!state.loaded||(!["submitted","needs_review"].includes(state.evidence?.status)&&!(state.evidence?.status==="approved"&&state.verificationEditing)))return;
@@ -358,7 +354,12 @@ async function reopen(){
   const reason=el("evidenceReviewNote").value.trim();
   if(reason.length<15||reason.length>3000)return status("Enter a reopening reason of 15–3,000 characters in the teacher review note.");
   const proposal=state.evidence.status==="needs_review";
-  if(!confirm(proposal?"Allow this student to replace the proposed evidence with their own commit selection? The proposal remains in audit history and the student must submit again.":"Reopen this approved evidence for student changes? The approval is revoked, existing draft grades require fresh review, and prior evidence is retained."))return;
+  const submitted=state.evidence.status==="submitted";
+  if(!confirm(proposal
+    ?"Allow this student to replace the proposed evidence with their own commit selection? The proposal remains in audit history and the student must submit again."
+    :submitted
+      ?"Return this submission to the student for changes? The current evidence remains in audit history and the student must resubmit."
+      :"Reopen this approved evidence for student changes? The approval is revoked, existing draft grades require fresh review, and prior evidence is retained."))return;
   state.busy=true;
   try{
     await changeEvidence(doc(db,"assessment_evidence",state.student.id+"_"+state.assessment.id),state.evidence,{
@@ -424,7 +425,7 @@ function renderHistorical(){
     const radio=document.createElement("input");radio.type="radio";
     radio.name="historicalCheckpoint";radio.checked=discovery.checkpoint===sha;
     radio.setAttribute("aria-label","Use "+sha.slice(0,12)+" as project checkpoint");
-    radio.addEventListener("change",()=>{discovery.checkpoint=sha;discovery.selected.add(sha);renderHistorical();});
+    radio.addEventListener("change",()=>{discovery.checkpoint=sha;renderHistorical();});
     line.append(radio);
     add(line,"span",sha.slice(0,12),"text-xs font-mono text-indigo-700");
     add(line,"strong",String(commit.commit?.message||"").split("\n")[0].slice(0,180),

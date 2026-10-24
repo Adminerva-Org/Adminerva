@@ -12,12 +12,12 @@ import {
 import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=1.3.0";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
 import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,buildRubricResponseSchema,parseSuggestedRubric}
-  from "./services/v2-grading-assistant.mjs?v=1.3.2";
+  from "./services/v2-grading-assistant.mjs?v=1.3.3";
 import {isAndroidUiAssessment} from "./services/android-evidence.mjs?v=1.3.0";
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
 import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {createReviewRequests} from "./services/review-requests.mjs?v=1.3.0";
-import {mountReviewPanels} from "./review-panels.mjs?v=1.3.2";
+import {mountReviewPanels} from "./review-panels.mjs?v=1.3.4";
 
 const el = id => document.getElementById(id);
 const state = { active: null, request: null, token: 0, flags: [], aiBusy: false, dirty:false, abort:null,panels:null,requests:null,aiAbort:null };

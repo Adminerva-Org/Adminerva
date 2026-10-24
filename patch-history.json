@@ -22,6 +22,26 @@
           "type": "New",
           "area": "Student resubmission alert",
           "text": "When evidence is reopened, the affected student sees a targeted notification using the authoritative evidence record, including the teacher's reopening reason and a link back to My Assignments."
+        },
+        {
+          "type": "Updated",
+          "area": "Project checkpoint",
+          "text": "Student evidence commits and the project checkpoint are separate. The checkpoint may be a later teammate commit as long as it contains all selected student evidence; the checkpoint itself does not become individual credit."
+        },
+        {
+          "type": "Fixed",
+          "area": "Checkpoint validation",
+          "text": "Adminerva verifies Git ancestry before accepting a student evidence submission and identifies selected commits missing from the chosen checkpoint, preventing checkpoint mismatches from first appearing during teacher approval."
+        },
+        {
+          "type": "Updated",
+          "area": "Checkpoint selection",
+          "text": "The latest repository revision is suggested as the project checkpoint for new submissions. Students can choose another revision when needed, while selecting only their own relevant commits as evidence."
+        },
+        {
+          "type": "Fixed",
+          "area": "Return for student changes",
+          "text": "Teachers can return a submitted evidence package for correction when approval cannot proceed. The required reason is retained in audit history, shown to the student, and the student must resubmit before approval."
         }
       ]
     },
