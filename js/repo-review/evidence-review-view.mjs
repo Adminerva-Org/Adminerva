@@ -21,12 +21,12 @@ export const evidenceReviewMarkup=`
 <label class="block text-sm font-semibold" for="evidenceContributionScope">Additional responsibilities and attribution notes (optional)</label>
 <textarea id="evidenceContributionScope" rows="3" maxlength="3000" class="w-full border rounded-lg p-3" placeholder="Add specific responsibilities or exceptions. Your selected verified commits are recorded automatically."></textarea>
 <p class="text-xs text-slate-600">Select only commits independently verified as this student's contribution. A selected project checkpoint may contain teammates' work. Leave all contribution boxes empty when no individual work is verified; evaluation will require manual review.</p>
-<label class="block text-sm font-semibold" for="evidenceReviewNote">Additional review note (optional for approval)</label>
-<textarea id="evidenceReviewNote" rows="3" maxlength="3000" class="w-full border rounded-lg p-3" placeholder="Approval records your inspection automatically. Enter a reason here when reopening evidence."></textarea>
+<label id="evidenceReviewNoteLabel" class="block text-sm font-semibold" for="evidenceReviewNote">Additional review note (optional for approval)</label>
+<textarea id="evidenceReviewNote" rows="3" maxlength="3000" class="w-full border rounded-lg p-3" placeholder="Approval records your inspection automatically."></textarea>
 <label class="flex gap-2 items-start text-sm"><input id="evidenceConfirm" type="checkbox" class="mt-1">
 <span>I inspected the project at the selected revision, checked the relevant commits and addressed attribution uncertainties. Git timestamps alone were not used to prove push time.</span></label>
 <button id="evidenceApprove" type="button" class="px-5 py-3 bg-emerald-700 text-white font-bold rounded">Approve checkpoint</button>
-<button id="evidenceReopen" type="button" class="hidden px-5 py-3 border border-amber-500 text-amber-900 font-bold rounded">Reopen evidence for student</button>
+<button id="evidenceReopen" type="button" class="hidden px-5 py-3 border border-amber-500 text-amber-900 font-bold rounded">Reopen for student changes</button>
 <button id="evidenceEditVerification" type="button" class="hidden px-5 py-3 border border-indigo-500 text-indigo-900 font-bold rounded">Revise contribution verification</button>
 <button id="evidenceReload" type="button" class="px-4 py-3 border rounded font-bold">Reload evidence</button>
 <p id="evidenceActionStatus" role="status" class="text-sm font-semibold text-indigo-900"></p>

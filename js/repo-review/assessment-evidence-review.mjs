@@ -11,7 +11,7 @@ import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.m
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
-import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.0";
+import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.1";
 import {searchStudents} from "./services/student-search.mjs?v=1.3.0";
 
 export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{}}={}){
@@ -188,9 +188,15 @@ async function loadEvidence(initialRecord){
     await renderClaims();
     if(destroyed||sequence!==state.sequence)return;
     el("evidenceApprove").disabled=!["submitted","needs_review"].includes(evidence.status);
-    el("evidenceReopen").classList.toggle("hidden",!["approved","needs_review"].includes(evidence.status));
+    const canReopen=["approved","needs_review"].includes(evidence.status);
+    const reviewLabel=el("evidenceReviewNoteLabel"),reviewNote=el("evidenceReviewNote");
+    el("evidenceReopen").classList.toggle("hidden",!canReopen);
     el("evidenceReopen").disabled=false;
-    el("evidenceReopen").textContent=evidence.status==="needs_review"?"Release proposal for student changes":"Reopen evidence for student";
+    el("evidenceReopen").textContent="Reopen for student changes";
+    if(reviewLabel)reviewLabel.textContent=canReopen?"Reason for reopening / allowing student changes (required)":"Additional review note (optional for approval)";
+    if(reviewNote)reviewNote.placeholder=canReopen
+      ?"Example: Student has new commits and needs to replace the previous evidence selection."
+      :"Approval records your inspection automatically.";
     el("evidenceEditVerification").classList.toggle("hidden",evidence.status!=="approved");
     el("evidenceAuditSummary").textContent="Evidence revision: "+(evidence.revision||0)+". Changes preserve the previous record and reviewer identity. Reopening invalidates draft eligibility; published grades must be unpublished first.";
     el("evidenceApprove").textContent=evidence.status==="approved"?"Checkpoint approved":"Verify and approve checkpoint";
@@ -200,7 +206,8 @@ async function loadEvidence(initialRecord){
     el("evidenceReviewNote").disabled=false;el("evidenceConfirm").disabled=false;el("evidenceEditVerification").disabled=false;
     status("Loaded "+evidence.selectedCommits.length+" selected commits. Approval will verify that they occur in the checkpoint's ancestry.");
     if(evidence.status==="reopened")status("Reopened: the student can change commit selections now. They must resubmit before a new approval. Contribution checks here verify authorship; they do not edit the student's selected commits.");
-    else if(evidence.status==="approved")status(evidence.verifiedContributionCommits?.length?"Approved. Reopen for student selection changes, or revise contribution verification without changing their selection.":"Approved checkpoint has no verified individual contributions. Select Revise contribution verification to record independently checked work; otherwise evaluate manually without crediting teammates' screens.");
+    else if(evidence.status==="approved")status(evidence.verifiedContributionCommits?.length?"Approved. To let the student submit different commits, enter a reopening reason below and choose Reopen for student changes.":"Approved checkpoint has no verified individual contributions. To let the student change commits, enter a reopening reason below and choose Reopen for student changes.");
+    else if(evidence.status==="needs_review")status("This is an instructor-discovered evidence proposal, so the student cannot edit it yet. To let the student choose different commits and a new checkpoint, enter a reason below and choose Reopen for student changes.");
     void Promise.all(previews);
   }catch(error){if(!destroyed&&sequence===state.sequence)status("Unable to load evidence: "+error.message);}
 }
@@ -342,7 +349,7 @@ async function reopen(){
   const reason=el("evidenceReviewNote").value.trim();
   if(reason.length<15||reason.length>3000)return status("Enter a reopening reason of 15–3,000 characters in the teacher review note.");
   const proposal=state.evidence.status==="needs_review";
-  if(!confirm(proposal?"Release this historical proposal so the student can choose their own commits? No student submission or approval is asserted; the proposal and release remain in audit history.":"Reopen this evidence for student changes? The approval is revoked, existing draft grades require fresh review, and prior evidence is retained."))return;
+  if(!confirm(proposal?"Allow this student to replace the proposed evidence with their own commit selection? The proposal remains in audit history and the student must submit again.":"Reopen this approved evidence for student changes? The approval is revoked, existing draft grades require fresh review, and prior evidence is retained."))return;
   state.busy=true;
   try{
     await changeEvidence(doc(db,"assessment_evidence",state.student.id+"_"+state.assessment.id),state.evidence,{
