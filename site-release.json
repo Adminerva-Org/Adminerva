@@ -1,6 +1,6 @@
 {
-  "version": "1.3.6",
+  "version": "1.3.7",
   "releasedAt": "2026-10-24",
-  "notes": "Evidence review, push notifications, student access and saved-work recovery are more reliable. Notification and lesson-status UI is also more compact.",
-  "publishedAt": "2026-10-24T19:55:00+08:00"
+  "notes": "Push alerts now use the working background delivery path for real assessment and teaching events. Notifications are more compact and identifiable, Practice exact-output prompts are clearer, and mobile layouts are more resilient.",
+  "publishedAt": "2026-10-24T21:25:00+08:00"
 }
