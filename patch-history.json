@@ -37,6 +37,11 @@
           "type": "Updated",
           "area": "Checkpoint selection",
           "text": "The latest repository revision is suggested as the project checkpoint for new submissions. Students can choose another revision when needed, while selecting only their own relevant commits as evidence."
+        },
+        {
+          "type": "Fixed",
+          "area": "Return for student changes",
+          "text": "Teachers can return a submitted evidence package for correction when approval cannot proceed. The required reason is retained in audit history, shown to the student, and the student must resubmit before approval."
         }
       ]
     },
