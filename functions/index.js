@@ -134,7 +134,8 @@ async function pushAllowed(uid,type){
   const snapshot=await db.doc("push_preferences/"+uid).get();
   if(!snapshot.exists)return true;
   const data=snapshot.data()||{};
-  return data.enabled!==false&&data[type]!==false;
+  const preferenceType=["grading","issue"].includes(String(type||""))?"submission":type;
+  return data.enabled!==false&&data[preferenceType]!==false;
 }
 async function pushToUser(uid,item){
   if(!uid||item.push!==true||!await pushAllowed(uid,item.type))return;
