@@ -1,6 +1,56 @@
 {
   "releases": [
     {
+      "version": "1.3.5",
+      "status": "draft",
+      "public": false,
+      "releasedAt": "2026-10-24",
+      "title": "More reliable Review & Grade evaluation",
+      "summary": "Draft notes for the current teaching-workspace repair: safer section-scoped review data, more reliable system evaluation, clearer recovery and cleaner browser feedback.",
+      "changes": [
+        {
+          "type": "Fixed",
+          "area": "Teaching workspace access",
+          "text": "Firebase sign-in restoration no longer looks like an account switch while Review & Grade is loading, preventing valid teaching results from being discarded during normal page startup."
+        },
+        {
+          "type": "Fixed",
+          "area": "Teacher notifications",
+          "text": "Grading alerts, student submissions and teacher-visible reports are read through assigned-section access instead of broad staff queries that Firestore rejects. Teacher grading alerts no longer depend on a new composite index."
+        },
+        {
+          "type": "Fixed",
+          "area": "System evaluation responses",
+          "text": "Evaluation responses distinguish malformed output, response-limit truncation and other provider stop reasons. A malformed or truncated first response is retried once in a shorter format, while unsupported or unverified rubric criteria remain unscored."
+        },
+        {
+          "type": "Fixed",
+          "area": "Evaluation timing",
+          "text": "The evaluation timeout now starts after repository evidence is retrieved instead of during GitHub loading. The service has enough time for a normal response and one compact retry, with a visible still-processing status for slower evaluations."
+        },
+        {
+          "type": "Updated",
+          "area": "Evaluation recovery",
+          "text": "Review & Grade uses shorter system-focused status messages, a clearer Retry evaluation action and explicit confirmation that failed evaluation attempts do not replace the teacher's score or feedback."
+        },
+        {
+          "type": "Updated",
+          "area": "Evaluation service integration",
+          "text": "The evaluation request includes a rubric-shaped response schema, and the server source is prepared to forward that schema when the school evaluation function is deployed. Browser-side validation still checks evidence references and score bounds before suggestions can be used."
+        },
+        {
+          "type": "Updated",
+          "area": "Website refresh",
+          "text": "RepoFetch, the teaching access adapter and notification modules use refreshed asset versions so browsers receive the repaired files instead of stale cached modules."
+        },
+        {
+          "type": "Fixed",
+          "area": "RepoFetch browser console",
+          "text": "RepoFetch explicitly uses the Adminerva logo as its page icon instead of causing a missing favicon request. The Tailwind CDN production warning remains a separate styling-build task."
+        }
+      ]
+    },
+    {
       "version": "1.3.4",
       "status": "published",
       "public": true,
