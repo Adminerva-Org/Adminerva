@@ -9,7 +9,7 @@ const root=document.querySelector("[data-account-preferences]");
 if(root){
   const staff=root.dataset.accountPreferences==="staff";
   const pushChoices=staff
-    ?[['submission','Student submissions & evidence'],['grading','Grading alerts'],['issue','Reports & replies']]
+    ?[['submission','Teaching alerts · submissions, grading and reports']]
     :[['assessment','New assessments'],['submission','Returned submissions / action required'],['grade','Published or corrected grades']];
   const pushMarkup=`
     <fieldset class="mt-6" data-push-settings>
