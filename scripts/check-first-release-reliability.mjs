@@ -42,7 +42,7 @@ lacks("js/settings/settings-presentation.js",'doc(window.db, "global_settings", 
 has("js/lesson-review/app-ui.js","Adminerva_lesson_editor_draft_v1");
 has("js/lesson-review/app-ui.js","adminerva:lesson-saved");
 has("js/settings/settings-core.js",'location.hash==="#notifications"?"account":"security"');
-has("js/core/adminerva-loader.js",'<div id="bug-modal" hidden');
+has("js/core/adminerva-loader.js",'tabindex="-1" hidden');
 has("js/core/adminerva-nav.js","m.hidden=false");
 
 console.log("Focused first-release reliability invariants passed.");
