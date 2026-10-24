@@ -4,7 +4,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const manifest=document.createElement("link");manifest.rel="manifest";manifest.href="manifest.webmanifest";document.head.append(manifest);
   }
   if(!document.querySelector('link[rel="apple-touch-icon"]')){
-    const icon=document.createElement("link");icon.rel="apple-touch-icon";icon.href="assets/New%20Adminerva%20logo.png";document.head.append(icon);
+    const icon=document.createElement("link");icon.rel="apple-touch-icon";icon.href="assets/adminerva-notification-badge.png";document.head.append(icon);
   }
   const root = document.getElementById("adminerva-nav");
   if (!root) return;
@@ -118,7 +118,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="av-nav-top flex justify-between items-center min-h-14 px-4 sm:px-6 lg:px-8">
           <div class="av-nav-brand flex items-center gap-3 min-w-0">
             <a href="${homeRoute}" class="av-nav-home flex items-center gap-2 min-h-10 rounded-lg" aria-label="Adminerva · ${homeLabel}"${activePage === "home" ? ' aria-current="page"' : ""}>
-              <img src="assets/New Adminerva logo.png" alt="" class="h-8 w-8 object-contain">
+              <span class="av-brand-mark"><img src="assets/adminerva-notification-badge.png" alt="" class="h-8 w-8 object-contain rounded-full"></span>
               <span class="av-nav-wordmark hidden sm:inline font-extrabold tracking-wide">ADMINERVA</span>
               <span class="av-nav-home-label text-sm font-semibold text-cyan-100">Home</span>
             </a>
@@ -137,9 +137,18 @@ document.addEventListener("DOMContentLoaded", () => {
             <button type="button" title="Report Issue" aria-label="Help and updates" class="min-h-10 min-w-10 rounded-lg border border-slate-600 text-base font-bold hover:bg-slate-800" onclick="const m=document.getElementById('bug-modal');if(m){m.hidden=false;m.classList.remove('hidden')}">?</button>
             <a href="${isStudent ? "student-settings.html" : "settings.html"}" title="Account settings" aria-label="Account settings" class="min-h-10 min-w-10 flex items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800"><span aria-hidden="true">⚙</span></a>
             <div class="flex flex-col items-end border-l border-slate-600 pl-3 min-w-0">
-              <button type="button" id="signOutBtn" class="min-h-7 text-xs sm:text-sm text-slate-100 hover:text-white font-bold">Sign out</button>
-              <span id="userEmailDisplay" class="text-[10px] text-slate-400 truncate max-w-[130px]"></span>
-              <span class="av-nav-role text-[10px] text-cyan-300">${roleLabel}</span>
+              <button type="button" id="signOutBtn" class="min-h-6 text-[11px] sm:text-xs text-slate-200 hover:text-white font-bold">Sign out</button>
+              <details class="av-account-menu relative">
+                <summary class="list-none cursor-pointer text-right rounded px-1 py-0.5 hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400" aria-label="Account menu">
+                  <span id="userEmailDisplay" class="block text-[10px] text-slate-400 truncate max-w-[150px]"></span>
+                  <span class="av-nav-role block text-[10px] text-cyan-300">${roleLabel} ▾</span>
+                </summary>
+                <div class="av-nav-menu-panel absolute right-0 top-full mt-2 w-56 z-[120] rounded-xl bg-slate-900 border border-slate-600 shadow-2xl p-2 text-left">
+                  <a href="issues.html" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">My reports & support</a>
+                  <a href="wiki.html#privacy" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Privacy</a>
+                  <a data-account-settings href="${isStudent ? "student-settings.html" : "settings.html"}" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Settings</a>
+                </div>
+              </details>
             </div>
           </div>
         </div>
@@ -156,6 +165,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (roleDisplay) roleDisplay.textContent = roleLabel;
     const settings = accountControls.querySelector('a[title="Account settings"]');
     if (settings) settings.href = isStudent ? "student-settings.html" : "settings.html";
+    const accountSettings=accountControls.querySelector("[data-account-settings]");
+    if(accountSettings)accountSettings.href=isStudent?"student-settings.html":"settings.html";
   }
   if (informationPanel) root.append(informationPanel);
   const emailDisplay = root.querySelector("#userEmailDisplay");
@@ -221,7 +232,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (utilitiesMounted) return;
   utilitiesMounted = true;
   const reportButton = root.querySelector('button[title="Report Issue"]');
-  if (reportButton) import("./information-menu.mjs?v=1.3.0")
+  if (reportButton) import("./information-menu.mjs?v=1.4.0")
     .then(module => {
       module.mountInformationMenu(reportButton, root);
       // The shared support page has data-module="global" for both roles.

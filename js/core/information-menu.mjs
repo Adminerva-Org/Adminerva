@@ -4,8 +4,7 @@ export function mountInformationMenu(button, root) {
   menu.className = "av-information-panel";
   menu.hidden = true;
   menu.setAttribute("aria-label", "Help and website information");
-  menu.innerHTML = '<strong>Help & updates</strong><button type="button" data-information-help>Help with this page</button><a href="patch-notes.html">What’s new</a><button type="button" data-information-report>Report a problem</button><a href="issues.html">My reports & support</a><a href="wiki.html">Website Wiki & tutorials</a><a href="wiki.html#privacy">Privacy</a><a data-information-settings>Account & activity settings</a>';
-  menu.querySelector("[data-information-settings]").href = root.dataset.module?.startsWith("student") ? "student-settings.html" : "settings.html";
+  menu.innerHTML = '<strong>Help & updates</strong><a href="patch-notes.html">What’s new</a><button type="button" data-information-help>Help with this page</button><a href="wiki.html">Wiki & tutorials</a><button type="button" data-information-report>Report a problem</button>';
   root.append(menu);
   button.title = "Help and updates";
   button.setAttribute("aria-label", "Help and updates");
