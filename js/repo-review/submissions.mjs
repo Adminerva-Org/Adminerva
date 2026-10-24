@@ -22,15 +22,34 @@ function hyperlink(parent,label,href){
   if(a.target==="_blank")a.rel="noopener noreferrer";parent.append(a);
 }
 function asMillis(value){return value?.toMillis?.()||Date.parse(value||"")||0;}
+function assessmentKey(item){
+  return String(item.assessmentId||item.taskId||item.assessmentTitle||"");
+}
+function statusLabel(value){
+  return ({submitted:"Submitted",approved:"Approved",reopened:"Reopened",needs_review:"Needs review",withdrawn:"Withdrawn"})[value]||
+    String(value||"Unknown").replace(/_/g," ").replace(/\b\w/g,char=>char.toUpperCase());
+}
+function statusClass(value){
+  return ({
+    submitted:"bg-blue-50 text-blue-800 border-blue-200",
+    approved:"bg-emerald-50 text-emerald-800 border-emerald-200",
+    reopened:"bg-amber-50 text-amber-900 border-amber-200",
+    needs_review:"bg-violet-50 text-violet-800 border-violet-200",
+    withdrawn:"bg-slate-100 text-slate-700 border-slate-200"
+  })[value]||"bg-slate-50 text-slate-700 border-slate-200";
+}
 function render(){
   const feed=el("submissionFeed"),term=el("submissionSearch").value.trim().toLowerCase();
-  const section=el("submissionSection").value;
-  const filtered=documents.filter(item=>(section==="all"||item.section===section)&&
-    [item.studentName,item.assessmentTitle,item.repoUrl,item.githubLogin,item.sourcePath,item.status]
+  const section=el("submissionSection").value,status=el("submissionState").value,assessment=el("submissionAssessment").value;
+  const filtered=documents.filter(item=>
+    (section==="all"||item.section===section)&&
+    (status==="all"||item.status===status)&&
+    (assessment==="all"||assessmentKey(item)===assessment)&&
+    [item.studentName,item.assessmentTitle,item.repoUrl,item.githubLogin,item.sourcePath,item.status,statusLabel(item.status)]
       .join(" ").toLowerCase().includes(term));
   feed.replaceChildren();
-  el("submissionStatus").textContent=filtered.length+" review item(s) shown · "+documents.length+
-    " loaded (student receipts + V2 selected evidence)";
+  el("submissionStatus").textContent=filtered.length+" of "+documents.length+
+    " review item(s) shown · student receipts + V2 selected evidence";
   if(!filtered.length){
     feed.append(make("p","bg-white p-5 border rounded-xl text-slate-600 text-sm",
       "No review items match these filters."));return;
@@ -42,10 +61,13 @@ function render(){
     title.append(make("h2","text-base font-bold text-slate-900 break-words",item.studentName||"Student"));
     title.append(make("p","text-sm font-semibold text-blue-700 break-words",item.assessmentTitle||"Assessment"));
     header.append(title);
-    header.append(make("span","text-xs text-slate-500",item.date?.toDate?.()?.toLocaleString()||"Date unavailable"));
+    const meta=make("div","flex flex-wrap sm:flex-col items-start sm:items-end gap-2");
+    meta.append(make("span","inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-bold "+statusClass(item.status),statusLabel(item.status)));
+    meta.append(make("span","text-xs text-slate-500",item.date?.toDate?.()?.toLocaleString()||"Date unavailable"));
+    header.append(meta);
     card.append(header);
     card.append(make("p","text-xs text-slate-600 mt-2","Section: "+(item.section||"Unknown")+
-      " · "+(item.kind==="v2"?"Selected commit evidence: "+item.status:"GitHub revision receipt")));
+      " · "+(item.kind==="v2"?"Selected commit evidence":"GitHub revision receipt")));
     const rev=String(item.revisionSha||"");
     card.append(make("p","font-mono text-xs break-all mt-2","Project revision: "+rev));
     if(item.sourcePath)card.append(make("p","text-xs mt-1 break-all","Source: "+item.sourcePath));
@@ -71,7 +93,7 @@ function render(){
   }
 }
 function refresh(){
-  const old=el("submissionSection").value;
+  const oldSection=el("submissionSection").value,oldAssessment=el("submissionAssessment").value;
   documents=[
     ...snapshots.legacy.map(d=>({...d,kind:"legacy",date:d.submittedAt,
       revisionSha:d.revisionSha||"",status:"submitted"})),
@@ -86,7 +108,19 @@ function refresh(){
   const select=el("submissionSection"),sections=[...new Set(documents.map(x=>x.section).filter(Boolean))].sort();
   select.replaceChildren();const all=make("option","","All sections");all.value="all";select.append(all);
   for(const section of sections){const opt=make("option","",section);opt.value=section;select.append(opt);}
-  select.value=sections.includes(old)?old:"all";
+  select.value=sections.includes(oldSection)?oldSection:"all";
+
+  const assessmentSelect=el("submissionAssessment"),assessmentOptions=new Map();
+  for(const item of documents){
+    const key=assessmentKey(item);if(!key)continue;
+    if(!assessmentOptions.has(key))assessmentOptions.set(key,item.assessmentTitle||key);
+  }
+  assessmentSelect.replaceChildren();
+  const everyAssessment=make("option","","All assessments");everyAssessment.value="all";assessmentSelect.append(everyAssessment);
+  for(const [key,title] of [...assessmentOptions.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1])))){
+    const option=make("option","",title);option.value=key;assessmentSelect.append(option);
+  }
+  assessmentSelect.value=assessmentOptions.has(oldAssessment)?oldAssessment:"all";
   render();
 }
 onAuthStateChanged(auth,async user=>{
@@ -115,4 +149,4 @@ onAuthStateChanged(auth,async user=>{
   }catch(error){el("submissionStatus").textContent="Could not load review inbox: "+error.message;}finally{end();}
 });
 el("submissionSearch").addEventListener("input",render);
-el("submissionSection").addEventListener("change",render);
+for(const id of ["submissionSection","submissionState","submissionAssessment"])el(id).addEventListener("change",render);
