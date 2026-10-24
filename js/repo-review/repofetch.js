@@ -16,7 +16,7 @@ import {
   where,
   runTransaction,
   serverTimestamp,
-} from "../core/teaching-firestore.mjs?v=1.3.1";
+} from "../core/teaching-firestore.mjs?v=1.3.2";
 
 const CACHE_VERSION = 8; // RepoFetch schema: independent of Group Inspector
 let globalStudentsData = {};
