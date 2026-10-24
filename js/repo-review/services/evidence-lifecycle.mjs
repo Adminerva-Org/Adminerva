@@ -1,5 +1,5 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: evidence lifecycle. */
-import {normalizeSelection} from "./assessment-evidence.mjs?v=1.3.0";
+import {normalizeSelection} from "./assessment-evidence.mjs?v=1.3.1";
 
 export function studentMayChangeEvidence(evidence){
   return !evidence || evidence.status==="reopened" ||
