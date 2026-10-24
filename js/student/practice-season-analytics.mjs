@@ -7,6 +7,13 @@ import {staffSections} from "../core/staff-role.mjs?v=1.3.0";
 import {PRACTICE_SEASON} from "./practice-season.mjs?v=1.3.0";
 const field=id=>document.getElementById(id),element=(tag,text,className="")=>{const node=document.createElement(tag);node.textContent=text;node.className=className;return node;};
 let roster=[],rows=[],epoch=0,role=null,uid="",busy=false;
+const groups=values=>{const list=[...new Set(values.filter(Boolean))],out=[];for(let i=0;i<list.length;i+=10)out.push(list.slice(i,i+10));return out;};
+async function accessibleRoster(user,currentRole){
+  if(currentRole==="admin")return getDocs(collection(db,"students"));
+  const sections=staffSections(user);
+  const snapshots=await Promise.all(groups(sections).map(group=>getDocs(query(collection(db,"students"),where("section","in",group)))));
+  return {docs:snapshots.flatMap(snapshot=>snapshot.docs)};
+}
 function status(message,error=false){field("seasonAnalyticsStatus").textContent=message;field("seasonAnalyticsStatus").dataset.tone=error?"error":"info";}
 function setBusy(value){busy=value;field("seasonAnalyticsPanel").setAttribute("aria-busy",String(value));field("seasonAnalyticsRefresh").disabled=value;field("seasonAnalyticsSection").disabled=value||!field("seasonAnalyticsSection").options.length;}
 function clear(){rows=[];field("seasonAnalyticsRows").replaceChildren();field("seasonAnalyticsSummary").replaceChildren();}
@@ -44,9 +51,9 @@ async function initialize(user=auth.currentUser){
   try{
     role=await resolveStaffRole(user);if(sequence!==epoch||auth.currentUser?.uid!==uid)return;
     if(!role){status("A verified teacher or administrator account is required.",true);return;}
-    const snapshot=await getDocs(collection(db,"students"));if(sequence!==epoch||auth.currentUser?.uid!==uid)return;
+    const snapshot=await accessibleRoster(user,role);if(sequence!==epoch||auth.currentUser?.uid!==uid)return;
     roster=snapshot.docs.map(record=>({id:record.id,...record.data()}));
-    const sections=[...new Set([...(role==="teacher"?staffSections(user):[]),...roster.map(student=>student.section)].filter(section=>typeof section==="string"&&section.trim()))].sort();
+    const sections=[...new Set((role==="teacher"?staffSections(user):roster.map(student=>student.section)).filter(section=>typeof section==="string"&&section.trim()))].sort();
     const selector=field("seasonAnalyticsSection");selector.replaceChildren(...sections.map(section=>new Option(section,section)));selector.value=sections.includes(previous)?previous:sections[0]||"";
     setBusy(false);await loadSeason();
   }catch{if(sequence===epoch){status("Your assigned class list could not load. Refresh season data to retry.",true);}}
