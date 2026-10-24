@@ -2,8 +2,8 @@ import {staffRole} from "./staff-role.mjs?v=1.3.0";
 import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
 /** Shared navigation, account access, reporting and release infrastructure: notifications. */
 import { auth, db } from "./firebase-core.js?v=1.3.0";
-import {notificationTarget,previewDestination} from "./notification-routing.mjs?v=1.3.0";
-import {notificationVisible,unreadNotificationCount} from "./notification-visibility.mjs?v=1.3.0";
+import {notificationTarget,previewDestination} from "./notification-routing.mjs?v=1.3.8";
+import {notificationVisible,unreadNotificationCount} from "./notification-visibility.mjs?v=1.3.8";
 import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs?v=1.3.0";
 import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=1.3.3";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
@@ -96,7 +96,7 @@ function render(){
     (state.filter==="all"||state.filter==="unread"&&unread(n)||state.filter==="issues"&&n.type==="issue"||state.filter==="saved"&&n.pinned) &&
     (!search||(n.title+" "+(n.body||"")).toLowerCase().includes(search)));
   if(!visible.length){list.append(make("p","p-4 text-sm text-slate-600","No notifications to display."));return}
-  const typeLabels={submission:"Submission",grade:"Grade",assessment:"Assessment",grading:"Review",issue:"Report",release:"Update"};
+  const typeLabels={submission:"Submission",grade:"Grade",assessment:"Assessment",grading:"Review",issue:"Report",reclaim:"Attribution",release:"Update"};
   for(const n of visible){
     const wrapper=make("article","av-notification-item border-b border-slate-100 px-3 py-2.5");
     if(unread(n))wrapper.dataset.unread="true";
@@ -251,7 +251,7 @@ async function refreshPushPrompt(){
     if(!show)return;
     const teaching=Boolean(staffRole(state.user));
     message.textContent=device.permission==="granted"
-      ?(teaching?"Device permission is granted. Reconnect this device to receive teaching alerts.":"Device permission is granted. Reconnect this device to receive assessment, returned-submission, and grade alerts.")
+      ?(teaching?"Device permission is granted. Reconnect this device to receive teaching alerts.":"Device permission is granted. Reconnect this device to receive assessment, submission, grade, and report alerts.")
       :(teaching?"Important teaching alerts can reach this device outside Adminerva. Enable this device once.":"Important student alerts are ON by default. Enable this device once to receive them outside Adminerva.");
     button.textContent=device.permission==="granted"?"Reconnect device":"Enable device notifications";
   }catch{prompt.classList.add("hidden");}
