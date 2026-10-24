@@ -1,5 +1,5 @@
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
-import {collection,doc,getDocs,query,where,setDoc,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import {collection,doc,getDocs,query,where,setDoc,updateDoc,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
 import {staffSections} from "../core/staff-role.mjs?v=1.3.0";
 import {COURSES} from "../student/practice-courses.mjs?v=1.3.0";
@@ -7,11 +7,19 @@ const el=id=>document.getElementById(id),id=()=>crypto.randomUUID();
 let students=[],packs=[],projects=[],plans=[],mode="";
 const section=()=>el("followupSection").value,student=()=>students.find(item=>item.id===el("followupStudent").value);
 function card(title,meta,body=""){const article=document.createElement("article");article.className="rounded-xl border border-slate-200 bg-white p-4";const h=document.createElement("strong");h.textContent=title;const m=document.createElement("p");m.className="text-xs text-slate-500 mt-1";m.textContent=meta;article.append(h,m);if(body){const p=document.createElement("p");p.className="text-sm text-slate-700 mt-2 whitespace-pre-wrap";p.textContent=body;article.append(p);}return article;}
+function actionButton(label,handler){const button=document.createElement("button");button.type="button";button.className="mt-3 mr-2 text-xs font-bold text-blue-700 underline";button.textContent=label;button.addEventListener("click",handler);return button;}
+async function setStatus(kind,item,status){
+ const path=kind==="pack"?["practice_packs",item.id]:kind==="project"?["student_projects",item.id]:["improvement_plans",item.studentId,"items",item.id];
+ if(!confirm((status==="archived"?"Archive ":"Mark as "+status+" ")+(item.title||"this item")+"?"))return;
+ try{await updateDoc(doc(db,...path),{status,updatedAt:serverTimestamp()});await load();}
+ catch(error){el("followupStatus").textContent="Update failed: "+error.message;}
+}
 function render(){
  const sec=section(),person=student();
- el("practicePackList").replaceChildren(...packs.filter(x=>x.sectionIds?.includes(sec)&&x.status!=="archived").map(x=>card(x.title,(x.missionRefs?.length||0)+" missions"+(x.dueDate?" · due "+x.dueDate:""),x.notes)));
- el("studentProjectList").replaceChildren(...projects.filter(x=>x.sectionIds?.includes(sec)&&x.status!=="archived").map(x=>card(x.title,(x.studentIds?.length?x.studentIds.length+" selected learners":"Whole section")+(x.dueDate?" · due "+x.dueDate:""),x.description)));
- el("improvementPlanList").replaceChildren(...plans.filter(x=>x.studentId===person?.id&&x.status!=="closed").map(x=>card(x.title||"Improvement plan",(x.skills||[]).join(" · "),x.goal+"\nNext: "+x.nextAction)));
+ const packCards=packs.filter(x=>x.sectionIds?.includes(sec)&&x.status!=="archived").map(x=>{const box=card(x.title,(x.missionRefs?.length||0)+" missions"+(x.dueDate?" · due "+x.dueDate:""),x.notes);box.append(actionButton("Archive",()=>void setStatus("pack",x,"archived")));return box;});
+ const projectCards=projects.filter(x=>x.sectionIds?.includes(sec)&&x.status!=="archived").map(x=>{const box=card(x.title,(x.studentIds?.length?x.studentIds.length+" selected learners":"Whole section")+(x.dueDate?" · due "+x.dueDate:""),x.description);box.append(actionButton("Archive",()=>void setStatus("project",x,"archived")));return box;});
+ const planCards=plans.filter(x=>x.studentId===person?.id&&x.status!=="closed").map(x=>{const box=card(x.title||"Improvement plan",(x.status==="completed"?"Completed · ":"")+(x.skills||[]).join(" · "),x.goal+"\nNext: "+x.nextAction);if(x.status!=="completed")box.append(actionButton("Mark completed",()=>void setStatus("plan",x,"completed")));box.append(actionButton("Close plan",()=>void setStatus("plan",x,"closed")));return box;});
+ el("practicePackList").replaceChildren(...packCards);el("studentProjectList").replaceChildren(...projectCards);el("improvementPlanList").replaceChildren(...planCards);
  for(const target of ["practicePackList","studentProjectList","improvementPlanList"])if(!el(target).children.length)el(target).append(card("Nothing assigned yet","Create an item when follow-up is needed."));
 }
 function field(label,name,type="text",value=""){const wrap=document.createElement("label");wrap.className="block text-sm font-bold";wrap.textContent=label;const input=document.createElement(type==="textarea"?"textarea":"input");input.name=name;input.className="block w-full border rounded-lg p-2.5 mt-1 font-normal";if(type==="date")input.type="date";else if(type!=="textarea")input.type="text";input.value=value;wrap.append(input);return wrap;}
