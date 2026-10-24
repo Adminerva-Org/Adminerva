@@ -47,6 +47,26 @@
           "type": "Fixed",
           "area": "Submitted evidence return action",
           "text": "The Return for student changes button now works for submitted evidence instead of silently ignoring the click. Submitted, approved and instructor-proposed evidence all use the same audited return/reopen handler."
+        },
+        {
+          "type": "New",
+          "area": "Student device notifications",
+          "text": "Students can opt in a browser or mobile device to receive push alerts for newly assigned assessments, submissions returned for changes, and published or corrected grades. These three push categories are enabled by default at the account level; the browser still requires one explicit permission action per device."
+        },
+        {
+          "type": "Updated",
+          "area": "Notification preferences",
+          "text": "Student notification settings separate in-app inbox visibility from device push delivery. Students can turn individual push categories off, disable push for the account, or disable only the current device without affecting other registered devices."
+        },
+        {
+          "type": "New",
+          "area": "Web app installation",
+          "text": "Adminerva includes a web app manifest and Firebase messaging service worker so supported mobile browsers can receive background notifications. iPhone and iPad push remains dependent on the web app being added to the Home Screen and the user granting notification permission."
+        },
+        {
+          "type": "Updated",
+          "area": "Notification delivery",
+          "text": "The existing authoritative notification pipeline now supports optional push fan-out. Push is best-effort and does not replace Adminerva's in-app notification history. Device registrations are account-scoped and removed from the current browser when the user signs out."
         }
       ]
     },
