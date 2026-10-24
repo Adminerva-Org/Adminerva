@@ -123,7 +123,7 @@ async function teacherIds(section){
 async function audienceIds(issue){
   return reportAudience(issue)==="admin"?[await byEmail(staffEmails[0])].filter(Boolean):teacherIds(issue.section);
 }
-const pushTypes=new Set(["assessment","submission","grade"]);
+const pushTypes=new Set(["assessment","submission","grade","grading","issue"]);
 const pushBaseUrl="https://adminerva-org.github.io/Adminerva/";
 function pushTarget(target){
   const value=String(target||"").trim();
@@ -146,14 +146,16 @@ async function pushToUser(uid,item){
     try{
       await messaging.send({
         token,
-        notification:{title:String(item.title||"Adminerva").slice(0,160),body:String(item.body||"").slice(0,300)},
-        webpush:{
-          notification:{
-            icon:pushBaseUrl+"assets/New%20Adminerva%20logo.png",
-            badge:pushBaseUrl+"assets/adminerva-notification-badge.png"
-          },
-          fcmOptions:{link:pushTarget(item.target)}
-        }
+        data:{
+          adminervaKind:"alert",
+          title:String(item.title||"Adminerva").slice(0,160),
+          body:String(item.body||"").slice(0,300),
+          target:pushTarget(item.target),
+          type:String(item.type||"notice").slice(0,32),
+          sourceId:String(item.sourceId||"").slice(0,150),
+          tag:"adminerva-"+String(item.type||"notice")+"-"+cleanId(item.sourceId||"event")
+        },
+        webpush:{headers:{TTL:"86400",Urgency:"high"}}
       });
     }catch(error){
       if(["messaging/registration-token-not-registered","messaging/invalid-registration-token"].includes(error.code)){
@@ -184,10 +186,20 @@ async function notify(uid,id,item){
 async function notifyMany(uids,id,payload){
   await Promise.all([...new Set(uids.filter(Boolean))].map(uid=>notify(uid,id,payload)));
 }
+async function evidenceLabels(item){
+  const [student,assessment]=await Promise.all([
+    item?.studentId?db.doc("students/"+item.studentId).get():Promise.resolve(null),
+    item?.assessmentId?db.doc("assessments/"+item.assessmentId).get():Promise.resolve(null)
+  ]);
+  return {
+    studentName:student?.exists?String(student.data()?.name||"Student"):"Student",
+    assessmentTitle:assessment?.exists?String(assessment.data()?.title||"Assessment"):"Assessment"
+  };
+}
 exports.issueOpened=onDocumentCreated("issues/{issueId}",async event=>{
   const data=event.data?.data();if(!data)return;
   await notifyMany(await audienceIds(data),"report_new_"+event.params.issueId,{
-    type:"issue",title:"New issue report",body:data.title||"Untitled report",
+    type:"issue",push:true,title:"New issue report",body:data.title||"Untitled report",
     sourceId:event.params.issueId,target:"issues.html?issue="+event.params.issueId,
     reportCategory:data.category,reportAudience:reportAudience(data)
   });
@@ -198,7 +210,7 @@ exports.issueStatusUpdated=onDocumentUpdated("issues/{issueId}",async event=>{
   if(isBugReport(now))return;
   const uid=now.reporterUid||await byEmail(now.reporterEmail);
   await notify(uid,"report_update_"+event.id,{
-    type:"issue",title:"Your report was updated",
+    type:"issue",push:true,title:"Your report was updated",
     body:(now.title||"Issue")+" · "+(now.status||"Open"),
     sourceId:event.params.issueId,target:"issues.html?issue="+event.params.issueId,
     reportCategory:now.category,reportAudience:reportAudience(now)
@@ -211,7 +223,7 @@ exports.issueCommentAdded=onDocumentCreated("issues/{issueId}/comments/{commentI
   const actor=comment.authorUid||await byEmail(comment.authorEmail);
   const recipients=(isBugReport(item)?await audienceIds(item):(await audienceIds(item)).concat([reporter])).filter(uid=>uid!==actor);
   await notifyMany(recipients,"report_comment_"+event.params.commentId,{
-    type:"issue",title:"New comment on a report",
+    type:"issue",push:true,title:"New comment on a report",
     body:item.title||"Support report",sourceId:event.params.issueId,
     target:"issues.html?issue="+event.params.issueId,
     reportCategory:item.category,reportAudience:reportAudience(item)
@@ -271,9 +283,10 @@ exports.commitReclaimRequested=onDocumentCreated("commit_reclaims/{claimId}",asy
 exports.assessmentEvidenceSubmitted=onDocumentCreated("assessment_evidence/{evidenceId}",async event=>{
   const item=event.data?.data();
   if(!item||item.status!=="submitted"||item.source==="teacher_discovered")return;
+  const labels=await evidenceLabels(item);
   await notifyMany(await teacherIds(item.section),"evidence_new_"+event.params.evidenceId,{
-    type:"submission",title:"Assessment evidence submitted",
-    body:"Selected Git commits are awaiting checkpoint verification.",
+    type:"submission",push:true,title:"Evidence submitted — "+labels.studentName,
+    body:labels.assessmentTitle+" · Selected commits are ready for checkpoint verification.",
     sourceId:event.params.evidenceId,target:"submissions.html"
   });
 });
@@ -307,9 +320,10 @@ exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{eviden
     });
   }else if(before.status==="submitted"&&after.status==="submitted"&&
     before.submittedAt?.toMillis?.()!==after.submittedAt?.toMillis?.()){
+    const labels=await evidenceLabels(after);
     await notifyMany(await teacherIds(after.section),"evidence_resubmitted_"+event.id,{
-      type:"submission",title:"Assessment evidence updated",
-      body:"A student selected a new revision for assessment review.",
+      type:"submission",push:true,title:"Evidence updated — "+labels.studentName,
+      body:labels.assessmentTitle+" · A new revision was submitted for review.",
       sourceId:event.params.evidenceId,target:"submissions.html"
     });
   }
@@ -318,7 +332,7 @@ exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{eviden
 exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}",async event=>{
   const item=event.data?.data();if(!item)return;
   await notifyMany(await teacherIds(item.section),"submission_"+event.params.submissionId,{
-    type:"submission",title:"Student submitted work",
+    type:"submission",push:true,title:"Student submitted work — "+(item.studentName||"Student"),
     body:(item.studentName||"Student")+" · "+(item.assessmentTitle||"Assessment"),
     sourceId:event.params.submissionId,target:"submissions.html"
   });
@@ -353,7 +367,7 @@ exports.assessmentAssigned=onDocumentUpdated("assessments/{assessmentId}",async 
 exports.gradingNeedsReview=onDocumentCreated("grading_alerts/{alertId}",async event=>{
   const item=event.data?.data();if(!item)return;
   await notifyMany(await teacherIds(item.section),"grading_"+event.params.alertId,{
-    type:"grading",title:"Grading requires attention",
+    type:"grading",push:true,title:"Grading requires attention",
     body:(item.repository||"Repository")+" · "+(item.message||"Check failed"),
     sourceId:event.params.alertId,target:"repofetch.html"
   });
