@@ -97,6 +97,11 @@
           "type": "Updated",
           "area": "Saved lesson plans",
           "text": "The saved-plan dialog is more compact: one close control, refresh in the header, a small older-lesson recovery strip and more vertical space for the lesson list."
+        },
+        {
+          "type": "Fixed",
+          "area": "Workspace return",
+          "text": "Signed-in users return directly to their saved teacher or student workspace instead of loading the sign-in page first. Centralized Auth Guard now performs any necessary role correction once, using replace-style navigation, and is enabled on Assessment Studio and Review & Grade."
         }
       ]
     },
