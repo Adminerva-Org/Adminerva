@@ -10,7 +10,7 @@
 </head>
 <body class="bg-slate-50 min-h-screen">
 <div id="adminerva-nav" data-module="educator" data-page="submissions"></div>
-<main id="pageBody" class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-10">
+<div class="av-educator-layout"><aside class="av-educator-nav" data-educator-hub-nav data-current="submissions"></aside><main id="pageBody" class="av-educator-content max-w-7xl w-full px-3 sm:px-6 lg:px-8 py-6 sm:py-10">
   <header class="mb-6">
     <h1 class="font-extrabold text-2xl sm:text-3xl text-slate-900">Submission Inbox</h1>
     <p class="text-sm text-slate-600 mt-2">Legacy submission receipts and new V2 student-selected commit evidence. An ordinary push alone does not create a submission receipt.</p>
@@ -49,10 +49,11 @@
     <div class="animate-pulse bg-white rounded-xl border border-slate-200 h-24"></div>
   </div>
   <p class="text-xs text-slate-500 mt-5">Commit metadata identifies the revision being submitted, not who independently wrote every line. Check the contribution evidence before publishing an individual grade.</p>
-</main>
+</main></div>
 <script src="js/core/adminerva-nav.js?v=1.3.8"></script>
 <script src="js/core/adminerva-loader.js?v=1.3.0"></script>
 <script type="module" src="js/core/auth-guard.js?v=1.3.0"></script>
+<script type="module" src="js/core/educator-hub-nav.mjs?v=1.3.8"></script>
 <script type="module" src="js/repo-review/submissions.mjs?v=1.3.1"></script>
 </body>
 </html>
