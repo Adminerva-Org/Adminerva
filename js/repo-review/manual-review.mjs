@@ -439,6 +439,8 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
       applyEvidenceState(approvedEvidence,{initial:true});
       const advanced=el("integratedAdvancedLinks");advanced.replaceChildren();
       const params=new URLSearchParams({student:studentId,assessment:taskId,section:student.section});
+      const contextParams=new URLSearchParams({section:student.section});
+      link(advanced,"Repository context ↗","repobank.html?"+contextParams);
       link(advanced,"Standalone contribution tools ↗","contribution-inspector.html?"+params);
       link(advanced,"Standalone group tools ↗","group-inspector.html?"+params);
       state.panels=mountReviewPanels({root:el("integratedEvidence"),student:{...student,id:studentId},assessment:{...assessment,id:taskId},evidence:approvedEvidence,requests:state.requests,signal:state.abort.signal,

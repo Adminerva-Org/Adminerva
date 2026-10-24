@@ -51,9 +51,6 @@ document.addEventListener("DOMContentLoaded", () => {
       ["repofetch", "Review & grade", "repofetch.html"],
       ["gradebook", "Gradebook", "gradebook.html"]
     ] },
-    { name: "Repositories", area: "educator", items: [
-      ["repobank", "Repository bank", "repobank.html"]
-    ] },
     { name: "Insights", area: "educator", items: [
       ["dashboard", "Analytics", "teacher-analytics.html"],
       ["followup", "Learning follow-up", "learning-follow-up.html"]
