@@ -19,6 +19,10 @@ has("functions/index.js",'title:published?"A reviewed grade is available":"A pub
 has("functions/index.js",'before.status!=="submitted"||before.submittedAt?.toMillis?.()!==after.submittedAt?.toMillis?.()');
 has("functions/index.js",'const pushPages=new Set([');
 has("firestore.rules",'"grading","issue","updatedAt"');
+has("js/core/workspace-return.mjs","cachedWorkspaceDestination(auth.currentUser)");
+has("js/core/auth-guard.js",'roleHome(actualRole)');
+has("assessment-studio.html","js/core/auth-guard.js?v=1.3.8");
+has("repofetch.html","js/core/auth-guard.js?v=1.3.8");
 lacks("js/settings/account-preferences.mjs","await refreshPush(version);");
 has("js/core/teaching-firestore.mjs","void actor().then(async current=>");
 has("firebase-messaging-sw.js","assets/adminerva-notification-badge.png");
