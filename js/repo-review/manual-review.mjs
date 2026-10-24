@@ -8,7 +8,7 @@ import {renderFeedbackMarkdown} from "./review-ui.mjs?v=1.3.0";
 import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs?v=1.3.0";
 import {
   collection, doc, getDoc, getDocs, query, where, runTransaction, serverTimestamp
-} from "../core/teaching-firestore.mjs?v=1.3.0";
+} from "../core/teaching-firestore.mjs?v=1.3.2";
 import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=1.3.0";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
 import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,buildRubricResponseSchema,parseSuggestedRubric}
@@ -200,17 +200,18 @@ async function generateAIDraft(){
       files:evidence.files,patches:evidence.patches,contributionScope:active.evidence.contributionScope
     });
     if(controller.signal.aborted)throw Error("Evaluation timed out. Continue manually or retry.");
-    const evaluationPayload={contents:[{parts:[{text:prompt}]}],generationConfig:{
-      responseMimeType:"application/json",responseSchema:buildRubricResponseSchema(criteria),
-      maxOutputTokens:8192,temperature:0.1
-    }};
     let parsed;
     for(let attempt=0;attempt<2;attempt++){
+      const retryInstruction=attempt===0?"":"\n\nRETRY FORMAT: Return the same JSON structure, but keep each rationale under 240 characters, each reviewAction under 160 characters, feedback under 800 characters, projectObservations under 500 characters, and limitations under 500 characters. Do not add prose outside JSON.";
+      const evaluationPayload={contents:[{parts:[{text:prompt+retryInstruction}]}],generationConfig:{
+        responseMimeType:"application/json",responseSchema:buildRubricResponseSchema(criteria),
+        maxOutputTokens:12000,temperature:0.1
+      }};
       const result=await generateSchoolContent(evaluationPayload,{signal:controller.signal,purpose:"evaluation"});
       try{parsed=await evaluationJSON({ok:true,json:async()=>result});break;}
       catch(error){
-        if(attempt===0&&error.code==="invalid-evaluation"){
-          aiStatus("The first evaluation response was incomplete. Retrying once with the verified evidence…");
+        if(attempt===0&&["invalid-evaluation","evaluation-truncated"].includes(error.code)){
+          aiStatus("The first evaluation response did not finish cleanly. Retrying once in a shorter format…");
           continue;
         }
         throw error;
