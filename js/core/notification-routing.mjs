@@ -4,7 +4,8 @@
  */
 const PAGES = new Set([
   'issues.html', 'student-assessments.html', 'gradebook.html',
-  'repofetch.html', 'submissions.html', 'student-dashboard.html', 'patch-notes.html'
+  'repofetch.html', 'submissions.html', 'student-dashboard.html', 'patch-notes.html',
+  'assessment-evidence-review.html'
 ]);
 export function notificationTarget(value) {
   const raw=String(value||'');
