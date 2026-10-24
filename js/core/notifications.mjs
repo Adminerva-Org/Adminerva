@@ -4,7 +4,7 @@ import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
 import { auth, db } from "./firebase-core.js?v=1.3.0";
 import {notificationTarget,previewDestination} from "./notification-routing.mjs?v=1.3.8";
 import {notificationVisible,unreadNotificationCount} from "./notification-visibility.mjs?v=1.3.8";
-import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs?v=1.3.0";
+import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs?v=1.3.8";
 import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=1.3.3";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "./teaching-firestore.mjs?v=1.3.2";
