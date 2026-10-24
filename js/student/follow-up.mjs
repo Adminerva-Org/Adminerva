@@ -1,11 +1,13 @@
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {collection,getDocs,query,where} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import {COURSES} from "./practice-courses.mjs?v=1.3.0";
+const missionLabels=new Map(COURSES.flatMap(course=>course.missions.map(mission=>[course.id+":"+mission.id,course.name+" · "+mission.title])));
 const dash=document.getElementById("studentFollowupContainer"),packsMount=document.getElementById("practiceAssignedPacks");
 function card(title,meta,body="",href=""){const box=document.createElement(href?"a":"article");if(href)box.href=href;box.className="block rounded-lg border border-slate-200 bg-slate-50 p-3";const h=document.createElement("strong");h.textContent=title;const m=document.createElement("p");m.className="text-xs text-slate-500 mt-1";m.textContent=meta;box.append(h,m);if(body){const p=document.createElement("p");p.className="text-sm text-slate-700 mt-2 whitespace-pre-wrap";p.textContent=body;box.append(p);}return box;}
 function packCard(pack){
  const box=card(pack.title,(pack.missionRefs?.length||0)+" assigned missions"+(pack.dueDate?" · due "+pack.dueDate:""),pack.notes||"");
  const missions=document.createElement("div");missions.className="flex flex-wrap gap-2 mt-2";
- for(const ref of (pack.missionRefs||[]).slice(0,8)){const [course,mission]=String(ref).split(":");const a=document.createElement("a");a.href="student-practice.html?course="+encodeURIComponent(course)+"&mission="+encodeURIComponent(mission);a.className="text-xs font-bold text-blue-700 underline";a.textContent=course.toUpperCase()+" · "+mission;a.addEventListener("click",e=>e.stopPropagation());missions.append(a);}box.append(missions);return box;
+ for(const ref of (pack.missionRefs||[]).slice(0,8)){const [course,mission]=String(ref).split(":");const a=document.createElement("a");a.href="student-practice.html?course="+encodeURIComponent(course)+"&mission="+encodeURIComponent(mission);a.className="text-xs font-bold text-blue-700 underline";a.textContent=missionLabels.get(String(ref))||course.toUpperCase()+" · "+mission;a.addEventListener("click",e=>e.stopPropagation());missions.append(a);}box.append(missions);return box;
 }
 async function load(){
  await auth.authStateReady();const user=auth.currentUser;if(!user?.email)return;
@@ -26,7 +28,7 @@ async function load(){
   if(dash){
     dash.replaceChildren();
     for(const pack of packs)dash.append(packCard(pack));
-    for(const project of projects)dash.append(card(project.title,"Named project"+(project.dueDate?" · due "+project.dueDate:""),project.description));
+    for(const project of projects)dash.append(card(project.title,"Named project"+(project.dueDate?" · due "+project.dueDate:""),project.description,"student-playground.html?project="+encodeURIComponent(project.id)));
     for(const plan of plans)dash.append(card(plan.title||"Improvement plan",(plan.skills||[]).join(" · "),plan.goal+"\nNext: "+plan.nextAction));
     if(!dash.children.length)dash.append(card("No follow-up assigned","Your teacher has not assigned an additional pack, project or improvement plan."));
   }
