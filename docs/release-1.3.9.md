@@ -19,4 +19,4 @@ This release keeps Staff Home, Lesson Planning, and Repository Management as dis
 
 ## Release handling
 
-The public release manifest remains on 1.3.8 until 1.3.9 is actually deployed. Cloud version rename/delete requires the matching Firestore rules deployment in addition to the frontend.
+The public release manifest is set to 1.3.9 for deployment. Cloud version rename/delete requires the matching Firestore rules deployment in addition to the frontend.

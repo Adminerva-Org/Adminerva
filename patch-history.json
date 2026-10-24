@@ -1,6 +1,42 @@
 {
   "releases": [
     {
+      "version": "1.3.9",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-25",
+      "title": "Clearer workspaces and stronger playground organization",
+      "summary": "Staff Home, Repository Management and Lesson Planning are separated more cleanly, Submission Inbox can identify graded work, and Code Playground adds drag-and-drop project organization plus basic cloud version management.",
+      "changes": [
+        {
+          "type": "Updated",
+          "area": "Teacher workspaces",
+          "text": "Staff Home, Repository Management and Lesson Planning are distinct destinations. The former Educator Hub is renamed Repository Management and its navigation focuses on assessments, submissions, grading, repositories and analytics."
+        },
+        {
+          "type": "Updated",
+          "area": "Shared header",
+          "text": "The shared website header is more compact to recover vertical workspace space while retaining the same primary controls."
+        },
+        {
+          "type": "New",
+          "area": "Submission Inbox",
+          "text": "Submission Inbox can show and filter a derived Graded state when a matching grade record exists, without replacing the underlying evidence lifecycle states such as Submitted, Approved or Reopened."
+        },
+        {
+          "type": "New",
+          "area": "Code Playground Explorer",
+          "text": "Students can drag files and folders into folders or back to the project root. Valid drop targets are highlighted while dragging."
+        },
+        {
+          "type": "New",
+          "area": "Cloud versions",
+          "text": "Students can rename or explicitly delete their own cloud versions. Saved source contents remain immutable; only the version label metadata can be changed."
+        }
+      ],
+      "publishedAt": "2026-10-25T01:48:40+08:00"
+    },
+    {
       "version": "1.3.8",
       "status": "published",
       "public": true,
