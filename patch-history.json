@@ -1,6 +1,31 @@
 {
   "releases": [
     {
+      "version": "1.3.6",
+      "status": "draft",
+      "public": false,
+      "releasedAt": "2026-10-24",
+      "title": "Simpler evidence review and resubmission alerts",
+      "summary": "Draft notes for the next evidence-workflow patch: compact teacher verification and clearer student awareness when evidence is reopened.",
+      "changes": [
+        {
+          "type": "Updated",
+          "area": "Teacher evidence verification",
+          "text": "Teachers can verify all submitted evidence commits with one checkbox. Individual commit verification remains in a collapsed exception area for shared, disputed or excluded commits."
+        },
+        {
+          "type": "Updated",
+          "area": "Commit review",
+          "text": "Teacher commit diffs no longer load automatically. Selected commits stay compact until Preview changes is opened, reducing long scrolling and missed verification controls."
+        },
+        {
+          "type": "New",
+          "area": "Student resubmission alert",
+          "text": "When evidence is reopened, the affected student sees a targeted notification using the authoritative evidence record, including the teacher's reopening reason and a link back to My Assignments."
+        }
+      ]
+    },
+    {
       "version": "1.3.5",
       "status": "published",
       "public": true,
