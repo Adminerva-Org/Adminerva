@@ -351,7 +351,7 @@ window.loadDirectory = async function () {
     // Asynchronously verify GitHub status for linked accounts
     const ghToken = localStorage.getItem("Adminerva_github_token");
     allStudents.forEach((stu) => {
-      if (stu.isLinked && !stu.verified) {
+      if (stu.isLinked && !stu.verified && !["suspended","archived"].includes(String(stu.status||"active"))) {
         verifyRepoStatusCache(stu, ghToken);
       }
     });
@@ -382,8 +382,11 @@ function applyFiltersAndRender() {
       s.email.toLowerCase().includes(searchVal);
     const matchSection = sectionVal === "all" || s.section === sectionVal;
     let matchStatus = true;
+    const accessSuspended=["suspended","archived"].includes(String(s.status||"active"));
     if (statusVal === "linked") matchStatus = s.isLinked;
     if (statusVal === "missing") matchStatus = !s.isLinked;
+    if (statusVal === "active") matchStatus = !accessSuspended;
+    if (statusVal === "suspended") matchStatus = accessSuspended;
     return matchSearch && matchSection && matchStatus;
   });
 
