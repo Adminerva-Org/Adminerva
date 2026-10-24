@@ -272,7 +272,7 @@ async function generateAIDraft(){
   }finally{
     clearTimeout(evaluationSlowNotice);clearTimeout(evaluationTimeout);
     if(session===state.token&&state.active===active){
-      state.aiBusy=false;button.disabled=Boolean(state.active?.previous?.published)||!state.active?.checkpointSha;
+      state.aiBusy=false;button.disabled=Boolean(state.active?.previous?.published)||!state.active?.checkpointSha||!evaluationResponsibilityReady(state.active?.assessment,state.active?.evidence);
       button.textContent="Evaluate";
     }
   }
