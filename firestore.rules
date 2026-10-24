@@ -735,8 +735,7 @@ service cloud.firestore {
           data.status == "private_suggestion" && data.createdAt == request.time;
       }
       allow read: if isInstructor() && request.auth.uid == ownerUid;
-      allow create: if validDraft();
-      allow update: if false;
+      allow create, update: if validDraft();
       allow delete: if isInstructor() && request.auth.uid == ownerUid;
     }
 
