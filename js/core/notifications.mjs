@@ -311,7 +311,9 @@ export function mountNotificationCenter(){
   document.addEventListener("keydown",e=>{if(e.key==="Escape"&&state.open){
     state.open=false;panel.classList.add("hidden");button.setAttribute("aria-expanded","false");button.focus()}});
   onAuthStateChanged(auth,listen);
-  document.addEventListener("adminerva-notification-preferences",event=>{if(event.detail?.uid===state.user?.uid){state.muted=restorePreferences();render();void refreshPushPrompt();}});\n  document.addEventListener("adminerva-push-device",event=>{if(event.detail?.uid===state.user?.uid)void refreshPushPrompt();});\n  document.addEventListener("adminerva-push-preferences",event=>{if(event.detail?.uid===state.user?.uid)void refreshPushPrompt();});
+  document.addEventListener("adminerva-notification-preferences",event=>{if(event.detail?.uid===state.user?.uid){state.muted=restorePreferences();render();void refreshPushPrompt();}});
+  document.addEventListener("adminerva-push-device",event=>{if(event.detail?.uid===state.user?.uid)void refreshPushPrompt();});
+  document.addEventListener("adminerva-push-preferences",event=>{if(event.detail?.uid===state.user?.uid)void refreshPushPrompt();});
   window.addEventListener("storage",event=>{if(event.key===settingsKey()){state.muted=restorePreferences();render();}});
   setInterval(()=>{void refreshReleases();},5*60*1000);
   document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")void refreshReleases();});
