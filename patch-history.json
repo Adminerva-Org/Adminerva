@@ -2,7 +2,7 @@
   "releases": [
     {
       "version": "1.3.7",
-      "status": "draft",
+      "status": "published",
       "public": true,
       "releasedAt": "2026-10-24",
       "title": "Reliable push alerts and cleaner mobile notifications",
@@ -38,7 +38,8 @@
           "area": "Practice exact-answer prompts",
           "text": "Write-the-output missions now explicitly ask for only the exact output or requested value; the explanation is shown after a correct answer instead of being requested inside an exact-match field."
         }
-      ]
+      ],
+      "publishedAt": "2026-10-24T21:25:00+08:00"
     },
     {
       "version": "1.3.6",
