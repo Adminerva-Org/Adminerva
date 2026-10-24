@@ -682,15 +682,20 @@ service cloud.firestore {
     }
     match /student_projects/{projectId} {
       function validStudentProject(data) {
-        return data.keys().hasOnly(["id","ownerUid","title","sectionIds","studentIds","description","dueDate","status","createdAt","updatedAt"]) &&
+        return data.keys().hasOnly(["id","ownerUid","title","sectionIds","studentIds","wholeSection","description","dueDate","status","createdAt","updatedAt"]) &&
           data.id == projectId && data.ownerUid is string && data.title is string && data.title.size() > 0 && data.title.size() <= 160 &&
           data.sectionIds is list && data.sectionIds.size() > 0 && data.sectionIds.size() <= 20 &&
-          data.studentIds is list && data.studentIds.size() <= 80 && data.description is string && data.description.size() <= 4000 &&
+          data.studentIds is list && data.studentIds.size() <= 80 && data.wholeSection is bool &&
+          ((data.wholeSection == true && data.studentIds.size() == 0) || (data.wholeSection == false && data.studentIds.size() > 0)) &&
+          data.description is string && data.description.size() <= 4000 &&
           data.dueDate is string && data.dueDate.size() <= 20 && data.status in ["active","archived"] && data.updatedAt == request.time;
       }
       allow read: if isAdmin() || (isTeacher() && resource.data.sectionIds.hasAny(teacherSections())) ||
-        (signedIn() && !isInstructor() && (resource.data.sectionIds.hasAny(get(/databases/$(database)/documents/student_access/$(request.auth.uid)).data.get("sections",[])) ||
-          resource.data.studentIds.hasAny(get(/databases/$(database)/documents/student_access/$(request.auth.uid)).data.get("studentIds",[]))));
+        (signedIn() && !isInstructor() && exists(/databases/$(database)/documents/student_access/$(request.auth.uid)) &&
+          ((resource.data.wholeSection == true &&
+            resource.data.sectionIds.hasAny(get(/databases/$(database)/documents/student_access/$(request.auth.uid)).data.get("sections",[]))) ||
+           (resource.data.wholeSection == false &&
+            resource.data.studentIds.hasAny(get(/databases/$(database)/documents/student_access/$(request.auth.uid)).data.get("studentIds",[])))));
       allow create: if isInstructor() && validStudentProject(request.resource.data) && request.resource.data.ownerUid == request.auth.uid &&
         request.resource.data.sectionIds.hasOnly(isAdmin()?request.resource.data.sectionIds:teacherSections()) && request.resource.data.createdAt == request.time;
       allow update: if isInstructor() && resource.data.ownerUid == request.auth.uid && validStudentProject(request.resource.data) &&
