@@ -37,6 +37,11 @@ function updateLoadingStatus() {
 const endPageLoading = window.beginLoading("Opening page…");
 window.addEventListener("load", endPageLoading, {once:true});
 document.addEventListener("DOMContentLoaded", () => {
+  if(!document.getElementById("adminerva-report-dialog-style")){
+    const style=document.createElement("style");style.id="adminerva-report-dialog-style";
+    style.textContent="#bug-modal[hidden]{display:none!important}#bug-modal:not([hidden]){position:fixed;inset:0;z-index:110;display:flex;align-items:center;justify-content:center;padding:1rem;background:rgba(15,23,42,.86)}#bug-modal>div{position:relative;width:min(100%,36rem);max-height:90vh;overflow:auto;background:#1e293b;color:#fff;border:1px solid #164e63;border-radius:.75rem;box-shadow:0 20px 50px rgba(0,0,0,.45)}#bug-modal>div>div:last-child{padding:1.5rem}#bug-modal input,#bug-modal select,#bug-modal textarea,#bug-modal button{font:inherit}";
+    document.head.append(style);
+  }
   const loaderHTML = `
         <!-- Unified nonblocking status loader -->
         <div id="subtleLoader" role="status" aria-live="polite" aria-atomic="true" class="fixed bottom-5 right-5 z-[250] bg-slate-900 border border-slate-700 shadow-[0_10px_40px_rgba(0,0,0,0.5)] rounded-lg p-4 flex items-center gap-4 transition-all duration-300 transform translate-y-20 opacity-0 hidden">
@@ -48,7 +53,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
         
         <!-- Bug Modal -->
-        <div id="bug-modal" role="dialog" aria-modal="true" aria-labelledby="bug-dialog-title" tabindex="-1" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+        <div id="bug-modal" hidden role="dialog" aria-modal="true" aria-labelledby="bug-dialog-title" tabindex="-1" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
           <div class="bg-slate-800 border border-cyan-900 rounded-xl shadow-2xl max-w-xl w-full relative text-white text-left max-h-[90vh] flex flex-col overflow-hidden">
             
             <!-- ✨ NEW: Similarity Intercept Overlay (Hidden by Default) -->
@@ -68,7 +73,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             <!-- Standard Form -->
             <div class="p-6 flex flex-col flex-1 overflow-hidden">
-                <button type="button" aria-label="Close report dialog" onclick="document.getElementById('bug-modal').classList.add('hidden')" class="absolute top-4 right-4 text-slate-400 hover:text-cyan-400 transition text-xl">&times;</button>
+                <button type="button" aria-label="Close report dialog" onclick="const m=document.getElementById('bug-modal');if(m){m.hidden=true;m.classList.add('hidden')}" class="absolute top-4 right-4 text-slate-400 hover:text-cyan-400 transition text-xl">&times;</button>
                 
                 <div class="flex justify-between items-center mb-4 border-b border-slate-700 pb-3">
                   <h2 id="bug-dialog-title" class="text-xl font-bold text-cyan-400 flex items-center gap-2"><span aria-hidden="true">🚨</span> Report an Issue</h2>
@@ -236,7 +241,7 @@ function bindBugReporterLogic() {
   });
 
   window.addEventListener("paste", (e) => {
-    if (modal.classList.contains("hidden")) return;
+    if (modal.hidden || modal.classList.contains("hidden")) return;
     const items = (e.clipboardData || e.originalEvent.clipboardData).items;
     const files = [];
     for (let item of items) {
@@ -562,7 +567,7 @@ window.finalizeBugReport = async function () {
     window.bugImages = [];
     renderBugThumbnails();
 
-    document.getElementById("bug-modal").classList.add("hidden");
+    const reportModal=document.getElementById("bug-modal");reportModal.hidden=true;reportModal.classList.add("hidden");
 
     window.showSubtleLoader("Report received. Reference: " + receipt.id.slice(0,10));
     alert("Report submitted successfully for " + (audience === "admin" ? "administrators" : "teachers") + ". Reference: " + receipt.id.slice(0,10) + ". Check My reports for its status." + diagnosticWarning);
