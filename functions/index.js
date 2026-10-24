@@ -57,6 +57,37 @@ exports.pushTestPing=onCall(callOptions,async request=>{
   if(!sent)throw new HttpsError("unavailable","No registered device accepted the test notification. Re-enable notifications on a device and try again.");
   return {sent};
 });
+async function rebuildStudentAccess(email){
+  const normalized=String(email||"").toLowerCase().trim();
+  if(!normalized)return;
+  let user;
+  try{user=await getAuth().getUserByEmail(normalized);}
+  catch(error){if(error.code==="auth/user-not-found")return;throw error;}
+  const roster=await db.collection("students").where("email","==",normalized).limit(50).get();
+  const active=roster.docs.filter(record=>!["suspended","archived"].includes(String(record.data()?.status||"active")));
+  const sections=[...new Set(active.map(record=>String(record.data()?.section||"").trim()).filter(Boolean))].slice(0,40);
+  const studentIds=active.map(record=>record.id).slice(0,50);
+  await db.doc("student_access/"+user.uid).set({
+    ownerUid:user.uid,email:normalized,sections,studentIds,updatedAt:FieldValue.serverTimestamp()
+  });
+  return {sections,studentIds};
+}
+exports.refreshStudentAccess=onCall(callOptions,async request=>{
+  const uid=request.auth?.uid,email=String(request.auth?.token?.email||"").toLowerCase().trim();
+  if(!uid||request.auth?.token?.email_verified!==true||!email)
+    throw new HttpsError("unauthenticated","Use a verified school account before loading assignments.");
+  const result=await rebuildStudentAccess(email);
+  if(!result){
+    await db.doc("student_access/"+uid).set({ownerUid:uid,email,sections:[],studentIds:[],updatedAt:FieldValue.serverTimestamp()});
+    return {sections:[],studentIds:[]};
+  }
+  return result;
+});
+exports.studentAccessChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},async event=>{
+  const emails=[event.data?.before.data()?.email,event.data?.after.data()?.email]
+    .map(value=>String(value||"").toLowerCase().trim()).filter(Boolean);
+  await Promise.all([...new Set(emails)].map(email=>rebuildStudentAccess(email)));
+});
 exports.teachingRosterChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},event=>teachingAccess.synchronize(event.params.studentId));
 const practiceOptions={region:"asia-southeast1",maxInstances:3,concurrency:20,timeoutSeconds:30,
   cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
