@@ -767,8 +767,8 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Recoverable cloud code is visible only to the authenticated owner;
-    // revisions are immutable to prevent accidental multi-device overwrites.
+    // Recoverable cloud code is visible only to the authenticated owner.
+    // Version contents stay immutable; owners may rename metadata or explicitly delete a version.
     match /student_playground_workspaces/{uid}/versions/{versionId} {
       allow read: if signedIn() && request.auth.uid == uid;
       allow create: if signedIn() && request.auth.uid == uid &&
@@ -776,7 +776,13 @@ service cloud.firestore {
         request.resource.data.files is map &&
         request.resource.data.fileOrder is list &&
         request.resource.data.lang in ["java","python","web","csharp","cpp","dart"];
-      allow update, delete: if false;
+      allow update: if signedIn() && request.auth.uid == uid &&
+        resource.data.ownerUid == uid && request.resource.data.ownerUid == uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["label","renamedAt"]) &&
+        request.resource.data.label is string &&
+        request.resource.data.label.size() > 0 && request.resource.data.label.size() <= 80 &&
+        request.resource.data.renamedAt == request.time;
+      allow delete: if signedIn() && request.auth.uid == uid && resource.data.ownerUid == uid;
     }
 
     // Reports are private to their reporter and selected staff audience.
