@@ -87,8 +87,6 @@ function collectionItems(){
 function render(){
   const list=el("av-alert-list"),badge=el("av-alert-count");if(!list||!badge)return;
   const items=collectionItems(),count=unreadNotificationCount(items,state.muted,state.read);
-  // An inaccessible staff-only source is NOT an alert for a student.
-  // Never display exclamation badges for subscription failures.
   badge.textContent=count>99?"99+":String(count);
   badge.classList.toggle("hidden",count===0);
   el("av-alert-toggle").setAttribute("aria-label",count+" unread notifications");
@@ -97,41 +95,45 @@ function render(){
   const visible=items.filter(n=>!state.muted.has(n.type) &&
     (state.filter==="all"||state.filter==="unread"&&unread(n)||state.filter==="issues"&&n.type==="issue"||state.filter==="saved"&&n.pinned) &&
     (!search||(n.title+" "+(n.body||"")).toLowerCase().includes(search)));
-  if(!visible.length){list.append(make("p","p-5 text-sm text-slate-600","No notifications to display."));return}
+  if(!visible.length){list.append(make("p","p-4 text-sm text-slate-600","No notifications to display."));return}
+  const typeLabels={submission:"Submission",grade:"Grade",assessment:"Assessment",grading:"Review",issue:"Report",release:"Update"};
   for(const n of visible){
-    const link=make("a","block p-3 sm:p-4 border-b border-slate-100 hover:bg-slate-50");
+    const wrapper=make("article","av-notification-item border-b border-slate-100 px-3 py-2.5");
+    if(unread(n))wrapper.dataset.unread="true";
+    const link=make("a","block min-w-0 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500");
     link.href=targetUrl(n.target);
-    const heading=make("div","flex gap-3 justify-between items-center");
-    heading.append(make("strong","text-sm text-slate-900 break-words",n.title));
-    if(unread(n))heading.append(make("span","text-xs text-blue-700 shrink-0","● New"));
-    link.append(heading,make("p","text-xs text-slate-600 break-words mt-1",n.body||""));
-    if(n.at){
-      const date=new Date(n.at);
-      // Legacy release records only establish a calendar date. Do not turn
-      // their sorting timestamp into a fabricated midnight publication time.
-      const label=n.type==="release"&&!n.publishedAt
-        ?date.toLocaleDateString(undefined,{timeZone:"Asia/Manila"})
-        :date.toLocaleString();
-      link.append(make("p","text-[11px] text-slate-500 mt-1",label));
+    const heading=make("div","flex gap-2 justify-between items-start min-w-0");
+    heading.append(make("strong","text-sm leading-5 text-slate-900 break-words min-w-0",n.title));
+    if(unread(n)){
+      const dot=make("span","av-notification-unread-dot shrink-0 mt-1.5","");
+      dot.setAttribute("aria-label","Unread");dot.title="Unread";heading.append(dot);
     }
+    link.append(heading);
+    if(n.body)link.append(make("p","text-xs leading-5 text-slate-600 break-words mt-0.5 av-notification-body",n.body));
     link.addEventListener("click",async event=>{
       event.preventDefault();
-      // Read status persists locally immediately. Don't let a slow Firestore
-      // read update prevent navigation to the linked item.
       void markRead(n);
       await Promise.race([remember(n,Boolean(n.pinned)),new Promise(resolve=>setTimeout(resolve,1300))]);
       window.location.assign(targetUrl(n.target));
     });
-    const save=make("button","text-xs font-semibold underline text-indigo-700 px-3 py-2",
-      n.pinned?"Remove reminder":"Save for later");
-    save.type="button";
+    const meta=make("div","flex items-center gap-2 mt-1.5 min-w-0");
+    meta.append(make("span","av-notification-type",typeLabels[n.type]||"Notice"));
+    if(n.at){
+      const date=new Date(n.at);
+      const label=n.type==="release"&&!n.publishedAt
+        ?date.toLocaleDateString(undefined,{timeZone:"Asia/Manila"})
+        :date.toLocaleString();
+      meta.append(make("time","text-[11px] text-slate-500 truncate min-w-0",label));
+    }
+    const save=make("button","ml-auto shrink-0 text-[11px] font-semibold text-indigo-700 hover:underline px-1 py-1",
+      n.pinned?"Saved":"Save");
+    save.type="button";save.title=n.pinned?"Remove from saved notifications":"Save for later";
     save.addEventListener("click",event=>{
       event.preventDefault();event.stopPropagation();
       void remember(n,!n.pinned);
     });
-    const wrapper=make("div","border-b border-slate-100");
-    link.classList.remove("border-b","border-slate-100");
-    wrapper.append(link,save);list.append(wrapper);
+    meta.append(save);
+    wrapper.append(link,meta);list.append(wrapper);
   }
 }
 async function remember(item,pinned){
@@ -239,17 +241,18 @@ async function listen(user){
 }
 async function refreshPushPrompt(){
   const prompt=el("av-push-prompt"),button=el("av-enable-push-device"),message=el("av-push-prompt-text");
-  if(!prompt||!state.user||staffRole(state.user)){if(prompt)prompt.classList.add("hidden");return;}
+  if(!prompt||!state.user){if(prompt)prompt.classList.add("hidden");return;}
   try{
-    const module=await import("./push-notifications.mjs?v=1.3.1");
+    const module=await import("./push-notifications.mjs?v=1.3.7");
     const [device,prefs]=await Promise.all([module.getDevicePushState(),module.getPushPreferences(state.user.uid)]);
     state.pushState={device,prefs};
     const show=prefs.enabled!==false&&device.supported&&device.configured&&device.permission!=="denied"&&!(device.permission==="granted"&&device.registered);
     prompt.classList.toggle("hidden",!show);
     if(!show)return;
+    const teaching=Boolean(staffRole(state.user));
     message.textContent=device.permission==="granted"
-      ?"Device permission is granted. Reconnect this device to receive assessment, returned-submission, and grade alerts."
-      :"Important student alerts are ON by default. Enable this device once to receive them outside Adminerva.";
+      ?(teaching?"Device permission is granted. Reconnect this device to receive teaching alerts.":"Device permission is granted. Reconnect this device to receive assessment, returned-submission, and grade alerts.")
+      :(teaching?"Important teaching alerts can reach this device outside Adminerva. Enable this device once.":"Important student alerts are ON by default. Enable this device once to receive them outside Adminerva.");
     button.textContent=device.permission==="granted"?"Reconnect device":"Enable device notifications";
   }catch{prompt.classList.add("hidden");}
 }
@@ -269,23 +272,25 @@ export function mountNotificationCenter(){
   const panel=make("section","hidden fixed right-2 sm:absolute sm:right-0 top-16 sm:top-12 w-[calc(100vw-16px)] sm:w-[390px] max-w-[95vw] rounded-xl bg-white border border-slate-200 shadow-2xl z-[130] overflow-hidden");
   panel.id="av-alert-panel";panel.setAttribute("aria-label","Notification center");
   button.setAttribute("aria-controls",panel.id);
-  const header=make("div","flex justify-between gap-2 items-center px-4 py-3 border-b");
+  const header=make("div","flex justify-between gap-2 items-center px-3 py-2.5 border-b");
   header.append(make("h2","font-bold text-base text-slate-900","Notifications"));
-  const all=make("button","text-xs text-blue-700 font-bold underline","Mark all read");
-  all.type="button";all.addEventListener("click",()=>{void markAllRead()});header.append(all);panel.append(header);
-  const tabs=make("div","flex border-b");
+  const headerActions=make("div","flex items-center gap-3");
+  const preferencesLink=make("a","text-[11px] text-blue-700 font-semibold hover:underline","Settings");
+  preferencesLink.id="av-alert-preferences-link";preferencesLink.href="student-settings.html#notifications";
+  const all=make("button","text-[11px] text-blue-700 font-semibold hover:underline","Mark read");
+  all.type="button";all.title="Mark all notifications as read";all.addEventListener("click",()=>{void markAllRead()});
+  headerActions.append(preferencesLink,all);header.append(headerActions);panel.append(header);
+  const tabs=make("div","av-notification-tabs flex border-b");
   for(const [filter,label] of [["all","All"],["unread","Unread"],["saved","Saved"],["issues","Reports"]]){
-    const tab=make("button","flex-1 py-3 text-xs text-slate-700 hover:bg-slate-50 font-semibold",label);
+    const tab=make("button","flex-1 min-w-[72px] py-2 text-xs text-slate-700 hover:bg-slate-50 font-semibold",label);
     tab.type="button";tab.addEventListener("click",()=>{state.filter=filter;render()});tabs.append(tab);
   }
   panel.append(tabs);
-  const search=make("input","w-full border-0 border-b border-slate-200 bg-white px-4 py-3 text-sm text-slate-900");
+  const search=make("input","w-full border-0 border-b border-slate-200 bg-white px-3 py-2 text-sm text-slate-900");
   search.type="search";search.placeholder="Search notifications";
   search.setAttribute("aria-label","Search notifications");
   search.addEventListener("input",()=>{state.search=search.value.trim();render()});
   panel.append(search);
-  const preferencesLink=make("a","block border-b px-4 py-3 text-xs font-semibold text-blue-700 underline","Notification settings →");
-  preferencesLink.id="av-alert-preferences-link";preferencesLink.href="student-settings.html#notifications";panel.append(preferencesLink);
   const pushPrompt=make("div","hidden border-b bg-blue-50 px-4 py-3");
   pushPrompt.id="av-push-prompt";
   const pushText=make("p","text-xs text-slate-700","Important student alerts are ON by default.");
@@ -295,13 +300,13 @@ export function mountNotificationCenter(){
   pushButton.addEventListener("click",async()=>{
     pushButton.disabled=true;pushButton.textContent="Enabling…";
     try{
-      const module=await import("./push-notifications.mjs?v=1.3.1");
+      const module=await import("./push-notifications.mjs?v=1.3.7");
       await module.enableDevicePush({requestPermission:true});
     }catch(error){pushText.textContent=error.message;}
     finally{pushButton.disabled=false;void refreshPushPrompt();}
   });
   pushPrompt.append(pushButton);panel.append(pushPrompt);
-  const list=make("div","overflow-y-auto overscroll-contain max-h-[min(48dvh,335px)]");
+  const list=make("div","av-notification-list overflow-y-auto overscroll-contain");
   list.id="av-alert-list";list.setAttribute("aria-live","polite");panel.append(list);root.append(panel);
   document.addEventListener("adminerva-menu-open",event=>{if(event.detail!==panel.id){state.open=false;panel.classList.add("hidden");button.setAttribute("aria-expanded","false");}});
   button.addEventListener("click",()=>{const opening=!state.open;document.dispatchEvent(new CustomEvent("adminerva-menu-open",{detail:panel.id}));state.open=opening;panel.classList.toggle("hidden",!state.open);
