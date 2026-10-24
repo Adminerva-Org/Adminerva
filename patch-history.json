@@ -1,6 +1,41 @@
 {
   "releases": [
     {
+      "version": "1.3.6",
+      "status": "draft",
+      "public": false,
+      "releasedAt": "2026-10-24",
+      "title": "Simpler evidence approval and clearer student resubmission",
+      "summary": "Draft notes for the next evidence-workflow patch: independent project checkpoints, pre-submit ancestry checks, one-step teacher verification and targeted reopen alerts.",
+      "changes": [
+        {
+          "type": "Updated",
+          "area": "Project checkpoint",
+          "text": "Student evidence commits and the project checkpoint are separate. A checkpoint may be a later teammate commit as long as it contains all selected student evidence; it does not become individual credit."
+        },
+        {
+          "type": "Fixed",
+          "area": "Checkpoint validation",
+          "text": "Adminerva checks Git ancestry before accepting a student evidence submission and identifies selected commits missing from the chosen checkpoint instead of leaving the teacher to discover the mismatch during approval."
+        },
+        {
+          "type": "Updated",
+          "area": "Teacher evidence verification",
+          "text": "Teachers can verify all submitted evidence commits with one checkbox. Individual commit verification remains available in a collapsed exception area for shared, disputed or excluded commits."
+        },
+        {
+          "type": "Updated",
+          "area": "Commit review",
+          "text": "Teacher commit diffs no longer load automatically. Selected commits remain compact until Preview changes is opened, reducing long scrolling and missed verification controls."
+        },
+        {
+          "type": "New",
+          "area": "Student resubmission alert",
+          "text": "When evidence is reopened, the affected student sees a targeted notification and the reopening reason in My Assignments, with instructions to update evidence commits or the project checkpoint and resubmit."
+        }
+      ]
+    },
+    {
       "version": "1.3.5",
       "status": "published",
       "public": true,
