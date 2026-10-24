@@ -27,7 +27,9 @@ if(root){
       <p data-push-status role="status" class="av-badge mt-3"></p>
     </fieldset>`;
   root.innerHTML='<h2 id="notifications" class="text-xl font-bold">Notifications &amp; display</h2><p class="av-form-hint">Choose inbox alerts, device push, and motion preferences.</p><form data-notification-form><fieldset><legend class="font-bold mb-3">Show in my inbox</legend><div class="av-preference-options" data-notification-options></div></fieldset>'+pushMarkup+'<fieldset class="mt-6"><legend class="font-bold">Motion</legend><label class="av-preference-option"><input type="checkbox" data-reduce-motion> Reduce decorative motion</label></fieldset><button type="submit" class="av-primary-button mt-4">Save my preferences</button><p data-preference-status role="status" class="av-form-hint" hidden></p></form>';
-  const categories=[["issue","Reports & replies"],["grade","Published grades"],["assessment","Assignments"],["release","Website updates"],["submission",staff?"Student submissions":"Submission updates"],...(staff?[["grading","Grading alerts"]]:[])];
+  const categories=staff
+    ?[["submission","Student submissions"],["grading","Grading alerts"],["issue","Reports & replies"],["release","Website updates"]]
+    :[["assessment","Assignments"],["submission","Submission updates"],["grade","Published grades"],["issue","Reports & replies"],["release","Website updates"]];
   const options=root.querySelector("[data-notification-options]");
   for(const [value,title]of categories){const label=document.createElement("label"),input=document.createElement("input");label.className="av-preference-option";input.type="checkbox";input.value=value;input.name="notificationCategory";label.append(input,document.createTextNode(title));options.append(label);}
   const pushMaster=root.querySelector("[data-push-master]");
