@@ -552,3 +552,11 @@ a.av-home-task:hover,a.av-learning-card:hover { border-color:#7b9fce;box-shadow:
   #av-alert-panel header > div { gap:.55rem; }
   .av-notification-type { display:none; }
 }
+
+/* Gradebook score details is a modal, not a side drawer. */
+#gbDetailModal { justify-content:center!important;align-items:center!important;padding:clamp(8px,2.4vw,26px)!important; }
+#gbDetailModal>div { width:min(100%,56rem)!important;height:auto!important;max-height:calc(100dvh - 24px)!important;border-radius:18px!important; }
+@media(max-width:767px){
+  #gbDetailModal { padding:8px!important; }
+  #gbDetailModal>div { width:100%!important;max-height:calc(100dvh - 16px)!important;border-radius:15px!important; }
+}
