@@ -203,12 +203,11 @@ async function listen(user){
     query(collection(db,"notifications",user.uid,"items"),orderBy("createdAt","desc"),limit(60)),
     snap=>{state.notifications=snap.docs.map(d=>({id:d.id,...d.data()}));success("Notifications")},error("Notifications")));
   const staff=!!staffRole(user);
-  if(isAdmin() || isTeacher()){
-    const request = isAdmin()
-      ? query(collection(db,"issues"),orderBy("createdAt","desc"),limit(40))
-      : query(collection(db,"issues"),where("audience","==","teacher"),limit(40));
+  // Teachers use their authoritative per-user notification feed. Broad source
+  // collection listeners can violate section-scoped Firestore query rules.
+  if(isAdmin()){
     state.unsubscribe.push(onSnapshot(
-      request,
+      query(collection(db,"issues"),orderBy("createdAt","desc"),limit(40)),
       snap=>{state.issues=snap.docs.map(d=>({id:d.id,...d.data()}));success("Issue reports")},
       error("Issue reports")));
   }
@@ -225,19 +224,16 @@ async function listen(user){
         error("Evidence revisions")));
     }catch(err){console.warn("Evidence revision notifications unavailable:",err.message);}
   }
-  if(staff){
-    const gradingRequest=isAdmin()
-      ? query(collection(db,"grading_alerts"),orderBy("createdAt","desc"),limit(30))
-      : query(collection(db,"grading_alerts"),limit(30));
+  if(isAdmin()){
     state.unsubscribe.push(onSnapshot(
-      gradingRequest,
+      query(collection(db,"grading_alerts"),orderBy("createdAt","desc"),limit(30)),
       snap=>{state.gradingAlerts=snap.docs.map(d=>({id:d.id,...d.data()}));success("Grading alerts")},
       error("Grading alerts")));
+    state.unsubscribe.push(onSnapshot(
+      query(collection(db,"student_submissions"),orderBy("submittedAt","desc"),limit(40)),
+      snap=>{state.submissions=snap.docs.map(d=>({id:d.id,...d.data()}));success("Student submissions")},
+      error("Student submissions")));
   }
-  if(staff)state.unsubscribe.push(onSnapshot(
-    query(collection(db,"student_submissions"),orderBy("submittedAt","desc"),limit(40)),
-    snap=>{state.submissions=snap.docs.map(d=>({id:d.id,...d.data()}));success("Student submissions")},
-    error("Student submissions")));
 }
 async function refreshPushPrompt(){
   const prompt=el("av-push-prompt"),button=el("av-enable-push-device"),message=el("av-push-prompt-text");
