@@ -672,7 +672,8 @@ service cloud.firestore {
           data.status in ["active","archived"] && data.updatedAt == request.time;
       }
       allow read: if isAdmin() || (isTeacher() && resource.data.sectionIds.hasAny(teacherSections())) ||
-        (signedIn() && !isInstructor() && resource.data.sectionIds.hasAny(get(/databases/$(database)/documents/student_access/$(request.auth.uid)).data.get("sections",[])));
+        (signedIn() && !isInstructor() && exists(/databases/$(database)/documents/student_access/$(request.auth.uid)) &&
+          resource.data.sectionIds.hasAny(get(/databases/$(database)/documents/student_access/$(request.auth.uid)).data.get("sections",[])));
       allow create: if isInstructor() && validPracticePack(request.resource.data) && request.resource.data.ownerUid == request.auth.uid &&
         request.resource.data.sectionIds.hasOnly(isAdmin()?request.resource.data.sectionIds:teacherSections()) && request.resource.data.createdAt == request.time;
       allow update: if isInstructor() && resource.data.ownerUid == request.auth.uid && validPracticePack(request.resource.data) &&
