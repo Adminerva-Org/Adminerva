@@ -281,6 +281,7 @@ window.saveLessonPlan = async function () {
       window.currentLessonSettings=planData.document_settings;
     }
     alert(action==="unchanged"?"No changes since the last save.":"Lesson plan saved. The previous version is retained.");
+    document.dispatchEvent(new CustomEvent("adminerva:lesson-saved",{detail:{id:safeDocId,action}}));
     return true;
   } catch (e) {
     console.error("Error saving plan:", e);
