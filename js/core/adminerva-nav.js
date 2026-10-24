@@ -1,5 +1,9 @@
 /** Shared, role-aware navigation. Page guards remain responsible for access. */
 document.addEventListener("DOMContentLoaded", () => {
+  try{
+    document.documentElement.dataset.adminervaDensity=localStorage.getItem("Adminerva_interface_density")||"comfortable";
+    document.documentElement.dataset.adminervaReduceMotion=String(localStorage.getItem("Adminerva_reduce_motion")==="1");
+  }catch{}
   if(!document.querySelector('link[rel="manifest"]')){
     const manifest=document.createElement("link");manifest.rel="manifest";manifest.href="manifest.webmanifest";document.head.append(manifest);
   }

@@ -3,14 +3,16 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {
   getPushPreferences,savePushPreferences,getDevicePushState,
   enableDevicePush,disableDevicePush,syncDevicePush,sendTestPush
-} from "../core/push-notifications.mjs?v=1.3.8";
+} from "../core/push-notifications.mjs?v=1.4.0";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 
 const root=document.querySelector("[data-account-preferences]");
 if(root){
   const staff=root.dataset.accountPreferences==="staff";
   const pushChoices=staff
-    ?[['submission','Student submissions & evidence'],['grading','Grading alerts'],['issue','Reports & replies']]
-    :[['assessment','New assessments'],['submission','Submission updates / action required'],['grade','Published or corrected grades'],['issue','Reports & replies']];
+    ?[['submission','Student submissions & evidence'],['grading','Grading alerts'],['issue','Reports & replies'],['release','Website updates']]
+    :[['assessment','New assessments'],['submission','Submission updates / action required'],['grade','Published or corrected grades'],['issue','Reports & replies'],['release','Website updates']];
   const pushMarkup=`
     <fieldset class="mt-6" data-push-settings>
       <legend class="font-bold">Device notifications</legend>
@@ -26,7 +28,7 @@ if(root){
       </div>
       <p data-push-status role="status" class="av-badge mt-3"></p>
     </fieldset>`;
-  root.innerHTML='<h2 id="notifications" class="text-xl font-bold">Notifications &amp; display</h2><p class="av-form-hint">Choose inbox alerts, device push, and motion preferences.</p><form data-notification-form><fieldset><legend class="font-bold mb-3">Show in my inbox</legend><div class="av-preference-options" data-notification-options></div></fieldset>'+pushMarkup+'<fieldset class="mt-6"><legend class="font-bold">Motion</legend><label class="av-preference-option"><input type="checkbox" data-reduce-motion> Reduce decorative motion</label></fieldset><button type="submit" class="av-primary-button mt-4">Save my preferences</button><p data-preference-status role="status" class="av-form-hint" hidden></p></form>';
+  root.innerHTML='<h2 id="notifications" class="text-xl font-bold">General, notifications &amp; display</h2><p class="av-form-hint">Control interface density, inbox categories, device push and motion from one place.</p><form data-notification-form><fieldset><legend class="font-bold mb-3">Interface</legend><label class="av-preference-option">Density <select data-density class="border rounded px-2 py-1 ml-2"><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label><label class="av-preference-option mt-2"><input type="checkbox" data-reduce-motion> Reduce decorative motion</label></fieldset><fieldset class="mt-6"><legend class="font-bold mb-3">Show in my inbox</legend><div class="av-preference-options" data-notification-options></div></fieldset>'+pushMarkup+'<div data-release-admin hidden class="mt-6 rounded-lg border border-indigo-200 bg-indigo-50 p-4"><strong class="block">Release announcement</strong><p class="av-form-hint">Send the newest published Adminerva update to users who allow Website updates push notifications.</p><button type="button" data-send-release class="av-secondary-button mt-2">Send latest release update</button><p data-release-status class="av-form-hint mt-2"></p></div><button type="submit" class="av-primary-button mt-4">Save my preferences</button><p data-preference-status role="status" class="av-form-hint" hidden></p></form>';
   const categories=staff
     ?[["submission","Student submissions"],["grading","Grading alerts"],["issue","Reports & replies"],["release","Website updates"]]
     :[["assessment","Assignments"],["submission","Submission updates"],["grade","Published grades"],["issue","Reports & replies"],["release","Website updates"]];
@@ -102,7 +104,11 @@ if(root){
     root.querySelector("button[type=submit]").disabled=!owner;
     try{const saved=JSON.parse(localStorage.getItem("Adminerva_notif_preferences_"+owner)||"[]");muted=new Set(Array.isArray(saved)?saved:[]);}catch{muted=new Set();}
     for(const input of options.querySelectorAll("input"))input.checked=!muted.has(input.value);
-    try{root.querySelector("[data-reduce-motion]").checked=localStorage.getItem("Adminerva_motion_"+owner)==="reduce";}catch{}
+    try{
+      root.querySelector("[data-reduce-motion]").checked=localStorage.getItem("Adminerva_reduce_motion")==="1";
+      root.querySelector("[data-density]").value=localStorage.getItem("Adminerva_interface_density")||"comfortable";
+    }catch{}
+    if(user&&staff)void resolveStaffRole(user).then(role=>root.querySelector("[data-release-admin]").hidden=role!=="admin");
     const preferenceStatus=root.querySelector("[data-preference-status]");
     preferenceStatus.hidden=true;preferenceStatus.textContent="";
     if(!owner){
@@ -145,9 +151,10 @@ if(root){
     const uid=owner;
     try{
       for(const input of options.querySelectorAll("input")){if(input.checked)muted.delete(input.value);else muted.add(input.value);}
-      const reduced=root.querySelector("[data-reduce-motion]").checked;
-      localStorage.setItem("Adminerva_notif_preferences_"+owner,JSON.stringify([...muted]));localStorage.setItem("Adminerva_motion_"+owner,reduced?"reduce":"system");
-      document.documentElement.dataset.motion=reduced?"reduce":"system";
+      const reduced=root.querySelector("[data-reduce-motion]").checked,density=root.querySelector("[data-density]").value;
+      localStorage.setItem("Adminerva_notif_preferences_"+owner,JSON.stringify([...muted]));
+      localStorage.setItem("Adminerva_reduce_motion",reduced?"1":"0");localStorage.setItem("Adminerva_interface_density",density);
+      document.documentElement.dataset.adminervaReduceMotion=String(reduced);document.documentElement.dataset.adminervaDensity=density;
       const values={enabled:pushMaster.checked};
       for(const input of pushOptions)values[input.value]=input.checked;
       await savePushPreferences(values,uid);
@@ -159,6 +166,17 @@ if(root){
       const preferenceStatus=root.querySelector("[data-preference-status]");
       preferenceStatus.hidden=false;preferenceStatus.textContent="Couldn’t save: "+error.message;
     }
+  });
+  root.querySelector("[data-send-release]")?.addEventListener("click",async event=>{
+    const button=event.currentTarget,status=root.querySelector("[data-release-status]");button.disabled=true;status.textContent="Loading latest release…";
+    try{
+      const response=await fetch("patch-history.json",{cache:"no-store"}),data=await response.json(),release=(data.releases||[]).find(item=>item.public===true&&item.status==="published");
+      if(!release)throw Error("No published release found.");
+      const call=httpsCallable(getFunctions(undefined,"asia-southeast1"),"releaseAnnouncement");
+      const result=await call({version:release.version,title:release.title,summary:release.summary});
+      status.textContent="Release notification sent to "+(result.data?.recipients||0)+" account(s).";
+    }catch(error){status.textContent="Release notification failed: "+error.message;}
+    finally{button.disabled=false;}
   });
   if(location.hash==="#notifications"){window.switchSettingsCategory?.("account");requestAnimationFrame(()=>root.scrollIntoView({block:"start"}));}
 }

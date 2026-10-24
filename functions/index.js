@@ -122,7 +122,7 @@ async function teacherIds(section){
 async function audienceIds(issue){
   return reportAudience(issue)==="admin"?[await byEmail(staffEmails[0])].filter(Boolean):teacherIds(issue.section);
 }
-const pushTypes=new Set(["assessment","submission","grade","grading","issue"]);
+const pushTypes=new Set(["assessment","submission","grade","grading","issue","release"]);
 const pushBaseUrl="https://adminerva-org.github.io/Adminerva/";
 const pushPages=new Set([
   "issues.html","student-assessments.html","gradebook.html","repofetch.html",
@@ -191,6 +191,17 @@ async function notify(uid,id,item){
 async function notifyMany(uids,id,payload){
   await Promise.all([...new Set(uids.filter(Boolean))].map(uid=>notify(uid,id,payload)));
 }
+exports.releaseAnnouncement=onCall(callOptions,async request=>{
+  const uid=request.auth?.uid,email=String(request.auth?.token?.email||"").toLowerCase();
+  if(!uid||!staffEmails.includes(email))throw new HttpsError("permission-denied","Administrator access is required.");
+  const version=String(request.data?.version||"").trim(),title=String(request.data?.title||"").trim(),summary=String(request.data?.summary||"").trim();
+  if(!/^\d+\.\d+\.\d+$/.test(version)||title.length<4||title.length>120||summary.length<10||summary.length>300)
+    throw new HttpsError("invalid-argument","Provide a valid published release version, title and summary.");
+  const devices=await db.collection("push_devices").where("enabled","==",true).get();
+  const recipients=[...new Set(devices.docs.map(record=>record.data()?.ownerUid).filter(Boolean))];
+  await notifyMany(recipients,"release_"+cleanId(version),{type:"release",push:true,title:"Adminerva update · "+title,body:summary,sourceId:version,target:"patch-notes.html?version="+encodeURIComponent(version)});
+  return {recipients:recipients.length};
+});
 async function evidenceLabels(item){
   const [student,assessment]=await Promise.all([
     item?.studentId?db.doc("students/"+item.studentId).get():Promise.resolve(null),
