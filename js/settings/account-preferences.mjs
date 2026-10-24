@@ -121,7 +121,7 @@ if(root){
         const values={enabled:pushMaster.checked};
         for(const input of pushOptions)values[input.value]=input.checked;
         await savePushPreferences(values,uid);
-        if(values.enabled&&Notification.permission==="granted")void syncDevicePush();
+        if(values.enabled&&typeof Notification!=="undefined"&&Notification.permission==="granted")void syncDevicePush();
       }
       document.dispatchEvent(new CustomEvent("adminerva-notification-preferences",{detail:{uid:owner}}));
       root.querySelector("[data-preference-status]").textContent="Saved for your account. Your inbox, device alerts, and display preferences are updated.";
