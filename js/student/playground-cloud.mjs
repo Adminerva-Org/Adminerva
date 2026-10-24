@@ -46,7 +46,7 @@ async function versions(){
     const versionsRef=collection(db,"student_playground_workspaces",user.uid,"versions");
     const [recentSnap,pinnedSnap]=await Promise.all([
       getDocs(query(versionsRef,orderBy("savedAt","desc"),limit(30))),
-      getDocs(query(versionsRef,where("pinned","==",true),limit(30)))
+      getDocs(query(versionsRef,where("pinned","==",true)))
     ]);
     const recordsById=new Map();
     for(const record of [...recentSnap.docs,...pinnedSnap.docs])recordsById.set(record.id,record);

@@ -1,6 +1,6 @@
 /** Isolated code editing, execution, persistence and practice handoffs. */
 import { db, auth } from "../core/firebase-core.js?v=1.3.0";
-import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.0";
+import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
 import {
@@ -383,6 +383,7 @@ function moveProjectItem(source,isFolder,targetFolder){
     const file=workspaceFiles[source];delete workspaceFiles[source];workspaceFiles[target]=file;
     fileOrder=fileOrder.map(path=>path===source?target:path);
     projectOrder=normalizedProjectOrder(projectOrder.map(path=>path===source?target:path));
+    projectOrder=[...projectOrder.filter(path=>path!==target),target];
     if(activeFilename===source)activeFilename=target;
     selectedProjectPath=target;selectedProjectFolder=false;
   }else{
@@ -390,6 +391,7 @@ function moveProjectItem(source,isFolder,targetFolder){
     workspaceFiles=Object.fromEntries(Object.entries(workspaceFiles).map(([path,file])=>[mapping(path),file]));
     fileOrder=fileOrder.map(mapping);workspaceFolders=workspaceFolders.map(mapping);
     projectOrder=normalizedProjectOrder(projectOrder.map(mapping));
+    projectOrder=[...projectOrder.filter(path=>path!==target),target];
     activeFilename=mapping(activeFilename);selectedProjectPath=target;selectedProjectFolder=true;
   }
   const activePath=document.getElementById("activeFilePath");if(activePath)activePath.textContent=activeFilename;
