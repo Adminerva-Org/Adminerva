@@ -122,7 +122,7 @@ async function teacherIds(section){
 async function audienceIds(issue){
   return reportAudience(issue)==="admin"?[await byEmail(staffEmails[0])].filter(Boolean):teacherIds(issue.section);
 }
-const pushTypes=new Set(["assessment","submission","grade","grading","issue"]);
+const pushTypes=new Set(["assessment","submission","grade","grading","issue","release"]);
 const pushBaseUrl="https://adminerva-org.github.io/Adminerva/";
 const pushPages=new Set([
   "issues.html","student-assessments.html","gradebook.html","repofetch.html",
@@ -142,9 +142,10 @@ async function pushAllowed(uid,type){
   return data.enabled!==false&&data[category]!==false;
 }
 async function pushToUser(uid,item){
-  if(!uid||item.push!==true||!await pushAllowed(uid,item.type))return;
+  if(!uid||item.push!==true||!await pushAllowed(uid,item.type))return false;
   const devices=await db.collection("push_devices").where("ownerUid","==",uid).limit(12).get();
-  if(devices.empty)return;
+  if(devices.empty)return false;
+  let sent=0;
   await Promise.all(devices.docs.map(async device=>{
     const data=device.data(),token=String(data.token||"");
     if(data.enabled!==true||!token)return;
@@ -162,6 +163,7 @@ async function pushToUser(uid,item){
         },
         webpush:{headers:{TTL:"86400",Urgency:"high"}}
       });
+      sent++;
     }catch(error){
       if(["messaging/registration-token-not-registered","messaging/invalid-registration-token"].includes(error.code)){
         await device.ref.delete().catch(()=>{});
@@ -170,6 +172,7 @@ async function pushToUser(uid,item){
       console.warn("Push delivery failed",{uid,code:error.code||"unknown"});
     }
   }));
+  return sent>0;
 }
 async function notify(uid,id,item){
   if(!uid)return;
@@ -191,6 +194,18 @@ async function notify(uid,id,item){
 async function notifyMany(uids,id,payload){
   await Promise.all([...new Set(uids.filter(Boolean))].map(uid=>notify(uid,id,payload)));
 }
+exports.releaseAnnouncement=onCall(callOptions,async request=>{
+  const uid=request.auth?.uid,email=String(request.auth?.token?.email||"").toLowerCase();
+  if(!uid||!staffEmails.includes(email))throw new HttpsError("permission-denied","Administrator access is required.");
+  const version=String(request.data?.version||"").trim(),title=String(request.data?.title||"").trim(),summary=String(request.data?.summary||"").trim();
+  if(!/^\d+\.\d+\.\d+$/.test(version)||title.length<4||title.length>120||summary.length<10||summary.length>300)
+    throw new HttpsError("invalid-argument","Provide a valid published release version, title and summary.");
+  const devices=await db.collection("push_devices").where("enabled","==",true).get();
+  const recipients=[...new Set(devices.docs.map(record=>record.data()?.ownerUid).filter(Boolean))];
+  const item={type:"release",push:true,title:"Adminerva update · "+title,body:summary,sourceId:version,target:"patch-notes.html?version="+encodeURIComponent(version)};
+  const results=await Promise.all(recipients.map(recipient=>pushToUser(recipient,item).catch(error=>{console.warn("Release push skipped",{recipient,code:error.code||"unknown"});return false;})));
+  return {recipients:recipients.length,delivered:results.filter(Boolean).length};
+});
 async function evidenceLabels(item){
   const [student,assessment]=await Promise.all([
     item?.studentId?db.doc("students/"+item.studentId).get():Promise.resolve(null),

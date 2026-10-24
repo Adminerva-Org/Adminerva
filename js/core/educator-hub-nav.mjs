@@ -5,8 +5,7 @@ if(root){
   const groups=[
     ["Assessment",[["studio","Assessment studio","assessment-studio.html"],["submissions","Submission inbox","submissions.html"]]],
     ["Review & grade",[["review","Review & grade","repofetch.html"],["gradebook","Gradebook","gradebook.html"]]],
-    ["Repositories",[["repobank","Repository bank","repobank.html"]]],
-    ["Insights",[["analytics","Analytics","teacher-analytics.html"]]]
+    ["Insights",[["analytics","Analytics","teacher-analytics.html"],["followup","Learning follow-up","learning-follow-up.html"]]]
   ];
   const links=groups.map(([label,items])=>`
     <section class="av-educator-nav-group">

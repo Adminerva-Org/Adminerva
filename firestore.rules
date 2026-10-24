@@ -662,6 +662,88 @@ service cloud.firestore {
       allow read, write: if ownsStudentProfile(studentId);
     }
 
+    match /practice_packs/{packId} {
+      function validPracticePack(data) {
+        return data.keys().hasOnly(["id","ownerUid","title","sectionIds","missionRefs","notes","dueDate","status","createdAt","updatedAt"]) &&
+          data.id == packId && data.ownerUid is string && data.title is string && data.title.size() > 0 && data.title.size() <= 160 &&
+          data.sectionIds is list && data.sectionIds.size() > 0 && data.sectionIds.size() <= 20 &&
+          data.missionRefs is list && data.missionRefs.size() > 0 && data.missionRefs.size() <= 80 &&
+          data.notes is string && data.notes.size() <= 3000 && data.dueDate is string && data.dueDate.size() <= 20 &&
+          data.status in ["active","archived"] && data.updatedAt == request.time;
+      }
+      allow read: if isAdmin() || (isTeacher() && resource.data.sectionIds.hasAny(teacherSections())) ||
+        (signedIn() && !isInstructor() && exists(/databases/$(database)/documents/student_access/$(request.auth.uid)) &&
+          resource.data.sectionIds.hasAny(get(/databases/$(database)/documents/student_access/$(request.auth.uid)).data.get("sections",[])));
+      allow create: if isInstructor() && validPracticePack(request.resource.data) && request.resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.sectionIds.hasOnly(isAdmin()?request.resource.data.sectionIds:teacherSections()) && request.resource.data.createdAt == request.time;
+      allow update: if isInstructor() && resource.data.ownerUid == request.auth.uid && validPracticePack(request.resource.data) &&
+        request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.sectionIds.hasOnly(isAdmin()?request.resource.data.sectionIds:teacherSections());
+      allow delete: if false;
+    }
+    match /student_projects/{projectId} {
+      function validStudentProject(data) {
+        return data.keys().hasOnly(["id","ownerUid","title","sectionIds","studentIds","wholeSection","description","dueDate","status","createdAt","updatedAt"]) &&
+          data.id == projectId && data.ownerUid is string && data.title is string && data.title.size() > 0 && data.title.size() <= 160 &&
+          data.sectionIds is list && data.sectionIds.size() > 0 && data.sectionIds.size() <= 20 &&
+          data.studentIds is list && data.studentIds.size() <= 80 && data.wholeSection is bool &&
+          ((data.wholeSection == true && data.studentIds.size() == 0) || (data.wholeSection == false && data.studentIds.size() > 0)) &&
+          data.description is string && data.description.size() <= 4000 &&
+          data.dueDate is string && data.dueDate.size() <= 20 && data.status in ["active","archived"] && data.updatedAt == request.time;
+      }
+      allow read: if isAdmin() || (isTeacher() && resource.data.sectionIds.hasAny(teacherSections())) ||
+        (signedIn() && !isInstructor() && exists(/databases/$(database)/documents/student_access/$(request.auth.uid)) &&
+          ((resource.data.wholeSection == true &&
+            resource.data.sectionIds.hasAny(get(/databases/$(database)/documents/student_access/$(request.auth.uid)).data.get("sections",[]))) ||
+           (resource.data.wholeSection == false &&
+            resource.data.studentIds.hasAny(get(/databases/$(database)/documents/student_access/$(request.auth.uid)).data.get("studentIds",[])))));
+      allow create: if isInstructor() && validStudentProject(request.resource.data) && request.resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.sectionIds.hasOnly(isAdmin()?request.resource.data.sectionIds:teacherSections()) && request.resource.data.createdAt == request.time;
+      allow update: if isInstructor() && resource.data.ownerUid == request.auth.uid && validStudentProject(request.resource.data) &&
+        request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.sectionIds.hasOnly(isAdmin()?request.resource.data.sectionIds:teacherSections());
+      allow delete: if false;
+    }
+    match /improvement_plans/{studentId}/items/{planId} {
+      function validImprovementPlan(data) {
+        return data.keys().hasOnly(["id","studentId","section","ownerUid","title","skills","goal","nextAction","packId","status","createdAt","updatedAt"]) &&
+          data.id == planId && data.studentId == studentId && data.section is string && data.ownerUid is string &&
+          data.title is string && data.title.size() <= 160 && data.skills is list && data.skills.size() <= 12 &&
+          data.goal is string && data.goal.size() > 0 && data.goal.size() <= 3000 &&
+          data.nextAction is string && data.nextAction.size() > 0 && data.nextAction.size() <= 3000 &&
+          data.packId is string && data.packId.size() <= 120 && data.status in ["active","completed","closed"] && data.updatedAt == request.time;
+      }
+      allow read: if mayTeachStudent(studentId) || ownsStudentProfile(studentId);
+      allow create: if mayTeachStudent(studentId) && validImprovementPlan(request.resource.data) && request.resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.section == get(/databases/$(database)/documents/students/$(studentId)).data.section && request.resource.data.createdAt == request.time;
+      allow update: if mayTeachStudent(studentId) && resource.data.ownerUid == request.auth.uid && validImprovementPlan(request.resource.data) &&
+        request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.section == resource.data.section &&
+        request.resource.data.section == get(/databases/$(database)/documents/students/$(studentId)).data.section;
+      allow delete: if false;
+    }
+
+    match /teacher_evaluation_drafts/{ownerUid}/items/{draftId} {
+      function validDraft() {
+        let data=request.resource.data;
+        return isInstructor() && request.auth.uid == ownerUid &&
+          data.keys().hasOnly(["ownerUid","studentId","taskId","section","evidenceRevision","checkpointSha","model","draft","createdAt","status"]) &&
+          data.ownerUid == ownerUid && data.studentId is string && data.taskId is string &&
+          draftId == data.studentId + "_" + data.taskId &&
+          mayTeachStudent(data.studentId) && mayTeachAssessment(data.taskId) &&
+          data.section is string &&
+          data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
+          data.section in get(/databases/$(database)/documents/assessments/$(data.taskId)).data.get("sectionIds",[]) &&
+          data.evidenceRevision is int && data.evidenceRevision >= 0 &&
+          data.checkpointSha is string && data.checkpointSha.matches("^[a-fA-F0-9]{40}$") &&
+          data.model is string && data.model.size() <= 120 && data.draft is map &&
+          data.status == "private_suggestion" && data.createdAt == request.time;
+      }
+      allow read: if isInstructor() && request.auth.uid == ownerUid;
+      allow create, update: if validDraft();
+      allow delete: if isInstructor() && request.auth.uid == ownerUid;
+    }
+
     match /assessments/{assessmentId} {
       function validAssessment(data) {
         return data.get("ownerUid","") is string && data.get("sectionIds",[]) is list && data.sectionIds.size() <= 20 &&
@@ -831,7 +913,11 @@ service cloud.firestore {
         request.resource.data.createdAt == request.time;
       // New votes use Firebase UID; legacy email votes can still be removed.
       // Only adding/removing the authenticated user's single vote is allowed.
-      allow update: if (isTeacher() &&
+      allow update: if (isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status","priority","locked","internalTest","updatedAt"]) &&
+        request.resource.data.get("internalTest",false) is bool &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["updatedAt"]) || request.resource.data.updatedAt == request.time)) ||
+        (isTeacher() &&
         resource.data.get("audience", "admin") == "teacher" &&
         mayTeachSection(resource.data.get("section",null)) &&
         request.resource.data.diff(resource.data).affectedKeys()
@@ -903,11 +989,11 @@ service cloud.firestore {
     match /push_preferences/{uid} {
       function validPushPreferences() {
         let data=request.resource.data;
-        return data.keys().hasOnly(["ownerUid","enabled","assessment","submission","grade","grading","issue","updatedAt"]) &&
+        return data.keys().hasOnly(["ownerUid","enabled","assessment","submission","grade","grading","issue","release","updatedAt"]) &&
           data.keys().hasAll(["ownerUid","enabled","assessment","submission","grade","updatedAt"]) &&
           data.ownerUid == uid && data.enabled is bool && data.assessment is bool &&
           data.submission is bool && data.grade is bool &&
-          data.get("grading",true) is bool && data.get("issue",true) is bool &&
+          data.get("grading",true) is bool && data.get("issue",true) is bool && data.get("release",true) is bool &&
           data.updatedAt == request.time;
       }
       allow read: if signedIn() && request.auth.uid == uid;

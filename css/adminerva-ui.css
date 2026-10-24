@@ -596,3 +596,10 @@ a.av-home-task:hover,a.av-learning-card:hover { border-color:#7b9fce;box-shadow:
 .av-nav-top{padding-block:.35rem}
 .av-nav-location{padding-top:.4rem;padding-bottom:.4rem;font-size:.75rem}
 .av-educator-nav{top:6rem}
+
+/* 1.4.0 account/help navigation refinement. */
+.av-brand-mark{display:inline-flex;align-items:center;justify-content:center;width:2.1rem;height:2.1rem;border-radius:9999px;overflow:hidden;background:#0f2538;box-shadow:0 0 0 1px rgba(103,232,249,.35),0 2px 8px rgba(0,0,0,.2)}
+.av-brand-mark img{transform:scale(.92)}
+.av-account-menu>summary::-webkit-details-marker{display:none}.av-account-menu[open]>summary{background:rgba(30,41,59,.85)}
+html[data-adminerva-density=compact] .av-panel{padding:.85rem!important}html[data-adminerva-density=compact] .av-nav-top{padding-block:.2rem!important}
+html[data-adminerva-reduce-motion=true] *,html[data-adminerva-reduce-motion=true] *::before,html[data-adminerva-reduce-motion=true] *::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}

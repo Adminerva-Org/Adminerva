@@ -4,6 +4,9 @@
   "defaultCategories": {
     "assessment": true,
     "submission": true,
-    "grade": true
+    "grade": true,
+    "grading": true,
+    "issue": true,
+    "release": true
   }
 }
