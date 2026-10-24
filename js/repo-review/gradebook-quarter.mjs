@@ -1,5 +1,6 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: gradebook quarter. */
 import { auth, db } from "../core/firebase-core.js?v=1.3.0";
+import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
 import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.0";
@@ -14,7 +15,7 @@ import { parseGithubRepository } from "./services/github-evidence-client.mjs?v=1
 /* Companion view to the legacy single-assessment gradebook.
    It does not change existing document identifiers or grade schemas. */
 const el = id => document.getElementById(id);
-const state = { students: [], assessments: [], tasks: [], rows: [], grades: new Map(), active: null, ready: false, mode: "quarter", loading: false };
+const state = { students: [], assessments: [], tasks: [], rows: [], grades: new Map(), active: null, ready: false, mode: "quarter", loading: false, subjectFocus: [] };
 let loadSerial=0,bulkBusy=false,detailsDirty=false;
 const publicationContext=()=>"quarter:"+el("gbQuarterSection").value+":"+el("gbQuarter").value;
 function queueEntries(){return [...state.grades.values()].map(entry=>({...entry,schemaVersion:state.tasks.find(task=>task.id===entry.data.taskId)?.schemaVersion,maxScore:state.tasks.find(task=>task.id===entry.data.taskId)?.maxScore}));}
@@ -451,7 +452,9 @@ function init() {
         getDocs(collection(db, "students")), getDocs(collection(db, "assessments"))
       ]);
       state.students = students.docs.map(d => ({ id: d.id, ...d.data() }));
-      state.assessments = assessments.docs.map(d => ({ id: d.id, ...d.data() }));
+      state.subjectFocus=await resolveStaffSubjects(user);
+      state.assessments = assessments.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(assessment=>!state.subjectFocus.length||!assessment.subject||state.subjectFocus.includes(assessment.subject));
       const sections = [...new Set(state.students.map(s => s.section).filter(Boolean))].sort();
       const select = el("gbQuarterSection"); select.replaceChildren();
       add(select, "option", "", "Select class section").value = "";

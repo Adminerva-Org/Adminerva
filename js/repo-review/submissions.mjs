@@ -1,4 +1,4 @@
-import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
+import {resolveStaffRole,resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
 /** Unified review inbox for legacy receipts and committed evidence. */
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
@@ -15,7 +15,7 @@ if(initialRepo){
 const el=id=>document.getElementById(id);
 const make=(tag,style,text)=>{const n=document.createElement(tag);
   if(style)n.className=style;if(text!=null)n.textContent=String(text);return n;};
-let unsubscribe=[],snapshots={legacy:[],v2:[]},documents=[],students=new Map(),assessments=new Map(),gradeState=new Map(),gradeLookupToken=0;
+let unsubscribe=[],snapshots={legacy:[],v2:[]},documents=[],students=new Map(),assessments=new Map(),gradeState=new Map(),gradeLookupToken=0,subjectFocus=[];
 function hyperlink(parent,label,href){
   const a=make("a","text-xs sm:text-sm font-bold text-blue-700 hover:underline break-all",label);
   a.href=href;a.target=href.startsWith("http")?"_blank":"_self";
@@ -26,7 +26,7 @@ function assessmentKey(item){
   return String(item.assessmentId||item.taskId||item.assessmentTitle||"");
 }
 function statusLabel(value){
-  return ({submitted:"Submitted",approved:"Approved",graded:"Graded",reopened:"Reopened",needs_review:"Needs review",withdrawn:"Withdrawn"})[value]||
+  return ({submitted:"Submitted",approved:"Approved",graded:"Graded draft",published:"Published",reopened:"Reopened",needs_review:"Needs review",withdrawn:"Withdrawn"})[value]||
     String(value||"Unknown").replace(/_/g," ").replace(/\b\w/g,char=>char.toUpperCase());
 }
 function statusClass(value){
@@ -34,6 +34,7 @@ function statusClass(value){
     submitted:"bg-blue-50 text-blue-800 border-blue-200",
     approved:"bg-emerald-50 text-emerald-800 border-emerald-200",
     graded:"bg-cyan-50 text-cyan-900 border-cyan-200",
+    published:"bg-emerald-100 text-emerald-900 border-emerald-300",
     reopened:"bg-amber-50 text-amber-900 border-amber-200",
     needs_review:"bg-violet-50 text-violet-800 border-violet-200",
     withdrawn:"bg-slate-100 text-slate-700 border-slate-200"
@@ -44,8 +45,19 @@ function gradeKey(item){
   return studentId&&taskId?studentId+"_"+taskId:"";
 }
 function visibleStatus(item){
-  const key=gradeKey(item);
-  return key&&gradeState.get(key)===true?"graded":item.status;
+  const key=gradeKey(item),grade=key?gradeState.get(key):null;
+  if(grade?.exists&&grade.published===true)return "published";
+  if(grade?.exists)return "graded";
+  return item.status;
+}
+function reviewAction(item){
+  const status=visibleStatus(item);
+  if(status==="published")return "View published result →";
+  if(status==="graded")return "Continue grading →";
+  if(status==="approved")return "Grade approved evidence →";
+  if(status==="submitted"||status==="needs_review")return "Review submission →";
+  if(status==="reopened")return "Review returned submission →";
+  return "Open review →";
 }
 async function refreshGradeStatus(){
   const user=auth.currentUser,token=++gradeLookupToken;
@@ -54,9 +66,9 @@ async function refreshGradeStatus(){
   await Promise.all(missing.map(async key=>{
     try{
       const snapshot=await getDoc(doc(db,"student_grades",key));
-      if(token===gradeLookupToken&&auth.currentUser?.uid===user.uid)gradeState.set(key,snapshot.exists());
+      if(token===gradeLookupToken&&auth.currentUser?.uid===user.uid)gradeState.set(key,{exists:snapshot.exists(),published:snapshot.exists()&&snapshot.data()?.published===true});
     }catch{
-      if(token===gradeLookupToken&&auth.currentUser?.uid===user.uid)gradeState.set(key,false);
+      if(token===gradeLookupToken&&auth.currentUser?.uid===user.uid)gradeState.set(key,{exists:false,published:false});
     }
   }));
   if(token===gradeLookupToken&&auth.currentUser?.uid===user.uid)render();
@@ -99,7 +111,8 @@ function render(){
     let repo=null;try{repo=parseRepository(item.repoUrl);}catch{}
     if(repo&&validSha(rev)){hyperlink(links,"View checkpoint commit ↗",repo.url+"/commit/"+rev);hyperlink(links,"Project at checkpoint ↗",repo.url+"/tree/"+rev);}
     if(item.kind==="v2"){
-      hyperlink(links,"Review & Grade →","repofetch.html?section="+encodeURIComponent(item.section||"")+"&student="+encodeURIComponent(item.studentId)+"&assessment="+encodeURIComponent(item.assessmentId));
+      const params=new URLSearchParams({section:item.section||"",student:item.studentId||"",assessment:item.assessmentId||""});if(item.subject)params.set("subject",item.subject);
+      hyperlink(links,reviewAction(item),"repofetch.html?"+params.toString());
       card.append(make("p","text-xs text-slate-500 mt-2",item.source==="teacher_discovered"?"Instructor-discovered historical evidence; not a student submission.":"Student-selected SHAs are unverified until checkpoint review."));
     }else hyperlink(links,"Open RepoFetch →","repofetch.html");
     card.append(links);feed.append(card);
@@ -108,16 +121,17 @@ function render(){
 function refresh(){
   const oldSection=el("submissionSection").value,oldAssessment=el("submissionAssessment").value;
   documents=[
-    ...snapshots.legacy.map(d=>({...d,kind:"legacy",date:d.submittedAt,
-      revisionSha:d.revisionSha||"",status:"submitted"})),
+    ...snapshots.legacy.map(d=>{const assessment=assessments.get(d.assessmentId)||{};return {...d,kind:"legacy",date:d.submittedAt,
+      revisionSha:d.revisionSha||"",status:"submitted",subject:assessment.subject||""};}),
     ...snapshots.v2.map(d=>{
       const student=students.get(d.studentId)||{},assessment=assessments.get(d.assessmentId)||{};
       return {...d,kind:"v2",date:d.updatedAt||d.recordedAt||d.submittedAt,revisionSha:d.checkpointSha,
         studentName:student.name||d.studentId,
-        assessmentTitle:assessment.title||d.assessmentId,
+        assessmentTitle:assessment.title||d.assessmentId,subject:assessment.subject||"",
         githubLogin:student.githubUsername||""};
     })
-  ].sort((a,b)=>asMillis(b.date)-asMillis(a.date));
+  ].filter(item=>!subjectFocus.length||!item.subject||subjectFocus.includes(item.subject))
+   .sort((a,b)=>asMillis(b.date)-asMillis(a.date));
   const select=el("submissionSection"),sections=[...new Set(documents.map(x=>x.section).filter(Boolean))].sort();
   select.replaceChildren();const all=make("option","","All sections");all.value="all";select.append(all);
   for(const section of sections){const opt=make("option","",section);opt.value=section;select.append(opt);}
@@ -150,7 +164,7 @@ onAuthStateChanged(auth,async user=>{
     ]);
     if(auth.currentUser?.uid!==user.uid)return;
     students=new Map(roster.docs.map(d=>[d.id,d.data()]));
-    assessments=new Map(taskDocs.docs.map(d=>[d.id,d.data()]));
+    assessments=new Map(taskDocs.docs.map(d=>[d.id,d.data()]));subjectFocus=await resolveStaffSubjects(user);
     const request=(key,source,dateField)=>{
       const loaded = window.beginLoading?.("Loading submitted evidence…",el("submissionFeed")) || (() => {});
       const stop=onSnapshot(query(collection(db,source),orderBy(dateField,"desc"),limit(200)),
