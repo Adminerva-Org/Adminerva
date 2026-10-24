@@ -388,7 +388,7 @@ exports.assessmentAssigned=onDocumentUpdated("assessments/{assessmentId}",async 
   for(const section of added){
     const students=await db.collection("students").where("section","==",section).get();
     const uids=await Promise.all(students.docs.map(d=>byEmail(d.data().email)));
-    await notifyMany(uids,"assignment_"+event.params.assessmentId+"_"+cleanId(section)+"_"+cleanId(event.id),{
+    await notifyMany(uids,"assignment_"+cleanId(event.id)+"_"+cleanId(event.params.assessmentId)+"_"+cleanId(section),{
       type:"assessment",push:true,title:"New assessment assigned",
       body:now.title||"New assessment",sourceId:event.params.assessmentId,
       target:"student-assessments.html"
@@ -412,7 +412,7 @@ exports.assessmentCreated=onDocumentCreated("assessments/{assessmentId}",async e
   for(const section of sections){
     const students=await db.collection("students").where("section","==",section).get();
     const uids=await Promise.all(students.docs.map(d=>byEmail(d.data().email)));
-    await notifyMany(uids,"assignment_"+event.params.assessmentId+"_"+cleanId(section)+"_"+cleanId(event.id),{
+    await notifyMany(uids,"assignment_"+cleanId(event.id)+"_"+cleanId(event.params.assessmentId)+"_"+cleanId(section),{
       type:"assessment",push:true,title:"New assessment assigned",
       body:data.title||"New assessment",sourceId:event.params.assessmentId,
       target:"student-assessments.html"
