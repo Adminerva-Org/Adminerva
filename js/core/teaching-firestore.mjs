@@ -5,7 +5,7 @@ import {auth,db} from "./firebase-core.js?v=1.3.0";
 import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
 import {staffRole,staffSections} from "./staff-role.mjs?v=1.3.0";
 const descriptors=new WeakMap();
-const sectional=new Set(["teaching_roster","student_grades","grades","activity_grades","assessment_evidence","student_submissions","commit_reclaims","practice_profiles","practice_scores","practice_boards","practice_rankings","practice_class_season_rankings","grading_alerts"]);
+const sectional=new Set(["teaching_roster","student_grades","grades","activity_grades","assessment_evidence","student_submissions","commit_reclaims","practice_profiles","practice_scores","practice_boards","practice_rankings","practice_class_season_rankings","grading_alerts","issues"]);
 const privateKinds=new Set(["repobank","group_repo_cache","github_stats_cache","system","templates","reference_folders"]);
 let pending=null;
 const emptySnapshot=docs=>({docs,size:docs.length,empty:docs.length===0,forEach:callback=>docs.forEach(callback)});
@@ -41,8 +41,9 @@ export function query(base,...constraints){
   return reference;
 }
 export function doc(...args){return sdk.doc(...args);}
-async function plans(source){
-  const current=await actor();if(current.role!=="teacher")return [source];
+async function plans(source,current=null){
+  if(!current)current=await actor();
+  if(current.role!=="teacher")return [source];
   const descriptor=descriptors.get(source)||(source.type==="collection"?{reference:source,path:source.path,constraints:[]}:null);
   if(!descriptor){if(source.type==="document")return [mappedDoc(source,current)];throw Error("This teaching query has no section descriptor. Reload the page.");}
   let {path,constraints}=descriptor;
@@ -56,8 +57,8 @@ async function plans(source){
   return [source];
 }
 async function readMany(source,reader){
-  const uid=auth.currentUser?.uid;
-  const requests=await plans(source),rows=new Map();
+  const current=await actor(),uid=current.uid;
+  const requests=await plans(source,current),rows=new Map();
   for(let offset=0;offset<requests.length;offset+=4){
     const snapshots=await Promise.all(requests.slice(offset,offset+4).map(reader));
     if(auth.currentUser?.uid!==uid)throw Error("Account changed. Discard the previous teaching results.");
