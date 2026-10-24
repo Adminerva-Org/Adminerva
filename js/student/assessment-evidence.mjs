@@ -3,9 +3,9 @@ import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {doc,getDoc,getDocs,setDoc,updateDoc,collection,query,where,serverTimestamp,onSnapshot}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {parseRepository,normalizeSelection,evidenceSelectionGuidance,detectedAuthor,attributionLabel,claimDocumentId,validSha}
-  from "../repo-review/services/assessment-evidence.mjs?v=1.3.0";
+  from "../repo-review/services/assessment-evidence.mjs?v=1.3.1";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,verifyCheckpointAncestry} from "../repo-review/services/commit-history.mjs?v=1.3.1";
-import {studentMayChangeEvidence,sameEvidence} from "../repo-review/services/evidence-lifecycle.mjs?v=1.3.0";
+import {studentMayChangeEvidence,sameEvidence} from "../repo-review/services/evidence-lifecycle.mjs?v=1.3.1";
 import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs?v=1.3.0";
 
 const el=id=>document.getElementById(id);
