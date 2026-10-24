@@ -92,7 +92,7 @@ document.addEventListener("DOMContentLoaded", () => {
     : isStudent ? studentGroup?.items[0]?.[2]
     : area === "lesson" ? "lesson-planner.html"
     : area === "admin" ? "users.html"
-    : area === "educator" ? "teacher-analytics.html" : null;
+    : area === "educator" ? "teacher-home.html" : null;
   const escapeHTML = value => String(value).replace(/[&<>"']/g, char =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
   const modules = isStudent ? [
@@ -103,7 +103,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ["My reports", "issues.html", "Report a problem or follow an update"]
   ] : [
     [homeLabel, homeRoute, "Your teaching workspace"],
-    ["Educator Hub", "teacher-analytics.html", "Assessments, evidence and grades"],
+    ["Educator Hub", "teacher-home.html", "Teaching, review, grading and analytics"],
     ["Lesson Planner", "lesson-planner.html", "Lessons, slides, schedule and references"],
     ...(isSuperAdmin ? [["School administration", "users.html", "Students, sections and teacher assignments"]] : []),
     ["Reports & support", "issues.html", "Follow reports and get help"]
