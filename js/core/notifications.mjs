@@ -241,7 +241,7 @@ async function refreshPushPrompt(){
   const prompt=el("av-push-prompt"),button=el("av-enable-push-device"),message=el("av-push-prompt-text");
   if(!prompt||!state.user||staffRole(state.user)){if(prompt)prompt.classList.add("hidden");return;}
   try{
-    const module=await import("./push-notifications.mjs?v=1.3.0");
+    const module=await import("./push-notifications.mjs?v=1.3.1");
     const [device,prefs]=await Promise.all([module.getDevicePushState(),module.getPushPreferences(state.user.uid)]);
     state.pushState={device,prefs};
     const show=prefs.enabled!==false&&device.supported&&device.configured&&device.permission!=="denied"&&!(device.permission==="granted"&&device.registered);
@@ -295,7 +295,7 @@ export function mountNotificationCenter(){
   pushButton.addEventListener("click",async()=>{
     pushButton.disabled=true;pushButton.textContent="Enabling…";
     try{
-      const module=await import("./push-notifications.mjs?v=1.3.0");
+      const module=await import("./push-notifications.mjs?v=1.3.1");
       await module.enableDevicePush({requestPermission:true});
     }catch(error){pushText.textContent=error.message;}
     finally{pushButton.disabled=false;void refreshPushPrompt();}
