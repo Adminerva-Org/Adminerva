@@ -2,11 +2,11 @@
   "releases": [
     {
       "version": "1.3.5",
-      "status": "draft",
-      "public": false,
+      "status": "published",
+      "public": true,
       "releasedAt": "2026-10-24",
-      "title": "More reliable Review & Grade evaluation",
-      "summary": "Draft notes for the current teaching-workspace repair: safer review access, fuller repository evidence, partial rubric proposals, clearer teacher confirmation and cleaner browser feedback.",
+      "title": "More reliable Review & Grade and student evidence",
+      "summary": "Review student work with fuller repository evidence, clearer proposed scores and teacher checks, safer submission access, and a simpler evidence-reopening workflow.",
       "changes": [
         {
           "type": "Fixed",
@@ -78,7 +78,8 @@
           "area": "Evidence reopening",
           "text": "Teacher review now uses one clear Reopen for student changes action for approved evidence and instructor-discovered proposals. The reason field becomes visibly required during reopening, and the page explains when reopening is needed so students can replace commits and checkpoints before resubmitting."
         }
-      ]
+      ],
+      "publishedAt": "2026-10-24T15:28:00+08:00"
     },
     {
       "version": "1.3.4",
