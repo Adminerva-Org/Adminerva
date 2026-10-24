@@ -305,7 +305,7 @@ async function recoverOwnLegacyLessons(uid,{retry=false}={}){
   if(ownRecoveryPromise)return ownRecoveryPromise;
   if(ownRecoveryAttemptedFor===uid&&!retry)return;
   ownRecoveryAttemptedFor=uid;
-  if(status){status.dataset.tone="";status.textContent="Checking older school lessons for your verified teacher account. Recovered copies are saved to "+TEACHER_EMAIL+"; originals and existing personal lessons are preserved.";}
+  if(status){status.dataset.tone="";status.textContent="Checking older lessons…";status.removeAttribute("title");}
   if(button){button.disabled=true;button.setAttribute("aria-busy","true");}
   ownRecoveryPromise=(async()=>{
     try{
@@ -315,12 +315,17 @@ async function recoverOwnLegacyLessons(uid,{retry=false}={}){
       const recovered=recoveryCount(result.recovered),already=recoveryCount(result.alreadyRecovered),blocked=recoveryCount(result.blocked);
       if(status){
         status.dataset.tone="success";
-        status.textContent=(result.message||`${recovered} older lesson(s) recovered; ${already} already available in your teacher workspace.`)+` Account: ${TEACHER_EMAIL}.`+(blocked?` ${blocked} record(s) could not be recovered because ownership or editable content needs review.`:"")+(result.hasMore?" More legacy records remain; choose Recover more older lessons.":"");
+        status.textContent=recovered
+          ?recovered+" older lesson"+(recovered===1?"":"s")+" recovered"+(already?" · "+already+" already available":"")
+          :(already?already+" saved "+(already===1?"copy is":"copies are")+" already in this workspace":"No older lessons found");
+        if(blocked)status.textContent+=" · "+blocked+" need review";
+        if(result.hasMore)status.textContent+=" · more available";
+        status.title=String(result.message||"");
       }
-      if(button)button.textContent=result.hasMore?"Recover more older lessons":"Check for older lessons again";
+      if(button)button.textContent=result.hasMore?"Recover more":"Check again";
     }catch(error){
-      if(auth.currentUser?.uid===uid&&status){status.dataset.tone="error";status.textContent="Older-lesson recovery could not finish: "+error.message+" Your current personal lessons remain available below. Retry recovery to check again.";}
-      if(button)button.textContent="Retry older-lesson recovery";
+      if(auth.currentUser?.uid===uid&&status){status.dataset.tone="error";status.textContent="Older lessons could not be checked. Your saved plans are unchanged.";status.title=error.message;}
+      if(button)button.textContent="Retry";
     }finally{
       ownRecoveryPromise=null;
       if(auth.currentUser?.uid===uid&&button){button.disabled=false;button.removeAttribute("aria-busy");}
@@ -385,7 +390,7 @@ window.openLoadPlanModal = async function () {
     const querySnapshot = await getDocs(collection(db,"staff_workspaces",ownerUid,"lesson_plans"));
     assertWorkspaceAccount(viewerUid);if(serial!==savedPlanSerial)return;
     const ownerLabel=document.getElementById("modalOwnerFilter")?.selectedOptions[0]?.textContent||"My workspace";
-    document.getElementById("savedPlanScope").textContent=foreign?"Viewing "+ownerLabel+". Load creates a draft for your own workspace; the teacher’s saved record is read-only here.":"These saved plans belong to "+auth.currentUser.email+". All school years are shown by default; recovered lessons carry a Recovered label.";
+    document.getElementById("savedPlanScope").textContent=foreign?"Viewing "+ownerLabel+" · loads create a copy in your workspace.":"Personal workspace · recovered plans are labeled.";
     if(document.getElementById("lessonArchiveBtn"))document.getElementById("lessonArchiveBtn").hidden=foreign;
     if (querySnapshot.empty) {
       const filter=document.getElementById("modalSyFilter");filter.replaceChildren(new Option("All school years",ALL_SCHOOL_YEARS));filter.disabled=true;
