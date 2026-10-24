@@ -7,10 +7,10 @@ import {notificationVisible,unreadNotificationCount} from "./notification-visibi
 import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs?v=1.3.0";
 import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=1.3.3";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "./teaching-firestore.mjs?v=1.3.2";
+import { collection, query, where, orderBy, limit, onSnapshot, getDocs, doc, updateDoc, setDoc, serverTimestamp } from "./teaching-firestore.mjs?v=1.3.2";
 
 let listenEpoch=0;
-const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false };
+const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], reopenedEvidence:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false };
 const isAdmin = () => staffRole(state.user)==="admin";
 const isTeacher = () => staffRole(state.user)==="teacher";
 const verifiedRole = () => isAdmin() ? "admin" : isTeacher() ? "teacher" : "student";
@@ -71,6 +71,16 @@ function collectionItems(){
     rows.push({key:"submission:"+sub.id,type:"submission",title:"Work submitted for review",
       body:(sub.studentName||"Student")+" · "+(sub.assessmentTitle||"Assessment"),
       at:timeOf(sub.submittedAt),target:previewDestination("submission"),saved:false});
+  }
+  for(const evidence of state.reopenedEvidence){
+    if(stored.has(evidence.id)||evidence.status!=="reopened")continue;
+    rows.push({
+      key:"evidence-reopened:"+evidence.id+":"+(evidence.revision||0),type:"submission",
+      title:"Submission reopened — changes required",
+      body:String(evidence.reopenReason||"Your teacher requested a new evidence selection.").slice(0,300),
+      at:timeOf(evidence.reopenedAt||evidence.updatedAt),
+      target:"student-assessments.html",sourceId:evidence.id,saved:false
+    });
   }
   return mergeNotificationHistory(rows,state.history,state.read).filter(visibleForRole);
 }
@@ -158,7 +168,7 @@ async function markAllRead(){
 async function listen(user){
   const current=++listenEpoch;
   state.unsubscribe.forEach(stop=>stop());state.unsubscribe=[];
-  state.user=user;state.notifications=[];state.issues=[];state.submissions=[];state.gradingAlerts=[];state.history=user?localHistory():[];
+  state.user=user;state.notifications=[];state.issues=[];state.submissions=[];state.gradingAlerts=[];state.reopenedEvidence=[];state.history=user?localHistory():[];
   state.errors.clear();
   state.read=restoreRead();state.muted=restorePreferences();
   document.querySelectorAll("#av-alert-panel input[data-alert-category]").forEach(input=>{
@@ -201,6 +211,17 @@ async function listen(user){
   }
   // Students never subscribe to staff report feeds. Their notification center
   // shows only records explicitly delivered to their own Firebase inbox.
+  if(!staffRole(user)){
+    try{
+      const profiles=await getDocs(query(collection(db,"students"),where("email","==",String(user.email||"").toLowerCase()),limit(2)));
+      if(current!==listenEpoch||state.user?.uid!==user.uid)return;
+      const profile=profiles.docs[0];
+      if(profile)state.unsubscribe.push(onSnapshot(
+        query(collection(db,"assessment_evidence"),where("studentId","==",profile.id),limit(40)),
+        snap=>{state.reopenedEvidence=snap.docs.map(d=>({id:d.id,...d.data()})).filter(item=>item.status==="reopened");success("Evidence revisions")},
+        error("Evidence revisions")));
+    }catch(err){console.warn("Evidence revision notifications unavailable:",err.message);}
+  }
   if(staff){
     const gradingRequest=isAdmin()
       ? query(collection(db,"grading_alerts"),orderBy("createdAt","desc"),limit(30))
