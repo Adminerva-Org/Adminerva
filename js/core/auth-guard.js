@@ -12,8 +12,10 @@ const currentPath = window.location.pathname.toLowerCase();
 const isLoginPage = currentPath.includes("login.html");
 let admittedUid;
 let checkingAccess=false,accessGate=null,accessEpoch=0;
-const guardedSignOut = () => {
+const guardedSignOut = async () => {
   try{clearConnectionPreferences();}catch{}
+  try{const push=await import("./push-notifications.mjs?v=1.3.6");await push.departPushAccount();}
+  catch(error){console.warn("Push registration cleanup skipped during sign-out:",error?.message||error);}
   return signOut(auth);
 };
 
