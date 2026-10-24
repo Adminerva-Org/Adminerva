@@ -447,7 +447,8 @@ async function save(event) {
   const score=Number(raw);
   const feedback=cleanGradeFeedback(el("manualReviewFeedback").value);
   const customReason=el("manualReviewReason").value.trim();
-  const adjustment=acceptedDraft&&Math.abs(score-acceptedDraft.score)>0.001?"Teacher adjusted the system proposal from "+acceptedDraft.score+" to "+score+" after reviewing the remaining evidence or classroom observation.":"";\n  const reason=customReason||adjustment||active.evidence?.verificationNote||"Teacher reviewed the selected work and entered the score and student feedback.";
+  const adjustment=acceptedDraft&&Math.abs(score-acceptedDraft.score)>0.001?"Teacher adjusted the system proposal from "+acceptedDraft.score+" to "+score+" after reviewing the remaining evidence or classroom observation.":"";
+  const reason=customReason||adjustment||active.evidence?.verificationNote||"Teacher reviewed the selected work and entered the score and student feedback.";
   const paths=[...new Set(el("manualReviewFiles").value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean))];
   if(!raw.trim()||!Number.isFinite(score)||score<0||score>active.maxScore)return message("Score must be between 0 and "+active.maxScore+".",true);
   if(!feedback)return message("Add feedback for the student before saving.",true);
@@ -487,7 +488,8 @@ async function save(event) {
         aiAssistance:acceptedDraft?{
           model:acceptedDraft.model,checkpointSha:active.checkpointSha,
           suggestedScore:acceptedDraft.score,
-          criterionScores:acceptedDraft.criteria.map(c=>({name:c.name,score:c.score,maxScore:c.maxScore,pendingPoints:c.pendingPoints,confidence:c.confidence})),\n          pendingPoints:acceptedDraft.pendingPoints,potentialScore:acceptedDraft.potentialScore,
+          criterionScores:acceptedDraft.criteria.map(c=>({name:c.name,score:c.score,maxScore:c.maxScore,pendingPoints:c.pendingPoints,confidence:c.confidence})),
+          pendingPoints:acceptedDraft.pendingPoints,potentialScore:acceptedDraft.potentialScore,
           generatedAt:serverTimestamp()
         }:(previous?.aiAssistance||null),
         reviewPriority:"teacher_verified",provisionalScore:false,
