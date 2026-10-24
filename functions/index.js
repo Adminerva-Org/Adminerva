@@ -119,7 +119,7 @@ async function pushToUser(uid,item){
         webpush:{
           notification:{
             icon:pushBaseUrl+"assets/New%20Adminerva%20logo.png",
-            badge:pushBaseUrl+"assets/New%20Adminerva%20logo.png"
+            badge:pushBaseUrl+"assets/adminerva-notification-badge.png"
           },
           fcmOptions:{link:pushTarget(item.target)}
         }
