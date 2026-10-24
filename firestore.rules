@@ -530,7 +530,7 @@ service cloud.firestore {
          after.verifiedContributionCommits.hasOnly(before.selectedCommits) &&
          after.diff(before).affectedKeys().hasOnly(["status","approvedCheckpointSha","reviewedBy",
            "reviewedAt","verificationNote","contributionScope","verifiedContributionCommits","revision","updatedAt"])) ||
-        (before.status in ["approved","needs_review"] && after.status == "reopened" &&
+        (before.status in ["submitted","approved","needs_review"] && after.status == "reopened" &&
          (!exists(/databases/$(database)/documents/student_grades/$(evidenceId)) ||
           get(/databases/$(database)/documents/student_grades/$(evidenceId)).data.published == false) &&
          after.approvedCheckpointSha == null && after.verifiedContributionCommits == [] &&
