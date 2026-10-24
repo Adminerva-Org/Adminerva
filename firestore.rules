@@ -777,11 +777,15 @@ service cloud.firestore {
         request.resource.data.fileOrder is list &&
         request.resource.data.lang in ["java","python","web","csharp","cpp","dart"];
       allow update: if signedIn() && request.auth.uid == uid &&
-        resource.data.ownerUid == uid && request.resource.data.ownerUid == uid &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["label","renamedAt"]) &&
-        request.resource.data.label is string &&
-        request.resource.data.label.size() > 0 && request.resource.data.label.size() <= 80 &&
-        request.resource.data.renamedAt == request.time;
+        resource.data.ownerUid == uid && request.resource.data.ownerUid == uid && (
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["label","renamedAt"]) &&
+           request.resource.data.label is string &&
+           request.resource.data.label.size() > 0 && request.resource.data.label.size() <= 80 &&
+           request.resource.data.renamedAt == request.time) ||
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["pinned","pinChangedAt"]) &&
+           request.resource.data.pinned is bool &&
+           request.resource.data.pinChangedAt == request.time)
+        );
       allow delete: if signedIn() && request.auth.uid == uid && resource.data.ownerUid == uid;
     }
 
