@@ -42,11 +42,9 @@
           <header class="av-teaching-context"><h2 id="teaching-context-title" data-review-context class="font-extrabold text-lg"></h2><p data-review-individual class="text-sm text-slate-600 mt-1"></p><label class="block text-sm font-semibold mt-3">Current learner<select data-review-member class="mt-1 w-full border rounded-lg p-2.5"></select></label></header>
           <nav class="av-teaching-tabs" role="tablist" aria-label="Teaching workspace panels">
             <button type="button" id="teaching-tab-inbox" role="tab" aria-controls="teaching-panel-inbox" data-teaching-tab="inbox" aria-selected="true">Inbox</button>
-            <button type="button" id="teaching-tab-repository" role="tab" aria-controls="teaching-panel-repository" data-teaching-tab="repository" aria-selected="false" tabindex="-1">Repository</button>
             <button type="button" id="teaching-tab-evidence" role="tab" aria-controls="teaching-panel-review" data-teaching-tab="evidence" aria-selected="false" tabindex="-1">Evidence</button>
-            <button type="button" id="teaching-tab-contributions" role="tab" aria-controls="teaching-panel-contributions" data-teaching-tab="contributions" aria-selected="false" tabindex="-1">Contributions</button>
             <button type="button" id="teaching-tab-grade" role="tab" aria-controls="teaching-panel-review" data-teaching-tab="grade" aria-selected="false" tabindex="-1">Review &amp; grade</button>
-            <button type="button" id="teaching-tab-activity" role="tab" aria-controls="teaching-panel-activity" data-teaching-tab="activity" aria-selected="false" tabindex="-1">Manual activity</button>
+            <button type="button" id="teaching-tab-activity" role="tab" aria-controls="teaching-panel-activity" data-teaching-tab="activity" aria-selected="false" tabindex="-1">Observed activity</button>
           </nav>
           <p data-workspace-status role="status" class="text-sm text-slate-600 my-3"></p>
           <section id="teaching-panel-inbox" role="tabpanel" aria-labelledby="teaching-tab-inbox" data-teaching-panel="inbox"></section>
@@ -56,7 +54,7 @@
           <section id="teaching-panel-activity" role="tabpanel" aria-labelledby="teaching-tab-activity" data-teaching-panel="activity" hidden></section>
         </section>
         <details id="legacyRepoTools" class="border border-slate-200 rounded-xl p-4">
-          <summary class="font-semibold text-slate-700 cursor-pointer">Legacy repository sync and grading tools</summary>
+          <summary class="font-semibold text-slate-700 cursor-pointer">Advanced legacy repository tools</summary>
           <div class="mt-4">
         <!-- ✨ UPDATED HEADER WITH RIGHT-ALIGNED BUTTONS -->
         <header
@@ -76,13 +74,7 @@
 
           <!-- Action Buttons aligned to the right -->
           <div class="flex flex-wrap gap-2">
-            <a href="contribution-inspector.html" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded transition shadow-sm text-sm flex items-center">Inspect Contributions</a>
-            <button
-              onclick="window.openBulkGradeModal()"
-              class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded transition shadow-sm flex items-center gap-2 text-sm"
-            >
-              ✨ Bulk Auto-Grade
-            </button>
+            <button onclick="window.openBulkGradeModal()" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-4 rounded transition shadow-sm flex items-center gap-2 text-sm">Batch evaluation · legacy</button>
           </div>
         </header>
 
