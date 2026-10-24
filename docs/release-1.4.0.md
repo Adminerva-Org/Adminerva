@@ -48,5 +48,6 @@ Adminerva 1.4.0 is the classroom workflow and follow-through release.
 - Bulk approval does not establish authorship or individual credit.
 - Bulk evaluation does not write or publish grades.
 - New Firestore rules cover private evaluation suggestions, report test flags, Practice Packs, named projects and Improvement Plans.
-- 1.4.0 requires coordinated deployment of frontend, Firestore rules and Cloud Functions because release push adds a new callable and push category.
+- A new `student_projects` composite index supports whole-section named-project queries while selected-learner projects remain scoped to their assigned students.
+- 1.4.0 requires coordinated deployment of frontend, Firestore rules/indexes and Cloud Functions because release push adds a new callable and push category.
 - The public release manifest remains on 1.3.10 until 1.4.0 is actually deployed.
