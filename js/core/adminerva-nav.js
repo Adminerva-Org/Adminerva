@@ -1,5 +1,11 @@
 /** Shared, role-aware navigation. Page guards remain responsible for access. */
 document.addEventListener("DOMContentLoaded", () => {
+  if(!document.querySelector('link[rel="manifest"]')){
+    const manifest=document.createElement("link");manifest.rel="manifest";manifest.href="manifest.webmanifest";document.head.append(manifest);
+  }
+  if(!document.querySelector('link[rel="apple-touch-icon"]')){
+    const icon=document.createElement("link");icon.rel="apple-touch-icon";icon.href="assets/New%20Adminerva%20logo.png";document.head.append(icon);
+  }
   const root = document.getElementById("adminerva-nav");
   if (!root) return;
   let currentRole, disclosures = [], utilitiesMounted = false;
@@ -234,7 +240,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const mountPoint = document.createElement("div");
     mountPoint.id = "adminerva-notifications";
     reportButton.parentNode.insertBefore(mountPoint, reportButton);
-    import("./notifications.mjs?v=1.3.5").then(module => module.mountNotificationCenter())
+    import("./notifications.mjs?v=1.3.6").then(module => module.mountNotificationCenter())
       .catch(error => console.warn("Notification center unavailable:", error));
   }
   };
@@ -262,6 +268,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   import("./site-updates.mjs?v=1.3.0").then(module => module.mountSiteUpdates())
     .catch(error => console.warn("Site update checks unavailable:", error));
+  import("./push-notifications.mjs?v=1.3.0").then(module => module.startPushSync())
+    .catch(error => console.warn("Device notification sync unavailable:", error));
 
   root.addEventListener("click", async event => {
     if (event.defaultPrevented) return;
@@ -273,6 +281,7 @@ document.addEventListener("DOMContentLoaded", () => {
         import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js"),
         import("./connection-cache.mjs?v=1.3.0").then(module => module.clearConnectionPreferences())
       ]);
+      try{const push=await import("./push-notifications.mjs?v=1.3.0");await push.disableDevicePush();}catch{}
       await signOut(getAuth());
     } catch (error) { console.warn("Sign out background process skipped or failed.", error); }
     finally {
