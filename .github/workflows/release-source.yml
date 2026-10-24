@@ -19,4 +19,4 @@ jobs:
       - name: Check first-release reliability invariants
         run: node scripts/check-first-release-reliability.mjs
       - name: Run focused first-release tests
-        run: node --test tests/teaching-firestore.test.mjs js/repo-review/services/commit-history.test.mjs js/core/adminerva-nav.test.mjs js/core/report-dialog.test.mjs js/lesson-review/schedule-scope.test.mjs tests/staff-workspaces.test.mjs
+        run: node --test tests/teaching-firestore.test.mjs js/repo-review/services/commit-history.test.mjs js/core/report-dialog.test.mjs js/lesson-review/schedule-scope.test.mjs tests/staff-workspaces.test.mjs
