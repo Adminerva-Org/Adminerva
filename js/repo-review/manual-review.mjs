@@ -409,6 +409,21 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
     el("manualReviewFiles").value=(previous?.contributionEvidence?.matchedPaths||[]).join("\n");
     el("manualReviewReason").value=previous?.teacherReviewNote||"";
     state.active={studentId,taskId,owner,repo,base,student,assessment,previous,gradeRef:gradeDoc.ref,maxScore,login,checkpointSha,selectedEvidenceCommits,evidence:approvedEvidence,aiDraft:null,aiApplied:false};
+    if(assessment.schemaVersion===2&&approvedEvidence?.status==="approved"&&auth.currentUser?.uid){
+      try{
+        const queued=await getDoc(doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId));
+        const saved=queued.exists()?queued.data():null;
+        if(saved&&saved.status==="private_suggestion"&&saved.checkpointSha===approvedEvidence.approvedCheckpointSha&&saved.evidenceRevision===evidenceRevision(approvedEvidence)&&saved.draft){
+          state.active.aiDraft={model:saved.model||"",checkpointSha:saved.checkpointSha,...saved.draft};
+          displayAISuggestion(state.active.aiDraft);
+          renderFeedbackMarkdown(el("manualReviewAIFeedback"),state.active.aiDraft.feedback||"");
+          el("manualReviewUseScore").disabled=state.active.aiDraft.score===null;
+          el("manualReviewUseFeedback").disabled=!state.active.aiDraft.feedback;
+          el("manualReviewAISection").classList.remove("hidden");
+          aiStatus("Private class evaluation suggestion is ready. Review it, apply only what you agree with, then save an unpublished teacher grade.");
+        }
+      }catch(error){console.warn("Private class evaluation suggestion unavailable:",error);}
+    }
     el("manualReviewUnpublish").classList.toggle("hidden",!previous?.published);
     el("manualReviewPublish").classList.toggle("hidden",!previous||previous.published||assessment.schemaVersion!==2);
     const verified=Boolean(checkpointSha)&&approvedEvidence?.status==="approved"&&evaluationResponsibilityReady(assessment,approvedEvidence);
