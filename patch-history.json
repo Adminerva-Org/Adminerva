@@ -48,7 +48,8 @@
           "area": "Cloud versions",
           "text": "Cloud versions can be named, pinned, unpinned, duplicated, restored, renamed and deleted. Confirmed cleanup keeps the newest 10 unpinned versions together with every pinned version."
         }
-      ]
+      ],
+      "publishedAt": "2026-10-25T03:00:07+08:00"
     },
     {
       "version": "1.3.9",
