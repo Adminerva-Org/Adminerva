@@ -57,7 +57,11 @@ function createSchoolAI({db,FieldValue,Timestamp,resolveUser,fetchImpl=fetch}){
       })};
     });
     const cfg=payload.generationConfig||{},generationConfig={temperature:Math.max(0,Math.min(1,Number(cfg.temperature)||0.3)),maxOutputTokens:Math.min(16384,Math.max(1024,Number(cfg.maxOutputTokens)||8192))};
-    if((cfg.responseMimeType||cfg.response_mime_type)==="application/json")generationConfig.responseMimeType="application/json";
+    if((cfg.responseMimeType||cfg.response_mime_type)==="application/json"){
+      generationConfig.responseMimeType="application/json";
+      if(cfg.responseSchema&&typeof cfg.responseSchema==="object"&&!Array.isArray(cfg.responseSchema)&&Buffer.byteLength(JSON.stringify(cfg.responseSchema))<=30000)
+        generationConfig.responseSchema=cfg.responseSchema;
+    }
     const requestId=typeof input.requestId==="string"&&/^[a-zA-Z0-9_-]{8,80}$/.test(input.requestId)?input.requestId:randomUUID();
     const key=createHash("sha256").update(actor.uid+":"+requestId).digest("hex"),resultRef=db.doc("school_ai_results/"+key);
     const now=Date.now(),date=new Date(now).toISOString().slice(0,10),usageRef=db.doc("school_ai_usage/"+actor.uid+"/days/"+date),slotsRef=db.doc("system_private/school_ai_slots"),lease=randomUUID();

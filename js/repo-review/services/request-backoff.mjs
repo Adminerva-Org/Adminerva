@@ -59,13 +59,22 @@ export function createBackoffClient({fetchImpl=globalThis.fetch,github=false,sco
   };
 }
 export async function evaluationJSON(response) {
-  if(!response.ok)throw new RequestFailure("Evaluation service returned HTTP "+response.status+". No grade was saved.",{status:response.status});
+  if(!response.ok)throw new RequestFailure("Evaluation service returned HTTP "+response.status+".",{status:response.status});
+  let data;
+  try{data=await response.json();}
+  catch{throw new RequestFailure("The evaluation service returned unreadable data. Retry or grade manually.",{code:"invalid-evaluation"});}
+  const candidate=data?.candidates?.[0],finishReason=String(candidate?.finishReason||"");
+  if(finishReason==="MAX_TOKENS")
+    throw new RequestFailure("The evaluation output reached its response limit before finishing. Retry or grade manually.",{code:"evaluation-truncated"});
+  if(finishReason&&finishReason!=="STOP"&&finishReason!=="FINISH_REASON_UNSPECIFIED")
+    throw new RequestFailure("The evaluation service stopped before producing a usable draft ("+finishReason.replaceAll("_"," ").toLowerCase()+"). Retry or grade manually.",{code:"evaluation-stopped"});
   try {
-    const data=await response.json();
-    const value=data?.candidates?.[0]?.content?.parts?.map(part=>part.text||"").join("");
+    const value=candidate?.content?.parts?.map(part=>part.text||"").join("");
     if(!value)throw Error("empty");
-    const parsed=JSON.parse(value.replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/,"").trim());
+    const parsed=JSON.parse(value.replace(/^\`\`\`(?:json)?\s*/i,"").replace(/\s*\`\`\`$/,"").trim());
     if(!parsed||Array.isArray(parsed)||typeof parsed!=="object")throw Error("schema");
     return parsed;
-  } catch {throw new RequestFailure("The evaluation response was incomplete or had an invalid format. Your teacher fields are unchanged; retry or grade manually.",{code:"invalid-evaluation"});}
+  } catch {
+    throw new RequestFailure("The evaluation response was incomplete or had an invalid format. Retry or grade manually.",{code:"invalid-evaluation"});
+  }
 }

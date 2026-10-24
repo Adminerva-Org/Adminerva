@@ -79,6 +79,35 @@ export function parseSuggestedRubric(data,criteria,maximum,evidence){
     projectObservations:String(data.projectObservations||"").trim().slice(0,2000)};
 }
 
+export function buildRubricResponseSchema(criteria){
+  const count=Array.isArray(criteria)?criteria.length:0;
+  if(!count)throw Error("Evaluation response schema requires rubric criteria.");
+  return {
+    type:"object",
+    properties:{
+      criteria:{type:"array",minItems:count,maxItems:count,items:{
+        type:"object",
+        properties:{
+          status:{type:"string",format:"enum",enum:["supported","needs_teacher_review"]},
+          score:{type:"number",nullable:true},
+          evidence:{type:"array",items:{type:"object",properties:{
+            sha:{type:"string"},path:{type:"string"}
+          },required:["sha","path"],propertyOrdering:["sha","path"]}},
+          rationale:{type:"string"},
+          reviewAction:{type:"string"}
+        },
+        required:["status","score","evidence","rationale","reviewAction"],
+        propertyOrdering:["status","score","evidence","rationale","reviewAction"]
+      }},
+      feedback:{type:"string"},
+      projectObservations:{type:"string"},
+      limitations:{type:"string"}
+    },
+    required:["criteria","feedback","projectObservations","limitations"],
+    propertyOrdering:["criteria","feedback","projectObservations","limitations"]
+  };
+}
+
 export function buildRubricPrompt({assessment,criteria,checkpointSha,files,patches,contributionScope}){
   const rows=criteria.map((c,i)=>(i+1)+". "+c.name+" ("+c.maxScore+" points)").join("\n");
   const fileText=files.map(f=>"FILE: "+f.path+"\n"+f.text).join("\n\n----\n\n");
