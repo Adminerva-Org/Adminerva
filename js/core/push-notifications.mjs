@@ -15,7 +15,7 @@ const FIREBASE_CONFIG={
   appId:"1:902176956124:web:46d07f47ccbab034e15e19",
   measurementId:"G-XPXLNGZCY2"
 };
-const DEFAULTS=Object.freeze({enabled:true,assessment:true,submission:true,grade:true});
+const DEFAULTS=Object.freeze({enabled:true,assessment:true,submission:true,grade:true,grading:true,issue:true});
 let configPromise=null,messagingPromise=null,syncStarted=false,foregroundBound=false,functionsInstance=null;
 
 function configUrl(){return new URL("../../push-config.json",import.meta.url);}
@@ -63,14 +63,21 @@ function remember(uid,id){try{localStorage.setItem(localDeviceKey(uid),id);}catc
 function remembered(uid){try{return localStorage.getItem(localDeviceKey(uid))||"";}catch{return "";}}
 function forget(uid){try{localStorage.removeItem(localDeviceKey(uid));}catch{}}
 function functions(){return functionsInstance||(functionsInstance=getFunctions(app,"asia-southeast1"));}
-async function showForegroundTestPing(data){
-  const registration=await worker(),tag="adminerva-test-ping";
-  const closeAfter=Math.min(30000,Math.max(5000,Number(data?.autoCloseMs)||15000));
-  await registration.showNotification(data?.title||"Adminerva test notification",{
-    body:data?.body||"Push notifications are working on this device.",
+async function showForegroundPush(data){
+  const registration=await worker(),test=data?.adminervaKind==="test_ping";
+  const tag=test?"adminerva-test-ping":String(data?.tag||("adminerva-"+(data?.type||"notice")+"-"+(data?.sourceId||"event"))).slice(0,120);
+  await registration.showNotification(data?.title||(test?"Adminerva test notification":"Adminerva"),{
+    body:data?.body||(test?"Push notifications are working on this device.":"You have a new Adminerva notification."),
     icon:"assets/New%20Adminerva%20logo.png",badge:"assets/adminerva-notification-badge.png",
-    tag,renotify:true,data:{target:data?.target||"student-settings.html#notifications",adminervaKind:"test_ping"}
+    tag,renotify:true,data:{
+      target:data?.target||"student-home.html",
+      adminervaKind:data?.adminervaKind||"alert",
+      type:data?.type||"notice",
+      sourceId:data?.sourceId||""
+    }
   });
+  if(!test)return;
+  const closeAfter=Math.min(30000,Math.max(5000,Number(data?.autoCloseMs)||15000));
   setTimeout(()=>{void registration.getNotifications({tag}).then(items=>items.forEach(item=>item.close())).catch(()=>{});},closeAfter);
 }
 
@@ -145,7 +152,7 @@ export async function enableDevicePush({requestPermission=true,explicit=true}={}
   if(!foregroundBound){
     foregroundBound=true;
     onMessage(pushMessaging,payload=>{
-      if(payload?.data?.adminervaKind==="test_ping")void showForegroundTestPing(payload.data);
+      if(payload?.data?.adminervaKind)void showForegroundPush(payload.data);
       document.dispatchEvent(new CustomEvent("adminerva-push-message",{detail:payload}));
     });
   }
