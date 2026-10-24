@@ -5,8 +5,8 @@
       "status": "draft",
       "public": true,
       "releasedAt": "2026-10-24",
-      "title": "Notification wiring and Gradebook accuracy",
-      "summary": "Grade and evidence notifications now follow the correct audited state transitions, teacher and student alert routing is aligned end to end, and the Gradebook details modal is centered with clearer current-state notes.",
+      "title": "Simpler educator workflows and notification accuracy",
+      "summary": "Teacher workflows are consolidated around a smaller Educator Hub, combined class and Practice analytics, a clearer Review & Grade flow, compact modals, and corrected notification wiring.",
       "changes": [
         {
           "type": "Fixed",
@@ -67,6 +67,36 @@
           "type": "Fixed",
           "area": "Teacher notification listeners",
           "text": "Teachers rely on their per-user notification feed instead of broad section-restricted Firestore collection listeners that could fail authorization. Administrators retain broad fallback feeds for historical records."
+        },
+        {
+          "type": "Updated",
+          "area": "Educator Hub navigation",
+          "text": "Teacher navigation is task-based: Teaching, Review, Resources and School setup. Standalone evidence inspectors and legacy graders are removed from primary menus while their underlying engines remain available inside the integrated workflow."
+        },
+        {
+          "type": "Updated",
+          "area": "Analytics",
+          "text": "Class Analytics and Practice Analytics are combined into one Analytics workspace with Class results and Practice & learning views. The old Practice Analytics URL redirects to the combined page."
+        },
+        {
+          "type": "Fixed",
+          "area": "Teacher analytics access",
+          "text": "Academic analytics now queries only assessments and grades visible to the teacher's assigned sections instead of attempting broad collection reads that can fail section-scoped permissions."
+        },
+        {
+          "type": "Fixed",
+          "area": "Practice analytics access",
+          "text": "Current and earlier Practice analytics load only the teacher's assigned class roster instead of listing the full student collection."
+        },
+        {
+          "type": "Updated",
+          "area": "Review & Grade",
+          "text": "The primary review workspace is reduced to Inbox, Evidence, Review & Grade and Observed activity. Repository and contribution engines remain inside evidence/review details or the collapsed legacy area instead of competing as separate tools."
+        },
+        {
+          "type": "Updated",
+          "area": "Saved lesson plans",
+          "text": "The saved-plan dialog is more compact: one close control, refresh in the header, a small older-lesson recovery strip and more vertical space for the lesson list."
         }
       ]
     },
