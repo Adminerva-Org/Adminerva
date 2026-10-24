@@ -16,3 +16,5 @@ jobs:
           node-version: "22"
       - name: Parse release sources and resolve local assets
         run: node scripts/check-release-source.mjs
+      - name: Check first-release reliability invariants
+        run: node scripts/check-first-release-reliability.mjs
