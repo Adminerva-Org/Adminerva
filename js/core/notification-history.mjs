@@ -1,5 +1,5 @@
 /** Shared navigation, account access, reporting and release infrastructure: notification history. */
-import {notificationTarget} from "./notification-routing.mjs?v=1.3.0";
+import {notificationTarget} from "./notification-routing.mjs?v=1.3.8";
 export const NOTIFICATION_HISTORY_LIMIT=200;
 export const historyDocId=key=>"n_"+encodeURIComponent(String(key||"")).slice(0,900);
 export function historyRecord(item,ownerUid,savedForLater=false){
