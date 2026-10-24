@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import vm from "node:vm";
 
-function fixture({role="teacher",sections=["A","B"],authorization=async()=>role}={}){
-  const calls=[],listeners=[],auth={currentUser:{uid:"instructor"},authStateReady:async()=>{}};
+function fixture({role="teacher",sections=["A","B"],authorization=async()=>role,currentUser={uid:"instructor"},authReady=async()=>{}}={}){
+  const calls=[],listeners=[],auth={currentUser,authStateReady:async()=>authReady(auth)};
   const reference=(type,path)=>({type,path,firestore:{}});
   const sdk={
     collection:(_database,...parts)=>reference("collection",parts.join("/")),
@@ -37,6 +37,21 @@ test("teacher student reads use the credential-free projection and constrain eve
 test("unassigned teachers receive an empty result, never a broad roster read",async()=>{
   const current=fixture({sections:[]});const result=await current.api.getDocs(current.api.collection({},"students"));
   assert.equal(result.empty,true);assert.equal(current.calls.length,0);
+});
+test("auth initialization does not look like an account switch",async()=>{
+  const current=fixture({currentUser:null,authReady:async auth=>{auth.currentUser={uid:"instructor"};}});
+  const result=await current.api.getDocs(current.api.collection({},"students"));
+  assert.equal(result.size,1);
+  assert.equal(current.calls.filter(call=>call.operation==="list").length,2);
+});
+test("teacher issue feeds are constrained to every assigned section",async()=>{
+  const current=fixture();
+  const audience={field:"audience",operator:"==",value:"teacher"};
+  await current.api.getDocs(current.api.query(current.api.collection({},"issues"),audience));
+  const lists=current.calls.filter(call=>call.operation==="list");
+  assert.equal(lists.length,2);
+  assert.ok(lists.every(call=>call.constraints[0]===audience));
+  assert.deepEqual(lists.map(call=>call.constraints.at(-1).value),["A","B"]);
 });
 test("assessment owner and assigned-section plans preserve the caller's constraints",async()=>{
   const current=fixture();const constraint={field:"quarter",operator:"==",value:"Q3"};
