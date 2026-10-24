@@ -31,7 +31,7 @@ function watchEvidence(ref,sequence){
     render();
     if(evidenceSyncing)return status("Checking current evidence status with the server. Editing resumes when connected.");
     if(changed){
-      status(saved?.status==="reopened"?"Your instructor reopened this evidence. Change the commit checkboxes or checkpoint, then resubmit for fresh approval.":
+      status(saved?.status==="reopened"?"Your instructor reopened this evidence"+(saved.reopenReason?": "+saved.reopenReason:"")+". Change your evidence commits or project checkpoint, then resubmit for fresh approval.":
         saved?.status==="approved"?"Checkpoint approved. Selection is protected until your instructor reopens it.":
         "Evidence status updated: "+(saved?.status||"not submitted")+". "+(selectionDirty?"Your unsaved selection was kept; review it before resubmitting.":"You can revise editable evidence."));
       window.dispatchEvent(new CustomEvent("adminerva:evidence-status",{detail:{assessmentId:context.task.id,studentId:context.profile.id,evidenceStatus:saved?.status||null}}));
@@ -223,7 +223,7 @@ async function load(){
       ?"Showing "+commits.length+" recent commits. Select your own evidence commits, then choose any later project checkpoint that contains them. Use Load older commits to find historical evidence."
       :"Select your own relevant commits, choose a project checkpoint that contains them, and submit. The checkpoint may belong to a teammate. Reclaims remain pending staff review.");
     if(saved?.status==="approved")status("Checkpoint approved. Ask your instructor to reopen it before resubmitting or withdrawing. Your current evidence and grade remain protected.");
-    else if(saved?.status==="reopened")status("Your instructor reopened this evidence. Update your selection and resubmit for fresh approval. Previous evidence remains in the audit history.");
+    else if(saved?.status==="reopened")status("Your instructor reopened this evidence"+(saved.reopenReason?": "+saved.reopenReason:"")+". Update your evidence commits and project checkpoint, then resubmit for fresh approval. Previous evidence remains in the audit history.");
     else if(saved?.status==="withdrawn")status("Evidence withdrawn. You may revise and resubmit; the previous submission remains in the audit history.");
     else if(saved?.status==="submitted")status("Evidence submitted. Before approval you may revise and resubmit, or withdraw. Resubmission records a new server time and preserves prior evidence.");
     else if(saved?.status==="needs_review")status("Your teacher proposed historical evidence, not a student submission. Ask them to reopen it for student changes if you need to choose your own evidence commits and checkpoint before approval.");
