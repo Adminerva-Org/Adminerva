@@ -76,10 +76,12 @@ async function pushAllowed(uid,type){
   return data.enabled!==false&&data[type]!==false;
 }
 async function pushToUser(uid,item){
-  if(!uid||item.push!==true||!await pushAllowed(uid,item.type))return;\n  const devices=await db.collection("push_devices").where("ownerUid","==",uid).limit(12).get();
+  if(!uid||item.push!==true||!await pushAllowed(uid,item.type))return;
+  const devices=await db.collection("push_devices").where("ownerUid","==",uid).limit(12).get();
   if(devices.empty)return;
   await Promise.all(devices.docs.map(async device=>{
-    const data=device.data(),token=String(data.token||"");\n    if(data.enabled!==true||!token)return;
+    const data=device.data(),token=String(data.token||"");
+    if(data.enabled!==true||!token)return;
     try{
       await messaging.send({
         token,
