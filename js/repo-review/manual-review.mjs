@@ -231,7 +231,7 @@ async function generateAIDraft(){
     if(session===state.token&&state.active===active){
       aiStatus("Evaluation unavailable: "+error.message+" No score or feedback was changed.",true);
       el("manualReviewFallback").classList.remove("hidden");
-      el("manualReviewRetry").textContent=error.retryAt?"Retry with backoff (after "+new Date(error.retryAt).toLocaleTimeString()+")":"Retry with backoff";
+      el("manualReviewRetry").textContent=error.retryAt?"Retry after "+new Date(error.retryAt).toLocaleTimeString():"Retry evaluation";
     }
   }finally{
     clearTimeout(evaluationTimeout);
