@@ -146,6 +146,9 @@ async function processCSV(csvText) {
   const sectionIdx = headers.findIndex(
     (h) => h.includes("section") || h.includes("club") || h.includes("class"),
   );
+  const schoolYearIdx = headers.findIndex(
+    (h) => h.includes("school year") || h.includes("schoolyear") || h.includes("academic year"),
+  );
 
   if (emailIdx === -1)
     return showUploadError("CSV must contain a column named 'email'.");
@@ -157,6 +160,22 @@ async function processCSV(csvText) {
   uploadBtn.textContent = "Syncing to Database...";
 
   try {
+    const [existingSnap,catalogSnap]=await Promise.all([
+      getDocs(collection(db,"students")),
+      getDocs(collection(db,"school_catalog","sections","records"))
+    ]);
+    const identity=(email,section,year)=>[String(email||"").toLowerCase().trim(),String(section||"").trim(),String(year||"").trim()].join("\u0000");
+    const legacyIdentity=(email,section)=>[String(email||"").toLowerCase().trim(),String(section||"").trim()].join("\u0000");
+    const existingByIdentity=new Map();
+    const legacyCandidates=new Map();
+    existingSnap.forEach(record=>{
+      const data=record.data(),key=identity(data.email,data.section,data.schoolYear);
+      existingByIdentity.set(key,record.id);
+      const legacyKey=legacyIdentity(data.email,data.section);
+      if(!legacyCandidates.has(legacyKey))legacyCandidates.set(legacyKey,[]);
+      legacyCandidates.get(legacyKey).push({id:record.id,schoolYear:String(data.schoolYear||"").trim()});
+    });
+    const catalogSections=catalogSnap.docs.map(record=>({id:record.id,...record.data()}));
     const batch = writeBatch(db);
     let count = 0;
 
@@ -173,24 +192,37 @@ async function processCSV(csvText) {
       if (!fullName) fullName = "Unnamed Student";
 
       const rawSectionData = cols[sectionIdx] || "Unassigned";
+      const csvSchoolYear=schoolYearIdx!==-1?String(cols[schoolYearIdx]||"").trim():"";
       const sections = rawSectionData
         .split(",")
         .map((s) => s.trim())
         .filter((s) => s.length > 0);
 
       for (let sec of sections) {
+        const catalogMatches=catalogSections.filter(record=>record.status!=="archived"&&
+          String(record.name||"").trim().toLowerCase()===sec.toLowerCase()&&
+          (!csvSchoolYear||!record.schoolYear||String(record.schoolYear).trim()===csvSchoolYear));
+        const catalog=catalogMatches.length===1?catalogMatches[0]:null;
+        const schoolYear=csvSchoolYear||String(catalog?.schoolYear||"").trim();
         const studentData = {
           email: rawEmail,
           firstName: firstName,
           lastName: lastName,
           name: fullName,
           section: sec,
+          ...(catalog?{sectionId:catalog.id}:{}),
+          ...(schoolYear?{schoolYear}:{}),
+          status:"active",
           role: "student",
           enrolledAt: new Date().toISOString(),
         };
 
-        const safeSection = sec.replace(/[^a-zA-Z0-9]/g, "");
-        const compositeId = `${rawEmail}_${safeSection}`;
+        const exactExisting=existingByIdentity.get(identity(rawEmail,sec,schoolYear));
+        const legacy=legacyCandidates.get(legacyIdentity(rawEmail,sec))||[];
+        const compatibleLegacy=!exactExisting&&legacy.length===1&&(!legacy[0].schoolYear||!schoolYear)?legacy[0].id:"";
+        const stableSection=catalog?.id||encodeURIComponent(sec.normalize("NFKC").trim());
+        const stableYear=encodeURIComponent(schoolYear||"unspecified");
+        const compositeId = exactExisting||compatibleLegacy||`${rawEmail}__${stableYear}__${stableSection}`;
 
         const docRef = doc(db, "students", compositeId);
         batch.set(docRef, studentData, { merge: true });
@@ -204,7 +236,7 @@ async function processCSV(csvText) {
 
     uploadStatus.className =
       "text-xs font-bold text-center mt-3 text-emerald-600";
-    uploadStatus.textContent = `Imported ${count} roster records. Assign these same section names to teachers next.`;
+    uploadStatus.textContent = `Imported or updated ${count} roster records without deleting prior grading history. Assign these same section names to teachers next.`;
     selectedCsvFile = null;
     fileInput.value="";
     dropzone.innerHTML = `<span class="text-3xl block mb-2">📥</span><p class="text-sm font-bold text-slate-700">Click or drag CSV here</p><p class="text-xs text-slate-400 mt-1">Maximum 500 records per upload</p>`;
@@ -392,7 +424,9 @@ function applyFiltersAndRender() {
       const safeEmail = escapeHTML(data.email);
       const safeId = escapeHTML(data.id);
 
-      const statusHtml = `<span id="${safePillId}" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${safeStatusClass}">${safeStatusText}</span>`;
+      const accessSuspended=["suspended","archived"].includes(String(data.status||"active"));
+      const accessHtml=accessSuspended?'<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 mr-1">Access suspended</span>':"";
+      const statusHtml = accessHtml+`<span id="${safePillId}" class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${safeStatusClass}">${safeStatusText}</span>`;
 
       // Feature: Show GitHub URL if available safely
       let repoLinkHtml = "";
@@ -420,12 +454,12 @@ function applyFiltersAndRender() {
                     </td>
                     <td class="px-6 py-4 text-right align-top whitespace-nowrap space-x-1">
                         <button type="button" data-student-action="view" class="text-blue-600 hover:text-white border border-blue-200 bg-blue-50 hover:bg-blue-600 font-bold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded transition shadow-sm">View As</button>
-                        <button type="button" data-student-action="revoke" class="text-red-500 hover:text-white font-bold text-[10px] uppercase tracking-wider border border-red-100 bg-red-50 hover:bg-red-500 px-3 py-1.5 rounded transition shadow-sm">Revoke</button>
+                        <button type="button" data-student-action="revoke" class="text-red-500 hover:text-white font-bold text-[10px] uppercase tracking-wider border border-red-100 bg-red-50 hover:bg-red-500 px-3 py-1.5 rounded transition shadow-sm">${accessSuspended?"Restore":"Suspend"}</button>
                     </td>
                 </tr>
             `;
       tbody.insertAdjacentHTML("beforeend", tr);
-      const row=tbody.lastElementChild;row.querySelector('[data-student-action="view"]').addEventListener("click",()=>window.viewAsStudent(data.email));row.querySelector('[data-student-action="revoke"]').addEventListener("click",()=>window.revokeStudent(data.id));
+      const row=tbody.lastElementChild;row.querySelector('[data-student-action="view"]').addEventListener("click",()=>window.viewAsStudent(data.email));row.querySelector('[data-student-action="revoke"]').addEventListener("click",()=>accessSuspended?window.restoreStudent(data.id):window.revokeStudent(data.id));
     });
   }
 
@@ -615,72 +649,63 @@ function updateDOMStatus(stu) {
 // DATA DELETION
 // ==========================================
 window.revokeStudent = async function (compositeDocId) {
-  if (!confirm(`Are you sure you want to revoke this specific access?`)) return;
-  if (typeof window.showSubtleLoader === "function")
-    window.showSubtleLoader("Revoking access...");
-
+  if (!confirm("Suspend this student's school access? Their roster record, grades, submissions, evidence, and history will be preserved.")) return;
+  if (typeof window.showSubtleLoader === "function") window.showSubtleLoader("Suspending access...");
   try {
-    await deleteDoc(doc(db, "students", compositeDocId));
+    await setDoc(doc(db, "students", compositeDocId),{
+      status:"suspended",suspendedAt:new Date().toISOString(),suspendedBy:auth.currentUser?.uid||""
+    },{merge:true});
     await loadDirectory();
   } catch (error) {
-    alert("Failed to delete user: " + error.message);
+    alert("Failed to suspend access: " + error.message);
   } finally {
-    if (typeof window.hideSubtleLoader === "function")
-      window.hideSubtleLoader();
+    if (typeof window.hideSubtleLoader === "function") window.hideSubtleLoader();
+  }
+};
+
+window.restoreStudent = async function (compositeDocId) {
+  if (!confirm("Restore this student's school access using the preserved roster record?")) return;
+  if (typeof window.showSubtleLoader === "function") window.showSubtleLoader("Restoring access...");
+  try {
+    await setDoc(doc(db,"students",compositeDocId),{
+      status:"active",restoredAt:new Date().toISOString(),restoredBy:auth.currentUser?.uid||""
+    },{merge:true});
+    await loadDirectory();
+  } catch (error) {
+    alert("Failed to restore access: " + error.message);
+  } finally {
+    if (typeof window.hideSubtleLoader === "function") window.hideSubtleLoader();
   }
 };
 
 window.clearDirectory = async function () {
   const firstConfirm = confirm(
-    "⚠️ DANGER: Are you sure you want to delete ALL students and ALL grading data? This cannot be undone.",
+    "Suspend access for every student in the current roster? Grades, submissions, evidence, and historical records will be preserved.",
   );
   if (!firstConfirm) return;
-
   const secondConfirm = confirm(
-    "Please confirm one more time. This will wipe your entire directory AND reset all analytics metrics to zero.",
+    "Confirm bulk suspension. Students will lose normal workspace admission until restored or re-imported; academic history will not be deleted.",
   );
   if (!secondConfirm) return;
 
-  if (typeof window.showSubtleLoader === "function")
-    window.showSubtleLoader("Wiping Database...");
-
+  if (typeof window.showSubtleLoader === "function") window.showSubtleLoader("Suspending roster access...");
   try {
-    const deletePromises = [];
-    let studentCount = 0;
-    let gradeCount = 0;
-
     const studentSnap = await getDocs(collection(db, "students"));
-    studentSnap.forEach((documentSnapshot) => {
-      const data = documentSnapshot.data();
-      if (data.email === SUPER_ADMIN_EMAIL || data.email === TEACHER_EMAIL)
-        return;
-      deletePromises.push(deleteDoc(doc(db, "students", documentSnapshot.id)));
-      studentCount++;
+    const records=studentSnap.docs.filter(record=>{
+      const email=String(record.data()?.email||"").toLowerCase();
+      return email!==SUPER_ADMIN_EMAIL&&email!==TEACHER_EMAIL&&record.data()?.status!=="suspended";
     });
-
-    const gradesSnap = await getDocs(collection(db, "grades"));
-    gradesSnap.forEach((documentSnapshot) => {
-      deletePromises.push(deleteDoc(doc(db, "grades", documentSnapshot.id)));
-      gradeCount++;
-    });
-
-    if (deletePromises.length === 0) {
-      alert("The database is already completely empty.");
-      if (typeof window.hideSubtleLoader === "function")
-        window.hideSubtleLoader();
-      return;
-    }
-
-    await Promise.all(deletePromises);
-    alert(
-      `✅ Hard Reset Complete: Cleared ${studentCount} students and ${gradeCount} grade records.`,
-    );
+    if(records.length>500)throw Error("More than 500 student records are active. Suspend sections separately before using the bulk action.");
+    if(!records.length){alert("All student roster records are already suspended.");return;}
+    const batch=writeBatch(db),actor=auth.currentUser?.uid||"",timestamp=new Date().toISOString();
+    for(const record of records)batch.set(record.ref,{status:"suspended",suspendedAt:timestamp,suspendedBy:actor},{merge:true});
+    await batch.commit();
+    alert(`Suspended ${records.length} student access record${records.length===1?"":"s"}. Grades, submissions, evidence, and history were preserved.`);
     await loadDirectory();
   } catch (error) {
-    console.error("Error clearing database:", error);
-    alert("❌ Failed to clear database: " + error.message);
+    console.error("Error suspending roster:", error);
+    alert("Failed to suspend roster access: " + error.message);
   } finally {
-    if (typeof window.hideSubtleLoader === "function")
-      window.hideSubtleLoader();
+    if (typeof window.hideSubtleLoader === "function") window.hideSubtleLoader();
   }
 };
