@@ -106,7 +106,6 @@ exports.activityConsentChanged=onDocumentWritten({document:"activity_preferences
 const staffEmails=["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"];
 // Bug reports are always administrator-directed. Legacy reports have admin scope.
 const reportAudience=issue=>issue.category==="Bug"?"admin":issue.audience==="teacher"?"teacher":"admin";
-const isBugReport=issue=>issue.category==="Bug";
 const cleanId=value=>String(value||"").replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,150);
 async function byEmail(email){
   if(typeof email!=="string"||!email)return null;
