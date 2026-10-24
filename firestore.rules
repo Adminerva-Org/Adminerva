@@ -75,16 +75,15 @@ service cloud.firestore {
     match /staff_access/{email} {
       function validStaff() {
         let data = request.resource.data;
-        let creating = resource == null;
+        let prior = resource == null ? null : resource.data;
         let audit = getAfter(/databases/$(database)/documents/staff_access/$(email)/revisions/$(string(data.revision))).data;
         return data.keys().hasOnly(["email","displayName","role","status","revision","reason","updatedBy","updatedAt","sections"]) &&
           data.email == email && email == email.lower() && email.matches("^[^/@ ]+@[^/@ ]+\\.[^/@ ]+$") && email.size() <= 254 &&
           email != "babaynike2013@gmail.com" && data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 120 &&
           data.role == "teacher" && data.status in ["active","disabled"] && data.get("sections",[]) is list && data.get("sections",[]).size() <= 40 && data.revision is int &&
-          data.revision == (creating ? 1 : resource.data.revision + 1) && data.reason is string && data.reason.size() >= 12 && data.reason.size() <= 600 &&
+          data.revision == (prior == null ? 1 : prior.revision + 1) && data.reason is string && data.reason.size() >= 12 && data.reason.size() <= 600 &&
           data.updatedBy == request.auth.uid && data.updatedAt == request.time &&
-          (creating ? audit.before == null : audit.before == resource.data) &&
-          audit.after == data && audit.actorUid == request.auth.uid && audit.createdAt == request.time;
+          audit.before == prior && audit.after == data && audit.actorUid == request.auth.uid && audit.createdAt == request.time;
       }
       allow get: if isAdmin() || (signedIn() && request.auth.token.email_verified == true && email == request.auth.token.email.lower());
       allow list: if isAdmin();
@@ -109,15 +108,12 @@ service cloud.firestore {
              (kind == "lesson_plans" && data.sessions is list && data.sessions.size() <= 12 && data.weekly_overview is map && data.subject_title is string && data.subject_title.size() <= 300) ||
              (kind == "presentations" && data.deck is list && data.deck.size() <= 200))));
       }
-      function validVersionedPersonalUpdate() {
-        let audit = getAfter(/databases/$(database)/documents/staff_workspaces/$(ownerUid)/$(kind)/$(recordId)/revisions/$(string(resource.data.version))).data;
-        return request.resource.data.ownerUid == resource.data.ownerUid &&
+      function validPersonalUpdate() {
+        let audit = kind == "preferences" ? null : getAfter(/databases/$(database)/documents/staff_workspaces/$(ownerUid)/$(kind)/$(recordId)/revisions/$(string(resource.data.version))).data;
+        return kind == "preferences" || (request.resource.data.ownerUid == resource.data.ownerUid &&
           (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["is_archived","archived_at","purge_at"]) ||
            (request.resource.data.version == resource.data.version + 1 && audit.archivedRevisionAt == request.time &&
-            audit.diff(resource.data).affectedKeys().hasOnly(["archivedRevisionAt"])));
-      }
-      function validPersonalUpdate() {
-        return kind == "preferences" || validVersionedPersonalUpdate();
+            audit.diff(resource.data).affectedKeys().hasOnly(["archivedRevisionAt"]))));
       }
       allow read: if kind in ["lesson_plans","presentations","schedules","preferences"] && (personalOwner() || isAdmin());
       allow create: if personalOwner() && validPersonal() && (kind == "preferences" || request.resource.data.version == 1);
@@ -272,10 +268,9 @@ service cloud.firestore {
       }
       function catalogAudit() {
         let data = request.resource.data;
-        let creating = !exists(/databases/$(database)/documents/school_catalog/$(kind)/records/$(recordId));
+        let before = exists(/databases/$(database)/documents/school_catalog/$(kind)/records/$(recordId)) ? resource.data : null;
         let audit = getAfter(/databases/$(database)/documents/school_catalog/$(kind)/records/$(recordId)/revisions/$(string(data.revision))).data;
-        return data.revision == (creating ? 1 : resource.data.revision + 1) &&
-          (creating ? audit.before == null : audit.before == resource.data) && audit.after == data &&
+        return data.revision == (before == null ? 1 : before.revision + 1) && audit.before == before && audit.after == data &&
           audit.actorUid == request.auth.uid && audit.createdAt == request.time;
       }
       allow read: if isInstructor();
@@ -468,20 +463,19 @@ service cloud.firestore {
       function matchingRevision() {
         let data = request.resource.data;
         let path = /databases/$(database)/documents/student_grades/$(data.gradeId);
-        let hasBefore = exists(path);
-        let before = get(path).data;
+        let before = exists(path) ? get(path).data : null;
         let after = getAfter(path).data;
         return data.keys().hasOnly(["gradeId","studentId","taskId","editorUid","reason","before","after","createdAt"]) &&
           data.gradeId is string && data.gradeId.size() <= 500 && data.gradeId.matches("^[^/]+$") &&
           data.studentId == after.studentId && data.taskId == after.taskId &&
           data.editorUid == request.auth.uid && data.createdAt == request.time &&
           data.reason is string && data.reason.size() >= 10 && data.reason.size() <= 3100 &&
-          (data.before == null ? !hasBefore : (hasBefore && data.before is map &&
+          (data.before == null ? before == null : (before != null && data.before is map &&
             data.before.get("score",before.get("score",null)) == before.get("score",null) &&
             data.before.get("feedback",before.get("feedback",null)) == before.get("feedback",null) &&
             data.before.get("published",before.get("published",false)) == before.get("published",false))) &&
           data.after is map && data.after.keys().hasAny(["score","feedback","published"]) &&
-          (!hasBefore || after != before) &&
+          (before == null || after != before) &&
           data.after.get("score",after.get("score",null)) == after.get("score",null) &&
           data.after.get("feedback",after.get("feedback",null)) == after.get("feedback",null) &&
           data.after.get("published",after.get("published",false)) == after.get("published",false);
