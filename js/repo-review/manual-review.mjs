@@ -3,7 +3,7 @@ import { auth, db } from "../core/firebase-core.js?v=1.3.0";
 import {generateSchoolContent,schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
-import {createBackoffClient,evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
+import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.1";
 import {renderFeedbackMarkdown} from "./review-ui.mjs?v=1.3.0";
 import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs?v=1.3.0";
 import {
@@ -11,8 +11,8 @@ import {
 } from "../core/teaching-firestore.mjs?v=1.3.0";
 import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=1.3.0";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
-import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,parseSuggestedRubric}
-  from "./services/v2-grading-assistant.mjs?v=1.3.0";
+import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,buildRubricResponseSchema,parseSuggestedRubric}
+  from "./services/v2-grading-assistant.mjs?v=1.3.1";
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
 import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {createReviewRequests} from "./services/review-requests.mjs?v=1.3.0";
@@ -171,7 +171,7 @@ async function generateAIDraft(){
   let connection;try{connection=await schoolAIStatus();}catch(error){return aiStatus(error.message,true);}
   const model=String(connection.configured?connection.model:localStorage.getItem("Adminerva_ai_model")||"gemini-3.8-flash").trim();
   if(!/^[a-zA-Z0-9._-]{1,80}$/.test(model))return aiStatus("The configured evaluation model name is invalid. Check provider settings.",true);
-  if(!confirm("Evaluate this approved checkpoint? Relevant student source and verified diffs will be sent to the configured Gemini AI provider to generate draft scores and feedback. Verify the result before saving."))return;
+  if(!confirm("Evaluate this approved checkpoint? Relevant student source and verified diffs will be sent through the school’s configured evaluation service to generate draft scores and feedback. Verify the result before saving."))return;
   const session=state.token;
   state.aiBusy=true;
   const controller=new AbortController();state.aiAbort=controller;
@@ -183,7 +183,7 @@ async function generateAIDraft(){
     }
   },60000);
   const button=el("manualReviewAIGenerate");button.disabled=true;
-  button.textContent="Generating…";
+  button.textContent="Evaluating…";
   try{
     const criteria=parseWeightedRubric(active.assessment.evalCriteria,active.maxScore);
     aiStatus("Retrieving selected commit diffs and source files from the approved GitHub checkpoint…");
@@ -200,9 +200,22 @@ async function generateAIDraft(){
       files:evidence.files,patches:evidence.patches,contributionScope:active.evidence.contributionScope
     });
     if(controller.signal.aborted)throw Error("Evaluation timed out. Continue manually or retry.");
-    active.evaluationClient ||= createBackoffClient({signal:state.abort.signal,scope:"evaluation"});
-    const result=await generateSchoolContent({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",temperature:0.1}},{signal:controller.signal,purpose:"evaluation"});
-    const parsed=await evaluationJSON({ok:true,json:async()=>result});
+    const evaluationPayload={contents:[{parts:[{text:prompt}]}],generationConfig:{
+      responseMimeType:"application/json",responseSchema:buildRubricResponseSchema(criteria),
+      maxOutputTokens:8192,temperature:0.1
+    }};
+    let parsed;
+    for(let attempt=0;attempt<2;attempt++){
+      const result=await generateSchoolContent(evaluationPayload,{signal:controller.signal,purpose:"evaluation"});
+      try{parsed=await evaluationJSON({ok:true,json:async()=>result});break;}
+      catch(error){
+        if(attempt===0&&error.code==="invalid-evaluation"){
+          aiStatus("The first evaluation response was incomplete. Retrying once with the verified evidence…");
+          continue;
+        }
+        throw error;
+      }
+    }
     const draft=parseSuggestedRubric(parsed,criteria,active.maxScore,evidence);
     if(session!==state.token||state.active!==active)return;
     active.aiDraft={model,checkpointSha:active.checkpointSha,...draft};
@@ -216,7 +229,7 @@ async function generateAIDraft(){
     el("manualReviewFallback").classList.add("hidden");
   }catch(error){
     if(session===state.token&&state.active===active){
-      aiStatus("Evaluation unavailable: "+error.message+" Your teacher fields and saved grade are unchanged.",true);
+      aiStatus("Evaluation unavailable: "+error.message+" No score or feedback was changed.",true);
       el("manualReviewFallback").classList.remove("hidden");
       el("manualReviewRetry").textContent=error.retryAt?"Retry with backoff (after "+new Date(error.retryAt).toLocaleTimeString()+")":"Retry with backoff";
     }
