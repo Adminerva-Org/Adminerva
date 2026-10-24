@@ -59,8 +59,11 @@ async function load(detail){
       getDocs(collection(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items"))
     ]);
     evidenceMap=new Map(evidenceSnap.docs.filter(record=>record.data().section===detail.section).map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
-    draftMap=new Map(draftsSnap.docs.filter(record=>record.data().taskId===detail.taskId&&record.data().section===detail.section)
-      .map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
+    draftMap=new Map(draftsSnap.docs.filter(record=>{
+      const draft=record.data(),evidence=evidenceMap.get(draft.studentId);
+      return draft.taskId===detail.taskId&&draft.section===detail.section&&draft.status==="private_suggestion"&&
+        evidence?.status==="approved"&&draft.evidenceRevision===evidenceRevision(evidence)&&draft.checkpointSha===evidence.approvedCheckpointSha;
+    }).map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
   }catch(error){el("gbBulkStatus").textContent="Class review status is partially unavailable: "+error.message;}
   render();
 }
