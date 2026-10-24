@@ -40,25 +40,18 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   const staffGroups = [
     { name: "Teaching", area: "educator", items: [
-      ["dashboard", "Class analytics", "teacher-analytics.html"],
-      ["gradebook", "Gradebook", "gradebook.html"],
-      ["repofetch", "Review & grade", "repofetch.html"],
-      ["studio", "Assessment Studio", "assessment-studio.html"],
-      ["practice", "Practice analytics", "practice-analytics.html"]
+      ["home", "Educator Hub", "teacher-home.html"],
+      ["planner", "Lesson planner", "lesson-planner.html"],
+      ["studio", "Assessment studio", "assessment-studio.html"],
+      ["dashboard", "Analytics", "teacher-analytics.html"]
     ] },
-    { name: "Evidence", area: "educator", items: [
+    { name: "Review", area: "educator", items: [
       ["submissions", "Submission inbox", "submissions.html"],
-      ["evidence", "Assessment evidence", "assessment-evidence-review.html"],
-      ["contributions", "Contribution inspector", "contribution-inspector.html"],
-      ["group-inspector", "Group inspector", "group-inspector.html"],
+      ["repofetch", "Review & grade", "repofetch.html"],
+      ["gradebook", "Gradebook", "gradebook.html"],
       ["repobank", "Repository bank", "repobank.html"]
     ] },
-    { name: "More tools", area: "educator", secondary: true, items: [
-      ["activity-grader", "Manual activity grader", "activity-grader.html"],
-      ["grader", "Repository grader", "grading.html"]
-    ] },
-    { name: "Planning", area: "lesson", items: [
-      ["planner", "Lesson Planner", "lesson-planner.html"],
+    { name: "Resources", area: "lesson", items: [
       ["presentation", "Slide editor", "presentation.html"],
       ["schedule", "Teacher schedule", "schedule.html"],
       ["library", "Reference library", "library.html"]
