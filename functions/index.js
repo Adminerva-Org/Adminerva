@@ -76,12 +76,10 @@ async function pushAllowed(uid,type){
   return data.enabled!==false&&data[type]!==false;
 }
 async function pushToUser(uid,item){
-  if(!uid||!await pushAllowed(uid,item.type))return;
-  const devices=await db.collection("push_devices").where("ownerUid","==",uid).where("enabled","==",true).limit(12).get();
+  if(!uid||item.push!==true||!await pushAllowed(uid,item.type))return;\n  const devices=await db.collection("push_devices").where("ownerUid","==",uid).limit(12).get();
   if(devices.empty)return;
   await Promise.all(devices.docs.map(async device=>{
-    const data=device.data(),token=String(data.token||"");
-    if(!token)return;
+    const data=device.data(),token=String(data.token||"");\n    if(data.enabled!==true||!token)return;
     try{
       await messaging.send({
         token,
@@ -118,7 +116,7 @@ async function notify(uid,id,item){
     });
     created=true;
   }catch(error){if(error.code!==6&&error.code!=="already-exists")throw error}
-  if(created)await pushToUser(uid,item);
+  if(created)await pushToUser(uid,item).catch(error=>console.warn("Push fan-out skipped",{uid,code:error.code||"unknown"}));
 }
 async function notifyMany(uids,id,payload){
   await Promise.all([...new Set(uids.filter(Boolean))].map(uid=>notify(uid,id,payload)));
@@ -230,7 +228,7 @@ exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{eviden
     const assessmentTitle=assessment?.exists?(assessment.data().title||"Assessment"):"Assessment";
     const reason=String(after.reopenReason||"Your teacher requested a new evidence selection.").trim();
     await notify(uid,"evidence_reopened_"+event.params.evidenceId+"_"+String(after.revision||0),{
-      type:"submission",title:"Submission returned — changes required",
+      type:"submission",push:true,title:"Submission returned — changes required",
       body:(assessmentTitle+" · "+reason+" Update your evidence and resubmit.").slice(0,300),
       sourceId:event.params.evidenceId,target:"student-assessments.html"
     });
@@ -268,7 +266,7 @@ exports.gradePublished=onDocumentUpdated("student_grades/{gradeId}",async event=
   const student=await db.doc("students/"+now.studentId).get();if(!student.exists)return;
   const uid=await byEmail(student.data().email);
   await notify(uid,"grade_published_"+event.id,{
-    type:"grade",title:"A reviewed grade is available",
+    type:"grade",push:true,title:"A reviewed grade is available",
     body:"Open your assessments to read the published feedback.",
     sourceId:event.params.gradeId,target:"student-assessments.html"
   });
@@ -282,7 +280,7 @@ exports.assessmentAssigned=onDocumentUpdated("assessments/{assessmentId}",async 
     const students=await db.collection("students").where("section","==",section).get();
     const uids=await Promise.all(students.docs.map(d=>byEmail(d.data().email)));
     await notifyMany(uids,"assignment_"+event.params.assessmentId+"_"+cleanId(section),{
-      type:"assessment",title:"New assessment assigned",
+      type:"assessment",push:true,title:"New assessment assigned",
       body:now.title||"New assessment",sourceId:event.params.assessmentId,
       target:"student-assessments.html"
     });
@@ -309,7 +307,7 @@ exports.assessmentCreated=onDocumentCreated("assessments/{assessmentId}",async e
     const students=await db.collection("students").where("section","==",section).get();
     const uids=await Promise.all(students.docs.map(d=>byEmail(d.data().email)));
     await notifyMany(uids,"assignment_"+event.params.assessmentId+"_"+cleanId(section),{
-      type:"assessment",title:"New assessment assigned",
+      type:"assessment",push:true,title:"New assessment assigned",
       body:data.title||"New assessment",sourceId:event.params.assessmentId,
       target:"student-assessments.html"
     });
@@ -323,7 +321,7 @@ exports.gradeCreatedPublished=onDocumentCreated("student_grades/{gradeId}",async
   if(!student.exists)return;
   const uid=await byEmail(student.data().email);
   await notify(uid,"grade_created_"+event.params.gradeId,{
-    type:"grade",title:"A reviewed grade is available",
+    type:"grade",push:true,title:"A reviewed grade is available",
     body:"Open your assessments to read published feedback.",
     sourceId:event.params.gradeId,target:"student-assessments.html"
   });
@@ -337,7 +335,7 @@ exports.gradeCorrection=onDocumentUpdated("student_grades/{gradeId}",async event
   if(!student.exists)return;
   const uid=await byEmail(student.data().email);
   await notify(uid,"grade_correction_"+event.id,{
-    type:"grade",title:"Your published grade was updated",
+    type:"grade",push:true,title:"Your published grade was updated",
     body:"Open Assessments to see the latest score and feedback.",
     sourceId:event.params.gradeId,target:"student-assessments.html"
   });
