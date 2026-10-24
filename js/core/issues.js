@@ -160,9 +160,10 @@ function fetchIssues() {
 
 window.renderIssuesFilter = () => {saveReportFilters();renderIssues()};
 function resetReportFilters(){
-  for(const id of ["filterCategory","filterStatus","filterAudience","filterReportType"]){
+  for(const id of ["filterCategory","filterStatus","filterAudience"]){
     const input=document.getElementById(id);if(input)input.value="All";
   }
+  const reportType=document.getElementById("filterReportType");if(reportType)reportType.value="all";
   document.getElementById("filterSort").value="newest";
   document.getElementById("filterSearch").value="";
   document.getElementById("filterMine").checked=false;
