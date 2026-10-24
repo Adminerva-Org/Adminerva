@@ -199,7 +199,8 @@ exports.releaseAnnouncement=onCall(callOptions,async request=>{
     throw new HttpsError("invalid-argument","Provide a valid published release version, title and summary.");
   const devices=await db.collection("push_devices").where("enabled","==",true).get();
   const recipients=[...new Set(devices.docs.map(record=>record.data()?.ownerUid).filter(Boolean))];
-  await notifyMany(recipients,"release_"+cleanId(version),{type:"release",push:true,title:"Adminerva update · "+title,body:summary,sourceId:version,target:"patch-notes.html?version="+encodeURIComponent(version)});
+  const item={type:"release",push:true,title:"Adminerva update · "+title,body:summary,sourceId:version,target:"patch-notes.html?version="+encodeURIComponent(version)};
+  await Promise.all(recipients.map(recipient=>pushToUser(recipient,item).catch(error=>console.warn("Release push skipped",{recipient,code:error.code||"unknown"}))));
   return {recipients:recipients.length};
 });
 async function evidenceLabels(item){
