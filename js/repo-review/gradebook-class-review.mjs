@@ -55,10 +55,10 @@ async function load(detail){
   if(Number(detail.schemaVersion)!==2){render();return;}
   try{
     const [evidenceSnap,draftsSnap]=await Promise.all([
-      getDocs(query(collection(db,"assessment_evidence"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
+      getDocs(query(collection(db,"assessment_evidence"),where("assessmentId","==",detail.taskId))),
       getDocs(collection(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items"))
     ]);
-    evidenceMap=new Map(evidenceSnap.docs.map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
+    evidenceMap=new Map(evidenceSnap.docs.filter(record=>record.data().section===detail.section).map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
     draftMap=new Map(draftsSnap.docs.filter(record=>record.data().taskId===detail.taskId&&record.data().section===detail.section)
       .map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
   }catch(error){el("gbBulkStatus").textContent="Class review status is partially unavailable: "+error.message;}
