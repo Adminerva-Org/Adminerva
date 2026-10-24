@@ -53,8 +53,11 @@ onAuthStateChanged(auth, async (user) => {
 
 const signOutBtn = document.getElementById("signOutBtn");
 if (signOutBtn) {
-  signOutBtn.addEventListener("click", () => {
-    signOut(auth).then(() => (window.location.href = "login.html"));
+  signOutBtn.addEventListener("click", async event => {
+    event.preventDefault();
+    try{const push=await import("../core/push-notifications.mjs?v=1.3.6");await push.departPushAccount();}catch{}
+    await signOut(auth).catch(()=>{});
+    window.location.href = "login.html";
   });
 }
 
