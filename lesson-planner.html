@@ -550,74 +550,29 @@
     </div>
 
     <!-- LOAD SAVED PLANS MODAL -->
-    <div
-      id="loadPlanModal"
-      role="dialog" aria-modal="true" aria-labelledby="savedPlansTitle"
-      class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[120] flex items-end sm:items-center justify-center p-4"
-    >
-      <div
-        class="bg-white rounded-xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl flex flex-col max-h-[85vh] sm:max-h-[80vh]"
-      >
-        <div
-          class="flex flex-col sm:flex-row sm:items-center justify-between border-b pb-3 mb-4 gap-3"
-        >
-          <h3 id="savedPlansTitle" class="font-bold text-lg text-slate-800 flex items-center gap-2">
-            📂 Saved Lesson Plans
-          </h3>
-          <div
-            class="flex flex-wrap items-center gap-3 sm:gap-4 w-full sm:w-auto justify-between sm:justify-end"
-          >
-            <label id="modalOwnerControl" hidden class="text-xs font-semibold">Teacher workspace<select id="modalOwnerFilter" onchange="changeLessonPlanOwner()" class="w-full p-2 border rounded"><option value="">My lesson plans</option></select></label>
-            <label for="modalSyFilter" class="text-xs font-semibold">School year
-            <select
-              id="modalSyFilter" aria-label="Filter saved lesson plans by school year"
-              onchange="openLoadPlanModal()"
-              class="flex-1 sm:flex-none p-3 sm:p-1.5 border border-gray-300 rounded text-base sm:text-sm font-bold text-blue-900 bg-blue-50 focus:ring-blue-500 shadow-sm cursor-pointer focus:outline-none"
-            ><option value="__all__">All school years</option></select></label>
-            <div class="flex items-center gap-2 sm:gap-3">
-              <button id="lessonArchiveBtn"
-                onclick="openArchiveManager()"
-                class="text-xs sm:text-xs bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 font-bold px-3 py-3 sm:py-1.5 rounded transition border border-gray-200 shadow-sm flex items-center gap-1"
-              >
-                <span>🗑️</span>
-                <span class="hidden sm:inline">Recycle Bin</span>
-              </button>
-              <button
-                onclick="closeLoadPlanModal()"
-                aria-label="Close saved lesson plans"
-                class="text-slate-400 hover:text-red-500 font-bold text-2xl sm:text-xl px-2 leading-none"
-              >
-                &times;
-              </button>
-            </div>
+    <div id="loadPlanModal" role="dialog" aria-modal="true" aria-labelledby="savedPlansTitle"
+      class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[120] flex items-center justify-center p-2 sm:p-4">
+      <div class="bg-white rounded-2xl max-w-5xl w-full shadow-2xl flex flex-col max-h-[92dvh] overflow-hidden">
+        <header class="flex flex-col lg:flex-row lg:items-center justify-between border-b px-4 sm:px-5 py-3 gap-3">
+          <div class="min-w-0"><h3 id="savedPlansTitle" class="font-bold text-lg text-slate-800">📂 Saved Lesson Plans</h3><p id="savedPlanIdentity" class="text-xs text-slate-500 truncate mt-1"></p></div>
+          <div class="flex flex-wrap items-end gap-2">
+            <label id="modalOwnerControl" hidden class="text-xs font-semibold">Teacher workspace<select id="modalOwnerFilter" onchange="changeLessonPlanOwner()" class="block w-full p-2 border rounded mt-1"><option value="">My lesson plans</option></select></label>
+            <label for="modalSyFilter" class="text-xs font-semibold">School year<select id="modalSyFilter" aria-label="Filter saved lesson plans by school year" onchange="openLoadPlanModal()" class="block p-2 border border-gray-300 rounded text-sm font-bold text-blue-900 bg-blue-50 mt-1"><option value="__all__">All school years</option></select></label>
+            <button type="button" onclick="openLoadPlanModal()" class="border border-blue-300 text-blue-900 font-bold rounded px-3 py-2 text-xs hover:bg-blue-50">Refresh</button>
+            <button id="lessonArchiveBtn" onclick="openArchiveManager()" class="bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 font-bold px-3 py-2 rounded border border-gray-200 text-xs"><span aria-hidden="true">🗑️</span> <span class="hidden sm:inline">Recycle Bin</span></button>
+            <button onclick="closeLoadPlanModal()" aria-label="Close saved lesson plans" class="text-slate-400 hover:text-red-500 font-bold text-2xl px-2 leading-none">&times;</button>
           </div>
+        </header>
+        <div class="px-4 sm:px-5 py-3 border-b bg-slate-50">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1"><p id="savedPlanSummary" class="text-xs font-semibold text-slate-700" role="status"></p><p id="savedPlanScope" class="text-xs text-slate-500" role="status"></p></div>
+          <section id="teacherLessonRecoveryPanel" hidden class="mt-2 flex flex-col sm:flex-row sm:items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2" aria-labelledby="teacherLessonRecoveryTitle">
+            <div class="min-w-0 flex-1"><h4 id="teacherLessonRecoveryTitle" class="font-bold text-xs text-emerald-900">Older lessons</h4><p id="teacherLessonRecoveryStatus" class="text-xs text-emerald-900 mt-0.5" role="status" aria-live="polite">Checking older lessons…</p></div>
+            <button id="teacherLessonRecoveryBtn" type="button" onclick="recoverMyOlderLessonPlans()" class="shrink-0 px-3 py-2 rounded border border-emerald-400 bg-white text-emerald-900 text-xs font-bold">Check again</button>
+          </section>
+          <a id="savedPlanRecoveryLink" href="teacher-accounts.html#legacy-recovery" class="hidden text-xs underline text-blue-700 mt-2">Administrator recovery tools</a>
         </div>
-        <p id="savedPlanIdentity" class="text-sm font-semibold text-slate-800 mb-1"></p>
-        <p id="savedPlanScope" class="av-form-hint" role="status">Your own saved plans, grouped by school year, academic term, subject and grade.</p>
-        <section id="teacherLessonRecoveryPanel" hidden class="border border-emerald-200 bg-emerald-50 rounded-lg p-3 my-3" aria-labelledby="teacherLessonRecoveryTitle">
-          <h4 id="teacherLessonRecoveryTitle" class="font-bold text-sm text-emerald-900">Your older lesson plans</h4>
-          <p class="text-xs text-slate-700 mt-1">Recovery saves older lessons to the verified teacher account <strong>josephsixson@mcstayuman.edu.ph</strong>. Existing personal copies and original school records are preserved.</p>
-          <p id="teacherLessonRecoveryStatus" class="av-status-message my-2" role="status" aria-live="polite">Your older lessons will be checked when this list opens.</p>
-          <button id="teacherLessonRecoveryBtn" type="button" onclick="recoverMyOlderLessonPlans()" class="px-3 py-2 rounded border border-emerald-400 bg-white text-emerald-900 text-xs font-bold">Check for older lessons</button>
-        </section>
-        <a id="savedPlanRecoveryLink" href="teacher-accounts.html#legacy-recovery" class="hidden text-sm underline text-blue-700 mb-3">Administrator: recover older school lessons into the original teacher’s account</a>
-        <p id="savedPlanSummary" class="text-xs text-slate-600 mb-2" role="status"></p>
-        <div
-          id="savedPlansListContainer"
-          class="overflow-y-auto space-y-3 flex-1 pr-1 sm:pr-2"
-        >
-          <p class="text-gray-400 italic text-center py-8 text-sm">
-            Loading saved plans from Firebase...
-          </p>
-        </div>
-        <div class="flex justify-end gap-3 pt-4 border-t mt-4">
-          <button type="button" onclick="openLoadPlanModal()" class="px-4 py-3 sm:py-2 border border-blue-300 text-blue-900 font-bold rounded text-sm hover:bg-blue-50">Refresh plans</button>
-          <button
-            onclick="closeLoadPlanModal()"
-            class="w-full sm:w-auto px-4 py-3 sm:py-2 bg-gray-200 text-gray-700 font-bold rounded text-sm hover:bg-gray-300"
-          >
-            Close
-          </button>
+        <div id="savedPlansListContainer" class="overflow-y-auto space-y-3 flex-1 px-4 sm:px-5 py-3">
+          <p class="text-gray-400 italic text-center py-8 text-sm">Loading saved plans…</p>
         </div>
       </div>
     </div>
