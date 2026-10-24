@@ -172,7 +172,22 @@ exports.assessmentEvidenceSubmitted=onDocumentCreated("assessment_evidence/{evid
 exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{evidenceId}",async event=>{
   const before=event.data?.before.data(),after=event.data?.after.data();
   if(!before||!after)return;
-  if(before.status!=="approved"&&after.status==="approved"){
+  if(before.status!=="reopened"&&after.status==="reopened"){
+    if(!after.studentId)return;
+    const [student,assessment]=await Promise.all([
+      db.doc("students/"+after.studentId).get(),
+      after.assessmentId?db.doc("assessments/"+after.assessmentId).get():Promise.resolve(null)
+    ]);
+    if(!student.exists)return;
+    const uid=await byEmail(student.data().email);
+    const title=assessment?.exists?(assessment.data().title||"Assessment"):"Assessment";
+    const reason=String(after.reopenReason||"Your teacher requested a new evidence selection.").trim();
+    await notify(uid,"evidence_reopened_"+event.params.evidenceId+"_"+String(after.revision||0),{
+      type:"submission",title:"Submission reopened — changes required",
+      body:(title+" · "+reason+" Select your evidence commits and project checkpoint, then resubmit.").slice(0,300),
+      sourceId:event.params.evidenceId,target:"student-assessments.html"
+    });
+  }else if(before.status!=="approved"&&after.status==="approved"){
     if(!after.studentId)return;
     const student=await db.doc("students/"+after.studentId).get();
     if(!student.exists)return;
