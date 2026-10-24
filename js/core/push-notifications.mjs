@@ -106,13 +106,16 @@ export async function enableDevicePush({requestPermission=true}={}){
   const token=await getToken(pushMessaging,{vapidKey:config.vapidPublicKey,serviceWorkerRegistration:registration});
   if(!token)throw Error("Firebase did not return a device registration. Retry after checking the browser notification permission.");
   const id=await deviceId(token),ref=doc(db,"push_devices",id);
-  const existing=await getDoc(ref);
-  if(existing.exists()&&existing.data()?.ownerUid!==user.uid)
-    throw Error("This browser is already linked to another Adminerva account for device alerts. Sign in to that account and disable device notifications first.");
-  await setDoc(ref,{
-    ownerUid:user.uid,token,enabled:true,platform:devicePlatform(),
-    userAgent:String(navigator.userAgent||"").slice(0,500),updatedAt:serverTimestamp()
-  },{merge:true});
+  try{
+    await setDoc(ref,{
+      ownerUid:user.uid,token,enabled:true,platform:devicePlatform(),
+      userAgent:String(navigator.userAgent||"").slice(0,500),updatedAt:serverTimestamp()
+    },{merge:true});
+  }catch(error){
+    if(error?.code==="permission-denied")
+      throw Error("This browser may already be linked to another Adminerva account for device alerts. Sign in to that account and disable device notifications first.");
+    throw error;
+  }
   remember(user.uid,id);
   const preferences=await getPushPreferences(user.uid);
   if(preferences.enabled===false)await savePushPreferences({...preferences,enabled:true},user.uid);
@@ -141,7 +144,7 @@ export async function disableDevicePush(){
   return {enabled:false};
 }
 export async function syncDevicePush(){
-  const user=auth.currentUser;if(!user||Notification.permission!=="granted")return;
+  const user=auth.currentUser;if(!user||typeof Notification==="undefined"||Notification.permission!=="granted")return;
   const preferences=await getPushPreferences(user.uid);
   if(preferences.enabled===false)return;
   try{await enableDevicePush({requestPermission:false});}catch(error){console.warn("Device notification sync skipped:",error.message);}
