@@ -37,7 +37,7 @@ function escapeHTML(str) {
 // Resolve the timetable for the selected lesson school year and semester.
 window.fetchScheduleForLesson = async function (schoolYear, academicTerm) {
   const scope = scheduleScope(schoolYear, academicTerm);
-  const local = () => localScheduleText(localStorage, schoolYear, academicTerm);
+  const local = () => localScheduleText(lessonStorage, schoolYear, academicTerm);
   // A failed cloud save must not silently replace recent edits on this device.
   if (lessonStorage.getItem(scope.pendingKey) === "1") return local();
   try {
