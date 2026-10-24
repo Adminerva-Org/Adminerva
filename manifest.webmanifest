@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "Adminerva",
+  "short_name": "Adminerva",
+  "description": "Adminerva student and teacher workspace",
+  "start_url": "./student-home.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#111827",
+  "icons": [
+    {
+      "src": "assets/New%20Adminerva%20logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
