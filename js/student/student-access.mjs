@@ -14,6 +14,17 @@ export async function ensureStudentAccessProjection(){
     if(auth.currentUser?.uid!==uid)throw Error("Account changed while class access was being prepared.");
     readyUid=uid;
     return result.data||{ready:true};
+  }).catch(error=>{
+    if(auth.currentUser?.uid!==uid)throw Error("Account changed while class access was being prepared.");
+    // Static Pages may publish before the separately deployed Firebase callable.
+    // Current production rules remain compatible with the section-scoped queries
+    // until refreshStudentAccess + the matching rules are deployed together.
+    if(error?.code==="functions/not-found"){
+      console.warn("Student access projection is not deployed yet; using the current assessment rules for this session.");
+      readyUid=uid;
+      return {ready:false,legacyRules:true};
+    }
+    throw error;
   }).finally(()=>{if(pending?.operation===operation)pending=null;});
   pending={uid,operation};
   return operation;
