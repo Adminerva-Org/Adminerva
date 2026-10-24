@@ -142,9 +142,10 @@ async function pushAllowed(uid,type){
   return data.enabled!==false&&data[category]!==false;
 }
 async function pushToUser(uid,item){
-  if(!uid||item.push!==true||!await pushAllowed(uid,item.type))return;
+  if(!uid||item.push!==true||!await pushAllowed(uid,item.type))return false;
   const devices=await db.collection("push_devices").where("ownerUid","==",uid).limit(12).get();
-  if(devices.empty)return;
+  if(devices.empty)return false;
+  let sent=0;
   await Promise.all(devices.docs.map(async device=>{
     const data=device.data(),token=String(data.token||"");
     if(data.enabled!==true||!token)return;
@@ -162,6 +163,7 @@ async function pushToUser(uid,item){
         },
         webpush:{headers:{TTL:"86400",Urgency:"high"}}
       });
+      sent++;
     }catch(error){
       if(["messaging/registration-token-not-registered","messaging/invalid-registration-token"].includes(error.code)){
         await device.ref.delete().catch(()=>{});
@@ -170,6 +172,7 @@ async function pushToUser(uid,item){
       console.warn("Push delivery failed",{uid,code:error.code||"unknown"});
     }
   }));
+  return sent>0;
 }
 async function notify(uid,id,item){
   if(!uid)return;
@@ -200,8 +203,8 @@ exports.releaseAnnouncement=onCall(callOptions,async request=>{
   const devices=await db.collection("push_devices").where("enabled","==",true).get();
   const recipients=[...new Set(devices.docs.map(record=>record.data()?.ownerUid).filter(Boolean))];
   const item={type:"release",push:true,title:"Adminerva update · "+title,body:summary,sourceId:version,target:"patch-notes.html?version="+encodeURIComponent(version)};
-  await Promise.all(recipients.map(recipient=>pushToUser(recipient,item).catch(error=>console.warn("Release push skipped",{recipient,code:error.code||"unknown"}))));
-  return {recipients:recipients.length};
+  const results=await Promise.all(recipients.map(recipient=>pushToUser(recipient,item).catch(error=>{console.warn("Release push skipped",{recipient,code:error.code||"unknown"});return false;})));
+  return {recipients:recipients.length,delivered:results.filter(Boolean).length};
 });
 async function evidenceLabels(item){
   const [student,assessment]=await Promise.all([
