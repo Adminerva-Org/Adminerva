@@ -5,6 +5,17 @@ import {addDoc,collection,getDocs,query,where,orderBy,limit,serverTimestamp,upda
 
 const el=id=>document.getElementById(id);
 const displayTime=state=>state.savedAt?.toDate?.()?.toLocaleString()||"Saved recently";
+function versionPayload(state,uid,label=""){
+  const payload={
+    lang:state.lang,files:state.files,fileOrder:state.fileOrder,
+    activeFilename:state.activeFilename||state.fileOrder?.[0]||"",
+    folders:Array.isArray(state.folders)?state.folders:[],
+    projectOrder:Array.isArray(state.projectOrder)?state.projectOrder:[],
+    ownerUid:uid,savedAt:serverTimestamp(),pinned:false
+  };
+  if(label)payload.label=label.slice(0,80);
+  return payload;
+}
 async function save(){
   const button=el("cloudSaveProjectBtn"),user=auth.currentUser;
   if(!user)return alert("Sign in to save your workspace.");
@@ -19,9 +30,8 @@ async function save(){
     if(!state)throw Error("Editor is still loading.");
     if(new TextEncoder().encode(JSON.stringify(state)).length>700000)
       throw Error("This workspace is too large for a Firestore version. Export a ZIP.");
-    const payload={...state,ownerUid:user.uid,savedAt:serverTimestamp(),pinned:false};
-    if(label)payload.label=label;
-    await addDoc(collection(db,"student_playground_workspaces",user.uid,"versions"),payload);
+    await addDoc(collection(db,"student_playground_workspaces",user.uid,"versions"),
+      versionPayload(state,user.uid,label));
     button.textContent="Cloud saved";
     setTimeout(()=>{button.textContent=normal},1800);
   }catch(error){button.textContent=normal;alert("Cloud backup failed: "+error.message)}
@@ -52,13 +62,30 @@ async function versions(){
       const hint=document.createElement("p");hint.className="text-xs text-slate-500 mt-1";
       hint.textContent="Pinned versions stay at the top. Restore does not delete the saved cloud copy.";
       heading.append(title,hint);
+      const headerActions=document.createElement("div");headerActions.className="flex flex-wrap gap-2 justify-end";
+      const cleanup=document.createElement("button");cleanup.id="cloudCleanupVersionsBtn";cleanup.textContent="Clean up";cleanup.className="px-3 py-2 bg-slate-100 rounded-lg text-slate-800 font-bold";
       const close=document.createElement("button");close.textContent="Close";close.className="px-3 py-2 bg-slate-100 rounded-lg text-slate-800 font-bold";
       close.addEventListener("click",()=>modal.classList.add("hidden"));
-      header.append(heading,close);
+      headerActions.append(cleanup,close);header.append(heading,headerActions);
       const list=document.createElement("div");list.id="cloudVersionList";list.className="space-y-2";
       panel.append(header,list);modal.append(panel);document.body.append(modal);
     }
     modal.classList.remove("hidden");
+    const cleanup=modal.querySelector("#cloudCleanupVersionsBtn");
+    cleanup.onclick=async()=>{
+      cleanup.disabled=true;cleanup.textContent="Checking…";
+      try{
+        const allSnap=await getDocs(versionsRef);
+        const unpinned=[...allSnap.docs].filter(record=>!Boolean(record.data().pinned))
+          .sort((a,b)=>(b.data().savedAt?.toMillis?.()||0)-(a.data().savedAt?.toMillis?.()||0));
+        const remove=unpinned.slice(10);
+        if(!remove.length){alert("No cleanup needed. The newest 10 unpinned versions and all pinned versions are already retained.");return;}
+        if(!confirm("Delete "+remove.length+" older unpinned cloud version"+(remove.length===1?"":"s")+"? The newest 10 unpinned versions and every pinned version will be kept."))return;
+        await Promise.all(remove.map(record=>deleteDoc(record.ref)));
+        await versions();
+      }catch(error){alert("Cleanup failed: "+error.message)}
+      finally{cleanup.disabled=false;cleanup.textContent="Clean up"}
+    };
     const list=modal.querySelector("#cloudVersionList");list.replaceChildren();
     if(!recordsById.size)list.textContent="No cloud versions yet. Select Save cloud version to create one.";
     const records=[...recordsById.values()].sort((a,b)=>{
@@ -94,6 +121,16 @@ async function versions(){
         }catch(error){alert("Pin update failed: "+error.message)}
         finally{pin.disabled=false}
       });
+      const duplicate=document.createElement("button");duplicate.className="bg-slate-100 text-slate-800 font-bold text-xs px-3 py-2 rounded-lg";duplicate.textContent="Duplicate";
+      duplicate.addEventListener("click",async()=>{
+        duplicate.disabled=true;
+        try{
+          const copyName=("Copy of "+String(state.label||saved)).slice(0,80);
+          await addDoc(versionsRef,versionPayload(state,user.uid,copyName));
+          await versions();
+        }catch(error){alert("Duplicate failed: "+error.message)}
+        finally{duplicate.disabled=false}
+      });
       const rename=document.createElement("button");rename.className="bg-slate-100 text-slate-800 font-bold text-xs px-3 py-2 rounded-lg";rename.textContent="Rename";
       rename.addEventListener("click",async()=>{
         const next=prompt("Version name (up to 80 characters):",String(state.label||""));if(next===null)return;
@@ -109,7 +146,7 @@ async function versions(){
         try{await deleteDoc(record.ref);row.remove();if(!list.children.length)list.textContent="No cloud versions yet. Select Save cloud version to create one.";}
         catch(error){remove.disabled=false;alert("Delete failed: "+error.message)}
       });
-      actions.append(open,pin,rename,remove);row.append(info,actions);list.append(row);
+      actions.append(open,pin,duplicate,rename,remove);row.append(info,actions);list.append(row);
     });
   }catch(error){alert("Cloud versions unavailable: "+error.message)}
   finally{button.disabled=false;button.textContent=normal}
