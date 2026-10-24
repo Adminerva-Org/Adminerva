@@ -1,6 +1,56 @@
 {
   "releases": [
     {
+      "version": "1.3.10",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-25",
+      "title": "Integrated review workflow and complete playground organization",
+      "summary": "Teacher review is consolidated into one grading flow with clearer publication states and subject-focused workspaces, while Code Playground completes project ordering and cloud version management.",
+      "changes": [
+        {
+          "type": "Updated",
+          "area": "Review & grade",
+          "text": "Evidence review, contribution context, selected changes, system evaluation draft, teacher scoring, feedback and publication now stay in one primary workflow instead of competing standalone review tools."
+        },
+        {
+          "type": "Updated",
+          "area": "Review queue",
+          "text": "Each learner now shows the next useful action, such as review submission, grade approved evidence, continue a private grade draft or view a published result."
+        },
+        {
+          "type": "Updated",
+          "area": "Submission Inbox",
+          "text": "Saved teacher grades are identified as Graded draft until explicitly published. Published results have a separate status so private work is not mistaken for student-visible feedback."
+        },
+        {
+          "type": "New",
+          "area": "Subject focus",
+          "text": "Teacher access can optionally include subject focus in addition to assigned sections. Repository Management, assessment lists, submissions and gradebook views hide unrelated subjects while existing teachers without a subject focus keep their current view."
+        },
+        {
+          "type": "Updated",
+          "area": "Assessment Studio",
+          "text": "Assessments retain and display their subject, and subject-focused teachers create and edit assessments within their assigned subject choices."
+        },
+        {
+          "type": "Updated",
+          "area": "Legacy review links",
+          "text": "Older Evidence Review, Contribution Inspector and Group Inspector links now open the integrated Review & grade workspace while preserving available learner and assessment context."
+        },
+        {
+          "type": "Updated",
+          "area": "Code Playground Explorer",
+          "text": "Files and folders support precise manual ordering with before-or-after insertion feedback, plus existing folder and project-root moves. Explorer order persists through saved and restored work."
+        },
+        {
+          "type": "New",
+          "area": "Cloud versions",
+          "text": "Cloud versions can be named, pinned, unpinned, duplicated, restored, renamed and deleted. Confirmed cleanup keeps the newest 10 unpinned versions together with every pinned version."
+        }
+      ]
+    },
+    {
       "version": "1.3.9",
       "status": "published",
       "public": true,

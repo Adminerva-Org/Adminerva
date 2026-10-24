@@ -1,13 +1,14 @@
 /** One class/assessment/target context for repository and offline activity review. */
-import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
+import {resolveStaffRole,resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,getDocs,query,where} from "../core/teaching-firestore.mjs?v=1.3.0";
 import {parseRepository} from "./services/assessment-evidence.mjs?v=1.3.0";
-import {mountTeachingWorkspace} from "./teaching-workspace.mjs?v=1.3.0";
+import {mountTeachingWorkspace} from "./teaching-workspace.mjs?v=1.3.10";
 const el=id=>document.getElementById(id),parameters=new URLSearchParams(location.search);
+let requestedPanel=parameters.get("view")||"";
 const workspace=mountTeachingWorkspace(el("teachingWorkspace"));
-let roster=[],assessments=[],targets=[],activeTask=null,loadId=0,actorUid="",records={evidence:new Map(),grades:new Map(),activities:new Map(),receipts:[]},sourceWarnings=[];
+let roster=[],assessments=[],targets=[],activeTask=null,loadId=0,actorUid="",subjectFocus=[],records={evidence:new Map(),grades:new Map(),activities:new Map(),receipts:[]},sourceWarnings=[];
 function status(text){el("v2QueueStatus").textContent=text;}
 function options(select,items,placeholder){select.replaceChildren(new Option(placeholder,""),...items.map(item=>new Option(item.label,item.value)));}
 function repoFor(student){try{return parseRepository(student.repoUrl);}catch{return null;}}
@@ -37,7 +38,7 @@ async function initialize(user){
   status("Loading your assigned classes and assessments…");
   const [students,tasks]=await Promise.all([getDocs(collection(db,"students")),getDocs(collection(db,"assessments"))]);
   if(generation!==loadId||auth.currentUser?.uid!==user.uid)return;
-  roster=students.docs.map(item=>({id:item.id,...item.data()}));assessments=tasks.docs.map(item=>({id:item.id,...item.data()}));
+  roster=students.docs.map(item=>({id:item.id,...item.data()}));assessments=tasks.docs.map(item=>({id:item.id,...item.data()}));subjectFocus=await resolveStaffSubjects(user);
   const sections=[...new Set(roster.map(student=>student.section).filter(value=>typeof value==="string"&&value.trim()))].sort();
   options(el("v2SectionSelect"),sections.map(value=>({value,label:value})),"Choose class");
   el("v2SectionSelect").value=sections.includes(parameters.get("section"))?parameters.get("section"):sections[0]||"";
@@ -46,9 +47,17 @@ async function initialize(user){
  }catch(error){if(generation===loadId)status("Classes could not load. Check your connection and select Refresh. "+error.message);}
 }
 async function updateAssessments(){
- const previous=el("v2AssessmentSelect").value,section=el("v2SectionSelect").value;
- const tasks=assessments.filter(task=>matchesSection(task,section));
- options(el("v2AssessmentSelect"),tasks.map(task=>({value:task.id,label:task.title||task.id})),"Choose assessment");
+ const previous=el("v2AssessmentSelect").value,section=el("v2SectionSelect").value,subjectSelect=el("v2SubjectSelect");
+ const sectionTasks=assessments.filter(task=>matchesSection(task,section));
+ const subjects=[...new Set(sectionTasks.map(task=>String(task.subject||"").trim()).filter(Boolean))].sort();
+ const allowed=subjectFocus.length?subjects.filter(subject=>subjectFocus.includes(subject)):subjects;
+ const priorSubject=subjectSelect.value;
+ subjectSelect.replaceChildren(new Option("All subjects","all"),...allowed.map(subject=>new Option(subject,subject)));
+ const requestedSubject=parameters.get("subject");
+ subjectSelect.value=requestedSubject&&allowed.includes(requestedSubject)?requestedSubject:allowed.includes(priorSubject)?priorSubject:"all";
+ const chosen=subjectSelect.value;
+ const tasks=sectionTasks.filter(task=>(!subjectFocus.length||!task.subject||subjectFocus.includes(task.subject))&&(chosen==="all"||task.subject===chosen));
+ options(el("v2AssessmentSelect"),tasks.map(task=>({value:task.id,label:(task.subject?task.subject+" · ":"")+(task.title||task.id)})),"Choose assessment");
  el("v2AssessmentSelect").value=tasks.some(task=>task.id===parameters.get("assessment"))?parameters.get("assessment"):tasks.some(task=>task.id===previous)?previous:tasks[0]?.id||"";
  await renderQueue();
 }
@@ -91,13 +100,15 @@ function drawCards(){
 function activateTarget(){
  const target=targets.find(item=>item.id===el("reviewTargetSelect").value);if(!target){workspace.clear();return;}
  workspace.setContext({assessment:activeTask,target,students:target.students,repository:target.repository,evidence:records.evidence,grades:records.grades,activities:records.activities,receipts:records.receipts,sourceWarnings,mode:el("reviewTargetMode").value,requestedStudent:parameters.get("student")});
+ if(requestedPanel==="grade"){requestedPanel="";void workspace.show("grade");}
  window.dispatchEvent(new CustomEvent("adminerva:review-target-selected",{detail:{assessment:activeTask,students:target.students,repository:target.repository,mode:el("reviewTargetMode").value}}));
- const url=new URL(location.href);url.searchParams.set("section",el("v2SectionSelect").value);url.searchParams.set("assessment",activeTask.id);url.searchParams.set("mode",el("reviewTargetMode").value);url.searchParams.set("student",target.students[0].id);history.replaceState(null,"",url);
+ const url=new URL(location.href);url.searchParams.delete("view");url.searchParams.set("section",el("v2SectionSelect").value);if(el("v2SubjectSelect").value!=="all")url.searchParams.set("subject",el("v2SubjectSelect").value);else url.searchParams.delete("subject");url.searchParams.set("assessment",activeTask.id);url.searchParams.set("mode",el("reviewTargetMode").value);url.searchParams.set("student",target.students[0].id);history.replaceState(null,"",url);
 }
 let previousSection="",previousAssessment="",previousMode="group",previousTarget="";
 function rememberSelectors(){previousSection=el("v2SectionSelect").value;previousAssessment=el("v2AssessmentSelect").value;previousMode=el("reviewTargetMode").value;previousTarget=el("reviewTargetSelect").value;}
-for(const id of ["v2SectionSelect","v2AssessmentSelect","reviewTargetMode","reviewTargetSelect"])el(id).addEventListener("focus",rememberSelectors);
+for(const id of ["v2SectionSelect","v2SubjectSelect","v2AssessmentSelect","reviewTargetMode","reviewTargetSelect"])el(id).addEventListener("focus",rememberSelectors);
 el("v2SectionSelect").onchange=()=>{if(!workspace.canLeave()){el("v2SectionSelect").value=previousSection;return;}void updateAssessments();};
+el("v2SubjectSelect").onchange=()=>{if(!workspace.canLeave())return;void updateAssessments();};
 el("v2AssessmentSelect").onchange=()=>{if(!workspace.canLeave()){el("v2AssessmentSelect").value=previousAssessment;return;}void renderQueue({preserve:false});};
 el("reviewTargetMode").onchange=()=>{if(!workspace.canLeave()){el("reviewTargetMode").value=previousMode;return;}void renderQueue({preserve:false});};
 el("reviewTargetSelect").onchange=()=>{if(!workspace.canLeave()){el("reviewTargetSelect").value=previousTarget;return;}activateTarget();drawCards();};

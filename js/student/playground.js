@@ -1,6 +1,6 @@
 /** Isolated code editing, execution, persistence and practice handoffs. */
 import { db, auth } from "../core/firebase-core.js?v=1.3.0";
-import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.0";
+import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
 import {
@@ -65,7 +65,7 @@ let draggedTabIndex = -1;
 let practiceMode = false;
 let practiceTransfer = null;
 const guestMode=document.body.dataset.playgroundAccess==="guest";
-let workspaceFolders=[],selectedProjectPath="",selectedProjectFolder=false,explorerDrag=null;
+let workspaceFolders=[],projectOrder=[],selectedProjectPath="",selectedProjectFolder=false,explorerDrag=null;
 let executionController=null,executionSequence=0;
 let loadedOwnerUid=null;
 
@@ -156,7 +156,7 @@ async function initializePlayground() {
         const savedScratch=transfer.scratch;
         const scratch=validPlaygroundState(savedScratch)&&savedScratch.lang===transfer.workspace.lang
           ?savedScratch:transfer.workspace;
-        createWorkspace(scratch.lang,scratch.files,scratch.fileOrder,scratch.activeFilename,scratch.folders);
+        createWorkspace(scratch.lang,scratch.files,scratch.fileOrder,scratch.activeFilename,scratch.folders,scratch.projectOrder);
         enablePracticeSandbox();
         showSaveStatus("Practice sandbox — separate from personal projects");
       }else{
@@ -175,7 +175,7 @@ else void initializePlayground();
 // ==========================================
 // 3. WORKSPACE & FILE MANAGEMENT
 // ==========================================
-function createWorkspace(lang, initialFiles, initialOrder, initialActive,initialFolders=[]) {
+function createWorkspace(lang, initialFiles, initialOrder, initialActive,initialFolders=[],initialProjectOrder=[]) {
   if(executionController){executionSequence++;executionController.abort();}
   currentLang = lang;
   const langSelect = document.getElementById("languageSelect");
@@ -185,6 +185,7 @@ function createWorkspace(lang, initialFiles, initialOrder, initialActive,initial
   workspaceFiles = {};
   fileOrder = [];
   workspaceFolders=Array.isArray(initialFolders)?initialFolders.filter(p=>{try{return projectPath(p)===p;}catch{return false;}}).slice(0,100):[];
+  projectOrder=Array.isArray(initialProjectOrder)?initialProjectOrder.filter(p=>{try{return projectPath(p)===p;}catch{return false;}}).slice(0,200):[...workspaceFolders];
   selectedProjectPath="";selectedProjectFolder=false;
 
   const safeLang = PLAYGROUND_LANGUAGES.includes(lang) ? lang : "java";
@@ -202,6 +203,7 @@ function createWorkspace(lang, initialFiles, initialOrder, initialActive,initial
     }
   });
 
+  projectOrder=normalizedProjectOrder(projectOrder);
   if (fileOrder.length > 0) switchTab(fileOrder.includes(initialActive) ? initialActive : fileOrder[0]);
   updateOutputView();
 }
@@ -220,6 +222,7 @@ function addFile(filename, content = "", autoSwitch = true) {
   const model = monaco.editor.createModel(content, syntax);
   workspaceFiles[filename] = { model };
   fileOrder.push(filename);
+  if(!projectOrder.includes(filename))projectOrder.push(filename);
 
   model.onDidChangeContent(() => {
     triggerAutoSave();
@@ -265,6 +268,7 @@ window.renameFile = function (oldName) {
   const model = monaco.editor.createModel(content, syntax);
   workspaceFiles[newName] = { model };
   fileOrder.splice(idx, 0, newName);
+  projectOrder=normalizedProjectOrder(projectOrder.map(path=>path===oldName?newName:path));
 
   model.onDidChangeContent(() => {
     triggerAutoSave();
@@ -284,6 +288,7 @@ window.deleteFile = function (filename) {
 
     const idx = fileOrder.indexOf(filename);
     fileOrder.splice(idx, 1);
+    projectOrder=normalizedProjectOrder(projectOrder.filter(path=>path!==filename));
 
     if (activeFilename === filename && fileOrder.length > 0)
       switchTab(fileOrder[0]);
@@ -339,6 +344,21 @@ function renderTabs() {
 function currentFolderPaths(){
   return new Set([...workspaceFolders,...parentFolders([...fileOrder,...workspaceFolders.map(path=>path+"/.keep")])]);
 }
+function projectParent(path){return path.split("/").slice(0,-1).join("/");}
+function normalizedProjectOrder(order=projectOrder){
+  const visible=new Set([...currentFolderPaths(),...fileOrder]),next=[];
+  for(const path of Array.isArray(order)?order:[])if(visible.has(path)&&!next.includes(path))next.push(path);
+  for(const path of [...visible].sort())if(!next.includes(path))next.push(path);
+  return next;
+}
+function orderedFolders(){
+  const folders=currentFolderPaths();
+  return normalizedProjectOrder(projectOrder).filter(path=>folders.has(path));
+}
+function orderedExplorerChildren(parent=""){
+  projectOrder=normalizedProjectOrder(projectOrder);
+  return projectOrder.filter(path=>projectParent(path)===parent);
+}
 function explorerTargetPath(source,targetFolder=""){
   return projectPath((targetFolder?targetFolder+"/":"")+source.split("/").at(-1));
 }
@@ -362,22 +382,40 @@ function moveProjectItem(source,isFolder,targetFolder){
   if(!isFolder){
     const file=workspaceFiles[source];delete workspaceFiles[source];workspaceFiles[target]=file;
     fileOrder=fileOrder.map(path=>path===source?target:path);
+    projectOrder=normalizedProjectOrder(projectOrder.map(path=>path===source?target:path));
+    projectOrder=[...projectOrder.filter(path=>path!==target),target];
     if(activeFilename===source)activeFilename=target;
     selectedProjectPath=target;selectedProjectFolder=false;
   }else{
     const mapping=path=>path===source?target:path.startsWith(source+"/")?target+path.slice(source.length):path;
     workspaceFiles=Object.fromEntries(Object.entries(workspaceFiles).map(([path,file])=>[mapping(path),file]));
-    fileOrder=fileOrder.map(mapping);workspaceFolders=[...new Set(workspaceFolders.map(mapping))];
+    fileOrder=fileOrder.map(mapping);workspaceFolders=workspaceFolders.map(mapping);
+    projectOrder=normalizedProjectOrder(projectOrder.map(mapping));
+    projectOrder=[...projectOrder.filter(path=>path!==target),target];
     activeFilename=mapping(activeFilename);selectedProjectPath=target;selectedProjectFolder=true;
   }
   const activePath=document.getElementById("activeFilePath");if(activePath)activePath.textContent=activeFilename;
   renderTabs();triggerAutoSave();showSaveStatus("Moved to "+(targetFolder||"project root"));
   return true;
 }
+function reorderProjectSibling(source,target,placement){
+  if(source===target||projectParent(source)!==projectParent(target)||!["before","after"].includes(placement))return false;
+  projectOrder=normalizedProjectOrder(projectOrder);
+  const siblings=projectOrder.filter(path=>projectParent(path)===projectParent(source));
+  if(!siblings.includes(source)||!siblings.includes(target))return false;
+  const next=siblings.filter(path=>path!==source),targetIndex=next.indexOf(target);
+  next.splice(targetIndex+(placement==="after"?1:0),0,source);
+  let index=0;
+  projectOrder=projectOrder.map(path=>projectParent(path)===projectParent(source)?next[index++]:path);
+  selectedProjectPath=source;selectedProjectFolder=currentFolderPaths().has(source);
+  renderTabs();triggerAutoSave();showSaveStatus("Explorer order updated");
+  return true;
+}
 function clearExplorerDropState(){
   const tree=document.getElementById("projectTree");if(!tree)return;
   tree.classList.remove("pg-dragging");
   tree.querySelectorAll("[data-drop-active]").forEach(node=>delete node.dataset.dropActive);
+  tree.querySelectorAll("[data-insert]").forEach(node=>delete node.dataset.insert);
   tree.querySelectorAll(".pg-drag-source").forEach(node=>node.classList.remove("pg-drag-source"));
 }
 function bindExplorerDrag(node,path,isFolder){
@@ -400,26 +438,58 @@ function bindExplorerDrop(node,targetFolder){
     const moving=explorerDrag;explorerDrag=null;clearExplorerDropState();moveProjectItem(moving.path,moving.isFolder,targetFolder);
   });
 }
+function bindExplorerItemDrop(node,path,isFolder){
+  node.addEventListener("dragover",event=>{
+    if(!explorerDrag)return;
+    delete node.dataset.dropActive;delete node.dataset.insert;
+    const sameParent=projectParent(explorerDrag.path)===projectParent(path);
+    const rect=node.getBoundingClientRect(),ratio=rect.height?((event.clientY-rect.top)/rect.height):.5;
+    const reorderZone=sameParent&&explorerDrag.path!==path&&(!isFolder||ratio<.28||ratio>.72);
+    if(reorderZone){
+      event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect="move";
+      node.dataset.insert=ratio<.5?"before":"after";return;
+    }
+    if(isFolder&&canMoveProjectItem(explorerDrag.path,explorerDrag.isFolder,path)){
+      event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect="move";node.dataset.dropActive="true";
+    }
+  });
+  node.addEventListener("dragleave",event=>{
+    if(!node.contains(event.relatedTarget)){delete node.dataset.dropActive;delete node.dataset.insert;}
+  });
+  node.addEventListener("drop",event=>{
+    if(!explorerDrag)return;
+    const placement=node.dataset.insert,moving=explorerDrag;
+    if(placement){
+      event.preventDefault();event.stopPropagation();explorerDrag=null;clearExplorerDropState();
+      reorderProjectSibling(moving.path,path,placement);return;
+    }
+    if(isFolder&&canMoveProjectItem(moving.path,moving.isFolder,path)){
+      event.preventDefault();event.stopPropagation();explorerDrag=null;clearExplorerDropState();
+      moveProjectItem(moving.path,moving.isFolder,path);
+    }
+  });
+}
 function renderFileTree(){
   const tree=document.getElementById("projectTree");if(!tree)return;
   const open=new Set([...tree.querySelectorAll("details[open]")].map(n=>n.dataset.path));
   tree.replaceChildren();
   const rootDrop=document.createElement("div");rootDrop.className="pg-drop-root";rootDrop.textContent="Move to project root";rootDrop.setAttribute("aria-hidden","true");
   bindExplorerDrop(rootDrop,"");tree.append(rootDrop);
-  const folders=[...currentFolderPaths()].sort();
+  const folders=orderedFolders(),folderSet=new Set(folders);
   function children(box,parent=""){
-    for(const path of folders.filter(p=>p.split("/").slice(0,-1).join("/")===parent)){
-      const details=document.createElement("details");details.dataset.path=path;details.open=open.has(path)||activeFilename.startsWith(path+"/");
-      const summary=document.createElement("summary");summary.textContent="▱ "+path.split("/").at(-1);summary.title="Drop here to move into "+path;
-      summary.addEventListener("click",()=>{selectedProjectPath=path;selectedProjectFolder=true;});
-      bindExplorerDrag(summary,path,true);bindExplorerDrop(summary,path);
-      const nested=document.createElement("div");details.append(summary,nested);children(nested,path);box.append(details);
-    }
-    for(const path of fileOrder.filter(p=>p.split("/").slice(0,-1).join("/")===parent)){
-      const button=document.createElement("button");button.type="button";button.className="pg-file";button.setAttribute("aria-current",String(path===activeFilename));button.title=path;
-      const icon=document.createElement("span");icon.textContent=path.endsWith(".java")?"J":path.endsWith(".py")?"Py":path.endsWith(".html")?"◇":"·";
-      const label=document.createElement("span");label.textContent=path.split("/").at(-1);button.append(icon,label);button.onclick=()=>switchTab(path);
-      bindExplorerDrag(button,path,false);box.append(button);
+    for(const path of orderedExplorerChildren(parent)){
+      if(folderSet.has(path)){
+        const details=document.createElement("details");details.dataset.path=path;details.open=open.has(path)||activeFilename.startsWith(path+"/");
+        const summary=document.createElement("summary");summary.textContent="▱ "+path.split("/").at(-1);summary.title="Drop on the folder to move inside; use the edge line to reorder";
+        summary.addEventListener("click",()=>{selectedProjectPath=path;selectedProjectFolder=true;});
+        bindExplorerDrag(summary,path,true);bindExplorerItemDrop(summary,path,true);
+        const nested=document.createElement("div");details.append(summary,nested);children(nested,path);box.append(details);
+      }else if(workspaceFiles[path]){
+        const button=document.createElement("button");button.type="button";button.className="pg-file";button.setAttribute("aria-current",String(path===activeFilename));button.title=path;
+        const icon=document.createElement("span");icon.textContent=path.endsWith(".java")?"J":path.endsWith(".py")?"Py":path.endsWith(".html")?"◇":"·";
+        const label=document.createElement("span");label.textContent=path.split("/").at(-1);button.append(icon,label);button.onclick=()=>switchTab(path);
+        bindExplorerDrag(button,path,false);bindExplorerItemDrop(button,path,false);box.append(button);
+      }
     }
   }
   children(tree);
@@ -427,7 +497,7 @@ function renderFileTree(){
 }
 function newFolder(){
   const raw=prompt("New folder path:",selectedProjectFolder?selectedProjectPath+"/":"src");if(!raw)return;
-  try{const path=projectPath(raw);if(workspaceFiles[path])throw Error("A file already uses that path.");if(workspaceFolders.length>=100)throw Error("Use up to 100 folders per workspace.");workspaceFolders=[...new Set([...workspaceFolders,path])];selectedProjectPath=path;selectedProjectFolder=true;renderFileTree();triggerAutoSave();}catch(error){alert(error.message);}
+  try{const path=projectPath(raw);if(workspaceFiles[path])throw Error("A file already uses that path.");if(workspaceFolders.length>=100)throw Error("Use up to 100 folders per workspace.");workspaceFolders=[...new Set([...workspaceFolders,path])];projectOrder=normalizedProjectOrder([...projectOrder,path]);selectedProjectPath=path;selectedProjectFolder=true;renderFileTree();triggerAutoSave();}catch(error){alert(error.message);}
 }
 function renameSelection(){
   if(!selectedProjectPath)return showSaveStatus("Select a file or folder first.");
@@ -438,7 +508,7 @@ function renameSelection(){
     const state=currentState(),mapping=p=>p===old?target:p.startsWith(old+"/")?target+p.slice(old.length):p;
     const names=state.fileOrder.map(mapping);if(new Set(names).size!==names.length||workspaceFiles[target]||workspaceFolders.includes(target))throw Error("That destination already exists.");
     const files=Object.fromEntries(Object.entries(state.files).map(([p,v])=>[mapping(p),v]));
-    createWorkspace(currentLang,files,names,mapping(activeFilename),workspaceFolders.map(mapping));triggerAutoSave();
+    createWorkspace(currentLang,files,names,mapping(activeFilename),workspaceFolders.map(mapping),projectOrder.map(mapping));triggerAutoSave();
   }catch(error){alert(error.message);}
 }
 function deleteSelection(){
@@ -448,7 +518,7 @@ function deleteSelection(){
   if(!names.length)return alert("Keep at least one file in this project.");
   if(!confirm("Delete folder "+path+" and its files?"))return;
   const state=currentState(),files=Object.fromEntries(names.map(p=>[p,state.files[p]]));
-  createWorkspace(currentLang,files,names,names.includes(activeFilename)?activeFilename:names[0],workspaceFolders.filter(p=>p!==path&&!p.startsWith(path+"/")));triggerAutoSave();
+  createWorkspace(currentLang,files,names,names.includes(activeFilename)?activeFilename:names[0],workspaceFolders.filter(p=>p!==path&&!p.startsWith(path+"/")),projectOrder.filter(p=>p!==path&&!p.startsWith(path+"/")));triggerAutoSave();
 }
 
 function attachTabEvents() {
@@ -511,7 +581,7 @@ function currentState() {
   for (const [name,file] of Object.entries(workspaceFiles))
     files[name] = file.model.getValue();
   return { lang:currentLang, files, fileOrder:[...fileOrder],
-    activeFilename, folders:[...workspaceFolders], savedAt:new Date().toISOString() };
+    activeFilename, folders:[...workspaceFolders], projectOrder:[...normalizedProjectOrder(projectOrder)], savedAt:new Date().toISOString() };
 }
 function showSaveStatus(text,failed=false) {
   const indicator=document.getElementById("autoSaveIndicator");
@@ -530,7 +600,7 @@ function persistWorkspace(){
     if(practiceMode){
       if(!practiceTransfer)return false;
       practiceTransfer.scratch={lang:state.lang,files:state.files,fileOrder:state.fileOrder,
-        activeFilename:state.activeFilename,folders:state.folders};
+        activeFilename:state.activeFilename,folders:state.folders,projectOrder:state.projectOrder};
       sessionStorage.setItem(practiceBridgeKey(uid),JSON.stringify(practiceTransfer));
       workspaceDirty=false;
       localSaveFailed=false;
@@ -576,7 +646,7 @@ function loadLocalWorkspace(lang) {
   let preferred=lang||(guestMode?"web":"java");try{preferred=lang||localStorage.getItem(playgroundLanguageKey(uid))||preferred;}catch{}
   const chosen=PLAYGROUND_LANGUAGES.includes(preferred)?preferred:"java";
   const saved=readPlaygroundDraft(localStorage,uid,chosen);
-  createWorkspace(chosen,saved?.files,saved?.fileOrder,saved?.activeFilename,saved?.folders);
+  createWorkspace(chosen,saved?.files,saved?.fileOrder,saved?.activeFilename,saved?.folders,saved?.projectOrder);
   workspaceDirty=false;
   localSaveFailed=false;
   showSaveStatus(saved?"Local draft loaded":"New workspace (not saved yet)");
@@ -625,7 +695,7 @@ window.adminervaPlaygroundState=function(){
   if(practiceMode||!ownerUid()||(auth.currentUser?.uid||(guestMode?"public-visitor-v1":null))!==ownerUid())return null;
   const state=currentState();
   return {lang:state.lang,files:state.files,fileOrder:state.fileOrder,
-    activeFilename:state.activeFilename,folders:state.folders};
+    activeFilename:state.activeFilename,folders:state.folders,projectOrder:state.projectOrder};
 };
 window.adminervaRestorePlayground=function(state){
   if(practiceMode)return false;
@@ -640,7 +710,7 @@ window.adminervaRestorePlayground=function(state){
     const next={...state,savedAt:new Date().toISOString()};
     localStorage.setItem(target,JSON.stringify(next));
     localStorage.setItem(playgroundLanguageKey(uid),state.lang);
-    createWorkspace(state.lang,state.files,state.fileOrder,state.activeFilename,state.folders);
+    createWorkspace(state.lang,state.files,state.fileOrder,state.activeFilename,state.folders,state.projectOrder);
     workspaceDirty=false;
     localSaveFailed=false;
     showSaveStatus("Restored and saved on this device");
@@ -674,6 +744,8 @@ async function shareSnapshot() {
     lang: currentLang,
     files: {},
     fileOrder: fileOrder,
+    folders: [...workspaceFolders],
+    projectOrder: [...normalizedProjectOrder(projectOrder)],
     timestamp: new Date().toISOString(),
     ownerUid: ownerUid() || "",
     visibility: "link",

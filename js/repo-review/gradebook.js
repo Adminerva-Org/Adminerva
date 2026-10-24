@@ -4,7 +4,8 @@ import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./g
 import {assertGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
 import {writePublicationRevision} from "./grade-publication.mjs?v=1.3.0";
 /** Teacher grade administration, protected revisions and explicit publication. */
-import { db } from "../core/firebase-core.js?v=1.3.0";
+import { db,auth } from "../core/firebase-core.js?v=1.3.0";
+import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {
   collection,
@@ -34,7 +35,7 @@ function escapeHTML(str) {
   );
 }
 
-let allStudents = [],gridEntries=[],gridSerial=0,publishBusy=false;
+let allStudents = [],gridEntries=[],gridSerial=0,publishBusy=false,subjectFocus=[];
 function syncPublishButton(loading=false){const button=document.getElementById("gbLegacyPublish"),eligible=publicationCandidates(gridEntries);button.disabled=loading||publishBusy||!eligible.length;button.textContent="Publish ("+eligible.length+" Drafts)";const recovery=publicationRecovery("single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value);document.getElementById("gbLegacyRecovery").textContent=recovery?.pending.length?"Interrupted batch: "+recovery.pending.length+" pending. Reload grades and confirm Publish to try again.":"Only reviewed legacy drafts are eligible. V2 publication is individual.";}
 window.openGridFeedback=(studentId,taskId)=>void openFeedbackDrawer({studentId,taskId});
 let allAssessments = [];
@@ -89,8 +90,10 @@ async function loadFilters() {
     const assSelect = document.getElementById("gbAssessment");
     assSelect.innerHTML =
       "<option value='' disabled selected>Select a section first...</option>";
+    subjectFocus=await resolveStaffSubjects(auth.currentUser);
     assSnap.forEach((d) => {
-      allAssessments.push({ id: d.id, ...d.data() });
+      const assessment={ id: d.id, ...d.data() };
+      if(!subjectFocus.length||!assessment.subject||subjectFocus.includes(assessment.subject))allAssessments.push(assessment);
     });
   } catch (e) {
     console.error("Gradebook Load Error", e);
@@ -425,7 +428,7 @@ function updateAssessmentsForSection() {
   applicableAssessments.forEach((d) => {
     assSelect.insertAdjacentHTML(
       "beforeend",
-      `<option value="${d.id}">${escapeHTML(d.title)} (${escapeHTML(d.type)})</option>`,
+      `<option value="${d.id}">${d.subject?escapeHTML(d.subject)+" · ":""}${escapeHTML(d.title)} (${escapeHTML(d.type)})</option>`,
     );
   });
 }

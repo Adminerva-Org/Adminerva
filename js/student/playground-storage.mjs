@@ -26,7 +26,11 @@ export function validPlaygroundState(state) {
     Array.isArray(state.fileOrder) &&
     state.fileOrder.length === names.length &&
     new Set(state.fileOrder).size === names.length &&
-    state.fileOrder.every(name => Object.hasOwn(state.files,name));
+    state.fileOrder.every(name => Object.hasOwn(state.files,name)) &&
+    (state.projectOrder === undefined || (
+      Array.isArray(state.projectOrder) && state.projectOrder.length <= 200 &&
+      state.projectOrder.every(path => {try{return typeof path === "string" && projectPath(path)===path;}catch{return false;}})
+    ));
 }
 export function readPlaygroundDraft(storage,uid,lang) {
   try {

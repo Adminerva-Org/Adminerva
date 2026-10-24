@@ -77,10 +77,11 @@ service cloud.firestore {
         let data = request.resource.data;
         let prior = resource == null ? null : resource.data;
         let audit = getAfter(/databases/$(database)/documents/staff_access/$(email)/revisions/$(string(data.revision))).data;
-        return data.keys().hasOnly(["email","displayName","role","status","revision","reason","updatedBy","updatedAt","sections"]) &&
+        return data.keys().hasOnly(["email","displayName","role","status","revision","reason","updatedBy","updatedAt","sections","subjects"]) &&
           data.email == email && email == email.lower() && email.matches("^[^/@ ]+@[^/@ ]+\\.[^/@ ]+$") && email.size() <= 254 &&
           email != "babaynike2013@gmail.com" && data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 120 &&
-          data.role == "teacher" && data.status in ["active","disabled"] && data.get("sections",[]) is list && data.get("sections",[]).size() <= 40 && data.revision is int &&
+          data.role == "teacher" && data.status in ["active","disabled"] && data.get("sections",[]) is list && data.get("sections",[]).size() <= 40 &&
+          data.get("subjects",[]) is list && data.get("subjects",[]).size() <= 40 && data.revision is int &&
           data.revision == (prior == null ? 1 : prior.revision + 1) && data.reason is string && data.reason.size() >= 12 && data.reason.size() <= 600 &&
           data.updatedBy == request.auth.uid && data.updatedAt == request.time &&
           audit.before == prior && audit.after == data && audit.actorUid == request.auth.uid && audit.createdAt == request.time;
@@ -333,8 +334,9 @@ service cloud.firestore {
       allow get: if isAdmin() || (isTeacher() && teacherEmail == request.auth.token.email.lower());
       allow list: if isAdmin();
       allow create, update: if isAdmin() && teacherEmail.matches("^[^/@ ]+@[^/@ ]+\\.[^/@ ]+$") &&
-        request.resource.data.keys().hasOnly(["teacherEmail", "sections", "updatedBy", "updatedAt"]) &&
+        request.resource.data.keys().hasOnly(["teacherEmail", "sections", "subjects", "updatedBy", "updatedAt"]) &&
         request.resource.data.teacherEmail == teacherEmail && request.resource.data.sections is list && request.resource.data.sections.size() <= 40 &&
+        request.resource.data.get("subjects",[]) is list && request.resource.data.get("subjects",[]).size() <= 40 &&
         request.resource.data.updatedBy == request.auth.uid && request.resource.data.updatedAt == request.time;
       allow delete: if isAdmin();
     }
@@ -777,11 +779,15 @@ service cloud.firestore {
         request.resource.data.fileOrder is list &&
         request.resource.data.lang in ["java","python","web","csharp","cpp","dart"];
       allow update: if signedIn() && request.auth.uid == uid &&
-        resource.data.ownerUid == uid && request.resource.data.ownerUid == uid &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["label","renamedAt"]) &&
-        request.resource.data.label is string &&
-        request.resource.data.label.size() > 0 && request.resource.data.label.size() <= 80 &&
-        request.resource.data.renamedAt == request.time;
+        resource.data.ownerUid == uid && request.resource.data.ownerUid == uid && (
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["label","renamedAt"]) &&
+           request.resource.data.label is string &&
+           request.resource.data.label.size() > 0 && request.resource.data.label.size() <= 80 &&
+           request.resource.data.renamedAt == request.time) ||
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["pinned","pinChangedAt"]) &&
+           request.resource.data.pinned is bool &&
+           request.resource.data.pinChangedAt == request.time)
+        );
       allow delete: if signedIn() && request.auth.uid == uid && resource.data.ownerUid == uid;
     }
 

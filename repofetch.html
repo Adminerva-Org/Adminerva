@@ -8,7 +8,7 @@
     <link rel="icon" type="image/png" href="assets/New%20Adminerva%20logo.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="css/adminerva-ui.css?v=1.3.9" />
-<link rel="stylesheet" href="css/teaching-workspace.css?v=1.3.0"></head>
+<link rel="stylesheet" href="css/teaching-workspace.css?v=1.3.10"></head>
   <body class="bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="repo" data-page="repofetch"></div>
     <script src="js/core/adminerva-nav.js?v=1.3.9"></script>
@@ -23,9 +23,12 @@
             <h2 id="v2WorkspaceTitle" class="text-lg font-extrabold text-indigo-950">Choose your review context</h2>
             <p class="text-sm text-slate-600 mt-1">Groups share a repository or an assigned group name. Grades and feedback stay individual. Repository-free tasks use Manual activity.</p>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1.5fr_auto] gap-3 items-end">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.5fr_auto] gap-3 items-end">
             <label class="block text-xs font-semibold text-slate-800" for="v2SectionSelect">Class section
               <select id="v2SectionSelect" class="w-full mt-1 bg-white border rounded-lg p-2.5 font-semibold text-sm"><option value="">Loading…</option></select>
+            </label>
+            <label class="block text-xs font-semibold text-slate-800" for="v2SubjectSelect">Subject
+              <select id="v2SubjectSelect" class="w-full mt-1 bg-white border rounded-lg p-2.5 font-semibold text-sm"><option value="all">All subjects</option></select>
             </label>
             <label class="block text-xs font-semibold text-slate-800" for="v2AssessmentSelect">Assessment
               <select id="v2AssessmentSelect" class="w-full mt-1 bg-white border rounded-lg p-2.5 font-semibold text-sm"><option value="">Choose assessment</option></select>
@@ -42,8 +45,7 @@
         <section id="teachingWorkspace" class="av-teaching-workspace" hidden aria-labelledby="teaching-context-title">
           <header class="av-teaching-context"><h2 id="teaching-context-title" data-review-context class="font-extrabold text-lg"></h2><p data-review-individual class="text-sm text-slate-600 mt-1"></p><label class="block text-sm font-semibold mt-3">Current learner<select data-review-member class="mt-1 w-full border rounded-lg p-2.5"></select></label></header>
           <nav class="av-teaching-tabs" role="tablist" aria-label="Teaching workspace panels">
-            <button type="button" id="teaching-tab-inbox" role="tab" aria-controls="teaching-panel-inbox" data-teaching-tab="inbox" aria-selected="true">Inbox</button>
-            <button type="button" id="teaching-tab-evidence" role="tab" aria-controls="teaching-panel-review" data-teaching-tab="evidence" aria-selected="false" tabindex="-1">Evidence</button>
+            <button type="button" id="teaching-tab-inbox" role="tab" aria-controls="teaching-panel-inbox" data-teaching-tab="inbox" aria-selected="true">Review queue</button>
             <button type="button" id="teaching-tab-grade" role="tab" aria-controls="teaching-panel-review" data-teaching-tab="grade" aria-selected="false" tabindex="-1">Review &amp; grade</button>
             <button type="button" id="teaching-tab-activity" role="tab" aria-controls="teaching-panel-activity" data-teaching-tab="activity" aria-selected="false" tabindex="-1">Observed activity</button>
           </nav>
@@ -397,11 +399,11 @@
             <p class="text-xs text-slate-500">Repository links are optional. Review the pinned evidence below before assigning individual credit.</p></details>
           </div>
           <section id="integratedEvidence" class="hidden border rounded-xl p-3 space-y-3" style="scroll-margin-top:64px">
-            <h3 class="font-bold">1. Review section</h3>
+            <h3 class="font-bold">1. Evidence and contribution review</h3>
             <button type="button" data-adminerva-help="evidence" class="text-xs underline">ⓘ Evidence review help</button>
             <p id="integratedEvidenceStatus" role="status" class="text-sm text-slate-700"></p>
             <details id="integratedEvidenceDetails" open class="border rounded p-2">
-              <summary class="font-semibold cursor-pointer">Evidence, selected diffs, attribution and checkpoint approval</summary>
+              <summary class="font-semibold cursor-pointer">Submitted evidence, selected diffs, attribution and checkpoint approval</summary>
               <div id="integratedEvidencePanel" class="mt-2" aria-live="polite"></div>
             </details>
             <details id="integratedGroupDetails" class="border rounded p-2"><summary class="font-semibold cursor-pointer">Shared group and submission status</summary><div id="integratedGroupSummary" class="text-sm space-y-2 p-3">Loading group status…</div><details id="integratedGroupInspectorDetails" class="p-2"><summary class="cursor-pointer font-semibold">Advanced group history</summary><div id="integratedGroupHistory" class="text-xs space-y-2 p-2">Loading pinned history…</div></details></details>
@@ -495,6 +497,6 @@
     <script type="module" src="js/repo-review/repofetch.js?v=1.3.2"></script>
     <script type="module" src="js/repo-review/auto-checker.js?v=1.3.0"></script>
     <script type="module" src="js/repo-review/manual-review.mjs?v=1.3.9"></script>
-    <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=1.3.0"></script>
+    <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=1.3.10"></script>
   </body>
 </html>

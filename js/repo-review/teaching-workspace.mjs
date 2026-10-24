@@ -17,9 +17,21 @@ export function mountTeachingWorkspace(root){
   revision++;abort?.abort();activity?.destroy();activity=null;activityKey="";reviewKey="";
   window.closeManualGradeReview?.({force:true,silent:true});context=null;student=null;root.hidden=true;return true;
  }
+ function reviewState(learner){
+  const evidence=context.evidence.get(learner.id),grade=context.grades.get(learner.id),activityGrade=context.activities.get(learner.id);
+  if(activityGrade?.published||grade?.published)return {label:"Published",tone:"success",action:"View reviewed result",next:context.repository?"grade":"activity"};
+  if(activityGrade)return {label:"Private grade draft",tone:"attention",action:"Continue activity grade",next:"activity"};
+  if(grade)return {label:"Private grade draft",tone:"attention",action:"Continue review & grade",next:"grade"};
+  if(!context.repository)return {label:"No repository",tone:"attention",action:"Record observed activity",next:"activity"};
+  if(evidence?.status==="approved")return {label:"Evidence approved",tone:"success",action:"Grade approved evidence",next:"grade"};
+  if(evidence?.status==="submitted"||evidence?.status==="needs_review")return {label:"Needs review",tone:"attention",action:"Review submission",next:"grade"};
+  if(evidence?.status==="reopened")return {label:"Returned for changes",tone:"attention",action:"Review current status",next:"grade"};
+  if(evidence?.status==="withdrawn")return {label:"Withdrawn",tone:"attention",action:"Review current status",next:"grade"};
+  return {label:"Not reviewed",tone:"neutral",action:"Start review",next:"grade"};
+ }
  function summary(){
   const box=panels.inbox;box.replaceChildren();if(!context)return;
-  box.append(make("h3","Submission inbox","font-bold text-lg"),make("p",context.assessment.title||context.assessment.id,"text-sm text-slate-600"));
+  box.append(make("h3","Review queue","font-bold text-lg"),make("p",(context.assessment.title||context.assessment.id)+" · choose a learner and continue the next review step.","text-sm text-slate-600"));
   if(context.sourceWarnings?.length)box.append(make("p","Some saved statuses are unavailable: "+context.sourceWarnings.join(", ")+". Refresh the queue to retry; unavailable results are not zero scores.","av-status-message"));
   const description=context.assessment.instructions||context.assessment.description||context.assessment.prompt;
   if(description){const details=make("details","","border rounded-lg p-3 my-3");details.append(make("summary","Assessment instructions","font-semibold"),make("p",String(description),"whitespace-pre-wrap text-sm mt-3"));box.append(details);}
@@ -30,8 +42,10 @@ export function mountTeachingWorkspace(root){
    for(const receipt of receipts.slice(-3))card.append(make("p","Submission receipt · "+(receipt.revisionSha||"No revision")+(receipt.sourcePath?" · "+receipt.sourcePath:""),"text-xs break-all"));
    if(!receipts.length)card.append(make("p","No repository submission receipt is loaded.","text-xs text-slate-500"));
    for(const [label,saved]of [["Repository grade",grade],["Activity grade",activityGrade]])if(saved)card.append(make("p",label+": "+saved.score+" / "+saved.maxScore+" · "+(saved.published?"Published":"Private draft"),"text-sm font-semibold"));
-   const actions=make("div","","flex flex-wrap gap-2 mt-3");
-   for(const [label,next]of [["Review evidence","evidence"],["Teacher grade","grade"],["Observed activity","activity"]]){const button=make("button",label,"av-secondary-button");button.type="button";button.onclick=()=>{if(student?.id!==learner.id&&!canLeave())return;selectMember(learner);void show(next);};actions.append(button);}card.append(actions);box.append(card);
+   const next=reviewState(learner),nextRow=make("div","","av-review-next");
+   const nextInfo=make("div","");const state=make("span",next.label,"av-review-state");state.dataset.tone=next.tone;nextInfo.append(state,make("strong","Next: "+next.action,"block mt-1"));
+   const button=make("button",next.action,"av-primary-button");button.type="button";button.onclick=()=>{if(student?.id!==learner.id&&!canLeave())return;selectMember(learner);void show(next.next);};
+   nextRow.append(nextInfo,button);card.append(nextRow);box.append(card);
   }
  }
  function selectMember(next){
@@ -102,14 +116,15 @@ export function mountTeachingWorkspace(root){
   if(!context)return;
   if((next==="evidence"||next==="grade")&&!context.repository)next="activity";
   view=next;
-  const review=next==="evidence"||next==="grade";
+  if(next==="evidence")next="grade";
+  const review=next==="grade";
   for(const [key,panel]of Object.entries(panels))panel.hidden=key!==(review?"review":next);
   for(const button of root.querySelectorAll("[data-teaching-tab]")){const active=button.dataset.teachingTab===next;button.setAttribute("aria-selected",String(active));button.tabIndex=active?0:-1;}
   manual.dataset.workspaceView=next;
-  panels.review.setAttribute("aria-labelledby",next==="evidence"?"teaching-tab-evidence":"teaching-tab-grade");
+  panels.review.setAttribute("aria-labelledby","teaching-tab-grade");
   updateStatus((context.assessment.title||context.assessment.id)+" · "+context.target.label+" · "+name(student));
   if(next==="inbox")summary();
-  else if(review){await openReview();if(next==="evidence"&&context.assessment.schemaVersion!==2)updateStatus("This assessment uses submission receipts. Use Inbox for receipts and Review & grade for the teacher score.");}
+  else if(review){await openReview();if(context.assessment.schemaVersion!==2)updateStatus("This assessment uses a repository submission receipt. Review the receipt and enter the teacher score below.");}
   else if(next==="repository")await repository();
   else if(next==="contributions")await contributions();
   else if(next==="activity")await mountActivity();
@@ -135,6 +150,6 @@ export function mountTeachingWorkspace(root){
  root.querySelector("[role=tablist]").addEventListener("keydown",event=>{if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;const buttons=[...root.querySelectorAll("[data-teaching-tab]")],index=buttons.indexOf(document.activeElement);let next=event.key==="Home"?0:event.key==="End"?buttons.length-1:(index+(event.key==="ArrowRight"?1:-1)+buttons.length)%buttons.length;event.preventDefault();buttons[next].focus();void show(buttons[next].dataset.teachingTab);});
  root.addEventListener("click",event=>{const target=event.target.closest("[data-review-step],#manualReviewVerifyContributions");if(target)void show(target.dataset.reviewStep==="integratedEvidence"||target.id==="manualReviewVerifyContributions"?"evidence":"grade");},true);
   panels.activity.addEventListener("change",event=>{if(event.target.matches("[data-activity-student]")){const next=context?.students.find(item=>item.id===event.target.value);if(next){student=next;member.value=next.id;reviewKey="";root.querySelector("[data-review-individual]").textContent="Individual review: "+name(student)+". Scores remain separate for each learner.";}}});
- window.addEventListener("adminerva:manual-review-closed",()=>{reviewKey="";if(context&&(view==="grade"||view==="evidence"))void show("inbox");});
- return {setContext,canLeave,clear};
+ window.addEventListener("adminerva:manual-review-closed",()=>{reviewKey="";if(context&&view==="grade")void show("inbox");});
+ return {setContext,canLeave,clear,show};
 }
