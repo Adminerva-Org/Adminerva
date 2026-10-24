@@ -1,6 +1,6 @@
 /** Student submissions, practice progress and isolated code workspaces: playground cloud. */
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
-import {addDoc,collection,getDocs,query,orderBy,limit,serverTimestamp,updateDoc,deleteDoc}
+import {addDoc,collection,getDocs,query,where,orderBy,limit,serverTimestamp,updateDoc,deleteDoc}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const el=id=>document.getElementById(id);
@@ -33,10 +33,13 @@ async function versions(){
   const normal=button.textContent;
   button.disabled=true;button.textContent="Loading…";
   try{
-    const snap=await getDocs(query(
-      collection(db,"student_playground_workspaces",user.uid,"versions"),
-      orderBy("savedAt","desc"),limit(30)
-    ));
+    const versionsRef=collection(db,"student_playground_workspaces",user.uid,"versions");
+    const [recentSnap,pinnedSnap]=await Promise.all([
+      getDocs(query(versionsRef,orderBy("savedAt","desc"),limit(30))),
+      getDocs(query(versionsRef,where("pinned","==",true),limit(30)))
+    ]);
+    const recordsById=new Map();
+    for(const record of [...recentSnap.docs,...pinnedSnap.docs])recordsById.set(record.id,record);
     let modal=el("playgroundVersionsModal");
     if(!modal){
       modal=document.createElement("div");modal.id="playgroundVersionsModal";
@@ -57,8 +60,8 @@ async function versions(){
     }
     modal.classList.remove("hidden");
     const list=modal.querySelector("#cloudVersionList");list.replaceChildren();
-    if(snap.empty)list.textContent="No cloud versions yet. Select Save cloud version to create one.";
-    const records=[...snap.docs].sort((a,b)=>{
+    if(!recordsById.size)list.textContent="No cloud versions yet. Select Save cloud version to create one.";
+    const records=[...recordsById.values()].sort((a,b)=>{
       const pin=Number(Boolean(b.data().pinned))-Number(Boolean(a.data().pinned));
       if(pin)return pin;
       return (b.data().savedAt?.toMillis?.()||0)-(a.data().savedAt?.toMillis?.()||0);
