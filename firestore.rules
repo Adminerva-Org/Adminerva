@@ -676,7 +676,8 @@ service cloud.firestore {
       allow create: if isInstructor() && validPracticePack(request.resource.data) && request.resource.data.ownerUid == request.auth.uid &&
         request.resource.data.sectionIds.hasOnly(isAdmin()?request.resource.data.sectionIds:teacherSections()) && request.resource.data.createdAt == request.time;
       allow update: if isInstructor() && resource.data.ownerUid == request.auth.uid && validPracticePack(request.resource.data) &&
-        request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.createdAt == resource.data.createdAt;
+        request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.sectionIds.hasOnly(isAdmin()?request.resource.data.sectionIds:teacherSections());
       allow delete: if false;
     }
     match /student_projects/{projectId} {
@@ -693,7 +694,8 @@ service cloud.firestore {
       allow create: if isInstructor() && validStudentProject(request.resource.data) && request.resource.data.ownerUid == request.auth.uid &&
         request.resource.data.sectionIds.hasOnly(isAdmin()?request.resource.data.sectionIds:teacherSections()) && request.resource.data.createdAt == request.time;
       allow update: if isInstructor() && resource.data.ownerUid == request.auth.uid && validStudentProject(request.resource.data) &&
-        request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.createdAt == resource.data.createdAt;
+        request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.sectionIds.hasOnly(isAdmin()?request.resource.data.sectionIds:teacherSections());
       allow delete: if false;
     }
     match /improvement_plans/{studentId}/items/{planId} {
@@ -709,7 +711,9 @@ service cloud.firestore {
       allow create: if mayTeachStudent(studentId) && validImprovementPlan(request.resource.data) && request.resource.data.ownerUid == request.auth.uid &&
         request.resource.data.section == get(/databases/$(database)/documents/students/$(studentId)).data.section && request.resource.data.createdAt == request.time;
       allow update: if mayTeachStudent(studentId) && resource.data.ownerUid == request.auth.uid && validImprovementPlan(request.resource.data) &&
-        request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.createdAt == resource.data.createdAt;
+        request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.createdAt == resource.data.createdAt &&
+        request.resource.data.section == resource.data.section &&
+        request.resource.data.section == get(/databases/$(database)/documents/students/$(studentId)).data.section;
       allow delete: if false;
     }
 
