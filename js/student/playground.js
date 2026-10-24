@@ -339,6 +339,13 @@ function renderTabs() {
 function currentFolderPaths(){
   return new Set([...workspaceFolders,...parentFolders([...fileOrder,...workspaceFolders.map(path=>path+"/.keep")])]);
 }
+function projectParent(path){return path.split("/").slice(0,-1).join("/");}
+function orderedFolders(){
+  const all=currentFolderPaths();
+  const explicit=workspaceFolders.filter(path=>all.has(path));
+  const seen=new Set(explicit);
+  return [...explicit,...[...all].filter(path=>!seen.has(path)).sort()];
+}
 function explorerTargetPath(source,targetFolder=""){
   return projectPath((targetFolder?targetFolder+"/":"")+source.split("/").at(-1));
 }
@@ -367,17 +374,38 @@ function moveProjectItem(source,isFolder,targetFolder){
   }else{
     const mapping=path=>path===source?target:path.startsWith(source+"/")?target+path.slice(source.length):path;
     workspaceFiles=Object.fromEntries(Object.entries(workspaceFiles).map(([path,file])=>[mapping(path),file]));
-    fileOrder=fileOrder.map(mapping);workspaceFolders=[...new Set(workspaceFolders.map(mapping))];
+    fileOrder=fileOrder.map(mapping);workspaceFolders=orderedFolders().map(mapping);
     activeFilename=mapping(activeFilename);selectedProjectPath=target;selectedProjectFolder=true;
   }
   const activePath=document.getElementById("activeFilePath");if(activePath)activePath.textContent=activeFilename;
   renderTabs();triggerAutoSave();showSaveStatus("Moved to "+(targetFolder||"project root"));
   return true;
 }
+function reorderProjectSibling(source,target,placement,isFolder){
+  if(source===target||projectParent(source)!==projectParent(target)||!["before","after"].includes(placement))return false;
+  const reorder=list=>{
+    const siblings=list.filter(path=>projectParent(path)===projectParent(source));
+    if(!siblings.includes(source)||!siblings.includes(target))return null;
+    const next=siblings.filter(path=>path!==source),targetIndex=next.indexOf(target);
+    next.splice(targetIndex+(placement==="after"?1:0),0,source);
+    let index=0;
+    return list.map(path=>projectParent(path)===projectParent(source)?next[index++]:path);
+  };
+  if(isFolder){
+    workspaceFolders=orderedFolders();
+    const next=reorder(workspaceFolders);if(!next)return false;workspaceFolders=next;
+  }else{
+    const next=reorder(fileOrder);if(!next)return false;fileOrder=next;
+  }
+  selectedProjectPath=source;selectedProjectFolder=isFolder;
+  renderTabs();triggerAutoSave();showSaveStatus("Explorer order updated");
+  return true;
+}
 function clearExplorerDropState(){
   const tree=document.getElementById("projectTree");if(!tree)return;
   tree.classList.remove("pg-dragging");
   tree.querySelectorAll("[data-drop-active]").forEach(node=>delete node.dataset.dropActive);
+  tree.querySelectorAll("[data-insert]").forEach(node=>delete node.dataset.insert);
   tree.querySelectorAll(".pg-drag-source").forEach(node=>node.classList.remove("pg-drag-source"));
 }
 function bindExplorerDrag(node,path,isFolder){
@@ -400,26 +428,58 @@ function bindExplorerDrop(node,targetFolder){
     const moving=explorerDrag;explorerDrag=null;clearExplorerDropState();moveProjectItem(moving.path,moving.isFolder,targetFolder);
   });
 }
+function bindExplorerItemDrop(node,path,isFolder){
+  node.addEventListener("dragover",event=>{
+    if(!explorerDrag)return;
+    delete node.dataset.dropActive;delete node.dataset.insert;
+    const sameType=explorerDrag.isFolder===isFolder;
+    const sameParent=projectParent(explorerDrag.path)===projectParent(path);
+    const rect=node.getBoundingClientRect(),ratio=rect.height?((event.clientY-rect.top)/rect.height):.5;
+    const reorderZone=sameType&&sameParent&&explorerDrag.path!==path&&(!isFolder||ratio<.28||ratio>.72);
+    if(reorderZone){
+      event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect="move";
+      node.dataset.insert=ratio<.5?"before":"after";return;
+    }
+    if(isFolder&&canMoveProjectItem(explorerDrag.path,explorerDrag.isFolder,path)){
+      event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect="move";node.dataset.dropActive="true";
+    }
+  });
+  node.addEventListener("dragleave",event=>{
+    if(!node.contains(event.relatedTarget)){delete node.dataset.dropActive;delete node.dataset.insert;}
+  });
+  node.addEventListener("drop",event=>{
+    if(!explorerDrag)return;
+    const placement=node.dataset.insert,moving=explorerDrag;
+    if(placement){
+      event.preventDefault();event.stopPropagation();explorerDrag=null;clearExplorerDropState();
+      reorderProjectSibling(moving.path,path,placement,moving.isFolder);return;
+    }
+    if(isFolder&&canMoveProjectItem(moving.path,moving.isFolder,path)){
+      event.preventDefault();event.stopPropagation();explorerDrag=null;clearExplorerDropState();
+      moveProjectItem(moving.path,moving.isFolder,path);
+    }
+  });
+}
 function renderFileTree(){
   const tree=document.getElementById("projectTree");if(!tree)return;
   const open=new Set([...tree.querySelectorAll("details[open]")].map(n=>n.dataset.path));
   tree.replaceChildren();
   const rootDrop=document.createElement("div");rootDrop.className="pg-drop-root";rootDrop.textContent="Move to project root";rootDrop.setAttribute("aria-hidden","true");
   bindExplorerDrop(rootDrop,"");tree.append(rootDrop);
-  const folders=[...currentFolderPaths()].sort();
+  const folders=orderedFolders();
   function children(box,parent=""){
-    for(const path of folders.filter(p=>p.split("/").slice(0,-1).join("/")===parent)){
+    for(const path of folders.filter(p=>projectParent(p)===parent)){
       const details=document.createElement("details");details.dataset.path=path;details.open=open.has(path)||activeFilename.startsWith(path+"/");
-      const summary=document.createElement("summary");summary.textContent="▱ "+path.split("/").at(-1);summary.title="Drop here to move into "+path;
+      const summary=document.createElement("summary");summary.textContent="▱ "+path.split("/").at(-1);summary.title="Drop on the folder to move inside; use the edge line to reorder";
       summary.addEventListener("click",()=>{selectedProjectPath=path;selectedProjectFolder=true;});
-      bindExplorerDrag(summary,path,true);bindExplorerDrop(summary,path);
+      bindExplorerDrag(summary,path,true);bindExplorerItemDrop(summary,path,true);
       const nested=document.createElement("div");details.append(summary,nested);children(nested,path);box.append(details);
     }
-    for(const path of fileOrder.filter(p=>p.split("/").slice(0,-1).join("/")===parent)){
+    for(const path of fileOrder.filter(p=>projectParent(p)===parent)){
       const button=document.createElement("button");button.type="button";button.className="pg-file";button.setAttribute("aria-current",String(path===activeFilename));button.title=path;
       const icon=document.createElement("span");icon.textContent=path.endsWith(".java")?"J":path.endsWith(".py")?"Py":path.endsWith(".html")?"◇":"·";
       const label=document.createElement("span");label.textContent=path.split("/").at(-1);button.append(icon,label);button.onclick=()=>switchTab(path);
-      bindExplorerDrag(button,path,false);box.append(button);
+      bindExplorerDrag(button,path,false);bindExplorerItemDrop(button,path,false);box.append(button);
     }
   }
   children(tree);

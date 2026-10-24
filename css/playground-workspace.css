@@ -2,3 +2,6 @@
 
 /* 1.3.9 Explorer drag/drop feedback. */
 .pg-drop-root{display:none;margin:2px 0 7px;padding:7px 9px;border:1px dashed #58708f;border-radius:6px;color:#9dc7da;font-size:11px;text-align:center}.pg-tree.pg-dragging>.pg-drop-root{display:block}.pg-tree [data-drop-active=true]{background:#164e63!important;color:#cffafe!important;outline:2px solid #22d3ee;outline-offset:-2px}.pg-tree .pg-drag-source{opacity:.45}.pg-tree.pg-dragging summary{border-radius:5px}
+
+/* 1.3.10 precise Explorer insertion feedback. */
+.pg-tree summary,.pg-tree .pg-file{position:relative}.pg-tree [data-insert=before]::before,.pg-tree [data-insert=after]::after{content:"";position:absolute;left:5px;right:5px;height:2px;background:#22d3ee;box-shadow:0 0 0 1px #083344;z-index:4}.pg-tree [data-insert=before]::before{top:-1px}.pg-tree [data-insert=after]::after{bottom:-1px}
