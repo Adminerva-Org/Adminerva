@@ -1,6 +1,31 @@
 {
   "releases": [
     {
+      "version": "1.3.8",
+      "status": "draft",
+      "public": true,
+      "releasedAt": "2026-10-24",
+      "title": "More accurate grade and evidence notifications",
+      "summary": "Grade publication stays separate from evidence reopening, reopen pushes require a verified audited return action, and Gradebook no longer shows obsolete warnings that contradict a current published grade.",
+      "changes": [
+        {
+          "type": "Fixed",
+          "area": "Returned-submission notifications",
+          "text": "A student receives a returned-for-changes push only when the evidence record has a fresh audited reopen revision with a reviewer, timestamp and matching reason. A status transition alone is no longer enough to send the alert."
+        },
+        {
+          "type": "Fixed",
+          "area": "Gradebook evidence notes",
+          "text": "Gradebook filters obsolete review warnings such as 'No grade has been recorded' once a score exists, and removes stale pre-approval draft warnings after the grade has been freshly reviewed."
+        },
+        {
+          "type": "Updated",
+          "area": "Gradebook clarity",
+          "text": "Published records label retained cautions as Review notes so valid provenance warnings remain visible without implying that the current grade is missing or unpublished."
+        }
+      ]
+    },
+    {
       "version": "1.3.7",
       "status": "published",
       "public": true,
