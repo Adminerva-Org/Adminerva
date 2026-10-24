@@ -12,15 +12,24 @@ export const evidenceReviewMarkup=`
 <h2 id="evidenceTitle" class="text-lg font-bold"></h2>
 <p id="evidenceMetadata" class="text-sm text-slate-700 break-words"></p>
 <div id="evidenceLinks" class="flex flex-wrap gap-4 text-sm"></div>
-<h3 class="text-sm font-bold">Selected Git commits</h3>
-<p class="text-xs text-slate-600">The boxes below verify individual contribution; they do not change the student's selected commits. Use Reopen (or release a historical proposal) to let the student edit their selection.</p>
-<div id="evidenceCommitDetails" class="space-y-3"></div>
+<h3 class="text-sm font-bold">Selected evidence commits</h3>
+<p class="text-xs text-slate-600">These are the commits the student submitted for individual review.</p>
+<label class="flex gap-2 items-start rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-950">
+<input id="evidenceVerifyAll" type="checkbox" class="mt-1">
+<span>Verify all submitted evidence commits as this student's relevant work.</span>
+</label>
+<details id="evidenceVerificationExceptions" class="border rounded-lg p-3">
+<summary class="font-semibold text-sm cursor-pointer">Adjust individual commit verification (optional)</summary>
+<p class="text-xs text-slate-600 mt-2">Use this only when a selected commit is shared, disputed, or should not be credited to this student.</p>
+<div id="evidenceContributionChecks" class="space-y-2 mt-3"></div>
+</details>
+<div id="evidenceCommitDetails" class="space-y-2"></div>
 <details class="border rounded p-3" open><summary class="font-bold cursor-pointer">Pinned project source — shared context, not individual credit</summary><div id="evidenceSnapshot" class="mt-2"></div></details>
 <h3 class="text-sm font-bold">Reclaim requests for this student</h3>
 <div id="evidenceReclaims" class="space-y-3"></div>
 <label class="block text-sm font-semibold" for="evidenceContributionScope">Additional responsibilities and attribution notes (optional)</label>
 <textarea id="evidenceContributionScope" rows="3" maxlength="3000" class="w-full border rounded-lg p-3" placeholder="Add specific responsibilities or exceptions. Your selected verified commits are recorded automatically."></textarea>
-<p class="text-xs text-slate-600">Select only commits independently verified as this student's contribution. A selected project checkpoint may contain teammates' work. Leave all contribution boxes empty when no individual work is verified; evaluation will require manual review.</p>
+<p class="text-xs text-slate-600">A selected project checkpoint may contain teammates' work and does not become individual credit. If none of the submitted evidence commits can be verified for this student, leave verification unchecked and use manual review.</p>
 <label id="evidenceReviewNoteLabel" class="block text-sm font-semibold" for="evidenceReviewNote">Additional review note (optional for approval)</label>
 <textarea id="evidenceReviewNote" rows="3" maxlength="3000" class="w-full border rounded-lg p-3" placeholder="Approval records your inspection automatically."></textarea>
 <label class="flex gap-2 items-start text-sm"><input id="evidenceConfirm" type="checkbox" class="mt-1">
