@@ -27,6 +27,36 @@ function safeCallable(handler){return async request=>{try{return await handler(r
 exports.schoolAI=onCall(callOptions,safeCallable(schoolAI));
 exports.legacyLessonRecovery=onCall(callOptions,safeCallable(legacyRecovery));
 exports.legacySchoolSetup=onCall(callOptions,safeCallable(legacySetup));
+exports.pushTestPing=onCall(callOptions,async request=>{
+  const uid=request.auth?.uid;
+  if(!uid)throw new HttpsError("unauthenticated","Sign in before sending a test notification.");
+  const devices=await db.collection("push_devices").where("ownerUid","==",uid).limit(12).get();
+  const active=devices.docs.filter(device=>device.data()?.enabled===true&&typeof device.data()?.token==="string"&&device.data().token);
+  if(!active.length)throw new HttpsError("failed-precondition","No enabled Adminerva push devices are registered for this account.");
+  let sent=0;
+  await Promise.all(active.map(async device=>{
+    try{
+      await messaging.send({
+        token:device.data().token,
+        data:{
+          adminervaKind:"test_ping",
+          title:"Adminerva test notification",
+          body:"Push notifications are working on this device.",
+          target:pushBaseUrl+"student-settings.html#notifications",
+          autoCloseMs:"15000"
+        },
+        webpush:{headers:{TTL:"60",Urgency:"high"}}
+      });
+      sent++;
+    }catch(error){
+      if(["messaging/registration-token-not-registered","messaging/invalid-registration-token"].includes(error.code))
+        await device.ref.delete().catch(()=>{});
+      else console.warn("Test push delivery failed",{uid,code:error.code||"unknown"});
+    }
+  }));
+  if(!sent)throw new HttpsError("unavailable","No registered device accepted the test notification. Re-enable notifications on a device and try again.");
+  return {sent};
+});
 exports.teachingRosterChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},event=>teachingAccess.synchronize(event.params.studentId));
 const practiceOptions={region:"asia-southeast1",maxInstances:3,concurrency:20,timeoutSeconds:30,
   cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
