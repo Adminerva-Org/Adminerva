@@ -1,6 +1,6 @@
 import {resolveAccountAccess} from "./staff-session.mjs?v=1.3.0";
 import {activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "./connection-cache.mjs?v=1.3.0";
-import {rememberWorkspace} from "./session-destination.mjs?v=1.3.0";
+import {rememberWorkspace,roleHome} from "./session-destination.mjs?v=1.3.8";
 /** Verified account admission, workspace visibility and sign-out routing. */
 import { auth } from "./firebase-core.js?v=1.3.0";
 import {
@@ -12,6 +12,10 @@ const currentPath = window.location.pathname.toLowerCase();
 const isLoginPage = currentPath.includes("login.html");
 let admittedUid;
 let checkingAccess=false,accessGate=null,accessEpoch=0;
+function replacePage(destination){
+  const target=new URL(destination,location.href);
+  if(target.href!==location.href)window.location.replace(target.href);
+}
 const guardedSignOut = async () => {
   try{clearConnectionPreferences();}catch{}
   try{const push=await import("./push-notifications.mjs?v=1.3.6");await push.departPushAccount();}
@@ -58,7 +62,7 @@ async function checkAccess(user){
     return;
   }
 
-  if(!user.emailVerified||!user.email){await guardedSignOut();window.location.href="login.html?error=verified-email-required";return;}
+  if(!user.emailVerified||!user.email){await guardedSignOut();replacePage("login.html?error=verified-email-required");return;}
   const userEmail = user.email.toLowerCase();
   let access;
   try {access=await resolveAccountAccess(user);}
@@ -74,7 +78,7 @@ async function checkAccess(user){
   if (!admittedRole) {
     try {
       if (access.needsTeacherApproval || !access.students.length) {
-        window.location.href = "guest-home.html";
+        replacePage(roleHome("guest"));
         return; // Halt execution
       }
     } catch (error) {
@@ -104,7 +108,7 @@ async function checkAccess(user){
     localStorage.removeItem("Adminerva_Mock_Role");
     activeRole = "student";
   }
-  if (/\/(teacher-accounts|admin-analytics|admin-hub|users|manage-sections|manage-programs|manage-subjects)\.html$/.test(currentPath) && admittedRole !== "admin") { window.location.href=actualRole==="student"?"student-home.html":"teacher-home.html"; return; }
+  if (/\/(teacher-accounts|admin-analytics|admin-hub|users|manage-sections|manage-programs|manage-subjects)\.html$/.test(currentPath) && admittedRole !== "admin") { replacePage(roleHome(actualRole)); return; }
   const isIssuesPage = currentPath.includes("issues.html");
 
   // 4. Strict Routing Enforcement
@@ -114,11 +118,11 @@ async function checkAccess(user){
     !isLoginPage &&
     !isIssuesPage
   ) {
-    window.location.href = "student-home.html";
+    replacePage(roleHome("student"));
     return;
   }
   if (activeRole !== "student" && currentPath.endsWith("/student-home.html")) {
-    window.location.href = "teacher-home.html";
+    replacePage(roleHome(activeRole));
     return;
   }
 
@@ -160,7 +164,7 @@ document.addEventListener("click", (e) => {
     guardedSignOut().then(() => {
       localStorage.removeItem("Adminerva_Role");
       localStorage.removeItem("Adminerva_Mock_Role");
-      window.location.href = "login.html";
+      replacePage("login.html");
     });
   }
 });
