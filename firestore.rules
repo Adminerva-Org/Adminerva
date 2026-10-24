@@ -188,7 +188,8 @@ service cloud.firestore {
       return signedIn() &&
         exists(/databases/$(database)/documents/students/$(studentId)) &&
         get(/databases/$(database)/documents/students/$(studentId)).data.email.lower() ==
-          request.auth.token.email.lower();
+          request.auth.token.email.lower() &&
+        get(/databases/$(database)/documents/students/$(studentId)).data.get("status","active") == "active";
     }
 
     // Administrators retain existing system-wide maintenance privileges.
@@ -375,6 +376,7 @@ service cloud.firestore {
       // migrate that token to a secure backend in a later release.
       allow update: if signedIn() && resource.data.email is string &&
         resource.data.email.lower() == request.auth.token.email.lower() &&
+        resource.data.get("status","active") == "active" &&
         request.resource.data.email == resource.data.email &&
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["githubUsername", "repoUrl", "githubToken", "gender"]);
