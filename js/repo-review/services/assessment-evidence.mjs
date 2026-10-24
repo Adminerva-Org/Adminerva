@@ -19,24 +19,24 @@ export function normalizeSelection(commits,checkpoint,{maximum=20}={}){
   if(!selected.length)throw Error('Select at least one evidence commit.');
   if(selected.some(x=>!validSha(x)))throw Error('Invalid Git commit SHA.');
   const sha=String(checkpoint||'').toLowerCase();
-  if(!validSha(sha)||!selected.includes(sha))
-    throw Error('Choose a project checkpoint from the selected commits.');
+  if(!validSha(sha))
+    throw Error('Choose a valid project checkpoint revision.');
   return {selectedCommits:selected,checkpointSha:sha};
 }
 /**
- * Explain the two separate student actions: include evidence commits and choose
- * one selected SHA as the review checkpoint. Never choose on the student's behalf.
+ * Evidence commits represent the student's own work. The project checkpoint is
+ * an independent repository revision that must contain those commits.
  */
 export function evidenceSelectionGuidance(commits,checkpoint,{maximum=20}={}){
   const selected=[...new Set((Array.isArray(commits)?commits:[])
     .map(sha=>String(sha||"").toLowerCase()))];
   const count=selected.length;
-  if(!count)return {ready:false,message:"No evidence commits selected. Check Include commit next to relevant work, then choose a project checkpoint using the round button."};
+  if(!count)return {ready:false,message:"No evidence commits selected. Check Include commit next to your relevant work, then choose a project checkpoint that contains those commits."};
   if(count>maximum)return {ready:false,message:"You selected "+count+" commits. Select no more than "+maximum+" evidence commits."};
   const sha=String(checkpoint||"").toLowerCase();
-  if(!validSha(sha)||!selected.includes(sha))
-    return {ready:false,message:count+" commit"+(count===1?"":"s")+" selected. Choose one as the project checkpoint using its round button before submitting."};
-  return {ready:true,message:count+" commit"+(count===1?"":"s")+" selected. Project checkpoint: "+sha.slice(0,12)+". Ready for teacher review."};
+  if(!validSha(sha))
+    return {ready:false,message:count+" evidence commit"+(count===1?"":"s")+" selected. Choose a project checkpoint from the repository before submitting."};
+  return {ready:true,message:count+" evidence commit"+(count===1?"":"s")+" selected. Project checkpoint: "+sha.slice(0,12)+". Adminerva will verify that the checkpoint contains all selected evidence before submission."};
 }
 export function detectedAuthor(commit){
   const git=commit?.commit?.author||{};
