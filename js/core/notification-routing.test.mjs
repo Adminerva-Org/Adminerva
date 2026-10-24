@@ -7,6 +7,8 @@ test('allows only local Adminerva notification destinations',()=>{
   assert.equal(notificationTarget('issues.html?issue=report_123'), 'issues.html?issue=report_123');
   assert.equal(notificationTarget('submissions.html'),'submissions.html');
   assert.equal(notificationTarget('repofetch.html'),'repofetch.html');
+  assert.equal(notificationTarget('assessment-evidence-review.html?student=s1&assessment=a1'),
+    'assessment-evidence-review.html?student=s1&assessment=a1');
   for(const bad of ['https://evil.example/','//evil.example','javascript:alert(1)',
     '../settings.html','login.html','issues.html#evil','issues.html?next=//evil.example']){
     assert.equal(notificationTarget(bad),'issues.html');
