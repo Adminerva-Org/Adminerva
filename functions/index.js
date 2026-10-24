@@ -333,8 +333,8 @@ exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{eviden
 exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}",async event=>{
   const item=event.data?.data();if(!item)return;
   await notifyMany(await teacherIds(item.section),"submission_"+event.params.submissionId,{
-    type:"submission",push:true,title:"Student submitted work — "+(item.studentName||"Student"),
-    body:(item.studentName||"Student")+" · "+(item.assessmentTitle||"Assessment"),
+    type:"submission",push:true,title:"Work submitted — "+(item.studentName||"Student"),
+    body:(item.assessmentTitle||"Assessment")+(item.section?" · "+item.section:""),
     sourceId:event.params.submissionId,target:"submissions.html"
   });
 });
