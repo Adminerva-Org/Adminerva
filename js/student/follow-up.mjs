@@ -13,13 +13,15 @@ async function load(){
   const roster=await getDocs(query(collection(db,"students"),where("email","==",user.email.toLowerCase()))),student=roster.docs.find(r=>!["archived","suspended"].includes(r.data().status))||roster.docs[0];
   if(!student)return;
   const profile={id:student.id,...student.data()},section=profile.section;
-  const [packSnap,projectSnap,planSnap]=await Promise.all([
+  const [packSnap,wholeProjectSnap,personalProjectSnap,planSnap]=await Promise.all([
    getDocs(query(collection(db,"practice_packs"),where("sectionIds","array-contains",section))),
-   getDocs(query(collection(db,"student_projects"),where("sectionIds","array-contains",section))),
+   getDocs(query(collection(db,"student_projects"),where("sectionIds","array-contains",section),where("wholeSection","==",true))),
+   getDocs(query(collection(db,"student_projects"),where("studentIds","array-contains",profile.id))),
    getDocs(collection(db,"improvement_plans",profile.id,"items"))
   ]);
   const packs=packSnap.docs.map(r=>({id:r.id,...r.data()})).filter(x=>x.status==="active");
-  const projects=projectSnap.docs.map(r=>({id:r.id,...r.data()})).filter(x=>x.status==="active"&&(!x.studentIds?.length||x.studentIds.includes(profile.id)));
+  const projectDocs=new Map([...wholeProjectSnap.docs,...personalProjectSnap.docs].map(record=>[record.id,record]));
+  const projects=[...projectDocs.values()].map(r=>({id:r.id,...r.data()})).filter(x=>x.status==="active");
   const plans=planSnap.docs.map(r=>({id:r.id,...r.data()})).filter(x=>x.status==="active");
   if(dash){
     dash.replaceChildren();
