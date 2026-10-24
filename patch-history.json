@@ -42,6 +42,11 @@
           "type": "Fixed",
           "area": "Return for student changes",
           "text": "Teachers can return a submitted evidence package for correction when approval cannot proceed. The required reason is retained in audit history, shown to the student, and the student must resubmit before approval."
+        },
+        {
+          "type": "Fixed",
+          "area": "Submitted evidence return action",
+          "text": "The Return for student changes button now works for submitted evidence instead of silently ignoring the click. Submitted, approved and instructor-proposed evidence all use the same audited return/reopen handler."
         }
       ]
     },
