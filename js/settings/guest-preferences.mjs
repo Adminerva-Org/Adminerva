@@ -1,0 +1,6 @@
+function apply(){try{document.documentElement.dataset.adminervaDensity=localStorage.getItem("Adminerva_interface_density")||"comfortable";document.documentElement.dataset.adminervaReduceMotion=String(localStorage.getItem("Adminerva_reduce_motion")==="1");}catch{}}
+apply();
+const density=document.getElementById("guestDensity"),motion=document.getElementById("guestReduceMotion"),status=document.getElementById("guestPreferenceStatus");
+if(density){density.value=localStorage.getItem("Adminerva_interface_density")||"comfortable";motion.checked=localStorage.getItem("Adminerva_reduce_motion")==="1";
+document.getElementById("guestPreferenceForm").addEventListener("submit",event=>{event.preventDefault();localStorage.setItem("Adminerva_interface_density",density.value);localStorage.setItem("Adminerva_reduce_motion",motion.checked?"1":"0");apply();status.textContent="Saved on this browser.";});
+document.getElementById("guestClearPreferences").addEventListener("click",()=>{localStorage.removeItem("Adminerva_interface_density");localStorage.removeItem("Adminerva_reduce_motion");density.value="comfortable";motion.checked=false;apply();status.textContent="Guest preferences reset.";});}
