@@ -350,7 +350,7 @@ async function approve(){
   finally{state.busy=false;el("evidenceApprove").disabled=!state.loaded||(!["submitted","needs_review"].includes(state.evidence?.status)&&!(state.evidence?.status==="approved"&&state.verificationEditing));}
 }
 async function reopen(){
-  if(state.busy||!state.loaded||!["approved","needs_review"].includes(state.evidence?.status))return;
+  if(state.busy||!state.loaded||!["submitted","approved","needs_review"].includes(state.evidence?.status)){status("This evidence cannot be returned from its current state. Reload evidence and try again.");return;}
   const reason=el("evidenceReviewNote").value.trim();
   if(reason.length<15||reason.length>3000)return status("Enter a reopening reason of 15–3,000 characters in the teacher review note.");
   const proposal=state.evidence.status==="needs_review";
