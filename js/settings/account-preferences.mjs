@@ -2,7 +2,7 @@ import {auth} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
   getPushPreferences,savePushPreferences,getDevicePushState,
-  enableDevicePush,disableDevicePush,syncDevicePush
+  enableDevicePush,disableDevicePush,syncDevicePush,sendTestPush
 } from "../core/push-notifications.mjs?v=1.3.0";
 
 const root=document.querySelector("[data-account-preferences]");
@@ -20,6 +20,7 @@ if(root){
       </div>
       <div class="flex flex-wrap gap-2 mt-3">
         <button type="button" data-enable-push class="av-primary-button">Enable notifications on this device</button>
+        <button type="button" data-test-push class="hidden border rounded px-4 py-2 text-sm font-bold text-blue-700">Send test ping</button>
         <button type="button" data-disable-push class="hidden border rounded px-4 py-2 text-sm font-bold">Disable on this device</button>
       </div>
       <p data-push-status role="status" class="av-form-hint"></p>
@@ -31,12 +32,14 @@ if(root){
   const pushMaster=root.querySelector("[data-push-master]");
   const pushOptions=[...root.querySelectorAll("[data-push-options] input")];
   const enablePush=root.querySelector("[data-enable-push]");
+  const testPush=root.querySelector("[data-test-push]");
   const disablePush=root.querySelector("[data-disable-push]");
   const pushStatus=root.querySelector("[data-push-status]");
   let owner="",muted=new Set(),authVersion=0;
 
   function setPushBusy(value){
     if(enablePush)enablePush.disabled=value;
+    if(testPush)testPush.disabled=value;
     if(disablePush)disablePush.disabled=value;
     if(pushMaster)pushMaster.disabled=value;
     for(const input of pushOptions)input.disabled=value;
@@ -51,6 +54,7 @@ if(root){
     const state=await getDevicePushState();
     if(version!==authVersion||owner!==uid)return;
     enablePush.classList.toggle("hidden",state.permission==="granted"&&state.registered);
+    testPush.classList.toggle("hidden",!(state.permission==="granted"&&state.registered));
     disablePush.classList.toggle("hidden",!(state.permission==="granted"&&state.registered));
     if(!state.supported){
       enablePush.disabled=true;
@@ -100,6 +104,15 @@ if(root){
       pushStatus.textContent="Device notifications are enabled on this device.";
     }catch(error){pushStatus.textContent=error.message;}
     finally{if(auth.currentUser?.uid===uid){setPushBusy(false);void refreshPush();}}
+  });
+  testPush?.addEventListener("click",async()=>{
+    if(!owner||auth.currentUser?.uid!==owner)return;
+    const uid=owner;setPushBusy(true);pushStatus.textContent="Sending a test ping to your registered Adminerva devices…";
+    try{
+      const result=await sendTestPush();
+      pushStatus.textContent="Test ping sent to "+result.sent+" registered device"+(result.sent===1?"":"s")+". It is not saved in Adminerva and should close after about 15 seconds.";
+    }catch(error){pushStatus.textContent="Test ping failed: "+error.message;}
+    finally{if(auth.currentUser?.uid===uid)setPushBusy(false);}
   });
   disablePush?.addEventListener("click",async()=>{
     if(!owner||auth.currentUser?.uid!==owner)return;
