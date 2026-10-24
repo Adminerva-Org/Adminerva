@@ -587,3 +587,7 @@ a.av-home-task:hover,a.av-learning-card:hover { border-color:#7b9fce;box-shadow:
   .av-educator-nav-mobile{display:block}
   .av-educator-nav-mobile[open] .av-educator-nav-group{padding:.35rem}
 }
+
+.av-educator-content>.av-home{width:100%;margin:0;padding:0}
+.av-educator-content>.av-analytics-intro{width:100%;margin:0 0 1rem}
+.av-educator-content>.av-analytics-panel>div.max-w-screen-2xl{max-width:none;padding-left:0;padding-right:0}
