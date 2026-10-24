@@ -52,6 +52,16 @@ function getRepoId(repoUrl) {
   }
 }
 
+async function accessibleAssessments(sections){
+  if(staffRole(auth.currentUser)==="admin")return getDocs(collection(db,"assessments"));
+  const requests=[getDocs(query(collection(db,"assessments"),where("ownerUid","==",auth.currentUser.uid)))];
+  for(const group of queryGroups(sections))
+    requests.push(getDocs(query(collection(db,"assessments"),where("sectionIds","array-contains-any",group))));
+  const snapshots=await Promise.all(requests),docs=new Map();
+  for(const snapshot of snapshots)for(const record of snapshot.docs)docs.set(record.id,record);
+  return {docs:[...docs.values()],forEach(callback){for(const record of docs.values())callback(record);}};
+}
+
 document.addEventListener("analytics-teacher-change", () => {
   initDashboard();
 });
@@ -81,7 +91,7 @@ async function initDashboard() {
     document.getElementById("sectionSelect").replaceChildren();
 
     // Fetch Assessments for Task Filter & Naming
-    const assSnap = await getDocs(collection(db, "assessments"));
+    const assSnap = await accessibleAssessments(sections);
     if (request !== dashboardRequest) return;
     const taskSelect = document.getElementById("taskSelect");
     assSnap.forEach((d) => {
@@ -144,8 +154,7 @@ window.loadDashboardData = async function () {
       sectionStudents.length;
 
     // 2. Fetch Grades (Live to catch recent manual grading updates)
-    const gradeSnapshots=await Promise.all(queryGroups([...studentIds]).map(group=>getDocs(query(collection(db,"student_grades"),where("studentId","in",group)))));
-    const gradesSnap={forEach:callback=>gradeSnapshots.flatMap(snapshot=>snapshot.docs).forEach(callback)};
+    const gradesSnap=await getDocs(query(collection(db,"student_grades"),where("section","==",section)));
     if (request !== dashboardRequest) return;
     globalGrades = [];
     gradesSnap.forEach((d) => {
