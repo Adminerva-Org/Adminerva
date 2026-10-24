@@ -47,6 +47,16 @@
           "type": "Fixed",
           "area": "Submitted evidence return action",
           "text": "The Return for student changes button now works for submitted evidence instead of silently ignoring the click. Submitted, approved and instructor-proposed evidence all use the same audited return/reopen handler."
+        },
+        {
+          "type": "Updated",
+          "area": "Submission Inbox filters",
+          "text": "Teachers can filter the Submission Inbox by class section, submission status and assessment in addition to search. Supported evidence states include submitted, approved, reopened, needs review and withdrawn."
+        },
+        {
+          "type": "Updated",
+          "area": "Submission status visibility",
+          "text": "Each Submission Inbox card now shows a clear status badge so teachers can scan approval and resubmission state without opening the student review page."
         }
       ]
     },
