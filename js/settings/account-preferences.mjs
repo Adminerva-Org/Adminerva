@@ -3,14 +3,14 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {
   getPushPreferences,savePushPreferences,getDevicePushState,
   enableDevicePush,disableDevicePush,syncDevicePush,sendTestPush
-} from "../core/push-notifications.mjs?v=1.3.7";
+} from "../core/push-notifications.mjs?v=1.3.8";
 
 const root=document.querySelector("[data-account-preferences]");
 if(root){
   const staff=root.dataset.accountPreferences==="staff";
   const pushChoices=staff
-    ?[['submission','Teaching alerts · submissions, grading and reports']]
-    :[['assessment','New assessments'],['submission','Returned submissions / action required'],['grade','Published or corrected grades']];
+    ?[['submission','Student submissions & evidence'],['grading','Grading alerts'],['issue','Reports & replies']]
+    :[['assessment','New assessments'],['submission','Submission updates / action required'],['grade','Published or corrected grades'],['issue','Reports & replies']];
   const pushMarkup=`
     <fieldset class="mt-6" data-push-settings>
       <legend class="font-bold">Device notifications</legend>
@@ -27,7 +27,7 @@ if(root){
       <p data-push-status role="status" class="av-badge mt-3"></p>
     </fieldset>`;
   root.innerHTML='<h2 id="notifications" class="text-xl font-bold">Notifications &amp; display</h2><p class="av-form-hint">Choose inbox alerts, device push, and motion preferences.</p><form data-notification-form><fieldset><legend class="font-bold mb-3">Show in my inbox</legend><div class="av-preference-options" data-notification-options></div></fieldset>'+pushMarkup+'<fieldset class="mt-6"><legend class="font-bold">Motion</legend><label class="av-preference-option"><input type="checkbox" data-reduce-motion> Reduce decorative motion</label></fieldset><button type="submit" class="av-primary-button mt-4">Save my preferences</button><p data-preference-status role="status" class="av-form-hint" hidden></p></form>';
-  const categories=[["issue","Reports & replies"],["grade","Published grades"],["assessment","Assignments"],["release","Website updates"],...(staff?[["submission","Student submissions"],["grading","Grading alerts"]]:[])];
+  const categories=[["issue","Reports & replies"],["grade","Published grades"],["assessment","Assignments"],["release","Website updates"],["submission",staff?"Student submissions":"Submission updates"],...(staff?[["grading","Grading alerts"]]:[])];
   const options=root.querySelector("[data-notification-options]");
   for(const [value,title]of categories){const label=document.createElement("label"),input=document.createElement("input");label.className="av-preference-option";input.type="checkbox";input.value=value;input.name="notificationCategory";label.append(input,document.createTextNode(title));options.append(label);}
   const pushMaster=root.querySelector("[data-push-master]");
