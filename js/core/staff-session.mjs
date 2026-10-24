@@ -3,6 +3,7 @@ import {auth,db} from "./firebase-core.js?v=1.3.0";
 import {doc,getDocFromServer,getDocsFromServer,collection,query,where} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {ADMIN_EMAIL,staffRole,rememberStaff} from "./staff-role.mjs?v=1.3.0";
 const pending = new Map();
+const staffProfiles = new Map();
 const accountPending = new Map();
 const unavailableStaffLookups = new Set();
 export function resolveAccountAccess(user) {
@@ -24,17 +25,24 @@ export function resolveAccountAccess(user) {
 export async function resolveStaffRole(user) {
   if (!user?.emailVerified) return null;
   const email = String(user.email || "").toLowerCase();
-  if (email === ADMIN_EMAIL) {unavailableStaffLookups.delete(user.uid);return "admin";}
+  if (email === ADMIN_EMAIL) {unavailableStaffLookups.delete(user.uid);staffProfiles.delete(user.uid);return "admin";}
   if (!pending.has(user.uid)) {
     const operation = getDocFromServer(doc(db,"staff_access",email)).then(snapshot => {
       unavailableStaffLookups.delete(user.uid);
-      rememberStaff(user,snapshot.exists() ? snapshot.data() : null);
+      const profile=snapshot.exists() ? snapshot.data() : null;
+      staffProfiles.set(user.uid,profile);rememberStaff(user,profile);
       return staffRole(user);
     }).finally(() => pending.delete(user.uid));
     pending.set(user.uid,operation);
   }
   try { return await pending.get(user.uid); }
-  catch { unavailableStaffLookups.add(user.uid);rememberStaff(user,{status:"unavailable"}); return null; }
+  catch { unavailableStaffLookups.add(user.uid);staffProfiles.delete(user.uid);rememberStaff(user,{status:"unavailable"}); return null; }
+}
+export async function resolveStaffSubjects(user){
+  const role=await resolveStaffRole(user);
+  if(role!=="teacher")return [];
+  const profile=staffProfiles.get(user?.uid),subjects=profile?.subjects;
+  return Array.isArray(subjects)?[...new Set(subjects.filter(subject=>typeof subject==="string"&&subject.trim()&&subject.length<=120))].slice(0,40):[];
 }
 export const staffSessionReady = auth.authStateReady().then(async () => {
   const user = auth.currentUser;

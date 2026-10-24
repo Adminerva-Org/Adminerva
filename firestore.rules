@@ -334,8 +334,9 @@ service cloud.firestore {
       allow get: if isAdmin() || (isTeacher() && teacherEmail == request.auth.token.email.lower());
       allow list: if isAdmin();
       allow create, update: if isAdmin() && teacherEmail.matches("^[^/@ ]+@[^/@ ]+\\.[^/@ ]+$") &&
-        request.resource.data.keys().hasOnly(["teacherEmail", "sections", "updatedBy", "updatedAt"]) &&
+        request.resource.data.keys().hasOnly(["teacherEmail", "sections", "subjects", "updatedBy", "updatedAt"]) &&
         request.resource.data.teacherEmail == teacherEmail && request.resource.data.sections is list && request.resource.data.sections.size() <= 40 &&
+        request.resource.data.get("subjects",[]) is list && request.resource.data.get("subjects",[]).size() <= 40 &&
         request.resource.data.updatedBy == request.auth.uid && request.resource.data.updatedAt == request.time;
       allow delete: if isAdmin();
     }

@@ -1,6 +1,5 @@
 /** One class/assessment/target context for repository and offline activity review. */
-import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
-import {staffSubjects} from "../core/staff-role.mjs?v=1.3.10";
+import {resolveStaffRole,resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,getDocs,query,where} from "../core/teaching-firestore.mjs?v=1.3.0";
@@ -38,7 +37,7 @@ async function initialize(user){
   status("Loading your assigned classes and assessments…");
   const [students,tasks]=await Promise.all([getDocs(collection(db,"students")),getDocs(collection(db,"assessments"))]);
   if(generation!==loadId||auth.currentUser?.uid!==user.uid)return;
-  roster=students.docs.map(item=>({id:item.id,...item.data()}));assessments=tasks.docs.map(item=>({id:item.id,...item.data()}));subjectFocus=staffSubjects(user);
+  roster=students.docs.map(item=>({id:item.id,...item.data()}));assessments=tasks.docs.map(item=>({id:item.id,...item.data()}));subjectFocus=await resolveStaffSubjects(user);
   const sections=[...new Set(roster.map(student=>student.section).filter(value=>typeof value==="string"&&value.trim()))].sort();
   options(el("v2SectionSelect"),sections.map(value=>({value,label:value})),"Choose class");
   el("v2SectionSelect").value=sections.includes(parameters.get("section"))?parameters.get("section"):sections[0]||"";
