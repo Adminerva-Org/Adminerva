@@ -16,7 +16,7 @@
         {
           "type": "New",
           "area": "Teacher device notifications",
-          "text": "Teachers and administrators can enable device push from Account Settings and choose student submission/evidence, grading and report alert categories."
+          "text": "Teachers and administrators can enable device push from Account Settings. One Teaching alerts preference covers student submissions/evidence, grading attention and report/reply events without adding a new preference schema."
         },
         {
           "type": "Updated",
