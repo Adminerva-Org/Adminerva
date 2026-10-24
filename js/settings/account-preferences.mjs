@@ -181,7 +181,7 @@ if(root){
       if(!release)throw Error("No published release found.");
       const call=httpsCallable(getFunctions(app,"asia-southeast1"),"releaseAnnouncement");
       const result=await call({version:release.version,title:release.title,summary:release.summary});
-      status.textContent="Release notification sent to "+(result.data?.recipients||0)+" account(s).";
+      status.textContent="Release push delivered to "+(result.data?.delivered||0)+" account(s)"+((result.data?.recipients||0)!==(result.data?.delivered||0)?" · "+(result.data?.recipients||0)+" registered account(s) checked.":".");
     }catch(error){status.textContent="Release notification failed: "+error.message;}
     finally{button.disabled=false;}
   });
