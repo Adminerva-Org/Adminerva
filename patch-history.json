@@ -6,7 +6,7 @@
       "public": false,
       "releasedAt": "2026-10-24",
       "title": "More reliable Review & Grade evaluation",
-      "summary": "Draft notes for the current teaching-workspace repair: safer section-scoped review data, more reliable system evaluation, clearer recovery and cleaner browser feedback.",
+      "summary": "Draft notes for the current teaching-workspace repair: safer review access, fuller repository evidence, partial rubric proposals, clearer teacher confirmation and cleaner browser feedback.",
       "changes": [
         {
           "type": "Fixed",
@@ -21,7 +21,7 @@
         {
           "type": "Fixed",
           "area": "System evaluation responses",
-          "text": "Evaluation responses distinguish malformed output, response-limit truncation and other provider stop reasons. A malformed or truncated first response is retried once in a shorter format, while unsupported or unverified rubric criteria remain unscored."
+          "text": "Evaluation responses distinguish malformed output, response-limit truncation and other provider stop reasons. A malformed or truncated first response is retried once in a shorter format. Criteria can now award evidence-supported points while reserving only genuinely unresolved points for teacher confirmation."
         },
         {
           "type": "Fixed",
@@ -47,6 +47,31 @@
           "type": "Fixed",
           "area": "RepoFetch browser console",
           "text": "RepoFetch explicitly uses the Adminerva logo as its page icon instead of causing a missing favicon request. The Tailwind CDN production warning remains a separate styling-build task."
+        },
+        {
+          "type": "Updated",
+          "area": "Evaluation evidence package",
+          "text": "Review & Grade evaluates the student's verified primary XML screen together with supporting Activity, Manifest, Gradle, drawable, theme and resource changes from the same approved commits. Shared project source remains context and cannot independently earn individual credit."
+        },
+        {
+          "type": "New",
+          "area": "Android evidence checks",
+          "text": "Before rubric evaluation, Adminerva runs bounded XML and Android resource checks for constraints, component IDs, placeholders, touch dimensions, resource resolution, Activity/layout linkage, Manifest registration, dependencies and invalid Android resource naming. Best-practice findings do not automatically become rubric deductions."
+        },
+        {
+          "type": "Updated",
+          "area": "Partial rubric proposals",
+          "text": "A single unresolved visual or runtime check no longer removes an entire rubric criterion from the draft. The system shows a proposed score from supported evidence, the points still awaiting teacher confirmation and the possible score range. Teachers can adjust the final score after evidence review or classroom observation."
+        },
+        {
+          "type": "New",
+          "area": "Repository visual assets",
+          "text": "Referenced bounded PNG, JPEG and WebP repository assets can be included in evaluation when the deployed school evaluation service advertises image support. This can verify visible labels or artwork without adding another grading panel; exact native Android rendering remains a separate check."
+        },
+        {
+          "type": "Updated",
+          "area": "XML screen responsibility",
+          "text": "For Android XML UI assessments, verified substantive student XML screen commits can serve as the student's individual screen responsibility when no more specific responsibility note exists. Missing teammate screens remain shared project context rather than an automatic individual deduction."
         }
       ]
     },
