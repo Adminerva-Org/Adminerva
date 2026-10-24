@@ -50,10 +50,16 @@ function add(parent,tag,text,className=""){
   if(className)node.className=className;parent.append(node);return node;
 }
 async function github(path){
-  const response=await fetch("https://api.github.com"+path,{
-    headers:{Accept:"application/vnd.github+json"}});
-  if(!response.ok)throw Error("GitHub HTTP "+response.status+
-    ". This preview currently requires a publicly accessible repository.");
+  const headers={Accept:"application/vnd.github+json"};
+  const token=String(context?.profile?.githubToken||"").trim();
+  if(token)headers.Authorization="Bearer "+token;
+  const response=await fetch("https://api.github.com"+path,{headers});
+  if(!response.ok){
+    const hint=response.status===401||response.status===403
+      ?" Reconnect GitHub in your student settings and make sure the linked account can read this repository."
+      :response.status===404?" Check the repository URL and the linked GitHub account's access.":"";
+    throw Error("GitHub HTTP "+response.status+"."+hint);
+  }
   return response.json();
 }
 const repositoryPath=r=>"/repos/"+encodeURIComponent(r.owner)+"/"+encodeURIComponent(r.repo);
