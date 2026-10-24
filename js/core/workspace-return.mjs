@@ -17,3 +17,12 @@ export function refreshWorkspaceReturn(user=auth.currentUser){
   }
 }
 onAuthStateChanged(auth,refreshWorkspaceReturn);
+
+document.addEventListener("click",event=>{
+  const link=event.target.closest?.("[data-workspace-return]");
+  if(!link||event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+  const direct=cachedWorkspaceDestination(auth.currentUser);
+  if(!direct)return;
+  event.preventDefault();
+  location.assign(direct);
+});
