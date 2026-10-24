@@ -25,7 +25,7 @@ function originalWorkspace(course,mission,question){
 export function seasonActivity(course,mission,seed){
   const meta=missionMeta(course,mission),original=mission.build(seed),language=course.id==="java"?"java":course.id==="web"?"web":"python",a=3+Math.abs(seed)%7,b=2+Math.abs(seed>>>3)%4;
   let activity={type:meta.type,code:original.code,prompt:original.prompt,why:original.why,workspace:originalWorkspace(course,mission,original),choices:original.choices,solution:original.correct};
-  if(meta.type==="output")activity={...activity,prompt:"Write the exact answer that completes this mission: "+original.prompt,solution:String(original.choices[original.correct])};
+  if(meta.type==="output"){const prompt=String(original.prompt||"").replace(/\\s+(Explain the rule in your prediction[.]|After predicting, try changing one input in the sandbox[.]|After predicting, run a boundary example and compare it with this result[.])\\s*$/,"").trim();activity={...activity,prompt:prompt+" Enter only the exact output or requested value.",solution:String(original.choices[original.correct])};}
   if(meta.type==="ordering"){
     const ordered=language==="web"?["<main>","  <h1>Practice makes progress</h1>","  <p>My first lesson</p>","</main>"]:language==="java"?["int score = "+a+";","score += "+b+";","System.out.println(score);"]:["score = "+a,"score += "+b,"print(score)"];
     const items=rotate(ordered.map((text,id)=>({id,text})),seed+1).reverse();
