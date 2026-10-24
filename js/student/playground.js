@@ -65,7 +65,7 @@ let draggedTabIndex = -1;
 let practiceMode = false;
 let practiceTransfer = null;
 const guestMode=document.body.dataset.playgroundAccess==="guest";
-let workspaceFolders=[],selectedProjectPath="",selectedProjectFolder=false;
+let workspaceFolders=[],selectedProjectPath="",selectedProjectFolder=false,explorerDrag=null;
 let executionController=null,executionSequence=0;
 let loadedOwnerUid=null;
 
@@ -336,22 +336,90 @@ function renderTabs() {
   renderFileTree();
 }
 
+function currentFolderPaths(){
+  return new Set([...workspaceFolders,...parentFolders([...fileOrder,...workspaceFolders.map(path=>path+"/.keep")])]);
+}
+function explorerTargetPath(source,targetFolder=""){
+  return projectPath((targetFolder?targetFolder+"/":"")+source.split("/").at(-1));
+}
+function canMoveProjectItem(source,isFolder,targetFolder){
+  try{
+    const target=explorerTargetPath(source,targetFolder),allFolders=currentFolderPaths();
+    if(target===source||workspaceFiles[target]||allFolders.has(target))return false;
+    if(isFolder&&(targetFolder===source||targetFolder.startsWith(source+"/")))return false;
+    if(!isFolder)return Boolean(workspaceFiles[source]);
+    const movingFiles=fileOrder.filter(path=>path.startsWith(source+"/"));
+    const movingFolders=[...allFolders].filter(path=>path===source||path.startsWith(source+"/"));
+    const outsideFiles=new Set(fileOrder.filter(path=>!path.startsWith(source+"/")));
+    const outsideFolders=new Set([...allFolders].filter(path=>path!==source&&!path.startsWith(source+"/")));
+    const mapping=path=>target+path.slice(source.length);
+    return !movingFiles.some(path=>outsideFiles.has(mapping(path)))&&!movingFolders.some(path=>outsideFolders.has(mapping(path)));
+  }catch{return false;}
+}
+function moveProjectItem(source,isFolder,targetFolder){
+  if(!canMoveProjectItem(source,isFolder,targetFolder))return false;
+  const target=explorerTargetPath(source,targetFolder);
+  if(!isFolder){
+    const file=workspaceFiles[source];delete workspaceFiles[source];workspaceFiles[target]=file;
+    fileOrder=fileOrder.map(path=>path===source?target:path);
+    if(activeFilename===source)activeFilename=target;
+    selectedProjectPath=target;selectedProjectFolder=false;
+  }else{
+    const mapping=path=>path===source?target:path.startsWith(source+"/")?target+path.slice(source.length):path;
+    workspaceFiles=Object.fromEntries(Object.entries(workspaceFiles).map(([path,file])=>[mapping(path),file]));
+    fileOrder=fileOrder.map(mapping);workspaceFolders=[...new Set(workspaceFolders.map(mapping))];
+    activeFilename=mapping(activeFilename);selectedProjectPath=target;selectedProjectFolder=true;
+  }
+  const activePath=document.getElementById("activeFilePath");if(activePath)activePath.textContent=activeFilename;
+  renderTabs();triggerAutoSave();showSaveStatus("Moved to "+(targetFolder||"project root"));
+  return true;
+}
+function clearExplorerDropState(){
+  const tree=document.getElementById("projectTree");if(!tree)return;
+  tree.classList.remove("pg-dragging");
+  tree.querySelectorAll("[data-drop-active]").forEach(node=>delete node.dataset.dropActive);
+  tree.querySelectorAll(".pg-drag-source").forEach(node=>node.classList.remove("pg-drag-source"));
+}
+function bindExplorerDrag(node,path,isFolder){
+  node.draggable=true;
+  node.addEventListener("dragstart",event=>{
+    explorerDrag={path,isFolder};event.dataTransfer.effectAllowed="move";event.dataTransfer.setData("text/plain",path);
+    node.classList.add("pg-drag-source");document.getElementById("projectTree")?.classList.add("pg-dragging");
+  });
+  node.addEventListener("dragend",()=>{explorerDrag=null;clearExplorerDropState();});
+}
+function bindExplorerDrop(node,targetFolder){
+  node.addEventListener("dragover",event=>{
+    if(!explorerDrag||!canMoveProjectItem(explorerDrag.path,explorerDrag.isFolder,targetFolder))return;
+    event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect="move";node.dataset.dropActive="true";
+  });
+  node.addEventListener("dragleave",event=>{if(!node.contains(event.relatedTarget))delete node.dataset.dropActive;});
+  node.addEventListener("drop",event=>{
+    if(!explorerDrag)return;
+    event.preventDefault();event.stopPropagation();
+    const moving=explorerDrag;explorerDrag=null;clearExplorerDropState();moveProjectItem(moving.path,moving.isFolder,targetFolder);
+  });
+}
 function renderFileTree(){
   const tree=document.getElementById("projectTree");if(!tree)return;
   const open=new Set([...tree.querySelectorAll("details[open]")].map(n=>n.dataset.path));
   tree.replaceChildren();
-  const folders=[...new Set([...workspaceFolders,...parentFolders([...fileOrder,...workspaceFolders.map(path=>path+"/.keep")])])].sort();
+  const rootDrop=document.createElement("div");rootDrop.className="pg-drop-root";rootDrop.textContent="Move to project root";rootDrop.setAttribute("aria-hidden","true");
+  bindExplorerDrop(rootDrop,"");tree.append(rootDrop);
+  const folders=[...currentFolderPaths()].sort();
   function children(box,parent=""){
     for(const path of folders.filter(p=>p.split("/").slice(0,-1).join("/")===parent)){
       const details=document.createElement("details");details.dataset.path=path;details.open=open.has(path)||activeFilename.startsWith(path+"/");
-      const summary=document.createElement("summary");summary.textContent="▱ "+path.split("/").at(-1);summary.title=path;
+      const summary=document.createElement("summary");summary.textContent="▱ "+path.split("/").at(-1);summary.title="Drop here to move into "+path;
       summary.addEventListener("click",()=>{selectedProjectPath=path;selectedProjectFolder=true;});
+      bindExplorerDrag(summary,path,true);bindExplorerDrop(summary,path);
       const nested=document.createElement("div");details.append(summary,nested);children(nested,path);box.append(details);
     }
     for(const path of fileOrder.filter(p=>p.split("/").slice(0,-1).join("/")===parent)){
       const button=document.createElement("button");button.type="button";button.className="pg-file";button.setAttribute("aria-current",String(path===activeFilename));button.title=path;
       const icon=document.createElement("span");icon.textContent=path.endsWith(".java")?"J":path.endsWith(".py")?"Py":path.endsWith(".html")?"◇":"·";
-      const label=document.createElement("span");label.textContent=path.split("/").at(-1);button.append(icon,label);button.onclick=()=>switchTab(path);box.append(button);
+      const label=document.createElement("span");label.textContent=path.split("/").at(-1);button.append(icon,label);button.onclick=()=>switchTab(path);
+      bindExplorerDrag(button,path,false);box.append(button);
     }
   }
   children(tree);

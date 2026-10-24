@@ -1,6 +1,6 @@
 {
-  "version": "1.3.8",
+  "version": "1.3.9",
   "releasedAt": "2026-10-25",
-  "notes": "Teacher workflows are simpler and more integrated: one Analytics workspace, a smaller Review & Grade flow, compact educator navigation and modals, corrected notification wiring, and smoother return-to-workspace routing.",
-  "publishedAt": "2026-10-25T00:07:00+08:00"
+  "notes": "Teacher workspaces are separated into Staff Home, Repository Management and Lesson Planning; Submission Inbox adds a derived Graded state; Code Playground adds Explorer drag-and-drop, cloud version rename/delete, and a more compact shared header.",
+  "publishedAt": "2026-10-25T01:48:40+08:00"
 }

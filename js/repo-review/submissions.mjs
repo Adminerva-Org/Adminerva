@@ -2,7 +2,7 @@ import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
 /** Unified review inbox for legacy receipts and committed evidence. */
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {collection,getDocs,query,orderBy,limit,onSnapshot}
+import {collection,doc,getDoc,getDocs,query,orderBy,limit,onSnapshot}
   from "../core/teaching-firestore.mjs?v=1.3.0";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
 
@@ -15,7 +15,7 @@ if(initialRepo){
 const el=id=>document.getElementById(id);
 const make=(tag,style,text)=>{const n=document.createElement(tag);
   if(style)n.className=style;if(text!=null)n.textContent=String(text);return n;};
-let unsubscribe=[],snapshots={legacy:[],v2:[]},documents=[],students=new Map(),assessments=new Map();
+let unsubscribe=[],snapshots={legacy:[],v2:[]},documents=[],students=new Map(),assessments=new Map(),gradeState=new Map(),gradeLookupToken=0;
 function hyperlink(parent,label,href){
   const a=make("a","text-xs sm:text-sm font-bold text-blue-700 hover:underline break-all",label);
   a.href=href;a.target=href.startsWith("http")?"_blank":"_self";
@@ -26,35 +26,61 @@ function assessmentKey(item){
   return String(item.assessmentId||item.taskId||item.assessmentTitle||"");
 }
 function statusLabel(value){
-  return ({submitted:"Submitted",approved:"Approved",reopened:"Reopened",needs_review:"Needs review",withdrawn:"Withdrawn"})[value]||
+  return ({submitted:"Submitted",approved:"Approved",graded:"Graded",reopened:"Reopened",needs_review:"Needs review",withdrawn:"Withdrawn"})[value]||
     String(value||"Unknown").replace(/_/g," ").replace(/\b\w/g,char=>char.toUpperCase());
 }
 function statusClass(value){
   return ({
     submitted:"bg-blue-50 text-blue-800 border-blue-200",
     approved:"bg-emerald-50 text-emerald-800 border-emerald-200",
+    graded:"bg-cyan-50 text-cyan-900 border-cyan-200",
     reopened:"bg-amber-50 text-amber-900 border-amber-200",
     needs_review:"bg-violet-50 text-violet-800 border-violet-200",
     withdrawn:"bg-slate-100 text-slate-700 border-slate-200"
   })[value]||"bg-slate-50 text-slate-700 border-slate-200";
 }
+function gradeKey(item){
+  const studentId=String(item.studentId||"").trim(),taskId=String(item.assessmentId||item.taskId||"").trim();
+  return studentId&&taskId?studentId+"_"+taskId:"";
+}
+function visibleStatus(item){
+  const key=gradeKey(item);
+  return key&&gradeState.get(key)===true?"graded":item.status;
+}
+async function refreshGradeStatus(){
+  const user=auth.currentUser,token=++gradeLookupToken;
+  const missing=[...new Set(documents.map(gradeKey).filter(Boolean))].filter(key=>!gradeState.has(key));
+  if(!user||!missing.length)return;
+  await Promise.all(missing.map(async key=>{
+    try{
+      const snapshot=await getDoc(doc(db,"student_grades",key));
+      if(token===gradeLookupToken&&auth.currentUser?.uid===user.uid)gradeState.set(key,snapshot.exists());
+    }catch{
+      if(token===gradeLookupToken&&auth.currentUser?.uid===user.uid)gradeState.set(key,false);
+    }
+  }));
+  if(token===gradeLookupToken&&auth.currentUser?.uid===user.uid)render();
+}
 function render(){
   const feed=el("submissionFeed"),term=el("submissionSearch").value.trim().toLowerCase();
   const section=el("submissionSection").value,status=el("submissionState").value,assessment=el("submissionAssessment").value;
-  const filtered=documents.filter(item=>
-    (section==="all"||item.section===section)&&
-    (status==="all"||item.status===status)&&
-    (assessment==="all"||assessmentKey(item)===assessment)&&
-    [item.studentName,item.assessmentTitle,item.repoUrl,item.githubLogin,item.sourcePath,item.status,statusLabel(item.status)]
-      .join(" ").toLowerCase().includes(term));
+  const filtered=documents.filter(item=>{
+    const displayStatus=visibleStatus(item);
+    return (section==="all"||item.section===section)&&
+      (status==="all"||displayStatus===status)&&
+      (assessment==="all"||assessmentKey(item)===assessment)&&
+      [item.studentName,item.assessmentTitle,item.repoUrl,item.githubLogin,item.sourcePath,item.status,displayStatus,statusLabel(displayStatus)]
+        .join(" ").toLowerCase().includes(term);
+  });
   feed.replaceChildren();
   el("submissionStatus").textContent=filtered.length+" of "+documents.length+
     " review item(s) shown · student receipts + V2 selected evidence";
   if(!filtered.length){
-    feed.append(make("p","bg-white p-5 border rounded-xl text-slate-600 text-sm",
-      "No review items match these filters."));return;
+    feed.append(make("p","bg-white p-5 border rounded-xl text-slate-600 text-sm","No review items match these filters."));
+    return;
   }
   for(const item of filtered){
+    const displayStatus=visibleStatus(item);
     const card=make("article","bg-white border rounded-xl shadow-sm p-4 sm:p-5");
     const header=make("div","flex flex-col sm:flex-row gap-2 justify-between sm:items-start");
     const title=make("div","");
@@ -62,33 +88,20 @@ function render(){
     title.append(make("p","text-sm font-semibold text-blue-700 break-words",item.assessmentTitle||"Assessment"));
     header.append(title);
     const meta=make("div","flex flex-wrap sm:flex-col items-start sm:items-end gap-2");
-    meta.append(make("span","inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-bold "+statusClass(item.status),statusLabel(item.status)));
+    meta.append(make("span","inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-bold "+statusClass(displayStatus),statusLabel(displayStatus)));
     meta.append(make("span","text-xs text-slate-500",item.date?.toDate?.()?.toLocaleString()||"Date unavailable"));
-    header.append(meta);
-    card.append(header);
-    card.append(make("p","text-xs text-slate-600 mt-2","Section: "+(item.section||"Unknown")+
-      " · "+(item.kind==="v2"?"Selected commit evidence":"GitHub revision receipt")));
+    header.append(meta);card.append(header);
+    card.append(make("p","text-xs text-slate-600 mt-2","Section: "+(item.section||"Unknown")+" · "+(item.kind==="v2"?"Selected commit evidence":"GitHub revision receipt")));
     const rev=String(item.revisionSha||"");
     card.append(make("p","font-mono text-xs break-all mt-2","Project revision: "+rev));
     if(item.sourcePath)card.append(make("p","text-xs mt-1 break-all","Source: "+item.sourcePath));
     const links=make("div","flex flex-wrap gap-4 mt-4");
-    let repo=null;
-    try{repo=parseRepository(item.repoUrl);}catch{}
-    if(repo&&validSha(rev)){
-      hyperlink(links,"View checkpoint commit ↗",repo.url+"/commit/"+rev);
-      hyperlink(links,"Project at checkpoint ↗",repo.url+"/tree/"+rev);
-    }
+    let repo=null;try{repo=parseRepository(item.repoUrl);}catch{}
+    if(repo&&validSha(rev)){hyperlink(links,"View checkpoint commit ↗",repo.url+"/commit/"+rev);hyperlink(links,"Project at checkpoint ↗",repo.url+"/tree/"+rev);}
     if(item.kind==="v2"){
-      hyperlink(links,"Review & Grade →","repofetch.html?section="+
-        encodeURIComponent(item.section||"")+"&student="+encodeURIComponent(item.studentId)+
-        "&assessment="+encodeURIComponent(item.assessmentId));
-      card.append(make("p","text-xs text-slate-500 mt-2",
-        item.source==="teacher_discovered"
-          ?"Instructor-discovered historical evidence; not a student submission."
-          :"Student-selected SHAs are unverified until checkpoint review."));
-    }else{
-      hyperlink(links,"Open RepoFetch →","repofetch.html");
-    }
+      hyperlink(links,"Review & Grade →","repofetch.html?section="+encodeURIComponent(item.section||"")+"&student="+encodeURIComponent(item.studentId)+"&assessment="+encodeURIComponent(item.assessmentId));
+      card.append(make("p","text-xs text-slate-500 mt-2",item.source==="teacher_discovered"?"Instructor-discovered historical evidence; not a student submission.":"Student-selected SHAs are unverified until checkpoint review."));
+    }else hyperlink(links,"Open RepoFetch →","repofetch.html");
     card.append(links);feed.append(card);
   }
 }
@@ -122,10 +135,11 @@ function refresh(){
   }
   assessmentSelect.value=assessmentOptions.has(oldAssessment)?oldAssessment:"all";
   render();
+  void refreshGradeStatus();
 }
 onAuthStateChanged(auth,async user=>{
   const end = window.beginLoading?.("Loading review inbox…", el("submissionFeed")) || (() => {});
-  for(const stop of unsubscribe)stop();unsubscribe=[];snapshots={legacy:[],v2:[]};
+  for(const stop of unsubscribe)stop();unsubscribe=[];snapshots={legacy:[],v2:[]};gradeState.clear();gradeLookupToken++;
   if(!await resolveStaffRole(user)){
     el("submissionStatus").textContent="Authorized teacher sign-in required.";
     el("submissionFeed").replaceChildren();end();return;
