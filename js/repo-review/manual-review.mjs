@@ -175,13 +175,7 @@ async function generateAIDraft(){
   const session=state.token;
   state.aiBusy=true;
   const controller=new AbortController();state.aiAbort=controller;
-  const evaluationTimeout=setTimeout(()=>{
-    controller.abort();
-    if(session===state.token&&state.active===active){
-      stopEvaluation("Evaluation timed out. Pending results are ignored and no score was saved. Retry or continue manually.");
-      el("manualReviewFallback").classList.remove("hidden");
-    }
-  },60000);
+  let evaluationTimeout=null,evaluationSlowNotice=null;
   const button=el("manualReviewAIGenerate");button.disabled=true;
   button.textContent="Evaluating…";
   try{
@@ -200,6 +194,20 @@ async function generateAIDraft(){
       files:evidence.files,patches:evidence.patches,contributionScope:active.evidence.contributionScope
     });
     if(controller.signal.aborted)throw Error("Evaluation timed out. Continue manually or retry.");
+    // Start the evaluation timeout only after source/evidence retrieval finishes.
+    // The backend may legitimately spend up to ~85 seconds on one provider call,
+    // and one compact retry is allowed when the first response is malformed.
+    evaluationSlowNotice=setTimeout(()=>{
+      if(session===state.token&&state.active===active&&state.aiBusy)
+        aiStatus("Evaluation is still processing the verified evidence. No score or feedback has been changed.");
+    },45000);
+    evaluationTimeout=setTimeout(()=>{
+      controller.abort();
+      if(session===state.token&&state.active===active){
+        stopEvaluation("Evaluation timed out before the service finished. No score was saved. Retry or continue manually.");
+        el("manualReviewFallback").classList.remove("hidden");
+      }
+    },185000);
     let parsed;
     for(let attempt=0;attempt<2;attempt++){
       const retryInstruction=attempt===0?"":"\n\nRETRY FORMAT: Return the same JSON structure, but keep each rationale under 240 characters, each reviewAction under 160 characters, feedback under 800 characters, projectObservations under 500 characters, and limitations under 500 characters. Do not add prose outside JSON.";
@@ -235,7 +243,7 @@ async function generateAIDraft(){
       el("manualReviewRetry").textContent=error.retryAt?"Retry after "+new Date(error.retryAt).toLocaleTimeString():"Retry evaluation";
     }
   }finally{
-    clearTimeout(evaluationTimeout);
+    clearTimeout(evaluationSlowNotice);clearTimeout(evaluationTimeout);
     if(session===state.token&&state.active===active){
       state.aiBusy=false;button.disabled=Boolean(state.active?.previous?.published)||!state.active?.checkpointSha;
       button.textContent="Evaluate";
