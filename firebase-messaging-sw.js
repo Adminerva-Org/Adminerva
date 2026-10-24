@@ -12,4 +12,28 @@ firebase.initializeApp({
   measurementId: "G-XPXLNGZCY2"
 });
 
-firebase.messaging();
+const messaging=firebase.messaging();
+
+messaging.onBackgroundMessage(payload=>{
+  const data=payload?.data||{};
+  if(data.adminervaKind!=="test_ping")return;
+  const tag="adminerva-test-ping";
+  const closeAfter=Math.min(30000,Math.max(5000,Number(data.autoCloseMs)||15000));
+  return self.registration.showNotification(data.title||"Adminerva test notification",{
+    body:data.body||"Push notifications are working on this device.",
+    icon:"assets/New%20Adminerva%20logo.png",
+    badge:"assets/New%20Adminerva%20logo.png",
+    tag,
+    renotify:true,
+    data:{target:data.target||"student-settings.html#notifications",adminervaKind:"test_ping"}
+  }).then(()=>new Promise(resolve=>setTimeout(resolve,closeAfter)))
+    .then(()=>self.registration.getNotifications({tag}))
+    .then(notifications=>{for(const notification of notifications)notification.close();});
+});
+
+self.addEventListener("notificationclick",event=>{
+  const target=event.notification?.data?.target;
+  if(!target)return;
+  event.notification.close();
+  event.waitUntil(clients.openWindow(target));
+});
