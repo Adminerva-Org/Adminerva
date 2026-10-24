@@ -84,8 +84,9 @@ document.addEventListener("DOMContentLoaded", () => {
     settings: "Account settings", global: "Reports & support",
     "student-home": "Your workspace", "staff-home": "Your workspace"
   };
+  const supplementalStaffItems=[["repobank","Repository context","repobank.html"]];
   const allItems = isStudent ? Object.values(studentGroups).flatMap(group => group.items)
-    : staffGroups.flatMap(group => group.items);
+    : staffGroups.flatMap(group => group.items).concat(supplementalStaffItems);
   const currentItem = (studentGroup?.items || groups.flatMap(group => group.items))
     .find(item => item[0] === activePage) || allItems.find(item => item[0] === activePage);
   const currentArea = studentGroup?.name || areaNames[area] || "Adminerva";
