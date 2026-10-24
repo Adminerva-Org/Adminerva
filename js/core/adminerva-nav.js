@@ -39,19 +39,22 @@ document.addEventListener("DOMContentLoaded", () => {
     ] }
   };
   const staffGroups = [
-    { name: "Teaching", area: "educator", items: [
-      ["home", "Educator Hub", "teacher-home.html"],
-      ["planner", "Lesson planner", "lesson-planner.html"],
+    { name: "Assessment", area: "educator", items: [
       ["studio", "Assessment studio", "assessment-studio.html"],
-      ["dashboard", "Analytics", "teacher-analytics.html"]
+      ["submissions", "Submission inbox", "submissions.html"]
     ] },
-    { name: "Review", area: "educator", items: [
-      ["submissions", "Submission inbox", "submissions.html"],
+    { name: "Review & grade", area: "educator", items: [
       ["repofetch", "Review & grade", "repofetch.html"],
-      ["gradebook", "Gradebook", "gradebook.html"],
+      ["gradebook", "Gradebook", "gradebook.html"]
+    ] },
+    { name: "Repositories", area: "educator", items: [
       ["repobank", "Repository bank", "repobank.html"]
     ] },
-    { name: "Resources", area: "lesson", items: [
+    { name: "Insights", area: "educator", items: [
+      ["dashboard", "Analytics", "teacher-analytics.html"]
+    ] },
+    { name: "Planning", area: "lesson", items: [
+      ["planner", "Lesson planner", "lesson-planner.html"],
       ["presentation", "Slide editor", "presentation.html"],
       ["schedule", "Teacher schedule", "schedule.html"],
       ["library", "Reference library", "library.html"]
@@ -74,7 +77,7 @@ document.addEventListener("DOMContentLoaded", () => {
     (group.area === area || area === "admin" && group.area === "settings"));
   const studentGroup = studentGroups[activeModule];
   const areaNames = {
-    educator: "Educator Hub", lesson: "Lesson Planner", admin: "School administration",
+    educator: "Repository Management", lesson: "Lesson Planning", admin: "School administration",
     settings: "Account settings", global: "Reports & support",
     "student-home": "Your workspace", "staff-home": "Your workspace"
   };
@@ -92,7 +95,7 @@ document.addEventListener("DOMContentLoaded", () => {
     : isStudent ? studentGroup?.items[0]?.[2]
     : area === "lesson" ? "lesson-planner.html"
     : area === "admin" ? "users.html"
-    : area === "educator" ? "teacher-home.html" : null;
+    : area === "educator" ? "assessment-studio.html" : null;
   const escapeHTML = value => String(value).replace(/[&<>"']/g, char =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
   const modules = isStudent ? [
@@ -103,23 +106,23 @@ document.addEventListener("DOMContentLoaded", () => {
     ["My reports", "issues.html", "Report a problem or follow an update"]
   ] : [
     [homeLabel, homeRoute, "Your teaching workspace"],
-    ["Educator Hub", "teacher-home.html", "Teaching, review, grading and analytics"],
-    ["Lesson Planner", "lesson-planner.html", "Lessons, slides, schedule and references"],
+    ["Repository Management", "assessment-studio.html", "Assessments, submissions, grading and repositories"],
+    ["Lesson Planning", "lesson-planner.html", "Lessons, slides, schedule and references"],
     ...(isSuperAdmin ? [["School administration", "users.html", "Students, sections and teacher assignments"]] : []),
     ["Reports & support", "issues.html", "Follow reports and get help"]
   ];
   root.innerHTML = `
     <nav aria-label="Adminerva main navigation" class="bg-gray-900/95 backdrop-blur-md text-white shadow-lg relative z-50 border-b border-cyan-900/50 sticky top-0">
       <div class="max-w-screen-2xl mx-auto">
-        <div class="av-nav-top flex justify-between items-center min-h-16 px-4 sm:px-6 lg:px-8">
+        <div class="av-nav-top flex justify-between items-center min-h-14 px-4 sm:px-6 lg:px-8">
           <div class="av-nav-brand flex items-center gap-3 min-w-0">
-            <a href="${homeRoute}" class="av-nav-home flex items-center gap-2 min-h-11 rounded-lg" aria-label="Adminerva · ${homeLabel}"${activePage === "home" ? ' aria-current="page"' : ""}>
-              <img src="assets/New Adminerva logo.png" alt="" class="h-9 w-9 object-contain">
+            <a href="${homeRoute}" class="av-nav-home flex items-center gap-2 min-h-10 rounded-lg" aria-label="Adminerva · ${homeLabel}"${activePage === "home" ? ' aria-current="page"' : ""}>
+              <img src="assets/New Adminerva logo.png" alt="" class="h-8 w-8 object-contain">
               <span class="av-nav-wordmark hidden sm:inline font-extrabold tracking-wide">ADMINERVA</span>
               <span class="av-nav-home-label text-sm font-semibold text-cyan-100">Home</span>
             </a>
             <details class="av-module-switcher relative group">
-              <summary class="av-module-label flex items-center gap-2 list-none cursor-pointer rounded-lg px-3 py-2.5 min-h-11 text-sm font-bold text-cyan-100 border border-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400" aria-label="Switch workspace">
+              <summary class="av-module-label flex items-center gap-2 list-none cursor-pointer rounded-lg px-3 py-2 min-h-10 text-sm font-bold text-cyan-100 border border-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400" aria-label="Switch workspace">
                 <span>Workspaces</span><span aria-hidden="true">▾</span>
               </summary>
               <div class="av-nav-menu-panel absolute left-0 top-full mt-2 w-72 max-w-[85vw] max-h-[75dvh] overflow-y-auto z-[110] rounded-xl bg-slate-900 border border-slate-600 shadow-2xl p-2">
@@ -130,16 +133,16 @@ document.addEventListener("DOMContentLoaded", () => {
           </div>
           <div id="av-desktop-nav" class="hidden xl:flex gap-1 items-center"></div>
           <div id="av-account-controls" class="av-nav-tools flex items-center gap-2">
-            <button type="button" title="Report Issue" aria-label="Help and updates" class="min-h-11 min-w-11 rounded-lg border border-slate-600 text-lg font-bold hover:bg-slate-800" onclick="const m=document.getElementById('bug-modal');if(m){m.hidden=false;m.classList.remove('hidden')}">?</button>
-            <a href="${isStudent ? "student-settings.html" : "settings.html"}" title="Account settings" aria-label="Account settings" class="min-h-11 min-w-11 flex items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800"><span aria-hidden="true">⚙</span></a>
+            <button type="button" title="Report Issue" aria-label="Help and updates" class="min-h-10 min-w-10 rounded-lg border border-slate-600 text-base font-bold hover:bg-slate-800" onclick="const m=document.getElementById('bug-modal');if(m){m.hidden=false;m.classList.remove('hidden')}">?</button>
+            <a href="${isStudent ? "student-settings.html" : "settings.html"}" title="Account settings" aria-label="Account settings" class="min-h-10 min-w-10 flex items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800"><span aria-hidden="true">⚙</span></a>
             <div class="flex flex-col items-end border-l border-slate-600 pl-3 min-w-0">
-              <button type="button" id="signOutBtn" class="min-h-8 text-xs sm:text-sm text-slate-100 hover:text-white font-bold">Sign out</button>
+              <button type="button" id="signOutBtn" class="min-h-7 text-xs sm:text-sm text-slate-100 hover:text-white font-bold">Sign out</button>
               <span id="userEmailDisplay" class="text-[10px] text-slate-400 truncate max-w-[130px]"></span>
               <span class="av-nav-role text-[10px] text-cyan-300">${roleLabel}</span>
             </div>
           </div>
         </div>
-        <div class="av-nav-location flex items-center gap-2 px-4 sm:px-6 lg:px-8 py-2 border-t border-slate-700 text-sm" aria-label="Current location">
+        <div class="av-nav-location flex items-center gap-2 px-4 sm:px-6 lg:px-8 py-1.5 border-t border-slate-700 text-xs" aria-label="Current location">
           <span class="av-nav-context text-slate-400">${escapeHTML(currentArea)}</span><span aria-hidden="true" class="text-slate-500">/</span>
           <span class="av-nav-page font-semibold text-slate-100">${escapeHTML(currentPage)}</span>
         </div>

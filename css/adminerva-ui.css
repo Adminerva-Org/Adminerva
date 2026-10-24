@@ -591,3 +591,8 @@ a.av-home-task:hover,a.av-learning-card:hover { border-color:#7b9fce;box-shadow:
 .av-educator-content>.av-home{width:100%;margin:0;padding:0}
 .av-educator-content>.av-analytics-intro{width:100%;margin:0 0 1rem}
 .av-educator-content>.av-analytics-panel>div.max-w-screen-2xl{max-width:none;padding-left:0;padding-right:0}
+
+/* 1.3.9: compact shared header and Repository Management navigation. */
+.av-nav-top{padding-block:.35rem}
+.av-nav-location{padding-top:.4rem;padding-bottom:.4rem;font-size:.75rem}
+.av-educator-nav{top:6rem}
