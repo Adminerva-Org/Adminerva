@@ -62,7 +62,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["library", "Reference library", "library.html"]
     ] },
     { name: "School setup", area: "admin", items: isSuperAdmin ? [
-      ["home", "Administration overview", "school-admin.html"],
+      ["overview", "Administration overview", "school-admin.html"],
       ["analytics", "Administration analytics", "admin-analytics.html"],
       ["directory", "User directory", "users.html"],
       ["sections", "Sections", "manage-sections.html"],
