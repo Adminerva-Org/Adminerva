@@ -2,6 +2,7 @@
 import { db,auth } from "../core/firebase-core.js?v=1.3.0";
 import {validateDeploymentDates} from "./assessment-dates.mjs?v=1.3.0";
 import {loadSchoolOptions,fillSchoolDatalist} from "../core/school-options.mjs?v=1.3.0";
+import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
 import {
   collection,
   getDocs,
@@ -23,7 +24,7 @@ let assessments = [];
 let currentAssessmentId = null;
 let deploySelectedSections = [];
 let fpInstance = null;
-let savingBlueprint=false,rubricSource="balanced",lastGeneratedRubric="";
+let savingBlueprint=false,rubricSource="balanced",lastGeneratedRubric="",subjectFocus=[];
 const rubricTemplates=new Map();
 const defaultPersona="Assist the teacher by checking supported evidence against the published task and rubric. Distinguish verified individual contributions from shared project work. Do not infer authorship or misconduct. Leave unsupported, visual and runtime criteria for teacher review. Suggested scores stay unpublished until teacher approval.";
 const balancedCriteria=[{name:"Task requirements",weight:40,description:"Requested features and outputs are demonstrated."},{name:"Correctness",weight:30,description:"The submitted work behaves or reasons correctly for the task."},{name:"Clarity and organization",weight:20,description:"The work is understandable, organized and appropriate for the task."},{name:"Explanation and supporting evidence",weight:10,description:"The student explains the approach and links relevant evidence of their own contribution."}];
@@ -61,7 +62,10 @@ window.applyAssessmentRubric=function(){
 async function loadBlueprintChoices(){
   const results=await Promise.allSettled([getDocs(collection(db,"templates")),loadSchoolOptions()]);
   if(results[0].status==="fulfilled")for(const record of results[0].value.docs){const data=record.data();if(Array.isArray(data.criteria)&&data.criteria.length)rubricTemplates.set("template:"+record.id,{name:data.name||"Saved rubric",criteria:data.criteria});}
-  if(results[1].status==="fulfilled")fillSchoolDatalist("assessmentSubjectChoices",results[1].value.subjects);
+  if(results[1].status==="fulfilled"){
+    const subjects=subjectFocus.length?results[1].value.subjects.filter(subject=>subjectFocus.includes(subject)):results[1].value.subjects;
+    fillSchoolDatalist("assessmentSubjectChoices",subjects);
+  }
   refreshRubricChoices();
 }
 for(const id of ["assessTitle","assessSubject","assessType","taskContext"])document.getElementById(id).addEventListener("input",updateContextPreview);
@@ -127,6 +131,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   window.showSubtleLoader("Loading Assessment Studio...");
+  subjectFocus=await resolveStaffSubjects(auth.currentUser);
   await fetchSectionsFromStudents();
   await loadAssessments();
   void loadBlueprintChoices();
@@ -157,10 +162,13 @@ async function loadAssessments() {
     ]);
     const privateById=new Map(privateSnap.docs.map(item=>[item.id,item.data()]));
     assessments = [];
-    snap.forEach(item => assessments.push({
-      id:item.id,...item.data(),
-      ...(item.data().schemaVersion===2 ? (privateById.get(item.id)||{}) : {})
-    }));
+    snap.forEach(item => {
+      const assessment={
+        id:item.id,...item.data(),
+        ...(item.data().schemaVersion===2 ? (privateById.get(item.id)||{}) : {})
+      };
+      if(!subjectFocus.length||!assessment.subject||subjectFocus.includes(assessment.subject))assessments.push(assessment);
+    });
     renderAssessmentGrid();
     refreshRubricChoices();
   } catch (e) {
@@ -236,7 +244,7 @@ window.openCreateModal = function () {
   document.getElementById("assessType").value = "Mini PETA";
   document.getElementById("assessQuarter").value = "";
   document.getElementById("assessQuarter").value=assessments.find(item=>["Q1","Q2","Q3","Q4"].includes(item.quarter))?.quarter||"Q1";
-  document.getElementById("assessSubject").value="";
+  document.getElementById("assessSubject").value=subjectFocus.length===1?subjectFocus[0]:"";
   document.getElementById("assessV2").checked = true;
   document.getElementById("assessV2").disabled = false;
   document.getElementById("assessExpectedExts").value = "";
@@ -305,7 +313,9 @@ window.saveAssessment = async function () {
   const title = document.getElementById("assessTitle").value.trim();
   if (!title){blueprintStatus("Enter an assessment title.");document.getElementById("assessTitle").focus();return;}
   const score=Number(document.getElementById("maxScore").value),criteria=document.getElementById("evalCriteria").value.trim(),actor=auth.currentUser;
+  const subject=document.getElementById("assessSubject").value.trim();
   if(!actor?.uid){blueprintStatus("Sign in to your staff account before saving.");return;}
+  if(subjectFocus.length&&(!subject||!subjectFocus.includes(subject))){blueprintStatus("Choose one of your assigned subjects before saving this assessment.");document.getElementById("assessSubject").focus();return;}
   if(!Number.isFinite(score)||score<1||score>1000){blueprintStatus("Maximum score must be between 1 and 1,000.");document.getElementById("maxScore").focus();return;}
   if(!criteria){blueprintStatus("Use a prepared rubric or enter your evaluation criteria before saving.");document.getElementById("evalCriteria").focus();return;}
 
@@ -319,7 +329,7 @@ window.saveAssessment = async function () {
     type: document.getElementById("assessType").value,
     maxScore: score,
     quarter: document.getElementById("assessQuarter").value,
-    subject: document.getElementById("assessSubject").value.trim(),
+    subject,
     targetPaths: targetPaths, // Legacy path arrays are preserved.
     expectedExtensions: [...new Set(document.getElementById("assessExpectedExts").value
       .split(",").map(e => e.trim().toLowerCase().replace(/^\./, "")).filter(e => /^[a-z0-9]{1,12}$/.test(e)))],
