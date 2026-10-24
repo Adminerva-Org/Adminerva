@@ -16,7 +16,6 @@ import {
   signOut,
   linkWithPopup,
   GithubAuthProvider,
-  signInWithPopup,
   reauthenticateWithPopup,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 
@@ -26,6 +25,7 @@ let currentStudentProfile = null;
 let cachedCommitsData = [];
 let currentSectionAssessments = [];
 let myPublishedGrades = {}; // ✨ Global grade dictionary
+let dashboardLoadSequence = 0;
 
 function escapeHTML(str) {
   if (!str) return "";
@@ -150,6 +150,9 @@ onAuthStateChanged(auth, async (user) => {
 
 async function loadDashboardProfile(studentData) {
   currentStudentProfile = studentData;
+  const loadSequence=++dashboardLoadSequence;
+  const profileId=studentData.docId,accountUid=auth.currentUser?.uid;
+  const isCurrent=()=>loadSequence===dashboardLoadSequence&&currentStudentProfile?.docId===profileId&&auth.currentUser?.uid===accountUid;
   const subtitle = document.getElementById("repoSubtitle");
   const container = document.getElementById("commitListContainer");
   const overlay = document.getElementById("githubAuthOverlay");
@@ -168,6 +171,7 @@ async function loadDashboardProfile(studentData) {
   if (gradeContainer) {
     try {
       const gradeSnap = await loadPublishedGrades(studentData.docId);
+      if(!isCurrent())return;
 
       let publishedGrades = [];
       gradeSnap.forEach((d) => {
@@ -220,7 +224,7 @@ async function loadDashboardProfile(studentData) {
   }
 
   // Load assessments AFTER grades so the mini-widget can attach the scores
-  loadStudentAssessments(studentData.section);
+  loadStudentAssessments(studentData.section,loadSequence,profileId);
 
   if (!studentData.repoUrl || !studentData.githubUsername) {
     if (!studentData.repoUrl && studentData.githubUsername)
@@ -240,6 +244,7 @@ async function loadDashboardProfile(studentData) {
 
   try {
     const cacheSnap = await getDoc(cacheRef);
+    if(!isCurrent())return;
     if (cacheSnap.exists()) {
       cachedCommitsData = cacheSnap.data().commits || [];
       renderCommits(cachedCommitsData, defaultFilter);
@@ -258,10 +263,16 @@ async function loadDashboardProfile(studentData) {
     studentData.githubUsername,
     studentData.githubToken,
     cacheRef,
+    profileId,
+    loadSequence,
+    accountUid,
   );
 }
 
-async function syncGitHubData(repoUrl, username, token, cacheRef) {
+function studentDataSection(profileId){return userProfiles.find(item=>item.docId===profileId)?.section||"";}
+function studentDataGithub(profileId){return userProfiles.find(item=>item.docId===profileId)?.githubUsername||"";}
+async function syncGitHubData(repoUrl, username, token, cacheRef, profileId, loadSequence, accountUid) {
+  const isCurrent=()=>loadSequence===dashboardLoadSequence&&currentStudentProfile?.docId===profileId&&auth.currentUser?.uid===accountUid;
   try {
     const urlParts = repoUrl.replace(/\/$/, "").replace(".git", "").split("/");
     let repo = urlParts.pop();
@@ -281,15 +292,16 @@ async function syncGitHubData(repoUrl, username, token, cacheRef) {
           repoUrl.toLowerCase() !== repoInfo.html_url.toLowerCase()
         ) {
           await setDoc(
-            doc(db, "students", currentStudentProfile.docId),
+            doc(db, "students", profileId),
             { repoUrl: actualUrl },
             { merge: true },
           );
           owner = repoInfo.owner.login;
           repo = repoInfo.name;
+          const profile=userProfiles.find(item=>item.docId===profileId);if(profile)profile.repoUrl=actualUrl;
           const subtitle = document.getElementById("repoSubtitle");
-          if (subtitle)
-            subtitle.innerHTML = `<strong>${escapeHTML(currentStudentProfile.section)}:</strong> Tracking <span class="font-mono text-xs text-slate-800">${escapeHTML(currentStudentProfile.githubUsername)}</span> on <a href="${escapeHTML(actualUrl)}" target="_blank" class="text-blue-500 hover:underline font-mono text-xs">${escapeHTML(actualUrl)}</a>`;
+          if (subtitle&&isCurrent())
+            subtitle.innerHTML = `<strong>${escapeHTML(studentDataSection(profileId))}:</strong> Tracking <span class="font-mono text-xs text-slate-800">${escapeHTML(studentDataGithub(profileId))}</span> on <a href="${escapeHTML(actualUrl)}" target="_blank" class="text-blue-500 hover:underline font-mono text-xs">${escapeHTML(actualUrl)}</a>`;
         }
       }
     } catch (autoUpdateError) {}
@@ -312,12 +324,14 @@ async function syncGitHubData(repoUrl, username, token, cacheRef) {
     }
 
     if (allCommits.length > 0) {
-      cachedCommitsData = allCommits;
+      if(auth.currentUser?.uid!==accountUid)return;
       await setDoc(
         cacheRef,
         { commits: allCommits, lastSynced: new Date().toISOString() },
         { merge: true },
       );
+      if(!isCurrent())return;
+      cachedCommitsData = allCommits;
       const filter = document.getElementById("timeFilter")?.value || "7d";
       renderCommits(cachedCommitsData, filter);
       renderChart(cachedCommitsData, filter);
@@ -343,12 +357,16 @@ async function linkGithubAccount() {
       result = await reauthenticateWithPopup(currentUser, provider);
     else result = await linkWithPopup(currentUser, provider);
   } catch (error) {
-    if (error.code === "auth/credential-already-in-use")
-      result = await signInWithPopup(auth, provider);
-    else {
-      alert("GitHub Connection Failed: " + error.message);
+    if (error.code === "auth/credential-already-in-use") {
+      alert("This GitHub account is already linked to a different Adminerva sign-in. Your current school account has not changed. Sign in to the other account to disconnect GitHub there, or use a different GitHub account.");
       return;
     }
+    alert("GitHub Connection Failed: " + error.message);
+    return;
+  }
+  if(auth.currentUser?.uid!==currentUser.uid){
+    alert("Your Adminerva account changed before GitHub linking finished. Reload and retry from the school account you want to keep.");
+    return;
   }
 
   const credential = GithubAuthProvider.credentialFromResult(result);
@@ -513,15 +531,15 @@ function renderChart(commits, filter) {
   });
 }
 
-document.addEventListener("click", (e) => {
-  if (e.target && e.target.id === "signOutBtn") {
-    signOut(auth).then(() => {
-      localStorage.removeItem("Adminerva_Role");
-      localStorage.removeItem("Adminerva_Mock_Role");
-      localStorage.removeItem("Adminerva_Impersonate");
-      window.location.href = "login.html";
-    });
-  }
+document.addEventListener("click", async (e) => {
+  if (e.defaultPrevented||!e.target||e.target.id!=="signOutBtn")return;
+  e.preventDefault();
+  try{const push=await import("../core/push-notifications.mjs?v=1.3.6");await push.departPushAccount();}catch{}
+  await signOut(auth).catch(()=>{});
+  localStorage.removeItem("Adminerva_Role");
+  localStorage.removeItem("Adminerva_Mock_Role");
+  localStorage.removeItem("Adminerva_Impersonate");
+  window.location.href = "login.html";
 });
 
 async function verifyStudentSetup(studentData) {
@@ -644,13 +662,14 @@ async function verifyStudentSetup(studentData) {
   }
 }
 
-async function loadStudentAssessments(studentSection) {
+async function loadStudentAssessments(studentSection,loadSequence=dashboardLoadSequence,profileId=currentStudentProfile?.docId) {
   const container = document.getElementById("studentAssessmentsContainer");
   if (!container) return;
 
   try {
-    const q = query(collection(db, "assessments"));
+    const q = query(collection(db, "assessments"),where("sectionIds","array-contains",studentSection));
     const snap = await getDocs(q);
+    if(loadSequence!==dashboardLoadSequence||currentStudentProfile?.docId!==profileId)return;
     currentSectionAssessments = [];
 
     snap.forEach((docSnap) => {
