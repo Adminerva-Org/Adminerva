@@ -10,7 +10,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/f
 import { collection, query, where, orderBy, limit, onSnapshot, getDocs, doc, updateDoc, setDoc, serverTimestamp } from "./teaching-firestore.mjs?v=1.3.2";
 
 let listenEpoch=0;
-const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], reopenedEvidence:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false };
+const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], reopenedEvidence:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false, pushState:null };
 const isAdmin = () => staffRole(state.user)==="admin";
 const isTeacher = () => staffRole(state.user)==="teacher";
 const verifiedRole = () => isAdmin() ? "admin" : isTeacher() ? "teacher" : "student";
@@ -181,6 +181,7 @@ async function listen(user){
   const settingsLink=el("av-alert-preferences-link");
   if(settingsLink)settingsLink.href=(staffRole(user)?"settings.html":"student-settings.html")+"#notifications";
   void refreshReleases();
+  void refreshPushPrompt();
   state.unsubscribe.push(onSnapshot(query(
     collection(db,"notification_history",user.uid,"items"),
     orderBy("lastInteractedAt","desc"),limit(NOTIFICATION_HISTORY_LIMIT)),
@@ -236,6 +237,22 @@ async function listen(user){
     snap=>{state.submissions=snap.docs.map(d=>({id:d.id,...d.data()}));success("Student submissions")},
     error("Student submissions")));
 }
+async function refreshPushPrompt(){
+  const prompt=el("av-push-prompt"),button=el("av-enable-push-device"),message=el("av-push-prompt-text");
+  if(!prompt||!state.user||staffRole(state.user)){if(prompt)prompt.classList.add("hidden");return;}
+  try{
+    const module=await import("./push-notifications.mjs?v=1.3.0");
+    const [device,prefs]=await Promise.all([module.getDevicePushState(),module.getPushPreferences(state.user.uid)]);
+    state.pushState={device,prefs};
+    const show=prefs.enabled!==false&&device.supported&&device.configured&&device.permission!=="denied"&&!(device.permission==="granted"&&device.registered);
+    prompt.classList.toggle("hidden",!show);
+    if(!show)return;
+    message.textContent=device.permission==="granted"
+      ?"Device permission is granted. Reconnect this device to receive assessment, returned-submission, and grade alerts."
+      :"Important student alerts are ON by default. Enable this device once to receive them outside Adminerva.";
+    button.textContent=device.permission==="granted"?"Reconnect device":"Enable device notifications";
+  }catch{prompt.classList.add("hidden");}
+}
 async function refreshReleases(){
   const uid=state.user?.uid;if(!uid)return;
   try{const releases=await loadPublicReleases();if(state.user?.uid!==uid)return;state.releases=releaseNotifications(releases);render();}
@@ -269,6 +286,21 @@ export function mountNotificationCenter(){
   panel.append(search);
   const preferencesLink=make("a","block border-b px-4 py-3 text-xs font-semibold text-blue-700 underline","Notification settings →");
   preferencesLink.id="av-alert-preferences-link";preferencesLink.href="student-settings.html#notifications";panel.append(preferencesLink);
+  const pushPrompt=make("div","hidden border-b bg-blue-50 px-4 py-3");
+  pushPrompt.id="av-push-prompt";
+  const pushText=make("p","text-xs text-slate-700","Important student alerts are ON by default.");
+  pushText.id="av-push-prompt-text";pushPrompt.append(pushText);
+  const pushButton=make("button","mt-2 text-xs font-bold text-blue-700 underline","Enable device notifications");
+  pushButton.id="av-enable-push-device";pushButton.type="button";
+  pushButton.addEventListener("click",async()=>{
+    pushButton.disabled=true;pushButton.textContent="Enabling…";
+    try{
+      const module=await import("./push-notifications.mjs?v=1.3.0");
+      await module.enableDevicePush({requestPermission:true});
+    }catch(error){pushText.textContent=error.message;}
+    finally{pushButton.disabled=false;void refreshPushPrompt();}
+  });
+  pushPrompt.append(pushButton);panel.append(pushPrompt);
   const list=make("div","overflow-y-auto overscroll-contain max-h-[min(48dvh,335px)]");
   list.id="av-alert-list";list.setAttribute("aria-live","polite");panel.append(list);root.append(panel);
   document.addEventListener("adminerva-menu-open",event=>{if(event.detail!==panel.id){state.open=false;panel.classList.add("hidden");button.setAttribute("aria-expanded","false");}});
@@ -279,7 +311,7 @@ export function mountNotificationCenter(){
   document.addEventListener("keydown",e=>{if(e.key==="Escape"&&state.open){
     state.open=false;panel.classList.add("hidden");button.setAttribute("aria-expanded","false");button.focus()}});
   onAuthStateChanged(auth,listen);
-  document.addEventListener("adminerva-notification-preferences",event=>{if(event.detail?.uid===state.user?.uid){state.muted=restorePreferences();render();}});
+  document.addEventListener("adminerva-notification-preferences",event=>{if(event.detail?.uid===state.user?.uid){state.muted=restorePreferences();render();void refreshPushPrompt();}});\n  document.addEventListener("adminerva-push-device",event=>{if(event.detail?.uid===state.user?.uid)void refreshPushPrompt();});\n  document.addEventListener("adminerva-push-preferences",event=>{if(event.detail?.uid===state.user?.uid)void refreshPushPrompt();});
   window.addEventListener("storage",event=>{if(event.key===settingsKey()){state.muted=restorePreferences();render();}});
   setInterval(()=>{void refreshReleases();},5*60*1000);
   document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")void refreshReleases();});
