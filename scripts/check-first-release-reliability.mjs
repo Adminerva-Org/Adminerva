@@ -12,7 +12,7 @@ has("js/core/push-notifications.mjs","departPushAccount");
 has("js/core/adminerva-nav.js","push.departPushAccount()");
 lacks("js/core/adminerva-nav.js","push.disableDevicePush()");
 has("js/core/push-notifications.mjs","device-opted-out");
-has("js/settings/account-preferences.mjs","could not reconnect this device automatically");
+has("js/settings/account-preferences.mjs","Reconnect failed. Select Enable notifications to retry.");
 lacks("js/settings/account-preferences.mjs","await refreshPush(version);");
 has("js/core/teaching-firestore.mjs","void actor().then(async current=>");
 has("firebase-messaging-sw.js","assets/adminerva-notification-badge.png");
