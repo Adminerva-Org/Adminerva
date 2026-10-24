@@ -55,6 +55,20 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "student_projects",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "sectionIds",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "wholeSection",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
