@@ -3,6 +3,7 @@
 const {initializeApp}=require("firebase-admin/app");
 const {getFirestore,FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {getAuth}=require("firebase-admin/auth");
+const {getMessaging}=require("firebase-admin/messaging");
 const {onDocumentCreated,onDocumentUpdated,onDocumentWritten}=require("firebase-functions/v2/firestore");
 const {onSchedule}=require("firebase-functions/v2/scheduler");
 const {onCall,HttpsError}=require("firebase-functions/v2/https");
@@ -13,6 +14,7 @@ const {createTeachingAccessService}=require("./teaching-access-service.js");
 const {createMonitoringService}=require("./monitoring-service.js");
 initializeApp();
 const db=getFirestore();
+const messaging=getMessaging();
 const practice=createPracticeService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)});
 const teachingAccess=createTeachingAccessService({db,Timestamp});
 const {createSchoolAI}=require("./school-ai-service.js");
@@ -60,18 +62,63 @@ async function teacherIds(section){
 async function audienceIds(issue){
   return reportAudience(issue)==="admin"?[await byEmail(staffEmails[0])].filter(Boolean):teacherIds(issue.section);
 }
+const pushTypes=new Set(["assessment","submission","grade"]);
+const pushBaseUrl="https://adminerva-org.github.io/Adminerva/";
+function pushTarget(target){
+  const value=String(target||"").trim();
+  return /^[A-Za-z0-9_.-]+[.]html(?:[?][^#\\s]*)?$/.test(value)?pushBaseUrl+value:pushBaseUrl+"student-home.html";
+}
+async function pushAllowed(uid,type){
+  if(!pushTypes.has(String(type||"")))return false;
+  const snapshot=await db.doc("push_preferences/"+uid).get();
+  if(!snapshot.exists)return true;
+  const data=snapshot.data()||{};
+  return data.enabled!==false&&data[type]!==false;
+}
+async function pushToUser(uid,item){
+  if(!uid||!await pushAllowed(uid,item.type))return;
+  const devices=await db.collection("push_devices").where("ownerUid","==",uid).where("enabled","==",true).limit(12).get();
+  if(devices.empty)return;
+  await Promise.all(devices.docs.map(async device=>{
+    const data=device.data(),token=String(data.token||"");
+    if(!token)return;
+    try{
+      await messaging.send({
+        token,
+        notification:{title:String(item.title||"Adminerva").slice(0,160),body:String(item.body||"").slice(0,300)},
+        webpush:{
+          notification:{
+            icon:pushBaseUrl+"assets/New%20Adminerva%20logo.png",
+            badge:pushBaseUrl+"assets/New%20Adminerva%20logo.png"
+          },
+          fcmOptions:{link:pushTarget(item.target)}
+        }
+      });
+    }catch(error){
+      if(["messaging/registration-token-not-registered","messaging/invalid-registration-token"].includes(error.code)){
+        await device.ref.delete().catch(()=>{});
+        return;
+      }
+      console.warn("Push delivery failed",{uid,code:error.code||"unknown"});
+    }
+  }));
+}
 async function notify(uid,id,item){
   if(!uid)return;
   const ref=db.doc("notifications/"+uid+"/items/"+cleanId(id));
-  try{await ref.create({
-    title:String(item.title||"Notification").slice(0,160),
-    body:String(item.body||"").slice(0,300),type:item.type,
-    sourceId:item.sourceId||null,target:item.target||"issues.html",
-    ...(item.reportCategory?{reportCategory:item.reportCategory}:{}),
-    ...(item.reportAudience?{reportAudience:item.reportAudience}:{}),
-    createdAt:FieldValue.serverTimestamp(),readAt:null
-  })}
-  catch(error){if(error.code!==6&&error.code!=="already-exists")throw error}
+  let created=false;
+  try{
+    await ref.create({
+      title:String(item.title||"Notification").slice(0,160),
+      body:String(item.body||"").slice(0,300),type:item.type,
+      sourceId:item.sourceId||null,target:item.target||"issues.html",
+      ...(item.reportCategory?{reportCategory:item.reportCategory}:{}),
+      ...(item.reportAudience?{reportAudience:item.reportAudience}:{}),
+      createdAt:FieldValue.serverTimestamp(),readAt:null
+    });
+    created=true;
+  }catch(error){if(error.code!==6&&error.code!=="already-exists")throw error}
+  if(created)await pushToUser(uid,item);
 }
 async function notifyMany(uids,id,payload){
   await Promise.all([...new Set(uids.filter(Boolean))].map(uid=>notify(uid,id,payload)));
@@ -172,7 +219,22 @@ exports.assessmentEvidenceSubmitted=onDocumentCreated("assessment_evidence/{evid
 exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{evidenceId}",async event=>{
   const before=event.data?.before.data(),after=event.data?.after.data();
   if(!before||!after)return;
-  if(before.status!=="approved"&&after.status==="approved"){
+  if(before.status!=="reopened"&&after.status==="reopened"){
+    if(!after.studentId)return;
+    const [student,assessment]=await Promise.all([
+      db.doc("students/"+after.studentId).get(),
+      after.assessmentId?db.doc("assessments/"+after.assessmentId).get():Promise.resolve(null)
+    ]);
+    if(!student.exists)return;
+    const uid=await byEmail(student.data().email);
+    const assessmentTitle=assessment?.exists?(assessment.data().title||"Assessment"):"Assessment";
+    const reason=String(after.reopenReason||"Your teacher requested a new evidence selection.").trim();
+    await notify(uid,"evidence_reopened_"+event.params.evidenceId+"_"+String(after.revision||0),{
+      type:"submission",title:"Submission returned — changes required",
+      body:(assessmentTitle+" · "+reason+" Update your evidence and resubmit.").slice(0,300),
+      sourceId:event.params.evidenceId,target:"student-assessments.html"
+    });
+  }else if(before.status!=="approved"&&after.status==="approved"){
     if(!after.studentId)return;
     const student=await db.doc("students/"+after.studentId).get();
     if(!student.exists)return;
