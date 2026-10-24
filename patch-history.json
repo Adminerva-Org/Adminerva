@@ -1,6 +1,46 @@
 {
   "releases": [
     {
+      "version": "1.3.7",
+      "status": "draft",
+      "public": true,
+      "releasedAt": "2026-10-24",
+      "title": "Reliable push alerts and cleaner mobile notifications",
+      "summary": "Real assessment and teaching alerts use the same proven background delivery path as the test ping, notification cards are more compact and identifiable, Practice prompts are clearer, and shared mobile layouts are more resilient.",
+      "changes": [
+        {
+          "type": "Fixed",
+          "area": "Push delivery",
+          "text": "Real assessment, returned-submission, grade, teaching-submission, grading and report alerts use the service-worker data-message path already proven by the test ping, including foreground handling and persistent real notifications."
+        },
+        {
+          "type": "New",
+          "area": "Teacher device notifications",
+          "text": "Teachers and administrators can enable device push from Account Settings. One Teaching alerts preference covers student submissions/evidence, grading attention and report/reply events without adding a new preference schema."
+        },
+        {
+          "type": "Updated",
+          "area": "Evidence notifications",
+          "text": "Teacher evidence submission and resubmission alerts include the student's name and assessment title instead of generic wording, and those events can now fan out to enabled devices."
+        },
+        {
+          "type": "Updated",
+          "area": "Notification center",
+          "text": "Notification cards use a denser layout with compact type and time metadata, a small unread marker, shorter Save controls, and Settings moved into the header to reduce wasted vertical space."
+        },
+        {
+          "type": "Fixed",
+          "area": "Mobile layout",
+          "text": "Shared compact-screen rules improve notification-panel sizing, flex and grid shrinking, form/media containment, safe-area spacing and horizontal overflow behavior without changing desktop layouts."
+        },
+        {
+          "type": "Fixed",
+          "area": "Practice exact-answer prompts",
+          "text": "Write-the-output missions now explicitly ask for only the exact output or requested value; the explanation is shown after a correct answer instead of being requested inside an exact-match field."
+        }
+      ]
+    },
+    {
       "version": "1.3.6",
       "status": "published",
       "public": true,

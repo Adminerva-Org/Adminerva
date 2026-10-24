@@ -16,17 +16,25 @@ const messaging=firebase.messaging();
 
 messaging.onBackgroundMessage(payload=>{
   const data=payload?.data||{};
-  if(data.adminervaKind!=="test_ping")return;
-  const tag="adminerva-test-ping";
-  const closeAfter=Math.min(30000,Math.max(5000,Number(data.autoCloseMs)||15000));
-  return self.registration.showNotification(data.title||"Adminerva test notification",{
-    body:data.body||"Push notifications are working on this device.",
+  if(!data.adminervaKind)return;
+  const test=data.adminervaKind==="test_ping";
+  const tag=test?"adminerva-test-ping":String(data.tag||("adminerva-"+(data.type||"notice")+"-"+(data.sourceId||"event"))).slice(0,120);
+  const shown=self.registration.showNotification(data.title||(test?"Adminerva test notification":"Adminerva"),{
+    body:data.body||(test?"Push notifications are working on this device.":"You have a new Adminerva notification."),
     icon:"assets/New%20Adminerva%20logo.png",
     badge:"assets/adminerva-notification-badge.png",
     tag,
     renotify:true,
-    data:{target:data.target||"student-settings.html#notifications",adminervaKind:"test_ping"}
-  }).then(()=>new Promise(resolve=>setTimeout(resolve,closeAfter)))
+    data:{
+      target:data.target||"student-home.html",
+      adminervaKind:data.adminervaKind,
+      type:data.type||"notice",
+      sourceId:data.sourceId||""
+    }
+  });
+  if(!test)return shown;
+  const closeAfter=Math.min(30000,Math.max(5000,Number(data.autoCloseMs)||15000));
+  return shown.then(()=>new Promise(resolve=>setTimeout(resolve,closeAfter)))
     .then(()=>self.registration.getNotifications({tag}))
     .then(notifications=>{for(const notification of notifications)notification.close();});
 });

@@ -507,3 +507,48 @@ a.av-home-task:hover,a.av-learning-card:hover { border-color:#7b9fce;box-shadow:
 .av-feedback-success { color:#176447;background:#edf9f2;border-radius:.6rem;padding:.75rem; }
 .av-feedback-warning { color:#854511;background:#fff8e9;border-radius:.6rem;padding:.75rem; }
 .av-config-layout + .av-panel { margin-top:1.5rem; }
+
+
+/* 1.3.7 notification density and compact-screen resilience. */
+#av-alert-panel { overflow:hidden; }
+#av-alert-panel .av-notification-list { max-height:min(52dvh,390px); }
+.av-notification-item { background:#fff; }
+.av-notification-item[data-unread="true"] { background:#f7fbff; }
+.av-notification-item:hover { background:#f8fafc; }
+.av-notification-unread-dot { width:.5rem;height:.5rem;border-radius:999px;background:#2563eb;box-shadow:0 0 0 3px #dbeafe; }
+.av-notification-type { flex:none;padding:.1rem .4rem;border-radius:999px;background:#eef2f7;color:#475569;font-size:.625rem;font-weight:750;line-height:1.4; }
+.av-notification-body { display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden; }
+
+@media (max-width:767px) {
+  html,body { max-width:100%; }
+  body :where(main,section,article,header,footer,nav,form,fieldset) { min-width:0; }
+  body :where(.flex,.grid) > * { min-width:0; }
+  body :where(input,select,textarea,button) { max-width:100%; }
+  body :where(img,video,canvas) { max-width:100%;height:auto; }
+  body :where(pre) { max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch; }
+  body main :where(table) { max-width:100%; }
+  body main :where(.overflow-x-auto,.av-table-scroll) { max-width:100%;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch; }
+  #av-alert-panel {
+    position:fixed;
+    left:.5rem;
+    right:.5rem;
+    top:calc(3.75rem + env(safe-area-inset-top));
+    width:auto;
+    max-width:none;
+    max-height:calc(100dvh - 4.5rem - env(safe-area-inset-top));
+    border-radius:.85rem;
+  }
+  #av-alert-panel .av-notification-tabs { overflow-x:auto;scrollbar-width:none; }
+  #av-alert-panel .av-notification-tabs::-webkit-scrollbar { display:none; }
+  #av-alert-panel .av-notification-list { max-height:calc(100dvh - 12.5rem - env(safe-area-inset-top)); }
+  #av-alert-panel input[type="search"] { font-size:16px; }
+  .av-notification-item { padding:.55rem .7rem; }
+  .av-notification-body { -webkit-line-clamp:2; }
+  .av-site-footer { padding-bottom:max(1rem,env(safe-area-inset-bottom)); }
+}
+@media (max-width:420px) {
+  #av-alert-panel { left:.35rem;right:.35rem; }
+  #av-alert-panel header { gap:.4rem; }
+  #av-alert-panel header > div { gap:.55rem; }
+  .av-notification-type { display:none; }
+}

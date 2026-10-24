@@ -3,20 +3,21 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {
   getPushPreferences,savePushPreferences,getDevicePushState,
   enableDevicePush,disableDevicePush,syncDevicePush,sendTestPush
-} from "../core/push-notifications.mjs?v=1.3.1";
+} from "../core/push-notifications.mjs?v=1.3.7";
 
 const root=document.querySelector("[data-account-preferences]");
 if(root){
   const staff=root.dataset.accountPreferences==="staff";
-  const pushMarkup=staff?"":`
+  const pushChoices=staff
+    ?[['submission','Teaching alerts · submissions, grading and reports']]
+    :[['assessment','New assessments'],['submission','Returned submissions / action required'],['grade','Published or corrected grades']];
+  const pushMarkup=`
     <fieldset class="mt-6" data-push-settings>
       <legend class="font-bold">Device notifications</legend>
       <p class="av-form-hint">Push alerts are on by default. Enable this device once to receive them.</p>
-      <label class="av-preference-option mt-3"><input type="checkbox" data-push-master checked> Push important student alerts to my enabled devices</label>
+      <label class="av-preference-option mt-3"><input type="checkbox" data-push-master checked> ${staff?'Push important teaching alerts to my enabled devices':'Push important student alerts to my enabled devices'}</label>
       <div class="av-preference-options mt-2" data-push-options>
-        <label class="av-preference-option"><input type="checkbox" value="assessment" checked> New assessments</label>
-        <label class="av-preference-option"><input type="checkbox" value="submission" checked> Returned submissions / action required</label>
-        <label class="av-preference-option"><input type="checkbox" value="grade" checked> Published or corrected grades</label>
+        ${pushChoices.map(([value,label])=>`<label class="av-preference-option"><input type="checkbox" value="${value}" checked> ${label}</label>`).join('')}
       </div>
       <div class="flex flex-wrap gap-2 mt-3">
         <button type="button" data-enable-push class="av-primary-button">Enable notifications on this device</button>
@@ -45,7 +46,7 @@ if(root){
     for(const input of pushOptions)input.disabled=value;
   }
   async function refreshPush(version=authVersion){
-    if(staff||!owner||version!==authVersion)return;
+    if(!owner||version!==authVersion)return;
     const uid=owner;
     const prefs=await getPushPreferences(uid);
     if(version!==authVersion||owner!==uid)return;
@@ -102,12 +103,10 @@ if(root){
     try{root.querySelector("[data-reduce-motion]").checked=localStorage.getItem("Adminerva_motion_"+owner)==="reduce";}catch{}
     const preferenceStatus=root.querySelector("[data-preference-status]");
     preferenceStatus.hidden=true;preferenceStatus.textContent="";
-    if(!staff){
-      if(!owner){
-        setPushBusy(true);pushStatus.textContent="Sign in to manage push.";
-      }else{
-        setPushBusy(false);void refreshPush(version);
-      }
+    if(!owner){
+      setPushBusy(true);pushStatus.textContent="Sign in to manage push.";
+    }else{
+      setPushBusy(false);void refreshPush(version);
     }
   });
 
@@ -147,12 +146,10 @@ if(root){
       const reduced=root.querySelector("[data-reduce-motion]").checked;
       localStorage.setItem("Adminerva_notif_preferences_"+owner,JSON.stringify([...muted]));localStorage.setItem("Adminerva_motion_"+owner,reduced?"reduce":"system");
       document.documentElement.dataset.motion=reduced?"reduce":"system";
-      if(!staff){
-        const values={enabled:pushMaster.checked};
-        for(const input of pushOptions)values[input.value]=input.checked;
-        await savePushPreferences(values,uid);
-        if(values.enabled&&typeof Notification!=="undefined"&&Notification.permission==="granted")void syncDevicePush();
-      }
+      const values={enabled:pushMaster.checked};
+      for(const input of pushOptions)values[input.value]=input.checked;
+      await savePushPreferences(values,uid);
+      if(values.enabled&&typeof Notification!=="undefined"&&Notification.permission==="granted")void syncDevicePush();
       document.dispatchEvent(new CustomEvent("adminerva-notification-preferences",{detail:{uid:owner}}));
       const preferenceStatus=root.querySelector("[data-preference-status]");
       preferenceStatus.hidden=false;preferenceStatus.textContent="Saved.";
