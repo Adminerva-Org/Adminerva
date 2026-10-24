@@ -874,6 +874,38 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    match /push_preferences/{uid} {
+      function validPushPreferences() {
+        let data=request.resource.data;
+        return data.keys().hasOnly(["ownerUid","enabled","assessment","submission","grade","updatedAt"]) &&
+          data.keys().hasAll(["ownerUid","enabled","assessment","submission","grade","updatedAt"]) &&
+          data.ownerUid == uid && data.enabled is bool && data.assessment is bool &&
+          data.submission is bool && data.grade is bool && data.updatedAt == request.time;
+      }
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid && validPushPreferences();
+      allow delete: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /push_devices/{deviceId} {
+      function validPushDevice() {
+        let data=request.resource.data;
+        return deviceId.matches("^[a-f0-9]{40}$") &&
+          data.keys().hasOnly(["ownerUid","token","enabled","platform","userAgent","updatedAt"]) &&
+          data.keys().hasAll(["ownerUid","token","enabled","platform","userAgent","updatedAt"]) &&
+          data.ownerUid == request.auth.uid && data.token is string && data.token.size() > 20 &&
+          data.token.size() <= 4096 && data.enabled is bool &&
+          data.platform is string && data.platform.size() <= 80 &&
+          data.userAgent is string && data.userAgent.size() <= 500 &&
+          data.updatedAt == request.time;
+      }
+      allow read: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow create: if signedIn() && validPushDevice();
+      allow update: if signedIn() && resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.ownerUid == resource.data.ownerUid && validPushDevice();
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+
     function practiceMissionIds(courseId) {
       return courseId == "java" ? ["j1","java-m1-02","java-m1-03","java-m1-04","java-m1-05","java-m1-06","java-m1-07","java-m1-08","java-m1-09","java-m1-10","java-m1-11","java-m1-12","java-m1-13","java-m1-14","java-m1-15","j2","java-m2-02","java-m2-03","java-m2-04","java-m2-05","java-m2-06","java-m2-07","java-m2-08","java-m2-09","java-m2-10","java-m2-11","java-m2-12","java-m2-13","java-m2-14","java-m2-15","j3","java-m3-02","java-m3-03","java-m3-04","java-m3-05","java-m3-06","java-m3-07","java-m3-08","java-m3-09","java-m3-10","java-m3-11","java-m3-12","java-m3-13","java-m3-14","java-m3-15","j4","java-m4-02","java-m4-03","java-m4-04","java-m4-05","java-m4-06","java-m4-07","java-m4-08","java-m4-09","java-m4-10","java-m4-11","java-m4-12","java-m4-13","java-m4-14","java-m4-15","java-m5-01","java-m5-02","java-m5-03","java-m5-04","java-m5-05","java-m5-06","java-m5-07","java-m5-08","java-m5-09","java-m5-10","java-m5-11","java-m5-12","java-m5-13","java-m5-14","java-m5-15"] :
         courseId == "python" ? ["p1","python-m1-02","python-m1-03","python-m1-04","python-m1-05","python-m1-06","python-m1-07","python-m1-08","python-m1-09","python-m1-10","python-m1-11","python-m1-12","python-m1-13","python-m1-14","python-m1-15","p2","python-m2-02","python-m2-03","python-m2-04","python-m2-05","python-m2-06","python-m2-07","python-m2-08","python-m2-09","python-m2-10","python-m2-11","python-m2-12","python-m2-13","python-m2-14","python-m2-15","p3","python-m3-02","python-m3-03","python-m3-04","python-m3-05","python-m3-06","python-m3-07","python-m3-08","python-m3-09","python-m3-10","python-m3-11","python-m3-12","python-m3-13","python-m3-14","python-m3-15","p4","python-m4-02","python-m4-03","python-m4-04","python-m4-05","python-m4-06","python-m4-07","python-m4-08","python-m4-09","python-m4-10","python-m4-11","python-m4-12","python-m4-13","python-m4-14","python-m4-15","python-m5-01","python-m5-02","python-m5-03","python-m5-04","python-m5-05","python-m5-06","python-m5-07","python-m5-08","python-m5-09","python-m5-10","python-m5-11","python-m5-12","python-m5-13","python-m5-14","python-m5-15"] :
