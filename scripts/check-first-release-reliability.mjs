@@ -17,7 +17,9 @@ lacks("js/settings/account-preferences.mjs","await refreshPush(version);");
 has("js/core/teaching-firestore.mjs","void actor().then(async current=>");
 has("firebase-messaging-sw.js","assets/adminerva-notification-badge.png");
 has("js/core/push-notifications.mjs","assets/adminerva-notification-badge.png");
-has("functions/index.js",'badge:pushBaseUrl+"assets/adminerva-notification-badge.png"');
+has("functions/index.js",'adminervaKind:"alert"');
+has("functions/index.js",'webpush:{headers:{TTL:"86400",Urgency:"high"}}');
+lacks("functions/index.js",'notification:{title:String(item.title');
 assert.ok(existsSync("assets/adminerva-notification-badge.png"),"notification badge asset is missing");
 
 lacks("js/student/dashboard.js","signInWithPopup(auth, provider)");
