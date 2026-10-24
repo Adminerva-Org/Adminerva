@@ -783,7 +783,9 @@ function setupWebConsoleHook() {
 // 6. BYOK SOCRATIC AI TUTOR
 // ==========================================
 async function askMinerva() {
-  let apiKey = localStorage.getItem("Adminerva_Gemini_Key");
+  await auth.authStateReady();
+  const ownerUid=auth.currentUser?.uid;
+  let apiKey = ownerUid?localStorage.getItem("Adminerva_Gemini_Key_"+ownerUid):null;
   if (!apiKey) {
     if (
       confirm(
