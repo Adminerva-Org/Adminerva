@@ -51,11 +51,21 @@ if(root){
     if(version!==authVersion||owner!==uid)return;
     pushMaster.checked=prefs.enabled!==false;
     for(const input of pushOptions)input.checked=prefs[input.value]!==false;
-    const state=await getDevicePushState();
+    let state=await getDevicePushState();
     if(version!==authVersion||owner!==uid)return;
-    enablePush.classList.toggle("hidden",state.permission==="granted"&&state.registered);
-    testPush.classList.toggle("hidden",!(state.permission==="granted"&&state.registered));
-    disablePush.classList.toggle("hidden",!(state.permission==="granted"&&state.registered));
+    if(state.permission==="granted"&&!state.registered&&!state.deviceOptedOut&&prefs.enabled!==false&&state.supported&&state.configured){
+      pushStatus.textContent="Permission is granted. Adminerva is reconnecting this device…";
+      const result=await syncDevicePush();
+      if(version!==authVersion||owner!==uid)return;
+      state=await getDevicePushState();
+      if(version!==authVersion||owner!==uid)return;
+      if(!state.registered&&result?.reason==="registration-error")
+        pushStatus.textContent="Adminerva could not reconnect this device automatically. Select Enable notifications to retry.";
+    }
+    const registered=state.permission==="granted"&&state.registered;
+    enablePush.classList.toggle("hidden",registered);
+    testPush.classList.toggle("hidden",!registered);
+    disablePush.classList.toggle("hidden",!registered);
     if(!state.supported){
       enablePush.disabled=true;
       pushStatus.textContent="This browser does not support Adminerva device notifications. In-app notifications remain available.";
@@ -65,13 +75,19 @@ if(root){
     }else if(state.permission==="denied"){
       enablePush.disabled=true;
       pushStatus.textContent="Notifications are blocked in this browser. Allow notifications for Adminerva in your browser or device settings to enable this device.";
-    }else if(state.permission==="granted"&&state.registered){
+    }else if(state.deviceOptedOut){
+      enablePush.disabled=false;
+      pushStatus.textContent="Device notifications are disabled on this device. Select Enable notifications to turn them back on.";
+    }else if(registered&&prefs.enabled===false){
+      enablePush.disabled=false;
+      pushStatus.textContent="This device is registered, but push alerts are turned off for your account.";
+    }else if(registered){
       enablePush.disabled=false;
       pushStatus.textContent="Device notifications are enabled on this device.";
     }else if(state.permission==="granted"){
-      pushStatus.textContent="Permission is granted. Adminerva is reconnecting this device…";
-      await syncDevicePush();
-      if(version===authVersion&&owner===uid)await refreshPush(version);
+      enablePush.disabled=false;
+      if(!pushStatus.textContent.includes("could not reconnect"))
+        pushStatus.textContent=prefs.enabled===false?"Push alerts are turned off for your account. Turn them on and save to reconnect this device.":"Permission is granted, but this device is not registered. Select Enable notifications to reconnect it.";
     }else{
       enablePush.disabled=false;
       pushStatus.textContent="Important student push categories are ON by default. Enable this device once to receive them outside Adminerva.";
