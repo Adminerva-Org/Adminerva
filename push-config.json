@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "vapidPublicKey": "BCQRsbf3VCsJ0-2T2pt4iX5nxcHoKfNDHfSulfsKct9UTcgANS2QbAosJ1DgSfM4SsORDZBB3ZWnbOI5fCrxsks",
+  "defaultCategories": {
+    "assessment": true,
+    "submission": true,
+    "grade": true
+  }
+}
