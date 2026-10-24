@@ -849,7 +849,11 @@ service cloud.firestore {
         request.resource.data.createdAt == request.time;
       // New votes use Firebase UID; legacy email votes can still be removed.
       // Only adding/removing the authenticated user's single vote is allowed.
-      allow update: if (isTeacher() &&
+      allow update: if (isAdmin() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status","priority","locked","internalTest","updatedAt"]) &&
+        request.resource.data.get("internalTest",false) is bool &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(["updatedAt"]) || request.resource.data.updatedAt == request.time)) ||
+        (isTeacher() &&
         resource.data.get("audience", "admin") == "teacher" &&
         mayTeachSection(resource.data.get("section",null)) &&
         request.resource.data.diff(resource.data).affectedKeys()
