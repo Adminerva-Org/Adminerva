@@ -1,6 +1,6 @@
 {
-  "version": "1.3.7",
-  "releasedAt": "2026-10-24",
-  "notes": "Push alerts now use the working background delivery path for real assessment and teaching events. Notifications are more compact and identifiable, Practice exact-output prompts are clearer, and mobile layouts are more resilient.",
-  "publishedAt": "2026-10-24T21:25:00+08:00"
+  "version": "1.3.8",
+  "releasedAt": "2026-10-25",
+  "notes": "Teacher workflows are simpler and more integrated: one Analytics workspace, a smaller Review & Grade flow, compact educator navigation and modals, corrected notification wiring, and smoother return-to-workspace routing.",
+  "publishedAt": "2026-10-25T00:07:00+08:00"
 }
