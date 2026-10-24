@@ -72,6 +72,11 @@
           "type": "Updated",
           "area": "XML screen responsibility",
           "text": "For Android XML UI assessments, verified substantive student XML screen commits can serve as the student's individual screen responsibility when no more specific responsibility note exists. Missing teammate screens remain shared project context rather than an automatic individual deduction."
+        },
+        {
+          "type": "Fixed",
+          "area": "Evidence reopening",
+          "text": "Teacher review now uses one clear Reopen for student changes action for approved evidence and instructor-discovered proposals. The reason field becomes visibly required during reopening, and the page explains when reopening is needed so students can replace commits and checkpoints before resubmitting."
         }
       ]
     },
