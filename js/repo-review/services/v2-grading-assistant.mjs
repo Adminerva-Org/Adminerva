@@ -4,7 +4,7 @@
  * Teacher verification and explicit save are required after any AI suggestion.
  */
 import { matchPath } from "./contribution-resolver.mjs?v=1.3.0";
-import { normalizeSelection, parseRepository, validSha } from "./assessment-evidence.mjs?v=1.3.0";
+import { normalizeSelection, parseRepository, validSha } from "./assessment-evidence.mjs?v=1.3.1";
 import {analyzePatchSubstance} from "./commit-substance.mjs?v=1.3.0";
 import {androidSupportKind,analyzeAndroidEvidence,responsibilityBasis,isAndroidUiAssessment} from "./android-evidence.mjs?v=1.3.0";
 
