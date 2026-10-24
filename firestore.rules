@@ -891,10 +891,12 @@ service cloud.firestore {
     match /push_preferences/{uid} {
       function validPushPreferences() {
         let data=request.resource.data;
-        return data.keys().hasOnly(["ownerUid","enabled","assessment","submission","grade","updatedAt"]) &&
+        return data.keys().hasOnly(["ownerUid","enabled","assessment","submission","grade","grading","issue","updatedAt"]) &&
           data.keys().hasAll(["ownerUid","enabled","assessment","submission","grade","updatedAt"]) &&
           data.ownerUid == uid && data.enabled is bool && data.assessment is bool &&
-          data.submission is bool && data.grade is bool && data.updatedAt == request.time;
+          data.submission is bool && data.grade is bool &&
+          data.get("grading",true) is bool && data.get("issue",true) is bool &&
+          data.updatedAt == request.time;
       }
       allow read: if signedIn() && request.auth.uid == uid;
       allow create, update: if signedIn() && request.auth.uid == uid && validPushPreferences();
