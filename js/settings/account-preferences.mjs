@@ -86,7 +86,7 @@ if(root){
       pushStatus.textContent="Enabled on this device.";
     }else if(state.permission==="granted"){
       enablePush.disabled=false;
-      if(!pushStatus.textContent.includes("could not reconnect"))
+      if(!pushStatus.textContent.startsWith("Reconnect failed"))
         pushStatus.textContent=prefs.enabled===false?"Account push is off.":"Reconnect this device.";
     }else{
       enablePush.disabled=false;
