@@ -6,17 +6,17 @@ import {notificationVisible,unreadNotificationCount} from './notification-visibi
 const bug={type:'issue',reportCategory:'Bug',reportAudience:'admin'};
 const adminReport={type:'issue',reportCategory:'Feature',reportAudience:'admin'};
 const teacherReport={type:'issue',reportCategory:'Other',reportAudience:'teacher'};
-test('bug notifications are strictly administrator-only',()=>{
+test('recipient-scoped report notifications remain visible to the recipient role',()=>{
   assert.equal(notificationVisible(bug,'admin'),true);
-  assert.equal(notificationVisible(bug,'teacher'),false);
-  assert.equal(notificationVisible(bug,'student'),false);
+  assert.equal(notificationVisible(bug,'teacher'),true);
+  assert.equal(notificationVisible(bug,'student'),true);
 });
-test('teacher notifications do not appear in student inboxes',()=>{
+test('student inbox includes its submission/report alerts but excludes staff grading alerts',()=>{
   assert.equal(notificationVisible({type:'grading'},'student'),false);
-  assert.equal(notificationVisible({type:'submission'},'student'),false);
+  assert.equal(notificationVisible({type:'submission'},'student'),true);
   assert.equal(notificationVisible(teacherReport,'teacher'),true);
-  assert.equal(notificationVisible(teacherReport,'student'),false);
-  assert.equal(notificationVisible(adminReport,'teacher'),false);
+  assert.equal(notificationVisible(teacherReport,'student'),true);
+  assert.equal(notificationVisible(adminReport,'teacher'),true);
   assert.equal(notificationVisible({type:'grade'},'student'),true);
   assert.equal(notificationVisible({type:'assessment'},'student'),true);
 });
