@@ -560,3 +560,30 @@ a.av-home-task:hover,a.av-learning-card:hover { border-color:#7b9fce;box-shadow:
   #gbDetailModal { padding:8px!important; }
   #gbDetailModal>div { width:100%!important;max-height:calc(100dvh - 16px)!important;border-radius:15px!important; }
 }
+
+
+/* 1.3.8 educator workspace: fewer entry points, compact task navigation. */
+.av-educator-layout{display:grid;grid-template-columns:14.5rem minmax(0,1fr);gap:1.5rem;max-width:96rem;margin:0 auto;padding:1.5rem;align-items:start}
+.av-educator-nav{position:sticky;top:7.25rem;min-width:0}
+.av-educator-nav-desktop{border:1px solid #dbe4ef;border-radius:1rem;background:#fff;padding:.65rem;box-shadow:0 8px 28px #0f172a0d}
+.av-educator-nav-group+.av-educator-nav-group{margin-top:.85rem;padding-top:.75rem;border-top:1px solid #e8edf3}
+.av-educator-nav-group h2{margin:0 .55rem .35rem;color:#64748b;font-size:.67rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.av-educator-nav-group a{display:block;padding:.58rem .65rem;border-radius:.6rem;color:#334155;font-size:.84rem;font-weight:650;line-height:1.25}
+.av-educator-nav-group a:hover{background:#f1f5f9;color:#123b63}
+.av-educator-nav-group a[aria-current="page"]{background:#eaf2ff;color:#1d4f9b;box-shadow:inset 3px 0 0 #3b6fc4}
+.av-educator-content{min-width:0}
+.av-educator-nav-mobile{display:none;margin-bottom:1rem;border:1px solid #dbe4ef;border-radius:.8rem;background:#fff}
+.av-educator-nav-mobile>summary{padding:.8rem 1rem;font-weight:800;cursor:pointer}
+.av-educator-nav-mobile .av-educator-nav-links{padding:0 .65rem .75rem}
+.av-analytics-section-nav{display:flex;gap:.45rem;flex-wrap:wrap;margin:.2rem 0 1rem}
+.av-analytics-section-nav button{border:1px solid #cbd5e1;border-radius:999px;padding:.55rem .85rem;background:#fff;color:#475569;font-size:.8rem;font-weight:750}
+.av-analytics-section-nav button[aria-selected="true"]{background:#173b63;color:#fff;border-color:#173b63}
+.av-analytics-panel[hidden]{display:none!important}
+.av-analytics-panel{min-width:0}
+@media(max-width:1024px){
+  .av-educator-layout{grid-template-columns:1fr;padding:1rem}
+  .av-educator-nav{position:static}
+  .av-educator-nav-desktop{display:none}
+  .av-educator-nav-mobile{display:block}
+  .av-educator-nav-mobile[open] .av-educator-nav-group{padding:.35rem}
+}
