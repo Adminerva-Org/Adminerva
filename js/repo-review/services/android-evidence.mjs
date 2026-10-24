@@ -100,6 +100,12 @@ export function analyzeAndroidEvidence({assessment={},files=[],patches=[],assets
     }catch(error){checks.push("XML preview parser could not inspect "+file.path+": "+error.message);}
   }
 
+  const invalidResourceNames=[...allPaths].filter(path=>{
+    if(!/\/res\/(?:layout|drawable|mipmap|font|values)[^/]*\//i.test(path))return false;
+    const name=(path.split("/").pop()||"").replace(/\.[^.]+$/,"");
+    return !/^[a-z0-9_]+$/.test(name);
+  });
+  const invalidReferences=references.filter(ref=>!/^[a-z0-9_]+$/.test(ref.name));
   const missing=[];
   for(const ref of references){
     const found=ref.type==="string"||ref.type==="color"
@@ -131,6 +137,8 @@ export function analyzeAndroidEvidence({assessment={},files=[],patches=[],assets
   if(genericIds)checks.push(genericIds+" component ID(s) appear generic/default-generated.");
   if(placeholders)checks.push(placeholders+" TextView value(s) still use the generic \"TextView\" placeholder; placeholders are allowed by the task but may reduce prototype clarity if visible.");
   if(hardcodedText)checks.push(hardcodedText+" user-facing text value(s) are hardcoded. Treat this as a development-practice recommendation unless the rubric explicitly requires string resources.");
+  if(invalidResourceNames.length)checks.push("Android resource filename warning: "+invalidResourceNames.join(", ")+" contain uppercase or unsupported resource-name characters and may prevent Android resource compilation.");
+  if(invalidReferences.length)checks.push("Android resource reference warning: "+invalidReferences.map(ref=>"@"+ref.type+"/"+ref.name).join(", ")+" use uppercase or unsupported resource-name characters.");
   checks.push(missing.length?"Unresolved resource references: "+missing.join("; ")+".":"All referenced drawable/font/color/string resources visible in the supplied evidence package were resolved.");
   if(stems.length)checks.push(activityLinks+"/"+stems.length+" verified screen layout(s) are loaded by a supplied Activity source file; "+manifestLinks+"/"+stems.length+" corresponding Activity registration(s) were observed in the supplied Manifest.");
   if(dependencyPresent)checks.push("ConstraintLayout support/dependency is present in the supplied supporting project files.");
