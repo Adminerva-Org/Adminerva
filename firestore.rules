@@ -729,8 +729,12 @@ service cloud.firestore {
         return isInstructor() && request.auth.uid == ownerUid &&
           data.keys().hasOnly(["ownerUid","studentId","taskId","section","evidenceRevision","checkpointSha","model","draft","createdAt","status"]) &&
           data.ownerUid == ownerUid && data.studentId is string && data.taskId is string &&
+          draftId == data.studentId + "_" + data.taskId &&
           mayTeachStudent(data.studentId) && mayTeachAssessment(data.taskId) &&
-          data.section is string && data.evidenceRevision is int && data.evidenceRevision >= 0 &&
+          data.section is string &&
+          data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
+          data.section in get(/databases/$(database)/documents/assessments/$(data.taskId)).data.get("sectionIds",[]) &&
+          data.evidenceRevision is int && data.evidenceRevision >= 0 &&
           data.checkpointSha is string && data.checkpointSha.matches("^[a-fA-F0-9]{40}$") &&
           data.model is string && data.model.size() <= 120 && data.draft is map &&
           data.status == "private_suggestion" && data.createdAt == request.time;
