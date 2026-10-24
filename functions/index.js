@@ -296,6 +296,25 @@ exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{eviden
   if(!before||!after)return;
   if(before.status!=="reopened"&&after.status==="reopened"){
     if(!after.studentId)return;
+    const revision=Number(after.revision||0),priorRevision=Number(before.revision||0);
+    const reason=String(after.reopenReason||"").trim();
+    const reopenedAt=after.reopenedAt?.toMillis?.()||0;
+    const previousReopenedAt=before.reopenedAt?.toMillis?.()||0;
+    const audit=revision>0
+      ?await db.doc("assessment_evidence/"+event.params.evidenceId+"/revisions/"+String(revision)).get()
+      :null;
+    const auditData=audit?.exists?audit.data():null;
+    const explicitReopen=revision===priorRevision+1&&reason.length>=15&&
+      typeof after.reopenedBy==="string"&&after.reopenedBy.length>0&&
+      reopenedAt>0&&reopenedAt!==previousReopenedAt&&
+      auditData?.actorUid===after.reopenedBy&&String(auditData?.reason||"").trim()===reason&&
+      auditData?.before?.status===before.status&&auditData?.after?.status==="reopened";
+    if(!explicitReopen){
+      console.warn("Suppressed unaudited evidence reopen notification",{
+        evidenceId:event.params.evidenceId,beforeStatus:before.status,revision
+      });
+      return;
+    }
     const [student,assessment]=await Promise.all([
       db.doc("students/"+after.studentId).get(),
       after.assessmentId?db.doc("assessments/"+after.assessmentId).get():Promise.resolve(null)
@@ -303,8 +322,7 @@ exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{eviden
     if(!student.exists)return;
     const uid=await byEmail(student.data().email);
     const assessmentTitle=assessment?.exists?(assessment.data().title||"Assessment"):"Assessment";
-    const reason=String(after.reopenReason||"Your teacher requested a new evidence selection.").trim();
-    await notify(uid,"evidence_reopened_"+event.params.evidenceId+"_"+String(after.revision||0),{
+    await notify(uid,"evidence_reopened_"+event.params.evidenceId+"_"+String(revision),{
       type:"submission",push:true,title:"Submission returned — changes required",
       body:(assessmentTitle+" · "+reason+" Update your evidence and resubmit.").slice(0,300),
       sourceId:event.params.evidenceId,target:"student-assessments.html"

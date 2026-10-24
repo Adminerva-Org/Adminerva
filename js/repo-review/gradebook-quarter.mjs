@@ -208,7 +208,13 @@ function renderEvidence(student, task, grade) {
   links(box, "Considered files", evidence.matchedPaths || grade.pathsFound || []);
   links(box, "Excluded out-of-scope or other-named files",
     evidence.excludedTaskOrClassmatePaths || []);
-  links(box, "Evidence warnings", grade.reviewReasons || []);
+  const reviewReasons=(grade.reviewReasons||[]).filter(reason=>{
+    const text=String(reason||"");
+    if(Number.isFinite(Number(grade.score))&&/no grade has been recorded/i.test(text))return false;
+    if(grade.reviewRequired!==true&&/saved grade draft predates the current evidence approval/i.test(text))return false;
+    return true;
+  });
+  links(box, grade.published?"Review notes":"Evidence warnings", reviewReasons);
   const commits = evidence.acceptedCommitShas || [];
   links(box, "Attributed commits", commits, sha => info ? info.url + "/commit/" + encodeURIComponent(sha) : "#");
   if (info) {
