@@ -268,7 +268,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   import("./site-updates.mjs?v=1.3.0").then(module => module.mountSiteUpdates())
     .catch(error => console.warn("Site update checks unavailable:", error));
-  import("./push-notifications.mjs?v=1.3.0").then(module => module.startPushSync())
+  import("./push-notifications.mjs?v=1.3.1").then(module => module.startPushSync())
     .catch(error => console.warn("Device notification sync unavailable:", error));
 
   root.addEventListener("click", async event => {
@@ -281,7 +281,7 @@ document.addEventListener("DOMContentLoaded", () => {
         import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js"),
         import("./connection-cache.mjs?v=1.3.0").then(module => module.clearConnectionPreferences())
       ]);
-      try{const push=await import("./push-notifications.mjs?v=1.3.0");await push.disableDevicePush();}catch{}
+      try{const push=await import("./push-notifications.mjs?v=1.3.1");await push.disableDevicePush();}catch{}
       await signOut(getAuth());
     } catch (error) { console.warn("Sign out background process skipped or failed.", error); }
     finally {
