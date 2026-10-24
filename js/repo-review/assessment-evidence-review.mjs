@@ -11,7 +11,7 @@ import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.m
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
-import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.1";
+import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.2";
 import {searchStudents} from "./services/student-search.mjs?v=1.3.0";
 
 export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{}}={}){
@@ -50,6 +50,13 @@ function status(t){if(el("evidenceReviewStatus"))el("evidenceReviewStatus").text
 function link(parent,title,url){
   const a=add(parent,"a",title,"font-semibold text-indigo-700 hover:underline break-all");
   a.href=url;a.target="_blank";a.rel="noopener noreferrer";return a;
+}
+function syncBulkVerification(){
+  const bulk=el("evidenceVerifyAll");if(!bulk)return;
+  const inputs=[...root.querySelectorAll("[data-contribution-sha]")];
+  const checked=inputs.filter(input=>input.checked).length;
+  bulk.checked=Boolean(inputs.length&&checked===inputs.length);
+  bulk.indeterminate=checked>0&&checked<inputs.length;
 }
 async function github(route){
   if(requests)return requests.json(route);
@@ -101,7 +108,7 @@ async function loadEvidence(initialRecord){
   const sequence=++state.sequence;
   state.editing=false;state.verificationEditing=false;
   state.loaded=false;state.evidence=null;el("evidenceDetails").classList.add("hidden");
-  for(const id of ["evidenceContributionScope","evidenceReviewNote","evidenceConfirm","evidenceApprove","evidenceReopen","evidenceEditVerification"])el(id).disabled=true;
+  for(const id of ["evidenceContributionScope","evidenceReviewNote","evidenceConfirm","evidenceVerifyAll","evidenceApprove","evidenceReopen","evidenceEditVerification"])el(id).disabled=true;
   discovery.sequence++;discovery.hasOlder=false;discovery.page=0;discovery.loading=false;updateDiscoveryPaging();
   el("evidenceDiscovery").classList.add("hidden");
   try{
@@ -171,20 +178,22 @@ async function loadEvidence(initialRecord){
       encodeURIComponent(student.section)+"&student="+encodeURIComponent(student.id)+
       "&assessment="+encodeURIComponent(assessment.id));
     const rows=el("evidenceCommitDetails");rows.replaceChildren();
+    const checks=el("evidenceContributionChecks");checks.replaceChildren();
+    const priorVerified=new Set(evidence.verifiedContributionCommits||[]);
     for(const sha of evidence.selectedCommits){
-      const p=add(rows,"div","","rounded-lg border p-3");
+      const p=add(rows,"div","","rounded-lg border p-3 flex flex-wrap items-center gap-3");
       link(p,sha.slice(0,12)+" · View on GitHub ↗",base+"/commit/"+encodeURIComponent(sha));
-      const preview=add(p,"button"," · Preview changes","ml-3 text-xs underline text-indigo-700");
+      const preview=add(p,"button","Preview changes","text-xs underline text-indigo-700");
       preview.type="button";
       preview.addEventListener("click",()=>{void previewCommit(repo,sha,p);});
-      previews.push(previewCommit(repo,sha,p));
-      const label=add(p,"label","","flex gap-2 items-start text-xs mt-2");
+      const label=add(checks,"label","","flex gap-2 items-start text-xs rounded border p-2");
       const verified=document.createElement("input");verified.type="checkbox";
       verified.dataset.contributionSha=sha;
-      verified.checked=(evidence.verifiedContributionCommits||[]).includes(sha);
+      verified.checked=priorVerified.has(sha);
       verified.disabled=evidence.status==="approved";
-      label.append(verified);add(label,"span","I independently verified this commit's relevant changes as this student's work (including explained shared work).");
+      label.append(verified);add(label,"span",sha.slice(0,12)+" · verify this selected commit for individual credit");
     }
+    syncBulkVerification();
     await renderClaims();
     if(destroyed||sequence!==state.sequence)return;
     el("evidenceApprove").disabled=!["submitted","needs_review"].includes(evidence.status);
@@ -203,7 +212,7 @@ async function loadEvidence(initialRecord){
     el("evidenceDetails").classList.remove("hidden");
     state.loaded=true;
     el("evidenceContributionScope").disabled=evidence.status==="approved";
-    el("evidenceReviewNote").disabled=false;el("evidenceConfirm").disabled=false;el("evidenceEditVerification").disabled=false;
+    el("evidenceReviewNote").disabled=false;el("evidenceConfirm").disabled=false;el("evidenceVerifyAll").disabled=evidence.status==="approved";el("evidenceEditVerification").disabled=false;
     status("Loaded "+evidence.selectedCommits.length+" selected commits. Approval will verify that they occur in the checkpoint's ancestry.");
     if(evidence.status==="reopened")status("Reopened: the student can change commit selections now. They must resubmit before a new approval. Contribution checks here verify authorship; they do not edit the student's selected commits.");
     else if(evidence.status==="approved")status(evidence.verifiedContributionCommits?.length?"Approved. To let the student submit different commits, enter a reopening reason below and choose Reopen for student changes.":"Approved checkpoint has no verified individual contributions. To let the student change commits, enter a reopening reason below and choose Reopen for student changes.");
@@ -458,6 +467,7 @@ el("evidenceEditVerification").addEventListener("click",()=>{
   state.verificationEditing=true;state.editing=true;
   el("evidenceContributionScope").disabled=false;
   for(const input of root.querySelectorAll("[data-contribution-sha]"))input.disabled=false;
+  el("evidenceVerifyAll").disabled=false;syncBulkVerification();
   el("evidenceApprove").disabled=false;el("evidenceApprove").textContent="Save revised verification";
   el("evidenceReviewNote").value="";el("evidenceConfirm").checked=false;
   status("Verify only this student's changes, describe responsibilities and enter a fresh review note. Saving creates an audit revision and invalidates earlier drafts. Published grades must be unpublished first. Student-selected commits stay unchanged.");
@@ -468,6 +478,13 @@ el("evidenceReload").addEventListener("click",()=>{
   stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);stopEvidence=null;void loadEvidence();
 });
 root.addEventListener("input",event=>{if(event.target.closest?.("#evidenceDetails,#evidenceDiscovery"))state.editing=true;});
+el("evidenceVerifyAll").addEventListener("change",()=>{
+  for(const input of root.querySelectorAll("[data-contribution-sha]"))if(!input.disabled)input.checked=el("evidenceVerifyAll").checked;
+  state.editing=true;syncBulkVerification();
+});
+root.addEventListener("change",event=>{
+  if(event.target?.matches?.("[data-contribution-sha]")){state.editing=true;syncBulkVerification();}
+});
 el("evidenceFindCommits").addEventListener("click",()=>{void findHistoricalCommits();});
 el("evidenceFindOlder")?.addEventListener("click",()=>{void loadOlderHistorical();});
 el("evidenceSaveDiscovery").addEventListener("click",()=>{void saveDiscovery();});
