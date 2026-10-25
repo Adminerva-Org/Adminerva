@@ -1,6 +1,47 @@
 {
   "releases": [
     {
+      "version": "1.4.0",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-25",
+      "title": "Classroom workflows and student follow-through",
+      "summary": "Teachers get clearer class review, school administration and student follow-through tools, with safer settings and better project and slide organization.",
+      "changes": [
+        {
+          "type": "New",
+          "area": "Class review and grading",
+          "text": "Gradebook brings each learner's submission, evidence, grade and publication status into one class review view. Bulk approval checks checkpoint ancestry, and evaluation saves private suggestions for teacher confirmation rather than writing grades."
+        },
+        {
+          "type": "New",
+          "area": "School administration",
+          "text": "A School Administration overview connects student records, teacher assignments, school configuration and operations. Reports can be marked as internal, copied as support-ready Markdown, exported, and closed while preserving their history."
+        },
+        {
+          "type": "Updated",
+          "area": "Navigation and settings",
+          "text": "Teacher work is separated into Repository Management and Lesson Planning. Account menus, help links, privacy controls, interface preferences and Website updates push settings are easier to find."
+        },
+        {
+          "type": "New",
+          "area": "Student follow-through",
+          "text": "Teachers can assign Practice Packs, named projects and Improvement Plans. Students see assigned work in their existing workspaces, with selected-student projects scoped to their assignees."
+        },
+        {
+          "type": "Updated",
+          "area": "Playground and slides",
+          "text": "Code Playground supports precise file and folder ordering and named, pinned, duplicated, restored and cleaned-up cloud versions. Slide Navigator supports drag reordering and structural Undo/Redo."
+        },
+        {
+          "type": "Fixed",
+          "area": "Account and review safeguards",
+          "text": "Student profile ownership requires a verified email claim, versioned activity grades keep their audit history, and grading alerts cannot be reassigned across students or sections."
+        }
+      ],
+      "publishedAt": "2026-10-25T10:34:23+08:00"
+    },
+    {
       "version": "1.3.10",
       "status": "published",
       "public": true,

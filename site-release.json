@@ -1,6 +1,6 @@
 {
-  "version": "1.3.10",
+  "version": "1.4.0",
   "releasedAt": "2026-10-25",
-  "notes": "Repository Management now uses one integrated review-and-grade workflow with clearer draft/published states and optional subject focus; Code Playground adds precise Explorer ordering and complete cloud version management.",
-  "publishedAt": "2026-10-25T03:00:07+08:00"
+  "notes": "Class review and grading workflows, school administration, student Practice Packs and named projects, privacy and notification settings, and slide and playground organization.",
+  "publishedAt": "2026-10-25T10:34:23+08:00"
 }
