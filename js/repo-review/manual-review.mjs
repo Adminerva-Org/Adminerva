@@ -12,7 +12,7 @@ import {
 import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=1.3.0";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
 import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,buildRubricResponseSchema,parseSuggestedRubric}
-  from "./services/v2-grading-assistant.mjs?v=1.4.11";
+  from "./services/v2-grading-assistant.mjs?v=1.4.15";
 import {isAndroidUiAssessment} from "./services/android-evidence.mjs?v=1.3.0";
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
 import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=1.3.0";
@@ -634,6 +634,7 @@ function init() {
   document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!el("manualReviewModal").hasAttribute("data-inline-review")&&!el("manualReviewModal").classList.contains("hidden"))close()});
 }
 window.openManualGradeReview=open;
+window.dispatchEvent(new CustomEvent("adminerva:manual-review-ready"));
 window.manualReviewHasUnsavedChanges=()=>Boolean(state.dirty||state.panels?.hasUnsavedReview?.());
 window.closeManualGradeReview=options=>close(options);
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",init);
