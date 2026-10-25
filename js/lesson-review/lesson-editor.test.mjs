@@ -55,7 +55,7 @@ test("older saved lessons can render without a weekly overview",()=>{
      querySelector:()=>null,
      createElement:()=>({value:"",textContent:""})
    },
-   lessonStorage:{setItem(){},getItem(){return null;}},alert(){},savedLessonSettings
+   lessonStorage:{setItem(){},getItem(){return null;}},alert(){},savedLessonSettings,lessonDraftStatus(){}
  };
  context.workspaceUid=()=>"teacher-fixture";
  vm.runInNewContext(code,context);

@@ -62,7 +62,7 @@ test("local autosave writes only to the active student's scoped key",()=>{
     window:{addEventListener(){},},
     document:{getElementById:()=>null},
     workspaceFiles:{"Main.java":{model:{getValue:()=>"new code"}}},
-    currentLang:"java",fileOrder:["Main.java"],activeFilename:"Main.java",practiceMode:false,
+    currentLang:"java",fileOrder:["Main.java"],activeFilename:"Main.java",practiceMode:false,guestMode:false,loadedOwnerUid:"alice",workspaceFolders:[],projectOrder:[],normalizedProjectOrder:x=>x,
     playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,
     readPlaygroundDraft,validPlaygroundState,PLAYGROUND_LANGUAGES,
     createWorkspace:(...args)=>created.push(args),

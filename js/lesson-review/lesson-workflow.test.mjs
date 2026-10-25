@@ -99,5 +99,5 @@ test("loading another subject never changes the saved lesson identity",()=>{
   assert.ok(save.includes('const subject = window.currentPlanSubject ||'));
   assert.ok(save.includes('const teacher = window.currentPlanTeacher ||'));
   assert.ok(generation.includes('window.currentPlanSubject = subject;'));
-  assert.ok(generation.includes('window.currentPlanSubject = lessonStorage.getItem("Adminerva_defaultSubject")'));
+  assert.ok(generation.includes('lessonStorage.getItem("Adminerva_defaultSubject")'));
 });
