@@ -1,6 +1,6 @@
 import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.3.0";
-import { printLesson } from "./lesson-print.mjs?v=1.3.3";
-import {exportLessonToGoogleDocs,buildGoogleDocsSource} from "./google-docs-export.mjs?v=1.3.3";
+import { printLesson } from "./lesson-print.mjs?v=1.4.18";
+import {exportLessonToGoogleDocs,buildGoogleDocsSource} from "./google-docs-export.mjs?v=1.4.18";
 /** School-format lesson document construction and export. */
 import {
   doc,
@@ -10,6 +10,10 @@ const escapePrintText=value=>String(value??"").replace(/[&<>"']/g,c=>({
 "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
 })[c]);
 const linesForPrint=value=>escapePrintText(value).replace(/\\n|\n/g,"<br>");
+const competencySentenceCase=value=>String(value??"").replace(
+  /(^|\\n|\n)(\s*(?:(?:[-•*]|\d+[.\)])\s*)?)([A-Z])/g,
+  (_match,start,prefix,letter)=>start+prefix+letter.toLowerCase(),
+);
 
 window.formatListForPrint = function (text, isOrdered = true) {
   if (!text) return "";
@@ -165,7 +169,7 @@ window.buildDocumentLayout = async function () {
 
     const compText = isFlex
       ? ""
-      : linesForPrint((session.competencies || "").replace(taxonomyScrubber, ""));
+      : linesForPrint(competencySentenceCase((session.competencies || "").replace(taxonomyScrubber, "")));
 
     const objText = isFlex
       ? ""
@@ -248,15 +252,6 @@ window.buildDocumentLayout = async function () {
       let timeStyle =
         "text-align: center; font-weight: bold; vertical-align: top; font-size: 10pt; padding: 6px;";
       let contentStyle = "vertical-align: top; font-size: 10pt; padding: 6px;";
-
-      if (!isFirst) {
-        timeStyle += " border-top: none !important;";
-        contentStyle += " border-top: none !important;";
-      }
-      if (!isLast) {
-        timeStyle += " border-bottom: none !important;";
-        contentStyle += " border-bottom: none !important;";
-      }
 
       if (pIndex === 0) {
         if (isFlex) {
