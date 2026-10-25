@@ -164,7 +164,7 @@ Primary assessed files are the checkpoint files matching the assessment target. 
 Supporting Java/Kotlin, Manifest, Gradle, drawable, theme, font and resource files may support technical implementation or compliance when they are connected to the student's verified screen.
 Deterministic checks below are program-derived observations. Use them as evidence, but still apply the rubric.
 ${visualAssetsIncluded?"Referenced repository images are attached after this prompt. Inspect them for visible labels/artwork/contrast cues, but do not claim exact native Android rendering.":"Referenced repository images were not supplied to the evaluation service. Do not claim that labels, artwork, contrast, or other image content are absent solely because they are not represented as XML TextViews."}
-The internal XML preview is approximate. It can support layout-structure observations but does not prove native Android rendering, compilation or runtime behavior.
+The internal XML preview is approximate. It can support layout-structure observations but does not prove native Android rendering, compilation or runtime behavior. Treat anything not observed in the inspected source as unverified rather than absent.
 
 Each criterion with supported points must cite at least one verified substantive student patch by exact sha and path.
 Never infer authorship solely from Git author name, commit count or timestamps.
