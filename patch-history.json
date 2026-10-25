@@ -1,6 +1,36 @@
 {
   "releases": [
     {
+      "version": "1.4.3",
+      "status": "draft",
+      "public": false,
+      "releasedAt": "2026-10-25",
+      "title": "Consolidated evidence and grading reliability",
+      "summary": "Consolidates the merged class evidence-gathering, approval, review, evaluation, and interface improvements. Publication remains pending live verification.",
+      "changes": [
+        {
+          "type": "Updated",
+          "area": "Gradebook",
+          "text": "Class evidence gathering, bulk approval, unpublished grade drafts, re-evaluation, and stop-after-current-student controls."
+        },
+        {
+          "type": "Fixed",
+          "area": "Evidence provenance",
+          "text": "Corrected evidence URL matching, stale files considered, approved merge-context evaluation, and bounded large diff handling."
+        },
+        {
+          "type": "Updated",
+          "area": "Teacher workflow",
+          "text": "Improved class review console and full exception details without overwriting existing submissions or published grades."
+        },
+        {
+          "type": "Updated",
+          "area": "Deployment",
+          "text": "Maintains separate GitHub Pages and Firebase deployment paths; release metadata remains draft pending verification."
+        }
+      ]
+    },
+    {
       "version": "1.4.1",
       "status": "draft",
       "public": false,
