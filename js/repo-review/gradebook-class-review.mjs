@@ -79,6 +79,12 @@ async function load(detail){
     ]:[])
   ]);
   const warnings=[];
+  if(isV2){
+    try{const grades=await getDocs(query(collection(db,"student_grades"),where("taskId","==",detail.taskId)));
+      context.grades=Object.fromEntries(grades.docs.filter(record=>detail.students.some(student=>student.id===record.data().studentId))
+        .map(record=>[record.data().studentId,record.data()]));
+    }catch(error){warnings.push("gradebook drafts: "+error.message);}
+  }
   if(sources[0].status==="fulfilled")for(const record of sources[0].value.docs){
     const data={id:record.id,...record.data()},prior=receiptMap.get(data.studentId);
     const stamp=value=>value?.toMillis?.()||Date.parse(value||"")||0;
@@ -310,6 +316,8 @@ async function evaluateOne(student,evidence,assessment,connection,{rerun=false}=
         evidenceRevision(updatedEvidence.data())!==evidenceRevision(evidence))
         throw Error("Draft or evidence changed; no score was replaced.");
       const old=current.data(),updated={...old,...gradePayload};
+      if(old.score===updated.score&&old.feedback===updated.feedback)
+        throw Error("Re-evaluation produced the same score and feedback; previous draft preserved.");
       const revision=doc(collection(db,"grade_revisions"));
       tx.set(revision,{gradeId:gradeRef.id,studentId:student.id,taskId:context.taskId,
         editorUid:auth.currentUser.uid,reason:"System draft re-evaluation against current approved contribution evidence",
