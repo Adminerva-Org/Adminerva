@@ -8,7 +8,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const manifest=document.createElement("link");manifest.rel="manifest";manifest.href="manifest.webmanifest";document.head.append(manifest);
   }
   if(!document.querySelector('link[rel="apple-touch-icon"]')){
-    const icon=document.createElement("link");icon.rel="apple-touch-icon";icon.href="assets/adminerva-notification-badge.png";document.head.append(icon);
+    const icon=document.createElement("link");icon.rel="apple-touch-icon";icon.href="assets/adminerva-brand-badge-192.png";document.head.append(icon);
   }
   const root = document.getElementById("adminerva-nav");
   if (!root) return;
@@ -121,7 +121,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="av-nav-top flex justify-between items-center min-h-14 px-4 sm:px-6 lg:px-8">
           <div class="av-nav-brand flex items-center gap-3 min-w-0">
             <a href="${homeRoute}" class="av-nav-home flex items-center gap-2 min-h-10 rounded-lg" aria-label="Adminerva · ${homeLabel}"${activePage === "home" ? ' aria-current="page"' : ""}>
-              <span class="av-brand-mark"><img src="assets/New%20Adminerva%20logo.png" alt="" class="h-8 w-8 object-contain rounded-full"></span>
+              <span class="av-brand-mark"><img src="assets/adminerva-brand-badge-192.png" alt="" class="h-8 w-8 object-contain rounded-full"></span>
               <span class="av-nav-wordmark hidden sm:inline font-extrabold tracking-wide">ADMINERVA</span>
               <span class="av-nav-home-label text-sm font-semibold text-cyan-100">Home</span>
             </a>
