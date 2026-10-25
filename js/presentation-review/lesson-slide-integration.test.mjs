@@ -38,7 +38,7 @@ test('a late saved-session response cannot replace the newly selected session de
 test('a late system-generated deck does not overwrite edits made while waiting',async()=>{
   const page=fixture();let resolveResponse;
   page.context.localStorage={getItem:key=>key==='Adminerva_ai_model'?'fixture-model':'fixture-provider-key'};
-  page.context.fetch=()=>new Promise(resolve=>{resolveResponse=resolve;});
+  page.context.generateSchoolContent=()=>new Promise(resolve=>{resolveResponse=resolve;});
   page.window.selectedPlanData={version:3,subject_title:'Programming',weekly_overview:{topic:'XML'}};
   page.window.selectedSessionData={session_name:'One'};page.window.currentPresentationDeck=[{content:'Before request'}];
   const aiSource=readFileSync('js/presentation-review/presentation-ai.js','utf8').replace(/^import .*;\r?$/gm,'');
