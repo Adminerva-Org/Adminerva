@@ -406,7 +406,17 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
     el("manualReviewMax").value=String(maxScore);
     el("manualReviewScore").value=previous?.score!=null?String(previous.score):"";
     el("manualReviewFeedback").value=cleanGradeFeedback(previous?.feedback);
-    el("manualReviewFiles").value=(previous?.contributionEvidence?.matchedPaths||[]).join("\n");
+    // Legacy grade paths may belong to a different assessment or checkpoint.
+    // Never silently present them as the files used for a current V2 evaluation.
+    const priorPaths=previous?.contributionEvidence?.matchedPaths||[];
+    const sameCheckpoint=Boolean(approvedEvidence?.approvedCheckpointSha&&
+      previous?.gradedSha===approvedEvidence.approvedCheckpointSha&&
+      previous?.evidenceRevision===evidenceRevision(approvedEvidence));
+    el("manualReviewFiles").value=assessment.schemaVersion===2
+      ?(sameCheckpoint?priorPaths:[]).join("\n")
+      :priorPaths.join("\n");
+    if(assessment.schemaVersion===2&&priorPaths.length&&!sameCheckpoint)
+      flag("Saved file paths belong to a previous or unverified evidence revision and were not copied into this review. Inspect the current pinned checkpoint and verified commits before saving.");
     el("manualReviewReason").value=previous?.teacherReviewNote||"";
     state.active={studentId,taskId,owner,repo,base,student,assessment,previous,gradeRef:gradeDoc.ref,maxScore,login,checkpointSha,selectedEvidenceCommits,evidence:approvedEvidence,aiDraft:null,aiApplied:false};
     if(assessment.schemaVersion===2&&approvedEvidence?.status==="approved"&&auth.currentUser?.uid){
