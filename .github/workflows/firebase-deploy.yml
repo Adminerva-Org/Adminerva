@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'ci(firebase): deploy configured backend' || vars.FIREBASE_DEPLOY_ENABLED == 'true'
+    if: "${{ github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'ci(firebase): deploy configured backend' || vars.FIREBASE_DEPLOY_ENABLED == 'true' }}"
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
