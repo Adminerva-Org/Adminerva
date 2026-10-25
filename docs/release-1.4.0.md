@@ -35,7 +35,12 @@ Adminerva 1.4.0 is the classroom workflow and follow-through release.
 - Teacher Analytics uses the same centered content width as Practice & learning.
 - Repository context remains available for advanced project-level summaries, but is no longer a competing primary tool.
 
-## Code Playground and student organization
+## Authoring and student organization
+
+- Slide Navigator supports direct drag/reorder with a visible insertion indicator, plus deck-level Undo/Redo for structural changes while text editing keeps Quill's own history.
+- Skill Arcade remains a single practice hub with reusable deterministic mechanics rather than a collection of unrelated apps.
+
+### Code Playground
 
 - Project Explorer supports file/folder drag-and-drop, moving items into folders or back to the project root, and visible edge insertion for sibling reordering.
 - Private cloud versions can be named, renamed, pinned, duplicated, restored, cleaned up or deleted without changing the current device draft.
