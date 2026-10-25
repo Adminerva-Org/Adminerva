@@ -20,6 +20,7 @@ import {createReviewRequests} from "./services/review-requests.mjs?v=1.3.0";
 import {mountReviewPanels} from "./review-panels.mjs?v=1.4.3";
 
 const el = id => document.getElementById(id);
+const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
 const state = { active: null, request: null, token: 0, flags: [], aiBusy: false, dirty:false, abort:null,panels:null,requests:null,aiAbort:null };
 function message(text, error=false) {
   const node=el("manualReviewStatus");
@@ -422,6 +423,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
       flag("Saved file paths belong to a previous or unverified evidence revision and were not copied into this review. Inspect the current pinned checkpoint and verified commits before saving.");
     el("manualReviewReason").value=previous?.teacherReviewNote||"";
     state.active={studentId,taskId,owner,repo,base,student,assessment,previous,gradeRef:gradeDoc.ref,maxScore,login,checkpointSha,selectedEvidenceCommits,evidence:approvedEvidence,aiDraft:null,aiApplied:false};
+    analytics("review_editor_opened",{feature:"review_grade",mode:assessment.schemaVersion===2?"v2":"legacy",status:previous?"existing_grade":"new_grade"});
     if(assessment.schemaVersion===2&&approvedEvidence?.status==="approved"&&auth.currentUser?.uid){
       try{
         const queued=await getDoc(doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId));
@@ -549,6 +551,7 @@ async function save(event) {
     window.dispatchEvent(new CustomEvent("adminerva:manual-grade-saved",{
       detail:{studentId:active.studentId,assessmentId:active.taskId}
     }));
+    analytics("grade_draft_saved",{feature:"review_grade",mode:acceptedDraft?"system_assisted":"manual",status:"unpublished"});
     if(state.active!==active||state.token!==session)return;
     const savedGrade=(await getDoc(active.gradeRef)).data();
     if(state.active!==active||state.token!==session)return;
@@ -595,6 +598,7 @@ async function changePublication(published){
       transaction.set(active.gradeRef,{published},{merge:true});
     });
     window.dispatchEvent(new CustomEvent("adminerva:manual-grade-saved"));
+    analytics("grade_publication_changed",{feature:"review_grade",action:published?"publish":"unpublish",status:"success"});
     if(state.active===active&&state.request)await open({...state.request});
   }catch(error){message("Publication unchanged: "+error.message,true);}
   finally{button.disabled=false;}
