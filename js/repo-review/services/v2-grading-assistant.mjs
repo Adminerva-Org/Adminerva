@@ -163,7 +163,7 @@ Placeholder data is allowed when the task says placeholders are acceptable; eval
 Separate score-affecting issues from recommended improvements in student feedback.
 
 EVIDENCE:
-Primary assessed files are the checkpoint files matching the assessment target. Supporting files/resources are included because the verified student commit changed them or the primary layout references them.
+Primary assessed files are the verified student's changed checkpoint files that match the assessment target. Supporting files/resources are included because the verified student commit changed them or the student's primary layout references them.
 Supporting Java/Kotlin, Manifest, Gradle, drawable, theme, font and resource files may support technical implementation or compliance when they are connected to the student's verified screen.
 Deterministic checks below are program-derived observations. Use them as evidence, but still apply the rubric.
 ${visualAssetsIncluded?"Referenced repository images are attached after this prompt. Inspect them for visible labels/artwork/contrast cues, but do not claim exact native Android rendering.":"Referenced repository images were not supplied to the evaluation service. Do not claim that labels, artwork, contrast, or other image content are absent solely because they are not represented as XML TextViews."}
@@ -292,9 +292,15 @@ export async function loadPinnedV2Source({
   if([...studentPrimaryPaths].some(path=>!available.has(path)))
     throw Error("Some selected primary source files are absent at the approved checkpoint. Inspect renames or deletions before grading.");
 
-  const primaryPaths=[...available].filter(path=>relevantAssessmentFile(path,assessment));
+  // Individual grading should inspect the learner's verified primary changes,
+  // not every teammate file matched by a broad assessment target. Merge-only
+  // evidence has no independently attributable primary path, so it keeps the
+  // broader checkpoint fallback for teacher-confirmation context.
+  const primaryPaths=(studentPrimaryPaths.size
+    ?[...studentPrimaryPaths]
+    :[...available].filter(path=>relevantAssessmentFile(path,assessment))).sort();
   if(primaryPaths.length>MAX_PRIMARY_FILES)
-    throw Error("The matching checkpoint source exceeds "+MAX_PRIMARY_FILES+" primary files. Narrow the assessment target paths before automatic evaluation.");
+    throw Error("The verified evaluation scope exceeds "+MAX_PRIMARY_FILES+" primary files. Narrow the selected evidence before automatic evaluation.");
 
   async function readText(path,primary=false,studentChanged=false){
     const encoded=path.split("/").map(encodeURIComponent).join("/");
@@ -302,14 +308,14 @@ export async function loadPinnedV2Source({
     if(response.type!=="file"||response.encoding!=="base64"||typeof response.content!=="string")
       throw Error("GitHub did not return readable pinned source for "+path+".");
     const bytes=Uint8Array.from(atob(response.content.replace(/\s/g,"")),c=>c.charCodeAt(0));
-    if(bytes.length>MAX_FILE_BYTES)throw Error("Relevant source file "+path+" exceeds the evaluation context limit.");
+    if(bytes.length>MAX_FILE_BYTES)throw Error("Verified source file "+path+" is too large for automatic evaluation ("+bytes.length+" bytes; limit "+MAX_FILE_BYTES+").");
     return {path,text:new TextDecoder("utf-8",{fatal:true}).decode(bytes),primary,studentChanged,binary:false};
   }
 
   const files=[];let totalSource=0;
   for(const path of primaryPaths){
     const file=await readText(path,true,studentPrimaryPaths.has(path));
-    totalSource+=file.text.length;if(totalSource>MAX_TOTAL_SOURCE)throw Error("Relevant source exceeds the evaluation context limit.");
+    totalSource+=file.text.length;if(totalSource>MAX_TOTAL_SOURCE)throw Error("Verified student source and referenced support files exceed the "+MAX_TOTAL_SOURCE+" character automatic evaluation limit.");
     files.push(file);
   }
 
@@ -332,7 +338,7 @@ export async function loadPinnedV2Source({
   for(const path of supportTextPaths){
     if(!available.has(path)||files.some(file=>file.path===path))continue;
     const file=await readText(path,false,studentSupportPaths.has(path));
-    totalSource+=file.text.length;if(totalSource>MAX_TOTAL_SOURCE)throw Error("Relevant source exceeds the evaluation context limit.");
+    totalSource+=file.text.length;if(totalSource>MAX_TOTAL_SOURCE)throw Error("Verified student source and referenced support files exceed the "+MAX_TOTAL_SOURCE+" character automatic evaluation limit.");
     files.push(file);
   }
   for(const path of binaryPaths){
