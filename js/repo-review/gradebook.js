@@ -36,7 +36,7 @@ function escapeHTML(str) {
 }
 
 let allStudents = [],gridEntries=[],gridSerial=0,publishBusy=false,subjectFocus=[];
-function syncPublishButton(loading=false){const button=document.getElementById("gbLegacyPublish"),eligible=publicationCandidates(gridEntries);button.disabled=loading||publishBusy||!eligible.length;button.textContent="Publish ("+eligible.length+" Drafts)";const recovery=publicationRecovery("single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value);document.getElementById("gbLegacyRecovery").textContent=recovery?.pending.length?"Interrupted batch: "+recovery.pending.length+" pending. Reload grades and confirm Publish to try again.":"Only reviewed legacy drafts are eligible. V2 publication is individual.";}
+function syncPublishButton(loading=false){const button=document.getElementById("gbLegacyPublish"),eligible=publicationCandidates(gridEntries);button.disabled=loading||publishBusy||!eligible.length;button.textContent="Publish ("+eligible.length+" Drafts)";const recovery=publicationRecovery("single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value);document.getElementById("gbLegacyRecovery").textContent=recovery?.pending.length?"Interrupted batch: "+recovery.pending.length+" pending. Reload grades and confirm Publish to try again.":"Only reviewed drafts are eligible for publication; V2 grades require individual teacher confirmation.";}
 window.openGridFeedback=(studentId,taskId)=>void openFeedbackDrawer({studentId,taskId});
 let allAssessments = [];
 

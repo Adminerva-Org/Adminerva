@@ -9,7 +9,7 @@ import {generateSchoolContent,schoolAIStatus} from "../core/school-ai.mjs?v=1.3.
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.1";
 
 const el=id=>document.getElementById(id);
-let context=null,busy=false,evidenceMap=new Map(),draftMap=new Map();
+let context=null,busy=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map();
 const draftRef=(studentId,taskId)=>doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId);
 const badge=(text,tone="slate")=>'<span class="inline-flex rounded-full px-2 py-1 font-bold bg-'+tone+'-50 text-'+tone+'-800 border border-'+tone+'-200">'+text+'</span>';
 function reviewUrl(studentId){const p=new URLSearchParams({section:context.section,assessment:context.taskId,student:studentId,view:"grade"});return "repofetch.html?"+p.toString();}
@@ -23,47 +23,62 @@ function statusFor(student){
   if(evidence?.status==="needs_review")return {label:"Needs review",tone:"amber",next:"Review submission"};
   if(evidence?.status==="reopened")return {label:"Returned for changes",tone:"amber",next:"View status"};
   if(evidence?.status==="withdrawn")return {label:"Withdrawn",tone:"slate",next:"View status"};
+  if(receiptMap.has(student.id))return {label:"Submitted",tone:"blue",next:"Review submission"};
   return {label:"Not submitted",tone:"slate",next:"Open review"};
 }
 function render(){
   if(!context)return;
   const tools=el("gbClassReviewTools"),isV2=Number(context.schemaVersion)===2;
-  tools?.classList.toggle("hidden",!isV2);
-  if(!isV2)return;
+  tools?.classList.remove("hidden");
   let submitted=0,approved=0,drafts=0,published=0,exceptions=0;
   for(const student of context.students){
     const state=statusFor(student),box=document.querySelector('[data-review-state="'+CSS.escape(student.id)+'"]');
     if(box){box.innerHTML=badge(state.label,state.tone)+'<a class="block mt-2 font-bold text-blue-700 hover:underline" href="'+reviewUrl(student.id)+'">'+state.next+' →</a>';}
     const evidence=evidenceMap.get(student.id),grade=context.grades?.[student.id];
-    if(evidence?.status==="submitted"||evidence?.status==="needs_review")submitted++;
+    if(evidence?.status==="submitted"||evidence?.status==="needs_review"||(!evidence&&receiptMap.has(student.id)))submitted++;
     if(evidence?.status==="approved")approved++;
     if(grade?.published)published++; else if(grade||draftMap.has(student.id))drafts++;
     if(evidence&&["reopened","withdrawn"].includes(evidence.status))exceptions++;
   }
-  const approveCandidates=context.students.filter(student=>["submitted","needs_review"].includes(evidenceMap.get(student.id)?.status));
-  const evaluateCandidates=context.students.filter(student=>{
+  const approveCandidates=isV2?context.students.filter(student=>["submitted","needs_review"].includes(evidenceMap.get(student.id)?.status)):[];
+  const evaluateCandidates=isV2?context.students.filter(student=>{
     const e=evidenceMap.get(student.id),g=context.grades?.[student.id];
     return e?.status==="approved"&&Array.isArray(e.verifiedContributionCommits)&&e.verifiedContributionCommits.length>0&&!g?.published&&!draftMap.has(student.id);
-  });
+  }):[];
   el("gbClassReviewSummary").textContent=context.students.length+" learners · "+submitted+" awaiting review · "+approved+" approved · "+drafts+" draft/evaluation ready · "+published+" published"+(exceptions?" · "+exceptions+" exceptions":"");
-  el("gbBulkApprove").textContent="Approve clean checkpoints ("+approveCandidates.length+")";el("gbBulkApprove").disabled=busy||!approveCandidates.length;
-  el("gbBulkEvaluate").textContent="Evaluate eligible ("+evaluateCandidates.length+")";el("gbBulkEvaluate").disabled=busy||!evaluateCandidates.length;
+  el("gbBulkApprove").textContent=isV2?"Approve clean checkpoints ("+approveCandidates.length+")":"Bulk approval · V2 evidence only";
+  el("gbBulkApprove").disabled=busy||!approveCandidates.length;
+  el("gbBulkEvaluate").textContent=isV2?"Evaluate eligible ("+evaluateCandidates.length+")":"Bulk evaluation · V2 evidence only";
+  el("gbBulkEvaluate").disabled=busy||!evaluateCandidates.length;
   const p=new URLSearchParams({section:context.section,assessment:context.taskId});el("gbReviewExceptions").href="repofetch.html?"+p.toString();
 }
 async function load(detail){
-  context=detail;evidenceMap=new Map();draftMap=new Map();
-  if(Number(detail.schemaVersion)!==2){render();return;}
+  context=detail;evidenceMap=new Map();draftMap=new Map();receiptMap=new Map();
   try{
-    const [evidenceSnap,draftsSnap]=await Promise.all([
-      getDocs(query(collection(db,"assessment_evidence"),where("assessmentId","==",detail.taskId))),
-      getDocs(collection(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items"))
-    ]);
-    evidenceMap=new Map(evidenceSnap.docs.filter(record=>record.data().section===detail.section).map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
-    draftMap=new Map(draftsSnap.docs.filter(record=>{
-      const draft=record.data(),evidence=evidenceMap.get(draft.studentId);
-      return draft.taskId===detail.taskId&&draft.section===detail.section&&draft.status==="private_suggestion"&&
-        evidence?.status==="approved"&&draft.evidenceRevision===evidenceRevision(evidence)&&draft.checkpointSha===evidence.approvedCheckpointSha;
-    }).map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
+    const isV2=Number(detail.schemaVersion)===2;
+    const requests=[
+      getDocs(query(collection(db,"student_submissions"),where("assessmentId","==",detail.taskId),where("section","==",detail.section)))
+    ];
+    if(isV2){
+      requests.push(
+        getDocs(query(collection(db,"assessment_evidence"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
+        getDocs(collection(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items"))
+      );
+    }
+    const [receiptSnap,evidenceSnap,draftsSnap]=await Promise.all(requests);
+    for(const record of receiptSnap.docs){
+      const data={id:record.id,...record.data()},prior=receiptMap.get(data.studentId);
+      const stamp=value=>value?.toMillis?.()||Date.parse(value||"")||0;
+      if(!prior||stamp(data.submittedAt)>stamp(prior.submittedAt))receiptMap.set(data.studentId,data);
+    }
+    if(isV2){
+      evidenceMap=new Map(evidenceSnap.docs.map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
+      draftMap=new Map(draftsSnap.docs.filter(record=>{
+        const draft=record.data(),evidence=evidenceMap.get(draft.studentId);
+        return draft.taskId===detail.taskId&&draft.section===detail.section&&draft.status==="private_suggestion"&&
+          evidence?.status==="approved"&&draft.evidenceRevision===evidenceRevision(evidence)&&draft.checkpointSha===evidence.approvedCheckpointSha;
+      }).map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
+    }
   }catch(error){el("gbBulkStatus").textContent="Class review status is partially unavailable: "+error.message;}
   render();
 }

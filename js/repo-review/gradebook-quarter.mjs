@@ -12,10 +12,10 @@ import {
 } from "../core/teaching-firestore.mjs?v=1.3.0";
 import { parseGithubRepository } from "./services/github-evidence-client.mjs?v=1.3.0";
 
-/* Companion view to the legacy single-assessment gradebook.
+/* Quarter matrix companion to the primary single-assessment class review.
    It does not change existing document identifiers or grade schemas. */
 const el = id => document.getElementById(id);
-const state = { students: [], assessments: [], tasks: [], rows: [], grades: new Map(), active: null, ready: false, mode: "quarter", loading: false, subjectFocus: [] };
+const state = { students: [], assessments: [], tasks: [], rows: [], grades: new Map(), active: null, ready: false, mode: "single", loading: false, subjectFocus: [] };
 let loadSerial=0,bulkBusy=false,detailsDirty=false;
 const publicationContext=()=>"quarter:"+el("gbQuarterSection").value+":"+el("gbQuarter").value;
 function queueEntries(){return [...state.grades.values()].map(entry=>({...entry,schemaVersion:state.tasks.find(task=>task.id===entry.data.taskId)?.schemaVersion,maxScore:state.tasks.find(task=>task.id===entry.data.taskId)?.maxScore}));}
@@ -443,7 +443,7 @@ function init() {
   document.addEventListener("keydown", e => {
     if (e.key === "Escape" && !el("gbDetailModal").classList.contains("hidden")) closeDetails();
   });
-  view("quarter");
+  view("single");
   onAuthStateChanged(auth, async user => {
     if (!user) return;
     try {

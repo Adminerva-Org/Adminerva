@@ -603,3 +603,25 @@ a.av-home-task:hover,a.av-learning-card:hover { border-color:#7b9fce;box-shadow:
 .av-account-menu>summary::-webkit-details-marker{display:none}.av-account-menu[open]>summary{background:rgba(30,41,59,.85)}
 html[data-adminerva-density=compact] .av-panel{padding:.85rem!important}html[data-adminerva-density=compact] .av-nav-top{padding-block:.2rem!important}
 html[data-adminerva-reduce-motion=true] *,html[data-adminerva-reduce-motion=true] *::before,html[data-adminerva-reduce-motion=true] *::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+
+/* 1.4.1: compact teacher chrome and align class/practice analytics widths. */
+.av-nav-location{padding-top:.3rem!important;padding-bottom:.3rem!important}
+.av-nav-top{min-height:3.25rem!important}
+.av-educator-layout{gap:1rem}
+.av-educator-layout>.av-educator-content{min-width:0}
+.av-educator-content>.av-analytics-panel,
+.av-educator-content>.av-analytics-intro{max-width:80rem;width:100%;margin-left:auto;margin-right:auto}
+.av-educator-content>.av-analytics-panel>div.max-w-7xl{max-width:none;padding-left:0;padding-right:0}
+.av-brand-mark{background:transparent}
+.av-brand-mark img{width:2.5rem;height:2.5rem;max-width:none;object-fit:cover;object-position:center 22%;transform:scale(1.32) translateY(7%)}
+@media(min-width:1025px) and (max-width:1450px){
+  .av-educator-layout{grid-template-columns:12.5rem minmax(0,1fr)}
+}
+
+.av-educator-nav-toggle{display:block;width:100%;padding:.5rem .6rem;margin-bottom:.45rem;border:1px solid #dbe4ef;border-radius:.55rem;background:#f8fafc;color:#475569;font-size:.72rem;font-weight:750;text-align:left}
+.av-educator-nav-toggle:hover{background:#eef4fb;color:#173b63}
+.av-educator-layout[data-nav-collapsed="true"]{grid-template-columns:7.25rem minmax(0,1fr)}
+.av-educator-layout[data-nav-collapsed="true"] .av-educator-nav-desktop{padding:.45rem}
+.av-educator-layout[data-nav-collapsed="true"] [data-educator-nav-groups]{display:none}
+.av-educator-layout[data-nav-collapsed="true"] .av-educator-nav-toggle{text-align:center;margin:0}
+@media(max-width:1024px){.av-educator-nav-toggle{display:none}.av-educator-layout[data-nav-collapsed="true"]{grid-template-columns:1fr}}

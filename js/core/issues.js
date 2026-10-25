@@ -449,10 +449,13 @@ function loadComments(issueId) {
 
       snapshot.forEach((docSnap) => {
         const data = docSnap.data();
-        const timeStr = data.createdAt
-          ? data.createdAt.toDate().toLocaleString()
-          : "Just now";
-        const isAdmin = trustedStaff.has((data.authorEmail||"").toLowerCase());
+        let timeStr = "Date unavailable";
+        try {
+          const raw = data.createdAt || data.timestamp || data.date;
+          const date = raw?.toDate?.() || (raw?.seconds != null ? new Date(raw.seconds * 1000) : raw ? new Date(raw) : null);
+          if (date instanceof Date && !Number.isNaN(date.getTime())) timeStr = date.toLocaleString();
+        } catch { /* Historical comments may use older timestamp formats. */ }
+        const isAdmin = data.role === "superadmin" || trustedStaff.has((data.authorEmail||"").toLowerCase());
         const tag = isAdmin
           ? `<span class="bg-cyan-100 text-cyan-800 text-[8px] font-bold px-1.5 py-0.5 rounded ml-2">ADMIN</span>`
           : "";
@@ -465,8 +468,8 @@ function loadComments(issueId) {
                         <span class="text-xs font-bold text-slate-700 flex items-center">${escapeHTML((data.authorEmail||"").split("@")[0] || "Member")} ${tag}</span>
                         <span class="text-[9px] text-slate-400">${timeStr}</span>
                     </div>
-                    <p class="text-sm text-slate-600 whitespace-pre-wrap">${escapeHTML(data.text)}</p>
-                    ${isSuperAdmin ? `<button onclick="deleteComment('${docSnap.id}')" class="absolute top-2 right-2 text-red-300 hover:text-red-500 text-xs hidden group-hover:block">🗑️</button>` : ""}
+                    <p class="text-sm text-slate-600 whitespace-pre-wrap">${escapeHTML(data.text || data.comment || data.message || "")}</p>
+                    ${((data.authorUid && data.authorUid === auth.currentUser?.uid) || ((data.authorEmail||"").toLowerCase() && (data.authorEmail||"").toLowerCase() === currentUserEmail)) ? `<button onclick="deleteComment('${docSnap.id}')" class="absolute top-2 right-2 text-red-300 hover:text-red-500 text-xs hidden group-hover:block">🗑️</button>` : ""}
                 </div>
             `,
         );
@@ -476,7 +479,7 @@ function loadComments(issueId) {
     },
     (error) => {
       console.error(error);
-      feed.innerHTML = `<div class="text-center py-4 text-xs text-red-400">Error loading live comments.</div>`;
+      feed.innerHTML = `<div class="text-center py-4 text-xs text-red-600">Could not load discussion. Please reopen the report or try again.</div>`;
     },
   );
 }
