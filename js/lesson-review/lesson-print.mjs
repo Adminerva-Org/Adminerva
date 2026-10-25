@@ -29,7 +29,7 @@ export async function printLesson({ saveFirst = false } = {}) {
       ]);
     }
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    if (status) status.textContent = "Print layout ready. It is optimized for 8.5 × 13 in landscape with page-boundary rules for continued sessions. Keep background graphics on and browser headers/footers off.";
+    if (status) status.textContent = "Legacy print layout ready. Choose Landscape and the paper size required by your school; enable background graphics for the blue headings and turn off browser headers and footers.";
     window.print();
   } catch (error) {
     if (status) { status.textContent = error?.message || "The print layout could not be prepared. Your lesson content is still available; try again."; status.dataset.tone = "error"; }
