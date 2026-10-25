@@ -503,14 +503,17 @@ service cloud.firestore {
       return commits.size() <= offset ||
         (commits[offset] is string && commits[offset].matches("^[a-fA-F0-9]{40}$"));
     }
-    function validEvidenceCommits(commits) {
-      return commits is list && commits.size() > 0 && commits.size() <= 20 &&
+    function validTeacherEvidenceCommits(commits) {
+      return commits is list && commits.size() <= 20 &&
         commits.toSet().size() == commits.size() &&
         shaAt(commits,0) && shaAt(commits,1) && shaAt(commits,2) && shaAt(commits,3) &&
         shaAt(commits,4) && shaAt(commits,5) && shaAt(commits,6) && shaAt(commits,7) &&
         shaAt(commits,8) && shaAt(commits,9) && shaAt(commits,10) && shaAt(commits,11) &&
         shaAt(commits,12) && shaAt(commits,13) && shaAt(commits,14) && shaAt(commits,15) &&
         shaAt(commits,16) && shaAt(commits,17) && shaAt(commits,18) && shaAt(commits,19);
+    }
+    function validEvidenceCommits(commits) {
+      return validTeacherEvidenceCommits(commits) && commits.size() > 0;
     }
     function ownV2Evidence(data) {
       return signedIn() &&
@@ -591,16 +594,20 @@ service cloud.firestore {
       allow update: if instructorEvidenceChange(evidenceId);
       allow create: if mayTeachStudent(request.resource.data.studentId) && mayTeachAssessment(request.resource.data.assessmentId) && request.resource.data.keys().hasOnly([
         "studentId","assessmentId","section","repository","selectedCommits","checkpointSha",
-        "status","source","discoveredBy","recordedAt","updatedAt"]) &&
+        "status","source","discoveredBy","recordedAt","updatedAt","discoveryCutoff","discoveryNote"]) &&
         evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId &&
         request.resource.data.status == "needs_review" && request.resource.data.source == "teacher_discovered" &&
         request.resource.data.discoveredBy == request.auth.uid && request.resource.data.recordedAt == request.time &&
         request.resource.data.updatedAt == request.time &&
+        request.resource.data.get("discoveryCutoff","") is string &&
+        request.resource.data.get("discoveryCutoff","").size() <= 40 &&
+        request.resource.data.get("discoveryNote","") is string &&
+        request.resource.data.get("discoveryNote","").size() <= 1200 &&
         get(/databases/$(database)/documents/assessments/$(request.resource.data.assessmentId)).data.get("schemaVersion",1) == 2 &&
         request.resource.data.repository == get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.repoUrl &&
         request.resource.data.section == get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.section &&
         request.resource.data.checkpointSha.matches("^[a-fA-F0-9]{40}$") &&
-        validEvidenceCommits(request.resource.data.selectedCommits);
+        validTeacherEvidenceCommits(request.resource.data.selectedCommits);
       allow delete: if false;
       match /revisions/{revisionId} {
         allow read: if mayTeachStudent(get(/databases/$(database)/documents/assessment_evidence/$(evidenceId)).data.studentId) || ownsStudentProfile(get(/databases/$(database)/documents/assessment_evidence/$(evidenceId)).data.studentId);
