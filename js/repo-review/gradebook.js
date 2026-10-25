@@ -216,10 +216,12 @@ async function loadGrid() {
       );
     });
 
-    window.dispatchEvent(new CustomEvent("adminerva:gradebook-grid-loaded",{detail:{
+    const gradebookGridDetail={
       section,taskId,schemaVersion,students:classStudents.map(student=>({id:student.id,name:student.name,section:student.section,repoUrl:student.repoUrl,githubUsername:student.githubUsername,email:student.email})),
       grades:Object.fromEntries(classStudents.filter(student=>gradeMap[student.id]).map(student=>[student.id,gradeMap[student.id]]))
-    }}));
+    };
+    window.__adminervaGradebookGridContext=gradebookGridDetail;
+    window.dispatchEvent(new CustomEvent("adminerva:gradebook-grid-loaded",{detail:gradebookGridDetail}));
 
     if (classStudents.length === 0) {
       tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-12 text-center text-slate-400 font-medium italic">No students found in this section.</td></tr>`;
