@@ -1,7 +1,19 @@
 /** Account-scoped recovery metadata; interrupted publication always needs a new confirmation. */
+export function legacyReadyDraft(data={}) {
+  const reasons=Array.isArray(data.reviewReasons)?data.reviewReasons.filter(Boolean):[];
+  return data.published===false &&
+    data.reviewRequired===true &&
+    data.manuallyAdjusted===false &&
+    data.gradeSource==="system_evaluation_draft" &&
+    data.reviewPriority==="ready_for_teacher_confirmation" &&
+    reasons.length===0 &&
+    data.evaluationDraft && typeof data.evaluationDraft==="object" &&
+    data.evaluationDraft.teacherReviewed!==true;
+}
 export function publicationCandidates(entries,published=true) {
   return entries.filter(entry=>Boolean(entry.data.published)!==published &&
-    (!published || (entry.data.reviewRequired===false && typeof entry.data.score==="number" && Number.isFinite(entry.data.score) &&
+    (!published || ((entry.data.reviewRequired===false || legacyReadyDraft(entry.data)) &&
+      typeof entry.data.score==="number" && Number.isFinite(entry.data.score) &&
       entry.data.score>=0 && typeof (entry.data.maxScore??entry.maxScore)==="number" && Number.isFinite(entry.data.maxScore??entry.maxScore) &&
       (entry.data.maxScore??entry.maxScore)>0 && entry.data.score<=(entry.data.maxScore??entry.maxScore))));
 }
