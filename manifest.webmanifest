@@ -10,14 +10,14 @@
   "theme_color": "#111827",
   "icons": [
     {
-      "src": "assets/adminerva-brand-badge-192.png",
+      "src": "assets/adminerva-emblem-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "assets/New%20Adminerva%20logo.png",
-      "sizes": "any",
+      "src": "assets/adminerva-emblem.png",
+      "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     }

@@ -486,6 +486,16 @@ a.av-home-task:hover,a.av-learning-card:hover { border-color:#7b9fce;box-shadow:
 .av-public-header { width:min(1240px,100%);margin:auto;padding:1rem clamp(1rem,4vw,3rem);display:flex;align-items:center;justify-content:space-between;gap:1rem; }
 .av-wordmark { display:flex;gap:.6rem;align-items:center;font-size:1.2rem;font-weight:800;color:#173b60;letter-spacing:-.02em; }
 .av-wordmark img { width:36px;height:36px;object-fit:contain; }
+.av-brand-intro { display:flex;align-items:center;gap:1rem;margin-bottom:1rem; }
+.av-brand-intro img { width:112px;height:112px;object-fit:contain;flex:none; }
+.av-brand-intro .av-eyebrow { max-width:15ch;margin:0; }
+.av-login-brand { display:flex;align-items:center;gap:1rem; }
+.av-login-brand img { width:64px;height:64px;object-fit:contain;flex:none; }
+.av-login-brand .av-eyebrow { margin:0; }
+.av-home-companion[data-home-companion] button[data-companion-tap] { display:grid;place-items:center;width:72px;height:72px;padding:0;border-radius:50%;background:#0b253b;border-color:#176075; }
+.av-home-companion button img { width:56px;height:56px;object-fit:contain;pointer-events:none; }
+.av-motion-art .av-motion-center.av-brand-orbit { background:#0b253b;border-color:#43dce2;border-radius:50%;z-index:1; }
+.av-brand-orbit img { width:84%;height:84%;object-fit:contain; }
 .av-public-header nav { display:flex;align-items:center;gap:1.25rem;font-size:.85rem;font-weight:650; }
 .av-public-hero { padding:clamp(2rem,6vw,5rem) 0;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:3rem;align-items:center; }
 .av-public-hero h1 { font-size:clamp(2.5rem,5vw,4.25rem);font-weight:800;line-height:1.08;letter-spacing:-.045em;margin:1rem 0 1.5rem; }
@@ -621,7 +631,7 @@ html[data-adminerva-reduce-motion=true] *,html[data-adminerva-reduce-motion=true
 .av-educator-content>.av-analytics-panel,
 .av-educator-content>.av-analytics-intro{max-width:80rem;width:100%;margin-left:auto;margin-right:auto}
 .av-educator-content>.av-analytics-panel>div.max-w-7xl{max-width:none;padding-left:0;padding-right:0}
-.av-brand-mark{background:transparent}
+.av-brand-mark{background:#0b253b;flex:none}
 .av-brand-mark img{width:2.05rem;height:2.05rem;max-width:100%;object-fit:contain;transform:none}
 @media(min-width:1025px) and (max-width:1450px){
   .av-educator-layout{grid-template-columns:12.5rem minmax(0,1fr)}

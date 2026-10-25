@@ -68,7 +68,7 @@ async function showForegroundPush(data){
   const tag=test?"adminerva-test-ping":String(data?.tag||("adminerva-"+(data?.type||"notice")+"-"+(data?.sourceId||"event"))).slice(0,120);
   await registration.showNotification(data?.title||(test?"Adminerva test notification":"Adminerva"),{
     body:data?.body||(test?"Push notifications are working on this device.":"You have a new Adminerva notification."),
-    icon:"assets/New%20Adminerva%20logo.png",badge:"assets/adminerva-notification-badge.png",
+    icon:"assets/adminerva-emblem-192.png",badge:"assets/adminerva-notification-badge.png",
     tag,renotify:true,data:{
       target:data?.target||"student-home.html",
       adminervaKind:data?.adminervaKind||"alert",
