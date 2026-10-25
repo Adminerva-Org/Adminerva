@@ -473,6 +473,16 @@ service cloud.firestore {
           data.feedback is string && data.feedback.size() >= 20 &&
           data.get("evaluationDraft",{}).get("teacherReviewed",true) == false;
       }
+      function legacyCleanSystemDraft(data) {
+        return data.published == false && data.reviewRequired == true &&
+          data.manuallyAdjusted == false &&
+          data.get("gradeSource","") == "system_evaluation_draft" &&
+          data.get("reviewPriority","") == "ready_for_teacher_confirmation" &&
+          data.get("reviewReasons",[]) is list &&
+          data.get("reviewReasons",[]).size() == 0 &&
+          data.get("evaluationDraft",{}) is map &&
+          data.get("evaluationDraft",{}).get("teacherReviewed",true) == false;
+      }
       allow read: if mayTeachSection(resource.data.get("section",null));
       allow create: if mayGrade(request.resource.data) && (!v2Grade(request.resource.data) ||
         (request.resource.data.published == false && (currentEvidence(request.resource.data) || validSystemDraft(request.resource.data))));
@@ -484,6 +494,13 @@ service cloud.firestore {
          request.resource.data.taskId == resource.data.taskId &&
          ((resource.data.published == true && request.resource.data.published == false &&
            request.resource.data.diff(resource.data).affectedKeys().hasOnly(["published"])) ||
+          (resource.data.published == false && legacyCleanSystemDraft(resource.data) &&
+           request.resource.data.published == true &&
+           request.resource.data.reviewRequired == false &&
+           request.resource.data.get("reviewPriority","") == "ready_to_publish" &&
+           currentEvidence(request.resource.data) &&
+           request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(["published","reviewRequired","reviewPriority"])) ||
           (resource.data.published == false && (currentEvidence(request.resource.data) || validSystemDraft(request.resource.data)) &&
            (request.resource.data.published == false ||
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(["published"]))))));
