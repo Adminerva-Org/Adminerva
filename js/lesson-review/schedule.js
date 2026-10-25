@@ -691,7 +691,9 @@ window.saveScheduleData = async function (bypassValidation = false) {
     }
   }
 
-  const rawTextForAI = scheduleRowsToText(jsonData);\n\n  const scope = currentScope();
+  const rawTextForAI = scheduleRowsToText(jsonData);
+
+  const scope = currentScope();
   cacheRows(scope, jsonData, rawTextForAI);
 
   if(isLegacySharedScope(scope)&&isLegacyScheduleRetired()){
