@@ -38,7 +38,7 @@ test('evidence selection provides actionable checkpoint guidance',()=>{
   assert.match(state.message,/Project checkpoint: b{12}/);
   state=evidenceSelectionGuidance([A,A], A);
   assert.equal(state.ready,true);
-  assert.match(state.message,/1 commit selected/);
+  assert.match(state.message,/1 evidence commit selected/);
 });
 test('evidence selection flags more than 20 distinct commits',()=>{
   const many=Array.from({length:21},(_,i)=>String(i).padStart(40,'0'));
