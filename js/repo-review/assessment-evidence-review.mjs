@@ -5,9 +5,9 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {collection,doc,getDoc,getDocFromServer,getDocs,setDoc,query,where,updateDoc,runTransaction,serverTimestamp,onSnapshot}
   from "../core/teaching-firestore.mjs?v=1.3.0";
 import {parseRepository,normalizeSelection,validSha}
-  from "./services/assessment-evidence.mjs?v=1.3.1";
-import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.3.1";
-import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.1";
+  from "./services/assessment-evidence.mjs?v=1.4.3";
+import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
+import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.4.3";
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
