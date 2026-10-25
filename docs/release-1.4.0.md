@@ -44,6 +44,9 @@ Adminerva 1.4.0 is the classroom workflow and follow-through release.
 
 - Project Explorer supports file/folder drag-and-drop, moving items into folders or back to the project root, and visible edge insertion for sibling reordering.
 - Private cloud versions can be named, renamed, pinned, duplicated, restored, cleaned up or deleted without changing the current device draft.
+
+### Review and follow-through
+
 - Submission Inbox distinguishes submitted/review states from **Graded draft** and **Published** results.
 - Teachers can assign Practice Packs built from existing verified Practice missions.
 - Teachers can create named projects for whole sections or selected students.
