@@ -17,7 +17,7 @@ let extractingPdf=false;
 let libraryScope=null,libraryLoadSerial=0;
 function currentLibraryScope(){if(!libraryScope)throw Error("Wait for your reference library to load, then try again.");assertReferenceOwner(libraryScope);return libraryScope;}
 function cacheLibrary(){cacheReferenceFolders(currentLibraryScope(),libraryData);}
-function libraryStatus(message,tone=""){const status=document.getElementById("libraryStatus");if(status){status.textContent=message;status.dataset.tone=tone;}}
+function libraryStatus(message,tone=""){const status=document.getElementById("libraryStatus");if(status){status.textContent=message;if(status.dataset)status.dataset.tone=tone;}}
 // Clear only when reopening the chooser, so the same PDF can be selected to retry.
 document.getElementById("pdfFileInput")?.addEventListener("click",event=>{
   if(extractingPdf){event.preventDefault();return;}
