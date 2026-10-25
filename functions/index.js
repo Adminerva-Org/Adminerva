@@ -200,11 +200,21 @@ exports.releaseAnnouncement=onCall(callOptions,async request=>{
   const version=String(request.data?.version||"").trim(),title=String(request.data?.title||"").trim(),summary=String(request.data?.summary||"").trim();
   if(!/^\d+\.\d+\.\d+$/.test(version)||title.length<4||title.length>120||summary.length<10||summary.length>300)
     throw new HttpsError("invalid-argument","Provide a valid published release version, title and summary.");
+  // An announcement is claimed once per release. A retry must not send a second blast.
+  const announcement=db.doc("system_private/release_announcement_"+version.replace(/[^0-9.]/g,""));
+  try {
+    await announcement.create({version,title,summary,requestedBy:uid,requestedAt:FieldValue.serverTimestamp(),status:"sending"});
+  } catch(error) {
+    if(error.code===6||error.code==="already-exists")throw new HttpsError("already-exists","This release announcement was already requested. Duplicate delivery was prevented.");
+    throw error;
+  }
   const devices=await db.collection("push_devices").where("enabled","==",true).get();
   const recipients=[...new Set(devices.docs.map(record=>record.data()?.ownerUid).filter(Boolean))];
   const item={type:"release",push:true,title:"Adminerva update · "+title,body:summary,sourceId:version,target:"patch-notes.html?version="+encodeURIComponent(version)};
   const results=await Promise.all(recipients.map(recipient=>pushToUser(recipient,item).catch(error=>{console.warn("Release push skipped",{recipient,code:error.code||"unknown"});return false;})));
-  return {recipients:recipients.length,delivered:results.filter(Boolean).length};
+  const delivered=results.filter(Boolean).length;
+  await announcement.update({status:"completed",recipients:recipients.length,delivered,completedAt:FieldValue.serverTimestamp()});
+  return {recipients:recipients.length,delivered};
 });
 async function evidenceLabels(item){
   const [student,assessment]=await Promise.all([
