@@ -21,7 +21,7 @@ export function staffRole(user) {
   if (email === ADMIN_EMAIL) return "admin";
   if (resolved.has(user.uid)) {
     const profile = resolved.get(user.uid);
-    if (profile) return profile.email === email && profile.status === "active" && profile.role === "teacher" ? "teacher" : null;
+    if (profile && profile.email === email && profile.status === "active") return profile.role === "admin" ? "admin" : profile.role === "teacher" ? "teacher" : null;
   }
   return email === TEACHER_EMAIL ? "teacher" : null;
 }
