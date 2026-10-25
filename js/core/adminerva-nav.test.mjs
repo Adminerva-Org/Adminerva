@@ -59,17 +59,20 @@ function mount(module = 'educator', page = 'dashboard', role = 'teacher', storag
 const links = element => element.querySelectorAll('a');
 const groupNames = element => element.children.map(group => group.children[0].textContent);
 
-test('navigation installs analytics, the manifest and touch icon once before rendering', () => {
+test('navigation installs analytics, the manifest and brand icons once before rendering', () => {
   const view = mount();
-  assert.equal(view.document.head.children.length, 3);
+  assert.equal(view.document.head.children.length, 4);
   const analytics = view.document.getElementById('adminerva-analytics-script');
   assert.equal(analytics.tagName, 'script');
   assert.match(analytics.src, /^js\/core\/adminerva-analytics\.js\?v=/);
   assert.equal(analytics.defer, true);
   assert.equal(view.document.querySelector('link[rel="manifest"]').href, 'manifest.webmanifest');
-  assert.equal(view.document.querySelector('link[rel="apple-touch-icon"]').href, 'assets/adminerva-brand-badge-192.png');
+  assert.equal(view.document.querySelector('link[rel="apple-touch-icon"]').href, 'assets/adminerva-touch-icon-180.png');
+  assert.equal(view.document.querySelector('link[rel="apple-touch-icon"]').sizes, '180x180');
+  assert.equal(view.document.querySelector('link[rel="icon"]').href, 'assets/adminerva-favicon-32.png');
+  assert.equal(view.document.querySelector('link[rel="icon"]').sizes, '32x32');
   view.roleReady('superadmin');
-  assert.equal(view.document.head.children.length, 3);
+  assert.equal(view.document.head.children.length, 4);
 });
 
 test('home is a direct link and switching workspaces is an explicit disclosure', () => {

@@ -15,7 +15,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const manifest=document.createElement("link");manifest.rel="manifest";manifest.href="manifest.webmanifest";document.head.append(manifest);
   }
   if(!document.querySelector('link[rel="apple-touch-icon"]')){
-    const icon=document.createElement("link");icon.rel="apple-touch-icon";icon.href="assets/adminerva-brand-badge-192.png";document.head.append(icon);
+    const icon=document.createElement("link");icon.rel="apple-touch-icon";icon.sizes="180x180";icon.href="assets/adminerva-touch-icon-180.png";document.head.append(icon);
+  }
+  if(!document.querySelector('link[rel="icon"]')){
+    const icon=document.createElement("link");icon.rel="icon";icon.type="image/png";icon.sizes="32x32";icon.href="assets/adminerva-favicon-32.png";document.head.append(icon);
   }
   const root = document.getElementById("adminerva-nav");
   if (!root) return;
@@ -128,7 +131,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <div class="av-nav-top flex justify-between items-center min-h-14 px-4 sm:px-6 lg:px-8">
           <div class="av-nav-brand flex items-center gap-3 min-w-0">
             <a href="${homeRoute}" class="av-nav-home flex items-center gap-2 min-h-10 rounded-lg" aria-label="Adminerva · ${homeLabel}"${activePage === "home" ? ' aria-current="page"' : ""}>
-              <span class="av-brand-mark"><img src="assets/adminerva-brand-badge-192.png" alt="" class="h-8 w-8 object-contain rounded-full"></span>
+              <span class="av-brand-mark"><img src="assets/adminerva-owl.png" alt="" width="32" height="32" class="h-8 w-8 object-contain"></span>
               <span class="av-nav-wordmark hidden sm:inline font-extrabold tracking-wide">ADMINERVA</span>
               <span class="av-nav-home-label text-sm font-semibold text-cyan-100">Home</span>
             </a>
@@ -286,7 +289,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   import("./site-updates.mjs?v=1.3.0").then(module => module.mountSiteUpdates())
     .catch(error => console.warn("Site update checks unavailable:", error));
-  import("./push-notifications.mjs?v=1.3.8").then(module => module.startPushSync())
+  import("./push-notifications.mjs?v=1.4.1").then(module => module.startPushSync())
     .catch(error => console.warn("Device notification sync unavailable:", error));
 
   root.addEventListener("click", async event => {
@@ -299,7 +302,7 @@ document.addEventListener("DOMContentLoaded", () => {
         import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js"),
         import("./connection-cache.mjs?v=1.3.0").then(module => module.clearConnectionPreferences())
       ]);
-      try{const push=await import("./push-notifications.mjs?v=1.3.8");await push.departPushAccount();}catch{}
+      try{const push=await import("./push-notifications.mjs?v=1.4.1");await push.departPushAccount();}catch{}
       await signOut(getAuth());
     } catch (error) { console.warn("Sign out background process skipped or failed.", error); }
     finally {
