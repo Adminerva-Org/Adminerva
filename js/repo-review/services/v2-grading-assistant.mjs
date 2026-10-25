@@ -8,8 +8,8 @@ import { normalizeSelection, parseRepository, validSha } from "./assessment-evid
 import {analyzePatchSubstance} from "./commit-substance.mjs?v=1.3.0";
 import {androidSupportKind,analyzeAndroidEvidence,responsibilityBasis,isAndroidUiAssessment} from "./android-evidence.mjs?v=1.3.0";
 
-const MAX_PRIMARY_FILES=18;
-const MAX_SUPPORT_FILES=24;
+const MAX_PRIMARY_FILES=60;
+const MAX_SUPPORT_FILES=80;
 // Retrieval ceilings are intentionally larger than one model request. Large
 // evidence is chunked later instead of being rejected at collection time.
 const MAX_FILE_BYTES=180000;
@@ -450,7 +450,7 @@ export async function loadPinnedV2Source({
     if(referencedNames.has(name)&&/\/res\/(?:drawable|mipmap)[^/]*\/.*\.xml$/i.test(item.path))supportTextPaths.add(item.path);
   }
   if(supportTextPaths.size>MAX_SUPPORT_FILES)
-    throw Error("Supporting Android source exceeds the automatic evaluation file limit. Narrow the selected commits or review manually.");
+    throw Error("Verified supporting source exceeds the "+MAX_SUPPORT_FILES+" file collection limit. Narrow the selected evidence or review manually.");
   for(const path of supportTextPaths){
     if(!available.has(path)||files.some(file=>file.path===path))continue;
     const file=await readText(path,false,studentSupportPaths.has(path));
