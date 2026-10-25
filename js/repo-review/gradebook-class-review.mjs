@@ -371,6 +371,7 @@ async function bulkEvaluate({rerun=false}={}){
   const stopped=cancelEvaluation;busy=false;busyEvaluation=false;await load(context);showBulkExceptions(failures);el("gbBulkStatus").textContent=(stopped?"Evaluation stopped: ":"Evaluation complete: ")+completed+" unpublished draft(s) "+(rerun?"replaced":"saved")+" · "+failures.length+" exception(s). Open Review & grade to confirm score and feedback."+(failures.length?" "+failures.slice(0,2).join(" | "):"");
 }
 window.addEventListener("adminerva:gradebook-grid-loaded",event=>void load(event.detail));
+if(window.__adminervaGradebookGridContext)void load(window.__adminervaGradebookGridContext);
 el("gbForceGather")?.addEventListener("click",()=>void forceGather());
 el("gbBulkApprove")?.addEventListener("click",()=>void bulkApprove());
 el("gbBulkEvaluate")?.addEventListener("click",()=>void bulkEvaluate());
