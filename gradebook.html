@@ -6,14 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Class assessment review | Adminerva</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.2" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.4" />
 </head>
   <body class="bg-slate-50 font-sans text-slate-800 min-h-screen flex flex-col">
     <!-- Sidebar Navigation -->
     <div id="adminerva-nav" data-module="repo" data-page="gradebook"></div>
 
     <div class="av-educator-layout"><aside class="av-educator-nav" data-educator-hub-nav data-current="gradebook"></aside><main class="av-educator-content flex-1 px-4 sm:px-6 lg:px-10 py-6 sm:py-8 w-full">
-      <header class="mb-8">
+      <header class="mb-4">
         <h1
           class="text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3"
         >
@@ -30,7 +30,7 @@
           <button id="gbViewQuarter" type="button" class="px-4 py-2 rounded-lg text-sm font-bold bg-blue-600 text-white">Quarter matrix</button>
           <button id="gbViewSingle" type="button" class="px-4 py-2 rounded-lg text-sm font-bold text-slate-600">Single assessment</button>
         </div>
-        <p class="text-sm text-slate-500">Click a score to inspect evidence, edit feedback, or review a draft.</p>
+        <p class="text-xs text-slate-500">Select a score to inspect evidence or review a draft.</p>
       </div>
       <section id="gbClassReviewTools" class="hidden mb-5 rounded-2xl border border-slate-200 bg-white shadow-sm p-5 sm:p-6" aria-label="Class review tools">
         <div class="flex flex-col xl:flex-row xl:justify-between gap-5">
@@ -66,7 +66,7 @@
       <div id="gbLegacyView" class="hidden">
       <!-- Matrix Controls -->
       <div
-        class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4"
+        id="gbLegacyControls" class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4"
       >
         <div class="flex-1">
           <label
@@ -85,8 +85,10 @@
           >
           <select
             id="gbAssessment"
+            aria-describedby="gbSelectedAssessment"
             class="w-full border border-slate-300 rounded-lg px-4 py-2.5 bg-slate-50 font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 transition"
           ></select>
+          <p id="gbSelectedAssessment" aria-live="polite"></p>
         </div>
         <div class="flex-1">
           <label
@@ -116,7 +118,7 @@
       <div
         class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden"
       >
-        <table class="min-w-full text-left text-sm whitespace-nowrap">
+        <table id="gbLegacyTable" class="min-w-full text-left text-sm whitespace-nowrap">
           <thead
             class="bg-slate-800 text-white text-[10px] uppercase font-extrabold tracking-widest"
           >
@@ -218,7 +220,7 @@
     <script src="js/core/adminerva-loader.js?v=1.3.0"></script>
     <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
     <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.1"></script>
-    <script type="module" src="js/repo-review/gradebook.js?v=1.4.14"></script>
+    <script type="module" src="js/repo-review/gradebook.js?v=1.4.16"></script>
     <script type="module" src="js/repo-review/gradebook-quarter.mjs?v=1.4.3"></script>
   <script type="module" src="js/repo-review/gradebook-class-review.mjs?v=1.4.15"></script>
   </body>

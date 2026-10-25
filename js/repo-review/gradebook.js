@@ -102,7 +102,13 @@ async function loadFilters() {
   }
 }
 
+function syncSelectedAssessmentLabel() {
+  const field=document.getElementById("gbAssessment"),label=document.getElementById("gbSelectedAssessment");
+  if(!field||!label)return;
+  label.textContent=field.selectedIndex>=0&&field.value?field.selectedOptions[0]?.textContent||"":"";
+}
 async function loadGrid() {
+  syncSelectedAssessmentLabel();
   const section = document.getElementById("gbSection").value;
   const taskId = document.getElementById("gbAssessment").value;
   const tbody = document.getElementById("gbTableBody");
@@ -203,14 +209,14 @@ async function loadGrid() {
         "beforeend",
         `
                 <tr class="hover:bg-indigo-50/50 transition" data-student-id="${student.id}">
-                    <td class="px-5 py-4">
+                    <td data-label="Student" class="px-5 py-4">
                         <div class="font-extrabold text-slate-800 text-base">${escapeHTML(student.name)}</div>
                         <div class="text-[10px] text-slate-400 font-mono mt-0.5">@${escapeHTML(student.githubUsername || "unlinked")}</div>
                     </td>
-                    <td class="px-5 py-4"><div data-review-state="${student.id}" class="min-w-40 text-xs text-slate-500">Checking…</div></td>
-                    <td class="px-5 py-4">${repoStatus}</td>
-                    <td class="px-5 py-4">${scoreBadge}</td>
-                    <td class="px-5 py-4">${pubToggle}</td>
+                    <td data-label="Review" class="px-5 py-4"><div data-review-state="${student.id}" class="min-w-40 text-xs text-slate-500">Checking…</div></td>
+                    <td data-label="Repository" class="px-5 py-4">${repoStatus}</td>
+                    <td data-label="Score" class="px-5 py-4">${scoreBadge}</td>
+                    <td data-label="Visibility" class="px-5 py-4">${pubToggle}</td>
                 </tr>
         `,
       );
@@ -433,6 +439,7 @@ function updateAssessmentsForSection() {
 
   assSelect.innerHTML =
     "<option value='' disabled selected>Select an assessment...</option>";
+  syncSelectedAssessmentLabel();
   tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-12 text-center text-slate-400 font-medium italic">Select an Assessment above to load the matrix.</td></tr>`;
 
   if (!section) return;
