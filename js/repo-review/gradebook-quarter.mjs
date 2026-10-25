@@ -3,7 +3,7 @@ import { auth, db } from "../core/firebase-core.js?v=1.3.0";
 import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
-import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.0";
+import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.1";
 import {renderFeedbackMarkdown,reviewNotice} from "./review-ui.mjs?v=1.3.0";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
@@ -21,10 +21,10 @@ const publicationContext=()=>"quarter:"+el("gbQuarterSection").value+":"+el("gbQ
 function queueEntries(){return [...state.grades.values()].map(entry=>({...entry,schemaVersion:state.tasks.find(task=>task.id===entry.data.taskId)?.schemaVersion,maxScore:state.tasks.find(task=>task.id===entry.data.taskId)?.maxScore}));}
 function syncPublication(){
   const count=publicationCandidates(queueEntries()).length,button=el("gbQuarterPublish");
-  button.textContent="Publish ("+count+" Drafts)";button.disabled=state.loading||bulkBusy||!count;
+  button.textContent="Publish ready ("+count+")";button.disabled=state.loading||bulkBusy||!count;
   el("gbQuarterUnpublish").disabled=state.loading||bulkBusy||![...state.grades.values()].some(entry=>entry.data.published);
   const recovery=publicationRecovery(publicationContext());
-  el("gbQuarterRecovery").textContent=recovery?.pending.length?"Interrupted batch: "+recovery.pending.length+" pending. Reload and confirm to retry; nothing resumes automatically.":"Only reviewed legacy drafts are eligible for batch publishing. V2 grades are published individually.";
+  el("gbQuarterRecovery").textContent=recovery?.pending.length?"Interrupted batch: "+recovery.pending.length+" pending. Reload and confirm to retry; nothing resumes automatically.":"Ready grades can be published together. Flagged evaluations remain private until reviewed.";
 }
 const add = (parent, tag, className = "", value = null) => {
   const node = document.createElement(tag);
@@ -124,7 +124,7 @@ function render() {
       add(btn, "span", "text-[10px] font-semibold " + (grade.published ? "text-emerald-700" :
         grade.reviewRequired ? "text-amber-700" : "text-slate-500"),
         grade.published ? "Published" : grade.provisionalScore ? "Investigate draft" :
-        grade.reviewRequired ? "Review draft" : "Unpublished");
+        grade.reviewRequired ? "Review needed" : "Ready to publish");
       btn.addEventListener("click", () => openDetails(student, task, entry));
     }
   }
@@ -263,12 +263,12 @@ function openDetails(student, task, entry) {
   el("gbEditFeedback").value = cleanGradeFeedback(grade.feedback);
   renderFeedbackMarkdown(el("gbFeedbackPreview"),grade.feedback);
   for(const id of ["gbEditScore","gbEditFeedback","gbEditReason","gbMarkReviewed","gbDetailSave"])el(id).disabled=grade.published===true||task.schemaVersion===2;
-  el("gbDetailReviewLink").classList.toggle("hidden",task.schemaVersion!==2);
+  el("gbDetailReviewLink").classList.toggle("hidden",task.schemaVersion!==2||grade.reviewRequired!==true);
   el("gbDetailReviewLink").href="repofetch.html?"+new URLSearchParams({student:student.id,assessment:task.id,section:student.section||""});
   el("gbEditReason").value = "";
   el("gbMarkReviewed").checked = !grade.reviewRequired;
   el("gbDetailStatus").textContent = grade.published ? "Published grade protected. Unpublish before revising." :
-    "Unpublished: save and review before publishing.";
+    grade.reviewRequired ? "Private: flagged for teacher review before publishing." : "Private: ready for publication.";
   el("gbDetailPublish").classList.toggle("hidden", grade.published === true);
   el("gbDetailUnpublish").classList.toggle("hidden", grade.published !== true);
   renderEvidence(student, task, grade);
@@ -368,7 +368,7 @@ async function bulkVisibility(makePublished) {
   if(bulkBusy||state.loading)return;
   const eligible=publicationCandidates(queueEntries(),makePublished);
   if (!eligible.length) return alert("No eligible grades to " + (makePublished ? "publish" : "unpublish") +
-    ". V2 grades require individual publication; drafts requiring review are also excluded.");
+    ". Flagged evaluations are excluded until teacher review is complete.");
   if (!confirm((makePublished ? "Publish " : "Unpublish ") + eligible.length +
       " grade(s) for the selected quarter and section?")) return;
   bulkBusy=true;syncPublication();
