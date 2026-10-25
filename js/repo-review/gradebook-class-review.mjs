@@ -10,7 +10,7 @@ import {generateSchoolContent,schoolAIStatus} from "../core/school-ai.mjs?v=1.3.
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.1";
 
 const el=id=>document.getElementById(id);
-let context=null,busy=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map();
+let context=null,busy=false,evidenceReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map();
 const draftRef=(studentId,taskId)=>doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId);
 const badge=(text,tone="slate")=>'<span class="inline-flex rounded-full px-2 py-1 font-bold bg-'+tone+'-50 text-'+tone+'-800 border border-'+tone+'-200">'+text+'</span>';
 function reviewUrl(studentId){const p=new URLSearchParams({section:context.section,assessment:context.taskId,student:studentId,view:"grade"});return "repofetch.html?"+p.toString();}
@@ -55,43 +55,49 @@ function render(){
   el("gbClassReviewSummary").textContent=context.students.length+" learners · "+submitted+" awaiting review · "+approved+" approved · "+drafts+" draft/evaluation ready · "+published+" published"+(exceptions?" · "+exceptions+" exceptions":"");
   if(el("gbForceGather")){
     el("gbForceGather").textContent=isV2?"Force gather evidence ("+gatherCandidates.length+")":"Force gather · V2 evidence only";
-    el("gbForceGather").disabled=busy||!gatherCandidates.length;
+    el("gbForceGather").disabled=busy||!evidenceReadable||!gatherCandidates.length;
   }
   el("gbBulkApprove").textContent=isV2?"Approve evidence ("+approveCandidates.length+")":"Approval · V2 evidence only";
-  el("gbBulkApprove").disabled=busy||!approveCandidates.length;
+  el("gbBulkApprove").disabled=busy||!evidenceReadable||!approveCandidates.length;
   el("gbBulkEvaluate").textContent=isV2?"Run system evaluation ("+evaluateCandidates.length+")":"System evaluation · V2 evidence only";
-  el("gbBulkEvaluate").disabled=busy||!evaluateCandidates.length;
+  el("gbBulkEvaluate").disabled=busy||!evidenceReadable||!evaluateCandidates.length;
   const p=new URLSearchParams({section:context.section,assessment:context.taskId});el("gbReviewExceptions").href="repofetch.html?"+p.toString();
 }
 async function load(detail){
   context=detail;evidenceMap=new Map();draftMap=new Map();receiptMap=new Map();
-  try{
-    const isV2=Number(detail.schemaVersion)===2;
-    const requests=[
-      getDocs(query(collection(db,"student_submissions"),where("assessmentId","==",detail.taskId),where("section","==",detail.section)))
-    ];
-    if(isV2){
-      requests.push(
-        getDocs(query(collection(db,"assessment_evidence"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
-        getDocs(collection(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items"))
-      );
-    }
-    const [receiptSnap,evidenceSnap,draftsSnap]=await Promise.all(requests);
-    for(const record of receiptSnap.docs){
-      const data={id:record.id,...record.data()},prior=receiptMap.get(data.studentId);
-      const stamp=value=>value?.toMillis?.()||Date.parse(value||"")||0;
-      if(!prior||stamp(data.submittedAt)>stamp(prior.submittedAt))receiptMap.set(data.studentId,data);
-    }
-    if(isV2){
-      evidenceMap=new Map(evidenceSnap.docs.map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
-      draftMap=new Map(draftsSnap.docs.filter(record=>{
+  const isV2=Number(detail.schemaVersion)===2;
+  // An unavailable optional collection must never erase the evidence roster or
+  // turn unknown submission status into an apparent "not submitted" result.
+  const sources=await Promise.allSettled([
+    getDocs(query(collection(db,"student_submissions"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
+    ...(isV2?[
+      getDocs(query(collection(db,"assessment_evidence"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
+      getDocs(collection(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items"))
+    ]:[])
+  ]);
+  const warnings=[];
+  if(sources[0].status==="fulfilled")for(const record of sources[0].value.docs){
+    const data={id:record.id,...record.data()},prior=receiptMap.get(data.studentId);
+    const stamp=value=>value?.toMillis?.()||Date.parse(value||"")||0;
+    if(!prior||stamp(data.submittedAt)>stamp(prior.submittedAt))receiptMap.set(data.studentId,data);
+  }else warnings.push("submission receipts: "+sources[0].reason?.message);
+  if(isV2){
+    if(sources[1].status==="fulfilled"){
+      evidenceMap=new Map(sources[1].value.docs.map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
+    }else warnings.push("evidence: "+sources[1].reason?.message);
+    if(sources[2].status==="fulfilled"){
+      draftMap=new Map(sources[2].value.docs.filter(record=>{
         const draft=record.data(),evidence=evidenceMap.get(draft.studentId);
         return draft.taskId===detail.taskId&&draft.section===detail.section&&draft.status==="private_suggestion"&&
           evidence?.status==="approved"&&draft.evidenceRevision===evidenceRevision(evidence)&&draft.checkpointSha===evidence.approvedCheckpointSha;
       }).map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
-    }
-  }catch(error){el("gbBulkStatus").textContent="Class review status is partially unavailable: "+error.message;}
+    }else warnings.push("evaluation drafts: "+sources[2].reason?.message);
+  }
+  // If evidence cannot be read, bulk actions must fail closed instead of
+  // treating missing query results as students without submissions.
+  evidenceReadable=!isV2||sources[1].status==="fulfilled";
   render();
+  if(warnings.length)el("gbBulkStatus").textContent="Some review data could not load ("+warnings.join(" | ")+"). Evidence actions are disabled if evidence could not be read.";
 }
 const linkedLogin=student=>String(student?.githubUsername||"").trim().replace(/^@/,"").toLowerCase();
 const dateMillis=value=>{
@@ -137,7 +143,7 @@ async function repositoryHistory(repo,cutoffIso,cache){
   try{return await promise;}catch(error){cache.delete(key);throw error;}
 }
 async function forceGather(){
-  if(busy||!context||Number(context.schemaVersion)!==2)return;
+  if(busy||!context||!evidenceReadable||Number(context.schemaVersion)!==2)return;
   const candidates=context.students.filter(student=>{
     if(evidenceMap.has(student.id)||context.grades?.[student.id]?.published)return false;
     try{return Boolean(parseRepository(student.repoUrl));}catch{return false;}
@@ -220,7 +226,7 @@ async function inspectForApproval(student,evidence){
   return {selection,verified,expected};
 }
 async function bulkApprove(){
-  if(busy||!context)return;
+  if(busy||!context||!evidenceReadable)return;
   const candidates=context.students.map(s=>({student:s,evidence:evidenceMap.get(s.id)})).filter(x=>["submitted","needs_review"].includes(x.evidence?.status));
   if(!candidates.length)return;
   if(!confirm("Approve "+candidates.length+" evidence record(s)? Adminerva will verify the project checkpoint and selected-commit ancestry. Selected commits whose GitHub author login exactly matches the learner's linked GitHub account will be marked as teacher-approved individual contributions; non-matching or unknown commits remain unverified. This is an explicit teacher approval action, not automatic proof of authorship."))return;
