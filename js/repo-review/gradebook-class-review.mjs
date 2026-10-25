@@ -28,6 +28,59 @@ function showBulkExceptions(failures){
 }
 const badge=(text,tone="slate")=>'<span class="inline-flex rounded-full px-2 py-1 font-bold bg-'+tone+'-50 text-'+tone+'-800 border border-'+tone+'-200">'+text+'</span>';
 function reviewUrl(studentId){const p=new URLSearchParams({section:context.section,assessment:context.taskId,student:studentId,view:"grade"});return "repofetch.html?"+p.toString();}
+function missingEvidenceReason(student){
+  if(!student||context?.grades?.[student.id]||draftMap.has(student.id))return "";
+  const evidence=evidenceMap.get(student.id);
+  if(!evidence||["reopened","withdrawn"].includes(evidence.status))return "";
+  const selected=Array.isArray(evidence.selectedCommits)?evidence.selectedCommits:[];
+  const verified=Array.isArray(evidence.verifiedContributionCommits)?evidence.verifiedContributionCommits:[];
+  if(evidence.status==="approved"&&!verified.length)
+    return "No individual contribution commits were verified.";
+  if(["submitted","needs_review"].includes(evidence.status)&&!selected.length)
+    return evidence.source==="teacher_discovered"
+      ?"Repository checkpoint found, but no linked-account contribution commits were found."
+      :"No contribution commits are selected in the submitted evidence.";
+  return "";
+}
+function missingEvidenceCandidates(){
+  if(!context||Number(context.schemaVersion)!==2||!evidenceReadable)return [];
+  return context.students.map(student=>({student,reason:missingEvidenceReason(student)})).filter(item=>item.reason);
+}
+function assessmentLabel(){
+  const select=document.getElementById("gbAssessment"),option=select?.selectedOptions?.[0];
+  return String(option?.textContent||"this assessment").trim();
+}
+function buildMissingReminder(items){
+  const names=items.map(({student})=>"• "+student.name).join("\n");
+  return [
+    "Reminder — "+assessmentLabel()+" · "+context.section,
+    "",
+    "Adminerva currently has no verifiable individual contribution evidence for the following student(s):",
+    names,
+    "",
+    "Please check that your work has been committed and pushed to the correct repository, your GitHub account is linked correctly, and the relevant commits are included in your assessment evidence/submission.",
+    "",
+    "If you already completed these steps, please re-check the repository and submitted commits. This is an evidence reminder only; it is not a grade."
+  ].join("\n");
+}
+async function copyMissingReminder(){
+  const items=missingEvidenceCandidates();
+  if(!items.length)return;
+  const message=buildMissingReminder(items);
+  let copied=false;
+  try{await navigator.clipboard.writeText(message);copied=true;}
+  catch{
+    const area=document.createElement("textarea");
+    area.value=message;area.setAttribute("readonly","");area.style.position="fixed";area.style.opacity="0";
+    document.body.append(area);area.select();
+    try{copied=Boolean(document.execCommand?.("copy"));}catch{}
+    area.remove();
+  }
+  analytics("missing_evidence_reminder_copied",{feature:"gradebook",count_bucket:items.length,status:copied?"success":"clipboard_blocked"});
+  el("gbBulkStatus").textContent=copied
+    ?"Copied a GC-ready missing-evidence reminder for "+items.length+" learner"+(items.length===1?"":"s")+". No grades or private review notes were included."
+    :"Clipboard access was blocked. Use your browser's clipboard permission and try Copy missing reminder again.";
+}
 function statusFor(student){
   const evidence=evidenceMap.get(student.id),grade=context.grades?.[student.id],draft=draftMap.get(student.id);
   if(grade?.published)return {label:"Published",tone:"emerald"};
@@ -79,6 +132,11 @@ function render(){
   if(el("gbForceGather")){
     el("gbForceGather").textContent=isV2?"Force gather evidence ("+gatherCandidates.length+")":"Force gather · V2 evidence only";
     el("gbForceGather").disabled=busy||!evidenceReadable||!gatherCandidates.length;
+  }
+  const missingReminder=isV2?missingEvidenceCandidates():[];
+  if(el("gbCopyMissingReminder")){
+    el("gbCopyMissingReminder").textContent=isV2?"Copy missing reminder ("+missingReminder.length+")":"Missing reminder · V2 evidence only";
+    el("gbCopyMissingReminder").disabled=busy||!evidenceReadable||!missingReminder.length;
   }
   el("gbBulkApprove").textContent=isV2?"Approve evidence ("+approveCandidates.length+")":"Approval · V2 evidence only";
   el("gbBulkApprove").disabled=busy||!evidenceReadable||!approveCandidates.length;
@@ -401,6 +459,7 @@ async function bulkEvaluate({rerun=false}={}){
 window.addEventListener("adminerva:gradebook-grid-loaded",event=>void load(event.detail));
 if(window.__adminervaGradebookGridContext)void load(window.__adminervaGradebookGridContext);
 el("gbForceGather")?.addEventListener("click",()=>void forceGather());
+el("gbCopyMissingReminder")?.addEventListener("click",()=>void copyMissingReminder());
 el("gbBulkApprove")?.addEventListener("click",()=>void bulkApprove());
 el("gbBulkEvaluate")?.addEventListener("click",()=>void bulkEvaluate());
 el("gbBulkRerun")?.addEventListener("click",()=>void bulkEvaluate({rerun:true}));
