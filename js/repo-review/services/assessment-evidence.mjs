@@ -13,10 +13,10 @@ export function parseRepository(value){
   return {owner:parts[0],repo:parts[1],url:'https://github.com/'+parts.join('/')};
 }
 export function validSha(value){return SHA_RE.test(String(value||''));}
-export function normalizeSelection(commits,checkpoint,{maximum=20}={}){
+export function normalizeSelection(commits,checkpoint,{maximum=20,allowEmpty=false}={}){
   if(!Array.isArray(commits)||commits.length>maximum)throw Error('Select at most '+maximum+' evidence commits.');
   const selected=[...new Set(commits.map(x=>String(x||'').toLowerCase()))];
-  if(!selected.length)throw Error('Select at least one evidence commit.');
+  if(!selected.length&&!allowEmpty)throw Error('Select at least one evidence commit.');
   if(selected.some(x=>!validSha(x)))throw Error('Invalid Git commit SHA.');
   const sha=String(checkpoint||'').toLowerCase();
   if(!validSha(sha))
