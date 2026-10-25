@@ -740,3 +740,30 @@ body div[id$="Modal"] > div :where(.overflow-y-auto) {min-height:0;overscroll-be
   #teachingWorkspace [role="tablist"] {overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;}
   #teachingWorkspace [role="tab"] {flex:0 0 auto;min-height:44px;}
 }
+
+
+/* Compact page introductions without suppressing instructional or audit content. */
+body main > header > p:not([role="status"]),
+.av-educator-content > header > p:not([role="status"]) {
+  margin-top:.3rem;
+  font-size:.84rem;
+  line-height:1.45;
+  max-width:85ch;
+}
+body main > header[class*="mb-8"],body main > header[class*="mb-6"] {
+  margin-bottom:1rem;
+}
+.av-educator-content > :is(.max-w-screen-xl,.max-w-screen-2xl) {
+  width:100%;max-width:100%;margin-inline:0;
+}
+@media (min-width:1280px) {
+  body > main.max-w-5xl {max-width:min(100%,90rem);}
+  .av-educator-content > .av-analytics-intro,
+  .av-educator-content > .av-analytics-panel {max-width:100%;}
+}
+@media(max-width:767px) {
+  .av-educator-content > :is(.max-w-screen-xl,.max-w-screen-2xl) {
+    padding:.65rem;
+  }
+  body main > header > p:not([role="status"]) {font-size:.79rem;}
+}
