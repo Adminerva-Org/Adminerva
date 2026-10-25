@@ -236,6 +236,7 @@ export async function loadPinnedV2Source({
   }
   const patchRecords=[],studentSupportPaths=new Set(),studentPrimaryPaths=new Set(),binaryPaths=new Set();
   let patchChars=0;
+  const excludedMergeCommits=[];
   const androidUi=isAndroidUiAssessment(assessment);
   for(const sha of verifiedContributionCommits){
     const detail=await request("/commits/"+encodeURIComponent(sha)+"?per_page=100");
@@ -265,7 +266,9 @@ export async function loadPinnedV2Source({
     }
   }
   if(!patchRecords.some(patch=>patch.primary&&patch.substantive===true))
-    throw Error(androidUi?"No verified substantive primary screen change was found. For this XML UI assessment, verify at least one student layout commit before evaluation.":"No verified substantive primary assessment change was found.");
+    throw Error(excludedMergeCommits.length&&excludedMergeCommits.length===verifiedContributionCommits.length
+      ?"Only merge commits were verified. Choose the student's original non-merge commits or grade manually; a merge is not sufficient individual evidence."
+      :androidUi?"No verified substantive primary screen change was found. For this XML UI assessment, verify at least one student layout commit before evaluation.":"No verified substantive primary assessment change was found.");
   const tree=await request("/git/trees/"+encodeURIComponent(selection.checkpointSha)+"?recursive=1");
   if(!Array.isArray(tree.tree)||tree.truncated)throw Error("The approved project file tree was incomplete. Evaluation paused.");
   const blobs=tree.tree.filter(item=>item.type==="blob"),entryByPath=new Map(blobs.map(item=>[item.path,item]));
@@ -338,5 +341,5 @@ export async function loadPinnedV2Source({
 
   const analysis=analyzeAndroidEvidence({assessment,files,patches:patchRecords,assets});
   return {repository:repo.url,checkpointSha:selection.checkpointSha,
-    selectedCommits:selection.selectedCommits,files,patches:patchRecords,assets,analysis};
+    selectedCommits:selection.selectedCommits,files,patches:patchRecords,assets,analysis,excludedMergeCommits};
 }
