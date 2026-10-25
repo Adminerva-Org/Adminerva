@@ -131,13 +131,13 @@ export function buildRubricPrompt({assessment,criteria,checkpointSha,files,patch
   const rows=criteria.map((c,i)=>(i+1)+". "+c.name+" ("+c.maxScore+" points)").join("\n");
   const primaryText=files.filter(f=>f.primary&&!f.binary).map(f=>"FILE: "+f.path+"\n"+f.text).join("\n\n----\n\n");
   const supportText=files.filter(f=>!f.primary&&!f.binary).map(f=>"FILE: "+f.path+" · student-changed: "+(f.studentChanged?"yes":"no")+"\n"+f.text).join("\n\n----\n\n");
-  const patchText=patches.map(p=>"SELECTED COMMIT: "+p.sha+"\nFILE: "+p.path+" · role: "+(p.primary?"primary assessed file":"supporting file/resource")+"\n"+p.patch).join("\n\n----\n\n");
+  const patchText=patches.map(p=>(p.mergeContext?"MERGE CONTEXT — TEACHER ATTRIBUTION PENDING: ":"SELECTED COMMIT: ")+p.sha+"\nFILE: "+p.path+" · role: "+(p.primary?"primary assessed file":"supporting file/resource")+"\n"+p.patch).join("\n\n----\n\n");
   const basis=responsibilityBasis({assessment,contributionScope,patches});
   const deterministic=analysis?.summary||"No Android-specific deterministic checks were available.";
   return `You are assisting a classroom teacher with an assessment of an Android Studio project.
 This is a teacher-reviewed, unofficial SYSTEM DRAFT only. Do not publish or finalize grades.
 The project snapshot is pinned to instructor-approved checkpoint ${checkpointSha}.
-All supplied instructor-verified selected commit patches are in scope, including historical commits with a different SHA from the approved checkpoint. A different selected-commit SHA does not automatically invalidate instructor-verified attribution. Commits without a supplied verified patch cannot earn individual credit.
+All supplied instructor-verified selected commit patches are in scope, including historical commits with a different SHA from the approved checkpoint. A different selected-commit SHA does not automatically invalidate instructor-verified attribution. Commits without a supplied verified patch cannot earn individual credit.\nMerge diff context can be inspected for a provisional assessment but does not independently prove student authorship. For criteria supported only by merge context, mark points as pending teacher confirmation instead of treating them as verified individual credit. Do not abort the draft merely because a merge is present.
 The full checkpoint can contain teammates' work. Never give this student credit merely because shared code exists.
 
 INDIVIDUAL VS GROUP:
@@ -240,7 +240,8 @@ export async function loadPinnedV2Source({
   const androidUi=isAndroidUiAssessment(assessment);
   for(const sha of verifiedContributionCommits){
     const detail=await request("/commits/"+encodeURIComponent(sha)+"?per_page=100");
-    if(detail.parents?.length>1)throw Error("Merge commits require manual attribution review; evaluation cannot credit a merged teammate's work.");
+    const isMerge=detail.parents?.length>1;
+    if(isMerge)excludedMergeCommits.push(sha);
     if(!Array.isArray(detail.files)||detail.files.length>=100)
       throw Error("A selected commit's file list is incomplete or too large for safe evaluation. Use the evidence section.");
     for(const file of detail.files){
@@ -248,7 +249,9 @@ export async function loadPinnedV2Source({
       const primary=relevantAssessmentFile(file.filename,assessment);
       const support=androidUi?androidSupportKind(file.filename):null;
       if(!primary&&!support)continue;
-      if(primary)studentPrimaryPaths.add(file.filename);else studentSupportPaths.add(file.filename);
+      if(!isMerge){
+        if(primary)studentPrimaryPaths.add(file.filename);else studentSupportPaths.add(file.filename);
+      }
       if(["image","font"].includes(support||""))binaryPaths.add(file.filename);
       let patch=file.patch;
       let substantive;
@@ -262,13 +265,12 @@ export async function loadPinnedV2Source({
       }else if(primary){
         throw Error("A primary assessed commit file has no readable text diff. Review this contribution manually.");
       }else continue;
-      patchRecords.push({sha,path:file.filename,patch,substantive,primary,kind:support||"primary"});
+      patchRecords.push({sha,path:file.filename,patch,substantive:isMerge?false:substantive,primary,mergeContext:isMerge,kind:support||"primary"});
     }
   }
-  if(!patchRecords.some(patch=>patch.primary&&patch.substantive===true))
-    throw Error(excludedMergeCommits.length&&excludedMergeCommits.length===verifiedContributionCommits.length
-      ?"Only merge commits were verified. Choose the student's original non-merge commits or grade manually; a merge is not sufficient individual evidence."
-      :androidUi?"No verified substantive primary screen change was found. For this XML UI assessment, verify at least one student layout commit before evaluation.":"No verified substantive primary assessment change was found.");
+  const directContribution=patchRecords.some(patch=>patch.primary&&patch.substantive===true);
+  if(!directContribution&&!excludedMergeCommits.length)
+    throw Error(androidUi?"No verified substantive primary screen change was found. Verify relevant original layout evidence.":"No verified substantive primary assessment change was found.");
   const tree=await request("/git/trees/"+encodeURIComponent(selection.checkpointSha)+"?recursive=1");
   if(!Array.isArray(tree.tree)||tree.truncated)throw Error("The approved project file tree was incomplete. Evaluation paused.");
   const blobs=tree.tree.filter(item=>item.type==="blob"),entryByPath=new Map(blobs.map(item=>[item.path,item]));
@@ -339,7 +341,7 @@ export async function loadPinnedV2Source({
     if(!files.some(file=>file.path===item.path))files.push({path:item.path,text:"",primary:false,studentChanged:studentSupportPaths.has(item.path),binary:true});
   }
 
-  const analysis=analyzeAndroidEvidence({assessment,files,patches:patchRecords,assets});
+  const analysis=analyzeAndroidEvidence({assessment,files,patches:patchRecords.filter(p=>!p.mergeContext),assets});
   return {repository:repo.url,checkpointSha:selection.checkpointSha,
     selectedCommits:selection.selectedCommits,files,patches:patchRecords,assets,analysis,excludedMergeCommits};
 }
