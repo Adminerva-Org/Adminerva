@@ -4,6 +4,13 @@ service cloud.firestore {
     function signedIn() {
       return request.auth != null && request.auth.token.email is string;
     }
+    function hasVerifiedEmail() {
+      return signedIn() && request.auth.token.email_verified == true;
+    }
+    function verifiedEmailMatches(email) {
+      return hasVerifiedEmail() && email is string && email != "" &&
+        email.lower() == request.auth.token.email.lower();
+    }
     // Verified Firebase Auth identity, never the browser's simulated role.
     // Migrate this temporary email mapping to Firebase custom claims later.
     function isAdmin() {
@@ -176,9 +183,7 @@ service cloud.firestore {
         isAdmin() ||
         (isTeacher() && issue.get("audience", "admin") == "teacher" && mayTeachSection(issue.get("section",null))) ||
         issue.get("reporterUid", "") == request.auth.uid ||
-        (issue.get("reporterEmail", "") is string &&
-         issue.get("reporterEmail", "") != "" &&
-         issue.get("reporterEmail", "").lower() == request.auth.token.email.lower())
+        verifiedEmailMatches(issue.get("reporterEmail", ""))
       );
     }
     function mayReadIssueById(issueId) {
@@ -186,10 +191,9 @@ service cloud.firestore {
         mayReadIssue(get(/databases/$(database)/documents/issues/$(issueId)).data);
     }
     function ownsStudentProfile(studentId) {
-      return signedIn() &&
+      return hasVerifiedEmail() &&
         exists(/databases/$(database)/documents/students/$(studentId)) &&
-        get(/databases/$(database)/documents/students/$(studentId)).data.email.lower() ==
-          request.auth.token.email.lower() &&
+        verifiedEmailMatches(get(/databases/$(database)/documents/students/$(studentId)).data.email) &&
         get(/databases/$(database)/documents/students/$(studentId)).data.get("status","active") == "active";
     }
     function mayReadStudentAssessment(data) {
@@ -383,13 +387,13 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
     match /students/{studentId} {
-      allow read: if signedIn() && resource.data.email is string &&
-        resource.data.email.lower() == request.auth.token.email.lower();
+      allow read: if hasVerifiedEmail() && resource.data.email is string &&
+        verifiedEmailMatches(resource.data.email);
       // Do not permit students to change identity, section, or role information.
       // githubToken remains writable for compatibility with the existing OAuth flow;
       // migrate that token to a secure backend in a later release.
-      allow update: if signedIn() && resource.data.email is string &&
-        resource.data.email.lower() == request.auth.token.email.lower() &&
+      allow update: if hasVerifiedEmail() && resource.data.email is string &&
+        verifiedEmailMatches(resource.data.email) &&
         resource.data.get("status","active") == "active" &&
         request.resource.data.email == resource.data.email &&
         request.resource.data.diff(resource.data).affectedKeys()
@@ -813,10 +817,12 @@ service cloud.firestore {
           (!("gradeVersion" in data) || (data.gradeVersion is int && data.gradeVersion > 0 && data.reviewedBy == request.auth.uid && data.updatedAt == request.time));
       }
       function validActivityRevision(data) {
+        let priorVersion = resource == null ? 0 : resource.data.get("gradeVersion",0);
         let version = data.get("gradeVersion",0);
         let audit = version == 0 ? {} : getAfter(/databases/$(database)/documents/activity_grades/$(gradeId)/versions/$(string(version))).data;
-        return version == 0 || (audit.after == data && audit.actorUid == request.auth.uid && audit.createdAt == request.time &&
-          version == (resource == null ? 1 : resource.data.get("gradeVersion",0) + 1));
+        return (version == 0 && priorVersion == 0) ||
+          (version > 0 && audit.after == data && audit.actorUid == request.auth.uid && audit.createdAt == request.time &&
+            version == priorVersion + 1);
       }
       allow read: if mayTeachSection(resource.data.section);
       allow read: if signedIn() && ownsStudentProfile(resource.data.studentId) && resource.data.get("published",false) == true;
@@ -1149,7 +1155,13 @@ service cloud.firestore {
     // Only instructors may read or write internal grading-failure diagnostics.
     match /grading_alerts/{alertId} {
       allow read: if mayTeachSection(resource.data.section);
-      allow create, update: if mayTeachStudent(request.resource.data.studentId) && request.resource.data.section == get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.section;
+      allow create: if mayTeachStudent(request.resource.data.studentId) &&
+        request.resource.data.section == get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.section;
+      allow update: if mayTeachStudent(resource.data.studentId) &&
+        mayTeachStudent(request.resource.data.studentId) &&
+        request.resource.data.studentId == resource.data.studentId &&
+        request.resource.data.section == resource.data.section &&
+        request.resource.data.section == get(/databases/$(database)/documents/students/$(request.resource.data.studentId)).data.section;
       allow delete: if isAdmin();
     }
 
