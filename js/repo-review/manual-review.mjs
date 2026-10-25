@@ -241,6 +241,10 @@ async function generateAIDraft(){
     if(evidence.truncatedDiffs?.length){
       draft.limitations=[draft.limitations,evidence.truncatedDiffs.length+" relevant commit diff(s) were bounded; omitted changes require teacher review before assigning credit."].filter(Boolean).join(" ").slice(0,1400);
     }
+    if(evidence.missingPrimaryPaths?.length){
+      draft.limitations=[draft.limitations,"Some primary files in the verified commits were renamed or removed before the approved checkpoint ("+
+        evidence.missingPrimaryPaths.slice(0,6).join(", ")+"). Retained commit changes require teacher confirmation."].filter(Boolean).join(" ").slice(0,1400);
+    }
     active.aiDraft={model,checkpointSha:active.checkpointSha,evaluationMode:evaluation.mode,evidenceChunks:evaluation.chunkCount,...draft};
     state.dirty=true;
     displayAISuggestion(draft);
