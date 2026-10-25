@@ -193,5 +193,5 @@ test('merge and formatting-only commits cannot borrow shared implementation cred
   assert.deepEqual(merged.excludedMergeCommits,[A]);
   assert.ok(merged.patches.every(patch=>patch.mergeContext&&patch.substantive===false));
   await assert.rejects(loadPinnedV2Source({...options,fetchImpl:async()=>({ok:true,json:async()=>({files:[{
-    filename:XML,patch:'-<TextView/>\n+  <TextView/>'}]})})}),/No verified substantive changes/);
+    filename:XML,patch:'-<TextView/>\n+  <TextView/>'}]})})}),/No verified substantive primary screen change/);
 });
