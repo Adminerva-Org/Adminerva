@@ -62,6 +62,7 @@ test('unchanged evidence snapshots do not strand a running evaluation; manual ca
     let expire;
     if(cancel==="timeout"){page.context.setTimeout=callback=>{expire=callback;return 1;};page.context.clearTimeout=()=>{};}
     const operation=page.context.generateAIDraft();
+    await Promise.resolve();
     page.change({...approved,selectedCommits:[checkpoint]});
     if(cancel==="timeout")expire();else if(cancel)page.elements.get('manualReviewManual').click();
     finish({files:[{path:'screen.xml'}],patches:[]});await operation;
