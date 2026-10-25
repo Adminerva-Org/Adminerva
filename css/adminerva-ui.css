@@ -603,3 +603,17 @@ a.av-home-task:hover,a.av-learning-card:hover { border-color:#7b9fce;box-shadow:
 .av-account-menu>summary::-webkit-details-marker{display:none}.av-account-menu[open]>summary{background:rgba(30,41,59,.85)}
 html[data-adminerva-density=compact] .av-panel{padding:.85rem!important}html[data-adminerva-density=compact] .av-nav-top{padding-block:.2rem!important}
 html[data-adminerva-reduce-motion=true] *,html[data-adminerva-reduce-motion=true] *::before,html[data-adminerva-reduce-motion=true] *::after{scroll-behavior:auto!important;animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+
+/* 1.4.1: compact teacher chrome and align class/practice analytics widths. */
+.av-nav-location{padding-top:.3rem!important;padding-bottom:.3rem!important}
+.av-nav-top{min-height:3.25rem!important}
+.av-educator-layout{gap:1rem}
+.av-educator-layout>.av-educator-content{min-width:0}
+.av-educator-content>.av-analytics-panel,
+.av-educator-content>.av-analytics-intro{max-width:80rem;width:100%;margin-left:auto;margin-right:auto}
+.av-educator-content>.av-analytics-panel>div.max-w-7xl{max-width:none;padding-left:0;padding-right:0}
+.av-brand-mark{background:transparent}
+.av-brand-mark img{transform:none;object-fit:contain}
+@media(min-width:1025px) and (max-width:1450px){
+  .av-educator-layout{grid-template-columns:12.5rem minmax(0,1fr)}
+}
