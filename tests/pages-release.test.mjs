@@ -19,7 +19,7 @@ test("release verification waits for the requested manifest version, then proves
   let manifests=0;const app=fixture(path=>path==="site-release.json"&&++manifests===1?new Response(JSON.stringify({version:"0.0.0"})):null);
   const proof=await checkPagesRelease(app.options);
   assert.equal(proof.version,version);assert.equal(proof.manifestAttempts,2);assert.equal(app.elapsed,10000);
-  assert.equal(proof.files.filter(file=>file.matchesCheckout).length,9);assert.equal(proof.files.filter(file=>file.contentMarkers).length,5);
+  assert.equal(proof.files.filter(file=>file.matchesCheckout).length,14);assert.equal(proof.files.filter(file=>file.contentMarkers).length,5);
   assert.ok(proof.files.filter(file=>file.sha256).every(file=>/^[a-f0-9]{64}$/.test(file.sha256)));
   assert.equal(app.logs.at(-1).event,"pages_release_verified");
 });
@@ -33,7 +33,7 @@ test("missing deployed pages and altered assets fail instead of reporting a succ
 });
 
 test("a release manifest alone cannot pass when deployed HTML lacks the expected workflow content",async()=>{
-  const app=fixture(path=>path==="wiki.html"?new Response("old handbook?v="+version):null);
+  const app=fixture(path=>path==="wiki.html"?new Response("old handbook"):null);
   await assert.rejects(checkPagesRelease(app.options),/wiki\.html is missing expected release content/);
 });
 
