@@ -48,10 +48,10 @@ test("provider JSON failures and empty candidates become recoverable manual stat
   for(const response of [new Response("broken"),Response.json({candidates:[]}),Response.json({candidates:[{content:{parts:[{text:"[1,2]"}]}}]})])await assert.rejects(evaluationJSON(response),error=>error.code==="invalid-evaluation");
   const data=await evaluationJSON(Response.json({candidates:[{content:{parts:[{text:'```json\n{"score":12}\n```'}]}}]}));assert.equal(data.score,12);
 });
-test("publication queues exclude unreviewed, published, invalid and V2 drafts",()=>{
-  const entries=[{data:{score:0,published:false,reviewRequired:false},schemaVersion:1},{data:{score:12,published:false,reviewRequired:false},schemaVersion:2},{data:{score:4,published:false,reviewRequired:true}},{data:{score:null,published:false,reviewRequired:false}},{data:{score:10,published:true,reviewRequired:false}}];
+test("publication queues include ready V2 drafts and exclude flagged, published or invalid grades",()=>{
+  const entries=[{data:{score:0,published:false,reviewRequired:false},schemaVersion:1},{data:{score:12,published:false,reviewRequired:false},schemaVersion:2},{data:{score:4,published:false,reviewRequired:true},schemaVersion:2},{data:{score:null,published:false,reviewRequired:false}},{data:{score:10,published:true,reviewRequired:false}}];
   entries.forEach(entry=>{entry.maxScore=20;});
-  assert.deepEqual(publicationCandidates(entries),[entries[0]]);assert.deepEqual(publicationCandidates(entries,false),[entries[4]]);
+  assert.deepEqual(publicationCandidates(entries),[entries[0],entries[1]]);assert.deepEqual(publicationCandidates(entries,false),[entries[4]]);
   for(const score of [-1,21,NaN,Infinity])assert.equal(publicationCandidates([{data:{score,maxScore:20,reviewRequired:false}}]).length,0);
 });
 test("recovery survives refresh, validates stored IDs and never executes an action",()=>{

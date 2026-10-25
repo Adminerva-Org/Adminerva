@@ -7,7 +7,7 @@ function ensureDrawer() {
   let drawer=document.getElementById("feedbackDrawer");
   if(drawer)return drawer;
   drawer=document.createElement("div");drawer.id="feedbackDrawer";drawer.className="av-feedback-backdrop hidden";
-  drawer.innerHTML='<section class="av-feedback-drawer" role="dialog" aria-modal="true" aria-labelledby="feedbackDrawerTitle"><header><h2 id="feedbackDrawerTitle">Score and feedback</h2><button type="button" id="feedbackDrawerClose" aria-label="Close feedback">✕</button></header><div id="feedbackDrawerBody" class="av-feedback-body"></div><footer><button type="button" id="feedbackDrawerReview">Review / edit teacher grade</button></footer></section>';
+  drawer.innerHTML='<section class="av-feedback-drawer" role="dialog" aria-modal="true" aria-labelledby="feedbackDrawerTitle"><header><h2 id="feedbackDrawerTitle">Score and feedback</h2><button type="button" id="feedbackDrawerClose" aria-label="Close feedback">✕</button></header><div id="feedbackDrawerBody" class="av-feedback-body"></div><footer><button type="button" id="feedbackDrawerReview">Open grade details</button></footer></section>';
   document.body.append(drawer);
   const close=()=>{if(active){const previous=active;active=null;drawer.classList.add("hidden");previous.focus?.();}};
   drawer.querySelector("#feedbackDrawerClose").addEventListener("click",close);
@@ -44,7 +44,7 @@ export async function openFeedbackDrawer(details,trigger=document.activeElement)
     const feedback=document.createElement("div");renderFeedbackMarkdown(feedback,grade.feedback);body.append(feedback);
     for(const text of grade.penaltyTags||[]){const flag=document.createElement("p");flag.textContent=String(text);flag.className="text-amber-900";body.append(flag);}
     if(grade.aiAssistance||grade.gradeSource==="automated"||grade.gradeSource==="teacher_ai_reviewed"){
-      const disclosure=document.createElement("p");disclosure.className="text-sm text-slate-600";disclosure.textContent="This feedback includes automated assistance. Teacher review and publication are separate actions.";body.append(disclosure);
+      const disclosure=document.createElement("p");disclosure.className="text-sm text-slate-600";disclosure.textContent="This feedback was system-assisted. Publication remains controlled by the teacher; evaluations that need attention are flagged before release.";body.append(disclosure);
     }
     button.disabled=false;
   }catch(error){if(active===request){body.textContent=error.message;reviewNotice("Feedback could not load. Existing grade unchanged.",true);}}
