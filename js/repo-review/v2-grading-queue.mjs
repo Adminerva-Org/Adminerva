@@ -4,7 +4,7 @@ import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,getDocs,query,where} from "../core/teaching-firestore.mjs?v=1.3.0";
 import {parseRepository} from "./services/assessment-evidence.mjs?v=1.3.0";
-import {mountTeachingWorkspace} from "./teaching-workspace.mjs?v=1.3.10";
+import {mountTeachingWorkspace} from "./teaching-workspace.mjs?v=1.4.15";
 const el=id=>document.getElementById(id),parameters=new URLSearchParams(location.search);
 let requestedPanel=parameters.get("view")||"";
 const workspace=mountTeachingWorkspace(el("teachingWorkspace"));
@@ -42,7 +42,7 @@ async function initialize(user){
   const sections=[...new Set(roster.map(student=>student.section).filter(value=>typeof value==="string"&&value.trim()))].sort();
   options(el("v2SectionSelect"),sections.map(value=>({value,label:value})),"Choose class");
   el("v2SectionSelect").value=sections.includes(parameters.get("section"))?parameters.get("section"):sections[0]||"";
-  el("reviewTargetMode").value=parameters.get("mode")==="individual"?"individual":"group";
+  el("reviewTargetMode").value="group";
   await updateAssessments();
  }catch(error){if(generation===loadId)status("Classes could not load. Check your connection and select Refresh. "+error.message);}
 }
@@ -81,7 +81,7 @@ async function renderQueue({preserve=true}={}){
   const requested=targets.find(target=>target.students.some(student=>student.id===parameters.get("student")));
   el("reviewTargetSelect").value=targets.some(target=>target.id===previous)?previous:requested?.id||targets[0]?.id||"";
   drawCards();activateTarget();
-  status(targets.length+" review targets · "+roster.filter(student=>student.section===section).length+" learners"+(sourceWarnings.length?". Some saved statuses could not load: "+sourceWarnings.join(", ")+". Missing statuses are not zero grades.":". Choose a target, then switch workspace panels below."));
+  status(targets.length+" repository/group target"+(targets.length===1?"":"s")+" · "+roster.filter(student=>student.section===section).length+" learners"+(sourceWarnings.length?". Some saved statuses could not load: "+sourceWarnings.join(", ")+". Missing statuses are not zero grades.":". Choose a repository/group, then select the learner inside the workspace."));
  }catch(error){if(generation===loadId)status("Review queue could not load. Retry with Refresh. "+error.message);}
  finally{el("v2RefreshQueue").disabled=false;}
 }
@@ -102,15 +102,14 @@ function activateTarget(){
  workspace.setContext({assessment:activeTask,target,students:target.students,repository:target.repository,evidence:records.evidence,grades:records.grades,activities:records.activities,receipts:records.receipts,sourceWarnings,mode:el("reviewTargetMode").value,requestedStudent:parameters.get("student")});
  if(requestedPanel==="grade"){requestedPanel="";void workspace.show("grade");}
  window.dispatchEvent(new CustomEvent("adminerva:review-target-selected",{detail:{assessment:activeTask,students:target.students,repository:target.repository,mode:el("reviewTargetMode").value}}));
- const url=new URL(location.href);url.searchParams.delete("view");url.searchParams.set("section",el("v2SectionSelect").value);if(el("v2SubjectSelect").value!=="all")url.searchParams.set("subject",el("v2SubjectSelect").value);else url.searchParams.delete("subject");url.searchParams.set("assessment",activeTask.id);url.searchParams.set("mode",el("reviewTargetMode").value);url.searchParams.set("student",target.students[0].id);history.replaceState(null,"",url);
+ const url=new URL(location.href);url.searchParams.delete("view");url.searchParams.set("section",el("v2SectionSelect").value);if(el("v2SubjectSelect").value!=="all")url.searchParams.set("subject",el("v2SubjectSelect").value);else url.searchParams.delete("subject");url.searchParams.set("assessment",activeTask.id);url.searchParams.set("mode","group");url.searchParams.set("student",target.students[0].id);history.replaceState(null,"",url);
 }
-let previousSection="",previousAssessment="",previousMode="group",previousTarget="";
-function rememberSelectors(){previousSection=el("v2SectionSelect").value;previousAssessment=el("v2AssessmentSelect").value;previousMode=el("reviewTargetMode").value;previousTarget=el("reviewTargetSelect").value;}
-for(const id of ["v2SectionSelect","v2SubjectSelect","v2AssessmentSelect","reviewTargetMode","reviewTargetSelect"])el(id).addEventListener("focus",rememberSelectors);
+let previousSection="",previousAssessment="",previousTarget="";
+function rememberSelectors(){previousSection=el("v2SectionSelect").value;previousAssessment=el("v2AssessmentSelect").value;previousTarget=el("reviewTargetSelect").value;}
+for(const id of ["v2SectionSelect","v2SubjectSelect","v2AssessmentSelect","reviewTargetSelect"])el(id).addEventListener("focus",rememberSelectors);
 el("v2SectionSelect").onchange=()=>{if(!workspace.canLeave()){el("v2SectionSelect").value=previousSection;return;}void updateAssessments();};
 el("v2SubjectSelect").onchange=()=>{if(!workspace.canLeave())return;void updateAssessments();};
 el("v2AssessmentSelect").onchange=()=>{if(!workspace.canLeave()){el("v2AssessmentSelect").value=previousAssessment;return;}void renderQueue({preserve:false});};
-el("reviewTargetMode").onchange=()=>{if(!workspace.canLeave()){el("reviewTargetMode").value=previousMode;return;}void renderQueue({preserve:false});};
 el("reviewTargetSelect").onchange=()=>{if(!workspace.canLeave()){el("reviewTargetSelect").value=previousTarget;return;}activateTarget();drawCards();};
 el("v2RefreshQueue").onclick=()=>void(!roster.length||!assessments.length?initialize(auth.currentUser):renderQueue());
 window.addEventListener("adminerva:manual-grade-saved",()=>void renderQueue());
