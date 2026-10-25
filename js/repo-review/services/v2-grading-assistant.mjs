@@ -10,11 +10,16 @@ import {androidSupportKind,analyzeAndroidEvidence,responsibilityBasis,isAndroidU
 
 const MAX_PRIMARY_FILES=18;
 const MAX_SUPPORT_FILES=24;
-const MAX_FILE_BYTES=36000;
-const MAX_TOTAL_SOURCE=90000;
-const MAX_PATCH_CHARS=60000;
-const MAX_PATCH_FILE_CHARS=12000;
-const MAX_PATCH_EXCERPT_CHARS=4200;
+// Retrieval ceilings are intentionally larger than one model request. Large
+// evidence is chunked later instead of being rejected at collection time.
+const MAX_FILE_BYTES=180000;
+const MAX_TOTAL_SOURCE=500000;
+const MAX_PATCH_CHARS=300000;
+const MAX_PATCH_FILE_CHARS=90000;
+const MAX_PATCH_EXCERPT_CHARS=45000;
+const SINGLE_PASS_INPUT_CHARS=70000;
+const ADAPTIVE_CHUNK_CHARS=48000;
+const MAX_ADAPTIVE_CHUNKS=18;
 
 const MAX_VISUAL_ASSETS=3;
 const MAX_VISUAL_ASSET_BYTES=240000;
@@ -130,13 +135,14 @@ export function buildRubricResponseSchema(criteria){
   };
 }
 
-export function buildRubricPrompt({assessment,criteria,checkpointSha,files,patches,contributionScope,analysis,visualAssetsIncluded=false}){
+export function buildRubricPrompt({assessment,criteria,checkpointSha,files=[],patches=[],contributionScope,analysis,visualAssetsIncluded=false,evidenceSummary=""}){
   const rows=criteria.map((c,i)=>(i+1)+". "+c.name+" ("+c.maxScore+" points)").join("\n");
   const primaryText=files.filter(f=>f.primary&&!f.binary).map(f=>"FILE: "+f.path+"\n"+f.text).join("\n\n----\n\n");
   const supportText=files.filter(f=>!f.primary&&!f.binary).map(f=>"FILE: "+f.path+" · student-changed: "+(f.studentChanged?"yes":"no")+"\n"+f.text).join("\n\n----\n\n");
   const patchText=patches.map(p=>(p.mergeContext?"MERGE CONTEXT — TEACHER ATTRIBUTION PENDING: ":"SELECTED COMMIT: ")+p.sha+"\nFILE: "+p.path+" · role: "+(p.primary?"primary assessed file":"supporting file/resource")+"\n"+p.patch).join("\n\n----\n\n");
   const basis=responsibilityBasis({assessment,contributionScope,patches});
   const deterministic=analysis?.summary||"No Android-specific deterministic checks were available.";
+  const adaptive=String(evidenceSummary||"").trim();
   return `You are assisting a classroom teacher with an assessment of an Android Studio project.
 This is a teacher-reviewed, unofficial SYSTEM DRAFT only. Do not publish or finalize grades.
 The project snapshot is pinned to instructor-approved checkpoint ${checkpointSha}.
@@ -188,19 +194,26 @@ AUTOMATED EVIDENCE CHECKS:
 ${deterministic}
 </automated-checks>
 
+${adaptive?`ADAPTIVE VERIFIED EVIDENCE SUMMARY:
+<adaptive-evidence-summary>
+${adaptive}
+</adaptive-evidence-summary>
+
+The raw evidence was processed in bounded chunks. Treat the summary as a compact index of those chunks, not as new authorship proof. Cite only exact SHA/path references listed in it.`:""}
+
 PRIMARY PROJECT SOURCE AT CHECKPOINT:
 <primary-project-source>
-${primaryText}
+${adaptive?"[Raw primary source was chunked; use the adaptive evidence summary above.]":primaryText}
 </primary-project-source>
 
 SUPPORTING PROJECT SOURCE:
 <supporting-source>
-${supportText}
+${adaptive?"[Raw supporting source was chunked; use the adaptive evidence summary above.]":supportText}
 </supporting-source>
 
 VERIFIED STUDENT EVIDENCE PATCHES:
 <student-commit-patches>
-${patchText}
+${adaptive?"[Raw verified patches were chunked; use the adaptive evidence summary above.]":patchText}
 </student-commit-patches>
 
 Return ONLY strict JSON:
@@ -213,6 +226,107 @@ For supported: numeric score, pendingPoints 0.
 For partial: numeric supported score plus pendingPoints, with score + pendingPoints <= criterion maximum.
 For needs_teacher_review: score null and pendingPoints > 0.
 The sum of supported scores is the system proposed score. The sum of pendingPoints is the maximum additional amount still requiring teacher confirmation. Maximum ${assessment.maxScore}.`;
+}
+
+export function evaluationInputSize(evidence={}) {
+  const source=(evidence.files||[]).filter(file=>!file.binary).reduce((sum,file)=>sum+String(file.text||"").length,0);
+  const patches=(evidence.patches||[]).reduce((sum,patch)=>sum+String(patch.patch||"").length,0);
+  return {source,patches,total:source+patches};
+}
+
+export function needsAdaptiveEvaluation(evidence={}) {
+  const size=evaluationInputSize(evidence);
+  return size.total>SINGLE_PASS_INPUT_CHARS ||
+    (evidence.files||[]).some(file=>!file.binary&&String(file.text||"").length>32000) ||
+    (evidence.patches||[]).length>8;
+}
+
+function splitAdaptiveText(text,maxChars=ADAPTIVE_CHUNK_CHARS){
+  const value=String(text||"");
+  if(value.length<=maxChars)return [value];
+  const lines=value.split("\n"),parts=[];let current="";
+  for(const line of lines){
+    const next=(current?current+"\n":"")+line;
+    if(next.length<=maxChars){current=next;continue;}
+    if(current)parts.push(current);
+    if(line.length<=maxChars){current=line;continue;}
+    for(let offset=0;offset<line.length;offset+=maxChars)parts.push(line.slice(offset,offset+maxChars));
+    current="";
+  }
+  if(current)parts.push(current);
+  return parts;
+}
+
+export function buildAdaptiveEvidenceChunks(evidence={},maxChars=ADAPTIVE_CHUNK_CHARS){
+  const units=[];
+  const patches=Array.isArray(evidence.patches)?evidence.patches:[];
+  const refsByPath=new Map();
+  for(const patch of patches){
+    if(!refsByPath.has(patch.path))refsByPath.set(patch.path,[]);
+    refsByPath.get(patch.path).push({sha:patch.sha,path:patch.path,substantive:patch.substantive===true,diffIncomplete:patch.diffIncomplete===true,mergeContext:patch.mergeContext===true});
+    const header=(patch.mergeContext?"MERGE CONTEXT":"VERIFIED COMMIT")+" "+patch.sha+"\nFILE "+patch.path+
+      "\nROLE "+(patch.primary?"primary":"support")+
+      "\nDIFF STATUS "+(patch.diffIncomplete?"partial":patch.substantive===true?"substantive":"non-scoring")+"\n";
+    for(const segment of splitAdaptiveText(header+String(patch.patch||""),maxChars))
+      units.push({text:segment,refs:[{sha:patch.sha,path:patch.path,substantive:patch.substantive===true,diffIncomplete:patch.diffIncomplete===true}]});
+  }
+  for(const file of (evidence.files||[]).filter(item=>!item.binary)){
+    const refs=refsByPath.get(file.path)||[];
+    const header="PINNED CHECKPOINT SOURCE\nFILE "+file.path+"\nROLE "+(file.primary?"primary":"support")+
+      "\nSTUDENT CHANGED "+(file.studentChanged?"yes":"no")+"\n"+
+      (refs.length?"RELATED VERIFIED REFERENCES "+refs.map(ref=>ref.sha+" "+ref.path).join(" | ")+"\n":"");
+    for(const segment of splitAdaptiveText(header+String(file.text||""),maxChars))
+      units.push({text:segment,refs});
+  }
+  const chunks=[];let current={text:"",refs:[]};
+  const push=()=>{if(!current.text)return;chunks.push(current);current={text:"",refs:[]};};
+  for(const unit of units){
+    if(current.text&&current.text.length+unit.text.length+10>maxChars)push();
+    current.text+=(current.text?"\n\n---\n\n":"")+unit.text;
+    const seen=new Set(current.refs.map(ref=>ref.sha+"|"+ref.path));
+    for(const ref of unit.refs||[])if(!seen.has(ref.sha+"|"+ref.path)){current.refs.push(ref);seen.add(ref.sha+"|"+ref.path);}
+  }
+  push();
+  if(chunks.length>MAX_ADAPTIVE_CHUNKS)
+    throw Error("Verified work is too large for one automatic evaluation ("+chunks.length+" evidence chunks). Narrow the selected evidence or grade manually.");
+  return chunks.map((chunk,index)=>({...chunk,index:index+1,total:chunks.length}));
+}
+
+export function buildEvidenceChunkPrompt({assessment,criteria,chunk,contributionScope=""}){
+  const rubric=criteria.map((item,index)=>(index+1)+". "+item.name+" ("+item.maxScore+" points)").join("\n");
+  const refs=(chunk.refs||[]).map(ref=>ref.sha+" "+ref.path+(ref.diffIncomplete?" [partial diff]":"")).join("\n")||"No scoring reference in this source-only chunk.";
+  return `Analyze one bounded chunk of verified student evidence for a classroom assessment. Do NOT assign a final grade.
+Extract concise rubric-relevant observations that can be combined with other chunks.
+Do not infer runtime behavior. Do not give credit for source-only teammate context.
+A partial/omitted diff can inform a limitation but cannot independently prove the omitted change.
+
+TASK:
+${String(assessment.taskContext||"").slice(0,3500)}
+
+RUBRIC:
+${rubric}
+
+RESPONSIBILITY:
+${String(contributionScope||"").slice(0,2500)}
+
+KNOWN VERIFIED REFERENCES:
+${refs}
+
+EVIDENCE CHUNK ${chunk.index}/${chunk.total}:
+<evidence-chunk>
+${chunk.text}
+</evidence-chunk>
+
+Return only JSON with:
+{"summary":"Concise evidence observations, no final score.","rubricSignals":["Rubric-linked finding"],"limitations":"Only uncertainty specific to this chunk."}`;
+}
+
+export function buildEvidenceChunkResponseSchema(){
+  return {type:"object",properties:{
+    summary:{type:"string"},
+    rubricSignals:{type:"array",items:{type:"string"}},
+    limitations:{type:"string"}
+  },required:["summary","rubricSignals","limitations"],propertyOrdering:["summary","rubricSignals","limitations"]};
 }
 
 /**
@@ -276,7 +390,9 @@ export async function loadPinnedV2Source({
         patch="[Binary repository resource "+file.status+" in this verified commit]";
         substantive=true;
       }else if(primary){
-        throw Error("A primary assessed commit file has no readable text diff. Review this contribution manually.");
+        patch="[GitHub did not provide the full text diff for this verified commit file. Inspect pinned checkpoint source in adaptive evaluation; omitted changes remain partial evidence.]";
+        substantive=false;
+        truncatedDiffs.push({sha,path:file.filename,originalChars:null});
       }else continue;
       patchRecords.push({sha,path:file.filename,patch,substantive:isMerge||truncatedDiffs.some(item=>item.sha===sha&&item.path===file.filename)?false:substantive,primary,mergeContext:isMerge,
         diffIncomplete:truncatedDiffs.some(item=>item.sha===sha&&item.path===file.filename),kind:support||"primary"});
