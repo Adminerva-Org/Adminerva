@@ -640,7 +640,7 @@ async function save(event) {
     window.dispatchEvent(new CustomEvent("adminerva:manual-grade-saved",{
       detail:{studentId:active.studentId,assessmentId:active.taskId}
     }));
-    analytics("grade_draft_saved",{feature:"review_grade",mode:acceptedDraft?"system_assisted":"manual",status:"unpublished"});
+    analytics("grade_draft_saved",{feature:"review_grade",mode:acceptedDraft?.evaluationMode==="external"?"external_assisted":acceptedDraft?"system_assisted":"manual",status:"unpublished"});
     if(state.active!==active||state.token!==session)return;
     const savedGrade=(await getDoc(active.gradeRef)).data();
     if(state.active!==active||state.token!==session)return;
