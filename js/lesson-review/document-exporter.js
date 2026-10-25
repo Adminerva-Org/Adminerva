@@ -1,5 +1,4 @@
 import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.3.0";
-import { printLesson } from "./lesson-print.mjs?v=1.4.23";
 import {exportLessonToGoogleDocs,buildGoogleDocsSource} from "./google-docs-export.mjs?v=1.4.23";
 /** School-format lesson document construction and export. */
 import {
@@ -305,8 +304,24 @@ window.buildDocumentLayout = async function () {
   return true;
 };
 
-window.exportPDF = () => printLesson();
-window.saveAndPrint = () => printLesson({ saveFirst: true });
+window.exportPDF = async function () {
+  const isReady = await window.buildDocumentLayout();
+  if (isReady) {
+    setTimeout(() => {
+      window.print();
+    }, 300);
+  }
+};
+
+window.saveAndPrint = async function () {
+  const isSaved = await window.saveLessonPlan();
+  const isReady = await window.buildDocumentLayout();
+  if (isSaved && isReady) {
+    setTimeout(() => {
+      window.print();
+    }, 300);
+  }
+};
 
 window.exportToGoogleDocs = function () {
   if (!window.currentPlan?.length || !window.currentWeeklyOverview)
