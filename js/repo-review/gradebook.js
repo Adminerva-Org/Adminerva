@@ -182,7 +182,15 @@ async function loadGrid() {
         scoreBadge = '<button type="button" class="av-feedback-chip" onclick="window.openGridFeedback(\''+student.id+'\',\''+taskId+'\')"><strong>'+escapeHTML(String(grade.score))+' / '+max+'</strong><span>'+escapeHTML(feedbackSummary(grade.feedback))+'</span></button>';
 
         const isPub = grade.published || false;
-        pubToggle = `
+        const requiresReview = schemaVersion===2 && !isPub && (
+          grade.reviewRequired!==false || grade.manuallyAdjusted!==true ||
+          !grade.reviewedBy || !grade.teacherReviewNote
+        );
+        if(requiresReview){
+          const reviewLink="repofetch.html?"+new URLSearchParams({section,assessment:taskId,student:student.id,view:"grade"});
+          pubToggle='<div class="flex flex-col gap-1"><span class="text-xs font-semibold text-amber-700">Private · teacher review needed</span>'+
+            '<a class="text-xs font-semibold text-indigo-700 underline" href="'+escapeHTML(reviewLink)+'">Review before publishing →</a></div>';
+        }else pubToggle = `
                     <label class="relative inline-flex items-center cursor-pointer">
                         <input type="checkbox" class="sr-only peer" ${isPub ? "checked" : ""} onchange="window.matrixTogglePub('${student.id}', '${taskId}', this)">
                         <div class="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
@@ -278,6 +286,15 @@ window.matrixTogglePub = async function (studentId, taskId, checkbox) {
   try {
     const gradeSnap = await getDoc(gradeRef);
     if (!gradeSnap.exists()) throw new Error("Grade does not exist.");
+    const assessment=allAssessments.find(item=>item.id===taskId);
+    if(wantsPublish&&Number(assessment?.schemaVersion)===2&&(
+      gradeSnap.data().reviewRequired!==false||gradeSnap.data().manuallyAdjusted!==true||
+      !gradeSnap.data().reviewedBy||!gradeSnap.data().teacherReviewNote
+    )){
+      checkbox.checked=false;
+      alert("This is an unpublished system draft. Open Review & grade, inspect evidence, and save the teacher-reviewed score and feedback before publishing.");
+      return;
+    }
     if (wantsPublish && gradeSnap.data().reviewRequired === true) {
       const verified = window.confirm(
         "This draft requires teacher review. Have you checked the attributed commits, matched files, and deadline limitations before publishing?"
