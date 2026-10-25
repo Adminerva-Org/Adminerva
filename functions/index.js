@@ -1,4 +1,4 @@
-/** Cloud Functions v2 notifications and opt-in monitoring maintenance; production deployment remains explicit and audited. */
+/** Cloud Functions v2 notifications and opt-in monitoring maintenance; production deployment is explicit, audited, and reproducible. */
 // Firebase Cloud Functions v2. Requires separate Firebase deployment.
 const {initializeApp}=require("firebase-admin/app");
 const {getFirestore,FieldValue,Timestamp}=require("firebase-admin/firestore");
