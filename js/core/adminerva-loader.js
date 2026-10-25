@@ -580,3 +580,82 @@ window.finalizeBugReport = async function () {
     btn.textContent = "Submit Report";
   }
 };
+
+
+/* Shared compact-information behavior. Long secondary descriptions collapse by
+   default and expand on hover/focus or explicit tap. Critical status/error text
+   and form guidance are deliberately excluded. */
+(() => {
+  const copySelector = [
+    "main > header p:not([role])",
+    ".av-educator-content > header p:not([role])",
+    ".av-panel > p:not([role])",
+    ".av-action-card > p:not([role])",
+    ".av-home-task > p:not([role])",
+    ".av-learning-card > p:not([role])",
+    ".av-analytics-intro > p:not([role])",
+    ".av-operations-dashboard section > p:not([role])"
+  ].join(",");
+  const excluded = node => node.closest(
+    "dialog,[role='dialog'],details,form,[role='alert'],[aria-live],.av-scope-notice,.av-status-card"
+  );
+  function bindCopy(node){
+    if(node.dataset.avCompactBound || excluded(node) || node.textContent.trim().length < 140 ||
+       node.querySelector("a,button,input,select,textarea")) return;
+    node.dataset.avCompactBound="1";
+    node.classList.add("av-progressive-copy");
+    node.tabIndex=0;
+    node.title="Hover, focus, or tap to show the full description";
+    const toggle=event=>{
+      if(event.type==="keydown" && !["Enter"," "].includes(event.key)) return;
+      if(event.type==="keydown") event.preventDefault();
+      node.classList.toggle("av-expanded");
+    };
+    node.addEventListener("click",toggle);
+    node.addEventListener("keydown",toggle);
+  }
+  function bindPopover(button){
+    if(button.dataset.avPopoverBound) return;
+    button.dataset.avPopoverBound="1";
+    button.addEventListener("click",event=>{
+      event.stopPropagation();
+      const wrap=button.closest(".av-inline-flag");
+      const open=!wrap?.classList.contains("av-open");
+      document.querySelectorAll(".av-inline-flag.av-open").forEach(item=>{
+        item.classList.remove("av-open");
+        item.querySelector("[data-av-popover]")?.setAttribute("aria-expanded","false");
+      });
+      if(wrap && open){wrap.classList.add("av-open");button.setAttribute("aria-expanded","true");}
+      else button.setAttribute("aria-expanded","false");
+    });
+  }
+  function enhance(root){
+    if(root.nodeType!==1 && root.nodeType!==9) return;
+    if(root.matches?.(copySelector)) bindCopy(root);
+    root.querySelectorAll?.(copySelector).forEach(bindCopy);
+    if(root.matches?.("[data-av-popover]")) bindPopover(root);
+    root.querySelectorAll?.("[data-av-popover]").forEach(bindPopover);
+  }
+  const start=()=>{
+    enhance(document);
+    new MutationObserver(records=>{
+      for(const record of records) for(const node of record.addedNodes) enhance(node);
+    }).observe(document.body,{childList:true,subtree:true});
+  };
+  document.addEventListener("click",event=>{
+    if(event.target.closest?.(".av-inline-flag")) return;
+    document.querySelectorAll(".av-inline-flag.av-open").forEach(item=>{
+      item.classList.remove("av-open");
+      item.querySelector("[data-av-popover]")?.setAttribute("aria-expanded","false");
+    });
+  });
+  document.addEventListener("keydown",event=>{
+    if(event.key!=="Escape") return;
+    document.querySelectorAll(".av-inline-flag.av-open").forEach(item=>{
+      item.classList.remove("av-open");
+      item.querySelector("[data-av-popover]")?.setAttribute("aria-expanded","false");
+    });
+  });
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",start,{once:true});
+  else start();
+})();
