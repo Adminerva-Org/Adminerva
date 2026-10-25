@@ -10,6 +10,7 @@ import {generateSchoolContent,schoolAIStatus} from "../core/school-ai.mjs?v=1.3.
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.1";
 
 const el=id=>document.getElementById(id);
+const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
 let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map();
 const draftRef=(studentId,taskId)=>doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId);
 function showBulkExceptions(failures){
@@ -179,6 +180,7 @@ async function forceGather(){
   const windowInfo=gatheringWindow(assessment);
   if(!confirm("Force gather evidence for "+candidates.length+" learner(s) with no saved evidence using "+windowInfo.label+"? Existing student submissions and evidence will not be overwritten. Adminerva will auto-select up to 20 commits whose GitHub author login exactly matches each learner's linked account. Git commit dates are repository metadata, not verified push times."))return;
   showBulkExceptions([]);
+  analytics("evidence_gather_started",{feature:"gradebook",count_bucket:candidates.length});
   busy=true;render();
   const cache=new Map(),failures=[];let created=0,checkpointOnly=0,matched=0,skipped=0,permissionFailures=0;
   for(const student of candidates){
@@ -213,6 +215,7 @@ async function forceGather(){
     }catch(error){if(error?.code==="permission-denied")permissionFailures++;failures.push(student.name+": "+error.message);}
   }
   busy=false;await load(context);showBulkExceptions(failures);
+  analytics("evidence_gather_completed",{feature:"gradebook",status:failures.length?"partial":"success",count_bucket:created});
   el("gbBulkStatus").textContent="Force gather complete: "+created+" evidence snapshot(s) saved · "+matched+
     " linked-account commit match(es) proposed · "+checkpointOnly+" checkpoint-only snapshot(s) · "+skipped+
     " already handled · "+failures.length+" exception(s) ("+permissionFailures+" permission-related). Existing evidence was never overwritten."+
@@ -253,6 +256,7 @@ async function bulkApprove(){
   if(!candidates.length)return;
   if(!confirm("Approve "+candidates.length+" evidence record(s)? Adminerva will verify the project checkpoint and selected-commit ancestry. Selected commits whose GitHub author login exactly matches the learner's linked GitHub account will be marked as teacher-approved individual contributions; non-matching or unknown commits remain unverified. This is an explicit teacher approval action, not automatic proof of authorship."))return;
   showBulkExceptions([]);
+  analytics("evidence_approval_started",{feature:"gradebook",count_bucket:candidates.length});
   busy=true;render();const failures=[];let completed=0,verifiedTotal=0,contextOnly=0;
   el("gbBulkStatus").textContent="Checking checkpoint ancestry, linked-account matches and attribution conflicts…";
   for(const {student,evidence} of candidates){
@@ -278,6 +282,7 @@ async function bulkApprove(){
     el("gbBulkStatus").textContent="Approval: "+completed+" approved · "+verifiedTotal+" contribution commit(s) verified · "+failures.length+" need individual review.";
   }
   busy=false;await load(context);showBulkExceptions(failures);
+  analytics("evidence_approval_completed",{feature:"gradebook",status:failures.length?"partial":"success",count_bucket:completed});
   el("gbBulkStatus").textContent="Approval complete: "+completed+" approved · "+verifiedTotal+
     " contribution commit(s) verified · "+contextOnly+" checkpoint-only/context-only approval(s) · "+failures.length+
     " left for Review & grade. System evaluation is available only where individual contribution was verified."+
@@ -358,6 +363,7 @@ async function bulkEvaluate({rerun=false}={}){
   if(!confirm(rerun?"Re-evaluate "+candidates.length+" unreviewed, unpublished system draft(s)? Previous scores and feedback will be archived. Teacher-edited and published grades will not change.":
     "Generate unpublished grade drafts for "+candidates.length+" eligible learner(s)? Scores and feedback will require teacher confirmation."))return;
   showBulkExceptions([]);
+  analytics(rerun?"system_reevaluation_started":"system_evaluation_started",{feature:"gradebook",count_bucket:candidates.length});
   busy=true;busyEvaluation=true;cancelEvaluation=false;render();let assessment,connection;const failures=[];let completed=0;
   try{
     const snapshot=await getDoc(doc(db,"assessments",context.taskId));if(!snapshot.exists())throw Error("Assessment not found.");assessment={id:snapshot.id,...snapshot.data()};
@@ -368,7 +374,8 @@ async function bulkEvaluate({rerun=false}={}){
       catch(error){failures.push(item.student.name+": "+error.message);}
     }
   }catch(error){failures.push(error.message);}
-  const stopped=cancelEvaluation;busy=false;busyEvaluation=false;await load(context);showBulkExceptions(failures);el("gbBulkStatus").textContent=(stopped?"Evaluation stopped: ":"Evaluation complete: ")+completed+" unpublished draft(s) "+(rerun?"replaced":"saved")+" · "+failures.length+" exception(s). Open Review & grade to confirm score and feedback."+(failures.length?" "+failures.slice(0,2).join(" | "):"");
+  const stopped=cancelEvaluation;busy=false;busyEvaluation=false;await load(context);showBulkExceptions(failures);
+  analytics(rerun?"system_reevaluation_completed":"system_evaluation_completed",{feature:"gradebook",status:stopped?"stopped":failures.length?"partial":"success",count_bucket:completed});el("gbBulkStatus").textContent=(stopped?"Evaluation stopped: ":"Evaluation complete: ")+completed+" unpublished draft(s) "+(rerun?"replaced":"saved")+" · "+failures.length+" exception(s). Open Review & grade to confirm score and feedback."+(failures.length?" "+failures.slice(0,2).join(" | "):"");
 }
 window.addEventListener("adminerva:gradebook-grid-loaded",event=>void load(event.detail));
 if(window.__adminervaGradebookGridContext)void load(window.__adminervaGradebookGridContext);

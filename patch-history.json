@@ -37,6 +37,11 @@
           "type": "Updated",
           "area": "RepoFetch UX",
           "text": "Simplified review setup to class, assessment and repository/group, with learner selection kept inside the review workspace and secondary subject filtering moved out of the primary flow."
+        },
+        {
+          "type": "Added",
+          "area": "Analytics & privacy",
+          "text": "Integrated consent-based GA4 product analytics with sanitized page paths, anonymous workflow events, advertising signals disabled, and an Account settings control. Student names, emails, IDs, repository URLs, commit SHAs, grades and feedback are excluded."
         }
       ]
     },
