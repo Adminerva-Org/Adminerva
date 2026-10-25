@@ -172,7 +172,8 @@ async function fetchScheduleFromCloud() {
       let shared=false;
       let snap=null;
       if(mayUseSharedLegacySchedule()){
-        const sharedSnap=await getDoc(doc(db,"app_config",scope.id));
+        let sharedSnap=await getDoc(doc(db,"app_config",scope.id));
+        if(!sharedSnap.exists()&&scope.allowLegacy)sharedSnap=await getDoc(doc(db,"app_config","master_schedule"));
         if(sharedSnap.exists()){snap=sharedSnap;shared=true;}
       }
       if(!snap)snap=await getDoc(ownedDoc(db,"schedules",scope.id));
