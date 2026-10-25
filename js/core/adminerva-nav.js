@@ -1,4 +1,11 @@
 /** Shared, role-aware navigation. Page guards remain responsible for access. */
+if(!document.getElementById("adminerva-analytics-script")){
+  const analytics=document.createElement("script");
+  analytics.id="adminerva-analytics-script";
+  analytics.src="js/core/adminerva-analytics.js?v=1.4.16";
+  analytics.defer=true;
+  document.head.append(analytics);
+}
 document.addEventListener("DOMContentLoaded", () => {
   try{
     document.documentElement.dataset.adminervaDensity=localStorage.getItem("Adminerva_interface_density")||"comfortable";
