@@ -638,9 +638,11 @@ window.finalizeBugReport = async function () {
   }
   const start=()=>{
     enhance(document);
-    new MutationObserver(records=>{
-      for(const record of records) for(const node of record.addedNodes) enhance(node);
-    }).observe(document.body,{childList:true,subtree:true});
+    if(typeof MutationObserver!=="undefined" && document.body){
+      new MutationObserver(records=>{
+        for(const record of records) for(const node of record.addedNodes) enhance(node);
+      }).observe(document.body,{childList:true,subtree:true});
+    }
   };
   document.addEventListener("click",event=>{
     if(event.target.closest?.(".av-inline-flag")) return;
