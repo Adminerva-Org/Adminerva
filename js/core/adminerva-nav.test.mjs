@@ -89,7 +89,7 @@ test('selected task is announced once per desktop/mobile surface and page labels
   ]) {
     const { desktop, mobile, root } = mount(module, page, module.startsWith('student') ? 'student' : 'teacher');
     for (const surface of [desktop, mobile]) assert.deepEqual(links(surface).filter(link => link.attributes['aria-current'] === 'page').map(link => link.href), [route]);
-    assert.match(root.innerHTML, new RegExp('av-nav-page[^>]*>' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\assert.ok(root.innerHTML.includes('>' + label + '</span>'));') + '</span>'));
+    assert.match(root.innerHTML, new RegExp('av-nav-page[^>]*>' + label.replaceAll('&','&amp;') + '</span>'));
     assert.equal(mobile.children[0].children[0].textContent, 'Pages · ' + label + ' ▾');
   }
 });
