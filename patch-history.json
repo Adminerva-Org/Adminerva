@@ -2,93 +2,69 @@
   "releases": [
     {
       "version": "1.4.3",
-      "status": "draft",
-      "public": false,
+      "status": "published",
+      "public": true,
       "releasedAt": "2026-10-25",
-      "title": "Consolidated evidence and grading reliability",
-      "summary": "Consolidates the merged class evidence-gathering, approval, review, evaluation, and interface improvements. Publication remains pending live verification.",
+      "title": "Reliable class review and refreshed Adminerva",
+      "summary": "More reliable class review, evidence gathering and grading, clearer mobile layouts, consent-based usage analytics, refreshed owl branding, and stronger release checks.",
       "changes": [
         {
           "type": "Updated",
-          "area": "Gradebook",
-          "text": "Class evidence gathering, bulk approval, unpublished grade drafts, re-evaluation, and stop-after-current-student controls."
+          "area": "Class review",
+          "text": "Single Assessment is the primary Gradebook workflow, combining legacy submission receipts with section-scoped evidence, grades and publication status."
+        },
+        {
+          "type": "Updated",
+          "area": "Evidence gathering",
+          "text": "Gather missing evidence within the assessment window without overwriting saved student work. Project checkpoints remain distinct from verified individual contributions."
+        },
+        {
+          "type": "Updated",
+          "area": "Bulk evaluation",
+          "text": "Re-evaluate eligible unpublished system drafts while preserving earlier results, stop after the current learner, and inspect complete exception lists. Teacher edits and published grades remain protected."
         },
         {
           "type": "Fixed",
-          "area": "Evidence provenance",
-          "text": "Corrected evidence URL matching, stale files considered, approved merge-context evaluation, and bounded large diff handling."
-        },
-        {
-          "type": "Updated",
-          "area": "Teacher workflow",
-          "text": "Improved class review console and full exception details without overwriting existing submissions or published grades."
-        },
-        {
-          "type": "Updated",
-          "area": "Deployment",
-          "text": "Maintains separate GitHub Pages and Firebase deployment paths; release metadata remains draft pending verification."
+          "area": "Evidence accuracy",
+          "text": "Corrected repository matching and stale source paths, improved original-commit and merge-context evaluation, and made large-diff limits explicit. Shared project code alone does not establish individual credit."
         },
         {
           "type": "Fixed",
-          "area": "Review runtime",
-          "text": "Restored Gradebook bulk actions and RepoFetch Review & Grade after a shared grading-module syntax regression prevented the review controllers from loading."
+          "area": "Review reliability",
+          "text": "Restored Gradebook bulk actions and Review & Grade, fixed a class-grid loading race, simplified RepoFetch setup, and open the review editor when it is ready."
+        },
+        {
+          "type": "Fixed",
+          "area": "Reports and administration",
+          "text": "Historical report discussions render reliably, comment controls follow ownership, and Administration Overview makes support triage easier to find. Administrator release announcements prevent duplicate delivery for the same version."
+        },
+        {
+          "type": "New",
+          "area": "Analytics and privacy",
+          "text": "Anonymous product-usage analytics requires consent and can be controlled in Account settings. Names, emails, learner identifiers, repository links, commit references, grades, feedback and URL query values are excluded; advertising signals are disabled."
+        },
+        {
+          "type": "Fixed",
+          "area": "Account safeguards",
+          "text": "Staff settings and administration views wait for verified access, and connection settings hide stored credentials. Section-based authorization remains in place."
         },
         {
           "type": "Updated",
-          "area": "RepoFetch UX",
-          "text": "Simplified review setup to class, assessment and repository/group, with learner selection kept inside the review workspace and secondary subject filtering moved out of the primary flow."
+          "area": "Responsive interface",
+          "text": "Gradebook uses clearer mobile cards, feedback opens in a centered dialog, and shared layouts have more consistent spacing and navigation. Homepage motion respects reduced-motion preferences."
         },
         {
-          "type": "Added",
-          "area": "Analytics & privacy",
-          "text": "Integrated consent-based GA4 product analytics with sanitized page paths, anonymous workflow events, advertising signals disabled, and an Account settings control. Student names, emails, IDs, repository URLs, commit SHAs, grades and feedback are excluded."
+          "type": "New",
+          "area": "Adminerva branding",
+          "text": "The supplied transparent owl and circular emblem now appear across navigation, public pages, sign-in, study-owl controls, notifications, browser icons and installed-app icons."
+        },
+        {
+          "type": "Fixed",
+          "area": "Evidence and release reliability",
+          "text": "Valid discovery, approval, reopening, withdrawal and resubmission work with up to twenty selected commits while preserving access restrictions and immutable history. Quality checks now run before updates are merged."
         }
-      ]
-    },
-    {
-      "version": "1.4.1",
-      "status": "draft",
-      "public": false,
-      "releasedAt": "2026-10-25",
-      "title": "Workflow completion and interface reliability",
-      "summary": "Completes report discussions, class-level assessment review, release announcements and teacher navigation refinements without rebuilding the 1.4.0 feature set.",
-      "changes": [
-        {
-          "type": "Fixed",
-          "area": "Reports & support",
-          "text": "Report discussions render historical comments safely instead of showing a nonzero discussion count with an empty feed."
-        },
-        {
-          "type": "Fixed",
-          "area": "Branding",
-          "text": "The shared header uses Adminerva branding rather than the notification badge, with a compact rounded brand treatment."
-        },
-        {
-          "type": "Updated",
-          "area": "Single Assessment",
-          "text": "Gradebook opens to the class-level Single Assessment workflow and includes legacy receipts alongside V2 evidence, grades and publication state."
-        },
-        {
-          "type": "Updated",
-          "area": "Bulk review",
-          "text": "Section-scoped evidence reads and indexes support authorized bulk approval/evaluation while preserving V2 evidence safeguards and individual exception review."
-        },
-        {
-          "type": "Updated",
-          "area": "Release communication",
-          "text": "Website-update push has a once-per-version announcement guard to prevent accidental duplicate release blasts."
-        },
-        {
-          "type": "Updated",
-          "area": "Navigation & analytics",
-          "text": "Repository Management navigation can collapse on desktop, teacher chrome is more compact, and analytics views share a consistent centered width."
-        },
-        {
-          "type": "Updated",
-          "area": "School administration",
-          "text": "Administration Overview surfaces support and report triage as a primary operational action."
-        }
-      ]
+      ],
+      "publishedAt": "2026-10-25T21:17:19+08:00"
     },
     {
       "version": "1.4.0",
