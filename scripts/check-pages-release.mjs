@@ -10,7 +10,7 @@ const pages=[
   ["login.html",['id="loginForm"','id="googleLoginBtn"']],
   ["wiki.html",['id="school-setup"',"teacher-accounts.html"]],
   ["manage-sections.html",['data-catalog-kind="sections"','id="catalog-roster-sections"']],
-  ["student-practice.html",['id="practiceCheckBtn"','id="practiceTransferBtn"']]
+  ["student-practice.html",['id="practiceApp"','js/student/practice-game.mjs']]
 ];
 const assets=["css/adminerva-ui.css","css/documentation.css","js/core/adminerva-nav.js","js/core/adminerva-loader.js","js/core/school-catalog.mjs","js/student/practice.js","js/student/practice-standings.mjs","js/settings/settings-security.js","js/lesson-review/library.js"];
 const digest=bytes=>createHash("sha256").update(bytes).digest("hex");
