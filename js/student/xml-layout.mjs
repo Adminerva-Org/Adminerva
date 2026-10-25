@@ -15,7 +15,7 @@ const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 export function layoutDimension(value,fallback="auto"){
   if(value==="match_parent"||value==="fill_parent")return "100%";
   if(value==="wrap_content")return "auto";
-  const match=String(value||"").match(/^(-?\d{1,4}(?:\.\d{1,2})?)(?:dp|sp|px)$/);
+  const match=String(value||"").match(/^(\d{1,4}(?:\.\d{1,2})?)(?:dp|sp|px)$/);
   return match?Math.max(-1000,Math.min(2000,Number(match[1])))+"px":fallback;
 }
 const COLORS={black:'#000000',white:'#ffffff',transparent:'#00000000',red:'#ef4444',blue:'#2563eb',green:'#16a34a',gray:'#6b7280','@android:color/white':'#ffffff','@android:color/black':'#000000','@android:color/transparent':'#00000000','@android:color/darker_gray':'#a3a3a3','@android:color/holo_blue_dark':'#0099cc','@android:color/holo_blue_light':'#33b5e5'};
@@ -25,7 +25,7 @@ export function layoutColor(value){
   return /^#(?:[a-f\d]{3}|[a-f\d]{6})$/i.test(color)?color:null;
 }
 export function compileAndroidLayout(source,Parser=globalThis.DOMParser,resources={}){
-  if(typeof source!=="string"||source.length>70000)throw Error("Use an XML layout of at most 70,000 characters.");
+  if(typeof source!=="string"||source.length>50000)throw Error("Use an XML layout of at most 50,000 characters.");
   if(/<!\s*(?:DOCTYPE|ENTITY)/i.test(source))throw Error("Document types and external entities are not supported.");
   if(!Parser)throw Error("XML parsing is unavailable in this browser.");
   const document=new Parser().parseFromString(source,'application/xml');
