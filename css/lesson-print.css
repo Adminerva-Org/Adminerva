@@ -3,6 +3,14 @@
   #printDocumentWrapper { display: none !important; }
 }
 @media print {
+  /* Chrome drops horizontal table borders when a rowspan is fragmented across
+     sheets. Use a deterministic long-bond page box and independent page-edge
+     rules so a continued session is visibly closed/opened even when the table
+     cell itself is split by the print engine. */
+  @page {
+    size: 13in 8.5in;
+    margin: 0.35in;
+  }
   html, body {
     display: block !important;
     min-height: 0 !important;
@@ -20,6 +28,28 @@
     max-width: none !important;
     height: auto !important;
     color: black !important;
+    background: white !important;
+  }
+  #printDocumentWrapper::before,
+  #printDocumentWrapper::after {
+    content: "";
+    display: block !important;
+    position: fixed !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 0 !important;
+    border-top: 1px solid #000 !important;
+    z-index: 20 !important;
+    pointer-events: none !important;
+  }
+  #printDocumentWrapper::before { top: 0 !important; }
+  #printDocumentWrapper::after { bottom: 0 !important; }
+  /* The first sheet begins with the school banner/title rather than a
+     continuation table. Keep that white header above the repeated top rule. */
+  #printHeaderBannerContainer,
+  #printHeaderBannerContainer + div {
+    position: relative !important;
+    z-index: 30 !important;
     background: white !important;
   }
   #printDocumentWrapper, #printDocumentWrapper * {
