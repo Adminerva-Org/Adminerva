@@ -776,3 +776,59 @@ body main > header[class*="mb-8"],body main > header[class*="mb-6"] {
   }
   body main > header > p:not([role="status"]) {font-size:.79rem;}
 }
+
+
+/* 1.4.6: compact progressive disclosure across Adminerva.
+   Primary actions, errors and safety/status messaging remain immediately visible. */
+.av-progressive-copy{
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:2;
+  overflow:hidden;
+  max-height:3em;
+  cursor:help;
+  transition:max-height .16s ease;
+}
+.av-progressive-copy:hover,
+.av-progressive-copy:focus,
+.av-progressive-copy.av-expanded{
+  display:block;
+  max-height:24rem;
+  overflow:auto;
+  -webkit-line-clamp:unset;
+}
+.av-progressive-copy:focus-visible{
+  outline:2px solid var(--av-primary);
+  outline-offset:3px;
+  border-radius:.35rem;
+}
+.av-inline-flag{position:relative;display:inline-flex;align-items:center;vertical-align:middle}
+.av-flag-button{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:1.65rem;height:1.65rem;min-width:1.65rem;min-height:1.65rem;
+  padding:0;border:1px solid #f0b45c;border-radius:999px;
+  background:#fff7e6;color:#9a5200;font-size:.78rem;font-weight:900;line-height:1;
+}
+.av-flag-button:hover,.av-flag-button:focus-visible{background:#ffefc6;border-color:#d99121}
+.av-flag-popover{
+  position:absolute;right:0;top:calc(100% + .45rem);z-index:210;
+  display:none;width:min(20rem,calc(100vw - 2rem));padding:.7rem .8rem;
+  border:1px solid #f0c36c;border-radius:.7rem;background:#fffaf0;color:#663c08;
+  box-shadow:0 14px 34px #2b1b071f;font-size:.78rem;line-height:1.45;
+  white-space:normal;text-transform:none;letter-spacing:normal;font-weight:500;
+}
+.av-flag-popover strong{display:block;margin-bottom:.2rem;color:#7a4300}
+.av-flag-popover a{display:inline-block;margin-top:.4rem;color:#1d4ed8;font-weight:750;text-decoration:underline;text-underline-offset:2px}
+.av-inline-flag:hover .av-flag-popover,
+.av-inline-flag:focus-within .av-flag-popover,
+.av-inline-flag.av-open .av-flag-popover{display:block}
+.av-compact-status{display:inline-flex;align-items:center;gap:.35rem;min-width:0}
+@media(max-width:640px){
+  .av-progressive-copy{max-height:2.9em}
+  .av-progressive-copy:hover:not(.av-expanded){display:-webkit-box;max-height:2.9em;-webkit-line-clamp:2;overflow:hidden}
+  .av-flag-popover{
+    position:fixed;left:12px;right:12px;top:auto;bottom:max(12px,env(safe-area-inset-bottom));
+    width:auto;max-width:none;z-index:320;font-size:.84rem;padding:.85rem;
+  }
+}
+@media(prefers-reduced-motion:reduce){.av-progressive-copy{transition:none}}
