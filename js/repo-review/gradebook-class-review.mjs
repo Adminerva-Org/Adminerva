@@ -29,8 +29,9 @@ const badge=(text,tone="slate")=>'<span class="inline-flex rounded-full px-2 py-
 function reviewUrl(studentId){const p=new URLSearchParams({section:context.section,assessment:context.taskId,student:studentId,view:"grade"});return "repofetch.html?"+p.toString();}
 function statusFor(student){
   const evidence=evidenceMap.get(student.id),grade=context.grades?.[student.id],draft=draftMap.get(student.id);
-  if(grade?.published)return {label:"Published",tone:"emerald",next:"View result"};
-  if(grade)return {label:"Graded draft",tone:"cyan",next:"Continue grading"};
+  if(grade?.published)return {label:"Published",tone:"emerald"};
+  if(grade?.reviewRequired===true)return {label:"Review needed",tone:"amber",next:"Review & grade"};
+  if(grade)return {label:"Ready to publish",tone:"cyan"};
   if(draft)return {label:"Evaluation ready",tone:"indigo",next:"Review suggestion"};
   if(evidence?.status==="approved")return {label:evidence.verifiedContributionCommits?.length?"Approved · verified":"Approved · contribution check needed",tone:evidence.verifiedContributionCommits?.length?"emerald":"amber",next:"Review & grade"};
   if(evidence?.status==="submitted")return {label:"Submitted",tone:"blue",next:"Review submission"};
@@ -46,14 +47,22 @@ function render(){
   if(!context)return;
   const tools=el("gbClassReviewTools"),isV2=Number(context.schemaVersion)===2;
   if(tools){tools.dataset.ready="true";tools.classList.toggle("hidden",document.getElementById("gbLegacyView")?.classList.contains("hidden")!==false);}
-  let submitted=0,approved=0,drafts=0,published=0,exceptions=0;
+  let submitted=0,approved=0,drafts=0,ready=0,flagged=0,published=0,exceptions=0;
   for(const student of context.students){
     const state=statusFor(student),box=document.querySelector('[data-review-state="'+CSS.escape(student.id)+'"]');
-    if(box){box.innerHTML=badge(state.label,state.tone)+'<a class="block mt-2 font-bold text-blue-700 hover:underline" href="'+reviewUrl(student.id)+'">'+state.next+' →</a>';}
+    if(box){
+      box.innerHTML=badge(state.label,state.tone)+(state.next?
+        '<a class="block mt-2 font-bold text-blue-700 hover:underline" href="'+reviewUrl(student.id)+'">'+state.next+' →</a>':'');
+    }
     const evidence=evidenceMap.get(student.id),grade=context.grades?.[student.id];
     if(evidence?.status==="submitted"||evidence?.status==="needs_review"||(!evidence&&receiptMap.has(student.id)))submitted++;
     if(evidence?.status==="approved")approved++;
-    if(grade?.published)published++; else if(grade||draftMap.has(student.id))drafts++;
+    if(grade?.published)published++;
+    else if(grade||draftMap.has(student.id)){
+      drafts++;
+      if(grade?.reviewRequired===true)flagged++;
+      else if(grade)ready++;
+    }
     if(evidence&&["reopened","withdrawn"].includes(evidence.status))exceptions++;
   }
   const gatherCandidates=isV2?context.students.filter(student=>{
@@ -65,7 +74,7 @@ function render(){
     const e=evidenceMap.get(student.id),g=context.grades?.[student.id];
     return e?.status==="approved"&&Array.isArray(e.verifiedContributionCommits)&&e.verifiedContributionCommits.length>0&&!g&&!draftMap.has(student.id);
   }):[];
-  el("gbClassReviewSummary").textContent=context.students.length+" learners · "+submitted+" awaiting review · "+approved+" approved · "+drafts+" draft/evaluation ready · "+published+" published"+(exceptions?" · "+exceptions+" exceptions":"");
+  el("gbClassReviewSummary").textContent=context.students.length+" learners · "+ready+" ready to publish · "+flagged+" need review · "+published+" published"+(submitted?" · "+submitted+" awaiting evidence review":"")+(exceptions?" · "+exceptions+" exceptions":"");
   if(el("gbForceGather")){
     el("gbForceGather").textContent=isV2?"Force gather evidence ("+gatherCandidates.length+")":"Force gather · V2 evidence only";
     el("gbForceGather").disabled=busy||!evidenceReadable||!gatherCandidates.length;

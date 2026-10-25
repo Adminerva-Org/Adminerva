@@ -36,7 +36,16 @@ function escapeHTML(str) {
 }
 
 let allStudents = [],gridEntries=[],gridSerial=0,publishBusy=false,subjectFocus=[];
-function syncPublishButton(loading=false){const button=document.getElementById("gbLegacyPublish"),eligible=publicationCandidates(gridEntries);button.disabled=loading||publishBusy||!eligible.length;button.textContent="Publish ready ("+eligible.length+")";const recovery=publicationRecovery("single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value);document.getElementById("gbLegacyRecovery").textContent=recovery?.pending.length?"Interrupted batch: "+recovery.pending.length+" pending. Reload grades and confirm Publish to try again.":"Ready drafts can be published together; flagged evaluations stay private until reviewed.";}
+function syncPublishButton(loading=false){
+  const button=document.getElementById("gbLegacyPublish"),eligible=publicationCandidates(gridEntries);
+  const flagged=gridEntries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true).length;
+  button.disabled=loading||publishBusy||!eligible.length;
+  button.textContent="Publish private drafts ("+eligible.length+")";
+  const recovery=publicationRecovery("single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value);
+  document.getElementById("gbLegacyRecovery").textContent=recovery?.pending.length?
+    "Interrupted batch: "+recovery.pending.length+" pending. Reload grades and confirm Publish to try again.":
+    eligible.length+" ready to publish"+(flagged?" · "+flagged+" flagged for manual review":"")+".";
+}
 window.openGridFeedback=(studentId,taskId)=>void openFeedbackDrawer({studentId,taskId});
 let allAssessments = [];
 
@@ -460,11 +469,21 @@ function updateAssessmentsForSection() {
 window.bulkPublishCurrentGrid=async function(){
   if(publishBusy)return;
   const eligible=publicationCandidates(gridEntries);
-  if(!eligible.length)return reviewNotice("No ready drafts are available. Flagged evaluations remain private until reviewed.");
-  if(!confirm("Publish "+eligible.length+" ready grade(s) in this section? Flagged evaluations will be skipped and remain private."))return;
+  const flagged=gridEntries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true).length;
+  if(!eligible.length)return reviewNotice(flagged?
+    "All remaining private drafts are flagged for manual review.":
+    "No private drafts are ready to publish.");
+  const message="Publish "+eligible.length+" private draft"+(eligible.length===1?"":"s")+" now?"+
+    (flagged?" "+flagged+" flagged draft"+(flagged===1?"":"s")+" will stay private for Review & Grade.":"");
+  if(!confirm(message))return;
   const context="single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value;
   publishBusy=true;syncPublishButton();
-  try{const result=await publishGradeEntries(eligible,true,{context,onProgress:value=>reviewNotice("Publishing ready grades: "+value.completed.length+" complete, "+value.pending.length+" pending.")});reviewNotice(result.pending.length?"Some grades changed or failed validation. Reload before retrying.":"Ready grades published; flagged evaluations were skipped.",Boolean(result.pending.length));}
-  catch(error){reviewNotice(error.message,true);}
+  try{
+    const result=await publishGradeEntries(eligible,true,{context,onProgress:value=>reviewNotice("Publishing private drafts: "+value.completed.length+" complete, "+value.pending.length+" pending.")});
+    reviewNotice(result.pending.length?
+      "Some drafts changed or failed validation. Reload before retrying.":
+      "Published "+result.completed.length+" private draft"+(result.completed.length===1?"":"s")+(flagged?"; "+flagged+" flagged draft"+(flagged===1?" remains":"s remain")+" private.":"."),
+      Boolean(result.pending.length));
+  }catch(error){reviewNotice(error.message,true);}
   finally{publishBusy=false;await loadGrid();syncPublishButton();}
 };
