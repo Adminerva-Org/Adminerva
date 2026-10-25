@@ -9,7 +9,7 @@ function fixture(){
   const element=()=>({value:'',innerHTML:'',textContent:'',disabled:false,children:[],appendChild(node){this.children.push(node);},classList:{add(){},remove(){},replace(){}}});
   for(const id of ['presentationPlanSelect','presentationSessionSelect','btnGenerateSlides','btnDeletePresentation','presentationSourceStatus'])nodes.set(id,element());
   const window={renderSlideBlocks(){},selectSlide(){},sanitizePresentationHtml:value=>String(value||'')};
-  const context={window,db:{},document:{addEventListener(){},getElementById:id=>nodes.get(id),createElement:element},URLSearchParams,location:{search:''},confirm:()=>true,alert(){},console:{error(){},warn(){}},lessonStarterDeck,lessonSourceChanged,doc:(_db,...parts)=>({path:parts.join('/')}),getDoc:async()=>({exists:()=>false}),getDocs:async()=>({forEach(){}})};
+  const context={window,db:{},AbortSignal,document:{addEventListener(){},getElementById:id=>nodes.get(id),createElement:element},URLSearchParams,location:{search:''},confirm:()=>true,alert(){},console:{error(){},warn(){}},lessonStarterDeck,lessonSourceChanged,doc:(_db,...parts)=>({path:parts.join('/')}),getDoc:async()=>({exists:()=>false}),getDocs:async()=>({forEach(){}})};
   const source=readFileSync('js/presentation-review/presentation-firebase.js','utf8').replace(/^import[\s\S]*?from\s+"[^"]+";\s*/gm,'');
   context.workspaceOnReady=()=>{};
   context.workspaceUid=()=>"teacher-fixture";
