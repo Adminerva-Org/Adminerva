@@ -446,9 +446,24 @@ service cloud.firestore {
           data.maxScore == get(/databases/$(database)/documents/assessments/$(data.taskId)).data.maxScore &&
           data.score >= 0 && data.score <= data.maxScore;
       }
+      function validSystemDraft(data) {
+        let evidence=getAfter(/databases/$(database)/documents/assessment_evidence/$(gradeId)).data;
+        return data.get("gradeSource","") == "system_evaluation_draft" &&
+          data.published == false && data.reviewRequired == true &&
+          data.manuallyAdjusted == false && data.studentId == evidence.studentId &&
+          data.taskId == evidence.assessmentId && evidence.status == "approved" &&
+          evidence.get("verifiedContributionCommits",[]).size() > 0 &&
+          data.gradedSha == evidence.approvedCheckpointSha &&
+          data.evidenceRevision == evidence.get("revision",0) &&
+          data.score is number && data.maxScore is number &&
+          data.maxScore == get(/databases/$(database)/documents/assessments/$(data.taskId)).data.maxScore &&
+          data.score >= 0 && data.score <= data.maxScore &&
+          data.feedback is string && data.feedback.size() >= 20 &&
+          data.get("evaluationDraft",{}).get("teacherReviewed",true) == false;
+      }
       allow read: if mayTeachSection(resource.data.get("section",null));
       allow create: if mayGrade(request.resource.data) && (!v2Grade(request.resource.data) ||
-        (request.resource.data.published == false && currentEvidence(request.resource.data)));
+        (request.resource.data.published == false && (currentEvidence(request.resource.data) || validSystemDraft(request.resource.data))));
       allow update: if mayGrade(request.resource.data) &&
         request.resource.data.studentId == resource.data.studentId && request.resource.data.taskId == resource.data.taskId &&
         request.resource.data.section == resource.data.section && (
@@ -457,7 +472,7 @@ service cloud.firestore {
          request.resource.data.taskId == resource.data.taskId &&
          ((resource.data.published == true && request.resource.data.published == false &&
            request.resource.data.diff(resource.data).affectedKeys().hasOnly(["published"])) ||
-          (resource.data.published == false && currentEvidence(request.resource.data) &&
+          (resource.data.published == false && (currentEvidence(request.resource.data) || validSystemDraft(request.resource.data)) &&
            (request.resource.data.published == false ||
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(["published"]))))));
       allow delete: if mayGrade(resource.data) && !v2Grade(resource.data);
