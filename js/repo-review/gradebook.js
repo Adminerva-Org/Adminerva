@@ -1,8 +1,8 @@
 import {feedbackSummary,inlineTask,reviewNotice} from "./review-ui.mjs?v=1.3.0";
 import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=1.3.0";
-import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.0";
+import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.1";
 import {assertGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
-import {writePublicationRevision} from "./grade-publication.mjs?v=1.3.0";
+import {writePublicationRevision} from "./grade-publication.mjs?v=1.3.1";
 /** Teacher grade administration, protected revisions and explicit publication. */
 import { db,auth } from "../core/firebase-core.js?v=1.3.0";
 import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
@@ -36,7 +36,7 @@ function escapeHTML(str) {
 }
 
 let allStudents = [],gridEntries=[],gridSerial=0,publishBusy=false,subjectFocus=[];
-function syncPublishButton(loading=false){const button=document.getElementById("gbLegacyPublish"),eligible=publicationCandidates(gridEntries);button.disabled=loading||publishBusy||!eligible.length;button.textContent="Publish ("+eligible.length+" Drafts)";const recovery=publicationRecovery("single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value);document.getElementById("gbLegacyRecovery").textContent=recovery?.pending.length?"Interrupted batch: "+recovery.pending.length+" pending. Reload grades and confirm Publish to try again.":"Only reviewed drafts are eligible for publication; V2 grades require individual teacher confirmation.";}
+function syncPublishButton(loading=false){const button=document.getElementById("gbLegacyPublish"),eligible=publicationCandidates(gridEntries);button.disabled=loading||publishBusy||!eligible.length;button.textContent="Publish ready ("+eligible.length+")";const recovery=publicationRecovery("single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value);document.getElementById("gbLegacyRecovery").textContent=recovery?.pending.length?"Interrupted batch: "+recovery.pending.length+" pending. Reload grades and confirm Publish to try again.":"Ready drafts can be published together; flagged evaluations stay private until reviewed.";}
 window.openGridFeedback=(studentId,taskId)=>void openFeedbackDrawer({studentId,taskId});
 let allAssessments = [];
 
@@ -188,14 +188,15 @@ async function loadGrid() {
         scoreBadge = '<button type="button" class="av-feedback-chip" onclick="window.openGridFeedback(\''+student.id+'\',\''+taskId+'\')"><strong>'+escapeHTML(String(grade.score))+' / '+max+'</strong><span>'+escapeHTML(feedbackSummary(grade.feedback))+'</span></button>';
 
         const isPub = grade.published || false;
-        const requiresReview = schemaVersion===2 && !isPub && (
-          grade.reviewRequired!==false || grade.manuallyAdjusted!==true ||
-          !grade.reviewedBy || !grade.teacherReviewNote
-        );
+        const requiresReview = !isPub && grade.reviewRequired===true;
         if(requiresReview){
           const reviewLink="repofetch.html?"+new URLSearchParams({section,assessment:taskId,student:student.id,view:"grade"});
-          pubToggle='<div class="flex flex-col gap-1"><span class="text-xs font-semibold text-amber-700">Private · teacher review needed</span>'+
-            '<a class="text-xs font-semibold text-indigo-700 underline" href="'+escapeHTML(reviewLink)+'">Review before publishing →</a></div>';
+          const reason=(grade.reviewReasons||[]).filter(Boolean).slice(0,3).join(" • ")||
+            "This evaluation needs teacher attention before it can be published.";
+          pubToggle='<div class="av-compact-status"><span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Private</span>'+
+            '<span class="av-inline-flag"><button type="button" class="av-flag-button" data-av-popover aria-expanded="false" aria-label="Teacher review required">!</button>'+
+            '<span class="av-flag-popover" role="tooltip"><strong>Teacher review required</strong>'+escapeHTML(reason)+
+            '<br><a href="'+escapeHTML(reviewLink)+'">Review evaluation →</a></span></span></div>';
         }else pubToggle = `
                     <label class="relative inline-flex items-center cursor-pointer">
                         <input type="checkbox" class="sr-only peer" ${isPub ? "checked" : ""} onchange="window.matrixTogglePub('${student.id}', '${taskId}', this)">
@@ -295,19 +296,10 @@ window.matrixTogglePub = async function (studentId, taskId, checkbox) {
     const gradeSnap = await getDoc(gradeRef);
     if (!gradeSnap.exists()) throw new Error("Grade does not exist.");
     const assessment=allAssessments.find(item=>item.id===taskId);
-    if(wantsPublish&&Number(assessment?.schemaVersion)===2&&(
-      gradeSnap.data().reviewRequired!==false||gradeSnap.data().manuallyAdjusted!==true||
-      !gradeSnap.data().reviewedBy||!gradeSnap.data().teacherReviewNote
-    )){
-      checkbox.checked=false;
-      alert("This is an unpublished system draft. Open Review & grade, inspect evidence, and save the teacher-reviewed score and feedback before publishing.");
-      return;
-    }
     if (wantsPublish && gradeSnap.data().reviewRequired === true) {
-      const verified = window.confirm(
-        "This draft requires teacher review. Have you checked the attributed commits, matched files, and deadline limitations before publishing?"
-      );
-      if (!verified) { checkbox.checked = false; return; }
+      checkbox.checked=false;
+      alert("This evaluation is flagged for teacher review and will stay private until the flag is resolved.");
+      return;
     }
     await runTransaction(db, async tx => {
       const latest = await tx.get(gradeRef);
@@ -468,11 +460,11 @@ function updateAssessmentsForSection() {
 window.bulkPublishCurrentGrid=async function(){
   if(publishBusy)return;
   const eligible=publicationCandidates(gridEntries);
-  if(!eligible.length)return reviewNotice("No reviewed legacy drafts are ready. V2 grades need individual publication.");
-  if(!confirm("Publish "+eligible.length+" reviewed legacy draft(s) in this section? Students will see the score and feedback."))return;
+  if(!eligible.length)return reviewNotice("No ready drafts are available. Flagged evaluations remain private until reviewed.");
+  if(!confirm("Publish "+eligible.length+" ready grade(s) in this section? Flagged evaluations will be skipped and remain private."))return;
   const context="single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value;
   publishBusy=true;syncPublishButton();
-  try{const result=await publishGradeEntries(eligible,true,{context,onProgress:value=>reviewNotice("Publishing reviewed drafts: "+value.completed.length+" complete, "+value.pending.length+" pending.")});reviewNotice(result.pending.length?"Some drafts changed or failed. Reload and review before retrying.":"Reviewed drafts published.",Boolean(result.pending.length));}
+  try{const result=await publishGradeEntries(eligible,true,{context,onProgress:value=>reviewNotice("Publishing ready grades: "+value.completed.length+" complete, "+value.pending.length+" pending.")});reviewNotice(result.pending.length?"Some grades changed or failed validation. Reload before retrying.":"Ready grades published; flagged evaluations were skipped.",Boolean(result.pending.length));}
   catch(error){reviewNotice(error.message,true);}
   finally{publishBusy=false;await loadGrid();syncPublishButton();}
 };
