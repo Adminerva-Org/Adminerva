@@ -59,6 +59,7 @@ function view(mode) {
   state.mode = mode;
   el("gbLegacyView").classList.toggle("hidden", mode !== "single");
   el("gbQuarterPanel").classList.toggle("hidden", mode !== "quarter");
+  el("gbClassReviewTools")?.classList.toggle("hidden", mode !== "single" || !el("gbClassReviewTools")?.dataset.ready);
   el("gbViewQuarter").className = "px-4 py-2 rounded-lg text-sm font-bold " +
     (mode === "quarter" ? "bg-blue-600 text-white" : "text-slate-600");
   el("gbViewSingle").className = "px-4 py-2 rounded-lg text-sm font-bold " +
