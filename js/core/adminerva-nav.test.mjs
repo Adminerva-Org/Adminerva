@@ -74,7 +74,7 @@ test('home is a direct link and switching workspaces is an explicit disclosure',
 test('educator groups lead with teaching and keep older grading tools secondary', () => {
   const { desktop } = mount('repo', 'gradebook');
   assert.deepEqual(groupNames(desktop), ['Assessment ▾', 'Review & grade ▾', 'Insights ▾']);
-  assert.ok(links(desktop.children[0]).some(link => link.href === 'gradebook.html'));
+  assert.ok(links(desktop.children[0]).some(link => link.href === 'assessment-studio.html'));
   assert.ok(links(desktop.children[1]).some(link => link.href === 'gradebook.html'));
   assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['teacher-analytics.html', 'learning-follow-up.html']);
   assert.ok(!links(desktop).some(link => link.href === 'lesson-planner.html' || link.href === 'users.html'));
@@ -89,7 +89,7 @@ test('selected task is announced once per desktop/mobile surface and page labels
   ]) {
     const { desktop, mobile, root } = mount(module, page, module.startsWith('student') ? 'student' : 'teacher');
     for (const surface of [desktop, mobile]) assert.deepEqual(links(surface).filter(link => link.attributes['aria-current'] === 'page').map(link => link.href), [route]);
-    assert.ok(root.innerHTML.includes('>' + label + '</span>'));
+    assert.match(root.innerHTML, new RegExp('av-nav-page[^>]*>' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\assert.ok(root.innerHTML.includes('>' + label + '</span>'));') + '</span>'));
     assert.equal(mobile.children[0].children[0].textContent, 'Pages · ' + label + ' ▾');
   }
 });
@@ -201,11 +201,11 @@ test('verified role refresh replaces stale navigation without multiplying global
   view.roleReady('superadmin');
   assert.deepEqual(groupNames(view.desktop), ['School setup ▾', 'Account ▾']);
   assert.ok(links(view.desktop).some(link => link.href === 'users.html'));
-  assert.match(view.root.innerHTML, /href="users.html"/);
+  assert.ok(links(view.mobile).some(link => link.href === 'users.html'));
   view.roleReady('superadmin');
   view.roleReady('teacher');
   assert.ok(!links(view.desktop).some(link => link.href === 'users.html'));
-  assert.doesNotMatch(view.root.innerHTML, /href="users.html"/);
+  assert.ok(!links(view.mobile).some(link => link.href === 'users.html'));
   assert.deepEqual(listenerCounts(), before);
   assert.equal(view.root.events.keydown.length, 1);
 });
@@ -243,6 +243,9 @@ async function checkGuard({ role = 'admin', path = '/users.html', students = [],
     localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }
   });
   await authCallback(user);
+  // onAuthStateChanged's handler deliberately returns void; flush its async
+  // account-admission continuation before asserting the resulting UI state.
+  await new Promise(resolve => setImmediate(resolve));
   return { events, nav, window, storage, cacheCalls, connectionWrites, authCallback, documentEvents };
 }
 
@@ -309,7 +312,7 @@ test('guard fallback sign-out clears credentials before calling Firebase and res
   click({ defaultPrevented: true, target: { id: 'signOutBtn' } });
   assert.equal(view.cacheCalls.length, before);
   click({ defaultPrevented: false, target: { id: 'signOutBtn' }, preventDefault() {} });
-  await Promise.resolve();
+  await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(view.cacheCalls.slice(-2), ['clear', 'signout']);
 });
 
@@ -317,7 +320,8 @@ test('navigation sign-out clears cached connection credentials before Firebase s
   const calls = [];
   const injected = source
     .replace('import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js")', 'Promise.resolve(firebaseModule)')
-    .replace('import("./connection-cache.mjs?v=1.2.0")', 'Promise.resolve(connectionModule)');
+    .replace('import("./connection-cache.mjs?v=1.3.0")', 'Promise.resolve(connectionModule)')
+    .replace('import("./push-notifications.mjs?v=1.3.8")', 'Promise.resolve({departPushAccount:async()=>{}})');
   const view = mount('repo', 'gradebook', 'teacher', false, {
     source: injected,
     firebaseModule: { getAuth: () => ({}), signOut: async () => calls.push('signout') },
