@@ -1,6 +1,14 @@
 name: Adminerva quality checks
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'firestore.rules'
+      - 'js/**'
+      - 'tests/**'
+      - '.github/workflows/adminerva-quality.yml'
   push:
     branches:
       - main
