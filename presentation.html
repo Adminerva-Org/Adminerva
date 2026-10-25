@@ -129,6 +129,10 @@
             >
               <span>➕</span> Add Slide
             </button>
+            <div class="flex gap-2" aria-label="Deck history">
+              <button id="btnDeckUndo" type="button" onclick="undoDeckChange()" title="Undo deck change · Ctrl/Cmd+Z" disabled class="px-3 py-3 sm:py-1.5 rounded border border-gray-300 text-sm font-bold text-gray-700 disabled:opacity-40">↶ Undo</button>
+              <button id="btnDeckRedo" type="button" onclick="redoDeckChange()" title="Redo deck change · Ctrl/Cmd+Shift+Z" disabled class="px-3 py-3 sm:py-1.5 rounded border border-gray-300 text-sm font-bold text-gray-700 disabled:opacity-40">↷ Redo</button>
+            </div>
           </div>
 
           <!-- Right Side: Export & Save -->
