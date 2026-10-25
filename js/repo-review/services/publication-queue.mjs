@@ -1,7 +1,7 @@
 /** Account-scoped recovery metadata; interrupted publication always needs a new confirmation. */
 export function publicationCandidates(entries,published=true) {
   return entries.filter(entry=>Boolean(entry.data.published)!==published &&
-    (!published || (entry.schemaVersion!==2 && entry.data.reviewRequired===false && typeof entry.data.score==="number" && Number.isFinite(entry.data.score) &&
+    (!published || (entry.data.reviewRequired===false && typeof entry.data.score==="number" && Number.isFinite(entry.data.score) &&
       entry.data.score>=0 && typeof (entry.data.maxScore??entry.maxScore)==="number" && Number.isFinite(entry.data.maxScore??entry.maxScore) &&
       (entry.data.maxScore??entry.maxScore)>0 && entry.data.score<=(entry.data.maxScore??entry.maxScore))));
 }
