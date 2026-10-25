@@ -4,11 +4,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - 'firestore.rules'
-      - 'js/**'
-      - 'tests/**'
-      - '.github/workflows/adminerva-quality.yml'
   push:
     branches:
       - main

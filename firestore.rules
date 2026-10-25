@@ -521,15 +521,11 @@ service cloud.firestore {
     function validTeacherEvidenceCommits(commits) {
       return commits is list && commits.size() <= 20 &&
         commits.toSet().size() == commits.size() &&
-        // The common single-commit evidence record needs one SHA check, not
-        // nineteen out-of-range checks. Firestore's 1,000-expression budget
-        // otherwise rejects valid teacher-discovered evidence creation.
-        (commits.size() <= 1 ? shaAt(commits,0) :
         shaAt(commits,0) && shaAt(commits,1) && shaAt(commits,2) && shaAt(commits,3) &&
         shaAt(commits,4) && shaAt(commits,5) && shaAt(commits,6) && shaAt(commits,7) &&
         shaAt(commits,8) && shaAt(commits,9) && shaAt(commits,10) && shaAt(commits,11) &&
         shaAt(commits,12) && shaAt(commits,13) && shaAt(commits,14) && shaAt(commits,15) &&
-        shaAt(commits,16) && shaAt(commits,17) && shaAt(commits,18) && shaAt(commits,19));
+        shaAt(commits,16) && shaAt(commits,17) && shaAt(commits,18) && shaAt(commits,19);
     }
     function validEvidenceCommits(commits) {
       return validTeacherEvidenceCommits(commits) && commits.size() > 0;
@@ -559,10 +555,25 @@ service cloud.firestore {
         request.resource.data.updatedAt == request.time;
     }
 
+    // Evidence needs both student and assessment scope. Check the role once
+    // rather than repeat it through mayTeachStudent and mayTeachAssessment.
+    function teacherEvidenceScope(studentId,assessmentId) {
+      let section = get(/databases/$(database)/documents/students/$(studentId)).data.section;
+      let assessment = get(/databases/$(database)/documents/assessments/$(assessmentId)).data;
+      let sections = teacherSections();
+      return section is string && section in sections &&
+        (assessment.get("ownerUid","") == request.auth.uid ||
+          assessment.get("sectionIds",[]).hasAny(sections));
+    }
+    function mayTeachEvidence(studentId,assessmentId) {
+      return isAdmin() || (isTeacher() && studentId is string &&
+        teacherEvidenceScope(studentId,assessmentId));
+    }
+
     function instructorEvidenceChange(evidenceId) {
       let before = resource.data;
       let after = request.resource.data;
-      return mayTeachStudent(before.studentId) && mayTeachAssessment(before.assessmentId) && evidenceAudit(evidenceId) && (
+      return mayTeachEvidence(before.studentId,before.assessmentId) && evidenceAudit(evidenceId) && (
         (before.status in ["submitted","needs_review","approved"] && after.status == "approved" &&
          (before.status != "approved" ||
           !exists(/databases/$(database)/documents/student_grades/$(evidenceId)) ||
@@ -591,9 +602,11 @@ service cloud.firestore {
       allow get: if isInstructor() && !exists(/databases/$(database)/documents/assessment_evidence/$(evidenceId));
       allow read: if mayTeachSection(resource.data.section);
       allow read: if signedIn() && ownsStudentProfile(resource.data.studentId);
-      allow create: if ownV2Evidence(request.resource.data) &&
-        request.resource.data.keys().hasOnly(["studentId","assessmentId","section","repository",
+      // Audited updates use set() and include revision/teacher metadata. Reject
+      // their create alternative before spending the evidence validation budget.
+      allow create: if request.resource.data.keys().hasOnly(["studentId","assessmentId","section","repository",
           "selectedCommits","checkpointSha","status","submittedAt","updatedAt"]) &&
+        ownV2Evidence(request.resource.data) &&
         request.resource.data.status == "submitted" &&
         evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId &&
         request.resource.data.submittedAt == request.time &&
@@ -611,7 +624,7 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["selectedCommits","checkpointSha","status","submittedAt","updatedAt","revision"]);
       allow update: if instructorEvidenceChange(evidenceId);
-      allow create: if mayTeachStudent(request.resource.data.studentId) && mayTeachAssessment(request.resource.data.assessmentId) && request.resource.data.keys().hasOnly([
+      allow create: if mayTeachEvidence(request.resource.data.studentId,request.resource.data.assessmentId) && request.resource.data.keys().hasOnly([
         "studentId","assessmentId","section","repository","selectedCommits","checkpointSha",
         "status","source","discoveredBy","recordedAt","updatedAt","discoveryCutoff","discoveryNote"]) &&
         evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId &&

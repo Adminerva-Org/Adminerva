@@ -43,13 +43,13 @@ test('target paths and expected extensions filter shared-repo content',()=>{
 test('AI suggestions validate score bounds and total per criterion',()=>{
   const criteria=parseWeightedRubric(assignment.evalCriteria,20);
   const response={criteria:[4,5,3,5].map(score=>({
-    status:'supported',score,pendingPoints:0,confidence:'moderate',evidence:[],
-    rationale:'Source evidence supports this criterion, subject to teacher review.'
+    status:'supported',score,pendingPoints:0,rationale:'Source evidence supports this criterion, subject to teacher review.'
   })),feedback:'XML layout evidence demonstrates screens but execution was not verified.',
   limitations:'Confirm on-device layout and contribution attribution.'};
   const result=parseSuggestedRubric(response,criteria,20);
   assert.equal(result.score,17);
   assert.equal(result.criteria.length,4);
+  assert.throws(()=>parseSuggestedRubric({...response,criteria:response.criteria.map(({status,...row})=>row)},criteria,20),/evidence status/);
   assert.throws(()=>parseSuggestedRubric({...response,
     criteria:response.criteria.map((c,i)=>i===0?{...c,score:6}:c)},criteria,20),/invalid score/);
   assert.throws(()=>parseSuggestedRubric({...response,criteria:response.criteria.slice(0,3)},criteria,20),/number/);
@@ -59,15 +59,15 @@ test('AI suggestions validate score bounds and total per criterion',()=>{
 test('prompt explicitly restricts sources to approved checkpoint and does not claim runtime verification',()=>{
   const prompt=buildRubricPrompt({assessment:assignment,
     criteria:parseWeightedRubric(assignment.evalCriteria,20),
-    checkpointSha:A,files:[{path:XML,text:'<TextView/>'}],
-    patches:[{sha:A,path:XML,patch:'@@ +1 @@'}]});
+    checkpointSha:A,files:[{path:XML,text:'<TextView/>',primary:true,studentChanged:true}],
+    patches:[{sha:A,path:XML,patch:'@@ +1 @@',primary:true,substantive:true}]});
   assert.match(prompt,new RegExp(A));
   assert.match(prompt,/Never give this student credit merely because shared code exists/);
-  assert.match(prompt,/Do not assert that the app compiles, runs/);
+  assert.match(prompt,/Do not assert that the app compiles, runs, navigates correctly/);
   assert.match(prompt,/UI Completeness/);
 });
 
-test('loads only selected XML at immutable approved SHA, not repository HEAD',async()=>{
+test('loads assessed XML and verified supporting implementation at the immutable approved SHA',async()=>{
   const requests=[];
   const fetchImpl=async url=>{
     requests.push(url);
@@ -92,9 +92,10 @@ test('loads only selected XML at immutable approved SHA, not repository HEAD',as
     repository:'https://github.com/example/android',selectedCommits:[A],verifiedContributionCommits:[A],
     checkpointSha:A,assessment:assignment,fetchImpl
   });
-  assert.ok(result.files.some(f=>f.path===XML&&f.primary));
-  assert.ok(result.files.some(f=>f.path==='app/src/main/java/MainActivity.java'&&!f.primary));
-  assert.equal(result.patches.length,2); // XML primary and related Java support remain distinct verified patches.
+  assert.deepEqual(result.files.map(f=>f.path),[XML,'app/src/main/java/MainActivity.java']);
+  assert.deepEqual(result.files.filter(f=>f.primary).map(f=>f.path),[XML]);
+  assert.ok(result.files.every(f=>f.studentChanged));
+  assert.equal(result.patches.length,2);
   assert.equal(result.checkpointSha,A);
   assert.ok(requests.every(u=>!u.includes('/heads/main')&&!u.includes('?ref=main')));
   assert.ok(requests.some(u=>u.includes('?ref='+A)));
@@ -122,31 +123,34 @@ test('incomplete GitHub commit file lists stop scoring instead of silently omitt
 
 test('contributing student is evaluated on verified responsibilities, not all group screens',()=>{
   const prompt=buildRubricPrompt({assessment:assignment,criteria:parseWeightedRubric(assignment.evalCriteria,20),
-    checkpointSha:A,files:[{path:XML,text:'<TextView/>'}],
-    patches:[{sha:A,path:XML,patch:'+<TextView/>'}],contributionScope:'Student implements the welcome screen; other members implement the remaining screens.'});
+    checkpointSha:A,files:[{path:XML,text:'<TextView/>',primary:true,studentChanged:true}],
+    patches:[{sha:A,path:XML,patch:'+<TextView/>',primary:true,substantive:true}],contributionScope:'Student implements the welcome screen; other members implement the remaining screens.'});
   assert.match(prompt,/Do not deduct points from this student because teammate screens or group features are missing/);
   assert.match(prompt,/Student implements the welcome screen/);
-  assert.match(prompt,/responsible for at least one individually assigned screen/);
+  assert.match(prompt,/each student is responsible for at least one individually assigned screen/);
   assert.match(prompt,/Missing evidence is not an automatic zero/);
-  assert.match(prompt,/Score only this student's verified substantive changes/);
+  assert.match(prompt,/Never silently reweight a rubric criterion/);
 });
 
-test('unresolved criteria stay unscored; project completeness does not alter individual scores',()=>{
+test('unresolved criteria disclose pending points while supported individual scores are retained',()=>{
   const criteria=parseWeightedRubric(assignment.evalCriteria,20);
   const evidence={patches:[{sha:A,path:XML,substantive:true}]};
-  const response={criteria:criteria.map(()=>({status:'supported',score:5,pendingPoints:0,
+  const response={criteria:criteria.map(()=>({status:'supported',score:5,
     evidence:[{sha:A,path:XML}],rationale:'Verified welcome-screen work meets the assigned individual responsibility.'})),
     feedback:'The assigned welcome screen is demonstrated. Teacher must check runtime and visual quality.',
     projectObservations:'Only one of three group screens exists; two teammates have not submitted.'};
   assert.equal(parseSuggestedRubric(response,criteria,20,evidence).score,20);
   const partial={...response,criteria:response.criteria.map((row,index)=>index===2?
     {status:'needs_teacher_review',score:null,pendingPoints:5,rationale:'Visual quality requires direct inspection by the instructor.'}:row)};
-  const proposal=parseSuggestedRubric(partial,criteria,20,evidence);
-  assert.equal(proposal.score,15);
-  assert.equal(proposal.pendingPoints,5);
-  assert.equal(proposal.pendingCriteria,1);
+  const result=parseSuggestedRubric(partial,criteria,20,evidence);
+  assert.equal(result.score,15);
+  assert.equal(result.pendingPoints,5);
+  assert.equal(result.potentialScore,20);
+  assert.equal(result.criteria[2].score,null);
   assert.throws(()=>parseSuggestedRubric({...partial,criteria:partial.criteria.map((row,index)=>index===2?
-    {...row,score:0}:row)},criteria,20,evidence),/fully unresolved criterion/);
+    {...row,pendingPoints:0}:row)},criteria,20,evidence),/identify points still pending/);
+  assert.throws(()=>parseSuggestedRubric({...partial,criteria:partial.criteria.map((row,index)=>index===2?
+    {...row,score:0}:row)},criteria,20,evidence),/must not invent supported points/);
   assert.throws(()=>parseSuggestedRubric(response,criteria,20,{patches:[]}),/verified substantive/);
   assert.throws(()=>parseSuggestedRubric(response,criteria,20,{patches:[{sha:B,path:XML,substantive:true}]}),/verified substantive/);
   assert.throws(()=>parseSuggestedRubric(response,criteria,20,{patches:[{sha:A,path:XML,substantive:false}]}),/verified substantive/);
@@ -182,16 +186,19 @@ test('merge and formatting-only commits cannot borrow shared implementation cred
   const options={repository:'https://github.com/example/android',selectedCommits:[A],
     verifiedContributionCommits:[A],checkpointSha:A,assessment:assignment};
   const response=data=>({ok:true,json:async()=>data});
-  // Merge-only evidence may produce provisional context, but cannot be credited
-  // as verified individual substantive work without teacher confirmation.
-  const merged=await loadPinnedV2Source({...options,fetchImpl:async url=>{
-    if(url.includes('/commits/'))return response({parents:[{},{}],files:[{filename:XML,status:'modified',patch:'+<TextView/>'}]});
+  const merge=await loadPinnedV2Source({...options,fetchImpl:async url=>{
+    if(url.includes('/commits/'))return response({parents:[{sha:A},{sha:B}],files:[{filename:XML,status:'modified',patch:'+<TextView/>'}]});
     if(url.includes('/git/trees/'))return response({tree:[{path:XML,type:'blob'}]});
     if(url.includes('/contents/'))return response({type:'file',encoding:'base64',content:Buffer.from('<TextView/>').toString('base64')});
     throw Error('Unexpected request '+url);
   }});
-  assert.deepEqual(merged.excludedMergeCommits,[A]);
-  assert.ok(merged.patches.every(patch=>patch.mergeContext&&patch.substantive===false));
+  assert.deepEqual(merge.excludedMergeCommits,[A]);
+  assert.equal(merge.patches.length,1);
+  assert.equal(merge.patches[0].mergeContext,true);
+  assert.equal(merge.patches[0].substantive,false);
+  const criteria=parseWeightedRubric(assignment.evalCriteria,20);
+  const suggestion={criteria:criteria.map(()=>({status:'supported',score:5,evidence:[{sha:A,path:XML}],rationale:'This shared layout exists at the checkpoint.'})),feedback:'A shared layout was inspected, with individual attribution still pending.'};
+  assert.throws(()=>parseSuggestedRubric(suggestion,criteria,20,merge),/verified substantive/);
   await assert.rejects(loadPinnedV2Source({...options,fetchImpl:async()=>({ok:true,json:async()=>({files:[{
     filename:XML,patch:'-<TextView/>\n+  <TextView/>'}]})})}),/No verified substantive primary screen change/);
 });

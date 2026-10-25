@@ -579,12 +579,49 @@ test('twenty selected commits can be submitted, audited and approved within rule
   await assertSucceeds(auditedEvidence(staff,approval(),{actor:'staff'}));
 });
 
-test('student cannot alter discovered evidence until instructor reopening; reopened discovery permits withdrawal and resubmission',async()=>{
+test('discovered evidence requires verified staff access to both the student and assessment',async()=>{
+  const email='limited.teacher@example.edu',repository='https://github.com/example/project';
+  const limited=client('limited',email);
+  const record={studentId:'alice',assessmentId:'v2',section:'11-A',repository,
+    selectedCommits:[SHA],checkpointSha:SHA,status:'needs_review',source:'teacher_discovered',
+    discoveredBy:'limited',recordedAt:serverTimestamp(),updatedAt:serverTimestamp()};
+  await env.withSecurityRulesDisabled(async ctx=>{
+    const db=ctx.firestore();
+    await setDoc(doc(db,'staff_access',email),{email,role:'teacher',status:'active',sections:['11-A']});
+    await updateDoc(doc(db,'students','alice'),{repoUrl:repository});
+    await updateDoc(doc(db,'assessments','v2'),{ownerUid:'other',sectionIds:['11-B']});
+  });
+  // Student scope alone does not grant assessment scope.
+  await assertFails(setDoc(doc(limited,'assessment_evidence','alice_v2'),record));
+  await env.withSecurityRulesDisabled(async ctx=>{
+    await updateDoc(doc(ctx.firestore(),'assessments','v2'),{ownerUid:'limited',sectionIds:[]});
+    await updateDoc(doc(ctx.firestore(),'students','alice'),{section:'11-B'});
+  });
+  // Assessment ownership does not grant access to another teacher's student.
+  await assertFails(setDoc(doc(limited,'assessment_evidence','alice_v2'),{...record,section:'11-B'}));
+  await env.withSecurityRulesDisabled(ctx=>updateDoc(doc(ctx.firestore(),'students','alice'),{section:'11-A'}));
+  const unverified=env.authenticatedContext('limited',{email,email_verified:false}).firestore();
+  for(const db of [unverified,client('alice',EMAIL_A),env.unauthenticatedContext().firestore()]){
+    await assertFails(setDoc(doc(db,'assessment_evidence','alice_v2'),record));
+  }
+  for(const selectedCommits of [[SHA,123],[SHA,'invalid'],[SHA,SHA],Array(21).fill(SHA)]){
+    await assertFails(setDoc(doc(limited,'assessment_evidence','alice_v2'),{...record,selectedCommits}));
+  }
+  await assertSucceeds(setDoc(doc(limited,'assessment_evidence','alice_v2'),record));
+  await env.withSecurityRulesDisabled(ctx=>updateDoc(doc(ctx.firestore(),'assessments','v2'),{ownerUid:'other',sectionIds:['11-B']}));
+  const approve={...approval(),reviewedBy:'limited'};
+  await assertFails(auditedEvidence(limited,approve,{actor:'limited'}));
+  await env.withSecurityRulesDisabled(ctx=>updateDoc(doc(ctx.firestore(),'assessments','v2'),{sectionIds:['11-A']}));
+  await assertSucceeds(auditedEvidence(limited,approve,{actor:'limited'}));
+});
+
+for(const commitCount of [1,20]) test(`student cannot alter discovered evidence until instructor reopening; reopened discovery permits withdrawal and resubmission (${commitCount} commits)`,async()=>{
   const alice=client('alice',EMAIL_A),staff=client('staff',TEACHER);
   const repository='https://github.com/example/project';
+  const selectedCommits=[SHA,...Array.from({length:commitCount-1},(_,index)=>(index+1).toString(16).padStart(40,'0'))];
   await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'students','alice'),{email:EMAIL_A,section:'11-A',repoUrl:repository}));
   await assertSucceeds(setDoc(doc(staff,'assessment_evidence','alice_v2'),{
-    studentId:'alice',assessmentId:'v2',section:'11-A',repository,selectedCommits:[SHA],checkpointSha:SHA,
+    studentId:'alice',assessmentId:'v2',section:'11-A',repository,selectedCommits,checkpointSha:SHA,
     status:'needs_review',source:'teacher_discovered',discoveredBy:'staff',recordedAt:serverTimestamp(),updatedAt:serverTimestamp()}));
   await assertFails(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
   await assertSucceeds(auditedEvidence(staff,approval(),{actor:'staff'}));
@@ -592,6 +629,10 @@ test('student cannot alter discovered evidence until instructor reopening; reope
     reopenedBy:'staff',reopenedAt:serverTimestamp(),reopenReason:'Allow student to correct discovered evidence.'},{actor:'staff'}));
   await assertSucceeds(auditedEvidence(alice,{status:'withdrawn'}));
   await assertSucceeds(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
+  const evidence=(await getDoc(doc(alice,'assessment_evidence','alice_v2'))).data();
+  assert.equal(evidence.status,'submitted');
+  assert.equal(evidence.revision,4);
+  assert.deepEqual(evidence.selectedCommits,selectedCommits);
 });
 test('reclaim is initially pending, owner-private and can only be withdrawn by claimant',async()=>{
   const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B),staff=client('staff',TEACHER);

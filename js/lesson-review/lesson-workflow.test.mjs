@@ -99,5 +99,17 @@ test("loading another subject never changes the saved lesson identity",()=>{
   assert.ok(save.includes('const subject = window.currentPlanSubject ||'));
   assert.ok(save.includes('const teacher = window.currentPlanTeacher ||'));
   assert.ok(generation.includes('window.currentPlanSubject = subject;'));
-  assert.ok(generation.includes('lessonStorage.getItem("Adminerva_defaultSubject")'));
+  const selectedSubject=generation.match(/^const selectedSubject=.*;$/m)?.[0];
+  const blankStart=generation.indexOf("window.generateBlankPlan = function ()");
+  assert.ok(selectedSubject && blankStart>0);
+  const subject={value:"Selected Subject"};
+  const blankContext={window:{renderOverview(){},renderOutput(){}},
+    document:{getElementById:id=>id==="lpSubject"?subject:id==="lpGradeLevel"?{value:"Grade 11"}:null},
+    lessonStorage:{getItem:key=>key==="Adminerva_defaultSubject"?"Default Subject":null}};
+  vm.runInNewContext(selectedSubject+"\n"+generation.slice(blankStart),blankContext);
+  blankContext.window.generateBlankPlan();
+  assert.equal(blankContext.window.currentPlanSubject,"Selected Subject");
+  subject.value="";
+  blankContext.window.generateBlankPlan();
+  assert.equal(blankContext.window.currentPlanSubject,"Default Subject");
 });

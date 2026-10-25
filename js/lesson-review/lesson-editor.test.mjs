@@ -47,6 +47,7 @@ test("older saved lessons can render without a weekly overview",()=>{
  for(const key of ["lpSchoolYear","lpAcademicTerm","lpCourseWeek","lpDateRange","lpCustomInstructions","lpGradeLevel"]){
    fields.set(key,{value:"",options:[],appendChild(){},});
  }
+ const statuses=[];
  const context={
    window:{currentPlan:[],currentWeeklyOverview:null,renderOverview(){},renderOutput(){},closeLoadPlanModal(){}},
    document:{
@@ -55,7 +56,8 @@ test("older saved lessons can render without a weekly overview",()=>{
      querySelector:()=>null,
      createElement:()=>({value:"",textContent:""})
    },
-   lessonStorage:{setItem(){},getItem(){return null;}},alert(){},savedLessonSettings,lessonDraftStatus(){}
+   lessonStorage:{setItem(){},getItem(){return null;}},alert(){},savedLessonSettings,
+   lessonDraftDirty:false,lessonDraftStatus:(...args)=>statuses.push(args)
  };
  context.workspaceUid=()=>"teacher-fixture";
  vm.runInNewContext(code,context);
@@ -64,6 +66,8 @@ test("older saved lessons can render without a weekly overview",()=>{
  }));
  assert.equal(context.window.currentWeeklyOverview.topic,"");
  assert.equal(context.window.currentPlan.length,1);
+ assert.equal(context.lessonDraftDirty,false);
+ assert.equal(statuses.at(-1)[0],"Saved plan");
 });
 test("lesson generation schema requests school-required session fields",()=>{
  const ai=fs.readFileSync("js/lesson-review/ai-engine.js","utf8");
