@@ -357,12 +357,23 @@ export async function loadPinnedV2Source({
   const excludedMergeCommits=[];
   const androidUi=isAndroidUiAssessment(assessment);
   for(const sha of verifiedContributionCommits){
-    const detail=await request("/commits/"+encodeURIComponent(sha)+"?per_page=100");
+    // GitHub paginates a commit's changed-file list. A 100-file first page
+    // is not proof that the commit is incomplete; fetch subsequent pages.
+    const commitFiles=[];
+    let detail=null,finished=false;
+    for(let page=1;page<=30;page++){
+      const portion=await request("/commits/"+encodeURIComponent(sha)+"?per_page=100&page="+page);
+      if(!Array.isArray(portion.files))
+        throw Error("GitHub returned an incomplete changed-file list for commit "+sha.slice(0,12)+".");
+      if(page===1)detail=portion;
+      commitFiles.push(...portion.files);
+      if(portion.files.length<100){finished=true;break;}
+    }
+    if(!finished)
+      throw Error("Commit "+sha.slice(0,12)+" exceeds GitHub's 3,000-file retrieval limit; review the evidence manually.");
     const isMerge=detail.parents?.length>1;
     if(isMerge)excludedMergeCommits.push(sha);
-    if(!Array.isArray(detail.files)||detail.files.length>=100)
-      throw Error("A selected commit's file list is incomplete or too large for safe evaluation. Use the evidence section.");
-    for(const file of detail.files){
+    for(const file of commitFiles){
       if(!file||typeof file.filename!=="string"||file.status==="removed")continue;
       const primary=relevantAssessmentFile(file.filename,assessment);
       const support=androidUi?androidSupportKind(file.filename):null;
