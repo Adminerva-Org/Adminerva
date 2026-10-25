@@ -437,14 +437,26 @@ service cloud.firestore {
       }
       function currentEvidence(data) {
         let evidence = getAfter(/databases/$(database)/documents/assessment_evidence/$(gradeId)).data;
+        let teacherReviewed = data.manuallyAdjusted == true &&
+          data.reviewRequired == false &&
+          data.reviewedBy is string && data.teacherReviewNote is string &&
+          data.teacherReviewNote.size() > 0;
+        let systemReady = data.manuallyAdjusted == false &&
+          data.reviewRequired == false &&
+          data.get("gradeSource","") == "system_evaluation_draft" &&
+          data.get("reviewPriority","") == "ready_to_publish" &&
+          data.get("reviewReasons",[]) is list &&
+          data.get("reviewReasons",[]).size() == 0 &&
+          data.get("evaluationDraft",{}) is map &&
+          data.get("evaluationDraft",{}).get("teacherReviewed",true) == false &&
+          data.feedback is string && data.feedback.size() >= 20;
         return evidence.status == "approved" && data.studentId == evidence.studentId &&
           data.taskId == evidence.assessmentId && data.gradedSha == evidence.approvedCheckpointSha &&
           data.evidenceRevision == evidence.get("revision",0) &&
-          data.manuallyAdjusted == true && data.reviewRequired == false &&
-          data.reviewedBy is string && data.teacherReviewNote is string &&
-          data.teacherReviewNote.size() > 0 && data.score is number && data.maxScore is number &&
+          data.score is number && data.maxScore is number &&
           data.maxScore == get(/databases/$(database)/documents/assessments/$(data.taskId)).data.maxScore &&
-          data.score >= 0 && data.score <= data.maxScore;
+          data.score >= 0 && data.score <= data.maxScore &&
+          (teacherReviewed || systemReady);
       }
       function validSystemDraft(data) {
         let evidence=getAfter(/databases/$(database)/documents/assessment_evidence/$(gradeId)).data;
