@@ -1,6 +1,6 @@
 import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.3.0";
-import { printLesson } from "./lesson-print.mjs?v=1.4.18";
-import {exportLessonToGoogleDocs,buildGoogleDocsSource} from "./google-docs-export.mjs?v=1.4.18";
+import { printLesson } from "./lesson-print.mjs?v=1.4.20";
+import {exportLessonToGoogleDocs,buildGoogleDocsSource} from "./google-docs-export.mjs?v=1.4.20";
 /** School-format lesson document construction and export. */
 import {
   doc,
@@ -248,10 +248,21 @@ window.buildDocumentLayout = async function () {
 
       const isFirst = pIndex === 0;
       const isLast = pIndex === rowCount - 1;
+      tr.className = "print-session-row " +
+        (isFirst ? "print-session-start " : "") +
+        (isLast ? "print-session-end" : "");
+      tr.dataset.sessionIndex = String(index);
+      tr.dataset.sessionPosition = isFirst ? "start" : isLast ? "end" : "middle";
 
+      // Time Frame and Learning Experiences are separate rows only so long
+      // sessions can continue naturally across pages. Visually they remain one
+      // session block: no horizontal rule until the session ends.
+      const sessionEdge = (isFirst ? " border-top:1px solid #000 !important;" : " border-top:none !important;") +
+        (isLast ? " border-bottom:1px solid #000 !important;" : " border-bottom:none !important;");
       let timeStyle =
-        "text-align: center; font-weight: bold; vertical-align: top; font-size: 10pt; padding: 6px;";
-      let contentStyle = "vertical-align: top; font-size: 10pt; padding: 6px;";
+        "text-align: center; font-weight: bold; vertical-align: top; font-size: 10pt; padding: 6px;" + sessionEdge;
+      let contentStyle =
+        "vertical-align: top; font-size: 10pt; padding: 6px;" + sessionEdge;
 
       if (pIndex === 0) {
         if (isFlex) {
