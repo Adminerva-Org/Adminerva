@@ -39,7 +39,8 @@ function workspace(evidence){
     collection:(_db,name)=>({path:name}),doc:(_db,...parts)=>({path:parts.join('/'),id:parts.at(-1)}),
     getDoc:async ref=>snapshot(ref),getDocs:async()=>({docs:[]}),query:()=>{},where:()=>{},
     serverTimestamp:()=>1234,runTransaction:async(_db,callback)=>callback({get:async ref=>snapshot(ref),set:(ref,data)=>writes.push({ref,data})}),
-    CustomEvent:class {constructor(type){this.type=type;}},localStorage:{getItem:()=>null},alert:()=>{},confirm:()=>true};
+    CustomEvent:class {constructor(type){this.type=type;}},localStorage:{getItem:()=>null},alert:()=>{},confirm:()=>true,
+    evaluateVerifiedEvidence:async()=>({parsed:{},mode:"single",chunkCount:0})};
   const source=readFileSync('js/repo-review/manual-review.mjs','utf8').replace(/^import[\s\S]*?from\s+"[^"]+";\s*/gm,'');
   context.renderFeedbackMarkdown=(container,value)=>{container.textContent=value;};
   vm.runInNewContext(source+';window.fixtureState=state;',context);
@@ -54,12 +55,11 @@ test('unchanged evidence snapshots do not strand a running evaluation; manual ca
     const page=workspace(approved);await page.open();let finish,expire,serviceFinish;
     page.context.localStorage={getItem:key=>key==='Adminerva_gemini_token'?'synthetic-evaluation-key':null};
     page.context.schoolAIStatus=async()=>({configured:false,model:'gemini-3.8-flash',capabilities:{}});
-    page.context.generateSchoolContent=cancel==="timeout"
-      ?(_payload,{signal})=>new Promise((resolve,reject)=>{serviceFinish=resolve;signal.addEventListener("abort",()=>reject(Error("aborted")),{once:true});})
-      :async()=>({});
+    page.context.evaluateVerifiedEvidence=cancel==="timeout"
+      ?({signal})=>new Promise((resolve,reject)=>{serviceFinish=()=>resolve({parsed:{},mode:"single",chunkCount:0});signal.addEventListener("abort",()=>reject(Error("aborted")),{once:true});})
+      :async()=>({parsed:{},mode:"single",chunkCount:0});
     page.context.parseWeightedRubric=()=>[];
     page.context.loadPinnedV2Source=()=>new Promise(resolve=>{finish=resolve;});
-    page.context.buildRubricPrompt=()=>'';page.context.buildRubricResponseSchema=()=>({});page.context.evaluationJSON=async()=>({});
     page.context.parseSuggestedRubric=()=>({criteria:[],score:15,pendingPoints:0,potentialScore:15,feedback:'Draft feedback'});
     if(cancel==="timeout"){page.context.setTimeout=callback=>{expire=callback;return 1;};page.context.clearTimeout=()=>{};}
     const operation=page.context.generateAIDraft();
