@@ -1,0 +1,116 @@
+/* Adminerva home-page motion system: static first, enhanced when supported. */
+@view-transition {navigation:auto}
+@media (prefers-reduced-motion:no-preference) {
+  ::view-transition-old(root) {animation:av-home-page-out .12s ease-in both}
+  ::view-transition-new(root) {animation:av-home-page-in .22s ease-out both}
+}
+@keyframes av-home-page-out {to{opacity:.9}}
+@keyframes av-home-page-in {from{opacity:.93}to{opacity:1}}
+.av-home-motion{--av-motion-scroll:0px;overflow-x:clip}
+.av-home-motion .av-motion-hero{position:relative;isolation:isolate}
+.av-home-motion .av-motion-hero > :not(.av-motion-ambient):not(.av-motion-art) {position:relative;z-index:1}
+.av-home-motion .av-motion-ambient{position:absolute;inset:0;overflow:hidden;pointer-events:none;border-radius:inherit}
+.av-home-motion .av-motion-ambient::before,.av-home-motion .av-motion-ambient::after{
+  content:"";position:absolute;border-radius:50%;border:1px solid #82b8da66;
+  width:12rem;aspect-ratio:1;right:-4.5rem;top:-5rem;background:radial-gradient(circle,#b6e8ef55,transparent 72%);
+}
+.av-home-motion .av-motion-ambient::after{width:7rem;right:3rem;top:auto;bottom:-4rem;border-color:#7c91ed55;background:radial-gradient(circle,#c8d1ff66,transparent 72%)}
+.av-home-motion[data-home-motion="quiet"] .av-motion-ambient::before,
+.av-home-motion[data-home-motion="quiet"] .av-motion-ambient::after{opacity:.3}
+.av-home-motion .av-motion-reveal{min-width:0}
+.av-home-motion.av-motion-active .av-motion-reveal:not(.is-visible){opacity:0;transform:translate3d(0,14px,0)}
+.av-home-motion.av-motion-active .av-motion-reveal.is-visible{animation:av-home-reveal .44s cubic-bezier(.2,.7,.25,1) both;animation-delay:calc(var(--av-motion-index,0) * 40ms)}
+@keyframes av-home-reveal {from{opacity:.25;transform:translate3d(0,14px,0)}to{opacity:1;transform:translate3d(0,0,0)}}
+@media(hover:hover) and (prefers-reduced-motion:no-preference){
+  .av-home-motion :is(a.av-home-task,a.av-learning-card,.av-setup-steps a,nav[aria-label="Administration workspaces"] a) {
+    transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease;
+  }
+  .av-home-motion :is(a.av-home-task,a.av-learning-card,.av-setup-steps a,nav[aria-label="Administration workspaces"] a):hover{
+    transform:translate3d(0,-4px,0);box-shadow:0 12px 26px #1734581a;
+  }
+  .av-home-motion[data-home-motion="quiet"] nav[aria-label="Administration workspaces"] a:hover{transform:translate3d(0,-2px,0)}
+}
+/* The public overview card uses small floating accents, never obstructing its content. */
+.av-home-motion .av-public-preview{position:relative;isolation:isolate;overflow:hidden}
+.av-home-motion .av-public-preview > :not(.av-motion-public-sparks){position:relative;z-index:1}
+.av-motion-public-sparks{position:absolute;inset:0;z-index:0;pointer-events:none}
+.av-motion-public-sparks span{position:absolute;display:block;border-radius:50%;background:#56c6d57a}
+.av-motion-public-sparks span:nth-child(1){width:5rem;height:5rem;right:-1.7rem;top:-1.3rem;animation:av-home-drift 9s ease-in-out infinite}
+.av-motion-public-sparks span:nth-child(2){width:2rem;height:2rem;right:4.2rem;top:1rem;background:#8da3ed66;animation:av-home-drift 7s ease-in-out -2s infinite}
+.av-motion-public-sparks span:nth-child(3){width:1rem;height:1rem;left:1rem;bottom:1rem;background:#39abc383;animation:av-home-drift 8s ease-in-out -3s infinite}
+@keyframes av-home-drift{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(0,-8px,0)}}
+/* Guest homepage: connected visual forms reflect Code, Practice, and Layout. */
+.av-documentation[data-home-motion="expressive"] .av-guest-motion-hero{
+  display:grid;grid-template-columns:minmax(0,1fr) minmax(15rem,.83fr);gap:1rem;
+  align-items:center;min-width:0;padding:clamp(1.2rem,3.4vw,2.5rem);
+  background:radial-gradient(ellipse at 88% 18%,#1f7293 0,transparent 48%),linear-gradient(130deg,#102a47,#123854 53%,#123b50);
+  overflow:hidden;
+}
+.av-guest-motion-hero .av-motion-hero-copy{position:relative;z-index:1;min-width:0}
+.av-guest-motion-hero .av-motion-hero-copy > :where(h1,p){max-width:34rem}
+.av-guest-motion-hero .av-motion-art{
+  position:relative;z-index:0;min-width:0;height:238px;
+  transform:translate3d(0,var(--av-motion-scroll),0);will-change:transform;
+  pointer-events:none;isolation:isolate;
+}
+.av-motion-art .av-motion-track{position:absolute;inset:17% 5%;border:1px dashed #9ce8f166;border-radius:50%;transform:rotate(-15deg)}
+.av-motion-art .av-motion-track::after{content:"";position:absolute;inset:17%;border:1px solid #86cde34d;border-radius:50%}
+.av-motion-art .av-motion-center{
+  position:absolute;left:calc(50% - 29px);top:calc(50% - 29px);
+  width:58px;height:58px;border-radius:18px;display:grid;place-items:center;
+  background:linear-gradient(145deg,#9eece9,#77abd9);border:1px solid #defdffbb;color:#10334f;
+  font-size:1.85rem;font-weight:900;box-shadow:0 14px 36px #020d2f45;
+}
+.av-motion-art .av-motion-node{
+  position:absolute;display:flex;flex-direction:column;justify-content:center;align-items:center;
+  gap:.2rem;width:108px;height:84px;border:1px solid #a9ecf685;border-radius:16px;
+  background:#edfafff5;color:#123b54;box-shadow:0 13px 27px #05172555;
+  animation:av-home-node-float 7s ease-in-out infinite;
+}
+.av-motion-art .av-motion-node strong{font-size:1.4rem;font-weight:850;line-height:1.15;color:#1a5977}
+.av-motion-art .av-motion-node small{font-size:.63rem;letter-spacing:.09em;font-weight:850;color:#3d6880}
+.av-motion-art .av-motion-node--code{top:2%;left:4%}
+.av-motion-art .av-motion-node--practice{top:12%;right:1%;animation-delay:-2.2s}
+.av-motion-art .av-motion-node--layout{bottom:0;left:calc(50% - 54px);animation-delay:-4.4s}
+.av-motion-art .av-motion-star{position:absolute;display:block;border-radius:50%;background:#a4fbf5;box-shadow:0 0 0 5px #66bfce32}
+.av-motion-art .av-motion-star--a{width:8px;height:8px;top:9%;left:54%}
+.av-motion-art .av-motion-star--b{width:5px;height:5px;bottom:14%;right:9%}
+@keyframes av-home-node-float{0%,100%{transform:translate3d(0,0,0) rotate(-1deg)}50%{transform:translate3d(0,-10px,0) rotate(1deg)}}
+.av-documentation[data-home-motion="expressive"] #guest-content{padding:clamp(1rem,2vw,1.3rem)}
+.av-documentation[data-home-motion="expressive"] #guest-content .av-learning-card{line-height:1.45}
+.av-home-motion[data-home-motion="quiet"] header.av-admin-motion-hero{
+  padding:.85rem 1.1rem;border-left:3px solid #76a8d9;border-radius:.45rem;
+  background:linear-gradient(100deg,#ffffff,#edf4fbee);
+}
+@media(max-width:767px){
+  .av-documentation[data-home-motion="expressive"] .av-guest-motion-hero{grid-template-columns:minmax(0,1fr);gap:.35rem}
+  .av-guest-motion-hero .av-motion-art{height:154px;max-width:310px;width:100%;margin:auto}
+  .av-motion-art .av-motion-node{width:90px;height:65px;border-radius:12px}
+  .av-motion-art .av-motion-node strong{font-size:1rem}
+  .av-motion-art .av-motion-node small{font-size:.53rem}
+  .av-motion-art .av-motion-node--layout{left:calc(50% - 45px)}
+  .av-motion-art .av-motion-center{width:44px;height:44px;border-radius:13px;left:calc(50% - 22px);top:calc(50% - 22px);font-size:1.3rem}
+  .av-home-motion .av-motion-ambient::before{width:8rem}
+}
+@media(prefers-reduced-motion:reduce){
+  .av-home-motion .av-motion-reveal,.av-home-motion.av-motion-active .av-motion-reveal:not(.is-visible){opacity:1!important;transform:none!important}
+  .av-motion-art .av-motion-node,.av-motion-public-sparks span{animation:none!important}
+  .av-guest-motion-hero .av-motion-art{transform:none!important;will-change:auto}
+  ::view-transition-old(root),::view-transition-new(root){animation:none!important}
+}
+html[data-motion="reduce"] .av-home-motion *,html[data-motion="reduce"] .av-home-motion *::before,html[data-motion="reduce"] .av-home-motion *::after,
+html[data-adminerva-reduce-motion="true"] .av-home-motion *,html[data-adminerva-reduce-motion="true"] .av-home-motion *::before,html[data-adminerva-reduce-motion="true"] .av-home-motion *::after{
+  animation:none!important;transition:none!important;
+}
+html[data-motion="reduce"] .av-home-motion.av-motion-active .av-motion-reveal:not(.is-visible),
+html[data-adminerva-reduce-motion="true"] .av-home-motion.av-motion-active .av-motion-reveal:not(.is-visible){
+  opacity:1!important;transform:none!important;
+}
+html[data-motion="reduce"] .av-guest-motion-hero .av-motion-art,
+html[data-adminerva-reduce-motion="true"] .av-guest-motion-hero .av-motion-art{transform:none!important;will-change:auto}
+
+/* Respect the in-app reduced-motion option for browser-level navigation transitions. */
+html[data-motion="reduce"]::view-transition-old(root),
+html[data-motion="reduce"]::view-transition-new(root),
+html[data-adminerva-reduce-motion="true"]::view-transition-old(root),
+html[data-adminerva-reduce-motion="true"]::view-transition-new(root) {animation:none!important}
