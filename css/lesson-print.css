@@ -46,8 +46,14 @@
     print-color-adjust: exact !important;
   }
   .print-table tr {
-    page-break-inside: avoid !important;
-    break-inside: avoid !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+  /* A session may continue onto the next sheet. Internal Time Frame and
+     Learning Experiences rows are spacing/alignment rows, not visual dividers. */
+  .print-table tr.print-session-row td {
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
   }
   /* The legacy heading appears once, even when a session continues to another page. */
   .print-table thead { display: table-row-group !important; }
