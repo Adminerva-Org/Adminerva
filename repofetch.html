@@ -503,16 +503,16 @@
       </div>
     </div>
 
-    <div id="externalEvaluationModal" class="hidden fixed inset-0 z-[80] bg-slate-950/55 p-3 sm:p-6 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="externalEvaluationTitle">
-      <div class="mx-auto w-full max-w-5xl rounded-2xl bg-white shadow-2xl overflow-hidden">
-        <div class="flex items-start justify-between gap-4 border-b px-4 sm:px-5 py-4">
+    <div id="externalEvaluationModal" class="hidden fixed inset-0 z-[80] bg-slate-950/55 p-3 sm:p-6 flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="externalEvaluationTitle">
+      <div class="mx-auto w-full max-w-5xl max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)] rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col">
+        <div class="shrink-0 flex items-start justify-between gap-4 border-b px-4 sm:px-5 py-4">
           <div>
             <h2 id="externalEvaluationTitle" class="text-lg font-extrabold text-slate-950">External evaluation</h2>
             <p class="mt-1 text-xs text-slate-600">Copy verified evidence to an external evaluator, then paste the structured JSON result back here. Nothing is saved or published until you apply and save it.</p>
           </div>
           <button id="externalEvaluationClose" type="button" class="rounded-lg px-3 py-2 font-bold text-slate-600" aria-label="Close external evaluation">✕</button>
         </div>
-        <div class="p-4 sm:p-5 space-y-5">
+        <div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
           <section class="rounded-xl border border-slate-200 p-4 space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -535,11 +535,15 @@
             </details>
             <textarea id="externalEvaluationResult" rows="12" spellcheck="false" placeholder='Paste the JSON response here…' class="w-full rounded-lg border border-indigo-200 bg-white p-3 text-xs font-mono"></textarea>
             <p id="externalEvaluationStatus" class="text-xs text-indigo-900" role="status">No external result imported.</p>
+            <p class="text-xs text-slate-600">After validation, Adminerva returns to Evaluation draft so you can review and copy the proposed score and feedback into the teacher grade. Nothing is saved or published automatically.</p>
           </section>
         </div>
-        <div class="flex flex-wrap justify-end gap-2 border-t bg-slate-50 px-4 sm:px-5 py-4">
-          <button id="externalEvaluationCancel" type="button" class="rounded-lg bg-white border px-4 py-2 text-sm font-bold text-slate-700">Cancel</button>
-          <button id="externalEvaluationImport" type="button" class="rounded-lg bg-indigo-700 text-white px-4 py-2 text-sm font-bold">Validate & use proposal</button>
+        <div class="shrink-0 flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 sm:px-5 py-4 shadow-[0_-8px_20px_rgba(15,23,42,0.06)]">
+          <p class="text-xs text-slate-600">Next: validate → review proposal → use score/feedback → save.</p>
+          <div class="flex flex-wrap justify-end gap-2">
+            <button id="externalEvaluationCancel" type="button" class="rounded-lg bg-white border px-4 py-2 text-sm font-bold text-slate-700">Cancel</button>
+            <button id="externalEvaluationImport" type="button" class="rounded-lg bg-indigo-700 text-white px-4 py-2 text-sm font-bold">Validate & import proposal</button>
+          </div>
         </div>
       </div>
     </div>
