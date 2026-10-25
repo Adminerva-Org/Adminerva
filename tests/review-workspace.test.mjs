@@ -51,22 +51,30 @@ const approved={studentId:'alice',assessmentId:'v2',status:'approved',checkpoint
   repository:'https://github.com/example/project',revision:1};
 test('unchanged evidence snapshots do not strand a running evaluation; manual cancellation ignores late output',async()=>{
   for(const cancel of [false,true,"timeout"]){
-    const page=workspace(approved);await page.open();let finish;
+    const page=workspace(approved);await page.open();let finish,expire,serviceFinish;
     page.context.localStorage={getItem:key=>key==='Adminerva_gemini_token'?'synthetic-evaluation-key':null};
     page.context.schoolAIStatus=async()=>({configured:false,model:'gemini-3.8-flash',capabilities:{}});
-    page.context.generateSchoolContent=async()=>({});
+    page.context.generateSchoolContent=cancel==="timeout"
+      ?(_payload,{signal})=>new Promise((resolve,reject)=>{serviceFinish=resolve;signal.addEventListener("abort",()=>reject(Error("aborted")),{once:true});})
+      :async()=>({});
     page.context.parseWeightedRubric=()=>[];
     page.context.loadPinnedV2Source=()=>new Promise(resolve=>{finish=resolve;});
     page.context.buildRubricPrompt=()=>'';page.context.buildRubricResponseSchema=()=>({});page.context.evaluationJSON=async()=>({});
-    page.context.parseSuggestedRubric=()=>({criteria:[],score:15,feedback:'Draft feedback'});
-    let expire;
+    page.context.parseSuggestedRubric=()=>({criteria:[],score:15,pendingPoints:0,potentialScore:15,feedback:'Draft feedback'});
     if(cancel==="timeout"){page.context.setTimeout=callback=>{expire=callback;return 1;};page.context.clearTimeout=()=>{};}
     const operation=page.context.generateAIDraft();
-    for(let turn=0;turn<4&&typeof finish!=='function';turn++)await Promise.resolve();
+    for(let turn=0;turn<6&&typeof finish!=='function';turn++)await Promise.resolve();
     assert.equal(typeof finish,'function');
     page.change({...approved,selectedCommits:[checkpoint]});
-    if(cancel==="timeout")expire();else if(cancel)page.elements.get('manualReviewManual').click();
-    finish({files:[{path:'screen.xml'}],patches:[]});await operation;
+    if(cancel===true)page.elements.get('manualReviewManual').click();
+    finish({files:[{path:'screen.xml'}],patches:[],assets:[],analysis:{}});
+    if(cancel==="timeout"){
+      for(let turn=0;turn<8&&typeof expire!=='function';turn++)await Promise.resolve();
+      assert.equal(typeof expire,'function');
+      expire();
+      serviceFinish?.({});
+    }
+    await operation;
     assert.equal(page.window.fixtureState.aiBusy,false);
     assert.equal(Boolean(page.window.fixtureState.active.aiDraft),!cancel);
     assert.equal(page.elements.get('manualReviewFeedback').value,'');assert.equal(page.writes.length,0);
