@@ -55,7 +55,10 @@ has("js/settings/settings-presentation.js",'doc(window.db, "staff_workspaces", u
 lacks("js/settings/settings-presentation.js",'doc(window.db, "global_settings", "presentation_config")');
 has("js/lesson-review/app-ui.js","Adminerva_lesson_editor_draft_v1");
 has("js/lesson-review/app-ui.js","adminerva:lesson-saved");
-has("js/settings/settings-core.js",'location.hash==="#notifications"?"account":"security"');
+has("js/settings/settings-core.js",'function settingsPanelFromLocation()');
+has("js/settings/settings-core.js",'requested === "notifications"');
+has("js/settings/settings-core.js",'history.pushState');
+has("js/settings/settings-core.js",'"popstate"');
 has("js/core/adminerva-loader.js",'tabindex="-1" hidden');
 has("js/core/adminerva-nav.js","m.hidden=false");
 
