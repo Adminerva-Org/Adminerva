@@ -316,7 +316,7 @@ window.matrixTogglePub = async function (studentId, taskId, checkbox) {
       if (!latest.exists()) throw new Error("Grade was removed during publication.");
       assertGradeVersion(latest.data(),gradeSnap.data());
       if(wantsPublish){
-        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=1.3.0");
+        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=1.3.1");
         await verifyGradePublication(tx,gradeRef,{...latest.data(),taskId});
       }
       writePublicationRevision(tx,gradeRef,latest.data(),wantsPublish);
