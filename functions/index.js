@@ -103,7 +103,7 @@ for(const [name,action] of Object.entries({practiceSession:"acquire",practiceSta
 const monitoring=createMonitoringService({db,Timestamp,FieldValue,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users});
 exports.monitoringMaintenance=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},()=>monitoring.runScheduled());
 exports.activityConsentChanged=onDocumentWritten({document:"activity_preferences/{ownerUid}",region:"asia-southeast1",maxInstances:1,concurrency:1,timeoutSeconds:120},event=>monitoring.applyConsentChange(event.params.ownerUid,event.data?.before.data()?.studentId));
-const staffEmails=["babaynike2013@gmail.com","josephsixson@mcstayuman.edu.ph"];
+const BOOTSTRAP_ADMIN_EMAIL="babaynike2013@gmail.com";
 // Bug reports are always administrator-directed. Legacy reports have admin scope.
 const reportAudience=issue=>issue.category==="Bug"?"admin":issue.audience==="teacher"?"teacher":"admin";
 const cleanId=value=>String(value||"").replace(/[^a-zA-Z0-9_-]/g,"_").slice(0,150);
@@ -112,15 +112,30 @@ async function byEmail(email){
   try{return (await getAuth().getUserByEmail(email.toLowerCase())).uid}
   catch(error){if(error.code!=="auth/user-not-found")console.warn("User resolution failed",error.code);return null}
 }
+async function activeAdminEmails(){
+  const records=await db.collection("staff_access").where("role","==","admin").limit(20).get();
+  return [...new Set([BOOTSTRAP_ADMIN_EMAIL,...records.docs.map(record=>record.data()).filter(record=>record.status==="active"&&typeof record.email==="string").map(record=>record.email.toLowerCase())])];
+}
+async function administratorIds(){
+  return [...new Set((await Promise.all((await activeAdminEmails()).map(byEmail))).filter(Boolean))];
+}
+async function isAdministratorRequest(request){
+  const email=String(request.auth?.token?.email||"").toLowerCase();
+  if(!request.auth?.uid||request.auth?.token?.email_verified!==true||!email)return false;
+  if(email===BOOTSTRAP_ADMIN_EMAIL)return true;
+  const snapshot=await db.doc("staff_access/"+email).get();
+  const data=snapshot.exists?snapshot.data():null;
+  return data?.email===email&&data?.status==="active"&&data?.role==="admin";
+}
 async function teacherIds(section){
-  const administrator=await byEmail(staffEmails[0]);
-  if(typeof section!=="string"||!section)return [administrator].filter(Boolean);
+  const administrators=await administratorIds();
+  if(typeof section!=="string"||!section)return administrators;
   const records=await db.collection("staff_access").where("sections","array-contains",section).get();
   const emails=records.docs.map(record=>record.data()).filter(record=>record.role==="teacher"&&record.status==="active").map(record=>record.email);
-  return [...new Set([administrator,...await Promise.all(emails.map(byEmail))].filter(Boolean))];
+  return [...new Set([...administrators,...await Promise.all(emails.map(byEmail))].filter(Boolean))];
 }
 async function audienceIds(issue){
-  return reportAudience(issue)==="admin"?[await byEmail(staffEmails[0])].filter(Boolean):teacherIds(issue.section);
+  return reportAudience(issue)==="admin"?administratorIds():teacherIds(issue.section);
 }
 const pushTypes=new Set(["assessment","submission","grade","grading","issue","release"]);
 const pushBaseUrl="https://adminerva-org.github.io/Adminerva/";
@@ -195,8 +210,8 @@ async function notifyMany(uids,id,payload){
   await Promise.all([...new Set(uids.filter(Boolean))].map(uid=>notify(uid,id,payload)));
 }
 exports.releaseAnnouncement=onCall(callOptions,async request=>{
-  const uid=request.auth?.uid,email=String(request.auth?.token?.email||"").toLowerCase();
-  if(!uid||!staffEmails.includes(email))throw new HttpsError("permission-denied","Administrator access is required.");
+  const uid=request.auth?.uid;
+  if(!await isAdministratorRequest(request))throw new HttpsError("permission-denied","Administrator access is required.");
   const version=String(request.data?.version||"").trim(),title=String(request.data?.title||"").trim(),summary=String(request.data?.summary||"").trim();
   if(!/^\d+\.\d+\.\d+$/.test(version)||title.length<4||title.length>120||summary.length<10||summary.length>300)
     throw new HttpsError("invalid-argument","Provide a valid published release version, title and summary.");

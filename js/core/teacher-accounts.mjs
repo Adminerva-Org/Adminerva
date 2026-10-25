@@ -70,7 +70,7 @@ async function refresh(){
   sectionCounts=new Map();for(const record of students.docs){const section=record.data().section;if(typeof section==="string"&&section.trim())sectionCounts.set(section,(sectionCounts.get(section)||0)+1);}
   for(const section of [...new Set([...sectionCounts.keys(),...catalog.docs.filter(record=>record.data().status==="active").map(record=>record.data().name)].filter(name=>typeof name==="string"&&name.trim()))].sort())field("staff-sections").add(new Option(section,section));
   for(const subject of [...new Set(subjectsCatalog.docs.filter(record=>record.data().status==="active").map(record=>record.data().name).filter(name=>typeof name==="string"&&name.trim()))].sort())field("staff-subjects").add(new Option(subject,subject));
-  const profiles=accounts.docs.map(record=>record.data());
+  const profiles=accounts.docs.map(record=>record.data()).filter(profile=>profile.role==="teacher");
   if(!profiles.some(profile=>profile.email===TEACHER_EMAIL))profiles.unshift({email:TEACHER_EMAIL,displayName:"Original instructor",status:"active",revision:0});
   for(const profile of profiles){
     const button=document.createElement("button");button.type="button";button.className="av-directory-card";
