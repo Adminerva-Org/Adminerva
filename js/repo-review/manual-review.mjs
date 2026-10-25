@@ -268,8 +268,19 @@ function importExternalEvaluation(){
     el("manualReviewUseScore").disabled=draft.score===null;
     el("manualReviewUseFeedback").disabled=!draft.feedback;
     el("manualReviewFiles").value=[...new Set(evidence.patches.filter(p=>p.substantive===true).map(p=>p.path))].join("\n");
-    aiStatus("External evaluation proposal imported and validated against the exported verified evidence. Review it before applying score or feedback; nothing has been saved or published.");
-    externalStatus("Validated successfully. The proposal is now shown in System evaluation draft.");
+    const scoreField=el("manualReviewScore"),feedbackField=el("manualReviewFeedback"),applied=[];
+    if(draft.score!==null&&!scoreField.value.trim()){scoreField.value=String(draft.score);applied.push("score");}
+    if(draft.feedback&&!feedbackField.value.trim()){feedbackField.value=String(draft.feedback);applied.push("feedback");}
+    if(applied.length){
+      active.aiApplied=true;
+      el("manualReviewConfirm").checked=false;
+      el("manualReviewSave").disabled=false;
+    }
+    const appliedLabel=applied.length===2?"score and feedback":applied[0]||"";
+    aiStatus(applied.length
+      ?"External evaluation validated. The proposed "+appliedLabel+" "+(applied.length===2?"were":"was")+" copied into empty teacher fields. Review or edit before saving; nothing has been published."
+      :"External evaluation validated. Existing teacher fields were preserved. Review the proposal and use the replacement buttons if you want to overwrite them; nothing has been saved or published.");
+    externalStatus("Validated successfully. The proposal is now in Evaluation draft.");
     analytics("external_evaluation_imported",{feature:"review_grade",status:"success"});
     closeExternalEvaluation();
     el("manualReviewAISection").scrollIntoView({behavior:"smooth",block:"start"});
