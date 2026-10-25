@@ -3,7 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseWeightedRubric,relevantAssessmentFile,parseSuggestedRubric,
-  buildRubricPrompt,loadPinnedV2Source
+  buildRubricPrompt,loadPinnedV2Source,needsAdaptiveEvaluation,
+  buildAdaptiveEvidenceChunks,evaluationInputSize
 } from './v2-grading-assistant.mjs';
 
 const A='a'.repeat(40),B='b'.repeat(40);
@@ -101,6 +102,52 @@ test('loads assessed XML and verified supporting implementation at the immutable
   assert.ok(requests.some(u=>u.includes('?ref='+A)));
 });
 
+test('large verified source is collected and routed to adaptive chunks instead of the old 36 KB failure',async()=>{
+  const largeXml='<LinearLayout>\n'+Array.from({length:2400},(_,i)=>'<TextView android:id="@+id/item_'+i+'" android:text="Row '+i+'" />').join('\n')+'\n</LinearLayout>';
+  assert.ok(largeXml.length>36000);
+  const response=data=>({ok:true,json:async()=>data});
+  const result=await loadPinnedV2Source({
+    repository:'https://github.com/example/android',selectedCommits:[A],verifiedContributionCommits:[A],
+    checkpointSha:A,assessment:assignment,fetchImpl:async url=>{
+      if(url.includes('/commits/'+A))return response({parents:[{sha:B}],files:[{filename:XML,status:'modified',patch:'+<LinearLayout>\n+<TextView />'}]});
+      if(url.includes('/git/trees/'+A))return response({truncated:false,tree:[{path:XML,type:'blob'}]});
+      if(url.includes('/contents/'+XML))return response({type:'file',encoding:'base64',content:Buffer.from(largeXml).toString('base64')});
+      throw Error('Unexpected request '+url);
+    }
+  });
+  assert.ok(evaluationInputSize(result).source>36000);
+  assert.equal(needsAdaptiveEvaluation(result),true);
+  const chunks=buildAdaptiveEvidenceChunks(result);
+  assert.ok(chunks.length>1);
+  assert.ok(chunks.every(chunk=>chunk.text.length<=50000));
+  assert.ok(chunks.some(chunk=>chunk.refs.some(ref=>ref.sha===A&&ref.path===XML)));
+});
+
+test('many verified commit patches automatically select adaptive evaluation',()=>{
+  const evidence={files:[{path:XML,text:'<LinearLayout/>',primary:true,studentChanged:true,binary:false}],
+    patches:Array.from({length:10},(_,index)=>({sha:index.toString(16).padStart(40,'0'),path:XML,patch:'+<TextView id="'+index+'"/>',primary:true,substantive:true}))};
+  assert.equal(needsAdaptiveEvaluation(evidence),true);
+  const chunks=buildAdaptiveEvidenceChunks(evidence);
+  assert.ok(chunks.length>=1);
+  assert.equal(new Set(chunks.flatMap(chunk=>chunk.refs.map(ref=>ref.sha))).size,10);
+});
+
+test('verified primary files with unavailable GitHub patch text remain partial instead of aborting collection',async()=>{
+  const response=data=>({ok:true,json:async()=>data});
+  const result=await loadPinnedV2Source({
+    repository:'https://github.com/example/android',selectedCommits:[A],verifiedContributionCommits:[A],
+    checkpointSha:A,assessment:assignment,fetchImpl:async url=>{
+      if(url.includes('/commits/'+A))return response({parents:[{sha:B}],files:[{filename:XML,status:'modified'}]});
+      if(url.includes('/git/trees/'+A))return response({truncated:false,tree:[{path:XML,type:'blob'}]});
+      if(url.includes('/contents/'+XML))return response({type:'file',encoding:'base64',content:Buffer.from('<LinearLayout><TextView/></LinearLayout>').toString('base64')});
+      throw Error('Unexpected request '+url);
+    }
+  });
+  assert.equal(result.patches[0].diffIncomplete,true);
+  assert.equal(result.patches[0].substantive,false);
+  assert.equal(result.truncatedDiffs.length,1);
+});
+
 test('no matching student XML diffs means AI must abstain',async()=>{
   const fetchImpl=async()=>({ok:true,json:async()=>({files:[
     {filename:'app/src/main/java/MainActivity.java',status:'modified',patch:'+Main'}
@@ -164,7 +211,7 @@ test('noncontributors cannot use the checkpoint or teammates source as scoring e
   assert.equal(fetched,false);
 });
 
-test('matching teammate files are loaded at pinned checkpoint as context without attribution',async()=>{
+test('individual evaluation loads verified student targets instead of unrelated teammate layouts',async()=>{
   const other='app/src/main/res/layout/home.xml';
   const requests=[];
   const response=data=>({ok:true,json:async()=>data});
@@ -174,11 +221,12 @@ test('matching teammate files are loaded at pinned checkpoint as context without
       requests.push(url);
       if(url.includes('/commits/'+A))return response({parents:[{sha:B}],files:[{filename:XML,patch:'+<TextView/>'}]});
       if(url.includes('/git/trees/'+B))return response({tree:[XML,other].map(path=>({path,type:'blob'}))});
-      if(url.includes('/contents/')&&url.endsWith('?ref='+B))return response({type:'file',encoding:'base64',content:Buffer.from('<TextView/>').toString('base64')});
+      if(url.includes('/contents/'+XML)&&url.endsWith('?ref='+B))return response({type:'file',encoding:'base64',content:Buffer.from('<TextView/>').toString('base64')});
       throw Error('Unexpected request '+url);
     }});
-  assert.deepEqual(result.files.map(file=>file.path),[XML,other]);
+  assert.deepEqual(result.files.map(file=>file.path),[XML]);
   assert.deepEqual(result.patches.map(patch=>patch.path),[XML]);
+  assert.equal(requests.some(url=>url.includes('/contents/'+other)),false);
   assert.equal(requests.some(url=>url.includes('/commits/'+B)),false);
 });
 
