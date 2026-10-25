@@ -73,7 +73,7 @@ test("practice sandbox never writes over a student's normal workspace or cloud b
   assert.match(editor,/if\(practiceMode\|\|!ownerUid\(\)/);
   assert.match(editor,/if\(practiceMode\)return false;/);
   assert.match(editor,/notePracticeExecution\(\)/);
-  assert.match(editor,/readPracticeTransfer\(sessionStorage,auth\.currentUser\.uid\)/);
+  assert.match(editor,/readPracticeTransfer\(sessionStorage,ownerUid\(\)\)/);
   assert.match(page,/id="practiceSandboxBanner"/);
   assert.match(page,/id="practiceReturnLink"/);
 });
