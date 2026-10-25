@@ -11,7 +11,7 @@ import {
 import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=1.3.0";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
 import {parseWeightedRubric,loadPinnedV2Source,parseSuggestedRubric}
-  from "./services/v2-grading-assistant.mjs?v=1.4.16";
+  from "./services/v2-grading-assistant.mjs?v=1.4.21";
 import {evaluateVerifiedEvidence} from "./services/adaptive-evaluation.mjs?v=1.3.0";
 import {isAndroidUiAssessment} from "./services/android-evidence.mjs?v=1.3.0";
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
@@ -240,6 +240,10 @@ async function generateAIDraft(){
     if(session!==state.token||state.active!==active)return;
     if(evidence.truncatedDiffs?.length){
       draft.limitations=[draft.limitations,evidence.truncatedDiffs.length+" relevant commit diff(s) were bounded; omitted changes require teacher review before assigning credit."].filter(Boolean).join(" ").slice(0,1400);
+    }
+    if(evidence.missingPrimaryPaths?.length){
+      draft.limitations=[draft.limitations,"Some primary files in the verified commits were renamed or removed before the approved checkpoint ("+
+        evidence.missingPrimaryPaths.slice(0,6).join(", ")+"). Retained commit changes require teacher confirmation."].filter(Boolean).join(" ").slice(0,1400);
     }
     active.aiDraft={model,checkpointSha:active.checkpointSha,evaluationMode:evaluation.mode,evidenceChunks:evaluation.chunkCount,...draft};
     state.dirty=true;

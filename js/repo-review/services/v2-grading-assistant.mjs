@@ -405,16 +405,21 @@ export async function loadPinnedV2Source({
   if(!Array.isArray(tree.tree)||tree.truncated)throw Error("The approved project file tree was incomplete. Evaluation paused.");
   const blobs=tree.tree.filter(item=>item.type==="blob"),entryByPath=new Map(blobs.map(item=>[item.path,item]));
   const available=new Set(entryByPath.keys());
-  if([...studentPrimaryPaths].some(path=>!available.has(path)))
-    throw Error("Some selected primary source files are absent at the approved checkpoint. Inspect renames or deletions before grading.");
+  // A student's earlier commit may add a primary file subsequently renamed or
+  // removed by a later verified commit. Preserve its exact commit patch as
+  // attributable evidence instead of requiring historical paths in the final tree.
+  const missingPrimaryPaths=[...studentPrimaryPaths].filter(path=>!available.has(path));
+  const survivingPrimaryPaths=[...studentPrimaryPaths].filter(path=>available.has(path));
 
   // Individual grading should inspect the learner's verified primary changes,
   // not every teammate file matched by a broad assessment target. Merge-only
   // evidence has no independently attributable primary path, so it keeps the
   // broader checkpoint fallback for teacher-confirmation context.
   const primaryPaths=(studentPrimaryPaths.size
-    ?[...studentPrimaryPaths]
+    ?survivingPrimaryPaths
     :[...available].filter(path=>relevantAssessmentFile(path,assessment))).sort();
+  if(!primaryPaths.length)
+    throw Error("No verified primary source remains at the approved checkpoint. Review the student's historical commit diffs manually.");
   if(primaryPaths.length>MAX_PRIMARY_FILES)
     throw Error("The verified evaluation scope exceeds "+MAX_PRIMARY_FILES+" primary files. Narrow the selected evidence before automatic evaluation.");
 
@@ -479,5 +484,5 @@ export async function loadPinnedV2Source({
 
   const analysis=analyzeAndroidEvidence({assessment,files,patches:patchRecords.filter(p=>!p.mergeContext&&!p.diffIncomplete),assets});
   return {repository:repo.url,checkpointSha:selection.checkpointSha,
-    selectedCommits:selection.selectedCommits,files,patches:patchRecords,assets,analysis,excludedMergeCommits,truncatedDiffs};
+    selectedCommits:selection.selectedCommits,files,patches:patchRecords,assets,analysis,excludedMergeCommits,truncatedDiffs,missingPrimaryPaths};
 }

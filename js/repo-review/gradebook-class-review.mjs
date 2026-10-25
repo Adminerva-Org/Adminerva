@@ -5,7 +5,7 @@ import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {normalizeSelection,parseRepository} from "./services/assessment-evidence.mjs?v=1.4.3";
 import {verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
 import {approvalContribution,evidenceRevision} from "./services/evidence-lifecycle.mjs?v=1.4.3";
-import {parseWeightedRubric,loadPinnedV2Source,parseSuggestedRubric} from "./services/v2-grading-assistant.mjs?v=1.4.16";
+import {parseWeightedRubric,loadPinnedV2Source,parseSuggestedRubric} from "./services/v2-grading-assistant.mjs?v=1.4.21";
 import {evaluateVerifiedEvidence} from "./services/adaptive-evaluation.mjs?v=1.3.0";
 import {schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
 import {legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.2";
@@ -319,6 +319,8 @@ async function evaluateOne(student,evidence,assessment,connection,{rerun=false}=
   const draft=parseSuggestedRubric(evaluation.parsed,criteria,assessment.maxScore,source);
   draft.evaluationMode=evaluation.mode;draft.evidenceChunks=evaluation.chunkCount;
   if(source.truncatedDiffs?.length)draft.limitations=[draft.limitations,"Large verified diffs were truncated for evaluation; teacher review is required."].filter(Boolean).join(" ").slice(0,1400);
+  if(source.missingPrimaryPaths?.length)draft.limitations=[draft.limitations,
+    "Some verified primary files were renamed or removed before the approved checkpoint ("+source.missingPrimaryPaths.slice(0,6).join(", ")+"). Their commit changes were retained, but teacher review is required before publishing."].filter(Boolean).join(" ").slice(0,1400);
   if(source.excludedMergeCommits?.length){
     draft.limitations=[draft.limitations,"Merge commits were excluded from individual credit ("+source.excludedMergeCommits.length+"). Teacher review should confirm the student's original commits."].filter(Boolean).join(" ").slice(0,1400);
   }
