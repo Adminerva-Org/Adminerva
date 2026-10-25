@@ -1,6 +1,51 @@
 {
   "releases": [
     {
+      "version": "1.4.1",
+      "status": "draft",
+      "public": false,
+      "releasedAt": "2026-10-25",
+      "title": "Workflow completion and interface reliability",
+      "summary": "Completes report discussions, class-level assessment review, release announcements and teacher navigation refinements without rebuilding the 1.4.0 feature set.",
+      "changes": [
+        {
+          "type": "Fixed",
+          "area": "Reports & support",
+          "text": "Report discussions render historical comments safely instead of showing a nonzero discussion count with an empty feed."
+        },
+        {
+          "type": "Fixed",
+          "area": "Branding",
+          "text": "The shared header uses Adminerva branding rather than the notification badge, with a compact rounded brand treatment."
+        },
+        {
+          "type": "Updated",
+          "area": "Single Assessment",
+          "text": "Gradebook opens to the class-level Single Assessment workflow and includes legacy receipts alongside V2 evidence, grades and publication state."
+        },
+        {
+          "type": "Updated",
+          "area": "Bulk review",
+          "text": "Section-scoped evidence reads and indexes support authorized bulk approval/evaluation while preserving V2 evidence safeguards and individual exception review."
+        },
+        {
+          "type": "Updated",
+          "area": "Release communication",
+          "text": "Website-update push has a once-per-version announcement guard to prevent accidental duplicate release blasts."
+        },
+        {
+          "type": "Updated",
+          "area": "Navigation & analytics",
+          "text": "Repository Management navigation can collapse on desktop, teacher chrome is more compact, and analytics views share a consistent centered width."
+        },
+        {
+          "type": "Updated",
+          "area": "School administration",
+          "text": "Administration Overview surfaces support and report triage as a primary operational action."
+        }
+      ]
+    },
+    {
       "version": "1.4.0",
       "status": "published",
       "public": true,
