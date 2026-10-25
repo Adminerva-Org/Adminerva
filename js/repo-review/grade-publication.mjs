@@ -2,7 +2,8 @@
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {doc,collection,runTransaction,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.3.0";
 import {assertGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
-import {publicationCandidates,publicationJournal} from "./services/publication-queue.mjs?v=1.3.0";
+import {publicationCandidates,publicationJournal} from "./services/publication-queue.mjs?v=1.3.1";
+import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=1.3.0";
 export {publicationCandidates};
 export function writePublicationRevision(transaction,ref,before,published) {
   if(Boolean(before.published)===published)return;
@@ -36,7 +37,7 @@ export async function publishGradeEntries(entries,published,{context,onProgress=
         if(!publicationCandidates([{...entry,data:before}],published).length)throw Error("Grade is no longer eligible.");
         const task=await transaction.get(doc(db,"assessments",before.taskId));
         if(published&&(!task.exists()||typeof task.data().maxScore!=="number"||task.data().maxScore<=0||before.score>task.data().maxScore||(before.maxScore!=null&&before.maxScore!==task.data().maxScore)))throw Error("Assessment bounds changed or are unavailable. Review this grade before publishing.");
-        if(published&&task.data()?.schemaVersion===2)throw Error("V2 grades require individual reviewed publication.");
+        if(published&&task.data()?.schemaVersion===2)await verifyGradePublication(transaction,entry.ref,before);
         transaction.set(doc(collection(db,"grade_revisions")),{
           gradeId:entry.ref.id,studentId:before.studentId,taskId:before.taskId,editorUid:uid,
           reason:published?"Teacher explicitly published a reviewed batch draft":"Teacher explicitly unpublished a batch grade",
