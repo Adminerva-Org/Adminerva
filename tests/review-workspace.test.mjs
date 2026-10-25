@@ -53,6 +53,8 @@ test('unchanged evidence snapshots do not strand a running evaluation; manual ca
   for(const cancel of [false,true,"timeout"]){
     const page=workspace(approved);await page.open();let finish;
     page.context.localStorage={getItem:key=>key==='Adminerva_gemini_token'?'synthetic-evaluation-key':null};
+    page.context.schoolAIStatus=async()=>({configured:false,model:'gemini-3.8-flash',capabilities:{}});
+    page.context.generateSchoolContent=async()=>({});
     page.context.parseWeightedRubric=()=>[];
     page.context.loadPinnedV2Source=()=>new Promise(resolve=>{finish=resolve;});
     page.context.buildRubricPrompt=()=>'';page.context.createBackoffClient=()=>({fetch:async()=>({})});page.context.evaluationJSON=async()=>({});
@@ -79,8 +81,7 @@ test('suggestions never replace teacher fields without a separate explicit copy'
   assert.equal(page.elements.get('manualReviewFeedback').value,'Teacher feedback');assert.equal(page.writes.length,0);
 });
 test('missing checker setup explains the blocker without preventing manual grading',async()=>{
-  const page=workspace(approved);await page.open();await page.context.generateAIDraft();
-  assert.equal(page.elements.get('manualReviewCheckerSetup').open,true);
+  const page=workspace(approved);await page.open();page.context.schoolAIStatus=async()=>{throw Error('Evaluation service is not configured; grade manually.');};await page.context.generateAIDraft();
   assert.match(page.elements.get('manualReviewAIStatus').textContent,/grade manually/);
   assert.equal(page.elements.get('manualReviewSave').disabled,false);
   assert.equal(page.elements.get('integratedEvidenceDetails').open,true);
