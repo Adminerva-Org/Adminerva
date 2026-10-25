@@ -48,10 +48,11 @@ test("provider JSON failures and empty candidates become recoverable manual stat
   for(const response of [new Response("broken"),Response.json({candidates:[]}),Response.json({candidates:[{content:{parts:[{text:"[1,2]"}]}}]})])await assert.rejects(evaluationJSON(response),error=>error.code==="invalid-evaluation");
   const data=await evaluationJSON(Response.json({candidates:[{content:{parts:[{text:'```json\n{"score":12}\n```'}]}}]}));assert.equal(data.score,12);
 });
-test("publication queues include ready V2 drafts and exclude flagged, published or invalid grades",()=>{
-  const entries=[{data:{score:0,published:false,reviewRequired:false},schemaVersion:1},{data:{score:12,published:false,reviewRequired:false},schemaVersion:2},{data:{score:4,published:false,reviewRequired:true},schemaVersion:2},{data:{score:null,published:false,reviewRequired:false}},{data:{score:10,published:true,reviewRequired:false}}];
+test("publication queues include ready and legacy-clean V2 drafts but exclude real review flags",()=>{
+  const legacyClean={data:{score:18,published:false,reviewRequired:true,manuallyAdjusted:false,gradeSource:"system_evaluation_draft",reviewPriority:"ready_for_teacher_confirmation",reviewReasons:[],evaluationDraft:{teacherReviewed:false}},schemaVersion:2};
+  const entries=[{data:{score:0,published:false,reviewRequired:false},schemaVersion:1},{data:{score:12,published:false,reviewRequired:false},schemaVersion:2},legacyClean,{data:{score:4,published:false,reviewRequired:true,manuallyAdjusted:false,gradeSource:"system_evaluation_draft",reviewPriority:"needs_review",reviewReasons:["Missing evidence"],evaluationDraft:{teacherReviewed:false}},schemaVersion:2},{data:{score:null,published:false,reviewRequired:false}},{data:{score:10,published:true,reviewRequired:false}}];
   entries.forEach(entry=>{entry.maxScore=20;});
-  assert.deepEqual(publicationCandidates(entries),[entries[0],entries[1]]);assert.deepEqual(publicationCandidates(entries,false),[entries[4]]);
+  assert.deepEqual(publicationCandidates(entries),[entries[0],entries[1],legacyClean]);assert.deepEqual(publicationCandidates(entries,false),[entries[5]]);
   for(const score of [-1,21,NaN,Infinity])assert.equal(publicationCandidates([{data:{score,maxScore:20,reviewRequired:false}}]).length,0);
 });
 test("recovery survives refresh, validates stored IDs and never executes an action",()=>{

@@ -3,7 +3,8 @@ import { auth, db } from "../core/firebase-core.js?v=1.3.0";
 import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
-import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.1";
+import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.2";
+import {legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.2";
 import {renderFeedbackMarkdown,reviewNotice} from "./review-ui.mjs?v=1.3.0";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
@@ -21,7 +22,7 @@ const publicationContext=()=>"quarter:"+el("gbQuarterSection").value+":"+el("gbQ
 function queueEntries(){return [...state.grades.values()].map(entry=>({...entry,schemaVersion:state.tasks.find(task=>task.id===entry.data.taskId)?.schemaVersion,maxScore:state.tasks.find(task=>task.id===entry.data.taskId)?.maxScore}));}
 function syncPublication(){
   const entries=queueEntries(),count=publicationCandidates(entries).length,button=el("gbQuarterPublish");
-  const flagged=entries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true).length;
+  const flagged=entries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true&&!legacyReadyDraft(entry.data)).length;
   button.textContent="Publish private drafts ("+count+")";button.disabled=state.loading||bulkBusy||!count;
   el("gbQuarterUnpublish").disabled=state.loading||bulkBusy||![...state.grades.values()].some(entry=>entry.data.published);
   const recovery=publicationRecovery(publicationContext());
@@ -127,7 +128,7 @@ function render() {
       add(btn, "span", "text-[10px] font-semibold " + (grade.published ? "text-emerald-700" :
         grade.reviewRequired ? "text-amber-700" : "text-slate-500"),
         grade.published ? "Published" : grade.provisionalScore ? "Investigate draft" :
-        grade.reviewRequired ? "Review needed" : "Ready to publish");
+        grade.reviewRequired && !legacyReadyDraft(grade) ? "Review needed" : "Ready to publish");
       btn.addEventListener("click", () => openDetails(student, task, entry));
     }
   }
@@ -332,7 +333,7 @@ async function togglePublish(makePublished) {
   if (!state.active) return;
   const active = state.active;
   if(detailsDirty)return reviewNotice("Save or discard your edits before changing publication.",true);
-  if (makePublished && active.entry.data.reviewRequired && !el("gbMarkReviewed").checked) {
+  if (makePublished && active.entry.data.reviewRequired && !legacyReadyDraft(active.entry.data) && !el("gbMarkReviewed").checked) {
     return alert("Review the evidence and check the teacher-review confirmation before publishing.");
   }
   if (!confirm((makePublished ? "Publish" : "Unpublish") + " this student's grade?")) return;
@@ -345,10 +346,10 @@ async function togglePublish(makePublished) {
       assertGradeVersion(previous,active.entry.data);
       const isV2=active.task.schemaVersion===2;
       if(makePublished&&isV2){
-        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=1.3.0");
+        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=1.3.1");
         await verifyGradePublication(tx,active.entry.ref,previous);
       }
-      if (makePublished && previous.reviewRequired && !el("gbMarkReviewed").checked) {
+      if (makePublished && previous.reviewRequired && !legacyReadyDraft(previous) && !el("gbMarkReviewed").checked) {
         throw new Error("Teacher review is required.");
       }
       tx.set(revision, {
@@ -359,9 +360,11 @@ async function togglePublish(makePublished) {
         after: { published: makePublished, reviewRequired: makePublished ? false : !!previous.reviewRequired },
         createdAt: serverTimestamp()
       });
+      const legacyReady=makePublished&&legacyReadyDraft(previous);
       tx.update(active.entry.ref, {
         published: makePublished,
-        ...(makePublished&&!isV2 ? { reviewRequired: false, reviewedAt: serverTimestamp() } : {})
+        ...(legacyReady?{reviewRequired:false,reviewPriority:"ready_to_publish"}:
+          (makePublished&&!isV2 ? { reviewRequired:false,reviewedAt:serverTimestamp() } : {}))
       });
     });
     closeDetails(); await loadQuarter();
@@ -370,7 +373,7 @@ async function togglePublish(makePublished) {
 async function bulkVisibility(makePublished) {
   if(bulkBusy||state.loading)return;
   const entries=queueEntries(),eligible=publicationCandidates(entries,makePublished);
-  const flagged=makePublished?entries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true).length:0;
+  const flagged=makePublished?entries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true&&!legacyReadyDraft(entry.data)).length:0;
   if (!eligible.length) return alert(makePublished&&flagged?
     "All remaining private drafts are flagged for manual review.":
     "No eligible grades to " + (makePublished ? "publish." : "unpublish."));

@@ -8,6 +8,7 @@ import {approvalContribution,evidenceRevision} from "./services/evidence-lifecyc
 import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,buildRubricResponseSchema,parseSuggestedRubric} from "./services/v2-grading-assistant.mjs?v=1.4.15";
 import {generateSchoolContent,schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.1";
+import {legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.2";
 
 const el=id=>document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
@@ -30,8 +31,8 @@ function reviewUrl(studentId){const p=new URLSearchParams({section:context.secti
 function statusFor(student){
   const evidence=evidenceMap.get(student.id),grade=context.grades?.[student.id],draft=draftMap.get(student.id);
   if(grade?.published)return {label:"Published",tone:"emerald"};
-  if(grade?.reviewRequired===true)return {label:"Review needed",tone:"amber",next:"Review & grade"};
-  if(grade)return {label:"Ready to publish",tone:"cyan"};
+  if(grade?.reviewRequired===true&&!legacyReadyDraft(grade))return {label:"Review needed",tone:"amber",next:"Review & grade"};
+  if(grade)return {label:legacyReadyDraft(grade)?"Legacy draft · ready":"Ready to publish",tone:"cyan"};
   if(draft)return {label:"Evaluation ready",tone:"indigo",next:"Review suggestion"};
   if(evidence?.status==="approved")return {label:evidence.verifiedContributionCommits?.length?"Approved · verified":"Approved · contribution check needed",tone:evidence.verifiedContributionCommits?.length?"emerald":"amber",next:"Review & grade"};
   if(evidence?.status==="submitted")return {label:"Submitted",tone:"blue",next:"Review submission"};
@@ -60,7 +61,7 @@ function render(){
     if(grade?.published)published++;
     else if(grade||draftMap.has(student.id)){
       drafts++;
-      if(grade?.reviewRequired===true)flagged++;
+      if(grade?.reviewRequired===true&&!legacyReadyDraft(grade))flagged++;
       else if(grade)ready++;
     }
     if(evidence&&["reopened","withdrawn"].includes(evidence.status))exceptions++;

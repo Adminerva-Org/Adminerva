@@ -547,6 +547,29 @@ test('approved evidence requires instructor reopening; old drafts cannot publish
   await assertFails(deleteDoc(doc(staff,'assessment_evidence','alice_v2')));
 });
 
+test('legacy clean system drafts can be normalized and published but real review flags stay private',async()=>{
+  const staff=client('staff',TEACHER);
+  const evidence={studentId:'alice',assessmentId:'v2',section:'11-A',repository:'https://github.com/example/project',
+    selectedCommits:[SHA],checkpointSha:SHA,approvedCheckpointSha:SHA,status:'approved',reviewedBy:'staff',
+    reviewedAt:new Date(),verifiedContributionCommits:[SHA],contributionScope:'Verified contribution.',verificationNote:'Verified.',revision:1};
+  const base={studentId:'alice',section:'11-A',taskId:'v2',gradedSha:SHA,evidenceRevision:1,score:18,maxScore:20,
+    feedback:'Complete evaluation feedback for the learner.',published:false,reviewRequired:true,manuallyAdjusted:false,
+    gradeSource:'system_evaluation_draft',reviewReasons:[],evaluationDraft:{teacherReviewed:false}};
+  await env.withSecurityRulesDisabled(async ctx=>{
+    const db=ctx.firestore();
+    await setDoc(doc(db,'assessment_evidence','alice_v2'),evidence);
+    await setDoc(doc(db,'student_grades','alice_v2'),{...base,reviewPriority:'ready_for_teacher_confirmation'});
+    await setDoc(doc(db,'student_grades','bob_v2'),{...base,studentId:'bob',section:'11-B',reviewPriority:'needs_review',reviewReasons:['Contribution mismatch']});
+    await setDoc(doc(db,'assessment_evidence','bob_v2'),{...evidence,studentId:'bob',section:'11-B'});
+  });
+  await assertSucceeds(updateDoc(doc(staff,'student_grades','alice_v2'),{
+    published:true,reviewRequired:false,reviewPriority:'ready_to_publish'
+  }));
+  await assertFails(updateDoc(doc(staff,'student_grades','bob_v2'),{
+    published:true,reviewRequired:false,reviewPriority:'ready_to_publish'
+  }));
+});
+
 test('instructors cannot bypass evidence transitions or audit history using catch-all privileges',async()=>{
   const staff=client('staff',TEACHER),admin=client('admin',ADMIN);
   await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'assessment_evidence','alice_v2'),{
