@@ -1,8 +1,9 @@
 import {feedbackSummary,inlineTask,reviewNotice} from "./review-ui.mjs?v=1.3.0";
 import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=1.3.0";
-import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.1";
+import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.2";
+import {legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.2";
 import {assertGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
-import {writePublicationRevision} from "./grade-publication.mjs?v=1.3.1";
+import {writePublicationRevision} from "./grade-publication.mjs?v=1.3.2";
 /** Teacher grade administration, protected revisions and explicit publication. */
 import { db,auth } from "../core/firebase-core.js?v=1.3.0";
 import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
@@ -38,7 +39,7 @@ function escapeHTML(str) {
 let allStudents = [],gridEntries=[],gridSerial=0,publishBusy=false,subjectFocus=[];
 function syncPublishButton(loading=false){
   const button=document.getElementById("gbLegacyPublish"),eligible=publicationCandidates(gridEntries);
-  const flagged=gridEntries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true).length;
+  const flagged=gridEntries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true&&!legacyReadyDraft(entry.data)).length;
   button.disabled=loading||publishBusy||!eligible.length;
   button.textContent="Publish private drafts ("+eligible.length+")";
   const recovery=publicationRecovery("single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value);
@@ -197,7 +198,7 @@ async function loadGrid() {
         scoreBadge = '<button type="button" class="av-feedback-chip" onclick="window.openGridFeedback(\''+student.id+'\',\''+taskId+'\')"><strong>'+escapeHTML(String(grade.score))+' / '+max+'</strong><span>'+escapeHTML(feedbackSummary(grade.feedback))+'</span></button>';
 
         const isPub = grade.published || false;
-        const requiresReview = !isPub && grade.reviewRequired===true;
+        const requiresReview = !isPub && grade.reviewRequired===true && !legacyReadyDraft(grade);
         if(requiresReview){
           const reviewLink="repofetch.html?"+new URLSearchParams({section,assessment:taskId,student:student.id,view:"grade"});
           const reason=(grade.reviewReasons||[]).filter(Boolean).slice(0,3).join(" • ")||
@@ -305,7 +306,7 @@ window.matrixTogglePub = async function (studentId, taskId, checkbox) {
     const gradeSnap = await getDoc(gradeRef);
     if (!gradeSnap.exists()) throw new Error("Grade does not exist.");
     const assessment=allAssessments.find(item=>item.id===taskId);
-    if (wantsPublish && gradeSnap.data().reviewRequired === true) {
+    if (wantsPublish && gradeSnap.data().reviewRequired === true && !legacyReadyDraft(gradeSnap.data())) {
       checkbox.checked=false;
       alert("This evaluation is flagged for teacher review and will stay private until the flag is resolved.");
       return;
@@ -469,7 +470,7 @@ function updateAssessmentsForSection() {
 window.bulkPublishCurrentGrid=async function(){
   if(publishBusy)return;
   const eligible=publicationCandidates(gridEntries);
-  const flagged=gridEntries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true).length;
+  const flagged=gridEntries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true&&!legacyReadyDraft(entry.data)).length;
   if(!eligible.length)return reviewNotice(flagged?
     "All remaining private drafts are flagged for manual review.":
     "No private drafts are ready to publish.");
