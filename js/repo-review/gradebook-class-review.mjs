@@ -290,7 +290,7 @@ async function bulkApprove(){
 }
 function eligibleToRerun(evidence,grade){
   return evidence?.status==="approved"&&evidence.verifiedContributionCommits?.length>0&&
-    grade?.published===false&&grade.reviewRequired===true&&grade.manuallyAdjusted===false&&
+    grade?.published===false&&grade.manuallyAdjusted===false&&
     grade.gradeSource==="system_evaluation_draft";
 }
 async function evaluateOne(student,evidence,assessment,connection,{rerun=false}={}){
@@ -306,8 +306,8 @@ async function evaluateOne(student,evidence,assessment,connection,{rerun=false}=
   if(source.excludedMergeCommits?.length){
     draft.limitations=[draft.limitations,"Merge commits were excluded from individual credit ("+source.excludedMergeCommits.length+"). Teacher review should confirm the student's original commits."].filter(Boolean).join(" ").slice(0,1400);
   }
-  // Persist the result in the protected gradebook as an unpublished, explicitly
-  // unreviewed draft. A system result can never satisfy publication requirements.
+  // Persist an unpublished draft. Only material uncertainty is held for
+  // teacher review; clean evaluations can enter the existing bulk publish queue.
   const gradeRef=doc(db,"student_grades",student.id+"_"+context.taskId);
   const latestEvidence=await getDoc(doc(db,"assessment_evidence",gradeRef.id));
   if(!latestEvidence.exists()||latestEvidence.data().status!=="approved"||
@@ -323,9 +323,12 @@ async function evaluateOne(student,evidence,assessment,connection,{rerun=false}=
   const gradePayload={
     studentId:student.id,taskId:context.taskId,section:context.section,
     score:draft.score,maxScore:Number(assessment.maxScore),feedback:draft.feedback,
-    published:false,reviewRequired:true,manuallyAdjusted:false,reviewPriority:needsReview?"needs_review":"ready_for_teacher_confirmation",
-    reviewReasons:[...new Set(draft.criteria.filter(item=>item.pendingPoints>0||item.confidence!=="high")
-      .map(item=>item.name+": "+item.reviewAction))].slice(0,30),
+    published:false,reviewRequired:needsReview,manuallyAdjusted:false,reviewPriority:needsReview?"needs_review":"ready_to_publish",
+    reviewReasons:[...new Set([
+      ...draft.criteria.filter(item=>item.pendingPoints>0||item.confidence!=="high"||item.status!=="supported")
+        .map(item=>item.name+": "+item.reviewAction),
+      ...(draft.limitations?[draft.limitations]:[])
+    ])].slice(0,30),
     gradeSource:"system_evaluation_draft",gradingMode:"individual",sourceSelectionMode:"verified_evidence",
     gradedSha:evidence.approvedCheckpointSha,evidenceRevision:evidenceRevision(evidence),
     evaluationDraft:{...draft,generatedBy:"Adminerva system evaluation",teacherReviewed:false},
@@ -361,7 +364,7 @@ async function bulkEvaluate({rerun=false}={}){
   });
   if(!candidates.length)return;
   if(!confirm(rerun?"Re-evaluate "+candidates.length+" unreviewed, unpublished system draft(s)? Previous scores and feedback will be archived. Teacher-edited and published grades will not change.":
-    "Generate unpublished grade drafts for "+candidates.length+" eligible learner(s)? Scores and feedback will require teacher confirmation."))return;
+    "Generate unpublished grade drafts for "+candidates.length+" eligible learner(s)? Evaluations with material uncertainty will be flagged for teacher review; clean drafts can be bulk published."))return;
   showBulkExceptions([]);
   analytics(rerun?"system_reevaluation_started":"system_evaluation_started",{feature:"gradebook",count_bucket:candidates.length});
   busy=true;busyEvaluation=true;cancelEvaluation=false;render();let assessment,connection;const failures=[];let completed=0;
@@ -375,7 +378,7 @@ async function bulkEvaluate({rerun=false}={}){
     }
   }catch(error){failures.push(error.message);}
   const stopped=cancelEvaluation;busy=false;busyEvaluation=false;await load(context);showBulkExceptions(failures);
-  analytics(rerun?"system_reevaluation_completed":"system_evaluation_completed",{feature:"gradebook",status:stopped?"stopped":failures.length?"partial":"success",count_bucket:completed});el("gbBulkStatus").textContent=(stopped?"Evaluation stopped: ":"Evaluation complete: ")+completed+" unpublished draft(s) "+(rerun?"replaced":"saved")+" · "+failures.length+" exception(s). Open Review & grade to confirm score and feedback."+(failures.length?" "+failures.slice(0,2).join(" | "):"");
+  analytics(rerun?"system_reevaluation_completed":"system_evaluation_completed",{feature:"gradebook",status:stopped?"stopped":failures.length?"partial":"success",count_bucket:completed});el("gbBulkStatus").textContent=(stopped?"Evaluation stopped: ":"Evaluation complete: ")+completed+" unpublished draft(s) "+(rerun?"replaced":"saved")+" · "+failures.length+" processing exception(s). Publish ready drafts in Gradebook; only flagged evaluations need individual review."+(failures.length?" "+failures.slice(0,2).join(" | "):"");
 }
 window.addEventListener("adminerva:gradebook-grid-loaded",event=>void load(event.detail));
 if(window.__adminervaGradebookGridContext)void load(window.__adminervaGradebookGridContext);
