@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import vm from "node:vm";
 import {scheduleScope, scheduleSemester, normalizeSchoolYear, parseScheduleRows, localScheduleText, parseClockMinutes} from "./schedule-scope.mjs";
+import {isLegacySharedScope,isLegacyScheduleRetired,legacyScheduleNotice,resolveSectionGrade,scheduleRowsToText} from "./legacy-schedule-compat.mjs";
 
 test("semester and school-year timetables never share document or cache keys",()=>{
   const first=scheduleScope("2026-2027","S1");
@@ -76,7 +77,8 @@ test("teacher schedule editor writes only the selected semester document",async(
       querySelectorAll:selector=>selector==="#scheduleTableBody tr"?[row]:[],
       createElement:()=>({dataset:{},className:"",innerHTML:""})
     },
-    scheduleScope,parseScheduleRows,parseClockMinutes,
+    scheduleScope,parseScheduleRows,parseClockMinutes,isLegacySharedScope,isLegacyScheduleRetired,legacyScheduleNotice,resolveSectionGrade,scheduleRowsToText,
+    auth:{currentUser:{email:"other-teacher@example.edu"}},ADMIN_EMAIL:"admin@example.edu",TEACHER_EMAIL:"original-teacher@example.edu",
     doc:(_db,_collection,id)=>({id}),
     getDoc:async()=>({exists:()=>false}),
     setDoc:async(ref,data)=>{writes.push({id:ref.id,data});},
@@ -104,8 +106,8 @@ test("lesson planner resolves schedules by academic term, not global legacy cach
   const generator=readFileSync("js/lesson-review/ai-engine.js","utf8");
   const page=readFileSync("schedule.html","utf8");
   assert.match(firebase,/window\.fetchScheduleForLesson/);
-  assert.match(firebase,/schedule: await window\.fetchScheduleForLesson\(schoolYear, academicTerm\)/);
-  assert.match(generator,/await window\.fetchScheduleForLesson\(schoolYear, academicTerm\)/);
+  assert.match(firebase,/schedule: await window\.fetchScheduleForLesson\(schoolYear, academicTerm, grade, subject\)/);
+  assert.match(generator,/await window\.fetchScheduleForLesson\(schoolYear, academicTerm, targetGrade, subject\)/);
   for (const id of ["scheduleSchoolYear","scheduleSemester","scheduleScopeStatus"])
     assert.ok(page.includes('id="'+id+'"'),"Missing semester selector "+id);
 });

@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {publicReleases,releaseNotifications} from './patch-history.mjs';
+import {publicReleases,releaseNotifications,releaseForRole} from './patch-history.mjs';
 import {notificationTarget} from './notification-routing.mjs';
 import {notificationVisible} from './notification-visibility.mjs';
 const release={version:'2026.10.18.4',status:'published',public:true,releasedAt:'2026-10-18',title:'Review update',summary:'Public improvement',changes:[{type:'Fixed',area:'Review',text:'Clearer controls'}]};
@@ -14,11 +14,25 @@ test('prepared staging versions are not fabricated historical releases or accoun
   for(const version of ['2026.10.19.1','2026.10.19.2'])assert.ok(!releaseNotifications(releases).some(notice=>notice.key==='release:'+version));
   assert.ok(releases.some(item=>item.version==='2026.10.18.4'));
 });
-test('only explicitly published public releases produce one notification per version',()=>{
+test('only explicitly published public releases produce one notification per relevant role',()=>{
   const releases=publicReleases({releases:[release,release,{...release,version:'2026.10.18.5',public:false},{...release,version:'2026.10.18.6',status:'draft'},{...release,version:'2099.10.18.1',releasedAt:'2099-10-18'}]},Date.parse('2026-10-20'));
   assert.equal(releases.length,1);
-  const [notice]=releaseNotifications(releases);assert.equal(notice.key,'release:2026.10.18.4');assert.equal(notificationTarget(notice.target),notice.target);
-  for(const role of ['student','teacher','admin'])assert.equal(notificationVisible(notice,role),true);
+  const [notice]=releaseNotifications(releases,'teacher');assert.equal(notice.key,'release:2026.10.18.4');assert.equal(notificationTarget(notice.target),notice.target);
+  assert.equal(notificationVisible(notice,'teacher'),true);
+  assert.equal(notificationVisible(notice,'admin'),true);
+  assert.equal(releaseNotifications(releases,'student').length,0);
+});
+test('explicit audiences override legacy inference and mixed releases project per role',()=>{
+  const mixed=publicReleases({releases:[{...release,changes:[
+    {type:'Fixed',area:'School administration',text:'Admin-only control',audience:['admin']},
+    {type:'Fixed',area:'Lesson Planner',text:'Teacher lesson fix',audience:['teacher','admin']},
+    {type:'Fixed',area:'Code Playground',text:'Student coding fix',audience:['student','admin']},
+    {type:'Updated',area:'Navigation',text:'Site-wide navigation fix',audience:['all']}
+  ]}]},Date.parse('2026-10-20'))[0];
+  assert.equal(releaseForRole(mixed,'teacher').changes.length,2);
+  assert.equal(releaseForRole(mixed,'student').changes.length,2);
+  assert.equal(releaseForRole(mixed,'admin').changes.length,4);
+  assert.deepEqual(mixed.changes[0].audience,['admin']);
 });
 test('public projection excludes private metadata and malformed releases',()=>{
   const [result]=publicReleases({releases:[{...release,internalNotes:'not public',studentEmail:'private@example.edu'}]},Date.parse('2026-10-20'));
@@ -31,6 +45,9 @@ test('shipped patch manifest contains only curated public fields and system labe
     assert.deepEqual(Object.keys(item).sort(),['version','status','public','releasedAt','title','summary','changes',...(item.displayVersion?['displayVersion']:[]),...(item.publishedAt?['publishedAt']:[])].sort());
     if(item.displayVersion)assert.match(item.displayVersion,/^\d+\.\d+\.\d+$/);
     assert.equal(typeof item.public,"boolean");if(item.status==="published")assert.equal(item.public,true);assert.doesNotMatch(JSON.stringify(item),/@|api[_ -]?key|ruleset|studentId/i);
-    for(const change of item.changes)assert.deepEqual(Object.keys(change).sort(),['area','text','type']);
+    for(const change of item.changes){
+      const allowed=['area','text','type',...(change.audience?['audience']:[])].sort();
+      assert.deepEqual(Object.keys(change).sort(),allowed);
+    }
   }
 });

@@ -32,3 +32,13 @@ test('badge count tracks only visible, unread items and never source errors',()=
   assert.equal(unreadNotificationCount(visible,new Set(),new Set(['d'])),1);
   assert.equal(unreadNotificationCount([],new Set(),new Set()),0);
 });
+
+
+test('release alerts respect their intended audience',()=>{
+  assert.equal(notificationVisible({type:'release',audience:['admin','teacher']},'teacher'),true);
+  assert.equal(notificationVisible({type:'release',audience:['admin','teacher']},'student'),false);
+  assert.equal(notificationVisible({type:'release',audience:['admin','student']},'student'),true);
+  assert.equal(notificationVisible({type:'release',audience:['all']},'teacher'),true);
+  assert.equal(notificationVisible({type:'release',audience:['all']},'student'),true);
+  assert.equal(notificationVisible({type:'release',audience:['admin']},'admin'),true);
+});

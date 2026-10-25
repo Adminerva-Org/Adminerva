@@ -4,7 +4,11 @@
 export function notificationVisible(item, role) {
   if (!item || !item.type) return false;
   if (role === "admin") return true;
-  if (item.type === "release") return role === "teacher" || role === "student";
+  if (item.type === "release") {
+    const audience=Array.isArray(item.audience)?item.audience:[];
+    if(audience.length)return audience.includes("all")||audience.includes(role);
+    return role === "teacher" || role === "student";
+  }
   if (item.type === "issue") {
     // Source issue feeds are already audience-scoped, while official notification
     // records are private to the recipient. Missing metadata remains hidden.
