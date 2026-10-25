@@ -346,7 +346,7 @@ async function togglePublish(makePublished) {
       assertGradeVersion(previous,active.entry.data);
       const isV2=active.task.schemaVersion===2;
       if(makePublished&&isV2){
-        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=1.3.0");
+        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=1.3.1");
         await verifyGradePublication(tx,active.entry.ref,previous);
       }
       if (makePublished && previous.reviewRequired && !el("gbMarkReviewed").checked) {
