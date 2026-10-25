@@ -320,10 +320,10 @@ window.matrixTogglePub = async function (studentId, taskId, checkbox) {
         await verifyGradePublication(tx,gradeRef,{...latest.data(),taskId});
       }
       writePublicationRevision(tx,gradeRef,latest.data(),wantsPublish);
+      const legacyReady=wantsPublish&&legacyReadyDraft(latest.data());
       tx.update(gradeRef, {
         published: wantsPublish,
-        ...(wantsPublish && latest.data().reviewRequired === true
-          ? { reviewRequired: false, reviewedAt: serverTimestamp() } : {}),
+        ...(legacyReady?{reviewRequired:false,reviewPriority:"ready_to_publish"}:{})
       });
     });
     const span = checkbox.nextElementSibling.nextElementSibling;
