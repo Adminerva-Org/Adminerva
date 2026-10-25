@@ -5,9 +5,9 @@ import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {normalizeSelection,parseRepository} from "./services/assessment-evidence.mjs?v=1.4.3";
 import {verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
 import {approvalContribution,evidenceRevision} from "./services/evidence-lifecycle.mjs?v=1.4.3";
-import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,buildRubricResponseSchema,parseSuggestedRubric} from "./services/v2-grading-assistant.mjs?v=1.4.15";
-import {generateSchoolContent,schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
-import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.1";
+import {parseWeightedRubric,loadPinnedV2Source,parseSuggestedRubric} from "./services/v2-grading-assistant.mjs?v=1.4.16";
+import {evaluateVerifiedEvidence} from "./services/adaptive-evaluation.mjs?v=1.3.0";
+import {schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
 import {legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.2";
 
 const el=id=>document.getElementById(id);
@@ -307,11 +307,17 @@ async function evaluateOne(student,evidence,assessment,connection,{rerun=false}=
   const criteria=parseWeightedRubric(assessment.evalCriteria,assessment.maxScore),token=localStorage.getItem("Adminerva_github_token");
   const source=await loadPinnedV2Source({repository:evidence.repository,checkpointSha:evidence.approvedCheckpointSha,selectedCommits:evidence.selectedCommits,
     assessment,verifiedContributionCommits:evidence.verifiedContributionCommits,token,fetchImpl:globalThis.fetch});
-  const prompt=buildRubricPrompt({assessment,criteria,checkpointSha:evidence.approvedCheckpointSha,files:source.files,patches:source.patches,
-    contributionScope:evidence.contributionScope,analysis:source.analysis,visualAssetsIncluded:false});
-  const result=await generateSchoolContent({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",
-    responseSchema:buildRubricResponseSchema(criteria),maxOutputTokens:12000,temperature:0.1}},{purpose:"evaluation"});
-  const parsed=await evaluationJSON({ok:true,json:async()=>result}),draft=parseSuggestedRubric(parsed,criteria,assessment.maxScore,source);
+  const evaluation=await evaluateVerifiedEvidence({
+    assessment,criteria,evidence:source,contributionScope:evidence.contributionScope,includeImages:false,
+    onProgress:progress=>{
+      if(progress.mode==="adaptive"&&progress.stage==="chunk")
+        el("gbBulkStatus").textContent="Large contribution: processing evidence chunk "+Math.min(progress.completed+1,progress.total)+"/"+progress.total+" for "+student.name+"…";
+      else if(progress.mode==="adaptive"&&progress.stage==="final")
+        el("gbBulkStatus").textContent="Large contribution: building final rubric proposal for "+student.name+"…";
+    }
+  });
+  const draft=parseSuggestedRubric(evaluation.parsed,criteria,assessment.maxScore,source);
+  draft.evaluationMode=evaluation.mode;draft.evidenceChunks=evaluation.chunkCount;
   if(source.truncatedDiffs?.length)draft.limitations=[draft.limitations,"Large verified diffs were truncated for evaluation; teacher review is required."].filter(Boolean).join(" ").slice(0,1400);
   if(source.excludedMergeCommits?.length){
     draft.limitations=[draft.limitations,"Merge commits were excluded from individual credit ("+source.excludedMergeCommits.length+"). Teacher review should confirm the student's original commits."].filter(Boolean).join(" ").slice(0,1400);
