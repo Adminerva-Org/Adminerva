@@ -36,6 +36,7 @@ export async function verifyCheckpointAncestry({selectedCommits,checkpointSha,fe
   if(!/^[a-f0-9]{40}$/.test(checkpoint)||commits.some(sha=>!/^[a-f0-9]{40}$/.test(sha)))
     throw Error("Invalid Git commit SHA in checkpoint ancestry request.");
   const remaining=new Set(commits);
+  if(!remaining.size)return {ok:true,missing:[],checkedPages:0};
   let checkedPages=0;
   for(let page=1;page<=maxPages;page++){
     const items=await fetchPage(page);

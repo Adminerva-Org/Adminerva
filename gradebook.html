@@ -32,6 +32,20 @@
         </div>
         <p class="text-sm text-slate-500">Click a score to inspect evidence, edit feedback, or review a draft.</p>
       </div>
+      <section id="gbClassReviewTools" class="hidden mb-4 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4" aria-label="Class review tools">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div><p class="text-xs font-extrabold uppercase tracking-wider text-indigo-700">Class review console</p>
+            <p id="gbClassReviewSummary" class="text-sm text-slate-700 mt-1">Choose a V2 assessment to load submission and grading status.</p></div>
+          <div class="flex flex-wrap gap-2">
+            <button id="gbForceGather" type="button" disabled class="border border-amber-300 bg-white text-amber-900 rounded-lg px-3 py-2 text-sm font-bold">Force gather evidence (0)</button>
+            <button id="gbBulkApprove" type="button" disabled class="border border-emerald-300 bg-white text-emerald-800 rounded-lg px-3 py-2 text-sm font-bold">Approve evidence (0)</button>
+            <button id="gbBulkEvaluate" type="button" disabled class="border border-indigo-300 bg-white text-indigo-800 rounded-lg px-3 py-2 text-sm font-bold">Run system evaluation (0)</button>
+            <a id="gbReviewExceptions" href="repofetch.html" class="border border-amber-300 bg-white text-amber-900 rounded-lg px-3 py-2 text-sm font-bold">Review exceptions</a>
+          </div>
+        </div>
+        <p id="gbBulkStatus" class="text-xs text-slate-600 mt-3" role="status">Force gather pins repository state at the assessment cutoff and proposes matching linked-account commits without overwriting existing submissions. Approval verifies checkpoint ancestry and marks only exact linked GitHub-account matches as teacher-approved individual contributions. System evaluation creates private drafts only; grades are never published automatically.</p>
+      </section>
+
       <div id="gbLegacyView" class="hidden">
       <!-- Matrix Controls -->
       <div
@@ -81,18 +95,6 @@
       </div>
 
       <p id="gbLegacyRecovery" role="status" class="text-sm text-slate-600 mb-3">Load reviewed drafts to prepare publication.</p>
-      <section id="gbClassReviewTools" class="hidden mb-4 rounded-xl border border-indigo-200 bg-indigo-50/60 p-4" aria-label="Class review tools">
-        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div><p class="text-xs font-extrabold uppercase tracking-wider text-indigo-700">Class review console</p>
-            <p id="gbClassReviewSummary" class="text-sm text-slate-700 mt-1">Choose a V2 assessment to load submission and grading status.</p></div>
-          <div class="flex flex-wrap gap-2">
-            <button id="gbBulkApprove" type="button" disabled class="border border-emerald-300 bg-white text-emerald-800 rounded-lg px-3 py-2 text-sm font-bold">Approve clean checkpoints (0)</button>
-            <button id="gbBulkEvaluate" type="button" disabled class="border border-indigo-300 bg-white text-indigo-800 rounded-lg px-3 py-2 text-sm font-bold">Evaluate eligible (0)</button>
-            <a id="gbReviewExceptions" href="repofetch.html" class="border border-amber-300 bg-white text-amber-900 rounded-lg px-3 py-2 text-sm font-bold">Review exceptions</a>
-          </div>
-        </div>
-        <p id="gbBulkStatus" class="text-xs text-slate-600 mt-3" role="status">Bulk approval checks checkpoint ancestry and reclaim conflicts but does not infer individual contribution credit. Bulk evaluation only uses already verified individual contributions and saves private suggestions for teacher review.</p>
-      </section>
       <!-- The Matrix Table -->
       <div
         class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden"
@@ -200,7 +202,7 @@
     <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
     <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.1"></script>
     <script type="module" src="js/repo-review/gradebook.js?v=1.4.1"></script>
-    <script type="module" src="js/repo-review/gradebook-quarter.mjs?v=1.4.1"></script>
-  <script type="module" src="js/repo-review/gradebook-class-review.mjs?v=1.4.1"></script>
+    <script type="module" src="js/repo-review/gradebook-quarter.mjs?v=1.4.3"></script>
+  <script type="module" src="js/repo-review/gradebook-class-review.mjs?v=1.4.3"></script>
   </body>
 </html>

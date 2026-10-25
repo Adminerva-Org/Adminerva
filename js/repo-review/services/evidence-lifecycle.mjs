@@ -1,5 +1,5 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: evidence lifecycle. */
-import {normalizeSelection} from "./assessment-evidence.mjs?v=1.3.1";
+import {normalizeSelection} from "./assessment-evidence.mjs?v=1.4.3";
 
 export function studentMayChangeEvidence(evidence){
   return !evidence || evidence.status==="reopened" ||
@@ -29,7 +29,9 @@ export function assertSameEvidence(current,opened){
 }
 
 export function approvalContribution(selection,verifiedCommits,scope){
-  const normalized=normalizeSelection(selection.selectedCommits,selection.checkpointSha);
+  // Instructor-discovered deadline snapshots may intentionally contain no
+  // individually attributable commits while still pinning project state.
+  const normalized=normalizeSelection(selection.selectedCommits,selection.checkpointSha,{allowEmpty:true});
   if(!Array.isArray(verifiedCommits)||verifiedCommits.some(sha=>!normalized.selectedCommits.includes(sha)))
     throw Error("Verified contributions must belong to the selected evidence.");
   const responsibility=String(scope||"").trim();

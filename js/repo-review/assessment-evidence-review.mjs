@@ -5,9 +5,9 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {collection,doc,getDoc,getDocFromServer,getDocs,setDoc,query,where,updateDoc,runTransaction,serverTimestamp,onSnapshot}
   from "../core/teaching-firestore.mjs?v=1.3.0";
 import {parseRepository,normalizeSelection,validSha}
-  from "./services/assessment-evidence.mjs?v=1.3.1";
-import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.3.1";
-import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.1";
+  from "./services/assessment-evidence.mjs?v=1.4.3";
+import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
+import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.4.3";
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
@@ -152,7 +152,7 @@ async function loadEvidence(initialRecord){
       return;
     }
     const evidence=record;
-    normalizeSelection(evidence.selectedCommits,evidence.checkpointSha);
+    normalizeSelection(evidence.selectedCommits,evidence.checkpointSha,{allowEmpty:evidence.source==="teacher_discovered"});
     if(evidence.studentId!==student.id||evidence.assessmentId!==assessment.id||
        evidence.repository!==student.repoUrl)throw Error("Submission identity or repository does not match the roster.");
     state.evidence=evidence;
@@ -168,7 +168,8 @@ async function loadEvidence(initialRecord){
     el("evidenceTitle").textContent=(student.name||student.id)+" — "+(assessment.title||assessment.id);
     el("evidenceMetadata").textContent="Status: "+evidence.status+
       " · Section: "+student.section+" · Project checkpoint: "+evidence.checkpointSha+
-      " · Commits submitted: "+evidence.selectedCommits.length;
+      " · Individual evidence commits: "+evidence.selectedCommits.length+
+      (evidence.discoveryCutoff?" · Gather cutoff: "+new Date(evidence.discoveryCutoff).toLocaleString():"");
     const links=el("evidenceLinks");links.replaceChildren();
     link(links,"Project at checkpoint ↗",base+"/tree/"+encodeURIComponent(evidence.checkpointSha));
     if(!embedded&&!inlineContext)link(links,"Open grading in RepoFetch →","repofetch.html?section="+
@@ -213,7 +214,9 @@ async function loadEvidence(initialRecord){
     state.loaded=true;
     el("evidenceContributionScope").disabled=evidence.status==="approved";
     el("evidenceReviewNote").disabled=false;el("evidenceConfirm").disabled=false;el("evidenceVerifyAll").disabled=evidence.status==="approved";el("evidenceEditVerification").disabled=false;
-    status("Loaded "+evidence.selectedCommits.length+" selected commits. Approval will verify that they occur in the checkpoint's ancestry.");
+    status(evidence.selectedCommits.length
+      ?"Loaded "+evidence.selectedCommits.length+" selected commits. Approval will verify checkpoint ancestry and the contribution choices."
+      :"Loaded a checkpoint-only teacher snapshot. No individual commit is attributed to this learner; you may approve the checkpoint as project context, but system evaluation remains unavailable until individual contribution is verified.");
     if(evidence.status==="reopened")status("Reopened: the student can change commit selections now. They must resubmit before a new approval. Contribution checks here verify authorship; they do not edit the student's selected commits.");
     else if(evidence.status==="submitted")status("Student evidence is awaiting review. If approval fails or the selection needs correction, enter a reason below and choose Return for student changes.");
     else if(evidence.status==="approved")status(evidence.verifiedContributionCommits?.length?"Approved. To let the student submit different commits, enter a reopening reason below and choose Reopen for student changes.":"Approved checkpoint has no verified individual contributions. To let the student change commits, enter a reopening reason below and choose Reopen for student changes.");
@@ -325,7 +328,7 @@ async function approve(){
   state.busy=true;el("evidenceApprove").disabled=true;
   try{
     const repo=parseRepository(state.evidence.repository);
-    const selection=normalizeSelection(state.evidence.selectedCommits,state.evidence.checkpointSha);
+    const selection=normalizeSelection(state.evidence.selectedCommits,state.evidence.checkpointSha,{allowEmpty:state.evidence.source==="teacher_discovered"});
     const verified=[...root.querySelectorAll("[data-contribution-sha]:checked")].map(node=>node.dataset.contributionSha);
     const scope=el("evidenceContributionScope").value.trim()||(verified.length?"Instructor verified "+verified.length+" selected commit(s) for "+(state.student.name||state.student.id)+" at checkpoint "+selection.checkpointSha+". Individual review is limited to these selected changes; shared project features are context only.":"No individual contributing commits were verified. This checkpoint approval records shared project context only.");
     const contribution=approvalContribution(selection,verified,scope);
