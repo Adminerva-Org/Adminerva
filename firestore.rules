@@ -14,7 +14,11 @@ service cloud.firestore {
     // Verified Firebase Auth identity, never the browser's simulated role.
     // Migrate this temporary email mapping to Firebase custom claims later.
     function isAdmin() {
-      return signedIn() && request.auth.token.email_verified == true && request.auth.token.email.lower() == "babaynike2013@gmail.com";
+      let email = signedIn() ? request.auth.token.email.lower() : "";
+      let path = /databases/$(database)/documents/staff_access/$(email);
+      return signedIn() && request.auth.token.email_verified == true &&
+        (email == "babaynike2013@gmail.com" ||
+          (exists(path) && get(path).data.role == "admin" && get(path).data.status == "active" && get(path).data.email == email));
     }
     function isTeacher() {
       let email = signedIn() ? request.auth.token.email.lower() : "";
@@ -87,7 +91,7 @@ service cloud.firestore {
         return data.keys().hasOnly(["email","displayName","role","status","revision","reason","updatedBy","updatedAt","sections","subjects"]) &&
           data.email == email && email == email.lower() && email.matches("^[^/@ ]+@[^/@ ]+\\.[^/@ ]+$") && email.size() <= 254 &&
           email != "babaynike2013@gmail.com" && data.displayName is string && data.displayName.size() > 0 && data.displayName.size() <= 120 &&
-          data.role == "teacher" && data.status in ["active","disabled"] && data.get("sections",[]) is list && data.get("sections",[]).size() <= 40 &&
+          data.role in ["teacher","admin"] && data.status in ["active","disabled"] && data.get("sections",[]) is list && data.get("sections",[]).size() <= 40 &&
           data.get("subjects",[]) is list && data.get("subjects",[]).size() <= 40 && data.revision is int &&
           data.revision == (prior == null ? 1 : prior.revision + 1) && data.reason is string && data.reason.size() >= 12 && data.reason.size() <= 600 &&
           data.updatedBy == request.auth.uid && data.updatedAt == request.time &&
