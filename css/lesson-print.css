@@ -46,8 +46,8 @@
     print-color-adjust: exact !important;
   }
   .print-table tr {
-    page-break-inside: auto !important;
-    break-inside: auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
   /* The legacy heading appears once, even when a session continues to another page. */
   .print-table thead { display: table-row-group !important; }

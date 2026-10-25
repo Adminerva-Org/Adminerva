@@ -5,7 +5,9 @@ import { db } from "../core/firebase-core.js?v=1.3.0";
 import {loadSchoolOptions,fillSchoolDatalist} from "../core/school-options.mjs?v=1.3.0";
 import {auth} from "../core/firebase-core.js?v=1.3.0";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
+import {ADMIN_EMAIL,TEACHER_EMAIL} from "../core/staff-role.mjs?v=1.3.0";
 import { scheduleScope, parseScheduleRows, parseClockMinutes } from "./schedule-scope.mjs?v=1.3.0";
+import {isLegacySharedScope,isLegacyScheduleRetired,legacyScheduleNotice,resolveSectionGrade,scheduleRowsToText} from "./legacy-schedule-compat.mjs?v=1.4.18";
 import {
   doc,
   getDoc,
@@ -49,6 +51,18 @@ function escapeHTML(str) {
 function currentScope() {
   return scheduleScope(activeYear, activeSemester);
 }
+function mayUseSharedLegacySchedule() {
+  const email=String(auth.currentUser?.email||"").toLowerCase();
+  return isLegacySharedScope(currentScope())&&(email===ADMIN_EMAIL||email===TEACHER_EMAIL);
+}
+function updateLegacyScheduleNotice() {
+  const node=document.getElementById("legacyScheduleNotice");
+  if(!node)return;
+  const legacy=isLegacySharedScope(currentScope());
+  node.hidden=!legacy;
+  node.textContent=legacy?legacyScheduleNotice():"";
+  node.dataset.tone=legacy&&isLegacyScheduleRetired()?"warning":"info";
+}
 workspaceOnReady(() => {
   const status=document.getElementById("scheduleScopeStatus");
   if(!status)return;
@@ -62,7 +76,7 @@ workspaceOnReady(() => {
     isEditing=false;draftRows=null;updateEditControls();await fetchScheduleFromCloud();
   });
   const legacy=document.createElement("button");legacy.type="button";legacy.className="av-secondary-button";legacy.textContent="Import older shared timetable…";legacy.hidden=true;
-  resolveStaffRole(auth.currentUser).then(role=>{legacy.hidden=role!=="admin";});
+  resolveStaffRole(auth.currentUser).then(role=>{legacy.hidden=role!=="admin"||isLegacySharedScope(currentScope());});
   legacy.addEventListener("click",async()=>{
     if(isSaving)return;
     const scope=currentScope(),ownerUid=workspaceUid();
@@ -109,8 +123,9 @@ function updateEditControls() {
   const button = document.getElementById("editSaveBtn");
   const badge = document.getElementById("modeBadge");
   if (button) {
-    button.disabled=loadingSchedule||isSaving;
-    button.textContent = isEditing ? "Save Schedule" : "Edit Schedule";
+    const archived=isLegacySharedScope(currentScope())&&isLegacyScheduleRetired();
+    button.disabled=loadingSchedule||isSaving||archived;
+    button.textContent = archived ? "Legacy Schedule Archived" : (isEditing ? "Save Schedule" : "Edit Schedule");
     button.className = isEditing
       ? "bg-green-600 text-white px-6 py-2 rounded font-bold hover:bg-green-700 transition shadow-sm flex items-center gap-2"
       : "bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700 transition shadow-sm flex items-center gap-2";
@@ -121,12 +136,14 @@ function updateEditControls() {
       ? "bg-green-100 text-green-800 text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider"
       : "bg-gray-200 text-gray-700 text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider";
   }
+  const archived=isLegacySharedScope(currentScope())&&isLegacyScheduleRetired();
   for (const id of ["addClassBtn", "addEventBtn"]) {
     const node = document.getElementById(id);
     if (!node) continue;
-    node.classList.toggle("hidden", !isEditing);
-    node.classList.toggle("flex", isEditing);
+    node.classList.toggle("hidden", !isEditing||archived);
+    node.classList.toggle("flex", isEditing&&!archived);
   }
+  updateLegacyScheduleNotice();
 }
 
 async function initFirebase() {
@@ -152,21 +169,25 @@ async function fetchScheduleFromCloud() {
   if (db) {
     window.showLoader("Loading selected semester schedule...");
     try {
-      let snap = await getDoc(ownedDoc(db,"schedules",scope.id));
+      let shared=false;
+      let snap=null;
+      if(mayUseSharedLegacySchedule()){
+        let sharedSnap=await getDoc(doc(db,"app_config",scope.id));
+        if(!sharedSnap.exists()&&scope.allowLegacy)sharedSnap=await getDoc(doc(db,"app_config","master_schedule"));
+        if(sharedSnap.exists()){snap=sharedSnap;shared=true;}
+      }
+      if(!snap)snap=await getDoc(ownedDoc(db,"schedules",scope.id));
       if(request!==loadSerial)return;
       assertWorkspaceAccount(ownerUid);
-      let fromLegacy = false;
-      // Existing first-semester timetables used one unscoped document.
-      // Never import that document into a different semester or school year.
-
-      cloudVersion=snap.exists()?Number(snap.data().version||1):0;
+      // 2026–2027 uses one temporary shared timetable for the administrator
+      // and original teacher. Newer school years remain account-owned.
+      cloudVersion=shared?0:(snap.exists()?Number(snap.data().version||1):0);
       lessonStorage.setItem(scope.versionKey,String(cloudVersion));
       if (snap.exists()) {
         const data = snap.data();
         rows = parseScheduleRows(data.json_data);
         raw = typeof data.raw_text === "string" ? data.raw_text : "";
-        source = fromLegacy ? "Legacy timetable loaded; save to store this semester independently."
-          : "Loaded from cloud.";
+        source = shared ? "Loaded shared 2026–2027 legacy timetable." : "Loaded from cloud.";
       }
     } catch (error) {
       console.warn("Schedule cloud fetch failed; using local copy:", error);
@@ -208,6 +229,7 @@ workspaceOnReady( async () => {
   if (semester === "S1" || semester === "S2") activeSemester = semester;
   syncPeriodInputs();
   await refreshSchoolChoices();
+  updateLegacyScheduleNotice();
   document.getElementById("scheduleSchoolYear")?.addEventListener("change", window.changeSchedulePeriod);
   document.getElementById("scheduleSemester")?.addEventListener("change", window.changeSchedulePeriod);
   updateEditControls();
@@ -246,6 +268,7 @@ window.changeSchedulePeriod = async function () {
   lessonStorage.setItem("Adminerva_schedule_selected_year", activeYear);
   lessonStorage.setItem("Adminerva_schedule_selected_semester", activeSemester);
   await refreshSchoolChoices();
+  updateLegacyScheduleNotice();
   await fetchScheduleFromCloud();
 };
 // --- MODAL & CONFIG LOGIC ---
@@ -600,11 +623,20 @@ function getTableDataFromDOM() {
         eventName: tr.querySelector(".event-input").value,
       });
     } else {
-      const extractCell = (day) => ({
-        sec: tr.querySelector(`.${day}-sec`).value,
-        sub: tr.querySelector(`.${day}-sub`).value,
-        evt: tr.querySelector(`.${day}-evt`).value,
-      });
+      const extractCell = (day) => {
+        const sec=tr.querySelector(`.${day}-sec`).value;
+        const cell={
+          sec,
+          sub: tr.querySelector(`.${day}-sub`).value,
+          evt: tr.querySelector(`.${day}-evt`).value,
+        };
+        // Preserve the current legacy JSON shape. Newer timetable rows keep
+        // the section grade so lesson filtering no longer needs inference.
+        if(!isLegacySharedScope(currentScope())){
+          cell.grade=resolveSectionGrade(sec,{catalogSections:schoolOptions?.catalogs?.sections||[]});
+        }
+        return cell;
+      };
       jsonData.push({
         type: "class",
         startTime,
@@ -660,55 +692,16 @@ window.saveScheduleData = async function (bypassValidation = false) {
     }
   }
 
-  // FORMAT FOR THE AI
-  let rawTextForAI = "TEACHER WEEKLY SCHEDULE:\n\n";
-  const dayData = {
-    Monday: [],
-    Tuesday: [],
-    Wednesday: [],
-    Thursday: [],
-    Friday: [],
-  };
-  const daysMap = {
-    mon: "Monday",
-    tue: "Tuesday",
-    wed: "Wednesday",
-    thu: "Thursday",
-    fri: "Friday",
-  };
+  const rawTextForAI = scheduleRowsToText(jsonData);
 
-  jsonData.forEach((row) => {
-    if (!row.startTime) return;
-    const timeBlock = `${formatTimeToAMPM(row.startTime)} - ${formatTimeToAMPM(row.endTime)}`;
-
-    if (row.type === "constant" && row.eventName) {
-      const eventStr = `[EVENT: ${row.eventName}]`;
-      Object.values(daysMap).forEach((day) =>
-        dayData[day].push(`${timeBlock}: ${eventStr}`),
-      );
-    } else if (row.type === "class") {
-      Object.keys(daysMap).forEach((key) => {
-        const cell = row[key];
-        let cellText = null;
-        if (cell.evt) cellText = `[EVENT: ${cell.evt}]`;
-        else if (cell.sec && cell.sub) cellText = `${cell.sec} (${cell.sub})`;
-
-        if (cellText) dayData[daysMap[key]].push(`${timeBlock}: ${cellText}`);
-      });
-    }
-  });
-
-  Object.keys(dayData).forEach((day) => {
-    if (dayData[day].length > 0) {
-      rawTextForAI += `[${day}]\n`;
-      dayData[day].forEach((entry) => (rawTextForAI += `- ${entry}\n`));
-      rawTextForAI += `\n`;
-    }
-  });
-
-  // Save this semester only; legacy master_schedule stays untouched.
   const scope = currentScope();
   cacheRows(scope, jsonData, rawTextForAI);
+
+  if(isLegacySharedScope(scope)&&isLegacyScheduleRetired()){
+    updateScopeStatus("Legacy timetable is archived and read-only.");
+    alert("The 2026–2027 legacy timetable is archived. Create a timetable for the new school year to continue schedule-based lesson planning.");
+    return false;
+  }
 
   if (!db) {
     lessonStorage.setItem(scope.pendingKey, "1");
@@ -720,6 +713,22 @@ window.saveScheduleData = async function (bypassValidation = false) {
   window.showLoader("Saving selected semester to Firebase...");
   try {
     const ownerUid=await requireStaffWorkspace();
+    if(mayUseSharedLegacySchedule()){
+      await setDoc(doc(db,"app_config",scope.id),{
+        school_year:scope.year,
+        semester:scope.semester,
+        json_data:JSON.stringify(jsonData),
+        raw_text:rawTextForAI,
+        last_updated:new Date().toISOString(),
+        compatibility_mode:"legacy-2026-2027",
+        updated_by_uid:ownerUid,
+        updated_by_email:String(auth.currentUser?.email||"").toLowerCase(),
+      },{merge:true});
+      assertWorkspaceAccount(ownerUid);
+      lessonStorage.removeItem(scope.pendingKey);
+      updateScopeStatus("Saved shared legacy timetable. Admin and teacher accounts now use this same schedule.");
+      return true;
+    }
     const ref=ownedDoc(db,"schedules",scope.id);
     const next=await runTransaction(db,async transaction=>{
       const prior=await transaction.get(ref);

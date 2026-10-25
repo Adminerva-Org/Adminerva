@@ -10,6 +10,7 @@ async function lessonCloudFetch(_url,options){
 /** Explicitly requested lesson assistance with source and edit guards. */
 import {validateGeneratedLesson} from "./lesson-plan-helpers.mjs?v=1.3.0";
 import {buildReferenceContext,REFERENCE_CONTEXT_BUDGET} from "./reference-context.mjs?v=1.3.0";
+import {isLegacyScheduleYear,isLegacyScheduleRetired} from "./legacy-schedule-compat.mjs?v=1.4.18";
 window.initiateGenerationFlow = async function () {
   const engineMode = connectionPreferences().engineMode;
   const gemKey = connectionPreferences().geminiKey;
@@ -88,9 +89,15 @@ window.initiateGenerationFlow = async function () {
   const subject = selectedSubject();
   const academicTerm = document.getElementById("lpAcademicTerm").value;
   const schoolYear = document.getElementById("lpSchoolYear").value;
+  const targetGrade = document.getElementById("lpGradeLevel").value;
+  window.currentTargetGrade = targetGrade;
+  if(isLegacyScheduleYear(schoolYear)&&isLegacyScheduleRetired()){
+    alert("The 2026–2027 legacy timetable is archived. Create a timetable for the new school year before generating a new lesson plan.");
+    return;
+  }
   try {
     window.cachedSchedule = typeof window.fetchScheduleForLesson === "function"
-      ? await window.fetchScheduleForLesson(schoolYear, academicTerm)
+      ? await window.fetchScheduleForLesson(schoolYear, academicTerm, targetGrade, subject)
       : "";
   } catch (error) {
     console.warn("Could not determine teaching schedule:", error);
@@ -108,7 +115,6 @@ window.initiateGenerationFlow = async function () {
   const dateRange =
     document.getElementById("lpDateRange").value || "No Dates Provided";
 
-  window.currentTargetGrade = document.getElementById("lpGradeLevel").value;
   window.cachedScope = `${courseWeek}: ${dateRange} (${academicTerm})`;
   window.cachedCustomInstructions = customInstructionsText;
 
