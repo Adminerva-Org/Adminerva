@@ -76,7 +76,7 @@ workspaceOnReady(() => {
     isEditing=false;draftRows=null;updateEditControls();await fetchScheduleFromCloud();
   });
   const legacy=document.createElement("button");legacy.type="button";legacy.className="av-secondary-button";legacy.textContent="Import older shared timetable…";legacy.hidden=true;
-  resolveStaffRole(auth.currentUser).then(role=>{legacy.hidden=role!=="admin";});
+  resolveStaffRole(auth.currentUser).then(role=>{legacy.hidden=role!=="admin"||isLegacySharedScope(currentScope());});
   legacy.addEventListener("click",async()=>{
     if(isSaving)return;
     const scope=currentScope(),ownerUid=workspaceUid();
