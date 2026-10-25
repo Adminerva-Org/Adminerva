@@ -5,7 +5,7 @@ import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {normalizeSelection,parseRepository} from "./services/assessment-evidence.mjs?v=1.4.3";
 import {verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
 import {approvalContribution,evidenceRevision} from "./services/evidence-lifecycle.mjs?v=1.4.3";
-import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,buildRubricResponseSchema,parseSuggestedRubric} from "./services/v2-grading-assistant.mjs?v=1.3.3";
+import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,buildRubricResponseSchema,parseSuggestedRubric} from "./services/v2-grading-assistant.mjs?v=1.4.9";
 import {generateSchoolContent,schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.1";
 
@@ -283,6 +283,9 @@ async function evaluateOne(student,evidence,assessment,connection,{rerun=false}=
   const result=await generateSchoolContent({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",
     responseSchema:buildRubricResponseSchema(criteria),maxOutputTokens:12000,temperature:0.1}},{purpose:"evaluation"});
   const parsed=await evaluationJSON({ok:true,json:async()=>result}),draft=parseSuggestedRubric(parsed,criteria,assessment.maxScore,source);
+  if(source.excludedMergeCommits?.length){
+    draft.limitations=[draft.limitations,"Merge commits were excluded from individual credit ("+source.excludedMergeCommits.length+"). Teacher review should confirm the student's original commits."].filter(Boolean).join(" ").slice(0,1400);
+  }
   // Persist the result in the protected gradebook as an unpublished, explicitly
   // unreviewed draft. A system result can never satisfy publication requirements.
   const gradeRef=doc(db,"student_grades",student.id+"_"+context.taskId);
