@@ -50,7 +50,7 @@ function render(){
   const approveCandidates=isV2?context.students.filter(student=>["submitted","needs_review"].includes(evidenceMap.get(student.id)?.status)):[];
   const evaluateCandidates=isV2?context.students.filter(student=>{
     const e=evidenceMap.get(student.id),g=context.grades?.[student.id];
-    return e?.status==="approved"&&Array.isArray(e.verifiedContributionCommits)&&e.verifiedContributionCommits.length>0&&!g?.published&&!draftMap.has(student.id);
+    return e?.status==="approved"&&Array.isArray(e.verifiedContributionCommits)&&e.verifiedContributionCommits.length>0&&!g&&!draftMap.has(student.id);
   }):[];
   el("gbClassReviewSummary").textContent=context.students.length+" learners · "+submitted+" awaiting review · "+approved+" approved · "+drafts+" draft/evaluation ready · "+published+" published"+(exceptions?" · "+exceptions+" exceptions":"");
   if(el("gbForceGather")){
@@ -234,7 +234,10 @@ async function bulkApprove(){
   el("gbBulkStatus").textContent="Checking checkpoint ancestry, linked-account matches and attribution conflicts…";
   for(const {student,evidence} of candidates){
     try{
-      const inspection=await inspectForApproval(student,evidence);
+      const currentSnap=await getDoc(doc(db,"assessment_evidence",student.id+"_"+context.taskId));
+      if(!currentSnap.exists()||!["submitted","needs_review"].includes(currentSnap.data().status))throw Error("Evidence is no longer awaiting approval.");
+      const currentEvidence=currentSnap.data();
+      const inspection=await inspectForApproval(student,currentEvidence);
       const verified=inspection.verified;
       const scope=verified.length
         ?"Teacher bulk approval verified "+verified.length+" selected commit(s) with an exact GitHub author-login match to @"+inspection.expected+
@@ -242,7 +245,7 @@ async function bulkApprove(){
         :"Teacher bulk approval recorded the project checkpoint as context for "+student.name+
           ". No selected commit had an exact linked-account match, so no individual contribution is verified and system evaluation remains disabled.";
       const contribution=approvalContribution(inspection.selection,verified,scope);
-      await changeEvidence(doc(db,"assessment_evidence",student.id+"_"+context.taskId),evidence,{
+      await changeEvidence(doc(db,"assessment_evidence",student.id+"_"+context.taskId),currentEvidence,{
         status:"approved",reviewedBy:auth.currentUser.uid,reviewedAt:serverTimestamp(),
         verificationNote:"Bulk evidence approval verified the repository checkpoint, selected-commit ancestry where applicable, linked-account matches, and unresolved reclaim state.",
         approvedCheckpointSha:inspection.selection.checkpointSha,...contribution
@@ -266,6 +269,29 @@ async function evaluateOne(student,evidence,assessment,connection){
   const result=await generateSchoolContent({contents:[{parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",
     responseSchema:buildRubricResponseSchema(criteria),maxOutputTokens:12000,temperature:0.1}},{purpose:"evaluation"});
   const parsed=await evaluationJSON({ok:true,json:async()=>result}),draft=parseSuggestedRubric(parsed,criteria,assessment.maxScore,source);
+  // Persist the result in the protected gradebook as an unpublished, explicitly
+  // unreviewed draft. A system result can never satisfy publication requirements.
+  const gradeRef=doc(db,"student_grades",student.id+"_"+context.taskId);
+  const latestEvidence=await getDoc(doc(db,"assessment_evidence",gradeRef.id));
+  if(!latestEvidence.exists()||latestEvidence.data().status!=="approved"||
+     latestEvidence.data().approvedCheckpointSha!==evidence.approvedCheckpointSha||
+     evidenceRevision(latestEvidence.data())!==evidenceRevision(evidence))
+    throw Error("Evidence changed during evaluation. Reload and evaluate again.");
+  const priorGrade=await getDoc(gradeRef);
+  if(priorGrade.exists())return; // Never replace manual work or an existing draft.
+  const needsReview=draft.pendingPoints>0||draft.criteria.some(item=>item.confidence!=="high"||item.status!=="supported")||
+    Boolean(draft.limitations);
+  await setDoc(gradeRef,{
+    studentId:student.id,taskId:context.taskId,section:context.section,
+    score:draft.score,maxScore:Number(assessment.maxScore),feedback:draft.feedback,
+    published:false,reviewRequired:true,manuallyAdjusted:false,reviewPriority:needsReview?"needs_review":"ready_for_teacher_confirmation",
+    reviewReasons:[...new Set(draft.criteria.filter(item=>item.pendingPoints>0||item.confidence!=="high")
+      .map(item=>item.name+": "+item.reviewAction))].slice(0,30),
+    gradeSource:"system_evaluation_draft",gradingMode:"individual",sourceSelectionMode:"verified_evidence",
+    gradedSha:evidence.approvedCheckpointSha,evidenceRevision:evidenceRevision(evidence),
+    evaluationDraft:{...draft,generatedBy:"Adminerva system evaluation",teacherReviewed:false},
+    createdAt:serverTimestamp(),gradedAt:serverTimestamp()
+  });
   await setDoc(draftRef(student.id,context.taskId),{ownerUid:auth.currentUser.uid,studentId:student.id,taskId:context.taskId,section:context.section,
     evidenceRevision:evidenceRevision(evidence),checkpointSha:evidence.approvedCheckpointSha,model:connection.model||localStorage.getItem("Adminerva_ai_model")||"",
     draft,createdAt:serverTimestamp(),status:"private_suggestion"},{merge:false});
@@ -273,10 +299,10 @@ async function evaluateOne(student,evidence,assessment,connection){
 async function bulkEvaluate(){
   if(busy||!context)return;
   const candidates=context.students.map(s=>({student:s,evidence:evidenceMap.get(s.id)})).filter(({student,evidence})=>{
-    const grade=context.grades?.[student.id];return evidence?.status==="approved"&&evidence.verifiedContributionCommits?.length&&!grade?.published&&!draftMap.has(student.id);
+    const grade=context.grades?.[student.id];return evidence?.status==="approved"&&evidence.verifiedContributionCommits?.length&&!grade&&!draftMap.has(student.id);
   });
   if(!candidates.length)return;
-  if(!confirm("Generate private evaluation suggestions for "+candidates.length+" eligible learner(s)? Nothing will be graded or published automatically. Each result must still be reviewed in Review & grade."))return;
+  if(!confirm("Generate unpublished grade drafts and private evaluation suggestions for "+candidates.length+" eligible learner(s)? Draft scores and feedback will be stored in the Gradebook as unpublished and requiring teacher confirmation. Nothing will become visible to students until a teacher reviews and publishes it."))return;
   busy=true;render();let assessment,connection;const failures=[];let completed=0;
   try{
     const snapshot=await getDoc(doc(db,"assessments",context.taskId));if(!snapshot.exists())throw Error("Assessment not found.");assessment={id:snapshot.id,...snapshot.data()};
@@ -286,7 +312,7 @@ async function bulkEvaluate(){
       catch(error){failures.push(item.student.name+": "+error.message);}
     }
   }catch(error){failures.push(error.message);}
-  busy=false;await load(context);el("gbBulkStatus").textContent="Bulk evaluation complete: "+completed+" private suggestion(s) ready · "+failures.length+" exception(s). Open Review & grade to confirm score and feedback."+(failures.length?" "+failures.slice(0,2).join(" | "):"");
+  busy=false;await load(context);el("gbBulkStatus").textContent="Bulk evaluation complete: "+completed+" unpublished draft(s) saved · "+failures.length+" exception(s). Open Review & grade to confirm score and feedback."+(failures.length?" "+failures.slice(0,2).join(" | "):"");
 }
 window.addEventListener("adminerva:gradebook-grid-loaded",event=>void load(event.detail));
 el("gbForceGather")?.addEventListener("click",()=>void forceGather());
