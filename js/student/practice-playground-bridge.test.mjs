@@ -70,7 +70,7 @@ test("practice sandbox never writes over a student's normal workspace or cloud b
   const page=readFileSync("student-playground.html","utf8");
   assert.match(editor,/if\(practiceMode\)\s*\{/);
   assert.match(editor,/sessionStorage\.setItem\(practiceBridgeKey\(uid\)/);
-  assert.match(editor,/if\(practiceMode\)return null;/);
+  assert.match(editor,/if\(practiceMode\|\|!ownerUid\(\)/);
   assert.match(editor,/if\(practiceMode\)return false;/);
   assert.match(editor,/notePracticeExecution\(\)/);
   assert.match(editor,/readPracticeTransfer\(sessionStorage,auth\.currentUser\.uid\)/);
@@ -78,15 +78,14 @@ test("practice sandbox never writes over a student's normal workspace or cloud b
   assert.match(page,/id="practiceReturnLink"/);
 });
 test("completion requires a run attempt and written comparison, with recoverable progress",()=>{
-  const app=readFileSync("js/student/practice.js","utf8");
+  const app=readFileSync("js/student/practice-game.mjs","utf8");
   const html=readFileSync("student-practice.html","utf8");
-  assert.match(app,/transfer\.runCount<1/);
-  assert.match(app,/observation\.length<25/);
-  assert.match(app,/practiceRequest\("practiceComplete"/);
-  assert.match(app,/sessionStorage\.setItem\(pendingKey\(\)/);
+  assert.match(app,/practiceRequest\("practiceMissionSubmit"/);
+  assert.match(app,/localSet\(pendingKey\(\),pending\)/);
+  assert.match(app,/runCount:0,observed:""/);
   assert.doesNotMatch(app,/runTransaction|setDoc\(|updateDoc\(/);
-  assert.match(app,/practiceExperimentLink/);
-  assert.match(html,/id="practiceObservation"/);
-  assert.match(html,/id="practiceExperimentLink"/);
-  assert.match(html,/id="practiceOverview"/);
+  assert.match(app,/id="practiceMissionPanel"/);
+  assert.match(app,/id="practiceOverview"/);
+  assert.match(app,/labExperimentLink/);
+  assert.match(html,/id="practiceApp"/);
 });
