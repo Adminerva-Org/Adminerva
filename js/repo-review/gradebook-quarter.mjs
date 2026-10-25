@@ -333,7 +333,7 @@ async function togglePublish(makePublished) {
   if (!state.active) return;
   const active = state.active;
   if(detailsDirty)return reviewNotice("Save or discard your edits before changing publication.",true);
-  if (makePublished && active.entry.data.reviewRequired && !el("gbMarkReviewed").checked) {
+  if (makePublished && active.entry.data.reviewRequired && !legacyReadyDraft(active.entry.data) && !el("gbMarkReviewed").checked) {
     return alert("Review the evidence and check the teacher-review confirmation before publishing.");
   }
   if (!confirm((makePublished ? "Publish" : "Unpublish") + " this student's grade?")) return;
@@ -349,7 +349,7 @@ async function togglePublish(makePublished) {
         const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=1.3.1");
         await verifyGradePublication(tx,active.entry.ref,previous);
       }
-      if (makePublished && previous.reviewRequired && !el("gbMarkReviewed").checked) {
+      if (makePublished && previous.reviewRequired && !legacyReadyDraft(previous) && !el("gbMarkReviewed").checked) {
         throw new Error("Teacher review is required.");
       }
       tx.set(revision, {
@@ -360,9 +360,11 @@ async function togglePublish(makePublished) {
         after: { published: makePublished, reviewRequired: makePublished ? false : !!previous.reviewRequired },
         createdAt: serverTimestamp()
       });
+      const legacyReady=makePublished&&legacyReadyDraft(previous);
       tx.update(active.entry.ref, {
         published: makePublished,
-        ...(makePublished&&!isV2 ? { reviewRequired: false, reviewedAt: serverTimestamp() } : {})
+        ...(legacyReady?{reviewRequired:false,reviewPriority:"ready_to_publish"}:
+          (makePublished&&!isV2 ? { reviewRequired:false,reviewedAt:serverTimestamp() } : {}))
       });
     });
     closeDetails(); await loadQuarter();
