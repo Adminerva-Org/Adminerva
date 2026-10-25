@@ -535,14 +535,14 @@
             </details>
             <textarea id="externalEvaluationResult" rows="12" spellcheck="false" placeholder='Paste the JSON response here…' class="w-full rounded-lg border border-indigo-200 bg-white p-3 text-xs font-mono"></textarea>
             <p id="externalEvaluationStatus" class="text-xs text-indigo-900" role="status">No external result imported.</p>
-            <p class="text-xs text-slate-600">After validation, Adminerva returns to Evaluation draft so you can review and copy the proposed score and feedback into the teacher grade. Nothing is saved or published automatically.</p>
+            <p class="text-xs text-slate-600">After validation, Adminerva returns to Evaluation draft and copies the proposed score and feedback into empty teacher fields. Existing teacher entries are preserved. Nothing is saved or published automatically.</p>
           </section>
         </div>
         <div class="shrink-0 flex flex-wrap items-center justify-between gap-2 border-t bg-slate-50 px-4 sm:px-5 py-4 shadow-[0_-8px_20px_rgba(15,23,42,0.06)]">
-          <p class="text-xs text-slate-600">Next: validate → review proposal → use score/feedback → save.</p>
+          <p class="text-xs text-slate-600">Next: validate → review/edit teacher fields → save.</p>
           <div class="flex flex-wrap justify-end gap-2">
             <button id="externalEvaluationCancel" type="button" class="rounded-lg bg-white border px-4 py-2 text-sm font-bold text-slate-700">Cancel</button>
-            <button id="externalEvaluationImport" type="button" class="rounded-lg bg-indigo-700 text-white px-4 py-2 text-sm font-bold">Validate & import proposal</button>
+            <button id="externalEvaluationImport" type="button" class="rounded-lg bg-indigo-700 text-white px-4 py-2 text-sm font-bold">Validate & apply proposal</button>
           </div>
         </div>
       </div>
@@ -553,7 +553,7 @@
     <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.1"></script>
     <script type="module" src="js/repo-review/repofetch.js?v=1.3.2"></script>
     <script type="module" src="js/repo-review/auto-checker.js?v=1.3.0"></script>
-    <script type="module" src="js/repo-review/manual-review.mjs?v=1.4.23"></script>
+    <script type="module" src="js/repo-review/manual-review.mjs?v=1.4.24"></script>
     <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=1.4.15"></script>
   </body>
 </html>
