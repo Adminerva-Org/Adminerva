@@ -40,9 +40,13 @@ function mount(module = 'educator', page = 'dashboard', role = 'teacher', storag
   const originalQuery = root.querySelector.bind(root);
   root.querySelector = query => query === '#av-desktop-nav' ? desktop : query === '#av-mobile-nav' ? mobile : originalQuery(query);
   const documentEvents = {};
+  // Mock the browser APIs used during navigation setup, not only the menu itself.
+  const head = new Element('head'), documentElement = new Element('html');
   const document = {
+    head, documentElement,
     createElement: tag => new Element(tag),
     getElementById: id => id === 'adminerva-nav' ? root : null,
+    querySelector: selector => head.querySelector(selector),
     addEventListener: (type, callback) => (documentEvents[type] ||= []).push(callback)
   };
   const window = { location: { href: '' } };
@@ -222,7 +226,7 @@ async function checkGuard({ role = 'admin', path = '/users.html', students = [],
   const events = [], cacheCalls = [], connectionWrites = [], documentEvents = {}, nav = { dataset: {} }, storage = new Map(mockRole ? [['Adminerva_Mock_Role', mockRole]] : []);
   const user = signedIn ? { uid: 'test-user', email: 'staff@example.test', emailVerified: verified } : null;
   const auth = { currentUser: user };
-  const window = { location: { pathname: path, href: '', replace(value) { this.href = value; } }, beginLoading: () => () => {} };
+  const window = { location: { pathname: path, href: '', replace(value) { this.href = value; } }, beginLoading: () => () => {}, addEventListener() {} };
   const document = {
     getElementById: id => id === 'adminerva-nav' ? nav : null,
     querySelectorAll: () => [], addEventListener: (type, callback) => (documentEvents[type] ||= []).push(callback), dispatchEvent: event => events.push(event)
