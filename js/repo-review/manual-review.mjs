@@ -12,6 +12,8 @@ import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=1.3.0";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
 import {parseWeightedRubric,loadPinnedV2Source,parseSuggestedRubric}
   from "./services/v2-grading-assistant.mjs?v=1.4.22";
+import {buildExternalEvaluationPackage,parseExternalEvaluationResponse}
+  from "./services/external-evaluation.mjs?v=1.0.0";
 import {evaluateVerifiedEvidence} from "./services/adaptive-evaluation.mjs?v=1.3.0";
 import {isAndroidUiAssessment} from "./services/android-evidence.mjs?v=1.3.0";
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
@@ -21,7 +23,8 @@ import {mountReviewPanels} from "./review-panels.mjs?v=1.4.3";
 
 const el = id => document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
-const state = { active: null, request: null, token: 0, flags: [], aiBusy: false, dirty:false, abort:null,panels:null,requests:null,aiAbort:null };
+const state = { active: null, request: null, token: 0, flags: [], aiBusy: false, dirty:false, abort:null,panels:null,requests:null,aiAbort:null,
+  externalEvidence:null,externalPackage:"",externalBusy:false };
 function message(text, error=false) {
   const node=el("manualReviewStatus");
   node.textContent=text; node.className=error ? "text-sm text-rose-700" : "text-sm text-slate-600";
@@ -51,10 +54,12 @@ function flag(text) {
 function close({force=false,silent=false}={}) {
   if(!force&&(state.dirty||state.panels?.hasUnsavedReview?.())&&!confirm("Discard unsaved score, feedback or verification changes?"))return false;
   el("manualReviewModal").classList.add("hidden");
+  el("externalEvaluationModal")?.classList.add("hidden");
   state.abort?.abort();state.aiAbort?.abort();state.panels?.destroy();state.panels=null;
   state.active=null;
   state.request=null;
   state.aiBusy=false;
+  state.externalEvidence=null;state.externalPackage="";state.externalBusy=false;
   state.dirty=false;
   state.token++;
   if(!silent)window.dispatchEvent(new CustomEvent("adminerva:manual-review-closed"));
@@ -183,6 +188,97 @@ function displayAISuggestion(draft){
     container.append(limitation);
   }
 }
+function externalStatus(text,error=false){
+  const node=el("externalEvaluationStatus");if(!node)return;
+  node.textContent=text;node.className="text-xs "+(error?"text-rose-700":"text-indigo-900");
+}
+function closeExternalEvaluation(){
+  el("externalEvaluationModal")?.classList.add("hidden");
+}
+async function copyExternalPackage(){
+  const value=state.externalPackage||el("externalEvaluationPackage")?.value||"";
+  if(!value)return externalStatus("Prepare the evidence package before copying.",true);
+  try{
+    await navigator.clipboard.writeText(value);
+    externalStatus("Evaluation package copied. Paste it into ChatGPT or another evaluator, then paste the returned JSON below.");
+  }catch{
+    const target=el("externalEvaluationPackage");target.focus();target.select();
+    const copied=document.execCommand?.("copy");
+    externalStatus(copied?"Evaluation package copied.":"Clipboard access was blocked. Select the package text and copy it manually.",!copied);
+  }
+}
+async function openExternalEvaluation(){
+  const active=state.active;
+  if(!active||active.assessment.schemaVersion!==2||!active.checkpointSha||!evaluationResponsibilityReady(active.assessment,active.evidence))
+    return aiStatus("Approve the checkpoint and verify individual contributions before preparing an external evaluation.",true);
+  if(active.previous?.published)return aiStatus("Published grade protected. Unpublish it before preparing a new evaluation.",true);
+  if(state.externalBusy)return;
+  el("externalEvaluationModal").classList.remove("hidden");
+  el("externalEvaluationPackage").value="";
+  el("externalEvaluationResult").value="";
+  el("externalEvaluationCopy").disabled=true;
+  el("externalEvaluationPackageStatus").textContent="Preparing verified evidence…";
+  externalStatus("No external result imported.");
+  state.externalBusy=true;state.externalEvidence=null;state.externalPackage="";
+  const session=state.token;
+  try{
+    const criteria=parseWeightedRubric(active.assessment.evalCriteria,active.maxScore);
+    const evidence=await loadPinnedV2Source({
+      repository:active.base,checkpointSha:active.checkpointSha,
+      selectedCommits:active.selectedEvidenceCommits,assessment:active.assessment,
+      verifiedContributionCommits:active.evidence.verifiedContributionCommits,
+      token:localStorage.getItem("Adminerva_github_token"),fetchImpl:state.requests?.fetch||globalThis.fetch
+    });
+    if(session!==state.token||state.active!==active)return;
+    const pack=buildExternalEvaluationPackage({
+      assessment:active.assessment,criteria,evidence,
+      contributionScope:active.evidence.contributionScope,maxScore:active.maxScore
+    });
+    state.externalEvidence=evidence;state.externalPackage=pack;
+    el("externalEvaluationPackage").value=pack;
+    el("externalEvaluationCopy").disabled=false;
+    const kb=Math.max(1,Math.round(new Blob([pack]).size/1024));
+    el("externalEvaluationPackageStatus").textContent="Ready · "+evidence.patches.length+" relevant patch record(s) · "+
+      evidence.files.length+" checkpoint file(s) · about "+kb+" KB. The copied instructions require JSON-only output.";
+    analytics("external_evaluation_package_ready",{feature:"review_grade",size_bucket:kb>500?"500kb_plus":kb>100?"100_500kb":"under_100kb"});
+  }catch(error){
+    if(session===state.token){
+      el("externalEvaluationPackageStatus").textContent="Could not prepare the external package: "+error.message;
+      externalStatus("External evaluation package unavailable. You can still grade manually.",true);
+    }
+  }finally{if(session===state.token)state.externalBusy=false;}
+}
+function importExternalEvaluation(){
+  const active=state.active,evidence=state.externalEvidence;
+  if(!active||!evidence)return externalStatus("Prepare a fresh evidence package before importing a result.",true);
+  if(active.previous?.published)return externalStatus("Published grade protected. Unpublish it before importing a new evaluation.",true);
+  try{
+    const criteria=parseWeightedRubric(active.assessment.evalCriteria,active.maxScore);
+    const parsed=parseExternalEvaluationResponse(el("externalEvaluationResult").value);
+    const draft=parseSuggestedRubric(parsed,criteria,active.maxScore,evidence);
+    if(evidence.truncatedDiffs?.length)
+      draft.limitations=[draft.limitations,evidence.truncatedDiffs.length+" relevant commit diff(s) were bounded; omitted changes require teacher review before assigning credit."].filter(Boolean).join(" ").slice(0,1400);
+    if(evidence.missingPrimaryPaths?.length)
+      draft.limitations=[draft.limitations,"Some primary files in the verified commits were renamed or removed before the approved checkpoint ("+
+        evidence.missingPrimaryPaths.slice(0,6).join(", ")+"). Retained commit changes require teacher confirmation."].filter(Boolean).join(" ").slice(0,1400);
+    active.aiDraft={model:"external-evaluation",checkpointSha:active.checkpointSha,evaluationMode:"external",evidenceChunks:0,...draft};
+    active.aiApplied=false;state.dirty=true;
+    displayAISuggestion(draft);
+    renderFeedbackMarkdown(el("manualReviewAIFeedback"),draft.feedback);
+    el("manualReviewUseScore").disabled=draft.score===null;
+    el("manualReviewUseFeedback").disabled=!draft.feedback;
+    el("manualReviewFiles").value=[...new Set(evidence.patches.filter(p=>p.substantive===true).map(p=>p.path))].join("\n");
+    aiStatus("External evaluation proposal imported and validated against the exported verified evidence. Review it before applying score or feedback; nothing has been saved or published.");
+    externalStatus("Validated successfully. The proposal is now shown in System evaluation draft.");
+    analytics("external_evaluation_imported",{feature:"review_grade",status:"success"});
+    closeExternalEvaluation();
+    el("manualReviewAISection").scrollIntoView({behavior:"smooth",block:"start"});
+  }catch(error){
+    analytics("external_evaluation_imported",{feature:"review_grade",status:"invalid"});
+    externalStatus("Import rejected: "+error.message,true);
+  }
+}
+
 async function generateAIDraft(){
   const active=state.active;
   if(!active||active.assessment.schemaVersion!==2||!active.checkpointSha||state.aiBusy){
@@ -272,7 +368,8 @@ async function generateAIDraft(){
 function applyEvidenceState(record,{initial=false}={}){
   const active=state.active;if(!active||active.assessment.schemaVersion!==2)return;
   const changed=!initial&&!sameEvidence(active.evidence,record)&&Boolean(active.evidence||record);
-  if(changed){state.aiAbort?.abort();state.aiBusy=false;el("manualReviewUseScore").disabled=true;el("manualReviewUseFeedback").disabled=true;el("manualReviewConfirm").checked=false;}
+  if(changed){state.aiAbort?.abort();state.aiBusy=false;state.externalEvidence=null;state.externalPackage="";
+    el("manualReviewUseScore").disabled=true;el("manualReviewUseFeedback").disabled=true;el("manualReviewConfirm").checked=false;}
   let approved=record?.status==="approved"&&validSha(record.approvedCheckpointSha)&&record.approvedCheckpointSha===record.checkpointSha;
   try{approved=approved&&record.studentId===active.studentId&&record.assessmentId===active.taskId&&parseRepository(record.repository).url===parseRepository(active.base).url;}catch{approved=false;}
   const verified=approved&&evaluationResponsibilityReady(active.assessment,record);
@@ -286,6 +383,7 @@ function applyEvidenceState(record,{initial=false}={}){
       "Individual contributing commits have not been verified. Complete commit verification below, or grade manually.":
       "Approved, independently verified checkpoint "+record.approvedCheckpointSha.slice(0,12)+". Choose Evaluate to generate a private system draft.";
   el("manualReviewAIGenerate").disabled=state.aiBusy||protectedGrade||!verified;el("manualReviewAIGenerate").textContent=state.aiBusy?"Evaluating…":"Evaluate";
+  el("manualReviewExternal").disabled=protectedGrade||!verified;el("manualReviewExternal").title=blocker;
   el("manualReviewAIGenerate").title=blocker;if(!state.aiBusy)aiStatus((active.previous?.aiAssistance?"Saved feedback includes automated assistance reviewed by a teacher. ":"")+blocker,!verified);
   el("manualReviewVerifyContributions").classList.toggle("hidden",!approved||verified||protectedGrade);
   el("manualReviewSave").disabled=protectedGrade||!approved;
@@ -306,7 +404,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
   state.abort?.abort();state.aiAbort?.abort();state.panels?.destroy();state.panels=null;
   state.abort=new AbortController();state.requests=createReviewRequests({token:localStorage.getItem("Adminerva_github_token"),signal:state.abort.signal});
   state.request={studentId,taskId,owner,repo,diagnostic};
-  state.active=null;state.aiBusy=false;
+  state.active=null;state.aiBusy=false;state.externalEvidence=null;state.externalPackage="";state.externalBusy=false;
   state.dirty=false;
   el("manualReviewAISection").classList.add("hidden");
   el("manualReviewAIScores").replaceChildren();
@@ -316,6 +414,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
   el("manualReviewUnpublish").classList.add("hidden");
   el("manualReviewPublish").classList.add("hidden");
   el("manualReviewAIGenerate").disabled=true;
+  el("manualReviewExternal").disabled=true;
   el("manualReviewAIGenerate").textContent="Evaluate";
   el("manualReviewSave").textContent="Save unpublished grade";
   el("integratedEvidence").classList.add("hidden");
@@ -430,6 +529,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
     el("manualReviewPublish").classList.toggle("hidden",!previous||previous.published||assessment.schemaVersion!==2);
     const verified=Boolean(checkpointSha)&&approvedEvidence?.status==="approved"&&evaluationResponsibilityReady(assessment,approvedEvidence);
     el("manualReviewAIGenerate").disabled=assessment.schemaVersion!==2||!!previous?.published||!verified;
+    el("manualReviewExternal").disabled=assessment.schemaVersion!==2||!!previous?.published||!verified;
     if(assessment.schemaVersion===2)aiStatus((previous?.aiAssistance?"Saved feedback includes a prior system evaluation reviewed by a teacher. ":"")+(verified?"Approved checkpoint "+checkpointSha.slice(0,12)+". Evaluate the verified student screen and supporting changes, or enter a teacher score.":"No verified contributing commits are recorded. Reopen evidence to verify the student commits, or grade manually."));
     el("manualReviewSave").disabled=!!previous?.published;
     for(const id of ["manualReviewScore","manualReviewFeedback","manualReviewFiles","manualReviewReason","manualReviewConfirm"])
@@ -506,6 +606,7 @@ async function save(event) {
         gradeSource:acceptedDraft||previous?.aiAssistance?"teacher_ai_reviewed":"teacher_manual",gradingMode:"individual",sourceSelectionMode:"teacher_manual",
         aiAssistance:acceptedDraft?{
           model:acceptedDraft.model,checkpointSha:active.checkpointSha,
+          evaluationMode:acceptedDraft.evaluationMode||"system",
           suggestedScore:acceptedDraft.score,
           criterionScores:acceptedDraft.criteria.map(c=>({name:c.name,score:c.score,maxScore:c.maxScore,pendingPoints:c.pendingPoints,confidence:c.confidence})),
           pendingPoints:acceptedDraft.pendingPoints,potentialScore:acceptedDraft.potentialScore,
@@ -520,7 +621,8 @@ async function save(event) {
           verifiedContributionCommits:active.evidence.verifiedContributionCommits||[],
           contributionScope:active.evidence.contributionScope||"",evaluationDraft:acceptedDraft?{
             criteria:acceptedDraft.criteria,projectObservations:acceptedDraft.projectObservations,
-            limitations:acceptedDraft.limitations,pendingPoints:acceptedDraft.pendingPoints,potentialScore:acceptedDraft.potentialScore,generatedBy:"Adminerva system evaluation",teacherReviewed:true
+            limitations:acceptedDraft.limitations,pendingPoints:acceptedDraft.pendingPoints,potentialScore:acceptedDraft.potentialScore,
+            generatedBy:acceptedDraft.evaluationMode==="external"?"External evaluation imported through Adminerva":"Adminerva system evaluation",teacherReviewed:true
           }:(previous?.evaluationDraft||null)}:{}),
         targetPath:paths.length?paths.join(", "):"Manual review — see teacher note",
         contributionEvidence:{
@@ -596,6 +698,12 @@ function init() {
   el("manualReviewForm").addEventListener("submit",save);
   el("manualReviewForm").addEventListener("input",()=>{state.dirty=true;if(state.active&&!state.active.previous?.published)el("manualReviewSave").disabled=false;});
   el("manualReviewAIGenerate").addEventListener("click",()=>{void generateAIDraft();});
+  el("manualReviewExternal").addEventListener("click",()=>{void openExternalEvaluation();});
+  el("externalEvaluationCopy").addEventListener("click",()=>{void copyExternalPackage();});
+  el("externalEvaluationImport").addEventListener("click",importExternalEvaluation);
+  el("externalEvaluationClose").addEventListener("click",closeExternalEvaluation);
+  el("externalEvaluationCancel").addEventListener("click",closeExternalEvaluation);
+  el("externalEvaluationModal").addEventListener("click",event=>{if(event.target===el("externalEvaluationModal"))closeExternalEvaluation();});
   el("manualReviewRetry").addEventListener("click",()=>{void generateAIDraft();});
   el("manualReviewManual").addEventListener("click",()=>{
     if(!state.active?.checkpointSha)return message("Approve the submitted evidence before saving a teacher grade.",true);
@@ -622,7 +730,11 @@ function init() {
     if(state.request)void open({...state.request});
   });
   el("manualReviewModal").addEventListener("click",e=>{if(e.target===el("manualReviewModal"))close()});
-  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!el("manualReviewModal").hasAttribute("data-inline-review")&&!el("manualReviewModal").classList.contains("hidden"))close()});
+  document.addEventListener("keydown",e=>{
+    if(e.key!=="Escape")return;
+    if(!el("externalEvaluationModal").classList.contains("hidden"))return closeExternalEvaluation();
+    if(!el("manualReviewModal").hasAttribute("data-inline-review")&&!el("manualReviewModal").classList.contains("hidden"))close();
+  });
 }
 window.openManualGradeReview=open;
 window.dispatchEvent(new CustomEvent("adminerva:manual-review-ready"));
