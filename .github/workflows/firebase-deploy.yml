@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: "${{ github.event_name == 'workflow_dispatch' || github.event.head_commit.message == 'ci(firebase): deploy configured backend' || vars.FIREBASE_DEPLOY_ENABLED == 'true' }}"
+    if: github.event_name == 'workflow_dispatch' || vars.FIREBASE_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -44,4 +44,4 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
       - name: Deploy Functions and Firestore indexes
-        run: npx -y firebase-tools@14 deploy --project reporeview-e7ca4 --only functions --non-interactive
+        run: npx -y firebase-tools@14 deploy --project reporeview-e7ca4 --only firestore:rules,firestore:indexes,functions --non-interactive
