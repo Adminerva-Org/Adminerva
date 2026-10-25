@@ -11,7 +11,7 @@ window.hideLoader = function () {
   }
 };
 // 🚀 Vertical Sidebar Navigation (Dynamic Tailwind Injection)
-window.switchSettingsCategory = function (targetPanelId) {
+window.switchSettingsCategory = function (targetPanelId, { updateHistory = true } = {}) {
   const targetPanel = document.getElementById(`panel-${targetPanelId}`);
   const targetBtn = document.getElementById(`navBtn-${targetPanelId}`);
   if (!targetPanel || !targetBtn) return;
@@ -52,6 +52,12 @@ window.switchSettingsCategory = function (targetPanelId) {
     // Strip the gray hover and rounded corners, add the purple highlight
     targetBtn.classList.remove(...inactiveClasses);
     targetBtn.classList.add(...activeClasses);
+  }
+
+  if (updateHistory && window.history?.pushState) {
+    const nextHash = `#${targetPanelId}`;
+    if (location.hash !== nextHash)
+      history.pushState({ settingsPanel: targetPanelId }, "", nextHash);
   }
 };
 
@@ -101,9 +107,20 @@ window.closeSectionsModal = () =>
 window.closeStudentModal = () =>
   document.getElementById("studentModal")?.classList.replace("flex", "hidden");
 
+function settingsPanelFromLocation() {
+  const requested = location.hash.replace(/^#/, "");
+  if (requested === "notifications") return "account";
+  return document.getElementById(`panel-${requested}`) ? requested : "security";
+}
+function syncSettingsPanelFromLocation() {
+  window.switchSettingsCategory(settingsPanelFromLocation(), { updateHistory: false });
+}
+
 // Initialization
 document.addEventListener("DOMContentLoaded", () => {
-  window.switchSettingsCategory(location.hash==="#notifications"?"account":"security");
+  syncSettingsPanelFromLocation();
+  window.addEventListener("popstate", syncSettingsPanelFromLocation);
+  window.addEventListener("hashchange", syncSettingsPanelFromLocation);
   if (window.loadSecuritySettings) window.loadSecuritySettings();
 
   // 1. Boot Firebase FIRST so window.db is established
