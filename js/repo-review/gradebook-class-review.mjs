@@ -1,6 +1,6 @@
 /** Class-level submission triage and safe bulk review orchestration. */
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
-import {collection,doc,getDoc,getDocs,query,where,serverTimestamp,setDoc,runTransaction} from "../core/teaching-firestore.mjs?v=1.3.2";
+import {collection,deleteDoc,doc,getDoc,getDocs,query,where,serverTimestamp,setDoc,runTransaction} from "../core/teaching-firestore.mjs?v=1.3.2";
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {normalizeSelection,parseRepository} from "./services/assessment-evidence.mjs?v=1.4.3";
 import {verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
@@ -368,9 +368,16 @@ async function evaluateOne(student,evidence,assessment,connection,{rerun=false}=
       tx.set(gradeRef,updated);
     });
   }else await setDoc(gradeRef,gradePayload);
-  await setDoc(draftRef(student.id,context.taskId),{ownerUid:auth.currentUser.uid,studentId:student.id,taskId:context.taskId,section:context.section,
-    evidenceRevision:evidenceRevision(evidence),checkpointSha:evidence.approvedCheckpointSha,model:connection.model||localStorage.getItem("Adminerva_ai_model")||"",
-    draft,createdAt:serverTimestamp(),status:"private_suggestion"},{merge:false});
+  const suggestionRef=draftRef(student.id,context.taskId);
+  if(needsReview){
+    await setDoc(suggestionRef,{ownerUid:auth.currentUser.uid,studentId:student.id,taskId:context.taskId,section:context.section,
+      evidenceRevision:evidenceRevision(evidence),checkpointSha:evidence.approvedCheckpointSha,model:connection.model||localStorage.getItem("Adminerva_ai_model")||"",
+      draft,createdAt:serverTimestamp(),status:"private_suggestion"},{merge:false});
+  }else{
+    // Clean system evaluations are already represented by the unpublished grade.
+    // Remove any stale review-only suggestion so Gradebook does not classify them as private drafts.
+    await deleteDoc(suggestionRef);
+  }
 }
 async function bulkEvaluate({rerun=false}={}){
   if(busy||!context)return;
