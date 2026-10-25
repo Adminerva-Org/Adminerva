@@ -75,9 +75,17 @@ export function publicReleases(data,now=Date.now()){
     return [{version:release.version,...(displayVersion?{displayVersion}:{}),releasedAt:release.releasedAt,...(publishedAt?{publishedAt}:{}),title:text(release.title,120),summary:text(release.summary,500),changes,audience:releaseAudience(changes)}];
   }).sort((first,second)=>effectiveReleaseTime(second)-effectiveReleaseTime(first)||second.version.localeCompare(first.version,undefined,{numeric:true}));
 }
-export function releaseNotifications(releases){
-  return releases.map(release=>({key:"release:"+release.version,type:"release",title:"Adminerva update · "+release.title,
-    body:release.summary,audience:release.audience||releaseAudience(release.changes||[]),at:effectiveReleaseTime(release),...(Number.isFinite(publicationTime(release.publishedAt))?{publishedAt:release.publishedAt}:{}),target:"patch-notes.html?version="+encodeURIComponent(release.version),saved:false}));
+export function releaseNotifications(releases,role=null){
+  return releases.flatMap(release=>{
+    const projected=releaseForRole(release,role);
+    if(!projected)return [];
+    const partial=Boolean(role&&role!=="admin"&&projected.changes.length!==(release.changes||[]).length);
+    const body=partial
+      ? "This release includes "+projected.changes.length+" change"+(projected.changes.length===1?"":"s")+" relevant to your "+role+" account. Open What’s New for details."
+      : release.summary;
+    return [{key:"release:"+release.version,type:"release",title:"Adminerva update · "+release.title,
+      body,audience:release.audience||releaseAudience(release.changes||[]),at:effectiveReleaseTime(release),...(Number.isFinite(publicationTime(release.publishedAt))?{publishedAt:release.publishedAt}:{}),target:"patch-notes.html?version="+encodeURIComponent(release.version),saved:false}];
+  });
 }
 export async function loadPublicReleases(fetchImpl=globalThis.fetch){
   const response=await fetchImpl("patch-history.json",{cache:"no-store"});
