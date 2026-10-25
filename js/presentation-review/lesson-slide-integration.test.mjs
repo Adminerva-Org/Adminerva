@@ -41,7 +41,8 @@ test('a late system-generated deck does not overwrite edits made while waiting',
   page.context.fetch=()=>new Promise(resolve=>{resolveResponse=resolve;});
   page.window.selectedPlanData={version:3,subject_title:'Programming',weekly_overview:{topic:'XML'}};
   page.window.selectedSessionData={session_name:'One'};page.window.currentPresentationDeck=[{content:'Before request'}];
-  vm.runInNewContext(readFileSync('js/presentation-review/presentation-ai.js','utf8'),page.context);
+  const aiSource=readFileSync('js/presentation-review/presentation-ai.js','utf8').replace(/^import .*;\r?$/gm,'');
+  vm.runInNewContext(aiSource,page.context);
   const request=page.window.generateAI_SlideDeck();
   page.window.currentPresentationDeck=[{content:'New teacher edits'}];page.window.adminervaPresentationDirty=true;
   const slides=Array.from({length:5},()=>({layout:'standard',label:'Draft',content:'Generated'}));
