@@ -56,6 +56,10 @@
         </div>
         <div class="border-t border-slate-100 mt-5 pt-4">
           <p id="gbBulkStatus" class="text-sm text-slate-600 leading-relaxed" role="status" aria-live="polite">Evaluation drafts remain unpublished until teacher review. Re-evaluation only replaces unreviewed system drafts and preserves previous revisions.</p>
+          <details id="gbBulkExceptionDetails" class="hidden mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <summary class="cursor-pointer text-sm font-semibold text-amber-900">View all failed student evaluations</summary>
+            <div id="gbBulkExceptionList" class="mt-2 text-sm text-amber-950 space-y-1"></div>
+          </details>
         </div>
       </section>
 
@@ -216,6 +220,6 @@
     <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.1"></script>
     <script type="module" src="js/repo-review/gradebook.js?v=1.4.1"></script>
     <script type="module" src="js/repo-review/gradebook-quarter.mjs?v=1.4.3"></script>
-  <script type="module" src="js/repo-review/gradebook-class-review.mjs?v=1.4.11"></script>
+  <script type="module" src="js/repo-review/gradebook-class-review.mjs?v=1.4.12"></script>
   </body>
 </html>
