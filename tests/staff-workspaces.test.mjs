@@ -52,11 +52,11 @@ test("stale or unopened versions cannot silently replace an existing lesson or s
   assert.equal(requireCurrentVersion(null,0),1);assert.equal(requireCurrentVersion({version:4},4),5);
   assert.throws(()=>requireCurrentVersion({version:4},3),/newer saved version/);assert.throws(()=>requireCurrentVersion({version:4},0));
 });
-test("only verified bootstrap identities or active administrator-managed teachers receive a staff role",()=>{
+test("verified bootstrap identities and active administrator-managed staff receive the intended staff role",()=>{
   const user={uid:"dynamic-role-test",email:"second.teacher@example.edu",emailVerified:true};
   assert.equal(staffRole(user),null);rememberStaff(user,{email:user.email,role:"teacher",status:"active"});assert.equal(staffRole(user),"teacher");
   rememberStaff(user,{email:user.email,role:"teacher",status:"disabled"});assert.equal(staffRole(user),null);
-  rememberStaff(user,{email:user.email,role:"admin",status:"active"});assert.equal(staffRole(user),null);
+  rememberStaff(user,{email:user.email,role:"admin",status:"active"});assert.equal(staffRole(user),"admin");
   assert.equal(staffRole({uid:"admin",email:ADMIN_EMAIL,emailVerified:true}),"admin");assert.equal(staffRole({uid:"unverified",email:ADMIN_EMAIL,emailVerified:false}),null);
   const legacy={uid:"legacy-test",email:TEACHER_EMAIL,emailVerified:true};assert.equal(staffRole(legacy),"teacher");rememberStaff(legacy,{email:TEACHER_EMAIL,role:"teacher",status:"disabled"});assert.equal(staffRole(legacy),null);
 });
