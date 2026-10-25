@@ -73,18 +73,18 @@ test('home is a direct link and switching workspaces is an explicit disclosure',
 
 test('educator groups lead with teaching and keep older grading tools secondary', () => {
   const { desktop } = mount('repo', 'gradebook');
-  assert.deepEqual(groupNames(desktop), ['Teaching ▾', 'Evidence ▾', 'More tools ▾']);
+  assert.deepEqual(groupNames(desktop), ['Assessment ▾', 'Review & grade ▾', 'Insights ▾']);
   assert.ok(links(desktop.children[0]).some(link => link.href === 'gradebook.html'));
-  assert.match(desktop.children[2].className, /av-nav-secondary/);
-  assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['activity-grader.html', 'grading.html']);
+  assert.ok(links(desktop.children[1]).some(link => link.href === 'gradebook.html'));
+  assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['teacher-analytics.html', 'learning-follow-up.html']);
   assert.ok(!links(desktop).some(link => link.href === 'lesson-planner.html' || link.href === 'users.html'));
 });
 
 test('selected task is announced once per desktop/mobile surface and page labels match routes', () => {
   for (const [module, page, route, label] of [
     ['repo', 'submissions', 'submissions.html', 'Submission inbox'],
-    ['repo', 'grader', 'grading.html', 'Repository grader'],
-    ['repo', 'group-inspector', 'group-inspector.html', 'Group inspector'],
+    ['repo', 'gradebook', 'gradebook.html', 'Gradebook'],
+    ['repo', 'repofetch', 'repofetch.html', 'Review & grade'],
     ['student-practice', 'xml', 'student-xml-lab.html', 'XML Lab']
   ]) {
     const { desktop, mobile, root } = mount(module, page, module.startsWith('student') ? 'student' : 'teacher');
@@ -98,7 +98,7 @@ test('the current mobile group starts expanded without expanding the complete me
   const { mobile } = mount('repo', 'submissions');
   assert.equal(mobile.children[0].open, false);
   const groups = mobile.children[0].children[1].children;
-  assert.deepEqual(groups.map(group => group.open), [false, true, false]);
+  assert.deepEqual(groups.map(group => group.open), [true, false, false]);
 });
 
 test('planning has its own destinations and no unrelated analytics shortcut', () => {
@@ -226,7 +226,7 @@ async function checkGuard({ role = 'admin', path = '/users.html', students = [],
   const events = [], cacheCalls = [], connectionWrites = [], documentEvents = {}, nav = { dataset: {} }, storage = new Map(mockRole ? [['Adminerva_Mock_Role', mockRole]] : []);
   const user = signedIn ? { uid: 'test-user', email: 'staff@example.test', emailVerified: verified } : null;
   const auth = { currentUser: user };
-  const window = { location: { pathname: path, href: '', replace(value) { this.href = value; } }, beginLoading: () => () => {}, addEventListener() {} };
+  const window = { location: { pathname: path, href: 'https://adminerva.test' + path, replace(value) { this.href = value; } }, beginLoading: () => () => {}, addEventListener() {} };
   const document = {
     getElementById: id => id === 'adminerva-nav' ? nav : null,
     querySelectorAll: () => [], addEventListener: (type, callback) => (documentEvents[type] ||= []).push(callback), dispatchEvent: event => events.push(event)
@@ -239,7 +239,7 @@ async function checkGuard({ role = 'admin', path = '/users.html', students = [],
       cacheCalls.push('resolve'); if (switchDuringLookup) auth.currentUser = { uid: 'another-account' };
       return { role, students, teachers: teacherPreferences ? [{ data: () => teacherPreferences }] : [], needsTeacherApproval: false };
     },
-    window, document, console, CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
+    window, document, location: window.location, URL, roleHome: role => role === 'student' ? 'student-home.html' : role === 'guest' ? 'guest-home.html' : 'teacher-home.html', rememberWorkspace: () => {}, console, CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }
   });
   await authCallback(user);
