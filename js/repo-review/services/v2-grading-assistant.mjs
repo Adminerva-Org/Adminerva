@@ -13,6 +13,9 @@ const MAX_SUPPORT_FILES=24;
 const MAX_FILE_BYTES=36000;
 const MAX_TOTAL_SOURCE=90000;
 const MAX_PATCH_CHARS=60000;
+const MAX_PATCH_FILE_CHARS=12000;
+const MAX_PATCH_EXCERPT_CHARS=4200;
+
 const MAX_VISUAL_ASSETS=3;
 const MAX_VISUAL_ASSET_BYTES=240000;
 const MAX_VISUAL_TOTAL_BYTES=360000;
@@ -137,7 +140,7 @@ export function buildRubricPrompt({assessment,criteria,checkpointSha,files,patch
   return `You are assisting a classroom teacher with an assessment of an Android Studio project.
 This is a teacher-reviewed, unofficial SYSTEM DRAFT only. Do not publish or finalize grades.
 The project snapshot is pinned to instructor-approved checkpoint ${checkpointSha}.
-All supplied instructor-verified selected commit patches are in scope, including historical commits with a different SHA from the approved checkpoint. A different selected-commit SHA does not automatically invalidate instructor-verified attribution. Commits without a supplied verified patch cannot earn individual credit.\nMerge diff context can be inspected for a provisional assessment but does not independently prove student authorship. For criteria supported only by merge context, mark points as pending teacher confirmation instead of treating them as verified individual credit. Do not abort the draft merely because a merge is present.
+All supplied instructor-verified selected commit patches are in scope, including historical commits with a different SHA from the approved checkpoint. A different selected-commit SHA does not automatically invalidate instructor-verified attribution. Commits without a supplied verified patch cannot earn individual credit. Truncated or omitted diffs are PARTIAL evidence only; never claim to have seen their omitted changes. Attribute only clearly supported points and flag any uncertain points for teacher review.\nMerge diff context can be inspected for a provisional assessment but does not independently prove student authorship. For criteria supported only by merge context, mark points as pending teacher confirmation instead of treating them as verified individual credit. Do not abort the draft merely because a merge is present.
 The full checkpoint can contain teammates' work. Never give this student credit merely because shared code exists.
 
 INDIVIDUAL VS GROUP:
@@ -236,6 +239,7 @@ export async function loadPinnedV2Source({
   }
   const patchRecords=[],studentSupportPaths=new Set(),studentPrimaryPaths=new Set(),binaryPaths=new Set();
   let patchChars=0;
+  const truncatedDiffs=[];
   const excludedMergeCommits=[];
   const androidUi=isAndroidUiAssessment(assessment);
   for(const sha of verifiedContributionCommits){
@@ -256,19 +260,28 @@ export async function loadPinnedV2Source({
       let patch=file.patch;
       let substantive;
       if(typeof patch==="string"){
-        patchChars+=patch.length;
-        if(patchChars>MAX_PATCH_CHARS)throw Error("The selected commit diffs exceed the evaluation context limit. Review evidence manually.");
         substantive=analyzePatchSubstance(patch,file.filename).substantive;
+        const remaining=MAX_PATCH_CHARS-patchChars;
+        if(patch.length>MAX_PATCH_FILE_CHARS||patch.length>remaining){
+          // Retain the exact verified SHA/path and inspect relevant source from the
+          // pinned checkpoint. The excerpt is NOT presented as a complete diff.
+          truncatedDiffs.push({sha,path:file.filename,originalChars:patch.length});
+          const excerptBudget=Math.min(MAX_PATCH_EXCERPT_CHARS,Math.max(0,remaining));
+          patch=excerptBudget>300
+            ?patch.slice(0,excerptBudget)+"\n[PARTIAL DIFF: remaining changes omitted; attribution/score require teacher review]"
+            :"[DIFF OMITTED DUE TO CONTEXT LIMIT; inspect verified commit and pinned source manually]";
+        }
+        patchChars+=Math.min(patch.length,remaining);
       }else if(["image","font"].includes(support||"")){
         patch="[Binary repository resource "+file.status+" in this verified commit]";
         substantive=true;
       }else if(primary){
         throw Error("A primary assessed commit file has no readable text diff. Review this contribution manually.");
       }else continue;
-      patchRecords.push({sha,path:file.filename,patch,substantive:isMerge?false:substantive,primary,mergeContext:isMerge,kind:support||"primary"});
+      patchRecords.push({sha,path:file.filename,patch,substantive:isMerge||truncatedDiffs.some(item=>item.sha===sha&&item.path===file.filename)?false:substantive,primary,mergeContext:isMerge,\n        diffIncomplete:truncatedDiffs.some(item=>item.sha===sha&&item.path===file.filename),kind:support||"primary"});
     }
   }
-  const directContribution=patchRecords.some(patch=>patch.primary&&patch.substantive===true);
+  const directContribution=patchRecords.some(patch=>patch.primary&&(patch.substantive===true||patch.diffIncomplete));
   if(!directContribution&&!excludedMergeCommits.length)
     throw Error(androidUi?"No verified substantive primary screen change was found. Verify relevant original layout evidence.":"No verified substantive primary assessment change was found.");
   const tree=await request("/git/trees/"+encodeURIComponent(selection.checkpointSha)+"?recursive=1");
@@ -341,7 +354,7 @@ export async function loadPinnedV2Source({
     if(!files.some(file=>file.path===item.path))files.push({path:item.path,text:"",primary:false,studentChanged:studentSupportPaths.has(item.path),binary:true});
   }
 
-  const analysis=analyzeAndroidEvidence({assessment,files,patches:patchRecords.filter(p=>!p.mergeContext),assets});
+  const analysis=analyzeAndroidEvidence({assessment,files,patches:patchRecords.filter(p=>!p.mergeContext&&!p.diffIncomplete),assets});
   return {repository:repo.url,checkpointSha:selection.checkpointSha,
-    selectedCommits:selection.selectedCommits,files,patches:patchRecords,assets,analysis,excludedMergeCommits};
+    selectedCommits:selection.selectedCommits,files,patches:patchRecords,assets,analysis,excludedMergeCommits,truncatedDiffs};
 }
