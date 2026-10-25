@@ -469,7 +469,7 @@ function loadComments(issueId) {
                         <span class="text-[9px] text-slate-400">${timeStr}</span>
                     </div>
                     <p class="text-sm text-slate-600 whitespace-pre-wrap">${escapeHTML(data.text || data.comment || data.message || "")}</p>
-                    ${(isSuperAdmin && data.authorUid === auth.currentUser?.uid) ? `<button onclick="deleteComment('${docSnap.id}')" class="absolute top-2 right-2 text-red-300 hover:text-red-500 text-xs hidden group-hover:block">🗑️</button>` : ""}
+                    ${((data.authorUid && data.authorUid === auth.currentUser?.uid) || ((data.authorEmail||"").toLowerCase() && (data.authorEmail||"").toLowerCase() === currentUserEmail)) ? `<button onclick="deleteComment('${docSnap.id}')" class="absolute top-2 right-2 text-red-300 hover:text-red-500 text-xs hidden group-hover:block">🗑️</button>` : ""}
                 </div>
             `,
         );
