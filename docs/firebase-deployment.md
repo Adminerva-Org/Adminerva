@@ -10,18 +10,18 @@ Create a Firebase/Google Cloud service account that can deploy the Adminerva Fun
 Do not commit the JSON file.
 
 ## Normal deployment
-Use **Actions → Firebase backend deployment → Run workflow** after backend/index changes have merged to `main`.
+For the first deployment, use **Actions → Firebase backend deployment → Run workflow** after the credential is configured. To enable automatic deployment for later backend changes, add the repository Actions variable `FIREBASE_DEPLOY_ENABLED=true`.
 
 The workflow:
 1. checks out the repository,
 2. installs the exact backend dependency tree with `npm ci --prefix functions`,
 3. writes the service-account JSON only to the temporary GitHub runner,
-4. deploys `firestore:indexes,functions`.
+4. deploys `firestore:rules,firestore:indexes,functions`.
 
 GitHub Pages continues to deploy separately from `main`.
 
 ## Release ordering
-For releases containing backend or index changes:
+For releases containing backend, rule or index changes:
 1. merge source,
 2. deploy Firebase backend/indexes,
 3. confirm GitHub Pages,
