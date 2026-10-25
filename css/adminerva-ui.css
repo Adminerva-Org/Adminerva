@@ -613,7 +613,7 @@ html[data-adminerva-reduce-motion=true] *,html[data-adminerva-reduce-motion=true
 .av-educator-content>.av-analytics-intro{max-width:80rem;width:100%;margin-left:auto;margin-right:auto}
 .av-educator-content>.av-analytics-panel>div.max-w-7xl{max-width:none;padding-left:0;padding-right:0}
 .av-brand-mark{background:transparent}
-.av-brand-mark img{width:2.5rem;height:2.5rem;max-width:none;object-fit:cover;object-position:center 22%;transform:scale(1.32) translateY(7%)}
+.av-brand-mark img{width:2.05rem;height:2.05rem;max-width:100%;object-fit:contain;transform:none}
 @media(min-width:1025px) and (max-width:1450px){
   .av-educator-layout{grid-template-columns:12.5rem minmax(0,1fr)}
 }
@@ -625,3 +625,15 @@ html[data-adminerva-reduce-motion=true] *,html[data-adminerva-reduce-motion=true
 .av-educator-layout[data-nav-collapsed="true"] [data-educator-nav-groups]{display:none}
 .av-educator-layout[data-nav-collapsed="true"] .av-educator-nav-toggle{text-align:center;margin:0}
 @media(max-width:1024px){.av-educator-nav-toggle{display:none}.av-educator-layout[data-nav-collapsed="true"]{grid-template-columns:1fr}}
+
+/* 1.4.2 shared UX hardening: consistent focus, touch targets, long-content containment. */
+:where(h1,h2,h3,[id]){scroll-margin-top:6.5rem}
+:where(a,button,input,select,textarea,summary):focus-visible{outline:3px solid #22d3ee;outline-offset:2px}
+:where(.av-primary-button,.av-secondary-button,.av-secondary-link,.av-action-link){min-height:2.75rem;display:inline-flex;align-items:center;justify-content:center}
+:where(.av-panel,.av-action-card,.av-directory-card,.av-home-task){overflow-wrap:anywhere}
+@media(max-width:640px){
+  body :where(input,select,textarea){font-size:16px}
+  .av-button-row{gap:.65rem}
+  .av-button-row>:where(a,button){width:100%;justify-content:center}
+  .av-page-heading{align-items:flex-start}
+}
