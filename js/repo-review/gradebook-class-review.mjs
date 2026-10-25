@@ -20,6 +20,8 @@ function statusFor(student){
   if(draft)return {label:"Evaluation ready",tone:"indigo",next:"Review suggestion"};
   if(evidence?.status==="approved")return {label:evidence.verifiedContributionCommits?.length?"Approved · verified":"Approved · contribution check needed",tone:evidence.verifiedContributionCommits?.length?"emerald":"amber",next:"Review & grade"};
   if(evidence?.status==="submitted")return {label:"Submitted",tone:"blue",next:"Review submission"};
+  if(evidence?.status==="needs_review"&&evidence?.source==="teacher_discovered")
+    return {label:evidence.selectedCommits?.length?"Gathered · review evidence":"Gathered · checkpoint only",tone:"amber",next:"Review gathered evidence"};
   if(evidence?.status==="needs_review")return {label:"Needs review",tone:"amber",next:"Review submission"};
   if(evidence?.status==="reopened")return {label:"Returned for changes",tone:"amber",next:"View status"};
   if(evidence?.status==="withdrawn")return {label:"Withdrawn",tone:"slate",next:"View status"};
@@ -40,15 +42,23 @@ function render(){
     if(grade?.published)published++; else if(grade||draftMap.has(student.id))drafts++;
     if(evidence&&["reopened","withdrawn"].includes(evidence.status))exceptions++;
   }
+  const gatherCandidates=isV2?context.students.filter(student=>{
+    if(evidenceMap.has(student.id)||context.grades?.[student.id]?.published)return false;
+    try{return Boolean(parseRepository(student.repoUrl));}catch{return false;}
+  }):[];
   const approveCandidates=isV2?context.students.filter(student=>["submitted","needs_review"].includes(evidenceMap.get(student.id)?.status)):[];
   const evaluateCandidates=isV2?context.students.filter(student=>{
     const e=evidenceMap.get(student.id),g=context.grades?.[student.id];
     return e?.status==="approved"&&Array.isArray(e.verifiedContributionCommits)&&e.verifiedContributionCommits.length>0&&!g?.published&&!draftMap.has(student.id);
   }):[];
   el("gbClassReviewSummary").textContent=context.students.length+" learners · "+submitted+" awaiting review · "+approved+" approved · "+drafts+" draft/evaluation ready · "+published+" published"+(exceptions?" · "+exceptions+" exceptions":"");
-  el("gbBulkApprove").textContent=isV2?"Approve clean checkpoints ("+approveCandidates.length+")":"Bulk approval · V2 evidence only";
+  if(el("gbForceGather")){
+    el("gbForceGather").textContent=isV2?"Force gather evidence ("+gatherCandidates.length+")":"Force gather · V2 evidence only";
+    el("gbForceGather").disabled=busy||!gatherCandidates.length;
+  }
+  el("gbBulkApprove").textContent=isV2?"Approve evidence ("+approveCandidates.length+")":"Approval · V2 evidence only";
   el("gbBulkApprove").disabled=busy||!approveCandidates.length;
-  el("gbBulkEvaluate").textContent=isV2?"Evaluate eligible ("+evaluateCandidates.length+")":"Bulk evaluation · V2 evidence only";
+  el("gbBulkEvaluate").textContent=isV2?"Run system evaluation ("+evaluateCandidates.length+")":"System evaluation · V2 evidence only";
   el("gbBulkEvaluate").disabled=busy||!evaluateCandidates.length;
   const p=new URLSearchParams({section:context.section,assessment:context.taskId});el("gbReviewExceptions").href="repofetch.html?"+p.toString();
 }
@@ -82,35 +92,163 @@ async function load(detail){
   }catch(error){el("gbBulkStatus").textContent="Class review status is partially unavailable: "+error.message;}
   render();
 }
-async function ancestryOk(evidence){
-  const repo=parseRepository(evidence.repository),selection=normalizeSelection(evidence.selectedCommits,evidence.checkpointSha),token=localStorage.getItem("Adminerva_github_token");
-  const headers=token?{Authorization:"Bearer "+token,Accept:"application/vnd.github+json"}:{Accept:"application/vnd.github+json"};
-  const api="https://api.github.com/repos/"+encodeURIComponent(repo.owner)+"/"+encodeURIComponent(repo.repo);
-  const result=await verifyCheckpointAncestry({selectedCommits:selection.selectedCommits,checkpointSha:selection.checkpointSha,
-    fetchPage:async page=>{const response=await fetch(api+"/commits?sha="+encodeURIComponent(selection.checkpointSha)+"&per_page=100&page="+page,{headers});if(!response.ok)throw Error("GitHub HTTP "+response.status);return response.json();}});
-  if(!result.ok)throw Error("checkpoint ancestry excludes "+result.missing.length+" selected commit(s)");
+const linkedLogin=student=>String(student?.githubUsername||"").trim().replace(/^@/,"").toLowerCase();
+const dateMillis=value=>{
+  if(value?.toDate)return value.toDate().getTime();
+  const parsed=Date.parse(value||"");
+  return Number.isFinite(parsed)?parsed:null;
+};
+function gatheringWindow(assessment){
+  const deployment=(assessment.deployments||[]).find(item=>item.section===context.section);
+  const now=Date.now(),deadline=deployment?.deadlineEnabled===false?null:dateMillis(deployment?.deadline);
+  const cutoff=deadline===null?now:Math.min(deadline,now);
+  const post=dateMillis(deployment?.postDate);
+  return {
+    cutoffMs:cutoff,cutoffIso:new Date(cutoff).toISOString(),
+    postMs:post!==null&&post<=cutoff?post:null,
+    deadlineMs:deadline,
+    label:deadline!==null&&deadline<=now?"the class deadline ("+new Date(deadline).toLocaleString()+")":"the current repository state ("+new Date(cutoff).toLocaleString()+")"
+  };
+}
+function githubHeaders(){
+  const token=localStorage.getItem("Adminerva_github_token");
+  return token?{Authorization:"Bearer "+token,Accept:"application/vnd.github+json"}:{Accept:"application/vnd.github+json"};
+}
+async function repositoryHistory(repo,cutoffIso,cache){
+  const key=repo.url.toLowerCase()+"|"+cutoffIso;
+  if(cache.has(key))return cache.get(key);
+  const promise=(async()=>{
+    const items=[],headers=githubHeaders();
+    for(let page=1;page<=5;page++){
+      const url="https://api.github.com/repos/"+encodeURIComponent(repo.owner)+"/"+encodeURIComponent(repo.repo)+
+        "/commits?per_page=100&page="+page+"&until="+encodeURIComponent(cutoffIso);
+      const response=await fetch(url,{headers});
+      if(response.status===409)return [];
+      if(!response.ok)throw Error("GitHub HTTP "+response.status);
+      const batch=await response.json();
+      if(!Array.isArray(batch))throw Error("GitHub returned invalid commit history.");
+      items.push(...batch);
+      if(batch.length<100)break;
+    }
+    return items;
+  })();
+  cache.set(key,promise);
+  try{return await promise;}catch(error){cache.delete(key);throw error;}
+}
+async function forceGather(){
+  if(busy||!context||Number(context.schemaVersion)!==2)return;
+  const candidates=context.students.filter(student=>{
+    if(evidenceMap.has(student.id)||context.grades?.[student.id]?.published)return false;
+    try{return Boolean(parseRepository(student.repoUrl));}catch{return false;}
+  });
+  if(!candidates.length)return;
+  let assessment;
+  try{
+    const snapshot=await getDoc(doc(db,"assessments",context.taskId));
+    if(!snapshot.exists())throw Error("Assessment not found.");
+    assessment={id:snapshot.id,...snapshot.data()};
+  }catch(error){el("gbBulkStatus").textContent="Force gather could not start: "+error.message;return;}
+  const windowInfo=gatheringWindow(assessment);
+  if(!confirm("Force gather evidence for "+candidates.length+" learner(s) with no saved evidence using "+windowInfo.label+"? Existing student submissions and evidence will not be overwritten. Adminerva will auto-select up to 20 commits whose GitHub author login exactly matches each learner's linked account. Git commit dates are repository metadata, not verified push times."))return;
+  busy=true;render();
+  const cache=new Map(),failures=[];let created=0,checkpointOnly=0,matched=0,skipped=0;
+  for(const student of candidates){
+    el("gbBulkStatus").textContent="Gathering deadline evidence for "+student.name+" · "+created+" saved…";
+    try{
+      const ref=doc(db,"assessment_evidence",student.id+"_"+context.taskId),existing=await getDoc(ref);
+      if(existing.exists()){skipped++;continue;}
+      const repo=parseRepository(student.repoUrl),history=await repositoryHistory(repo,windowInfo.cutoffIso,cache);
+      const checkpoint=String(history[0]?.sha||"").toLowerCase();
+      if(!/^[a-f0-9]{40}$/.test(checkpoint))throw Error("No repository checkpoint was found at or before the cutoff.");
+      const expected=linkedLogin(student);
+      const own=expected?history.filter(commit=>{
+        const login=String(commit?.author?.login||"").toLowerCase();
+        const time=dateMillis(commit?.commit?.committer?.date||commit?.commit?.author?.date);
+        return login===expected&&(windowInfo.postMs===null||(time!==null&&time>=windowInfo.postMs));
+      }).slice(0,20):[];
+      const selectedCommits=own.map(commit=>String(commit.sha).toLowerCase());
+      const bounded=history.length>=500;
+      const note=selectedCommits.length
+        ?"Force gathered "+selectedCommits.length+" commit(s) with an exact GitHub author-login match to @"+expected+
+          " and pinned the newest project checkpoint at or before "+windowInfo.cutoffIso+". These matches are proposed evidence only until teacher approval; Git timestamps do not prove push time."+(bounded?" The history scan reached the 500-commit review limit.":"")
+        :"Force gathered a checkpoint-only project snapshot at or before "+windowInfo.cutoffIso+
+          (expected?". No commit in the bounded history had an exact GitHub author-login match to @"+expected+".":" because no linked GitHub username was available for individual matching.")+
+          " No individual contribution is inferred."+(bounded?" The history scan reached the 500-commit review limit.":"");
+      await setDoc(ref,{
+        studentId:student.id,assessmentId:context.taskId,section:context.section,repository:repo.url,
+        selectedCommits,checkpointSha:checkpoint,status:"needs_review",source:"teacher_discovered",
+        discoveredBy:auth.currentUser.uid,recordedAt:serverTimestamp(),updatedAt:serverTimestamp(),
+        discoveryCutoff:windowInfo.cutoffIso,discoveryNote:note.slice(0,1200)
+      });
+      created++;matched+=selectedCommits.length;if(!selectedCommits.length)checkpointOnly++;
+    }catch(error){failures.push(student.name+": "+error.message);}
+  }
+  busy=false;await load(context);
+  el("gbBulkStatus").textContent="Force gather complete: "+created+" evidence snapshot(s) saved · "+matched+
+    " linked-account commit match(es) proposed · "+checkpointOnly+" checkpoint-only snapshot(s) · "+skipped+
+    " already handled · "+failures.length+" exception(s). Existing evidence was never overwritten."+
+    (failures.length?" "+failures.slice(0,3).join(" | "):"");
+}
+async function inspectForApproval(student,evidence){
+  const repo=parseRepository(evidence.repository),selection=normalizeSelection(
+    evidence.selectedCommits,evidence.checkpointSha,{allowEmpty:evidence.source==="teacher_discovered"});
+  const headers=githubHeaders(),api="https://api.github.com/repos/"+encodeURIComponent(repo.owner)+"/"+encodeURIComponent(repo.repo);
+  const seen=new Map();
+  if(selection.selectedCommits.length){
+    const result=await verifyCheckpointAncestry({
+      selectedCommits:selection.selectedCommits,checkpointSha:selection.checkpointSha,
+      fetchPage:async page=>{
+        const response=await fetch(api+"/commits?sha="+encodeURIComponent(selection.checkpointSha)+"&per_page=100&page="+page,{headers});
+        if(!response.ok)throw Error("GitHub HTTP "+response.status);
+        const items=await response.json();if(!Array.isArray(items))throw Error("GitHub returned invalid commit ancestry.");
+        for(const item of items)seen.set(String(item?.sha||"").toLowerCase(),item);
+        return items;
+      }
+    });
+    if(!result.ok)throw Error("checkpoint ancestry excludes "+result.missing.length+" selected commit(s)");
+  }else{
+    const response=await fetch(api+"/commits/"+encodeURIComponent(selection.checkpointSha),{headers});
+    if(!response.ok)throw Error("checkpoint could not be verified (GitHub HTTP "+response.status+")");
+  }
   const claims=await Promise.all(selection.selectedCommits.map(sha=>getDocs(query(collection(db,"commit_reclaims"),where("sha","==",sha)))));
-  if(claims.some(snapshot=>snapshot.docs.some(record=>record.data().repository===evidence.repository&&record.data().status==="pending")))throw Error("pending attribution reclaim");
-  return selection;
+  if(claims.some(snapshot=>snapshot.docs.some(record=>record.data().repository===evidence.repository&&record.data().status==="pending")))
+    throw Error("pending attribution reclaim");
+  const expected=linkedLogin(student);
+  const verified=expected?selection.selectedCommits.filter(sha=>
+    String(seen.get(sha)?.author?.login||"").toLowerCase()===expected):[];
+  return {selection,verified,expected};
 }
 async function bulkApprove(){
   if(busy||!context)return;
   const candidates=context.students.map(s=>({student:s,evidence:evidenceMap.get(s.id)})).filter(x=>["submitted","needs_review"].includes(x.evidence?.status));
   if(!candidates.length)return;
-  if(!confirm("Check and approve "+candidates.length+" submitted checkpoint(s)? Clean checkpoints will be approved as shared project evidence only. Individual contribution credit will NOT be inferred; exceptions remain for manual review."))return;
-  busy=true;render();const failures=[];let completed=0;el("gbBulkStatus").textContent="Checking checkpoint ancestry and attribution conflicts…";
+  if(!confirm("Approve "+candidates.length+" evidence record(s)? Adminerva will verify the project checkpoint and selected-commit ancestry. Selected commits whose GitHub author login exactly matches the learner's linked GitHub account will be marked as teacher-approved individual contributions; non-matching or unknown commits remain unverified. This is an explicit teacher approval action, not automatic proof of authorship."))return;
+  busy=true;render();const failures=[];let completed=0,verifiedTotal=0,contextOnly=0;
+  el("gbBulkStatus").textContent="Checking checkpoint ancestry, linked-account matches and attribution conflicts…";
   for(const {student,evidence} of candidates){
     try{
-      const selection=await ancestryOk(evidence),scope="Bulk checkpoint approval verified repository ancestry and conflict state for "+student.name+". Individual contribution credit was not inferred; verify contribution separately before evaluation.";
-      const contribution=approvalContribution(selection,[],scope);
-      await changeEvidence(doc(db,"assessment_evidence",student.id+"_"+context.taskId),evidence,{status:"approved",reviewedBy:auth.currentUser.uid,reviewedAt:serverTimestamp(),
-        verificationNote:"Bulk checkpoint preflight passed: ancestry was verified and no unresolved selected-commit reclaim was found.",approvedCheckpointSha:selection.checkpointSha,...contribution},
-        "Bulk checkpoint approval after ancestry and reclaim preflight.");
-      completed++;
+      const inspection=await inspectForApproval(student,evidence);
+      const verified=inspection.verified;
+      const scope=verified.length
+        ?"Teacher bulk approval verified "+verified.length+" selected commit(s) with an exact GitHub author-login match to @"+inspection.expected+
+          " for "+student.name+". Only those matched commits are approved as individual contribution; non-matching commits and shared project files remain context."
+        :"Teacher bulk approval recorded the project checkpoint as context for "+student.name+
+          ". No selected commit had an exact linked-account match, so no individual contribution is verified and system evaluation remains disabled.";
+      const contribution=approvalContribution(inspection.selection,verified,scope);
+      await changeEvidence(doc(db,"assessment_evidence",student.id+"_"+context.taskId),evidence,{
+        status:"approved",reviewedBy:auth.currentUser.uid,reviewedAt:serverTimestamp(),
+        verificationNote:"Bulk evidence approval verified the repository checkpoint, selected-commit ancestry where applicable, linked-account matches, and unresolved reclaim state.",
+        approvedCheckpointSha:inspection.selection.checkpointSha,...contribution
+      },"Bulk evidence approval after checkpoint and linked-account verification.");
+      completed++;verifiedTotal+=verified.length;if(!verified.length)contextOnly++;
     }catch(error){failures.push(student.name+": "+error.message);}
-    el("gbBulkStatus").textContent="Bulk approval: "+completed+" approved · "+failures.length+" need individual review.";
+    el("gbBulkStatus").textContent="Approval: "+completed+" approved · "+verifiedTotal+" contribution commit(s) verified · "+failures.length+" need individual review.";
   }
-  busy=false;await load(context);el("gbBulkStatus").textContent="Bulk approval complete: "+completed+" approved · "+failures.length+" left untouched for Review & grade."+(failures.length?" "+failures.slice(0,3).join(" | "):"");
+  busy=false;await load(context);
+  el("gbBulkStatus").textContent="Approval complete: "+completed+" approved · "+verifiedTotal+
+    " contribution commit(s) verified · "+contextOnly+" checkpoint-only/context-only approval(s) · "+failures.length+
+    " left for Review & grade. System evaluation is available only where individual contribution was verified."+
+    (failures.length?" "+failures.slice(0,3).join(" | "):"");
 }
 async function evaluateOne(student,evidence,assessment,connection){
   const criteria=parseWeightedRubric(assessment.evalCriteria,assessment.maxScore),token=localStorage.getItem("Adminerva_github_token");
@@ -144,5 +282,6 @@ async function bulkEvaluate(){
   busy=false;await load(context);el("gbBulkStatus").textContent="Bulk evaluation complete: "+completed+" private suggestion(s) ready · "+failures.length+" exception(s). Open Review & grade to confirm score and feedback."+(failures.length?" "+failures.slice(0,2).join(" | "):"");
 }
 window.addEventListener("adminerva:gradebook-grid-loaded",event=>void load(event.detail));
+el("gbForceGather")?.addEventListener("click",()=>void forceGather());
 el("gbBulkApprove")?.addEventListener("click",()=>void bulkApprove());
 el("gbBulkEvaluate")?.addEventListener("click",()=>void bulkEvaluate());
