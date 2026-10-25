@@ -45,7 +45,8 @@ export function resolveSectionGrade(section,{rowGrade="",catalogSections=[]}={})
   const catalog=Array.isArray(catalogSections)?catalogSections:[];
   const record=catalog.find(item=>same(item?.name,name)&&normalize(item?.gradeLevel));
   if(record)return normalize(record.gradeLevel);
-  return LEGACY_SECTION_GRADES[name]||"";
+  const legacy=Object.entries(LEGACY_SECTION_GRADES).find(([sectionName])=>same(sectionName,name));
+  return legacy?.[1]||"";
 }
 
 export function enrichScheduleRowsWithGrades(rows,catalogSections=[]){
