@@ -18,7 +18,9 @@ has("js/core/notification-visibility.mjs",'["submission", "grade", "assessment"]
 has("functions/index.js",'title:published?"A reviewed grade is available":"A published grade was withdrawn for revision"');
 has("functions/index.js",'before.status!=="submitted"||before.submittedAt?.toMillis?.()!==after.submittedAt?.toMillis?.()');
 has("functions/index.js",'const pushPages=new Set([');
-has("firestore.rules",'"grading","issue","updatedAt"');
+has("firestore.rules",'"grading","issue","release","updatedAt"');
+has("js/core/push-notifications.mjs","release:true");
+has("functions/index.js",'const pushTypes=new Set(["assessment","submission","grade","grading","issue","release"])');
 has("js/core/workspace-return.mjs","cachedWorkspaceDestination(auth.currentUser)");
 has("js/core/auth-guard.js",'roleHome(actualRole)');
 has("assessment-studio.html","js/core/auth-guard.js?v=1.3.8");
@@ -53,7 +55,10 @@ has("js/settings/settings-presentation.js",'doc(window.db, "staff_workspaces", u
 lacks("js/settings/settings-presentation.js",'doc(window.db, "global_settings", "presentation_config")');
 has("js/lesson-review/app-ui.js","Adminerva_lesson_editor_draft_v1");
 has("js/lesson-review/app-ui.js","adminerva:lesson-saved");
-has("js/settings/settings-core.js",'location.hash==="#notifications"?"account":"security"');
+has("js/settings/settings-core.js",'function settingsPanelFromLocation()');
+has("js/settings/settings-core.js",'requested === "notifications"');
+has("js/settings/settings-core.js",'history.pushState');
+has("js/settings/settings-core.js",'"popstate"');
 has("js/core/adminerva-loader.js",'tabindex="-1" hidden');
 has("js/core/adminerva-nav.js","m.hidden=false");
 

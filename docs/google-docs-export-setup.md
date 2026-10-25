@@ -1,6 +1,6 @@
 # Google Docs export connection
 
-Lesson Planner uses Google Identity Services to authorize an individual teacher's export. This is separate from Firebase sign-in. The public web client ID configured in `js/lesson-review/document-exporter.js` is:
+Lesson Planner uses Google Identity Services to authorize an individual teacher's export. This is separate from Firebase sign-in. The public web client ID used by the active exporter in `js/lesson-review/google-docs-export.mjs` is:
 
 `902176956124-i9vcin925le0d9jghr4afn56q7n53gl5.apps.googleusercontent.com`
 
@@ -17,7 +17,7 @@ The app requests only `https://www.googleapis.com/auth/drive.file` and does not 
 
 ## Verification and limitations
 
-Regression tests execute the real export entry point in an isolated JavaScript context with synthetic Google token callbacks and mocked Drive/Docs responses. They cover client selection, least-privilege scopes, declined/missing consent, blocked/closed popups, preparation failure, successful formatting and upload failures. They cannot establish that Cloud Console services/audience are configured or that real Google consent succeeds. Those require a deliberate owner test after deployment. If upload created a document but inspection/formatting fails, the existing warning offers manual inspection instead of claiming success or deleting the document.
+Regression tests import the active export module and exercise its bounded authorization/request helpers with synthetic Google token callbacks and mocked Drive/Docs responses. They cover client selection, least-privilege scope configuration, declined or insufficient consent, blocked/closed popups, account changes, token expiry and partial formatting/request failures. They do not contact Google and cannot establish that Cloud Console services/audience are configured or that real Google consent succeeds. Those require a deliberate owner test after deployment. If upload created a document but inspection/formatting fails, the existing warning offers manual inspection instead of claiming success or deleting the document.
 
 This change does not edit Firebase Auth providers, permission rules, Functions, submissions or grades. Keep the auto-created OAuth client; do not delete or recreate it just to configure export.
 

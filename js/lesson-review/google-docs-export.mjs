@@ -15,7 +15,7 @@ function tokenFor({uid,loginHint,assertAccount}){
   const finish=(error,value)=>{if(settled)return;settled=true;clearTimeout(timer);error?reject(error):resolve(value);};
   const timer=setTimeout(()=>finish(Error('Google authorization did not finish. Close its popup, then retry or download the lesson below.')),120000);
   try{
-   const client=oauth.initTokenClient({client_id:CLIENT_ID,scope:SCOPE,include_granted_scopes:true,...(loginHint?{login_hint:loginHint}:{}),
+   const client=oauth.initTokenClient({client_id:CLIENT_ID,scope:SCOPE,include_granted_scopes:false,...(loginHint?{login_hint:loginHint}:{}),
     callback:response=>{
      if(settled)return;
      try{
@@ -221,3 +221,14 @@ export function exportLessonToGoogleDocs(options){
   }finally{if(source?.notes?.length)ui.status.textContent+='\n\n'+source.notes.join('\n');ui.close.disabled=false;activeExport=null;ui.close.focus();}
  })();
 }
+
+
+// Narrow unit-test seam for the active export path. No tokens are persisted.
+export const __googleDocsExportTest=Object.freeze({
+ tokenFor,
+ googleRequest,
+ explain,
+ uploadDocument,
+ formatDocument,
+ reset(){cachedToken=null;activeExport=null;}
+});

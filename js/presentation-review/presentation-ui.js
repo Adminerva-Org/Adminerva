@@ -3,6 +3,62 @@ window.currentPresentationDeck = [];
 const safeSlideHTML=value=>window.sanitizePresentationHtml?.(value) ?? "";
 window.activeSlideIndex = -1;
 window.adminervaPresentationDirty = false;
+const deckUndoStack = [];
+const deckRedoStack = [];
+let deckHistoryScope = "";
+let slideDragIndex = null;
+const clonePresentationDeck = () => JSON.parse(JSON.stringify(window.currentPresentationDeck || []));
+function currentDeckHistoryScope() {
+  return (document.getElementById("presentationPlanSelect")?.value || "draft") + ":" +
+    String(window.selectedSessionIndex ?? "none");
+}
+function updateDeckHistoryButtons() {
+  const undo = document.getElementById("btnDeckUndo"), redo = document.getElementById("btnDeckRedo");
+  if (undo) undo.disabled = deckUndoStack.length === 0;
+  if (redo) redo.disabled = deckRedoStack.length === 0;
+}
+function ensureDeckHistoryScope() {
+  const next = currentDeckHistoryScope();
+  if (next !== deckHistoryScope) {
+    deckHistoryScope = next; deckUndoStack.length = 0; deckRedoStack.length = 0; updateDeckHistoryButtons();
+  }
+}
+function rememberDeckState() {
+  ensureDeckHistoryScope();
+  deckUndoStack.push({deck:clonePresentationDeck(),active:window.activeSlideIndex});
+  if (deckUndoStack.length > 40) deckUndoStack.shift();
+  deckRedoStack.length = 0; updateDeckHistoryButtons();
+}
+function restoreDeckState(snapshot) {
+  if (!snapshot) return;
+  window.currentPresentationDeck = JSON.parse(JSON.stringify(snapshot.deck || []));
+  window.adminervaPresentationDirty = true;
+  if (!window.currentPresentationDeck.length) {
+    window.activeSlideIndex = -1; renderSlideBlocks(); updateDeckHistoryButtons(); return;
+  }
+  window.selectSlide(Math.min(Math.max(Number(snapshot.active) || 0, 0), window.currentPresentationDeck.length - 1));
+  updateDeckHistoryButtons();
+}
+window.resetPresentationDeckHistory = function () {
+  deckHistoryScope = currentDeckHistoryScope(); deckUndoStack.length = 0; deckRedoStack.length = 0; updateDeckHistoryButtons();
+};
+window.undoDeckChange = function () {
+  ensureDeckHistoryScope(); if (!deckUndoStack.length) return;
+  deckRedoStack.push({deck:clonePresentationDeck(),active:window.activeSlideIndex});
+  restoreDeckState(deckUndoStack.pop());
+};
+window.redoDeckChange = function () {
+  ensureDeckHistoryScope(); if (!deckRedoStack.length) return;
+  deckUndoStack.push({deck:clonePresentationDeck(),active:window.activeSlideIndex});
+  restoreDeckState(deckRedoStack.pop());
+};
+document.addEventListener("keydown", event => {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+  if (event.target?.closest?.(".ql-editor,input,textarea,select")) return;
+  const key = event.key.toLowerCase();
+  if (key === "z") { event.preventDefault(); event.shiftKey ? window.redoDeckChange() : window.undoDeckChange(); }
+  else if (key === "y") { event.preventDefault(); window.redoDeckChange(); }
+});
 window.addEventListener("beforeunload", event => {
   if (!window.adminervaPresentationDirty) return;
   event.preventDefault();
@@ -117,6 +173,7 @@ function flashWarning() {
 
 window.changeSlideLayout = function (layout) {
   if (window.activeSlideIndex < 0) return;
+  rememberDeckState();
   window.currentPresentationDeck[window.activeSlideIndex].layout = layout;
   window.adminervaPresentationDirty = true;
   applyLayoutView(layout);
@@ -177,8 +234,9 @@ window.handleMediaUpload = function (event) {
   }
   const reader = new FileReader();
   reader.onload = function (e) {
-    window.currentPresentationDeck[window.activeSlideIndex].mediaUrl =
-      e.target.result;
+    rememberDeckState();
+    window.currentPresentationDeck[window.activeSlideIndex].mediaUrl = e.target.result;
+    window.adminervaPresentationDirty = true;
     renderMediaPreview();
   };
   reader.readAsDataURL(file);
@@ -203,7 +261,9 @@ function renderMediaPreview() {
 
 window.clearMediaSlide = function () {
   if (window.activeSlideIndex < 0) return;
+  rememberDeckState();
   window.currentPresentationDeck[window.activeSlideIndex].mediaUrl = "";
+  window.adminervaPresentationDirty = true;
   document.getElementById("mediaFileInput").value = "";
   renderMediaPreview();
 };
@@ -222,6 +282,49 @@ function initPresentationDeck() {
   }
   renderSlideBlocks();
   window.selectSlide(0);
+  window.resetPresentationDeckHistory();
+}
+
+function clearSlideDropIndicators() {
+  document.querySelectorAll("[data-slide-index]").forEach(card => { card.style.boxShadow = ""; });
+}
+function reorderSlideByDrop(source, target, placement) {
+  let insert = target + (placement === "after" ? 1 : 0);
+  if (source < insert) insert--;
+  if (insert === source || source < 0 || source >= window.currentPresentationDeck.length) return;
+  rememberDeckState();
+  const [slide] = window.currentPresentationDeck.splice(source, 1);
+  insert = Math.max(0, Math.min(insert, window.currentPresentationDeck.length));
+  window.currentPresentationDeck.splice(insert, 0, slide);
+  window.adminervaPresentationDirty = true;
+  window.selectSlide(insert);
+}
+function bindSlideDragAndDrop(container) {
+  container.querySelectorAll("[data-slide-index]").forEach(card => {
+    const index = Number(card.dataset.slideIndex);
+    card.addEventListener("dragstart", event => {
+      if (event.target.closest("button")) { event.preventDefault(); return; }
+      slideDragIndex = index; event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", String(index)); card.style.opacity = ".55";
+    });
+    card.addEventListener("dragover", event => {
+      if (slideDragIndex === null || slideDragIndex === index) return;
+      event.preventDefault(); event.dataTransfer.dropEffect = "move";
+      clearSlideDropIndicators();
+      const rect = card.getBoundingClientRect(), after = event.clientY >= rect.top + rect.height / 2;
+      card.dataset.dropPlacement = after ? "after" : "before";
+      card.style.boxShadow = after ? "inset 0 -3px 0 #2563eb" : "inset 0 3px 0 #2563eb";
+    });
+    card.addEventListener("drop", event => {
+      if (slideDragIndex === null) return;
+      event.preventDefault();
+      const source = slideDragIndex, placement = card.dataset.dropPlacement || "before";
+      slideDragIndex = null; clearSlideDropIndicators(); reorderSlideByDrop(source, index, placement);
+    });
+    card.addEventListener("dragend", () => {
+      slideDragIndex = null; card.style.opacity = ""; clearSlideDropIndicators();
+    });
+  });
 }
 
 // 🚀 ENHANCED SLIDE MANAGEMENT RENDERER
@@ -238,7 +341,7 @@ function renderSlideBlocks() {
     const isHidden = slide.hidden ? "opacity-50 grayscale" : "";
 
     const html = `
-      <div class="p-2 rounded transition flex flex-col gap-2 group ${isActive ? activeStyles : inactiveStyles} ${isHidden}">
+      <div data-slide-index="${index}" draggable="true" title="Drag to reorder slide" class="p-2 rounded transition flex flex-col gap-2 group ${isActive ? activeStyles : inactiveStyles} ${isHidden}">
           <div onclick="selectSlide(${index})" class="flex items-center gap-3 cursor-pointer">
               <span class="text-2xl font-black ${isActive ? "text-blue-600" : "text-gray-300"} w-6 text-center">${index + 1}</span>
               <div class="flex-1">
@@ -263,11 +366,14 @@ function renderSlideBlocks() {
     `;
     listContainer.insertAdjacentHTML("beforeend", html);
   });
+  bindSlideDragAndDrop(listContainer);
+  updateDeckHistoryButtons();
 }
 
 // 🚀 SLIDE MANAGEMENT ACTIONS
 window.moveSlideUp = function (i) {
   if (i <= 0) return;
+  rememberDeckState();
   const temp = window.currentPresentationDeck[i - 1];
   window.currentPresentationDeck[i - 1] = window.currentPresentationDeck[i];
   window.currentPresentationDeck[i] = temp;
@@ -276,6 +382,7 @@ window.moveSlideUp = function (i) {
 };
 window.moveSlideDown = function (i) {
   if (i >= window.currentPresentationDeck.length - 1) return;
+  rememberDeckState();
   const temp = window.currentPresentationDeck[i + 1];
   window.currentPresentationDeck[i + 1] = window.currentPresentationDeck[i];
   window.currentPresentationDeck[i] = temp;
@@ -283,9 +390,9 @@ window.moveSlideDown = function (i) {
   window.selectSlide(i + 1);
 };
 window.duplicateSlide = function (i) {
+  rememberDeckState();
   const clone = JSON.parse(JSON.stringify(window.currentPresentationDeck[i]));
   window.currentPresentationDeck.splice(i + 1, 0, clone);
-  window.adminervaPresentationDirty = true;
   window.adminervaPresentationDirty = true;
   window.selectSlide(i + 1);
 };
@@ -293,12 +400,14 @@ window.deleteSlide = function (i) {
   if (window.currentPresentationDeck.length <= 1)
     return alert("Cannot delete the last slide.");
   if (confirm("Delete this slide?")) {
+    rememberDeckState();
     window.currentPresentationDeck.splice(i, 1);
     window.adminervaPresentationDirty = true;
     window.selectSlide(Math.max(0, i - 1));
   }
 };
 window.toggleHideSlide = function (i) {
+  rememberDeckState();
   window.currentPresentationDeck[i].hidden =
     !window.currentPresentationDeck[i].hidden;
   window.adminervaPresentationDirty = true;
@@ -329,6 +438,7 @@ window.closeAddSlideModal = function () {
   document.getElementById("addSlideModal").classList.replace("flex", "hidden");
 };
 window.confirmAddSlide = function (layoutType) {
+  rememberDeckState();
   window.adminervaPresentationDirty = true;
   window.currentPresentationDeck.push({
     layout: layoutType,

@@ -710,3 +710,59 @@ test('practice completions are student-private and are not school grades',async(
   await assertFails(setDoc(ref,{...data,courseId:'python'}));
   await assertFails(deleteDoc(ref));
 });
+
+
+test('student profile email ownership requires a verified authentication claim',async()=>{
+  const verified=client('alice',EMAIL_A);
+  const unverified=env.authenticatedContext('other-uid',{email:EMAIL_A,email_verified:false}).firestore();
+  await assertSucceeds(getDoc(doc(verified,'students','alice')));
+  await assertFails(getDoc(doc(unverified,'students','alice')));
+  await assertFails(updateDoc(doc(unverified,'students','alice'),{githubUsername:'forged-owner'}));
+});
+
+test('a versioned activity grade cannot be downgraded to an unaudited legacy record',async()=>{
+  const staff=client('staff',TEACHER),ref=doc(staff,'activity_grades','alice_lab');
+  const first={
+    studentId:'alice',section:'11-A',githubUsername:'alice',activity:'Lab check',
+    score:8,maxScore:10,gradedAt:'2026-10-25T10:00:00+08:00',taskId:'peta',
+    feedback:'Initial reviewed result',published:false,gradeVersion:1,
+    reviewedBy:'staff',reviewNote:'Initial versioned review',updatedAt:serverTimestamp()
+  };
+  const create=writeBatch(staff);
+  create.set(ref,first);
+  create.set(doc(ref,'versions','1'),{before:null,after:first,actorUid:'staff',createdAt:serverTimestamp()});
+  await assertSucceeds(create.commit());
+
+  const legacy={
+    studentId:'alice',section:'11-A',githubUsername:'alice',activity:'Lab check',
+    score:9,maxScore:10,gradedAt:'2026-10-25T10:05:00+08:00',taskId:'peta',
+    feedback:'Changed without a version',published:false,reviewNote:'Legacy-shaped replacement'
+  };
+  await assertFails(setDoc(ref,legacy));
+
+  const before=(await getDoc(ref)).data();
+  const second={...before,score:9,feedback:'Audited revision',gradeVersion:2,reviewedBy:'staff',
+    reviewNote:'Second versioned review',updatedAt:serverTimestamp()};
+  const revise=writeBatch(staff);
+  revise.set(ref,second);
+  revise.set(doc(ref,'versions','2'),{before,after:second,actorUid:'staff',createdAt:serverTimestamp()});
+  await assertSucceeds(revise.commit());
+});
+
+test('grading alert updates cannot move a known alert into a teacher section',async()=>{
+  const limitedEmail='limited.teacher@example.edu';
+  await env.withSecurityRulesDisabled(async context=>{
+    const db=context.firestore();
+    await setDoc(doc(db,'staff_access',limitedEmail),{email:limitedEmail,role:'teacher',status:'active',sections:['11-A']});
+    await setDoc(doc(db,'grading_alerts','known-b'),{studentId:'bob',section:'11-B',message:'Existing section B alert'});
+  });
+  const limited=client('limited-teacher',limitedEmail);
+  await assertFails(getDoc(doc(limited,'grading_alerts','known-b')));
+  await assertFails(updateDoc(doc(limited,'grading_alerts','known-b'),{
+    studentId:'alice',section:'11-A',message:'Cross-section replacement'
+  }));
+
+  const own=doc(limited,'grading_alerts','own-a');
+  await assertSucceeds(setDoc(own,{studentId:'alice',section:'11-A',message:'Section A alert'}));
+  await assertSucceeds(updateDoc(own,{message:'Updated Section A alert'}));
+});

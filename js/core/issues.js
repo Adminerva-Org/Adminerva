@@ -23,6 +23,8 @@ import {staffRole,staffSections} from "./staff-role.mjs?v=1.3.0";
 let allIssues = [];
 let currentOpenIssueId = null;
 let currentUserEmail = "";
+let currentComments=[];
+let lastFilteredIssues=[];
 
 // Role check
 let isSuperAdmin = false; // Verified auth email; never a localStorage role.
@@ -31,7 +33,7 @@ let stopIssueListeners = [];
 function ownsIssue(issue) {
   return ownsReport(issue,auth.currentUser?.uid,currentUserEmail);
 }
-const filterIds=["filterCategory","filterStatus","filterAudience","filterSort","filterMine","filterSearch"];
+const filterIds=["filterCategory","filterStatus","filterAudience","filterSort","filterMine","filterSearch","filterReportType"];
 function filterStoreKey(){return auth.currentUser?.uid
   ?"Adminerva_ReportFilters_"+auth.currentUser.uid:null}
 function saveReportFilters(){
@@ -87,6 +89,8 @@ onAuthStateChanged(auth, async user => {
     isSuperAdmin = role === "admin";
     isTeacher = role === "teacher";
     document.getElementById("filterAudience")?.querySelector('option[value="admin"]')?.toggleAttribute("hidden", !isSuperAdmin);
+    document.getElementById("filterReportType")?.toggleAttribute("hidden",!isSuperAdmin);
+    document.getElementById("reportExportTools")?.toggleAttribute("hidden",!isSuperAdmin);
     restoreReportFilters();
     if (!isSuperAdmin && document.getElementById("filterAudience")?.value === "admin") document.getElementById("filterAudience").value = "All";
     fetchIssues();
@@ -159,6 +163,7 @@ function resetReportFilters(){
   for(const id of ["filterCategory","filterStatus","filterAudience"]){
     const input=document.getElementById(id);if(input)input.value="All";
   }
+  const reportType=document.getElementById("filterReportType");if(reportType)reportType.value="all";
   document.getElementById("filterSort").value="newest";
   document.getElementById("filterSearch").value="";
   document.getElementById("filterMine").checked=false;
@@ -167,7 +172,7 @@ function resetReportFilters(){
 function renderIssues() {
   const container = document.getElementById("issuesFeed");
   if(!container)return;
-  const filtered=filterReports(allIssues,{
+  let filtered=filterReports(allIssues,{
     role:isSuperAdmin?"admin":isTeacher?"teacher":"student",
     uid:auth.currentUser?.uid||"",email:currentUserEmail,
     category:document.getElementById("filterCategory")?.value||"All",
@@ -177,6 +182,9 @@ function renderIssues() {
     search:document.getElementById("filterSearch")?.value||"",
     sort:document.getElementById("filterSort")?.value||"newest"
   });
+  const reportType=document.getElementById("filterReportType")?.value||"all";
+  if(isSuperAdmin&&reportType!=="all")filtered=filtered.filter(issue=>reportType==="test"?issue.internalTest===true:issue.internalTest!==true);
+  lastFilteredIssues=filtered;
   const summary=document.getElementById("issuesFeedSummary");
   if(summary)summary.textContent=filtered.length+" of "+allIssues.length+" accessible reports shown";
   container.innerHTML = "";
@@ -220,6 +228,7 @@ function renderIssues() {
             <span class="${statStyle} text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">${escapeHTML(iss.status)}</span>
             <span class="text-[10px] font-bold text-slate-500 border border-slate-200 bg-slate-50 px-2 py-0.5 rounded uppercase">${escapeHTML(iss.category)}</span>
             <span class="text-[10px] font-bold text-blue-800 border border-blue-200 bg-blue-50 px-2 py-0.5 rounded uppercase">To ${(iss.audience||"admin")==="teacher"?"Teacher":"Admin"}</span>
+            ${iss.internalTest===true?'<span class="text-[10px] font-bold text-indigo-800 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded uppercase">Internal test</span>':""}
             <span class="text-[10px] text-slate-400 font-medium ml-auto">${dateStr}</span>
           </div>
           <h3 class="text-base font-bold text-slate-800 leading-tight group-hover:text-cyan-700 transition">${isLocked}${prioMarker}${escapeHTML(iss.title)}</h3>
@@ -338,6 +347,9 @@ window.openIssueModal = async function (id) {
     document.getElementById("adminLockBtn").textContent = iss.locked
       ? "🔓 Unlock Comments"
       : "🔒 Lock Comments";
+    const testButton=document.getElementById("adminTestBtn");
+    if(testButton){testButton.hidden=!isSuperAdmin;testButton.textContent=iss.internalTest?"Mark genuine":"Mark test";}
+    document.getElementById("copyIssuePacket").hidden=!isSuperAdmin;
   } else {
     document.getElementById("adminControlPanel").classList.add("hidden");
   }
@@ -427,6 +439,7 @@ function loadComments(issueId) {
     q,
     (snapshot) => {
       feed.innerHTML = "";
+      currentComments=snapshot.docs.map(record=>({id:record.id,...record.data()}));
       document.getElementById("commentCount").textContent = snapshot.size;
 
       if (snapshot.empty) {
@@ -534,19 +547,41 @@ document.getElementById("adminStatusSelect")?.addEventListener("change",e=>{
 document.getElementById("adminPrioritySelect")?.addEventListener("change",e=>{
   void updateIssueField("priority",e.target.value,{button:e.target});
 });
+document.getElementById("adminTestBtn")?.addEventListener("click",e=>{
+  if(!isSuperAdmin)return;
+  const issue=allIssues.find(item=>item.id===currentOpenIssueId);
+  if(issue)void updateIssueField("internalTest",!Boolean(issue.internalTest),{button:e.currentTarget});
+});
+function issuePacket(issue,comments=[]){
+  const at=value=>value?.toDate?.()?.toISOString?.()||"";
+  return ["# Adminerva support report "+issue.id,"","- Title: "+(issue.title||""),"- Status: "+(issue.status||"Open"),"- Priority: "+(issue.priority||"Medium"),
+    "- Category: "+(issue.category||"Other"),"- Audience: "+(issue.audience||"admin"),"- Type: "+(issue.internalTest?"Internal/test":"User report"),"- Module: "+(issue.module||""),
+    "- Created: "+at(issue.createdAt),"","## Description",issue.description||"",
+    issue.reproductionSteps?"\n## Steps to reproduce\n"+issue.reproductionSteps:"",
+    issue.expectedBehavior?"\n## Expected\n"+issue.expectedBehavior:"",
+    issue.actualBehavior?"\n## Actual\n"+issue.actualBehavior:"",
+    comments.length?"\n## Discussion\n"+comments.map(item=>"- "+(item.role||"member")+": "+(item.text||"")).join("\n"):"",
+    "\n## Context\n"+JSON.stringify({urlContext:issue.urlContext||"",clientContext:issue.clientContext||null},null,2)].filter(Boolean).join("\n");
+}
+async function copyText(value){try{await navigator.clipboard.writeText(value);return true}catch{return false}}
+function download(name,type,text){const blob=new Blob([text],{type}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+document.getElementById("copyIssuePacket")?.addEventListener("click",async()=>{const issue=allIssues.find(item=>item.id===currentOpenIssueId);if(!issue)return;alert(await copyText(issuePacket(issue,currentComments))?"Support packet copied.":"Copy failed.");});
+document.getElementById("copyReportsMarkdown")?.addEventListener("click",async()=>{const text=lastFilteredIssues.map(issue=>issuePacket(issue)).join("\n\n---\n\n");alert(await copyText(text)?"Visible reports copied as Markdown.":"Copy failed.");});
+document.getElementById("downloadReportsJson")?.addEventListener("click",()=>{const clean=lastFilteredIssues.map(issue=>({...issue,createdAt:issue.createdAt?.toDate?.()?.toISOString?.()||null,images:undefined}));download("adminerva-reports.json","application/json",JSON.stringify(clean,null,2));});
+document.getElementById("downloadReportsCsv")?.addEventListener("click",()=>{const quote=value=>'"'+String(value??"").replaceAll('"','""').replaceAll("\n"," ")+'"';const rows=[["id","title","category","status","priority","type","module","description"],...lastFilteredIssues.map(issue=>[issue.id,issue.title,issue.category,issue.status,issue.priority,issue.internalTest?"test":"user",issue.module,issue.description])];download("adminerva-reports.csv","text/csv",rows.map(row=>row.map(quote).join(",")).join("\n"));});
+document.getElementById("filterReportType")?.addEventListener("change",window.renderIssuesFilter);
 document.getElementById("adminLockBtn")?.addEventListener("click",e=>{
   const issue=allIssues.find(item=>item.id===currentOpenIssueId);
   if(issue)void updateIssueField("locked",!Boolean(issue.locked),{button:e.currentTarget});
 });
-document.getElementById("adminDeleteBtn")?.addEventListener("click",async()=>{
+document.getElementById("adminDeleteBtn")?.addEventListener("click",async event=>{
   if(!isSuperAdmin||!currentOpenIssueId)return;
-  if(!confirm("Delete this report? Historical comments may remain in Firebase until separately removed. This cannot be undone."))return;
+  const issue=allIssues.find(item=>item.id===currentOpenIssueId);if(!issue)return;
+  if(!confirm("Close this report and lock further comments? The report and discussion will be preserved for history and support export."))return;
+  const button=event.currentTarget;button.disabled=true;
   try{
-    await deleteDoc(doc(db,"issues",currentOpenIssueId));
-    allIssues=allIssues.filter(item=>item.id!==currentOpenIssueId);
-    window.closeIssueModal();renderIssues();
-  }catch(error){
-    console.warn("Unable to delete report:",error);
-    alert("Report deletion failed. No change was made.");
-  }
+    await updateDoc(doc(db,"issues",currentOpenIssueId),{status:"Closed (Won't Fix)",locked:true,updatedAt:serverTimestamp()});
+    issue.status="Closed (Won't Fix)";issue.locked=true;renderIssues();window.openIssueModal(issue.id);
+  }catch(error){console.warn("Unable to close report:",error);alert("Report could not be closed. No change was made.");}
+  finally{button.disabled=false;}
 });

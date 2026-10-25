@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>School administration · Adminerva</title>
+<script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.0"></head>
+<body id="pageBody" class="hidden bg-slate-50 text-slate-900 min-h-screen"><div id="adminerva-nav" data-module="admin" data-page="overview"></div>
+<main class="max-w-7xl mx-auto w-full px-4 sm:px-6 py-7 space-y-6">
+<header><p class="av-eyebrow">School administration</p><h1 class="text-3xl font-extrabold">Administration overview</h1><p class="text-slate-600 mt-2 max-w-3xl">Manage people, teaching assignments, school catalogs, support reports and operational monitoring from one place.</p></header>
+<section class="grid sm:grid-cols-3 gap-4" aria-label="Administration summary">
+<div class="av-panel"><p class="text-xs font-bold uppercase text-slate-500">Active students</p><strong id="adminStudentCount" class="text-3xl">—</strong><a class="block mt-2 underline" href="users.html">Open user directory</a></div>
+<div class="av-panel"><p class="text-xs font-bold uppercase text-slate-500">Active teachers</p><strong id="adminTeacherCount" class="text-3xl">—</strong><a class="block mt-2 underline" href="teacher-accounts.html">Manage teachers</a></div>
+<div class="av-panel"><p class="text-xs font-bold uppercase text-slate-500">Open reports</p><strong id="adminReportCount" class="text-3xl">—</strong><a class="block mt-2 underline" href="issues.html">Triage reports</a></div></section>
+<nav class="grid md:grid-cols-2 xl:grid-cols-3 gap-4" aria-label="Administration workspaces">
+<a href="users.html" class="av-panel block"><strong>User directory</strong><p class="text-sm text-slate-600 mt-1">Enroll students, review access requests and maintain roster records.</p></a>
+<a href="teacher-accounts.html" class="av-panel block"><strong>Teacher assignments</strong><p class="text-sm text-slate-600 mt-1">Control teacher access, sections and subject focus.</p></a>
+<a href="manage-sections.html" class="av-panel block"><strong>Sections</strong><p class="text-sm text-slate-600 mt-1">Maintain official class-section names and school-year context.</p></a>
+<a href="manage-subjects.html" class="av-panel block"><strong>Subjects</strong><p class="text-sm text-slate-600 mt-1">Maintain core, elective and school-defined subjects.</p></a>
+<a href="manage-programs.html" class="av-panel block"><strong>Tracks & pathways</strong><p class="text-sm text-slate-600 mt-1">Maintain tracks, strands, clusters and pathways.</p></a>
+<a href="admin-analytics.html" class="av-panel block"><strong>Operations & analytics</strong><p class="text-sm text-slate-600 mt-1">Review system health, optional activity and maintenance controls.</p></a>
+</nav><p id="adminOverviewStatus" role="status" class="text-sm text-slate-600">Loading administration summary…</p></main>
+<script src="js/core/adminerva-nav.js?v=1.4.0"></script><script type="module" src="js/core/auth-guard.js?v=1.3.8"></script><script type="module" src="js/core/school-admin.mjs?v=1.4.0"></script></body></html>

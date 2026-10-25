@@ -15,7 +15,7 @@ const FIREBASE_CONFIG={
   appId:"1:902176956124:web:46d07f47ccbab034e15e19",
   measurementId:"G-XPXLNGZCY2"
 };
-const DEFAULTS=Object.freeze({enabled:true,assessment:true,submission:true,grade:true,grading:true,issue:true});
+const DEFAULTS=Object.freeze({enabled:true,assessment:true,submission:true,grade:true,grading:true,issue:true,release:true});
 let configPromise=null,messagingPromise=null,syncStarted=false,foregroundBound=false,functionsInstance=null;
 
 function configUrl(){return new URL("../../push-config.json",import.meta.url);}
@@ -98,6 +98,7 @@ export async function savePushPreferences(values,uid=auth.currentUser?.uid){
     grade:values?.grade!==false,
     grading:values?.grading!==false,
     issue:values?.issue!==false,
+    release:values?.release!==false,
     updatedAt:serverTimestamp()
   };
   await setDoc(doc(db,"push_preferences",uid),data,{merge:true});

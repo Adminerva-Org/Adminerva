@@ -1,4 +1,4 @@
-# Learning Arcade — proposal, not a released feature
+# Learning Arcade — current foundation and future mechanics
 
 ## Recommended shape
 
@@ -56,8 +56,16 @@ sandboxed; do not execute arbitrary student code with server privileges.
 
 ## What this review branch actually implements
 
-The games above are ideas only. Existing guest practice/playground remain their
-previous separate, local-only tools; they are not new stateless Arcade games.
+The branch now uses one **Skill Arcade** practice hub rather than separate mini-apps.
+It provides five reusable deterministic interaction mechanics — choice, output,
+ordering, matching and debugging — over the current course/mission packs. The eight
+named themed mechanics above remain future content designs; they are not represented
+as eight separate applications, and the branch does not invent subject mappings that
+teachers have not approved.
+
+Guest playground/XML tools remain separate. Guest Arcade attempts do not create an
+enrolled-student progress record; authenticated practice uses the existing private
+server-validated practice path.
 
 Practice Lab now has four courses, each with five modules and fifteen missions
 per module: 300 guided missions in total. Five skills per module each have
