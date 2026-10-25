@@ -125,11 +125,11 @@ export async function buildGoogleDocsSource(wrapper,filename){
   const row=table.rows[0],cells=row?[...row.cells]:[],percent=cells.map(cell=>Number.parseFloat(cell.style.width)||0),total=percent.reduce((sum,value)=>sum+value,0);
   const widths=table===main&&cells.length===7?[69,121,121,35,338,90,90]:percent.every(value=>value>0)&&total?percent.map(value=>864*value/total):cells.map(()=>864/cells.length);
   cells.forEach((cell,index)=>{cell.style.width=(widths[index]/864*100).toFixed(4)+'%';cell.setAttribute('width',String(Math.round(widths[index]*4/3)));});
-  return {columns:cells.length,widths};
+  return {columns:cells.length,widths,bordered:table===main};
  });
  for(const node of copy.querySelectorAll('[class]'))node.removeAttribute('class');
  const html='<!doctype html><html><head><meta charset="utf-8"><title>'+escape(filename)+'</title><style>'+ 
-  '@page{size:13in 8.5in;margin:.5in}body{margin:0;padding:0;font-family:"Arial Narrow",Arial,sans-serif;font-size:10pt;color:#333}table{border-collapse:collapse;margin-top:10px;width:100%}tbody{display:table-row-group}td{overflow-wrap:break-word}'+
+  '@page{size:13in 8.5in;margin:.5in}body{margin:0;padding:0;font-family:"Arial Narrow",Arial,sans-serif;font-size:10pt;color:#333}table{border-collapse:collapse;margin-top:10px;width:100%}tbody{display:table-row-group}tr{page-break-inside:avoid;break-inside:avoid}td{overflow-wrap:break-word}'+
   '</style></head><body style="margin:0;padding:0;font-family:&quot;Arial Narrow&quot;,Arial,sans-serif;font-size:10pt;color:#333;">'+copy.innerHTML+'</body></html>';
  return {filename,html,tables,notes:[...new Set(notes)]};
 }
@@ -153,6 +153,14 @@ async function formatDocument(id,source,token,assertAccount){
  for(let index=0;index<Math.min(tables.length,source.tables.length);index++){
   const expected=source.tables[index],table=tables[index];if(table.table.columns!==expected.columns){differentColumns=true;continue;}
   expected.widths.forEach((width,column)=>requests.push({updateTableColumnProperties:{tableStartLocation:{index:table.startIndex},columnIndices:[column],tableColumnProperties:{widthType:'FIXED_WIDTH',width:{magnitude:width,unit:'PT'}},fields:'width,widthType'}}));
+  if(expected.bordered){
+   const solid={color:{color:{rgbColor:{red:0,green:0,blue:0}}},width:{magnitude:1,unit:'PT'},dashStyle:'SOLID'};
+   requests.push({updateTableCellStyle:{
+    tableRange:{tableCellLocation:{tableStartLocation:{index:table.startIndex},rowIndex:0,columnIndex:0},rowSpan:table.table.rows,columnSpan:table.table.columns},
+    tableCellStyle:{borderTop:solid,borderBottom:solid,borderLeft:solid,borderRight:solid},
+    fields:'borderTop,borderBottom,borderLeft,borderRight'
+   }});
+  }
  }
  assertAccount();await googleRequest(url+':batchUpdate',{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({requests})},'Google Docs formatting');
  if(tables.length!==source.tables.length||differentColumns)throw Error('The document was created and page settings were applied, but the imported table structure differs. Inspect it before sharing.');
