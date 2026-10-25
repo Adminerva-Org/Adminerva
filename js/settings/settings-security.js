@@ -16,7 +16,15 @@ function feedback(message,tone="info"){
 function assertAccount(user){if(!user?.uid||auth.currentUser?.uid!==user.uid||formOwnerUid!==user.uid)throw Error("Your account changed. Reload this page before saving.");}
 function fillPreferences(values){for(const [id,key] of preferences)safeSet(id,values[key]);}
 function showAppConnection(){
-  safeSet("firebaseConfigInput",JSON.stringify(app.options,null,2));
+  const options=app?.options||{};
+  const publicConnection={
+    projectId:options.projectId||"",
+    authDomain:options.authDomain||"",
+    storageBucket:options.storageBucket||"",
+    messagingSenderId:options.messagingSenderId||"",
+    appId:options.appId||""
+  };
+  safeSet("firebaseConfigInput",JSON.stringify(publicConnection,null,2));
   if(field("firebaseConfigInput"))field("firebaseConfigInput").readOnly=true;
 }
 field("panel-security")?.addEventListener("input",()=>{editRevision++;if(!saving)feedback("You have unsaved changes.");});
