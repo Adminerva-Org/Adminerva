@@ -278,10 +278,10 @@ export async function loadPinnedV2Source({
       }else if(primary){
         throw Error("A primary assessed commit file has no readable text diff. Review this contribution manually.");
       }else continue;
-      patchRecords.push({sha,path:file.filename,patch,substantive:isMerge?false:substantive,primary,mergeContext:isMerge,\n        diffIncomplete:truncatedDiffs.some(item=>item.sha===sha&&item.path===file.filename),kind:support||"primary"});
+      patchRecords.push({sha,path:file.filename,patch,substantive:isMerge||truncatedDiffs.some(item=>item.sha===sha&&item.path===file.filename)?false:substantive,primary,mergeContext:isMerge,\n        diffIncomplete:truncatedDiffs.some(item=>item.sha===sha&&item.path===file.filename),kind:support||"primary"});
     }
   }
-  const directContribution=patchRecords.some(patch=>patch.primary&&patch.substantive===true);
+  const directContribution=patchRecords.some(patch=>patch.primary&&(patch.substantive===true||patch.diffIncomplete));
   if(!directContribution&&!excludedMergeCommits.length)
     throw Error(androidUi?"No verified substantive primary screen change was found. Verify relevant original layout evidence.":"No verified substantive primary assessment change was found.");
   const tree=await request("/git/trees/"+encodeURIComponent(selection.checkpointSha)+"?recursive=1");
