@@ -32,7 +32,7 @@ function statusFor(student){
 function render(){
   if(!context)return;
   const tools=el("gbClassReviewTools"),isV2=Number(context.schemaVersion)===2;
-  tools?.classList.remove("hidden");
+  if(tools){tools.dataset.ready="true";tools.classList.toggle("hidden",document.getElementById("gbLegacyView")?.classList.contains("hidden")!==false);}
   let submitted=0,approved=0,drafts=0,published=0,exceptions=0;
   for(const student of context.students){
     const state=statusFor(student),box=document.querySelector('[data-review-state="'+CSS.escape(student.id)+'"]');
