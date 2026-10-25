@@ -228,6 +228,7 @@ async function checkGuard({ role = 'admin', path = '/users.html', students = [],
   const auth = { currentUser: user };
   const window = { location: { pathname: path, href: 'https://adminerva.test' + path, replace(value) { this.href = value; } }, beginLoading: () => () => {}, addEventListener() {} };
   const document = {
+    body: { inert: false },
     getElementById: id => id === 'adminerva-nav' ? nav : null,
     querySelectorAll: () => [], addEventListener: (type, callback) => (documentEvents[type] ||= []).push(callback), dispatchEvent: event => events.push(event)
   };
