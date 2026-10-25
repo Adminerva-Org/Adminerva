@@ -521,11 +521,15 @@ service cloud.firestore {
     function validTeacherEvidenceCommits(commits) {
       return commits is list && commits.size() <= 20 &&
         commits.toSet().size() == commits.size() &&
+        // The common single-commit evidence record needs one SHA check, not
+        // nineteen out-of-range checks. Firestore's 1,000-expression budget
+        // otherwise rejects valid teacher-discovered evidence creation.
+        (commits.size() <= 1 ? shaAt(commits,0) :
         shaAt(commits,0) && shaAt(commits,1) && shaAt(commits,2) && shaAt(commits,3) &&
         shaAt(commits,4) && shaAt(commits,5) && shaAt(commits,6) && shaAt(commits,7) &&
         shaAt(commits,8) && shaAt(commits,9) && shaAt(commits,10) && shaAt(commits,11) &&
         shaAt(commits,12) && shaAt(commits,13) && shaAt(commits,14) && shaAt(commits,15) &&
-        shaAt(commits,16) && shaAt(commits,17) && shaAt(commits,18) && shaAt(commits,19);
+        shaAt(commits,16) && shaAt(commits,17) && shaAt(commits,18) && shaAt(commits,19));
     }
     function validEvidenceCommits(commits) {
       return validTeacherEvidenceCommits(commits) && commits.size() > 0;
