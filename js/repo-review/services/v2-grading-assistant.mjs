@@ -137,7 +137,7 @@ export function buildRubricPrompt({assessment,criteria,checkpointSha,files,patch
   return `You are assisting a classroom teacher with an assessment of an Android Studio project.
 This is a teacher-reviewed, unofficial SYSTEM DRAFT only. Do not publish or finalize grades.
 The project snapshot is pinned to instructor-approved checkpoint ${checkpointSha}.
-All supplied instructor-verified selected commit patches are in scope. Commits without a supplied verified patch cannot earn individual credit.
+All supplied instructor-verified selected commit patches are in scope, including historical commits with a different SHA from the approved checkpoint. A different selected-commit SHA does not automatically invalidate instructor-verified attribution. Commits without a supplied verified patch cannot earn individual credit.
 The full checkpoint can contain teammates' work. Never give this student credit merely because shared code exists.
 
 INDIVIDUAL VS GROUP:
