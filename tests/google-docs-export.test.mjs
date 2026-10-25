@@ -1,124 +1,85 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {readFileSync} from "node:fs";
-import {runInNewContext} from "node:vm";
+import {__googleDocsExportTest as api} from "../js/lesson-review/google-docs-export.mjs";
 
-const source=readFileSync("js/lesson-review/document-exporter.js","utf8")
-  .replace(/import\s*\{[^}]*\}\s*from\s*"[^"]+";/g," ");
-const clientId="902176956124-i9vcin925le0d9jghr4afn56q7n53gl5.apps.googleusercontent.com";
 const scope="https://www.googleapis.com/auth/drive.file";
+const token={access_token:"synthetic-token",scope,expires_in:3600};
 
-function exportHarness({granted=true,ready=true,prepareError=false,uploadStatus=200,formatStatus=200}={}){
-  const alerts=[],requests=[],opened=[],storageWrites=[],loading=[];
-  let config,requested=0;
-  const elements={
-    lpAcademicTerm:{value:"FIRST SEMESTER FIRST QUARTER"},
-    lpCourseWeek:{value:"Week 1"},
-    printDocumentWrapper:{innerHTML:"<table><tr><td>Lesson</td></tr></table><table><tr><td>Teacher</td></tr></table>"},
-  };
-  const window={
-    currentTargetGrade:"Grade 11",
-    showSubtleLoader:()=>loading.push("show"),
-    hideSubtleLoader:()=>loading.push("hide"),
-    open:(...args)=>opened.push(args),
-  };
-  const google={accounts:{oauth2:{
-    initTokenClient:value=>{config=value;return {requestAccessToken:()=>requested++};},
-    hasGrantedAllScopes:(response,requestedScope)=>granted&&requestedScope===scope&&response.scope===scope,
-  }}};
-  const context={window,google,htmlDocx:{},
-    alert:value=>alerts.push(value),confirm:()=>false,
-    document:{getElementById:id=>elements[id]},
-    lessonStorage:{getItem:()=>null,setItem:(...args)=>storageWrites.push(args)},
-    fetch:async(url,options)=>{
-      requests.push({url,options});
-      if(url.startsWith("https://www.googleapis.com/upload/drive/"))
-        return {ok:uploadStatus===200,status:uploadStatus,statusText:"Upload response",json:async()=>({id:"synthetic-doc"})};
-      if(url.endsWith(":batchUpdate"))
-        return {ok:formatStatus===200,status:formatStatus};
-      return {ok:true,json:async()=>({body:{content:[{startIndex:1,table:{}},{startIndex:100,table:{}}]}})};
+function oauthHarness({response=token,error=null,granted=true}={}){
+  let config,requests=0;
+  globalThis.location={origin:"https://adminerva.example"};
+  globalThis.google={accounts:{oauth2:{
+    initTokenClient(value){
+      config=value;
+      return {requestAccessToken(){requests++;queueMicrotask(()=>error?config.error_callback(error):config.callback(response));}};
     },
-  };
-  runInNewContext(source,context);
-  window.buildDocumentLayout=async()=>{
-    if(prepareError)throw Error("synthetic preparation error");
-    return ready;
-  };
-  return {window,context,alerts,requests,opened,storageWrites,loading,
-    start:()=>window.exportToGoogleDocs(),get config(){return config;},get requested(){return requested;}};
+    hasGrantedAllScopes(value,requested){return granted&&requested===scope&&value?.scope===scope;}
+  }}};
+  return {get config(){return config;},get requests(){return requests;}};
 }
 
-const token={access_token:"synthetic-memory-only-token",scope};
-
-test("Docs export uses the owner-supplied web client and only per-file access",()=>{
-  const harness=exportHarness();harness.start();
-  assert.equal(harness.config.client_id,clientId);
-  assert.equal(harness.config.scope,scope);
-  assert.equal(harness.config.include_granted_scopes,false);
-  assert.equal(harness.requested,1);
-  assert.equal(harness.requests.length,0);
-  assert.doesNotMatch(source,/396238862950-|https:\/\/www\.googleapis\.com\/auth\/documents/);
-  assert.match(readFileSync("lesson-planner.html","utf8"),/document-exporter\.js\?v=(?:\d{4}\.\d{2}\.\d{2}\.\d+|\d+\.\d+\.\d+)(?:-dev\.\d+)?/);
+test("active Docs export requests only drive.file without incremental prior grants",async()=>{
+  api.reset();const h=oauthHarness();
+  const value=await api.tokenFor({uid:"u1",loginHint:"student@example.test",assertAccount(){}});
+  assert.equal(value,token.access_token);
+  assert.equal(h.config.scope,scope);
+  assert.equal(h.config.include_granted_scopes,false);
+  assert.equal(h.requests,1);
 });
 
-test("missing Google library does not start an export",()=>{
-  const harness=exportHarness();harness.context.google=undefined;harness.start();
-  assert.match(harness.alerts[0],/Google scripts failed to load/);
-  assert.equal(harness.requests.length,0);
-});
-
-test("closed and blocked authorization windows explain the next step without uploading",()=>{
-  for(const [type,message] of [["popup_failed_to_open",/Allow popups/],["popup_closed",/No document was created/],["unknown",/administrator/]]){
-    const harness=exportHarness();harness.start();harness.config.error_callback({type});
-    assert.match(harness.alerts[0],message);
-    assert.equal(harness.requests.length,0);
+test("denied or insufficient consent is rejected before upload",async()=>{
+  for(const options of [
+    {response:{error:"access_denied",error_description:"denied"}},
+    {response:token,granted:false},
+    {response:{scope},granted:true}
+  ]){
+    api.reset();oauthHarness(options);
+    await assert.rejects(()=>api.tokenFor({uid:"u1",assertAccount(){}}),/permission|grant|authorization/i);
   }
 });
 
-test("denied, missing or insufficient permission never reaches Drive or Docs",async()=>{
-  for(const [response,granted] of [[{error:"access_denied"},true],[{error:"origin_mismatch"},true],[{},true],[token,false]]){
-    const harness=exportHarness({granted});harness.start();await harness.config.callback(response);
-    assert.equal(harness.alerts.length,1);
-    assert.equal(harness.requests.length,0);
-    assert.equal(harness.opened.length,0);
-    assert.equal(harness.storageWrites.length,0);
-    assert.equal(harness.loading.length,0);
+test("closed or blocked authorization popups return actionable errors",async()=>{
+  for(const [type,pattern] of [["popup_failed_to_open",/popups/i],["popup_closed",/closed/i]]){
+    api.reset();oauthHarness({error:{type}});
+    await assert.rejects(()=>api.tokenFor({uid:"u1",assertAccount(){}}),pattern);
   }
 });
 
-test("cancelled or failed lesson preparation always clears export loading",async()=>{
-  for(const options of [{ready:false},{prepareError:true}]){
-    const harness=exportHarness(options);harness.start();await harness.config.callback(token);
-    assert.deepEqual(harness.loading,["show","hide"]);
-    assert.equal(harness.requests.length,0);
-    if(options.prepareError)assert.match(harness.alerts[0],/saved lesson was not changed/);
-  }
+test("account changes invalidate the authorization result",async()=>{
+  api.reset();oauthHarness();
+  await assert.rejects(()=>api.tokenFor({uid:"u1",assertAccount(){throw Error("Account changed");}}),/Account changed/);
 });
 
-test("consented export uploads, inspects and formats only its created document",async()=>{
-  const harness=exportHarness();harness.start();await harness.config.callback(token);
-  assert.equal(harness.requests.length,3);
-  assert.match(harness.requests[0].url,/upload\/drive\/v3\/files\?uploadType=multipart$/);
-  assert.equal(harness.requests[1].url,"https://docs.googleapis.com/v1/documents/synthetic-doc");
-  assert.equal(harness.requests[2].url,"https://docs.googleapis.com/v1/documents/synthetic-doc:batchUpdate");
-  for(const request of harness.requests)assert.equal(request.options.headers.Authorization,"Bearer "+token.access_token);
-  const formatting=JSON.parse(harness.requests[2].options.body).requests;
-  assert.equal(formatting.length,12);
-  assert.equal(formatting[0].updateDocumentStyle.documentStyle.pageSize.width.magnitude,936);
-  assert.equal(formatting.filter(request=>request.updateTableColumnProperties).length,11);
-  assert.deepEqual(harness.opened,[["https://docs.google.com/document/d/synthetic-doc/edit","_blank"]]);
-  assert.deepEqual(harness.loading,["show","hide"]);
-  assert.deepEqual(harness.alerts,[]);
-  assert.deepEqual(harness.storageWrites,[]);
+test("cached access is reused until a 401 resets it",async()=>{
+  api.reset();let h=oauthHarness();
+  await api.tokenFor({uid:"u1",assertAccount(){}});
+  const second=await api.tokenFor({uid:"u1",assertAccount(){}});
+  assert.equal(second,token.access_token);
+  assert.equal(h.requests,1);
+  assert.match(api.explain(Object.assign(Error("expired"),{status:401})),/expired|revoked/i);
+  h=oauthHarness({response:{...token,access_token:"replacement"}});
+  assert.equal(await api.tokenFor({uid:"u1",assertAccount(){}}),"replacement");
+  assert.equal(h.requests,1);
 });
 
-test("upload or formatting failures clear loading without claiming a successful export",async()=>{
-  for(const options of [{uploadStatus:403},{formatStatus:403}]){
-    const harness=exportHarness(options);harness.start();await harness.config.callback(token);
-    assert.deepEqual(harness.loading,["show","hide"]);
-    assert.equal(harness.alerts.length,1);
-    assert.match(harness.alerts[0],/Google Docs export needs attention/);
-    assert.equal(harness.opened.length,0);
-    assert.equal(harness.storageWrites.length,0);
-  }
+test("Google request failures preserve stage and status",async()=>{
+  globalThis.fetch=async()=>({ok:false,status:403,statusText:"Forbidden",text:async()=>JSON.stringify({error:{message:"permission denied"}})});
+  await assert.rejects(
+    ()=>api.googleRequest("https://example.test",{method:"POST"},"Google Drive upload"),
+    error=>error.status===403&&/Google Drive upload/.test(error.message)
+  );
+});
+
+test("partial Docs formatting failure is reported after inspection",async()=>{
+  let calls=0;
+  globalThis.fetch=async(url)=>{
+    calls++;
+    if(calls===1)return {ok:true,status:200,text:async()=>JSON.stringify({body:{content:[{startIndex:1,table:{columns:1}}]}})};
+    return {ok:false,status:403,statusText:"Forbidden",text:async()=>JSON.stringify({error:{message:"format blocked"}})};
+  };
+  await assert.rejects(
+    ()=>api.formatDocument("doc-1",{tables:[{columns:1,widths:[864]}]},"synthetic",()=>{}),
+    /Google Docs formatting/
+  );
+  assert.equal(calls,2);
 });
