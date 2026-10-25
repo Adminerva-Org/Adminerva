@@ -20,11 +20,14 @@ let loadSerial=0,bulkBusy=false,detailsDirty=false;
 const publicationContext=()=>"quarter:"+el("gbQuarterSection").value+":"+el("gbQuarter").value;
 function queueEntries(){return [...state.grades.values()].map(entry=>({...entry,schemaVersion:state.tasks.find(task=>task.id===entry.data.taskId)?.schemaVersion,maxScore:state.tasks.find(task=>task.id===entry.data.taskId)?.maxScore}));}
 function syncPublication(){
-  const count=publicationCandidates(queueEntries()).length,button=el("gbQuarterPublish");
-  button.textContent="Publish ready ("+count+")";button.disabled=state.loading||bulkBusy||!count;
+  const entries=queueEntries(),count=publicationCandidates(entries).length,button=el("gbQuarterPublish");
+  const flagged=entries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true).length;
+  button.textContent="Publish private drafts ("+count+")";button.disabled=state.loading||bulkBusy||!count;
   el("gbQuarterUnpublish").disabled=state.loading||bulkBusy||![...state.grades.values()].some(entry=>entry.data.published);
   const recovery=publicationRecovery(publicationContext());
-  el("gbQuarterRecovery").textContent=recovery?.pending.length?"Interrupted batch: "+recovery.pending.length+" pending. Reload and confirm to retry; nothing resumes automatically.":"Ready grades can be published together. Flagged evaluations remain private until reviewed.";
+  el("gbQuarterRecovery").textContent=recovery?.pending.length?
+    "Interrupted batch: "+recovery.pending.length+" pending. Reload and confirm to retry; nothing resumes automatically.":
+    count+" ready to publish"+(flagged?" · "+flagged+" flagged for manual review":"")+".";
 }
 const add = (parent, tag, className = "", value = null) => {
   const node = document.createElement(tag);
@@ -366,15 +369,22 @@ async function togglePublish(makePublished) {
 }
 async function bulkVisibility(makePublished) {
   if(bulkBusy||state.loading)return;
-  const eligible=publicationCandidates(queueEntries(),makePublished);
-  if (!eligible.length) return alert("No eligible grades to " + (makePublished ? "publish" : "unpublish") +
-    ". Flagged evaluations are excluded until teacher review is complete.");
-  if (!confirm((makePublished ? "Publish " : "Unpublish ") + eligible.length +
-      " grade(s) for the selected quarter and section?")) return;
+  const entries=queueEntries(),eligible=publicationCandidates(entries,makePublished);
+  const flagged=makePublished?entries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true).length:0;
+  if (!eligible.length) return alert(makePublished&&flagged?
+    "All remaining private drafts are flagged for manual review.":
+    "No eligible grades to " + (makePublished ? "publish." : "unpublish."));
+  const message=makePublished?
+    "Publish "+eligible.length+" private draft"+(eligible.length===1?"":"s")+" for this quarter?"+(flagged?" "+flagged+" flagged draft"+(flagged===1?" will":"s will")+" stay private.":""):
+    "Unpublish "+eligible.length+" grade"+(eligible.length===1?"":"s")+" for the selected quarter and section?";
+  if (!confirm(message)) return;
   bulkBusy=true;syncPublication();
   try {
-    const result=await publishGradeEntries(eligible,makePublished,{context:publicationContext(),onProgress:value=>reviewNotice(value.completed.length+" processed; "+value.pending.length+" pending. You can continue reviewing.")});
-    reviewNotice(result.pending.length?"Some grades changed or failed. Reload and review before retrying.":"Batch complete.",Boolean(result.pending.length));
+    const result=await publishGradeEntries(eligible,makePublished,{context:publicationContext(),onProgress:value=>reviewNotice(value.completed.length+" processed; "+value.pending.length+" pending.")});
+    reviewNotice(result.pending.length?
+      "Some grades changed or failed. Reload before retrying.":
+      makePublished?"Published "+result.completed.length+" private draft"+(result.completed.length===1?"":"s")+(flagged?"; flagged drafts stayed private.":"."):"Unpublish complete.",
+      Boolean(result.pending.length));
     await loadQuarter();
   } catch (error) { reviewNotice("Batch paused: " + error.message,true); }
   finally{bulkBusy=false;syncPublication();}
