@@ -60,11 +60,12 @@ test("website update notification is opt-in and version based",()=>{
 test("student practice page requires authentication and does not grade exams",()=>{
   const html=readFileSync("student-practice.html","utf8");
   assert.match(html,/auth-guard\.js/);
-  assert.match(html,/practiceReasoning/);
-  assert.match(html,/practiceMissionPanel/);
-  assert.match(html,/not a graded exam/);
-  const app=readFileSync("js/student/practice.js","utf8");
-  assert.match(app,/practice_verified_progress/);
-  assert.match(app,/practiceRequest\("practiceComplete"/);
+  assert.match(html,/data-practice-access="student"/);
+  assert.match(html,/src="js\/student\/practice-game\.mjs(?:\?[^\"]*)?"/);
+  const app=readFileSync("js/student/practice-game.mjs","utf8");
+  assert.match(app,/id="practiceMissionPanel"/);
+  assert.match(app,/Practice scores do not change school grades/);
+  assert.match(app,/practiceRequest\("practiceMissionSubmit"/);
+  assert.match(app,/if\(busy\|\|!eligible\|\|!user\|\|!attempt\?\.attemptId\)return/);
   assert.doesNotMatch(app,/setDoc\(|runTransaction\(/);
 });

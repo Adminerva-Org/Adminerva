@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
 import vm from 'node:vm';
+import { roleHome } from './session-destination.mjs';
 
 const source = readFileSync('js/core/adminerva-nav.js', 'utf8');
 class Element {
@@ -41,8 +42,10 @@ function mount(module = 'educator', page = 'dashboard', role = 'teacher', storag
   root.querySelector = query => query === '#av-desktop-nav' ? desktop : query === '#av-mobile-nav' ? mobile : originalQuery(query);
   const documentEvents = {};
   const document = {
+    head: new Element('head'), documentElement: new Element('html'),
     createElement: tag => new Element(tag),
-    getElementById: id => id === 'adminerva-nav' ? root : null,
+    querySelector: query => document.head.children.find(child => query === 'link[rel="' + child.rel + '"]') || null,
+    getElementById: id => id === 'adminerva-nav' ? root : document.head.children.find(child => child.id === id) || null,
     addEventListener: (type, callback) => (documentEvents[type] ||= []).push(callback)
   };
   const window = { location: { href: '' } };
@@ -51,10 +54,23 @@ function mount(module = 'educator', page = 'dashboard', role = 'teacher', storag
   documentEvents.DOMContentLoaded[0]();
   const clickOutside = () => { for (const callback of documentEvents.click) callback({ target: new Element(), preventDefault() {} }); };
   const roleReady = role => { for (const callback of documentEvents['adminerva:role-ready'] || []) callback({ detail: { role } }); };
-  return { desktop, mobile, root, moduleSwitch, clickOutside, roleReady, documentEvents, window };
+  return { desktop, mobile, root, moduleSwitch, clickOutside, roleReady, documentEvents, document, window };
 }
 const links = element => element.querySelectorAll('a');
 const groupNames = element => element.children.map(group => group.children[0].textContent);
+
+test('navigation installs analytics, the manifest and touch icon once before rendering', () => {
+  const view = mount();
+  assert.equal(view.document.head.children.length, 3);
+  const analytics = view.document.getElementById('adminerva-analytics-script');
+  assert.equal(analytics.tagName, 'script');
+  assert.match(analytics.src, /^js\/core\/adminerva-analytics\.js\?v=/);
+  assert.equal(analytics.defer, true);
+  assert.equal(view.document.querySelector('link[rel="manifest"]').href, 'manifest.webmanifest');
+  assert.equal(view.document.querySelector('link[rel="apple-touch-icon"]').href, 'assets/adminerva-brand-badge-192.png');
+  view.roleReady('superadmin');
+  assert.equal(view.document.head.children.length, 3);
+});
 
 test('home is a direct link and switching workspaces is an explicit disclosure', () => {
   for (const [module, role, route] of [['lesson', 'teacher', 'teacher-home.html'], ['student', 'student', 'student-home.html']]) {
@@ -67,26 +83,26 @@ test('home is a direct link and switching workspaces is an explicit disclosure',
   }
 });
 
-test('educator groups lead with teaching and keep older grading tools secondary', () => {
+test('educator groups expose the integrated assessment, review and insights destinations', () => {
   const { desktop } = mount('repo', 'gradebook');
-  assert.deepEqual(groupNames(desktop), ['Teaching ▾', 'Evidence ▾', 'More tools ▾']);
-  assert.ok(links(desktop.children[0]).some(link => link.href === 'gradebook.html'));
-  assert.match(desktop.children[2].className, /av-nav-secondary/);
-  assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['activity-grader.html', 'grading.html']);
-  assert.ok(!links(desktop).some(link => link.href === 'lesson-planner.html' || link.href === 'users.html'));
+  assert.deepEqual(groupNames(desktop), ['Assessment ▾', 'Review & grade ▾', 'Insights ▾']);
+  assert.deepEqual(links(desktop.children[0]).map(link => link.href), ['assessment-studio.html', 'submissions.html']);
+  assert.deepEqual(links(desktop.children[1]).map(link => link.href), ['repofetch.html', 'gradebook.html']);
+  assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['teacher-analytics.html', 'learning-follow-up.html']);
+  assert.ok(!links(desktop).some(link => ['activity-grader.html', 'grading.html', 'lesson-planner.html', 'users.html'].includes(link.href)));
 });
 
 test('selected task is announced once per desktop/mobile surface and page labels match routes', () => {
   for (const [module, page, route, label] of [
     ['repo', 'submissions', 'submissions.html', 'Submission inbox'],
-    ['repo', 'grader', 'grading.html', 'Repository grader'],
-    ['repo', 'group-inspector', 'group-inspector.html', 'Group inspector'],
+    ['repo', 'repofetch', 'repofetch.html', 'Review &amp; grade'],
+    ['repo', 'gradebook', 'gradebook.html', 'Gradebook'],
     ['student-practice', 'xml', 'student-xml-lab.html', 'XML Lab']
   ]) {
     const { desktop, mobile, root } = mount(module, page, module.startsWith('student') ? 'student' : 'teacher');
     for (const surface of [desktop, mobile]) assert.deepEqual(links(surface).filter(link => link.attributes['aria-current'] === 'page').map(link => link.href), [route]);
     assert.ok(root.innerHTML.includes('>' + label + '</span>'));
-    assert.equal(mobile.children[0].children[0].textContent, 'Pages · ' + label + ' ▾');
+    assert.equal(mobile.children[0].children[0].textContent, 'Pages · ' + label.replace('&amp;', '&') + ' ▾');
   }
 });
 
@@ -94,7 +110,7 @@ test('the current mobile group starts expanded without expanding the complete me
   const { mobile } = mount('repo', 'submissions');
   assert.equal(mobile.children[0].open, false);
   const groups = mobile.children[0].children[1].children;
-  assert.deepEqual(groups.map(group => group.open), [false, true, false]);
+  assert.deepEqual(groups.map(group => group.open), [true, false, false]);
 });
 
 test('planning has its own destinations and no unrelated analytics shortcut', () => {
@@ -197,11 +213,11 @@ test('verified role refresh replaces stale navigation without multiplying global
   view.roleReady('superadmin');
   assert.deepEqual(groupNames(view.desktop), ['School setup ▾', 'Account ▾']);
   assert.ok(links(view.desktop).some(link => link.href === 'users.html'));
-  assert.match(view.root.innerHTML, /href="users.html"/);
+  assert.match(view.root.innerHTML, /href="school-admin.html"/);
   view.roleReady('superadmin');
   view.roleReady('teacher');
   assert.ok(!links(view.desktop).some(link => link.href === 'users.html'));
-  assert.doesNotMatch(view.root.innerHTML, /href="users.html"/);
+  assert.doesNotMatch(view.root.innerHTML, /href="school-admin.html"/);
   assert.deepEqual(listenerCounts(), before);
   assert.equal(view.root.events.keydown.length, 1);
 });
@@ -222,12 +238,13 @@ async function checkGuard({ role = 'admin', path = '/users.html', students = [],
   const events = [], cacheCalls = [], connectionWrites = [], documentEvents = {}, nav = { dataset: {} }, storage = new Map(mockRole ? [['Adminerva_Mock_Role', mockRole]] : []);
   const user = signedIn ? { uid: 'test-user', email: 'staff@example.test', emailVerified: verified } : null;
   const auth = { currentUser: user };
-  const window = { location: { pathname: path, href: '', replace(value) { this.href = value; } }, beginLoading: () => () => {} };
+  const window = { location: { pathname: path, search: '', hash: '', href: 'https://adminerva.example' + path, replace(value) { this.href = value; } }, beginLoading: () => () => {}, addEventListener() {} };
   const document = {
+    body: { inert: false },
     getElementById: id => id === 'adminerva-nav' ? nav : null,
     querySelectorAll: () => [], addEventListener: (type, callback) => (documentEvents[type] ||= []).push(callback), dispatchEvent: event => events.push(event)
   };
-  vm.runInNewContext(guard, {
+  const context = vm.createContext({
     auth, onAuthStateChanged: (_auth, callback) => { authCallback = callback; }, signOut: async () => { cacheCalls.push('signout'); },
     activateConnectionOwner: uid => cacheCalls.push('activate:' + uid), clearConnectionPreferences: () => cacheCalls.push('clear'),
     writeConnectionPreferences: (uid, preferences) => { cacheCalls.push('hydrate:' + uid); connectionWrites.push({ uid, preferences }); },
@@ -235,11 +252,19 @@ async function checkGuard({ role = 'admin', path = '/users.html', students = [],
       cacheCalls.push('resolve'); if (switchDuringLookup) auth.currentUser = { uid: 'another-account' };
       return { role, students, teachers: teacherPreferences ? [{ data: () => teacherPreferences }] : [], needsTeacherApproval: false };
     },
-    window, document, console, CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
+    window, location: window.location, URL, document, console, roleHome, rememberWorkspace() {}, CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }
   });
-  await authCallback(user);
-  return { events, nav, window, storage, cacheCalls, connectionWrites, authCallback, documentEvents };
+  vm.runInContext(guard, context);
+  // Firebase's listener starts an asynchronous access check without returning it.
+  // Wait for that check, including sign-out cleanup, before inspecting the UI.
+  const emitAuth = async value => {
+    authCallback(value);
+    for (let attempt = 0; attempt < 20 && vm.runInContext('checkingAccess', context); attempt++) await new Promise(setImmediate);
+    assert.equal(vm.runInContext('checkingAccess', context), false, 'access check should settle');
+  };
+  await emitAuth(user);
+  return { events, nav, window, storage, cacheCalls, connectionWrites, authCallback: emitAuth, documentEvents };
 }
 
 test('guard publishes verified presentation after successful admission and page authorization', async () => {
@@ -257,7 +282,7 @@ test('unauthorized, unverified and guest routes never publish successful role pr
     const view = await checkGuard(options);
     assert.equal(view.events.length, 0);
     assert.equal(view.nav.dataset.verifiedRole, undefined);
-    assert.ok(view.window.location.href);
+    assert.notEqual(view.window.location.href, 'https://adminerva.example/users.html');
   }
 });
 
@@ -305,7 +330,7 @@ test('guard fallback sign-out clears credentials before calling Firebase and res
   click({ defaultPrevented: true, target: { id: 'signOutBtn' } });
   assert.equal(view.cacheCalls.length, before);
   click({ defaultPrevented: false, target: { id: 'signOutBtn' }, preventDefault() {} });
-  await Promise.resolve();
+  await new Promise(setImmediate);
   assert.deepEqual(view.cacheCalls.slice(-2), ['clear', 'signout']);
 });
 
@@ -313,7 +338,7 @@ test('navigation sign-out clears cached connection credentials before Firebase s
   const calls = [];
   const injected = source
     .replace('import("https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js")', 'Promise.resolve(firebaseModule)')
-    .replace('import("./connection-cache.mjs?v=1.2.0")', 'Promise.resolve(connectionModule)');
+    .replace(/import\("\.\/connection-cache\.mjs\?v=[^"]+"\)/, 'Promise.resolve(connectionModule)');
   const view = mount('repo', 'gradebook', 'teacher', false, {
     source: injected,
     firebaseModule: { getAuth: () => ({}), signOut: async () => calls.push('signout') },

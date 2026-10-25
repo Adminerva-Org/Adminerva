@@ -555,10 +555,25 @@ service cloud.firestore {
         request.resource.data.updatedAt == request.time;
     }
 
+    // Evidence needs both student and assessment scope. Check the role once
+    // rather than repeat it through mayTeachStudent and mayTeachAssessment.
+    function teacherEvidenceScope(studentId,assessmentId) {
+      let section = get(/databases/$(database)/documents/students/$(studentId)).data.section;
+      let assessment = get(/databases/$(database)/documents/assessments/$(assessmentId)).data;
+      let sections = teacherSections();
+      return section is string && section in sections &&
+        (assessment.get("ownerUid","") == request.auth.uid ||
+          assessment.get("sectionIds",[]).hasAny(sections));
+    }
+    function mayTeachEvidence(studentId,assessmentId) {
+      return isAdmin() || (isTeacher() && studentId is string &&
+        teacherEvidenceScope(studentId,assessmentId));
+    }
+
     function instructorEvidenceChange(evidenceId) {
       let before = resource.data;
       let after = request.resource.data;
-      return mayTeachStudent(before.studentId) && mayTeachAssessment(before.assessmentId) && evidenceAudit(evidenceId) && (
+      return mayTeachEvidence(before.studentId,before.assessmentId) && evidenceAudit(evidenceId) && (
         (before.status in ["submitted","needs_review","approved"] && after.status == "approved" &&
          (before.status != "approved" ||
           !exists(/databases/$(database)/documents/student_grades/$(evidenceId)) ||
@@ -587,9 +602,11 @@ service cloud.firestore {
       allow get: if isInstructor() && !exists(/databases/$(database)/documents/assessment_evidence/$(evidenceId));
       allow read: if mayTeachSection(resource.data.section);
       allow read: if signedIn() && ownsStudentProfile(resource.data.studentId);
-      allow create: if ownV2Evidence(request.resource.data) &&
-        request.resource.data.keys().hasOnly(["studentId","assessmentId","section","repository",
+      // Audited updates use set() and include revision/teacher metadata. Reject
+      // their create alternative before spending the evidence validation budget.
+      allow create: if request.resource.data.keys().hasOnly(["studentId","assessmentId","section","repository",
           "selectedCommits","checkpointSha","status","submittedAt","updatedAt"]) &&
+        ownV2Evidence(request.resource.data) &&
         request.resource.data.status == "submitted" &&
         evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId &&
         request.resource.data.submittedAt == request.time &&
@@ -607,7 +624,7 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["selectedCommits","checkpointSha","status","submittedAt","updatedAt","revision"]);
       allow update: if instructorEvidenceChange(evidenceId);
-      allow create: if mayTeachStudent(request.resource.data.studentId) && mayTeachAssessment(request.resource.data.assessmentId) && request.resource.data.keys().hasOnly([
+      allow create: if mayTeachEvidence(request.resource.data.studentId,request.resource.data.assessmentId) && request.resource.data.keys().hasOnly([
         "studentId","assessmentId","section","repository","selectedCommits","checkpointSha",
         "status","source","discoveredBy","recordedAt","updatedAt","discoveryCutoff","discoveryNote"]) &&
         evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId &&

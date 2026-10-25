@@ -9,9 +9,10 @@ test('canonical GitHub repo URLs reject extra path, credentials and non-GitHub h
     assert.throws(()=>parseRepository(bad));
   }
 });
-test('selected commits are independent evidence while one selected SHA pins project state',()=>{
+test('selected evidence and the project checkpoint are independent validated revisions',()=>{
   assert.deepEqual(normalizeSelection([A,B,A],B),{selectedCommits:[A,B],checkpointSha:B});
-  assert.throws(()=>normalizeSelection([A],B),/checkpoint/);
+  assert.deepEqual(normalizeSelection([A],B),{selectedCommits:[A],checkpointSha:B});
+  assert.throws(()=>normalizeSelection([A],'bad'),/checkpoint/);
   assert.throws(()=>normalizeSelection([],A),/at least one/);
   assert.throws(()=>normalizeSelection(['bad'],A),/SHA/);
   assert.throws(()=>normalizeSelection(Array(21).fill(A),A),/at most/);
@@ -30,15 +31,16 @@ test('evidence selection provides actionable checkpoint guidance',()=>{
   assert.match(state.message,/Include commit/i);
   state=evidenceSelectionGuidance([A], '');
   assert.equal(state.ready,false);
-  assert.match(state.message,/round button/i);
+  assert.match(state.message,/Choose a project checkpoint from the repository/i);
   state=evidenceSelectionGuidance([A], B);
-  assert.equal(state.ready,false);
+  assert.equal(state.ready,true);
+  assert.match(state.message,/verify that the checkpoint contains all selected evidence/i);
   state=evidenceSelectionGuidance([A,B], B);
   assert.equal(state.ready,true);
   assert.match(state.message,/Project checkpoint: b{12}/);
   state=evidenceSelectionGuidance([A,A], A);
   assert.equal(state.ready,true);
-  assert.match(state.message,/1 commit selected/);
+  assert.match(state.message,/1 evidence commit selected/);
 });
 test('evidence selection flags more than 20 distinct commits',()=>{
   const many=Array.from({length:21},(_,i)=>String(i).padStart(40,'0'));

@@ -58,6 +58,8 @@ test("local autosave writes only to the active student's scoped key",()=>{
   const created=[];
   const context={
     auth:{currentUser:{uid:"alice"}},
+    loadedOwnerUid:"alice",guestMode:false,workspaceFolders:[],projectOrder:[],
+    normalizedProjectOrder:order=>order,
     localStorage:store,
     window:{addEventListener(){},},
     document:{getElementById:()=>null},
@@ -80,6 +82,11 @@ test("local autosave writes only to the active student's scoped key",()=>{
   assert.equal(created[0][1],undefined);
   vm.runInNewContext('loadLocalWorkspace("java")',context);
   assert.equal(created[1][1]["Main.java"],"new code");
+  context.auth.currentUser={uid:"bob"};
+  assert.equal(vm.runInNewContext("persistWorkspace()",context),true);
+  assert.equal(store.getItem(playgroundWorkspaceKey("bob","java")),null,
+    "An account change must not move the loaded owner's autosave into the new account");
+  assert.equal(JSON.parse(store.getItem(playgroundWorkspaceKey("alice","java"))).files["Main.java"],"new code");
 });
 test("restores retain a local undo copy before replacing a saved draft",()=>{
   const a=source.indexOf("window.adminervaPlaygroundState=function()");
