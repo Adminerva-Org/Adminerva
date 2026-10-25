@@ -30,6 +30,21 @@ service cloud.firestore {
     function isInstructor() {
       return isAdmin() || isTeacher();
     }
+    function isOriginalTeacher() {
+      return isTeacher() && verifiedEmailMatches("josephsixson@mcstayuman.edu.ph");
+    }
+    function isSharedLegacySchedule(recordId) {
+      return recordId in ["master_schedule_SY20262027_S1","master_schedule_SY20262027_S2"];
+    }
+    function validSharedLegacySchedule(recordId) {
+      let data=request.resource.data;
+      return isSharedLegacySchedule(recordId) &&
+        data.get("school_year","") == "2026-2027" &&
+        data.get("semester","") in ["S1","S2"] &&
+        data.get("compatibility_mode","") == "legacy-2026-2027" &&
+        data.json_data is string && data.json_data.size() <= 200000 &&
+        data.raw_text is string && data.raw_text.size() <= 100000;
+    }
     function teacherSections() {
       let path = /databases/$(database)/documents/staff_access/$(request.auth.token.email.lower());
       return exists(path) ? get(path).data.get("sections",[]) : [];
@@ -144,8 +159,11 @@ service cloud.firestore {
     match /lesson_plans/{record=**} { allow read: if isAdmin(); }
     match /presentations/{record=**} { allow read: if isAdmin(); }
     match /app_config/{recordId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin() && !recordId.matches("^master_schedule.*");
+      allow read: if isAdmin() || (isOriginalTeacher() &&
+        (isSharedLegacySchedule(recordId) || recordId == "master_schedule"));
+      allow create, update: if ((isAdmin() || isOriginalTeacher()) && validSharedLegacySchedule(recordId)) ||
+        (isAdmin() && !recordId.matches("^master_schedule.*"));
+      allow delete: if isAdmin() && !recordId.matches("^master_schedule.*");
     }
     match /global_settings/{recordId} {
       allow read: if isAdmin();
