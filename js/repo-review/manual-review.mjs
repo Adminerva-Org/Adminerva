@@ -1,9 +1,8 @@
 /** Primary teacher evidence review, evaluation drafts and deliberate grade publication. */
 import { auth, db } from "../core/firebase-core.js?v=1.3.0";
-import {generateSchoolContent,schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
+import {schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
-import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.1";
 import {renderFeedbackMarkdown} from "./review-ui.mjs?v=1.3.0";
 import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs?v=1.3.0";
 import {
@@ -11,8 +10,9 @@ import {
 } from "../core/teaching-firestore.mjs?v=1.3.2";
 import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=1.3.0";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
-import {parseWeightedRubric,loadPinnedV2Source,buildRubricPrompt,buildRubricResponseSchema,parseSuggestedRubric}
-  from "./services/v2-grading-assistant.mjs?v=1.4.15";
+import {parseWeightedRubric,loadPinnedV2Source,parseSuggestedRubric}
+  from "./services/v2-grading-assistant.mjs?v=1.4.16";
+import {evaluateVerifiedEvidence} from "./services/adaptive-evaluation.mjs?v=1.3.0";
 import {isAndroidUiAssessment} from "./services/android-evidence.mjs?v=1.3.0";
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
 import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=1.3.0";
@@ -209,19 +209,11 @@ async function generateAIDraft(){
       token:localStorage.getItem("Adminerva_github_token"),fetchImpl:state.requests?.fetch||globalThis.fetch
     });
     if(session!==state.token||state.active!==active)return;
-    aiStatus("Generating rubric suggestions. Existing student grades remain unchanged…");
-    const prompt=buildRubricPrompt({
-      assessment:active.assessment,criteria,checkpointSha:active.checkpointSha,
-      files:evidence.files,patches:evidence.patches,contributionScope:active.evidence.contributionScope,
-      analysis:evidence.analysis,visualAssetsIncluded:Boolean(evidence.assets?.length&&(!connection.configured||connection.capabilities?.inlineImages===true))
-    });
+    aiStatus("Preparing verified evidence for evaluation. Existing student grades remain unchanged…");
     if(controller.signal.aborted)throw Error("Evaluation timed out. Continue manually or retry.");
-    // Start the evaluation timeout only after source/evidence retrieval finishes.
-    // The backend may legitimately spend up to ~85 seconds on one provider call,
-    // and one compact retry is allowed when the first response is malformed.
     evaluationSlowNotice=setTimeout(()=>{
       if(session===state.token&&state.active===active&&state.aiBusy)
-        aiStatus("Evaluation is still processing the verified evidence. No score or feedback has been changed.");
+        aiStatus("Evaluation is still processing verified evidence. No score or feedback has been changed.");
     },45000);
     evaluationTimeout=setTimeout(()=>{
       controller.abort();
@@ -229,36 +221,27 @@ async function generateAIDraft(){
         stopEvaluation("Evaluation timed out before the service finished. No score was saved. Retry or continue manually.");
         el("manualReviewFallback").classList.remove("hidden");
       }
-    },185000);
-    let parsed;
-    for(let attempt=0;attempt<2;attempt++){
-      const retryInstruction=attempt===0?"":"\n\nRETRY FORMAT: Return the same JSON structure, but keep each rationale under 240 characters, each reviewAction under 160 characters, feedback under 800 characters, projectObservations under 500 characters, and limitations under 500 characters. Do not add prose outside JSON.";
-      const parts=[{text:prompt+retryInstruction}];
-      const allowImages=Boolean(evidence.assets?.length&&(!connection.configured||connection.capabilities?.inlineImages===true));
-      if(allowImages)for(const asset of evidence.assets){
-        parts.push({text:"REPOSITORY IMAGE ASSET: "+asset.path+" · student-changed: "+(asset.studentChanged?"yes":"no")});
-        parts.push({inlineData:{mimeType:asset.mimeType,data:asset.data}});
+    },420000);
+    const evaluation=await evaluateVerifiedEvidence({
+      assessment:active.assessment,criteria,evidence,
+      contributionScope:active.evidence.contributionScope,signal:controller.signal,
+      includeImages:Boolean(evidence.assets?.length&&(!connection.configured||connection.capabilities?.inlineImages===true)),
+      onProgress:progress=>{
+        if(session!==state.token||state.active!==active)return;
+        if(progress.mode==="adaptive"&&progress.stage==="chunk")
+          aiStatus("Large contribution detected. Processing verified evidence chunk "+Math.min(progress.completed+1,progress.total)+"/"+progress.total+"…");
+        else if(progress.mode==="adaptive"&&progress.stage==="final")
+          aiStatus("Evidence chunks processed. Building the final rubric proposal…");
+        else aiStatus("Generating rubric suggestions from verified evidence…");
       }
-      const evaluationPayload={contents:[{parts}],generationConfig:{
-        responseMimeType:"application/json",responseSchema:buildRubricResponseSchema(criteria),
-        maxOutputTokens:12000,temperature:0.1
-      }};
-      const result=await generateSchoolContent(evaluationPayload,{signal:controller.signal,purpose:"evaluation"});
-      try{parsed=await evaluationJSON({ok:true,json:async()=>result});break;}
-      catch(error){
-        if(attempt===0&&["invalid-evaluation","evaluation-truncated"].includes(error.code)){
-          aiStatus("The first evaluation response did not finish cleanly. Retrying once in a shorter format…");
-          continue;
-        }
-        throw error;
-      }
-    }
+    });
+    const parsed=evaluation.parsed;
     const draft=parseSuggestedRubric(parsed,criteria,active.maxScore,evidence);
     if(session!==state.token||state.active!==active)return;
     if(evidence.truncatedDiffs?.length){
       draft.limitations=[draft.limitations,evidence.truncatedDiffs.length+" relevant commit diff(s) were bounded; omitted changes require teacher review before assigning credit."].filter(Boolean).join(" ").slice(0,1400);
     }
-    active.aiDraft={model,checkpointSha:active.checkpointSha,...draft};
+    active.aiDraft={model,checkpointSha:active.checkpointSha,evaluationMode:evaluation.mode,evidenceChunks:evaluation.chunkCount,...draft};
     state.dirty=true;
     displayAISuggestion(draft);
     renderFeedbackMarkdown(el("manualReviewAIFeedback"),draft.feedback);
