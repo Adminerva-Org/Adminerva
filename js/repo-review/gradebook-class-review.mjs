@@ -319,6 +319,8 @@ async function evaluateOne(student,evidence,assessment,connection,{rerun=false}=
   const draft=parseSuggestedRubric(evaluation.parsed,criteria,assessment.maxScore,source);
   draft.evaluationMode=evaluation.mode;draft.evidenceChunks=evaluation.chunkCount;
   if(source.truncatedDiffs?.length)draft.limitations=[draft.limitations,"Large verified diffs were truncated for evaluation; teacher review is required."].filter(Boolean).join(" ").slice(0,1400);
+  if(source.missingPrimaryPaths?.length)draft.limitations=[draft.limitations,
+    "Some verified primary files were renamed or removed before the approved checkpoint ("+source.missingPrimaryPaths.slice(0,6).join(", ")+"). Their commit changes were retained, but teacher review is required before publishing."].filter(Boolean).join(" ").slice(0,1400);
   if(source.excludedMergeCommits?.length){
     draft.limitations=[draft.limitations,"Merge commits were excluded from individual credit ("+source.excludedMergeCommits.length+"). Teacher review should confirm the student's original commits."].filter(Boolean).join(" ").slice(0,1400);
   }
