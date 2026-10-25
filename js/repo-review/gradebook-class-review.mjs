@@ -152,7 +152,7 @@ async function forceGather(){
   const windowInfo=gatheringWindow(assessment);
   if(!confirm("Force gather evidence for "+candidates.length+" learner(s) with no saved evidence using "+windowInfo.label+"? Existing student submissions and evidence will not be overwritten. Adminerva will auto-select up to 20 commits whose GitHub author login exactly matches each learner's linked account. Git commit dates are repository metadata, not verified push times."))return;
   busy=true;render();
-  const cache=new Map(),failures=[];let created=0,checkpointOnly=0,matched=0,skipped=0;
+  const cache=new Map(),failures=[];let created=0,checkpointOnly=0,matched=0,skipped=0,permissionFailures=0;
   for(const student of candidates){
     el("gbBulkStatus").textContent="Gathering deadline evidence for "+student.name+" · "+created+" saved…";
     try{
@@ -176,18 +176,18 @@ async function forceGather(){
           (expected?". No commit in the bounded history had an exact GitHub author-login match to @"+expected+".":" because no linked GitHub username was available for individual matching.")+
           " No individual contribution is inferred."+(bounded?" The history scan reached the 500-commit review limit.":"");
       await setDoc(ref,{
-        studentId:student.id,assessmentId:context.taskId,section:context.section,repository:repo.url,
+        studentId:student.id,assessmentId:context.taskId,section:context.section,repository:student.repoUrl,
         selectedCommits,checkpointSha:checkpoint,status:"needs_review",source:"teacher_discovered",
         discoveredBy:auth.currentUser.uid,recordedAt:serverTimestamp(),updatedAt:serverTimestamp(),
         discoveryCutoff:windowInfo.cutoffIso,discoveryNote:note.slice(0,1200)
       });
       created++;matched+=selectedCommits.length;if(!selectedCommits.length)checkpointOnly++;
-    }catch(error){failures.push(student.name+": "+error.message);}
+    }catch(error){if(error?.code==="permission-denied")permissionFailures++;failures.push(student.name+": "+error.message);}
   }
   busy=false;await load(context);
   el("gbBulkStatus").textContent="Force gather complete: "+created+" evidence snapshot(s) saved · "+matched+
     " linked-account commit match(es) proposed · "+checkpointOnly+" checkpoint-only snapshot(s) · "+skipped+
-    " already handled · "+failures.length+" exception(s). Existing evidence was never overwritten."+
+    " already handled · "+failures.length+" exception(s) ("+permissionFailures+" permission-related). Existing evidence was never overwritten."+
     (failures.length?" "+failures.slice(0,3).join(" | "):"");
 }
 async function inspectForApproval(student,evidence){
