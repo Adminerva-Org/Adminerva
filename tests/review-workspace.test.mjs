@@ -57,7 +57,7 @@ test('unchanged evidence snapshots do not strand a running evaluation; manual ca
     page.context.generateSchoolContent=async()=>({});
     page.context.parseWeightedRubric=()=>[];
     page.context.loadPinnedV2Source=()=>new Promise(resolve=>{finish=resolve;});
-    page.context.buildRubricPrompt=()=>'';page.context.createBackoffClient=()=>({fetch:async()=>({})});page.context.evaluationJSON=async()=>({});
+    page.context.buildRubricPrompt=()=>'';page.context.buildRubricResponseSchema=()=>({});page.context.evaluationJSON=async()=>({});
     page.context.parseSuggestedRubric=()=>({criteria:[],score:15,feedback:'Draft feedback'});
     let expire;
     if(cancel==="timeout"){page.context.setTimeout=callback=>{expire=callback;return 1;};page.context.clearTimeout=()=>{};}
