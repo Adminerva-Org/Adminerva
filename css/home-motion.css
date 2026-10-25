@@ -108,3 +108,9 @@ html[data-adminerva-reduce-motion="true"] .av-home-motion.av-motion-active .av-m
 }
 html[data-motion="reduce"] .av-guest-motion-hero .av-motion-art,
 html[data-adminerva-reduce-motion="true"] .av-guest-motion-hero .av-motion-art{transform:none!important;will-change:auto}
+
+/* Respect the in-app reduced-motion option for browser-level navigation transitions. */
+html[data-motion="reduce"]::view-transition-old(root),
+html[data-motion="reduce"]::view-transition-new(root),
+html[data-adminerva-reduce-motion="true"]::view-transition-old(root),
+html[data-adminerva-reduce-motion="true"]::view-transition-new(root) {animation:none!important}
