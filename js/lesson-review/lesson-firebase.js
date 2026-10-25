@@ -52,9 +52,10 @@ window.fetchScheduleForLesson = async function (schoolYear, academicTerm, grade=
   try {
     const email=String(auth.currentUser?.email||"").toLowerCase();
     const shared=isLegacySharedScope(scope)&&(email===ADMIN_EMAIL||email===TEACHER_EMAIL);
-    const selected = shared
+    let selected = shared
       ? await getDoc(doc(db,"app_config",scope.id))
       : await getDoc(ownedDoc(db,"schedules",scope.id));
+    if(shared&&!selected.exists()&&scope.allowLegacy)selected=await getDoc(doc(db,"app_config","master_schedule"));
     if (selected.exists()) {
       const rows=parseScheduleRows(selected.data().json_data);
       if(rows.length)return filteredText(rows);
