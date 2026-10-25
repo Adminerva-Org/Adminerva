@@ -94,7 +94,7 @@ test('loads only selected XML at immutable approved SHA, not repository HEAD',as
   });
   assert.ok(result.files.some(f=>f.path===XML&&f.primary));
   assert.ok(result.files.some(f=>f.path==='app/src/main/java/MainActivity.java'&&!f.primary));
-  assert.equal(result.patches.length,1);
+  assert.equal(result.patches.length,2); // XML primary and related Java support remain distinct verified patches.
   assert.equal(result.checkpointSha,A);
   assert.ok(requests.every(u=>!u.includes('/heads/main')&&!u.includes('?ref=main')));
   assert.ok(requests.some(u=>u.includes('?ref='+A)));
