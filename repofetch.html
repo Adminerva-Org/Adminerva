@@ -18,29 +18,38 @@
       <div class="bg-white p-6 rounded-lg shadow-md border border-gray-200">
         <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900">Teaching workspace</h1>
         <p class="text-sm text-slate-600 mt-2 mb-5">Choose a class, assessment and group or learner. Keep the same context while reviewing submissions, source, evidence and individual grades.</p>
-        <section id="v2GradingWorkspace" class="border border-indigo-200 rounded-xl bg-indigo-50/60 p-4 sm:p-5 mb-6 space-y-4" aria-labelledby="v2WorkspaceTitle">
-          <div>
-            <h2 id="v2WorkspaceTitle" class="text-lg font-extrabold text-indigo-950">Choose your review context</h2>
-            <p class="text-sm text-slate-600 mt-1">Groups share a repository or an assigned group name. Grades and feedback stay individual. Repository-free tasks use Manual activity.</p>
+        <section id="v2GradingWorkspace" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 mb-6 shadow-sm space-y-4" aria-labelledby="v2WorkspaceTitle">
+          <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+            <div>
+              <p class="text-xs font-bold uppercase tracking-widest text-slate-500">Review context</p>
+              <h2 id="v2WorkspaceTitle" class="text-xl font-extrabold text-slate-950 mt-1">Review class work</h2>
+              <p class="text-sm text-slate-600 mt-1">Choose the class, assessment, and repository group. Select the learner inside the review workspace.</p>
+            </div>
+            <button id="v2RefreshQueue" type="button" class="rounded-lg border border-slate-300 bg-white hover:bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-800">Refresh</button>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.5fr_auto] gap-3 items-end">
-            <label class="block text-xs font-semibold text-slate-800" for="v2SectionSelect">Class section
-              <select id="v2SectionSelect" class="w-full mt-1 bg-white border rounded-lg p-2.5 font-semibold text-sm"><option value="">Loading…</option></select>
-            </label>
-            <label class="block text-xs font-semibold text-slate-800" for="v2SubjectSelect">Subject
-              <select id="v2SubjectSelect" class="w-full mt-1 bg-white border rounded-lg p-2.5 font-semibold text-sm"><option value="all">All subjects</option></select>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+            <label class="block text-xs font-semibold text-slate-800" for="v2SectionSelect">Class
+              <select id="v2SectionSelect" class="w-full mt-1 bg-white border border-slate-300 rounded-lg p-2.5 font-semibold text-sm"><option value="">Loading…</option></select>
             </label>
             <label class="block text-xs font-semibold text-slate-800" for="v2AssessmentSelect">Assessment
-              <select id="v2AssessmentSelect" class="w-full mt-1 bg-white border rounded-lg p-2.5 font-semibold text-sm"><option value="">Choose assessment</option></select>
+              <select id="v2AssessmentSelect" class="w-full mt-1 bg-white border border-slate-300 rounded-lg p-2.5 font-semibold text-sm"><option value="">Choose assessment</option></select>
             </label>
-            <button id="v2RefreshQueue" type="button" class="rounded-lg bg-slate-800 text-white px-4 py-2.5 text-sm font-bold">Refresh queue</button>
+            <label class="block text-xs font-semibold text-slate-800" for="reviewTargetSelect">Repository / group
+              <select id="reviewTargetSelect" class="w-full mt-1 bg-white border border-slate-300 rounded-lg p-2.5 font-semibold text-sm"><option value="">Choose an assessment first</option></select>
+            </label>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label class="block text-xs font-semibold text-slate-800" for="reviewTargetMode">Review mode<select id="reviewTargetMode" class="w-full mt-1 border rounded-lg p-2.5"><option value="group">Group</option><option value="individual">Individual</option></select></label>
-            <label class="block text-xs font-semibold text-slate-800" for="reviewTargetSelect">Group or learner<select id="reviewTargetSelect" class="w-full mt-1 border rounded-lg p-2.5"><option value="">Choose an assessment first</option></select></label>
-          </div>
-          <p id="v2QueueStatus" role="status" class="text-sm text-slate-700">Loading assessments…</p>
-          <details class="av-review-queue-details"><summary class="font-semibold cursor-pointer text-sm">Browse all targets in this class</summary><div id="v2Queue" class="av-review-target-grid mt-3" aria-live="polite"></div></details>
+          <select id="reviewTargetMode" class="hidden" aria-hidden="true" tabindex="-1"><option value="group" selected>Group</option></select>
+          <details class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <summary class="cursor-pointer text-sm font-semibold text-slate-700">More filters and class targets</summary>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+              <label class="block text-xs font-semibold text-slate-800" for="v2SubjectSelect">Subject
+                <select id="v2SubjectSelect" class="w-full mt-1 bg-white border border-slate-300 rounded-lg p-2.5 text-sm"><option value="all">All subjects</option></select>
+              </label>
+              <div class="text-xs text-slate-600 self-end pb-2">Use the learner selector inside Review &amp; grade to move between members of the selected repository group.</div>
+            </div>
+            <details class="av-review-queue-details mt-3"><summary class="font-semibold cursor-pointer text-sm">Browse all targets in this class</summary><div id="v2Queue" class="av-review-target-grid mt-3" aria-live="polite"></div></details>
+          </details>
+          <p id="v2QueueStatus" role="status" class="text-sm text-slate-600">Loading assessments…</p>
         </section>
         <section id="teachingWorkspace" class="av-teaching-workspace" hidden aria-labelledby="teaching-context-title">
           <header class="av-teaching-context"><h2 id="teaching-context-title" data-review-context class="font-extrabold text-lg"></h2><p data-review-individual class="text-sm text-slate-600 mt-1"></p><label class="block text-sm font-semibold mt-3">Current learner<select data-review-member class="mt-1 w-full border rounded-lg p-2.5"></select></label></header>
@@ -496,7 +505,7 @@
     <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.1"></script>
     <script type="module" src="js/repo-review/repofetch.js?v=1.3.2"></script>
     <script type="module" src="js/repo-review/auto-checker.js?v=1.3.0"></script>
-    <script type="module" src="js/repo-review/manual-review.mjs?v=1.4.11"></script>
-    <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=1.3.10"></script>
+    <script type="module" src="js/repo-review/manual-review.mjs?v=1.4.15"></script>
+    <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=1.4.15"></script>
   </body>
 </html>

@@ -27,6 +27,16 @@
           "type": "Updated",
           "area": "Deployment",
           "text": "Maintains separate GitHub Pages and Firebase deployment paths; release metadata remains draft pending verification."
+        },
+        {
+          "type": "Fixed",
+          "area": "Review runtime",
+          "text": "Restored Gradebook bulk actions and RepoFetch Review & Grade after a shared grading-module syntax regression prevented the review controllers from loading."
+        },
+        {
+          "type": "Updated",
+          "area": "RepoFetch UX",
+          "text": "Simplified review setup to class, assessment and repository/group, with learner selection kept inside the review workspace and secondary subject filtering moved out of the primary flow."
         }
       ]
     },

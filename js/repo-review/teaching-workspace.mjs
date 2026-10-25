@@ -59,7 +59,13 @@ export function mountTeachingWorkspace(root){
   if(!context?.repository){updateStatus("This target has no linked repository. Use Observed activity to record a teacher-observed task.");return;}
   const key=context.assessment.id+":"+student.id;
   if(reviewKey===key&&!manual.classList.contains("hidden"))return;
-  if(typeof window.openManualGradeReview!=="function"){updateStatus("The review editor is still loading. Select this panel again in a moment.");return;}
+  if(typeof window.openManualGradeReview!=="function"){
+    updateStatus("Loading the review editor…");
+    const expectedKey=key;
+    const retry=()=>{if(context&&view==="grade"&&student&&context.assessment.id+":"+student.id===expectedKey)void openReview();};
+    window.addEventListener("adminerva:manual-review-ready",retry,{once:true});
+    return;
+  }
   reviewKey=key;
   const result=await window.openManualGradeReview({studentId:student.id,taskId:context.assessment.id,owner:context.repository.owner,repo:context.repository.repo});
   if(result===false)reviewKey="";

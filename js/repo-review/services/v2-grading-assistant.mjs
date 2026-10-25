@@ -278,7 +278,8 @@ export async function loadPinnedV2Source({
       }else if(primary){
         throw Error("A primary assessed commit file has no readable text diff. Review this contribution manually.");
       }else continue;
-      patchRecords.push({sha,path:file.filename,patch,substantive:isMerge||truncatedDiffs.some(item=>item.sha===sha&&item.path===file.filename)?false:substantive,primary,mergeContext:isMerge,\n        diffIncomplete:truncatedDiffs.some(item=>item.sha===sha&&item.path===file.filename),kind:support||"primary"});
+      patchRecords.push({sha,path:file.filename,patch,substantive:isMerge||truncatedDiffs.some(item=>item.sha===sha&&item.path===file.filename)?false:substantive,primary,mergeContext:isMerge,
+        diffIncomplete:truncatedDiffs.some(item=>item.sha===sha&&item.path===file.filename),kind:support||"primary"});
     }
   }
   const directContribution=patchRecords.some(patch=>patch.primary&&(patch.substantive===true||patch.diffIncomplete));
