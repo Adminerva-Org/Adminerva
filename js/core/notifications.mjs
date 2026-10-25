@@ -3,9 +3,9 @@ import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
 /** Shared navigation, account access, reporting and release infrastructure: notifications. */
 import { auth, db } from "./firebase-core.js?v=1.3.0";
 import {notificationTarget,previewDestination} from "./notification-routing.mjs?v=1.3.8";
-import {notificationVisible,unreadNotificationCount} from "./notification-visibility.mjs?v=1.3.8";
+import {notificationVisible,unreadNotificationCount} from "./notification-visibility.mjs?v=1.4.19";
 import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs?v=1.3.8";
-import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=1.3.3";
+import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=1.4.19";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "./teaching-firestore.mjs?v=1.3.2";
 
@@ -233,7 +233,7 @@ async function refreshPushPrompt(){
 }
 async function refreshReleases(){
   const uid=state.user?.uid;if(!uid)return;
-  try{const releases=await loadPublicReleases();if(state.user?.uid!==uid)return;state.releases=releaseNotifications(releases);render();}
+  try{const releases=await loadPublicReleases();if(state.user?.uid!==uid)return;state.releases=releaseNotifications(releases,verifiedRole());render();}
   catch{ }
 }
 export function mountNotificationCenter(){
