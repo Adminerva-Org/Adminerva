@@ -43,7 +43,10 @@
     pointer-events: none !important;
   }
   #printDocumentWrapper::before { top: 0 !important; }
-  #printDocumentWrapper::after { bottom: 0 !important; }
+  /* Chromium places the fragmented table edge slightly above the physical
+     page-margin edge. Lift the synthetic closing rule so it overlaps the
+     vertical column endings instead of floating below them. */
+  #printDocumentWrapper::after { bottom: 0.24in !important; }
   /* The first sheet begins with the school banner/title rather than a
      continuation table. Keep that white header above the repeated top rule. */
   #printHeaderBannerContainer,
