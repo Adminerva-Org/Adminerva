@@ -393,7 +393,7 @@
             class="rounded-lg text-xl font-bold text-white px-2">✕</button>
         </div>
         <nav id="manualReviewSteps" aria-label="Review workspace sections" class="bg-white border-b p-2 flex gap-2 text-xs font-bold">
-          <button type="button" data-review-step="integratedEvidence" class="border rounded px-3 py-2">1 · Review</button><button type="button" data-review-step="manualReviewAISection" class="border rounded px-3 py-2">2 · System draft</button><button type="button" data-review-step="manualReviewForm" class="border rounded px-3 py-2">3 · Teacher grade</button>
+          <button type="button" data-review-step="integratedEvidence" class="border rounded px-3 py-2">1 · Review</button><button type="button" data-review-step="manualReviewAISection" class="border rounded px-3 py-2">2 · Evaluation draft</button><button type="button" data-review-step="manualReviewForm" class="border rounded px-3 py-2">3 · Teacher grade</button>
         </nav>
         <div id="manualReviewBody" class="p-4 sm:p-6 overflow-y-auto flex-1 space-y-4">
           <div class="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2">
@@ -425,9 +425,9 @@
           <section id="manualReviewAISection" class="hidden rounded-xl bg-indigo-50/70 border border-indigo-200 p-4 space-y-3" style="scroll-margin-top:64px">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h3 class="font-extrabold text-indigo-950 text-sm">2. System evaluation draft</h3>
+                <h3 class="font-extrabold text-indigo-950 text-sm">2. Evaluation draft</h3>
                 <button type="button" data-adminerva-help="evaluation" class="text-xs underline">ⓘ Evaluation draft help</button>
-                <p class="text-xs font-semibold mt-1">Adminerva evaluation draft · optional, never a published grade</p>
+                <p class="text-xs font-semibold mt-1">Adminerva or imported external evaluation draft · optional, never a published grade</p>
                 <p class="text-xs text-slate-600 mt-1">Builds a proposed score from verified individual work and flags only the remaining points that need teacher confirmation. Group completeness stays separate.</p>
                 <details class="text-xs text-slate-600 mt-2"><summary class="cursor-pointer font-semibold">How the evaluation draft works</summary><p class="mt-2">Evaluation drafts use verified commit diffs, the student’s primary screen, supporting Android files and referenced resources at the approved checkpoint. Adminerva also runs bounded XML and resource checks before evaluation. When supported, referenced repository images may be inspected for visible labels and artwork. Exact native rendering, compilation and runtime behavior still require separate evidence. You remain responsible for the final published score.</p></details>
               </div>
@@ -527,7 +527,7 @@
           <section class="rounded-xl border border-indigo-200 bg-indigo-50/50 p-4 space-y-3">
             <div>
               <h3 class="font-bold text-sm text-indigo-950">2. Paste the evaluator's JSON response</h3>
-              <p class="text-xs text-slate-600 mt-1">The copied package tells the evaluator exactly how to structure the response. Adminerva will reject unsupported evidence references, invalid rubric totals and malformed JSON.</p>
+              <p class="text-xs text-slate-600 mt-1">The copied package tells the evaluator exactly how to structure the response. Review the package before sharing it externally. Adminerva will reject unsupported evidence references, invalid rubric totals and malformed JSON.</p>
             </div>
             <details class="text-xs text-slate-700">
               <summary class="cursor-pointer font-semibold">What the returned assessment must contain</summary>
@@ -549,7 +549,7 @@
     <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.1"></script>
     <script type="module" src="js/repo-review/repofetch.js?v=1.3.2"></script>
     <script type="module" src="js/repo-review/auto-checker.js?v=1.3.0"></script>
-    <script type="module" src="js/repo-review/manual-review.mjs?v=1.4.22"></script>
+    <script type="module" src="js/repo-review/manual-review.mjs?v=1.4.23"></script>
     <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=1.4.15"></script>
   </body>
 </html>
