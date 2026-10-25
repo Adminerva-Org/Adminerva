@@ -637,3 +637,106 @@ html[data-adminerva-reduce-motion=true] *,html[data-adminerva-reduce-motion=true
   .av-button-row>:where(a,button){width:100%;justify-content:center}
   .av-page-heading{align-items:flex-start}
 }
+
+
+/* 1.4.4: useful workspace width and compact content density.
+   Keep task instructions, errors, accessibility labels, and safety warnings visible. */
+@media (min-width:1280px) {
+  .av-educator-layout { max-width:112rem; width:100%; }
+  body > :is(.max-w-screen-xl,.max-w-screen-2xl),
+  body > main:is(.max-w-7xl,.max-w-6xl) { max-width:min(100%,108rem); }
+  .av-home { width:min(100%,96rem); }
+}
+.av-educator-layout { gap:.85rem; }
+.av-educator-content > header:first-child { margin-bottom:1.2rem; }
+.av-educator-content > header:first-child h1 { font-size:clamp(1.55rem,2.4vw,2rem); }
+.av-home { padding:clamp(.9rem,2vw,1.75rem); }
+.av-home-hero { padding:clamp(1.1rem,2.4vw,2rem); }
+.av-home-hero h1 { font-size:clamp(1.75rem,3vw,2.65rem);margin:.4rem 0 .7rem; }
+.av-home-hero p:not(.av-eyebrow) {line-height:1.5;}
+.av-home-heading {margin:1.25rem 0 .7rem;}
+.av-home-task,.av-learning-card {padding:1rem;gap:.4rem;}
+.av-home-task p,.av-learning-card p {line-height:1.45;}
+.av-home-task > span:last-child {padding-top:.3rem;}
+.av-action-card,.av-panel {padding:clamp(.9rem,1.7vw,1.35rem);}
+.av-action-card p,.av-panel p {line-height:1.5;}
+.av-panel p {margin-bottom:.6rem;}
+.av-panel label {margin-block:.65rem;}
+.av-page-heading {margin-bottom:1rem;}
+.av-analytics-intro {margin-top:1rem;margin-bottom:1rem;padding:1rem;}
+.av-educator-content :is(.av-teaching-workspace,.av-teaching-context) {margin-top:.85rem;}
+.av-educator-content .av-teaching-context {padding:.9rem 1rem;}
+.av-educator-content .av-teaching-tabs {padding:.4rem;}
+/* Larger working surfaces; confirmation dialogs intentionally stay small. */
+:is(#gradingModal,#manualReviewModal,#viewModal,#createModal,#loadPlanModal,#editGradeModal,#issueDetailsModal,#miniSettingsModal) > div {
+  width:min(100%,80rem);
+  max-width:80rem;
+}
+:is(#gradingModal,#manualReviewModal,#viewModal,#createModal,#loadPlanModal,#editGradeModal,#issueDetailsModal,#miniSettingsModal) > div :where(header) {padding-block:.8rem;}
+body div[id$="Modal"][class*="fixed"][class*="inset-0"] > div {max-height:calc(100dvh - 16px);}
+body div[id$="Modal"] > div :where(.overflow-y-auto) {min-height:0;overscroll-behavior:contain;}
+/* Keep modal action controls reachable even on short phone displays. */
+@media (max-width:767px) {
+  .av-educator-layout {padding:.65rem;gap:.6rem;}
+  .av-educator-content {padding:.7rem!important;}
+  .av-home {padding:.75rem;}
+  .av-home-hero {padding:1rem;}
+  .av-home-hero h1 {font-size:1.8rem;line-height:1.17;}
+  .av-home-heading {margin:1rem 0 .55rem;}
+  .av-home-task,.av-learning-card {padding:.85rem;}
+  .av-action-card,.av-panel {padding:.85rem;}
+  .av-analytics-intro {padding:.8rem;margin-block:.7rem;}
+  body > main[class*="max-w-"] {padding-inline:.85rem;}
+  body div[id$="Modal"][class*="fixed"][class*="inset-0"] {padding:6px!important;align-items:center;}
+  body div[id$="Modal"][class*="fixed"][class*="inset-0"] > div {
+    width:100%;max-width:100%;max-height:calc(100dvh - 12px);
+    border-radius:12px;
+  }
+  body div[id$="Modal"] > div > :is(header,footer) {padding:.75rem 1rem;}
+  body div[id$="Modal"] :is(input,select,textarea) {font-size:16px;}
+  body div[id$="Modal"] :where(button,[role="button"]) {min-height:42px;}
+  #manualReviewModal > div,#gradingModal > div,#createModal > div,#viewModal > div {max-height:calc(100dvh - 12px);}
+}
+/* Single-assessment Gradebook: readable native selector + selected full label. */
+#gbLegacyControls {gap:.85rem;}
+#gbLegacyControls > div {min-width:0;}
+#gbLegacyControls select {width:100%;min-width:0;}
+#gbSelectedAssessment {display:none;margin:.35rem 0 0;font-size:.75rem;line-height:1.4;color:#475569;overflow-wrap:anywhere;}
+#gbLegacyRecovery {font-size:.8rem;line-height:1.45;}
+@media (max-width:767px) {
+  #gbLegacyControls {padding:.8rem;gap:.65rem;margin-bottom:.85rem;}
+  #gbLegacyControls > div > label {margin-bottom:.25rem;}
+  #gbLegacyControls select {padding:.6rem .7rem;min-height:44px;}
+  #gbLegacyControls #gbLegacyPublish {height:44px;width:100%;}
+  #gbSelectedAssessment:not(:empty) {display:block;}
+  #gbLegacyTable {width:100%;min-width:0;display:block;white-space:normal;}
+  #gbLegacyTable thead {position:absolute;clip:rect(0 0 0 0);clip-path:inset(50%);width:1px;height:1px;overflow:hidden;white-space:nowrap;}
+  #gbLegacyTable tbody {display:grid;gap:.7rem;padding:.65rem;background:#f8fafc;}
+  #gbLegacyTable tr[data-student-id] {display:flex;flex-direction:column;gap:0;width:100%;min-width:0;border:1px solid #d6e2ef;border-radius:.85rem;background:#fff;overflow:hidden;box-shadow:0 2px 9px #14243c0a;}
+  #gbLegacyTable tr[data-student-id] > td {display:flex;flex-direction:column;align-items:stretch;gap:.15rem;min-width:0;width:100%;padding:.58rem .8rem!important;white-space:normal;overflow-wrap:anywhere;}
+  #gbLegacyTable tr[data-student-id] > td + td {border-top:1px solid #eef2f7;}
+  #gbLegacyTable tr[data-student-id] > td[data-label]::before {content:attr(data-label);display:block;margin-bottom:.2rem;color:#64748b;font-size:.65rem;font-weight:800;line-height:1.25;text-transform:uppercase;letter-spacing:.06em;}
+  #gbLegacyTable tr[data-student-id] > td[data-label="Student"]::before {display:none;}
+  #gbLegacyTable tr[data-student-id] > td[data-label="Student"] {padding-top:.8rem!important;}
+  #gbLegacyTable tr[data-student-id] > td[data-label="Review"] {background:#f8fbff;}
+  #gbLegacyTable tr[data-student-id] > td[data-label="Review"] [data-review-state] {min-width:0;}
+  #gbLegacyTable tr[data-student-id] > td[data-label="Review"] a {display:inline-block;min-height:38px;padding-top:.45rem;max-width:100%;overflow-wrap:anywhere;}
+  #gbLegacyTable tr[data-student-id] > td[data-label="Repository"] > div {width:100%;max-width:20rem;}
+  #gbLegacyTable tr[data-student-id] > td[data-label="Repository"] a {display:inline-block;width:max-content;max-width:100%;}
+  #gbLegacyTable tr[data-student-id] > td[data-label="Score"] .av-feedback-chip {max-width:none;width:100%;}
+  #gbLegacyTable tr[data-student-id] > td[data-label="Visibility"] label {min-height:44px;}
+  #gbLegacyTable tbody > tr:not([data-student-id]) {display:table;width:100%;}
+  #gbLegacyTable tbody > tr:not([data-student-id]) td {display:table-cell!important;white-space:normal;}
+  #gbClassReviewTools {padding:.9rem;margin-bottom:.75rem;}
+  #gbClassReviewTools .flex.flex-wrap.gap-2 > :is(button,a) {min-height:42px;}
+}
+/* RepoFetch is already a workspace; avoid nesting two oversized cards around it. */
+#v2GradingWorkspace {margin-bottom:.8rem;padding:clamp(.85rem,1.7vw,1.3rem);}
+#teachingWorkspace {margin-top:.7rem;}
+#legacyRepoTools {margin-top:.8rem;}
+@media (max-width:767px) {
+  #v2GradingWorkspace {padding:.8rem;gap:.65rem;}
+  #v2GradingWorkspace select {min-height:44px;}
+  #teachingWorkspace [role="tablist"] {overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;}
+  #teachingWorkspace [role="tab"] {flex:0 0 auto;min-height:44px;}
+}
