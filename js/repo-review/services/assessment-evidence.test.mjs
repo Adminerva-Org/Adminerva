@@ -11,7 +11,7 @@ test('canonical GitHub repo URLs reject extra path, credentials and non-GitHub h
 });
 test('selected commits are independent evidence while one selected SHA pins project state',()=>{
   assert.deepEqual(normalizeSelection([A,B,A],B),{selectedCommits:[A,B],checkpointSha:B});
-  assert.throws(()=>normalizeSelection([A],B),/checkpoint/);
+  assert.deepEqual(normalizeSelection([A],B),{selectedCommits:[A],checkpointSha:B}); // A later checkpoint may contain an earlier contribution.
   assert.throws(()=>normalizeSelection([],A),/at least one/);
   assert.throws(()=>normalizeSelection(['bad'],A),/SHA/);
   assert.throws(()=>normalizeSelection(Array(21).fill(A),A),/at most/);
@@ -30,9 +30,9 @@ test('evidence selection provides actionable checkpoint guidance',()=>{
   assert.match(state.message,/Include commit/i);
   state=evidenceSelectionGuidance([A], '');
   assert.equal(state.ready,false);
-  assert.match(state.message,/round button/i);
+  assert.match(state.message,/project checkpoint/i);
   state=evidenceSelectionGuidance([A], B);
-  assert.equal(state.ready,false);
+  assert.equal(state.ready,true); // Commit ancestry is verified on submission, not inferred from distinct SHA values.
   state=evidenceSelectionGuidance([A,B], B);
   assert.equal(state.ready,true);
   assert.match(state.message,/Project checkpoint: b{12}/);
