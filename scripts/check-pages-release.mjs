@@ -46,9 +46,12 @@ export async function checkPagesRelease({fetchImpl=globalThis.fetch,readLocal=pa
   // Independent public reads run together; each request, including its body, has a 15-second deadline.
   const results=await Promise.all([
     ...pages.map(async([path,markers])=>{
-      const text=(await request(path)).toString("utf8");
-      for(const marker of [...markers,"?v="+expected])if(!text.includes(marker))throw Error(path+" is missing expected release content: "+marker);
-      return {path,status:200,contentMarkers:true,version:expected};
+      const [deployed,checkout]=await Promise.all([request(path),readLocal(path)]);
+      const text=deployed.toString("utf8");
+      for(const marker of markers)if(!text.includes(marker))throw Error(path+" is missing expected release content: "+marker);
+      const actual=digest(deployed),expectedHash=digest(checkout);
+      if(actual!==expectedHash)throw Error(path+" SHA-256 differs from this checkout (expected "+expectedHash+", received "+actual+").");
+      return {path,status:200,contentMarkers:true,sha256:actual,matchesCheckout:true,version:expected};
     }),
     ...assets.map(async path=>{
       const [deployed,checkout]=await Promise.all([request(path),readLocal(path)]);
