@@ -263,7 +263,7 @@ function openDetails(student, task, entry) {
   el("gbEditFeedback").value = cleanGradeFeedback(grade.feedback);
   renderFeedbackMarkdown(el("gbFeedbackPreview"),grade.feedback);
   for(const id of ["gbEditScore","gbEditFeedback","gbEditReason","gbMarkReviewed","gbDetailSave"])el(id).disabled=grade.published===true||task.schemaVersion===2;
-  el("gbDetailReviewLink").classList.toggle("hidden",task.schemaVersion!==2||grade.reviewRequired!==true);
+  el("gbDetailReviewLink").classList.toggle("hidden",task.schemaVersion!==2);
   el("gbDetailReviewLink").href="repofetch.html?"+new URLSearchParams({student:student.id,assessment:task.id,section:student.section||""});
   el("gbEditReason").value = "";
   el("gbMarkReviewed").checked = !grade.reviewRequired;
