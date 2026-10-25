@@ -5,10 +5,11 @@ import {resolveReferenceLibrary,assertReferenceOwner,referenceFolders,referenceF
 // Import centralized database instead of initializing locally
 import { auth,db } from "../core/firebase-core.js?v=1.3.0";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
-import {TEACHER_EMAIL} from "../core/staff-role.mjs?v=1.3.0";
+import {ADMIN_EMAIL,TEACHER_EMAIL} from "../core/staff-role.mjs?v=1.3.0";
 import {legacyLessonRecovery} from "../core/legacy-lesson-recovery.mjs?v=1.3.2";
 import {personalPlanId,requireCurrentVersion} from "./workspace-model.mjs?v=1.3.0";
-import {scheduleScope,localScheduleText,normalizeSchoolYear} from "./schedule-scope.mjs?v=1.3.0";
+import {scheduleScope,localScheduleText,normalizeSchoolYear,parseScheduleRows} from "./schedule-scope.mjs?v=1.3.0";
+import {filterScheduleRowsForLesson,isLegacySharedScope,isLegacyScheduleRetired,scheduleRowsToText} from "./legacy-schedule-compat.mjs?v=1.4.18";
 import {
   collection,
   getDocs,
@@ -34,20 +35,33 @@ function escapeHTML(str) {
     .replace(/'/g, "&#039;");
 }
 
-// Resolve the timetable for the selected lesson school year and semester.
-window.fetchScheduleForLesson = async function (schoolYear, academicTerm) {
+// Resolve only the timetable rows relevant to this lesson.
+window.fetchScheduleForLesson = async function (schoolYear, academicTerm, grade="", subject="") {
   const scope = scheduleScope(schoolYear, academicTerm);
-  const local = () => localScheduleText(lessonStorage, schoolYear, academicTerm);
+  if(isLegacySharedScope(scope)&&isLegacyScheduleRetired()){
+    throw Error("The 2026–2027 legacy timetable is archived. Create a timetable for the new school year before generating new lesson plans.");
+  }
+  const filteredText=rows=>scheduleRowsToText(filterScheduleRowsForLesson(rows,{grade,subject}));
+  const local = () => {
+    const rows=parseScheduleRows(lessonStorage.getItem(scope.jsonKey));
+    if(rows.length)return filteredText(rows);
+    return localScheduleText(lessonStorage, schoolYear, academicTerm);
+  };
   // A failed cloud save must not silently replace recent edits on this device.
   if (lessonStorage.getItem(scope.pendingKey) === "1") return local();
   try {
-    const selected = await getDoc(ownedDoc(db,"schedules",scope.id));
+    const email=String(auth.currentUser?.email||"").toLowerCase();
+    const shared=isLegacySharedScope(scope)&&(email===ADMIN_EMAIL||email===TEACHER_EMAIL);
+    const selected = shared
+      ? await getDoc(doc(db,"app_config",scope.id))
+      : await getDoc(ownedDoc(db,"schedules",scope.id));
     if (selected.exists()) {
-      const text = String(selected.data().raw_text || "");
-      lessonStorage.setItem(scope.textKey, text);
-      return text;
+      const rows=parseScheduleRows(selected.data().json_data);
+      if(rows.length)return filteredText(rows);
+      const text=String(selected.data().raw_text||"");
+      if(!grade&&!subject&&text)return text;
     }
-    if (lessonStorage.getItem(scope.textKey) !== null) return local();
+    if (lessonStorage.getItem(scope.jsonKey) !== null || lessonStorage.getItem(scope.textKey) !== null) return local();
   } catch (error) {
     console.warn("Could not load semester schedule from cloud; checking device cache:", error);
   }
@@ -249,7 +263,7 @@ window.saveLessonPlan = async function () {
       custom_instructions: document
         .getElementById("lpCustomInstructions")
         .value.trim(),
-      schedule: await window.fetchScheduleForLesson(schoolYear, academicTerm),
+      schedule: await window.fetchScheduleForLesson(schoolYear, academicTerm, grade, subject),
       reference_folders: Array.from(
         document.querySelectorAll(".folder-checkbox:checked"),
       ).map((cb) => cb.value),
