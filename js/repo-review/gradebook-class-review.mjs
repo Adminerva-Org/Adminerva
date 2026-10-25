@@ -1,6 +1,6 @@
 /** Class-level submission triage and safe bulk review orchestration. */
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
-import {collection,doc,getDoc,getDocs,query,where,serverTimestamp,setDoc} from "../core/teaching-firestore.mjs?v=1.3.2";
+import {collection,doc,getDoc,getDocs,query,where,serverTimestamp,setDoc,runTransaction} from "../core/teaching-firestore.mjs?v=1.3.2";
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {normalizeSelection,parseRepository} from "./services/assessment-evidence.mjs?v=1.4.3";
 import {verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
@@ -10,7 +10,7 @@ import {generateSchoolContent,schoolAIStatus} from "../core/school-ai.mjs?v=1.3.
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.1";
 
 const el=id=>document.getElementById(id);
-let context=null,busy=false,evidenceReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map();
+let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map();
 const draftRef=(studentId,taskId)=>doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId);
 const badge=(text,tone="slate")=>'<span class="inline-flex rounded-full px-2 py-1 font-bold bg-'+tone+'-50 text-'+tone+'-800 border border-'+tone+'-200">'+text+'</span>';
 function reviewUrl(studentId){const p=new URLSearchParams({section:context.section,assessment:context.taskId,student:studentId,view:"grade"});return "repofetch.html?"+p.toString();}
@@ -61,6 +61,9 @@ function render(){
   el("gbBulkApprove").disabled=busy||!evidenceReadable||!approveCandidates.length;
   el("gbBulkEvaluate").textContent=isV2?"Run system evaluation ("+evaluateCandidates.length+")":"System evaluation · V2 evidence only";
   el("gbBulkEvaluate").disabled=busy||!evidenceReadable||!evaluateCandidates.length;
+  const reruns=isV2?context.students.filter(student=>eligibleToRerun(evidenceMap.get(student.id),context.grades?.[student.id])):[];
+  if(el("gbBulkRerun")){el("gbBulkRerun").textContent="Re-evaluate drafts ("+reruns.length+")";el("gbBulkRerun").disabled=busy||!evidenceReadable||!reruns.length;}
+  el("gbCancelEvaluation")?.classList.toggle("hidden",!busyEvaluation);
   const p=new URLSearchParams({section:context.section,assessment:context.taskId});el("gbReviewExceptions").href="repofetch.html?"+p.toString();
 }
 async function load(detail){
@@ -76,6 +79,12 @@ async function load(detail){
     ]:[])
   ]);
   const warnings=[];
+  if(isV2){
+    try{const grades=await getDocs(query(collection(db,"student_grades"),where("taskId","==",detail.taskId)));
+      context.grades=Object.fromEntries(grades.docs.filter(record=>detail.students.some(student=>student.id===record.data().studentId))
+        .map(record=>[record.data().studentId,record.data()]));
+    }catch(error){warnings.push("gradebook drafts: "+error.message);}
+  }
   if(sources[0].status==="fulfilled")for(const record of sources[0].value.docs){
     const data={id:record.id,...record.data()},prior=receiptMap.get(data.studentId);
     const stamp=value=>value?.toMillis?.()||Date.parse(value||"")||0;
@@ -260,7 +269,12 @@ async function bulkApprove(){
     " left for Review & grade. System evaluation is available only where individual contribution was verified."+
     (failures.length?" "+failures.slice(0,3).join(" | "):"");
 }
-async function evaluateOne(student,evidence,assessment,connection){
+function eligibleToRerun(evidence,grade){
+  return evidence?.status==="approved"&&evidence.verifiedContributionCommits?.length>0&&
+    grade?.published===false&&grade.reviewRequired===true&&grade.manuallyAdjusted===false&&
+    grade.gradeSource==="system_evaluation_draft";
+}
+async function evaluateOne(student,evidence,assessment,connection,{rerun=false}={}){
   const criteria=parseWeightedRubric(assessment.evalCriteria,assessment.maxScore),token=localStorage.getItem("Adminerva_github_token");
   const source=await loadPinnedV2Source({repository:evidence.repository,checkpointSha:evidence.approvedCheckpointSha,selectedCommits:evidence.selectedCommits,
     assessment,verifiedContributionCommits:evidence.verifiedContributionCommits,token,fetchImpl:globalThis.fetch});
@@ -278,10 +292,12 @@ async function evaluateOne(student,evidence,assessment,connection){
      evidenceRevision(latestEvidence.data())!==evidenceRevision(evidence))
     throw Error("Evidence changed during evaluation. Reload and evaluate again.");
   const priorGrade=await getDoc(gradeRef);
-  if(priorGrade.exists())return; // Never replace manual work or an existing draft.
+  if(priorGrade.exists()&&!rerun)throw Error("An existing grade is protected.");
+  if(rerun&&(!priorGrade.exists()||!eligibleToRerun(evidence,priorGrade.data())))
+    throw Error("This draft has been reviewed or published. Re-evaluation blocked.");
   const needsReview=draft.pendingPoints>0||draft.criteria.some(item=>item.confidence!=="high"||item.status!=="supported")||
     Boolean(draft.limitations);
-  await setDoc(gradeRef,{
+  const gradePayload={
     studentId:student.id,taskId:context.taskId,section:context.section,
     score:draft.score,maxScore:Number(assessment.maxScore),feedback:draft.feedback,
     published:false,reviewRequired:true,manuallyAdjusted:false,reviewPriority:needsReview?"needs_review":"ready_for_teacher_confirmation",
@@ -290,31 +306,54 @@ async function evaluateOne(student,evidence,assessment,connection){
     gradeSource:"system_evaluation_draft",gradingMode:"individual",sourceSelectionMode:"verified_evidence",
     gradedSha:evidence.approvedCheckpointSha,evidenceRevision:evidenceRevision(evidence),
     evaluationDraft:{...draft,generatedBy:"Adminerva system evaluation",teacherReviewed:false},
-    createdAt:serverTimestamp(),gradedAt:serverTimestamp()
-  });
+    ...(!rerun?{createdAt:serverTimestamp()}:{}),gradedAt:serverTimestamp()
+  };
+  if(rerun){
+    await runTransaction(db,async tx=>{
+      const current=await tx.get(gradeRef),updatedEvidence=await tx.get(doc(db,"assessment_evidence",gradeRef.id));
+      if(!current.exists()||!eligibleToRerun(evidence,current.data())||
+        !updatedEvidence.exists()||updatedEvidence.data().status!=="approved"||
+        evidenceRevision(updatedEvidence.data())!==evidenceRevision(evidence))
+        throw Error("Draft or evidence changed; no score was replaced.");
+      const old=current.data(),updated={...old,...gradePayload};
+      if(old.score===updated.score&&old.feedback===updated.feedback)
+        throw Error("Re-evaluation produced the same score and feedback; previous draft preserved.");
+      const revision=doc(collection(db,"grade_revisions"));
+      tx.set(revision,{gradeId:gradeRef.id,studentId:student.id,taskId:context.taskId,
+        editorUid:auth.currentUser.uid,reason:"System draft re-evaluation against current approved contribution evidence",
+        before:{score:old.score,feedback:old.feedback,published:false},
+        after:{score:updated.score,feedback:updated.feedback,published:false},createdAt:serverTimestamp()});
+      tx.set(gradeRef,updated);
+    });
+  }else await setDoc(gradeRef,gradePayload);
   await setDoc(draftRef(student.id,context.taskId),{ownerUid:auth.currentUser.uid,studentId:student.id,taskId:context.taskId,section:context.section,
     evidenceRevision:evidenceRevision(evidence),checkpointSha:evidence.approvedCheckpointSha,model:connection.model||localStorage.getItem("Adminerva_ai_model")||"",
     draft,createdAt:serverTimestamp(),status:"private_suggestion"},{merge:false});
 }
-async function bulkEvaluate(){
+async function bulkEvaluate({rerun=false}={}){
   if(busy||!context)return;
   const candidates=context.students.map(s=>({student:s,evidence:evidenceMap.get(s.id)})).filter(({student,evidence})=>{
-    const grade=context.grades?.[student.id];return evidence?.status==="approved"&&evidence.verifiedContributionCommits?.length&&!grade&&!draftMap.has(student.id);
+    const grade=context.grades?.[student.id];return rerun?eligibleToRerun(evidence,grade):
+      evidence?.status==="approved"&&evidence.verifiedContributionCommits?.length&&!grade&&!draftMap.has(student.id);
   });
   if(!candidates.length)return;
-  if(!confirm("Generate unpublished grade drafts and private evaluation suggestions for "+candidates.length+" eligible learner(s)? Draft scores and feedback will be stored in the Gradebook as unpublished and requiring teacher confirmation. Nothing will become visible to students until a teacher reviews and publishes it."))return;
-  busy=true;render();let assessment,connection;const failures=[];let completed=0;
+  if(!confirm(rerun?"Re-evaluate "+candidates.length+" unreviewed, unpublished system draft(s)? Previous scores and feedback will be archived. Teacher-edited and published grades will not change.":
+    "Generate unpublished grade drafts for "+candidates.length+" eligible learner(s)? Scores and feedback will require teacher confirmation."))return;
+  busy=true;busyEvaluation=true;cancelEvaluation=false;render();let assessment,connection;const failures=[];let completed=0;
   try{
     const snapshot=await getDoc(doc(db,"assessments",context.taskId));if(!snapshot.exists())throw Error("Assessment not found.");assessment={id:snapshot.id,...snapshot.data()};
     connection=await schoolAIStatus();
     for(const item of candidates){
-      try{el("gbBulkStatus").textContent="Evaluating "+item.student.name+" · "+completed+" complete…";await evaluateOne(item.student,item.evidence,assessment,connection);completed++;}
+      if(cancelEvaluation)break;
+      try{el("gbBulkStatus").textContent=(rerun?"Re-evaluating ":"Evaluating ")+item.student.name+" · "+completed+"/"+candidates.length+" complete…";await evaluateOne(item.student,item.evidence,assessment,connection,{rerun});completed++;}
       catch(error){failures.push(item.student.name+": "+error.message);}
     }
   }catch(error){failures.push(error.message);}
-  busy=false;await load(context);el("gbBulkStatus").textContent="Bulk evaluation complete: "+completed+" unpublished draft(s) saved · "+failures.length+" exception(s). Open Review & grade to confirm score and feedback."+(failures.length?" "+failures.slice(0,2).join(" | "):"");
+  const stopped=cancelEvaluation;busy=false;busyEvaluation=false;await load(context);el("gbBulkStatus").textContent=(stopped?"Evaluation stopped: ":"Evaluation complete: ")+completed+" unpublished draft(s) "+(rerun?"replaced":"saved")+" · "+failures.length+" exception(s). Open Review & grade to confirm score and feedback."+(failures.length?" "+failures.slice(0,2).join(" | "):"");
 }
 window.addEventListener("adminerva:gradebook-grid-loaded",event=>void load(event.detail));
 el("gbForceGather")?.addEventListener("click",()=>void forceGather());
 el("gbBulkApprove")?.addEventListener("click",()=>void bulkApprove());
 el("gbBulkEvaluate")?.addEventListener("click",()=>void bulkEvaluate());
+el("gbBulkRerun")?.addEventListener("click",()=>void bulkEvaluate({rerun:true}));
+el("gbCancelEvaluation")?.addEventListener("click",()=>{cancelEvaluation=true;el("gbBulkStatus").textContent="Stopping after the current learner. Completed drafts are preserved.";});
