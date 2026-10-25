@@ -376,14 +376,14 @@ body:has(#feedbackDrawer:not(.hidden)),body:has(#gbDetailModal:not(.hidden)){ove
 .av-feedback-chip:hover,.av-feedback-chip:focus-visible{background:#eff6ff;border-color:#2563eb}
 #gbQuarterPublish,#gbLegacyPublish{min-inline-size:12rem;white-space:nowrap}
 .av-feedback-chip span{font-size:.8rem;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.av-feedback-backdrop{position:fixed;inset:0;z-index:240;background:#0f172a88;display:flex;justify-content:flex-end}
+.av-feedback-backdrop{position:fixed;inset:0;z-index:240;background:#0f172a99;display:flex;align-items:center;justify-content:center;padding:clamp(.75rem,3vw,1.5rem);overflow:hidden}
 .av-feedback-backdrop.hidden{display:none}
-.av-feedback-drawer{display:flex;flex-direction:column;width:min(44rem,100%);height:100dvh;background:white;color:#0f172a;box-shadow:-8px 0 40px #0003;animation:av-drawer-in .18s ease-out}
-.av-feedback-drawer header,.av-feedback-drawer footer{padding:1rem;display:flex;justify-content:space-between;gap:1rem;border-bottom:1px solid #e2e8f0;flex-shrink:0}
-.av-feedback-drawer h2{font-size:1.15rem;font-weight:800;overflow-wrap:anywhere}
-.av-feedback-drawer button{padding:.5rem .75rem;border:1px solid #cbd5e1;border-radius:.5rem}
-.av-feedback-drawer footer{border-top:1px solid #e2e8f0;border-bottom:none;justify-content:flex-end}
-.av-feedback-body{min-height:0;overflow-y:auto;padding:1.25rem;overflow-wrap:anywhere;overscroll-behavior:contain}
+.av-feedback-drawer{display:flex;flex-direction:column;width:min(40rem,100%);height:auto;max-height:calc(100dvh - 3rem);min-height:0;background:white;color:#0f172a;border:1px solid #dbe4ef;border-radius:1rem;overflow:hidden;box-shadow:0 22px 70px #02061755;animation:av-feedback-dialog-in .18s ease-out}
+.av-feedback-drawer header,.av-feedback-drawer footer{padding:.85rem 1.1rem;display:flex;align-items:center;justify-content:space-between;gap:.85rem;border-bottom:1px solid #e2e8f0;flex-shrink:0}
+.av-feedback-drawer h2{font-size:clamp(1rem,2vw,1.15rem);line-height:1.35;font-weight:800;overflow-wrap:anywhere;min-width:0}
+.av-feedback-drawer button{padding:.55rem .85rem;min-height:2.75rem;border:1px solid #cbd5e1;border-radius:.6rem;font-size:.9rem;font-weight:650;line-height:1.35;text-align:center}
+.av-feedback-drawer footer{border-top:1px solid #e2e8f0;border-bottom:none;justify-content:flex-end;background:#f8fafc}
+.av-feedback-body{flex:0 1 auto;min-height:0;overflow-y:auto;padding:1rem 1.1rem;overflow-wrap:anywhere;overscroll-behavior:contain;font-size:.95rem;line-height:1.55}
 .av-feedback-line{margin:.5rem 0;white-space:pre-wrap}
 .av-feedback-code{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f5f9;padding:.5rem}
 .av-grade-drawer{justify-content:flex-end!important;padding:0!important}
@@ -395,7 +395,16 @@ body:has(#feedbackDrawer:not(.hidden)),body:has(#gbDetailModal:not(.hidden)){ove
 #manualReviewModal pre,#manualReviewModal #evidenceDiscoverList,#manualReviewModal #detCodeBlock{max-height:none!important;overflow-y:visible!important}
 #manualReviewModal pre{white-space:pre-wrap;overflow-wrap:anywhere}
 [data-loading="true"]{opacity:.7}
-@keyframes av-drawer-in{from{transform:translateX(24px);opacity:.5}to{transform:translateX(0);opacity:1}}
+@keyframes av-feedback-dialog-in{from{transform:translateY(10px) scale(.99);opacity:.7}to{transform:translateY(0) scale(1);opacity:1}}
+@media(max-width:640px){
+  .av-feedback-backdrop{padding:12px;padding-bottom:max(12px,env(safe-area-inset-bottom))}
+  .av-feedback-drawer{width:100%;max-height:calc(100dvh - 24px);border-radius:.85rem}
+  .av-feedback-drawer header,.av-feedback-drawer footer{padding:.75rem .9rem;gap:.65rem}
+  .av-feedback-drawer h2{font-size:1rem}
+  .av-feedback-drawer #feedbackDrawerClose{flex:0 0 auto;min-width:2.75rem}
+  .av-feedback-drawer #feedbackDrawerReview{width:100%}
+  .av-feedback-body{padding:.9rem;line-height:1.5}
+}
 @media(prefers-reduced-motion:reduce){.av-feedback-drawer{animation:none}}
 
 /* Shared task, form and navigation patterns. Editors and exported documents keep their own layout. */
