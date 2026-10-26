@@ -1,6 +1,6 @@
 /** Committed-evidence selection, checkpoint provenance and evidence lifecycle. */
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
-import {doc,getDoc,getDocs,setDoc,updateDoc,collection,query,where,serverTimestamp,onSnapshot}
+import {doc,getDoc,getDocs,setDoc,updateDoc,runTransaction,collection,query,where,serverTimestamp,onSnapshot}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {parseRepository,normalizeSelection,evidenceSelectionGuidance,detectedAuthor,attributionLabel,claimDocumentId,validSha}
   from "../repo-review/services/assessment-evidence.mjs?v=1.3.1";
@@ -78,7 +78,8 @@ function render(){
     saved?.status==="approved"?"Approved · Ask your instructor to reopen before changing selections.":"Instructor release required for this historical proposal.";
   el("evidenceSubmit").disabled=!editable||evidenceBusy;
   el("evidenceSubmit").textContent=evidenceBusy?"Saving evidence…":saved?"Resubmit selected evidence":"Submit selected evidence";
-  el("evidenceWithdraw").disabled=!editable||!saved||saved.status==="withdrawn"||evidenceBusy;
+  el("evidenceWithdraw").disabled=!editable||!saved||saved.status==="withdrawn"||evidenceBusy||
+    (saved.status==="reopened"&&!saved.selectedCommits?.length);
   if(el("evidenceClear"))el("evidenceClear").disabled=!editable||evidenceBusy;
   const guidance=evidenceSelectionGuidance([...selected],checkpoint);
   const summary=el("evidenceSelectionSummary");
@@ -120,6 +121,9 @@ function render(){
       if(claim.status==="pending"){
         const withdraw=add(controls,"button","Withdraw reclaim","text-xs text-rose-700 underline");
         withdraw.type="button";withdraw.addEventListener("click",()=>{void withdrawClaim(sha);});
+      }else if(claim.status==="withdrawn"){
+        const retry=add(controls,"button","Resubmit reclaim","text-xs text-amber-800 font-bold underline");
+        retry.type="button";retry.addEventListener("click",()=>{void reclaimCommit(commit);});
       }
     }else{
       const reclaim=add(controls,"button","Reclaim Commit","text-xs text-amber-800 font-bold underline");
@@ -149,28 +153,48 @@ async function preview(commit){
       "\nThis diff is for review, not proof of individual authorship.";
   }catch(error){node.textContent="Unable to preview: "+error.message;}
 }
-async function loadClaims(studentId){
+async function loadClaims(studentId,repository){
   const results=await getDocs(query(collection(db,"commit_reclaims"),where("studentId","==",studentId)));
-  return new Map(results.docs.map(d=>[d.data().sha,d.data()]));
+  return new Map(results.docs.map(d=>d.data()).filter(claim=>claim.repository===repository)
+    .map(claim=>[claim.sha,claim]));
 }
 async function reclaimCommit(commit){
   if(!context)return;
-  const explanation=prompt("Explain why this Git commit should be attributed to you. Staff must verify the claim.");
+  const sha=commit.sha.toLowerCase(),profile=context.profile,previous=claims.get(sha);
+  if(previous&&previous.status!=="withdrawn")return status("This commit already has a reclaim decision or pending request.");
+  const explanation=prompt(previous
+    ?"Provide an updated explanation to resubmit your withdrawn reclaim. The earlier request stays in its audit history."
+    :"Explain why this Git commit should be attributed to you. Staff must verify the claim.");
   if(explanation===null)return;
   if(explanation.trim().length<10||explanation.length>1500){
     status("Provide an explanation between 10 and 1,500 characters.");return;
   }
-  const sha=commit.sha.toLowerCase(),profile=context.profile;
-  const author=detectedAuthor(commit);
+  const active=context,author=detectedAuthor(commit);
   try{
-    await setDoc(doc(db,"commit_reclaims",claimDocumentId(sha,profile.id)),{
-      studentId:profile.id,assessmentId:context.task.id,section:context.section,
-      repository:profile.repoUrl,sha,detectedAuthorName:author.name,
-      detectedAuthorLogin:author.login,explanation:explanation.trim(),
-      status:"pending",createdAt:serverTimestamp()
-    });
-    claims.set(sha,{sha,status:"pending"});render();
-    status("Reclaim request recorded. No attribution was changed; staff review is required.");
+    const ref=doc(db,"commit_reclaims",claimDocumentId(sha,profile.id));
+    if(previous){
+      await runTransaction(db,async tx=>{
+        const snapshot=await tx.get(ref);
+        if(!snapshot.exists()||snapshot.data().status!=="withdrawn")
+          throw Error("Reclaim changed. Refresh the evidence panel before trying again.");
+        const before=snapshot.data(),revision=Number(before.revision||0)+1;
+        const after={...before,status:"pending",explanation:explanation.trim(),
+          revision,resubmittedAt:serverTimestamp()};
+        tx.set(doc(ref,"revisions",String(revision)),{before,after,
+          actorUid:auth.currentUser.uid,reason:explanation.trim(),createdAt:serverTimestamp()});
+        tx.set(ref,after);
+      });
+    }else{
+      await setDoc(ref,{
+        studentId:profile.id,assessmentId:active.task.id,section:active.section,
+        repository:profile.repoUrl,sha,detectedAuthorName:author.name,
+        detectedAuthorLogin:author.login,explanation:explanation.trim(),
+        status:"pending",createdAt:serverTimestamp()
+      });
+    }
+    if(context!==active)return;
+    claims.set(sha,{...previous,sha,status:"pending",explanation:explanation.trim()});render();
+    status(previous?"Reclaim resubmitted for administrator review. The earlier request is preserved.":"Reclaim request recorded. No attribution was changed; staff review is required.");
   }catch(error){status("Could not record reclaim: "+error.message);}
 }
 async function withdrawClaim(sha){
@@ -211,7 +235,7 @@ async function load(){
       }
     }catch(error){if(error?.code!=="permission-denied")throw error;}
     watchEvidence(doc(db,"assessment_evidence",docId),seq);
-    const [loadedClaims,result]=await Promise.all([loadClaims(active.profile.id),github(commitPagePath(repositoryPath(repo),1))]);
+    const [loadedClaims,result]=await Promise.all([loadClaims(active.profile.id,active.profile.repoUrl),github(commitPagePath(repositoryPath(repo),1))]);
     if(seq!==loadSequence)return;
     commits=appendUniqueCommits([],result);
     const missing=[...new Set([...selected,checkpoint].filter(validSha))].filter(sha=>!commits.some(commit=>commit.sha.toLowerCase()===sha));
