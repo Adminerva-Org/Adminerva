@@ -353,7 +353,7 @@ async function bulkReopen(){
   if(busy||!context||!evidenceReadable||Number(context.schemaVersion)!==2)return;
   const active=context;
   busy=true;render();
-  const failures=[];let reopened=0,skipped=0;
+  const failures=[];let reopened=0,skipped=0,confirmed=false;
   try{
     el("gbBulkStatus").textContent="Checking current evidence and protected grades…";
     await load(active);
@@ -375,6 +375,7 @@ async function bulkReopen(){
     if(!confirm("Reopen "+candidates.length+" evidence submission(s) for "+active.section+" · "+assessmentLabel()+
       "? Students will be allowed to change their selected commits and must resubmit for fresh approval. Old approvals and unpublished grading eligibility become stale; no grades or Git commits will be deleted."+
       (published?" "+published+" published grade(s) will remain protected and excluded.":"")))return;
+    confirmed=true;
     showBulkExceptions([]);
     analytics("evidence_section_reopen_started",{feature:"gradebook",count_bucket:candidates.length});
     for(const student of candidates){
@@ -404,17 +405,22 @@ async function bulkReopen(){
       status:failures.length?"partial":"success",count_bucket:reopened});
   }catch(error){failures.push(error.message);}
   finally{
-    busy=false;await load(active);showBulkExceptions(failures);
-    el("gbBulkStatus").textContent="Section reopening complete: "+reopened+" evidence record(s) reopened · "+
-      skipped+" already changed · "+failures.length+" exception(s). Students must select or revise their commits and resubmit for approval."+
-      (failures.length?" "+failures.slice(0,3).join(" | "):"");
+    busy=false;
+    if(context===active){
+      await load(active);showBulkExceptions(failures);
+      el("gbBulkStatus").textContent=!confirmed&&!failures.length
+        ?"No evidence was reopened. The section action was cancelled or no eligible submissions were found."
+        :"Section reopening complete: "+reopened+" evidence record(s) reopened · "+
+          skipped+" already changed · "+failures.length+" exception(s). Students must select or revise their commits and resubmit for approval."+
+          (failures.length?" "+failures.slice(0,3).join(" | "):"");
+    }
   }
 }
 async function bulkApprove(){
   if(busy||!context||Number(context.schemaVersion)!==2)return;
   const active=context;
   busy=true;render();
-  const failures=[];let completed=0,verifiedTotal=0,contextOnly=0,candidates=[];
+  const failures=[];let completed=0,verifiedTotal=0,contextOnly=0,candidates=[],confirmed=false,resubmitted=0;
   try{
     el("gbBulkStatus").textContent="Refreshing submitted and resubmitted evidence from the server…";
     await load(active);
@@ -424,10 +430,11 @@ async function bulkApprove(){
       el("gbBulkStatus").textContent="No submitted evidence is awaiting approval. Evidence still marked Reopened must be resubmitted by the student first.";
       return;
     }
-    const resubmitted=candidates.filter(item=>wasResubmittedAfterReopening(item.evidence)).length;
+    resubmitted=candidates.filter(item=>wasResubmittedAfterReopening(item.evidence)).length;
     if(!confirm("Approve "+candidates.length+" evidence record(s) in "+active.section+" · "+assessmentLabel()+
       (resubmitted?"? "+resubmitted+" were resubmitted after reopening.":"?")+
       " Adminerva will verify checkpoint ancestry, linked GitHub author matches, and pending reclaim conflicts. Only verified linked-account commits may receive individual contribution credit. This records your approval, not proof of runtime behavior."))return;
+    confirmed=true;
     showBulkExceptions([]);
     analytics("evidence_approval_started",{feature:"gradebook",count_bucket:candidates.length});
     for(const {student} of candidates){
@@ -459,11 +466,16 @@ async function bulkApprove(){
     analytics("evidence_approval_completed",{feature:"gradebook",status:failures.length?"partial":"success",count_bucket:completed});
   }catch(error){failures.push(error.message);}
   finally{
-    busy=false;await load(active);showBulkExceptions(failures);
-    el("gbBulkStatus").textContent="Approval complete: "+completed+" approved · "+verifiedTotal+
-      " contribution commit(s) verified · "+contextOnly+" checkpoint-only/context-only approval(s) · "+failures.length+
-      " left for Review & Grade. The refreshed candidates included resubmissions after reopening; entries still marked Reopened cannot be approved."+
-      (failures.length?" "+failures.slice(0,3).join(" | "):"");
+    busy=false;
+    if(context===active){
+      await load(active);showBulkExceptions(failures);
+      el("gbBulkStatus").textContent=!confirmed&&!failures.length
+        ?"No evidence was approved. "+(candidates.length?"Approval was cancelled.":"No submitted evidence is awaiting approval; reopened evidence must be resubmitted first.")
+        :"Approval complete: "+completed+" approved · "+verifiedTotal+
+          " contribution commit(s) verified · "+contextOnly+" checkpoint-only/context-only approval(s) · "+failures.length+
+          " left for Review & Grade."+(resubmitted?" "+resubmitted+" reopened submission(s) were included.":"")+
+          (failures.length?" "+failures.slice(0,3).join(" | "):"");
+    }
   }
 }
 function eligibleToRerun(evidence,grade){
