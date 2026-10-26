@@ -4,13 +4,13 @@ import {doc,getDoc,getDocs,setDoc,updateDoc,runTransaction,collection,query,wher
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {parseRepository,normalizeSelection,evidenceSelectionGuidance,detectedAuthor,attributionLabel,claimDocumentId,validSha}
   from "../repo-review/services/assessment-evidence.mjs?v=1.3.1";
-import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,verifyCheckpointAncestry} from "../repo-review/services/commit-history.mjs?v=1.3.1";
+import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,resolveSubmissionCheckpoint} from "../repo-review/services/commit-history.mjs?v=1.3.2";
 import {studentMayChangeEvidence,sameEvidence} from "../repo-review/services/evidence-lifecycle.mjs?v=1.3.1";
 import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs?v=1.3.0";
 
 const el=id=>document.getElementById(id);
 let context=null,commits=[],selected=new Set(),checkpoint="",claims=new Map(),saved=null,loadSequence=0;
-let historyPage=0,hasOlderCommits=false,historyLoading=false;
+let historyPage=0,hasOlderCommits=false,historyLoading=false,historyHeadSha="";
 let evidenceBusy=false;
 let stopEvidence=null,selectionDirty=false,evidenceSyncing=true;
 const status=text=>{el("evidenceStatus").textContent=text;};
@@ -218,7 +218,7 @@ async function load(){
   context=null;commits=[];selected=new Set();checkpoint="";saved=null;claims=new Map();
   evidenceBusy=false;
   selectionDirty=false;evidenceSyncing=true;
-  historyPage=0;hasOlderCommits=false;historyLoading=false;refreshHistoryControl();
+  historyPage=0;hasOlderCommits=false;historyLoading=false;historyHeadSha="";refreshHistoryControl();
   el("evidenceCommitList").replaceChildren();el("evidencePreview").textContent="";
   const summary=el("evidenceSelectionSummary");if(summary)summary.textContent="No evidence commits selected yet.";
   status("Loading your linked repository's commits…");
@@ -245,7 +245,9 @@ async function load(){
     }));
     if(seq!==loadSequence)return;
     commits=appendUniqueCommits(restored,commits);claims=loadedClaims;
-    if(!checkpoint&&commits[0]?.sha&&validSha(commits[0].sha))checkpoint=String(commits[0].sha).toLowerCase();
+    // Keep the actual branch head separate from restored older evidence commits.
+    historyHeadSha=validSha(result[0]?.sha)?String(result[0].sha).toLowerCase():"";
+    if(!checkpoint&&historyHeadSha)checkpoint=historyHeadSha;
     historyPage=1;hasOlderCommits=hasOlderCommitPage(historyPage,result.length);
     refreshHistoryControl();render();
     status(hasOlderCommits
@@ -281,7 +283,7 @@ async function loadOlderCommits(){
 }
 async function submit(){
   if(!context||evidenceBusy||evidenceSyncing)return;
-  const active=context;
+  const active=context,sequence=loadSequence;
   try{
     const guidance=evidenceSelectionGuidance([...selected],checkpoint);
     if(!guidance.ready){status(guidance.message);return;}
@@ -290,15 +292,30 @@ async function submit(){
       throw Error("Checkpoint not found in the loaded GitHub history.");
     evidenceBusy=true;render();status("Checking that the project checkpoint contains all selected evidence…");
     const repo=parseRepository(active.profile.repoUrl);
-    const ancestry=await verifyCheckpointAncestry({
-      selectedCommits,checkpointSha,
-      fetchPage:page=>github(repositoryPath(repo)+"/commits?sha="+encodeURIComponent(checkpointSha)+"&per_page=100&page="+page)
+    const compatible=await resolveSubmissionCheckpoint({
+      selectedCommits,checkpointSha,latestCheckpointSha:historyHeadSha,
+      fetchPage:(sha,page)=>github(repositoryPath(repo)+"/commits?sha="+encodeURIComponent(sha)+"&per_page=100&page="+page)
     });
-    if(!ancestry.ok)throw Error("Project checkpoint "+checkpointSha.slice(0,12)+" does not contain selected evidence commit"+(ancestry.missing.length===1?" ":"s ")+ancestry.missing.map(sha=>sha.slice(0,12)).join(", ")+". Choose a newer project checkpoint that contains your selected work.");
-    if(!confirm("Submit "+selectedCommits.length+" evidence commit"+(selectedCommits.length===1?"":"s")+" using project checkpoint "+checkpointSha.slice(0,12)+"? The checkpoint may be a teammate's later project commit; it is project context, not individual credit."))return;
+    if(sequence!==loadSequence||context!==active)return;
+    if(!compatible.ok)throw Error("The saved checkpoint and latest repository revision do not contain selected commit"+
+      (compatible.missing.length===1?" ":"s ")+compatible.missing.map(sha=>sha.slice(0,12)).join(", ")+
+      ". Check that these commits are on the same repository branch. If you recently pushed work, refresh the evidence list and retry; withdrawing evidence is not necessary.");
+    const submissionCheckpointSha=compatible.checkpointSha;
+    if(compatible.advanced){
+      checkpoint=submissionCheckpointSha;
+      selectionDirty=true;render();
+      status("New commits require a newer project checkpoint. The latest repository revision "+
+        submissionCheckpointSha.slice(0,12)+" was verified to contain all selected commits. Confirm to resubmit.");
+    }
+    if(!confirm((compatible.advanced
+      ?"Your previous checkpoint did not contain all selected commits. Adminerva verified a newer project checkpoint: "+submissionCheckpointSha.slice(0,12)+".\\n\\n"
+      :"")+"Submit "+selectedCommits.length+" evidence commit"+(selectedCommits.length===1?"":"s")+
+      " using project checkpoint "+submissionCheckpointSha.slice(0,12)+
+      "? The checkpoint may be a teammate's later project commit; it is project context, not individual credit."))return;
+    if(sequence!==loadSequence||context!==active)return;
     status("Submitting selected evidence…");
     const ref=doc(db,"assessment_evidence",active.profile.id+"_"+active.task.id);
-    const common={selectedCommits,checkpointSha,updatedAt:serverTimestamp()};
+    const common={selectedCommits,checkpointSha:submissionCheckpointSha,updatedAt:serverTimestamp()};
     if(saved){
       if(!studentMayChangeEvidence(saved))throw Error("Ask your instructor to reopen approved evidence first.");
       await changeEvidence(ref,saved,{...common,status:"submitted",submittedAt:serverTimestamp()},"Student resubmitted selected evidence");
@@ -315,7 +332,7 @@ async function submit(){
     render();
     status("Evidence submitted for teacher verification. This is not an approved contribution or grade.");
     window.dispatchEvent(new CustomEvent("adminerva:submission-recorded",{
-      detail:{assessmentId:active.task.id,studentId:active.profile.id,revisionSha:checkpointSha,evidenceStatus:"submitted"}
+      detail:{assessmentId:active.task.id,studentId:active.profile.id,revisionSha:submissionCheckpointSha,evidenceStatus:"submitted"}
     }));
   }catch(error){if(context===active)status("Evidence submission failed: "+error.message);}
   finally{if(context===active){evidenceBusy=false;render();}}
