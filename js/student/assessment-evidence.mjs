@@ -204,7 +204,7 @@ async function withdrawClaim(sha){
       status:"withdrawn",withdrawnAt:serverTimestamp()
     });
     claims.set(sha,{sha,status:"withdrawn"});render();
-    status("Reclaim withdrawn. Contact your instructor if you need to resubmit a claim.");
+    status("Reclaim withdrawn. Use Resubmit reclaim to send an updated explanation for administrator review.");
   }catch(error){status("Unable to withdraw: "+error.message);}
 }
 async function load(){
