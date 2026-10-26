@@ -459,6 +459,18 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     assert.deepEqual(adopted.selectedCommits,[groupSha]);assert.equal(adopted.revision,2);assert.ok(adopted.submittedAt);
     assert.equal((await browserRecord(teacher,"student_grades/alice_fixture-proposal")).exists,false);
     validated("historical proposals require instructor release and a real student submission before approval");
+    await openStudent(student,"fixture-v2");
+    const groupCommitRow=student.locator("#evidenceCommitList > div").filter({hasText:groupSha.slice(0,12)});
+    await groupCommitRow.getByRole("button",{name:"Request attribution review"}).click();
+    await expect(student.locator("#evidenceReclaimEditor")).toBeVisible();
+    await student.locator("#evidenceReclaimReason").fill(
+      "I completed the group layout on a shared device; another account pushed it. Please inspect my changed lines and classroom work."
+    );
+    await student.locator("#evidenceReclaimSave").click();
+    await expect(student.locator("#evidenceReclaimStatus")).toContainText("Pending administrator review");
+    await waitRecord(student,"commit_reclaims/"+groupSha+"_alice","status","pending");
+    validated("student reclaim form is visible, saves a pending request and shows an explicit result");
+
     assert.deepEqual(blockedRequests,[],"Unexpected external requests were blocked");
     assert.deepEqual(errors,[],"Unexpected browser runtime errors");
     await teacher.screenshot({path:path.join(output,"teacher-review.png")});
