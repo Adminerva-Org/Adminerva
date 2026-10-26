@@ -5,7 +5,8 @@ const read=path=>readFileSync(path,"utf8");
 const has=(path,text)=>assert.ok(read(path).includes(text),path+" is missing expected reliability change: "+text);
 const lacks=(path,text)=>assert.ok(!read(path).includes(text),path+" still contains reverted/regressive pattern: "+text);
 
-has("js/student/assessment-evidence.mjs","verifyCheckpointAncestry");
+has("js/student/assessment-evidence.mjs","resolveSubmissionCheckpoint");
+has("js/repo-review/services/commit-history.mjs","verifyCheckpointAncestry");
 has("js/student/assessment-evidence.mjs",'headers.Authorization="Bearer "+token');
 has("js/core/push-notifications.mjs","localOptOutKey");
 has("js/core/push-notifications.mjs","departPushAccount");
