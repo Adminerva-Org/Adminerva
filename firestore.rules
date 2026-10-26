@@ -747,6 +747,25 @@ service cloud.firestore {
         request.resource.data.detectedAuthorLogin.size() <= 80 &&
         request.resource.data.status == "pending" &&
         request.resource.data.createdAt == request.time;
+      // Administrators decide disputed attribution only with a matching
+      // immutable decision record in the same atomic write.
+      allow update: if isAdmin() &&
+        resource.data.status == "pending" &&
+        request.resource.data.status in ["approved","shared","rejected"] &&
+        request.resource.data.reviewedBy == request.auth.uid &&
+        request.resource.data.reviewedAt == request.time &&
+        request.resource.data.reviewNote is string &&
+        request.resource.data.reviewNote.size() >= 10 &&
+        request.resource.data.reviewNote.size() <= 2000 &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["status","reviewedBy","reviewedAt","reviewNote"]) &&
+        getAfter(/databases/$(database)/documents/commit_claim_decisions/$(claimId)).data.claimId == claimId &&
+        getAfter(/databases/$(database)/documents/commit_claim_decisions/$(claimId)).data.sha == resource.data.sha &&
+        getAfter(/databases/$(database)/documents/commit_claim_decisions/$(claimId)).data.studentId == resource.data.studentId &&
+        getAfter(/databases/$(database)/documents/commit_claim_decisions/$(claimId)).data.decision == request.resource.data.status &&
+        getAfter(/databases/$(database)/documents/commit_claim_decisions/$(claimId)).data.reviewerUid == request.auth.uid &&
+        getAfter(/databases/$(database)/documents/commit_claim_decisions/$(claimId)).data.reason == request.resource.data.reviewNote &&
+        getAfter(/databases/$(database)/documents/commit_claim_decisions/$(claimId)).data.createdAt == request.time;
       allow update: if signedIn() && ownsStudentProfile(resource.data.studentId) &&
         resource.data.status == "pending" &&
         request.resource.data.status == "withdrawn" &&
@@ -782,7 +801,21 @@ service cloud.firestore {
     // Staff review provenance. Decisions are administrator-controlled for now.
     match /commit_claim_decisions/{decisionId} {
       allow read: if isAdmin() || mayTeachStudent(resource.data.get("studentId",""));
-      allow create: if isAdmin();
+      allow create: if isAdmin() &&
+        request.resource.data.keys().hasOnly(["claimId","studentId","repository","sha",
+          "decision","reviewerUid","reason","createdAt"]) &&
+        decisionId == request.resource.data.claimId &&
+        request.resource.data.decision in ["approved","shared","rejected"] &&
+        request.resource.data.reviewerUid == request.auth.uid &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.reason is string &&
+        request.resource.data.reason.size() >= 10 &&
+        request.resource.data.reason.size() <= 2000 &&
+        get(/databases/$(database)/documents/commit_reclaims/$(decisionId)).data.status == "pending" &&
+        getAfter(/databases/$(database)/documents/commit_reclaims/$(decisionId)).data.status == request.resource.data.decision &&
+        request.resource.data.studentId == get(/databases/$(database)/documents/commit_reclaims/$(decisionId)).data.studentId &&
+        request.resource.data.repository == get(/databases/$(database)/documents/commit_reclaims/$(decisionId)).data.repository &&
+        request.resource.data.sha == get(/databases/$(database)/documents/commit_reclaims/$(decisionId)).data.sha;
       allow update, delete: if false;
     }
     match /commit_claim_conflicts/{conflictId} {
