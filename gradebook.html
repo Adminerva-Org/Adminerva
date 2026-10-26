@@ -57,6 +57,11 @@
             </div>
           </div>
         </div>
+        <details id="gbReclaimQueue" class="mt-4 rounded-xl border border-amber-200 bg-amber-50/40 px-4 py-3">
+          <summary class="cursor-pointer font-semibold text-sm text-slate-900">Commit reclaim requests <span id="gbReclaimCount" class="ml-1 text-amber-900">(0 pending)</span></summary>
+          <p class="text-xs text-slate-600 mt-2">Students may submit attribution requests for commits made under another GitHub identity. An administrator must decide these before affected evidence can be approved. Teachers can view requests in their assigned sections.</p>
+          <div id="gbReclaimList" class="grid gap-2 mt-3" aria-live="polite"></div>
+        </details>
         <div class="border-t border-slate-100 mt-5 pt-4">
           <p class="text-xs text-slate-500 mb-2">Bulk actions apply only to the selected section and assessment. Reopened evidence must be resubmitted by the student before approval. Published grades cannot be reopened in bulk.</p>
           <p id="gbBulkStatus" class="text-sm text-slate-600 leading-relaxed" role="status" aria-live="polite">Evaluations that need attention stay private for teacher review. Ready drafts can be published in bulk; re-evaluation preserves previous revisions.</p>
