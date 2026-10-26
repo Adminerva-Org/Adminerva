@@ -251,7 +251,7 @@ test('an instructor may release a historical proposal for audited student revisi
       source:'teacher_discovered',status:'needs_review',discoveredBy:'staff',recordedAt:new Date(),updatedAt:new Date()});
   });
   await assertFails(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
-  await assertSucceeds(auditedEvidence(staff,{status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',
+  await assertSucceeds(auditedEvidence(staff,{status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',reviewedBy:null,reviewedAt:null,verificationNote:'',
     reopenedBy:'staff',reopenedAt:serverTimestamp(),reopenReason:'Let the student choose their own committed evidence.'},{actor:'staff'}));
   await assertSucceeds(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
   assert.equal((await getDoc(doc(alice,'assessment_evidence','alice_v2'))).data().revision,2);
@@ -530,7 +530,7 @@ test('approved evidence requires instructor reopening; old drafts cannot publish
   await assertFails(setDoc(grade,{...record,evidenceRevision:0}));
   await assertSucceeds(setDoc(grade,record));
   await assertFails(auditedEvidence(alice,{status:'withdrawn'}));
-  const reopen={status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',
+  const reopen={status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',reviewedBy:null,reviewedAt:null,verificationNote:'',
     reopenedBy:'staff',reopenedAt:serverTimestamp(),reopenReason:'Permit correction to the individual submission.'};
   await assertFails(auditedEvidence(alice,{...reopen,reopenedBy:'alice'}));
   await assertSucceeds(updateDoc(grade,{published:true}));
@@ -538,6 +538,10 @@ test('approved evidence requires instructor reopening; old drafts cannot publish
   await assertFails(auditedEvidence(staff,reopen,{actor:'staff'}));
   await assertSucceeds(updateDoc(grade,{published:false}));
   await assertSucceeds(auditedEvidence(staff,reopen,{actor:'staff'}));
+  const reopened=(await getDoc(doc(alice,'assessment_evidence','alice_v2'))).data();
+  assert.equal(reopened.reviewedBy,null);
+  assert.equal(reopened.reviewedAt,null);
+  assert.equal(reopened.verificationNote,'');
   await assertFails(updateDoc(grade,{published:true}));
   await assertSucceeds(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
   await assertSucceeds(auditedEvidence(staff,approval(),{actor:'staff'}));
@@ -648,7 +652,7 @@ for(const commitCount of [1,20]) test(`student cannot alter discovered evidence 
     status:'needs_review',source:'teacher_discovered',discoveredBy:'staff',recordedAt:serverTimestamp(),updatedAt:serverTimestamp()}));
   await assertFails(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
   await assertSucceeds(auditedEvidence(staff,approval(),{actor:'staff'}));
-  await assertSucceeds(auditedEvidence(staff,{status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',
+  await assertSucceeds(auditedEvidence(staff,{status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',reviewedBy:null,reviewedAt:null,verificationNote:'',
     reopenedBy:'staff',reopenedAt:serverTimestamp(),reopenReason:'Allow student to correct discovered evidence.'},{actor:'staff'}));
   await assertSucceeds(auditedEvidence(alice,{status:'withdrawn'}));
   await assertSucceeds(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
@@ -674,6 +678,23 @@ test('reclaim is initially pending, owner-private and can only be withdrawn by c
   await assertSucceeds(getDoc(doc(staff,'commit_reclaims',SHA+'_alice')));
   await assertSucceeds(updateDoc(ref,{status:'withdrawn',withdrawnAt:serverTimestamp()}));
   await assertFails(updateDoc(ref,{status:'pending'}));
+  const before=(await getDoc(ref)).data();
+  const after={...before,status:'pending',explanation:'Updated explanation after confirming my older laptop Git identity.',
+    revision:1,resubmittedAt:serverTimestamp()};
+  const unsigned=writeBatch(alice);
+  unsigned.set(ref,after);
+  await assertFails(unsigned.commit());
+  const renewed=writeBatch(alice);
+  renewed.set(ref,after);
+  renewed.set(doc(ref,'revisions','1'),{before,after,actorUid:'alice',
+    reason:after.explanation,createdAt:serverTimestamp()});
+  await assertSucceeds(renewed.commit());
+  assert.equal((await getDoc(ref)).data().status,'pending');
+  await assertFails(updateDoc(doc(ref,'revisions','1'),{reason:'Falsified audit'}));
+  await assertFails(deleteDoc(doc(ref,'revisions','1')));
+  await assertFails(updateDoc(doc(ref,'revisions','1'),{actorUid:'bob'}));
+  await assertFails(updateDoc(ref,{status:'rejected',reviewedBy:'alice'}));
+
 });
 
 test('instructor-only V2 grading config and admin-only reclaim decisions',async()=>{
