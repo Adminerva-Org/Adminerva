@@ -227,7 +227,7 @@ service cloud.firestore {
 
     // Administrators retain existing system-wide maintenance privileges.
     match /{collection}/{document} {
-      allow read, write: if isAdmin() && !serverOwned(collection) && !monitoringCollection(collection) && !personalCollection(collection) && collection != "assessment_evidence" && collection != "student_grades" && collection != "assessments" && collection != "assessment_private" &&
+      allow read, write: if isAdmin() && !serverOwned(collection) && !monitoringCollection(collection) && !personalCollection(collection) && collection != "assessment_evidence" && collection != "commit_reclaims" && collection != "student_grades" && collection != "assessments" && collection != "assessment_private" &&
         !(collection in ["practice_profiles","practice_scores","practice_boards","practice_rankings"]);
     }
 
