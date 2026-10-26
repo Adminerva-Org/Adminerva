@@ -288,8 +288,6 @@ async function submit(){
     const guidance=evidenceSelectionGuidance([...selected],checkpoint);
     if(!guidance.ready){status(guidance.message);return;}
     const {selectedCommits,checkpointSha}=normalizeSelection([...selected],checkpoint);
-    if(!commits.some(c=>c.sha.toLowerCase()===checkpointSha&&!c.unavailable))
-      throw Error("Checkpoint not found in the loaded GitHub history.");
     evidenceBusy=true;render();status("Checking that the project checkpoint contains all selected evidence…");
     const repo=parseRepository(active.profile.repoUrl);
     const compatible=await resolveSubmissionCheckpoint({
@@ -308,7 +306,7 @@ async function submit(){
         submissionCheckpointSha.slice(0,12)+" was verified to contain all selected commits. Confirm to resubmit.");
     }
     if(!confirm((compatible.advanced
-      ?"Your previous checkpoint did not contain all selected commits. Adminerva verified a newer project checkpoint: "+submissionCheckpointSha.slice(0,12)+".\\n\\n"
+      ?"Your previous checkpoint did not contain all selected commits. Adminerva verified a newer project checkpoint: "+submissionCheckpointSha.slice(0,12)+".\n\n"
       :"")+"Submit "+selectedCommits.length+" evidence commit"+(selectedCommits.length===1?"":"s")+
       " using project checkpoint "+submissionCheckpointSha.slice(0,12)+
       "? The checkpoint may be a teammate's later project commit; it is project context, not individual credit."))return;
