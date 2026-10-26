@@ -387,8 +387,14 @@ test("teacher and students complete the V2 evidence lifecycle using real Auth an
     const reopenedSelection=student.getByRole("checkbox",{name:"Include commit "+ownSha.slice(0,12)+" as evidence",exact:true});
     await reopenedSelection.uncheck();await expect(reopenedSelection).not.toBeChecked();
     await reopenedSelection.check();await expect(reopenedSelection).toBeChecked();
+    // Exercise a genuinely changed selection rather than resubmitting the
+    // same SHA set: the restored checkpoint already contains both commits.
+    const additionalCommit=student.getByRole("checkbox",{name:"Include commit "+groupSha.slice(0,12)+" as evidence",exact:true});
+    await additionalCommit.check();await expect(additionalCommit).toBeChecked();
     await student.locator("#evidenceSubmit").click();
     await expect(student.locator("#evidenceStatus")).toContainText("submitted for teacher verification");
+    const newlySubmitted=await waitRecord(student,"assessment_evidence/alice_fixture-v2","status","submitted");
+    assert.deepEqual([...newlySubmitted.selectedCommits].sort(),[ownSha,groupSha].sort());
     await openTeacher();await approve();
     evidence=(await browserRecord(teacher,"assessment_evidence/alice_fixture-v2")).data;
     assert.notEqual(evidence.revision,grade.evidenceRevision);
