@@ -35,7 +35,7 @@ test('grade revisions match the transaction and remain immutable even to adminis
 test('broad staff matches cannot create or mutate arbitrary nested academic audit trails',async()=>{
   for(const database of [client('staff',TEACHER),client('admin',ADMIN)])for(const parts of [['students','alice','revisions','forged'],['assessments','peta','audit','forged'],['student_grades','alice_peta','revisions','forged']])await assertFails(setDoc(doc(database,...parts),{reason:'Forged nested audit'}));
   const admin=client('admin',ADMIN),decision=doc(admin,'commit_claim_decisions','immutable-decision');
-  await assertSucceeds(setDoc(decision,{reason:'Administrator claim resolution'}));
+  await assertFails(setDoc(decision,{reason:'Administrator claim resolution'}));
   await assertFails(updateDoc(decision,{reason:'Replaced decision'}));await assertFails(deleteDoc(decision));
 });
 test('a directory-only teacher can inspect its own profile but cannot grant itself staff authority',async()=>{
@@ -717,9 +717,48 @@ test('instructor-only V2 grading config and admin-only reclaim decisions',async(
   await assertFails(setDoc(doc(alice,'assessment_private','forged'),{systemPersona:'hijack'}));
   const decision=doc(teacher,'commit_claim_decisions','audit1');
   await assertFails(setDoc(decision,{reason:'false'}));
-  await assertSucceeds(setDoc(doc(admin,'commit_claim_decisions','audit1'),
-    {reason:'Verified after classroom review'}));
+  await assertFails(setDoc(doc(admin,'commit_claim_decisions','audit1'),
+    {reason:'Unpaired decisions are not valid attribution reviews'}));
   await assertFails(getDoc(doc(alice,'commit_claim_decisions','audit1')));
+});
+test('administrator reclaim decision atomically updates claim and immutable audit; teachers cannot decide',async()=>{
+  const repository='https://github.com/example/project';
+  await env.withSecurityRulesDisabled(async context=>{
+    const db=context.firestore();
+    await setDoc(doc(db,'students','alice'),{name:'Alice',email:EMAIL_A,section:'11-A',repoUrl:repository});
+    await setDoc(doc(db,'commit_reclaims',SHA+'_alice'),{
+      studentId:'alice',assessmentId:'v2',section:'11-A',repository,sha:SHA,
+      detectedAuthorName:'Shared device',detectedAuthorLogin:'',
+      explanation:'Student states this commit was made using a shared machine.',
+      status:'pending',createdAt:Timestamp.now()
+    });
+  });
+  const admin=client('admin',ADMIN),staff=client('staff',TEACHER),alice=client('alice',EMAIL_A);
+  const claimId=SHA+'_alice',note='I examined the changed files, identity explanation and supporting classroom work.';
+  function decisionBatch(db,actor='admin',decision='approved'){
+    const batch=writeBatch(db);
+    batch.update(doc(db,'commit_reclaims',claimId),{
+      status:decision,reviewedBy:actor,reviewedAt:serverTimestamp(),reviewNote:note
+    });
+    batch.set(doc(db,'commit_claim_decisions',claimId),{
+      claimId,studentId:'alice',repository,sha:SHA,
+      decision,reviewerUid:actor,reason:note,createdAt:serverTimestamp()
+    });
+    return batch.commit();
+  }
+  await assertFails(updateDoc(doc(admin,'commit_reclaims',claimId),{
+    status:'approved',reviewedBy:'admin',reviewedAt:serverTimestamp(),reviewNote:note
+  }));
+  await assertFails(decisionBatch(staff,'staff'));
+  await assertFails(decisionBatch(alice,'alice'));
+  await assertSucceeds(decisionBatch(admin));
+  assert.equal((await getDoc(doc(admin,'commit_reclaims',claimId))).data().status,'approved');
+  const audited=(await getDoc(doc(admin,'commit_claim_decisions',claimId))).data();
+  assert.equal(audited.sha,SHA);assert.equal(audited.reviewerUid,'admin');
+  await assertFails(updateDoc(doc(admin,'commit_claim_decisions',claimId),{decision:'rejected'}));
+  await assertFails(updateDoc(doc(admin,'commit_reclaims',claimId),{status:'rejected'}));
+  await assertFails(decisionBatch(admin));
+  await assertFails(getDoc(doc(alice,'commit_claim_decisions',claimId)));
 });
 test('cloud Playground versions are immutable and owner-only',async()=>{
   const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);
