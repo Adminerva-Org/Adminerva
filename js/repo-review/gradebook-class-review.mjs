@@ -1,10 +1,11 @@
 /** Class-level submission triage and safe bulk review orchestration. */
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
-import {collection,doc,getDoc,getDocs,query,where,serverTimestamp,setDoc,runTransaction} from "../core/teaching-firestore.mjs?v=1.3.2";
+import {collection,doc,getDoc,getDocFromServer,getDocs,getDocsFromServer,query,where,serverTimestamp,setDoc,runTransaction} from "../core/teaching-firestore.mjs?v=1.3.2";
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {normalizeSelection,parseRepository} from "./services/assessment-evidence.mjs?v=1.4.3";
 import {verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
 import {approvalContribution,evidenceRevision} from "./services/evidence-lifecycle.mjs?v=1.4.3";
+import {bulkApproveCandidates,bulkReopenCandidates,wasResubmittedAfterReopening,currentGradeForEvidence} from "./services/bulk-evidence.mjs?v=1.4.1";
 import {parseWeightedRubric,loadPinnedV2Source,parseSuggestedRubric} from "./services/v2-grading-assistant.mjs?v=1.4.22";
 import {evaluateVerifiedEvidence} from "./services/adaptive-evaluation.mjs?v=1.3.0";
 import {schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
@@ -12,7 +13,7 @@ import {legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.2";
 
 const el=id=>document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
-let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map();
+let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map(),loadSequence=0;
 const draftRef=(studentId,taskId)=>doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId);
 function showBulkExceptions(failures){
   const box=el("gbBulkExceptionDetails"),list=el("gbBulkExceptionList");
@@ -84,16 +85,22 @@ async function copyMissingReminder(){
 function statusFor(student){
   const evidence=evidenceMap.get(student.id),grade=context.grades?.[student.id],draft=draftMap.get(student.id);
   if(grade?.published)return {label:"Published",tone:"emerald"};
-  if(grade?.reviewRequired===true&&!legacyReadyDraft(grade))return {label:"Review needed",tone:"amber",next:"Review & grade"};
-  if(grade)return {label:legacyReadyDraft(grade)?"Legacy draft · ready":"Ready to publish",tone:"cyan"};
-  if(draft)return {label:"Evaluation ready",tone:"indigo",next:"Review suggestion"};
-  if(evidence?.status==="approved")return {label:evidence.verifiedContributionCommits?.length?"Approved · verified":"Approved · contribution check needed",tone:evidence.verifiedContributionCommits?.length?"emerald":"amber",next:"Review & grade"};
-  if(evidence?.status==="submitted")return {label:"Submitted",tone:"blue",next:"Review submission"};
+  // V2 evidence lifecycle takes precedence over older unpublished drafts.
+  // A grade from the previous approved revision must not look publishable.
+  if(evidence?.status==="reopened")return {label:"Reopened · awaiting student",tone:"amber",next:"View status"};
+  if(evidence?.status==="withdrawn")return {label:"Withdrawn",tone:"slate",next:"View status"};
+  if(evidence?.status==="submitted")return {label:wasResubmittedAfterReopening(evidence)?
+    "Resubmitted · approval pending":"Submitted",tone:"blue",next:"Review submission"};
   if(evidence?.status==="needs_review"&&evidence?.source==="teacher_discovered")
     return {label:evidence.selectedCommits?.length?"Gathered · review evidence":"Gathered · checkpoint only",tone:"amber",next:"Review gathered evidence"};
   if(evidence?.status==="needs_review")return {label:"Needs review",tone:"amber",next:"Review submission"};
-  if(evidence?.status==="reopened")return {label:"Returned for changes",tone:"amber",next:"View status"};
-  if(evidence?.status==="withdrawn")return {label:"Withdrawn",tone:"slate",next:"View status"};
+  if(grade&&Number(context.schemaVersion)===2&&!currentGradeForEvidence(grade,evidence))
+    return {label:"Prior draft · evidence changed",tone:"amber",next:"Review & grade"};
+  if(grade?.reviewRequired===true&&!legacyReadyDraft(grade))return {label:"Review needed",tone:"amber",next:"Review & grade"};
+  if(grade)return {label:legacyReadyDraft(grade)?"Legacy draft · ready":"Ready to publish",tone:"cyan"};
+  if(draft)return {label:"Evaluation ready",tone:"indigo",next:"Review suggestion"};
+  if(evidence?.status==="approved")return {label:evidence.verifiedContributionCommits?.length?
+    "Approved · verified":"Approved · contribution check needed",tone:evidence.verifiedContributionCommits?.length?"emerald":"amber",next:"Review & grade"};
   if(receiptMap.has(student.id))return {label:"Submitted",tone:"blue",next:"Review submission"};
   return {label:"Not submitted",tone:"slate",next:"Open review"};
 }
@@ -112,7 +119,7 @@ function render(){
     if(evidence?.status==="submitted"||evidence?.status==="needs_review"||(!evidence&&receiptMap.has(student.id)))submitted++;
     if(evidence?.status==="approved")approved++;
     if(grade?.published)published++;
-    else if(grade||draftMap.has(student.id)){
+    else if((!isV2||!grade||currentGradeForEvidence(grade,evidence))&&(grade||draftMap.has(student.id))){
       drafts++;
       if(grade?.reviewRequired===true&&!legacyReadyDraft(grade))flagged++;
       else if(grade)ready++;
@@ -123,7 +130,8 @@ function render(){
     if(evidenceMap.has(student.id)||context.grades?.[student.id]?.published)return false;
     try{return Boolean(parseRepository(student.repoUrl));}catch{return false;}
   }):[];
-  const approveCandidates=isV2?context.students.filter(student=>["submitted","needs_review"].includes(evidenceMap.get(student.id)?.status)):[];
+  const approveCandidates=isV2?bulkApproveCandidates(context.students,evidenceMap):[];
+  const reopenCandidates=isV2?bulkReopenCandidates(context.students,evidenceMap,context.grades):[];
   const evaluateCandidates=isV2?context.students.filter(student=>{
     const e=evidenceMap.get(student.id),g=context.grades?.[student.id];
     return e?.status==="approved"&&Array.isArray(e.verifiedContributionCommits)&&e.verifiedContributionCommits.length>0&&!g&&!draftMap.has(student.id);
@@ -138,6 +146,11 @@ function render(){
     el("gbCopyMissingReminder").textContent=isV2?"Copy missing reminder ("+missingReminder.length+")":"Missing reminder · V2 evidence only";
     el("gbCopyMissingReminder").disabled=busy||!evidenceReadable||!missingReminder.length;
   }
+  if(el("gbBulkReopen")){
+    el("gbBulkReopen").textContent=isV2?"Reopen section evidence ("+reopenCandidates.length+")":"Reopen · V2 evidence only";
+    el("gbBulkReopen").disabled=busy||!evidenceReadable||!reopenCandidates.length;
+  }
+  if(el("gbRefreshEvidence"))el("gbRefreshEvidence").disabled=busy||!context;
   el("gbBulkApprove").textContent=isV2?"Approve evidence ("+approveCandidates.length+")":"Approval · V2 evidence only";
   el("gbBulkApprove").disabled=busy||!evidenceReadable||!approveCandidates.length;
   el("gbBulkEvaluate").textContent=isV2?"Run system evaluation ("+evaluateCandidates.length+")":"System evaluation · V2 evidence only";
@@ -148,24 +161,29 @@ function render(){
   const p=new URLSearchParams({section:context.section,assessment:context.taskId});el("gbReviewExceptions").href="repofetch.html?"+p.toString();
 }
 async function load(detail){
-  context=detail;evidenceMap=new Map();draftMap=new Map();receiptMap=new Map();
+  if(!detail)return;
+  const sequence=++loadSequence;
+  context=detail;evidenceReadable=false;evidenceMap=new Map();draftMap=new Map();receiptMap=new Map();
+  render();
   const isV2=Number(detail.schemaVersion)===2;
   // An unavailable optional collection must never erase the evidence roster or
   // turn unknown submission status into an apparent "not submitted" result.
   const sources=await Promise.allSettled([
     getDocs(query(collection(db,"student_submissions"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
     ...(isV2?[
-      getDocs(query(collection(db,"assessment_evidence"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
+      getDocsFromServer(query(collection(db,"assessment_evidence"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
       getDocs(collection(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items"))
     ]:[])
   ]);
+  if(sequence!==loadSequence)return;
   const warnings=[];
   if(isV2){
-    try{const grades=await getDocs(query(collection(db,"student_grades"),where("taskId","==",detail.taskId)));
+    try{const grades=await getDocsFromServer(query(collection(db,"student_grades"),where("taskId","==",detail.taskId)));
       context.grades=Object.fromEntries(grades.docs.filter(record=>detail.students.some(student=>student.id===record.data().studentId))
         .map(record=>[record.data().studentId,record.data()]));
     }catch(error){warnings.push("gradebook drafts: "+error.message);}
   }
+  if(sequence!==loadSequence)return;
   if(sources[0].status==="fulfilled")for(const record of sources[0].value.docs){
     const data={id:record.id,...record.data()},prior=receiptMap.get(data.studentId);
     const stamp=value=>value?.toMillis?.()||Date.parse(value||"")||0;
