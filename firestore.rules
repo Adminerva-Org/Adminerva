@@ -638,11 +638,14 @@ service cloud.firestore {
          (!exists(/databases/$(database)/documents/student_grades/$(evidenceId)) ||
           get(/databases/$(database)/documents/student_grades/$(evidenceId)).data.published == false) &&
          after.approvedCheckpointSha == null && after.verifiedContributionCommits == [] &&
-         after.contributionScope == "" && after.reopenedBy == request.auth.uid &&
+         after.contributionScope == "" && after.reviewedBy == null &&
+         after.reviewedAt == null && after.verificationNote == "" &&
+         after.reopenedBy == request.auth.uid &&
          after.reopenedAt == request.time && after.reopenReason is string &&
          after.reopenReason.size() >= 15 && after.reopenReason.size() <= 3000 &&
          after.diff(before).affectedKeys().hasOnly(["status","approvedCheckpointSha","verifiedContributionCommits",
-           "contributionScope","reopenedBy","reopenedAt","reopenReason","revision","updatedAt"])));
+           "contributionScope","reviewedBy","reviewedAt","verificationNote",
+           "reopenedBy","reopenedAt","reopenReason","revision","updatedAt"])));
     }
 
     match /assessment_evidence/{evidenceId} {
@@ -700,6 +703,18 @@ service cloud.firestore {
       }
     }
 
+    // A withdrawn claimant may submit a new explanation once the prior
+    // state is preserved in an immutable revision. Rejected/decided claims
+    // cannot be reopened by the student.
+    function reclaimResubmissionAudit(claimId) {
+      let version = request.resource.data.revision;
+      let audit = getAfter(/databases/$(database)/documents/commit_reclaims/$(claimId)/revisions/$(string(version))).data;
+      return version is int && version == resource.data.get("revision",0) + 1 &&
+        audit.before == resource.data && audit.after == request.resource.data &&
+        audit.actorUid == request.auth.uid && audit.createdAt == request.time &&
+        audit.reason == request.resource.data.explanation;
+    }
+
     // A reclaim is an unverified attribution request, not a transfer of
     // authorship. Only staff can accept/reject it; students may withdraw.
     match /commit_reclaims/{claimId} {
@@ -738,7 +753,30 @@ service cloud.firestore {
         request.resource.data.withdrawnAt == request.time &&
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["status","withdrawnAt"]);
+      allow update: if signedIn() && ownsStudentProfile(resource.data.studentId) &&
+        resource.data.status == "withdrawn" &&
+        request.resource.data.status == "pending" &&
+        request.resource.data.resubmittedAt == request.time &&
+        request.resource.data.explanation is string &&
+        request.resource.data.explanation.size() >= 10 &&
+        request.resource.data.explanation.size() <= 1500 &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["status","explanation","revision","resubmittedAt"]) &&
+        reclaimResubmissionAudit(claimId);
       allow delete: if false;
+      match /revisions/{revisionId} {
+        allow read: if mayTeachSection(get(/databases/$(database)/documents/commit_reclaims/$(claimId)).data.section) ||
+          (signedIn() && ownsStudentProfile(get(/databases/$(database)/documents/commit_reclaims/$(claimId)).data.studentId));
+        allow create: if signedIn() &&
+          request.resource.data.keys().hasOnly(["before","after","actorUid","reason","createdAt"]) &&
+          request.resource.data.actorUid == request.auth.uid &&
+          request.resource.data.createdAt == request.time &&
+          request.resource.data.before == get(/databases/$(database)/documents/commit_reclaims/$(claimId)).data &&
+          request.resource.data.after == getAfter(/databases/$(database)/documents/commit_reclaims/$(claimId)).data &&
+          revisionId == string(request.resource.data.after.revision) &&
+          request.resource.data.after.revision == request.resource.data.before.get("revision",0) + 1;
+        allow update, delete: if false;
+      }
     }
 
     // Staff review provenance. Decisions are administrator-controlled for now.
