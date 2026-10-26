@@ -258,7 +258,6 @@ function renderAssessments() {
           ? "bg-green-100 text-green-700 border-green-200"
           : "bg-blue-100 text-blue-700 border-blue-200";
 
-    const fileScope=assessmentTargetDetails(ass);
     const myGrade=myGrades[ass.id];
     const status=assignmentStatusFor(ass);
     const colors={
@@ -279,23 +278,22 @@ function renderAssessments() {
       ? `<span class="text-[10px] text-slate-400 font-medium ml-auto">Due: ${ass.dueDate.toLocaleDateString()}</span>`
       : `<span class="text-[10px] text-slate-400 font-medium ml-auto">Posted: ${ass.postedDate.toLocaleDateString()}</span>`;
 
+    const action=status.kind==="revision"?"Revise evidence":
+      status.kind==="graded"?"View feedback":
+      status.kind==="submitted"||status.kind==="reviewed"?"View submission":"Open assignment";
     const card = `
-      <div class="bg-white p-5 rounded-xl border ${ass.isUrgent && !myGrade ? "border-rose-300 shadow-sm" : "border-slate-200"} hover:shadow-md transition cursor-pointer flex flex-col sm:flex-row sm:items-center gap-4" onclick="viewAssessmentDetails('${ass.id}')">
-        <div class="flex-grow">
-          <div class="flex items-center gap-3 mb-2 flex-wrap">
-            <span class="${typeColor} text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">${escapeHTML(ass.type)}</span>
+      <button type="button" class="w-full text-left bg-white p-4 rounded-xl border ${ass.isUrgent && !myGrade ? "border-rose-300" : "border-slate-200"} hover:border-indigo-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition flex flex-col sm:flex-row sm:items-center gap-3" onclick="viewAssessmentDetails('${ass.id}')">
+        <div class="flex-grow min-w-0">
+          <div class="flex flex-wrap items-center gap-2 mb-1.5">
+            <span class="${typeColor} text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">${escapeHTML(ass.type)}</span>
             ${urgencyBadge}
             ${deadlineString}
           </div>
-          <h3 class="text-lg font-bold text-slate-800 leading-tight">${escapeHTML(ass.title)}</h3>
-          <p class="text-sm text-slate-500 mt-2 line-clamp-2">${escapeHTML(ass.taskContext || "No context provided.")}</p>
+          <h3 class="text-base font-bold text-slate-900 leading-snug">${escapeHTML(ass.title)}</h3>
+          <p class="text-xs text-slate-600 mt-1 line-clamp-1">${escapeHTML(ass.taskContext || "Open to see task instructions and evidence details.")}</p>
         </div>
-        <div class="sm:border-l sm:border-slate-200 sm:pl-4 flex flex-row sm:flex-col items-center justify-between sm:justify-center w-full sm:w-32 gap-2 mt-2 sm:mt-0">
-          <span class="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Target Paths</span>
-          <span class="text-[10px] font-mono bg-slate-100 text-slate-600 px-2 py-1 rounded truncate max-w-full" title="${escapeHTML(fileScope.paths)}">${escapeHTML(fileScope.paths)}</span>
-          ${fileScope.expectedTypes ? `<span class="text-[10px] text-slate-600 text-center break-all">Expected: ${escapeHTML(fileScope.expectedTypes)}</span>` : ""}
-        </div>
-      </div>
+        <span class="shrink-0 inline-flex items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-800 px-3 py-2 text-xs font-bold sm:ml-auto">${escapeHTML(action)} →</span>
+      </button>
     `;
     container.insertAdjacentHTML("beforeend", card);
   });
