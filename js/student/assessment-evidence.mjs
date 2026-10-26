@@ -10,7 +10,7 @@ import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs?v
 
 const el=id=>document.getElementById(id);
 let context=null,commits=[],selected=new Set(),checkpoint="",claims=new Map(),saved=null,loadSequence=0;
-let historyPage=0,hasOlderCommits=false,historyLoading=false,historyHeadSha="";
+let historyPage=0,hasOlderCommits=false,historyLoading=false,historyHeadSha="",commitFilter="all",reclaimTarget=null,reclaimBusy=false;
 let evidenceBusy=false;
 let stopEvidence=null,selectionDirty=false,evidenceSyncing=true;
 const status=text=>{el("evidenceStatus").textContent=text;};
@@ -72,6 +72,15 @@ function contextForStudent(){
 }
 function render(){
   const list=el("evidenceCommitList");list.replaceChildren();
+  el("evidenceSelectedCount").textContent=selected.size+" selected";
+  for(const button of document.querySelectorAll("[data-evidence-filter]")){
+    const active=button.dataset.evidenceFilter===commitFilter;
+    button.setAttribute("aria-pressed",String(active));
+    button.classList.toggle("bg-indigo-50",active);
+    button.classList.toggle("border-indigo-400",active);
+    button.classList.toggle("text-indigo-900",active);
+    button.classList.toggle("border-slate-200",!active);
+  }
   const editable=studentMayChangeEvidence(saved)&&!evidenceSyncing;
   el("evidenceEditability").textContent=evidenceSyncing?"Checking current server status…":evidenceBusy?"Saving evidence…":editable?
     "Editing enabled · "+(saved?.status==="reopened"?"Instructor reopened this evidence. Change the boxes and resubmit.":"Choose your commits and checkpoint, then submit."):
@@ -85,11 +94,25 @@ function render(){
   const summary=el("evidenceSelectionSummary");
   if(summary)summary.textContent=guidance.message;
   if(!commits.length){add(list,"p","No commits returned. The repository may be empty or inaccessible.");return;}
-  for(const commit of commits){
+  const linked=String(context?.profile?.githubUsername||"").trim().replace(/^@/,"").toLowerCase();
+  const visible=commits.filter(commit=>{
+    const sha=String(commit.sha||"").toLowerCase();
+    if(commitFilter==="selected")return selected.has(sha);
+    if(commitFilter==="mine")return Boolean(linked)&&String(commit?.author?.login||"").toLowerCase()===linked;
+    return true;
+  });
+  el("evidenceFilteredCount").textContent=visible.length+" of "+commits.length+" shown";
+  if(!visible.length){
+    add(list,"p",commitFilter==="mine"?
+      "No commits matched your linked GitHub login. Select All commits to view shared-account work and request attribution review.":
+      "No selected commits in this view. Switch to All commits to add work.",
+      "text-sm text-slate-600 rounded-lg border border-dashed p-4");
+  }
+  for(const commit of visible){
     const sha=String(commit.sha||"").toLowerCase();
     if(!validSha(sha))continue;
     const author=detectedAuthor(commit);
-    const row=add(list,"div","","rounded-lg border border-slate-200 p-3");
+    const row=add(list,"div","","rounded-xl border border-slate-200 p-3 hover:border-indigo-300 transition");
     const top=add(row,"div","","flex flex-wrap items-center gap-3");
     const includeLabel=add(top,"label","","inline-flex items-center gap-1 text-xs text-slate-700 font-semibold cursor-pointer");
     const check=document.createElement("input");check.type="checkbox";check.checked=selected.has(sha);
@@ -109,7 +132,7 @@ function render(){
       "text-xs break-words");
     add(row,"p",author.name+" · "+(author.login?"@"+author.login:"Git login unavailable")+
       " · "+(author.date?new Date(author.date).toLocaleString():"Unknown date"),
-      "text-xs text-slate-600 mt-2 break-words");
+      "text-xs text-slate-600 mt-1 break-words");
     add(row,"p",attributionLabel(commit,context?.profile?.githubUsername),
       "text-xs text-slate-500 mt-1");
     const controls=add(row,"div","","flex flex-wrap gap-3 mt-2");
@@ -117,7 +140,7 @@ function render(){
     view.type="button";view.addEventListener("click",()=>{void preview(commit);});
     const claim=claims.get(sha);
     if(claim){
-      add(controls,"span","Reclaim: "+claim.status,"text-xs font-semibold text-amber-800");
+      add(controls,"span","Reclaim "+claim.status,"text-xs font-semibold text-amber-800");
       if(claim.status==="pending"){
         const withdraw=add(controls,"button","Withdraw reclaim","text-xs text-rose-700 underline");
         withdraw.type="button";withdraw.addEventListener("click",()=>{void withdrawClaim(sha);});
@@ -126,13 +149,36 @@ function render(){
         retry.type="button";retry.addEventListener("click",()=>{void reclaimCommit(commit);});
       }
     }else{
-      const reclaim=add(controls,"button","Reclaim Commit","text-xs text-amber-800 font-bold underline");
+      const reclaim=add(controls,"button","Request attribution review","text-xs text-amber-800 font-bold underline");
       reclaim.type="button";reclaim.addEventListener("click",()=>{void reclaimCommit(commit);});
     }
   }
 }
+function closeReclaimForm(){
+  reclaimTarget=null;
+  el("evidenceReclaimEditor").classList.add("hidden");
+  el("evidenceReclaimStatus").textContent="";
+}
+function openReclaimForm(commit){
+  if(!context||reclaimBusy)return;
+  const sha=String(commit?.sha||"").toLowerCase(),previous=claims.get(sha);
+  if(!validSha(sha))return status("Choose a valid Git commit before requesting attribution.");
+  if(previous&&previous.status!=="withdrawn")
+    return status("This commit already has a pending or decided attribution request.");
+  reclaimTarget=commit;
+  el("evidenceReclaimReason").value="";
+  el("evidenceReclaimSubject").textContent="Commit "+sha.slice(0,12)+
+    " · "+detectedAuthor(commit).name+(previous?" · Resubmit withdrawn request":"");
+  el("evidenceReclaimSave").textContent=previous?"Resubmit attribution request":"Send for administrator review";
+  el("evidenceReclaimStatus").textContent="Describe what you personally implemented. A request does not automatically transfer credit or approve evidence.";
+  el("evidenceReclaimEditor").classList.remove("hidden");
+  el("evidenceReclaimEditor").scrollIntoView({block:"nearest",behavior:"smooth"});
+  el("evidenceReclaimReason").focus({preventScroll:true});
+}
 async function preview(commit){
-  const node=el("evidencePreview");node.textContent="Fetching commit details…";
+  const node=el("evidencePreview");
+  const details=el("evidencePreviewDetails");details.classList.remove("hidden");details.open=true;
+  node.textContent="Fetching commit details…";
   try{
     const repo=parseRepository(context.profile.repoUrl);
     const detail=await github(repositoryPath(repo)+"/commits/"+encodeURIComponent(commit.sha));
@@ -159,17 +205,21 @@ async function loadClaims(studentId,repository){
     .map(claim=>[claim.sha,claim]));
 }
 async function reclaimCommit(commit){
-  if(!context)return;
-  const sha=commit.sha.toLowerCase(),profile=context.profile,previous=claims.get(sha);
-  if(previous&&previous.status!=="withdrawn")return status("This commit already has a reclaim decision or pending request.");
-  const explanation=prompt(previous
-    ?"Provide an updated explanation to resubmit your withdrawn reclaim. The earlier request stays in its audit history."
-    :"Explain why this Git commit should be attributed to you. Staff must verify the claim.");
-  if(explanation===null)return;
-  if(explanation.trim().length<10||explanation.length>1500){
-    status("Provide an explanation between 10 and 1,500 characters.");return;
+  if(!context||reclaimBusy)return;
+  openReclaimForm(commit);
+}
+async function sendReclaim(){
+  if(!context||!reclaimTarget||reclaimBusy)return;
+  const active=context,commit=reclaimTarget,sha=String(commit.sha).toLowerCase();
+  const profile=active.profile,previous=claims.get(sha);
+  const explanation=el("evidenceReclaimReason").value.trim();
+  const inline=text=>{el("evidenceReclaimStatus").textContent=text;};
+  if(explanation.length<10||explanation.length>1500){
+    inline("Please explain your work in 10–1,500 characters before sending.");return;
   }
-  const active=context,author=detectedAuthor(commit);
+  const author=detectedAuthor(commit);
+  reclaimBusy=true;el("evidenceReclaimSave").disabled=true;
+  inline("Saving your attribution request…");
   try{
     const ref=doc(db,"commit_reclaims",claimDocumentId(sha,profile.id));
     if(previous){
@@ -178,24 +228,29 @@ async function reclaimCommit(commit){
         if(!snapshot.exists()||snapshot.data().status!=="withdrawn")
           throw Error("Reclaim changed. Refresh the evidence panel before trying again.");
         const before=snapshot.data(),revision=Number(before.revision||0)+1;
-        const after={...before,status:"pending",explanation:explanation.trim(),
-          revision,resubmittedAt:serverTimestamp()};
+        const after={...before,status:"pending",explanation,revision,resubmittedAt:serverTimestamp()};
         tx.set(doc(ref,"revisions",String(revision)),{before,after,
-          actorUid:auth.currentUser.uid,reason:explanation.trim(),createdAt:serverTimestamp()});
+          actorUid:auth.currentUser.uid,reason:explanation,createdAt:serverTimestamp()});
         tx.set(ref,after);
       });
     }else{
       await setDoc(ref,{
         studentId:profile.id,assessmentId:active.task.id,section:active.section,
         repository:profile.repoUrl,sha,detectedAuthorName:author.name,
-        detectedAuthorLogin:author.login,explanation:explanation.trim(),
+        detectedAuthorLogin:author.login,explanation,
         status:"pending",createdAt:serverTimestamp()
       });
     }
     if(context!==active)return;
-    claims.set(sha,{...previous,sha,status:"pending",explanation:explanation.trim()});render();
-    status(previous?"Reclaim resubmitted for administrator review. The earlier request is preserved.":"Reclaim request recorded. No attribution was changed; staff review is required.");
-  }catch(error){status("Could not record reclaim: "+error.message);}
+    claims.set(sha,{...previous,sha,status:"pending",explanation});
+    render();
+    inline("Request sent. Status: Pending administrator review. You may still submit selected evidence, but it cannot be approved while this claim is pending.");
+    status("Commit attribution request saved. An administrator will review it; your selected evidence has not changed.");
+  }catch(error){
+    if(context===active)inline("Could not save reclaim: "+error.message+". Your explanation is preserved; correct the issue and retry.");
+  }finally{
+    reclaimBusy=false;el("evidenceReclaimSave").disabled=false;
+  }
 }
 async function withdrawClaim(sha){
   if(!confirm("Withdraw your pending reclaim request?"))return;
@@ -216,6 +271,11 @@ async function load(){
   el("legacySubmitPanel").classList.toggle("hidden",v2);
   if(!v2){hasOlderCommits=false;refreshHistoryControl();return;}
   context=null;commits=[];selected=new Set();checkpoint="";saved=null;claims=new Map();
+  commitFilter="all";reclaimTarget=null;reclaimBusy=false;
+  el("evidenceReclaimEditor").classList.add("hidden");
+  el("evidenceReclaimSave").disabled=false;
+  el("evidencePreviewDetails").classList.add("hidden");
+  el("evidencePreviewDetails").open=false;
   evidenceBusy=false;
   selectionDirty=false;evidenceSyncing=true;
   historyPage=0;hasOlderCommits=false;historyLoading=false;historyHeadSha="";refreshHistoryControl();
@@ -355,6 +415,13 @@ async function withdrawEvidence(){
 window.addEventListener("adminerva:assessment-opened",()=>{void load();});
 el("evidenceSubmit")?.addEventListener("click",()=>{void submit();});
 el("evidenceLoadOlder")?.addEventListener("click",()=>{void loadOlderCommits();});
+el("evidenceFilterBar")?.addEventListener("click",event=>{
+  const button=event.target.closest?.("[data-evidence-filter]");
+  if(!button)return;
+  commitFilter=button.dataset.evidenceFilter;render();
+});
+el("evidenceReclaimSave")?.addEventListener("click",()=>void sendReclaim());
+el("evidenceReclaimCancel")?.addEventListener("click",()=>{if(!reclaimBusy)closeReclaimForm();});
 el("evidenceRefresh")?.addEventListener("click",()=>{
   if(evidenceBusy)return;
   if(selectionDirty&&!confirm("Reload saved evidence and discard your unsaved commit selection?"))return;
