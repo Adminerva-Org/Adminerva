@@ -253,8 +253,13 @@ test('an instructor may release a historical proposal for audited student revisi
   await assertFails(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
   await assertSucceeds(auditedEvidence(staff,{status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',reviewedBy:null,reviewedAt:null,verificationNote:'',
     reopenedBy:'staff',reopenedAt:serverTimestamp(),reopenReason:'Let the student choose their own committed evidence.'},{actor:'staff'}));
-  await assertSucceeds(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
-  assert.equal((await getDoc(doc(alice,'assessment_evidence','alice_v2'))).data().revision,2);
+  const correctedSha='b'.repeat(40);
+  await assertSucceeds(auditedEvidence(alice,{status:'submitted',selectedCommits:[correctedSha],
+    checkpointSha:correctedSha,submittedAt:serverTimestamp()}));
+  const corrected=(await getDoc(doc(alice,'assessment_evidence','alice_v2'))).data();
+  assert.equal(corrected.revision,2);
+  assert.deepEqual(corrected.selectedCommits,[correctedSha]);
+  assert.equal(corrected.checkpointSha,correctedSha);
 });
 function report(uid='alice',email=EMAIL_A){
   return {
@@ -655,11 +660,15 @@ for(const commitCount of [1,20]) test(`student cannot alter discovered evidence 
   await assertSucceeds(auditedEvidence(staff,{status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',reviewedBy:null,reviewedAt:null,verificationNote:'',
     reopenedBy:'staff',reopenedAt:serverTimestamp(),reopenReason:'Allow student to correct discovered evidence.'},{actor:'staff'}));
   await assertSucceeds(auditedEvidence(alice,{status:'withdrawn'}));
-  await assertSucceeds(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
+  const correctedSha='b'.repeat(40);
+  const correctedCommits=[...selectedCommits.slice(1),correctedSha];
+  await assertSucceeds(auditedEvidence(alice,{status:'submitted',selectedCommits:correctedCommits,
+    checkpointSha:correctedSha,submittedAt:serverTimestamp()}));
   const evidence=(await getDoc(doc(alice,'assessment_evidence','alice_v2'))).data();
   assert.equal(evidence.status,'submitted');
   assert.equal(evidence.revision,4);
-  assert.deepEqual(evidence.selectedCommits,selectedCommits);
+  assert.deepEqual(evidence.selectedCommits,correctedCommits);
+  assert.equal(evidence.checkpointSha,correctedSha);
 });
 test('reclaim is initially pending, owner-private and can only be withdrawn by claimant',async()=>{
   const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B),staff=client('staff',TEACHER);
