@@ -5,7 +5,7 @@ import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {normalizeSelection,parseRepository} from "./services/assessment-evidence.mjs?v=1.4.3";
 import {verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
 import {approvalContribution,evidenceRevision} from "./services/evidence-lifecycle.mjs?v=1.4.3";
-import {bulkApproveCandidates,bulkReopenCandidates,wasResubmittedAfterReopening,currentGradeForEvidence} from "./services/bulk-evidence.mjs?v=1.4.1";
+import {bulkApproveCandidates,bulkReopenCandidates,mayBulkReopen,wasResubmittedAfterReopening,currentGradeForEvidence} from "./services/bulk-evidence.mjs?v=1.4.1";
 import {parseWeightedRubric,loadPinnedV2Source,parseSuggestedRubric} from "./services/v2-grading-assistant.mjs?v=1.4.22";
 import {evaluateVerifiedEvidence} from "./services/adaptive-evaluation.mjs?v=1.3.0";
 import {schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
@@ -336,43 +336,135 @@ async function inspectForApproval(student,evidence){
     String(seen.get(sha)?.author?.login||"").toLowerCase()===expected):[];
   return {selection,verified,expected};
 }
-async function bulkApprove(){
-  if(busy||!context||!evidenceReadable)return;
-  const candidates=context.students.map(s=>({student:s,evidence:evidenceMap.get(s.id)})).filter(x=>["submitted","needs_review"].includes(x.evidence?.status));
-  if(!candidates.length)return;
-  if(!confirm("Approve "+candidates.length+" evidence record(s)? Adminerva will verify the project checkpoint and selected-commit ancestry. Selected commits whose GitHub author login exactly matches the learner's linked GitHub account will be marked as teacher-approved individual contributions; non-matching or unknown commits remain unverified. This is an explicit teacher approval action, not automatic proof of authorship."))return;
-  showBulkExceptions([]);
-  analytics("evidence_approval_started",{feature:"gradebook",count_bucket:candidates.length});
-  busy=true;render();const failures=[];let completed=0,verifiedTotal=0,contextOnly=0;
-  el("gbBulkStatus").textContent="Checking checkpoint ancestry, linked-account matches and attribution conflicts…";
-  for(const {student,evidence} of candidates){
-    try{
-      const currentSnap=await getDoc(doc(db,"assessment_evidence",student.id+"_"+context.taskId));
-      if(!currentSnap.exists()||!["submitted","needs_review"].includes(currentSnap.data().status))throw Error("Evidence is no longer awaiting approval.");
-      const currentEvidence=currentSnap.data();
-      const inspection=await inspectForApproval(student,currentEvidence);
-      const verified=inspection.verified;
-      const scope=verified.length
-        ?"Teacher bulk approval verified "+verified.length+" selected commit(s) with an exact GitHub author-login match to @"+inspection.expected+
-          " for "+student.name+". Only those matched commits are approved as individual contribution; non-matching commits and shared project files remain context."
-        :"Teacher bulk approval recorded the project checkpoint as context for "+student.name+
-          ". No selected commit had an exact linked-account match, so no individual contribution is verified and system evaluation remains disabled.";
-      const contribution=approvalContribution(inspection.selection,verified,scope);
-      await changeEvidence(doc(db,"assessment_evidence",student.id+"_"+context.taskId),currentEvidence,{
-        status:"approved",reviewedBy:auth.currentUser.uid,reviewedAt:serverTimestamp(),
-        verificationNote:"Bulk evidence approval verified the repository checkpoint, selected-commit ancestry where applicable, linked-account matches, and unresolved reclaim state.",
-        approvedCheckpointSha:inspection.selection.checkpointSha,...contribution
-      },"Bulk evidence approval after checkpoint and linked-account verification.");
-      completed++;verifiedTotal+=verified.length;if(!verified.length)contextOnly++;
-    }catch(error){failures.push(student.name+": "+error.message);}
-    el("gbBulkStatus").textContent="Approval: "+completed+" approved · "+verifiedTotal+" contribution commit(s) verified · "+failures.length+" need individual review.";
+async function refreshEvidence(){
+  if(busy||!context)return;
+  const active=context;
+  el("gbBulkStatus").textContent="Refreshing evidence statuses from the server…";
+  await load(active);
+  if(context===active&&evidenceReadable){
+    const submitted=bulkApproveCandidates(active.students,evidenceMap);
+    const revised=submitted.filter(student=>wasResubmittedAfterReopening(evidenceMap.get(student.id))).length;
+    el("gbBulkStatus").textContent="Evidence refreshed: "+submitted.length+" submission(s) awaiting approval"+
+      (revised?" · "+revised+" resubmitted after reopening":"")+
+      ". Only submitted evidence can be approved; reopened records must be resubmitted first.";
   }
-  busy=false;await load(context);showBulkExceptions(failures);
-  analytics("evidence_approval_completed",{feature:"gradebook",status:failures.length?"partial":"success",count_bucket:completed});
-  el("gbBulkStatus").textContent="Approval complete: "+completed+" approved · "+verifiedTotal+
-    " contribution commit(s) verified · "+contextOnly+" checkpoint-only/context-only approval(s) · "+failures.length+
-    " left for Review & grade. System evaluation is available only where individual contribution was verified."+
-    (failures.length?" "+failures.slice(0,3).join(" | "):"");
+}
+async function bulkReopen(){
+  if(busy||!context||!evidenceReadable||Number(context.schemaVersion)!==2)return;
+  const active=context;
+  busy=true;render();
+  const failures=[];let reopened=0,skipped=0;
+  try{
+    el("gbBulkStatus").textContent="Checking current evidence and protected grades…";
+    await load(active);
+    if(context!==active||!evidenceReadable)throw Error("Cannot verify current section evidence. Refresh and retry.");
+    const candidates=bulkReopenCandidates(active.students,evidenceMap,active.grades);
+    const published=active.students.filter(student=>
+      mayBulkReopen(evidenceMap.get(student.id))&&active.grades?.[student.id]?.published===true).length;
+    if(!candidates.length){
+      el("gbBulkStatus").textContent="No eligible evidence to reopen for "+active.section+" · "+assessmentLabel()+
+        (published?". "+published+" published grade(s) are protected; unpublish those individually first.":"");
+      return;
+    }
+    const reason=prompt("Reason for reopening "+candidates.length+" evidence submission(s) in "+active.section+
+      " for "+assessmentLabel()+" (15–3,000 characters; added to each student's audit history):");
+    if(reason===null)return;
+    const auditReason=reason.trim();
+    if(auditReason.length<15||auditReason.length>3000)
+      throw Error("Enter a reopening reason of 15–3,000 characters.");
+    if(!confirm("Reopen "+candidates.length+" evidence submission(s) for "+active.section+" · "+assessmentLabel()+
+      "? Students will be allowed to change their selected commits and must resubmit for fresh approval. Old approvals and unpublished grading eligibility become stale; no grades or Git commits will be deleted."+
+      (published?" "+published+" published grade(s) will remain protected and excluded.":"")))return;
+    showBulkExceptions([]);
+    analytics("evidence_section_reopen_started",{feature:"gradebook",count_bucket:candidates.length});
+    for(const student of candidates){
+      if(context!==active){failures.push("Section or assessment changed; remaining students were not processed.");break;}
+      try{
+        const ref=doc(db,"assessment_evidence",student.id+"_"+active.taskId);
+        const [latest,grade]=await Promise.all([
+          getDocFromServer(ref),
+          getDocFromServer(doc(db,"student_grades",ref.id))
+        ]);
+        if(grade.exists()&&grade.data().published===true)
+          throw Error("Published grade is protected. Unpublish the grade individually first.");
+        if(!latest.exists()||!mayBulkReopen(latest.data())){
+          skipped++;continue;
+        }
+        await changeEvidence(ref,latest.data(),{
+          status:"reopened",approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:"",
+          reviewedBy:null,reviewedAt:null,verificationNote:"",
+          reopenedBy:auth.currentUser.uid,reopenedAt:serverTimestamp(),reopenReason:auditReason
+        },auditReason);
+        reopened++;
+      }catch(error){failures.push(student.name+": "+error.message);}
+      el("gbBulkStatus").textContent="Reopening section evidence: "+reopened+"/"+candidates.length+
+        " completed · "+failures.length+" exception(s).";
+    }
+    analytics("evidence_section_reopen_completed",{feature:"gradebook",
+      status:failures.length?"partial":"success",count_bucket:reopened});
+  }catch(error){failures.push(error.message);}
+  finally{
+    busy=false;await load(active);showBulkExceptions(failures);
+    el("gbBulkStatus").textContent="Section reopening complete: "+reopened+" evidence record(s) reopened · "+
+      skipped+" already changed · "+failures.length+" exception(s). Students must select or revise their commits and resubmit for approval."+
+      (failures.length?" "+failures.slice(0,3).join(" | "):"");
+  }
+}
+async function bulkApprove(){
+  if(busy||!context||Number(context.schemaVersion)!==2)return;
+  const active=context;
+  busy=true;render();
+  const failures=[];let completed=0,verifiedTotal=0,contextOnly=0,candidates=[];
+  try{
+    el("gbBulkStatus").textContent="Refreshing submitted and resubmitted evidence from the server…";
+    await load(active);
+    if(context!==active||!evidenceReadable)throw Error("Current submitted evidence could not be verified. Refresh and retry.");
+    candidates=bulkApproveCandidates(active.students,evidenceMap).map(student=>({student,evidence:evidenceMap.get(student.id)}));
+    if(!candidates.length){
+      el("gbBulkStatus").textContent="No submitted evidence is awaiting approval. Evidence still marked Reopened must be resubmitted by the student first.";
+      return;
+    }
+    const resubmitted=candidates.filter(item=>wasResubmittedAfterReopening(item.evidence)).length;
+    if(!confirm("Approve "+candidates.length+" evidence record(s) in "+active.section+" · "+assessmentLabel()+
+      (resubmitted?"? "+resubmitted+" were resubmitted after reopening.":"?")+
+      " Adminerva will verify checkpoint ancestry, linked GitHub author matches, and pending reclaim conflicts. Only verified linked-account commits may receive individual contribution credit. This records your approval, not proof of runtime behavior."))return;
+    showBulkExceptions([]);
+    analytics("evidence_approval_started",{feature:"gradebook",count_bucket:candidates.length});
+    for(const {student} of candidates){
+      if(context!==active){failures.push("Section or assessment changed; remaining students were not processed.");break;}
+      try{
+        const ref=doc(db,"assessment_evidence",student.id+"_"+active.taskId);
+        const currentSnap=await getDocFromServer(ref);
+        if(!currentSnap.exists()||!["submitted","needs_review"].includes(currentSnap.data().status))
+          throw Error("Evidence is no longer awaiting approval (status changed).");
+        const currentEvidence=currentSnap.data();
+        const inspection=await inspectForApproval(student,currentEvidence);
+        const verified=inspection.verified;
+        const scope=verified.length
+          ?"Teacher bulk approval verified "+verified.length+" selected commit(s) with an exact GitHub author-login match to @"+inspection.expected+
+            " for "+student.name+". Only those matched commits are approved as individual contribution; non-matching commits and shared project files remain context."
+          :"Teacher bulk approval recorded the project checkpoint as context for "+student.name+
+            ". No selected commit had an exact linked-account match, so no individual contribution is verified and system evaluation remains disabled.";
+        const contribution=approvalContribution(inspection.selection,verified,scope);
+        await changeEvidence(ref,currentEvidence,{
+          status:"approved",reviewedBy:auth.currentUser.uid,reviewedAt:serverTimestamp(),
+          verificationNote:"Bulk evidence approval verified the repository checkpoint, selected-commit ancestry where applicable, linked-account matches, and unresolved reclaim state.",
+          approvedCheckpointSha:inspection.selection.checkpointSha,...contribution
+        },"Bulk evidence approval after checkpoint and linked-account verification.");
+        completed++;verifiedTotal+=verified.length;if(!verified.length)contextOnly++;
+      }catch(error){failures.push(student.name+": "+error.message);}
+      el("gbBulkStatus").textContent="Approval: "+completed+"/"+candidates.length+
+        " approved · "+verifiedTotal+" contribution commit(s) verified · "+failures.length+" need individual review.";
+    }
+    analytics("evidence_approval_completed",{feature:"gradebook",status:failures.length?"partial":"success",count_bucket:completed});
+  }catch(error){failures.push(error.message);}
+  finally{
+    busy=false;await load(active);showBulkExceptions(failures);
+    el("gbBulkStatus").textContent="Approval complete: "+completed+" approved · "+verifiedTotal+
+      " contribution commit(s) verified · "+contextOnly+" checkpoint-only/context-only approval(s) · "+failures.length+
+      " left for Review & Grade. The refreshed candidates included resubmissions after reopening; entries still marked Reopened cannot be approved."+
+      (failures.length?" "+failures.slice(0,3).join(" | "):"");
+  }
 }
 function eligibleToRerun(evidence,grade){
   return evidence?.status==="approved"&&evidence.verifiedContributionCommits?.length>0&&
@@ -479,6 +571,9 @@ if(window.__adminervaGradebookGridContext)void load(window.__adminervaGradebookG
 el("gbForceGather")?.addEventListener("click",()=>void forceGather());
 el("gbCopyMissingReminder")?.addEventListener("click",()=>void copyMissingReminder());
 el("gbBulkApprove")?.addEventListener("click",()=>void bulkApprove());
+el("gbBulkReopen")?.addEventListener("click",()=>void bulkReopen());
+el("gbRefreshEvidence")?.addEventListener("click",()=>void refreshEvidence());
+window.addEventListener("focus",()=>{if(context&&!busy&&!document.getElementById("gbLegacyView")?.classList.contains("hidden"))void refreshEvidence();});
 el("gbBulkEvaluate")?.addEventListener("click",()=>void bulkEvaluate());
 el("gbBulkRerun")?.addEventListener("click",()=>void bulkEvaluate({rerun:true}));
 el("gbCancelEvaluation")?.addEventListener("click",()=>{cancelEvaluation=true;el("gbBulkStatus").textContent="Stopping after the current learner. Completed drafts are preserved.";});
