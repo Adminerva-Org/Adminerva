@@ -44,6 +44,8 @@
             <div class="flex flex-wrap gap-2 mb-4">
               <button id="gbForceGather" type="button" disabled class="rounded-lg bg-slate-100 border border-slate-200 hover:bg-slate-200 disabled:opacity-50 px-4 py-2.5 text-sm font-semibold text-slate-800">Gather missing evidence (0)</button>
               <button id="gbCopyMissingReminder" type="button" disabled title="Copies a GC-ready reminder only for learners whose repository evidence was checked but no usable individual contribution was found." class="rounded-lg bg-amber-50 border border-amber-200 hover:bg-amber-100 disabled:opacity-50 px-4 py-2.5 text-sm font-semibold text-amber-900">Copy missing reminder (0)</button>
+              <button id="gbRefreshEvidence" type="button" disabled class="rounded-lg bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 px-4 py-2.5 text-sm font-semibold text-slate-800">Refresh evidence</button>
+              <button id="gbBulkReopen" type="button" disabled title="Reopen evidence for students in the selected section and assessment; published grades are excluded." class="rounded-lg bg-amber-50 border border-amber-200 hover:bg-amber-100 disabled:opacity-50 px-4 py-2.5 text-sm font-semibold text-amber-900">Reopen section evidence (0)</button>
               <button id="gbBulkApprove" type="button" disabled class="rounded-lg bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 px-4 py-2.5 text-sm font-semibold text-slate-800">Approve evidence (0)</button>
               <a id="gbReviewExceptions" href="repofetch.html" class="rounded-lg border border-slate-300 hover:bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-800">Review exceptions</a>
             </div>
@@ -56,6 +58,7 @@
           </div>
         </div>
         <div class="border-t border-slate-100 mt-5 pt-4">
+          <p class="text-xs text-slate-500 mb-2">Bulk actions apply only to the selected section and assessment. Reopened evidence must be resubmitted by the student before approval. Published grades cannot be reopened in bulk.</p>
           <p id="gbBulkStatus" class="text-sm text-slate-600 leading-relaxed" role="status" aria-live="polite">Evaluations that need attention stay private for teacher review. Ready drafts can be published in bulk; re-evaluation preserves previous revisions.</p>
           <details id="gbBulkExceptionDetails" class="hidden mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
             <summary class="cursor-pointer text-sm font-semibold text-amber-900">View all failed student evaluations</summary>
@@ -223,6 +226,6 @@
     <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.1"></script>
     <script type="module" src="js/repo-review/gradebook.js?v=1.4.19"></script>
     <script type="module" src="js/repo-review/gradebook-quarter.mjs?v=1.4.6"></script>
-  <script type="module" src="js/repo-review/gradebook-class-review.mjs?v=1.4.23"></script>
+  <script type="module" src="js/repo-review/gradebook-class-review.mjs?v=1.4.24"></script>
   </body>
 </html>
