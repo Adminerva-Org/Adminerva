@@ -13,6 +13,7 @@ import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
 import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.2";
 import {searchStudents} from "./services/student-search.mjs?v=1.3.0";
+import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.1";
 
 export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{}}={}){
 const el=id=>root.querySelector("#"+id);
@@ -264,7 +265,7 @@ async function renderClaims(){
     add(box,"p",claim.explanation,"text-sm mt-1 whitespace-pre-wrap");
     if(claim.status!=="pending")continue;
     if(!mayDecide){
-      add(box,"p","Pending administrator decision.","text-xs text-amber-700 mt-1");continue;
+      add(box,"p","Administrator decision required. Teachers can inspect the claim, but cannot decide it.","text-xs text-amber-700 mt-1");continue;
     }
     const group=add(box,"div","","flex flex-wrap gap-2 mt-2");
     for(const [result,label] of [["approved","Approve reclaim"],["shared","Accept shared contribution"],["rejected","Reject reclaim"]]){
@@ -286,27 +287,14 @@ async function showConflicts(sha,box){
 }
 async function decideClaim(claim,decision){
   if(await resolveStaffRole(auth.currentUser)!=="admin")return status("Administrator access is required to decide reclaims.");
-  const explanation=prompt("Administrative decision note (required; visible in audit history):");
+  const explanation=prompt("Administrative decision note (10–2,000 characters; recorded permanently):");
   if(explanation===null)return;
-  if(explanation.trim().length<10||explanation.length>2000){
-    status("A decision reason of 10–2,000 characters is required.");return;
-  }
   try{
-    const ref=doc(db,"commit_reclaims",claim.id);
-    const audit=doc(collection(db,"commit_claim_decisions"));
-    await runTransaction(db,async tx=>{
-      const current=await tx.get(ref);
-      if(!current.exists()||current.data().status!=="pending")throw Error("Claim changed. Reload review.");
-      tx.update(ref,{status:decision,reviewedBy:auth.currentUser.uid,
-        reviewedAt:serverTimestamp(),reviewNote:explanation.trim()});
-      tx.set(audit,{claimId:claim.id,studentId:claim.studentId,
-        repository:claim.repository,sha:claim.sha,decision,
-        reviewerUid:auth.currentUser.uid,reason:explanation.trim(),
-        createdAt:serverTimestamp()});
-    });
-    status("Reclaim decision recorded; grade and Git history were not modified.");
+    status("Recording audited reclaim decision…");
+    await decideReclaim({claimId:claim.id,decision,reason:explanation});
+    status("Reclaim decision recorded. Student evidence and grades have not been changed.");
     await loadEvidence();
-  }catch(e){status("Unable to decide claim: "+e.message);}
+  }catch(e){status("Unable to decide reclaim: "+e.message);}
 }
 async function verifyAncestry(repo,checkpoint,selected){
   const result=await verifyCheckpointAncestry({
