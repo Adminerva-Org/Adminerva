@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,MAX_COMMIT_PAGES} from "./commit-history.mjs";
+import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,MAX_COMMIT_PAGES,resolveSubmissionCheckpoint} from "./commit-history.mjs";
 const A="a".repeat(40),B="b".repeat(40),C="c".repeat(40);
 test("GitHub evidence paging is bounded and includes a precise branch for teacher discovery",()=>{
   assert.equal(commitPagePath("/repos/class/team",1),"/repos/class/team/commits?per_page=100&page=1");
@@ -35,4 +35,42 @@ test("Student and teacher views retain selected evidence while paging",()=>{
   const staffHTML=readFileSync("js/repo-review/evidence-review-view.mjs","utf8");
   assert.ok(studentHTML.includes('id="evidenceLoadOlder"'));
   assert.ok(staffHTML.includes('id="evidenceFindOlder"'));
+});
+
+test("reopened submission retains original checkpoint when it contains added commits",async()=>{
+  const calls=[];
+  const result=await resolveSubmissionCheckpoint({
+    selectedCommits:[A,B],checkpointSha:B,latestCheckpointSha:C,
+    fetchPage:async(sha,page)=>{calls.push({sha,page});return [{sha:B},{sha:A}];}
+  });
+  assert.equal(result.ok,true);
+  assert.equal(result.advanced,false);
+  assert.equal(result.checkpointSha,B);
+  assert.deepEqual(calls,[{sha:B,page:1}]);
+});
+
+test("reopened submission accepts new commits without withdrawing by verifying a newer checkpoint",async()=>{
+  const calls=[];
+  const result=await resolveSubmissionCheckpoint({
+    selectedCommits:[A,C],checkpointSha:B,latestCheckpointSha:C,
+    fetchPage:async(sha,page)=>{
+      calls.push({sha,page});
+      return sha===B?[{sha:B},{sha:A}]:[{sha:C},{sha:B},{sha:A}];
+    }
+  });
+  assert.equal(result.ok,true);
+  assert.equal(result.advanced,true);
+  assert.equal(result.checkpointSha,C);
+  assert.deepEqual(calls,[{sha:B,page:1},{sha:C,page:1}]);
+});
+
+test("checkpoint recovery does not silently include work outside the repository branch",async()=>{
+  const D="d".repeat(40);
+  const result=await resolveSubmissionCheckpoint({
+    selectedCommits:[A,D],checkpointSha:B,latestCheckpointSha:C,
+    fetchPage:async sha=>sha===B?[{sha:B},{sha:A}]:[{sha:C},{sha:B},{sha:A}]
+  });
+  assert.equal(result.ok,false);
+  assert.deepEqual(result.missing,[D]);
+  assert.equal(result.checkpointSha,B);
 });
