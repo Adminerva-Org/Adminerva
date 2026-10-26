@@ -10,10 +10,12 @@ import {parseWeightedRubric,loadPinnedV2Source,parseSuggestedRubric} from "./ser
 import {evaluateVerifiedEvidence} from "./services/adaptive-evaluation.mjs?v=1.3.0";
 import {schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
 import {legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.2";
+import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
+import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.1";
 
 const el=id=>document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
-let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map(),loadSequence=0;
+let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map(),claimMap=new Map(),canDecideClaims=false,loadSequence=0;
 const draftRef=(studentId,taskId)=>doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId);
 function showBulkExceptions(failures){
   const box=el("gbBulkExceptionDetails"),list=el("gbBulkExceptionList");
@@ -26,6 +28,57 @@ function showBulkExceptions(failures){
     row.className="border-b border-amber-100 pb-1 last:border-0";
     list.appendChild(row);
   }
+}
+function renderReclaimQueue(){
+  const list=el("gbReclaimList"),label=el("gbReclaimCount");if(!list||!label)return;
+  const learners=new Map((context?.students||[]).map(student=>[student.id,student]));
+  const pending=[...claimMap.values()].filter(claim=>claim.status==="pending"&&learners.has(claim.studentId));
+  label.textContent="("+pending.length+" pending)";
+  list.replaceChildren();
+  if(!pending.length){
+    const empty=document.createElement("p");empty.className="text-xs text-slate-600";
+    empty.textContent="No pending reclaim requests for this assessment and section.";
+    list.append(empty);return;
+  }
+  for(const claim of pending){
+    const student=learners.get(claim.studentId);
+    const card=document.createElement("article");card.className="rounded-lg border border-amber-200 bg-white p-3 space-y-2";
+    const name=document.createElement("p");name.className="text-sm font-bold text-slate-900";
+    name.textContent=(student.name||student.id)+" · "+String(claim.sha||"").slice(0,12);
+    const author=document.createElement("p");author.className="text-xs text-slate-600";
+    author.textContent="Detected Git identity: "+(claim.detectedAuthorLogin?"@"+claim.detectedAuthorLogin:claim.detectedAuthorName||"Unknown");
+    const explanation=document.createElement("p");explanation.className="text-sm text-slate-700 whitespace-pre-wrap break-words";
+    explanation.textContent=claim.explanation||"No explanation provided.";
+    const controls=document.createElement("div");controls.className="flex flex-wrap items-center gap-2";
+    const review=document.createElement("a");review.className="text-xs font-bold text-indigo-700 underline p-2";
+    review.textContent="Review student evidence";
+    review.href=reviewUrl(claim.studentId);
+    controls.append(review);
+    if(canDecideClaims){
+      for(const [decision,buttonText] of [["approved","Approve claim"],["shared","Shared"],["rejected","Reject"]]){
+        const button=document.createElement("button");button.type="button";button.className="text-xs rounded border border-amber-300 bg-amber-50 px-3 py-2 font-bold text-amber-950 disabled:opacity-50";
+        button.textContent=buttonText;button.disabled=busy;
+        button.addEventListener("click",()=>void decidePendingClaim(claim,decision));controls.append(button);
+      }
+    }else{
+      const note=document.createElement("span");note.className="text-xs text-amber-900";
+      note.textContent="Administrator decision required";controls.append(note);
+    }
+    card.append(name,author,explanation,controls);list.append(card);
+  }
+}
+async function decidePendingClaim(claim,decision){
+  if(busy||!canDecideClaims)return;
+  const reason=prompt("Reason for "+decision+" reclaim for "+claim.studentId+" ("+String(claim.sha||"").slice(0,12)+")? Enter 10–2,000 characters:");
+  if(reason===null)return;
+  const active=context;busy=true;render();
+  try{
+    await decideReclaim({claimId:claim.id,decision,reason});
+    el("gbBulkStatus").textContent="Reclaim decision saved with an audit record. Refreshing current pending requests…";
+  }catch(error){
+    showBulkExceptions([claim.studentId+": "+error.message]);
+    el("gbBulkStatus").textContent="Unable to decide reclaim: "+error.message;
+  }finally{busy=false;if(context===active)await load(active);}
 }
 const badge=(text,tone="slate")=>'<span class="inline-flex rounded-full px-2 py-1 font-bold bg-'+tone+'-50 text-'+tone+'-800 border border-'+tone+'-200">'+text+'</span>';
 function reviewUrl(studentId){const p=new URLSearchParams({section:context.section,assessment:context.taskId,student:studentId,view:"grade"});return "repofetch.html?"+p.toString();}
@@ -159,11 +212,12 @@ function render(){
   if(el("gbBulkRerun")){el("gbBulkRerun").textContent="Re-evaluate drafts ("+reruns.length+")";el("gbBulkRerun").disabled=busy||!evidenceReadable||!reruns.length;}
   el("gbCancelEvaluation")?.classList.toggle("hidden",!busyEvaluation);
   const p=new URLSearchParams({section:context.section,assessment:context.taskId});el("gbReviewExceptions").href="repofetch.html?"+p.toString();
+  renderReclaimQueue();
 }
 async function load(detail){
   if(!detail)return;
   const sequence=++loadSequence;
-  context=detail;evidenceReadable=false;evidenceMap=new Map();draftMap=new Map();receiptMap=new Map();
+  context=detail;evidenceReadable=false;evidenceMap=new Map();draftMap=new Map();receiptMap=new Map();claimMap=new Map();
   render();
   const isV2=Number(detail.schemaVersion)===2;
   // An unavailable optional collection must never erase the evidence roster or
@@ -172,11 +226,14 @@ async function load(detail){
     getDocs(query(collection(db,"student_submissions"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
     ...(isV2?[
       getDocsFromServer(query(collection(db,"assessment_evidence"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
-      getDocs(collection(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items"))
+      getDocs(collection(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items")),
+      getDocsFromServer(query(collection(db,"commit_reclaims"),where("section","==",detail.section)))
     ]:[])
   ]);
   if(sequence!==loadSequence)return;
   const warnings=[];
+  try{canDecideClaims=(await resolveStaffRole(auth.currentUser))==="admin";}catch{canDecideClaims=false;}
+  if(sequence!==loadSequence)return;
   if(isV2){
     try{const grades=await getDocsFromServer(query(collection(db,"student_grades"),where("taskId","==",detail.taskId)));
       context.grades=Object.fromEntries(grades.docs.filter(record=>detail.students.some(student=>student.id===record.data().studentId))
@@ -200,6 +257,11 @@ async function load(detail){
           evidence?.status==="approved"&&draft.evidenceRevision===evidenceRevision(evidence)&&draft.checkpointSha===evidence.approvedCheckpointSha;
       }).map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
     }else warnings.push("evaluation drafts: "+sources[2].reason?.message);
+    if(sources[3].status==="fulfilled"){
+      claimMap=new Map(sources[3].value.docs
+        .filter(record=>record.data().assessmentId===detail.taskId)
+        .map(record=>[record.id,{id:record.id,...record.data()}]));
+    }else warnings.push("reclaim requests: "+sources[3].reason?.message);
   }
   // If evidence cannot be read, bulk actions must fail closed instead of
   // treating missing query results as students without submissions.
