@@ -48,3 +48,32 @@ export async function verifyCheckpointAncestry({selectedCommits,checkpointSha,fe
   }
   return {ok:false,missing:[...remaining],checkedPages};
 }
+
+/**
+ * A reopened evidence selection may include commits newer than its saved
+ * project checkpoint. Prefer the pinned checkpoint when it still contains all
+ * selected work; otherwise try the repository head before asking the student
+ * to change their selection or withdraw the submission.
+ *
+ * A fallback is accepted only when GitHub proves that it contains every
+ * selected commit. This never changes individual attribution.
+ */
+export async function resolveSubmissionCheckpoint({selectedCommits,checkpointSha,latestCheckpointSha,fetchPage,maxPages=10}={}){
+  if(typeof fetchPage!=="function")throw Error("Invalid checkpoint ancestry request.");
+  const original=String(checkpointSha||"").toLowerCase();
+  const check=sha=>verifyCheckpointAncestry({
+    selectedCommits,checkpointSha:sha,maxPages,fetchPage:page=>fetchPage(sha,page)
+  });
+  const originalResult=await check(original);
+  if(originalResult.ok)return {ok:true,checkpointSha:original,advanced:false,missing:[],checkedPages:originalResult.checkedPages};
+
+  const head=String(latestCheckpointSha||"").toLowerCase();
+  if(/^[a-f0-9]{40}$/.test(head)&&head!==original){
+    const headResult=await check(head);
+    if(headResult.ok)return {ok:true,checkpointSha:head,advanced:true,missing:[],checkedPages:headResult.checkedPages};
+    return {ok:false,checkpointSha:original,advanced:false,missing:headResult.missing,
+      checkedPages:originalResult.checkedPages+headResult.checkedPages};
+  }
+  return {ok:false,checkpointSha:original,advanced:false,missing:originalResult.missing,
+    checkedPages:originalResult.checkedPages};
+}
