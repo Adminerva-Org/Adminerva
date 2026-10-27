@@ -238,3 +238,18 @@ body[data-playground-access] .av-footer-credits{display:none}
   .design-preview{min-height:205px}
   .evidence-grid{grid-template-columns:1fr}
 }
+
+body[data-playground-access="student"] #adminerva-nav .av-nav-top{padding-block:.25rem}
+body[data-playground-access="student"] #adminerva-nav .av-nav-location{
+  padding:.35rem .9rem;
+  gap:.35rem;
+  font-size:.7rem;
+  min-height:30px;
+}
+body[data-playground-access="student"] #adminerva-nav .av-module-switcher summary{
+  padding:.4rem .65rem;
+  font-size:.72rem;
+}
+body[data-playground-access="student"] #adminerva-nav .av-nav-tools :is(button,a){
+  min-height:32px;
+}
