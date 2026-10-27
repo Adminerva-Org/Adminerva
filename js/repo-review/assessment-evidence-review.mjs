@@ -11,7 +11,7 @@ import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.m
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
-import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.3";
+import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.4";
 import {searchStudents} from "./services/student-search.mjs?v=1.3.0";
 import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.1";
 
@@ -47,6 +47,41 @@ function add(parent,tag,text,style=""){
   parent.append(x);return x;
 }
 function status(t){if(el("evidenceReviewStatus"))el("evidenceReviewStatus").textContent=t;if(el("evidenceActionStatus"))el("evidenceActionStatus").textContent=t;}
+function timeText(timestamp){
+  const date=timestamp?.toDate?.()||((timestamp instanceof Date)?timestamp:null);
+  return date && !Number.isNaN(date.getTime())?date.toLocaleString():"time unavailable";
+}
+function isResubmitted(evidence){
+  if(evidence?.status!=="submitted"||!evidence.reopenedAt)return false;
+  const submitted=evidence.submittedAt?.toMillis?.(),reopened=evidence.reopenedAt?.toMillis?.();
+  return submitted!=null&&reopened!=null?submitted>=reopened:Boolean(evidence.reopenedBy);
+}
+function showLifecycle(evidence,{stale=false}={}){
+  const banner=el("evidenceLifecycleBanner"),label=el("evidenceLifecycleLabel"),help=el("evidenceLifecycleHelp");
+  if(!banner||!label||!help)return;
+  let tone="slate",title="No submission",description="There is no selected evidence to approve.";
+  if(stale){tone="amber";title="New evidence detected — refresh required";
+    description="The learner's saved evidence changed while this review was open. Refresh status to read the latest server record before approval. Unsaved review text will be discarded after confirmation.";
+  }else if(evidence?.status==="reopened"){tone="amber";title="Reopened — waiting for student";
+    description="This evidence is still marked Reopened in the saved record. Approval is unavailable until the student submits selected evidence again. A repository push or submission receipt is not the same as resubmitting selected evidence."+
+      (evidence.reopenReason?" Teacher reason: "+evidence.reopenReason:"");
+  }else if(evidence?.status==="submitted"){tone="blue";
+    title=isResubmitted(evidence)?"Resubmitted — awaiting teacher approval":"Submitted — awaiting teacher approval";
+    description="Saved "+timeText(evidence.submittedAt)+". The learner's selected commits are ready for teacher review. Check attribution and checkpoint ancestry, then verify and approve.";
+  }else if(evidence?.status==="approved"){tone="emerald";title="Approved";
+    description="Checkpoint approved. To change student-selected evidence, reopen it first. Individual grading and grade publication are separate steps.";
+  }else if(evidence?.status==="needs_review"){tone="amber";title="Teacher-discovered — needs verification";
+    description="This is an instructor proposal, not a student resubmission. Inspect and approve, or return it for the student to choose their own evidence.";
+  }else if(evidence?.status==="withdrawn"){tone="slate";title="Withdrawn — awaiting resubmission";
+    description="The learner withdrew evidence. They must submit selected commits again before teacher approval.";
+  }else if(evidence){tone="amber";title="Evidence state: "+String(evidence.status||"unknown");
+    description="Refresh the record to confirm the current status before taking action.";
+  }
+  const tones={slate:"border-slate-300 bg-slate-50 text-slate-900",amber:"border-amber-300 bg-amber-50 text-amber-950",
+    blue:"border-blue-300 bg-blue-50 text-blue-950",emerald:"border-emerald-300 bg-emerald-50 text-emerald-950"};
+  banner.className="rounded-lg border px-4 py-3 flex flex-wrap items-start justify-between gap-3 "+tones[tone];
+  label.textContent=title;help.textContent=description;
+}
 function link(parent,title,url){
   const a=add(parent,"a",title,"font-semibold text-indigo-700 hover:underline break-all");
   a.href=url;a.target="_blank";a.rel="noopener noreferrer";return a;
@@ -132,7 +167,8 @@ async function loadEvidence(initialRecord){
         if(state.editing){
           state.loaded=false;el("evidenceApprove").disabled=true;
           el("evidenceReopen").disabled=true;
-          status("Evidence changed in another session. Your review text is kept. Select Reload evidence before approving; nothing was overwritten.");
+          showLifecycle(current,{stale:true});
+          status("Evidence changed in another session. Review text was kept. Choose Refresh status to load the current submission; approval is blocked until you refresh.");
         }else void loadEvidence(current);
       },error=>{clearTimeout(timer);rejectInitial(error);status("Live evidence status unavailable: "+error.message+". Reload before approving.");});
       record=await initial;
@@ -156,6 +192,7 @@ async function loadEvidence(initialRecord){
     if(evidence.studentId!==student.id||evidence.assessmentId!==assessment.id||
        evidence.repository!==student.repoUrl)throw Error("Submission identity or repository does not match the roster.");
     state.evidence=evidence;
+    showLifecycle(evidence);
     const previews=[showSnapshot(evidence,assessment)];
     el("evidenceContributionScope").value=evidence.contributionScope||"";
     el("evidenceContributionScope").disabled=evidence.status==="approved";
@@ -165,6 +202,12 @@ async function loadEvidence(initialRecord){
     state.claims=claims.docs.filter(d=>d.data().repository===evidence.repository &&
       (d.data().assessmentId===assessment.id || evidence.selectedCommits.includes(d.data().sha)))
       .map(d=>({id:d.id,...d.data()}));
+    const unresolved=state.claims.filter(claim=>claim.status==="pending"&&evidence.selectedCommits.includes(claim.sha));
+    if(unresolved.length){
+      el("evidenceLifecycleHelp").textContent+=" Approval blocked: "+unresolved.length+
+        " selected commit attribution claim(s) remain pending administrator review. See Reclaim requests below.";
+      el("evidenceLifecycleBanner").className="rounded-lg border border-amber-300 bg-amber-50 text-amber-950 px-4 py-3 flex flex-wrap items-start justify-between gap-3";
+    }
     const repo=parseRepository(evidence.repository),base=repo.url;
     el("evidenceTitle").textContent=(student.name||student.id)+" — "+(assessment.title||assessment.id);
     el("evidenceMetadata").textContent="Status: "+evidence.status+
@@ -187,7 +230,7 @@ async function loadEvidence(initialRecord){
       link(p,sha.slice(0,12)+" · View on GitHub ↗",base+"/commit/"+encodeURIComponent(sha));
       const preview=add(p,"button","Preview changes","text-xs underline text-indigo-700");
       preview.type="button";
-      preview.addEventListener("click",()=>{void previewCommit(repo,sha,p);});
+      preview.addEventListener("click",()=>{void previewCommit(repo,sha,p,preview);});
       const label=add(checks,"label","","flex gap-2 items-start text-xs rounded border p-2");
       const verified=document.createElement("input");verified.type="checkbox";
       verified.dataset.contributionSha=sha;
