@@ -9,7 +9,7 @@ import {
 } from "./code-projects.mjs?v=2.0.0";
 import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=2.0.0";
 
-const el=id=>document.getElementById(id);
+const el=id=>document.getElementById(id);\nconst clone=value=>JSON.parse(JSON.stringify(value));
 const enc=value=>new TextEncoder().encode(JSON.stringify(value)).length;
 const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]));
 const prettyDate=value=>{
