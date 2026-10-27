@@ -16,6 +16,7 @@ export function mountManualActivity({root,students,assessment,onSaved=()=>{}}){
   async function load(){
     if(!active)return status("Choose a learner before recording a grade.");
     const generation=++sequence;busy=true;ready=false;opened=null;loadedReference=null;controls();status("Loading saved activity grade…");
+    const end=window.beginLoading?.("Loading learner activity grade…",el("form"))||(()=>{});
     try{
       let snapshot=await getDoc(reference());
       if(!snapshot.exists()){
@@ -27,7 +28,7 @@ export function mountManualActivity({root,students,assessment,onSaved=()=>{}}){
       loadedReference=snapshot.ref;
       opened=snapshot.exists()?snapshot.data():null;el("score").value=opened?.score??"";el("max").value=opened?.maxScore||assessment.maxScore||20;el("score").max=el("max").value;el("feedback").value=opened?.feedback||"";dirty=false;ready=true;
       status(opened?.published?"Published grade. Unpublish before changing it.":opened?"Private draft loaded. Publish when ready.":"No activity grade saved yet. Enter a score to begin.");
-    }catch(error){status("The saved grade could not load: "+error.message);return;}finally{busy=false;controls();}
+    }catch(error){status("The saved grade could not load: "+error.message);return;}finally{busy=false;controls();end();}
   }
   async function write(published,unpublishReason=""){
     if(busy||destroyed)return;
@@ -39,6 +40,7 @@ export function mountManualActivity({root,students,assessment,onSaved=()=>{}}){
     if(opened?.published&&!unpublishReason)return status("Unpublish the protected grade before changing it.");
     if(published&&!confirm("Publish this saved activity score and feedback to "+(active.name||active.id)+"?"))return;
     const ref=reference(),prior=opened;busy=true;controls();status(published?"Publishing saved activity grade…":"Saving activity grade…");
+    const end=window.beginLoading?.(published?"Publishing learner activity grade…":unpublishReason?"Unpublishing learner activity grade…":"Saving learner activity draft…",el("form"))||(()=>{});
     try{
       await runTransaction(db,async transaction=>{
         const snapshot=await transaction.get(ref),current=snapshot.exists()?snapshot.data():null;
