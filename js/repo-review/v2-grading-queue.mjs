@@ -80,7 +80,7 @@ async function renderQueue({preserve=true}={}){
 function activateTarget(){
  const target=targets.find(item=>item.id===el("reviewTargetSelect").value);if(!target){workspace.clear();return;}
  workspace.setContext({assessment:activeTask,target,students:target.students,repository:target.repository,evidence:records.evidence,grades:records.grades,activities:records.activities,receipts:records.receipts,sourceWarnings,mode:el("reviewTargetMode").value,requestedStudent:parameters.get("student")});
- requestedPanel="";void workspace.show("grade");
+ requestedPanel="";
  window.dispatchEvent(new CustomEvent("adminerva:review-target-selected",{detail:{assessment:activeTask,students:target.students,repository:target.repository,mode:el("reviewTargetMode").value}}));
  const url=new URL(location.href);url.searchParams.delete("view");url.searchParams.set("section",el("v2SectionSelect").value);url.searchParams.delete("subject");url.searchParams.set("assessment",activeTask.id);url.searchParams.set("mode","group");url.searchParams.set("student",target.students[0].id);history.replaceState(null,"",url);
 }
