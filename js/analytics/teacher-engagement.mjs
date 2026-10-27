@@ -3,17 +3,31 @@ import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
 import {auth, db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {doc, getDocFromServer, collection, getDocs, onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {staffRole} from "../core/staff-role.mjs?v=1.3.0";
+import {staffRole,staffSections} from "../core/staff-role.mjs?v=1.3.0";
 
 const selector = document.getElementById("analytics-teacher");
 let epoch = 0;
 let stopView = () => {};
 export async function selectedTeacherSections() {
-  const current = epoch, email = selector.value;
-  if (!email || !auth.currentUser) return [];
-  const roster = await getDocFromServer(doc(db, "staff_access", email));
+  const current = epoch, user = auth.currentUser;
+  const email = String(selector.value || "").toLowerCase();
+  if (!email || !user) return [];
+  const ownEmail = String(user.email || "").toLowerCase();
+  if (email === ownEmail && staffRole(user) === "teacher") {
+    const assigned = staffSections(user);
+    if (assigned.length) return assigned;
+  }
+  const access = await getDocFromServer(doc(db, "staff_access", email));
   if (current !== epoch) return [];
-  return Array.isArray(roster.data()?.sections) ? roster.data().sections : [];
+  const assigned = Array.isArray(access.data()?.sections) ? access.data().sections : [];
+  if (assigned.length || staffRole(user) !== "admin") return assigned;
+  try {
+    const roster = await getDocFromServer(doc(db, "analytics_rosters", email));
+    if (current !== epoch) return [];
+    return Array.isArray(roster.data()?.sections) ? roster.data().sections : [];
+  } catch {
+    return assigned;
+  }
 }
 async function renderEngagement() {
   stopView();
