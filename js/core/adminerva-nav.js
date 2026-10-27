@@ -315,7 +315,7 @@ document.addEventListener("DOMContentLoaded", () => {
     details.open = false;
     details.querySelector("summary")?.focus();
     event.preventDefault();
-  });
+  }, true);
   import("./site-updates.mjs?v=1.3.0").then(module => module.mountSiteUpdates())
     .catch(error => console.warn("Site update checks unavailable:", error));
   import("./push-notifications.mjs?v=1.4.1").then(module => module.startPushSync())
