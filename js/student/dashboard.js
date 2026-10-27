@@ -45,6 +45,7 @@ function escapeHTML(str) {
 
 onAuthStateChanged(auth, async (user) => {
   if (!user) return (window.location.href = "login.html");
+  const end=window.beginLoading?.("Loading your project dashboard…")||(()=>{});
   document.getElementById("pageBody").classList.remove("hidden");
 
   const impersonateEmail = localStorage.getItem("Adminerva_Impersonate");
@@ -90,7 +91,7 @@ onAuthStateChanged(auth, async (user) => {
       connectGithubBtn.disabled = true;
       connectGithubBtn.classList.add("opacity-50", "cursor-not-allowed");
     } else {
-      connectGithubBtn.addEventListener("click", linkGithubAccount);
+      connectGithubBtn.addEventListener("click",()=>void window.withLoading("Connecting your GitHub account…",()=>linkGithubAccount().catch(error=>alert("GitHub account connection could not finish: "+error.message)),{button:connectGithubBtn}));
     }
   }
 
@@ -137,7 +138,7 @@ onAuthStateChanged(auth, async (user) => {
           ),
         );
         selector.addEventListener("change", (e) =>
-          loadDashboardProfile(userProfiles[e.target.value]),
+          void window.withLoading("Loading selected class project…",()=>loadDashboardProfile(userProfiles[e.target.value])),
         );
       } else {
         selector.classList.add("hidden");
@@ -146,7 +147,7 @@ onAuthStateChanged(auth, async (user) => {
     loadDashboardProfile(userProfiles[0]);
   } catch (error) {
     console.error("Dashboard Load Error:", error);
-  }
+  }finally{end();}
 });
 
 async function loadDashboardProfile(studentData) {
