@@ -109,6 +109,7 @@ if (repoForm) {
     const statusBox = document.getElementById("saveStatus");
 
     setSettingsBusy(true);
+    const end=window.beginLoading?.("Saving repository configuration…",repoForm)||(()=>{});
     btn.textContent = "Saving configuration…";
     statusBox.classList.remove("hidden");
     statusBox.textContent = "Saving...";
@@ -148,7 +149,7 @@ if (repoForm) {
       statusBox.className =
         "text-xs font-bold text-center text-red-500 mt-2 block";
     } finally {
-      setSettingsBusy(false);
+      setSettingsBusy(false);end();
       btn.textContent = "Save Configuration";
     }
   });
@@ -165,7 +166,7 @@ if (profileForm) profileForm.addEventListener("submit", async event => {
   const gender = ["Female", "Male", "Non-binary", "Self-described"].includes(selected) ? selected : "";
   const button = document.getElementById("saveStudentProfile");
   const message = document.getElementById("profileSaveStatus");
-  setSettingsBusy(true);
+  setSettingsBusy(true);const end=window.beginLoading?.("Saving student profile…",profileForm)||(()=>{});
   try {
     await setDoc(doc(db, "students", profile.id), { gender }, { merge: true });
     if(auth.currentUser?.uid!==uid||profileOwnerUid!==uid)return;
@@ -176,7 +177,7 @@ if (profileForm) profileForm.addEventListener("submit", async event => {
     if(auth.currentUser?.uid!==uid)return;
     message.textContent = "Unable to save profile: " + error.message;
     message.className = "mt-2 text-xs text-rose-700";
-  } finally { setSettingsBusy(false); }
+  } finally { setSettingsBusy(false);end(); }
 });
 
 document.getElementById("discoverStudentRepos")?.addEventListener("click", async () => {
@@ -193,7 +194,7 @@ document.getElementById("discoverStudentRepos")?.addEventListener("click", async
     return;
   }
   const token = typeof profile.githubToken === "string" ? profile.githubToken : "";
-  setSettingsBusy(true);
+  setSettingsBusy(true);const end=window.beginLoading?.("Finding your GitHub repositories…")||(()=>{});
   select.replaceChildren();
   const placeholder = document.createElement("option");
   placeholder.value = "";
@@ -243,7 +244,7 @@ document.getElementById("discoverStudentRepos")?.addEventListener("click", async
     if(auth.currentUser?.uid!==uid)return;
     message.textContent = error.message;
     message.className = "text-xs text-rose-700 mt-2";
-  } finally { setSettingsBusy(false); }
+  } finally { setSettingsBusy(false);end(); }
 });
 document.getElementById("studentRepoChoices")?.addEventListener("change", event => {
   if (event.target.value) document.getElementById("repoUrl").value = event.target.value;
