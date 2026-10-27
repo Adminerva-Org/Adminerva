@@ -436,3 +436,247 @@ body[data-playground-access="student"] #adminerva-nav .av-nav-tools :is(button,a
   .studio-command-bar #languageSelect{width:76px}
   .studio-command-bar #javaRunMode{width:155px}
 }
+
+
+/* 2.1.0 Explorer context menu + visual Adminerva DB manager. */
+.pg-context-menu{
+  position:fixed;
+  z-index:260;
+  min-width:170px;
+  padding:5px;
+  border:1px solid #334a63;
+  border-radius:9px;
+  background:#132235;
+  color:#d7e7f5;
+  box-shadow:0 16px 42px #02081788;
+}
+.pg-context-menu.hidden{display:none}
+.pg-context-menu button{
+  display:flex;
+  width:100%;
+  align-items:center;
+  min-height:31px;
+  padding:6px 8px;
+  border:0;
+  border-radius:6px;
+  background:transparent;
+  color:inherit;
+  text-align:left;
+  font-size:10px;
+  font-weight:700;
+}
+.pg-context-menu button:hover,.pg-context-menu button:focus-visible{background:#20364e;outline:none}
+.pg-context-menu .pg-context-danger{color:#ffb4be}
+.pg-context-separator{height:1px;margin:4px 3px;background:#31465d}
+.pg-explorer-tools{display:none!important}
+
+.studio-db-surface{overflow:hidden;display:flex;flex-direction:column}
+.studio-db-surface.hidden{display:none}
+.db-surface-head{flex:none}
+.db-manager{
+  flex:1;
+  min-height:0;
+  width:100%;
+  max-width:1600px;
+  margin:0 auto;
+  display:grid;
+  grid-template-columns:220px minmax(0,1fr);
+  gap:10px;
+}
+.db-manager.hidden{display:none}
+.db-sidebar{
+  min-height:0;
+  overflow:auto;
+}
+.db-sidebar-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin-bottom:8px;
+}
+.db-sidebar-head h3{margin:0}
+.db-schema-list button[data-active=true]{
+  border-color:#30a99a;
+  background:#edf9f6;
+  box-shadow:inset 3px 0 0 #079985;
+}
+.db-history-details{margin-top:12px;border-top:1px solid #e3ebf1;padding-top:9px}
+.db-history-details summary{
+  cursor:pointer;
+  color:#35566c;
+  font-size:10px;
+  font-weight:850;
+}
+.db-manager-main{
+  display:flex;
+  min-width:0;
+  min-height:0;
+  flex-direction:column;
+  overflow:hidden;
+}
+.db-manager-toolbar{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  flex:none;
+  padding-bottom:9px;
+  border-bottom:1px solid #e1e9ef;
+}
+.db-selected-table{
+  display:flex;
+  min-width:150px;
+  flex-direction:column;
+  gap:1px;
+  margin-right:auto;
+}
+.db-selected-table strong{font-size:12px;color:#17344c}
+.db-view-tabs{
+  display:flex;
+  gap:2px;
+  padding:2px;
+  border:1px solid #d8e3eb;
+  border-radius:8px;
+  background:#f4f8fa;
+}
+.db-view-tabs button{
+  min-height:29px;
+  padding:5px 9px;
+  border-radius:6px;
+  color:#5d7385;
+  font-size:9px;
+  font-weight:850;
+}
+.db-view-tabs button[data-active=true]{
+  background:#fff;
+  color:#007c72;
+  box-shadow:0 1px 3px #17344c18;
+}
+.db-view-panel{
+  flex:1;
+  min-height:0;
+  overflow:auto;
+  padding-top:10px;
+}
+.db-view-panel.hidden{display:none}
+.db-browse-summary{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:30px;
+  color:#587083;
+  font-size:9px;
+}
+.db-browse-summary strong{font-size:11px;color:#17344c}
+.db-warning{
+  margin-left:auto;
+  border:1px solid #e6d49e;
+  border-radius:999px;
+  padding:3px 7px;
+  background:#fff9e9;
+  color:#786733;
+}
+.db-data-table{
+  margin-top:5px;
+  max-height:calc(100% - 40px);
+}
+.db-data-table .studio-table th small{
+  display:block;
+  margin-top:2px;
+  color:#7d8f9d;
+  font-size:8px;
+  font-weight:600;
+  text-transform:none;
+  letter-spacing:0;
+}
+.db-data-table .studio-table tbody tr:hover{background:#f6fafc}
+.db-row-actions{width:112px;min-width:112px}
+.db-row-action-buttons{display:flex;gap:4px}
+.db-row-action-buttons button{
+  border:1px solid #d6e1e8;
+  border-radius:6px;
+  padding:4px 6px;
+  background:#fff;
+  color:#315269;
+  font-size:9px;
+  font-weight:800;
+}
+.db-zero-state{
+  margin-top:8px;
+  padding:13px;
+  border:1px dashed #cbd9e2;
+  border-radius:9px;
+  color:#6e8393;
+  font-size:10px;
+  text-align:center;
+}
+.db-empty{margin:4px 0}
+.db-row-editor{
+  margin-bottom:10px;
+  border:1px solid #bfded7;
+  border-radius:10px;
+  padding:10px;
+  background:#f6fcfa;
+}
+.db-row-editor.hidden{display:none}
+.db-row-editor-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:8px;
+}
+.db-row-editor-head>div{display:flex;flex-direction:column}
+.db-row-editor-head strong{font-size:11px;color:#17493f}
+.db-row-editor-head>button{
+  width:27px;height:27px;border-radius:6px;background:#eaf3f1;color:#47695f;font-weight:900
+}
+.db-row-form{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:8px;
+}
+.db-row-form label{display:grid;gap:4px}
+.db-row-form label>span{font-size:9px;font-weight:800;color:#4d675a}
+.db-row-form label small{font-size:8px;color:#85978e;font-weight:600}
+.db-row-form input{
+  min-height:34px;
+  width:100%;
+  border:1px solid #cadbd5;
+  border-radius:7px;
+  padding:6px 8px;
+  background:#fff;
+  color:#183a32;
+  font-size:10px;
+}
+.db-row-form-actions{
+  grid-column:1/-1;
+  display:flex;
+  justify-content:flex-end;
+  gap:6px;
+  padding-top:2px;
+}
+.db-row-form-actions>button:not(.primary-small){
+  min-height:32px;padding:5px 9px;border:1px solid #d4e0dc;border-radius:7px;background:#fff;color:#526e65;font-size:9px;font-weight:800
+}
+.db-sql-head{justify-content:space-between}
+.db-sql-editor{min-height:145px!important}
+#dbStructureTable .studio-table th:nth-child(1),
+#dbStructureTable .studio-table td:nth-child(1){width:52px}
+#dbStructureTable .studio-table th:nth-child(4),
+#dbStructureTable .studio-table td:nth-child(4){width:130px}
+
+@media(max-width:900px){
+  .db-manager{grid-template-columns:180px minmax(0,1fr)}
+  .db-manager-toolbar{flex-wrap:wrap}
+  .db-selected-table{min-width:120px}
+}
+@media(max-width:700px){
+  .db-manager{grid-template-columns:1fr;overflow:auto}
+  .db-sidebar{max-height:180px}
+  .db-manager-main{min-height:440px}
+  .db-manager-toolbar{align-items:flex-start}
+  .db-view-tabs{order:3;width:100%}
+  .db-view-tabs button{flex:1}
+  .db-row-form{grid-template-columns:1fr}
+}
