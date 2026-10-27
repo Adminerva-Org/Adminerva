@@ -1,6 +1,6 @@
 {
-  "version": "2.0.2",
+  "version": "2.0.3",
   "releasedAt": "2026-10-28",
-  "notes": "Code Studio workspace density update: full-height editor fix, compact project/tool navigation, denser Design and Database workspaces, slimmer explorer and a reduced Code Studio footer.",
-  "publishedAt": "2026-10-28T05:28:00+08:00"
+  "notes": "Code Studio command-bar refinement: project controls moved into the project header, duplicate Application/Terminal tabs removed, and Explorer instructions moved into contextual help.",
+  "publishedAt": "2026-10-28T05:40:00+08:00"
 }
