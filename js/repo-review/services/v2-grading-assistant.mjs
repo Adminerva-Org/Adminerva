@@ -137,7 +137,7 @@ export function buildRubricResponseSchema(criteria){
 
 export function buildRubricPrompt({assessment,criteria,checkpointSha,files=[],patches=[],contributionScope,analysis,visualAssetsIncluded=false,evidenceSummary=""}){
   const rows=criteria.map((c,i)=>(i+1)+". "+c.name+" ("+c.maxScore+" points)").join("\n");
-  const primaryText=files.filter(f=>f.primary&&!f.binary).map(f=>"FILE: "+f.path+"\n"+f.text).join("\n\n----\n\n");
+  const primaryText=files.filter(f=>f.primary&&!f.binary).map(f=>"FILE: "+f.path+(f.historical?" · HISTORICAL SOURCE FROM VERIFIED COMMIT "+f.sourceSha+" (NOT PRESENT AT APPROVED CHECKPOINT)":" · APPROVED CHECKPOINT SOURCE")+"\n"+f.text).join("\n\n----\n\n");
   const supportText=files.filter(f=>!f.primary&&!f.binary).map(f=>"FILE: "+f.path+" · student-changed: "+(f.studentChanged?"yes":"no")+"\n"+f.text).join("\n\n----\n\n");
   const patchText=patches.map(p=>(p.mergeContext?"MERGE CONTEXT — TEACHER ATTRIBUTION PENDING: ":"SELECTED COMMIT: ")+p.sha+"\nFILE: "+p.path+" · role: "+(p.primary?"primary assessed file":"supporting file/resource")+"\n"+p.patch).join("\n\n----\n\n");
   const basis=responsibilityBasis({assessment,contributionScope,patches});
@@ -169,7 +169,7 @@ Placeholder data is allowed when the task says placeholders are acceptable; eval
 Separate score-affecting issues from recommended improvements in student feedback.
 
 EVIDENCE:
-Primary assessed files are the verified student's changed checkpoint files that match the assessment target. Supporting files/resources are included because the verified student commit changed them or the student's primary layout references them.
+Primary assessed source files are taken from the approved checkpoint when present. If a verified student's primary file was later renamed or removed, historical source from that exact verified commit may be provided and is expressly marked HISTORICAL. An absent source file at the approved checkpoint does not erase a verified student's historical substantive diff. Grade only the verified changed lines for individual credit; surrounding historical source is context, not proof of authorship. Supporting files/resources are included because the verified student commit changed them or the student's primary layout references them.
 Supporting Java/Kotlin, Manifest, Gradle, drawable, theme, font and resource files may support technical implementation or compliance when they are connected to the student's verified screen.
 Deterministic checks below are program-derived observations. Use them as evidence, but still apply the rubric.
 ${visualAssetsIncluded?"Referenced repository images are attached after this prompt. Inspect them for visible labels/artwork/contrast cues, but do not claim exact native Android rendering.":"Referenced repository images were not supplied to the evaluation service. Do not claim that labels, artwork, contrast, or other image content are absent solely because they are not represented as XML TextViews."}
@@ -272,7 +272,7 @@ export function buildAdaptiveEvidenceChunks(evidence={},maxChars=ADAPTIVE_CHUNK_
   }
   for(const file of (evidence.files||[]).filter(item=>!item.binary)){
     const refs=refsByPath.get(file.path)||[];
-    const header="PINNED CHECKPOINT SOURCE\nFILE "+file.path+"\nROLE "+(file.primary?"primary":"support")+
+    const header=(file.historical?"HISTORICAL VERIFIED-COMMIT SOURCE "+file.sourceSha:"PINNED CHECKPOINT SOURCE")+"\nFILE "+file.path+"\nROLE "+(file.primary?"primary":"support")+
       "\nSTUDENT CHANGED "+(file.studentChanged?"yes":"no")+"\n"+
       (refs.length?"RELATED VERIFIED REFERENCES "+refs.map(ref=>ref.sha+" "+ref.path).join(" | ")+"\n":"");
     for(const segment of splitAdaptiveText(header+String(file.text||""),maxChars))
@@ -429,19 +429,23 @@ export async function loadPinnedV2Source({
   const primaryPaths=(studentPrimaryPaths.size
     ?survivingPrimaryPaths
     :[...available].filter(path=>relevantAssessmentFile(path,assessment))).sort();
-  if(!primaryPaths.length)
-    throw Error("No verified primary source remains at the approved checkpoint. Review the student's historical commit diffs manually.");
+  // A selected, verified historical implementation remains evidence when a later
+  // group checkpoint has deleted or renamed that screen. Keep its SHA/path diff;
+  // never expand grading scope to unrelated teammate checkpoint files.
+  const attributableHistory=patchRecords.some(p=>p.primary&&!p.mergeContext&&(p.substantive===true||p.diffIncomplete));
+  if(!primaryPaths.length&&!attributableHistory)
+    throw Error("No individually attributable primary source or verified primary diff is available. Review historical commits manually.");
   if(primaryPaths.length>MAX_PRIMARY_FILES)
     throw Error("The verified evaluation scope exceeds "+MAX_PRIMARY_FILES+" primary files. Narrow the selected evidence before automatic evaluation.");
 
-  async function readText(path,primary=false,studentChanged=false){
+  async function readText(path,primary=false,studentChanged=false,refSha=selection.checkpointSha){
     const encoded=path.split("/").map(encodeURIComponent).join("/");
-    const response=await request("/contents/"+encoded+"?ref="+encodeURIComponent(selection.checkpointSha));
+    const response=await request("/contents/"+encoded+"?ref="+encodeURIComponent(refSha));
     if(response.type!=="file"||response.encoding!=="base64"||typeof response.content!=="string")
       throw Error("GitHub did not return readable pinned source for "+path+".");
     const bytes=Uint8Array.from(atob(response.content.replace(/\s/g,"")),c=>c.charCodeAt(0));
     if(bytes.length>MAX_FILE_BYTES)throw Error("Verified source file "+path+" is too large for automatic evaluation ("+bytes.length+" bytes; limit "+MAX_FILE_BYTES+").");
-    return {path,text:new TextDecoder("utf-8",{fatal:true}).decode(bytes),primary,studentChanged,binary:false};
+    return {path,text:new TextDecoder("utf-8",{fatal:true}).decode(bytes),primary,studentChanged,binary:false,...(refSha===selection.checkpointSha?{}:{historical:true,sourceSha:refSha})};
   }
 
   const files=[];let totalSource=0;
@@ -449,6 +453,26 @@ export async function loadPinnedV2Source({
     const file=await readText(path,true,studentPrimaryPaths.has(path));
     totalSource+=file.text.length;if(totalSource>MAX_TOTAL_SOURCE)throw Error("Verified student source and referenced support files exceed the "+MAX_TOTAL_SOURCE+" character automatic evaluation limit.");
     files.push(file);
+  }
+  // Where a primary file no longer exists at the later approved checkpoint,
+  // recover it only from a non-merge, verified commit that changed that path.
+  // The verified patch is still the scoring evidence, not the historical blob.
+  const historicalSourceUnavailable=[];
+  for(const path of missingPrimaryPaths){
+    const last=[...patchRecords].reverse().find(p=>p.path===path&&p.primary&&!p.mergeContext&&(p.substantive===true||p.diffIncomplete));
+    if(!last){historicalSourceUnavailable.push(path);continue;}
+    try{
+      const file=await readText(path,true,true,last.sha);
+      totalSource+=file.text.length;if(totalSource>MAX_TOTAL_SOURCE)throw Error("Verified student source and referenced support files exceed the "+MAX_TOTAL_SOURCE+" character automatic evaluation limit.");
+      files.push(file);
+    }catch(error){
+      // Deletions and unavailable historical blobs do not erase the verified
+      // SHA/path patch. Other failures still need explicit teacher review.
+      if(/GitHub HTTP 404\b|did not return readable pinned source|too large|fatal|utf-8/i.test(String(error.message))){
+        historicalSourceUnavailable.push(path);continue;
+      }
+      throw error;
+    }
   }
 
   const refs=new Set();
@@ -495,5 +519,5 @@ export async function loadPinnedV2Source({
 
   const analysis=analyzeAndroidEvidence({assessment,files,patches:patchRecords.filter(p=>!p.mergeContext&&!p.diffIncomplete),assets});
   return {repository:repo.url,checkpointSha:selection.checkpointSha,
-    selectedCommits:selection.selectedCommits,files,patches:patchRecords,assets,analysis,excludedMergeCommits,truncatedDiffs,missingPrimaryPaths};
+    selectedCommits:selection.selectedCommits,files,patches:patchRecords,assets,analysis,excludedMergeCommits,truncatedDiffs,missingPrimaryPaths,historicalSourceUnavailable};
 }
