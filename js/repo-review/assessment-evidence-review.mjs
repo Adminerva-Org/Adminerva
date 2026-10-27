@@ -11,7 +11,7 @@ import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.m
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
-import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.2";
+import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.3";
 import {searchStudents} from "./services/student-search.mjs?v=1.3.0";
 import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.1";
 
