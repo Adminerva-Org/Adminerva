@@ -92,7 +92,7 @@ function chooseCsvFile(file){
 if (uploadBtn) {
   uploadBtn.addEventListener("click", () => {
     if (!selectedCsvFile) return;
-    uploadBtn.disabled = true;
+    uploadBtn.disabled = true;const end=window.beginLoading?.("Importing student roster CSV…")||(()=>{});
     uploadBtn.textContent = "Parsing CSV...";
     uploadStatus.classList.remove("hidden");
     uploadStatus.className = "text-xs font-bold text-center mt-3 text-blue-500";
@@ -101,9 +101,9 @@ if (uploadBtn) {
     const reader = new FileReader();
     reader.onload = async function (e) {
       const text = e.target.result;
-      await processCSV(text);
+      try{await processCSV(text);}finally{end();}
     };
-    reader.onerror=()=>showUploadError("This file could not be read. Choose the file again.");
+    reader.onerror=()=>{showUploadError("This file could not be read. Choose the file again.");end();};
     reader.readAsText(selectedCsvFile);
   });
 }
@@ -268,7 +268,7 @@ const ROSTER_SHEET_URL =
 
 if (syncSheetBtn) {
   syncSheetBtn.addEventListener("click", async () => {
-    syncSheetBtn.disabled = true;
+    syncSheetBtn.disabled = true;const end=window.beginLoading?.("Importing configured roster sheet…")||(()=>{});
     syncSheetBtn.textContent = "Fetching Live Data...";
 
     uploadStatus.classList.remove("hidden");
@@ -288,7 +288,7 @@ if (syncSheetBtn) {
       showUploadError("Failed to fetch Sheet: " + err.message);
     } finally {
       syncSheetBtn.disabled = false;
-      syncSheetBtn.textContent = "Import configured sheet";
+      syncSheetBtn.textContent = "Import configured sheet";end();
     }
   });
 }
@@ -302,6 +302,7 @@ window.loadDirectory = async function () {
 
   tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-slate-400 italic font-medium">Fetching roster from database...</td></tr>`;
 
+  const end=window.beginLoading?.("Loading student roster…",tbody)||(()=>{});
   try {
     const snap = await getDocs(collection(db, "students"));
     allStudents = [];
@@ -359,9 +360,8 @@ window.loadDirectory = async function () {
     console.error(error);
     tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-red-500 font-bold">Error loading directory: ${escapeHTML(error.message)}</td></tr>`;
     const summary=document.getElementById("directory-summary");if(summary){summary.textContent="The student roster could not load. Check your connection and use Refresh data to try again.";summary.dataset.tone="error";}
-  }
+  }finally{end();}
 };
-
 // ==========================================
 // SEARCH, FILTER, SORT & PAGINATION LOGIC
 // ==========================================
