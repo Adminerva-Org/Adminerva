@@ -6,8 +6,8 @@ import {normalizeSelection,parseRepository} from "./services/assessment-evidence
 import {verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
 import {approvalContribution,evidenceRevision} from "./services/evidence-lifecycle.mjs?v=1.4.3";
 import {bulkApproveCandidates,bulkReopenCandidates,mayBulkReopen,wasResubmittedAfterReopening,currentGradeForEvidence} from "./services/bulk-evidence.mjs?v=1.4.1";
-import {parseWeightedRubric,loadPinnedV2Source,parseSuggestedRubric} from "./services/v2-grading-assistant.mjs?v=1.4.24";
-import {evaluateVerifiedEvidence} from "./services/adaptive-evaluation.mjs?v=1.3.1";
+import {parseWeightedRubric,loadPinnedV2Source,parseSuggestedRubric} from "./services/v2-grading-assistant.mjs?v=1.4.25";
+import {evaluateVerifiedEvidence} from "./services/adaptive-evaluation.mjs?v=1.3.2";
 import {schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
 import {legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.2";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
