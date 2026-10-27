@@ -3,6 +3,8 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
+import {createProjectStudio} from "./project-studio.mjs?v=2.0.0";
+import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.0.0";
 import {
   collection,
   addDoc,
@@ -68,6 +70,7 @@ const guestMode=document.body.dataset.playgroundAccess==="guest";
 let workspaceFolders=[],projectOrder=[],selectedProjectPath="",selectedProjectFolder=false,explorerDrag=null;
 let executionController=null,executionSequence=0;
 let loadedOwnerUid=null;
+let projectStudio=null;
 const JAVA_RUN_MODE_KEY="Adminerva_Java_Run_Mode_v1";
 let javaRunMode=(()=>{try{return localStorage.getItem(JAVA_RUN_MODE_KEY)==="desktop"?"desktop":"console";}catch{return "console";}})();
 let desktopRunSequence=0;
@@ -153,6 +156,9 @@ async function initializePlayground() {
       !localStorage.getItem("Adminerva_Playground_Workspace"));
     const requestedPractice=urlParams.get("practice")==="1";
     if(requestedPractice){
+      document.getElementById("studioShell")?.classList.remove("hidden");
+      document.querySelector(".studio-project-bar")?.classList.add("hidden");
+      document.querySelector(".studio-tabs")?.classList.add("hidden");
       const transfer=readPracticeTransfer(sessionStorage,ownerUid());
       if(transfer){
         practiceMode=true;
@@ -167,8 +173,28 @@ async function initializePlayground() {
         alert("This practice session expired or belongs to another account. Your personal workspace is unchanged.");
         loadLocalWorkspace();
       }
-    }else if (snapshotId) await loadSnapshot(snapshotId);
-    else loadLocalWorkspace();
+    }else if (snapshotId) {
+      document.getElementById("studioShell")?.classList.remove("hidden");
+      document.querySelector(".studio-project-bar")?.classList.add("hidden");
+      document.querySelector(".studio-tabs")?.classList.add("hidden");
+      await loadSnapshot(snapshotId);
+    } else if(guestMode) {
+      loadLocalWorkspace();
+    } else {
+      const uid=ownerUid();
+      const legacyAvailable=PLAYGROUND_LANGUAGES.some(lang=>Boolean(readPlaygroundDraft(localStorage,uid,lang)));
+      projectStudio=createProjectStudio({
+        uid,
+        openProject:openNamedProject,
+        captureState:currentState,
+        onConfigChange:applyNamedProjectConfig,
+        legacyDraftAvailable:legacyAvailable,
+        importLegacyDraft:importLegacyDraftAsProject
+      });
+      const requestedProject=urlParams.get("codeProject");
+      if(requestedProject)projectStudio.openProjectById(requestedProject);
+      else projectStudio.showHome();
+    }
     } finally { end(); }
   }, () => { end(); document.getElementById("editorLoading").textContent = "Editor could not load. Check your connection and reload; saved drafts are unchanged."; });
   } catch (error) { end(); document.getElementById("editorLoading").textContent = "Editor unavailable. Saved drafts are unchanged. Reload to retry."; }
@@ -179,6 +205,42 @@ else void initializePlayground();
 // ==========================================
 // 3. WORKSPACE & FILE MANAGEMENT
 // ==========================================
+function applyNamedProjectConfig(config={}){
+  if(currentLang==="java"){
+    javaRunMode=config.runMode==="desktop"?"desktop":"console";
+    try{localStorage.setItem(JAVA_RUN_MODE_KEY,javaRunMode);}catch{}
+  }
+  updateOutputView();
+}
+
+function openNamedProject(project){
+  if(!project)return;
+  createWorkspace(project.lang,project.state?.files,project.state?.fileOrder,project.state?.activeFilename,project.state?.folders,project.state?.projectOrder);
+  applyNamedProjectConfig(project.config||{});
+  const langSelect=document.getElementById("languageSelect");
+  if(langSelect){langSelect.value=project.lang;langSelect.disabled=true;langSelect.title="Language is set by this project. Create another project to use a different language.";}
+  workspaceDirty=false;localSaveFailed=false;
+  showSaveStatus("Project loaded · autosave on");
+}
+
+function importLegacyDraftAsProject(){
+  const uid=ownerUid();if(!uid)return;
+  let chosen=null;
+  try{chosen=localStorage.getItem(playgroundLanguageKey(uid))||"java";}catch{chosen="java";}
+  let state=readPlaygroundDraft(localStorage,uid,chosen);
+  if(!state){
+    for(const lang of PLAYGROUND_LANGUAGES){state=readPlaygroundDraft(localStorage,uid,lang);if(state){chosen=lang;break;}}
+  }
+  if(!state)return alert("No older local playground draft was found.");
+  const templateByLang={java:"java-blank",python:"python-console",web:"web"};
+  const project=createCodeProject(localStorage,uid,{title:"Imported "+chosen.toUpperCase()+" Project",templateId:templateByLang[chosen]||"java-blank",
+    config:{runMode:chosen==="web"?"web":"console",database:false}});
+  project.lang=chosen;project.state={lang:chosen,files:state.files,fileOrder:state.fileOrder,activeFilename:state.activeFilename,
+    folders:state.folders||[],projectOrder:state.projectOrder||state.fileOrder};
+  saveCodeProject(localStorage,uid,project);
+  projectStudio?.activateProject(project);
+}
+
 function createWorkspace(lang, initialFiles, initialOrder, initialActive,initialFolders=[],initialProjectOrder=[]) {
   if(executionController){executionSequence++;executionController.abort();}
   stopJavaDesktop(true);
@@ -612,8 +674,13 @@ function persistWorkspace(){
       showSaveStatus("Practice scratch saved in this tab");
       return true;
     }
-    localStorage.setItem(playgroundWorkspaceKey(uid,currentLang),JSON.stringify(state));
-    localStorage.setItem(playgroundLanguageKey(uid),currentLang);
+    if(projectStudio?.getActiveProject()){
+      projectStudio.saveState(state);
+      localStorage.setItem(playgroundLanguageKey(uid),currentLang);
+    }else{
+      localStorage.setItem(playgroundWorkspaceKey(uid,currentLang),JSON.stringify(state));
+      localStorage.setItem(playgroundLanguageKey(uid),currentLang);
+    }
     workspaceDirty=false;
     localSaveFailed=false;
     showSaveStatus("Saved on this device");
@@ -964,6 +1031,7 @@ async function executeCode() {
       document.getElementById('desktopTab')?.click();
       stage='Launching desktop runtime';update();
       launchJavaDesktop(jarBase64);
+      projectStudio?.recordRun({mode:"desktop",status:"launched"});
       notePracticeExecution();
       return;
     }
@@ -971,9 +1039,11 @@ async function executeCode() {
     if(error&&currentLang===runLanguage)applyVisualDiagnostics(error,entry);
     if(error&&currentLang==='java'&&/HeadlessException|No X11 DISPLAY|headless/i.test(error))consoleOut.textContent+='\n\nThis program appears to open a desktop window. Change Run as to “Desktop GUI (Swing) · Beta” and run it again.';
     if(result.status.id>3&&!error)consoleOut.textContent+='\n'+String(result.message||'Review the execution status above.');
+    projectStudio?.recordRun({mode:"console",status:result.status?.description||"finished",time:result.time||null,memory:result.memory||null});
     notePracticeExecution();
   }catch(error){
     if(sequence!==executionSequence)return;
+    projectStudio?.recordRun({mode:desktopMode?"desktop":"console",status:controller.signal.aborted?"cancelled":"error"});
     consoleOut.textContent=controller.signal.aborted?(stage==='Compiler timed out'?'The compiler did not finish within 45 seconds. Your code is saved. Retry, or export the project to run locally.':'Run cancelled. Your code is unchanged. The remote service may finish the already submitted job.'):'Execution unavailable: '+error.message+'\nYour code is saved on this device when browser storage is available.';
   }finally{clearTimeout(timeout);clearInterval(clock);executionController=null;runBtn.disabled=false;overlay?.classList.add('hidden');end();}
 }
@@ -1130,6 +1200,7 @@ function bindUIEvents() {
     javaRunMode=event.target.value==='desktop'?'desktop':'console';
     try{localStorage.setItem(JAVA_RUN_MODE_KEY,javaRunMode);}catch{}
     if(javaRunMode!=='desktop')stopJavaDesktop(true);
+    projectStudio?.updateConfig({runMode:javaRunMode});
     updateOutputView();
   });
   document.getElementById('importZipBtn')?.addEventListener('click',()=>document.getElementById('projectZipInput')?.click());
@@ -1155,6 +1226,7 @@ function bindUIEvents() {
     .getElementById("languageSelect")
     ?.addEventListener("change", (e) => {
       const nextLang=e.target.value;
+      if(projectStudio?.getActiveProject()){e.target.value=currentLang;return;}
       if(nextLang===currentLang)return;
       if(!persistWorkspace()) {
         e.target.value=currentLang;

@@ -1,6 +1,95 @@
 {
   "releases": [
     {
+      "version": "2.0.0",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-27",
+      "title": "Adminerva Code Studio",
+      "summary": "A project-first programming workspace for building Java console apps, Swing desktop applications and information-system prototypes with integrated design, SQL practice, evidence and run monitoring.",
+      "changes": [
+        {
+          "type": "New",
+          "area": "Code Studio projects",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "Code Playground now opens to named projects with recent-project cards, project settings, local autosave and private cloud project synchronization."
+        },
+        {
+          "type": "New",
+          "area": "Project templates",
+          "audience": [
+            "student"
+          ],
+          "text": "Create Java Console, Java Desktop, Java Information System, Blank Java, Python Console or Web projects from a guided configuration wizard."
+        },
+        {
+          "type": "New",
+          "area": "Java information systems",
+          "audience": [
+            "student"
+          ],
+          "text": "The Java Information System template starts a multi-file Swing project with model, service and UI structure plus project design and data workspaces."
+        },
+        {
+          "type": "New",
+          "area": "Adminerva DB",
+          "audience": [
+            "student",
+            "teacher"
+          ],
+          "text": "Project-scoped SQL learning database supports table creation and CREATE, INSERT, SELECT, UPDATE, DELETE and DROP practice with persistent project history. JDBC source evidence remains tracked separately rather than being simulated as a real JDBC driver."
+        },
+        {
+          "type": "New",
+          "area": "System design",
+          "audience": [
+            "student",
+            "teacher"
+          ],
+          "text": "Use Case, Class, Sequence and Architecture diagrams live beside the code project and render from Mermaid diagram source."
+        },
+        {
+          "type": "New",
+          "area": "Competency evidence",
+          "audience": [
+            "student",
+            "teacher"
+          ],
+          "text": "Project evidence summarizes observable Java concepts, SQL CRUD activity and design artifacts while clearly distinguishing learning evidence from official competency assessment."
+        },
+        {
+          "type": "New",
+          "area": "Project monitor",
+          "audience": [
+            "student",
+            "teacher"
+          ],
+          "text": "Run history records reported execution time and memory for console runs, with transparent handling when browser desktop JVM telemetry is unavailable."
+        },
+        {
+          "type": "Updated",
+          "area": "Java desktop",
+          "audience": [
+            "student"
+          ],
+          "text": "Console and Swing desktop execution remain part of the same Java project. Desktop runtime stays labeled Beta/technical evaluation while the project model and UI are productionized."
+        },
+        {
+          "type": "Updated",
+          "area": "Compatibility",
+          "audience": [
+            "student"
+          ],
+          "text": "Existing local playground drafts remain importable, practice sandboxes and shared snapshots retain the legacy direct-editor workflow, and guest playground behavior is preserved."
+        }
+      ],
+      "publishedAt": "2026-10-27T22:45:00+08:00"
+    },
+    {
       "version": "1.5.0",
       "status": "published",
       "public": true,

@@ -1040,6 +1040,32 @@ service cloud.firestore {
       allow delete: if signedIn() && request.auth.uid == uid && resource.data.ownerUid == uid;
     }
 
+    // Named Code Studio projects are private to their authenticated owner.
+    match /student_code_projects/{uid}/projects/{projectId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid &&
+        request.resource.data.ownerUid == uid &&
+        request.resource.data.id == projectId &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
+        request.resource.data.title.size() <= 120 &&
+        request.resource.data.lang in ["java","python","web","csharp","cpp","dart"] &&
+        request.resource.data.template is string &&
+        request.resource.data.config is map &&
+        request.resource.data.state is map &&
+        request.resource.data.state.files is map &&
+        request.resource.data.state.fileOrder is list &&
+        request.resource.data.database is map &&
+        request.resource.data.design is map &&
+        request.resource.data.evidence is map &&
+        request.resource.data.status in ["active","archived"] &&
+        request.resource.data.createdAt is string &&
+        request.resource.data.updatedAt is string &&
+        request.resource.data.lastOpenedAt is string;
+      allow delete: if signedIn() && request.auth.uid == uid &&
+        resource.data.ownerUid == uid;
+    }
+
     // Reports are private to their reporter and selected staff audience.
     // Bug reports are ALWAYS admin-only (plus reporter access to My reports).
     // Missing audience on legacy records means admin until migrated.

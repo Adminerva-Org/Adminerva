@@ -1,6 +1,6 @@
 {
-  "version": "1.5.0",
+  "version": "2.0.0",
   "releasedAt": "2026-10-27",
-  "notes": "Simpler student evidence resubmission and attribution review, faster class grading and evaluation, improved lesson printing and clearer assessment screens.",
-  "publishedAt": "2026-10-27T19:43:25.332+08:00"
+  "notes": "Adminerva Code Studio introduces named software projects, Java Console/Desktop/Information System templates, project-scoped SQL and design workspaces, and integrated evidence and run monitoring.",
+  "publishedAt": "2026-10-27T22:45:00+08:00"
 }

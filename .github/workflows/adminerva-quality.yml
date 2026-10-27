@@ -97,6 +97,9 @@ jobs:
           node --input-type=module --check < js/presentation-review/presentation-ai.js
           node --input-type=module --check < js/presentation-review/sanitize.js
           node --input-type=module --check < js/student/playground.js
+          node --input-type=module --check < js/student/project-studio.mjs
+          node --input-type=module --check < js/student/code-projects.mjs
+          node --input-type=module --check < js/student/adminerva-db.mjs
           node --input-type=module --check < js/student/playground-storage.mjs
           node --input-type=module --check < js/student/playground-cloud.mjs
           node --input-type=module --check < js/student/assessments.js
