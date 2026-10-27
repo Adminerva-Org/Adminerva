@@ -1,6 +1,81 @@
 {
   "releases": [
     {
+      "version": "2.1.0",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-28",
+      "title": "Visual database manager and project bundles",
+      "summary": "Code Studio adds context-based Explorer actions, portable Adminerva project bundles, and a phpMyAdmin-inspired visual data workflow while retaining the existing SQL learning engine.",
+      "changes": [
+        {
+          "type": "Updated",
+          "area": "Explorer",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "File and folder creation, rename/move, delete and open actions now live in a right-click context menu instead of occupying permanent Explorer toolbar space. Shift+F10/Context Menu keyboard access is supported."
+        },
+        {
+          "type": "New",
+          "area": "Project bundles",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "ZIP exports now include adminerva-project.json with project configuration, database data and design artifacts. Importing an Adminerva bundle restores those alongside the source files."
+        },
+        {
+          "type": "New",
+          "area": "Database Browse",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "Adminerva DB now has a visual Browse view with tabular rows plus Insert, Edit and Delete actions for tables with primary keys."
+        },
+        {
+          "type": "New",
+          "area": "Database Structure",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "The Structure view shows column order, names, data types and primary-key metadata for the selected table."
+        },
+        {
+          "type": "Updated",
+          "area": "SQL workspace",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "The SQL console is now one database-manager view rather than the entire database experience, and remains connected to CRUD evidence/history."
+        },
+        {
+          "type": "New",
+          "area": "Database utilities",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "Selected tables can be exported as CSV, and + Table opens a CREATE TABLE starter in the SQL view."
+        },
+        {
+          "type": "New",
+          "area": "Example project",
+          "audience": [
+            "student",
+            "teacher",
+            "guest"
+          ],
+          "text": "A compiled Adminerva POS Management System bundle demonstrates multi-file Java Swing, layered OOP design, product/cart/sales workflows, and companion Adminerva DB tables with seed data."
+        }
+      ],
+      "publishedAt": "2026-10-28T05:55:00+08:00"
+    },
+    {
       "version": "2.0.3",
       "status": "published",
       "public": true,
