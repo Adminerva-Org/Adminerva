@@ -386,7 +386,7 @@ document.getElementById("upvoteBtn").addEventListener("click", async () => {
   if (!currentOpenIssueId || !auth.currentUser?.uid) return;
   const button=document.getElementById("upvoteBtn");
   const issueId=currentOpenIssueId, voterUid=auth.currentUser.uid;
-  button.disabled=true;
+  button.disabled=true;const end=window.beginLoading?.("Saving report vote…")||(()=>{});
   try {
     // Read and update votes atomically. A simultaneous classmate vote cannot
     // overwrite another user's vote or forge somebody else's identity.
@@ -413,7 +413,7 @@ document.getElementById("upvoteBtn").addEventListener("click", async () => {
     console.warn("Could not update issue vote",error);
     alert("Your vote could not be saved. Reload the report and try again.");
   } finally {
-    button.disabled=false;
+    button.disabled=false;end();
   }
 });
 // ==========================================
@@ -493,7 +493,7 @@ document
 
     const issueId=currentOpenIssueId;
     const button=document.getElementById("postCommentBtn");
-    button.disabled=true;
+    button.disabled=true;const end=window.beginLoading?.("Posting report comment…")||(()=>{});
     try {
       await addDoc(collection(db, `issues/${issueId}/comments`), {
         text: text,
@@ -506,14 +506,14 @@ document
     } catch (e) {
       alert("Failed to post comment. Your draft is still in the comment box.");
     } finally {
-      button.disabled=false;
+      button.disabled=false;end();
     }
   });
 
 window.deleteComment = async function (commentId) {
   if (!confirm("Delete this comment permanently?")) return;
-  await deleteDoc(doc(db, `issues/${currentOpenIssueId}/comments`, commentId));
-  loadComments(currentOpenIssueId);
+  const end=window.beginLoading?.("Deleting report comment…")||(()=>{});
+  try{await deleteDoc(doc(db, `issues/${currentOpenIssueId}/comments`, commentId));loadComments(currentOpenIssueId);}finally{end();}
 };
 
 // ==========================================
@@ -527,6 +527,7 @@ async function updateIssueField(field,value,{button}={}){
   if(!id||!issue||!canTriage(issue))return;
   const previous=issue[field];
   if(button)button.disabled=true;
+  const end=window.beginLoading?.("Updating report "+field+"…")||(()=>{});
   issue[field]=value;
   renderIssues();
   try{
@@ -541,7 +542,7 @@ async function updateIssueField(field,value,{button}={}){
     if(currentOpenIssueId===id)window.openIssueModal(id);
     alert("Report change could not be saved. Your previous value has been restored.");
   }finally{
-    if(button)button.disabled=false;
+    if(button)button.disabled=false;end();
   }
 }
 document.getElementById("adminStatusSelect")?.addEventListener("change",e=>{
@@ -581,7 +582,7 @@ document.getElementById("adminDeleteBtn")?.addEventListener("click",async event=
   if(!isSuperAdmin||!currentOpenIssueId)return;
   const issue=allIssues.find(item=>item.id===currentOpenIssueId);if(!issue)return;
   if(!confirm("Close this report and lock further comments? The report and discussion will be preserved for history and support export."))return;
-  const button=event.currentTarget;button.disabled=true;
+  const button=event.currentTarget;button.disabled=true;const end=window.beginLoading?.("Closing report…")||(()=>{});
   try{
     await updateDoc(doc(db,"issues",currentOpenIssueId),{status:"Closed (Won't Fix)",locked:true,updatedAt:serverTimestamp()});
     issue.status="Closed (Won't Fix)";issue.locked=true;renderIssues();window.openIssueModal(issue.id);
