@@ -151,5 +151,5 @@ async function versions(){
   }catch(error){alert("Cloud versions unavailable: "+error.message)}
   finally{button.disabled=false;button.textContent=normal}
 }
-el("cloudSaveProjectBtn")?.addEventListener("click",()=>void save());
-el("cloudLoadProjectBtn")?.addEventListener("click",()=>void versions());
+el("cloudSaveProjectBtn")?.addEventListener("click",()=>void window.withLoading("Saving your cloud workspace…",save,{button:el("cloudSaveProjectBtn")}));
+el("cloudLoadProjectBtn")?.addEventListener("click",()=>void window.withLoading("Loading saved cloud versions…",versions,{button:el("cloudLoadProjectBtn")}));
