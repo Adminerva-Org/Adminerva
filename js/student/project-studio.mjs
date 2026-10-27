@@ -189,6 +189,12 @@ export function createProjectStudio({
     });
     el("dbRunBtn")?.addEventListener("click",runSql);
     el("dbInsertRowBtn")?.addEventListener("click",()=>openDbRowEditor());
+    el("dbExportCsvBtn")?.addEventListener("click",exportDbCsv);
+    el("dbNewTableBtn")?.addEventListener("click",()=>{
+      switchDbView("sql");
+      const input=el("dbSqlInput");
+      if(input){input.value="CREATE TABLE new_table (id INTEGER PRIMARY KEY, name TEXT);";input.focus();input.select();}
+    });
     document.querySelectorAll("[data-db-view]").forEach(button=>button.addEventListener("click",()=>switchDbView(button.dataset.dbView)));
     el("dbExampleSelect")?.addEventListener("change",event=>{
       const sql=event.target.value;if(sql)el("dbSqlInput").value=sql;
@@ -453,6 +459,18 @@ export function createProjectStudio({
   }
   function selectedDbTable(){
     return dbSelectedTable&&activeProject?.database?.tables?.[dbSelectedTable]?activeProject.database.tables[dbSelectedTable]:null;
+  }
+  function exportDbCsv(){
+    const table=selectedDbTable();if(!table)return alert("Select a table first.");
+    const columns=(table.columns||[]).map(column=>column.name);
+    const csvCell=value=>{
+      const text=value==null?"":String(value);
+      return /[",\n\r]/.test(text)?'"'+text.replace(/"/g,'""')+'"':text;
+    };
+    const lines=[columns.map(csvCell).join(","),...(table.rows||[]).map(row=>columns.map(column=>csvCell(row[column])).join(","))];
+    const blob=new Blob([lines.join("\n")],{type:"text/csv;charset=utf-8"});
+    const url=URL.createObjectURL(blob),a=document.createElement("a");
+    a.href=url;a.download=dbSelectedTable+".csv";a.click();URL.revokeObjectURL(url);
   }
   function switchDbView(view){
     dbView=["browse","structure","sql"].includes(view)?view:"browse";
