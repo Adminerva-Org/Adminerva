@@ -58,7 +58,7 @@ function renderReclaimQueue(){
       for(const [decision,buttonText] of [["approved","Approve claim"],["shared","Shared"],["rejected","Reject"]]){
         const button=document.createElement("button");button.type="button";button.className="text-xs rounded border border-amber-300 bg-amber-50 px-3 py-2 font-bold text-amber-950 disabled:opacity-50";
         button.textContent=buttonText;button.disabled=busy;
-        button.addEventListener("click",()=>void decidePendingClaim(claim,decision));controls.append(button);
+        button.addEventListener("click",()=>void window.withLoading("Saving attribution decision…",()=>decidePendingClaim(claim,decision),{button}));controls.append(button);
       }
     }else{
       const note=document.createElement("span");note.className="text-xs text-amber-900";
@@ -649,12 +649,12 @@ async function bulkEvaluate({rerun=false}={}){
 }
 window.addEventListener("adminerva:gradebook-grid-loaded",event=>void load(event.detail));
 if(window.__adminervaGradebookGridContext)void load(window.__adminervaGradebookGridContext);
-el("gbForceGather")?.addEventListener("click",()=>void forceGather());
+el("gbForceGather")?.addEventListener("click",()=>void window.withLoading("Finding repository history…",forceGather,{button:el("gbForceGather")}));
 el("gbCopyMissingReminder")?.addEventListener("click",()=>void copyMissingReminder());
-el("gbBulkApprove")?.addEventListener("click",()=>void bulkApprove());
-el("gbBulkReopen")?.addEventListener("click",()=>void bulkReopen());
-el("gbRefreshEvidence")?.addEventListener("click",()=>void refreshEvidence());
+el("gbBulkApprove")?.addEventListener("click",()=>void window.withLoading("Reviewing and approving evidence…",bulkApprove,{button:el("gbBulkApprove")}));
+el("gbBulkReopen")?.addEventListener("click",()=>void window.withLoading("Reopening selected evidence…",bulkReopen,{button:el("gbBulkReopen")}));
+el("gbRefreshEvidence")?.addEventListener("click",()=>void window.withLoading("Refreshing class evidence…",refreshEvidence,{button:el("gbRefreshEvidence")}));
 window.addEventListener("focus",()=>{if(context&&!busy&&!document.getElementById("gbLegacyView")?.classList.contains("hidden"))void refreshEvidence();});
-el("gbBulkEvaluate")?.addEventListener("click",()=>void bulkEvaluate());
-el("gbBulkRerun")?.addEventListener("click",()=>void bulkEvaluate({rerun:true}));
+el("gbBulkEvaluate")?.addEventListener("click",()=>void window.withLoading("Evaluating verified learner evidence…",()=>bulkEvaluate(),{button:el("gbBulkEvaluate")}));
+el("gbBulkRerun")?.addEventListener("click",()=>void window.withLoading("Re-evaluating learner evidence…",()=>bulkEvaluate({rerun:true}),{button:el("gbBulkRerun")}));
 el("gbCancelEvaluation")?.addEventListener("click",()=>{cancelEvaluation=true;el("gbBulkStatus").textContent="Stopping after the current learner. Completed drafts are preserved.";});
