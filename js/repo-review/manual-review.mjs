@@ -11,10 +11,10 @@ import {
 import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=1.3.0";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
 import {parseWeightedRubric,loadPinnedV2Source,parseSuggestedRubric}
-  from "./services/v2-grading-assistant.mjs?v=1.4.24";
+  from "./services/v2-grading-assistant.mjs?v=1.4.25";
 import {buildExternalEvaluationPackage,parseExternalEvaluationResponse}
   from "./services/external-evaluation.mjs?v=1.1.1";
-import {evaluateVerifiedEvidence} from "./services/adaptive-evaluation.mjs?v=1.3.1";
+import {evaluateVerifiedEvidence} from "./services/adaptive-evaluation.mjs?v=1.3.2";
 import {isAndroidUiAssessment} from "./services/android-evidence.mjs?v=1.3.0";
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
 import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=1.3.0";
