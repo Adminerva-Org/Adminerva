@@ -547,7 +547,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
       el(id).disabled=!!previous?.published;
     el("manualReviewAnalyze").disabled=!login||Boolean(checkpointSha);
     el("manualReviewAnalyze").onclick=()=>examineRecentCommits(session,owner,repo,login);
-    message(previous?.published?"Published grade protected. Unpublish for revision here, then reopen evidence in section 1 if student changes are needed.":previous?"Saved private draft. Review, save changes, or explicitly publish.":"No teacher grade saved. Review evidence, optionally evaluate, then complete section 3.");
+    message(previous?.published?"Published grade protected. Unpublish for revision here, then reopen evidence in section 1 if student changes are needed.":previous?"Saved unpublished grade. Review, save changes, or explicitly publish.":"No teacher grade saved. Review evidence, optionally evaluate, then complete section 3.");
     if(assessment.schemaVersion===2){
       applyEvidenceState(approvedEvidence,{initial:true});
       const advanced=el("integratedAdvancedLinks");advanced.replaceChildren();
@@ -656,7 +656,7 @@ async function save(event) {
     const savedGrade=(await getDoc(active.gradeRef)).data();
     if(state.active!==active||state.token!==session)return;
     message("Teacher-reviewed grade saved as UNPUBLISHED. Review queue refreshed. Publish separately when ready.");
-    button.textContent="Saved private draft";
+    button.textContent="Saved unpublished grade";
     button.disabled=true;
     state.dirty=false;
     active.previous=savedGrade;
