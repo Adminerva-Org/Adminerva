@@ -232,6 +232,10 @@ function importLegacyDraftAsProject(){
     for(const lang of PLAYGROUND_LANGUAGES){state=readPlaygroundDraft(localStorage,uid,lang);if(state){chosen=lang;break;}}
   }
   if(!state)return alert("No older local playground draft was found.");
+  if(projectStudio&&!projectStudio.canCreateProject())return alert("Guest project limit reached. Export or delete a project before importing this older draft.");
+  const limits=projectStudio?.getLimits?.()||{maxFiles:100,maxProjectBytes:780000};
+  if((state.fileOrder||[]).length>limits.maxFiles)return alert("This older draft has more files than this project tier allows.");
+  if(new TextEncoder().encode(JSON.stringify(state)).length>limits.maxProjectBytes)return alert("This older draft is larger than this project tier allows. Export it as a ZIP from the legacy workspace first.");
   const templateByLang={java:"java-blank",python:"python-console",web:"web"};
   const project=createCodeProject(localStorage,uid,{title:"Imported "+chosen.toUpperCase()+" Project",templateId:templateByLang[chosen]||"java-blank",
     config:{runMode:chosen==="web"?"web":"console",database:false}});
