@@ -73,6 +73,7 @@ export function createProjectStudio({
     ...limits
   };
   let activeProject=null,selectedTemplate="java-information",cloudTimer=null,initialized=false;
+  let dbSelectedTable="",dbView="browse";
 
   function projectSize(project){return enc(project);}
   function validateProject(project,{creating=false}={}){
@@ -103,6 +104,7 @@ export function createProjectStudio({
     openProjectById,
     activateProject,
     resetToTemplate,
+    importBundleMetadata,
     getLimits:()=>({...policy}),
     canCreateProject:()=>!Number.isFinite(policy.maxProjects)||readCodeProjects(localStorage,uid).filter(item=>item.status!=="archived").length<policy.maxProjects,
     canAddFile:()=>!activeProject||Object.keys(captureState()?.files||{}).length<policy.maxFiles,
@@ -186,6 +188,8 @@ export function createProjectStudio({
       },700);
     });
     el("dbRunBtn")?.addEventListener("click",runSql);
+    el("dbInsertRowBtn")?.addEventListener("click",()=>openDbRowEditor());
+    document.querySelectorAll("[data-db-view]").forEach(button=>button.addEventListener("click",()=>switchDbView(button.dataset.dbView)));
     el("dbExampleSelect")?.addEventListener("change",event=>{
       const sql=event.target.value;if(sql)el("dbSqlInput").value=sql;
     });
@@ -255,6 +259,21 @@ export function createProjectStudio({
     const project=findCodeProject(localStorage,uid,id);
     if(!project)return alert("This project is no longer available on this device.");
     activateProject(project);
+  }
+
+  function importBundleMetadata(bundle){
+    if(!activeProject||!bundle||bundle.format!=="adminerva-project-bundle")return false;
+    const next=clone(activeProject);
+    if(typeof bundle.title==="string"&&bundle.title.trim())next.title=bundle.title.trim().slice(0,120);
+    if(bundle.template&&CODE_PROJECT_TEMPLATES[bundle.template])next.template=bundle.template;
+    if(typeof bundle.lang==="string")next.lang=bundle.lang;
+    if(bundle.config&&typeof bundle.config==="object")next.config={...(next.config||{}),...clone(bundle.config)};
+    if(bundle.database&&typeof bundle.database==="object")next.database=clone(bundle.database);
+    if(bundle.design&&typeof bundle.design==="object")next.design=clone(bundle.design);
+    validateProject(next);
+    activeProject=next;store(activeProject,true);onConfigChange?.(activeProject.config);
+    dbSelectedTable="";dbView="browse";renderDatabase();renderEvidence();loadDesignEditor();
+    return true;
   }
 
   function resetToTemplate(){
@@ -426,6 +445,25 @@ export function createProjectStudio({
     }catch(error){target.innerHTML='<p class="studio-error">Diagram error: '+escapeHtml(error.message)+'</p>';}
   }
 
+  function sqlLiteral(value){
+    if(value===null||value===undefined||value==="")return "NULL";
+    if(typeof value==="number"&&Number.isFinite(value))return String(value);
+    if(typeof value==="boolean")return value?"TRUE":"FALSE";
+    return "'"+String(value).replace(/'/g,"''")+"'";
+  }
+  function selectedDbTable(){
+    return dbSelectedTable&&activeProject?.database?.tables?.[dbSelectedTable]?activeProject.database.tables[dbSelectedTable]:null;
+  }
+  function switchDbView(view){
+    dbView=["browse","structure","sql"].includes(view)?view:"browse";
+    for(const name of ["browse","structure","sql"]){
+      el("db"+name[0].toUpperCase()+name.slice(1)+"Panel")?.classList.toggle("hidden",name!==dbView);
+    }
+    document.querySelectorAll("[data-db-view]").forEach(button=>button.dataset.active=String(button.dataset.dbView===dbView));
+    const insert=el("dbInsertRowBtn");if(insert)insert.classList.toggle("hidden",dbView!=="browse"||!selectedDbTable());
+    if(dbView==="browse")renderDbBrowse();
+    if(dbView==="structure")renderDbStructure();
+  }
   function renderDatabase(){
     if(!activeProject)return;
     const enabled=Boolean(activeProject.config?.database);
@@ -433,22 +471,99 @@ export function createProjectStudio({
     el("dbWorkspace")?.classList.toggle("hidden",!enabled);
     if(!enabled)return;
     const summaries=databaseSummary(activeProject.database),schema=el("dbSchemaList");
+    if(!activeProject.database)activeProject.database={tables:{},history:[]};
+    if(!dbSelectedTable||!activeProject.database.tables?.[dbSelectedTable])dbSelectedTable=summaries[0]?.name||"";
+    const count=el("dbTableCount");if(count)count.textContent=summaries.length+" table"+(summaries.length===1?"":"s");
     if(schema){
-      schema.innerHTML=summaries.length?summaries.map(table=>'<button type="button" data-table="'+escapeHtml(table.name)+'"><strong>'+escapeHtml(table.name)+'</strong><span>'+table.rows+' rows · '+table.columns.length+' columns</span></button>').join(""):'<p class="studio-empty">No tables yet. Use CREATE TABLE in the SQL console.</p>';
+      schema.innerHTML=summaries.length?summaries.map(table=>'<button type="button" data-table="'+escapeHtml(table.name)+'" data-active="'+(table.name===dbSelectedTable)+'"><strong>'+escapeHtml(table.name)+'</strong><span>'+table.rows+' rows · '+table.columns.length+' columns</span></button>').join(""):'<p class="studio-empty">No tables yet. Open SQL and create your first table.</p>';
       schema.querySelectorAll("[data-table]").forEach(button=>button.addEventListener("click",()=>{
-        el("dbSqlInput").value="SELECT * FROM "+button.dataset.table+";";
+        dbSelectedTable=button.dataset.table||"";renderDatabase();
       }));
     }
+    const table=selectedDbTable(),selectedName=el("dbSelectedTableName"),selectedMeta=el("dbSelectedTableMeta");
+    if(selectedName)selectedName.textContent=dbSelectedTable||"No table selected";
+    if(selectedMeta)selectedMeta.textContent=table?(table.rows?.length||0)+" rows · "+(table.columns?.length||0)+" columns":"";
     const history=el("dbHistory");
-    if(history)history.innerHTML=(activeProject.database?.history||[]).slice(0,8).map(item=>'<li><span>'+escapeHtml(item.type)+'</span><code>'+escapeHtml(item.sql)+'</code><small>'+escapeHtml(prettyDate(item.at))+'</small></li>').join("")||'<li class="studio-empty">No SQL activity yet.</li>';
+    if(history)history.innerHTML=(activeProject.database?.history||[]).slice(0,10).map(item=>'<li><span>'+escapeHtml(item.type)+'</span><code>'+escapeHtml(item.sql)+'</code><small>'+escapeHtml(prettyDate(item.at))+'</small></li>').join("")||'<li class="studio-empty">No SQL activity yet.</li>';
+    switchDbView(dbView);
+  }
+  function renderDbBrowse(){
+    const target=el("dbBrowseTable"),table=selectedDbTable();if(!target)return;
+    if(!table){target.innerHTML='<div class="studio-empty-card db-empty"><strong>No table selected</strong><p>Create or select a table to browse its data.</p><button type="button" data-open-sql class="primary-small">Open SQL</button></div>';target.querySelector("[data-open-sql]")?.addEventListener("click",()=>switchDbView("sql"));return;}
+    const columns=table.columns||[],rows=table.rows||[],primary=columns.find(column=>column.primaryKey);
+    const head='<th class="db-row-actions">Actions</th>'+columns.map(column=>'<th>'+escapeHtml(column.name)+'<small>'+escapeHtml(column.type)+(column.primaryKey?' · PRIMARY':'')+'</small></th>').join("");
+    const body=rows.map((row,index)=>{
+      const actions=primary?'<div class="db-row-action-buttons"><button type="button" data-db-edit="'+index+'">Edit</button><button type="button" data-db-delete="'+index+'" class="danger-subtle">Delete</button></div>':'<span class="studio-muted">No primary key</span>';
+      return '<tr><td class="db-row-actions">'+actions+'</td>'+columns.map(column=>'<td>'+escapeHtml(row[column.name]??"NULL")+'</td>').join("")+'</tr>';
+    }).join("");
+    target.innerHTML='<div class="db-browse-summary"><strong>'+escapeHtml(dbSelectedTable)+'</strong><span>'+rows.length+' row'+(rows.length===1?"":"s")+'</span>'+(primary?'':'<span class="db-warning">Add a primary key to enable visual edit/delete.</span>')+'</div><div class="studio-table-wrap db-data-table"><table class="studio-table"><thead><tr>'+head+'</tr></thead><tbody>'+body+'</tbody></table></div>'+(rows.length?'':'<div class="db-zero-state">This table has no rows yet. Use <strong>Insert row</strong> or SQL to add data.</div>');
+    target.querySelectorAll("[data-db-edit]").forEach(button=>button.addEventListener("click",()=>openDbRowEditor(Number(button.dataset.dbEdit))));
+    target.querySelectorAll("[data-db-delete]").forEach(button=>button.addEventListener("click",()=>deleteDbRow(Number(button.dataset.dbDelete))));
+  }
+  function renderDbStructure(){
+    const target=el("dbStructureTable"),table=selectedDbTable();if(!target)return;
+    if(!table){target.innerHTML='<p class="studio-empty">Select a table to inspect its structure.</p>';return;}
+    const rows=(table.columns||[]).map((column,index)=>[index+1,column.name,column.type,column.primaryKey?"PRIMARY KEY":"—"]);
+    renderGridTable(target,["#","Column","Type","Key"],rows);
+  }
+  function openDbRowEditor(rowIndex=null){
+    const editor=el("dbRowEditor"),table=selectedDbTable();if(!editor||!table)return;
+    const editing=Number.isInteger(rowIndex),row=editing?table.rows[rowIndex]:{};
+    const fields=(table.columns||[]).map(column=>{
+      const value=row?.[column.name]??"";
+      const inputType=/^(INTEGER|REAL|NUMERIC|DECIMAL|FLOAT|DOUBLE)$/i.test(column.type)?"number":"text";
+      const step=inputType==="number"&&!/^INTEGER$/i.test(column.type)?' step="any"':"";
+      return '<label><span>'+escapeHtml(column.name)+' <small>'+escapeHtml(column.type)+(column.primaryKey?" · PK":"")+'</small></span><input data-db-field="'+escapeHtml(column.name)+'" type="'+inputType+'"'+step+' value="'+escapeHtml(value)+'" placeholder="'+escapeHtml(column.name)+'"></label>';
+    }).join("");
+    editor.dataset.rowIndex=editing?String(rowIndex):"";
+    editor.innerHTML='<div class="db-row-editor-head"><div><strong>'+(editing?"Edit row":"Insert row")+'</strong><span class="studio-muted">'+escapeHtml(dbSelectedTable)+'</span></div><button type="button" data-db-cancel>×</button></div><form id="dbRowForm" class="db-row-form">'+fields+'<div class="db-row-form-actions"><button type="button" data-db-cancel>Cancel</button><button type="submit" class="primary-small">'+(editing?"Save changes":"Insert row")+'</button></div></form>';
+    editor.classList.remove("hidden");
+    editor.querySelectorAll("[data-db-cancel]").forEach(button=>button.addEventListener("click",()=>editor.classList.add("hidden")));
+    editor.querySelector("form")?.addEventListener("submit",event=>{event.preventDefault();saveDbRow(editing?rowIndex:null);});
+    editor.querySelector("input")?.focus();
+  }
+  function formDbValues(){
+    const result={};el("dbRowEditor")?.querySelectorAll("[data-db-field]").forEach(input=>{
+      const raw=input.value;
+      result[input.dataset.dbField]=input.type==="number"&&raw!==""?Number(raw):raw;
+    });return result;
+  }
+  function saveDbRow(rowIndex=null){
+    const table=selectedDbTable();if(!table)return;
+    const values=formDbValues(),columns=table.columns||[],editing=Number.isInteger(rowIndex);
+    let sql="";
+    if(editing){
+      const primary=columns.find(column=>column.primaryKey);if(!primary)return alert("Visual editing requires a primary key.");
+      const original=table.rows[rowIndex]?.[primary.name];
+      const set=columns.map(column=>column.name+" = "+sqlLiteral(values[column.name])).join(", ");
+      sql="UPDATE "+dbSelectedTable+" SET "+set+" WHERE "+primary.name+" = "+sqlLiteral(original)+";";
+    }else{
+      sql="INSERT INTO "+dbSelectedTable+" ("+columns.map(column=>column.name).join(", ")+") VALUES ("+columns.map(column=>sqlLiteral(values[column.name])).join(", ")+");";
+    }
+    try{
+      const result=executeAdminervaSql(activeProject.database,sql),candidate={...activeProject,database:result.db};
+      validateProject(candidate);activeProject.database=result.db;store(activeProject,true);
+      el("dbRowEditor")?.classList.add("hidden");renderDatabase();renderEvidence();
+      const note=el("dbStatus");if(note)note.textContent=result.type+" completed · "+result.affected+" row(s)";
+    }catch(error){alert("Database update failed: "+error.message);}
+  }
+  function deleteDbRow(rowIndex){
+    const table=selectedDbTable();if(!table)return;
+    const primary=(table.columns||[]).find(column=>column.primaryKey);if(!primary)return alert("Visual deletion requires a primary key.");
+    const value=table.rows[rowIndex]?.[primary.name];if(!confirm("Delete this row from "+dbSelectedTable+"?"))return;
+    try{
+      const result=executeAdminervaSql(activeProject.database,"DELETE FROM "+dbSelectedTable+" WHERE "+primary.name+" = "+sqlLiteral(value)+";");
+      activeProject.database=result.db;store(activeProject,true);renderDatabase();renderEvidence();
+    }catch(error){alert("Delete failed: "+error.message);}
   }
   function runSql(){
     if(!activeProject||!activeProject.config?.database)return;
     try{
-      const result=executeAdminervaSql(activeProject.database,el("dbSqlInput").value);
+      const sql=el("dbSqlInput").value,result=executeAdminervaSql(activeProject.database,sql);
       const candidate={...activeProject,database:result.db};
       validateProject(candidate);
       activeProject.database=result.db;store(activeProject,true);
+      const from=sql.match(/\b(?:FROM|INTO|UPDATE|TABLE)\s+([A-Za-z_]\w*)/i);if(from&&activeProject.database.tables?.[from[1]])dbSelectedTable=from[1];
       renderGridTable(el("dbResult"),result.columns,result.rows);renderDatabase();renderEvidence();
       const note=el("dbStatus");if(note)note.textContent=result.type+" completed · "+result.affected+" row(s)";
     }catch(error){
