@@ -1,6 +1,6 @@
 {
-  "version": "2.0.0",
-  "releasedAt": "2026-10-27",
-  "notes": "Adminerva Code Studio introduces named software projects, Java Console/Desktop/Information System templates, project-scoped SQL and design workspaces, and integrated evidence and run monitoring.",
-  "publishedAt": "2026-10-27T22:45:00+08:00"
+  "version": "2.0.1",
+  "releasedAt": "2026-10-28",
+  "notes": "Code Studio refinement: guest local projects with clear limits, project-aware ZIP workflows, template reset, design autosave, and clearer project storage/quota status.",
+  "publishedAt": "2026-10-28T00:53:00+08:00"
 }
