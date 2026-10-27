@@ -507,6 +507,7 @@ window.openPresentationHistory=async function(){
   modal.classList.remove("hidden");
   const container=modal.querySelector("#presentationVersionsList");
   container.textContent="Loading saved versions…";
+  const end=window.beginLoading?.("Loading presentation version history…",modal)||(()=>{});
   try{
     const snap=await getDocs(query(ownedCollection(db,"presentations",presentationId,"revisions"),
       orderBy("archivedRevisionAt","desc"),limit(20)));
@@ -541,5 +542,5 @@ window.openPresentationHistory=async function(){
     });
   }catch(error){
     container.textContent="Could not load version history: "+error.message;
-  }
+  }finally{end();}
 };
