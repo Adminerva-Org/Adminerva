@@ -11,6 +11,7 @@ mountLegacyRecovery();
 let preparingOriginal=false;
 async function prepareOriginalTeacher(){
   if(preparingOriginal)return;preparingOriginal=true;field("staff-legacy-setup").disabled=true;
+  const end=window.beginLoading?.("Checking original teacher assignments…")||(()=>{});
   field("original-teacher-status").textContent="Checking the original teacher’s legacy roster connection…";
   try{
     const result=await restoreOriginalTeacherSections();field("original-teacher-status").textContent=result.message;if(result.changed&&!opened)await refresh();
@@ -24,7 +25,7 @@ async function prepareOriginalTeacher(){
     }
   }
   catch(error){field("original-teacher-status").textContent="Legacy class setup could not finish: "+error.message+". Existing student records and explicit teacher assignments were preserved.";}
-  finally{preparingOriginal=false;field("staff-legacy-setup").disabled=false;}
+  finally{preparingOriginal=false;field("staff-legacy-setup").disabled=false;end();}
 }
 field("staff-legacy-setup").addEventListener("click",prepareOriginalTeacher);
 function status(message,tone="info"){for(const id of ["staff-account-status","staff-form-status"]){field(id).textContent=message;field(id).dataset.tone=tone;}}
@@ -104,7 +105,7 @@ async function refresh(){
   status("Teacher directory loaded. Select a teacher to edit their assigned sections."+(loaded[1].status!=="fulfilled"||loaded[3].status!=="fulfilled"?" Some section choices could not load; refresh to try again.":students.size===1000?" Section counts cover the first 1,000 student records.":""));
 }
 field("staff-reset").addEventListener("click",()=>{reset();field("staff-email").focus();status("Enter a teacher’s verified Google email to add access.");});
-field("staff-refresh").addEventListener("click",async()=>{if(busy)return;field("staff-refresh").disabled=true;try{reset();await refresh();}catch{status("Teacher directory could not refresh. Check your connection and try again.","error");}finally{field("staff-refresh").disabled=false;}});
+field("staff-refresh").addEventListener("click",async()=>{if(busy)return;field("staff-refresh").disabled=true;const end=window.beginLoading?.("Refreshing teacher directory…")||(()=>{});try{reset();await refresh();}catch{status("Teacher directory could not refresh. Check your connection and try again.","error");}finally{field("staff-refresh").disabled=false;end();}});
 field("staff-account-form").addEventListener("submit",async event=>{
   event.preventDefault();if(busy)return;
   const actor=auth.currentUser,current=epoch;
