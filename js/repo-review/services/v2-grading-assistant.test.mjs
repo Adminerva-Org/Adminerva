@@ -250,3 +250,47 @@ test('merge and formatting-only commits cannot borrow shared implementation cred
   await assert.rejects(loadPinnedV2Source({...options,fetchImpl:async()=>({ok:true,json:async()=>({files:[{
     filename:XML,patch:'-<TextView/>\n+  <TextView/>'}]})})}),/No verified substantive primary screen change/);
 });
+
+
+test('verified student screen renamed away at later checkpoint uses historical verified-commit source, never teammate source',async()=>{
+  const teammate='app/src/main/res/layout/teammate.xml',requests=[];
+  const response=data=>({ok:true,json:async()=>data});
+  const evidence=await loadPinnedV2Source({
+    repository:'https://github.com/example/android',
+    selectedCommits:[A],verifiedContributionCommits:[A],checkpointSha:B,assessment:assignment,
+    fetchImpl:async url=>{
+      requests.push(url);
+      if(url.includes('/commits/'+A))return response({parents:[{sha:B}],files:[
+        {filename:XML,status:'added',patch:'@@ -0,0 +1,2 @@\n+<LinearLayout>\n+<TextView />'}]});
+      if(url.includes('/git/trees/'+B))return response({tree:[{path:teammate,type:'blob'}]});
+      if(url.includes('/contents/'+XML+'?ref='+A))
+        return response({type:'file',encoding:'base64',content:Buffer.from('<LinearLayout><TextView/></LinearLayout>').toString('base64')});
+      throw Error('Unexpected request '+url);
+    }
+  });
+  assert.deepEqual(evidence.missingPrimaryPaths,[XML]);
+  assert.equal(evidence.files.length,1);
+  assert.equal(evidence.files[0].historical,true);
+  assert.equal(evidence.files[0].sourceSha,A);
+  assert.equal(evidence.patches[0].substantive,true);
+  assert.equal(requests.some(url=>url.includes(teammate)),false);
+});
+
+test('verified substantive primary diff can be packaged even if source no longer exists at later checkpoint or historical commit',async()=>{
+  const response=data=>({ok:true,json:async()=>data});
+  const evidence=await loadPinnedV2Source({
+    repository:'https://github.com/example/android',
+    selectedCommits:[A],verifiedContributionCommits:[A],checkpointSha:B,assessment:assignment,
+    fetchImpl:async url=>{
+      if(url.includes('/commits/'+A))return response({parents:[{sha:B}],files:[
+        {filename:XML,status:'modified',patch:'@@ -1 +1 @@\n-<TextView/>\n+<Button/>'}]});
+      if(url.includes('/git/trees/'+B))return response({tree:[]});
+      if(url.includes('/contents/'+XML+'?ref='+A))return {ok:false,status:404};
+      throw Error('Unexpected request '+url);
+    }
+  });
+  assert.equal(evidence.files.length,0);
+  assert.deepEqual(evidence.historicalSourceUnavailable,[XML]);
+  assert.equal(evidence.patches[0].substantive,true);
+  assert.ok(evidence.patches[0].patch.includes('<Button/>'));
+});
