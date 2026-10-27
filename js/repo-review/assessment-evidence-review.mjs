@@ -358,12 +358,13 @@ async function decideClaim(claim,decision){
   if(await resolveStaffRole(auth.currentUser)!=="admin")return status("Administrator access is required to decide reclaims.");
   const explanation=prompt("Administrative decision note (10–2,000 characters; recorded permanently):");
   if(explanation===null)return;
+  const end=window.beginLoading?.("Recording commit attribution decision…")||(()=>{});
   try{
     status("Recording audited reclaim decision…");
     await decideReclaim({claimId:claim.id,decision,reason:explanation});
     status("Reclaim decision recorded. Student evidence and grades have not been changed.");
     await loadEvidence();
-  }catch(e){status("Unable to decide reclaim: "+e.message);}
+  }catch(e){status("Unable to decide reclaim: "+e.message);}finally{end();}
 }
 async function verifyAncestry(repo,checkpoint,selected){
   const result=await verifyCheckpointAncestry({
@@ -386,6 +387,7 @@ async function approve(){
     status("Resolve pending reclaim requests involving selected commits before approving.");return;
   }
   state.busy=true;el("evidenceApprove").disabled=true;
+  const end=window.beginLoading?.("Verifying selected commits and approving checkpoint…",el("evidenceDetails"))||(()=>{});
   try{
     const repo=parseRepository(state.evidence.repository);
     const selection=normalizeSelection(state.evidence.selectedCommits,state.evidence.checkpointSha,{allowEmpty:state.evidence.source==="teacher_discovered"});
@@ -410,7 +412,7 @@ async function approve(){
     notifyWorkspace();
     status(contribution.verifiedContributionCommits.length?"Checkpoint approved and the review controls refreshed. Evaluate is available for verified individual contributions; grades remain unpublished.":"Checkpoint approved with no verified individual contributions. No shared-project credit is inferred; use manual review. Grades remain unpublished.");
   }catch(e){if(e.code==="evidence-changed")state.loaded=false;status("Approval failed: "+e.message);}
-  finally{state.busy=false;el("evidenceApprove").disabled=!state.loaded||(!["submitted","needs_review"].includes(state.evidence?.status)&&!(state.evidence?.status==="approved"&&state.verificationEditing));}
+  finally{end();state.busy=false;el("evidenceApprove").disabled=!state.loaded||(!["submitted","needs_review"].includes(state.evidence?.status)&&!(state.evidence?.status==="approved"&&state.verificationEditing));}
 }
 async function reopen(){
   if(state.busy||!state.loaded||!["submitted","approved","needs_review"].includes(state.evidence?.status)){status("This evidence cannot be returned from its current state. Reload evidence and try again.");return;}
@@ -424,6 +426,7 @@ async function reopen(){
       ?"Return this submission to the student for changes? The current evidence remains in audit history and the student must resubmit."
       :"Reopen this approved evidence for student changes? The approval is revoked, existing draft grades require fresh review, and prior evidence is retained."))return;
   state.busy=true;
+  const end=window.beginLoading?.("Reopening learner evidence…",el("evidenceDetails"))||(()=>{});
   try{
     await changeEvidence(doc(db,"assessment_evidence",state.student.id+"_"+state.assessment.id),state.evidence,{
       status:"reopened",approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:"",
@@ -432,13 +435,14 @@ async function reopen(){
     },reason);
     await loadEvidence();notifyWorkspace();status("Reopened for student changes. A new submission and approval are required before grading.");
   }catch(error){status("Unable to reopen: "+error.message);}
-  finally{state.busy=false;}
+  finally{state.busy=false;end();}
 }
 
 async function findHistoricalCommits(){
   const student=state.student;if(!student)return status("Choose student and assessment.");
   const sequence=++discovery.sequence;
   discovery.loading=true;discovery.hasOlder=false;updateDiscoveryPaging();
+  const end=window.beginLoading?.("Finding historical repository commits…")||(()=>{});
   try{
     const repo=parseRepository(student.repoUrl);
     const info=await github(api(repo));
@@ -453,11 +457,12 @@ async function findHistoricalCommits(){
     updateDiscoveryPaging();renderHistorical();
     status("Showing "+discovery.commits.length+" commits. Use Load older commits for earlier work; Git author dates are not verified push dates.");
   }catch(error){if(sequence===discovery.sequence)status("Historical discovery failed: "+error.message);}
-  finally{if(sequence===discovery.sequence){discovery.loading=false;updateDiscoveryPaging()}}
+  finally{end();if(sequence===discovery.sequence){discovery.loading=false;updateDiscoveryPaging()}}
 }
 async function loadOlderHistorical(){
   if(discovery.loading||!discovery.hasOlder||!state.student)return;
   discovery.loading=true;updateDiscoveryPaging();
+  const end=window.beginLoading?.("Loading older historical commits…")||(()=>{});
   const sequence=discovery.sequence;
   try{
     const repo=parseRepository(state.student.repoUrl);
@@ -471,7 +476,7 @@ async function loadOlderHistorical(){
     status("Showing "+discovery.commits.length+" unique commits. Existing selected evidence is preserved."+
       (!discovery.hasOlder&&batch.length===100?" History limit reached; inspect GitHub manually for earlier commits.":""));
   }catch(error){if(sequence===discovery.sequence)status("Could not load older history: "+error.message)}
-  finally{if(sequence===discovery.sequence){discovery.loading=false;updateDiscoveryPaging()}}
+  finally{end();if(sequence===discovery.sequence){discovery.loading=false;updateDiscoveryPaging()}}
 }
 function renderHistorical(){
   const list=el("evidenceDiscoverList");list.replaceChildren();
@@ -511,6 +516,8 @@ async function saveDiscovery(){
       throw Error("Checkpoint must belong to the retrieved repository commits.");
     if(!confirm("Record historical evidence for "+student.name+
       "? This is NOT a student submission, a verified push time, or an approved checkpoint."))return;
+    const end=window.beginLoading?.("Saving proposed historical evidence…")||(()=>{});
+    try{
     const ref=doc(db,"assessment_evidence",student.id+"_"+assessment.id);
     await runTransaction(db,async tx=>{
       const existing=await tx.get(ref);
@@ -525,6 +532,7 @@ async function saveDiscovery(){
     });
     await loadEvidence();
     status("Historical candidate evidence saved. Independently verify before approving; no submission date was asserted.");
+    }finally{end();}
   }catch(error){status("Unable to save historical evidence: "+error.message);}
 }
 el("evidenceEditVerification").addEventListener("click",()=>{
