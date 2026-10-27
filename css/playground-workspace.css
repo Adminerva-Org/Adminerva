@@ -680,3 +680,17 @@ body[data-playground-access="student"] #adminerva-nav .av-nav-tools :is(button,a
   .db-view-tabs button{flex:1}
   .db-row-form{grid-template-columns:1fr}
 }
+
+.db-sidebar-head>div{display:flex;align-items:center;gap:6px}
+.db-mini-action,.db-secondary-action{
+  min-height:29px;
+  border:1px solid #d4e0e7;
+  border-radius:7px;
+  padding:4px 7px;
+  background:#fff;
+  color:#3c5b70;
+  font-size:9px;
+  font-weight:850;
+  white-space:nowrap;
+}
+.db-mini-action:hover,.db-secondary-action:hover{border-color:#8fcfc4;color:#007b6d;background:#f4fbf9}
