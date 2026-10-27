@@ -2,7 +2,7 @@
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {collection,getDocs,query,where} from "../core/teaching-firestore.mjs?v=1.3.0";
+import {collection,getDocs,getDocsFromServer,query,where} from "../core/teaching-firestore.mjs?v=1.3.0";
 import {parseRepository} from "./services/assessment-evidence.mjs?v=1.3.0";
 import {mountTeachingWorkspace} from "./teaching-workspace.mjs?v=1.4.18";
 const el=id=>document.getElementById(id),parameters=new URLSearchParams(location.search);
@@ -63,7 +63,7 @@ async function renderQueue({preserve=true}={}){
  const end=window.beginLoading?.("Loading grading evidence and scores…")||(()=>{});
  try{
   const sources=await Promise.allSettled([
-   getDocs(query(collection(db,"assessment_evidence"),where("assessmentId","==",assessmentId))),
+   getDocsFromServer(query(collection(db,"assessment_evidence"),where("assessmentId","==",assessmentId))),
    getDocs(query(collection(db,"student_grades"),where("taskId","==",assessmentId))),
    readActivityGrades(activeTask),
    getDocs(query(collection(db,"student_submissions"),where("assessmentId","==",assessmentId)))
@@ -76,7 +76,7 @@ async function renderQueue({preserve=true}={}){
   const requested=targets.find(target=>target.students.some(student=>student.id===parameters.get("student")));
   el("reviewTargetSelect").value=targets.some(target=>target.id===previous)?previous:requested?.id||targets[0]?.id||"";
   activateTarget();
-  status(targets.length+" repository/group target"+(targets.length===1?"":"s")+" · "+roster.filter(student=>student.section===section).length+" learners"+(sourceWarnings.length?". Some saved statuses could not load: "+sourceWarnings.join(", ")+". Missing statuses are not zero grades.":". Choose a repository/group, then select a learner to open their review."));
+  status(targets.length+" repository/group target"+(targets.length===1?"":"s")+" · "+roster.filter(student=>student.section===section).length+" learners"+(sourceWarnings.length?". Server status unavailable for "+sourceWarnings.join(", ")+". Do not assume reopened or missing evidence is current. Refresh when connected.":". Evidence status checked with the server. Select a learner to review."));
  }catch(error){if(generation===loadId)status("Review queue could not load. Retry with Refresh. "+error.message);}
  finally{el("v2RefreshQueue").disabled=false;end();}
 }
