@@ -783,7 +783,7 @@ window.adminervaRestorePlayground=function(state){
   const uid=ownerUid();
   if(!uid || !persistWorkspace())return false;
   try{
-    const activeProject=projectStudio?.getActiveProject();
+    const activeProject=typeof projectStudio!=="undefined"?projectStudio?.getActiveProject():null;
     if(activeProject){
       const limits=projectStudio.getLimits?.()||{};
       if(Object.keys(state.files||{}).length>(limits.maxFiles||100))throw Error("Imported project exceeds the file limit.");
@@ -815,7 +815,7 @@ window.adminervaRestorePlayground=function(state){
 window.adminervaUndoPlaygroundRestore=function(){
   const uid=ownerUid();
   if(!uid)return;
-  const activeProject=projectStudio?.getActiveProject();
+  const activeProject=typeof projectStudio!=="undefined"?projectStudio?.getActiveProject():null;
   const raw=activeProject?localStorage.getItem("Adminerva_Code_Project_Undo_v1_"+uid+"_"+activeProject.id):localStorage.getItem(playgroundUndoKey(uid,currentLang));
   let previous=null;
   try{previous=JSON.parse(raw||"null")}catch{}
