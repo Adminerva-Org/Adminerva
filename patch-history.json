@@ -2,8 +2,8 @@
   "releases": [
     {
       "version": "1.5.0",
-      "status": "draft",
-      "public": false,
+      "status": "published",
+      "public": true,
       "releasedAt": "2026-10-27",
       "title": "Simpler assessment evidence and class review",
       "summary": "Direct student evidence revisions, easier class approvals and attribution review, stronger grading and evaluation workflows, and restored lesson printing.",
@@ -99,7 +99,8 @@
           ],
           "text": "Show release notes and updates appropriate to each account role while preserving privacy and existing notification preferences."
         }
-      ]
+      ],
+      "publishedAt": "2026-10-27T19:43:25.332+08:00"
     },
     {
       "version": "1.4.3",

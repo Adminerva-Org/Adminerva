@@ -1,6 +1,6 @@
 {
-  "version": "1.4.3",
-  "releasedAt": "2026-10-25",
-  "notes": "More reliable class review, evidence gathering and grading, clearer mobile layouts, consent-based usage analytics, refreshed owl branding, and stronger release checks.",
-  "publishedAt": "2026-10-25T21:17:19+08:00"
+  "version": "1.5.0",
+  "releasedAt": "2026-10-27",
+  "notes": "Simpler student evidence resubmission and attribution review, faster class grading and evaluation, improved lesson printing and clearer assessment screens.",
+  "publishedAt": "2026-10-27T19:43:25.332+08:00"
 }
