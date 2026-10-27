@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Guest Code Studio · Adminerva</title>
 <script src="https://cdn.tailwindcss.com"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-<link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8"><link rel="stylesheet" href="css/playground-workspace.css?v=2.0.1">
+<link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8"><link rel="stylesheet" href="css/playground-workspace.css?v=2.0.2">
 <style>#workspaceContainer{flex:1;min-width:0;display:flex;overflow:hidden}#projectWorkspace{display:flex;flex:1;min-height:0}#editorPane{width:60%;min-width:20%;display:flex;flex-direction:column;min-height:0}#outputPane{width:40%;min-width:20%;display:flex;flex-direction:column;min-height:0}#editorContainer{flex:1;min-height:100px;position:relative}#webPreviewFrame{width:100%;height:100%;border:0;background:#fff}#javaDesktopPreviewContainer{flex:1;min-height:0;background:#020617}#javaDesktopPreviewContainer:not(.hidden){display:flex;flex-direction:column}#javaDesktopFrame{width:100%;flex:1;min-height:0;border:0;background:#0f172a}#javaDesktopStatus{padding:8px 12px;border-bottom:1px solid #334155;background:#111827;color:#bae6fd;font-size:11px;line-height:1.45}#consoleOutput{white-space:pre-wrap;overflow:auto;padding:16px;flex:1;min-height:0;font:12px/1.6 ui-monospace,monospace;color:#d7e9fb}#executionOverlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:20}#executionOverlay.hidden{display:none}#fileTabsContainer{display:flex;overflow:auto;min-height:37px;background:#111d2d;color:#b8cce2;flex-shrink:0}#webPreviewContainer{flex:1;min-height:0}#dragResizer{width:7px;flex-shrink:0;background:#24354a;cursor:col-resize}@media(max-width:767px){#projectWorkspace,#workspaceContainer{flex-direction:column}#editorPane{width:100%!important;height:57%;min-height:170px}#outputPane{width:100%!important;height:43%;min-height:140px}#dragResizer{display:none}}</style></head>
 <body id="pageBody" data-playground-access="guest" class="bg-slate-950 h-[100dvh] flex flex-col overflow-hidden">
 <nav class="pg-public-nav"><strong>ADMINERVA · Code Studio</strong><a href="guest-practice.html">Practice Lab</a><a href="wiki.html#learning">Help</a><a href="guest-home.html">Home</a><a href="login.html">Sign in</a></nav>
@@ -19,7 +19,7 @@
   </div>
 </section>
 
-<div id="studioShell" class="hidden flex-1 flex-col min-h-0">
+<div id="studioShell" class="hidden flex flex-1 flex-col min-h-0">
   <div id="practiceSandboxBanner" class="hidden px-4 py-2 bg-cyan-50 text-cyan-950 text-sm flex flex-wrap justify-between gap-2"><div><strong>Practice experiment</strong><p id="practiceRunStatus" class="text-xs">Experiment freely. Your personal project stays separate.</p></div><a id="practiceReturnLink" href="guest-practice.html" class="font-bold underline">Return to Practice Lab →</a></div>
   <div id="assignedProjectBanner" class="hidden px-4 py-2 bg-indigo-50 text-indigo-950 text-sm border-b border-indigo-200"><strong id="assignedProjectTitle">Assigned project</strong><p id="assignedProjectMeta" class="text-xs mt-0.5"></p><p id="assignedProjectBrief" class="text-xs mt-1 text-indigo-800"></p></div>
 
