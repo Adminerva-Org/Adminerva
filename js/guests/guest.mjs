@@ -81,9 +81,9 @@ async function publicHome(){
         else status(request?.status==="rejected"?"Your access request was not approved. Contact your school administrator. You can still use the public tools above.":request?"Your access request is awaiting school review. You can update the requested role below.":"Select the school role you need and save your request.");
       },()=>connectionFailure("School access status could not load. The public learning tools above are still available."));
       field("guest-request").onsubmit=async event=>{
-        event.preventDefault();if(!allowed||auth.currentUser?.uid!==user.uid)return;const button=event.currentTarget.querySelector("button");button.disabled=true;
+        event.preventDefault();if(!allowed||auth.currentUser?.uid!==user.uid)return;const button=event.currentTarget.querySelector("button");button.disabled=true;const end=window.beginLoading?.("Saving school access request…")||(()=>{});
         try{const requested=field("guest-role").value,existing=await getDoc(ref);if(existing.exists())await updateDoc(ref,{requestedRole:requested,updatedAt:serverTimestamp()});else await ensureGuestRequest(user,requested);status("Access request saved. Your school administrator will review it.");}
-        catch{status("The request could not save. Check your connection and try again.");}finally{button.disabled=false;}
+        catch{status("The request could not save. Check your connection and try again.");}finally{button.disabled=false;end();}
       };
     }catch{if(version===generation)connectionFailure("Your account stays signed in. School access could not be checked; public tools remain available.");}
   });
@@ -114,10 +114,10 @@ else try{
         field("guest-role").value=request.requestedRole;
         field("guest-request").onsubmit=async event=>{
           event.preventDefault();const form=field("guest-request"),button=form.querySelector("button");if(button.disabled)return;
-          button.disabled=true;button.textContent="Saving request…";field("guest-role").disabled=true;form.setAttribute("aria-busy","true");
+          button.disabled=true;button.textContent="Saving request…";field("guest-role").disabled=true;form.setAttribute("aria-busy","true");const end=window.beginLoading?.("Updating school access request…")||(()=>{});
           try{requireLocalAccess();await updateDoc(doc(db,"account_requests",user.uid),{requestedRole:field("guest-role").value,updatedAt:serverTimestamp()});if(auth.currentUser?.uid===user.uid)status("Request saved. Your school administrator will review your access.");}
           catch{if(auth.currentUser?.uid===user.uid)status("Your request could not save. Check your connection and try again.");}
-          finally{button.disabled=false;button.textContent="Save access request";field("guest-role").disabled=false;form.setAttribute("aria-busy","false");}
+          finally{button.disabled=false;button.textContent="Save access request";field("guest-role").disabled=false;form.setAttribute("aria-busy","false");end();}
         };
       }else tools(user.uid);}
     },()=>{allowed=false;field("guest-content").hidden=true;connectionFailure("Your access status could not load. Check your connection and retry.");});
