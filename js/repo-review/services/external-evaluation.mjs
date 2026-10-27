@@ -1,3 +1,4 @@
+import {responsibilityBasis,isAndroidUiAssessment} from "./android-evidence.mjs?v=1.3.0";
 /** Build and parse teacher-controlled external evaluation handoff packages. */
 function text(value,max=12000){return String(value??"").trim().slice(0,max);}
 function cleanSha(value){return /^[a-f0-9]{7,64}$/i.test(String(value||""))?String(value):"";}
@@ -22,17 +23,51 @@ function compactPatch(patch={}){
     patch:String(patch.patch||"")
   };
 }
-export function buildExternalEvaluationPackage({assessment={},criteria=[],evidence={},contributionScope="",maxScore}={}){
+export function buildExternalEvaluationPackage({assessment={},criteria=[],evidence={},contributionScope="",maxScore,privateAssessment={}}={}){
   if(!Array.isArray(criteria)||!criteria.length)throw Error("Assessment rubric is unavailable.");
-  const substantive=(evidence.patches||[]).filter(item=>item?.substantive===true).map(item=>({sha:item.sha,path:item.path}));
+  const substantive=(evidence.patches||[])
+    .filter(item=>item?.substantive===true&&!item?.mergeContext&&cleanSha(item.sha)&&text(item.path,300))
+    .map(item=>({sha:item.sha,path:item.path}));
+  const instructions=text(assessment.taskContext||assessment.instructions||assessment.description||assessment.taskDescription||"",12000);
+  const assessmentRubric=text(assessment.evalCriteria||"",15000);
+  const individualScope=responsibilityBasis({assessment,contributionScope,patches:evidence.patches||[]});
+  const teacherRules=Array.isArray(privateAssessment.rules)
+    ?privateAssessment.rules.slice(0,40).filter(item=>item&&typeof item==="object")
+      .map(item=>({type:text(item.type,80),value:text(item.value,1600)}))
+    :[];
+  const androidUi=isAndroidUiAssessment(assessment);
   const payload={
     format:"adminerva-external-evaluation-v1",
-    privacy:"Learner name and account identifiers intentionally omitted.",
+    privacy:"Learner name and account identifiers intentionally omitted. Review teacher-only instructions and source evidence before sharing externally.",
     assessment:{
       title:text(assessment.title||assessment.name||"Assessment",300),
-      description:text(assessment.description||assessment.instructions||assessment.taskDescription||"",8000),
-      rubric:text(assessment.evalCriteria||"",12000),
-      maxScore:Number(maxScore)
+      subject:text(assessment.subject,200),
+      type:text(assessment.type,100),
+      description:instructions,
+      taskInstructions:instructions,
+      rubric:assessmentRubric,
+      maxScore:Number(maxScore),
+      expectedExtensions:Array.isArray(assessment.expectedExtensions)?assessment.expectedExtensions.map(value=>text(value,20)).filter(Boolean):[],
+      targetPaths:Array.isArray(assessment.targetPaths)?assessment.targetPaths.map(value=>text(value,300)).filter(Boolean):assessment.targetPath?[text(assessment.targetPath,300)]:[],
+      gradingMode:text(assessment.gradingMode||"individual",80)
+    },
+    teacherGradingInstructions:{
+      assessmentSpecificCheckerInstructions:text(privateAssessment.systemPersona||assessment.systemPersona||"",4000),
+      assessmentSpecificRules:teacherRules,
+      individualResponsibilityBasis:text(individualScope,4000),
+      interpretation:"Teacher-authored instructions refine the published task and rubric; they do not override score limits, verified authorship requirements, or the teacher approval process."
+    },
+    evaluationGuidance:{
+      rubricAlignment:"Evaluate each criterion against the published rubric and task instructions, including stated exclusions. Do not silently reweight criteria or add backend requirements when this is a UI-only prototype.",
+      individualVsGroup:androidUi
+        ?"For this Android XML UI assessment, each learner is responsible for at least one individually assigned screen. A verified substantive XML layout represents their assigned screen contribution when no more specific responsibility note exists. Do not deduct individual points solely because teammate screens or whole-project features are missing. Discuss shared completeness separately."
+        :"Only verified individual work earns individual points. Evaluate team deliverables separately; use teacher-confirmed individual responsibilities to interpret the rubric.",
+      evidenceStandard:"Award supported points only for actual verified substantive SHA/path pairs exported below. Merge context, missing diffs and shared checkpoint files alone cannot prove individual authorship. A selected historical commit SHA need not equal the approved checkpoint SHA.",
+      partialScoring:"Award defensible points now. Use partial only for genuinely unresolved criteria and put only plausible unverified points in pendingPoints. A confirmed rubric deficiency is a deduction, not pending credit. Use needs_teacher_review and a null score only when no points can be supported in that criterion. Never treat missing evidence automatically as zero.",
+      technicalClaims:"Distinguish directly identifiable code defects from suspected runtime or visual problems. Do not assert compilation, navigation, runtime behavior, or exact native Android rendering without execution evidence. Binary images may contain useful labels or artwork not visible in the text export.",
+      recommendationsVsDeductions:"Only deduct for actual rubric requirements. Present general best practices (for example strings.xml extraction, naming style or additional accessibility refinements) as recommendations unless the assessment rubric explicitly requires them. Placeholder content and nonfunctional buttons are allowed when the task says backend behavior is out of scope.",
+      feedbackStyle:"Keep student-facing feedback concise and technical, in this order: Verified accomplishments: ... Score-affecting issues: ... Recommended improvements: ... Cite the relevant filenames and specific components or attributes when supported. Do not put uncertainty or missing proof in score-affecting issues; use reviewAction and limitations.",
+      teacherReview:"Keep reviewAction focused on one or two concrete missing checks. Grades and student feedback remain drafts until the teacher explicitly reviews and saves them."
     },
     rubricCriteria:criteria.map(item=>({name:item.name,maxScore:item.maxScore})),
     verifiedContribution:{
@@ -54,27 +89,27 @@ export function buildExternalEvaluationPackage({assessment={},criteria=[],eviden
       pendingPoints:"number",
       confidence:"high | moderate | teacher_confirmation",
       evidence:[{sha:"EXACT_EXPORTED_SHA",path:"EXACT_EXPORTED_PATH"}],
-      rationale:"Explain what the verified evidence demonstrates for "+item.name+".",
-      reviewAction:"State the teacher check still needed, or an empty string."
+      rationale:"Briefly justify supported points and confirmed rubric deficiencies for "+item.name+".",
+      reviewAction:"Only the smallest teacher check needed for unresolved points; otherwise empty string."
     })),
-    feedback:"Student-facing feedback grounded only in verified individual evidence.",
-    projectObservations:"Optional shared-project context; do not award individual credit from this alone.",
-    limitations:"State missing, incomplete, runtime, visual, or other evidence limits."
+    feedback:"Verified accomplishments: ... Score-affecting issues: ... Recommended improvements: ...",
+    projectObservations:"Optional shared-project context only, without awarding individual credit.",
+    limitations:"Only remaining evidence, visual or runtime checks; do not repeat feedback."
   };
   return [
     "ADMINERVA EXTERNAL EVALUATION PACKAGE",
     "",
     "TASK",
-    "Evaluate this learner's verified individual contribution against the rubric below. Treat the approved checkpoint as project context and the verified commit evidence as the basis for individual credit.",
+    "Evaluate the learner's instructor-verified individual contributions against the PUBLISHED assessment instructions and rubric. Teacher-authored checking instructions and the shared checkpoint are provided for context, not as permission to award unverified individual credit.",
     "",
-    "RULES",
-    "1. Do not infer authorship from filenames, commit count, or shared project completeness.",
-    "2. Award supported points only when the response cites an exact sha/path pair listed in verifiedContribution.substantiveReferences.",
-    "3. If evidence is incomplete, use partial or needs_teacher_review and place unsupported points in pendingPoints.",
-    "4. Do not claim compilation, runtime behavior, or exact visual rendering unless the exported evidence demonstrates it.",
-    "5. Keep group/project completeness separate from the learner's individual score.",
-    "6. Return ONLY valid JSON. Do not wrap it in Markdown or add commentary before or after it.",
-    "7. Keep criteria in exactly the same order as rubricCriteria.",
+    "REQUIRED GRADING ORDER",
+    "1. Read EVIDENCE PACKAGE.assessment.taskInstructions, rubric and rubricCriteria, including exclusions such as backend work not required.",
+    "2. Read teacherGradingInstructions and evaluationGuidance. Interpret the learner's assigned screen or component scope separately from the group's overall deliverables.",
+    "3. Grade only the matching verified substantive sha/path references; treat merge-context files, omitted changes and group files as teacher-review context.",
+    "4. For each criterion, distinguish earned points, confirmed rubric deficiencies and genuinely unresolved points. Do not turn every unearned point into pending credit.",
+    "5. Write concise student feedback with the exact labels Verified accomplishments:, Score-affecting issues:, and Recommended improvements:. Identify concrete code defects only where evidenced and relevant to the rubric.",
+    "6. Put verification gaps in reviewAction/limitations instead of alleging runtime or visual defects. Keep shared-project observations separate.",
+    "7. Keep rubric criteria in exactly the exported order. Return a SINGLE valid JSON object with no code fences, XML tags, surrounding commentary, Markdown or download links.",
     "",
     "REQUIRED RESPONSE JSON SHAPE",
     JSON.stringify(responseShape,null,2),
