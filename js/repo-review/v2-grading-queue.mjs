@@ -4,7 +4,7 @@ import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,getDocs,getDocsFromServer,query,where} from "../core/teaching-firestore.mjs?v=1.3.0";
 import {parseRepository} from "./services/assessment-evidence.mjs?v=1.3.0";
-import {mountTeachingWorkspace} from "./teaching-workspace.mjs?v=1.4.18";
+import {mountTeachingWorkspace} from "./teaching-workspace.mjs?v=1.4.19";
 const el=id=>document.getElementById(id),parameters=new URLSearchParams(location.search);
 let requestedPanel=parameters.get("view")||"";
 const workspace=mountTeachingWorkspace(el("teachingWorkspace"));
