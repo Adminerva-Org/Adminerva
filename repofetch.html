@@ -8,7 +8,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="assets/adminerva-favicon-32.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.7" />
-<link rel="stylesheet" href="css/teaching-workspace.css?v=1.3.10"></head>
+<link rel="stylesheet" href="css/teaching-workspace.css?v=1.3.11"></head>
   <body class="bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="repo" data-page="repofetch"></div>
     <script src="js/core/adminerva-nav.js?v=1.4.20"></script>
@@ -26,7 +26,7 @@
             <div>
               <p class="text-xs font-bold uppercase tracking-widest text-slate-500">Review context</p>
               <h2 id="v2WorkspaceTitle" class="text-xl font-extrabold text-slate-950 mt-1">Review class work</h2>
-              <p class="text-xs text-slate-600 mt-1">Select the learner below after choosing a repository group.</p>
+              <p class="text-xs text-slate-600 mt-1">Select a repository group, then choose the learner to review and grade.</p>
             </div>
             <button id="v2RefreshQueue" type="button" class="rounded-lg border border-slate-300 bg-white hover:bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-800">Refresh</button>
           </div>
@@ -42,27 +42,17 @@
             </label>
           </div>
           <select id="reviewTargetMode" class="hidden" aria-hidden="true" tabindex="-1"><option value="group" selected>Group</option></select>
-          <details class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-            <summary class="cursor-pointer text-sm font-semibold text-slate-700">More filters and class targets</summary>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-              <label class="block text-xs font-semibold text-slate-800" for="v2SubjectSelect">Subject
-                <select id="v2SubjectSelect" class="w-full mt-1 bg-white border border-slate-300 rounded-lg p-2.5 text-sm"><option value="all">All subjects</option></select>
-              </label>
-              <div class="text-xs text-slate-600 self-end pb-2">Use the learner selector inside Review &amp; grade to move between members of the selected repository group.</div>
-            </div>
-            <details class="av-review-queue-details mt-3"><summary class="font-semibold cursor-pointer text-sm">Browse all targets in this class</summary><div id="v2Queue" class="av-review-target-grid mt-3" aria-live="polite"></div></details>
-          </details>
           <p id="v2QueueStatus" role="status" class="text-sm text-slate-600">Loading assessments…</p>
         </section>
         <section id="teachingWorkspace" class="av-teaching-workspace" hidden aria-labelledby="teaching-context-title">
           <header class="av-teaching-context"><h2 id="teaching-context-title" data-review-context class="font-extrabold text-lg"></h2><p data-review-individual class="text-sm text-slate-600 mt-1"></p><label class="block text-sm font-semibold mt-3">Current learner<select data-review-member class="mt-1 w-full border rounded-lg p-2.5"></select></label></header>
           <nav class="av-teaching-tabs" role="tablist" aria-label="Teaching workspace panels">
-            <button type="button" id="teaching-tab-inbox" role="tab" aria-controls="teaching-panel-inbox" data-teaching-tab="inbox" aria-selected="true">Review queue</button>
-            <button type="button" id="teaching-tab-grade" role="tab" aria-controls="teaching-panel-review" data-teaching-tab="grade" aria-selected="false" tabindex="-1">Review &amp; grade</button>
+            
+            <button type="button" id="teaching-tab-grade" role="tab" aria-controls="teaching-panel-review" data-teaching-tab="grade" aria-selected="true">Review &amp; grade</button>
             <button type="button" id="teaching-tab-activity" role="tab" aria-controls="teaching-panel-activity" data-teaching-tab="activity" aria-selected="false" tabindex="-1">Observed activity</button>
           </nav>
           <p data-workspace-status role="status" class="text-sm text-slate-600 my-3"></p>
-          <section id="teaching-panel-inbox" role="tabpanel" aria-labelledby="teaching-tab-inbox" data-teaching-panel="inbox"></section>
+          <section id="teaching-panel-inbox" role="tabpanel" aria-labelledby="teaching-tab-inbox" data-teaching-panel="inbox" hidden></section>
           <section id="teaching-panel-repository" role="tabpanel" aria-labelledby="teaching-tab-repository" data-teaching-panel="repository" hidden></section>
           <section id="teaching-panel-review" role="tabpanel" aria-labelledby="teaching-tab-grade" data-teaching-panel="review" hidden></section>
           <section id="teaching-panel-contributions" role="tabpanel" aria-labelledby="teaching-tab-contributions" data-teaching-panel="contributions" hidden></section>
@@ -563,6 +553,6 @@
     <script type="module" src="js/repo-review/repofetch.js?v=1.3.2"></script>
     <script type="module" src="js/repo-review/auto-checker.js?v=1.3.0"></script>
     <script type="module" src="js/repo-review/manual-review.mjs?v=1.4.30"></script>
-    <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=1.4.15"></script>
+    <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=1.4.16"></script>
   </body>
 </html>
