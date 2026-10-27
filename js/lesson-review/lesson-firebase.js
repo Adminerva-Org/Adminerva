@@ -383,6 +383,7 @@ window.openLoadPlanModal = async function () {
   const modal = document.getElementById("loadPlanModal");
   if (!modal) return alert("Modal HTML is missing!");
   modal.classList.replace("hidden", "flex");
+  const end=window.beginLoading?.("Loading saved lesson plans…",modal)||(()=>{});
 
   const container = document.getElementById("savedPlansListContainer");
   const summary=document.getElementById("savedPlanSummary");if(summary)summary.textContent="";
@@ -395,7 +396,7 @@ window.openLoadPlanModal = async function () {
 
   if (!db) {
     container.innerHTML = `<div class="p-4 bg-red-50 text-red-600 rounded-lg text-center font-bold">Firebase is not connected!</div>`;
-    return;
+    end();return;
   }
 
   try {
@@ -606,7 +607,7 @@ window.openLoadPlanModal = async function () {
   } catch (e) {
     if(serial!==savedPlanSerial)return;
     container.innerHTML = `<div class="p-4 bg-red-50 text-red-600 rounded-lg border border-red-200">Error: ${escapeHTML(e.message)}</div>`;
-  }
+  }finally{end();}
 };
 
 // Earlier school records remain immutable; loading history only edits the
@@ -634,6 +635,7 @@ window.openLessonHistory=async function(planId,ownerUid=workspaceUid()){
   modal.classList.remove("hidden");
   const list=modal.querySelector("#lessonHistoryList");
   list.textContent="Loading previous versions…";
+  const end=window.beginLoading?.("Loading lesson version history…",modal)||(()=>{});
   try{
     const viewerUid=await requireStaffWorkspace();
     if(ownerUid!==viewerUid&&await resolveStaffRole(auth.currentUser)!=="admin")throw Error("Administrator access is required to inspect another teacher’s lesson history.");
@@ -654,17 +656,19 @@ window.openLessonHistory=async function(planId,ownerUid=workspaceUid()){
       restore.textContent="Load draft";
       restore.addEventListener("click",async()=>{
         if(!confirm("Load this earlier lesson into the editor? Save explicitly to restore it."))return;
+        const endRestore=window.beginLoading?.("Restoring historical lesson draft…",modal)||(()=>{});
+        restore.disabled=true;
         try{
           const current=await getDoc(doc(db,"staff_workspaces",ownerUid,"lesson_plans",planId));assertWorkspaceAccount(viewerUid);
           if(!current.exists())return alert("The current plan no longer exists. Reload the saved-plan list.");
           window.loadSpecificPlan?.({...original,id:planId,ownerUid});
           if(ownerUid===viewerUid)window.loadedPersonalPlan={id:planId,version:Number(current.data().version||1)};
           modal.classList.add("hidden");
-        }catch(error){alert("Lesson history could not load: "+error.message+". Your open draft is unchanged.");}
+        }catch(error){alert("Lesson history could not load: "+error.message+". Your open draft is unchanged.");}finally{endRestore();restore.disabled=false;}
       });
       row.append(label,restore);list.append(row);
     });
-  }catch(error){list.textContent="Could not retrieve lesson history: "+error.message;}
+  }catch(error){list.textContent="Could not retrieve lesson history: "+error.message;}finally{end();}
 };
 
 window.deleteLessonPlan = async function (docId) {
