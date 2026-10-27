@@ -4,7 +4,7 @@ import {evaluationJSON} from "./request-backoff.mjs?v=1.3.1";
 import {
   buildAdaptiveEvidenceChunks,buildEvidenceChunkPrompt,buildEvidenceChunkResponseSchema,
   buildRubricPrompt,buildRubricResponseSchema,evaluationInputSize,needsAdaptiveEvaluation
-} from "./v2-grading-assistant.mjs?v=1.4.16";
+} from "./v2-grading-assistant.mjs?v=1.4.24";
 
 async function requestJSON(prompt,schema,{signal,maxOutputTokens=12000}={}){
   const result=await generateSchoolContent({contents:[{parts:[{text:prompt}]}],generationConfig:{
