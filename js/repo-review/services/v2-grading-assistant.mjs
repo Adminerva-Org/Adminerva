@@ -435,8 +435,8 @@ export async function loadPinnedV2Source({
   const attributableHistory=patchRecords.some(p=>p.primary&&!p.mergeContext&&(p.substantive===true||p.diffIncomplete));
   if(!primaryPaths.length&&!attributableHistory)
     throw Error("No individually attributable primary source or verified primary diff is available. Review historical commits manually.");
-  if(primaryPaths.length>MAX_PRIMARY_FILES)
-    throw Error("The verified evaluation scope exceeds "+MAX_PRIMARY_FILES+" primary files. Narrow the selected evidence before automatic evaluation.");
+  if(new Set([...primaryPaths,...missingPrimaryPaths]).size>MAX_PRIMARY_FILES)
+    throw Error("The verified evaluation scope exceeds "+MAX_PRIMARY_FILES+" primary files, including historical paths. Narrow the selected evidence before automatic evaluation.");
 
   async function readText(path,primary=false,studentChanged=false,refSha=selection.checkpointSha){
     const encoded=path.split("/").map(encodeURIComponent).join("/");
