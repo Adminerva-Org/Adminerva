@@ -104,6 +104,7 @@ export function createProjectStudio({
     activateProject,
     resetToTemplate,
     getLimits:()=>({...policy}),
+    canCreateProject:()=>!Number.isFinite(policy.maxProjects)||readCodeProjects(localStorage,uid).filter(item=>item.status!=="archived").length<policy.maxProjects,
     canAddFile:()=>!activeProject||Object.keys(captureState()?.files||{}).length<policy.maxFiles,
     isGuest:()=>guest
   };
