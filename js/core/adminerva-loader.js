@@ -13,7 +13,7 @@ const earlyLabel = document.createElement("span"); earlyLabel.id = "subtleLoader
 earlyLoadingStatus.append(earlyLabel); document.documentElement.append(earlyLoadingStatus);
 const loaderStyle=document.createElement("style");loaderStyle.id="adminerva-loading-motion";
 loaderStyle.textContent=`
-#subtleLoader{display:flex;align-items:center;gap:10px;isolation:isolate;overflow:hidden;min-height:54px}
+#subtleLoader{position:fixed;top:calc(12px + env(safe-area-inset-top, 0px));left:50%;right:auto;bottom:auto;transform:translateX(-50%);z-index:10050;display:flex;align-items:center;justify-content:center;gap:10px;isolation:isolate;overflow:hidden;min-height:54px;padding:12px 18px;border:1px solid #496380;border-radius:14px;background:#172b47;color:#f4f8ff;box-shadow:0 16px 46px rgba(9,20,36,.3);font:600 13px/1.5 system-ui,sans-serif;max-width:calc(100vw - 24px);box-sizing:border-box}#subtleLoader[hidden],#subtleLoader.hidden{display:none!important}
 .av-loader-mark{position:relative;display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:50%;background:#052e45;box-shadow:0 0 0 1px rgba(34,211,238,.24)}
 .av-loader-emblem{width:28px;height:28px;object-fit:contain;filter:drop-shadow(0 0 5px rgba(34,211,238,.35));animation:avEmblemBreathe 1.6s ease-in-out infinite}
 .av-loader-orbit{position:absolute;inset:-3px;border:2px solid transparent;border-top-color:#67e8f9;border-left-color:#0e7490;border-radius:50%;animation:avOrbit 1.15s linear infinite}
