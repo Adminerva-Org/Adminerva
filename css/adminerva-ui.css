@@ -842,3 +842,7 @@ body main > header[class*="mb-8"],body main > header[class*="mb-6"] {
   }
 }
 @media(prefers-reduced-motion:reduce){.av-progressive-copy{transition:none}}
+
+/* 1.4.7: the shared top navigation replaces the duplicate educator sidebar. */
+.av-educator-layout.av-educator-layout--single{grid-template-columns:minmax(0,1fr);max-width:112rem;width:100%}
+.av-educator-layout.av-educator-layout--single>.av-educator-content{grid-column:1/-1;min-width:0}
