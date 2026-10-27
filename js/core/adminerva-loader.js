@@ -5,8 +5,25 @@ earlyLoadingStatus.id = "subtleLoader";
 earlyLoadingStatus.setAttribute("role", "status");
 earlyLoadingStatus.setAttribute("aria-live", "polite");
 earlyLoadingStatus.style.cssText = "position:fixed;top:calc(12px + env(safe-area-inset-top, 0px));left:50%;transform:translateX(-50%);z-index:10050;background:#172b47;color:#fff;border:1px solid #496380;border-radius:0.875rem;padding:.8rem 1.2rem;width:max-content;max-width:calc(100vw - 24px);box-shadow:0 16px 46px rgba(9,20,36,.3);font:600 13px/1.4 system-ui,sans-serif";
+const earlyIcon=document.createElement("span");earlyIcon.className="av-loader-mark";earlyIcon.setAttribute("aria-hidden","true");
+const earlyEmblem=document.createElement("img");earlyEmblem.src="assets/adminerva-emblem.png";earlyEmblem.alt="";earlyEmblem.className="av-loader-emblem";
+const earlyOrbit=document.createElement("span");earlyOrbit.className="av-loader-orbit";earlyIcon.append(earlyEmblem,earlyOrbit);
+earlyLoadingStatus.append(earlyIcon);
 const earlyLabel = document.createElement("span"); earlyLabel.id = "subtleLoaderText";
 earlyLoadingStatus.append(earlyLabel); document.documentElement.append(earlyLoadingStatus);
+const loaderStyle=document.createElement("style");loaderStyle.id="adminerva-loading-motion";
+loaderStyle.textContent=`
+#subtleLoader{display:flex;align-items:center;gap:10px;isolation:isolate;overflow:hidden;min-height:54px}
+.av-loader-mark{position:relative;display:grid;place-items:center;flex:none;width:32px;height:32px;border-radius:50%;background:#052e45;box-shadow:0 0 0 1px rgba(34,211,238,.24)}
+.av-loader-emblem{width:28px;height:28px;object-fit:contain;filter:drop-shadow(0 0 5px rgba(34,211,238,.35));animation:avEmblemBreathe 1.6s ease-in-out infinite}
+.av-loader-orbit{position:absolute;inset:-3px;border:2px solid transparent;border-top-color:#67e8f9;border-left-color:#0e7490;border-radius:50%;animation:avOrbit 1.15s linear infinite}
+#subtleLoader::after{content:"";height:2px;position:absolute;bottom:0;left:0;width:34%;background:linear-gradient(90deg,transparent,#67e8f9,transparent);animation:avSweep 1.7s ease-in-out infinite}
+@keyframes avOrbit{to{transform:rotate(360deg)}}
+@keyframes avEmblemBreathe{0%,100%{transform:scale(.94)}50%{transform:scale(1.06)}}
+@keyframes avSweep{0%{transform:translateX(-110%)}100%{transform:translateX(400%)}}
+@media (prefers-reduced-motion:reduce){.av-loader-orbit,.av-loader-emblem,#subtleLoader::after{animation:none!important}#subtleLoader::after{width:100%;opacity:.45}}
+`;
+document.documentElement.append(loaderStyle);
 let legacyLoading = null;
 let loaderSequence = 0;
 window.beginLoading = function(message = "Loading…", region) {
@@ -66,10 +83,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const loaderHTML = `
         <!-- Unified nonblocking status loader -->
         <div id="subtleLoader" role="status" aria-live="polite" aria-atomic="true" class="fixed z-[10050] bg-slate-900 border border-slate-700 shadow-[0_10px_40px_rgba(0,0,0,0.5)] rounded-lg p-4 flex items-center gap-4 transition-all duration-300 transform translate-y-20 opacity-0 hidden">
-            <svg class="animate-spin h-5 w-5 text-cyan-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-100" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
+            <span class="av-loader-mark" aria-hidden="true"><img class="av-loader-emblem" src="assets/adminerva-emblem.png" alt=""><span class="av-loader-orbit"></span></span>
             <span id="subtleLoaderText" class="text-sm font-bold text-slate-200 tracking-wide">Fetching data...</span>
         </div>
         
