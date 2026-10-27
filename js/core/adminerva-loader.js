@@ -4,7 +4,7 @@ const earlyLoadingStatus = document.createElement("div");
 earlyLoadingStatus.id = "subtleLoader";
 earlyLoadingStatus.setAttribute("role", "status");
 earlyLoadingStatus.setAttribute("aria-live", "polite");
-earlyLoadingStatus.style.cssText = "position:fixed;right:1rem;bottom:1rem;z-index:9999;background:#0f172a;color:#fff;border:1px solid #64748b;border-radius:0.5rem;padding:1rem;max-width:90vw";
+earlyLoadingStatus.style.cssText = "position:fixed;top:calc(12px + env(safe-area-inset-top, 0px));left:50%;transform:translateX(-50%);z-index:10050;background:#172b47;color:#fff;border:1px solid #496380;border-radius:0.875rem;padding:.8rem 1.2rem;width:max-content;max-width:calc(100vw - 24px);box-shadow:0 16px 46px rgba(9,20,36,.3);font:600 13px/1.4 system-ui,sans-serif";
 const earlyLabel = document.createElement("span"); earlyLabel.id = "subtleLoaderText";
 earlyLoadingStatus.append(earlyLabel); document.documentElement.append(earlyLoadingStatus);
 let legacyLoading = null;
@@ -31,9 +31,30 @@ function updateLoadingStatus() {
   loader.classList.toggle("hidden", !message);
   loader.style.display = message ? "flex" : "none";
   loader.style.opacity = message ? "1" : "0";
-  loader.style.transform = "none";
+  loader.style.position = "fixed";
+  loader.style.top = "calc(12px + env(safe-area-inset-top, 0px))";
+  loader.style.left = "50%";
+  loader.style.right = "auto";
+  loader.style.bottom = "auto";
+  loader.style.transform = "translateX(-50%)";
+  loader.style.width = "max-content";
+  loader.style.maxWidth = "calc(100vw - 24px)";
+  loader.style.zIndex = "10050";
   document.getElementById("subtleLoaderText").textContent = message || "Ready";
 }
+/** Wrap explicit user work so feedback begins before the first await and always ends. */
+const processingControls = new WeakSet();
+window.withLoading = async function(message, action, {button=null, region=null}={}) {
+  if (typeof action !== "function") throw new TypeError("A processing action is required.");
+  if (button && processingControls.has(button)) return;
+  const end=window.beginLoading(message,region);
+  if(button){processingControls.add(button);button.setAttribute("aria-busy","true");}
+  try { return await action(); }
+  finally {
+    if(button){processingControls.delete(button);button.removeAttribute("aria-busy");}
+    end();
+  }
+};
 const endPageLoading = window.beginLoading("Opening page…");
 window.addEventListener("load", endPageLoading, {once:true});
 document.addEventListener("DOMContentLoaded", () => {
@@ -44,7 +65,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   const loaderHTML = `
         <!-- Unified nonblocking status loader -->
-        <div id="subtleLoader" role="status" aria-live="polite" aria-atomic="true" class="fixed bottom-5 right-5 z-[250] bg-slate-900 border border-slate-700 shadow-[0_10px_40px_rgba(0,0,0,0.5)] rounded-lg p-4 flex items-center gap-4 transition-all duration-300 transform translate-y-20 opacity-0 hidden">
+        <div id="subtleLoader" role="status" aria-live="polite" aria-atomic="true" class="fixed z-[10050] bg-slate-900 border border-slate-700 shadow-[0_10px_40px_rgba(0,0,0,0.5)] rounded-lg p-4 flex items-center gap-4 transition-all duration-300 transform translate-y-20 opacity-0 hidden">
             <svg class="animate-spin h-5 w-5 text-cyan-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-100" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
