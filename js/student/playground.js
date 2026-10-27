@@ -1284,9 +1284,10 @@ function bindUIEvents() {
 
   document.getElementById("resetBtn")?.addEventListener("click", () => {
     const named=projectStudio?.getActiveProject();
-    const message=named?"Reset this project's files to a fresh "+currentLang.toUpperCase()+" starter? Export a ZIP first if you need the current files.":"Reset this language's files?";
+    const message=named?"Reset this project to its original template? Export a ZIP first if you need the current files, database, or design artifacts.":"Reset this language's files?";
     if (confirm(message)) {
       if(!persistWorkspace())return alert("Current draft could not be saved. Export ZIP first.");
+      if(named&&projectStudio?.resetToTemplate?.()){workspaceDirty=false;showSaveStatus("Project template restored");return;}
       createWorkspace(currentLang);
       triggerAutoSave();
     }
