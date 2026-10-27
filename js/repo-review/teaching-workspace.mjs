@@ -16,20 +16,24 @@ export function mountTeachingWorkspace(root){
   const evidence=student&&context?.evidence?.get(student.id);
   const state=evidence?.status;
   const submittedAfterReopen=state==="submitted"&&Boolean(evidence.reopenedAt||evidence.reopenedBy);
-  const label=state==="reopened"?"Reopened — awaiting student resubmission":
+  const unavailable=context?.sourceWarnings?.includes("evidence");
+  const label=unavailable?"Evidence status unavailable — refresh":
+    state==="reopened"?"Reopened — awaiting student resubmission":
     submittedAfterReopen?"Resubmitted — awaiting teacher approval":
     state==="submitted"?"Submitted — awaiting teacher approval":
     state==="approved"?"Evidence approved":
     state==="withdrawn"?"Withdrawn — not awaiting approval":
     state==="needs_review"?"Teacher-discovered evidence — review needed":
     "No evidence submission";
-  const tone=state==="approved"?"border-emerald-300 bg-emerald-50 text-emerald-900":
+  const tone=unavailable?"border-amber-300 bg-amber-50 text-amber-950":
+    state==="approved"?"border-emerald-300 bg-emerald-50 text-emerald-900":
     state==="submitted"?"border-blue-300 bg-blue-50 text-blue-900":
     state==="reopened"||state==="needs_review"?"border-amber-300 bg-amber-50 text-amber-950":
     "border-slate-300 bg-slate-50 text-slate-700";
   evidenceBadge.textContent=label;
   evidenceBadge.className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-bold mt-2 "+tone;
-  evidenceBadge.title=state==="reopened"?"A GitHub push or submission receipt does not change this status. The learner must resubmit selected evidence.":
+  evidenceBadge.title=unavailable?"The current evidence could not be confirmed from Firestore. Refresh after reconnecting.":
+    state==="reopened"?"A GitHub push or submission receipt does not change this status. The learner must resubmit selected evidence.":
     state==="submitted"?"Open evidence review to verify the new selection. Refresh status if another session changed it.":"Current saved evidence state.";
   evidenceBadge.hidden=false;
  }
