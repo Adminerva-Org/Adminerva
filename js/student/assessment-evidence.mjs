@@ -371,7 +371,8 @@ async function submit(){
       " using project checkpoint "+submissionCheckpointSha.slice(0,12)+
       "? The checkpoint may be a teammate's later project commit; it is project context, not individual credit."))return;
     if(sequence!==loadSequence||context!==active)return;
-    status("Submitting selected evidence…");
+    const wasReopened=saved?.status==="reopened";
+    status(wasReopened?"Resubmitting reopened evidence…":"Submitting selected evidence…");
     const ref=doc(db,"assessment_evidence",active.profile.id+"_"+active.task.id);
     const common={selectedCommits,checkpointSha:submissionCheckpointSha,updatedAt:serverTimestamp()};
     if(saved){
@@ -388,7 +389,7 @@ async function submit(){
     if(context!==active)return;
     saved=result;selectionDirty=false;
     render();
-    status("Evidence submitted for teacher verification. This is not an approved contribution or grade.");
+    status(wasReopened?"Resubmission saved. Status: Submitted — awaiting fresh teacher approval. Your previously reopened evidence is no longer awaiting student changes.":"Evidence submitted for teacher verification. Status: Submitted — awaiting teacher approval. This is not an approved contribution or grade.");
     window.dispatchEvent(new CustomEvent("adminerva:submission-recorded",{
       detail:{assessmentId:active.task.id,studentId:active.profile.id,revisionSha:submissionCheckpointSha,evidenceStatus:"submitted"}
     }));
