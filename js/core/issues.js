@@ -587,5 +587,5 @@ document.getElementById("adminDeleteBtn")?.addEventListener("click",async event=
     await updateDoc(doc(db,"issues",currentOpenIssueId),{status:"Closed (Won't Fix)",locked:true,updatedAt:serverTimestamp()});
     issue.status="Closed (Won't Fix)";issue.locked=true;renderIssues();window.openIssueModal(issue.id);
   }catch(error){console.warn("Unable to close report:",error);alert("Report could not be closed. No change was made.");}
-  finally{button.disabled=false;}
+  finally{button.disabled=false;end();}
 });
