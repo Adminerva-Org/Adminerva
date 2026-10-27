@@ -90,7 +90,7 @@ test('educator groups expose the integrated assessment, review and insights dest
   const { desktop } = mount('repo', 'gradebook');
   assert.deepEqual(groupNames(desktop), ['Assessment ▾', 'Review & grade ▾', 'Insights ▾']);
   assert.deepEqual(links(desktop.children[0]).map(link => link.href), ['assessment-studio.html', 'submissions.html']);
-  assert.deepEqual(links(desktop.children[1]).map(link => link.href), ['repofetch.html', 'gradebook.html']);
+  assert.deepEqual(links(desktop.children[1]).map(link => link.href), ['repofetch.html', 'gradebook.html', 'repobank.html']);
   assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['teacher-analytics.html', 'learning-follow-up.html']);
   assert.ok(!links(desktop).some(link => ['activity-grader.html', 'grading.html', 'lesson-planner.html', 'users.html'].includes(link.href)));
 });
@@ -188,16 +188,17 @@ test('opening a peer closes the previous disclosure and outside clicks close men
 });
 
 test('nested mobile disclosure keeps its parent open; Escape restores summary focus', () => {
-  const { root, mobile } = mount('repo', 'gradebook');
+  const { root, mobile, documentEvents } = mount('repo', 'gradebook');
   const outer = mobile.children[0], group = outer.children[1].children[1];
+  const keydown = event => documentEvents.keydown[0]({defaultPrevented:false,...event});
   outer.open = true; outer.dispatch('toggle');
   group.open = true; group.dispatch('toggle');
   assert.equal(outer.open, true);
   let prevented = false;
-  root.dispatch('keydown', { key: 'Escape', target: group.children[1], preventDefault() { prevented = true; } });
+  keydown({ key: 'Escape', target: group.children[1], preventDefault() { prevented = true; } });
   assert.equal(group.open, false); assert.equal(outer.open, true);
   assert.equal(group.children[0].focused, true); assert.equal(prevented, true);
-  root.dispatch('keydown', { key: 'Escape', target: outer.children[0], preventDefault() {} });
+  keydown({ key: 'Escape', target: outer.children[0], preventDefault() {} });
   assert.equal(outer.open, false); assert.equal(outer.children[0].focused, true);
 });
 
@@ -222,7 +223,7 @@ test('verified role refresh replaces stale navigation without multiplying global
   assert.ok(!links(view.desktop).some(link => link.href === 'users.html'));
   assert.doesNotMatch(view.root.innerHTML, /href="school-admin.html"/);
   assert.deepEqual(listenerCounts(), before);
-  assert.equal(view.root.events.keydown.length, 1);
+  assert.equal(view.documentEvents.keydown.length, 1);
 });
 
 test('student tabs recover when an older staff role remains in browser storage', () => {
