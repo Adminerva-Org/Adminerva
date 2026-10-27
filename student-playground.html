@@ -44,7 +44,7 @@
   <section id="studioPanelCode" class="flex-1 flex flex-col min-h-0">
     
 
-    <div id="projectWorkspace"><aside class="pg-explorer" aria-label="Project files"><div class="pg-explorer-header"><span>Explorer</span><span class="pg-explorer-help" tabindex="0" aria-label="Explorer help">ⓘ<span class="pg-explorer-tooltip" role="tooltip">Drag files onto folders to move them. Drop on the edge line to reorder. Ctrl+S saves. Ctrl+Enter runs.</span></span></div><div id="projectTree" class="pg-tree"></div><p id="projectFileCount" class="pg-folder-count"></p></aside>
+    <div id="projectWorkspace"><aside class="pg-explorer" aria-label="Project files"><div class="pg-explorer-header"><span>Explorer</span><span class="pg-explorer-help" tabindex="0" aria-label="Explorer help">ⓘ<span class="pg-explorer-tooltip" role="tooltip">Right-click a file or folder for actions. Drag onto folders to move files. Drop on the edge line to reorder. Ctrl+S saves. Ctrl+Enter runs.</span></span></div><div id="projectTree" class="pg-tree"></div><p id="projectFileCount" class="pg-folder-count"></p></aside>
       <div id="explorerContextMenu" class="pg-context-menu hidden" role="menu" aria-label="Explorer actions">
         <button type="button" data-explorer-action="open" role="menuitem">Open</button>
         <button type="button" data-explorer-action="new-file" role="menuitem">New file</button>
@@ -69,7 +69,7 @@
     <div id="dbDisabledState" class="studio-empty-card hidden"><strong>Database is disabled for this project.</strong><p>Enable Adminerva DB when the project needs data modeling and SQL CRUD practice.</p><button id="enableProjectDbBtn" type="button" class="primary-small">Enable Adminerva DB</button></div>
     <div id="dbWorkspace" class="db-manager hidden">
       <aside class="studio-card db-sidebar">
-        <div class="db-sidebar-head"><h3>Tables</h3><span id="dbTableCount" class="studio-muted"></span></div>
+        <div class="db-sidebar-head"><h3>Tables</h3><div><span id="dbTableCount" class="studio-muted"></span><button id="dbNewTableBtn" type="button" class="db-mini-action">+ Table</button></div></div>
         <div id="dbSchemaList" class="db-schema-list"></div>
         <details class="db-history-details"><summary>Recent SQL</summary><ul id="dbHistory" class="db-history"></ul></details>
       </aside>
@@ -81,7 +81,7 @@
             <button type="button" data-db-view="structure">Structure</button>
             <button type="button" data-db-view="sql">SQL</button>
           </nav>
-          <button id="dbInsertRowBtn" type="button" class="primary-small">+ Insert row</button>
+          <button id="dbExportCsvBtn" type="button" class="db-secondary-action">Export CSV</button><button id="dbInsertRowBtn" type="button" class="primary-small">+ Insert row</button>
         </div>
         <section id="dbBrowsePanel" class="db-view-panel">
           <div id="dbRowEditor" class="db-row-editor hidden"></div>
