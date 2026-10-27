@@ -1,6 +1,53 @@
 {
   "releases": [
     {
+      "version": "2.0.3",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-28",
+      "title": "Code Studio command bar refinement",
+      "summary": "Removes another layer of vertical chrome by consolidating project commands into the project header and simplifying Studio navigation.",
+      "changes": [
+        {
+          "type": "Updated",
+          "area": "Project command bar",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "Language, Java run mode, Save, Format, project actions, autosave state, XML Lab, Minerva and Run now live in the same project-header row beside Project settings instead of a separate Code toolbar."
+        },
+        {
+          "type": "Updated",
+          "area": "Studio navigation",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "Application and Terminal were removed from the primary Studio tabs because the Desktop/Web preview and Terminal remain directly available inside Code output."
+        },
+        {
+          "type": "Updated",
+          "area": "Explorer help",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "Persistent drag/drop and keyboard-shortcut instructions were replaced by a compact Explorer information tooltip so the file tree gets more vertical room."
+        },
+        {
+          "type": "Updated",
+          "area": "Responsive layout",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "The consolidated command bar stays single-row on wide screens and becomes horizontally scrollable on narrower layouts rather than introducing another persistent toolbar row."
+        }
+      ],
+      "publishedAt": "2026-10-28T05:40:00+08:00"
+    },
+    {
       "version": "2.0.2",
       "status": "published",
       "public": true,
