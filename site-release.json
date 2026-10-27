@@ -1,6 +1,6 @@
 {
-  "version": "2.0.3",
+  "version": "2.1.0",
   "releasedAt": "2026-10-28",
-  "notes": "Code Studio command-bar refinement: project controls moved into the project header, duplicate Application/Terminal tabs removed, and Explorer instructions moved into contextual help.",
-  "publishedAt": "2026-10-28T05:40:00+08:00"
+  "notes": "Code Studio database tooling: Explorer right-click actions, importable Adminerva project bundles with database/design metadata, and a visual Adminerva DB manager with Browse, Structure, SQL, row CRUD, table starter and CSV export.",
+  "publishedAt": "2026-10-28T05:55:00+08:00"
 }
