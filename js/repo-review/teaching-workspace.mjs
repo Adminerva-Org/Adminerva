@@ -67,8 +67,11 @@ export function mountTeachingWorkspace(root){
     return;
   }
   reviewKey=key;
-  const result=await window.openManualGradeReview({studentId:student.id,taskId:context.assessment.id,owner:context.repository.owner,repo:context.repository.repo});
-  if(result===false)reviewKey="";
+  const end=window.beginLoading?.("Opening "+name(student)+"’s review…")||(()=>{});
+  try{
+    const result=await window.openManualGradeReview({studentId:student.id,taskId:context.assessment.id,owner:context.repository.owner,repo:context.repository.repo});
+    if(result===false)reviewKey="";
+  }finally{end();}
  }
  async function repository(){
   const box=panels.repository,generation=revision;box.replaceChildren();
