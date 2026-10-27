@@ -10,6 +10,11 @@ export const evidenceReviewMarkup=`
 </section>
 <section id="evidenceDetails" class="hidden bg-white mt-5 p-5 rounded-xl border space-y-4">
 <h2 id="evidenceTitle" class="text-lg font-bold"></h2>
+<div id="evidenceLifecycleBanner" role="status" aria-live="polite" class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 flex flex-wrap items-start justify-between gap-3">
+  <div class="flex-1 min-w-0"><strong id="evidenceLifecycleLabel" class="block text-sm font-extrabold">Checking evidence status…</strong>
+  <p id="evidenceLifecycleHelp" class="text-xs mt-1 break-words"></p></div>
+  <button id="evidenceReloadTop" type="button" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-800">Refresh status</button>
+</div>
 <p id="evidenceMetadata" class="text-sm text-slate-700 break-words"></p>
 <div id="evidenceLinks" class="flex flex-wrap gap-4 text-sm"></div>
 <h3 class="text-sm font-bold">Selected evidence commits</h3>
