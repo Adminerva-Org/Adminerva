@@ -178,8 +178,6 @@ async function initializePlayground() {
       document.querySelector(".studio-project-bar")?.classList.add("hidden");
       document.querySelector(".studio-tabs")?.classList.add("hidden");
       await loadSnapshot(snapshotId);
-    } else if(guestMode) {
-      loadLocalWorkspace();
     } else {
       const uid=ownerUid();
       const legacyAvailable=PLAYGROUND_LANGUAGES.some(lang=>Boolean(readPlaygroundDraft(localStorage,uid,lang)));
@@ -189,7 +187,9 @@ async function initializePlayground() {
         captureState:currentState,
         onConfigChange:applyNamedProjectConfig,
         legacyDraftAvailable:legacyAvailable,
-        importLegacyDraft:importLegacyDraftAsProject
+        importLegacyDraft:importLegacyDraftAsProject,
+        cloudEnabled:!guestMode,
+        guest:guestMode
       });
       const requestedProject=urlParams.get("codeProject");
       if(requestedProject)projectStudio.openProjectById(requestedProject);
@@ -366,6 +366,7 @@ window.deleteFile = function (filename) {
 };
 
 window.promptNewFile = function () {
+  if(projectStudio?.getActiveProject()&&!projectStudio.canAddFile())return alert("This project reached its file limit. Delete a file or export the project before adding another.");
   const folder=selectedProjectFolder?selectedProjectPath:activeFilename.split("/").slice(0,-1).join("/");
   const name = prompt("New file path (for example src/Student.java or styles/main.css):",folder?folder+"/":"");
   if (name && name.trim()) {
@@ -753,7 +754,9 @@ async function exportZIP() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Adminerva_Project_${currentLang}.zip`;
+    const projectName=projectStudio?.getActiveProject()?.title||"Adminerva Project";
+    const safeName=String(projectName).replace(/[^a-z0-9._-]+/gi,"_").replace(/^_+|_+$/g,"").slice(0,80)||"Adminerva_Project";
+    a.download = safeName+".zip";
     a.click();
     URL.revokeObjectURL(url);
   } catch (e) {
@@ -776,6 +779,18 @@ window.adminervaRestorePlayground=function(state){
   const uid=ownerUid();
   if(!uid || !persistWorkspace())return false;
   try{
+    const activeProject=projectStudio?.getActiveProject();
+    if(activeProject){
+      const limits=projectStudio.getLimits?.()||{};
+      if(Object.keys(state.files||{}).length>(limits.maxFiles||100))throw Error("Imported project exceeds the file limit.");
+      const undoKey="Adminerva_Code_Project_Undo_v1_"+uid+"_"+activeProject.id;
+      localStorage.setItem(undoKey,JSON.stringify(currentState()));
+      createWorkspace(state.lang,state.files,state.fileOrder,state.activeFilename,state.folders,state.projectOrder);
+      projectStudio.saveState(currentState());
+      workspaceDirty=false;localSaveFailed=false;
+      showSaveStatus(guestMode?"Imported into local guest project":"Imported into project · autosave on");
+      return true;
+    }
     const target=playgroundWorkspaceKey(uid,state.lang);
     const previous=localStorage.getItem(target);
     if(previous) localStorage.setItem(playgroundUndoKey(uid,state.lang),previous);
@@ -796,7 +811,8 @@ window.adminervaRestorePlayground=function(state){
 window.adminervaUndoPlaygroundRestore=function(){
   const uid=ownerUid();
   if(!uid)return;
-  const raw=localStorage.getItem(playgroundUndoKey(uid,currentLang));
+  const activeProject=projectStudio?.getActiveProject();
+  const raw=activeProject?localStorage.getItem("Adminerva_Code_Project_Undo_v1_"+uid+"_"+activeProject.id):localStorage.getItem(playgroundUndoKey(uid,currentLang));
   let previous=null;
   try{previous=JSON.parse(raw||"null")}catch{}
   if(!validPlaygroundState(previous)){
@@ -1209,11 +1225,12 @@ function bindUIEvents() {
     try{
       if(upload.size>3000000)throw Error('Import a ZIP smaller than 3 MB.');
       const zip=await JSZip.loadAsync(upload),files={},folders=[];let size=0;
+      const limits=projectStudio?.getLimits?.()||{maxFiles:100,maxProjectBytes:700000};
       for(const entry of Object.values(zip.files)){
         const raw=entry.unsafeOriginalName||entry.name;const path=projectPath(raw.replace(/\/$/,''));
         if(entry.dir){folders.push(path);continue;}
-        if(Object.keys(files).length>=100)throw Error('Import up to 100 files.');
-        const text=await entry.async('string');size+=text.length;if(size>700000)throw Error('Import up to 700,000 characters of source.');files[path]=text;
+        if(Object.keys(files).length>=limits.maxFiles)throw Error('Import up to '+limits.maxFiles+' files in this project.');
+        const text=await entry.async('string');size+=new TextEncoder().encode(text).length;if(size>limits.maxProjectBytes)throw Error('This ZIP exceeds the project size limit.');files[path]=text;
       }
       if(!Object.keys(files).length)throw Error('No files found in this ZIP.');
       if(!confirm('Replace the editor with '+Object.keys(files).length+' imported files? Current work will be backed up on this device.'))return;
@@ -1235,7 +1252,11 @@ function bindUIEvents() {
       loadLocalWorkspace(nextLang);
     });
   document.getElementById("runBtn")?.addEventListener("click", executeCode);
-  document.getElementById("exportZipBtn")?.addEventListener("click",()=>void window.withLoading("Preparing project ZIP…",exportZIP,{button:document.getElementById("exportZipBtn")}));
+  document.getElementById("exportZipBtn")?.addEventListener("click",()=>{
+    const task=()=>exportZIP();
+    if(typeof window.withLoading==="function")void window.withLoading("Preparing project ZIP…",task,{button:document.getElementById("exportZipBtn")});
+    else void task();
+  });
   document.getElementById("saveProjectBtn")?.addEventListener("click", () => {
     if(persistWorkspace())showSaveStatus("Saved on this device");
     else alert("Save failed. Please export a ZIP before leaving this page.");
@@ -1250,16 +1271,21 @@ function bindUIEvents() {
   document.getElementById("undoRestoreBtn")?.addEventListener("click", window.adminervaUndoPlaygroundRestore);
   document
     .getElementById("snapshotBtn")
-    ?.addEventListener("click",()=>void window.withLoading("Sharing project snapshot…",shareSnapshot));
+    ?.addEventListener("click",()=>{
+      const task=()=>shareSnapshot();
+      if(typeof window.withLoading==="function")void window.withLoading("Sharing project snapshot…",task);
+      else void task();
+    });
   document.getElementById("aiTutorBtn")?.addEventListener("click", askMinerva);
 
   document.getElementById("formatBtn")?.addEventListener("click", () => {
     editorInstance.getAction("editor.action.formatDocument").run();
   });
 
-  // Re-added reset logic for safety if you decide to put the button back later
   document.getElementById("resetBtn")?.addEventListener("click", () => {
-    if (confirm("Reset this language's files? The current version will remain in cloud history if you saved it there.")) {
+    const named=projectStudio?.getActiveProject();
+    const message=named?"Reset this project's files to a fresh "+currentLang.toUpperCase()+" starter? Export a ZIP first if you need the current files.":"Reset this language's files?";
+    if (confirm(message)) {
       if(!persistWorkspace())return alert("Current draft could not be saved. Export ZIP first.");
       createWorkspace(currentLang);
       triggerAutoSave();
