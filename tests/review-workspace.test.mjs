@@ -29,7 +29,7 @@ function workspace(evidence){
   if(evidence)records.set('assessment_evidence/alice_v2',evidence);
   const writes=[],listeners={};
   const document={readyState:'complete',getElementById:id=>elements.get(id),createElement:()=>element(),addEventListener:()=>{}};
-  const window={addEventListener:(type,handler)=>{listeners[type]=handler;},dispatchEvent:()=>{}};
+  const window={addEventListener:(type,handler)=>{listeners[type]=handler;},dispatchEvent:()=>{},withLoading:async(_message,task)=>task()};
   const snapshot=ref=>({ref,exists:()=>records.has(ref.path),data:()=>records.get(ref.path)});
   let panelOptions;
   const context={document,window,location:{origin:'https://example.test'},URLSearchParams,AbortController,setTimeout,clearTimeout,
