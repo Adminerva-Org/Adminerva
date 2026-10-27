@@ -10,6 +10,29 @@ export function mountTeachingWorkspace(root){
  const member=root.querySelector("[data-review-member]"),status=root.querySelector("[data-workspace-status]");
  const name=learner=>learner.name||learner.id;
  const updateStatus=text=>{status.textContent=text;};
+ const evidenceBadge=root.querySelector("[data-review-evidence-status]");
+ function updateEvidenceBadge(){
+  if(!evidenceBadge)return;
+  const evidence=student&&context?.evidence?.get(student.id);
+  const state=evidence?.status;
+  const submittedAfterReopen=state==="submitted"&&Boolean(evidence.reopenedAt||evidence.reopenedBy);
+  const label=state==="reopened"?"Reopened — awaiting student resubmission":
+    submittedAfterReopen?"Resubmitted — awaiting teacher approval":
+    state==="submitted"?"Submitted — awaiting teacher approval":
+    state==="approved"?"Evidence approved":
+    state==="withdrawn"?"Withdrawn — not awaiting approval":
+    state==="needs_review"?"Teacher-discovered evidence — review needed":
+    "No evidence submission";
+  const tone=state==="approved"?"border-emerald-300 bg-emerald-50 text-emerald-900":
+    state==="submitted"?"border-blue-300 bg-blue-50 text-blue-900":
+    state==="reopened"||state==="needs_review"?"border-amber-300 bg-amber-50 text-amber-950":
+    "border-slate-300 bg-slate-50 text-slate-700";
+  evidenceBadge.textContent=label;
+  evidenceBadge.className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-bold mt-2 "+tone;
+  evidenceBadge.title=state==="reopened"?"A GitHub push or submission receipt does not change this status. The learner must resubmit selected evidence.":
+    state==="submitted"?"Open evidence review to verify the new selection. Refresh status if another session changed it.":"Current saved evidence state.";
+  evidenceBadge.hidden=false;
+ }
  function dirty(){return Boolean(activity?.hasUnsavedChanges?.()||window.manualReviewHasUnsavedChanges?.());}
  function canLeave(){return !dirty()||confirm("Discard unsaved review changes and change the selected learner or task?");}
  function clear({force=false}={}){
@@ -52,7 +75,7 @@ export function mountTeachingWorkspace(root){
   if(student?.id===next.id)return;
   window.closeManualGradeReview?.({force:true,silent:true});reviewKey="";
   activity?.destroy();activity=null;activityKey="";
-  student=next;member.value=student.id;
+  student=next;member.value=student.id;updateEvidenceBadge();
   root.querySelector("[data-review-individual]").textContent="Individual review: "+name(student)+". Scores remain separate for each learner.";
  }
  async function openReview(){
@@ -150,7 +173,7 @@ export function mountTeachingWorkspace(root){
   if(changed){clear({force:true});context=next;student=next.students.find(item=>item.id===next.requestedStudent)||next.students[0];abort=new AbortController();let token="";try{token=localStorage.getItem("Adminerva_github_token")||"";}catch{}requests=createReviewRequests({token,signal:abort.signal});view="grade";}
   else context=next;
   root.hidden=false;root.querySelector("[data-review-context]").textContent=(next.assessment.title||next.assessment.id)+" · "+next.target.label;
-  member.replaceChildren(...next.students.map(item=>new Option(name(item),item.id)));member.value=student.id;member.disabled=next.students.length<2;
+  member.replaceChildren(...next.students.map(item=>new Option(name(item),item.id)));member.value=student.id;member.disabled=next.students.length<2;updateEvidenceBadge();
   root.querySelector("[data-review-individual]").textContent="Individual review: "+name(student)+". Scores remain separate for each learner.";
   void show(view);
  }
@@ -158,7 +181,7 @@ export function mountTeachingWorkspace(root){
  for(const button of root.querySelectorAll("[data-teaching-tab]"))button.onclick=()=>void show(button.dataset.teachingTab);
  root.querySelector("[role=tablist]").addEventListener("keydown",event=>{if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;const buttons=[...root.querySelectorAll("[data-teaching-tab]")],index=buttons.indexOf(document.activeElement);let next=event.key==="Home"?0:event.key==="End"?buttons.length-1:(index+(event.key==="ArrowRight"?1:-1)+buttons.length)%buttons.length;event.preventDefault();buttons[next].focus();void show(buttons[next].dataset.teachingTab);});
  root.addEventListener("click",event=>{const target=event.target.closest("[data-review-step],#manualReviewVerifyContributions");if(target)void show(target.dataset.reviewStep==="integratedEvidence"||target.id==="manualReviewVerifyContributions"?"evidence":"grade");},true);
-  panels.activity.addEventListener("change",event=>{if(event.target.matches("[data-activity-student]")){const next=context?.students.find(item=>item.id===event.target.value);if(next){student=next;member.value=next.id;reviewKey="";root.querySelector("[data-review-individual]").textContent="Individual review: "+name(student)+". Scores remain separate for each learner.";}}});
+  panels.activity.addEventListener("change",event=>{if(event.target.matches("[data-activity-student]")){const next=context?.students.find(item=>item.id===event.target.value);if(next){student=next;member.value=next.id;reviewKey="";updateEvidenceBadge();root.querySelector("[data-review-individual]").textContent="Individual review: "+name(student)+". Scores remain separate for each learner.";}}});
  window.addEventListener("adminerva:manual-review-closed",()=>{reviewKey="";if(context&&view==="grade")void show("inbox");});
  return {setContext,canLeave,clear,show};
 }
