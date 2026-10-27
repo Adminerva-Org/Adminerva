@@ -1,6 +1,107 @@
 {
   "releases": [
     {
+      "version": "1.5.0",
+      "status": "draft",
+      "public": false,
+      "releasedAt": "2026-10-27",
+      "title": "Simpler assessment evidence and class review",
+      "summary": "Direct student evidence revisions, easier class approvals and attribution review, stronger grading and evaluation workflows, and restored lesson printing.",
+      "changes": [
+        {
+          "type": "New",
+          "area": "Section evidence review",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Reopen and approve eligible evidence for a selected section and assessment in batches, with refreshed submission status and per-student exceptions."
+        },
+        {
+          "type": "Fixed",
+          "area": "Student evidence resubmission",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "Revise selected commits after an instructor reopens evidence without withdrawing. Confirm a newer verified project checkpoint when necessary."
+        },
+        {
+          "type": "New",
+          "area": "Commit attribution requests",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "Students can explain shared-device or mismatched GitHub commits in a visible form. Teachers inspect claims; authorized administrators record audited attribution decisions."
+        },
+        {
+          "type": "Updated",
+          "area": "Student assessments",
+          "audience": [
+            "student",
+            "admin"
+          ],
+          "text": "Compact assignment cards and guided commit selection, with filters, counts, expandable previews and secondary withdrawal controls."
+        },
+        {
+          "type": "Fixed",
+          "area": "Grading and draft publication",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Clean evaluations remain unpublished grades ready for the existing publication process. Review-only suggestions are retained only when teacher attention is needed."
+        },
+        {
+          "type": "Updated",
+          "area": "Individual evaluation",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Adaptive handling of large contribution histories and diffs, improved renamed-file scope, and more precise evidence limitations."
+        },
+        {
+          "type": "New",
+          "area": "External assessment handoff",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Export an individual contribution assessment package for external evaluation and import validated responses into appropriate unfilled review fields."
+        },
+        {
+          "type": "New",
+          "area": "Evidence reminders",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Copy section-specific reminders for students missing independently verifiable individual contribution evidence."
+        },
+        {
+          "type": "Fixed",
+          "area": "Lesson print and timetable",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Restore stable legacy browser printing, continuation formatting and timetable compatibility without modifying existing saved lessons."
+        },
+        {
+          "type": "Updated",
+          "area": "Website updates",
+          "audience": [
+            "all"
+          ],
+          "text": "Show release notes and updates appropriate to each account role while preserving privacy and existing notification preferences."
+        }
+      ]
+    },
+    {
       "version": "1.4.3",
       "status": "published",
       "public": true,
