@@ -201,7 +201,7 @@ ${adaptive}
 
 The raw evidence was processed in bounded chunks. Treat the summary as a compact index of those chunks, not as new authorship proof. Cite only exact SHA/path references listed in it.`:""}
 
-PRIMARY PROJECT SOURCE AT CHECKPOINT:
+PRIMARY VERIFIED SOURCE (APPROVED CHECKPOINT OR EXPLICITLY LABELED HISTORICAL COMMIT):
 <primary-project-source>
 ${adaptive?"[Raw primary source was chunked; use the adaptive evidence summary above.]":primaryText}
 </primary-project-source>
@@ -518,6 +518,11 @@ export async function loadPinnedV2Source({
   }
 
   const analysis=analyzeAndroidEvidence({assessment,files,patches:patchRecords.filter(p=>!p.mergeContext&&!p.diffIncomplete),assets});
+  if(files.some(file=>file.historical)&&analysis?.applicable){
+    const caution="Historical screen source was recovered from a verified student commit and is absent at the later group checkpoint. Resource checks using that historical screen and current checkpoint dependencies are provisional; confirm them against the original commit before deducting points.";
+    analysis.checks.unshift(caution);
+    analysis.summary="• "+caution+"\n"+analysis.summary;
+  }
   return {repository:repo.url,checkpointSha:selection.checkpointSha,
     selectedCommits:selection.selectedCommits,files,patches:patchRecords,assets,analysis,excludedMergeCommits,truncatedDiffs,missingPrimaryPaths,historicalSourceUnavailable};
 }
