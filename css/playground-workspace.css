@@ -253,3 +253,186 @@ body[data-playground-access="student"] #adminerva-nav .av-module-switcher summar
 body[data-playground-access="student"] #adminerva-nav .av-nav-tools :is(button,a){
   min-height:32px;
 }
+
+
+/* 2.0.3 One-row project command bar and contextual Explorer help. */
+.studio-project-bar{
+  min-height:48px;
+  gap:8px;
+  padding:5px 8px;
+  flex-wrap:nowrap;
+}
+.studio-project-identity{
+  flex:0 1 250px;
+  min-width:150px;
+}
+.studio-project-actions{
+  margin-left:auto;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:6px;
+  min-width:0;
+  flex:1 1 auto;
+}
+.studio-command-bar{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:5px;
+  min-width:0;
+  color:#17344c;
+}
+.studio-command-bar>button,
+.studio-command-bar>select,
+.studio-command-bar>details>summary,
+.studio-command-bar>a,
+.studio-settings-button{
+  min-height:32px;
+  border:1px solid #d5e0e8;
+  border-radius:8px;
+  padding:5px 8px;
+  background:#fff;
+  color:#294a62;
+  font-size:10px;
+  font-weight:800;
+  white-space:nowrap;
+}
+.studio-command-bar>select{
+  padding-right:25px;
+}
+.studio-command-bar #languageSelect{width:92px}
+.studio-command-bar #javaRunMode{width:190px}
+.studio-command-bar #javaRunModeLabel{
+  font-size:9px;
+  color:#526b7f;
+  font-weight:800;
+  white-space:nowrap;
+}
+.studio-command-bar .pg-save{
+  background:#eaf6fb;
+  border-color:#c8dfea;
+  color:#0b5870;
+}
+.studio-command-bar .pg-run{
+  background:#008f79;
+  border-color:#008f79;
+  color:#fff;
+  padding-inline:14px;
+}
+.studio-command-bar>a{
+  display:inline-flex;
+  align-items:center;
+  text-decoration:none;
+}
+.studio-command-bar>details{position:relative}
+.studio-command-bar>details>summary{display:flex;align-items:center;cursor:pointer;list-style:none}
+.studio-command-bar>details>summary::-webkit-details-marker{display:none}
+.studio-command-bar #autoSaveIndicator{
+  max-width:135px;
+  color:#12a56f;
+  font-size:9px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.studio-settings-button{
+  flex:none;
+  background:#f8fbfd;
+}
+.studio-command-bar .pg-menu{
+  top:calc(100% + 5px);
+  right:0;
+  left:auto;
+  z-index:80;
+}
+#studioPanelCode>.pg-toolbar{display:none!important}
+
+.pg-explorer-header{
+  position:relative;
+  justify-content:space-between;
+}
+.pg-explorer-help{
+  position:relative;
+  display:inline-grid;
+  place-items:center;
+  width:20px;
+  height:20px;
+  border:1px solid #38506b;
+  border-radius:50%;
+  color:#a8c9db;
+  font-size:11px;
+  line-height:1;
+  cursor:help;
+  outline:none;
+}
+.pg-explorer-help:hover,
+.pg-explorer-help:focus-visible{
+  color:#67e8f9;
+  border-color:#67e8f9;
+}
+.pg-explorer-tooltip{
+  position:absolute;
+  left:0;
+  top:calc(100% + 7px);
+  width:220px;
+  padding:8px 9px;
+  border:1px solid #40566f;
+  border-radius:8px;
+  background:#17283c;
+  color:#d8e8f6;
+  box-shadow:0 12px 30px #02081766;
+  font-size:9px;
+  font-weight:500;
+  letter-spacing:0;
+  line-height:1.45;
+  text-transform:none;
+  opacity:0;
+  visibility:hidden;
+  transform:translateY(-3px);
+  transition:opacity .12s ease,transform .12s ease,visibility .12s;
+  z-index:90;
+  pointer-events:none;
+}
+.pg-explorer-help:hover .pg-explorer-tooltip,
+.pg-explorer-help:focus-visible .pg-explorer-tooltip{
+  opacity:1;
+  visibility:visible;
+  transform:translateY(0);
+}
+.pg-explorer-footer{display:none!important}
+
+@media(max-width:1450px){
+  .studio-project-identity{flex-basis:210px}
+  .studio-command-bar #autoSaveIndicator{display:none}
+  .studio-command-bar #languageSelect{width:82px}
+  .studio-command-bar #javaRunMode{width:170px}
+  .studio-command-bar>button,
+  .studio-command-bar>select,
+  .studio-command-bar>details>summary,
+  .studio-command-bar>a,
+  .studio-settings-button{padding-inline:6px}
+}
+@media(max-width:1180px){
+  .studio-project-bar{
+    overflow-x:auto;
+    scrollbar-width:thin;
+  }
+  .studio-project-identity{flex:0 0 190px}
+  .studio-project-actions{flex:0 0 auto}
+  .studio-command-bar{flex:0 0 auto}
+}
+@media(max-width:767px){
+  .studio-project-bar{
+    min-height:44px;
+    padding:4px 6px;
+  }
+  .studio-project-identity{flex:0 0 160px}
+  .studio-command-bar>button,
+  .studio-command-bar>select,
+  .studio-command-bar>details>summary,
+  .studio-command-bar>a,
+  .studio-settings-button{min-height:30px;font-size:9px;padding:4px 6px}
+  .studio-command-bar #languageSelect{width:76px}
+  .studio-command-bar #javaRunMode{width:155px}
+}
