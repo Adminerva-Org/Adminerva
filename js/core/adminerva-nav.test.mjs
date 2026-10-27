@@ -44,6 +44,7 @@ function mount(module = 'educator', page = 'dashboard', role = 'teacher', storag
   const document = {
     head: new Element('head'), documentElement: new Element('html'),
     createElement: tag => new Element(tag),
+    querySelectorAll: () => [],
     querySelector: query => document.head.children.find(child => query === 'link[rel="' + child.rel + '"]') || null,
     getElementById: id => id === 'adminerva-nav' ? root : document.head.children.find(child => child.id === id) || null,
     addEventListener: (type, callback) => (documentEvents[type] ||= []).push(callback)
