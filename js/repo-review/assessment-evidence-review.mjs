@@ -499,7 +499,7 @@ function renderHistorical(){
       "text-xs text-slate-600 mt-2");
     const preview=add(row,"button","Preview changed files","text-xs text-indigo-700 underline mt-2");
     preview.type="button";
-    preview.addEventListener("click",()=>{void previewCommit(parseRepository(state.student.repoUrl),sha,row);});
+    preview.addEventListener("click",()=>{void previewCommit(parseRepository(state.student.repoUrl),sha,row,preview);});
   }
 }
 async function saveDiscovery(){
