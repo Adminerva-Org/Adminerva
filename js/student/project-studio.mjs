@@ -101,6 +101,7 @@ export function createProjectStudio({
     refreshMonitor:()=>renderMonitor(),
     openProjectById,
     activateProject,
+    resetToTemplate,
     getLimits:()=>({...policy}),
     canAddFile:()=>!activeProject||Object.keys(activeProject.state?.files||{}).length<policy.maxFiles,
     isGuest:()=>guest
@@ -172,13 +173,28 @@ export function createProjectStudio({
     el("designTypeSelect")?.addEventListener("change",loadDesignEditor);
     el("saveDesignBtn")?.addEventListener("click",saveDesign);
     el("renderDesignBtn")?.addEventListener("click",()=>void renderDesignPreview());
+    let designTimer=null;
+    el("designEditor")?.addEventListener("input",()=>{
+      clearTimeout(designTimer);
+      designTimer=setTimeout(()=>{
+        if(!activeProject)return;
+        const type=el("designTypeSelect")?.value||"useCase";
+        activeProject.design={...(activeProject.design||{}),[type]:el("designEditor")?.value||""};
+        try{store(activeProject,true);const status=el("designSaveStatus");if(status)status.textContent="Autosaved";}catch(error){const status=el("designSaveStatus");if(status)status.textContent=error.message;}
+      },700);
+    });
     el("dbRunBtn")?.addEventListener("click",runSql);
     el("dbExampleSelect")?.addEventListener("change",event=>{
       const sql=event.target.value;if(sql)el("dbSqlInput").value=sql;
     });
     el("enableProjectDbBtn")?.addEventListener("click",()=>updateConfig({database:true}));
     document.querySelectorAll("[data-studio-view]").forEach(button=>button.addEventListener("click",()=>switchStudioView(button.dataset.studioView)));
-    window.addEventListener("beforeunload",()=>{if(activeProject)saveState(captureState());});
+    window.addEventListener("beforeunload",()=>{if(activeProject)try{saveState(captureState());}catch{}});
+    document.addEventListener("keydown",event=>{
+      if(event.key!=="Escape")return;
+      if(!el("projectSettingsModal")?.classList.contains("hidden"))el("projectSettingsModal")?.classList.add("hidden");
+      else if(!el("projectWizardModal")?.classList.contains("hidden"))closeWizard();
+    });
   }
 
   function updateQuotaUI(){
@@ -226,7 +242,8 @@ export function createProjectStudio({
     initialize();renderProjectHome();
     el("projectHome")?.classList.remove("hidden");
     el("studioShell")?.classList.add("hidden");
-    document.title="Code Studio · Adminerva";
+    document.title=(guest?"Guest Code Studio":"Code Studio")+" · Adminerva";
+    const guestNotice=el("guestProjectNotice");if(guestNotice)guestNotice.classList.toggle("hidden",!guest);
     if(cloudEnabled)void mergeCloudProjects();
   }
 
@@ -234,6 +251,19 @@ export function createProjectStudio({
     const project=findCodeProject(localStorage,uid,id);
     if(!project)return alert("This project is no longer available on this device.");
     activateProject(project);
+  }
+
+  function resetToTemplate(){
+    if(!activeProject)return false;
+    const template=CODE_PROJECT_TEMPLATES[activeProject.template]||CODE_PROJECT_TEMPLATES["java-blank"];
+    activeProject.state=clone(template.workspace);
+    activeProject.database=clone(template.database||{tables:{},history:[]});
+    activeProject.design=clone(template.design||{});
+    activeProject.evidence={events:[],runs:[]};
+    store(activeProject,true);
+    openProject(activeProject);
+    switchStudioView("code");
+    return true;
   }
 
   function activateProject(project){
@@ -256,7 +286,7 @@ export function createProjectStudio({
     if(!activeProject)return;
     const title=el("activeProjectTitle"),meta=el("activeProjectMeta");
     if(title)title.textContent=activeProject.title;
-    if(meta)meta.textContent=projectTypeMeta(activeProject).detail;
+    if(meta)meta.textContent=projectTypeMeta(activeProject).detail+(guest?" · local guest project":"");
     document.title=activeProject.title+" · Adminerva";
   }
 
@@ -373,7 +403,8 @@ export function createProjectStudio({
     if(!activeProject)return;
     const type=el("designTypeSelect").value||"useCase";
     activeProject.design={...(activeProject.design||{}),[type]:el("designEditor").value};
-    store(activeProject,true);void renderDesignPreview();renderEvidence();
+    store(activeProject,true);const status=el("designSaveStatus");if(status)status.textContent="Saved";
+    void renderDesignPreview();renderEvidence();
   }
   async function renderDesignPreview(){
     const target=el("designPreview");if(!target||!activeProject)return;
