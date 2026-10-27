@@ -59,7 +59,8 @@ document.addEventListener("DOMContentLoaded", () => {
     ] },
     { name: "Review & grade", area: "educator", items: [
       ["repofetch", "Review & grade", "repofetch.html"],
-      ["gradebook", "Gradebook", "gradebook.html"]
+      ["gradebook", "Gradebook", "gradebook.html"],
+      ["repobank", "Repository investigation", "repobank.html"]
     ] },
     { name: "Insights", area: "educator", items: [
       ["dashboard", "Analytics", "teacher-analytics.html"],
@@ -94,9 +95,8 @@ document.addEventListener("DOMContentLoaded", () => {
     settings: "Account settings", global: "Reports & support",
     "student-home": "Your workspace", "staff-home": "Your workspace"
   };
-  const supplementalStaffItems=[["repobank","Repository context","repobank.html"]];
   const allItems = isStudent ? Object.values(studentGroups).flatMap(group => group.items)
-    : staffGroups.flatMap(group => group.items).concat(supplementalStaffItems);
+    : staffGroups.flatMap(group => group.items);
   const currentItem = (studentGroup?.items || groups.flatMap(group => group.items))
     .find(item => item[0] === activePage) || allItems.find(item => item[0] === activePage);
   const currentArea = studentGroup?.name || areaNames[area] || "Adminerva";
@@ -279,9 +279,38 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("click", event => {
     for (const details of disclosures) if (details.open && !details.contains(event.target)) details.open = false;
   });
-  root.addEventListener("keydown", event => {
-    if (event.key !== "Escape") return;
-    const details = event.target.closest?.("details[open]") || disclosures.find(item => item.open);
+  const visibleOverlay = element => {
+    if (!element || element.hidden || element.classList.contains("hidden")) return false;
+    if (element.matches?.('#manualReviewModal[data-inline-review="true"]')) return false;
+    const style = window.getComputedStyle(element);
+    return style.display !== "none" && style.visibility !== "hidden";
+  };
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Escape" || event.defaultPrevented) return;
+    const overlays = [...document.querySelectorAll(
+      'dialog[open], [role="dialog"], [aria-modal="true"], [id$="Modal"], [id$="-modal"]'
+    )].filter(visibleOverlay);
+    const overlay = overlays.at(-1);
+    if (overlay) {
+      if (overlay.matches("dialog[open]") && typeof overlay.close === "function") overlay.close();
+      else {
+        const preferred = overlay.querySelector(
+          'button[data-close],button[data-dismiss],button[aria-label*="close" i],button[id*="close" i],button[id*="cancel" i],[data-modal-close]'
+        );
+        const textual = [...overlay.querySelectorAll("button")].find(button =>
+          ["×","✕","close","cancel","dismiss"].includes(button.textContent.trim().toLowerCase())
+        );
+        const control = preferred || textual;
+        if (control) control.click();
+        else {
+          overlay.classList.add("hidden");
+          overlay.hidden = true;
+        }
+      }
+      event.preventDefault();
+      return;
+    }
+    const details = [...disclosures].reverse().find(item => item.open);
     if (!details) return;
     details.open = false;
     details.querySelector("summary")?.focus();
