@@ -24,7 +24,7 @@ import {mountReviewPanels} from "./review-panels.mjs?v=1.4.5";
 const el = id => document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
 const state = { active: null, request: null, token: 0, flags: [], aiBusy: false, dirty:false, abort:null,panels:null,requests:null,aiAbort:null,
-  externalEvidence:null,externalPackage:"",externalBusy:false };
+  externalEvidence:null,externalPackage:"",externalEvidenceKey:"",externalBusy:false };
 function message(text, error=false) {
   const node=el("manualReviewStatus");
   node.textContent=text; node.className=error ? "text-sm text-rose-700" : "text-sm text-slate-600";
@@ -59,7 +59,7 @@ function close({force=false,silent=false}={}) {
   state.active=null;
   state.request=null;
   state.aiBusy=false;
-  state.externalEvidence=null;state.externalPackage="";state.externalBusy=false;
+  state.externalEvidence=null;state.externalPackage="";state.externalEvidenceKey="";state.externalBusy=false;
   state.dirty=false;
   state.token++;
   if(!silent)window.dispatchEvent(new CustomEvent("adminerva:manual-review-closed"));
@@ -188,6 +188,13 @@ function displayAISuggestion(draft){
     container.append(limitation);
   }
 }
+function currentExternalEvidenceKey(active){
+  if(!active?.evidence||!active.checkpointSha)return "";
+  return JSON.stringify([
+    active.studentId,active.taskId,active.checkpointSha,evidenceRevision(active.evidence),
+    active.selectedEvidenceCommits||[],active.evidence.verifiedContributionCommits||[]
+  ]);
+}
 function externalStatus(text,error=false){
   const node=el("externalEvaluationStatus");if(!node)return;
   node.textContent=text;node.className="text-xs "+(error?"text-rose-700":"text-indigo-900");
@@ -213,12 +220,24 @@ async function openExternalEvaluation(){
     return aiStatus("Approve the checkpoint and verify individual contributions before preparing an external evaluation.",true);
   if(active.previous?.published)return aiStatus("Published grade protected. Unpublish it before preparing a new evaluation.",true);
   if(state.externalBusy)return;
+  const key=currentExternalEvidenceKey(active);
+  if(!key)return aiStatus("Approved evidence is unavailable. Reopen the assessment review.",true);
   el("externalEvaluationModal").classList.remove("hidden");
+  if(state.externalEvidence&&state.externalPackage&&state.externalEvidenceKey===key){
+    el("externalEvaluationPackage").value=state.externalPackage;
+    el("externalEvaluationCopy").disabled=false;
+    el("externalEvaluationImport").disabled=false;
+    externalStatus("Verified evidence is ready. Paste the evaluator's JSON below; closing and reopening this dialog does not clear your result.");
+    return;
+  }
+  // A changed evidence revision invalidates the previous response; otherwise keep any pasted JSON.
+  if(state.externalEvidenceKey&&state.externalEvidenceKey!==key)
+    el("externalEvaluationResult").value="";
   el("externalEvaluationPackage").value="";
-  el("externalEvaluationResult").value="";
   el("externalEvaluationCopy").disabled=true;
+  el("externalEvaluationImport").disabled=true;
   el("externalEvaluationPackageStatus").textContent="Preparing verified evidence…";
-  externalStatus("No external result imported.");
+  externalStatus("Preparing the approved checkpoint. Paste your result once the package is ready.");
   state.externalBusy=true;state.externalEvidence=null;state.externalPackage="";
   const session=state.token;
   try{
@@ -234,32 +253,58 @@ async function openExternalEvaluation(){
         .then(snapshot=>snapshot.exists()?snapshot.data():{})
         .catch(()=>({}))
     ]);
-    if(session!==state.token||state.active!==active)return;
+    if(session!==state.token||state.active!==active||key!==currentExternalEvidenceKey(active))return;
     const pack=buildExternalEvaluationPackage({
       assessment:active.assessment,criteria,evidence,privateAssessment,
       contributionScope:active.evidence.contributionScope,maxScore:active.maxScore
     });
-    state.externalEvidence=evidence;state.externalPackage=pack;
+    state.externalEvidence=evidence;state.externalPackage=pack;state.externalEvidenceKey=key;
     el("externalEvaluationPackage").value=pack;
     el("externalEvaluationCopy").disabled=false;
+    el("externalEvaluationImport").disabled=false;
     const kb=Math.max(1,Math.round(new Blob([pack]).size/1024));
     el("externalEvaluationPackageStatus").textContent="Ready · "+evidence.patches.length+" relevant patch record(s) · "+
       evidence.files.length+" checkpoint file(s) · assessment rubric and instructions included · about "+kb+" KB. Review teacher-only checker guidance before sharing; JSON-only reply required.";
+    externalStatus("Evidence ready. Paste the evaluator's JSON and validate, or copy the package for a new evaluation.");
     analytics("external_evaluation_package_ready",{feature:"review_grade",size_bucket:kb>500?"500kb_plus":kb>100?"100_500kb":"under_100kb"});
   }catch(error){
-    if(session===state.token){
+    if(session===state.token&&state.active===active){
       el("externalEvaluationPackageStatus").textContent="Could not prepare the external package: "+error.message;
-      externalStatus("External evaluation package unavailable. You can still grade manually.",true);
+      externalStatus("Evidence could not be prepared. Check the GitHub connection and reopen External evaluation to retry; your pasted result is preserved.",true);
     }
   }finally{if(session===state.token)state.externalBusy=false;}
 }
-function importExternalEvaluation(){
-  const active=state.active,evidence=state.externalEvidence;
-  if(!active||!evidence)return externalStatus("Prepare a fresh evidence package before importing a result.",true);
+async function importExternalEvaluation(){
+  const active=state.active,session=state.token;
+  if(!active||!active.checkpointSha||!evaluationResponsibilityReady(active.assessment,active.evidence))
+    return externalStatus("This assessment no longer has an approved verified checkpoint. Reopen evidence review before importing.",true);
   if(active.previous?.published)return externalStatus("Published grade protected. Unpublish it before importing a new evaluation.",true);
+  if(state.externalBusy)return externalStatus("Verified evidence is still loading. Validate once the package is ready.",true);
+  const key=currentExternalEvidenceKey(active);
+  if(state.externalEvidenceKey&&state.externalEvidenceKey!==key)
+    return externalStatus("The approved evidence changed after the package was prepared. Copy a new package and request an updated evaluation.",true);
+  const button=el("externalEvaluationImport");
+  button.disabled=true;button.textContent="Validating…";
   try{
     const criteria=parseWeightedRubric(active.assessment.evalCriteria,active.maxScore);
     const parsed=parseExternalEvaluationResponse(el("externalEvaluationResult").value);
+    let evidence=state.externalEvidence;
+    if(!evidence){
+      // Recover an interrupted/closed handoff from the current approved snapshot, not a mutable branch.
+      externalStatus("Restoring verified evidence from the approved checkpoint before validation…");
+      state.externalBusy=true;
+      evidence=await loadPinnedV2Source({
+        repository:active.base,checkpointSha:active.checkpointSha,
+        selectedCommits:active.selectedEvidenceCommits,assessment:active.assessment,
+        verifiedContributionCommits:active.evidence.verifiedContributionCommits,
+        token:localStorage.getItem("Adminerva_github_token"),fetchImpl:state.requests?.fetch||globalThis.fetch
+      });
+      if(session!==state.token||state.active!==active||key!==currentExternalEvidenceKey(active))
+        throw Error("Approved evidence changed while restoring it. Reopen this learner and prepare a new package.");
+      state.externalEvidence=evidence;state.externalEvidenceKey=key;
+    }
+    if(session!==state.token||state.active!==active||key!==currentExternalEvidenceKey(active))
+      throw Error("The active learner or approved evidence changed. Reopen the current review.");
     const draft=parseSuggestedRubric(parsed,criteria,active.maxScore,evidence);
     if(evidence.truncatedDiffs?.length)
       draft.limitations=[draft.limitations,evidence.truncatedDiffs.length+" relevant commit diff(s) were bounded; omitted changes require teacher review before assigning credit."].filter(Boolean).join(" ").slice(0,1400);
@@ -272,7 +317,7 @@ function importExternalEvaluation(){
     renderFeedbackMarkdown(el("manualReviewAIFeedback"),draft.feedback);
     el("manualReviewUseScore").disabled=draft.score===null;
     el("manualReviewUseFeedback").disabled=!draft.feedback;
-    el("manualReviewFiles").value=[...new Set(evidence.patches.filter(p=>p.substantive===true).map(p=>p.path))].join("\n");
+    el("manualReviewFiles").value=[...new Set(evidence.patches.filter(p=>p.substantive===true&&!p.mergeContext).map(p=>p.path))].join("\n");
     const scoreField=el("manualReviewScore"),feedbackField=el("manualReviewFeedback"),applied=[];
     if(draft.score!==null&&!scoreField.value.trim()){scoreField.value=String(draft.score);applied.push("score");}
     if(draft.feedback&&!feedbackField.value.trim()){feedbackField.value=String(draft.feedback);applied.push("feedback");}
@@ -290,8 +335,16 @@ function importExternalEvaluation(){
     closeExternalEvaluation();
     el("manualReviewAISection").scrollIntoView({behavior:"smooth",block:"start"});
   }catch(error){
-    analytics("external_evaluation_imported",{feature:"review_grade",status:"invalid"});
-    externalStatus("Import rejected: "+error.message,true);
+    if(session===state.token){
+      analytics("external_evaluation_imported",{feature:"review_grade",status:"invalid"});
+      externalStatus("Import rejected: "+error.message,true);
+    }
+  }finally{
+    if(session===state.token){
+      state.externalBusy=false;
+      button.disabled=false;
+      button.textContent="Validate & apply proposal";
+    }
   }
 }
 
@@ -384,7 +437,7 @@ async function generateAIDraft(){
 function applyEvidenceState(record,{initial=false}={}){
   const active=state.active;if(!active||active.assessment.schemaVersion!==2)return;
   const changed=!initial&&!sameEvidence(active.evidence,record)&&Boolean(active.evidence||record);
-  if(changed){state.aiAbort?.abort();state.aiBusy=false;state.externalEvidence=null;state.externalPackage="";
+  if(changed){state.aiAbort?.abort();state.aiBusy=false;state.externalEvidence=null;state.externalPackage="";el("externalEvaluationImport").disabled=true;
     el("manualReviewUseScore").disabled=true;el("manualReviewUseFeedback").disabled=true;el("manualReviewConfirm").checked=false;}
   let approved=record?.status==="approved"&&validSha(record.approvedCheckpointSha)&&record.approvedCheckpointSha===record.checkpointSha;
   try{approved=approved&&record.studentId===active.studentId&&record.assessmentId===active.taskId&&parseRepository(record.repository).url===parseRepository(active.base).url;}catch{approved=false;}
@@ -420,7 +473,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
   state.abort?.abort();state.aiAbort?.abort();state.panels?.destroy();state.panels=null;
   state.abort=new AbortController();state.requests=createReviewRequests({token:localStorage.getItem("Adminerva_github_token"),signal:state.abort.signal});
   state.request={studentId,taskId,owner,repo,diagnostic};
-  state.active=null;state.aiBusy=false;state.externalEvidence=null;state.externalPackage="";state.externalBusy=false;
+  state.active=null;state.aiBusy=false;state.externalEvidence=null;state.externalPackage="";state.externalEvidenceKey="";state.externalBusy=false;
   state.dirty=false;
   el("manualReviewAISection").classList.add("hidden");
   el("manualReviewAIScores").replaceChildren();
@@ -716,7 +769,7 @@ function init() {
   el("manualReviewAIGenerate").addEventListener("click",()=>{void generateAIDraft();});
   el("manualReviewExternal").addEventListener("click",()=>{void openExternalEvaluation();});
   el("externalEvaluationCopy").addEventListener("click",()=>{void copyExternalPackage();});
-  el("externalEvaluationImport").addEventListener("click",importExternalEvaluation);
+  el("externalEvaluationImport").addEventListener("click",()=>{void importExternalEvaluation();});
   el("externalEvaluationClose").addEventListener("click",closeExternalEvaluation);
   el("externalEvaluationCancel").addEventListener("click",closeExternalEvaluation);
   el("externalEvaluationModal").addEventListener("click",event=>{if(event.target===el("externalEvaluationModal"))closeExternalEvaluation();});
