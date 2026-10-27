@@ -64,7 +64,8 @@ field("catalog-cancel").onclick=()=>{startEntry();status("Editing canceled. Your
 field("catalog-search").addEventListener("input",render);field("catalog-filter").addEventListener("change",render);
 field("catalog-refresh").onclick=async()=>{
   if(busy)return;field("catalog-refresh").disabled=true;
-  try{await refresh();}catch{status("Catalog could not load. Check your connection and refresh to try again.","error");}finally{field("catalog-refresh").disabled=false;}
+  const end=window.beginLoading?.("Refreshing school catalog…")||(()=>{});
+  try{await refresh();}catch{status("Catalog could not load. Check your connection and refresh to try again.","error");}finally{field("catalog-refresh").disabled=false;end();}
 };
 field("catalog-form").onsubmit=async event=>{
   event.preventDefault();if(busy)return;
@@ -73,7 +74,7 @@ field("catalog-form").onsubmit=async event=>{
   if(records.some(record=>record.id!==opened?.id&&record.name.toLowerCase()===data.name.toLowerCase()&&record.scheme===data.scheme&&record.schoolYear===data.schoolYear)){
     status("An entry with this name, curriculum and school year already exists. Select it from the list to update it.","error");return;
   }
-  setBusy(true);
+  setBusy(true);const end=window.beginLoading?.("Saving school catalog entry…",field("catalog-form"))||(()=>{});
   try{
     const actor=auth.currentUser;if(await resolveStaffRole(actor)!=="admin")throw Error("Administrator access is required.");
     const ref=opened?doc(db,"school_catalog",kind,"records",opened.id):doc(collection(db,"school_catalog",kind,"records"));
@@ -87,8 +88,9 @@ field("catalog-form").onsubmit=async event=>{
     setBusy(false);startEntry(null,false);
     try{await refresh();status("Saved. "+(kind==="sections"?"Next, use this exact section name in student records and teacher assignments.":"Your catalog entry is available to school staff."),"success");}
     catch{status("Saved successfully. The list could not refresh; use Refresh to see your entry.","success");}
-  }catch(error){status(error.message||"Save failed. Please try again.","error");}finally{setBusy(false);}
+  }catch(error){status(error.message||"Save failed. Please try again.","error");}finally{setBusy(false);end();}
 };
 await auth.authStateReady();
 if(await resolveStaffRole(auth.currentUser)!=="admin"){location.replace("teacher-home.html");}
-else try{await refresh();}catch{status("Catalog could not load. Check your connection and select Refresh to try again.","error");}
+else {const end=window.beginLoading?.("Loading school catalog…")||(()=>{});
+ try{await refresh();}catch{status("Catalog could not load. Check your connection and select Refresh to try again.","error");}finally{end();}}
