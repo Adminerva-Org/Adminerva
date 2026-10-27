@@ -1,6 +1,78 @@
 {
   "releases": [
     {
+      "version": "2.0.2",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-28",
+      "title": "Code Studio workspace density",
+      "summary": "Reclaims vertical and horizontal workspace space across Code Studio, fixes the unused dark strip beneath the editor, and reduces navigation/footer overhead.",
+      "changes": [
+        {
+          "type": "Fixed",
+          "area": "Workspace sizing",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "Code Studio now restores the missing flex layout on the active studio shell so Code, Swing preview, Design and Database workspaces fill the available height instead of leaving an unused dark strip above the footer."
+        },
+        {
+          "type": "Updated",
+          "area": "Project navigation",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "Project identity, project tabs and project settings controls use a denser layout with smaller vertical padding while retaining the same actions."
+        },
+        {
+          "type": "Updated",
+          "area": "Editor toolbar",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "Language/runtime controls, Save, Format, project menu, XML Lab, Minerva and Run controls are more compact and the redundant Code heading is removed from the toolbar."
+        },
+        {
+          "type": "Updated",
+          "area": "Explorer and output",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "Explorer controls, file tabs, path bar, terminal header, input area and desktop runtime status use a denser IDE-style layout to return more space to code and application output."
+        },
+        {
+          "type": "Updated",
+          "area": "Design and database",
+          "audience": [
+            "student",
+            "guest"
+          ],
+          "text": "Design, Database, Evidence and Monitor surfaces now use wider content areas, smaller headers and tighter cards so primary workspaces are less cramped."
+        },
+        {
+          "type": "Updated",
+          "area": "Code Studio footer",
+          "audience": [
+            "student"
+          ],
+          "text": "The shared Adminerva footer is compacted only on Code Studio pages, including smaller padding and hidden footer credits, preserving the standard footer elsewhere."
+        },
+        {
+          "type": "Updated",
+          "area": "Code Playground navigation",
+          "audience": [
+            "student"
+          ],
+          "text": "The shared Code Playground breadcrumb/navigation strip is reduced in height specifically for the IDE page."
+        }
+      ],
+      "publishedAt": "2026-10-28T05:28:00+08:00"
+    },
+    {
       "version": "2.0.1",
       "status": "published",
       "public": true,
