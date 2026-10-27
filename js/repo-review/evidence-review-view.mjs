@@ -24,7 +24,7 @@ export const evidenceReviewMarkup=`
 <div id="evidenceContributionChecks" class="space-y-2 mt-3"></div>
 </details>
 <div id="evidenceCommitDetails" class="space-y-2"></div>
-<details class="border rounded p-3" open><summary class="font-bold cursor-pointer">Pinned project source — shared context, not individual credit</summary><div id="evidenceSnapshot" class="mt-2"></div></details>
+<details class="border rounded p-3"><summary class="font-bold cursor-pointer">Pinned project source — shared context, not individual credit</summary><div id="evidenceSnapshot" class="mt-2"></div></details>
 <h3 class="text-sm font-bold">Reclaim requests for this student</h3>
 <div id="evidenceReclaims" class="space-y-3"></div>
 <label class="block text-sm font-semibold" for="evidenceContributionScope">Additional responsibilities and attribution notes (optional)</label>
