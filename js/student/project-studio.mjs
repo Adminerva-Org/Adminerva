@@ -59,9 +59,37 @@ function defaultDiagramName(key){
 }
 
 export function createProjectStudio({
-  uid,openProject,captureState,onConfigChange,legacyDraftAvailable=false,importLegacyDraft=null
+  uid,openProject,captureState,onConfigChange,legacyDraftAvailable=false,importLegacyDraft=null,
+  cloudEnabled=true,guest=false,limits={}
 }){
+  const policy={
+    maxProjects:guest?3:Infinity,
+    maxFiles:guest?25:100,
+    maxProjectBytes:guest?300000:780000,
+    maxDbTables:guest?5:50,
+    maxDbRowsPerTable:guest?100:5000,
+    maxRuns:guest?15:30,
+    ...limits
+  };
   let activeProject=null,selectedTemplate="java-information",cloudTimer=null,initialized=false;
+
+  function projectSize(project){return enc(project);}
+  function validateProject(project,{creating=false}={}){
+    if(!project)throw Error("Project is unavailable.");
+    const files=Object.keys(project.state?.files||{});
+    if(files.length>policy.maxFiles)throw Error("This project exceeds the "+policy.maxFiles+" file limit.");
+    if(projectSize(project)>policy.maxProjectBytes)throw Error("This project exceeds the local size limit. Export a ZIP or remove files/data.");
+    const tables=Object.values(project.database?.tables||{});
+    if(tables.length>policy.maxDbTables)throw Error("This project exceeds the "+policy.maxDbTables+" database table limit.");
+    if(tables.some(table=>(table.rows||[]).length>policy.maxDbRowsPerTable))throw Error("A database table exceeds the "+policy.maxDbRowsPerTable+" row limit.");
+    if(creating&&readCodeProjects(localStorage,uid).filter(item=>item.status!=="archived").length>=policy.maxProjects)
+      throw Error("Guest Code Studio keeps up to "+policy.maxProjects+" local projects. Export or delete one before creating another.");
+    return true;
+  }
+  function quotaText(){
+    const count=readCodeProjects(localStorage,uid).filter(item=>item.status!=="archived").length;
+    return Number.isFinite(policy.maxProjects)?count+" / "+policy.maxProjects+" local projects":count+" projects";
+  }
 
   const controller={
     getActiveProject:()=>activeProject,
@@ -72,13 +100,18 @@ export function createProjectStudio({
     refreshEvidence:()=>renderEvidence(),
     refreshMonitor:()=>renderMonitor(),
     openProjectById,
-    activateProject
+    activateProject,
+    getLimits:()=>({...policy}),
+    canAddFile:()=>!activeProject||Object.keys(activeProject.state?.files||{}).length<policy.maxFiles,
+    isGuest:()=>guest
   };
 
-  function store(project,cloud=true){
+  function store(project,cloud=cloudEnabled){
+    validateProject(project);
     activeProject=saveCodeProject(localStorage,uid,project);
     updateProjectHeading();
-    if(cloud)scheduleCloudSave(activeProject);
+    updateQuotaUI();
+    if(cloudEnabled&&cloud)scheduleCloudSave(activeProject);
     return activeProject;
   }
   function saveState(state){
@@ -88,18 +121,21 @@ export function createProjectStudio({
     return store(activeProject,true);
   }
   function scheduleCloudSave(project){
+    if(!cloudEnabled)return;
     clearTimeout(cloudTimer);
     cloudTimer=setTimeout(()=>void saveCloud(project),3500);
   }
   async function saveCloud(project){
+    if(!cloudEnabled)return;
     try{
-      if(!project||enc(project)>780000)return;
+      if(!project||enc(project)>policy.maxProjectBytes)return;
       await setDoc(doc(db,"student_code_projects",uid,"projects",project.id),{...project,ownerUid:uid});
       const indicator=el("autoSaveIndicator");
       if(indicator&&!indicator.textContent.includes("Practice"))indicator.title="Local project saved; cloud project synchronized.";
     }catch(error){console.warn("Code project cloud sync unavailable:",error);}
   }
   async function mergeCloudProjects(){
+    if(!cloudEnabled)return;
     try{
       const snap=await getDocs(collection(db,"student_code_projects",uid,"projects"));
       if(!snap.size)return;
@@ -132,6 +168,7 @@ export function createProjectStudio({
     el("legacyDraftProjectBtn")?.addEventListener("click",()=>{
       if(typeof importLegacyDraft==="function")importLegacyDraft();
     });
+    el("guestUpgradeBtn")?.addEventListener("click",()=>{location.href="login.html";});
     el("designTypeSelect")?.addEventListener("change",loadDesignEditor);
     el("saveDesignBtn")?.addEventListener("click",saveDesign);
     el("renderDesignBtn")?.addEventListener("click",()=>void renderDesignPreview());
@@ -144,9 +181,15 @@ export function createProjectStudio({
     window.addEventListener("beforeunload",()=>{if(activeProject)saveState(captureState());});
   }
 
+  function updateQuotaUI(){
+    const quota=el("projectQuotaStatus");if(quota)quota.textContent=quotaText();
+    const storage=el("projectStorageMode");if(storage)storage.textContent=guest?"Local-only guest storage":"Private account storage · cloud sync";
+    const badge=el("activeProjectStorageBadge");if(badge)badge.textContent=guest?"Local only":"Cloud sync";
+  }
   function renderProjectHome(){
     const list=el("codeProjectList");if(!list)return;
     const projects=readCodeProjects(localStorage,uid).filter(project=>project.status!=="archived");
+    updateQuotaUI();
     list.replaceChildren();
     if(!projects.length){
       list.innerHTML='<div class="studio-empty-card"><strong>No projects yet</strong><p>Create a Java Console, Desktop, or Information System project to begin.</p></div>';
@@ -154,12 +197,22 @@ export function createProjectStudio({
       for(const project of projects){
         const meta=projectTypeMeta(project),card=document.createElement("article");
         card.className="code-project-card";
-        card.innerHTML='<div class="code-project-icon">'+escapeHtml(meta.template.icon)+'</div><div class="code-project-card-body"><div class="code-project-card-top"><h3>'+escapeHtml(project.title)+'</h3><span>'+escapeHtml(prettyDate(project.lastOpenedAt))+'</span></div><p>'+escapeHtml(meta.detail)+'</p><div class="code-project-card-actions"><button type="button" data-open>Open project</button><button type="button" data-delete class="danger-subtle">Delete</button></div></div>';
+        const size=Math.max(1,Math.ceil(projectSize(project)/1024));
+        card.innerHTML='<div class="code-project-icon">'+escapeHtml(meta.template.icon)+'</div><div class="code-project-card-body"><div class="code-project-card-top"><h3>'+escapeHtml(project.title)+'</h3><span>'+escapeHtml(prettyDate(project.lastOpenedAt))+'</span></div><p>'+escapeHtml(meta.detail)+' · '+Object.keys(project.state?.files||{}).length+' files · '+size+' KB</p><div class="code-project-card-actions"><button type="button" data-open>Open project</button><button type="button" data-copy>Duplicate</button><button type="button" data-delete class="danger-subtle">Delete</button></div></div>';
+        card.querySelector("[data-copy]").addEventListener("click",()=>{
+          try{
+            validateProject(project,{creating:true});
+            const copy=createCodeProject(localStorage,uid,{title:project.title+" Copy",templateId:project.template,config:project.config});
+            copy.state=clone(project.state);copy.database=clone(project.database);copy.design=clone(project.design);copy.evidence={events:[],runs:[]};
+            saveCodeProject(localStorage,uid,copy);renderProjectHome();
+          }catch(error){alert(error.message);}
+        });
         card.querySelector("[data-open]").addEventListener("click",()=>openProjectById(project.id));
         card.querySelector("[data-delete]").addEventListener("click",async()=>{
-          if(!confirm('Delete "'+project.title+'"? This removes the project from this device and its project cloud record. Export a ZIP first if you need a copy.'))return;
+          const warning=guest?'Delete "'+project.title+'"? Guest projects exist only on this browser. Export a ZIP first if you need a copy.':'Delete "'+project.title+'"? This removes the project from this device and its project cloud record. Export a ZIP first if you need a copy.';
+          if(!confirm(warning))return;
           deleteCodeProject(localStorage,uid,project.id);
-          try{await deleteDoc(doc(db,"student_code_projects",uid,"projects",project.id));}catch(error){console.warn("Cloud project deletion unavailable:",error);}
+          if(cloudEnabled)try{await deleteDoc(doc(db,"student_code_projects",uid,"projects",project.id));}catch(error){console.warn("Cloud project deletion unavailable:",error);}
           renderProjectHome();
         });
         list.append(card);
@@ -174,7 +227,7 @@ export function createProjectStudio({
     el("projectHome")?.classList.remove("hidden");
     el("studioShell")?.classList.add("hidden");
     document.title="Code Studio · Adminerva";
-    void mergeCloudProjects();
+    if(cloudEnabled)void mergeCloudProjects();
   }
 
   async function openProjectById(id){
@@ -192,7 +245,11 @@ export function createProjectStudio({
     updateProjectHeading();
     openProject(activeProject);
     switchStudioView("code");
-    scheduleCloudSave(activeProject);
+    for(const id of ["cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","snapshotBtn"]){
+      const control=el(id);if(control)control.classList.add("hidden");
+    }
+    updateQuotaUI();
+    if(cloudEnabled)scheduleCloudSave(activeProject);
   }
 
   function updateProjectHeading(){
@@ -241,6 +298,8 @@ export function createProjectStudio({
   function createFromWizard(){
     const title=el("projectWizardTitle").value.trim();
     if(!title)return alert("Enter a project name.");
+    try{validateProject({state:{files:{}},database:{tables:{}},design:{},evidence:{}},{creating:true});}
+    catch(error){return alert(error.message);}
     const template=CODE_PROJECT_TEMPLATES[selectedTemplate]||CODE_PROJECT_TEMPLATES["java-blank"];
     const config={...template.config};
     if(template.lang==="java"){
@@ -249,6 +308,7 @@ export function createProjectStudio({
       config.database=Boolean(el("wizardDatabase").checked);
     }
     const project=createCodeProject(localStorage,uid,{title,templateId:template.id,config});
+    try{validateProject(project);}catch(error){deleteCodeProject(localStorage,uid,project.id);return alert(error.message);}
     closeWizard();activateProject(project);
   }
 
@@ -348,6 +408,8 @@ export function createProjectStudio({
     if(!activeProject||!activeProject.config?.database)return;
     try{
       const result=executeAdminervaSql(activeProject.database,el("dbSqlInput").value);
+      const candidate={...activeProject,database:result.db};
+      validateProject(candidate);
       activeProject.database=result.db;store(activeProject,true);
       renderGridTable(el("dbResult"),result.columns,result.rows);renderDatabase();renderEvidence();
       const note=el("dbStatus");if(note)note.textContent=result.type+" completed · "+result.affected+" row(s)";
@@ -386,7 +448,7 @@ export function createProjectStudio({
     if(!activeProject)return;
     const entry={at:new Date().toISOString(),mode:run?.mode||activeProject.config?.runMode||"console",status:run?.status||"finished",time:run?.time??null,memory:run?.memory??null};
     activeProject.evidence=activeProject.evidence||{events:[],runs:[]};
-    activeProject.evidence.runs=[entry,...(activeProject.evidence.runs||[])].slice(0,30);
+    activeProject.evidence.runs=[entry,...(activeProject.evidence.runs||[])].slice(0,policy.maxRuns);
     store(activeProject,true);renderMonitor();
   }
   function renderMonitor(){
