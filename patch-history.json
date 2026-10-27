@@ -1,6 +1,78 @@
 {
   "releases": [
     {
+      "version": "2.0.1",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-28",
+      "title": "Code Studio guest access and workflow polish",
+      "summary": "Guest users can now build named local projects in Code Studio with transparent limits, while signed-in and guest project workflows receive safer reset, import/export, autosave and storage-status behavior.",
+      "changes": [
+        {
+          "type": "New",
+          "area": "Guest Code Studio",
+          "audience": [
+            "guest",
+            "student"
+          ],
+          "text": "Guests now use the same named-project Code Studio experience with Code, Design, Database, Application, Terminal, Evidence and Monitor surfaces instead of the legacy single-draft editor."
+        },
+        {
+          "type": "New",
+          "area": "Guest project limits",
+          "audience": [
+            "guest"
+          ],
+          "text": "Guest projects are local-only and limited to three projects, twenty-five files per project, about 300 KB per project, five Adminerva DB tables and one hundred rows per table. Limits and shared-browser storage behavior are shown in the interface."
+        },
+        {
+          "type": "Updated",
+          "area": "Project storage",
+          "audience": [
+            "guest",
+            "student"
+          ],
+          "text": "Project cards and the active project header now show storage mode, file count and approximate project size. Guest projects never attempt cloud synchronization."
+        },
+        {
+          "type": "Updated",
+          "area": "Project reset",
+          "audience": [
+            "guest",
+            "student"
+          ],
+          "text": "Reset restores the selected project template, including its starter files, database schema and design artifacts, instead of replacing it with a generic language file."
+        },
+        {
+          "type": "Updated",
+          "area": "ZIP workflows",
+          "audience": [
+            "guest",
+            "student"
+          ],
+          "text": "Exports use the project name, imports obey the active project tier limits, and imported files are saved into the named project with a recoverable local undo copy."
+        },
+        {
+          "type": "Updated",
+          "area": "System design",
+          "audience": [
+            "guest",
+            "student"
+          ],
+          "text": "Design artifacts autosave with the project while retaining the explicit preview and save controls."
+        },
+        {
+          "type": "Fixed",
+          "area": "Guest reliability",
+          "audience": [
+            "guest"
+          ],
+          "text": "Guest export and snapshot-adjacent controls no longer depend on the authenticated-site global loading helper, and authenticated-only page scripts remain excluded from public guest routes."
+        }
+      ],
+      "publishedAt": "2026-10-28T00:53:00+08:00"
+    },
+    {
       "version": "2.0.0",
       "status": "published",
       "public": true,
