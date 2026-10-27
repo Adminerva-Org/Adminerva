@@ -1,6 +1,6 @@
 {
-  "version": "2.0.1",
+  "version": "2.0.2",
   "releasedAt": "2026-10-28",
-  "notes": "Code Studio refinement: guest local projects with clear limits, project-aware ZIP workflows, template reset, design autosave, and clearer project storage/quota status.",
-  "publishedAt": "2026-10-28T00:53:00+08:00"
+  "notes": "Code Studio workspace density update: full-height editor fix, compact project/tool navigation, denser Design and Database workspaces, slimmer explorer and a reduced Code Studio footer.",
+  "publishedAt": "2026-10-28T05:28:00+08:00"
 }
