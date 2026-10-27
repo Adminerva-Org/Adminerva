@@ -199,12 +199,30 @@ function externalStatus(text,error=false){
   const node=el("externalEvaluationStatus");if(!node)return;
   node.textContent=text;node.className="text-xs "+(error?"text-rose-700":"text-indigo-900");
 }
+let externalLoadingGeneration=0;
+function beginExternalOperation(message){
+  const indicator=el("externalEvaluationProcessing"),label=el("externalEvaluationProcessingText");
+  const generation=++externalLoadingGeneration;
+  if(label)label.textContent=message;
+  if(indicator){indicator.hidden=false;indicator.classList.remove("hidden");indicator.style.display="flex";}
+  const end=window.beginLoading?.(message)||(()=>{});
+  return ()=>{
+    end();
+    if(generation===externalLoadingGeneration&&indicator){
+      indicator.hidden=true;indicator.classList.add("hidden");indicator.style.display="none";
+    }
+  };
+}
 function closeExternalEvaluation(){
   el("externalEvaluationModal")?.classList.add("hidden");
 }
 async function copyExternalPackage(){
   const value=state.externalPackage||el("externalEvaluationPackage")?.value||"";
   if(!value)return externalStatus("Prepare the evidence package before copying.",true);
+  const button=el("externalEvaluationCopy");
+  if(button.disabled||state.externalBusy)return;
+  button.disabled=true;
+  const end=beginExternalOperation("Copying verified evaluation package…");
   try{
     await navigator.clipboard.writeText(value);
     externalStatus("Evaluation package copied. Paste it into ChatGPT or another evaluator, then paste the returned JSON below.");
@@ -212,17 +230,20 @@ async function copyExternalPackage(){
     const target=el("externalEvaluationPackage");target.focus();target.select();
     const copied=document.execCommand?.("copy");
     externalStatus(copied?"Evaluation package copied.":"Clipboard access was blocked. Select the package text and copy it manually.",!copied);
-  }
+  }finally{button.disabled=false;end();}
 }
 async function openExternalEvaluation(){
   const active=state.active;
   if(!active||active.assessment.schemaVersion!==2||!active.checkpointSha||!evaluationResponsibilityReady(active.assessment,active.evidence))
     return aiStatus("Approve the checkpoint and verify individual contributions before preparing an external evaluation.",true);
   if(active.previous?.published)return aiStatus("Published grade protected. Unpublish it before preparing a new evaluation.",true);
-  if(state.externalBusy)return;
   const key=currentExternalEvidenceKey(active);
   if(!key)return aiStatus("Approved evidence is unavailable. Reopen the assessment review.",true);
   el("externalEvaluationModal").classList.remove("hidden");
+  if(state.externalBusy){
+    externalStatus("Adminerva is still processing the current external evaluation step. Please wait for the status above.");
+    return;
+  }
   if(state.externalEvidence&&state.externalPackage&&state.externalEvidenceKey===key){
     el("externalEvaluationPackage").value=state.externalPackage;
     el("externalEvaluationCopy").disabled=false;
@@ -239,6 +260,7 @@ async function openExternalEvaluation(){
   el("externalEvaluationPackageStatus").textContent="Preparing verified evidence…";
   externalStatus("Preparing the approved checkpoint. Paste your result once the package is ready.");
   state.externalBusy=true;state.externalEvidence=null;state.externalPackage="";
+  const end=beginExternalOperation("Preparing verified commits and checkpoint files…");
   const session=state.token;
   try{
     const criteria=parseWeightedRubric(active.assessment.evalCriteria,active.maxScore);
@@ -272,7 +294,7 @@ async function openExternalEvaluation(){
       el("externalEvaluationPackageStatus").textContent="Could not prepare the external package: "+error.message;
       externalStatus("Evidence could not be prepared. Check the GitHub connection and reopen External evaluation to retry; your pasted result is preserved.",true);
     }
-  }finally{if(session===state.token)state.externalBusy=false;}
+  }finally{end();if(session===state.token)state.externalBusy=false;}
 }
 async function importExternalEvaluation(){
   const active=state.active,session=state.token;
@@ -284,7 +306,10 @@ async function importExternalEvaluation(){
   if(state.externalEvidenceKey&&state.externalEvidenceKey!==key)
     return externalStatus("The approved evidence changed after the package was prepared. Copy a new package and request an updated evaluation.",true);
   const button=el("externalEvaluationImport");
+  if(button.disabled)return;
+  state.externalBusy=true;
   button.disabled=true;button.textContent="Validating…";
+  const end=beginExternalOperation("Validating external evaluation against the rubric…");
   try{
     const criteria=parseWeightedRubric(active.assessment.evalCriteria,active.maxScore);
     const parsed=parseExternalEvaluationResponse(el("externalEvaluationResult").value);
@@ -292,7 +317,7 @@ async function importExternalEvaluation(){
     if(!evidence){
       // Recover an interrupted/closed handoff from the current approved snapshot, not a mutable branch.
       externalStatus("Restoring verified evidence from the approved checkpoint before validation…");
-      state.externalBusy=true;
+      el("externalEvaluationProcessingText").textContent="Restoring approved checkpoint evidence for validation…";
       evidence=await loadPinnedV2Source({
         repository:active.base,checkpointSha:active.checkpointSha,
         selectedCommits:active.selectedEvidenceCommits,assessment:active.assessment,
@@ -340,6 +365,7 @@ async function importExternalEvaluation(){
       externalStatus("Import rejected: "+error.message,true);
     }
   }finally{
+    end();
     if(session===state.token){
       state.externalBusy=false;
       button.disabled=false;
