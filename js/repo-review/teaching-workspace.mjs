@@ -168,7 +168,7 @@ export function mountTeachingWorkspace(root){
  async function mountActivity(){
   const key=context.assessment.id+":"+context.target.id;if(activity&&activityKey===key)return;
   activity?.destroy();activityKey=key;const generation=revision;
-  const module=await import("./manual-activity.mjs?v=1.3.0");if(generation!==revision)return;
+  const module=await import("./manual-activity.mjs?v=1.3.1");if(generation!==revision)return;
   const students=[student,...context.students.filter(item=>item.id!==student.id)];
   activity=module.mountManualActivity({root:panels.activity,students,assessment:context.assessment,onSaved:()=>window.dispatchEvent(new CustomEvent("adminerva:activity-grade-saved"))});
  }
