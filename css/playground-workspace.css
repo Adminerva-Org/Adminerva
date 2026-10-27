@@ -52,3 +52,189 @@
 @media(max-width:767px){.code-project-section-head{align-items:stretch;flex-direction:column}.code-project-home-meta{justify-content:flex-start}.guest-project-limit{align-items:flex-start;flex-direction:column}.studio-project-title-row{align-items:flex-start;flex-direction:column;gap:3px}.studio-storage-badge{font-size:8px}}
 
 .code-project-hero-actions button:disabled{opacity:.52;cursor:not-allowed;box-shadow:none}
+
+
+/* 2.0.2 Compact Code Studio density and full-height workspace. */
+body[data-playground-access] main{min-height:0;overflow:hidden}
+body[data-playground-access] #studioShell:not(.hidden){display:flex;min-height:0;overflow:hidden}
+body[data-playground-access] #studioPanelCode{min-height:0;overflow:hidden}
+body[data-playground-access] #projectWorkspace{min-height:0;overflow:hidden}
+body[data-playground-access] #workspaceContainer{min-height:0}
+body[data-playground-access] .av-site-footer{
+  min-height:42px;
+  padding:.4rem 1.1rem;
+  gap:.55rem 1rem;
+  flex-wrap:nowrap;
+  font-size:.72rem;
+}
+body[data-playground-access] .av-site-footer nav{gap:.35rem 1rem;flex-wrap:nowrap}
+body[data-playground-access] .av-site-footer a,
+body[data-playground-access] .av-site-footer button{padding:.1rem 0}
+body[data-playground-access] .av-footer-brand{font-size:.78rem;letter-spacing:.13em}
+body[data-playground-access] .av-footer-credits{display:none}
+
+.studio-project-bar{
+  min-height:46px;
+  padding:6px 10px;
+  gap:9px;
+}
+.studio-back,.studio-project-actions button{
+  padding:6px 9px;
+  min-height:32px;
+  border-radius:8px;
+  font-size:10px;
+}
+.studio-project-identity strong{font-size:12px}
+.studio-project-identity>span{font-size:9px;margin-top:1px}
+.studio-storage-badge{padding:3px 6px;font-size:8px}
+.studio-tabs{
+  min-height:34px;
+  padding:0 8px;
+  gap:0;
+}
+.studio-tabs button{
+  min-height:34px;
+  padding:7px 11px 6px;
+  font-size:10px;
+}
+
+.pg-toolbar{
+  min-height:48px;
+  padding:6px 9px;
+  gap:6px;
+  flex-wrap:nowrap;
+}
+.pg-toolbar h1{display:none}
+.pg-toolbar button,.pg-toolbar select,.pg-toolbar summary,.pg-toolbar>a{
+  min-height:34px;
+  padding:6px 9px;
+  border-radius:8px;
+  font-size:10px;
+  white-space:nowrap;
+}
+.pg-toolbar .pg-run{padding-inline:16px}
+.pg-toolbar #languageSelect{max-width:118px}
+.pg-toolbar #javaRunMode{max-width:205px}
+.pg-toolbar #javaRunModeLabel{font-size:9px}
+.pg-toolbar #autoSaveIndicator{
+  max-width:150px;
+  font-size:9px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.pg-menu{min-width:195px;padding:6px;gap:3px}
+.pg-menu button{min-height:31px;padding:6px 8px}
+
+.pg-explorer{width:190px}
+.pg-explorer-header{padding:8px 9px;font-size:10px}
+.pg-explorer-tools{gap:3px;padding:0 6px 6px}
+.pg-explorer button{font-size:10px;padding:5px 7px}
+.pg-tree{padding:3px 5px}
+.pg-tree summary{padding:5px;font-size:10px}
+.pg-file{font-size:10px}
+.pg-folder-count{padding:4px 8px;font-size:9px}
+.pg-explorer-footer{
+  padding:6px 8px;
+  font-size:9px;
+  line-height:1.35;
+}
+.pg-editor-path{padding:3px 9px;font-size:9px;min-height:21px}
+#fileTabsContainer{min-height:32px}
+#fileTabsContainer .tab-element{padding-top:6px!important;padding-bottom:6px!important;font-size:10px!important}
+#outputPane>div:first-child{padding:7px 10px!important;font-size:10px!important}
+#stdinContainer{padding:7px 9px!important}
+#stdinContainer label{font-size:9px!important;margin-bottom:3px!important}
+#stdinInput{padding:6px!important;font-size:10px!important}
+#consoleOutput{padding:10px!important;font-size:11px!important;line-height:1.5!important}
+#javaDesktopStatus{padding:5px 9px;font-size:9px}
+
+.studio-surface{
+  padding:12px 16px 14px;
+}
+.studio-surface-head{
+  width:100%;
+  max-width:1500px;
+  margin:0 auto 10px;
+  gap:12px;
+  align-items:center;
+}
+.studio-surface-head h2{font-size:19px;line-height:1.15}
+.studio-eyebrow{font-size:9px;margin-bottom:3px}
+.studio-surface-head p:not(.studio-eyebrow){
+  margin-top:2px;
+  font-size:10px;
+  line-height:1.4;
+  max-width:900px;
+}
+.studio-inline-actions{gap:6px}
+.studio-inline-actions select,.studio-inline-actions button,.studio-surface select{
+  min-height:34px;
+  padding:6px 9px;
+  border-radius:8px;
+  font-size:10px;
+}
+.primary-small{min-height:34px;padding:6px 10px;font-size:10px}
+.studio-card{
+  padding:12px;
+  border-radius:12px;
+}
+.studio-card h3{font-size:11px;margin-bottom:7px}
+.studio-card label{font-size:10px;margin-bottom:5px}
+.design-grid,.db-grid{
+  width:100%;
+  max-width:1500px;
+  gap:10px;
+}
+.design-grid{grid-template-columns:minmax(280px,.9fr) minmax(360px,1.1fr)}
+.db-grid{grid-template-columns:230px minmax(0,1fr)}
+.studio-code-area{
+  min-height:250px;
+  padding:10px;
+  border-radius:8px;
+  font-size:11px;
+  line-height:1.5;
+}
+.design-preview-card{min-height:330px}
+.design-preview{min-height:275px;padding:6px}
+.db-sidebar{min-height:0}
+.db-sidebar h3+*{margin-bottom:12px}
+.db-schema-list{gap:4px}
+.db-schema-list button{padding:7px;border-radius:7px}
+.db-history{gap:5px;max-height:170px}
+.db-history li{padding-bottom:5px}
+.db-console .studio-code-area{min-height:135px;margin:6px 0}
+.studio-table-wrap{margin-top:8px}
+.studio-table th,.studio-table td{padding:7px 8px}
+.evidence-grid{max-width:1300px;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.evidence-check{padding:10px;gap:9px;border-radius:10px}
+.evidence-check-mark{width:23px;height:23px;font-size:10px}
+.evidence-check strong{font-size:10px}
+.evidence-check p{font-size:9px;margin-top:2px}
+.monitor-grid{max-width:1300px;gap:7px}
+.monitor-stat{padding:10px}
+.monitor-stat strong{font-size:18px}
+.studio-notice{max-width:1300px;margin-top:10px;padding:8px 10px;font-size:9px}
+
+@media(max-width:1100px){
+  .pg-toolbar{flex-wrap:wrap}
+  .pg-toolbar #autoSaveIndicator{order:9;max-width:100%;margin-left:auto}
+  .evidence-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:767px){
+  body[data-playground-access] .av-site-footer{padding:.35rem .65rem;flex-wrap:wrap}
+  body[data-playground-access] .av-site-footer nav{gap:.3rem .75rem;flex-wrap:wrap}
+  .studio-project-bar{min-height:42px;padding:5px 7px}
+  .studio-tabs{min-height:32px;padding:0 4px}
+  .studio-tabs button{min-height:32px;padding:6px 8px;font-size:9px}
+  .pg-toolbar{padding:5px 6px}
+  .pg-toolbar button,.pg-toolbar select,.pg-toolbar summary,.pg-toolbar>a{min-height:32px;padding:5px 7px}
+  .studio-surface{padding:10px 8px}
+  .studio-surface-head{margin-bottom:8px}
+  .studio-surface-head h2{font-size:17px}
+  .design-grid,.db-grid{grid-template-columns:1fr}
+  .studio-code-area{min-height:210px}
+  .design-preview-card{min-height:260px}
+  .design-preview{min-height:205px}
+  .evidence-grid{grid-template-columns:1fr}
+}
