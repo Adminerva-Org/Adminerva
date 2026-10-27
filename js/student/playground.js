@@ -560,6 +560,12 @@ function renderFileTree(){
         const summary=document.createElement("summary");summary.textContent="▱ "+path.split("/").at(-1);summary.title="Drop on the folder to move inside; use the edge line to reorder";
         summary.addEventListener("click",()=>{selectedProjectPath=path;selectedProjectFolder=true;});
         summary.addEventListener("contextmenu",event=>{event.preventDefault();event.stopPropagation();selectedProjectPath=path;selectedProjectFolder=true;showExplorerContextMenu(event,{path,isFolder:true});});
+        summary.addEventListener("keydown",event=>{
+          if(event.key==="ContextMenu"||(event.shiftKey&&event.key==="F10")){
+            event.preventDefault();const rect=summary.getBoundingClientRect();selectedProjectPath=path;selectedProjectFolder=true;
+            showExplorerContextMenu({clientX:rect.left+18,clientY:rect.top+18},{path,isFolder:true});
+          }
+        });
         bindExplorerDrag(summary,path,true);bindExplorerItemDrop(summary,path,true);
         const nested=document.createElement("div");details.append(summary,nested);children(nested,path);box.append(details);
       }else if(workspaceFiles[path]){
@@ -567,6 +573,12 @@ function renderFileTree(){
         const icon=document.createElement("span");icon.textContent=path.endsWith(".java")?"J":path.endsWith(".py")?"Py":path.endsWith(".html")?"◇":"·";
         const label=document.createElement("span");label.textContent=path.split("/").at(-1);button.append(icon,label);button.onclick=()=>switchTab(path);
         button.addEventListener("contextmenu",event=>{event.preventDefault();event.stopPropagation();selectedProjectPath=path;selectedProjectFolder=false;showExplorerContextMenu(event,{path,isFolder:false});});
+        button.addEventListener("keydown",event=>{
+          if(event.key==="ContextMenu"||(event.shiftKey&&event.key==="F10")){
+            event.preventDefault();const rect=button.getBoundingClientRect();selectedProjectPath=path;selectedProjectFolder=false;
+            showExplorerContextMenu({clientX:rect.left+18,clientY:rect.top+18},{path,isFolder:false});
+          }
+        });
         bindExplorerDrag(button,path,false);bindExplorerItemDrop(button,path,false);box.append(button);
       }
     }
