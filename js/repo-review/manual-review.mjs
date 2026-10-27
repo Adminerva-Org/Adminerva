@@ -13,7 +13,7 @@ import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3
 import {parseWeightedRubric,loadPinnedV2Source,parseSuggestedRubric}
   from "./services/v2-grading-assistant.mjs?v=1.4.22";
 import {buildExternalEvaluationPackage,parseExternalEvaluationResponse}
-  from "./services/external-evaluation.mjs?v=1.0.0";
+  from "./services/external-evaluation.mjs?v=1.1.0";
 import {evaluateVerifiedEvidence} from "./services/adaptive-evaluation.mjs?v=1.3.0";
 import {isAndroidUiAssessment} from "./services/android-evidence.mjs?v=1.3.0";
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
@@ -223,15 +223,20 @@ async function openExternalEvaluation(){
   const session=state.token;
   try{
     const criteria=parseWeightedRubric(active.assessment.evalCriteria,active.maxScore);
-    const evidence=await loadPinnedV2Source({
-      repository:active.base,checkpointSha:active.checkpointSha,
-      selectedCommits:active.selectedEvidenceCommits,assessment:active.assessment,
-      verifiedContributionCommits:active.evidence.verifiedContributionCommits,
-      token:localStorage.getItem("Adminerva_github_token"),fetchImpl:state.requests?.fetch||globalThis.fetch
-    });
+    const [evidence,privateAssessment]=await Promise.all([
+      loadPinnedV2Source({
+        repository:active.base,checkpointSha:active.checkpointSha,
+        selectedCommits:active.selectedEvidenceCommits,assessment:active.assessment,
+        verifiedContributionCommits:active.evidence.verifiedContributionCommits,
+        token:localStorage.getItem("Adminerva_github_token"),fetchImpl:state.requests?.fetch||globalThis.fetch
+      }),
+      getDoc(doc(db,"assessment_private",active.taskId))
+        .then(snapshot=>snapshot.exists()?snapshot.data():{})
+        .catch(()=>({}))
+    ]);
     if(session!==state.token||state.active!==active)return;
     const pack=buildExternalEvaluationPackage({
-      assessment:active.assessment,criteria,evidence,
+      assessment:active.assessment,criteria,evidence,privateAssessment,
       contributionScope:active.evidence.contributionScope,maxScore:active.maxScore
     });
     state.externalEvidence=evidence;state.externalPackage=pack;
@@ -239,7 +244,7 @@ async function openExternalEvaluation(){
     el("externalEvaluationCopy").disabled=false;
     const kb=Math.max(1,Math.round(new Blob([pack]).size/1024));
     el("externalEvaluationPackageStatus").textContent="Ready · "+evidence.patches.length+" relevant patch record(s) · "+
-      evidence.files.length+" checkpoint file(s) · about "+kb+" KB. The copied instructions require JSON-only output.";
+      evidence.files.length+" checkpoint file(s) · assessment rubric and instructions included · about "+kb+" KB. Review teacher-only checker guidance before sharing; JSON-only reply required.";
     analytics("external_evaluation_package_ready",{feature:"review_grade",size_bucket:kb>500?"500kb_plus":kb>100?"100_500kb":"under_100kb"});
   }catch(error){
     if(session===state.token){
