@@ -268,10 +268,29 @@ async function loadEvidence(initialRecord){
     void Promise.all(previews);
   }catch(error){if(!destroyed&&sequence===state.sequence)status("Unable to load evidence: "+error.message);}
 }
-async function previewCommit(repo,sha,row){
-  let box=row.querySelector("pre");
-  if(!box)box=add(row,"pre","","whitespace-pre-wrap break-words text-xs bg-slate-50 p-3 mt-3");
-  box.textContent="Loading commit diffs…";
+async function previewCommit(repo,sha,row,button){
+  let section=row.querySelector("[data-commit-preview]");
+  if(section){
+    section.open=!section.open;
+    return;
+  }
+  section=add(row,"details","","w-full rounded-lg border border-slate-200 bg-slate-50 mt-3");
+  section.dataset.commitPreview="true";
+  const summary=add(section,"summary","Changes in "+sha.slice(0,12)+" · click to collapse",
+    "cursor-pointer px-3 py-2 text-sm font-bold text-slate-800");
+  const box=add(section,"pre","Loading commit diffs…",
+    "whitespace-pre-wrap break-words text-xs bg-slate-50 p-3 m-2 border rounded overflow-auto");
+  box.style.maxHeight="min(24rem, 55vh)";
+  box.style.maxWidth="100%";
+  section.open=true;
+  const sync=()=>{
+    button.textContent=section.open?"Hide changes":"Preview changes";
+    button.setAttribute("aria-expanded",String(section.open));
+  };
+  section.addEventListener("toggle",sync);
+  sync();
+  const end=window.beginLoading?.("Loading selected commit changes…",section)||(()=>{});
+  button.disabled=true;
   try{
     const data=await github(api(repo)+"/commits/"+sha+"?per_page=100");
     const details=["Message: "+(data.commit?.message||""),
@@ -281,8 +300,9 @@ async function previewCommit(repo,sha,row){
     for(const f of (data.files||[]).slice(0,30))
       details.push("\n--- "+f.filename+" ---\n"+
         (typeof f.patch==="string"?f.patch.slice(0,5000):"Binary or unavailable diff"));
-    box.textContent=details.join("\n");
-  }catch(e){box.textContent="Unable to preview commit: "+e.message;}
+    if(section.isConnected)box.textContent=details.join("\n");
+  }catch(e){if(section.isConnected)box.textContent="Unable to preview commit: "+e.message;}
+  finally{button.disabled=false;end();sync();}
 }
 async function showSnapshot(evidence,assessment){
   const target=el("evidenceSnapshot");target.textContent="Loading matching files at the pinned checkpoint…";
@@ -290,7 +310,7 @@ async function showSnapshot(evidence,assessment){
     const snapshot=await loadReviewSnapshot(evidence.repository,evidence.checkpointSha,assessment,{token:localStorage.getItem("Adminerva_github_token"),fetchImpl:requests?.fetch||globalThis.fetch});
     if(state.evidence!==evidence)return;
     target.replaceChildren();add(target,"p",snapshot.paths.length+" matching files at checkpoint "+evidence.checkpointSha.slice(0,12)+". Shared source is project context, not individual credit.","text-xs font-semibold");
-    for(const file of snapshot.files){const details=add(target,"details","","border rounded p-2 mt-2");details.open=true;add(details,"summary",file.path,"font-mono text-xs cursor-pointer");add(details,"pre",file.error||file.text,"whitespace-pre-wrap break-words text-xs max-h-64 overflow-auto mt-2");}
+    for(const file of snapshot.files){const details=add(target,"details","","border rounded p-2 mt-2");add(details,"summary",file.path,"font-mono text-xs cursor-pointer");add(details,"pre",file.error||file.text,"whitespace-pre-wrap break-words text-xs max-h-64 overflow-auto mt-2");}
     if(snapshot.partial)add(target,"p","Partial preview: at most 12 files and 30 KB per file. Unshown or unreadable files are not missing screens. Inspect remaining files at the pinned repository link.","text-xs text-amber-900 mt-2");
   }catch(error){if(state.evidence===evidence)target.textContent="Pinned source preview unavailable: "+error.message+" No conclusion about missing work can be drawn.";}
 }
