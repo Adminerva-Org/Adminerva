@@ -3,7 +3,7 @@ import {createReviewRequests} from "./services/review-requests.mjs?v=1.3.0";
 import {validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
 const make=(tag,text,classes="")=>{const element=document.createElement(tag);element.textContent=text; element.className=classes;return element;};
 export function mountTeachingWorkspace(root){
- let context=null,student=null,view="inbox",activity=null,activityKey="",reviewKey="",requests=null,abort=null,revision=0;
+ let context=null,student=null,view="grade",activity=null,activityKey="",reviewKey="",requests=null,abort=null,revision=0;
  const manual=document.getElementById("manualReviewModal");
  const panels=Object.fromEntries([...root.querySelectorAll("[data-teaching-panel]")].map(panel=>[panel.dataset.teachingPanel,panel]));
  if(manual){manual.dataset.inlineReview="true";panels.review.append(manual);}
@@ -144,14 +144,14 @@ export function mountTeachingWorkspace(root){
  }
  function setContext(next){
   const changed=!context||context.assessment.id!==next.assessment.id||context.target.id!==next.target.id;
-  if(changed){clear({force:true});context=next;student=next.students.find(item=>item.id===next.requestedStudent)||next.students[0];abort=new AbortController();let token="";try{token=localStorage.getItem("Adminerva_github_token")||"";}catch{}requests=createReviewRequests({token,signal:abort.signal});view="inbox";}
+  if(changed){clear({force:true});context=next;student=next.students.find(item=>item.id===next.requestedStudent)||next.students[0];abort=new AbortController();let token="";try{token=localStorage.getItem("Adminerva_github_token")||"";}catch{}requests=createReviewRequests({token,signal:abort.signal});view="grade";}
   else context=next;
   root.hidden=false;root.querySelector("[data-review-context]").textContent=(next.assessment.title||next.assessment.id)+" · "+next.target.label;
   member.replaceChildren(...next.students.map(item=>new Option(name(item),item.id)));member.value=student.id;member.disabled=next.students.length<2;
   root.querySelector("[data-review-individual]").textContent="Individual review: "+name(student)+". Scores remain separate for each learner.";
   void show(view);
  }
- member.onchange=()=>{const previous=student;if(!canLeave()){member.value=previous.id;return;}selectMember(context.students.find(item=>item.id===member.value));void show(view);};
+ member.onchange=()=>{const previous=student;if(!canLeave()){member.value=previous.id;return;}selectMember(context.students.find(item=>item.id===member.value));void show("grade");};
  for(const button of root.querySelectorAll("[data-teaching-tab]"))button.onclick=()=>void show(button.dataset.teachingTab);
  root.querySelector("[role=tablist]").addEventListener("keydown",event=>{if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;const buttons=[...root.querySelectorAll("[data-teaching-tab]")],index=buttons.indexOf(document.activeElement);let next=event.key==="Home"?0:event.key==="End"?buttons.length-1:(index+(event.key==="ArrowRight"?1:-1)+buttons.length)%buttons.length;event.preventDefault();buttons[next].focus();void show(buttons[next].dataset.teachingTab);});
  root.addEventListener("click",event=>{const target=event.target.closest("[data-review-step],#manualReviewVerifyContributions");if(target)void show(target.dataset.reviewStep==="integratedEvidence"||target.id==="manualReviewVerifyContributions"?"evidence":"grade");},true);
