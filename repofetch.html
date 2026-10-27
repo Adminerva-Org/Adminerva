@@ -7,17 +7,20 @@
     <title>Teaching workspace | Adminerva</title>
     <link rel="icon" type="image/png" sizes="32x32" href="assets/adminerva-favicon-32.png" />
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.6" />
+    <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.7" />
 <link rel="stylesheet" href="css/teaching-workspace.css?v=1.3.10"></head>
   <body class="bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="repo" data-page="repofetch"></div>
-    <script src="js/core/adminerva-nav.js?v=1.4.17"></script>
+    <script src="js/core/adminerva-nav.js?v=1.4.18"></script>
 
     <div class="av-educator-layout"><aside class="av-educator-nav" data-educator-hub-nav data-current="review"></aside><div class="av-educator-content">
     <div class="max-w-screen-xl mx-auto w-full p-3 sm:p-4 mt-2 flex-1">
       <div class="bg-white p-3 sm:p-4 rounded-lg shadow-sm border border-gray-200">
         <h1 class="text-xl sm:text-2xl font-extrabold text-slate-900">Review and grade</h1>
-        <p class="text-xs sm:text-sm text-slate-600 mt-1 mb-3">Choose your class and assessment, then review individual learner evidence and grades in one workspace.</p>
+        <p class="text-xs sm:text-sm text-slate-600 mt-1 mb-3">Choose your class and assessment, then review selected commits, approve evidence, evaluate, and grade each learner.</p>
+        <div class="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          Need broader repository history or manual investigation? <a href="repobank.html" class="font-bold text-indigo-700 underline">Open Repository investigation →</a>
+        </div>
         <section id="v2GradingWorkspace" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 mb-6 shadow-sm space-y-4" aria-labelledby="v2WorkspaceTitle">
           <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
             <div>
@@ -65,7 +68,7 @@
           <section id="teaching-panel-contributions" role="tabpanel" aria-labelledby="teaching-tab-contributions" data-teaching-panel="contributions" hidden></section>
           <section id="teaching-panel-activity" role="tabpanel" aria-labelledby="teaching-tab-activity" data-teaching-panel="activity" hidden></section>
         </section>
-        <details id="legacyRepoTools" class="border border-slate-200 rounded-xl p-4">
+        <details id="legacyRepoTools" hidden aria-hidden="true" class="border border-slate-200 rounded-xl p-4">
           <summary class="font-semibold text-slate-700 cursor-pointer">Advanced legacy repository tools</summary>
           <div class="mt-4">
         <!-- ✨ UPDATED HEADER WITH RIGHT-ALIGNED BUTTONS -->
@@ -201,6 +204,9 @@
     <!-- ✨ NEW: Bulk Grade Modal -->
     <div
       id="bulkGradeModal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Legacy batch evaluation"
       class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4"
     >
       <div
@@ -277,6 +283,9 @@
     <!-- ✨ NEW: Bulk Results Modal -->
     <div
       id="bulkResultModal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Legacy batch evaluation results"
       class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[120] flex items-center justify-center p-4"
     >
       <div
@@ -399,7 +408,7 @@
           <div class="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2">
             <p id="manualReviewTask" class="font-bold text-slate-900"></p>
             <p id="manualReviewStepStatus" role="status" class="text-sm text-indigo-900"></p>
-            <details><summary class="text-xs font-semibold cursor-pointer">Repository shortcuts and older review tools</summary><div id="manualReviewLinks" class="flex flex-wrap gap-x-4 gap-y-2 text-sm mt-2"></div>
+            <details><summary class="text-xs font-semibold cursor-pointer">Investigation shortcuts (optional)</summary><div id="manualReviewLinks" class="flex flex-wrap gap-x-4 gap-y-2 text-sm mt-2"></div>
             <button type="button" id="manualReviewRefresh" class="rounded border border-indigo-200 bg-indigo-50 text-indigo-900 px-3 py-2 text-xs font-bold">Reload checkpoint / grade status</button>
             <button type="button" id="manualReviewAnalyze" disabled
               class="rounded-lg px-3 py-2 text-xs font-bold border border-amber-300 bg-white text-amber-900">
@@ -550,10 +559,10 @@
 
     <script src="js/core/adminerva-loader.js?v=1.3.1"></script>
     <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
-    <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.1"></script>
+    <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.2"></script>
     <script type="module" src="js/repo-review/repofetch.js?v=1.3.2"></script>
     <script type="module" src="js/repo-review/auto-checker.js?v=1.3.0"></script>
-    <script type="module" src="js/repo-review/manual-review.mjs?v=1.4.29"></script>
+    <script type="module" src="js/repo-review/manual-review.mjs?v=1.4.30"></script>
     <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=1.4.15"></script>
   </body>
 </html>
