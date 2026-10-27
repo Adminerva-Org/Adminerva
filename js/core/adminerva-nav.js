@@ -283,7 +283,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!element || element.hidden || element.classList.contains("hidden")) return false;
     if (element.matches?.('#manualReviewModal[data-inline-review="true"]')) return false;
     const style = window.getComputedStyle(element);
-    return style.display !== "none" && style.visibility !== "hidden";
+    return style.display !== "none" && style.visibility !== "hidden" && element.getClientRects().length > 0;
   };
   document.addEventListener("keydown", event => {
     if (event.key !== "Escape" || event.defaultPrevented) return;
