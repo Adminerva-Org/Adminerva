@@ -68,6 +68,9 @@ const guestMode=document.body.dataset.playgroundAccess==="guest";
 let workspaceFolders=[],projectOrder=[],selectedProjectPath="",selectedProjectFolder=false,explorerDrag=null;
 let executionController=null,executionSequence=0;
 let loadedOwnerUid=null;
+const JAVA_RUN_MODE_KEY="Adminerva_Java_Run_Mode_v1";
+let javaRunMode=(()=>{try{return localStorage.getItem(JAVA_RUN_MODE_KEY)==="desktop"?"desktop":"console";}catch{return "console";}})();
+let desktopRunSequence=0;
 
 // ==========================================
 // 2. INITIALIZATION
@@ -120,6 +123,7 @@ async function initializePlayground() {
     bindUIEvents();
     initResizer();
     setupWebConsoleHook();
+    setupJavaDesktopHook();
 
     const urlParams = new URLSearchParams(window.location.search);
     const snapshotId = urlParams.get("id");
@@ -177,6 +181,7 @@ else void initializePlayground();
 // ==========================================
 function createWorkspace(lang, initialFiles, initialOrder, initialActive,initialFolders=[],initialProjectOrder=[]) {
   if(executionController){executionSequence++;executionController.abort();}
+  stopJavaDesktop(true);
   currentLang = lang;
   const langSelect = document.getElementById("languageSelect");
   if (langSelect) langSelect.value = lang;
@@ -805,10 +810,11 @@ function compilerEntry(){
   const extension=expected.slice(expected.lastIndexOf('.'));
   return workspaceFiles[expected]?expected:activeFilename.endsWith(extension)?activeFilename:fileOrder.find(path=>path.endsWith(extension));
 }
-async function executionPayload(){
+async function executionPayload(options={}){
   const entry=compilerEntry();if(!entry)throw Error('Add a '+languageConfig[currentLang].defaultFile+' entry file before running.');
+  const desktopBundle=currentLang==='java'&&options.desktopBundle===true;
   const stdin=document.getElementById('stdinInput')?.value||'';
-  if(fileOrder.length===1&&!entry.includes('/'))return {language_id:languageConfig[currentLang].judge0Id,source_code:workspaceFiles[entry].model.getValue(),stdin,cpu_time_limit:5,wall_time_limit:10};
+  if(!desktopBundle&&fileOrder.length===1&&!entry.includes('/'))return {language_id:languageConfig[currentLang].judge0Id,source_code:workspaceFiles[entry].model.getValue(),stdin,cpu_time_limit:5,wall_time_limit:10};
   if(workspaceFiles.compile||workspaceFiles.run)throw Error('The compiler reserves root files named compile and run. Rename those files before running this project.');
   const quote=text=>"'"+text.replace(/'/g,"'\"'\"'")+"'";
   const files=currentState().files,zip=new JSZip();
@@ -816,23 +822,110 @@ async function executionPayload(){
   let compile='',run='';
   if(currentLang==='java'){
     const javaFiles=fileOrder.filter(path=>path.endsWith('.java'));
-    compile='javac -d . '+javaFiles.map(quote).join(' ');
     const source=files[entry],pkg=source.match(/^\s*package\s+([\w.]+)\s*;/m)?.[1];
     const main=(pkg?pkg+'.':'')+entry.split('/').at(-1).replace(/\.java$/,'');
-    run='java '+quote(main);
+    if(desktopBundle){
+      compile='rm -rf .adminerva-classes adminerva-app.jar\nmkdir -p .adminerva-classes\njavac -d .adminerva-classes '+javaFiles.map(quote).join(' ')+'\njar cfe adminerva-app.jar '+quote(main)+' -C .adminerva-classes .';
+      run="base64 adminerva-app.jar | tr -d '\\n'";
+    }else{
+      compile='javac -d . '+javaFiles.map(quote).join(' ');
+      run='java '+quote(main);
+    }
   }else if(currentLang==='python')run='export PYTHONPATH=".:\$'+'{PYTHONPATH:-}"\npython3 '+quote(entry);
   else if(currentLang==='cpp')compile='g++ -std=c++17 -O0 -I . -I '+quote(entry.split('/').slice(0,-1).join('/')||'.')+' '+fileOrder.filter(path=>/\.(cpp|cc|cxx)$/.test(path)).map(quote).join(' ')+' -o adminerva-program',run='./adminerva-program';
   else if(currentLang==='csharp')compile='mcs -out:adminerva-program.exe '+fileOrder.filter(path=>path.endsWith('.cs')).map(quote).join(' '),run='mono adminerva-program.exe';
   else if(currentLang==='dart')run='dart '+quote(entry);
   zip.file('compile','#!/bin/bash\nset -e\n'+(compile||'true')+'\n');zip.file('run','#!/bin/bash\nset -e\n'+run+'\n');
-  return {language_id:89,additional_files:await zip.generateAsync({type:'base64'}),stdin,cpu_time_limit:5,wall_time_limit:10};
+  return {language_id:89,additional_files:await zip.generateAsync({type:'base64'}),stdin:desktopBundle?'':stdin,cpu_time_limit:desktopBundle?10:5,wall_time_limit:desktopBundle?20:10};
 }
+
+function isJavaDesktopMode(){return currentLang==='java'&&javaRunMode==='desktop';}
+
+function javaDesktopRunnerDocument(){
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
+    '<style>html,body,#display{width:100%;height:100%;margin:0;overflow:hidden;background:#0f172a}body{font-family:Inter,system-ui,sans-serif}#boot{height:100%;display:grid;place-items:center;color:#a5f3fc;font-size:14px;padding:24px;text-align:center;box-sizing:border-box}</style></head>'+
+    '<body><div id="display"><div id="boot">Loading the Java desktop runtime…</div></div>'+
+    '<script src="https://cjrtnc.leaningtech.com/4.3/loader.js"><\/script>'+
+    '<script>(function(){let runId="";const send=function(type,message){parent.postMessage({channel:"adminerva-java-desktop",runId:runId,type:type,message:String(message||"")},"*");};window.addEventListener("message",async function(event){const data=event.data||{};if(data.type!=="adminerva-java-run"||!data.jarBase64)return;runId=String(data.runId||"");try{send("status","Starting Java 17 desktop runtime…");await cheerpjInit({version:17,status:"none",clipboardMode:"java"});const boot=document.getElementById("boot");if(boot)boot.remove();cheerpjCreateDisplay(-1,-1,document.getElementById("display"));const raw=atob(data.jarBase64);const bytes=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);cheerpOSAddStringFile("/str/adminerva-app.jar",bytes);send("started","Desktop application is starting…");const code=await cheerpjRunJar("/str/adminerva-app.jar");send("finished","Application exited"+(typeof code==="number"?" with code "+code:"."));}catch(error){send("error",error&&error.message?error.message:String(error));}},{once:true});})();<\/script></body></html>';
+}
+
+function launchJavaDesktop(jarBase64){
+  const frame=document.getElementById('javaDesktopFrame');
+  if(!frame)throw Error('Desktop preview is unavailable on this page.');
+  const status=document.getElementById('javaDesktopStatus');
+  const runId=String(++desktopRunSequence);
+  frame.dataset.runId=runId;
+  if(status)status.textContent='Loading Java desktop runtime…';
+  document.getElementById('stopDesktopBtn')?.classList.remove('hidden');
+  frame.onload=()=>{
+    if(frame.dataset.runId!==runId)return;
+    frame.contentWindow?.postMessage({type:'adminerva-java-run',runId,jarBase64},'*');
+  };
+  frame.removeAttribute('src');
+  frame.srcdoc=javaDesktopRunnerDocument();
+}
+
+function stopJavaDesktop(quiet=false){
+  desktopRunSequence++;
+  const frame=document.getElementById('javaDesktopFrame');
+  if(frame){
+    frame.onload=null;
+    frame.dataset.runId='';
+    frame.removeAttribute('srcdoc');
+    frame.src='about:blank';
+  }
+  document.getElementById('stopDesktopBtn')?.classList.add('hidden');
+  const status=document.getElementById('javaDesktopStatus');
+  if(status)status.textContent='Desktop preview stopped. Run the project to launch it again.';
+  if(!quiet){
+    const consoleOut=document.getElementById('consoleOutput');
+    if(consoleOut)consoleOut.textContent+='\\nDesktop application stopped.';
+  }
+}
+
+function setupJavaDesktopHook(){
+  window.addEventListener('message',event=>{
+    const frame=document.getElementById('javaDesktopFrame'),data=event.data||{};
+    if(!frame||event.source!==frame.contentWindow||data.channel!=='adminerva-java-desktop'||String(data.runId||'')!==String(frame.dataset.runId||''))return;
+    const status=document.getElementById('javaDesktopStatus'),consoleOut=document.getElementById('consoleOutput');
+    if(data.type==='status'||data.type==='started'){
+      if(status)status.textContent=data.message||'Starting desktop application…';
+    }else if(data.type==='finished'){
+      if(status)status.textContent=data.message||'Desktop application finished.';
+      document.getElementById('stopDesktopBtn')?.classList.add('hidden');
+      if(consoleOut)consoleOut.textContent+='\\n'+(data.message||'Desktop application finished.');
+    }else if(data.type==='error'){
+      const message='Desktop runtime error: '+(data.message||'Unknown error');
+      if(status)status.textContent=message;
+      if(consoleOut)consoleOut.textContent+='\\n'+message+'\\nTry Console mode if this program does not create a Swing/AWT window.';
+      document.getElementById('stopDesktopBtn')?.classList.add('hidden');
+    }
+  });
+}
+
+function activateOutputTab(name){
+  const items=[
+    {name:'console',tab:'consoleTab',panel:'consoleOutput'},
+    {name:'web',tab:'previewTab',panel:'webPreviewContainer'},
+    {name:'desktop',tab:'desktopTab',panel:'javaDesktopPreviewContainer'}
+  ];
+  for(const item of items){
+    const tab=document.getElementById(item.tab),panel=document.getElementById(item.panel),active=item.name===name;
+    panel?.classList.toggle('hidden',!active);
+    if(item.name==='desktop')panel?.classList.toggle('flex',active);
+    tab?.classList.toggle('text-cyan-400',active);
+    tab?.classList.toggle('border-cyan-400',active);
+    tab?.classList.toggle('text-slate-500',!active);
+    tab?.classList.toggle('border-transparent',!active);
+  }
+}
+
 async function executeCode() {
   if(executionController)return;
   const runBtn=document.getElementById('runBtn'),overlay=document.getElementById('executionOverlay'),consoleOut=document.getElementById('consoleOutput'),label=document.getElementById('executionStage');
-  const sequence=++executionSequence,controller=new AbortController(),entry=compilerEntry(),runLanguage=currentLang;executionController=controller;
-  const end=window.beginLoading?.('Running your code…')||(()=>{});
-  const start=Date.now();let stage='Preparing project';
+  const sequence=++executionSequence,controller=new AbortController(),entry=compilerEntry(),runLanguage=currentLang,desktopMode=isJavaDesktopMode();executionController=controller;
+  const end=window.beginLoading?.(desktopMode?'Compiling Java desktop app…':'Running your code…')||(()=>{});
+  const start=Date.now();let stage=desktopMode?'Preparing desktop package':'Preparing project';
   const update=()=>{if(label)label.textContent=stage+' · '+Math.floor((Date.now()-start)/1000)+'s';};
   const clock=setInterval(update,500),timeout=setTimeout(()=>{stage='Compiler timed out';controller.abort();},45000);
   runBtn.disabled=true;overlay?.classList.remove('hidden');update();
@@ -841,26 +934,42 @@ async function executeCode() {
     if(currentLang==='web'){
       consoleOut.textContent='Local preview · no compiler queue\n\n';executeWebPreview();notePracticeExecution();return;
     }
-    consoleOut.textContent='';const payload=await executionPayload();
+    consoleOut.textContent='';const payload=await executionPayload({desktopBundle:desktopMode});
     const request=async(url,options={})=>{
       const response=await fetch(url,{...options,signal:controller.signal});
       if(!response.ok)throw Error(response.status===429?'Compiler is busy. Please retry shortly.':response.status===401||response.status===403?'The compiler service is not accepting public requests. Export your project or try again later.':'Compiler service returned status '+response.status+'.');
       return response.json();
     };
-    stage='Sending to compiler';update();
+    stage=desktopMode?'Sending desktop build to compiler':'Sending to compiler';update();
     let result=await request('https://ce.judge0.com/submissions?base64_encoded=false&wait=false',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     if(!result.token)throw Error('The compiler did not return a run token. Retry shortly.');
     const token=result.token;
     while(!result.status||result.status.id<=2){
-      stage=result.status?.id===2?'Compiling and running':'Waiting in compiler queue';update();
+      stage=result.status?.id===2?(desktopMode?'Compiling desktop application':'Compiling and running'):'Waiting in compiler queue';update();
       await new Promise((resolve,reject)=>{const onAbort=()=>{clearTimeout(timer);reject(new DOMException('Cancelled','AbortError'));};const timer=setTimeout(()=>{controller.signal.removeEventListener('abort',onAbort);resolve();},900);if(controller.signal.aborted)onAbort();else controller.signal.addEventListener('abort',onAbort,{once:true});});
       result=await request('https://ce.judge0.com/submissions/'+encodeURIComponent(token)+'?base64_encoded=false&fields=stdout,stderr,compile_output,message,status,time,memory');
     }
     if(sequence!==executionSequence)return;
     if(controller.signal.aborted)throw new DOMException('Cancelled','AbortError');
     const error=result.compile_output||result.stderr;
+    if(desktopMode){
+      if(error||result.status.id>3){
+        consoleOut.textContent=(error||String(result.message||result.status.description||'Desktop build failed.'))+'\n\n'+(result.status.description||'Build failed');
+        if(error&&currentLang===runLanguage)applyVisualDiagnostics(error,entry);
+        return;
+      }
+      const jarBase64=String(result.stdout||'').replace(/\s+/g,'');
+      if(!jarBase64.startsWith('UEsDB'))throw Error('The compiler did not return a valid Java desktop package. Retry the run or use Console mode.');
+      consoleOut.textContent='Desktop build succeeded. The Swing/AWT application is launching in the Desktop app tab.\nIf your program only prints text and does not open a window, use Console mode instead.';
+      document.getElementById('desktopTab')?.click();
+      stage='Launching desktop runtime';update();
+      launchJavaDesktop(jarBase64);
+      notePracticeExecution();
+      return;
+    }
     consoleOut.textContent=(error?error+'\n':'')+(result.stdout||(!error?'Program exited with no output.':''))+'\n\n'+(result.status.description||'Finished')+(result.time?' · execution '+result.time+'s':'');
     if(error&&currentLang===runLanguage)applyVisualDiagnostics(error,entry);
+    if(error&&currentLang==='java'&&/HeadlessException|No X11 DISPLAY|headless/i.test(error))consoleOut.textContent+='\n\nThis program appears to open a desktop window. Change Run as to “Desktop GUI (Swing) · Beta” and run it again.';
     if(result.status.id>3&&!error)consoleOut.textContent+='\n'+String(result.message||'Review the execution status above.');
     notePracticeExecution();
   }catch(error){
@@ -1016,6 +1125,13 @@ function bindUIEvents() {
   document.getElementById('renameProjectItem')?.addEventListener('click',renameSelection);
   document.getElementById('deleteProjectItem')?.addEventListener('click',deleteSelection);
   document.getElementById('cancelRunBtn')?.addEventListener('click',()=>executionController?.abort());
+  document.getElementById('stopDesktopBtn')?.addEventListener('click',()=>stopJavaDesktop());
+  document.getElementById('javaRunMode')?.addEventListener('change',event=>{
+    javaRunMode=event.target.value==='desktop'?'desktop':'console';
+    try{localStorage.setItem(JAVA_RUN_MODE_KEY,javaRunMode);}catch{}
+    if(javaRunMode!=='desktop')stopJavaDesktop(true);
+    updateOutputView();
+  });
   document.getElementById('importZipBtn')?.addEventListener('click',()=>document.getElementById('projectZipInput')?.click());
   document.getElementById('projectZipInput')?.addEventListener('change',async event=>{
     const upload=event.target.files[0];event.target.value='';if(!upload)return;
@@ -1083,52 +1199,40 @@ function bindUIEvents() {
     if (cout) cout.textContent = "";
   });
 
-  document.getElementById("consoleTab")?.addEventListener("click", () => {
-    document.getElementById("consoleOutput")?.classList.remove("hidden");
-    document.getElementById("webPreviewContainer")?.classList.add("hidden");
-    document
-      .getElementById("consoleTab")
-      ?.classList.add("text-cyan-400", "border-cyan-400");
-    document
-      .getElementById("consoleTab")
-      ?.classList.remove("text-slate-500", "border-transparent");
-    document
-      .getElementById("previewTab")
-      ?.classList.add("text-slate-500", "border-transparent");
-    document
-      .getElementById("previewTab")
-      ?.classList.remove("text-cyan-400", "border-cyan-400");
-  });
-
-  document.getElementById("previewTab")?.addEventListener("click", () => {
-    document.getElementById("consoleOutput")?.classList.add("hidden");
-    document.getElementById("webPreviewContainer")?.classList.remove("hidden");
-    document
-      .getElementById("previewTab")
-      ?.classList.add("text-cyan-400", "border-cyan-400");
-    document
-      .getElementById("previewTab")
-      ?.classList.remove("text-slate-500", "border-transparent");
-    document
-      .getElementById("consoleTab")
-      ?.classList.add("text-slate-500", "border-transparent");
-    document
-      .getElementById("consoleTab")
-      ?.classList.remove("text-cyan-400", "border-cyan-400");
-  });
+  document.getElementById("consoleTab")?.addEventListener("click",()=>activateOutputTab('console'));
+  document.getElementById("previewTab")?.addEventListener("click",()=>activateOutputTab('web'));
+  document.getElementById("desktopTab")?.addEventListener("click",()=>activateOutputTab('desktop'));
 }
 
 function updateOutputView() {
-  if (currentLang === "web") {
-    document.getElementById("consoleTab")?.classList.remove("hidden");
-    document.getElementById("previewTab")?.classList.remove("hidden");
-    document.getElementById("previewTab")?.click();
-    document.getElementById("stdinContainer")?.classList.add("hidden");
-  } else {
-    document.getElementById("consoleTab")?.classList.remove("hidden");
-    document.getElementById("previewTab")?.classList.add("hidden");
-    document.getElementById("consoleTab")?.click();
-    document.getElementById("stdinContainer")?.classList.remove("hidden");
+  const modeSelect=document.getElementById('javaRunMode'),modeLabel=document.getElementById('javaRunModeLabel'),runBtn=document.getElementById('runBtn');
+  const isJava=currentLang==='java',desktop=isJavaDesktopMode();
+  modeSelect?.classList.toggle('hidden',!isJava);
+  modeLabel?.classList.toggle('hidden',!isJava);
+  if(modeSelect)modeSelect.value=javaRunMode;
+  if(runBtn){
+    runBtn.textContent=desktop?'▶ Launch':'▶ Run';
+    runBtn.title=desktop?'Compile and launch desktop app · Ctrl+Enter':'Run · Ctrl+Enter';
+  }
+
+  document.getElementById('consoleTab')?.classList.remove('hidden');
+  if(currentLang==='web'){
+    stopJavaDesktop(true);
+    document.getElementById('previewTab')?.classList.remove('hidden');
+    document.getElementById('desktopTab')?.classList.add('hidden');
+    document.getElementById('stdinContainer')?.classList.add('hidden');
+    activateOutputTab('web');
+  }else if(desktop){
+    document.getElementById('previewTab')?.classList.add('hidden');
+    document.getElementById('desktopTab')?.classList.remove('hidden');
+    document.getElementById('stdinContainer')?.classList.add('hidden');
+    activateOutputTab('desktop');
+  }else{
+    stopJavaDesktop(true);
+    document.getElementById('previewTab')?.classList.add('hidden');
+    document.getElementById('desktopTab')?.classList.add('hidden');
+    document.getElementById('stdinContainer')?.classList.remove('hidden');
+    activateOutputTab('console');
   }
 }
 
