@@ -103,7 +103,7 @@ export function createProjectStudio({
     activateProject,
     resetToTemplate,
     getLimits:()=>({...policy}),
-    canAddFile:()=>!activeProject||Object.keys(activeProject.state?.files||{}).length<policy.maxFiles,
+    canAddFile:()=>!activeProject||Object.keys(captureState()?.files||{}).length<policy.maxFiles,
     isGuest:()=>guest
   };
 
@@ -201,6 +201,8 @@ export function createProjectStudio({
     const quota=el("projectQuotaStatus");if(quota)quota.textContent=quotaText();
     const storage=el("projectStorageMode");if(storage)storage.textContent=guest?"Local-only guest storage":"Private account storage · cloud sync";
     const badge=el("activeProjectStorageBadge");if(badge)badge.textContent=guest?"Local only":"Cloud sync";
+    const create=el("newCodeProjectBtn"),count=readCodeProjects(localStorage,uid).filter(item=>item.status!=="archived").length;
+    if(create&&Number.isFinite(policy.maxProjects)){create.disabled=count>=policy.maxProjects;create.title=create.disabled?"Guest project limit reached. Export or delete a project to create another.":"";}
   }
   function renderProjectHome(){
     const list=el("codeProjectList");if(!list)return;
@@ -286,7 +288,10 @@ export function createProjectStudio({
     if(!activeProject)return;
     const title=el("activeProjectTitle"),meta=el("activeProjectMeta");
     if(title)title.textContent=activeProject.title;
-    if(meta)meta.textContent=projectTypeMeta(activeProject).detail+(guest?" · local guest project":"");
+    if(meta){
+      const kb=Math.max(1,Math.ceil(projectSize(activeProject)/1024));
+      meta.textContent=projectTypeMeta(activeProject).detail+" · "+Object.keys(activeProject.state?.files||{}).length+" files · "+kb+" KB"+(guest?" · local guest project":"");
+    }
     document.title=activeProject.title+" · Adminerva";
   }
 
