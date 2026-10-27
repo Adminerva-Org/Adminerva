@@ -11,9 +11,9 @@ import {
 import { analyzePatchSubstance } from "./services/commit-substance.mjs?v=1.3.0";
 import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
 import {parseWeightedRubric,loadPinnedV2Source,parseSuggestedRubric}
-  from "./services/v2-grading-assistant.mjs?v=1.4.22";
+  from "./services/v2-grading-assistant.mjs?v=1.4.23";
 import {buildExternalEvaluationPackage,parseExternalEvaluationResponse}
-  from "./services/external-evaluation.mjs?v=1.1.0";
+  from "./services/external-evaluation.mjs?v=1.1.1";
 import {evaluateVerifiedEvidence} from "./services/adaptive-evaluation.mjs?v=1.3.0";
 import {isAndroidUiAssessment} from "./services/android-evidence.mjs?v=1.3.0";
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
@@ -285,8 +285,12 @@ async function openExternalEvaluation(){
     el("externalEvaluationCopy").disabled=false;
     el("externalEvaluationImport").disabled=false;
     const kb=Math.max(1,Math.round(new Blob([pack]).size/1024));
-    el("externalEvaluationPackageStatus").textContent="Ready · "+evidence.patches.length+" relevant patch record(s) · "+
-      evidence.files.length+" checkpoint file(s) · assessment rubric and instructions included · about "+kb+" KB. Review teacher-only checker guidance before sharing; JSON-only reply required.";
+    const historical=evidence.files.filter(file=>file.historical).length;
+    el("externalEvaluationPackageStatus").textContent="Ready · "+evidence.patches.length+" verified change record(s) · "+
+      evidence.files.filter(file=>!file.historical).length+" checkpoint file(s) · "+historical+" recovered historical file(s) · about "+kb+
+      " KB. "+(evidence.missingPrimaryPaths?.length
+        ?"Some verified student files are absent at the later checkpoint; their exact selected-commit diffs are retained. Historical source and missing files are explicitly marked. ":"")+
+      "Rubric and task instructions included. Review teacher-only guidance before sharing; JSON-only reply required.";
     externalStatus("Evidence ready. Paste the evaluator's JSON and validate, or copy the package for a new evaluation.");
     analytics("external_evaluation_package_ready",{feature:"review_grade",size_bucket:kb>500?"500kb_plus":kb>100?"100_500kb":"under_100kb"});
   }catch(error){
@@ -301,7 +305,7 @@ async function importExternalEvaluation(){
   if(!active||!active.checkpointSha||!evaluationResponsibilityReady(active.assessment,active.evidence))
     return externalStatus("This assessment no longer has an approved verified checkpoint. Reopen evidence review before importing.",true);
   if(active.previous?.published)return externalStatus("Published grade protected. Unpublish it before importing a new evaluation.",true);
-  if(state.externalBusy)return externalStatus("Verified evidence is still loading. Validate once the package is ready.",true);
+  if(state.externalBusy)return externalStatus("An evaluation operation is still processing. Finish it before validating again.",true);
   const key=currentExternalEvidenceKey(active);
   if(state.externalEvidenceKey&&state.externalEvidenceKey!==key)
     return externalStatus("The approved evidence changed after the package was prepared. Copy a new package and request an updated evaluation.",true);
