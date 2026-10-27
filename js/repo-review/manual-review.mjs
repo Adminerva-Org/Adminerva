@@ -796,7 +796,7 @@ function init() {
   el("manualReviewCancel").addEventListener("click",close);
   el("manualReviewForm").addEventListener("submit",event=>{
     event.preventDefault();
-    void window.withLoading("Saving teacher-reviewed grade…",()=>save(event),{button:el("manualReviewSave"),region:el("manualReviewForm")})
+    return window.withLoading("Saving teacher-reviewed grade…",()=>save(event),{button:el("manualReviewSave"),region:el("manualReviewForm")})
       .catch(error=>message("Grade processing failed: "+error.message,true));
   });
   el("manualReviewForm").addEventListener("input",()=>{state.dirty=true;if(state.active&&!state.active.previous?.published)el("manualReviewSave").disabled=false;});
