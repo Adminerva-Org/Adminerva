@@ -112,7 +112,7 @@ async function submit(){
   if(responseAnswer===null||responseAnswer===""||Array.isArray(responseAnswer)&&(responseAnswer.some(value=>value===null)||new Set(responseAnswer).size!==responseAnswer.length)){feedback("Complete the answer first. Match each option once; an incomplete answer does not cost points.","warning");return;}
   const uid=user.uid,version=epoch;
   if(!pending){pending={attemptId:attempt.attemptId,submissionId:[...crypto.getRandomValues(new Uint8Array(16))].map(part=>part.toString(16).padStart(2,"0")).join(""),answer:responseAnswer,courseId:course.id,missionId:mission.id};localSet(pendingKey(),pending);}
-  const end=window.beginLoading?.("Saving scored practice answer…")||(()=>{});
+  const end=globalThis.beginLoading?.("Saving scored practice answer…")||(()=>{});
   saveDraft();setBusy(true);sync("Saving answer…","saving");feedback("");
   try{
     const result=await practiceRequest("practiceMissionSubmit",pending);
