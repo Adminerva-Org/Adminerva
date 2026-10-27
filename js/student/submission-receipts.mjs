@@ -81,4 +81,4 @@ async function submit(){
     status.textContent="Unable to submit: "+error.message;
   }finally{button.disabled=false;}
 }
-el("submitAssessmentReview")?.addEventListener("click",()=>{void submit()});
+el("submitAssessmentReview")?.addEventListener("click",()=>{void window.withLoading("Verifying and submitting repository revision…",submit,{button:el("submitAssessmentReview")});});
