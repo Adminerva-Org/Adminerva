@@ -302,6 +302,9 @@ async function loadGrid() {
 window.matrixTogglePub = async function (studentId, taskId, checkbox) {
   const gradeRef = doc(db, "student_grades", `${studentId}_${taskId}`);
   const wantsPublish = checkbox.checked;
+  if(checkbox.disabled)return;
+  checkbox.disabled=true;
+  const end=window.beginLoading?.(wantsPublish?"Publishing learner grade…":"Unpublishing learner grade…")||(()=>{});
   try {
     const gradeSnap = await getDoc(gradeRef);
     if (!gradeSnap.exists()) throw new Error("Grade does not exist.");
@@ -333,7 +336,7 @@ window.matrixTogglePub = async function (studentId, taskId, checkbox) {
     console.error("Publication failed:", e);
     alert("Failed to update visibility: " + e.message);
     checkbox.checked = !wantsPublish;
-  }
+  }finally{checkbox.disabled=false;end();}
 };
 
 async function fetchGitHubStats(student, elementId) {
@@ -479,6 +482,7 @@ window.bulkPublishCurrentGrid=async function(){
   if(!confirm(message))return;
   const context="single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value;
   publishBusy=true;syncPublishButton();
+  const end=window.beginLoading?.("Publishing selected grades…")||(()=>{});
   try{
     const result=await publishGradeEntries(eligible,true,{context,onProgress:value=>reviewNotice("Publishing unpublished grades: "+value.completed.length+" complete, "+value.pending.length+" pending.")});
     reviewNotice(result.pending.length?
@@ -486,5 +490,5 @@ window.bulkPublishCurrentGrid=async function(){
       "Published "+result.completed.length+" grade"+(result.completed.length===1?"":"s")+(flagged?"; "+flagged+" flagged draft"+(flagged===1?" remains":"s remain")+" private.":"."),
       Boolean(result.pending.length));
   }catch(error){reviewNotice(error.message,true);}
-  finally{publishBusy=false;await loadGrid();syncPublishButton();}
+  finally{publishBusy=false;try{await loadGrid();}finally{syncPublishButton();end();}}
 };
