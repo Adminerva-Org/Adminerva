@@ -371,6 +371,7 @@ window.closeIssueModal = function () {
   document.getElementById("issueDetailsModal").classList.add("hidden");
   currentOpenIssueId = null;
   // Stop reading live comments after the report is closed (Firestore usage).
+  finishCommentsLoading();
   if(unsubscribeComments){unsubscribeComments();unsubscribeComments=null;}
 };
 
@@ -420,16 +421,20 @@ document.getElementById("upvoteBtn").addEventListener("click", async () => {
 // 2. REAL-TIME COMMENTS LISTENER
 // ==========================================
 let unsubscribeComments = null; // Track connection so it doesn't duplicate when opening different issues
+let finishCommentsLoading=()=>{};
 
 function loadComments(issueId) {
   const feed = document.getElementById("commentsFeed");
   feed.innerHTML = `<div class="text-center py-4 text-xs text-slate-400">Connecting to live chat...</div>`;
 
   // If we were listening to a different issue's comments previously, cut that connection
+  finishCommentsLoading();
   if (unsubscribeComments) {
     unsubscribeComments();
   }
-
+  const end=window.beginLoading?.("Loading report discussion…",feed)||(()=>{});
+  let waiting=true;
+  finishCommentsLoading=()=>{if(waiting){waiting=false;end();}};
   const q = query(
     collection(db, `issues/${issueId}/comments`),
     orderBy("createdAt", "asc"),
@@ -438,6 +443,7 @@ function loadComments(issueId) {
   unsubscribeComments = onSnapshot(
     q,
     (snapshot) => {
+      finishCommentsLoading();
       feed.innerHTML = "";
       currentComments=snapshot.docs.map(record=>({id:record.id,...record.data()}));
       document.getElementById("commentCount").textContent = snapshot.size;
@@ -478,6 +484,7 @@ function loadComments(issueId) {
       feed.scrollTop = feed.scrollHeight; // Auto-scroll to latest comment
     },
     (error) => {
+      finishCommentsLoading();
       console.error(error);
       feed.innerHTML = `<div class="text-center py-4 text-xs text-red-600">Could not load discussion. Please reopen the report or try again.</div>`;
     },
