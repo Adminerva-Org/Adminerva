@@ -8,6 +8,8 @@ function compactFile(file={}){
     primary:Boolean(file.primary),
     studentChanged:Boolean(file.studentChanged),
     binary:Boolean(file.binary),
+    historical:Boolean(file.historical),
+    sourceSha:cleanSha(file.sourceSha),
     text:file.binary?"":String(file.text||"")
   };
 }
@@ -62,7 +64,7 @@ export function buildExternalEvaluationPackage({assessment={},criteria=[],eviden
       individualVsGroup:androidUi
         ?"For this Android XML UI assessment, each learner is responsible for at least one individually assigned screen. A verified substantive XML layout represents their assigned screen contribution when no more specific responsibility note exists. Do not deduct individual points solely because teammate screens or whole-project features are missing. Discuss shared completeness separately."
         :"Only verified individual work earns individual points. Evaluate team deliverables separately; use teacher-confirmed individual responsibilities to interpret the rubric.",
-      evidenceStandard:"Award supported points only for actual verified substantive SHA/path pairs exported below. Merge context, missing diffs and shared checkpoint files alone cannot prove individual authorship. A selected historical commit SHA need not equal the approved checkpoint SHA.",
+      evidenceStandard:"Award supported points only for actual verified substantive SHA/path pairs exported below. Merge context, missing diffs and shared checkpoint files alone cannot prove individual authorship. A selected historical commit SHA need not equal the approved checkpoint SHA. Source marked historical was recovered from a verified commit because the file is absent from the later checkpoint; it is context only, not an individually attributable extra change. If no source survives, use the verified substantive diff without inferring absent work.",
       partialScoring:"Award defensible points now. Use partial only for genuinely unresolved criteria and put only plausible unverified points in pendingPoints. A confirmed rubric deficiency is a deduction, not pending credit. Use needs_teacher_review and a null score only when no points can be supported in that criterion. Never treat missing evidence automatically as zero.",
       technicalClaims:"Distinguish directly identifiable code defects from suspected runtime or visual problems. Do not assert compilation, navigation, runtime behavior, or exact native Android rendering without execution evidence. Binary images may contain useful labels or artwork not visible in the text export.",
       recommendationsVsDeductions:"Only deduct for actual rubric requirements. Present general best practices (for example strings.xml extraction, naming style or additional accessibility refinements) as recommendations unless the assessment rubric explicitly requires them. Placeholder content and nonfunctional buttons are allowed when the task says backend behavior is out of scope.",
@@ -78,6 +80,7 @@ export function buildExternalEvaluationPackage({assessment={},criteria=[],eviden
       patches:Array.isArray(evidence.patches)?evidence.patches.map(compactPatch):[],
       checkpointFiles:Array.isArray(evidence.files)?evidence.files.map(compactFile):[],
       missingPrimaryPaths:Array.isArray(evidence.missingPrimaryPaths)?evidence.missingPrimaryPaths.slice(0,100):[],
+      historicalSourceUnavailable:Array.isArray(evidence.historicalSourceUnavailable)?evidence.historicalSourceUnavailable.slice(0,100):[],
       truncatedDiffs:Array.isArray(evidence.truncatedDiffs)?evidence.truncatedDiffs.slice(0,100):[],
       excludedMergeCommits:Array.isArray(evidence.excludedMergeCommits)?evidence.excludedMergeCommits.slice(0,100):[]
     }
