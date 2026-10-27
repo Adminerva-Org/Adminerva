@@ -181,6 +181,7 @@ async function loadEvidence(initialRecord){
     if(destroyed||sequence!==state.sequence)return;
     onChange(record);
     if(!record){
+      showLifecycle(null);
       el("evidenceDiscovery").classList.remove("hidden");
       el("evidenceDiscoverList").replaceChildren();
       discovery.commits=[];discovery.selected=new Set();discovery.checkpoint="";
@@ -242,6 +243,11 @@ async function loadEvidence(initialRecord){
     await renderClaims();
     if(destroyed||sequence!==state.sequence)return;
     el("evidenceApprove").disabled=!["submitted","needs_review"].includes(evidence.status);
+    el("evidenceApprove").title=evidence.status==="reopened"
+      ?"Waiting for the student's selected evidence resubmission. Choose Refresh status to verify a recent resubmission."
+      :evidence.status==="withdrawn"?"Withdrawn evidence must be resubmitted before approval."
+      :evidence.status==="approved"?"Already approved; reopen or revise verification when necessary."
+      :"Review the current selected commits and approve after verification.";
     const canReopen=["submitted","approved","needs_review"].includes(evidence.status);
     const reviewLabel=el("evidenceReviewNoteLabel"),reviewNote=el("evidenceReviewNote");
     el("evidenceReopen").classList.toggle("hidden",!canReopen);
@@ -262,7 +268,7 @@ async function loadEvidence(initialRecord){
       ?"Loaded "+evidence.selectedCommits.length+" selected commits. Approval will verify checkpoint ancestry and the contribution choices."
       :"Loaded a checkpoint-only teacher snapshot. No individual commit is attributed to this learner; you may approve the checkpoint as project context, but system evaluation remains unavailable until individual contribution is verified.");
     if(evidence.status==="reopened")status("Reopened: the student can change commit selections now. They must resubmit before a new approval. Contribution checks here verify authorship; they do not edit the student's selected commits.");
-    else if(evidence.status==="submitted")status("Student evidence is awaiting review. If approval fails or the selection needs correction, enter a reason below and choose Return for student changes.");
+    else if(evidence.status==="submitted")status(isResubmitted(evidence)?"Student resubmitted evidence after reopening. Check the selected commits and attribution claims, then approve the new revision.":"Student evidence is awaiting review. If approval fails or the selection needs correction, enter a reason below and choose Return for student changes.");
     else if(evidence.status==="approved")status(evidence.verifiedContributionCommits?.length?"Approved. To let the student submit different commits, enter a reopening reason below and choose Reopen for student changes.":"Approved checkpoint has no verified individual contributions. To let the student change commits, enter a reopening reason below and choose Reopen for student changes.");
     else if(evidence.status==="needs_review")status("This is an instructor-discovered evidence proposal, so the student cannot edit it yet. To let the student choose different commits and a new checkpoint, enter a reason below and choose Reopen for student changes.");
     void Promise.all(previews);
@@ -532,10 +538,15 @@ el("evidenceEditVerification").addEventListener("click",()=>{
   status("Verify only this student's changes, describe responsibilities and enter a fresh review note. Saving creates an audit revision and invalidates earlier drafts. Published grades must be unpublished first. Student-selected commits stay unchanged.");
   el("evidenceContributionScope").focus();
 });
-el("evidenceReload").addEventListener("click",()=>{
-  if(state.editing&&!confirm("Reload evidence and discard unsaved verification notes? Grade fields are kept separately."))return;
-  stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);stopEvidence=null;void loadEvidence();
-});
+function reloadEvidence(){
+  if(state.busy)return;
+  if(state.editing&&!confirm("Refresh current evidence from the server? Unsaved contribution verification and review notes will be discarded. Grade fields remain unchanged."))return;
+  state.editing=false;
+  stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);stopEvidence=null;
+  void window.withLoading("Checking latest student evidence status…",loadEvidence);
+}
+el("evidenceReload").addEventListener("click",reloadEvidence);
+el("evidenceReloadTop").addEventListener("click",reloadEvidence);
 root.addEventListener("input",event=>{if(event.target.closest?.("#evidenceDetails,#evidenceDiscovery"))state.editing=true;});
 el("evidenceVerifyAll").addEventListener("change",()=>{
   for(const input of root.querySelectorAll("[data-contribution-sha]"))if(!input.disabled)input.checked=el("evidenceVerifyAll").checked;
