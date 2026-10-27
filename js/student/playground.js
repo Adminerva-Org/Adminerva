@@ -371,7 +371,8 @@ window.deleteFile = function (filename) {
 
 window.promptNewFile = function () {
   if(projectStudio?.getActiveProject()&&!projectStudio.canAddFile())return alert("This project reached its file limit. Delete a file or export the project before adding another.");
-  const folder=selectedProjectFolder?selectedProjectPath:activeFilename.split("/").slice(0,-1).join("/");
+  const selectedParent=selectedProjectPath&&!selectedProjectFolder?projectParent(selectedProjectPath):"";
+  const folder=selectedProjectFolder?selectedProjectPath:(selectedParent||activeFilename.split("/").slice(0,-1).join("/"));
   const name = prompt("New file path (for example src/Student.java or styles/main.css):",folder?folder+"/":"");
   if (name && name.trim()) {
     addFile(name.trim());
@@ -547,6 +548,10 @@ function renderFileTree(){
   tree.replaceChildren();
   const rootDrop=document.createElement("div");rootDrop.className="pg-drop-root";rootDrop.textContent="Move to project root";rootDrop.setAttribute("aria-hidden","true");
   bindExplorerDrop(rootDrop,"");tree.append(rootDrop);
+  tree.oncontextmenu=event=>{
+    if(event.target.closest("button.pg-file,summary"))return;
+    event.preventDefault();selectedProjectPath="";selectedProjectFolder=true;showExplorerContextMenu(event,{root:true});
+  };
   const folders=orderedFolders(),folderSet=new Set(folders);
   function children(box,parent=""){
     for(const path of orderedExplorerChildren(parent)){
@@ -554,12 +559,14 @@ function renderFileTree(){
         const details=document.createElement("details");details.dataset.path=path;details.open=open.has(path)||activeFilename.startsWith(path+"/");
         const summary=document.createElement("summary");summary.textContent="▱ "+path.split("/").at(-1);summary.title="Drop on the folder to move inside; use the edge line to reorder";
         summary.addEventListener("click",()=>{selectedProjectPath=path;selectedProjectFolder=true;});
+        summary.addEventListener("contextmenu",event=>{event.preventDefault();event.stopPropagation();selectedProjectPath=path;selectedProjectFolder=true;showExplorerContextMenu(event,{path,isFolder:true});});
         bindExplorerDrag(summary,path,true);bindExplorerItemDrop(summary,path,true);
         const nested=document.createElement("div");details.append(summary,nested);children(nested,path);box.append(details);
       }else if(workspaceFiles[path]){
         const button=document.createElement("button");button.type="button";button.className="pg-file";button.setAttribute("aria-current",String(path===activeFilename));button.title=path;
         const icon=document.createElement("span");icon.textContent=path.endsWith(".java")?"J":path.endsWith(".py")?"Py":path.endsWith(".html")?"◇":"·";
         const label=document.createElement("span");label.textContent=path.split("/").at(-1);button.append(icon,label);button.onclick=()=>switchTab(path);
+        button.addEventListener("contextmenu",event=>{event.preventDefault();event.stopPropagation();selectedProjectPath=path;selectedProjectFolder=false;showExplorerContextMenu(event,{path,isFolder:false});});
         bindExplorerDrag(button,path,false);bindExplorerItemDrop(button,path,false);box.append(button);
       }
     }
@@ -568,7 +575,9 @@ function renderFileTree(){
   const count=document.getElementById("projectFileCount");if(count)count.textContent=fileOrder.length+" files · "+folders.length+" folders";
 }
 function newFolder(){
-  const raw=prompt("New folder path:",selectedProjectFolder?selectedProjectPath+"/":"src");if(!raw)return;
+  const selectedParent=selectedProjectPath&&!selectedProjectFolder?projectParent(selectedProjectPath):"";
+  const base=selectedProjectFolder?selectedProjectPath:selectedParent;
+  const raw=prompt("New folder path:",base?base+"/":"src");if(!raw)return;
   try{const path=projectPath(raw);if(workspaceFiles[path])throw Error("A file already uses that path.");if(workspaceFolders.length>=100)throw Error("Use up to 100 folders per workspace.");workspaceFolders=[...new Set([...workspaceFolders,path])];projectOrder=normalizedProjectOrder([...projectOrder,path]);selectedProjectPath=path;selectedProjectFolder=true;renderFileTree();triggerAutoSave();}catch(error){alert(error.message);}
 }
 function renameSelection(){
@@ -591,6 +600,38 @@ function deleteSelection(){
   if(!confirm("Delete folder "+path+" and its files?"))return;
   const state=currentState(),files=Object.fromEntries(names.map(p=>[p,state.files[p]]));
   createWorkspace(currentLang,files,names,names.includes(activeFilename)?activeFilename:names[0],workspaceFolders.filter(p=>p!==path&&!p.startsWith(path+"/")),projectOrder.filter(p=>p!==path&&!p.startsWith(path+"/")));triggerAutoSave();
+}
+
+function hideExplorerContextMenu(){
+  const menu=document.getElementById("explorerContextMenu");if(menu)menu.classList.add("hidden");
+}
+function showExplorerContextMenu(event,{path="",isFolder=false,root=false}={}){
+  const menu=document.getElementById("explorerContextMenu");if(!menu)return;
+  menu.dataset.path=path;menu.dataset.folder=String(isFolder);menu.dataset.root=String(root);
+  const open=menu.querySelector('[data-explorer-action="open"]');
+  const rename=menu.querySelector('[data-explorer-action="rename"]');
+  const del=menu.querySelector('[data-explorer-action="delete"]');
+  open?.classList.toggle("hidden",root||isFolder);
+  rename?.classList.toggle("hidden",root);
+  del?.classList.toggle("hidden",root);
+  menu.classList.remove("hidden");
+  const pad=8,rect=menu.getBoundingClientRect();
+  let left=event.clientX,top=event.clientY;
+  if(left+rect.width>innerWidth-pad)left=Math.max(pad,innerWidth-rect.width-pad);
+  if(top+rect.height>innerHeight-pad)top=Math.max(pad,innerHeight-rect.height-pad);
+  menu.style.left=left+"px";menu.style.top=top+"px";
+  menu.querySelector("button:not(.hidden)")?.focus();
+}
+function handleExplorerContextAction(action){
+  const menu=document.getElementById("explorerContextMenu");if(!menu)return;
+  const root=menu.dataset.root==="true",path=menu.dataset.path||"",isFolder=menu.dataset.folder==="true";
+  selectedProjectPath=path;selectedProjectFolder=root||isFolder;
+  hideExplorerContextMenu();
+  if(action==="open"&&path&&!isFolder)return switchTab(path);
+  if(action==="new-file")return window.promptNewFile();
+  if(action==="new-folder")return newFolder();
+  if(action==="rename")return renameSelection();
+  if(action==="delete")return deleteSelection();
 }
 
 function attachTabEvents() {
@@ -753,6 +794,19 @@ async function exportZIP() {
     workspaceFolders.forEach(folder=>zip.folder(folder));
     for (const [name, file] of Object.entries(workspaceFiles)) {
       zip.file(name, file.model.getValue());
+    }
+    const activeProject=projectStudio?.getActiveProject?.();
+    if(activeProject){
+      zip.file("adminerva-project.json",JSON.stringify({
+        format:"adminerva-project-bundle",
+        version:1,
+        title:activeProject.title,
+        template:activeProject.template,
+        lang:activeProject.lang,
+        config:activeProject.config,
+        database:activeProject.database,
+        design:activeProject.design
+      },null,2));
     }
     const blob = await zip.generateAsync({ type: "blob" });
     const url = URL.createObjectURL(blob);
@@ -1210,10 +1264,14 @@ function notePracticeExecution(){
   }catch(error){console.warn("Could not record practice run:",error)}
 }
 function bindUIEvents() {
-  document.getElementById('newProjectFile')?.addEventListener('click',()=>window.promptNewFile());
-  document.getElementById('newProjectFolder')?.addEventListener('click',newFolder);
-  document.getElementById('renameProjectItem')?.addEventListener('click',renameSelection);
-  document.getElementById('deleteProjectItem')?.addEventListener('click',deleteSelection);
+  document.getElementById("explorerContextMenu")?.addEventListener("click",event=>{
+    const button=event.target.closest("[data-explorer-action]");if(button)handleExplorerContextAction(button.dataset.explorerAction);
+  });
+  document.addEventListener("click",event=>{if(!event.target.closest("#explorerContextMenu"))hideExplorerContextMenu();});
+  document.addEventListener("contextmenu",event=>{if(!event.target.closest("#projectTree"))hideExplorerContextMenu();});
+  window.addEventListener("blur",hideExplorerContextMenu);
+  window.addEventListener("resize",hideExplorerContextMenu);
+  document.addEventListener("scroll",hideExplorerContextMenu,true);
   document.getElementById('cancelRunBtn')?.addEventListener('click',()=>executionController?.abort());
   document.getElementById('stopDesktopBtn')?.addEventListener('click',()=>stopJavaDesktop());
   document.getElementById('javaRunMode')?.addEventListener('change',event=>{
@@ -1228,17 +1286,29 @@ function bindUIEvents() {
     const upload=event.target.files[0];event.target.value='';if(!upload)return;
     try{
       if(upload.size>3000000)throw Error('Import a ZIP smaller than 3 MB.');
-      const zip=await JSZip.loadAsync(upload),files={},folders=[];let size=0;
+      const zip=await JSZip.loadAsync(upload),files={},folders=[];let size=0,bundle=null;
       const limits=projectStudio?.getLimits?.()||{maxFiles:100,maxProjectBytes:700000};
+      const manifestEntry=zip.file("adminerva-project.json");
+      if(manifestEntry){
+        try{bundle=JSON.parse(await manifestEntry.async("string"));}catch{throw Error("adminerva-project.json is invalid.");}
+        if(bundle?.format!=="adminerva-project-bundle")throw Error("Unsupported Adminerva project bundle.");
+      }
       for(const entry of Object.values(zip.files)){
-        const raw=entry.unsafeOriginalName||entry.name;const path=projectPath(raw.replace(/\/$/,''));
+        const raw=entry.unsafeOriginalName||entry.name;
+        if(raw==="adminerva-project.json")continue;
+        const path=projectPath(raw.replace(/\/$/,''));
         if(entry.dir){folders.push(path);continue;}
         if(Object.keys(files).length>=limits.maxFiles)throw Error('Import up to '+limits.maxFiles+' files in this project.');
         const text=await entry.async('string');size+=new TextEncoder().encode(text).length;if(size>limits.maxProjectBytes)throw Error('This ZIP exceeds the project size limit.');files[path]=text;
       }
-      if(!Object.keys(files).length)throw Error('No files found in this ZIP.');
-      if(!confirm('Replace the editor with '+Object.keys(files).length+' imported files? Current work will be backed up on this device.'))return;
-      if(!window.adminervaRestorePlayground({...currentState(),files,folders,fileOrder:Object.keys(files),activeFilename:Object.keys(files)[0]}))throw Error('The current draft could not be backed up. Export it first.');
+      if(!Object.keys(files).length)throw Error('No source files found in this ZIP.');
+      const bundleLabel=bundle?" with its Adminerva DB/design data":"";
+      if(!confirm('Replace the editor with '+Object.keys(files).length+' imported files'+bundleLabel+'? Current work will be backed up on this device.'))return;
+      const nextLang=bundle?.lang||currentLang;
+      const order=Object.keys(files);
+      const preferred=bundle?.entry&&files[bundle.entry]?bundle.entry:(files["Main.java"]?"Main.java":order[0]);
+      if(!window.adminervaRestorePlayground({...currentState(),lang:nextLang,files,folders,fileOrder:order,activeFilename:preferred,projectOrder:[...folders,...order]}))throw Error('The current draft could not be backed up. Export it first.');
+      if(bundle&&projectStudio?.importBundleMetadata)projectStudio.importBundleMetadata(bundle);
     }catch(error){alert('Import failed: '+error.message);}
   });
   document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();persistWorkspace();}if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();void executeCode();}});
