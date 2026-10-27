@@ -1,0 +1,41 @@
+name: One-time Adminerva v1.5.0 Firestore rules rollout
+
+on:
+  push:
+    branches:
+      - fix/evidence-reopen-reclaim-20261026
+    paths:
+      - ".github/workflows/firebase-rules-release-v150.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-rules:
+    if: github.repository == 'Adminerva-Org/Adminerva' && github.ref == 'refs/heads/fix/evidence-reopen-reclaim-20261026'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Authorize exact Firebase production project
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_REPOREVIEW_E7CA4 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
+            echo "::error::Missing FIREBASE_SERVICE_ACCOUNT_REPOREVIEW_E7CA4; no deployment performed."
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+          chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+      - name: Deploy Firestore rules only
+        run: npx -y firebase-tools@14 deploy --project reporeview-e7ca4 --only firestore:rules --non-interactive
