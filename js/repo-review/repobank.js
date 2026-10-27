@@ -82,7 +82,16 @@ window.loadRepobankData=async function(){
         const detail=add(card,"details"),summary=add(detail,"summary",student.name,"font-semibold cursor-pointer");
         const verified=verifiedMemberEvidence(records,student.id,group.repository);
         if(!verified.length)add(detail,"p","No approved individual verification is available. This is not a zero score or proof of no work.");
-        for(const item of verified){add(detail,"p",item.commits.length+" verified contributing commits · assessment "+item.assessmentId+" · checkpoint "+item.checkpoint.slice(0,12)+" · evidence revision "+item.revision);add(detail,"p","Instructor-recorded scope: "+item.scope);if(!item.commits.length)add(detail,"p","No contribution was verified at this checkpoint; shared screens do not confer individual credit.");}
+        for(const item of verified){
+          add(detail,"p",item.commits.length+" verified contributing commits · assessment "+item.assessmentId+" · checkpoint "+item.checkpoint.slice(0,12)+" · evidence revision "+item.revision);
+          const checkpoint=add(detail,"a","Open pinned checkpoint ↗","text-xs underline text-blue-700");checkpoint.href="https://github.com/"+key+"/tree/"+encodeURIComponent(item.checkpoint);checkpoint.target="_blank";checkpoint.rel="noopener noreferrer";
+          if(item.commits.length){
+            const links=add(detail,"div","","flex flex-wrap gap-x-3 gap-y-1 text-xs");
+            for(const sha of item.commits){const commit=add(links,"a",sha.slice(0,12)+" ↗","underline text-blue-700");commit.href="https://github.com/"+key+"/commit/"+encodeURIComponent(sha);commit.target="_blank";commit.rel="noopener noreferrer";}
+          }
+          add(detail,"p","Instructor-recorded scope: "+item.scope);
+          if(!item.commits.length)add(detail,"p","No contribution was verified at this checkpoint; shared screens do not confer individual credit.");
+        }
         summary.title="Different assessments and members may have different pinned checkpoints.";
       }
     }));
