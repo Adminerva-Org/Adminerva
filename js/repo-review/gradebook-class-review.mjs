@@ -1,6 +1,6 @@
 /** Class-level submission triage and safe bulk review orchestration. */
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
-import {collection,doc,getDoc,getDocFromServer,getDocs,getDocsFromServer,query,where,serverTimestamp,setDoc,runTransaction} from "../core/teaching-firestore.mjs?v=1.3.2";
+import {collection,deleteDoc,doc,getDoc,getDocFromServer,getDocs,getDocsFromServer,query,where,serverTimestamp,setDoc,runTransaction} from "../core/teaching-firestore.mjs?v=1.3.2";
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {normalizeSelection,parseRepository} from "./services/assessment-evidence.mjs?v=1.4.3";
 import {verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
@@ -235,7 +235,7 @@ async function load(detail){
   try{canDecideClaims=(await resolveStaffRole(auth.currentUser))==="admin";}catch{canDecideClaims=false;}
   if(sequence!==loadSequence)return;
   if(isV2){
-    try{const grades=await getDocsFromServer(query(collection(db,"student_grades"),where("taskId","==",detail.taskId)));
+    try{const grades=await getDocsFromServer(query(collection(db,"student_grades"),where("taskId","==",detail.taskId),where("section","==",detail.section)));
       context.grades=Object.fromEntries(grades.docs.filter(record=>detail.students.some(student=>student.id===record.data().studentId))
         .map(record=>[record.data().studentId,record.data()]));
     }catch(error){warnings.push("gradebook drafts: "+error.message);}
@@ -612,9 +612,16 @@ async function evaluateOne(student,evidence,assessment,connection,{rerun=false}=
       tx.set(gradeRef,updated);
     });
   }else await setDoc(gradeRef,gradePayload);
-  await setDoc(draftRef(student.id,context.taskId),{ownerUid:auth.currentUser.uid,studentId:student.id,taskId:context.taskId,section:context.section,
-    evidenceRevision:evidenceRevision(evidence),checkpointSha:evidence.approvedCheckpointSha,model:connection.model||localStorage.getItem("Adminerva_ai_model")||"",
-    draft,createdAt:serverTimestamp(),status:"private_suggestion"},{merge:false});
+  // A clean system result is an unpublished grade, not a second private suggestion.
+  // Only material exceptions need a separate suggestion for instructor review.
+  const suggestionRef=draftRef(student.id,context.taskId);
+  if(needsReview){
+    await setDoc(suggestionRef,{ownerUid:auth.currentUser.uid,studentId:student.id,taskId:context.taskId,section:context.section,
+      evidenceRevision:evidenceRevision(evidence),checkpointSha:evidence.approvedCheckpointSha,model:connection.model||localStorage.getItem("Adminerva_ai_model")||"",
+      draft,createdAt:serverTimestamp(),status:"private_suggestion"},{merge:false});
+  }else{
+    await deleteDoc(suggestionRef);
+  }
 }
 async function bulkEvaluate({rerun=false}={}){
   if(busy||!context)return;
