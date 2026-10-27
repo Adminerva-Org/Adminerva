@@ -790,16 +790,23 @@ async function changePublication(published){
 function init() {
   el("manualReviewClose").addEventListener("click",close);
   el("manualReviewCancel").addEventListener("click",close);
-  el("manualReviewForm").addEventListener("submit",save);
+  el("manualReviewForm").addEventListener("submit",event=>{
+    event.preventDefault();
+    void window.withLoading("Saving teacher-reviewed grade…",()=>save(event),{button:el("manualReviewSave"),region:el("manualReviewForm")})
+      .catch(error=>message("Grade processing failed: "+error.message,true));
+  });
   el("manualReviewForm").addEventListener("input",()=>{state.dirty=true;if(state.active&&!state.active.previous?.published)el("manualReviewSave").disabled=false;});
-  el("manualReviewAIGenerate").addEventListener("click",()=>{void generateAIDraft();});
+  const runSystemEvaluation=()=>void window.withLoading("Preparing system evaluation…",generateAIDraft,
+    {button:el("manualReviewAIGenerate"),region:el("manualReviewAISection")})
+    .catch(error=>aiStatus("Evaluation could not finish: "+error.message,true));
+  el("manualReviewAIGenerate").addEventListener("click",runSystemEvaluation);
   el("manualReviewExternal").addEventListener("click",()=>{void openExternalEvaluation();});
   el("externalEvaluationCopy").addEventListener("click",()=>{void copyExternalPackage();});
   el("externalEvaluationImport").addEventListener("click",()=>{void importExternalEvaluation();});
   el("externalEvaluationClose").addEventListener("click",closeExternalEvaluation);
   el("externalEvaluationCancel").addEventListener("click",closeExternalEvaluation);
   el("externalEvaluationModal").addEventListener("click",event=>{if(event.target===el("externalEvaluationModal"))closeExternalEvaluation();});
-  el("manualReviewRetry").addEventListener("click",()=>{void generateAIDraft();});
+  el("manualReviewRetry").addEventListener("click",runSystemEvaluation);
   el("manualReviewManual").addEventListener("click",()=>{
     if(!state.active?.checkpointSha)return message("Approve the submitted evidence before saving a teacher grade.",true);
     stopEvaluation("Manual grading selected. Any pending evaluation result is ignored; your teacher fields are unchanged.");
@@ -812,8 +819,10 @@ function init() {
   });
   el("manualReviewUseScore").addEventListener("click",()=>applySuggestion("score"));
   el("manualReviewUseFeedback").addEventListener("click",()=>applySuggestion("feedback"));
-  el("manualReviewPublish").addEventListener("click",()=>{void changePublication(true);});
-  el("manualReviewUnpublish").addEventListener("click",()=>{void changePublication(false);});
+  el("manualReviewPublish").addEventListener("click",()=>void window.withLoading("Publishing teacher grade…",
+    ()=>changePublication(true),{button:el("manualReviewPublish")}).catch(error=>message(error.message,true)));
+  el("manualReviewUnpublish").addEventListener("click",()=>void window.withLoading("Unpublishing teacher grade…",
+    ()=>changePublication(false),{button:el("manualReviewUnpublish")}).catch(error=>message(error.message,true)));
   el("manualReviewSaveChecker")?.addEventListener("click",()=>{
     const key=el("manualReviewCheckerKey").value.trim();
     if(key.length<15||key.length>500)return aiStatus("Enter a valid provider key. Do not enter it in feedback.",true);
@@ -822,7 +831,9 @@ function init() {
   });
   el("manualReviewRefresh").addEventListener("click",()=>{
     if((state.dirty||state.panels?.hasUnsavedReview?.())&&!confirm("Reload and discard unsaved score, feedback or verification changes?"))return;
-    if(state.request)void open({...state.request});
+    if(state.request)void window.withLoading("Refreshing learner grading record…",
+      ()=>open({...state.request}),{button:el("manualReviewRefresh")})
+      .catch(error=>message("Could not refresh review: "+error.message,true));
   });
   el("manualReviewModal").addEventListener("click",e=>{if(e.target===el("manualReviewModal"))close()});
   document.addEventListener("keydown",e=>{
