@@ -137,13 +137,13 @@ function render(){
       "text-xs text-slate-500 mt-1");
     const controls=add(row,"div","","flex flex-wrap gap-3 mt-2");
     const view=add(controls,"button","Preview changed files","text-xs text-indigo-700 font-bold underline");
-    view.type="button";view.addEventListener("click",()=>{void preview(commit);});
+    view.type="button";view.addEventListener("click",()=>{void window.withLoading("Loading commit changes…",()=>preview(commit),{button:view});});
     const claim=claims.get(sha);
     if(claim){
       add(controls,"span","Reclaim "+claim.status,"text-xs font-semibold text-amber-800");
       if(claim.status==="pending"){
         const withdraw=add(controls,"button","Withdraw reclaim","text-xs text-rose-700 underline");
-        withdraw.type="button";withdraw.addEventListener("click",()=>{void withdrawClaim(sha);});
+        withdraw.type="button";withdraw.addEventListener("click",()=>{void window.withLoading("Updating attribution request…",()=>withdrawClaim(sha),{button:withdraw});});
       }else if(claim.status==="withdrawn"){
         const retry=add(controls,"button","Resubmit reclaim","text-xs text-amber-800 font-bold underline");
         retry.type="button";retry.addEventListener("click",()=>{void reclaimCommit(commit);});
@@ -413,21 +413,21 @@ async function withdrawEvidence(){
   finally{if(context===active){evidenceBusy=false;render();}}
 }
 window.addEventListener("adminerva:assessment-opened",()=>{void load();});
-el("evidenceSubmit")?.addEventListener("click",()=>{void submit();});
-el("evidenceLoadOlder")?.addEventListener("click",()=>{void loadOlderCommits();});
+el("evidenceSubmit")?.addEventListener("click",()=>{void window.withLoading("Checking and submitting evidence…",submit,{button:el("evidenceSubmit")});});
+el("evidenceLoadOlder")?.addEventListener("click",()=>{void window.withLoading("Loading older commits…",loadOlderCommits,{button:el("evidenceLoadOlder")});});
 el("evidenceFilterBar")?.addEventListener("click",event=>{
   const button=event.target.closest?.("[data-evidence-filter]");
   if(!button)return;
   commitFilter=button.dataset.evidenceFilter;render();
 });
-el("evidenceReclaimSave")?.addEventListener("click",()=>void sendReclaim());
+el("evidenceReclaimSave")?.addEventListener("click",()=>{void window.withLoading("Submitting attribution request…",sendReclaim,{button:el("evidenceReclaimSave")});});
 el("evidenceReclaimCancel")?.addEventListener("click",()=>{if(!reclaimBusy)closeReclaimForm();});
 el("evidenceRefresh")?.addEventListener("click",()=>{
   if(evidenceBusy)return;
   if(selectionDirty&&!confirm("Reload saved evidence and discard your unsaved commit selection?"))return;
-  void load();
+  void window.withLoading("Refreshing commit evidence…",load,{button:el("evidenceRefresh")});
 });
-el("evidenceWithdraw")?.addEventListener("click",()=>{void withdrawEvidence();});
+el("evidenceWithdraw")?.addEventListener("click",()=>{void window.withLoading("Updating submitted evidence…",withdrawEvidence,{button:el("evidenceWithdraw")});});
 el("evidenceClear")?.addEventListener("click",()=>{
   if(!studentMayChangeEvidence(saved)||evidenceBusy)return;
   if(!confirm("Clear this editable selection? Saved evidence and audit history are unchanged until you resubmit."))return;
