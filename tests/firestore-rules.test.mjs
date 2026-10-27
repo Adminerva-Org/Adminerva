@@ -35,7 +35,7 @@ test('grade revisions match the transaction and remain immutable even to adminis
 test('broad staff matches cannot create or mutate arbitrary nested academic audit trails',async()=>{
   for(const database of [client('staff',TEACHER),client('admin',ADMIN)])for(const parts of [['students','alice','revisions','forged'],['assessments','peta','audit','forged'],['student_grades','alice_peta','revisions','forged']])await assertFails(setDoc(doc(database,...parts),{reason:'Forged nested audit'}));
   const admin=client('admin',ADMIN),decision=doc(admin,'commit_claim_decisions','immutable-decision');
-  await assertSucceeds(setDoc(decision,{reason:'Administrator claim resolution'}));
+  await assertFails(setDoc(decision,{reason:'Administrator claim resolution'}));
   await assertFails(updateDoc(decision,{reason:'Replaced decision'}));await assertFails(deleteDoc(decision));
 });
 test('a directory-only teacher can inspect its own profile but cannot grant itself staff authority',async()=>{
@@ -251,10 +251,15 @@ test('an instructor may release a historical proposal for audited student revisi
       source:'teacher_discovered',status:'needs_review',discoveredBy:'staff',recordedAt:new Date(),updatedAt:new Date()});
   });
   await assertFails(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
-  await assertSucceeds(auditedEvidence(staff,{status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',
+  await assertSucceeds(auditedEvidence(staff,{status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',reviewedBy:null,reviewedAt:null,verificationNote:'',
     reopenedBy:'staff',reopenedAt:serverTimestamp(),reopenReason:'Let the student choose their own committed evidence.'},{actor:'staff'}));
-  await assertSucceeds(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
-  assert.equal((await getDoc(doc(alice,'assessment_evidence','alice_v2'))).data().revision,2);
+  const correctedSha='b'.repeat(40);
+  await assertSucceeds(auditedEvidence(alice,{status:'submitted',selectedCommits:[correctedSha],
+    checkpointSha:correctedSha,submittedAt:serverTimestamp()}));
+  const corrected=(await getDoc(doc(alice,'assessment_evidence','alice_v2'))).data();
+  assert.equal(corrected.revision,2);
+  assert.deepEqual(corrected.selectedCommits,[correctedSha]);
+  assert.equal(corrected.checkpointSha,correctedSha);
 });
 function report(uid='alice',email=EMAIL_A){
   return {
@@ -530,7 +535,7 @@ test('approved evidence requires instructor reopening; old drafts cannot publish
   await assertFails(setDoc(grade,{...record,evidenceRevision:0}));
   await assertSucceeds(setDoc(grade,record));
   await assertFails(auditedEvidence(alice,{status:'withdrawn'}));
-  const reopen={status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',
+  const reopen={status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',reviewedBy:null,reviewedAt:null,verificationNote:'',
     reopenedBy:'staff',reopenedAt:serverTimestamp(),reopenReason:'Permit correction to the individual submission.'};
   await assertFails(auditedEvidence(alice,{...reopen,reopenedBy:'alice'}));
   await assertSucceeds(updateDoc(grade,{published:true}));
@@ -538,6 +543,10 @@ test('approved evidence requires instructor reopening; old drafts cannot publish
   await assertFails(auditedEvidence(staff,reopen,{actor:'staff'}));
   await assertSucceeds(updateDoc(grade,{published:false}));
   await assertSucceeds(auditedEvidence(staff,reopen,{actor:'staff'}));
+  const reopened=(await getDoc(doc(alice,'assessment_evidence','alice_v2'))).data();
+  assert.equal(reopened.reviewedBy,null);
+  assert.equal(reopened.reviewedAt,null);
+  assert.equal(reopened.verificationNote,'');
   await assertFails(updateDoc(grade,{published:true}));
   await assertSucceeds(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
   await assertSucceeds(auditedEvidence(staff,approval(),{actor:'staff'}));
@@ -648,14 +657,18 @@ for(const commitCount of [1,20]) test(`student cannot alter discovered evidence 
     status:'needs_review',source:'teacher_discovered',discoveredBy:'staff',recordedAt:serverTimestamp(),updatedAt:serverTimestamp()}));
   await assertFails(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
   await assertSucceeds(auditedEvidence(staff,approval(),{actor:'staff'}));
-  await assertSucceeds(auditedEvidence(staff,{status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',
+  await assertSucceeds(auditedEvidence(staff,{status:'reopened',approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:'',reviewedBy:null,reviewedAt:null,verificationNote:'',
     reopenedBy:'staff',reopenedAt:serverTimestamp(),reopenReason:'Allow student to correct discovered evidence.'},{actor:'staff'}));
   await assertSucceeds(auditedEvidence(alice,{status:'withdrawn'}));
-  await assertSucceeds(auditedEvidence(alice,{status:'submitted',submittedAt:serverTimestamp()}));
+  const correctedSha='b'.repeat(40);
+  const correctedCommits=[...selectedCommits.slice(1),correctedSha];
+  await assertSucceeds(auditedEvidence(alice,{status:'submitted',selectedCommits:correctedCommits,
+    checkpointSha:correctedSha,submittedAt:serverTimestamp()}));
   const evidence=(await getDoc(doc(alice,'assessment_evidence','alice_v2'))).data();
   assert.equal(evidence.status,'submitted');
   assert.equal(evidence.revision,4);
-  assert.deepEqual(evidence.selectedCommits,selectedCommits);
+  assert.deepEqual(evidence.selectedCommits,correctedCommits);
+  assert.equal(evidence.checkpointSha,correctedSha);
 });
 test('reclaim is initially pending, owner-private and can only be withdrawn by claimant',async()=>{
   const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B),staff=client('staff',TEACHER);
@@ -674,6 +687,23 @@ test('reclaim is initially pending, owner-private and can only be withdrawn by c
   await assertSucceeds(getDoc(doc(staff,'commit_reclaims',SHA+'_alice')));
   await assertSucceeds(updateDoc(ref,{status:'withdrawn',withdrawnAt:serverTimestamp()}));
   await assertFails(updateDoc(ref,{status:'pending'}));
+  const before=(await getDoc(ref)).data();
+  const after={...before,status:'pending',explanation:'Updated explanation after confirming my older laptop Git identity.',
+    revision:1,resubmittedAt:serverTimestamp()};
+  const unsigned=writeBatch(alice);
+  unsigned.set(ref,after);
+  await assertFails(unsigned.commit());
+  const renewed=writeBatch(alice);
+  renewed.set(ref,after);
+  renewed.set(doc(ref,'revisions','1'),{before,after,actorUid:'alice',
+    reason:after.explanation,createdAt:serverTimestamp()});
+  await assertSucceeds(renewed.commit());
+  assert.equal((await getDoc(ref)).data().status,'pending');
+  await assertFails(updateDoc(doc(ref,'revisions','1'),{reason:'Falsified audit'}));
+  await assertFails(deleteDoc(doc(ref,'revisions','1')));
+  await assertFails(updateDoc(doc(ref,'revisions','1'),{actorUid:'bob'}));
+  await assertFails(updateDoc(ref,{status:'rejected',reviewedBy:'alice'}));
+
 });
 
 test('instructor-only V2 grading config and admin-only reclaim decisions',async()=>{
@@ -687,9 +717,48 @@ test('instructor-only V2 grading config and admin-only reclaim decisions',async(
   await assertFails(setDoc(doc(alice,'assessment_private','forged'),{systemPersona:'hijack'}));
   const decision=doc(teacher,'commit_claim_decisions','audit1');
   await assertFails(setDoc(decision,{reason:'false'}));
-  await assertSucceeds(setDoc(doc(admin,'commit_claim_decisions','audit1'),
-    {reason:'Verified after classroom review'}));
+  await assertFails(setDoc(doc(admin,'commit_claim_decisions','audit1'),
+    {reason:'Unpaired decisions are not valid attribution reviews'}));
   await assertFails(getDoc(doc(alice,'commit_claim_decisions','audit1')));
+});
+test('administrator reclaim decision atomically updates claim and immutable audit; teachers cannot decide',async()=>{
+  const repository='https://github.com/example/project';
+  await env.withSecurityRulesDisabled(async context=>{
+    const db=context.firestore();
+    await setDoc(doc(db,'students','alice'),{name:'Alice',email:EMAIL_A,section:'11-A',repoUrl:repository});
+    await setDoc(doc(db,'commit_reclaims',SHA+'_alice'),{
+      studentId:'alice',assessmentId:'v2',section:'11-A',repository,sha:SHA,
+      detectedAuthorName:'Shared device',detectedAuthorLogin:'',
+      explanation:'Student states this commit was made using a shared machine.',
+      status:'pending',createdAt:Timestamp.now()
+    });
+  });
+  const admin=client('admin',ADMIN),staff=client('staff',TEACHER),alice=client('alice',EMAIL_A);
+  const claimId=SHA+'_alice',note='I examined the changed files, identity explanation and supporting classroom work.';
+  function decisionBatch(db,actor='admin',decision='approved'){
+    const batch=writeBatch(db);
+    batch.update(doc(db,'commit_reclaims',claimId),{
+      status:decision,reviewedBy:actor,reviewedAt:serverTimestamp(),reviewNote:note
+    });
+    batch.set(doc(db,'commit_claim_decisions',claimId),{
+      claimId,studentId:'alice',repository,sha:SHA,
+      decision,reviewerUid:actor,reason:note,createdAt:serverTimestamp()
+    });
+    return batch.commit();
+  }
+  await assertFails(updateDoc(doc(admin,'commit_reclaims',claimId),{
+    status:'approved',reviewedBy:'admin',reviewedAt:serverTimestamp(),reviewNote:note
+  }));
+  await assertFails(decisionBatch(staff,'staff'));
+  await assertFails(decisionBatch(alice,'alice'));
+  await assertSucceeds(decisionBatch(admin));
+  assert.equal((await getDoc(doc(admin,'commit_reclaims',claimId))).data().status,'approved');
+  const audited=(await getDoc(doc(admin,'commit_claim_decisions',claimId))).data();
+  assert.equal(audited.sha,SHA);assert.equal(audited.reviewerUid,'admin');
+  await assertFails(updateDoc(doc(admin,'commit_claim_decisions',claimId),{decision:'rejected'}));
+  await assertFails(updateDoc(doc(admin,'commit_reclaims',claimId),{status:'rejected'}));
+  await assertFails(decisionBatch(admin));
+  await assertFails(getDoc(doc(alice,'commit_claim_decisions',claimId)));
 });
 test('cloud Playground versions are immutable and owner-only',async()=>{
   const alice=client('alice',EMAIL_A),bob=client('bob',EMAIL_B);

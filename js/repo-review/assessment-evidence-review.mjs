@@ -13,9 +13,9 @@ import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
 import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.2";
 import {searchStudents} from "./services/student-search.mjs?v=1.3.0";
+import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.1";
 
 export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{}}={}){
-const ADMIN="babaynike2013@gmail.com";
 const el=id=>root.querySelector("#"+id);
 const state={students:[],assessments:[],evidence:null,student:null,assessment:null,claims:[],loaded:false,busy:false,sequence:0,editing:false,verificationEditing:false};
 let stopEvidence=null,watchedId=null,destroyed=false,resolveInitial=null,initialTimer=null,initialSnapshot=null,hasServerSnapshot=false;
@@ -163,7 +163,8 @@ async function loadEvidence(initialRecord){
     const claims=await getDocs(query(collection(db,"commit_reclaims"),where("studentId","==",student.id)));
     if(destroyed||sequence!==state.sequence)return;
     state.claims=claims.docs.filter(d=>d.data().repository===evidence.repository &&
-      evidence.selectedCommits.includes(d.data().sha)).map(d=>({id:d.id,...d.data()}));
+      (d.data().assessmentId===assessment.id || evidence.selectedCommits.includes(d.data().sha)))
+      .map(d=>({id:d.id,...d.data()}));
     const repo=parseRepository(evidence.repository),base=repo.url;
     el("evidenceTitle").textContent=(student.name||student.id)+" — "+(assessment.title||assessment.id);
     el("evidenceMetadata").textContent="Status: "+evidence.status+
@@ -253,6 +254,8 @@ async function showSnapshot(evidence,assessment){
 async function renderClaims(){
   const target=el("evidenceReclaims");target.replaceChildren();
   if(!state.claims.length){add(target,"p","No reclaim requests for this student's assessment.","text-sm text-slate-600");return;}
+  const mayDecide=state.claims.some(c=>c.status==="pending") &&
+    await resolveStaffRole(auth.currentUser)==="admin";
   for(const claim of state.claims){
     const box=add(target,"div","","border rounded-lg p-3");
     add(box,"p",claim.sha.slice(0,12)+" — "+claim.status,"text-sm font-bold");
@@ -261,8 +264,8 @@ async function renderClaims(){
       "text-xs text-slate-600");
     add(box,"p",claim.explanation,"text-sm mt-1 whitespace-pre-wrap");
     if(claim.status!=="pending")continue;
-    if((auth.currentUser?.email||"").toLowerCase()!==ADMIN){
-      add(box,"p","Pending administrator decision.","text-xs text-amber-700 mt-1");continue;
+    if(!mayDecide){
+      add(box,"p","Administrator decision required. Teachers can inspect the claim, but cannot decide it.","text-xs text-amber-700 mt-1");continue;
     }
     const group=add(box,"div","","flex flex-wrap gap-2 mt-2");
     for(const [result,label] of [["approved","Approve reclaim"],["shared","Accept shared contribution"],["rejected","Reject reclaim"]]){
@@ -283,27 +286,15 @@ async function showConflicts(sha,box){
   }catch(e){status("Unable to check overlapping claims: "+e.message);}
 }
 async function decideClaim(claim,decision){
-  const explanation=prompt("Administrative decision note (required; visible in audit history):");
+  if(await resolveStaffRole(auth.currentUser)!=="admin")return status("Administrator access is required to decide reclaims.");
+  const explanation=prompt("Administrative decision note (10–2,000 characters; recorded permanently):");
   if(explanation===null)return;
-  if(explanation.trim().length<10||explanation.length>2000){
-    status("A decision reason of 10–2,000 characters is required.");return;
-  }
   try{
-    const ref=doc(db,"commit_reclaims",claim.id);
-    const audit=doc(collection(db,"commit_claim_decisions"));
-    await runTransaction(db,async tx=>{
-      const current=await tx.get(ref);
-      if(!current.exists()||current.data().status!=="pending")throw Error("Claim changed. Reload review.");
-      tx.update(ref,{status:decision,reviewedBy:auth.currentUser.uid,
-        reviewedAt:serverTimestamp(),reviewNote:explanation.trim()});
-      tx.set(audit,{claimId:claim.id,studentId:claim.studentId,
-        repository:claim.repository,sha:claim.sha,decision,
-        reviewerUid:auth.currentUser.uid,reason:explanation.trim(),
-        createdAt:serverTimestamp()});
-    });
-    status("Reclaim decision recorded; grade and Git history were not modified.");
+    status("Recording audited reclaim decision…");
+    await decideReclaim({claimId:claim.id,decision,reason:explanation});
+    status("Reclaim decision recorded. Student evidence and grades have not been changed.");
     await loadEvidence();
-  }catch(e){status("Unable to decide claim: "+e.message);}
+  }catch(e){status("Unable to decide reclaim: "+e.message);}
 }
 async function verifyAncestry(repo,checkpoint,selected){
   const result=await verifyCheckpointAncestry({
@@ -367,6 +358,7 @@ async function reopen(){
   try{
     await changeEvidence(doc(db,"assessment_evidence",state.student.id+"_"+state.assessment.id),state.evidence,{
       status:"reopened",approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:"",
+      reviewedBy:null,reviewedAt:null,verificationNote:"",
       reopenedBy:auth.currentUser.uid,reopenedAt:serverTimestamp(),reopenReason:reason
     },reason);
     await loadEvidence();notifyWorkspace();status("Reopened for student changes. A new submission and approval are required before grading.");

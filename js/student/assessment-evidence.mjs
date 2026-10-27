@@ -1,16 +1,16 @@
 /** Committed-evidence selection, checkpoint provenance and evidence lifecycle. */
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
-import {doc,getDoc,getDocs,setDoc,updateDoc,collection,query,where,serverTimestamp,onSnapshot}
+import {doc,getDoc,getDocs,setDoc,updateDoc,runTransaction,collection,query,where,serverTimestamp,onSnapshot}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {parseRepository,normalizeSelection,evidenceSelectionGuidance,detectedAuthor,attributionLabel,claimDocumentId,validSha}
   from "../repo-review/services/assessment-evidence.mjs?v=1.3.1";
-import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,verifyCheckpointAncestry} from "../repo-review/services/commit-history.mjs?v=1.3.1";
+import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,resolveSubmissionCheckpoint} from "../repo-review/services/commit-history.mjs?v=1.3.2";
 import {studentMayChangeEvidence,sameEvidence} from "../repo-review/services/evidence-lifecycle.mjs?v=1.3.1";
 import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs?v=1.3.0";
 
 const el=id=>document.getElementById(id);
 let context=null,commits=[],selected=new Set(),checkpoint="",claims=new Map(),saved=null,loadSequence=0;
-let historyPage=0,hasOlderCommits=false,historyLoading=false;
+let historyPage=0,hasOlderCommits=false,historyLoading=false,historyHeadSha="",commitFilter="all",reclaimTarget=null,reclaimBusy=false;
 let evidenceBusy=false;
 let stopEvidence=null,selectionDirty=false,evidenceSyncing=true;
 const status=text=>{el("evidenceStatus").textContent=text;};
@@ -72,23 +72,47 @@ function contextForStudent(){
 }
 function render(){
   const list=el("evidenceCommitList");list.replaceChildren();
+  el("evidenceSelectedCount").textContent=selected.size+" selected";
+  for(const button of document.querySelectorAll("[data-evidence-filter]")){
+    const active=button.dataset.evidenceFilter===commitFilter;
+    button.setAttribute("aria-pressed",String(active));
+    button.classList.toggle("bg-indigo-50",active);
+    button.classList.toggle("border-indigo-400",active);
+    button.classList.toggle("text-indigo-900",active);
+    button.classList.toggle("border-slate-200",!active);
+  }
   const editable=studentMayChangeEvidence(saved)&&!evidenceSyncing;
   el("evidenceEditability").textContent=evidenceSyncing?"Checking current server status…":evidenceBusy?"Saving evidence…":editable?
     "Editing enabled · "+(saved?.status==="reopened"?"Instructor reopened this evidence. Change the boxes and resubmit.":"Choose your commits and checkpoint, then submit."):
     saved?.status==="approved"?"Approved · Ask your instructor to reopen before changing selections.":"Instructor release required for this historical proposal.";
   el("evidenceSubmit").disabled=!editable||evidenceBusy;
   el("evidenceSubmit").textContent=evidenceBusy?"Saving evidence…":saved?"Resubmit selected evidence":"Submit selected evidence";
-  el("evidenceWithdraw").disabled=!editable||!saved||saved.status==="withdrawn"||evidenceBusy;
+  el("evidenceWithdraw").disabled=!editable||!saved||saved.status==="withdrawn"||evidenceBusy||
+    (saved.status==="reopened"&&!saved.selectedCommits?.length);
   if(el("evidenceClear"))el("evidenceClear").disabled=!editable||evidenceBusy;
   const guidance=evidenceSelectionGuidance([...selected],checkpoint);
   const summary=el("evidenceSelectionSummary");
   if(summary)summary.textContent=guidance.message;
   if(!commits.length){add(list,"p","No commits returned. The repository may be empty or inaccessible.");return;}
-  for(const commit of commits){
+  const linked=String(context?.profile?.githubUsername||"").trim().replace(/^@/,"").toLowerCase();
+  const visible=commits.filter(commit=>{
+    const sha=String(commit.sha||"").toLowerCase();
+    if(commitFilter==="selected")return selected.has(sha);
+    if(commitFilter==="mine")return Boolean(linked)&&String(commit?.author?.login||"").toLowerCase()===linked;
+    return true;
+  });
+  el("evidenceFilteredCount").textContent=visible.length+" of "+commits.length+" shown";
+  if(!visible.length){
+    add(list,"p",commitFilter==="mine"?
+      "No commits matched your linked GitHub login. Select All commits to view shared-account work and request attribution review.":
+      "No selected commits in this view. Switch to All commits to add work.",
+      "text-sm text-slate-600 rounded-lg border border-dashed p-4");
+  }
+  for(const commit of visible){
     const sha=String(commit.sha||"").toLowerCase();
     if(!validSha(sha))continue;
     const author=detectedAuthor(commit);
-    const row=add(list,"div","","rounded-lg border border-slate-200 p-3");
+    const row=add(list,"div","","rounded-xl border border-slate-200 p-3 hover:border-indigo-300 transition");
     const top=add(row,"div","","flex flex-wrap items-center gap-3");
     const includeLabel=add(top,"label","","inline-flex items-center gap-1 text-xs text-slate-700 font-semibold cursor-pointer");
     const check=document.createElement("input");check.type="checkbox";check.checked=selected.has(sha);
@@ -108,7 +132,7 @@ function render(){
       "text-xs break-words");
     add(row,"p",author.name+" · "+(author.login?"@"+author.login:"Git login unavailable")+
       " · "+(author.date?new Date(author.date).toLocaleString():"Unknown date"),
-      "text-xs text-slate-600 mt-2 break-words");
+      "text-xs text-slate-600 mt-1 break-words");
     add(row,"p",attributionLabel(commit,context?.profile?.githubUsername),
       "text-xs text-slate-500 mt-1");
     const controls=add(row,"div","","flex flex-wrap gap-3 mt-2");
@@ -116,19 +140,45 @@ function render(){
     view.type="button";view.addEventListener("click",()=>{void preview(commit);});
     const claim=claims.get(sha);
     if(claim){
-      add(controls,"span","Reclaim: "+claim.status,"text-xs font-semibold text-amber-800");
+      add(controls,"span","Reclaim "+claim.status,"text-xs font-semibold text-amber-800");
       if(claim.status==="pending"){
         const withdraw=add(controls,"button","Withdraw reclaim","text-xs text-rose-700 underline");
         withdraw.type="button";withdraw.addEventListener("click",()=>{void withdrawClaim(sha);});
+      }else if(claim.status==="withdrawn"){
+        const retry=add(controls,"button","Resubmit reclaim","text-xs text-amber-800 font-bold underline");
+        retry.type="button";retry.addEventListener("click",()=>{void reclaimCommit(commit);});
       }
     }else{
-      const reclaim=add(controls,"button","Reclaim Commit","text-xs text-amber-800 font-bold underline");
+      const reclaim=add(controls,"button","Request attribution review","text-xs text-amber-800 font-bold underline");
       reclaim.type="button";reclaim.addEventListener("click",()=>{void reclaimCommit(commit);});
     }
   }
 }
+function closeReclaimForm(){
+  reclaimTarget=null;
+  el("evidenceReclaimEditor").classList.add("hidden");
+  el("evidenceReclaimStatus").textContent="";
+}
+function openReclaimForm(commit){
+  if(!context||reclaimBusy)return;
+  const sha=String(commit?.sha||"").toLowerCase(),previous=claims.get(sha);
+  if(!validSha(sha))return status("Choose a valid Git commit before requesting attribution.");
+  if(previous&&previous.status!=="withdrawn")
+    return status("This commit already has a pending or decided attribution request.");
+  reclaimTarget=commit;
+  el("evidenceReclaimReason").value="";
+  el("evidenceReclaimSubject").textContent="Commit "+sha.slice(0,12)+
+    " · "+detectedAuthor(commit).name+(previous?" · Resubmit withdrawn request":"");
+  el("evidenceReclaimSave").textContent=previous?"Resubmit attribution request":"Send for administrator review";
+  el("evidenceReclaimStatus").textContent="Describe what you personally implemented. A request does not automatically transfer credit or approve evidence.";
+  el("evidenceReclaimEditor").classList.remove("hidden");
+  el("evidenceReclaimEditor").scrollIntoView({block:"nearest",behavior:"smooth"});
+  el("evidenceReclaimReason").focus({preventScroll:true});
+}
 async function preview(commit){
-  const node=el("evidencePreview");node.textContent="Fetching commit details…";
+  const node=el("evidencePreview");
+  const details=el("evidencePreviewDetails");details.classList.remove("hidden");details.open=true;
+  node.textContent="Fetching commit details…";
   try{
     const repo=parseRepository(context.profile.repoUrl);
     const detail=await github(repositoryPath(repo)+"/commits/"+encodeURIComponent(commit.sha));
@@ -149,29 +199,58 @@ async function preview(commit){
       "\nThis diff is for review, not proof of individual authorship.";
   }catch(error){node.textContent="Unable to preview: "+error.message;}
 }
-async function loadClaims(studentId){
+async function loadClaims(studentId,repository){
   const results=await getDocs(query(collection(db,"commit_reclaims"),where("studentId","==",studentId)));
-  return new Map(results.docs.map(d=>[d.data().sha,d.data()]));
+  return new Map(results.docs.map(d=>d.data()).filter(claim=>claim.repository===repository)
+    .map(claim=>[claim.sha,claim]));
 }
 async function reclaimCommit(commit){
-  if(!context)return;
-  const explanation=prompt("Explain why this Git commit should be attributed to you. Staff must verify the claim.");
-  if(explanation===null)return;
-  if(explanation.trim().length<10||explanation.length>1500){
-    status("Provide an explanation between 10 and 1,500 characters.");return;
+  if(!context||reclaimBusy)return;
+  openReclaimForm(commit);
+}
+async function sendReclaim(){
+  if(!context||!reclaimTarget||reclaimBusy)return;
+  const active=context,commit=reclaimTarget,sha=String(commit.sha).toLowerCase();
+  const profile=active.profile,previous=claims.get(sha);
+  const explanation=el("evidenceReclaimReason").value.trim();
+  const inline=text=>{el("evidenceReclaimStatus").textContent=text;};
+  if(explanation.length<10||explanation.length>1500){
+    inline("Please explain your work in 10–1,500 characters before sending.");return;
   }
-  const sha=commit.sha.toLowerCase(),profile=context.profile;
   const author=detectedAuthor(commit);
+  reclaimBusy=true;el("evidenceReclaimSave").disabled=true;
+  inline("Saving your attribution request…");
   try{
-    await setDoc(doc(db,"commit_reclaims",claimDocumentId(sha,profile.id)),{
-      studentId:profile.id,assessmentId:context.task.id,section:context.section,
-      repository:profile.repoUrl,sha,detectedAuthorName:author.name,
-      detectedAuthorLogin:author.login,explanation:explanation.trim(),
-      status:"pending",createdAt:serverTimestamp()
-    });
-    claims.set(sha,{sha,status:"pending"});render();
-    status("Reclaim request recorded. No attribution was changed; staff review is required.");
-  }catch(error){status("Could not record reclaim: "+error.message);}
+    const ref=doc(db,"commit_reclaims",claimDocumentId(sha,profile.id));
+    if(previous){
+      await runTransaction(db,async tx=>{
+        const snapshot=await tx.get(ref);
+        if(!snapshot.exists()||snapshot.data().status!=="withdrawn")
+          throw Error("Reclaim changed. Refresh the evidence panel before trying again.");
+        const before=snapshot.data(),revision=Number(before.revision||0)+1;
+        const after={...before,status:"pending",explanation,revision,resubmittedAt:serverTimestamp()};
+        tx.set(doc(ref,"revisions",String(revision)),{before,after,
+          actorUid:auth.currentUser.uid,reason:explanation,createdAt:serverTimestamp()});
+        tx.set(ref,after);
+      });
+    }else{
+      await setDoc(ref,{
+        studentId:profile.id,assessmentId:active.task.id,section:active.section,
+        repository:profile.repoUrl,sha,detectedAuthorName:author.name,
+        detectedAuthorLogin:author.login,explanation,
+        status:"pending",createdAt:serverTimestamp()
+      });
+    }
+    if(context!==active)return;
+    claims.set(sha,{...previous,sha,status:"pending",explanation});
+    render();
+    inline("Request sent. Status: Pending administrator review. You may still submit selected evidence, but it cannot be approved while this claim is pending.");
+    status("Commit attribution request saved. An administrator will review it; your selected evidence has not changed.");
+  }catch(error){
+    if(context===active)inline("Could not save reclaim: "+error.message+". Your explanation is preserved; correct the issue and retry.");
+  }finally{
+    reclaimBusy=false;el("evidenceReclaimSave").disabled=false;
+  }
 }
 async function withdrawClaim(sha){
   if(!confirm("Withdraw your pending reclaim request?"))return;
@@ -180,7 +259,7 @@ async function withdrawClaim(sha){
       status:"withdrawn",withdrawnAt:serverTimestamp()
     });
     claims.set(sha,{sha,status:"withdrawn"});render();
-    status("Reclaim withdrawn. Contact your instructor if you need to resubmit a claim.");
+    status("Reclaim withdrawn. Use Resubmit reclaim to send an updated explanation for administrator review.");
   }catch(error){status("Unable to withdraw: "+error.message);}
 }
 async function load(){
@@ -192,9 +271,14 @@ async function load(){
   el("legacySubmitPanel").classList.toggle("hidden",v2);
   if(!v2){hasOlderCommits=false;refreshHistoryControl();return;}
   context=null;commits=[];selected=new Set();checkpoint="";saved=null;claims=new Map();
+  commitFilter="all";reclaimTarget=null;reclaimBusy=false;
+  el("evidenceReclaimEditor").classList.add("hidden");
+  el("evidenceReclaimSave").disabled=false;
+  el("evidencePreviewDetails").classList.add("hidden");
+  el("evidencePreviewDetails").open=false;
   evidenceBusy=false;
   selectionDirty=false;evidenceSyncing=true;
-  historyPage=0;hasOlderCommits=false;historyLoading=false;refreshHistoryControl();
+  historyPage=0;hasOlderCommits=false;historyLoading=false;historyHeadSha="";refreshHistoryControl();
   el("evidenceCommitList").replaceChildren();el("evidencePreview").textContent="";
   const summary=el("evidenceSelectionSummary");if(summary)summary.textContent="No evidence commits selected yet.";
   status("Loading your linked repository's commits…");
@@ -211,7 +295,7 @@ async function load(){
       }
     }catch(error){if(error?.code!=="permission-denied")throw error;}
     watchEvidence(doc(db,"assessment_evidence",docId),seq);
-    const [loadedClaims,result]=await Promise.all([loadClaims(active.profile.id),github(commitPagePath(repositoryPath(repo),1))]);
+    const [loadedClaims,result]=await Promise.all([loadClaims(active.profile.id,active.profile.repoUrl),github(commitPagePath(repositoryPath(repo),1))]);
     if(seq!==loadSequence)return;
     commits=appendUniqueCommits([],result);
     const missing=[...new Set([...selected,checkpoint].filter(validSha))].filter(sha=>!commits.some(commit=>commit.sha.toLowerCase()===sha));
@@ -221,7 +305,9 @@ async function load(){
     }));
     if(seq!==loadSequence)return;
     commits=appendUniqueCommits(restored,commits);claims=loadedClaims;
-    if(!checkpoint&&commits[0]?.sha&&validSha(commits[0].sha))checkpoint=String(commits[0].sha).toLowerCase();
+    // Keep the actual branch head separate from restored older evidence commits.
+    historyHeadSha=validSha(result[0]?.sha)?String(result[0].sha).toLowerCase():"";
+    if(!checkpoint&&historyHeadSha)checkpoint=historyHeadSha;
     historyPage=1;hasOlderCommits=hasOlderCommitPage(historyPage,result.length);
     refreshHistoryControl();render();
     status(hasOlderCommits
@@ -257,24 +343,37 @@ async function loadOlderCommits(){
 }
 async function submit(){
   if(!context||evidenceBusy||evidenceSyncing)return;
-  const active=context;
+  const active=context,sequence=loadSequence;
   try{
     const guidance=evidenceSelectionGuidance([...selected],checkpoint);
     if(!guidance.ready){status(guidance.message);return;}
     const {selectedCommits,checkpointSha}=normalizeSelection([...selected],checkpoint);
-    if(!commits.some(c=>c.sha.toLowerCase()===checkpointSha&&!c.unavailable))
-      throw Error("Checkpoint not found in the loaded GitHub history.");
     evidenceBusy=true;render();status("Checking that the project checkpoint contains all selected evidence…");
     const repo=parseRepository(active.profile.repoUrl);
-    const ancestry=await verifyCheckpointAncestry({
-      selectedCommits,checkpointSha,
-      fetchPage:page=>github(repositoryPath(repo)+"/commits?sha="+encodeURIComponent(checkpointSha)+"&per_page=100&page="+page)
+    const compatible=await resolveSubmissionCheckpoint({
+      selectedCommits,checkpointSha,latestCheckpointSha:historyHeadSha,
+      fetchPage:(sha,page)=>github(repositoryPath(repo)+"/commits?sha="+encodeURIComponent(sha)+"&per_page=100&page="+page)
     });
-    if(!ancestry.ok)throw Error("Project checkpoint "+checkpointSha.slice(0,12)+" does not contain selected evidence commit"+(ancestry.missing.length===1?" ":"s ")+ancestry.missing.map(sha=>sha.slice(0,12)).join(", ")+". Choose a newer project checkpoint that contains your selected work.");
-    if(!confirm("Submit "+selectedCommits.length+" evidence commit"+(selectedCommits.length===1?"":"s")+" using project checkpoint "+checkpointSha.slice(0,12)+"? The checkpoint may be a teammate's later project commit; it is project context, not individual credit."))return;
+    if(sequence!==loadSequence||context!==active)return;
+    if(!compatible.ok)throw Error("The saved checkpoint and latest repository revision do not contain selected commit"+
+      (compatible.missing.length===1?" ":"s ")+compatible.missing.map(sha=>sha.slice(0,12)).join(", ")+
+      ". Check that these commits are on the same repository branch. If you recently pushed work, refresh the evidence list and retry; withdrawing evidence is not necessary.");
+    const submissionCheckpointSha=compatible.checkpointSha;
+    if(compatible.advanced){
+      checkpoint=submissionCheckpointSha;
+      selectionDirty=true;render();
+      status("New commits require a newer project checkpoint. The latest repository revision "+
+        submissionCheckpointSha.slice(0,12)+" was verified to contain all selected commits. Confirm to resubmit.");
+    }
+    if(!confirm((compatible.advanced
+      ?"Your previous checkpoint did not contain all selected commits. Adminerva verified a newer project checkpoint: "+submissionCheckpointSha.slice(0,12)+".\n\n"
+      :"")+"Submit "+selectedCommits.length+" evidence commit"+(selectedCommits.length===1?"":"s")+
+      " using project checkpoint "+submissionCheckpointSha.slice(0,12)+
+      "? The checkpoint may be a teammate's later project commit; it is project context, not individual credit."))return;
+    if(sequence!==loadSequence||context!==active)return;
     status("Submitting selected evidence…");
     const ref=doc(db,"assessment_evidence",active.profile.id+"_"+active.task.id);
-    const common={selectedCommits,checkpointSha,updatedAt:serverTimestamp()};
+    const common={selectedCommits,checkpointSha:submissionCheckpointSha,updatedAt:serverTimestamp()};
     if(saved){
       if(!studentMayChangeEvidence(saved))throw Error("Ask your instructor to reopen approved evidence first.");
       await changeEvidence(ref,saved,{...common,status:"submitted",submittedAt:serverTimestamp()},"Student resubmitted selected evidence");
@@ -291,7 +390,7 @@ async function submit(){
     render();
     status("Evidence submitted for teacher verification. This is not an approved contribution or grade.");
     window.dispatchEvent(new CustomEvent("adminerva:submission-recorded",{
-      detail:{assessmentId:active.task.id,studentId:active.profile.id,revisionSha:checkpointSha,evidenceStatus:"submitted"}
+      detail:{assessmentId:active.task.id,studentId:active.profile.id,revisionSha:submissionCheckpointSha,evidenceStatus:"submitted"}
     }));
   }catch(error){if(context===active)status("Evidence submission failed: "+error.message);}
   finally{if(context===active){evidenceBusy=false;render();}}
@@ -316,6 +415,13 @@ async function withdrawEvidence(){
 window.addEventListener("adminerva:assessment-opened",()=>{void load();});
 el("evidenceSubmit")?.addEventListener("click",()=>{void submit();});
 el("evidenceLoadOlder")?.addEventListener("click",()=>{void loadOlderCommits();});
+el("evidenceFilterBar")?.addEventListener("click",event=>{
+  const button=event.target.closest?.("[data-evidence-filter]");
+  if(!button)return;
+  commitFilter=button.dataset.evidenceFilter;render();
+});
+el("evidenceReclaimSave")?.addEventListener("click",()=>void sendReclaim());
+el("evidenceReclaimCancel")?.addEventListener("click",()=>{if(!reclaimBusy)closeReclaimForm();});
 el("evidenceRefresh")?.addEventListener("click",()=>{
   if(evidenceBusy)return;
   if(selectionDirty&&!confirm("Reload saved evidence and discard your unsaved commit selection?"))return;

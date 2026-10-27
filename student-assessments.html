@@ -96,7 +96,7 @@
       class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[110] flex items-center justify-center p-4"
     >
       <div
-        class="bg-white rounded-xl shadow-2xl max-w-2xl w-full flex flex-col overflow-hidden max-h-[90vh]"
+        class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full flex flex-col overflow-hidden max-h-[94vh]"
       >
         <div class="p-5 border-b bg-slate-800 flex justify-between items-start">
           <div>
@@ -119,7 +119,7 @@
             &times;
           </button>
         </div>
-        <div class="p-6 overflow-y-auto flex-1 space-y-4 bg-slate-50">
+        <div class="px-3 sm:px-6 py-4 overflow-y-auto flex-1 space-y-3 bg-slate-50">
           <!-- ✨ NEW: Score Area in Modal -->
           <div
             id="modalScoreArea"
@@ -171,20 +171,78 @@
             </button>
             <p id="submissionReviewStatus" role="status" class="text-xs text-slate-600 mt-3 break-words"></p>
           </section>
-          <section id="evidencePanel" class="hidden bg-white border border-indigo-200 rounded-xl p-4 mt-4" aria-labelledby="evidenceHeading">
-            <h3 id="evidenceHeading" class="font-bold text-indigo-900">Commit Evidence Selection</h3>
-            <p class="text-xs text-slate-600 my-2">Select only commits that show your own relevant work. Then choose a separate project checkpoint that contains those commits; the checkpoint may be a later commit made by a teammate. A Git author name is not proof of individual authorship. Reclaim requests require staff verification.</p>
-            <p id="evidenceStatus" class="text-sm text-slate-600 mb-2" role="status"></p>
-            <p id="evidenceSelectionSummary" class="text-sm text-indigo-900 bg-indigo-50 border border-indigo-100 rounded px-3 py-2 mb-3" role="status" aria-live="polite">Choose evidence commits and one project checkpoint before submitting.</p>
-            <p id="evidenceEditability" role="status" class="text-sm font-bold text-indigo-900 my-2"></p>
-            <button id="evidenceRefresh" type="button" class="text-xs underline font-semibold mb-2">Refresh evidence status</button>
-            <div id="evidenceCommitList" class="max-h-72 overflow-y-auto space-y-2"></div>
-            <button id="evidenceLoadOlder" type="button" class="hidden mt-3 rounded border border-indigo-200 bg-indigo-50 text-indigo-800 font-bold text-xs px-4 py-3">Load older commits</button>
-            <div id="evidencePreview" class="mt-4 max-h-80 overflow-y-auto whitespace-pre-wrap break-words font-mono text-xs bg-slate-50 border rounded p-3" aria-label="Selected commit changes"></div>
-            <button id="evidenceSubmit" type="button" class="mt-4 bg-indigo-700 hover:bg-indigo-800 text-white rounded px-4 py-3 font-bold text-sm">Submit selected evidence</button>
-            <button id="evidenceWithdraw" type="button" disabled class="mt-4 border border-rose-300 text-rose-800 rounded px-4 py-3 font-bold text-sm disabled:opacity-50">Withdraw evidence</button>
-            <button id="evidenceClear" type="button" class="mt-4 border border-slate-300 rounded px-4 py-3 font-bold text-sm disabled:opacity-50">Clear editable selection</button>
-            <p class="text-xs text-slate-600 mt-2">Before approval, you can resubmit or withdraw. After approval, your instructor must reopen evidence. Changes preserve an audit history and require fresh approval.</p>
+          <section id="evidencePanel" class="hidden bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden" aria-labelledby="evidenceHeading">
+            <div class="px-4 sm:px-5 py-4 border-b border-slate-200">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p class="text-xs font-bold uppercase tracking-wide text-indigo-700">Assessment evidence</p>
+                  <h3 id="evidenceHeading" class="text-lg font-bold text-slate-900">Choose your work. Submit for review.</h3>
+                </div>
+                <button id="evidenceRefresh" type="button" class="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Refresh</button>
+              </div>
+              <p id="evidenceStatus" class="text-sm text-slate-700 mt-2 break-words" role="status" aria-live="polite"></p>
+              <p id="evidenceEditability" class="text-xs text-indigo-900 mt-1" role="status"></p>
+              <details class="mt-2 text-xs text-slate-600">
+                <summary class="cursor-pointer font-semibold text-slate-700">Why two different commit selections?</summary>
+                <p class="mt-2 leading-relaxed">Your evidence commits show the changes you worked on. The project checkpoint is the version that contains that work, even if a teammate pushed it. GitHub author names are not proof of individual authorship. If someone else pushed your work, use Reclaim to explain it.</p>
+              </details>
+            </div>
+            <div class="px-4 sm:px-5 py-4 space-y-4">
+              <div class="flex flex-wrap gap-2 text-xs font-semibold text-slate-600" aria-label="Evidence submission steps">
+                <span class="rounded-lg border border-slate-200 px-3 py-2"><strong class="text-indigo-700">1</strong> Select your commits</span>
+                <span class="rounded-lg border border-slate-200 px-3 py-2"><strong class="text-indigo-700">2</strong> Choose checkpoint</span>
+                <span class="rounded-lg border border-slate-200 px-3 py-2"><strong class="text-indigo-700">3</strong> Submit</span>
+              </div>
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 class="text-sm font-bold text-slate-900">1–2 · Repository commits</h4>
+                  <p class="text-xs text-slate-600">Tick your work. Use the round control on a commit to set the project checkpoint.</p>
+                </div>
+                <span id="evidenceSelectedCount" class="text-xs font-bold text-indigo-700">0 selected</span>
+              </div>
+              <div id="evidenceFilterBar" class="flex flex-wrap items-center gap-2" role="group" aria-label="Filter repository commits">
+                <button type="button" data-evidence-filter="all" aria-pressed="true" class="rounded-full border border-indigo-400 bg-indigo-50 text-indigo-900 text-xs font-semibold px-3 py-2">All commits</button>
+                <button type="button" data-evidence-filter="mine" aria-pressed="false" class="rounded-full border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-2">Matching my GitHub</button>
+                <button type="button" data-evidence-filter="selected" aria-pressed="false" class="rounded-full border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-2">Selected only</button>
+                <span id="evidenceFilteredCount" class="text-xs text-slate-500 ml-auto"></span>
+              </div>
+              <div id="evidenceCommitList" class="max-h-[45vh] overflow-y-auto space-y-2 pr-1" aria-label="Available Git commits"></div>
+              <button id="evidenceLoadOlder" type="button" class="hidden rounded-lg border border-slate-300 bg-slate-50 text-slate-800 font-semibold text-xs px-4 py-2.5">Load older commits</button>
+              <div id="evidenceReclaimEditor" class="hidden border border-amber-300 rounded-xl p-4 space-y-3" role="region" aria-labelledby="evidenceReclaimHeading">
+                <div class="flex justify-between gap-3">
+                  <div>
+                    <h4 id="evidenceReclaimHeading" class="text-sm font-bold text-slate-900">Request commit attribution review</h4>
+                    <p id="evidenceReclaimSubject" class="text-xs text-slate-600 mt-1 break-all"></p>
+                  </div>
+                  <button id="evidenceReclaimCancel" type="button" class="text-xs font-semibold text-slate-600 underline">Close</button>
+                </div>
+                <label for="evidenceReclaimReason" class="block text-xs font-semibold text-slate-800">Why is this your contribution?</label>
+                <textarea id="evidenceReclaimReason" rows="3" minlength="10" maxlength="1500" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" placeholder="Example: I wrote the layout on a shared device, and a teammate pushed it under their account. Describe which parts you implemented."></textarea>
+                <div class="flex flex-wrap gap-2">
+                  <button id="evidenceReclaimSave" type="button" class="rounded-lg bg-slate-800 text-white px-4 py-2.5 text-sm font-semibold disabled:opacity-50">Send for administrator review</button>
+                </div>
+                <p id="evidenceReclaimStatus" class="text-xs text-amber-900" role="status" aria-live="polite"></p>
+              </div>
+              <details id="evidencePreviewDetails" class="hidden border border-slate-200 rounded-xl p-3">
+                <summary class="cursor-pointer text-sm font-semibold text-slate-800">Changed files / commit preview</summary>
+                <div id="evidencePreview" class="mt-2 max-h-80 overflow-y-auto whitespace-pre-wrap break-words font-mono text-xs text-slate-700" aria-label="Selected commit changes"></div>
+              </details>
+            </div>
+            <div class="sticky bottom-0 z-10 bg-white border-t border-slate-200 px-4 sm:px-5 py-3 shadow-[0_-4px_18px_rgba(15,23,42,0.06)]">
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <p id="evidenceSelectionSummary" class="text-xs text-slate-700 flex-1 min-w-0" role="status" aria-live="polite">Choose evidence commits and a project checkpoint.</p>
+                <span class="text-xs text-slate-500">No withdrawal needed for revisions</span>
+              </div>
+              <div class="flex flex-wrap gap-2 items-center">
+                <button id="evidenceSubmit" type="button" class="flex-1 min-w-[170px] rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white px-4 py-3 font-bold text-sm disabled:opacity-50">Submit selected evidence</button>
+                <button id="evidenceClear" type="button" class="border border-slate-300 text-slate-700 rounded-lg px-3 py-3 font-semibold text-xs disabled:opacity-50">Clear selections</button>
+              </div>
+              <details class="mt-2 text-xs text-slate-600">
+                <summary class="cursor-pointer font-semibold text-slate-600 hover:text-slate-900">Need to cancel this submission?</summary>
+                <p class="mt-2 leading-relaxed">Withdraw only if you want to retract your evidence from teacher review. To add, remove, or correct commits, use Resubmit selected evidence instead. Withdrawal does not delete earlier audit records.</p>
+                <button id="evidenceWithdraw" type="button" disabled class="mt-2 border border-rose-200 text-rose-800 rounded-lg px-3 py-2.5 font-semibold text-xs disabled:opacity-50">Withdraw submission</button>
+              </details>
+            </div>
           </section>
         </div>
       </div>
@@ -193,8 +251,8 @@
     <script src="js/core/adminerva-nav.js?v=1.4.17"></script>
     <script src="js/core/adminerva-loader.js?v=1.3.1"></script>
     <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
-    <script type="module" src="js/student/assessments.js?v=1.3.0"></script>
+    <script type="module" src="js/student/assessments.js?v=1.3.1"></script>
     <script type="module" src="js/student/submission-receipts.mjs?v=1.3.0"></script>
-    <script type="module" src="js/student/assessment-evidence.mjs?v=1.3.2"></script>
+    <script type="module" src="js/student/assessment-evidence.mjs?v=1.3.6"></script>
   </body>
 </html>

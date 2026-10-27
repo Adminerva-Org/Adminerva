@@ -73,7 +73,7 @@ test('loads assessed XML and verified supporting implementation at the immutable
   const fetchImpl=async url=>{
     requests.push(url);
     const response=data=>({ok:true,json:async()=>data});
-    if(url.endsWith('/commits/'+A+'?per_page=100'))
+    if(url.includes('/commits/'+A+'?per_page=100&page='))
       return response({files:[
         {filename:XML,status:'modified',patch:'@@ -1 +1 @@\n-old\n+<TextView />'},
         {filename:'app/src/main/java/MainActivity.java',status:'modified',patch:'+Java code'}
@@ -165,7 +165,7 @@ test('incomplete GitHub commit file lists stop scoring instead of silently omitt
   await assert.rejects(loadPinnedV2Source({
     repository:'https://github.com/example/android',selectedCommits:[A],verifiedContributionCommits:[A],
     checkpointSha:A,assessment:assignment,fetchImpl
-  }),/incomplete or too large/);
+  }),/incomplete or too large|3,000-file retrieval limit/);
 });
 
 test('contributing student is evaluated on verified responsibilities, not all group screens',()=>{

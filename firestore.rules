@@ -227,7 +227,7 @@ service cloud.firestore {
 
     // Administrators retain existing system-wide maintenance privileges.
     match /{collection}/{document} {
-      allow read, write: if isAdmin() && !serverOwned(collection) && !monitoringCollection(collection) && !personalCollection(collection) && collection != "assessment_evidence" && collection != "student_grades" && collection != "assessments" && collection != "assessment_private" &&
+      allow read, write: if isAdmin() && !serverOwned(collection) && !monitoringCollection(collection) && !personalCollection(collection) && collection != "assessment_evidence" && collection != "commit_reclaims" && collection != "student_grades" && collection != "assessments" && collection != "assessment_private" &&
         !(collection in ["practice_profiles","practice_scores","practice_boards","practice_rankings"]);
     }
 
@@ -638,11 +638,14 @@ service cloud.firestore {
          (!exists(/databases/$(database)/documents/student_grades/$(evidenceId)) ||
           get(/databases/$(database)/documents/student_grades/$(evidenceId)).data.published == false) &&
          after.approvedCheckpointSha == null && after.verifiedContributionCommits == [] &&
-         after.contributionScope == "" && after.reopenedBy == request.auth.uid &&
+         after.contributionScope == "" && after.reviewedBy == null &&
+         after.reviewedAt == null && after.verificationNote == "" &&
+         after.reopenedBy == request.auth.uid &&
          after.reopenedAt == request.time && after.reopenReason is string &&
          after.reopenReason.size() >= 15 && after.reopenReason.size() <= 3000 &&
          after.diff(before).affectedKeys().hasOnly(["status","approvedCheckpointSha","verifiedContributionCommits",
-           "contributionScope","reopenedBy","reopenedAt","reopenReason","revision","updatedAt"])));
+           "contributionScope","reviewedBy","reviewedAt","verificationNote",
+           "reopenedBy","reopenedAt","reopenReason","revision","updatedAt"])));
     }
 
     match /assessment_evidence/{evidenceId} {
@@ -700,6 +703,18 @@ service cloud.firestore {
       }
     }
 
+    // A withdrawn claimant may submit a new explanation once the prior
+    // state is preserved in an immutable revision. Rejected/decided claims
+    // cannot be reopened by the student.
+    function reclaimResubmissionAudit(claimId) {
+      let version = request.resource.data.revision;
+      let audit = getAfter(/databases/$(database)/documents/commit_reclaims/$(claimId)/revisions/$(string(version))).data;
+      return version is int && version == resource.data.get("revision",0) + 1 &&
+        audit.before == resource.data && audit.after == request.resource.data &&
+        audit.actorUid == request.auth.uid && audit.createdAt == request.time &&
+        audit.reason == request.resource.data.explanation;
+    }
+
     // A reclaim is an unverified attribution request, not a transfer of
     // authorship. Only staff can accept/reject it; students may withdraw.
     match /commit_reclaims/{claimId} {
@@ -732,19 +747,75 @@ service cloud.firestore {
         request.resource.data.detectedAuthorLogin.size() <= 80 &&
         request.resource.data.status == "pending" &&
         request.resource.data.createdAt == request.time;
+      // Administrators decide disputed attribution only with a matching
+      // immutable decision record in the same atomic write.
+      allow update: if isAdmin() &&
+        resource.data.status == "pending" &&
+        request.resource.data.status in ["approved","shared","rejected"] &&
+        request.resource.data.reviewedBy == request.auth.uid &&
+        request.resource.data.reviewedAt == request.time &&
+        request.resource.data.reviewNote is string &&
+        request.resource.data.reviewNote.size() >= 10 &&
+        request.resource.data.reviewNote.size() <= 2000 &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["status","reviewedBy","reviewedAt","reviewNote"]) &&
+        getAfter(/databases/$(database)/documents/commit_claim_decisions/$(claimId)).data.claimId == claimId &&
+        getAfter(/databases/$(database)/documents/commit_claim_decisions/$(claimId)).data.sha == resource.data.sha &&
+        getAfter(/databases/$(database)/documents/commit_claim_decisions/$(claimId)).data.studentId == resource.data.studentId &&
+        getAfter(/databases/$(database)/documents/commit_claim_decisions/$(claimId)).data.decision == request.resource.data.status &&
+        getAfter(/databases/$(database)/documents/commit_claim_decisions/$(claimId)).data.reviewerUid == request.auth.uid &&
+        getAfter(/databases/$(database)/documents/commit_claim_decisions/$(claimId)).data.reason == request.resource.data.reviewNote &&
+        getAfter(/databases/$(database)/documents/commit_claim_decisions/$(claimId)).data.createdAt == request.time;
       allow update: if signedIn() && ownsStudentProfile(resource.data.studentId) &&
         resource.data.status == "pending" &&
         request.resource.data.status == "withdrawn" &&
         request.resource.data.withdrawnAt == request.time &&
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["status","withdrawnAt"]);
+      allow update: if signedIn() && ownsStudentProfile(resource.data.studentId) &&
+        resource.data.status == "withdrawn" &&
+        request.resource.data.status == "pending" &&
+        request.resource.data.resubmittedAt == request.time &&
+        request.resource.data.explanation is string &&
+        request.resource.data.explanation.size() >= 10 &&
+        request.resource.data.explanation.size() <= 1500 &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["status","explanation","revision","resubmittedAt"]) &&
+        reclaimResubmissionAudit(claimId);
       allow delete: if false;
+      match /revisions/{revisionId} {
+        allow read: if mayTeachSection(get(/databases/$(database)/documents/commit_reclaims/$(claimId)).data.section) ||
+          (signedIn() && ownsStudentProfile(get(/databases/$(database)/documents/commit_reclaims/$(claimId)).data.studentId));
+        allow create: if signedIn() &&
+          request.resource.data.keys().hasOnly(["before","after","actorUid","reason","createdAt"]) &&
+          request.resource.data.actorUid == request.auth.uid &&
+          request.resource.data.createdAt == request.time &&
+          request.resource.data.before == get(/databases/$(database)/documents/commit_reclaims/$(claimId)).data &&
+          request.resource.data.after == getAfter(/databases/$(database)/documents/commit_reclaims/$(claimId)).data &&
+          revisionId == string(request.resource.data.after.revision) &&
+          request.resource.data.after.revision == request.resource.data.before.get("revision",0) + 1;
+        allow update, delete: if false;
+      }
     }
 
     // Staff review provenance. Decisions are administrator-controlled for now.
     match /commit_claim_decisions/{decisionId} {
       allow read: if isAdmin() || mayTeachStudent(resource.data.get("studentId",""));
-      allow create: if isAdmin();
+      allow create: if isAdmin() &&
+        request.resource.data.keys().hasOnly(["claimId","studentId","repository","sha",
+          "decision","reviewerUid","reason","createdAt"]) &&
+        decisionId == request.resource.data.claimId &&
+        request.resource.data.decision in ["approved","shared","rejected"] &&
+        request.resource.data.reviewerUid == request.auth.uid &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.reason is string &&
+        request.resource.data.reason.size() >= 10 &&
+        request.resource.data.reason.size() <= 2000 &&
+        get(/databases/$(database)/documents/commit_reclaims/$(decisionId)).data.status == "pending" &&
+        getAfter(/databases/$(database)/documents/commit_reclaims/$(decisionId)).data.status == request.resource.data.decision &&
+        request.resource.data.studentId == get(/databases/$(database)/documents/commit_reclaims/$(decisionId)).data.studentId &&
+        request.resource.data.repository == get(/databases/$(database)/documents/commit_reclaims/$(decisionId)).data.repository &&
+        request.resource.data.sha == get(/databases/$(database)/documents/commit_reclaims/$(decisionId)).data.sha;
       allow update, delete: if false;
     }
     match /commit_claim_conflicts/{conflictId} {
