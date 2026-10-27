@@ -674,7 +674,7 @@ function persistWorkspace(){
       showSaveStatus("Practice scratch saved in this tab");
       return true;
     }
-    if(projectStudio?.getActiveProject()){
+    if(typeof projectStudio!=="undefined"&&projectStudio?.getActiveProject()){
       projectStudio.saveState(state);
       localStorage.setItem(playgroundLanguageKey(uid),currentLang);
     }else{
