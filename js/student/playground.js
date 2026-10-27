@@ -831,6 +831,7 @@ async function executeCode() {
   if(executionController)return;
   const runBtn=document.getElementById('runBtn'),overlay=document.getElementById('executionOverlay'),consoleOut=document.getElementById('consoleOutput'),label=document.getElementById('executionStage');
   const sequence=++executionSequence,controller=new AbortController(),entry=compilerEntry(),runLanguage=currentLang;executionController=controller;
+  const end=window.beginLoading?.('Running your code…')||(()=>{});
   const start=Date.now();let stage='Preparing project';
   const update=()=>{if(label)label.textContent=stage+' · '+Math.floor((Date.now()-start)/1000)+'s';};
   const clock=setInterval(update,500),timeout=setTimeout(()=>{stage='Compiler timed out';controller.abort();},45000);
@@ -865,7 +866,7 @@ async function executeCode() {
   }catch(error){
     if(sequence!==executionSequence)return;
     consoleOut.textContent=controller.signal.aborted?(stage==='Compiler timed out'?'The compiler did not finish within 45 seconds. Your code is saved. Retry, or export the project to run locally.':'Run cancelled. Your code is unchanged. The remote service may finish the already submitted job.'):'Execution unavailable: '+error.message+'\nYour code is saved on this device when browser storage is available.';
-  }finally{clearTimeout(timeout);clearInterval(clock);executionController=null;runBtn.disabled=false;overlay?.classList.add('hidden');}
+  }finally{clearTimeout(timeout);clearInterval(clock);executionController=null;runBtn.disabled=false;overlay?.classList.add('hidden');end();}
 }
 
 function applyVisualDiagnostics(errorText, defaultFile) {
@@ -941,7 +942,8 @@ async function askMinerva() {
   const consoleOut = document.getElementById("consoleOutput");
 
   document.getElementById("consoleTab")?.click();
-  if (btn) btn.innerHTML = `<span class="animate-spin">✨</span> Thinking...`;
+  if (btn){btn.disabled=true;btn.innerHTML = `<span class="animate-spin">✨</span> Thinking...`;}
+  const end=window.beginLoading?.("Minerva is preparing coding guidance…")||(()=>{});
 
   let context = `I am a student learning to program in ${currentLang}.\nHere are my files:\n`;
   for (const [name, file] of Object.entries(workspaceFiles)) {
@@ -975,7 +977,8 @@ async function askMinerva() {
   } catch (error) {
     alert("Minerva Error: " + error.message);
   } finally {
-    if (btn) btn.innerHTML = `✨ Ask Minerva`;
+    if (btn){btn.disabled=false;btn.innerHTML = `✨ Ask Minerva`;}
+    end();
   }
 }
 
@@ -1044,7 +1047,7 @@ function bindUIEvents() {
       loadLocalWorkspace(nextLang);
     });
   document.getElementById("runBtn")?.addEventListener("click", executeCode);
-  document.getElementById("exportZipBtn")?.addEventListener("click", exportZIP);
+  document.getElementById("exportZipBtn")?.addEventListener("click",()=>void window.withLoading("Preparing project ZIP…",exportZIP,{button:document.getElementById("exportZipBtn")}));
   document.getElementById("saveProjectBtn")?.addEventListener("click", () => {
     if(persistWorkspace())showSaveStatus("Saved on this device");
     else alert("Save failed. Please export a ZIP before leaving this page.");
@@ -1059,7 +1062,7 @@ function bindUIEvents() {
   document.getElementById("undoRestoreBtn")?.addEventListener("click", window.adminervaUndoPlaygroundRestore);
   document
     .getElementById("snapshotBtn")
-    ?.addEventListener("click", shareSnapshot);
+    ?.addEventListener("click",()=>void window.withLoading("Sharing project snapshot…",shareSnapshot));
   document.getElementById("aiTutorBtn")?.addEventListener("click", askMinerva);
 
   document.getElementById("formatBtn")?.addEventListener("click", () => {
