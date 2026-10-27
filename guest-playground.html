@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Guest Code Studio · Adminerva</title>
 <script src="https://cdn.tailwindcss.com"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script><script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-<link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8"><link rel="stylesheet" href="css/playground-workspace.css?v=2.0.3">
+<link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8"><link rel="stylesheet" href="css/playground-workspace.css?v=2.1.0">
 <style>#workspaceContainer{flex:1;min-width:0;display:flex;overflow:hidden}#projectWorkspace{display:flex;flex:1;min-height:0}#editorPane{width:60%;min-width:20%;display:flex;flex-direction:column;min-height:0}#outputPane{width:40%;min-width:20%;display:flex;flex-direction:column;min-height:0}#editorContainer{flex:1;min-height:100px;position:relative}#webPreviewFrame{width:100%;height:100%;border:0;background:#fff}#javaDesktopPreviewContainer{flex:1;min-height:0;background:#020617}#javaDesktopPreviewContainer:not(.hidden){display:flex;flex-direction:column}#javaDesktopFrame{width:100%;flex:1;min-height:0;border:0;background:#0f172a}#javaDesktopStatus{padding:8px 12px;border-bottom:1px solid #334155;background:#111827;color:#bae6fd;font-size:11px;line-height:1.45}#consoleOutput{white-space:pre-wrap;overflow:auto;padding:16px;flex:1;min-height:0;font:12px/1.6 ui-monospace,monospace;color:#d7e9fb}#executionOverlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:20}#executionOverlay.hidden{display:none}#fileTabsContainer{display:flex;overflow:auto;min-height:37px;background:#111d2d;color:#b8cce2;flex-shrink:0}#webPreviewContainer{flex:1;min-height:0}#dragResizer{width:7px;flex-shrink:0;background:#24354a;cursor:col-resize}@media(max-width:767px){#projectWorkspace,#workspaceContainer{flex-direction:column}#editorPane{width:100%!important;height:57%;min-height:170px}#outputPane{width:100%!important;height:43%;min-height:140px}#dragResizer{display:none}}</style></head>
 <body id="pageBody" data-playground-access="guest" class="bg-slate-950 h-[100dvh] flex flex-col overflow-hidden">
 <nav class="pg-public-nav"><strong>ADMINERVA · Code Studio</strong><a href="guest-practice.html">Practice Lab</a><a href="wiki.html#learning">Help</a><a href="guest-home.html">Home</a><a href="login.html">Sign in</a></nav>
@@ -45,7 +45,15 @@
   <section id="studioPanelCode" class="flex-1 flex flex-col min-h-0">
     
 
-    <div id="projectWorkspace"><aside class="pg-explorer" aria-label="Project files"><div class="pg-explorer-header"><span>Explorer</span><span class="pg-explorer-help" tabindex="0" aria-label="Explorer help">ⓘ<span class="pg-explorer-tooltip" role="tooltip">Drag files onto folders to move them. Drop on the edge line to reorder. Ctrl+S saves. Ctrl+Enter runs.</span></span></div><div class="pg-explorer-tools"><button id="newProjectFile" type="button" title="New file">+ File</button><button id="newProjectFolder" type="button" title="New folder">+ Folder</button><button id="renameProjectItem" type="button" title="Rename or move the selected file or folder">Move / rename</button><button id="deleteProjectItem" type="button" title="Delete selected file or folder">Delete</button></div><div id="projectTree" class="pg-tree"></div><p id="projectFileCount" class="pg-folder-count"></p></aside>
+    <div id="projectWorkspace"><aside class="pg-explorer" aria-label="Project files"><div class="pg-explorer-header"><span>Explorer</span><span class="pg-explorer-help" tabindex="0" aria-label="Explorer help">ⓘ<span class="pg-explorer-tooltip" role="tooltip">Drag files onto folders to move them. Drop on the edge line to reorder. Ctrl+S saves. Ctrl+Enter runs.</span></span></div><div id="projectTree" class="pg-tree"></div><p id="projectFileCount" class="pg-folder-count"></p></aside>
+      <div id="explorerContextMenu" class="pg-context-menu hidden" role="menu" aria-label="Explorer actions">
+        <button type="button" data-explorer-action="open" role="menuitem">Open</button>
+        <button type="button" data-explorer-action="new-file" role="menuitem">New file</button>
+        <button type="button" data-explorer-action="new-folder" role="menuitem">New folder</button>
+        <div class="pg-context-separator"></div>
+        <button type="button" data-explorer-action="rename" role="menuitem">Move / rename</button>
+        <button type="button" data-explorer-action="delete" role="menuitem" class="pg-context-danger">Delete</button>
+      </div>
       <div id="workspaceContainer"><section id="editorPane" aria-label="Code editor"><div id="fileTabsContainer" role="tablist" aria-label="Open files"></div><div id="activeFilePath" class="pg-editor-path"></div><div id="editorContainer"><div id="editorLoading" class="absolute inset-0 flex items-center justify-center text-cyan-300 text-sm">Preparing editor…</div></div></section><div id="dragResizer" role="separator" aria-label="Resize editor and output"></div>
         <section id="outputPane" class="relative bg-[#0d1117]" aria-label="Program output"><div class="flex items-center justify-between bg-slate-900 border-b border-slate-700 text-xs font-bold text-cyan-300 p-3"><div class="flex gap-4"><button id="consoleTab" type="button">Terminal</button><button id="previewTab" type="button" class="hidden">Web preview</button><button id="desktopTab" type="button" class="hidden">Desktop app</button></div><div class="flex items-center gap-3"><button id="stopDesktopBtn" type="button" class="hidden text-rose-300">Stop app</button><button id="clearConsoleBtn" type="button">Clear</button></div></div><div id="stdinContainer" class="bg-slate-800 p-3"><label for="stdinInput" class="text-xs text-slate-300 block mb-1">Program input (optional)</label><textarea id="stdinInput" rows="2" class="w-full rounded bg-slate-900 text-slate-200 text-xs p-2 border border-slate-700" placeholder="Input for Scanner, input(), or cin"></textarea></div><pre id="consoleOutput">Your output will appear here. Select Run when ready.</pre><div id="webPreviewContainer" class="hidden"><iframe id="webPreviewFrame" title="Isolated project preview" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe></div><div id="javaDesktopPreviewContainer" class="hidden"><div id="javaDesktopStatus">Desktop GUI is a beta technical-evaluation runtime. Compile and launch Java Swing/AWT projects here.</div><iframe id="javaDesktopFrame" title="Java desktop application preview" sandbox="allow-scripts allow-same-origin allow-downloads" referrerpolicy="no-referrer"></iframe></div><div id="executionOverlay" class="hidden"><div class="flex flex-col items-center gap-4 p-5"><div class="w-9 h-9 rounded-full border-4 border-slate-700 border-t-cyan-400 animate-spin"></div><p id="executionStage" class="pg-run-status" role="status">Preparing project…</p><button id="cancelRunBtn" type="button" class="border border-slate-500 text-slate-200 rounded-lg px-4 py-2 text-sm">Cancel run</button></div></div></section>
       </div>
@@ -57,12 +65,38 @@
     <div class="design-grid"><div class="studio-card"><div class="studio-card-label-row"><label for="designEditor">Diagram source</label><span id="designSaveStatus" class="studio-muted">Autosaves</span></div><textarea id="designEditor" class="studio-code-area" spellcheck="false"></textarea><button id="renderDesignBtn" type="button">Preview diagram</button></div><div class="studio-card design-preview-card"><h3>Preview</h3><div id="designPreview" class="design-preview"></div></div></div>
   </section>
 
-  <section id="studioPanelDatabase" class="hidden studio-surface" aria-labelledby="databaseHeading">
-    <div class="studio-surface-head"><div><p class="studio-eyebrow">ADMINERVA DB</p><h2 id="databaseHeading">Project database lab</h2><p>A project-scoped SQL learning database for schema design and CRUD practice. This lab does not pretend to be a JDBC driver; JDBC source evidence is tracked separately.</p></div></div>
+  <section id="studioPanelDatabase" class="hidden studio-surface studio-db-surface" aria-labelledby="databaseHeading">
+    <div class="studio-surface-head db-surface-head"><div><p class="studio-eyebrow">ADMINERVA DB</p><h2 id="databaseHeading">Database manager</h2><p>Browse project data visually, inspect table structure, or use SQL directly. Adminerva DB remains a project-scoped learning database; JDBC source evidence is tracked separately.</p></div></div>
     <div id="dbDisabledState" class="studio-empty-card hidden"><strong>Database is disabled for this project.</strong><p>Enable Adminerva DB when the project needs data modeling and SQL CRUD practice.</p><button id="enableProjectDbBtn" type="button" class="primary-small">Enable Adminerva DB</button></div>
-    <div id="dbWorkspace" class="db-grid hidden">
-      <aside class="studio-card db-sidebar"><h3>Tables</h3><div id="dbSchemaList" class="db-schema-list"></div><h3>Recent SQL</h3><ul id="dbHistory" class="db-history"></ul></aside>
-      <div class="studio-card db-console"><div class="studio-inline-actions"><label for="dbSqlInput">SQL console</label><select id="dbExampleSelect"><option value="">Examples…</option><option value="CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL, stock INTEGER);">Create products table</option><option value="INSERT INTO records (id, name, status) VALUES (1, 'Sample', 'Active');">Insert sample record</option><option value="SELECT * FROM records;">Select records</option><option value="UPDATE records SET status = 'Archived' WHERE id = 1;">Update record</option><option value="DELETE FROM records WHERE id = 1;">Delete record</option></select></div><textarea id="dbSqlInput" class="studio-code-area" spellcheck="false">SELECT * FROM records;</textarea><div class="studio-inline-actions"><button id="dbRunBtn" type="button" class="primary-small">Run SQL</button><span id="dbStatus" class="studio-muted">Ready.</span></div><div id="dbResult"></div></div>
+    <div id="dbWorkspace" class="db-manager hidden">
+      <aside class="studio-card db-sidebar">
+        <div class="db-sidebar-head"><h3>Tables</h3><span id="dbTableCount" class="studio-muted"></span></div>
+        <div id="dbSchemaList" class="db-schema-list"></div>
+        <details class="db-history-details"><summary>Recent SQL</summary><ul id="dbHistory" class="db-history"></ul></details>
+      </aside>
+      <div class="studio-card db-manager-main">
+        <div class="db-manager-toolbar">
+          <div class="db-selected-table"><span class="studio-muted">Table</span><strong id="dbSelectedTableName">Select a table</strong><span id="dbSelectedTableMeta" class="studio-muted"></span></div>
+          <nav class="db-view-tabs" aria-label="Database table views">
+            <button type="button" data-db-view="browse" data-active="true">Browse</button>
+            <button type="button" data-db-view="structure">Structure</button>
+            <button type="button" data-db-view="sql">SQL</button>
+          </nav>
+          <button id="dbInsertRowBtn" type="button" class="primary-small">+ Insert row</button>
+        </div>
+        <section id="dbBrowsePanel" class="db-view-panel">
+          <div id="dbRowEditor" class="db-row-editor hidden"></div>
+          <div id="dbBrowseTable"></div>
+        </section>
+        <section id="dbStructurePanel" class="db-view-panel hidden">
+          <div id="dbStructureTable"></div>
+        </section>
+        <section id="dbSqlPanel" class="db-view-panel hidden">
+          <div class="studio-inline-actions db-sql-head"><label for="dbSqlInput">SQL console</label><select id="dbExampleSelect"><option value="">Examples…</option><option value="CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price REAL, stock INTEGER);">Create products table</option><option value="INSERT INTO products (id, name, price, stock) VALUES (1, 'Sample item', 25.00, 10);">Insert sample product</option><option value="SELECT * FROM products;">Select products</option><option value="UPDATE products SET stock = 9 WHERE id = 1;">Update product</option><option value="DELETE FROM products WHERE id = 1;">Delete product</option></select></div>
+          <textarea id="dbSqlInput" class="studio-code-area db-sql-editor" spellcheck="false">SELECT * FROM products;</textarea>
+          <div class="studio-inline-actions"><button id="dbRunBtn" type="button" class="primary-small">Run SQL</button><span id="dbStatus" class="studio-muted">Ready.</span></div><div id="dbResult"></div>
+        </section>
+      </div>
     </div>
   </section>
 
@@ -95,4 +129,4 @@
     <div class="studio-modal-actions"><span></span><button id="projectSettingsSave" type="button" class="primary-small">Save settings</button></div>
   </div>
 </div>
-<script type="module" src="js/student/playground.js?v=2.0.1"></script><a href="guest-settings.html" class="fixed bottom-3 left-3 z-[90] rounded-full border border-slate-300 bg-white/95 px-3 py-2 text-xs font-bold text-slate-700 shadow">⚙ Guest settings</a><script type="module" src="js/settings/guest-preferences.mjs?v=1.4.0"></script></body></html>
+<script type="module" src="js/student/playground.js?v=2.1.0"></script><a href="guest-settings.html" class="fixed bottom-3 left-3 z-[90] rounded-full border border-slate-300 bg-white/95 px-3 py-2 text-xs font-bold text-slate-700 shadow">⚙ Guest settings</a><script type="module" src="js/settings/guest-preferences.mjs?v=1.4.0"></script></body></html>
