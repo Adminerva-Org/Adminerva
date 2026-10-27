@@ -41,7 +41,7 @@ function syncPublishButton(loading=false){
   const button=document.getElementById("gbLegacyPublish"),eligible=publicationCandidates(gridEntries);
   const flagged=gridEntries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true&&!legacyReadyDraft(entry.data)).length;
   button.disabled=loading||publishBusy||!eligible.length;
-  button.textContent="Publish private drafts ("+eligible.length+")";
+  button.textContent="Publish unpublished grades ("+eligible.length+")";
   const recovery=publicationRecovery("single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value);
   document.getElementById("gbLegacyRecovery").textContent=recovery?.pending.length?
     "Interrupted batch: "+recovery.pending.length+" pending. Reload grades and confirm Publish to try again.":
@@ -203,7 +203,7 @@ async function loadGrid() {
           const reviewLink="repofetch.html?"+new URLSearchParams({section,assessment:taskId,student:student.id,view:"grade"});
           const reason=(grade.reviewReasons||[]).filter(Boolean).slice(0,3).join(" • ")||
             "This evaluation needs teacher attention before it can be published.";
-          pubToggle='<div class="av-compact-status"><span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Private</span>'+
+          pubToggle='<div class="av-compact-status"><span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Needs review</span>'+
             '<span class="av-inline-flag"><button type="button" class="av-flag-button" data-av-popover aria-expanded="false" aria-label="Teacher review required">!</button>'+
             '<span class="av-flag-popover" role="tooltip"><strong>Teacher review required</strong>'+escapeHTML(reason)+
             '<br><a href="'+escapeHTML(reviewLink)+'">Review evaluation →</a></span></span></div>';
@@ -211,7 +211,7 @@ async function loadGrid() {
                     <label class="relative inline-flex items-center cursor-pointer">
                         <input type="checkbox" class="sr-only peer" ${isPub ? "checked" : ""} onchange="window.matrixTogglePub('${student.id}', '${taskId}', this)">
                         <div class="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-indigo-500"></div>
-                        <span class="ml-3 text-[10px] font-extrabold uppercase tracking-wider ${isPub ? "text-indigo-600" : "text-slate-400"}">${isPub ? "Visible" : "Hidden"}</span>
+                        <span class="ml-3 text-[10px] font-extrabold uppercase tracking-wider ${isPub ? "text-indigo-600" : "text-slate-400"}">${isPub ? "Published" : "Unpublished"}</span>
                     </label>
                 `;
       }
@@ -327,7 +327,7 @@ window.matrixTogglePub = async function (studentId, taskId, checkbox) {
       });
     });
     const span = checkbox.nextElementSibling.nextElementSibling;
-    span.textContent = wantsPublish ? "Visible" : "Hidden";
+    span.textContent = wantsPublish ? "Published" : "Unpublished";
     span.className = `ml-3 text-[10px] font-extrabold uppercase tracking-wider ${wantsPublish ? "text-indigo-600" : "text-slate-400"}`;
   } catch (e) {
     console.error("Publication failed:", e);
@@ -472,18 +472,18 @@ window.bulkPublishCurrentGrid=async function(){
   const eligible=publicationCandidates(gridEntries);
   const flagged=gridEntries.filter(entry=>entry.data?.published!==true&&entry.data?.reviewRequired===true&&!legacyReadyDraft(entry.data)).length;
   if(!eligible.length)return reviewNotice(flagged?
-    "All remaining private drafts are flagged for manual review.":
-    "No private drafts are ready to publish.");
-  const message="Publish "+eligible.length+" private draft"+(eligible.length===1?"":"s")+" now?"+
+    "All remaining unpublished grades are flagged for manual review.":
+    "No unpublished grades are ready to publish.");
+  const message="Publish "+eligible.length+" unpublished grade"+(eligible.length===1?"":"s")+" now?"+
     (flagged?" "+flagged+" flagged draft"+(flagged===1?"":"s")+" will stay private for Review & Grade.":"");
   if(!confirm(message))return;
   const context="single:"+document.getElementById("gbSection").value+":"+document.getElementById("gbAssessment").value;
   publishBusy=true;syncPublishButton();
   try{
-    const result=await publishGradeEntries(eligible,true,{context,onProgress:value=>reviewNotice("Publishing private drafts: "+value.completed.length+" complete, "+value.pending.length+" pending.")});
+    const result=await publishGradeEntries(eligible,true,{context,onProgress:value=>reviewNotice("Publishing unpublished grades: "+value.completed.length+" complete, "+value.pending.length+" pending.")});
     reviewNotice(result.pending.length?
       "Some drafts changed or failed validation. Reload before retrying.":
-      "Published "+result.completed.length+" private draft"+(result.completed.length===1?"":"s")+(flagged?"; "+flagged+" flagged draft"+(flagged===1?" remains":"s remain")+" private.":"."),
+      "Published "+result.completed.length+" grade"+(result.completed.length===1?"":"s")+(flagged?"; "+flagged+" flagged draft"+(flagged===1?" remains":"s remain")+" private.":"."),
       Boolean(result.pending.length));
   }catch(error){reviewNotice(error.message,true);}
   finally{publishBusy=false;await loadGrid();syncPublishButton();}
