@@ -941,6 +941,7 @@ service cloud.firestore {
       function validAssessment(data) {
         return data.get("ownerUid","") is string && data.get("sectionIds",[]) is list && data.sectionIds.size() <= 20 &&
           data.get("deployments",[]) is list && data.deployments.size() <= 20 &&
+          (data.get("schemaVersion",1) != 3 || data.get("practicalExam",false) is bool) &&
           data.get("targetSections",[]) is list && data.get("targetSections",[]).hasOnly(data.sectionIds) &&
           (data.deployments.size() <= 0 || data.deployments[0].section in data.sectionIds) &&
           (data.deployments.size() <= 1 || data.deployments[1].section in data.sectionIds) &&
