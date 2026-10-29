@@ -1,6 +1,6 @@
 /** Same-origin destinations are navigation hints, never proof of access. */
 const studentPages=new Set(["student-home.html","student-dashboard.html","student-assessments.html","student-settings.html","student-practice.html","student-playground.html","student-xml-lab.html"]);
-const staffPages=new Set(["teacher-home.html","teacher-analytics.html","practice-analytics.html","lesson-planner.html","presentation.html","schedule.html","library.html","repofetch.html","repobank.html","gradebook.html","grading.html","activity-grader.html","group-inspector.html","contribution-inspector.html","assessment-studio.html","assessment-evidence-review.html","submissions.html","reclaim-inbox.html","settings.html"]);
+const staffPages=new Set(["teacher-home.html","teacher-analytics.html","practice-analytics.html","lesson-planner.html","presentation.html","schedule.html","library.html","repofetch.html","repobank.html","gradebook.html","grading.html","activity-grader.html","group-inspector.html","contribution-inspector.html","assessment-studio.html","assessment-evidence-review.html","submissions.html","reclaim-inbox.html","studio-submissions.html","settings.html"]);
 const adminPages=new Set(["users.html","teacher-accounts.html","admin-analytics.html","manage-sections.html","manage-programs.html","manage-subjects.html"]);
 const guestPages=new Set(["guest-home.html","guest-practice.html","guest-playground.html"]);
 export function workspaceHome(access){return access.role?"teacher-home.html":access.students?.length?"student-home.html":"guest-home.html";}
