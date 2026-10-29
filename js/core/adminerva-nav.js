@@ -118,7 +118,7 @@ document.addEventListener("DOMContentLoaded", () => {
     [homeLabel, homeRoute, "Start here and continue your work"],
     ["Project Hub", "student-dashboard.html", "Projects and assignments"],
     ["Practice Lab", "student-practice.html", "Courses, challenges and XML Lab"],
-    ["Code Playground", "student-playground.html", "Write and run code"],
+    ["Adminerva Studio", "student-playground.html", "Write and run code"],
     ["My reports", "issues.html", "Report a problem or follow an update"]
   ] : [
     [homeLabel, homeRoute, "Your teaching workspace"],
