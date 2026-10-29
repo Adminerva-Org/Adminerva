@@ -49,3 +49,11 @@ test("invalid schema definitions and conflicting column lists are rejected",()=>
   assert.throws(()=>sql(fixture(),"INSERT INTO records (id, id) VALUES (3, 4)"),/Duplicate INSERT/);
   assert.throws(()=>sql(fixture(),"SELECT * FROM constructor"),/does not exist/);
 });
+
+test("SQL empty string is distinct from SQL NULL",()=>{
+  let database=fixture();
+  database=sql(database,"INSERT INTO records (id, name) VALUES (3, '')").db;
+  assert.deepEqual(sql(database,"SELECT name FROM records WHERE id = 3").rows,[[""]]);
+  database=sql(database,"UPDATE records SET name = NULL WHERE id = 3").db;
+  assert.deepEqual(sql(database,"SELECT name FROM records WHERE id = 3").rows,[[null]]);
+});
