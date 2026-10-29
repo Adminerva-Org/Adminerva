@@ -136,3 +136,8 @@ html[data-adminerva-reduce-motion="true"] .av-experience-board a:hover{transform
 
 /* Override the older quiet-admin banner so the role hero remains consistent. */
 .av-home-motion[data-home-experience="admin"] header.av-admin-motion-hero.av-experience-hero{border:1px solid #416383;border-radius:1.35rem;background:radial-gradient(ellipse at 82% 12%,#176d8882 0,transparent 46%),radial-gradient(ellipse at 4% 90%,#344c9b75 0,transparent 58%),linear-gradient(125deg,#091929,#102b46 52%,#0d243b);padding:clamp(1rem,2.4vw,1.6rem)}
+
+/* Author-level display rules must never override semantic hidden controls. */
+.av-home-motion[data-home-experience] [hidden]{display:none!important}
+.av-home-motion[data-home-experience] .av-experience-board a:focus-visible,
+.av-experience-dialog :is(input,a,button):focus-visible{outline:3px solid #39c8d8;outline-offset:2px}
