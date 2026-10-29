@@ -56,6 +56,7 @@ document.addEventListener("DOMContentLoaded", () => {
     { name: "Assessment", area: "educator", items: [
       ["studio", "Assessment studio", "assessment-studio.html"],
       ["submissions", "Submission inbox", "submissions.html"],
+      ["studio-submissions", "Studio project submissions", "studio-submissions.html"],
       ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
     ] },
     { name: "Review & grade", area: "educator", items: [
