@@ -504,7 +504,7 @@ export function createProjectStudio({
   }
 
   function sqlLiteral(value){
-    if(value===null||value===undefined||value==="")return "NULL";
+    if(value===null||value===undefined)return "NULL";
     if(typeof value==="number"&&Number.isFinite(value))return String(value);
     if(typeof value==="boolean")return value?"TRUE":"FALSE";
     return "'"+String(value).replace(/'/g,"''")+"'";
@@ -595,7 +595,7 @@ export function createProjectStudio({
   function formDbValues(){
     const result={};el("dbRowEditor")?.querySelectorAll("[data-db-field]").forEach(input=>{
       const raw=input.value;
-      result[input.dataset.dbField]=input.type==="number"&&raw!==""?Number(raw):raw;
+      result[input.dataset.dbField]=input.type==="number"?(raw===""?null:Number(raw)):raw;
     });return result;
   }
   function saveDbRow(rowIndex=null){
