@@ -30,7 +30,7 @@ function valueOf(raw){
   const quoted=text.match(/^(['"])([\s\S]*)\1$/);
   if(!quoted)return text;
   // The visual row editor emits SQL-standard doubled apostrophes.
-  return quoted[2].replace(new RegExp(quoted[1]+quoted[1],"g"),quoted[1]).replace(/\\\\(['"])/g,"$1");
+  return quoted[2].replace(new RegExp(quoted[1]+quoted[1],"g"),quoted[1]).replace(/\\(['"])/g,"$1");
 }
 function normalizeDb(db){
   const next=db&&typeof db==="object"?clone(db):{tables:{},history:[]};
