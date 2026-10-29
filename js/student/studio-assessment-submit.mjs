@@ -28,7 +28,9 @@ if(button){
       for(const taskDoc of tasks.docs){
         const assessment={id:taskDoc.id,...taskDoc.data()};
         const window=studioSubmissionAllowed(assessment,student.section);
-        if(!window.allowed)continue;
+        // The server, not the browser clock, decides whether a submission
+        // is currently accepted. Still show scheduled tasks to explain them.
+        if(assessment.schemaVersion!==3||assessment.submissionSource!=="studio")continue;
         const key=studioEvidenceId(student.id,assessment.id);
         choices.set(key,{student,assessment});
       }
@@ -36,7 +38,8 @@ if(button){
     if(!choices.size)throw Error("No currently open Studio assessments are assigned to your classes.");
     const start=new Option("Choose an assessment…","");start.disabled=true;start.selected=true;choose.add(start);
     for(const [key,{student,assessment}] of choices)
-      choose.add(new Option(assessment.title+" · "+student.section,key));
+      choose.add(new Option(assessment.title+" · "+student.section+
+        (studioSubmissionAllowed(assessment,student.section).allowed?"":" · Schedule not currently open"),key));
     if(assessmentParam){
       for(const [key,{assessment}] of choices)if(assessment.id===assessmentParam){choose.value=key;break;}
     }
@@ -89,6 +92,8 @@ if(button){
         // Only Firestore rules may inspect the protected unpublished/published grade.
         if(head.exists()&&!["submitted","revision_requested"].includes(head.data().status))
           throw Error("Your previous submission is under review. Ask your instructor to request a revision first.");
+        if(head.exists()&&head.data().snapshotHash===hash)
+          throw Error("This exact project revision was already submitted. Make changes before submitting again.");
         const revision=head.exists()?head.data().revision+1:1;
         if(revision>30)throw Error("The revision limit was reached. Ask your instructor for assistance.");
         const versionRef=doc(db,"studio_submissions",evidenceId,"versions",String(revision));
