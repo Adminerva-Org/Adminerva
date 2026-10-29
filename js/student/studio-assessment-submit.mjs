@@ -37,6 +37,9 @@ if(button){
     const start=new Option("Choose an assessment…","");start.disabled=true;start.selected=true;choose.add(start);
     for(const [key,{student,assessment}] of choices)
       choose.add(new Option(assessment.title+" · "+student.section,key));
+    if(assessmentParam){
+      for(const [key,{assessment}] of choices)if(assessment.id===assessmentParam){choose.value=key;break;}
+    }
     notice("Choose an assessment. This submission freezes your saved files, diagrams and project database.");
   };
   button.addEventListener("click",async()=>{
