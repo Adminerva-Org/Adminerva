@@ -7,7 +7,8 @@ import {
   CODE_PROJECT_TEMPLATES,createCodeProject,deleteCodeProject,findCodeProject,
   projectTemplateLabel,readCodeProjects,saveCodeProject,writeCodeProjects
 } from "./code-projects.mjs?v=2.0.0";
-import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=2.0.0";
+import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=2.1.3";
+import {prepareProjectImport} from "./project-import.mjs?v=2.1.3";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -105,6 +106,7 @@ export function createProjectStudio({
     activateProject,
     resetToTemplate,
     importBundleMetadata,
+    importZipWorkspace,
     getLimits:()=>({...policy}),
     canCreateProject:()=>!Number.isFinite(policy.maxProjects)||readCodeProjects(localStorage,uid).filter(item=>item.status!=="archived").length<policy.maxProjects,
     canAddFile:()=>!activeProject||Object.keys(captureState()?.files||{}).length<policy.maxFiles,
@@ -265,6 +267,45 @@ export function createProjectStudio({
     const project=findCodeProject(localStorage,uid,id);
     if(!project)return alert("This project is no longer available on this device.");
     activateProject(project);
+  }
+
+  /**
+   * Importing from the project home creates a named project; importing inside
+   * an open project replaces that project's files after an undo snapshot.
+   * Metadata and quota checks run before either case writes imported data.
+   */
+  function importZipWorkspace(state,bundle=null){
+    const templateByLang={java:"java-blank",python:"python-console",web:"web"};
+    const templateId=bundle?.template||templateByLang[state?.lang]||"java-blank";
+    const template=CODE_PROJECT_TEMPLATES[templateId]||CODE_PROJECT_TEMPLATES["java-blank"];
+    const base=activeProject||{
+      title:"Imported "+String(state?.lang||"Code").toUpperCase()+" Project",
+      template:template.id,lang:state?.lang,config:clone(template.config),
+      state, database:clone(template.database||{tables:{},history:[]}),
+      design:clone(template.design||{}),evidence:{events:[],runs:[]}
+    };
+    const next=prepareProjectImport(base,state,bundle,policy);
+    validateProject(next,{creating:!activeProject});
+    if(activeProject){
+      localStorage.setItem("Adminerva_Code_Project_Undo_v1_"+uid+"_"+activeProject.id,
+        JSON.stringify(captureState()));
+      store(next,true);
+      openProject(activeProject);
+      dbSelectedTable="";dbView="browse";renderDatabase();renderEvidence();loadDesignEditor();
+      return activeProject;
+    }
+    const created=createCodeProject(localStorage,uid,{
+      title:next.title,templateId:template.id,config:next.config
+    });
+    try{
+      const imported={...next,id:created.id,ownerUid:uid,createdAt:created.createdAt};
+      validateProject(imported);
+      activateProject(imported);
+      return activeProject;
+    }catch(error){
+      deleteCodeProject(localStorage,uid,created.id);
+      throw error;
+    }
   }
 
   function importBundleMetadata(bundle){
