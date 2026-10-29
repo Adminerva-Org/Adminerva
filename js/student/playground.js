@@ -783,6 +783,15 @@ function loadLocalWorkspace(lang) {
   return true;
 }
 
+// Submission captures a saved, named project and a separate snapshot of
+// the live editor. An unsaved scratch file is never submitted silently.
+window.adminervaStudioSubmissionState=()=>{
+  if(guestMode||practiceMode)throw Error("Sign in and open a named project. Practice experiments cannot be submitted.");
+  const project=projectStudio?.getActiveProject();
+  if(!project)throw Error("Open an Adminerva Studio project before submitting.");
+  if(!persistWorkspace())throw Error("Your latest edits could not be saved locally. Export a ZIP and check storage before submitting.");
+  return {project:projectStudio.getActiveProject(),state:currentState()};
+};
 window.adminervaImportLegacyPlayground = function () {
   const uid=ownerUid();
   if(!uid) return alert("Sign in before importing code.");
