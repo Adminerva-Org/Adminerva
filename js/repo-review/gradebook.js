@@ -183,6 +183,7 @@ async function loadGrid() {
         pendingStats.push(student);
       }
 
+      if(schemaVersion===3)repoStatus='<a class="text-teal-800 underline font-bold text-xs" href="studio-submissions.html">Adminerva Studio project →</a>';
       let scoreBadge = `<span class="bg-slate-100 text-slate-500 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-slate-200">Needs Grading</span>`;
       let pubToggle = `<span class="text-slate-300 text-xs italic font-medium">Awaiting Score</span>`;
 
