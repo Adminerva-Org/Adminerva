@@ -256,7 +256,7 @@ export function createProjectStudio({
     initialize();renderProjectHome();
     el("projectHome")?.classList.remove("hidden");
     el("studioShell")?.classList.add("hidden");
-    document.title=(guest?"Guest Code Studio":"Code Studio")+" · Adminerva";
+    document.title=(guest?"Adminerva Studio · Guest":"Adminerva Studio")+" · Adminerva";
     const guestNotice=el("guestProjectNotice");if(guestNotice)guestNotice.classList.toggle("hidden",!guest);
     if(cloudEnabled)void mergeCloudProjects();
   }
