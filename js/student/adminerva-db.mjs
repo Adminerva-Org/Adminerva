@@ -38,9 +38,55 @@ function normalizeDb(db){
   return next;
 }
 function tableOrThrow(db,name){
-  const table=db.tables[name];
-  if(!table)throw Error('Table "'+name+'" does not exist.');
-  return table;
+  if(!Object.hasOwn(db.tables,name))throw Error('Table "'+name+'" does not exist.');
+  return db.tables[name];
+}
+/** Validate imported DB metadata before it can replace an existing project.
+ * Keep this independent of the UI and the SQL interpreter's mutation path. */
+export function validateAdminervaDb(value,{maxTables=50,maxRows=5000}={}){
+  if(!value||typeof value!=="object"||Array.isArray(value)||
+    !value.tables||typeof value.tables!=="object"||Array.isArray(value.tables)||
+    !Array.isArray(value.history))throw Error("Invalid project database structure.");
+  const tables=Object.entries(value.tables);
+  if(tables.length>maxTables)throw Error("Project exceeds the database table limit.");
+  for(const [name,table] of tables){
+    if(!/^[A-Za-z_][A-Za-z_0-9]*$/.test(name)||
+      !table||typeof table!=="object"||Array.isArray(table)||
+      !Array.isArray(table.columns)||!table.columns.length||table.columns.length>100||
+      !Array.isArray(table.rows)||table.rows.length>maxRows)
+      throw Error("Invalid database table or schema: "+name);
+    const names=new Set();let primaryCount=0;
+    for(const column of table.columns){
+      if(!column||typeof column!=="object"||
+        typeof column.name!=="string"||!/^[A-Za-z_][A-Za-z_0-9]*$/.test(column.name)||
+        typeof column.type!=="string"||!/^[A-Za-z_][A-Za-z_0-9 ]{0,31}$/.test(column.type)||
+        names.has(column.name))throw Error("Invalid or duplicate column in table "+name);
+      names.add(column.name);if(column.primaryKey===true)primaryCount++;
+    }
+    if(primaryCount>1)throw Error("Table "+name+" has multiple primary keys.");
+    const primary=table.columns.find(column=>column.primaryKey===true);
+    const keys=new Set();
+    for(const row of table.rows){
+      if(!row||typeof row!=="object"||Array.isArray(row)||
+        Object.keys(row).some(column=>!names.has(column)))
+        throw Error("Invalid row in table "+name);
+      for(const field of names){
+        const cell=row[field];
+        if(cell!==undefined&&cell!==null&&
+          !(typeof cell==="string"||typeof cell==="boolean"||
+            typeof cell==="number"&&Number.isFinite(cell)))
+          throw Error("Invalid cell value in table "+name);
+      }
+      if(primary){
+        const key=row[primary.name];
+        if(key===undefined||key===null)throw Error("Missing primary key in table "+name);
+        const normalized=String(key);
+        if(keys.has(normalized))throw Error("Duplicate primary key in table "+name);
+        keys.add(normalized);
+      }
+    }
+  }
+  return true;
 }
 function parseWhere(where,columns=[]){
   if(!where)return ()=>true;
