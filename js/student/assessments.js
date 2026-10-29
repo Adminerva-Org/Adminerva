@@ -19,7 +19,7 @@ let myGrades = {};
 let mySubmitted = {};
 let myEvidence = {};
 let submissionLookupSucceeded = false;
-let myStudioSubmissions={};
+let myStudioSubmissions={},studioSubmissionsReadable=false;
 let profileGeneration=0,assessmentGeneration=0,assignmentOwnerUid="";
 const assignmentField=id=>document.getElementById(id);
 function assignmentsNotice(message,tone="info",retry=false){
@@ -46,7 +46,7 @@ function escapeHTML(str) {
 
 async function loadStudentAssignments(user=auth.currentUser){
   const version=++profileGeneration,previousSection=assignmentOwnerUid===user?.uid?currentSection:"";
-  assessmentGeneration++;allAssessments=[];userProfiles=[];currentSection="";myGrades={};mySubmitted={};myEvidence={};myStudioSubmissions={};submissionLookupSucceeded=false;
+  assessmentGeneration++;allAssessments=[];userProfiles=[];currentSection="";myGrades={};mySubmitted={};myEvidence={};myStudioSubmissions={};studioSubmissionsReadable=false;submissionLookupSucceeded=false;
   assignmentOwnerUid=user?.uid||"";setAssignmentControls(true);assignmentField("assessmentModal").classList.add("hidden");
   const selector=assignmentField("sectionSelectorAssessments");selector.replaceChildren();selector.classList.add("hidden");
   if(!user?.email){assignmentsNotice("Sign in with your school account to view your assignments.");assignmentsFeedState("Sign in to continue","Your class assignments appear after you sign in.");setAssignmentControls(false);return;}
@@ -140,11 +140,13 @@ async function fetchAssessments() {
       evidenceSnap.forEach(item=>{const data=item.data();nextEvidence[data.assessmentId]=data;});
     }catch(error){lookupFailures.push("evidence");}
   }
+  let studioReadable=false;
   if(studentId){
     try{
       const studioSnap=await getDocs(query(collection(db,"studio_submissions"),where("studentId","==",studentId)));
       if(!isCurrent())return;
       studioSnap.forEach(record=>{nextStudio[record.data().assessmentId]=record.data();});
+      studioReadable=true;
     }catch(error){lookupFailures.push("Studio submissions");}
   }
   if (studentId) {
@@ -212,7 +214,7 @@ async function fetchAssessments() {
       }
     });
 
-    allAssessments=nextAssessments;myGrades=nextGrades;mySubmitted=nextSubmitted;myEvidence=nextEvidence;myStudioSubmissions=nextStudio;submissionLookupSucceeded=receiptsKnown&&lookupFailures.length===0;
+    allAssessments=nextAssessments;myGrades=nextGrades;mySubmitted=nextSubmitted;myEvidence=nextEvidence;myStudioSubmissions=nextStudio;studioSubmissionsReadable=studioReadable;submissionLookupSucceeded=receiptsKnown&&lookupFailures.length===0;
     assignmentsNotice(lookupFailures.length?"Some "+lookupFailures.join(", ")+" could not load. Status may be incomplete. Retry to refresh these details.":"",lookupFailures.length?"error":"info",lookupFailures.length>0);renderAssessments();
   } catch (error) {
     if(isCurrent()){assignmentsNotice("Your assignments could not load. Check your connection and retry.","error",true);assignmentsFeedState("Unable to load assignments","Retry loading to reconnect to your class. No submissions or grades have changed.");}
@@ -224,6 +226,7 @@ function assignmentStatusFor(ass){
   if(ass.schemaVersion===3&&ass.submissionSource==="studio"){
     if(myGrades[ass.id])return {kind:"graded",text:"Graded"};
     const head=myStudioSubmissions[ass.id];
+    if(!head&&!studioSubmissionsReadable)return {kind:"unknown",text:"Studio status unavailable — retry"};
     if(head?.status==="revision_requested")return {kind:"revision",text:"Revision requested"};
     if(head?.status==="reviewed")return {kind:"reviewed",text:"Teacher reviewed"};
     if(head?.status==="submitted")return {kind:"submitted",text:"Studio revision "+head.revision+" submitted"};
