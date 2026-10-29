@@ -559,7 +559,9 @@ el("evidenceEditVerification").addEventListener("click",()=>{
   if(state.busy||state.evidence?.status!=="approved")return;
   state.verificationEditing=true;state.editing=true;
   el("evidenceContributionScope").disabled=false;
-  for(const input of root.querySelectorAll("[data-contribution-sha]"))input.disabled=false;
+  const rejectedClaims=new Set(state.claims.filter(claim=>claim.status==="rejected").map(claim=>claim.sha));
+  for(const input of root.querySelectorAll("[data-contribution-sha]"))
+    input.disabled=rejectedClaims.has(input.dataset.contributionSha);
   el("evidenceVerifyAll").disabled=false;syncBulkVerification();
   el("evidenceApprove").disabled=false;el("evidenceApprove").textContent="Save revised verification";
   el("evidenceReviewNote").value="";el("evidenceConfirm").checked=false;
