@@ -76,6 +76,48 @@ const JAVA_RUN_MODE_KEY="Adminerva_Java_Run_Mode_v1";
 let javaRunMode=(()=>{try{return localStorage.getItem(JAVA_RUN_MODE_KEY)==="desktop"?"desktop":"console";}catch{return "console";}})();
 let desktopRunSequence=0;
 
+// Browser-only practical exam controls: discourage code transfer without claiming
+// proctoring, identity verification or prevention of all cheating methods.
+const examLinkId=new URLSearchParams(location.search).get("assessment");
+let examPolicyPending=Boolean(examLinkId),examPolicy=null;
+const examRestrictedActions=["importZipBtn","legacyImportBtn","undoRestoreBtn",
+  "cloudLoadProjectBtn","loadProjectBtn","snapshotBtn","aiTutorBtn","resetBtn"];
+function examRestrictionsActive(){return !guestMode&&(examPolicyPending||examPolicy?.practicalExam===true);}
+function refreshExamControls(){
+  const active=examRestrictionsActive(),banner=document.getElementById("studioExamBanner");
+  if(banner){
+    banner.classList.toggle("hidden",!active);
+    document.getElementById("studioExamNotice").textContent=examPolicyPending
+      ?"Checking this assessment. Code import and clipboard actions are temporarily restricted…"
+      :"Practical exam: code copying/pasting, imports, previous versions and AI helper are disabled here. This is not a proctored exam.";
+  }
+  for(const id of examRestrictedActions){
+    const element=document.getElementById(id);
+    if(element){element.disabled=active;element.title=active?"Unavailable during a practical exam":"";}
+  }
+  editorInstance?.updateOptions({contextmenu:!active,dragAndDrop:!active});
+}
+window.adminervaSetStudioExamPolicy=({assessmentId,practicalExam=false}={})=>{
+  if(examLinkId&&assessmentId!==examLinkId)return;
+  examPolicy={assessmentId,practicalExam:practicalExam===true};
+  examPolicyPending=false;refreshExamControls();
+};
+const inExamCodeField=target=>target instanceof Element&&Boolean(
+  target.closest("#editorContainer,#designEditor,#dbSqlInput"));
+for(const type of ["copy","cut","paste","drop","dragstart","contextmenu","beforeinput"]){
+  document.addEventListener(type,event=>{
+    if(!examRestrictionsActive()||!inExamCodeField(event.target))return;
+    if(type==="beforeinput"&&!["insertFromPaste","insertFromDrop","insertFromYank"].includes(event.inputType))return;
+    event.preventDefault();
+  },true);
+}
+document.addEventListener("keydown",event=>{
+  if(!examRestrictionsActive()||!inExamCodeField(event.target))return;
+  const key=event.key.toLowerCase();
+  if(((event.ctrlKey||event.metaKey)&&["v","c","x"].includes(key))||
+    (event.shiftKey&&key==="insert")||(event.ctrlKey&&key==="insert"))event.preventDefault();
+},true);
+
 // ==========================================
 // 2. INITIALIZATION
 // ==========================================
@@ -122,6 +164,7 @@ async function initializePlayground() {
       },
     );
 
+    refreshExamControls();
     document.getElementById("editorLoading")?.classList.add("hidden");
 
     bindUIEvents();
@@ -794,6 +837,7 @@ window.adminervaStudioSubmissionState=()=>{
   return {project:projectStudio.getActiveProject(),state:currentState()};
 };
 window.adminervaImportLegacyPlayground = function () {
+  if(examRestrictionsActive())return alert("Importing older code is disabled in this practical exam.");
   const uid=ownerUid();
   if(!uid) return alert("Sign in before importing code.");
   let state;
@@ -854,7 +898,7 @@ window.adminervaPlaygroundState=function(){
     activeFilename:state.activeFilename,folders:state.folders,projectOrder:state.projectOrder};
 };
 window.adminervaRestorePlayground=function(state){
-  if(practiceMode)return false;
+  if(practiceMode||examRestrictionsActive())return false;
   if((auth.currentUser?.uid||(guestMode?"public-visitor-v1":null))!==ownerUid())return false;
   if(!validPlaygroundState(state))return false;
   const uid=ownerUid();
@@ -890,6 +934,7 @@ window.adminervaRestorePlayground=function(state){
   }
 };
 window.adminervaUndoPlaygroundRestore=function(){
+  if(examRestrictionsActive())return alert("Restoring older code is disabled in this practical exam.");
   const uid=ownerUid();
   if(!uid)return;
   const activeProject=typeof projectStudio!=="undefined"?projectStudio?.getActiveProject():null;
