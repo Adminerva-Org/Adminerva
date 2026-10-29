@@ -10,9 +10,13 @@ const pages=[
   ["login.html",['id="loginForm"','id="googleLoginBtn"']],
   ["wiki.html",['id="school-setup"',"teacher-accounts.html"]],
   ["manage-sections.html",['data-catalog-kind="sections"','id="catalog-roster-sections"']],
-  ["student-practice.html",['id="practiceApp"','js/student/practice-game.mjs']]
+  ["student-practice.html",['id="practiceApp"','js/student/practice-game.mjs']],
+  ["guest-home.html",['data-home-experience="guest"','js/core/home-experience.mjs']],
+  ["student-home.html",['data-home-experience="student"','js/core/home-pulse.mjs']],
+  ["teacher-home.html",['data-home-experience="teacher"','js/core/home-pulse.mjs']],
+  ["school-admin.html",['data-home-experience="admin"','js/core/home-experience.mjs']]
 ];
-const assets=["css/adminerva-ui.css","css/documentation.css","js/core/adminerva-nav.js","js/core/adminerva-loader.js","js/core/school-catalog.mjs","js/student/practice.js","js/student/practice-standings.mjs","js/settings/settings-security.js","js/lesson-review/library.js"];
+const assets=["css/adminerva-ui.css","css/documentation.css","js/core/adminerva-nav.js","js/core/adminerva-loader.js","js/core/school-catalog.mjs","js/student/practice.js","js/student/practice-standings.mjs","js/settings/settings-security.js","js/lesson-review/library.js","css/home-experience.css","css/home-showcase.css","js/core/home-experience.mjs","js/core/home-showcase.mjs","js/core/home-pulse.mjs"];
 const digest=bytes=>createHash("sha256").update(bytes).digest("hex");
 function manifest(bytes,label){
   let value;try{value=JSON.parse(Buffer.from(bytes).toString("utf8"));}catch{throw Error(label+" is not valid JSON.");}
