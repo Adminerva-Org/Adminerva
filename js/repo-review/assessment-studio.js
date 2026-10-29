@@ -17,6 +17,7 @@ import {
   serverTimestamp,
   writeBatch,
 } from "../core/teaching-firestore.mjs?v=1.3.0";
+import {Timestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 let targetPaths = [];
 let allSections = [];
 let objectiveRules = [];
@@ -245,6 +246,8 @@ window.openCreateModal = function () {
   document.getElementById("assessQuarter").value = "";
   document.getElementById("assessQuarter").value=assessments.find(item=>["Q1","Q2","Q3","Q4"].includes(item.quarter))?.quarter||"Q1";
   document.getElementById("assessSubject").value=subjectFocus.length===1?subjectFocus[0]:"";
+  document.getElementById("assessSubmissionSource").value="repository";
+  document.getElementById("assessSubmissionSource").disabled=false;
   document.getElementById("assessV2").checked = true;
   document.getElementById("assessV2").disabled = false;
   document.getElementById("assessExpectedExts").value = "";
@@ -278,6 +281,8 @@ window.openEditModal = function () {
   document.getElementById("maxScore").value = item.maxScore || 20;
   document.getElementById("assessType").value = item.type || "Mini PETA";
   document.getElementById("assessQuarter").value = item.quarter || "";
+  document.getElementById("assessSubmissionSource").value=item.schemaVersion===3?"studio":"repository";
+  document.getElementById("assessSubmissionSource").disabled=true;
   document.getElementById("assessV2").checked = item.schemaVersion === 2;
   document.getElementById("assessV2").disabled = true; // Never silently convert a legacy record.
   document.getElementById("assessExpectedExts").value =
@@ -320,11 +325,13 @@ window.saveAssessment = async function () {
   if(!criteria){blueprintStatus("Use a prepared rubric or enter your evaluation criteria before saving.");document.getElementById("evalCriteria").focus();return;}
 
   const prior = currentAssessmentId ? assessments.find(a=>a.id===currentAssessmentId) : null;
-  const v2=prior ? prior.schemaVersion===2 : document.getElementById("assessV2").checked;
+  const studio=prior ? prior.schemaVersion===3 : document.getElementById("assessSubmissionSource").value==="studio";
+  const v2=prior ? prior.schemaVersion===2 : (!studio&&document.getElementById("assessV2").checked);
   const payload = {
     ownerUid:prior?.ownerUid||actor.uid,
     sectionIds:prior?.sectionIds||[...new Set((prior?.deployments||[]).map(deployment=>deployment.section))],
     ...(v2?{schemaVersion:2,evidenceMode:"commit_selection",checkpointMode:"individual"}:{}),
+    ...(studio?{schemaVersion:3,submissionSource:"studio",evidenceMode:"studio_snapshot"}:{}),
     title: title,
     type: document.getElementById("assessType").value,
     maxScore: score,
@@ -351,7 +358,7 @@ window.saveAssessment = async function () {
       rules:objectiveRules,updatedAt:serverTimestamp()
     };
     if(auth.currentUser?.uid!==actor.uid)throw Error("Account changed. Reload before saving this assessment.");
-    if(v2){
+    if(v2||studio){
       const ref=currentAssessmentId
         ? doc(db,"assessments",currentAssessmentId)
         : doc(collection(db,"assessments"));
@@ -386,7 +393,7 @@ window.saveAssessment = async function () {
 
 window.deleteAssessment = async function () {
   if (!currentAssessmentId) return;
-  if(assessments.find(item=>item.id===currentAssessmentId)?.schemaVersion===2)
+  if([2,3].includes(assessments.find(item=>item.id===currentAssessmentId)?.schemaVersion))
     return alert("V2 blueprints are retained to protect evidence and grade history. Remove their deployments to stop new submissions; do not delete the assessment.");
   if (
     confirm(
@@ -396,7 +403,7 @@ window.deleteAssessment = async function () {
     window.showSubtleLoader("Deleting Blueprint...");
     try {
       const item=assessments.find(a=>a.id===currentAssessmentId);
-      if(item?.schemaVersion===2){
+      if([2,3].includes(item?.schemaVersion)){
         if((item.deployments||[]).length)throw Error(
           "Withdraw all deployments before deleting a V2 blueprint.");
         const [evidence,grades]=await Promise.all([
@@ -727,8 +734,21 @@ async function saveDeploymentScope(item,deployments){
   if(deployments.length>20)throw Error("An assessment supports at most 20 deployments. Create another blueprint for additional sections.");
   const sectionIds=[...new Set(deployments.map(deployment=>deployment.section))];
   const batch=writeBatch(db);
-  batch.update(doc(db,"assessments",item.id),{deployments,sectionIds});
-  if(item.schemaVersion===2)batch.set(doc(db,"assessment_private",item.id),{ownerUid:item.ownerUid,sectionIds},{merge:true});
+  const windows={};
+  if(item.schemaVersion===3){
+    for(const deployment of deployments){
+      const opens=deployment.postDate?new Date(deployment.postDate):new Date(0);
+      const closes=deployment.deadlineEnabled!==false&&deployment.deadline
+        ?new Date(deployment.deadline):new Date("2100-01-01T00:00:00.000Z");
+      if(!Number.isFinite(opens.getTime())||!Number.isFinite(closes.getTime())||opens>closes)
+        throw Error("A Studio submission schedule is invalid.");
+      windows[deployment.section]={opensAt:Timestamp.fromDate(opens),closesAt:Timestamp.fromDate(closes)};
+    }
+  }
+  batch.update(doc(db,"assessments",item.id),{
+    deployments,sectionIds,...(item.schemaVersion===3?{studioWindows:windows}:{})
+  });
+  if([2,3].includes(item.schemaVersion))batch.set(doc(db,"assessment_private",item.id),{ownerUid:item.ownerUid,sectionIds},{merge:true});
   await batch.commit();
 }
 
