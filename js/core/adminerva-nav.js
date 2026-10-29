@@ -48,7 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["practice", "Practice courses", "student-practice.html"],
       ["xml", "XML Lab", "student-xml-lab.html"]
     ] },
-    "student-playground": { name: "Code Playground", items: [
+    "student-playground": { name: "Adminerva Studio", items: [
       ["ide", "Live editor", "student-playground.html"]
     ] }
   };
