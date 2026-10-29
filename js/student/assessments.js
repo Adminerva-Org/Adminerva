@@ -395,11 +395,13 @@ window.viewAssessmentDetails = function (id) {
 
   const isStudio=ass.schemaVersion===3&&ass.submissionSource==="studio";
   document.getElementById("studioAssessmentPanel")?.classList.toggle("hidden",!isStudio);
+  document.getElementById("studioExamAdvice")?.classList.toggle("hidden",!isStudio||ass.practicalExam!==true);
+  if(isStudio)document.getElementById("modalAssPath").textContent="Work area: your named Adminerva Studio project (code, diagrams and database).";
   document.getElementById("legacySubmitPanel")?.classList.toggle("hidden",isStudio||ass.schemaVersion===2);
   if(isStudio){
     const head=myStudioSubmissions[id];
     document.getElementById("studioAssignmentStatus").textContent=head?
-      "Revision "+head.revision+" · "+head.status.replaceAll("_"," ")+
+      "Revision "+head.revision+" · "+String(head.status||"submitted").replaceAll("_"," ")+
       (head.reviewNote?" · Teacher note: "+head.reviewNote:""):
       "No Studio project has been submitted yet.";
     document.getElementById("studioOpenProject").href="student-playground.html?assessment="+encodeURIComponent(id);
