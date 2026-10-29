@@ -8,6 +8,9 @@ const node=id=>document.getElementById(id);
 const root=node("studioReviewList"),detail=node("studioReviewDetail"),status=node("studioReviewStatus");
 const add=(p,tag,text,classes="")=>{const n=document.createElement(tag);n.textContent=String(text??"");n.className=classes;p.append(n);return n;};
 let records=[],role="",session=0,inspectionSequence=0,busy=false,selectedId=null,loading=false,activeUid=null;
+const link=new URLSearchParams(location.search);
+const deepLink={assessment:link.get("assessment"),section:link.get("section"),student:link.get("student")};
+let deepLinkPending=Boolean(deepLink.assessment&&deepLink.student);
 const setStatus=text=>{status.textContent=text;};
 function formatDate(value){try{return value?.toDate?.().toLocaleString()||"Date pending";}catch{return "Date unavailable";}}
 function render(){
@@ -46,6 +49,13 @@ async function load(){
    snapshots.forEach(snap=>snap.docs.forEach(record=>map.set(record.id,{id:record.id,...record.data()})));
    records=[...map.values()].sort((a,b)=>(b.submittedAt?.seconds||0)-(a.submittedAt?.seconds||0));
    setStatus(records.length+" Studio submissions found. Open a snapshot to review its exact submitted revision.");
+   if(deepLinkPending){
+     deepLinkPending=false;
+     const matched=records.find(record=>record.assessmentId===deepLink.assessment&&
+       record.studentId===deepLink.student&&(!deepLink.section||record.section===deepLink.section));
+     if(matched)selectedId=matched.id;
+     else setStatus("That student submission is unavailable to this account or class. Showing your accessible submissions.");
+   }
    render();
    if(selectedId){
      const item=records.find(record=>record.id===selectedId);
@@ -63,7 +73,7 @@ async function inspect(item){
    const [version,task,student,grade]=await Promise.all([
      getDoc(doc(db,"studio_submissions",item.id,"versions",String(item.revision))),
      getDoc(doc(db,"assessments",item.assessmentId)),
-     getDoc(doc(db,"students",item.studentId)),
+     getDoc(doc(db,"students",item.studentId)).catch(()=>null),
      getDoc(doc(db,"student_grades",item.id))
    ]);
    if(stamp!==inspectionSequence||auth.currentUser?.uid!==uid)return;
@@ -73,7 +83,7 @@ async function inspect(item){
    if(actual!==saved.snapshotHash||saved.snapshotHash!==item.snapshotHash)
      throw Error("The snapshot checksum no longer matches. Do not grade this revision.");
    detail.replaceChildren();
-   add(detail,"h2",(student.data()?.name||item.studentId)+" · "+(item.projectTitle||"Studio project"),"text-xl font-extrabold text-slate-900");
+   add(detail,"h2",(student?.data()?.name||item.studentId)+" · "+(item.projectTitle||"Studio project"),"text-xl font-extrabold text-slate-900");
    add(detail,"p",(assessment.title||"Assessment")+" · Revision "+item.revision+" · "+formatDate(item.submittedAt),"text-sm text-slate-600 mt-1");
    add(detail,"p","Snapshot SHA-256: "+actual,"font-mono text-[10px] break-all text-teal-800 mt-2");
    add(detail,"h3","Task and published rubric","font-bold mt-5");
