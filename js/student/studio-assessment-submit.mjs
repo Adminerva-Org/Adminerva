@@ -35,7 +35,7 @@ if(button){
         choices.set(key,{student,assessment});
       }
     }
-    if(!choices.size)throw Error("No currently open Studio assessments are assigned to your classes.");
+    if(!choices.size)throw Error("No Studio assessments are assigned to your classes. Check My Assessments or ask your teacher.");
     const start=new Option("Choose an assessment…","");start.disabled=true;start.selected=true;choose.add(start);
     for(const [key,{student,assessment}] of choices)
       choose.add(new Option(assessment.title+" · "+student.section+
