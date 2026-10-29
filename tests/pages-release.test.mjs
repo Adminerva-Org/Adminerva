@@ -19,7 +19,7 @@ test("release verification waits for the requested manifest version, then proves
   let manifests=0;const app=fixture(path=>path==="site-release.json"&&++manifests===1?new Response(JSON.stringify({version:"0.0.0"})):null);
   const proof=await checkPagesRelease(app.options);
   assert.equal(proof.version,version);assert.equal(proof.manifestAttempts,2);assert.equal(app.elapsed,10000);
-  assert.equal(proof.files.filter(file=>file.matchesCheckout).length,28);assert.equal(proof.files.filter(file=>file.contentMarkers).length,10);
+  assert.equal(proof.files.filter(file=>file.matchesCheckout).length,35);assert.equal(proof.files.filter(file=>file.contentMarkers).length,12);
   assert.ok(proof.files.filter(file=>file.sha256).every(file=>/^[a-f0-9]{64}$/.test(file.sha256)));
   assert.equal(app.logs.at(-1).event,"pages_release_verified");
 });
