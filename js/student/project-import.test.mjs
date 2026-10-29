@@ -46,3 +46,14 @@ test("reject malformed database structures and duplicate column definitions",()=
   const broken={...bundle,database:{tables:{records:{columns:[],rows:["not a row"]}}}};
   assert.throws(()=>prepareProjectImport(base,state,broken),/invalid row/i);
 });
+
+test("legacy C# project bundles can be restored despite Java-blank fallback templates",()=>{
+  const cs={lang:"csharp",files:{"Program.cs":"class Program {}"},fileOrder:["Program.cs"],activeFilename:"Program.cs"};
+  const legacy={...bundle,lang:"csharp",template:"java-blank",database:{tables:{},history:[]}};
+  const candidate=prepareProjectImport({...base,lang:"csharp"},cs,legacy);
+  assert.equal(candidate.lang,"csharp");
+  assert.equal(candidate.state.activeFilename,"Program.cs");
+});
+test("an imported workspace must name an existing active source file",()=>{
+  assert.throws(()=>prepareProjectImport(base,{...state,activeFilename:"missing.java"},null),/invalid or incomplete/i);
+});
