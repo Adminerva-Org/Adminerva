@@ -5,14 +5,16 @@ import {CODE_PROJECT_TEMPLATES} from "./code-projects.mjs?v=2.0.0";
 const copy=value=>JSON.parse(JSON.stringify(value));
 const plain=value=>value&&typeof value==="object"&&!Array.isArray(value);
 export function prepareProjectImport(base,state,bundle,{maxFiles=100,maxProjectBytes=780000,maxDbTables=50,maxDbRowsPerTable=5000}={}){
-  if(!validPlaygroundState(state))throw Error("This ZIP contains an invalid or incomplete code workspace.");
+  if(!validPlaygroundState(state)||!Object.hasOwn(state.files,state.activeFilename))
+    throw Error("This ZIP contains an invalid or incomplete code workspace.");
   if(Object.keys(state.files).length>maxFiles)throw Error("The ZIP has more files than this project tier supports.");
   if(bundle!=null){
     if(!plain(bundle)||bundle.format!=="adminerva-project-bundle"||bundle.version!==1)
       throw Error("Unsupported Adminerva project bundle version.");
     if(bundle.lang!==state.lang)throw Error("Bundle language and imported source language do not match.");
     if(bundle.template!=null&&(!Object.hasOwn(CODE_PROJECT_TEMPLATES,bundle.template)||
-      CODE_PROJECT_TEMPLATES[bundle.template].lang!==state.lang))
+      (["java","python","web"].includes(state.lang)&&
+       CODE_PROJECT_TEMPLATES[bundle.template].lang!==state.lang)))
       throw Error("Bundle template is unavailable or does not match the imported language.");
     for(const key of ["config","database","design"])
       if(bundle[key]!=null&&!plain(bundle[key]))throw Error("Invalid bundle "+key+" metadata.");
