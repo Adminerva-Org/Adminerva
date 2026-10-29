@@ -9,6 +9,7 @@ function splitCsv(text){
     const ch=text[i];
     if(quote){
       current+=ch;
+      if(ch===quote&&text[i+1]===quote){current+=text[++i];continue;}
       if(ch===quote&&text[i-1]!=="\\")quote=null;
       continue;
     }
@@ -28,7 +29,7 @@ function valueOf(raw){
   if(/^false$/i.test(text))return false;
   if(/^[-+]?\d+(\.\d+)?$/.test(text))return Number(text);
   const quoted=text.match(/^(['"])([\s\S]*)\1$/);
-  return quoted?quoted[2].replace(/\\(['"])/g,"$1"):text;
+  return quoted?quoted[2].split(quoted[1]+quoted[1]).join(quoted[1]).replace(/\\(['"])/g,"$1"):text;
 }
 function normalizeDb(db){
   const next=db&&typeof db==="object"?clone(db):{tables:{},history:[]};
@@ -41,11 +42,12 @@ function tableOrThrow(db,name){
   if(!table)throw Error('Table "'+name+'" does not exist.');
   return table;
 }
-function parseWhere(where){
+function parseWhere(where,columns=[]){
   if(!where)return ()=>true;
   const m=String(where).trim().match(/^([A-Za-z_][\w]*)\s*(=|!=|<>|>=|<=|>|<)\s*([\s\S]+)$/);
   if(!m)throw Error("Adminerva DB currently supports one simple WHERE comparison.");
   const [,column,op,raw]=m,value=valueOf(raw);
+  if(!columns.includes(column))throw Error('Unknown WHERE column "'+column+'".');
   return row=>{
     const left=row[column];
     switch(op){
@@ -78,6 +80,10 @@ export function executeAdminervaSql(inputDb,sqlText){
       return {name:column,type,primaryKey:/PRIMARY\s+KEY/i.test(def)};
     });
     if(!columns.length)throw Error("Add at least one column.");
+    if(new Set(columns.map(column=>column.name)).size!==columns.length)
+      throw Error("Column names must be unique.");
+    if(columns.filter(column=>column.primaryKey).length>1)
+      throw Error("Adminerva DB supports one primary-key column per table.");
     db.tables[name]={columns,rows:[]};record(db,sql,"CREATE",0);
     return {db,columns:["message"],rows:[["Table "+name+" created."]],affected:0,type:"CREATE"};
   }
@@ -91,13 +97,15 @@ export function executeAdminervaSql(inputDb,sqlText){
   m=sql.match(/^INSERT\s+INTO\s+([A-Za-z_][\w]*)\s*\(([^)]+)\)\s*VALUES\s*\(([\s\S]+)\)$/i);
   if(m){
     const table=tableOrThrow(db,m[1]),columns=splitCsv(m[2]),values=splitCsv(m[3]).map(valueOf);
-    if(columns.length!==values.length)throw Error("Column and value counts do not match.");
+    if(!columns.length||columns.length!==values.length)throw Error("Column and value counts do not match.");
+    if(new Set(columns).size!==columns.length)throw Error("Each INSERT column may appear only once.");
     const valid=new Set(table.columns.map(col=>col.name));
     for(const column of columns)if(!valid.has(column))throw Error('Unknown column "'+column+'".');
     const row=Object.fromEntries(table.columns.map(col=>[col.name,null]));
     columns.forEach((column,index)=>row[column]=values[index]);
     const primary=table.columns.find(col=>col.primaryKey);
-    if(primary&&row[primary.name]!=null&&table.rows.some(item=>item[primary.name]==row[primary.name]))
+    if(primary&&row[primary.name]==null)throw Error("Primary key "+primary.name+" cannot be NULL.");
+    if(primary&&table.rows.some(item=>item[primary.name]==row[primary.name]))
       throw Error("Primary key value already exists.");
     table.rows.push(row);record(db,sql,"INSERT",1);
     return {db,columns:["message"],rows:[["1 row inserted."]],affected:1,type:"INSERT"};
@@ -105,8 +113,7 @@ export function executeAdminervaSql(inputDb,sqlText){
 
   m=sql.match(/^SELECT\s+([\s\S]+?)\s+FROM\s+([A-Za-z_][\w]*)(?:\s+WHERE\s+([\s\S]+?))?(?:\s+ORDER\s+BY\s+([A-Za-z_][\w]*)(?:\s+(ASC|DESC))?)?(?:\s+LIMIT\s+(\d+))?$/i);
   if(m){
-    const table=tableOrThrow(db,m[2]),predicate=parseWhere(m[3]);
-    const available=table.columns.map(col=>col.name);
+    const table=tableOrThrow(db,m[2]),available=table.columns.map(col=>col.name),predicate=parseWhere(m[3],available);
     const columns=m[1].trim()==="*"?available:splitCsv(m[1]).map(value=>value.trim());
     for(const column of columns)if(!available.includes(column))throw Error('Unknown column "'+column+'".');
     let rows=table.rows.filter(predicate);
@@ -122,21 +129,41 @@ export function executeAdminervaSql(inputDb,sqlText){
 
   m=sql.match(/^UPDATE\s+([A-Za-z_][\w]*)\s+SET\s+([\s\S]+?)(?:\s+WHERE\s+([\s\S]+))?$/i);
   if(m){
-    const table=tableOrThrow(db,m[1]),predicate=parseWhere(m[3]),valid=new Set(table.columns.map(col=>col.name));
+    const table=tableOrThrow(db,m[1]),valid=new Set(table.columns.map(col=>col.name)),
+      predicate=parseWhere(m[3],[...valid]);
     const assignments=splitCsv(m[2]).map(item=>{
       const pair=item.match(/^([A-Za-z_][\w]*)\s*=\s*([\s\S]+)$/);if(!pair)throw Error("Invalid SET assignment.");
       if(!valid.has(pair[1]))throw Error('Unknown column "'+pair[1]+'".');
       return [pair[1],valueOf(pair[2])];
     });
-    let affected=0;
-    table.rows.forEach(row=>{if(predicate(row)){assignments.forEach(([key,value])=>row[key]=value);affected++;}});
+    if(!assignments.length||new Set(assignments.map(pair=>pair[0])).size!==assignments.length)
+      throw Error("Each UPDATE column must be assigned once.");
+    const primary=table.columns.find(column=>column.primaryKey);
+    const nextRows=table.rows.map(row=>{
+      if(!predicate(row))return row;
+      const updated={...row};
+      assignments.forEach(([key,value])=>updated[key]=value);
+      return updated;
+    });
+    if(primary){
+      const keys=new Set();
+      for(const row of nextRows){
+        const value=row[primary.name];
+        if(value==null)throw Error("Primary key "+primary.name+" cannot be NULL.");
+        const key=String(value);
+        if(keys.has(key))throw Error("Primary key value already exists.");
+        keys.add(key);
+      }
+    }
+    const affected=table.rows.filter(predicate).length;
+    table.rows=nextRows;
     record(db,sql,"UPDATE",affected);
     return {db,columns:["message"],rows:[[affected+" row(s) updated."]],affected,type:"UPDATE"};
   }
 
   m=sql.match(/^DELETE\s+FROM\s+([A-Za-z_][\w]*)(?:\s+WHERE\s+([\s\S]+))?$/i);
   if(m){
-    const table=tableOrThrow(db,m[1]),predicate=parseWhere(m[2]),before=table.rows.length;
+    const table=tableOrThrow(db,m[1]),predicate=parseWhere(m[2],table.columns.map(col=>col.name)),before=table.rows.length;
     table.rows=table.rows.filter(row=>!predicate(row));
     const affected=before-table.rows.length;record(db,sql,"DELETE",affected);
     return {db,columns:["message"],rows:[[affected+" row(s) deleted."]],affected,type:"DELETE"};
