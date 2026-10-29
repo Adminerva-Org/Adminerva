@@ -1104,6 +1104,10 @@ service cloud.firestore {
         version.submittedAt == data.submittedAt;
     }
     match /studio_submissions/{evidenceId} {
+      // A missing head can be checked by an authenticated student without
+      // making another learner's existing submission readable.
+      allow get: if signedIn() &&
+        !exists(/databases/$(database)/documents/studio_submissions/$(evidenceId));
       allow read: if mayTeachSection(resource.data.section) ||
         (signedIn() && ownsStudentProfile(resource.data.studentId));
       allow create: if studioEvidenceStudent(request.resource.data) &&
