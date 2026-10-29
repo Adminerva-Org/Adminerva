@@ -1,5 +1,5 @@
 {
-  "version": "2.1.2",
-  "releasedAt": "2026-10-29",
-  "notes": "Commit attribution reclaim repair: student identity validation, status visibility, role-scoped teacher and administrator request inbox, audited adjudication, and approved-claim evidence verification for individual evaluation."
+  "version": "3.0.0",
+  "releasedAt": "2026-10-30",
+  "notes": "Adminerva Studio integrates frozen project submissions with teacher-reviewed assessment grading and the existing Gradebook. Includes practical exam copy/paste deterrents, Studio data-integrity fixes, mobile workflows, expanded public Wiki and role-specific release-impact disclosures."
 }
