@@ -1126,7 +1126,11 @@ service cloud.firestore {
         request.resource.data.revision == resource.data.revision + 1
       ) || (
         mayTeachEvidence(resource.data.studentId,resource.data.assessmentId) &&
-        resource.data.status == "submitted" &&
+        (resource.data.status == "submitted" ||
+          (resource.data.status == "reviewed" &&
+            request.resource.data.status == "revision_requested" &&
+            (!exists(/databases/$(database)/documents/student_grades/$(evidenceId)) ||
+              get(/databases/$(database)/documents/student_grades/$(evidenceId)).data.get("published",false) == false))) &&
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["status","reviewNote","reviewedBy","reviewedAt"]) &&
         request.resource.data.status in ["reviewed","revision_requested"] &&
