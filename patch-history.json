@@ -1,6 +1,62 @@
 {
   "releases": [
     {
+      "version": "2.1.2",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-29",
+      "title": "Commit attribution requests and individual evidence verification",
+      "summary": "Students can send attribution requests for commits saved under a different Git identity, while staff see a dedicated request inbox and approved claims feed into teacher-confirmed individual evaluations.",
+      "changes": [
+        {
+          "type": "Fixed",
+          "area": "Student evidence",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "Commit attribution requests now accept exact student record IDs, including email-style and composite identities, fixing the Invalid claim identity error."
+        },
+        {
+          "type": "New",
+          "area": "Commit attribution inbox",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Teachers can inspect section-scoped student claims and open their evidence in Review & Grade. Administrators can record an audited attribution decision after checking changed files."
+        },
+        {
+          "type": "Updated",
+          "area": "Teacher evidence verification",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Approved attribution claims are highlighted and preselected for teacher verification. Rejected claims cannot be verified for individual credit, and pending conflicts block checkpoint approval."
+        },
+        {
+          "type": "Updated",
+          "area": "Student reclaim status",
+          "audience": [
+            "student"
+          ],
+          "text": "Requested commits remain visible in the learner's commit filters with clear pending, approved, shared, rejected and withdrawn attribution states."
+        },
+        {
+          "type": "Updated",
+          "area": "Individual evaluation",
+          "audience": [
+            "teacher",
+            "admin",
+            "student"
+          ],
+          "text": "Only selected commits verified through instructor checkpoint approval feed the individual evaluation; an administrative reclaim decision alone never changes grades."
+        }
+      ]
+    },
+    {
       "version": "2.1.1",
       "status": "published",
       "public": true,
