@@ -304,6 +304,7 @@ export function createProjectStudio({
     updateProjectHeading();
     openProject(activeProject);
     switchStudioView("code");
+    window.dispatchEvent(new CustomEvent("adminerva:studio-ready",{detail:{projectId:activeProject.id}}));
     for(const id of ["cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","snapshotBtn"]){
       const control=el(id);if(control)control.classList.add("hidden");
     }
