@@ -528,7 +528,11 @@ service cloud.firestore {
           (currentEvidence(request.resource.data) || validSystemDraft(request.resource.data)))) &&
         (!studioGrade(request.resource.data) || (request.resource.data.published == false && currentStudioEvidence(request.resource.data)));
       allow update: if mayGrade(request.resource.data) &&
-        (!studioGrade(request.resource.data) || currentStudioEvidence(request.resource.data)) &&
+        (!studioGrade(request.resource.data) ||
+          (currentStudioEvidence(request.resource.data) &&
+            (resource.data.get("published",false) == false ||
+              (request.resource.data.published == false &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly(["published"])))) &&
         request.resource.data.studentId == resource.data.studentId && request.resource.data.taskId == resource.data.taskId &&
         request.resource.data.section == resource.data.section && (
         (!v2Grade(resource.data) && !v2Grade(request.resource.data)) ||
@@ -546,7 +550,7 @@ service cloud.firestore {
           (resource.data.published == false && (currentEvidence(request.resource.data) || validSystemDraft(request.resource.data)) &&
            (request.resource.data.published == false ||
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(["published"]))))));
-      allow delete: if mayGrade(resource.data) && !v2Grade(resource.data);
+      allow delete: if mayGrade(resource.data) && !v2Grade(resource.data) && !studioGrade(resource.data);
       // Student queries must constrain BOTH studentId and published == true.
       // Do not infer privacy from frontend-only published checks.
       allow read: if signedIn() &&
@@ -1126,6 +1130,11 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(["status","reviewNote","reviewedBy","reviewedAt"]) &&
         request.resource.data.status in ["reviewed","revision_requested"] &&
+        (request.resource.data.status != "reviewed" ||
+          (getAfter(/databases/$(database)/documents/student_grades/$(evidenceId)).data.get("gradeSource","") == "studio_teacher_review" &&
+            getAfter(/databases/$(database)/documents/student_grades/$(evidenceId)).data.get("studioRevision",0) == resource.data.revision &&
+            getAfter(/databases/$(database)/documents/student_grades/$(evidenceId)).data.get("studioSnapshotHash","") == resource.data.snapshotHash &&
+            getAfter(/databases/$(database)/documents/student_grades/$(evidenceId)).data.get("published",true) == false)) &&
         request.resource.data.reviewedBy == request.auth.uid &&
         request.resource.data.reviewNote is string &&
         request.resource.data.reviewNote.size() >= 15 &&
