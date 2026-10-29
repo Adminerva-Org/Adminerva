@@ -849,6 +849,7 @@ window.adminervaRestorePlayground=function(state){
   if(!validPlaygroundState(state))return false;
   const uid=ownerUid();
   if(!uid || !persistWorkspace())return false;
+  const before=currentState();
   try{
     const activeProject=typeof projectStudio!=="undefined"?projectStudio?.getActiveProject():null;
     if(activeProject){
@@ -875,7 +876,9 @@ window.adminervaRestorePlayground=function(state){
     return true;
   }catch(error){
     console.error("Could not restore workspace:",error);
-    showSaveStatus("Restore failed — storage unavailable or full",true);
+    if(validPlaygroundState(before))
+      createWorkspace(before.lang,before.files,before.fileOrder,before.activeFilename,before.folders,before.projectOrder);
+    showSaveStatus("Restore failed — previous editor files restored",true);
     return false;
   }
 };
@@ -1084,7 +1087,9 @@ async function executeCode() {
   const clock=setInterval(update,500),timeout=setTimeout(()=>{stage='Compiler timed out';controller.abort();},45000);
   runBtn.disabled=true;overlay?.classList.remove('hidden');update();
   try{
-    persistWorkspace();Object.values(workspaceFiles).forEach(file=>monaco.editor.setModelMarkers(file.model,'judge0',[]));
+    const savedBeforeRun=persistWorkspace();
+    if(!savedBeforeRun)consoleOut.textContent="Warning: this run is not saved. Export your project ZIP before leaving.\\n";
+    Object.values(workspaceFiles).forEach(file=>monaco.editor.setModelMarkers(file.model,'judge0',[]));
     if(currentLang==='web'){
       consoleOut.textContent='Local preview · no compiler queue\n\n';executeWebPreview();notePracticeExecution();return;
     }
@@ -1301,27 +1306,47 @@ function bindUIEvents() {
       if(upload.size>3000000)throw Error('Import a ZIP smaller than 3 MB.');
       const zip=await JSZip.loadAsync(upload),files={},folders=[];let size=0,bundle=null;
       const limits=projectStudio?.getLimits?.()||{maxFiles:100,maxProjectBytes:700000};
+      const zipEntries=Object.values(zip.files);
+      if(zipEntries.length>250)throw Error("This ZIP contains too many entries. Import a smaller project archive.");
       const manifestEntry=zip.file("adminerva-project.json");
       if(manifestEntry){
+        if(manifestEntry._data?.uncompressedSize>250000)throw Error("Project manifest is too large.");
         try{bundle=JSON.parse(await manifestEntry.async("string"));}catch{throw Error("adminerva-project.json is invalid.");}
-        if(bundle?.format!=="adminerva-project-bundle")throw Error("Unsupported Adminerva project bundle.");
+        if(bundle?.format!=="adminerva-project-bundle"||bundle.version!==1)throw Error("Unsupported Adminerva project bundle version.");
       }
-      for(const entry of Object.values(zip.files)){
+      for(const entry of zipEntries){
         const raw=entry.unsafeOriginalName||entry.name;
         if(raw==="adminerva-project.json")continue;
         const path=projectPath(raw.replace(/\/$/,''));
-        if(entry.dir){folders.push(path);continue;}
+        if(entry.dir){if(!folders.includes(path))folders.push(path);continue;}
+        if(Object.hasOwn(files,path))throw Error('This ZIP contains duplicate file paths: '+path);
         if(Object.keys(files).length>=limits.maxFiles)throw Error('Import up to '+limits.maxFiles+' files in this project.');
-        const text=await entry.async('string');size+=new TextEncoder().encode(text).length;if(size>limits.maxProjectBytes)throw Error('This ZIP exceeds the project size limit.');files[path]=text;
+        if(entry._data?.uncompressedSize>limits.maxProjectBytes-size)
+          throw Error('Uncompressed ZIP data exceeds the project size limit.');
+        const text=await entry.async('string');
+        size+=new TextEncoder().encode(text).length;
+        if(size>limits.maxProjectBytes)throw Error('Uncompressed ZIP data exceeds the project size limit.');
+        files[path]=text;
       }
       if(!Object.keys(files).length)throw Error('No source files found in this ZIP.');
-      const bundleLabel=bundle?" with its Adminerva DB/design data":"";
-      if(!confirm('Replace the editor with '+Object.keys(files).length+' imported files'+bundleLabel+'? Current work will be backed up on this device.'))return;
       const nextLang=bundle?.lang||currentLang;
+      if(!PLAYGROUND_LANGUAGES.includes(nextLang))throw Error('Unsupported programming language in bundle.');
       const order=Object.keys(files);
-      const preferred=bundle?.entry&&files[bundle.entry]?bundle.entry:(files["Main.java"]?"Main.java":order[0]);
-      if(!window.adminervaRestorePlayground({...currentState(),lang:nextLang,files,folders,fileOrder:order,activeFilename:preferred,projectOrder:[...folders,...order]}))throw Error('The current draft could not be backed up. Export it first.');
-      if(bundle&&projectStudio?.importBundleMetadata)projectStudio.importBundleMetadata(bundle);
+      const preferred=bundle?.entry&&Object.hasOwn(files,bundle.entry)?bundle.entry:
+        (Object.hasOwn(files,"Main.java")?"Main.java":order[0]);
+      const importState={lang:nextLang,files,folders,fileOrder:order,activeFilename:preferred,projectOrder:[...folders,...order]};
+      if(!validPlaygroundState(importState))throw Error("The ZIP contains invalid source paths or an unsupported workspace.");
+      const openProject=projectStudio?.getActiveProject?.();
+      if(openProject)projectStudio.validateImportBundle(bundle,importState);
+      const bundleLabel=bundle?" with its Adminerva DB/design data":"";
+      const promptText=openProject?'Replace the current project files with ':'Create a new project from ';
+      if(!confirm(promptText+Object.keys(files).length+' imported files'+bundleLabel+'? Existing project files will be preserved in the restore history.'))return;
+      if(projectStudio&&!openProject){
+        projectStudio.importAsProject(importState,bundle);
+      }else{
+        if(!window.adminervaRestorePlayground(importState))throw Error('The current draft could not be backed up. Export it first.');
+        if(bundle&&projectStudio?.importBundleMetadata)projectStudio.importBundleMetadata(bundle);
+      }
     }catch(error){alert('Import failed: '+error.message);}
   });
   document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();persistWorkspace();}if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();void executeCode();}});
