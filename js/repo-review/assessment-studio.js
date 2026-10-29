@@ -17,6 +17,7 @@ import {
   serverTimestamp,
   writeBatch,
 } from "../core/teaching-firestore.mjs?v=1.3.0";
+import {Timestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 let targetPaths = [];
 let allSections = [];
 let objectiveRules = [];
@@ -24,7 +25,7 @@ let assessments = [];
 let currentAssessmentId = null;
 let deploySelectedSections = [];
 let fpInstance = null;
-let savingBlueprint=false,rubricSource="balanced",lastGeneratedRubric="",subjectFocus=[];
+let savingBlueprint=false,savingDeployment=false,rubricSource="balanced",lastGeneratedRubric="",subjectFocus=[];
 const rubricTemplates=new Map();
 const defaultPersona="Assist the teacher by checking supported evidence against the published task and rubric. Distinguish verified individual contributions from shared project work. Do not infer authorship or misconduct. Leave unsupported, visual and runtime criteria for teacher review. Suggested scores stay unpublished until teacher approval.";
 const balancedCriteria=[{name:"Task requirements",weight:40,description:"Requested features and outputs are demonstrated."},{name:"Correctness",weight:30,description:"The submitted work behaves or reasons correctly for the task."},{name:"Clarity and organization",weight:20,description:"The work is understandable, organized and appropriate for the task."},{name:"Explanation and supporting evidence",weight:10,description:"The student explains the approach and links relevant evidence of their own contribution."}];
@@ -233,6 +234,21 @@ function renderAssessmentGrid() {
   });
 }
 
+function updatePracticalExamOption(){
+  const studio=document.getElementById("assessSubmissionSource").value==="studio";
+  document.getElementById("assessPracticalExam").disabled=!studio;
+  document.getElementById("practicalExamOption").classList.toggle("opacity-60",!studio);
+}
+document.getElementById("assessSubmissionSource").addEventListener("change",()=>{
+  updatePracticalExamOption();
+  if(!currentAssessmentId&&document.getElementById("assessSubmissionSource").value==="studio"&&
+    document.getElementById("assessType").value==="Practical Exam")
+    document.getElementById("assessPracticalExam").checked=true;
+});
+document.getElementById("assessType").addEventListener("change",event=>{
+  if(event.target.value==="Practical Exam"&&document.getElementById("assessSubmissionSource").value==="studio")
+    document.getElementById("assessPracticalExam").checked=true;
+});
 window.openCreateModal = function () {
   currentAssessmentId = null;
   document.getElementById("createModalTitle").textContent =
@@ -242,9 +258,12 @@ window.openCreateModal = function () {
   document.getElementById("assessTitle").value = "";
   document.getElementById("maxScore").value = "20";
   document.getElementById("assessType").value = "Mini PETA";
-  document.getElementById("assessQuarter").value = "";
   document.getElementById("assessQuarter").value=assessments.find(item=>["Q1","Q2","Q3","Q4"].includes(item.quarter))?.quarter||"Q1";
   document.getElementById("assessSubject").value=subjectFocus.length===1?subjectFocus[0]:"";
+  document.getElementById("assessSubmissionSource").value="repository";
+  document.getElementById("assessSubmissionSource").disabled=false;
+  document.getElementById("assessPracticalExam").checked=false;
+  updatePracticalExamOption();
   document.getElementById("assessV2").checked = true;
   document.getElementById("assessV2").disabled = false;
   document.getElementById("assessExpectedExts").value = "";
@@ -270,6 +289,10 @@ window.openCreateModal = function () {
 window.openEditModal = function () {
   const item = assessments.find((a) => a.id === currentAssessmentId);
   if (!item) return;
+  if(item.schemaVersion===3&&(item.deployments||[]).length){
+    alert("This Studio rubric is protected after deployment. Create a new blueprint for changed requirements; edit the deployment schedule separately.");
+    return;
+  }
 
   document.getElementById("createModalTitle").textContent = "Edit Blueprint";
   document.getElementById("saveAssessmentBtn").textContent = "Update Blueprint";
@@ -278,6 +301,10 @@ window.openEditModal = function () {
   document.getElementById("maxScore").value = item.maxScore || 20;
   document.getElementById("assessType").value = item.type || "Mini PETA";
   document.getElementById("assessQuarter").value = item.quarter || "";
+  document.getElementById("assessSubmissionSource").value=item.schemaVersion===3?"studio":"repository";
+  document.getElementById("assessSubmissionSource").disabled=true;
+  document.getElementById("assessPracticalExam").checked=item.practicalExam===true;
+  updatePracticalExamOption();
   document.getElementById("assessV2").checked = item.schemaVersion === 2;
   document.getElementById("assessV2").disabled = true; // Never silently convert a legacy record.
   document.getElementById("assessExpectedExts").value =
@@ -320,11 +347,14 @@ window.saveAssessment = async function () {
   if(!criteria){blueprintStatus("Use a prepared rubric or enter your evaluation criteria before saving.");document.getElementById("evalCriteria").focus();return;}
 
   const prior = currentAssessmentId ? assessments.find(a=>a.id===currentAssessmentId) : null;
-  const v2=prior ? prior.schemaVersion===2 : document.getElementById("assessV2").checked;
+  const studio=prior ? prior.schemaVersion===3 : document.getElementById("assessSubmissionSource").value==="studio";
+  const v2=prior ? prior.schemaVersion===2 : (!studio&&document.getElementById("assessV2").checked);
+  const practicalExam=studio&&document.getElementById("assessPracticalExam").checked;
   const payload = {
     ownerUid:prior?.ownerUid||actor.uid,
     sectionIds:prior?.sectionIds||[...new Set((prior?.deployments||[]).map(deployment=>deployment.section))],
     ...(v2?{schemaVersion:2,evidenceMode:"commit_selection",checkpointMode:"individual"}:{}),
+    ...(studio?{schemaVersion:3,submissionSource:"studio",evidenceMode:"studio_snapshot",practicalExam}:{}),
     title: title,
     type: document.getElementById("assessType").value,
     maxScore: score,
@@ -351,7 +381,7 @@ window.saveAssessment = async function () {
       rules:objectiveRules,updatedAt:serverTimestamp()
     };
     if(auth.currentUser?.uid!==actor.uid)throw Error("Account changed. Reload before saving this assessment.");
-    if(v2){
+    if(v2||studio){
       const ref=currentAssessmentId
         ? doc(db,"assessments",currentAssessmentId)
         : doc(collection(db,"assessments"));
@@ -386,7 +416,7 @@ window.saveAssessment = async function () {
 
 window.deleteAssessment = async function () {
   if (!currentAssessmentId) return;
-  if(assessments.find(item=>item.id===currentAssessmentId)?.schemaVersion===2)
+  if([2,3].includes(assessments.find(item=>item.id===currentAssessmentId)?.schemaVersion))
     return alert("V2 blueprints are retained to protect evidence and grade history. Remove their deployments to stop new submissions; do not delete the assessment.");
   if (
     confirm(
@@ -396,7 +426,7 @@ window.deleteAssessment = async function () {
     window.showSubtleLoader("Deleting Blueprint...");
     try {
       const item=assessments.find(a=>a.id===currentAssessmentId);
-      if(item?.schemaVersion===2){
+      if([2,3].includes(item?.schemaVersion)){
         if((item.deployments||[]).length)throw Error(
           "Withdraw all deployments before deleting a V2 blueprint.");
         const [evidence,grades]=await Promise.all([
@@ -590,8 +620,9 @@ function updateDeployDropdown() {
     ? (item.deployments || []).map((d) => d.section)
     : [];
 
-  const available = allSections.filter(
-    (sec) => !deploySelectedSections.includes(sec),
+  const available = allSections.filter(sec=>
+    !deploySelectedSections.includes(sec) &&
+    (Boolean(document.getElementById("deployId").value)||!existingDeployments.includes(sec))
   );
 
   available.forEach((sec) => {
@@ -646,7 +677,7 @@ window.removeDeployChip = function (section) {
 };
 
 window.saveDeployment = async function () {
-  if (!currentAssessmentId) return;
+  if (!currentAssessmentId||savingDeployment) return;
 
   const deployId = document.getElementById("deployId").value;
   const deadlineEnabled = document.getElementById("deployUseDeadline").checked;
@@ -660,8 +691,12 @@ window.saveDeployment = async function () {
   if(dateError)return alert(dateError);
 
   const item = assessments.find((a) => a.id === currentAssessmentId);
+  if(!item)return alert("Assessment unavailable. Refresh the page and try again.");
   let deployments = [...(item.deployments || [])];
-
+  if(!deployId){
+    const duplicates=deploySelectedSections.filter(section=>deployments.some(entry=>entry.section===section));
+    if(duplicates.length)return alert("Already deployed to "+duplicates.join(", ")+". Use Edit beside that class to change the schedule.");
+  }
   if (deployId) {
     const index = deployments.findIndex((d) => d.id === deployId);
     if (index > -1) {
@@ -685,6 +720,8 @@ window.saveDeployment = async function () {
     });
   }
 
+  savingDeployment=true;
+  document.getElementById("deploySaveBtn").disabled=true;
   window.showSubtleLoader("Applying deployment schedule...");
   try {
     await saveDeploymentScope(item,deployments);
@@ -694,12 +731,14 @@ window.saveDeployment = async function () {
   } catch (e) {
     alert("Failed to deploy: " + e.message);
   } finally {
+    savingDeployment=false;
+    document.getElementById("deploySaveBtn").disabled=false;
     window.hideSubtleLoader();
   }
 };
 
 window.deleteDeployment = async function (deployId) {
-  if (!currentAssessmentId) return;
+  if (!currentAssessmentId||savingDeployment) return;
   if (
     confirm(
       "Remove this deployment? The assignment will be withdrawn from the section.",
@@ -710,6 +749,8 @@ window.deleteDeployment = async function (deployId) {
       (d) => d.id !== deployId,
     );
 
+    savingDeployment=true;
+    document.getElementById("deploySaveBtn").disabled=true;
     window.showSubtleLoader("Removing deployment...");
     try {
       await saveDeploymentScope(item,deployments);
@@ -718,17 +759,34 @@ window.deleteDeployment = async function (deployId) {
     } catch (e) {
       alert("Error: " + e.message);
     } finally {
+      savingDeployment=false;
+      document.getElementById("deploySaveBtn").disabled=false;
       window.hideSubtleLoader();
     }
   }
 };
 
 async function saveDeploymentScope(item,deployments){
+  if(new Set(deployments.map(entry=>entry.section)).size!==deployments.length)
+    throw Error("A class can have only one deployment of the same assessment. Edit its existing schedule instead.");
   if(deployments.length>20)throw Error("An assessment supports at most 20 deployments. Create another blueprint for additional sections.");
   const sectionIds=[...new Set(deployments.map(deployment=>deployment.section))];
   const batch=writeBatch(db);
-  batch.update(doc(db,"assessments",item.id),{deployments,sectionIds});
-  if(item.schemaVersion===2)batch.set(doc(db,"assessment_private",item.id),{ownerUid:item.ownerUid,sectionIds},{merge:true});
+  const windows={};
+  if(item.schemaVersion===3){
+    for(const deployment of deployments){
+      const opens=deployment.postDate?new Date(deployment.postDate):new Date(0);
+      const closes=deployment.deadlineEnabled!==false&&deployment.deadline
+        ?new Date(deployment.deadline):new Date("2100-01-01T00:00:00.000Z");
+      if(!Number.isFinite(opens.getTime())||!Number.isFinite(closes.getTime())||opens>closes)
+        throw Error("A Studio submission schedule is invalid.");
+      windows[deployment.section]={opensAt:Timestamp.fromDate(opens),closesAt:Timestamp.fromDate(closes)};
+    }
+  }
+  batch.update(doc(db,"assessments",item.id),{
+    deployments,sectionIds,...(item.schemaVersion===3?{studioWindows:windows}:{})
+  });
+  if([2,3].includes(item.schemaVersion))batch.set(doc(db,"assessment_private",item.id),{ownerUid:item.ownerUid,sectionIds},{merge:true});
   await batch.commit();
 }
 

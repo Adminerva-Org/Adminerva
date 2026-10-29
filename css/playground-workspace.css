@@ -694,3 +694,39 @@ body[data-playground-access="student"] #adminerva-nav .av-nav-tools :is(button,a
   white-space:nowrap;
 }
 .db-mini-action:hover,.db-secondary-action:hover{border-color:#8fcfc4;color:#007b6d;background:#f4fbf9}
+
+/* 3.0 Studio: compact controls for phones and tablets, with visible focus. */
+.studio-project-actions{min-width:0;display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.studio-project-actions .studio-command-bar{min-width:0;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.studio-project-bar{flex-wrap:wrap}
+.studio-project-bar :is(button,select,a,summary):focus-visible,
+.studio-tabs button:focus-visible{outline:3px solid #0e7490;outline-offset:2px}
+.studio-project-actions :is(button,select,a,summary):disabled{opacity:.55;cursor:not-allowed}
+#studioExamBanner{flex:none}
+@media(max-width:700px){
+ .code-project-home-inner{padding:16px 12px 30px}
+ .code-project-hero{padding:17px;gap:12px;align-items:flex-start;flex-direction:column}
+ .code-project-hero h1{font-size:26px}
+ .code-project-grid{grid-template-columns:1fr}
+ .code-project-section-head{flex-wrap:wrap;gap:8px;margin-top:20px}
+ .studio-project-bar{padding:8px 10px;gap:7px}
+ .studio-project-actions{order:4;width:100%;margin:0;justify-content:flex-start}
+ .studio-project-actions .studio-command-bar{flex:1;max-width:100%;overflow-x:auto}
+ .studio-project-actions :is(button,select,a,summary){min-height:40px}
+ .studio-back{flex-shrink:0}
+ .studio-project-identity{flex:1;min-width:110px}
+ .studio-surface{padding:12px}
+ .studio-surface-head{flex-wrap:wrap}
+ .design-grid,.db-grid{grid-template-columns:minmax(0,1fr)}
+ .studio-card{min-width:0}
+ .studio-project-identity strong{font-size:12px}
+ .studio-modal-panel{padding:14px;max-height:94dvh}
+ .studio-form-grid,.project-template-grid,.evidence-grid{grid-template-columns:minmax(0,1fr)}
+ .studio-code-area{min-height:180px}
+}
+@media(max-width:375px){
+ .studio-project-actions .studio-command-bar{gap:3px}
+ .studio-tabs button{padding:9px 8px}
+ .code-project-card{padding:12px}
+ .pg-explorer{max-height:115px}
+}

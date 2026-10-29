@@ -1,6 +1,6 @@
 import {feedbackSummary,inlineTask,reviewNotice} from "./review-ui.mjs?v=1.3.0";
 import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=1.3.0";
-import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.2";
+import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=3.0.0";
 import {legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.2";
 import {assertGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
 import {writePublicationRevision} from "./grade-publication.mjs?v=1.3.2";
@@ -183,6 +183,7 @@ async function loadGrid() {
         pendingStats.push(student);
       }
 
+      if(schemaVersion===3)repoStatus='<a class="text-teal-800 underline font-bold text-xs" href="studio-submissions.html">Adminerva Studio project →</a>';
       let scoreBadge = `<span class="bg-slate-100 text-slate-500 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-slate-200">Needs Grading</span>`;
       let pubToggle = `<span class="text-slate-300 text-xs italic font-medium">Awaiting Score</span>`;
 
@@ -319,7 +320,7 @@ window.matrixTogglePub = async function (studentId, taskId, checkbox) {
       if (!latest.exists()) throw new Error("Grade was removed during publication.");
       assertGradeVersion(latest.data(),gradeSnap.data());
       if(wantsPublish){
-        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=1.3.1");
+        const {verifyGradePublication}=await import("./services/evidence-transaction.mjs?v=3.0.0");
         await verifyGradePublication(tx,gradeRef,{...latest.data(),taskId});
       }
       writePublicationRevision(tx,gradeRef,latest.data(),wantsPublish);

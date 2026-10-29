@@ -404,7 +404,7 @@ window.openGradingModal = async function (studentId, owner, repo) {
         const sectionDeployment = data.deployments.find(
           (d) => d.section === currentClassSection,
         );
-        if (sectionDeployment)
+        if (sectionDeployment && data.schemaVersion!==3)
           activeTasks.push({
             id: doc.id,
             deployment: sectionDeployment,

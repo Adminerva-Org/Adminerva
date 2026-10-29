@@ -48,7 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["practice", "Practice courses", "student-practice.html"],
       ["xml", "XML Lab", "student-xml-lab.html"]
     ] },
-    "student-playground": { name: "Code Playground", items: [
+    "student-playground": { name: "Adminerva Studio", items: [
       ["ide", "Live editor", "student-playground.html"]
     ] }
   };
@@ -56,6 +56,7 @@ document.addEventListener("DOMContentLoaded", () => {
     { name: "Assessment", area: "educator", items: [
       ["studio", "Assessment studio", "assessment-studio.html"],
       ["submissions", "Submission inbox", "submissions.html"],
+      ["studio-submissions", "Studio project submissions", "studio-submissions.html"],
       ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
     ] },
     { name: "Review & grade", area: "educator", items: [
@@ -117,7 +118,7 @@ document.addEventListener("DOMContentLoaded", () => {
     [homeLabel, homeRoute, "Start here and continue your work"],
     ["Project Hub", "student-dashboard.html", "Projects and assignments"],
     ["Practice Lab", "student-practice.html", "Courses, challenges and XML Lab"],
-    ["Code Playground", "student-playground.html", "Write and run code"],
+    ["Adminerva Studio", "student-playground.html", "Write and run code"],
     ["My reports", "issues.html", "Report a problem or follow an update"]
   ] : [
     [homeLabel, homeRoute, "Your teaching workspace"],

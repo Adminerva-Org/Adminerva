@@ -51,3 +51,21 @@ test('shipped patch manifest contains only curated public fields and system labe
     }
   }
 });
+
+test('content impact includes downstream learners even for a teacher-owned grading change',()=>{
+  const changes=[{
+    type:'Updated',area:'Gradebook',text:'The teacher can use AI-assisted draft evaluation.',
+    audience:['teacher'],impact:{
+      student:'An automated tool may suggest a score. Your teacher decides and publishes the final grade.',
+      teacher:'Check AI suggestions before publishing; the grade stays private until approved.'
+    }
+  }];
+  const [published]=publicReleases({releases:[{...release,changes}]},Date.parse('2026-10-20'));
+  const student=releaseForRole(published,'student');
+  assert.ok(student);
+  assert.equal(student.changes.length,1);
+  assert.ok(student.changes[0].impact.student.includes('automated'));
+  assert.equal(student.changes[0].impact.teacher,undefined);
+  assert.match(releaseNotifications([published],'student')[0].body,/Your teacher decides/);
+  assert.equal(releaseForRole(published,'teacher').changes[0].impact.student,undefined);
+});

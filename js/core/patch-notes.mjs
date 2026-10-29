@@ -29,7 +29,11 @@ function render(){
     if(presentation.label!==release.version)card.append(node("p","Original release ID: "+release.version,"av-release-origin"));
     const list=node("ul","","av-release-changes");
     for(const change of release.changes){
-      const item=node("li","");item.append(node("span",change.type,"av-change-kind"),node("strong",change.area),node("p",change.text));list.append(item);
+      const item=node("li","");item.append(node("span",change.type,"av-change-kind"),node("strong",change.area),node("p",change.text));
+      for(const [role,impact] of Object.entries(change.impact||{})){
+        item.append(node("p",(role==="all"?"For everyone":role==="student"?"For students":role==="teacher"?"For teachers":"For administrators")+": "+impact,"av-release-impact"));
+      }
+      list.append(item);
     }
     card.append(list);field("patchList").append(card);
   }

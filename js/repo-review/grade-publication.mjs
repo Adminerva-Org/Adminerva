@@ -3,7 +3,7 @@ import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {doc,collection,runTransaction,serverTimestamp} from "../core/teaching-firestore.mjs?v=1.3.0";
 import {assertGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
 import {legacyReadyDraft,publicationCandidates,publicationJournal} from "./services/publication-queue.mjs?v=1.3.2";
-import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=1.3.1";
+import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=3.0.0";
 export {publicationCandidates};
 export function writePublicationRevision(transaction,ref,before,published) {
   if(Boolean(before.published)===published)return;

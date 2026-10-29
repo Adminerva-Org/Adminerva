@@ -3,7 +3,8 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=2.1.0";
+import {createProjectStudio} from "./project-studio.mjs?v=3.0.0";
+import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.0.0";
 import {
   collection,
@@ -75,6 +76,48 @@ const JAVA_RUN_MODE_KEY="Adminerva_Java_Run_Mode_v1";
 let javaRunMode=(()=>{try{return localStorage.getItem(JAVA_RUN_MODE_KEY)==="desktop"?"desktop":"console";}catch{return "console";}})();
 let desktopRunSequence=0;
 
+// Browser-only practical exam controls: discourage code transfer without claiming
+// proctoring, identity verification or prevention of all cheating methods.
+const examLinkId=new URLSearchParams(location.search).get("assessment");
+let examPolicyPending=Boolean(examLinkId),examPolicy=null;
+const examRestrictedActions=["importZipBtn","legacyImportBtn","undoRestoreBtn",
+  "cloudLoadProjectBtn","loadProjectBtn","snapshotBtn","aiTutorBtn","resetBtn"];
+function examRestrictionsActive(){return !guestMode&&(examPolicyPending||examPolicy?.practicalExam===true);}
+function refreshExamControls(){
+  const active=examRestrictionsActive(),banner=document.getElementById("studioExamBanner");
+  if(banner){
+    banner.classList.toggle("hidden",!active);
+    document.getElementById("studioExamNotice").textContent=examPolicyPending
+      ?"Checking this assessment. Code import and clipboard actions are temporarily restricted…"
+      :"Practical exam: code copying/pasting, imports, previous versions and AI helper are disabled here. This is not a proctored exam.";
+  }
+  for(const id of examRestrictedActions){
+    const element=document.getElementById(id);
+    if(element){element.disabled=active;element.title=active?"Unavailable during a practical exam":"";}
+  }
+  editorInstance?.updateOptions({contextmenu:!active,dragAndDrop:!active});
+}
+window.adminervaSetStudioExamPolicy=({assessmentId,practicalExam=false}={})=>{
+  if(examLinkId&&assessmentId!==examLinkId)return;
+  examPolicy={assessmentId,practicalExam:practicalExam===true};
+  examPolicyPending=false;refreshExamControls();
+};
+const inExamCodeField=target=>target instanceof Element&&Boolean(
+  target.closest("#editorContainer,#designEditor,#dbSqlInput"));
+for(const type of ["copy","cut","paste","drop","dragstart","contextmenu","beforeinput"]){
+  document.addEventListener(type,event=>{
+    if(!examRestrictionsActive()||!inExamCodeField(event.target))return;
+    if(type==="beforeinput"&&!["insertFromPaste","insertFromDrop","insertFromYank"].includes(event.inputType))return;
+    event.preventDefault();
+  },true);
+}
+document.addEventListener("keydown",event=>{
+  if(!examRestrictionsActive()||!inExamCodeField(event.target))return;
+  const key=event.key.toLowerCase();
+  if(((event.ctrlKey||event.metaKey)&&["v","c","x"].includes(key))||
+    (event.shiftKey&&key==="insert")||(event.ctrlKey&&key==="insert"))event.preventDefault();
+},true);
+
 // ==========================================
 // 2. INITIALIZATION
 // ==========================================
@@ -121,6 +164,7 @@ async function initializePlayground() {
       },
     );
 
+    refreshExamControls();
     document.getElementById("editorLoading")?.classList.add("hidden");
 
     bindUIEvents();
@@ -783,7 +827,17 @@ function loadLocalWorkspace(lang) {
   return true;
 }
 
+// Submission captures a saved, named project and a separate snapshot of
+// the live editor. An unsaved scratch file is never submitted silently.
+window.adminervaStudioSubmissionState=()=>{
+  if(guestMode||practiceMode)throw Error("Sign in and open a named project. Practice experiments cannot be submitted.");
+  const project=projectStudio?.getActiveProject();
+  if(!project)throw Error("Open an Adminerva Studio project before submitting.");
+  if(!persistWorkspace())throw Error("Your latest edits could not be saved locally. Export a ZIP and check storage before submitting.");
+  return {project:projectStudio.getActiveProject(),state:currentState()};
+};
 window.adminervaImportLegacyPlayground = function () {
+  if(examRestrictionsActive())return alert("Importing older code is disabled in this practical exam.");
   const uid=ownerUid();
   if(!uid) return alert("Sign in before importing code.");
   let state;
@@ -844,7 +898,7 @@ window.adminervaPlaygroundState=function(){
     activeFilename:state.activeFilename,folders:state.folders,projectOrder:state.projectOrder};
 };
 window.adminervaRestorePlayground=function(state){
-  if(practiceMode)return false;
+  if(practiceMode||examRestrictionsActive())return false;
   if((auth.currentUser?.uid||(guestMode?"public-visitor-v1":null))!==ownerUid())return false;
   if(!validPlaygroundState(state))return false;
   const uid=ownerUid();
@@ -880,6 +934,7 @@ window.adminervaRestorePlayground=function(state){
   }
 };
 window.adminervaUndoPlaygroundRestore=function(){
+  if(examRestrictionsActive())return alert("Restoring older code is disabled in this practical exam.");
   const uid=ownerUid();
   if(!uid)return;
   const activeProject=typeof projectStudio!=="undefined"?projectStudio?.getActiveProject():null;
@@ -960,9 +1015,10 @@ async function loadSnapshot(id) {
 // 5. EXECUTION ENGINE & DIAGNOSTICS
 // ==========================================
 function compilerEntry(){
-  const expected=languageConfig[currentLang].defaultFile;
-  const extension=expected.slice(expected.lastIndexOf('.'));
-  return workspaceFiles[expected]?expected:activeFilename.endsWith(extension)?activeFilename:fileOrder.find(path=>path.endsWith(extension));
+  return chooseCompilerEntry({
+    language:currentLang,defaultFile:languageConfig[currentLang].defaultFile,
+    activeFilename,fileOrder,files:currentState().files
+  });
 }
 async function executionPayload(options={}){
   const entry=compilerEntry();if(!entry)throw Error('Add a '+languageConfig[currentLang].defaultFile+' entry file before running.');
@@ -1118,7 +1174,7 @@ async function executeCode() {
       document.getElementById('desktopTab')?.click();
       stage='Launching desktop runtime';update();
       launchJavaDesktop(jarBase64);
-      projectStudio?.recordRun({mode:"desktop",status:"launched"});
+      try{projectStudio?.recordRun({mode:"desktop",status:"launched"});}catch(e){console.warn("Run history not saved:",e);}
       notePracticeExecution();
       return;
     }
@@ -1126,11 +1182,11 @@ async function executeCode() {
     if(error&&currentLang===runLanguage)applyVisualDiagnostics(error,entry);
     if(error&&currentLang==='java'&&/HeadlessException|No X11 DISPLAY|headless/i.test(error))consoleOut.textContent+='\n\nThis program appears to open a desktop window. Change Run as to “Desktop GUI (Swing) · Beta” and run it again.';
     if(result.status.id>3&&!error)consoleOut.textContent+='\n'+String(result.message||'Review the execution status above.');
-    projectStudio?.recordRun({mode:"console",status:result.status?.description||"finished",time:result.time||null,memory:result.memory||null});
+    try{projectStudio?.recordRun({mode:"console",status:result.status?.description||"finished",time:result.time||null,memory:result.memory||null});}catch(e){console.warn("Run history not saved:",e);}
     notePracticeExecution();
   }catch(error){
     if(sequence!==executionSequence)return;
-    projectStudio?.recordRun({mode:desktopMode?"desktop":"console",status:controller.signal.aborted?"cancelled":"error"});
+    try{projectStudio?.recordRun({mode:desktopMode?"desktop":"console",status:controller.signal.aborted?"cancelled":"error"});}catch(e){console.warn("Run history not saved:",e);}
     consoleOut.textContent=controller.signal.aborted?(stage==='Compiler timed out'?'The compiler did not finish within 45 seconds. Your code is saved. Retry, or export the project to run locally.':'Run cancelled. Your code is unchanged. The remote service may finish the already submitted job.'):'Execution unavailable: '+error.message+'\nYour code is saved on this device when browser storage is available.';
   }finally{clearTimeout(timeout);clearInterval(clock);executionController=null;runBtn.disabled=false;overlay?.classList.add('hidden');end();}
 }
@@ -1259,7 +1315,7 @@ function enablePracticeSandbox(){
   // This workspace is temporary. Never allow saving it over personal projects
   // or uploading it to the student's regular cloud version history.
   for(const id of ["languageSelect","cloudSaveProjectBtn","cloudLoadProjectBtn",
-    "loadProjectBtn","snapshotBtn","legacyImportBtn","undoRestoreBtn"]){
+    "loadProjectBtn","snapshotBtn","legacyImportBtn","undoRestoreBtn","importZipBtn","importCodeProjectBtn"]){
     const control=document.getElementById(id);
     if(control){control.disabled=true;control.classList.add("hidden")}
   }
@@ -1310,18 +1366,40 @@ function bindUIEvents() {
         const raw=entry.unsafeOriginalName||entry.name;
         if(raw==="adminerva-project.json")continue;
         const path=projectPath(raw.replace(/\/$/,''));
-        if(entry.dir){folders.push(path);continue;}
+        if(entry.dir){folders.push(path);if(folders.length>100)throw Error("The ZIP has more than 100 folders.");continue;}
+        if(Object.hasOwn(files,path))throw Error("The ZIP contains duplicate paths: "+path);
         if(Object.keys(files).length>=limits.maxFiles)throw Error('Import up to '+limits.maxFiles+' files in this project.');
-        const text=await entry.async('string');size+=new TextEncoder().encode(text).length;if(size>limits.maxProjectBytes)throw Error('This ZIP exceeds the project size limit.');files[path]=text;
+        // Reject oversized extracted entries before allocating their contents.
+        const entryBytes=entry._data?.uncompressedSize;
+        if(Number.isFinite(entryBytes)&&size+entryBytes>limits.maxProjectBytes)
+          throw Error("The ZIP contains a file larger than this project tier allows.");
+        const text=await entry.async('string');size+=new TextEncoder().encode(text).length;
+        if(size>limits.maxProjectBytes)throw Error('This ZIP exceeds the project size limit.');
+        files[path]=text;
       }
       if(!Object.keys(files).length)throw Error('No source files found in this ZIP.');
       const bundleLabel=bundle?" with its Adminerva DB/design data":"";
-      if(!confirm('Replace the editor with '+Object.keys(files).length+' imported files'+bundleLabel+'? Current work will be backed up on this device.'))return;
-      const nextLang=bundle?.lang||currentLang;
+      const hasProject=Boolean(projectStudio?.getActiveProject?.());
+      const message=projectStudio&&!hasProject
+        ?'Create a new project from '+Object.keys(files).length+' imported files'+bundleLabel+'?'
+        :'Replace this project\'s editor with '+Object.keys(files).length+' imported files'+bundleLabel+'? The current code will be kept in Undo Restore.';
+      if(!confirm(message))return;
+      const inferredLang=Object.keys(files).some(path=>path.endsWith(".java"))?"java":
+        Object.keys(files).some(path=>path.endsWith(".py"))?"python":
+        Object.keys(files).some(path=>/\.html?$/i.test(path))?"web":
+        Object.keys(files).some(path=>path.endsWith(".cs"))?"csharp":
+        Object.keys(files).some(path=>/\.(cpp|cc|cxx)$/i.test(path))?"cpp":
+        Object.keys(files).some(path=>path.endsWith(".dart"))?"dart":currentLang;
+      const nextLang=bundle?.lang||(projectStudio&&!hasProject?inferredLang:currentLang);
       const order=Object.keys(files);
-      const preferred=bundle?.entry&&files[bundle.entry]?bundle.entry:(files["Main.java"]?"Main.java":order[0]);
-      if(!window.adminervaRestorePlayground({...currentState(),lang:nextLang,files,folders,fileOrder:order,activeFilename:preferred,projectOrder:[...folders,...order]}))throw Error('The current draft could not be backed up. Export it first.');
-      if(bundle&&projectStudio?.importBundleMetadata)projectStudio.importBundleMetadata(bundle);
+      const preferred=bundle?.entry&&Object.hasOwn(files,bundle.entry)?bundle.entry:(Object.hasOwn(files,"Main.java")?"Main.java":order[0]);
+      const imported={lang:nextLang,files,folders,fileOrder:order,activeFilename:preferred,projectOrder:[...folders,...order]};
+      if(projectStudio){
+        if(hasProject&&!persistWorkspace())throw Error("Could not save current project. Export a ZIP before importing.");
+        projectStudio.importZipWorkspace(imported,bundle);
+        showSaveStatus("ZIP imported and saved as a Code Studio project");
+      }else if(!window.adminervaRestorePlayground({...currentState(),...imported}))
+        throw Error("The current draft could not be backed up. Export it first.");
     }catch(error){alert('Import failed: '+error.message);}
   });
   document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();persistWorkspace();}if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();void executeCode();}});

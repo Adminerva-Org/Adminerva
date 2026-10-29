@@ -1,0 +1,35 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Studio submissions · Adminerva</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8"><link rel="stylesheet" href="css/teaching-workspace.css?v=1.3.11"></head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="educator" data-page="studio-submissions"></div>
+<main class="max-w-7xl mx-auto px-4 py-6">
+  <header class="bg-slate-900 rounded-2xl p-6 text-white mb-5">
+    <p class="text-cyan-300 text-xs font-bold uppercase tracking-wider mb-2">Review &amp; Grade · Adminerva Studio</p>
+    <h1 class="text-2xl sm:text-3xl font-extrabold mb-2">Studio project submissions</h1>
+    <p class="text-sm text-slate-200">Inspect a frozen revision, request changes, or review against the task rubric. Grades are saved as private drafts in the existing Gradebook until published.</p>
+    <div class="flex flex-wrap items-center gap-2 mt-4"><a href="repofetch.html" class="av-secondary-link">GitHub evidence reviews</a>
+      <a href="gradebook.html" class="av-secondary-link">Gradebook</a>
+      <button id="studioReviewRefresh" type="button" class="av-primary-button">Refresh submissions</button></div>
+  </header>
+  <p id="studioReviewStatus" role="status" aria-live="polite" class="text-sm text-slate-600 mb-4">Loading your assigned submissions…</p>
+  <div class="grid lg:grid-cols-[minmax(230px,340px)_minmax(0,1fr)] gap-4">
+    <aside class="bg-white border rounded-xl p-3">
+      <label for="studioReviewFilter" class="text-sm font-semibold">Status</label>
+      <select id="studioReviewFilter" class="border w-full rounded-lg p-2 my-2 text-sm">
+        <option value="all">All statuses</option><option value="submitted">Awaiting review</option>
+        <option value="revision_requested">Revision requested</option><option value="reviewed">Reviewed</option>
+      </select>
+      <div id="studioReviewList" class="grid gap-2" aria-label="Studio submissions"></div>
+    </aside>
+    <section class="bg-white border rounded-xl p-4 min-w-0" aria-label="Selected frozen project">
+      <div id="studioReviewDetail" class="text-sm text-slate-500">Select a student submission to inspect its saved files.</div>
+    </section>
+  </div>
+</main>
+<script src="js/core/adminerva-loader.js?v=1.3.2"></script>
+<script src="js/core/adminerva-nav.js?v=3.0.0"></script>
+<script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
+<script type="module" src="js/repo-review/studio-submissions.mjs?v=1.0.0"></script>
+</body></html>

@@ -19,6 +19,7 @@ let myGrades = {};
 let mySubmitted = {};
 let myEvidence = {};
 let submissionLookupSucceeded = false;
+let myStudioSubmissions={},studioSubmissionsReadable=false;
 let profileGeneration=0,assessmentGeneration=0,assignmentOwnerUid="";
 const assignmentField=id=>document.getElementById(id);
 function assignmentsNotice(message,tone="info",retry=false){
@@ -45,7 +46,7 @@ function escapeHTML(str) {
 
 async function loadStudentAssignments(user=auth.currentUser){
   const version=++profileGeneration,previousSection=assignmentOwnerUid===user?.uid?currentSection:"";
-  assessmentGeneration++;allAssessments=[];userProfiles=[];currentSection="";myGrades={};mySubmitted={};myEvidence={};submissionLookupSucceeded=false;
+  assessmentGeneration++;allAssessments=[];userProfiles=[];currentSection="";myGrades={};mySubmitted={};myEvidence={};myStudioSubmissions={};studioSubmissionsReadable=false;submissionLookupSucceeded=false;
   assignmentOwnerUid=user?.uid||"";setAssignmentControls(true);assignmentField("assessmentModal").classList.add("hidden");
   const selector=assignmentField("sectionSelectorAssessments");selector.replaceChildren();selector.classList.add("hidden");
   if(!user?.email){assignmentsNotice("Sign in with your school account to view your assignments.");assignmentsFeedState("Sign in to continue","Your class assignments appear after you sign in.");setAssignmentControls(false);return;}
@@ -111,7 +112,7 @@ async function fetchAssessments() {
   const studentProfile = userProfiles.find((p) => p.section === currentSection);
   const studentId = studentProfile ? studentProfile.id : null;
 
-  const nextGrades={},nextSubmitted={},nextEvidence={},nextAssessments=[],lookupFailures=[];
+  const nextGrades={},nextSubmitted={},nextEvidence={},nextStudio={},nextAssessments=[],lookupFailures=[];
   let receiptsKnown=false;
   if(studentId) {
     try{
@@ -138,6 +139,15 @@ async function fetchAssessments() {
       if(!isCurrent())return;
       evidenceSnap.forEach(item=>{const data=item.data();nextEvidence[data.assessmentId]=data;});
     }catch(error){lookupFailures.push("evidence");}
+  }
+  let studioReadable=false;
+  if(studentId){
+    try{
+      const studioSnap=await getDocs(query(collection(db,"studio_submissions"),where("studentId","==",studentId)));
+      if(!isCurrent())return;
+      studioSnap.forEach(record=>{nextStudio[record.data().assessmentId]=record.data();});
+      studioReadable=true;
+    }catch(error){lookupFailures.push("Studio submissions");}
   }
   if (studentId) {
     try {
@@ -204,7 +214,7 @@ async function fetchAssessments() {
       }
     });
 
-    allAssessments=nextAssessments;myGrades=nextGrades;mySubmitted=nextSubmitted;myEvidence=nextEvidence;submissionLookupSucceeded=receiptsKnown&&lookupFailures.length===0;
+    allAssessments=nextAssessments;myGrades=nextGrades;mySubmitted=nextSubmitted;myEvidence=nextEvidence;myStudioSubmissions=nextStudio;studioSubmissionsReadable=studioReadable;submissionLookupSucceeded=receiptsKnown&&lookupFailures.length===0;
     assignmentsNotice(lookupFailures.length?"Some "+lookupFailures.join(", ")+" could not load. Status may be incomplete. Retry to refresh these details.":"",lookupFailures.length?"error":"info",lookupFailures.length>0);renderAssessments();
   } catch (error) {
     if(isCurrent()){assignmentsNotice("Your assignments could not load. Check your connection and retry.","error",true);assignmentsFeedState("Unable to load assignments","Retry loading to reconnect to your class. No submissions or grades have changed.");}
@@ -212,7 +222,19 @@ async function fetchAssessments() {
   } finally { end();if(isCurrent())setAssignmentControls(false); }
 }
 
-function assignmentStatusFor(ass){return assessmentStatus({grade:myGrades[ass.id],submitted:Boolean(mySubmitted[ass.id]),evidenceStatus:myEvidence[ass.id]?.status||null,deadline:ass.noDeadline?null:ass.dueDate,knownSubmissions:submissionLookupSucceeded});}
+function assignmentStatusFor(ass){
+  if(ass.schemaVersion===3&&ass.submissionSource==="studio"){
+    if(myGrades[ass.id])return {kind:"graded",text:"Graded"};
+    const head=myStudioSubmissions[ass.id];
+    if(!head&&!studioSubmissionsReadable)return {kind:"unknown",text:"Studio status unavailable — retry"};
+    if(head?.status==="revision_requested")return {kind:"revision",text:"Revision requested"};
+    if(head?.status==="reviewed")return {kind:"reviewed",text:"Teacher reviewed"};
+    if(head?.status==="submitted")return {kind:"submitted",text:"Studio revision "+head.revision+" submitted"};
+    if(ass.dueDate&&Date.now()>ass.dueDate.getTime())return {kind:"pastdue",text:"Past due"};
+    return {kind:"notSubmitted",text:"Studio project required"};
+  }
+  return assessmentStatus({grade:myGrades[ass.id],submitted:Boolean(mySubmitted[ass.id]),evidenceStatus:myEvidence[ass.id]?.status||null,deadline:ass.noDeadline?null:ass.dueDate,knownSubmissions:submissionLookupSucceeded});
+}
 function needsStudentAction(ass){return ["notSubmitted","pastdue","revision"].includes(assignmentStatusFor(ass).kind);}
 
 function renderAssessments() {
@@ -371,6 +393,19 @@ window.viewAssessmentDetails = function (id) {
     scoreArea.classList.add("hidden");
   }
 
+  const isStudio=ass.schemaVersion===3&&ass.submissionSource==="studio";
+  document.getElementById("studioAssessmentPanel")?.classList.toggle("hidden",!isStudio);
+  document.getElementById("studioExamAdvice")?.classList.toggle("hidden",!isStudio||ass.practicalExam!==true);
+  if(isStudio)document.getElementById("modalAssPath").textContent="Work area: your named Adminerva Studio project (code, diagrams and database).";
+  document.getElementById("legacySubmitPanel")?.classList.toggle("hidden",isStudio||ass.schemaVersion===2);
+  if(isStudio){
+    const head=myStudioSubmissions[id];
+    document.getElementById("studioAssignmentStatus").textContent=head?
+      "Revision "+head.revision+" · "+String(head.status||"submitted").replaceAll("_"," ")+
+      (head.reviewNote?" · Teacher note: "+head.reviewNote:""):
+      "No Studio project has been submitted yet.";
+    document.getElementById("studioOpenProject").href="student-playground.html?assessment="+encodeURIComponent(id);
+  }
   document.getElementById("assessmentModal").classList.remove("hidden");
   window.dispatchEvent(new CustomEvent("adminerva:assessment-opened",{detail:{assessmentId:id}}));
 };

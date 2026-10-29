@@ -28,6 +28,8 @@ jobs:
           node --test tests/evidence-readiness.test.mjs
           node --test tests/student-search.test.mjs tests/help-access.test.mjs
           node --test tests/practice-ranking-model.test.mjs tests/teaching-firestore.test.mjs tests/academic-preparation.test.mjs
+          node --test js/student/adminerva-db.test.mjs js/student/playground-entry.test.mjs js/student/project-import.test.mjs
+          node --test js/student/studio-assessment-model.test.mjs
           node --test js/analytics/academic-model.test.mjs
           node --test js/analytics/activity-model.test.mjs tests/loading-and-routes.test.mjs tests/monitoring-model.test.mjs
           node --test js/core/patch-history.test.mjs js/student/practice-points.test.mjs js/student/xml-layout.test.mjs js/presentation-review/lesson-to-slides.test.mjs js/presentation-review/lesson-slide-integration.test.mjs js/repo-review/services/review-snapshot.test.mjs
@@ -41,6 +43,9 @@ jobs:
           node --check js/repo-review/services/grade-version.mjs
           node --check js/repo-review/services/request-backoff.mjs
           node --check js/repo-review/services/publication-queue.mjs
+          node --check js/student/studio-assessment-model.mjs
+          node --check js/student/studio-assessment-submit.mjs
+          node --check js/repo-review/studio-submissions.mjs
           node --check js/repo-review/grade-publication.mjs
           node --check js/repo-review/review-ui.mjs
           node --check js/repo-review/feedback-drawer.mjs
@@ -134,7 +139,7 @@ jobs:
       - name: Install Firebase emulator and test SDK
         run: npm install --no-audit --no-fund --no-save @firebase/rules-unit-testing@4 firebase@11 firebase-tools@14 firebase-admin@13
       - name: Test Firestore permissions in an isolated emulator
-        run: npx firebase emulators:exec --project demo-adminerva-security --only firestore 'node --test --test-concurrency=1 tests/firestore-rules.test.mjs tests/monitoring-maintenance.emulator.mjs tests/staff-workspaces.emulator.mjs tests/admissions.emulator.mjs tests/practice-rankings.emulator.mjs tests/practice-authority.emulator.mjs'
+        run: npx firebase emulators:exec --project demo-adminerva-security --only firestore 'node --test --test-concurrency=1 tests/firestore-rules.test.mjs tests/monitoring-maintenance.emulator.mjs tests/staff-workspaces.emulator.mjs tests/studio-submissions.emulator.mjs tests/admissions.emulator.mjs tests/practice-rankings.emulator.mjs tests/practice-authority.emulator.mjs'
   pages-release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [javascript-regressions, firestore-security]
