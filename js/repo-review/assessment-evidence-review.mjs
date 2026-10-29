@@ -198,9 +198,12 @@ async function loadEvidence(initialRecord){
     el("evidenceContributionScope").value=evidence.contributionScope||"";
     el("evidenceContributionScope").disabled=evidence.status==="approved";
     el("evidenceReviewNote").value="";el("evidenceConfirm").checked=false;
-    const claims=await getDocs(query(collection(db,"commit_reclaims"),where("studentId","==",student.id)));
+    // Section-scoped query satisfies teacher Firestore permissions without
+    // requiring a composite index for studentId + section.
+    const claims=await getDocs(query(collection(db,"commit_reclaims"),where("section","==",student.section)));
     if(destroyed||sequence!==state.sequence)return;
-    state.claims=claims.docs.filter(d=>d.data().repository===evidence.repository &&
+    state.claims=claims.docs.filter(d=>d.data().studentId===student.id &&
+      d.data().repository===evidence.repository &&
       (d.data().assessmentId===assessment.id || evidence.selectedCommits.includes(d.data().sha)))
       .map(d=>({id:d.id,...d.data()}));
     const unresolved=state.claims.filter(claim=>claim.status==="pending"&&evidence.selectedCommits.includes(claim.sha));
@@ -415,10 +418,10 @@ async function approve(){
       const reviewerRole=await resolveStaffRole(auth.currentUser);
       const claimQuery=reviewerRole==="admin"
         ?query(collection(db,"commit_reclaims"),where("sha","==",sha))
-        :query(collection(db,"commit_reclaims"),where("sha","==",sha),where("section","==",state.evidence.section));
+        :query(collection(db,"commit_reclaims"),where("section","==",state.evidence.section));
       const competing=await getDocs(claimQuery);
-      if(competing.docs.some(d=>d.data().repository===state.evidence.repository&&
-        d.data().status==="pending"))
+      if(competing.docs.some(d=>d.data().sha===sha &&
+        d.data().repository===state.evidence.repository&&d.data().status==="pending"))
         throw Error("A selected commit has an unresolved reclaim request. Ask the administrator to review the attribution before approving this student's checkpoint.");
     }));
     status("Verifying checkpoint ancestry with GitHub…");
