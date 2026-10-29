@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Commit attribution requests · Adminerva</title><meta name="description" content="Review student commit attribution requests and follow approved evidence into grading.">
+<script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8">
+<link rel="stylesheet" href="css/teaching-workspace.css?v=1.3.11"></head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="educator" data-page="reclaims"></div>
+<main class="av-home max-w-6xl mx-auto">
+  <header class="av-panel mb-4"><p class="av-eyebrow">Evidence · Individual contributions</p>
+    <h1 class="text-2xl sm:text-3xl font-extrabold mb-2">Commit attribution requests</h1>
+    <p>Students may request credit when their work was committed using another Git identity. A decision does not automatically publish a grade. Instructors must inspect the actual diff and approve the student's selected evidence before evaluation.</p>
+    <div class="flex flex-wrap gap-3 items-center mt-3">
+      <a class="av-secondary-link" href="repofetch.html">Review &amp; Grade</a>
+      <button id="reclaimRefresh" type="button" class="av-primary-button">Refresh requests</button>
+      <label class="text-sm font-bold" for="reclaimFilter">Show</label>
+      <select id="reclaimFilter" class="border rounded-lg px-3 py-2 bg-white text-sm">
+        <option value="pending">Pending</option><option value="all">All requests</option><option value="approved">Approved</option>
+        <option value="shared">Shared</option><option value="rejected">Rejected</option><option value="withdrawn">Withdrawn</option>
+      </select>
+    </div>
+  </header>
+  <p id="reclaimStatus" class="text-sm text-slate-600 mb-3" role="status" aria-live="polite">Checking your account…</p>
+  <section id="reclaimItems" class="grid gap-3" aria-label="Attribution requests"></section>
+</main>
+<script src="js/core/adminerva-loader.js?v=1.3.2"></script>
+<script src="js/core/adminerva-nav.js?v=1.4.20"></script>
+<script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
+<script type="module" src="js/repo-review/reclaim-inbox.mjs?v=1.0.0"></script>
+</body></html>
