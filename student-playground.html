@@ -30,7 +30,7 @@
       <button id="saveProjectBtn" type="button" class="pg-save" title="Save project · Ctrl+S">Save</button><button id="formatBtn" type="button">Format</button>
       <details><summary>Project ▾</summary><div class="pg-menu"><button id="cloudSaveProjectBtn" type="button">Save cloud version</button><button id="cloudLoadProjectBtn" type="button">Cloud versions</button><button id="loadProjectBtn" type="button">Reload legacy device draft</button><button id="undoRestoreBtn" type="button">Undo last restore</button><button id="importZipBtn" type="button">Import ZIP into editor</button><button id="exportZipBtn" type="button">Export ZIP</button><button id="resetBtn" type="button">Reset files</button><button id="snapshotBtn" type="button">Share snapshot</button><button id="legacyImportBtn" type="button" class="hidden">Import older draft</button></div></details>
       <input id="projectZipInput" type="file" accept=".zip,application/zip" hidden><span id="autoSaveIndicator" role="status">Preparing project…</span><a href="student-xml-lab.html">XML Layout Lab</a><button id="aiTutorBtn" type="button">Ask Minerva</button><button id="runBtn" type="button" class="pg-run" title="Run · Ctrl+Enter">▶ Run</button>
-    </div><button id="projectSettingsBtn" type="button" class="studio-settings-button">Project settings</button></div>
+    </div><button id="studioSubmitAssessment" type="button" class="studio-settings-button" title="Submit a frozen project revision to your teacher">Submit for assessment</button><button id="projectSettingsBtn" type="button" class="studio-settings-button">Project settings</button></div>
   </div>
 
   <nav class="studio-tabs" aria-label="Project tools">
@@ -128,4 +128,11 @@
     <div class="studio-modal-actions"><span></span><button id="projectSettingsSave" type="button" class="primary-small">Save settings</button></div>
   </div>
 </div>
-<script src="js/core/adminerva-nav.js?v=1.4.17"></script><script type="module" src="js/core/auth-guard.js?v=1.3.8"></script><script src="js/core/adminerva-loader.js?v=1.3.2"></script><script type="module" src="js/student/playground.js?v=2.1.0"></script><script type="module" src="js/student/playground-cloud.mjs?v=2.0.1"></script><script type="module" src="js/student/playground-project-context.mjs?v=1.4.0"></script></body></html>
+<dialog id="studioSubmitDialog" aria-label="Submit Studio project for assessment" class="rounded-xl border border-cyan-200 shadow-2xl p-5 w-[min(94vw,540px)] m-auto backdrop:bg-slate-950/70 text-slate-900">
+  <div class="flex justify-between items-center gap-3 mb-4"><div><h2 class="font-extrabold text-lg">Submit project for assessment</h2><p class="text-xs text-slate-500">A frozen copy is sent. Your working files remain editable.</p></div><button type="button" data-close-studio class="px-3 py-2 rounded border">Close</button></div>
+  <label for="studioSubmitChoice" class="block text-sm font-bold">Assigned Studio assessment</label>
+  <select id="studioSubmitChoice" class="w-full border rounded-lg p-3 my-2 text-sm bg-white" aria-label="Choose an assigned Studio assessment"></select>
+  <p id="studioSubmitStatus" role="status" aria-live="polite" class="text-sm text-slate-600 my-3">Choose an assessment.</p>
+  <button id="studioConfirmSubmit" type="button" class="w-full bg-teal-700 text-white font-bold rounded-lg p-3 disabled:opacity-50">Submit frozen project revision</button>
+</dialog>
+<script src="js/core/adminerva-nav.js?v=1.4.17"></script><script type="module" src="js/core/auth-guard.js?v=1.3.8"></script><script src="js/core/adminerva-loader.js?v=1.3.2"></script><script type="module" src="js/student/playground.js?v=3.0.0"></script><script type="module" src="js/student/studio-assessment-submit.mjs?v=1.0.0"></script><script type="module" src="js/student/playground-cloud.mjs?v=2.0.1"></script><script type="module" src="js/student/playground-project-context.mjs?v=1.4.0"></script></body></html>
