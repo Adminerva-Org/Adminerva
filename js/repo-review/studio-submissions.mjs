@@ -7,7 +7,7 @@ import {studioDigest,verifyStudioSnapshot} from "../student/studio-assessment-mo
 const node=id=>document.getElementById(id);
 const root=node("studioReviewList"),detail=node("studioReviewDetail"),status=node("studioReviewStatus");
 const add=(p,tag,text,classes="")=>{const n=document.createElement(tag);n.textContent=String(text??"");n.className=classes;p.append(n);return n;};
-let records=[],role="",session=0,busy=false,selectedId=null,loading=false,activeUid=null;
+let records=[],role="",session=0,inspectionSequence=0,busy=false,selectedId=null,loading=false,activeUid=null;
 const setStatus=text=>{status.textContent=text;};
 function formatDate(value){try{return value?.toDate?.().toLocaleString()||"Date pending";}catch{return "Date unavailable";}}
 function render(){
@@ -58,7 +58,7 @@ async function load(){
 async function inspect(item){
  if(busy)return;
  selectedId=item.id;render();detail.replaceChildren();add(detail,"p","Loading exact saved revision…");
- const stamp=++session,uid=auth.currentUser?.uid;
+ const stamp=++inspectionSequence,uid=auth.currentUser?.uid;
  try{
    const [version,task,student,grade]=await Promise.all([
      getDoc(doc(db,"studio_submissions",item.id,"versions",String(item.revision))),
@@ -66,7 +66,7 @@ async function inspect(item){
      getDoc(doc(db,"students",item.studentId)),
      getDoc(doc(db,"student_grades",item.id))
    ]);
-   if(stamp!==session||auth.currentUser?.uid!==uid)return;
+   if(stamp!==inspectionSequence||auth.currentUser?.uid!==uid)return;
    if(!version.exists()||!task.exists())throw Error("The submitted revision or assessment is unavailable.");
    const saved=version.data(),assessment=task.data(),snapshot=verifyStudioSnapshot(saved.snapshotJson,saved.snapshotHash);
    const actual=await studioDigest(saved.snapshotJson);
@@ -164,12 +164,12 @@ async function inspect(item){
    revise.addEventListener("click",()=>void save("revision_requested"));
    gradeBtn.addEventListener("click",()=>void save("reviewed"));
  }catch(error){
-   if(stamp===session){detail.replaceChildren();add(detail,"p","Cannot inspect this submission: "+error.message,"text-rose-700 text-sm");}
+   if(stamp===inspectionSequence){detail.replaceChildren();add(detail,"p","Cannot inspect this submission: "+error.message,"text-rose-700 text-sm");}
  }
 }
 node("studioReviewRefresh").addEventListener("click",()=>void load());
 node("studioReviewFilter").addEventListener("change",render);
 onAuthStateChanged(auth,user=>{
- if(!user){session++;records=[];selectedId=null;root.replaceChildren();detail.textContent="Sign in to review.";return;}
+ if(!user){session++;inspectionSequence++;records=[];selectedId=null;root.replaceChildren();detail.textContent="Sign in to review.";return;}
  void load();
 });
