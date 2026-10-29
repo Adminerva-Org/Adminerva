@@ -82,7 +82,10 @@ async function decidePendingClaim(claim,decision){
 }
 const badge=(text,tone="slate")=>'<span class="inline-flex rounded-full px-2 py-1 font-bold bg-'+tone+'-50 text-'+tone+'-800 border border-'+tone+'-200">'+text+'</span>';
 function reviewUrl(studentId){
-  if(Number(context?.schemaVersion)===3)return "studio-submissions.html";
+  if(Number(context?.schemaVersion)===3){
+    const params=new URLSearchParams({assessment:context.taskId,section:context.section,student:studentId});
+    return "studio-submissions.html?"+params.toString();
+  }
   const p=new URLSearchParams({section:context.section,assessment:context.taskId,student:studentId,view:"grade"});
   return "repofetch.html?"+p.toString();
 }
