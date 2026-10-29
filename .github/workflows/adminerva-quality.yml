@@ -28,6 +28,7 @@ jobs:
           node --test tests/evidence-readiness.test.mjs
           node --test tests/student-search.test.mjs tests/help-access.test.mjs
           node --test tests/practice-ranking-model.test.mjs tests/teaching-firestore.test.mjs tests/academic-preparation.test.mjs
+          node --test js/student/adminerva-db.test.mjs js/student/playground-entry.test.mjs js/student/project-import.test.mjs
           node --test js/student/studio-assessment-model.test.mjs
           node --test js/analytics/academic-model.test.mjs
           node --test js/analytics/activity-model.test.mjs tests/loading-and-routes.test.mjs tests/monitoring-model.test.mjs
