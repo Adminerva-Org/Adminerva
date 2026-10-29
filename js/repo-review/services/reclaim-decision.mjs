@@ -2,7 +2,7 @@
 import {auth,db} from "../../core/firebase-core.js?v=1.3.0";
 import {doc,runTransaction,serverTimestamp} from "../../core/teaching-firestore.mjs?v=1.3.2";
 import {resolveStaffRole} from "../../core/staff-session.mjs?v=1.3.10";
-import {claimDocumentId} from "./assessment-evidence.mjs?v=1.3.1";
+import {claimDocumentId} from "./assessment-evidence.mjs?v=1.3.2";
 
 export async function decideReclaim({claimId,decision,reason}={}){
   if(!auth.currentUser||await resolveStaffRole(auth.currentUser)!=="admin")
