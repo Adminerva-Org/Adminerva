@@ -76,9 +76,8 @@ if(button){
       const evidenceId=studioEvidenceId(student.id,assessment.id);
       const headRef=doc(db,"studio_submissions",evidenceId);
       const pending=await runTransaction(db,async tx=>{
-        const [head,task,grade]=await Promise.all([
-          tx.get(headRef),tx.get(doc(db,"assessments",assessment.id)),
-          tx.get(doc(db,"student_grades",evidenceId))
+        const [head,task]=await Promise.all([
+          tx.get(headRef),tx.get(doc(db,"assessments",assessment.id))
         ]);
         if(auth.currentUser?.uid!==uid)throw Error("Account changed. No new submission was committed.");
         if(!task.exists())throw Error("The assessment was removed.");
@@ -87,8 +86,7 @@ if(button){
         if(!gate.allowed)throw Error(gate.reason);
         if(current.schemaVersion!==3||current.submissionSource!=="studio")
           throw Error("This assessment no longer accepts Studio submissions.");
-        if(grade.exists()&&grade.data().published===true)
-          throw Error("Your grade has been published. Ask your instructor to reopen the assessment.");
+        // Only Firestore rules may inspect the protected unpublished/published grade.
         if(head.exists()&&!["submitted","revision_requested"].includes(head.data().status))
           throw Error("Your previous submission is under review. Ask your instructor to request a revision first.");
         const revision=head.exists()?head.data().revision+1:1;
