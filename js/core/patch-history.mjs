@@ -15,6 +15,17 @@ const cleanAudience=value=>{
   return selected.length?selected:null;
 };
 const withAdmin=audience=>audience.includes("all")?["all"]:[...new Set(["admin",...audience])];
+// Optional impact text explains how a change affects each role, not merely who owns its page.
+// Only these short, public descriptions are copied from the release manifest.
+const cleanImpact=value=>{
+  if(!value||typeof value!=="object"||Array.isArray(value))return null;
+  const cleaned={};
+  for(const role of ["all",...roles]){
+    const note=text(value[role],350);
+    if(note)cleaned[role]=note;
+  }
+  return Object.keys(cleaned).length?cleaned:null;
+};
 
 export function inferLegacyChangeAudience(change){
   const area=text(change?.area,80).toLowerCase();
@@ -42,7 +53,10 @@ export function inferLegacyChangeAudience(change){
 }
 
 export function changeAudience(change){
-  return cleanAudience(change?.audience)||inferLegacyChangeAudience(change);
+  const selected=cleanAudience(change?.audience)||inferLegacyChangeAudience(change);
+  const impacts=Object.keys(cleanImpact(change?.impact)||{});
+  if(selected.includes("all")||impacts.includes("all"))return ["all"];
+  return [...new Set([...selected,...impacts])];
 }
 export function audienceMatches(audience,role){
   if(!role||role==="admin")return true;
@@ -51,7 +65,10 @@ export function audienceMatches(audience,role){
 }
 export function releaseForRole(release,role){
   if(!release||!role||role==="admin")return release;
-  const changes=(release.changes||[]).filter(change=>audienceMatches(change.audience,role));
+  const changes=(release.changes||[]).filter(change=>audienceMatches(change.audience,role))
+    .map(change=>({...change,...(change.impact?{impact:Object.fromEntries(
+      Object.entries(change.impact).filter(([audience])=>audience===role||audience==="all")
+    )}:{})}));
   return changes.length?{...release,changes}:null;
 }
 const releaseAudience=changes=>{
@@ -68,7 +85,8 @@ export function publicReleases(data,now=Date.now()){
     const publishedAt=Number.isFinite(publicationTime(release.publishedAt))?release.publishedAt:null;
     if(publishedAt&&publicationTime(publishedAt)>now)return [];
     const changes=(Array.isArray(release.changes)?release.changes:[]).filter(change=>categories.has(change.type)&&text(change.text,600)).slice(0,30)
-      .map(change=>({type:change.type,area:text(change.area,80),text:text(change.text,600),audience:changeAudience(change)}));
+      .map(change=>({type:change.type,area:text(change.area,80),text:text(change.text,600),
+        audience:changeAudience(change),...(cleanImpact(change.impact)?{impact:cleanImpact(change.impact)}:{})}));
     if(!changes.length||!text(release.title,120)||!text(release.summary,500))return [];
     versions.add(release.version);
     const displayVersion=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(release.displayVersion||"")?release.displayVersion:null;
@@ -80,9 +98,11 @@ export function releaseNotifications(releases,role=null){
     const projected=releaseForRole(release,role);
     if(!projected)return [];
     const partial=Boolean(role&&role!=="admin"&&projected.changes.length!==(release.changes||[]).length);
-    const body=partial
-      ? "This release includes "+projected.changes.length+" change"+(projected.changes.length===1?"":"s")+" relevant to your "+role+" account. Open What’s New for details."
-      : release.summary;
+    const impact=role&&role!=="admin"?projected.changes.flatMap(change=>
+      [change.impact?.[role]||change.impact?.all].filter(Boolean))[0]:null;
+    const body=impact?"How this affects you: "+impact:
+      partial?"This release includes "+projected.changes.length+" change"+(projected.changes.length===1?"":"s")+" relevant to your "+role+" account. Open What’s New for details."
+        : release.summary;
     return [{key:"release:"+release.version,type:"release",title:"Adminerva update · "+release.title,
       body,audience:release.audience||releaseAudience(release.changes||[]),at:effectiveReleaseTime(release),...(Number.isFinite(publicationTime(release.publishedAt))?{publishedAt:release.publishedAt}:{}),target:"patch-notes.html?version="+encodeURIComponent(release.version),saved:false}];
   });
