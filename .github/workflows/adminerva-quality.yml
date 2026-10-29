@@ -28,6 +28,7 @@ jobs:
           node --test tests/evidence-readiness.test.mjs
           node --test tests/student-search.test.mjs tests/help-access.test.mjs
           node --test tests/practice-ranking-model.test.mjs tests/teaching-firestore.test.mjs tests/academic-preparation.test.mjs
+          node --test js/student/adminerva-db.test.mjs js/student/project-import.test.mjs js/student/playground-entry.test.mjs
           node --test js/analytics/academic-model.test.mjs
           node --test js/analytics/activity-model.test.mjs tests/loading-and-routes.test.mjs tests/monitoring-model.test.mjs
           node --test js/core/patch-history.test.mjs js/student/practice-points.test.mjs js/student/xml-layout.test.mjs js/presentation-review/lesson-to-slides.test.mjs js/presentation-review/lesson-slide-integration.test.mjs js/repo-review/services/review-snapshot.test.mjs
@@ -96,6 +97,8 @@ jobs:
           node --input-type=module --check < js/presentation-review/presentation-ui.js
           node --input-type=module --check < js/presentation-review/presentation-ai.js
           node --input-type=module --check < js/presentation-review/sanitize.js
+          node --check js/student/project-import.mjs
+          node --check js/student/playground-entry.mjs
           node --input-type=module --check < js/student/playground.js
           node --input-type=module --check < js/student/project-studio.mjs
           node --input-type=module --check < js/student/code-projects.mjs
