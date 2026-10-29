@@ -44,7 +44,20 @@ if(button){
       for(const [key,{assessment}] of choices)if(assessment.id===assessmentParam){choose.value=key;break;}
     }
     notice("Choose an assessment. This submission freezes your saved files, diagrams and project database.");
+    syncExamChoice();
   };
+  const assessmentParam=new URL(location.href).searchParams.get("assessment");
+  function syncExamChoice(){
+    const chosen=choices.get(choose.value),task=chosen?.assessment;
+    if(task?.practicalExam&&assessmentParam!==task.id){
+      confirmButton.disabled=true;
+      notice("To start a practical exam, open the assignment in My Assessments, then choose Open Adminerva Studio. Exam restrictions must begin before you work.");
+      return;
+    }
+    if(task)window.adminervaSetStudioExamPolicy?.({assessmentId:task.id,practicalExam:task.practicalExam===true});
+    confirmButton.disabled=!task||!studioSubmissionAllowed(task,chosen.student.section).allowed;
+  }
+  choose.addEventListener("change",syncExamChoice);
   button.addEventListener("click",async()=>{
     if(busy)return;
     if(!window.adminervaStudioSubmissionState)return alert("The project editor is still initializing.");
@@ -52,11 +65,10 @@ if(button){
     confirmButton.disabled=true;
     try{window.adminervaStudioSubmissionState();await load();}
     catch(error){notice(error.message);}
-    finally{button.disabled=false;confirmButton.disabled=!choices.size;}
+    finally{button.disabled=false;syncExamChoice();}
   });
   dialog.querySelector("[data-close-studio]")?.addEventListener("click",close);
   dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
-  const assessmentParam=new URL(location.href).searchParams.get("assessment");
   if(assessmentParam)window.addEventListener("adminerva:studio-ready",()=>{
     button.click();
   },{once:true});
@@ -64,6 +76,10 @@ if(button){
     if(busy)return;
     const chosen=choices.get(choose.value),uid=auth.currentUser?.uid;
     if(!chosen||!uid)return notice("Choose an available assessment first.");
+    if(chosen.assessment.practicalExam&&assessmentParam!==chosen.assessment.id)
+      return notice("Open this practical exam from My Assessments before working on it.");
+    const eligibility=studioSubmissionAllowed(chosen.assessment,chosen.student.section);
+    if(!eligibility.allowed)return notice(eligibility.reason);
     let captured,snapshot,hash;
     try{
       captured=window.adminervaStudioSubmissionState();
