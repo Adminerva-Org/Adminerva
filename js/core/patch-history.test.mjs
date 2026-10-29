@@ -46,7 +46,7 @@ test('shipped patch manifest contains only curated public fields and system labe
     if(item.displayVersion)assert.match(item.displayVersion,/^\d+\.\d+\.\d+$/);
     assert.equal(typeof item.public,"boolean");if(item.status==="published")assert.equal(item.public,true);assert.doesNotMatch(JSON.stringify(item),/@|api[_ -]?key|ruleset|studentId/i);
     for(const change of item.changes){
-      const allowed=['area','text','type',...(change.audience?['audience']:[])].sort();
+      const allowed=['area','text','type',...(change.audience?['audience']:[]),...(change.impact?['impact']:[])].sort();
       assert.deepEqual(Object.keys(change).sort(),allowed);
     }
   }
