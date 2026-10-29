@@ -28,7 +28,9 @@ function valueOf(raw){
   if(/^false$/i.test(text))return false;
   if(/^[-+]?\d+(\.\d+)?$/.test(text))return Number(text);
   const quoted=text.match(/^(['"])([\s\S]*)\1$/);
-  return quoted?quoted[2].replace(/\\(['"])/g,"$1"):text;
+  if(!quoted)return text;
+  // The visual row editor emits SQL-standard doubled apostrophes.
+  return quoted[2].replace(new RegExp(quoted[1]+quoted[1],"g"),quoted[1]).replace(/\\\\(['"])/g,"$1");
 }
 function normalizeDb(db){
   const next=db&&typeof db==="object"?clone(db):{tables:{},history:[]};
@@ -37,15 +39,18 @@ function normalizeDb(db){
   return next;
 }
 function tableOrThrow(db,name){
-  const table=db.tables[name];
-  if(!table)throw Error('Table "'+name+'" does not exist.');
+  const table=Object.hasOwn(db.tables,name)?db.tables[name]:null;
+  if(!table||!Array.isArray(table.columns)||!Array.isArray(table.rows))
+    throw Error('Table "'+name+'" does not exist.');
   return table;
 }
-function parseWhere(where){
+function parseWhere(where,table){
   if(!where)return ()=>true;
   const m=String(where).trim().match(/^([A-Za-z_][\w]*)\s*(=|!=|<>|>=|<=|>|<)\s*([\s\S]+)$/);
   if(!m)throw Error("Adminerva DB currently supports one simple WHERE comparison.");
   const [,column,op,raw]=m,value=valueOf(raw);
+  if(!table.columns.some(item=>item.name===column))
+    throw Error('Unknown WHERE column "'+column+'".');
   return row=>{
     const left=row[column];
     switch(op){
@@ -70,7 +75,10 @@ export function executeAdminervaSql(inputDb,sqlText){
 
   let m=sql.match(/^CREATE\s+TABLE\s+([A-Za-z_][\w]*)\s*\(([\s\S]+)\)$/i);
   if(m){
-    const name=m[1];if(db.tables[name])throw Error('Table "'+name+'" already exists.');
+    const name=m[1];
+    if(["__proto__","prototype","constructor"].includes(name))
+      throw Error('This SQL identifier is reserved.');
+    if(Object.hasOwn(db.tables,name))throw Error('Table "'+name+'" already exists.');
     const columns=splitCsv(m[2]).map(def=>{
       const parts=def.trim().split(/\s+/),column=parts.shift();
       if(!/^[A-Za-z_][\w]*$/.test(column))throw Error("Invalid column name.");
@@ -78,6 +86,10 @@ export function executeAdminervaSql(inputDb,sqlText){
       return {name:column,type,primaryKey:/PRIMARY\s+KEY/i.test(def)};
     });
     if(!columns.length)throw Error("Add at least one column.");
+    if(new Set(columns.map(column=>column.name)).size!==columns.length)
+      throw Error("Duplicate column names are not supported.");
+    if(columns.filter(column=>column.primaryKey).length>1)
+      throw Error("Use only one primary-key column in this SQL learning engine.");
     db.tables[name]={columns,rows:[]};record(db,sql,"CREATE",0);
     return {db,columns:["message"],rows:[["Table "+name+" created."]],affected:0,type:"CREATE"};
   }
@@ -94,18 +106,22 @@ export function executeAdminervaSql(inputDb,sqlText){
     if(columns.length!==values.length)throw Error("Column and value counts do not match.");
     const valid=new Set(table.columns.map(col=>col.name));
     for(const column of columns)if(!valid.has(column))throw Error('Unknown column "'+column+'".');
+    if(new Set(columns).size!==columns.length)throw Error("Duplicate INSERT column names are not supported.");
     const row=Object.fromEntries(table.columns.map(col=>[col.name,null]));
     columns.forEach((column,index)=>row[column]=values[index]);
     const primary=table.columns.find(col=>col.primaryKey);
-    if(primary&&row[primary.name]!=null&&table.rows.some(item=>item[primary.name]==row[primary.name]))
-      throw Error("Primary key value already exists.");
+    if(primary){
+      if(row[primary.name]==null)throw Error("A primary key cannot be NULL or omitted.");
+      if(table.rows.some(item=>item[primary.name]===row[primary.name]))
+        throw Error("Primary key value already exists.");
+    }
     table.rows.push(row);record(db,sql,"INSERT",1);
     return {db,columns:["message"],rows:[["1 row inserted."]],affected:1,type:"INSERT"};
   }
 
   m=sql.match(/^SELECT\s+([\s\S]+?)\s+FROM\s+([A-Za-z_][\w]*)(?:\s+WHERE\s+([\s\S]+?))?(?:\s+ORDER\s+BY\s+([A-Za-z_][\w]*)(?:\s+(ASC|DESC))?)?(?:\s+LIMIT\s+(\d+))?$/i);
   if(m){
-    const table=tableOrThrow(db,m[2]),predicate=parseWhere(m[3]);
+    const table=tableOrThrow(db,m[2]),predicate=parseWhere(m[3],table);
     const available=table.columns.map(col=>col.name);
     const columns=m[1].trim()==="*"?available:splitCsv(m[1]).map(value=>value.trim());
     for(const column of columns)if(!available.includes(column))throw Error('Unknown column "'+column+'".');
@@ -122,21 +138,38 @@ export function executeAdminervaSql(inputDb,sqlText){
 
   m=sql.match(/^UPDATE\s+([A-Za-z_][\w]*)\s+SET\s+([\s\S]+?)(?:\s+WHERE\s+([\s\S]+))?$/i);
   if(m){
-    const table=tableOrThrow(db,m[1]),predicate=parseWhere(m[3]),valid=new Set(table.columns.map(col=>col.name));
+    const table=tableOrThrow(db,m[1]),predicate=parseWhere(m[3],table),valid=new Set(table.columns.map(col=>col.name));
     const assignments=splitCsv(m[2]).map(item=>{
       const pair=item.match(/^([A-Za-z_][\w]*)\s*=\s*([\s\S]+)$/);if(!pair)throw Error("Invalid SET assignment.");
       if(!valid.has(pair[1]))throw Error('Unknown column "'+pair[1]+'".');
       return [pair[1],valueOf(pair[2])];
     });
+    // Apply to a candidate first: failed unique-key edits must never partially
+    // modify rows, and a visual editor must not create ambiguous row identities.
     let affected=0;
-    table.rows.forEach(row=>{if(predicate(row)){assignments.forEach(([key,value])=>row[key]=value);affected++;}});
+    const nextRows=table.rows.map(row=>{
+      if(!predicate(row))return row;
+      affected++;
+      return {...row,...Object.fromEntries(assignments)};
+    });
+    const primary=table.columns.find(column=>column.primaryKey);
+    if(primary){
+      const seen=new Set();
+      for(const row of nextRows){
+        const key=row[primary.name];
+        if(key==null)throw Error("A primary key cannot be NULL.");
+        if(seen.has(key))throw Error("Primary key value already exists.");
+        seen.add(key);
+      }
+    }
+    table.rows=nextRows;
     record(db,sql,"UPDATE",affected);
     return {db,columns:["message"],rows:[[affected+" row(s) updated."]],affected,type:"UPDATE"};
   }
 
   m=sql.match(/^DELETE\s+FROM\s+([A-Za-z_][\w]*)(?:\s+WHERE\s+([\s\S]+))?$/i);
   if(m){
-    const table=tableOrThrow(db,m[1]),predicate=parseWhere(m[2]),before=table.rows.length;
+    const table=tableOrThrow(db,m[1]),predicate=parseWhere(m[2],table),before=table.rows.length;
     table.rows=table.rows.filter(row=>!predicate(row));
     const affected=before-table.rows.length;record(db,sql,"DELETE",affected);
     return {db,columns:["message"],rows:[[affected+" row(s) deleted."]],affected,type:"DELETE"};
