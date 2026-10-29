@@ -1,6 +1,136 @@
 {
   "releases": [
     {
+      "version": "3.0.0",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-30",
+      "title": "Adminerva Studio, integrated project assessments and clearer grading",
+      "summary": "Adminerva Studio connects programming projects to classroom assessments and the existing Gradebook. This release also improves practical-exam controls, code-project reliability, mobile layouts, public guides, and role-specific explanations of changes.",
+      "changes": [
+        {
+          "type": "New",
+          "area": "Studio project assessments",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Teachers can assign a Studio project as an assessment. Learners submit a saved snapshot of code, diagrams and database data without needing GitHub commits for that task.",
+          "impact": {
+            "teacher": "Choose the Studio submission method when making an assessment, deploy to your class, then review submitted projects.",
+            "student": "Work on a named Studio project and select Submit for assessment. Your teacher receives a fixed copy, not your later edits.",
+            "admin": "Studio assignments use the existing class access rules and rubric/Gradebook; review staff section assignments before enabling classrooms."
+          }
+        },
+        {
+          "type": "New",
+          "area": "Practical exam controls",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Studio assessments can use an optional practical-exam setting that restricts ordinary code copying, pasting, imports, previous-version recovery and the AI helper in the linked exam workspace.",
+          "impact": {
+            "teacher": "Enable the practical-exam option when creating a Studio task and explain allowed resources. Browser restrictions discourage code transfers but are not secure proctoring.",
+            "student": "Open the exam from My Assessments. Common paste, copy, import, restore and AI-helper actions are limited in that Studio window. Ask your teacher about permitted materials.",
+            "admin": "Treat these restrictions as a classroom deterrent, not evidence of cheating or a substitute for supervision."
+          }
+        },
+        {
+          "type": "New",
+          "area": "Studio submissions and teacher review",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Each Studio submission keeps a numbered frozen revision. Authorized instructors inspect the saved project, request revisions, or save rubric feedback in the existing grading workflow.",
+          "impact": {
+            "student": "Your submitted revision stays unchanged even when you edit your working project. Check My Assessments for teacher revision requests.",
+            "teacher": "Review the exact submitted revision, explain your decision and save a private grade before publishing from Gradebook.",
+            "admin": "Submission and grade records remain protected by section access and server-side revision checks."
+          }
+        },
+        {
+          "type": "Updated",
+          "area": "Gradebook and evaluation",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Studio and existing repository assessments retain separate evidence methods but share a protected Gradebook. Outdated revisions cannot silently replace or publish a grade.",
+          "impact": {
+            "student": "You only see grades your teacher has published. A saved teacher draft is not a final score.",
+            "teacher": "Verify each snapshot or approved repository contribution. A draft must be published deliberately, and stale submitted revisions cannot be graded as current.",
+            "admin": "Published grade corrections remain subject to explicit revision controls and audit protections."
+          }
+        },
+        {
+          "type": "Updated",
+          "area": "AI-assisted grading transparency",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Student help and grading guidance explain that automated evaluation may assist existing review workflows but teachers remain responsible for published marks.",
+          "impact": {
+            "student": "An AI tool may help your teacher prepare feedback for some assessments. AI suggestions can be incorrect and are not final grades; your teacher reviews and publishes the result.",
+            "teacher": "Check automated suggestions against verified individual evidence and the published rubric before choosing any score. Studio snapshot review currently uses teacher-entered grading.",
+            "admin": "Review school AI-provider settings and data-sharing disclosures before permitting external evaluation services."
+          }
+        },
+        {
+          "type": "Fixed",
+          "area": "Studio project reliability",
+          "audience": [
+            "all"
+          ],
+          "text": "Improved ZIP imports and restore recovery, local/cloud project persistence, Java multi-file execution, and database row integrity checks. Invalid or oversized imports are rejected before replacement.",
+          "impact": {
+            "all": "Your existing projects and saved identifiers remain in place. Imports and database edits now give clearer safeguards against losing or corrupting work."
+          }
+        },
+        {
+          "type": "Updated",
+          "area": "Mobile Studio and assessment controls",
+          "audience": [
+            "all"
+          ],
+          "text": "Narrow-screen layout, compact project tools, visible action states, and guards against duplicate class deployments improve navigation and reduce accidental repeated submissions.",
+          "impact": {
+            "student": "Studio project tools and assessment status messages are easier to use on narrow screens.",
+            "teacher": "Assessment scheduling refuses duplicate deployments to the same class and explains how to edit an existing schedule."
+          }
+        },
+        {
+          "type": "New",
+          "area": "Public Wiki and step-by-step tutorials",
+          "audience": [
+            "all"
+          ],
+          "text": "Expanded beginner-friendly teacher and student guides show how to create, deploy, complete, submit, review and grade an assessment, including example workflows, practical exams and troubleshooting.",
+          "impact": {
+            "all": "Open the public Wiki without signing in, search for your task, choose your role, and jump directly to instructions."
+          }
+        },
+        {
+          "type": "Updated",
+          "area": "What’s New and role-specific impacts",
+          "audience": [
+            "all"
+          ],
+          "text": "Release notes can now explain not only which role owns a feature but how a change affects other roles, including students affected by grading changes.",
+          "impact": {
+            "all": "Your update history offers plain-language explanations of relevant changes. Sign in to filter updates for your role."
+          }
+        }
+      ]
+    },
+    {
       "version": "2.1.2",
       "status": "published",
       "public": true,
