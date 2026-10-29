@@ -1,6 +1,60 @@
 {
   "releases": [
     {
+      "version": "2.1.3",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-30",
+      "title": "Code Studio reliability and database integrity",
+      "summary": "Improved project ZIP imports, Java multi-file launches, SQL data integrity, and save/recovery paths in student and guest Code Studio.",
+      "changes": [
+        {
+          "type": "Fixed",
+          "area": "Code Playground",
+          "audience": [
+            "student",
+            "admin"
+          ],
+          "text": "Importing a ZIP from the project home creates a new Code Studio project. Importing into an open project validates the bundle before saving and exposes an Undo Restore action."
+        },
+        {
+          "type": "Fixed",
+          "area": "Adminerva DB",
+          "audience": [
+            "student",
+            "admin"
+          ],
+          "text": "Primary-key collisions and NULL keys are rejected, SQL string escaping is corrected, and visual row edit/delete guards prevent ambiguous edits to legacy database rows."
+        },
+        {
+          "type": "Fixed",
+          "area": "Java projects",
+          "audience": [
+            "student",
+            "admin"
+          ],
+          "text": "Multi-file Java project execution selects a runnable main class rather than accidentally running an open support class."
+        },
+        {
+          "type": "Updated",
+          "area": "Code Studio persistence",
+          "audience": [
+            "student",
+            "admin"
+          ],
+          "text": "Imported bundles now respect project limits and reject invalid metadata or duplicate paths; run results remain visible when saving the optional run-history record fails."
+        },
+        {
+          "type": "Fixed",
+          "area": "Guest Code Playground",
+          "audience": [
+            "all"
+          ],
+          "text": "Guest project imports and database interactions use the same reliability fixes as student Code Studio; practice sessions cannot import over temporary scratch work."
+        }
+      ]
+    },
+    {
       "version": "2.1.2",
       "status": "published",
       "public": true,
