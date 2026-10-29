@@ -109,9 +109,19 @@ if (home) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'av-story-pick';
-        while (step.firstChild) button.append(step.firstChild);
+        const number = document.createElement('span');
+        number.textContent = String(index + 1);
+        number.setAttribute('aria-hidden', 'true');
+        const copy = document.createElement('span');
+        copy.className = 'av-story-copy';
+        const heading = document.createElement('strong');
+        heading.textContent = stages[index][0];
+        const description = document.createElement('span');
+        description.textContent = step.querySelector('p')?.textContent?.trim() || stages[index][1];
+        copy.append(heading, description);
+        button.append(number, copy);
         button.addEventListener('click', () => select(index));
-        step.append(button);
+        step.replaceChildren(button);
       });
       select(0);
     }
