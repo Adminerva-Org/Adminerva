@@ -59,7 +59,9 @@
 .av-home-motion[data-home-experience="public"] .av-public-preview li button{display:flex;gap:.78rem;align-items:flex-start;width:100%;text-align:left;padding:.76rem .82rem;background:#08273a99;color:#ecfaff;border:0;border-radius:.75rem;cursor:pointer}
 .av-home-motion[data-home-experience="public"] .av-public-preview li button[aria-pressed="true"]{background:#25566c;border:1px solid #a2f1e8aa}
 .av-home-motion[data-home-experience="public"] .av-public-preview li button > span:first-child{display:grid;place-items:center;flex:0 0 1.7rem;height:1.7rem;border-radius:50%;background:#e1fcf5;color:#0c4754;font-size:.77rem;font-weight:800}
-.av-home-motion[data-home-experience="public"] .av-public-preview li strong{color:#f1fdff}\n.av-home-motion[data-home-experience="public"] .av-public-preview .av-story-copy{display:block;flex:1;min-width:0}\n.av-home-motion[data-home-experience="public"] .av-public-preview .av-story-copy > span{display:block;color:#bed2e5;font-size:.8rem;line-height:1.4;margin-top:.2rem}
+.av-home-motion[data-home-experience="public"] .av-public-preview li strong{color:#f1fdff}
+.av-home-motion[data-home-experience="public"] .av-public-preview .av-story-copy{display:block;flex:1;min-width:0}
+.av-home-motion[data-home-experience="public"] .av-public-preview .av-story-copy > span{display:block;color:#bed2e5;font-size:.8rem;line-height:1.4;margin-top:.2rem}
 .av-home-motion[data-home-experience="public"] .av-public-preview li p{color:#bed2e5;line-height:1.4}
 .av-public-preview .av-story-detail{margin-top:.8rem;padding:.85rem;border:1px solid #8aece06b;border-radius:.85rem;background:#a9fff015;display:grid;gap:.2rem}
 .av-public-preview .av-story-detail strong{color:#a6fff0}
@@ -131,4 +133,6 @@ body:has(.av-home-motion[data-home-experience="public"]) .av-public-header{borde
 }
 html[data-motion="reduce"] .av-experience-board a:hover,
 html[data-adminerva-reduce-motion="true"] .av-experience-board a:hover{transform:none}
-\n/* Override the older quiet-admin banner so the role hero remains consistent. */\n.av-home-motion[data-home-experience="admin"] header.av-admin-motion-hero.av-experience-hero{border:1px solid #416383;border-radius:1.35rem;background:radial-gradient(ellipse at 82% 12%,#176d8882 0,transparent 46%),radial-gradient(ellipse at 4% 90%,#344c9b75 0,transparent 58%),linear-gradient(125deg,#091929,#102b46 52%,#0d243b);padding:clamp(1rem,2.4vw,1.6rem)}\n
+
+/* Override the older quiet-admin banner so the role hero remains consistent. */
+.av-home-motion[data-home-experience="admin"] header.av-admin-motion-hero.av-experience-hero{border:1px solid #416383;border-radius:1.35rem;background:radial-gradient(ellipse at 82% 12%,#176d8882 0,transparent 46%),radial-gradient(ellipse at 4% 90%,#344c9b75 0,transparent 58%),linear-gradient(125deg,#091929,#102b46 52%,#0d243b);padding:clamp(1rem,2.4vw,1.6rem)}
