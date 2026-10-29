@@ -4,6 +4,7 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {collection,doc,getDoc,getDocs,query,where} from "../core/teaching-firestore.mjs?v=1.3.0";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
 import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.1";
+import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.1";
 
 const field=id=>document.getElementById(id);
 let items=[],role="",uid="",busy=false,generation=0;
@@ -37,7 +38,16 @@ function render(){
    const actions=add(box,"div","","flex flex-wrap items-center gap-3 mt-3");
    const open=add(actions,"a","Open evidence in Review & Grade →","av-secondary-link text-sm");
    open.href=reviewLink(claim);
+   try{
+     const repo=parseRepository(claim.repository);
+     if(validSha(claim.sha)){
+       const github=add(actions,"a","Inspect commit diff on GitHub ↗","av-secondary-link text-sm");
+       github.href=repo.url+"/commit/"+encodeURIComponent(claim.sha);
+       github.target="_blank";github.rel="noopener noreferrer";
+     }
+   }catch{/* Bad repository metadata never becomes a browser link. */}
    if(claim.status!=="pending"||role!=="admin")continue;
+   add(box,"p","Check the actual diff and any other students claiming this SHA before deciding. Approval only confirms the attribution claim; teacher evidence approval is still required.","text-xs text-amber-900 mt-3");
    const form=add(box,"form","","border-t border-slate-200 mt-3 pt-3 grid gap-2");
    const label=add(form,"label","Decision explanation (10–2,000 characters)","font-bold text-sm");
    const reason=add(label,"textarea","","block w-full border border-slate-300 rounded-lg p-3 mt-2 text-sm");
