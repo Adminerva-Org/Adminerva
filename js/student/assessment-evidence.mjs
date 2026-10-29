@@ -3,7 +3,7 @@ import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {doc,getDoc,getDocs,setDoc,updateDoc,runTransaction,collection,query,where,serverTimestamp,onSnapshot}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {parseRepository,normalizeSelection,evidenceSelectionGuidance,detectedAuthor,attributionLabel,claimDocumentId,validSha}
-  from "../repo-review/services/assessment-evidence.mjs?v=1.3.1";
+  from "../repo-review/services/assessment-evidence.mjs?v=1.3.2";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,resolveSubmissionCheckpoint} from "../repo-review/services/commit-history.mjs?v=1.3.2";
 import {studentMayChangeEvidence,sameEvidence} from "../repo-review/services/evidence-lifecycle.mjs?v=1.3.1";
 import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs?v=1.3.0";
@@ -98,7 +98,8 @@ function render(){
   const visible=commits.filter(commit=>{
     const sha=String(commit.sha||"").toLowerCase();
     if(commitFilter==="selected")return selected.has(sha);
-    if(commitFilter==="mine")return Boolean(linked)&&String(commit?.author?.login||"").toLowerCase()===linked;
+    if(commitFilter==="mine")return Boolean(linked)&&String(commit?.author?.login||"").toLowerCase()===linked ||
+      ["pending","approved","shared"].includes(claims.get(sha)?.status);
     return true;
   });
   el("evidenceFilteredCount").textContent=visible.length+" of "+commits.length+" shown";
@@ -140,7 +141,15 @@ function render(){
     view.type="button";view.addEventListener("click",()=>{void window.withLoading("Loading commit changes…",()=>preview(commit),{button:view});});
     const claim=claims.get(sha);
     if(claim){
-      add(controls,"span","Reclaim "+claim.status,"text-xs font-semibold text-amber-800");
+      const label=claim.status==="approved"
+        ?"Attribution approved · teacher must verify this commit for grading"
+        :claim.status==="shared"?"Shared contribution accepted · teacher confirms individual work"
+        :claim.status==="rejected"?"Attribution rejected · ask staff for clarification"
+        :claim.status==="pending"?"Attribution pending administrator review"
+        :"Attribution request withdrawn";
+      add(controls,"span",label,
+        "text-xs font-semibold "+(claim.status==="approved"?"text-emerald-800":
+          claim.status==="rejected"?"text-rose-800":"text-amber-800"));
       if(claim.status==="pending"){
         const withdraw=add(controls,"button","Withdraw reclaim","text-xs text-rose-700 underline");
         withdraw.type="button";withdraw.addEventListener("click",()=>{void window.withLoading("Updating attribution request…",()=>withdrawClaim(sha),{button:withdraw});});
@@ -247,7 +256,8 @@ async function sendReclaim(){
     inline("Request sent. Status: Pending administrator review. You may still submit selected evidence, but it cannot be approved while this claim is pending.");
     status("Commit attribution request saved. An administrator will review it; your selected evidence has not changed.");
   }catch(error){
-    if(context===active)inline("Could not save reclaim: "+error.message+". Your explanation is preserved; correct the issue and retry.");
+    if(context===active)inline("Could not send your attribution request: "+error.message+
+      ". Your explanation is preserved. If the account or student record was recently updated, refresh this assessment and retry.");
   }finally{
     reclaimBusy=false;el("evidenceReclaimSave").disabled=false;
   }

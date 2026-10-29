@@ -52,8 +52,16 @@ export function attributionLabel(commit,studentLogin){
     ? 'GitHub login matches — staff verification still required'
     : 'Different or unknown Git identity — Reclaim Commit available';
 }
+/**
+ * Keep the roster document ID verbatim: Firestore student IDs may contain @,
+ * periods, spaces and other characters (e.g. an email-based composite ID).
+ * Replacing or slugifying it would break the server's exact claimId equality
+ * check and allow separate claim documents for the same learner.
+ */
 export function claimDocumentId(sha,studentId){
-  if(!validSha(sha)||!/^[a-zA-Z0-9_-]{1,160}$/.test(studentId||''))
-    throw Error('Invalid claim identity.');
-  return sha.toLowerCase()+'_'+studentId;
+  const id=String(studentId??'');
+  if(!validSha(sha)||!id||id.length>500||id==='.'||id==='..'||
+    /[\\/\u0000-\u001f\u007f]/.test(id))
+    throw Error('Invalid claim identity. Refresh your student profile and try again.');
+  return String(sha).toLowerCase()+'_'+id;
 }

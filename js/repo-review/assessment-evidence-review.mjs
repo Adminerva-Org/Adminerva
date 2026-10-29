@@ -5,7 +5,7 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {collection,doc,getDoc,getDocFromServer,getDocs,setDoc,query,where,updateDoc,runTransaction,serverTimestamp,onSnapshot}
   from "../core/teaching-firestore.mjs?v=1.3.0";
 import {parseRepository,normalizeSelection,validSha}
-  from "./services/assessment-evidence.mjs?v=1.4.3";
+  from "./services/assessment-evidence.mjs?v=1.4.4";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
 import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.4.3";
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
@@ -13,7 +13,7 @@ import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
 import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.4";
 import {searchStudents} from "./services/student-search.mjs?v=1.3.0";
-import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.1";
+import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.2";
 
 export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{}}={}){
 const el=id=>root.querySelector("#"+id);
@@ -198,9 +198,12 @@ async function loadEvidence(initialRecord){
     el("evidenceContributionScope").value=evidence.contributionScope||"";
     el("evidenceContributionScope").disabled=evidence.status==="approved";
     el("evidenceReviewNote").value="";el("evidenceConfirm").checked=false;
-    const claims=await getDocs(query(collection(db,"commit_reclaims"),where("studentId","==",student.id)));
+    // Section-scoped query satisfies teacher Firestore permissions without
+    // requiring a composite index for studentId + section.
+    const claims=await getDocs(query(collection(db,"commit_reclaims"),where("section","==",student.section)));
     if(destroyed||sequence!==state.sequence)return;
-    state.claims=claims.docs.filter(d=>d.data().repository===evidence.repository &&
+    state.claims=claims.docs.filter(d=>d.data().studentId===student.id &&
+      d.data().repository===evidence.repository &&
       (d.data().assessmentId===assessment.id || evidence.selectedCommits.includes(d.data().sha)))
       .map(d=>({id:d.id,...d.data()}));
     const unresolved=state.claims.filter(claim=>claim.status==="pending"&&evidence.selectedCommits.includes(claim.sha));
@@ -225,6 +228,7 @@ async function loadEvidence(initialRecord){
       "&assessment="+encodeURIComponent(assessment.id));
     const rows=el("evidenceCommitDetails");rows.replaceChildren();
     const checks=el("evidenceContributionChecks");checks.replaceChildren();
+    const claimBySha=new Map(state.claims.map(claim=>[String(claim.sha||"").toLowerCase(),claim]));
     const priorVerified=new Set(evidence.verifiedContributionCommits||[]);
     for(const sha of evidence.selectedCommits){
       const p=add(rows,"div","","rounded-lg border p-3 flex flex-wrap items-center gap-3");
@@ -235,9 +239,21 @@ async function loadEvidence(initialRecord){
       const label=add(checks,"label","","flex gap-2 items-start text-xs rounded border p-2");
       const verified=document.createElement("input");verified.type="checkbox";
       verified.dataset.contributionSha=sha;
-      verified.checked=priorVerified.has(sha);
-      verified.disabled=evidence.status==="approved";
-      label.append(verified);add(label,"span",sha.slice(0,12)+" · verify this selected commit for individual credit");
+      const claim=claimBySha.get(String(sha).toLowerCase());
+      const hasApprovedClaim=claim?.status==="approved";
+      verified.checked=priorVerified.has(sha) ||
+        (evidence.status!=="approved"&&hasApprovedClaim);
+      verified.disabled=evidence.status==="approved"||claim?.status==="rejected";
+      label.append(verified);
+      const claimHint=claim?.status==="approved"
+        ?" · approved attribution claim; verify its changed files before grading"
+        :claim?.status==="shared"?" · shared contribution claim; verify only the student's own changes"
+        :claim?.status==="pending"?" · attribution pending administrator decision"
+        :claim?.status==="rejected"?" · attribution claim rejected; excluded from individual verification":"";
+      add(label,"span",sha.slice(0,12)+" · verify this selected commit for individual credit"+claimHint);
+      if(claim?.status==="rejected")label.classList.add("bg-rose-50","border-rose-300");
+      else if(hasApprovedClaim)label.classList.add("bg-emerald-50","border-emerald-300");
+      else if(claim?.status==="pending")label.classList.add("bg-amber-50","border-amber-300");
     }
     syncBulkVerification();
     await renderClaims();
@@ -392,13 +408,20 @@ async function approve(){
     const repo=parseRepository(state.evidence.repository);
     const selection=normalizeSelection(state.evidence.selectedCommits,state.evidence.checkpointSha,{allowEmpty:state.evidence.source==="teacher_discovered"});
     const verified=[...root.querySelectorAll("[data-contribution-sha]:checked")].map(node=>node.dataset.contributionSha);
+    const rejected=new Set(state.claims.filter(claim=>claim.status==="rejected").map(claim=>claim.sha));
+    if(verified.some(sha=>rejected.has(sha)))
+      throw Error("A rejected attribution claim is selected for individual credit. Refresh review and remove it before approval.");
     const scope=el("evidenceContributionScope").value.trim()||(verified.length?"Instructor verified "+verified.length+" selected commit(s) for "+(state.student.name||state.student.id)+" at checkpoint "+selection.checkpointSha+". Individual review is limited to these selected changes; shared project features are context only.":"No individual contributing commits were verified. This checkpoint approval records shared project context only.");
     const contribution=approvalContribution(selection,verified,scope);
     status("Checking for competing pending reclaim requests…");
     await Promise.all(selection.selectedCommits.map(async sha=>{
-      const competing=await getDocs(query(collection(db,"commit_reclaims"),where("sha","==",sha)));
-      if(competing.docs.some(d=>d.data().repository===state.evidence.repository&&
-        d.data().status==="pending"))
+      const reviewerRole=await resolveStaffRole(auth.currentUser);
+      const claimQuery=reviewerRole==="admin"
+        ?query(collection(db,"commit_reclaims"),where("sha","==",sha))
+        :query(collection(db,"commit_reclaims"),where("section","==",state.evidence.section));
+      const competing=await getDocs(claimQuery);
+      if(competing.docs.some(d=>d.data().sha===sha &&
+        d.data().repository===state.evidence.repository&&d.data().status==="pending"))
         throw Error("A selected commit has an unresolved reclaim request. Ask the administrator to review the attribution before approving this student's checkpoint.");
     }));
     status("Verifying checkpoint ancestry with GitHub…");
@@ -539,7 +562,9 @@ el("evidenceEditVerification").addEventListener("click",()=>{
   if(state.busy||state.evidence?.status!=="approved")return;
   state.verificationEditing=true;state.editing=true;
   el("evidenceContributionScope").disabled=false;
-  for(const input of root.querySelectorAll("[data-contribution-sha]"))input.disabled=false;
+  const rejectedClaims=new Set(state.claims.filter(claim=>claim.status==="rejected").map(claim=>claim.sha));
+  for(const input of root.querySelectorAll("[data-contribution-sha]"))
+    input.disabled=rejectedClaims.has(input.dataset.contributionSha);
   el("evidenceVerifyAll").disabled=false;syncBulkVerification();
   el("evidenceApprove").disabled=false;el("evidenceApprove").textContent="Save revised verification";
   el("evidenceReviewNote").value="";el("evidenceConfirm").checked=false;

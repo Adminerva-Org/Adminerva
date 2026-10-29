@@ -48,3 +48,12 @@ test('evidence selection flags more than 20 distinct commits',()=>{
   assert.equal(state.ready,false);
   assert.match(state.message,/no more than 20/i);
 });
+
+test('reclaim IDs preserve email-like, dotted and composite student record identities',()=>{
+  const ids=['student.demo@example.edu','SY2026-27_G12-A_learner@example.edu','2026-A · Ana Reyes'];
+  for(const id of ids)assert.equal(claimDocumentId(A,id),A+'_'+id);
+  for(const id of ['', '.', '..', 'student/other', 'bad\\\\path', 'x'.repeat(501)]){
+    assert.throws(()=>claimDocumentId(A,id),/Invalid claim identity/);
+  }
+  assert.throws(()=>claimDocumentId('invalid','student.demo@example.edu'),/Invalid claim identity/);
+});
