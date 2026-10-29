@@ -32,7 +32,7 @@ function mount(){
       const text=document.createElement("div"),title=document.createElement("strong"),detail=document.createElement("p"),link=document.createElement("a");
       const page=destination.split(/[?#]/)[0];
       const names={
-        "student-playground.html":"Code Playground","student-assessments.html":"Assignments","student-dashboard.html":"Project Hub",
+        "student-playground.html":"Adminerva Studio","student-assessments.html":"Assignments","student-dashboard.html":"Project Hub",
         "student-practice.html":"Practice Lab","student-xml-lab.html":"XML Layout Lab",
         "lesson-planner.html":"Lesson Planner","repofetch.html":"Review & Grade",
         "gradebook.html":"Gradebook","assessment-studio.html":"Assessment Studio",
