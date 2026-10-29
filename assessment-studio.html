@@ -211,6 +211,10 @@
     <option value="studio">Adminerva Studio project snapshot (new workflow)</option>
   </select>
   <p class="text-xs text-teal-900 mt-2">One rubric and one Gradebook. Studio submissions freeze the project's files, design and database. This method cannot be changed after the assessment is created.</p>
+  <label id="practicalExamOption" class="flex items-start gap-3 mt-3 p-3 bg-white border border-amber-200 rounded-lg text-sm">
+    <input id="assessPracticalExam" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
+    <span><strong>Practical exam — restrict copying and pasting code</strong><span class="block text-xs text-slate-700 mt-1">Studio only: ordinary clipboard actions, code imports and AI helper are blocked during the exam. Browser restrictions can be bypassed; supervision and review are still needed.</span></span>
+  </label>
 </section>
 <details id="blueprintAdvanced" class="bg-white border rounded-xl p-4 sm:p-5"><summary class="font-semibold cursor-pointer py-1">Advanced evidence filters &amp; checker instructions <span class="block text-xs font-normal text-slate-500 mt-1">Optional. The default uses individual evidence review without path or keyword restrictions.</span></summary>
             <div class="mt-4 space-y-5"><label class="flex gap-3 items-start text-sm"><input id="assessV2" type="checkbox" checked class="mt-1 h-4 w-4"><span><strong>Individual checkpoint evidence (Version 2)</strong><span class="block text-xs text-slate-500 mt-1">Existing evidence versions stay unchanged. Teacher-only checker instructions are saved privately.</span></span></label>
