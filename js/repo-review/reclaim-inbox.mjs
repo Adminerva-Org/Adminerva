@@ -3,8 +3,8 @@ import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {collection,doc,getDoc,getDocs,query,where} from "../core/teaching-firestore.mjs?v=1.3.0";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
-import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.1";
-import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.1";
+import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.2";
+import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.2";
 
 const field=id=>document.getElementById(id);
 let items=[],role="",uid="",busy=false,generation=0;
