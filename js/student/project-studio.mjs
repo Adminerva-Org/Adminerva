@@ -7,7 +7,7 @@ import {
   CODE_PROJECT_TEMPLATES,createCodeProject,deleteCodeProject,findCodeProject,
   projectTemplateLabel,readCodeProjects,saveCodeProject,writeCodeProjects
 } from "./code-projects.mjs?v=2.0.0";
-import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=2.0.1";
+import {databaseSummary,executeAdminervaSql,validateAdminervaDb} from "./adminerva-db.mjs?v=2.0.1";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -82,9 +82,9 @@ export function createProjectStudio({
     const files=Object.keys(project.state?.files||{});
     if(files.length>policy.maxFiles)throw Error("This project exceeds the "+policy.maxFiles+" file limit.");
     if(projectSize(project)>policy.maxProjectBytes)throw Error("This project exceeds the local size limit. Export a ZIP or remove files/data.");
-    const tables=Object.values(project.database?.tables||{});
-    if(tables.length>policy.maxDbTables)throw Error("This project exceeds the "+policy.maxDbTables+" database table limit.");
-    if(tables.some(table=>(table.rows||[]).length>policy.maxDbRowsPerTable))throw Error("A database table exceeds the "+policy.maxDbRowsPerTable+" row limit.");
+    validateAdminervaDb(project.database||{tables:{},history:[]},{
+      maxTables:policy.maxDbTables,maxRows:policy.maxDbRowsPerTable
+    });
     if(creating&&readCodeProjects(localStorage,uid).filter(item=>item.status!=="archived").length>=policy.maxProjects)
       throw Error("Guest Code Studio keeps up to "+policy.maxProjects+" local projects. Export or delete one before creating another.");
     return true;
