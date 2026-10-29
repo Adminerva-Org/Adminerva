@@ -72,7 +72,8 @@ export function createProjectStudio({
     maxRuns:guest?15:30,
     ...limits
   };
-  let activeProject=null,selectedTemplate="java-information",cloudTimer=null,initialized=false;
+  let activeProject=null,selectedTemplate="java-information",initialized=false;
+  const cloudTimers=new Map(),cloudWrites=new Map(),deletedProjects=new Set();
   let dbSelectedTable="",dbView="browse";
 
   function projectSize(project){return enc(project);}
@@ -105,6 +106,7 @@ export function createProjectStudio({
     activateProject,
     resetToTemplate,
     importBundleMetadata,
+    validateImportBundle,
     getLimits:()=>({...policy}),
     canCreateProject:()=>!Number.isFinite(policy.maxProjects)||readCodeProjects(localStorage,uid).filter(item=>item.status!=="archived").length<policy.maxProjects,
     canAddFile:()=>!activeProject||Object.keys(captureState()?.files||{}).length<policy.maxFiles,
@@ -121,17 +123,26 @@ export function createProjectStudio({
   }
   function saveState(state){
     if(!activeProject)return null;
-    activeProject.state=state;
-    activeProject.lastOpenedAt=new Date().toISOString();
-    return store(activeProject,true);
+    const next={...activeProject,state,lastOpenedAt:new Date().toISOString()};
+    return store(next,true);
   }
   function scheduleCloudSave(project){
-    if(!cloudEnabled)return;
-    clearTimeout(cloudTimer);
-    cloudTimer=setTimeout(()=>void saveCloud(project),3500);
+    if(!cloudEnabled||deletedProjects.has(project.id))return;
+    // One timer per project: switching projects must not cancel the previous
+    // project's unsent edits. Writes for a project are serialized to prevent
+    // an earlier, slower write from overwriting a later saved revision.
+    const snapshot=clone(project),id=snapshot.id;
+    clearTimeout(cloudTimers.get(id));
+    cloudTimers.set(id,setTimeout(()=>{
+      cloudTimers.delete(id);
+      const prior=cloudWrites.get(id)||Promise.resolve();
+      const next=prior.catch(()=>{}).then(()=>saveCloud(snapshot));
+      cloudWrites.set(id,next);
+      void next.finally(()=>{if(cloudWrites.get(id)===next)cloudWrites.delete(id);});
+    },3500));
   }
   async function saveCloud(project){
-    if(!cloudEnabled)return;
+    if(!cloudEnabled||deletedProjects.has(project.id))return;
     try{
       if(!project||enc(project)>policy.maxProjectBytes)return;
       await setDoc(doc(db,"student_code_projects",uid,"projects",project.id),{...project,ownerUid:uid});
@@ -241,8 +252,14 @@ export function createProjectStudio({
         card.querySelector("[data-delete]").addEventListener("click",async()=>{
           const warning=guest?'Delete "'+project.title+'"? Guest projects exist only on this browser. Export a ZIP first if you need a copy.':'Delete "'+project.title+'"? This removes the project from this device and its project cloud record. Export a ZIP first if you need a copy.';
           if(!confirm(warning))return;
+          deletedProjects.add(project.id);
+          clearTimeout(cloudTimers.get(project.id));cloudTimers.delete(project.id);
           deleteCodeProject(localStorage,uid,project.id);
-          if(cloudEnabled)try{await deleteDoc(doc(db,"student_code_projects",uid,"projects",project.id));}catch(error){console.warn("Cloud project deletion unavailable:",error);}
+          if(cloudEnabled)try{
+            await (cloudWrites.get(project.id)||Promise.resolve()).catch(()=>{});
+            await deleteDoc(doc(db,"student_code_projects",uid,"projects",project.id));
+          }catch(error){console.warn("Cloud project deletion unavailable:",error);
+            alert("The local project was deleted, but its cloud copy could not be removed. It may reappear after cloud sync. Please retry when online.");}
           renderProjectHome();
         });
         list.append(card);
@@ -267,17 +284,27 @@ export function createProjectStudio({
     activateProject(project);
   }
 
-  function importBundleMetadata(bundle){
-    if(!activeProject||!bundle||bundle.format!=="adminerva-project-bundle")return false;
+  function validateImportBundle(bundle,state){
+    if(!activeProject)throw Error("Open or create a project before importing a bundle.");
     const next=clone(activeProject);
-    if(typeof bundle.title==="string"&&bundle.title.trim())next.title=bundle.title.trim().slice(0,120);
-    if(bundle.template&&CODE_PROJECT_TEMPLATES[bundle.template])next.template=bundle.template;
-    if(typeof bundle.lang==="string")next.lang=bundle.lang;
-    if(bundle.config&&typeof bundle.config==="object")next.config={...(next.config||{}),...clone(bundle.config)};
-    if(bundle.database&&typeof bundle.database==="object")next.database=clone(bundle.database);
-    if(bundle.design&&typeof bundle.design==="object")next.design=clone(bundle.design);
+    if(bundle){
+      if(bundle.format!=="adminerva-project-bundle"||bundle.version!==1)
+        throw Error("Unsupported Adminerva project bundle version.");
+      if(typeof bundle.title==="string"&&bundle.title.trim())next.title=bundle.title.trim().slice(0,120);
+      if(bundle.template&&CODE_PROJECT_TEMPLATES[bundle.template])next.template=bundle.template;
+      if(typeof bundle.lang==="string")next.lang=bundle.lang;
+      if(bundle.config&&typeof bundle.config==="object"&&!Array.isArray(bundle.config))next.config={...next.config,...clone(bundle.config)};
+      if(bundle.database&&typeof bundle.database==="object"&&!Array.isArray(bundle.database))next.database=clone(bundle.database);
+      if(bundle.design&&typeof bundle.design==="object"&&!Array.isArray(bundle.design))next.design=clone(bundle.design);
+    }
+    next.lang=state.lang;next.state=state;
     validateProject(next);
-    activeProject=next;store(activeProject,true);onConfigChange?.(activeProject.config);
+    return next;
+  }
+  function importBundleMetadata(bundle){
+    if(!activeProject||!bundle)return false;
+    const next=validateImportBundle(bundle,captureState());
+    store(next,true);onConfigChange?.(next.config);
     dbSelectedTable="";dbView="browse";renderDatabase();renderEvidence();loadDesignEditor();
     return true;
   }
