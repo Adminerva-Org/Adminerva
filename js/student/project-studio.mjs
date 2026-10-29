@@ -300,6 +300,9 @@ export function createProjectStudio({
     }
     next.lang=state.lang;next.state=state;
     validateProject(next);
+    if(bundle?.database)validateAdminervaDb(next.database,{
+      maxTables:policy.maxDbTables,maxRows:policy.maxDbRowsPerTable,strictPrimaryKeys:true
+    });
     return next;
   }
   function importAsProject(state,bundle){
@@ -313,6 +316,9 @@ export function createProjectStudio({
       database:bundle?.database||{tables:{},history:[]},design:bundle?.design||{},evidence:{events:[],runs:[]}
     };
     validateProject(candidate,{creating:true});
+    if(bundle?.database)validateAdminervaDb(candidate.database,{
+      maxTables:policy.maxDbTables,maxRows:policy.maxDbRowsPerTable,strictPrimaryKeys:true
+    });
     const project=createCodeProject(localStorage,uid,{title:candidate.title,templateId:template,config:candidate.config});
     try{
       const next={...project,...candidate,lang:state.lang};
