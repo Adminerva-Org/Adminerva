@@ -25,7 +25,7 @@ let assessments = [];
 let currentAssessmentId = null;
 let deploySelectedSections = [];
 let fpInstance = null;
-let savingBlueprint=false,rubricSource="balanced",lastGeneratedRubric="",subjectFocus=[];
+let savingBlueprint=false,savingDeployment=false,rubricSource="balanced",lastGeneratedRubric="",subjectFocus=[];
 const rubricTemplates=new Map();
 const defaultPersona="Assist the teacher by checking supported evidence against the published task and rubric. Distinguish verified individual contributions from shared project work. Do not infer authorship or misconduct. Leave unsupported, visual and runtime criteria for teacher review. Suggested scores stay unpublished until teacher approval.";
 const balancedCriteria=[{name:"Task requirements",weight:40,description:"Requested features and outputs are demonstrated."},{name:"Correctness",weight:30,description:"The submitted work behaves or reasons correctly for the task."},{name:"Clarity and organization",weight:20,description:"The work is understandable, organized and appropriate for the task."},{name:"Explanation and supporting evidence",weight:10,description:"The student explains the approach and links relevant evidence of their own contribution."}];
@@ -620,8 +620,9 @@ function updateDeployDropdown() {
     ? (item.deployments || []).map((d) => d.section)
     : [];
 
-  const available = allSections.filter(
-    (sec) => !deploySelectedSections.includes(sec),
+  const available = allSections.filter(sec=>
+    !deploySelectedSections.includes(sec) &&
+    (Boolean(document.getElementById("deployId").value)||!existingDeployments.includes(sec))
   );
 
   available.forEach((sec) => {
@@ -676,7 +677,7 @@ window.removeDeployChip = function (section) {
 };
 
 window.saveDeployment = async function () {
-  if (!currentAssessmentId) return;
+  if (!currentAssessmentId||savingDeployment) return;
 
   const deployId = document.getElementById("deployId").value;
   const deadlineEnabled = document.getElementById("deployUseDeadline").checked;
@@ -690,8 +691,12 @@ window.saveDeployment = async function () {
   if(dateError)return alert(dateError);
 
   const item = assessments.find((a) => a.id === currentAssessmentId);
+  if(!item)return alert("Assessment unavailable. Refresh the page and try again.");
   let deployments = [...(item.deployments || [])];
-
+  if(!deployId){
+    const duplicates=deploySelectedSections.filter(section=>deployments.some(entry=>entry.section===section));
+    if(duplicates.length)return alert("Already deployed to "+duplicates.join(", ")+". Use Edit beside that class to change the schedule.");
+  }
   if (deployId) {
     const index = deployments.findIndex((d) => d.id === deployId);
     if (index > -1) {
@@ -715,6 +720,8 @@ window.saveDeployment = async function () {
     });
   }
 
+  savingDeployment=true;
+  document.getElementById("deploySaveBtn").disabled=true;
   window.showSubtleLoader("Applying deployment schedule...");
   try {
     await saveDeploymentScope(item,deployments);
@@ -724,12 +731,14 @@ window.saveDeployment = async function () {
   } catch (e) {
     alert("Failed to deploy: " + e.message);
   } finally {
+    savingDeployment=false;
+    document.getElementById("deploySaveBtn").disabled=false;
     window.hideSubtleLoader();
   }
 };
 
 window.deleteDeployment = async function (deployId) {
-  if (!currentAssessmentId) return;
+  if (!currentAssessmentId||savingDeployment) return;
   if (
     confirm(
       "Remove this deployment? The assignment will be withdrawn from the section.",
@@ -740,6 +749,8 @@ window.deleteDeployment = async function (deployId) {
       (d) => d.id !== deployId,
     );
 
+    savingDeployment=true;
+    document.getElementById("deploySaveBtn").disabled=true;
     window.showSubtleLoader("Removing deployment...");
     try {
       await saveDeploymentScope(item,deployments);
@@ -748,12 +759,16 @@ window.deleteDeployment = async function (deployId) {
     } catch (e) {
       alert("Error: " + e.message);
     } finally {
+      savingDeployment=false;
+      document.getElementById("deploySaveBtn").disabled=false;
       window.hideSubtleLoader();
     }
   }
 };
 
 async function saveDeploymentScope(item,deployments){
+  if(new Set(deployments.map(entry=>entry.section)).size!==deployments.length)
+    throw Error("A class can have only one deployment of the same assessment. Edit its existing schedule instead.");
   if(deployments.length>20)throw Error("An assessment supports at most 20 deployments. Create another blueprint for additional sections.");
   const sectionIds=[...new Set(deployments.map(deployment=>deployment.section))];
   const batch=writeBatch(db);
