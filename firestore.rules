@@ -453,6 +453,27 @@ service cloud.firestore {
           exists(/databases/$(database)/documents/assessments/$(taskId)) &&
           get(/databases/$(database)/documents/assessments/$(taskId)).data.get("schemaVersion",1) == 2;
       }
+      function studioGrade(data) {
+        let taskId=data.get("taskId","");
+        return taskId is string && taskId != "" &&
+          exists(/databases/$(database)/documents/assessments/$(taskId)) &&
+          get(/databases/$(database)/documents/assessments/$(taskId)).data.get("schemaVersion",1) == 3;
+      }
+      function currentStudioEvidence(data) {
+        let source=getAfter(/databases/$(database)/documents/studio_submissions/$(gradeId)).data;
+        return gradeId == data.studentId + "_" + data.taskId &&
+          source.studentId == data.studentId && source.assessmentId == data.taskId &&
+          source.status == "reviewed" && source.reviewedBy == data.reviewedBy &&
+          data.get("gradeSource","") == "studio_teacher_review" &&
+          data.get("studioRevision",0) == source.revision &&
+          data.get("studioSnapshotHash","") == source.snapshotHash &&
+          data.get("reviewRequired",true) == false &&
+          data.get("published",false) is bool &&
+          data.get("feedback","") is string && data.feedback.size() >= 20 &&
+          data.score is number && data.maxScore is number &&
+          data.maxScore == get(/databases/$(database)/documents/assessments/$(data.taskId)).data.maxScore &&
+          data.score >= 0 && data.score <= data.maxScore;
+      }
       function currentEvidence(data) {
         let evidence = getAfter(/databases/$(database)/documents/assessment_evidence/$(gradeId)).data;
         let teacherReviewed = data.manuallyAdjusted == true &&
@@ -502,9 +523,12 @@ service cloud.firestore {
           data.get("evaluationDraft",{}).get("teacherReviewed",true) == false;
       }
       allow read: if mayTeachSection(resource.data.get("section",null));
-      allow create: if mayGrade(request.resource.data) && (!v2Grade(request.resource.data) ||
-        (request.resource.data.published == false && (currentEvidence(request.resource.data) || validSystemDraft(request.resource.data))));
+      allow create: if mayGrade(request.resource.data) &&
+        (!v2Grade(request.resource.data) || (request.resource.data.published == false &&
+          (currentEvidence(request.resource.data) || validSystemDraft(request.resource.data)))) &&
+        (!studioGrade(request.resource.data) || (request.resource.data.published == false && currentStudioEvidence(request.resource.data)));
       allow update: if mayGrade(request.resource.data) &&
+        (!studioGrade(request.resource.data) || currentStudioEvidence(request.resource.data)) &&
         request.resource.data.studentId == resource.data.studentId && request.resource.data.taskId == resource.data.taskId &&
         request.resource.data.section == resource.data.section && (
         (!v2Grade(resource.data) && !v2Grade(request.resource.data)) ||
@@ -1041,6 +1065,93 @@ service cloud.firestore {
     }
 
     // Named Code Studio projects are private to their authenticated owner.
+    // Studio submissions are frozen version documents with an audited current
+    // pointer. Their source is independent of GitHub commit attribution.
+    function studioTaskReady(taskId,section){
+      let task=get(/databases/$(database)/documents/assessments/$(taskId)).data;
+      let windows=task.get("studioWindows",{});
+      return task.get("schemaVersion",1) == 3 &&
+        task.get("submissionSource","") == "studio" &&
+        section in task.get("sectionIds",[]) &&
+        section in windows &&
+        request.time >= windows[section].opensAt &&
+        request.time <= windows[section].closesAt;
+    }
+    function studioEvidenceStudent(data) {
+      return signedIn() && data.studentId is string &&
+        ownsStudentProfile(data.studentId) &&
+        data.ownerUid == request.auth.uid &&
+        data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
+        data.assessmentId is string &&
+        exists(/databases/$(database)/documents/assessments/$(data.assessmentId)) &&
+        studioTaskReady(data.assessmentId,data.section) &&
+        (!exists(/databases/$(database)/documents/student_grades/$(data.studentId + "_" + data.assessmentId)) ||
+          get(/databases/$(database)/documents/student_grades/$(data.studentId + "_" + data.assessmentId)).data.get("published",false) == false);
+    }
+    function studioHeadValid(evidenceId,data) {
+      let version=getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)/versions/$(string(data.revision))).data;
+      return data.keys().hasOnly(["source","studentId","assessmentId","ownerUid","section","revision",
+        "projectId","projectTitle","snapshotHash","status","reviewNote","reviewedBy","submittedAt","reviewedAt"]) &&
+        data.source == "studio" && evidenceId == data.studentId + "_" + data.assessmentId &&
+        data.revision is int && data.revision > 0 && data.revision <= 30 &&
+        data.projectId is string && data.projectId.size() > 0 && data.projectId.size() <= 150 &&
+        data.projectTitle is string && data.projectTitle.size() > 0 && data.projectTitle.size() <= 120 &&
+        data.snapshotHash is string && data.snapshotHash.matches("^[a-f0-9]{64}$") &&
+        data.status == "submitted" && data.reviewNote == "" && data.reviewedBy == "" &&
+        data.submittedAt == request.time && version.revision == data.revision &&
+        version.snapshotHash == data.snapshotHash && version.ownerUid == data.ownerUid &&
+        version.studentId == data.studentId && version.assessmentId == data.assessmentId &&
+        version.submittedAt == data.submittedAt;
+    }
+    match /studio_submissions/{evidenceId} {
+      allow read: if mayTeachSection(resource.data.section) ||
+        (signedIn() && ownsStudentProfile(resource.data.studentId));
+      allow create: if studioEvidenceStudent(request.resource.data) &&
+        studioHeadValid(evidenceId,request.resource.data) && request.resource.data.revision == 1;
+      allow update: if (
+        studioEvidenceStudent(request.resource.data) && studioHeadValid(evidenceId,request.resource.data) &&
+        resource.data.studentId == request.resource.data.studentId &&
+        resource.data.assessmentId == request.resource.data.assessmentId &&
+        resource.data.ownerUid == request.resource.data.ownerUid &&
+        resource.data.section == request.resource.data.section &&
+        resource.data.status in ["submitted","revision_requested"] &&
+        request.resource.data.revision == resource.data.revision + 1
+      ) || (
+        mayTeachEvidence(resource.data.studentId,resource.data.assessmentId) &&
+        resource.data.status == "submitted" &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(["status","reviewNote","reviewedBy","reviewedAt"]) &&
+        request.resource.data.status in ["reviewed","revision_requested"] &&
+        request.resource.data.reviewedBy == request.auth.uid &&
+        request.resource.data.reviewNote is string &&
+        request.resource.data.reviewNote.size() >= 15 &&
+        request.resource.data.reviewNote.size() <= 3000 &&
+        request.resource.data.reviewedAt == request.time
+      );
+      allow delete: if false;
+      match /versions/{revisionId} {
+        allow read: if exists(/databases/$(database)/documents/studio_submissions/$(evidenceId)) &&
+          (mayTeachSection(get(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.section) ||
+            (signedIn() && ownsStudentProfile(get(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.studentId)));
+        allow create: if request.resource.data.keys().hasOnly(["source","studentId","assessmentId","ownerUid",
+            "section","revision","projectId","snapshotHash","snapshotJson","submittedAt"]) &&
+          request.resource.data.source == "studio" &&
+          request.resource.data.revision is int &&
+          revisionId == string(request.resource.data.revision) &&
+          request.resource.data.snapshotHash is string &&
+          request.resource.data.snapshotHash.matches("^[a-f0-9]{64}$") &&
+          request.resource.data.snapshotJson is string &&
+          request.resource.data.snapshotJson.size() > 10 &&
+          request.resource.data.snapshotJson.size() <= 320000 &&
+          request.resource.data.submittedAt == request.time &&
+          studioEvidenceStudent(request.resource.data) &&
+          getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.revision == request.resource.data.revision &&
+          getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.snapshotHash == request.resource.data.snapshotHash &&
+          evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId;
+        allow update,delete: if false;
+      }
+    }
+
     match /student_code_projects/{uid}/projects/{projectId} {
       allow read: if signedIn() && request.auth.uid == uid;
       allow create, update: if signedIn() && request.auth.uid == uid &&
