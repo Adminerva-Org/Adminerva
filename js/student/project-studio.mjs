@@ -336,11 +336,10 @@ export function createProjectStudio({
   function resetToTemplate(){
     if(!activeProject)return false;
     const template=CODE_PROJECT_TEMPLATES[activeProject.template]||CODE_PROJECT_TEMPLATES["java-blank"];
-    activeProject.state=clone(template.workspace);
-    activeProject.database=clone(template.database||{tables:{},history:[]});
-    activeProject.design=clone(template.design||{});
-    activeProject.evidence={events:[],runs:[]};
-    store(activeProject,true);
+    const next={...activeProject,state:clone(template.workspace),
+      database:clone(template.database||{tables:{},history:[]}),
+      design:clone(template.design||{}),evidence:{events:[],runs:[]}};
+    store(next,true);
     openProject(activeProject);
     switchStudioView("code");
     return true;
@@ -437,20 +436,22 @@ export function createProjectStudio({
     if(!activeProject)return;
     const title=el("projectSettingsTitle").value.trim();
     if(!title)return alert("Project name cannot be empty.");
-    activeProject.title=title.slice(0,120);
-    if(activeProject.lang==="java"){
-      activeProject.config.runMode=el("projectSettingsRunMode").value==="desktop"?"desktop":"console";
-      activeProject.config.database=Boolean(el("projectSettingsDatabase").checked);
+    const next={...activeProject,title:title.slice(0,120),config:{...activeProject.config}};
+    if(next.lang==="java"){
+      next.config.runMode=el("projectSettingsRunMode").value==="desktop"?"desktop":"console";
+      next.config.database=Boolean(el("projectSettingsDatabase").checked);
     }
-    store(activeProject,true);onConfigChange?.(activeProject.config);
-    el("projectSettingsModal")?.classList.add("hidden");
-    renderDatabase();renderEvidence();
+    try{
+      store(next,true);onConfigChange?.(activeProject.config);
+      el("projectSettingsModal")?.classList.add("hidden");
+      renderDatabase();renderEvidence();
+    }catch(error){alert("Project settings could not be saved: "+error.message);}
   }
   function updateConfig(patch){
     if(!activeProject)return;
-    activeProject.config={...(activeProject.config||{}),...patch};
-    store(activeProject,true);onConfigChange?.(activeProject.config);
-    renderDatabase();
+    const next={...activeProject,config:{...(activeProject.config||{}),...patch}};
+    try{store(next,true);onConfigChange?.(activeProject.config);renderDatabase();}
+    catch(error){alert("Project settings could not be saved: "+error.message);}
   }
 
   function switchStudioView(view){
