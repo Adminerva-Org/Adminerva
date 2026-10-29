@@ -15,6 +15,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -22,7 +24,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = '1485adfd0761410230e84b129ba6db2f9d5f6144'
+          git merge-base --is-ancestor '1485adfd0761410230e84b129ba6db2f9d5f6144' HEAD
+          test "$(git diff --name-only 1485adfd0761410230e84b129ba6db2f9d5f6144 HEAD)" = '.github/workflows/adminerva-3-backend-cutover.yml'
           node -e 'const fs=require("fs"); const v=JSON.parse(fs.readFileSync("site-release.json","utf8")); if(v.version!=="2.1.2")process.exit(1);'
           node scripts/check-release-source.mjs
       - name: Configure Firebase deployment credentials
