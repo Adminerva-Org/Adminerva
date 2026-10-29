@@ -234,6 +234,16 @@ function renderAssessmentGrid() {
   });
 }
 
+function updatePracticalExamOption(){
+  const studio=document.getElementById("assessSubmissionSource").value==="studio";
+  document.getElementById("assessPracticalExam").disabled=!studio;
+  document.getElementById("practicalExamOption").classList.toggle("opacity-60",!studio);
+}
+document.getElementById("assessSubmissionSource").addEventListener("change",updatePracticalExamOption);
+document.getElementById("assessType").addEventListener("change",event=>{
+  if(event.target.value==="Practical Exam"&&document.getElementById("assessSubmissionSource").value==="studio")
+    document.getElementById("assessPracticalExam").checked=true;
+});
 window.openCreateModal = function () {
   currentAssessmentId = null;
   document.getElementById("createModalTitle").textContent =
@@ -248,6 +258,8 @@ window.openCreateModal = function () {
   document.getElementById("assessSubject").value=subjectFocus.length===1?subjectFocus[0]:"";
   document.getElementById("assessSubmissionSource").value="repository";
   document.getElementById("assessSubmissionSource").disabled=false;
+  document.getElementById("assessPracticalExam").checked=false;
+  updatePracticalExamOption();
   document.getElementById("assessV2").checked = true;
   document.getElementById("assessV2").disabled = false;
   document.getElementById("assessExpectedExts").value = "";
@@ -287,6 +299,8 @@ window.openEditModal = function () {
   document.getElementById("assessQuarter").value = item.quarter || "";
   document.getElementById("assessSubmissionSource").value=item.schemaVersion===3?"studio":"repository";
   document.getElementById("assessSubmissionSource").disabled=true;
+  document.getElementById("assessPracticalExam").checked=item.practicalExam===true;
+  updatePracticalExamOption();
   document.getElementById("assessV2").checked = item.schemaVersion === 2;
   document.getElementById("assessV2").disabled = true; // Never silently convert a legacy record.
   document.getElementById("assessExpectedExts").value =
@@ -331,11 +345,12 @@ window.saveAssessment = async function () {
   const prior = currentAssessmentId ? assessments.find(a=>a.id===currentAssessmentId) : null;
   const studio=prior ? prior.schemaVersion===3 : document.getElementById("assessSubmissionSource").value==="studio";
   const v2=prior ? prior.schemaVersion===2 : (!studio&&document.getElementById("assessV2").checked);
+  const practicalExam=studio&&document.getElementById("assessPracticalExam").checked;
   const payload = {
     ownerUid:prior?.ownerUid||actor.uid,
     sectionIds:prior?.sectionIds||[...new Set((prior?.deployments||[]).map(deployment=>deployment.section))],
     ...(v2?{schemaVersion:2,evidenceMode:"commit_selection",checkpointMode:"individual"}:{}),
-    ...(studio?{schemaVersion:3,submissionSource:"studio",evidenceMode:"studio_snapshot"}:{}),
+    ...(studio?{schemaVersion:3,submissionSource:"studio",evidenceMode:"studio_snapshot",practicalExam}:{}),
     title: title,
     type: document.getElementById("assessType").value,
     maxScore: score,
