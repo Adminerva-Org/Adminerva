@@ -107,6 +107,7 @@ export function createProjectStudio({
     resetToTemplate,
     importBundleMetadata,
     validateImportBundle,
+    importAsProject,
     getLimits:()=>({...policy}),
     canCreateProject:()=>!Number.isFinite(policy.maxProjects)||readCodeProjects(localStorage,uid).filter(item=>item.status!=="archived").length<policy.maxProjects,
     canAddFile:()=>!activeProject||Object.keys(captureState()?.files||{}).length<policy.maxFiles,
@@ -300,6 +301,29 @@ export function createProjectStudio({
     next.lang=state.lang;next.state=state;
     validateProject(next);
     return next;
+  }
+  function importAsProject(state,bundle){
+    if(activeProject)throw Error("Import into the open project instead.");
+    const template=bundle?.template&&CODE_PROJECT_TEMPLATES[bundle.template]
+      ?bundle.template:state.lang==="web"?"web":state.lang==="python"?"python-console":"java-blank";
+    const base=CODE_PROJECT_TEMPLATES[template];
+    const candidate={
+      title:typeof bundle?.title==="string"&&bundle.title.trim()?bundle.title.trim().slice(0,120):"Imported "+state.lang.toUpperCase()+" Project",
+      state,config:{...base.config,...(bundle?.config||{})},
+      database:bundle?.database||{tables:{},history:[]},design:bundle?.design||{},evidence:{events:[],runs:[]}
+    };
+    validateProject(candidate,{creating:true});
+    const project=createCodeProject(localStorage,uid,{title:candidate.title,templateId:template,config:candidate.config});
+    try{
+      const next={...project,...candidate,lang:state.lang};
+      validateProject(next);
+      saveCodeProject(localStorage,uid,next);
+      activateProject(next);
+      return true;
+    }catch(error){
+      deleteCodeProject(localStorage,uid,project.id);
+      throw error;
+    }
   }
   function importBundleMetadata(bundle){
     if(!activeProject||!bundle)return false;
