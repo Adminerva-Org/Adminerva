@@ -273,6 +273,10 @@ window.openCreateModal = function () {
 window.openEditModal = function () {
   const item = assessments.find((a) => a.id === currentAssessmentId);
   if (!item) return;
+  if(item.schemaVersion===3&&(item.deployments||[]).length){
+    alert("This Studio rubric is protected after deployment. Create a new blueprint for changed requirements; edit the deployment schedule separately.");
+    return;
+  }
 
   document.getElementById("createModalTitle").textContent = "Edit Blueprint";
   document.getElementById("saveAssessmentBtn").textContent = "Update Blueprint";
