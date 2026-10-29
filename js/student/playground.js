@@ -3,7 +3,8 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=2.1.0";
+import {createProjectStudio} from "./project-studio.mjs?v=2.1.3";
+import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.0.0";
 import {
   collection,
@@ -960,9 +961,10 @@ async function loadSnapshot(id) {
 // 5. EXECUTION ENGINE & DIAGNOSTICS
 // ==========================================
 function compilerEntry(){
-  const expected=languageConfig[currentLang].defaultFile;
-  const extension=expected.slice(expected.lastIndexOf('.'));
-  return workspaceFiles[expected]?expected:activeFilename.endsWith(extension)?activeFilename:fileOrder.find(path=>path.endsWith(extension));
+  return chooseCompilerEntry({
+    language:currentLang,defaultFile:languageConfig[currentLang].defaultFile,
+    activeFilename,fileOrder,files:currentState().files
+  });
 }
 async function executionPayload(options={}){
   const entry=compilerEntry();if(!entry)throw Error('Add a '+languageConfig[currentLang].defaultFile+' entry file before running.');
@@ -1118,7 +1120,7 @@ async function executeCode() {
       document.getElementById('desktopTab')?.click();
       stage='Launching desktop runtime';update();
       launchJavaDesktop(jarBase64);
-      projectStudio?.recordRun({mode:"desktop",status:"launched"});
+      try{projectStudio?.recordRun({mode:"desktop",status:"launched"});}catch(e){console.warn("Run history not saved:",e);}
       notePracticeExecution();
       return;
     }
@@ -1126,11 +1128,11 @@ async function executeCode() {
     if(error&&currentLang===runLanguage)applyVisualDiagnostics(error,entry);
     if(error&&currentLang==='java'&&/HeadlessException|No X11 DISPLAY|headless/i.test(error))consoleOut.textContent+='\n\nThis program appears to open a desktop window. Change Run as to “Desktop GUI (Swing) · Beta” and run it again.';
     if(result.status.id>3&&!error)consoleOut.textContent+='\n'+String(result.message||'Review the execution status above.');
-    projectStudio?.recordRun({mode:"console",status:result.status?.description||"finished",time:result.time||null,memory:result.memory||null});
+    try{projectStudio?.recordRun({mode:"console",status:result.status?.description||"finished",time:result.time||null,memory:result.memory||null});}catch(e){console.warn("Run history not saved:",e);}
     notePracticeExecution();
   }catch(error){
     if(sequence!==executionSequence)return;
-    projectStudio?.recordRun({mode:desktopMode?"desktop":"console",status:controller.signal.aborted?"cancelled":"error"});
+    try{projectStudio?.recordRun({mode:desktopMode?"desktop":"console",status:controller.signal.aborted?"cancelled":"error"});}catch(e){console.warn("Run history not saved:",e);}
     consoleOut.textContent=controller.signal.aborted?(stage==='Compiler timed out'?'The compiler did not finish within 45 seconds. Your code is saved. Retry, or export the project to run locally.':'Run cancelled. Your code is unchanged. The remote service may finish the already submitted job.'):'Execution unavailable: '+error.message+'\nYour code is saved on this device when browser storage is available.';
   }finally{clearTimeout(timeout);clearInterval(clock);executionController=null;runBtn.disabled=false;overlay?.classList.add('hidden');end();}
 }
