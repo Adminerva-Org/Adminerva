@@ -291,6 +291,7 @@ export function createProjectStudio({
         JSON.stringify(captureState()));
       store(next,true);
       openProject(activeProject);
+      el("undoRestoreBtn")?.classList.remove("hidden");
       dbSelectedTable="";dbView="browse";renderDatabase();renderEvidence();loadDesignEditor();
       return activeProject;
     }
@@ -345,9 +346,12 @@ export function createProjectStudio({
     updateProjectHeading();
     openProject(activeProject);
     switchStudioView("code");
-    for(const id of ["cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","snapshotBtn"]){
+    for(const id of ["cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","snapshotBtn"]){
       const control=el(id);if(control)control.classList.add("hidden");
     }
+    const undo=el("undoRestoreBtn");
+    if(undo)undo.classList.toggle("hidden",
+      !localStorage.getItem("Adminerva_Code_Project_Undo_v1_"+uid+"_"+activeProject.id));
     updateQuotaUI();
     if(cloudEnabled)scheduleCloudSave(activeProject);
   }
