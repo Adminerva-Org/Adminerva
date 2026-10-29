@@ -2,7 +2,7 @@ import test,{before,after,beforeEach} from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {initializeTestEnvironment,assertSucceeds,assertFails} from "@firebase/rules-unit-testing";
-import {doc,getDoc,setDoc,updateDoc,deleteDoc,writeBatch,serverTimestamp,Timestamp} from "firebase/firestore";
+import {doc,getDoc,setDoc,updateDoc,deleteDoc,writeBatch,serverTimestamp,Timestamp,collection,query,where,getDocs} from "firebase/firestore";
 
 const PROJECT="demo-adminerva-security";
 const TEACHER="teacher@example.edu",ALICE="alice@example.edu",BOB="bob@example.edu";
@@ -47,6 +47,9 @@ test("student can submit a frozen project and teacher may read; other student ca
  await assertSucceeds(saveFirst(alice));
  await assertSucceeds(getDoc(doc(alice,"studio_submissions",ID)));
  await assertSucceeds(getDoc(doc(teacher,"studio_submissions",ID,"versions","1")));
+ await assertSucceeds(getDocs(query(collection(alice,"studio_submissions"),where("studentId","==","alice"))));
+ await assertSucceeds(getDocs(query(collection(teacher,"studio_submissions"),where("section","==","11-A"))));
+ await assertFails(getDocs(query(collection(bob,"studio_submissions"),where("studentId","==","alice"))));
  await assertFails(getDoc(doc(bob,"studio_submissions",ID)));
  await assertFails(getDoc(doc(bob,"studio_submissions",ID,"versions","1")));
  await assertFails(updateDoc(doc(alice,"studio_submissions",ID,"versions","1"),{snapshotJson:"changed"}));
