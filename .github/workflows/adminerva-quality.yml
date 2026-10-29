@@ -28,6 +28,7 @@ jobs:
           node --test tests/evidence-readiness.test.mjs
           node --test tests/student-search.test.mjs tests/help-access.test.mjs
           node --test tests/practice-ranking-model.test.mjs tests/teaching-firestore.test.mjs tests/academic-preparation.test.mjs
+          node --test js/student/studio-assessment-model.test.mjs
           node --test js/analytics/academic-model.test.mjs
           node --test js/analytics/activity-model.test.mjs tests/loading-and-routes.test.mjs tests/monitoring-model.test.mjs
           node --test js/core/patch-history.test.mjs js/student/practice-points.test.mjs js/student/xml-layout.test.mjs js/presentation-review/lesson-to-slides.test.mjs js/presentation-review/lesson-slide-integration.test.mjs js/repo-review/services/review-snapshot.test.mjs
@@ -41,6 +42,9 @@ jobs:
           node --check js/repo-review/services/grade-version.mjs
           node --check js/repo-review/services/request-backoff.mjs
           node --check js/repo-review/services/publication-queue.mjs
+          node --check js/student/studio-assessment-model.mjs
+          node --check js/student/studio-assessment-submit.mjs
+          node --check js/repo-review/studio-submissions.mjs
           node --check js/repo-review/grade-publication.mjs
           node --check js/repo-review/review-ui.mjs
           node --check js/repo-review/feedback-drawer.mjs
