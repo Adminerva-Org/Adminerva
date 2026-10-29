@@ -1,6 +1,66 @@
 {
   "releases": [
     {
+      "version": "2.1.1",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-10-29",
+      "title": "Interactive home pages for every role",
+      "summary": "Adminerva introduces an interactive landing page, clearer role-specific home navigation, a safe public demonstration, and verified account-aware learning and evidence summaries.",
+      "changes": [
+        {
+          "type": "Updated",
+          "area": "Public landing and Guest home",
+          "audience": [
+            "all"
+          ],
+          "text": "Refined the landing and guest-home presentation with immersive navy and teal visuals, polished cards, and an interactive story of assignment, practice and review."
+        },
+        {
+          "type": "New",
+          "area": "Public interactive showcase",
+          "audience": [
+            "all"
+          ],
+          "text": "Try a sandboxed HTML/CSS preview, a Java practice question, and a sample evidence-review walkthrough. The showcase does not access or modify school data."
+        },
+        {
+          "type": "Updated",
+          "area": "Student home",
+          "audience": [
+            "student",
+            "admin"
+          ],
+          "text": "Find assignments, projects and practice from a clearer action board, with verified saved practice progress and improved return-to-workspace shortcuts."
+        },
+        {
+          "type": "Updated",
+          "area": "Teacher home",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Use a role-focused workflow board, recent evidence status snapshot and existing Review & Grade, Lesson Planning and Gradebook destinations. No separate grading process is introduced."
+        },
+        {
+          "type": "Updated",
+          "area": "School administration",
+          "audience": [
+            "admin"
+          ],
+          "text": "A clearer school-operations hero surfaces reporting, enrollment and staff setup while retaining the existing real administration counts."
+        },
+        {
+          "type": "New",
+          "area": "Workspace finder",
+          "audience": [
+            "all"
+          ],
+          "text": "Ctrl/Cmd+K opens a keyboard-accessible finder of visible home-page destinations, without exposing inaccessible role menus."
+        }
+      ]
+    },
+    {
       "version": "2.1.0",
       "status": "published",
       "public": true,

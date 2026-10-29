@@ -1,6 +1,5 @@
 {
-  "version": "2.1.0",
-  "releasedAt": "2026-10-28",
-  "notes": "Code Studio database tooling: Explorer right-click actions, importable Adminerva project bundles with database/design metadata, and a visual Adminerva DB manager with Browse, Structure, SQL, row CRUD, table starter and CSV export.",
-  "publishedAt": "2026-10-28T05:55:00+08:00"
+  "version": "2.1.1",
+  "releasedAt": "2026-10-29",
+  "notes": "Interactive role home experience: immersive landing page with safe coding, practice and assessment demos; verified student practice summaries; recent teacher evidence insights; contextual role boards and Ctrl/Cmd+K workspace finder."
 }
