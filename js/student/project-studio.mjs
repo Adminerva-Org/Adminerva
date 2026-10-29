@@ -594,6 +594,8 @@ export function createProjectStudio({
     if(editing){
       const primary=columns.find(column=>column.primaryKey);if(!primary)return alert("Visual editing requires a primary key.");
       const original=table.rows[rowIndex]?.[primary.name];
+      if(original==null||table.rows.filter(row=>row[primary.name]===original).length!==1)
+        return alert("This older row has a missing or duplicate primary key. Visual editing is blocked to protect other rows. Repair the key in SQL or export a backup first.");
       const set=columns.map(column=>column.name+" = "+sqlLiteral(values[column.name])).join(", ");
       sql="UPDATE "+dbSelectedTable+" SET "+set+" WHERE "+primary.name+" = "+sqlLiteral(original)+";";
     }else{
@@ -609,7 +611,10 @@ export function createProjectStudio({
   function deleteDbRow(rowIndex){
     const table=selectedDbTable();if(!table)return;
     const primary=(table.columns||[]).find(column=>column.primaryKey);if(!primary)return alert("Visual deletion requires a primary key.");
-    const value=table.rows[rowIndex]?.[primary.name];if(!confirm("Delete this row from "+dbSelectedTable+"?"))return;
+    const value=table.rows[rowIndex]?.[primary.name];
+    if(value==null||table.rows.filter(row=>row[primary.name]===value).length!==1)
+      return alert("This older row has a missing or duplicate primary key. Visual deletion is blocked to prevent removing other records. Repair the key in SQL or export a backup first.");
+    if(!confirm("Delete this row from "+dbSelectedTable+"?"))return;
     try{
       const result=executeAdminervaSql(activeProject.database,"DELETE FROM "+dbSelectedTable+" WHERE "+primary.name+" = "+sqlLiteral(value)+";");
       activeProject.database=result.db;store(activeProject,true);renderDatabase();renderEvidence();
