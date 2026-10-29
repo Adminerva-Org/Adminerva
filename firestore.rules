@@ -970,7 +970,9 @@ service cloud.firestore {
       allow create: if isInstructor() && validAssessment(request.resource.data);
       allow update: if isInstructor() && validAssessment(request.resource.data) &&
         (isAdmin() || (resource.data.get("ownerUid","") == request.auth.uid && request.resource.data.ownerUid == resource.data.ownerUid)) &&
-        request.resource.data.get("schemaVersion",1) == resource.data.get("schemaVersion",1);
+        request.resource.data.get("schemaVersion",1) == resource.data.get("schemaVersion",1) &&
+        (resource.data.get("schemaVersion",1) != 3 || resource.data.get("deployments",[]).size() == 0 ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(["deployments","sectionIds","studioWindows"]));
       allow delete: if isInstructor() && resource.data.get("schemaVersion",1) != 2 &&
         (isAdmin() || resource.data.get("ownerUid","") == request.auth.uid);
     }
