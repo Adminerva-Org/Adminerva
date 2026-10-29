@@ -7,7 +7,8 @@ import {
   CODE_PROJECT_TEMPLATES,createCodeProject,deleteCodeProject,findCodeProject,
   projectTemplateLabel,readCodeProjects,saveCodeProject,writeCodeProjects
 } from "./code-projects.mjs?v=2.0.0";
-import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=2.0.0";
+import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=3.0.0";
+import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -72,7 +73,8 @@ export function createProjectStudio({
     maxRuns:guest?15:30,
     ...limits
   };
-  let activeProject=null,selectedTemplate="java-information",cloudTimer=null,initialized=false;
+  let activeProject=null,selectedTemplate="java-information",initialized=false;
+  const cloudTimers=new Map(),cloudWrites=new Map(),deletedProjects=new Set();
   let dbSelectedTable="",dbView="browse";
 
   function projectSize(project){return enc(project);}
@@ -105,6 +107,7 @@ export function createProjectStudio({
     activateProject,
     resetToTemplate,
     importBundleMetadata,
+    importZipWorkspace,
     getLimits:()=>({...policy}),
     canCreateProject:()=>!Number.isFinite(policy.maxProjects)||readCodeProjects(localStorage,uid).filter(item=>item.status!=="archived").length<policy.maxProjects,
     canAddFile:()=>!activeProject||Object.keys(captureState()?.files||{}).length<policy.maxFiles,
@@ -121,17 +124,26 @@ export function createProjectStudio({
   }
   function saveState(state){
     if(!activeProject)return null;
-    activeProject.state=state;
-    activeProject.lastOpenedAt=new Date().toISOString();
-    return store(activeProject,true);
+    const next={...activeProject,state,lastOpenedAt:new Date().toISOString()};
+    return store(next,true);
   }
   function scheduleCloudSave(project){
-    if(!cloudEnabled)return;
-    clearTimeout(cloudTimer);
-    cloudTimer=setTimeout(()=>void saveCloud(project),3500);
+    if(!cloudEnabled||deletedProjects.has(project.id))return;
+    // One timer per project: switching projects must not cancel the previous
+    // project's unsent edits. Writes for a project are serialized to prevent
+    // an earlier, slower write from overwriting a later saved revision.
+    const snapshot=clone(project),id=snapshot.id;
+    clearTimeout(cloudTimers.get(id));
+    cloudTimers.set(id,setTimeout(()=>{
+      cloudTimers.delete(id);
+      const prior=cloudWrites.get(id)||Promise.resolve();
+      const next=prior.catch(()=>{}).then(()=>saveCloud(snapshot));
+      cloudWrites.set(id,next);
+      void next.finally(()=>{if(cloudWrites.get(id)===next)cloudWrites.delete(id);});
+    },3500));
   }
   async function saveCloud(project){
-    if(!cloudEnabled)return;
+    if(!cloudEnabled||deletedProjects.has(project.id))return;
     try{
       if(!project||enc(project)>policy.maxProjectBytes)return;
       await setDoc(doc(db,"student_code_projects",uid,"projects",project.id),{...project,ownerUid:uid});
@@ -241,8 +253,14 @@ export function createProjectStudio({
         card.querySelector("[data-delete]").addEventListener("click",async()=>{
           const warning=guest?'Delete "'+project.title+'"? Guest projects exist only on this browser. Export a ZIP first if you need a copy.':'Delete "'+project.title+'"? This removes the project from this device and its project cloud record. Export a ZIP first if you need a copy.';
           if(!confirm(warning))return;
+          deletedProjects.add(project.id);
+          clearTimeout(cloudTimers.get(project.id));cloudTimers.delete(project.id);
           deleteCodeProject(localStorage,uid,project.id);
-          if(cloudEnabled)try{await deleteDoc(doc(db,"student_code_projects",uid,"projects",project.id));}catch(error){console.warn("Cloud project deletion unavailable:",error);}
+          if(cloudEnabled)try{
+            await (cloudWrites.get(project.id)||Promise.resolve()).catch(()=>{});
+            await deleteDoc(doc(db,"student_code_projects",uid,"projects",project.id));
+          }catch(error){console.warn("Cloud project deletion unavailable:",error);
+            alert("The local project was deleted, but its cloud copy could not be removed. It may reappear after cloud sync. Please retry when online.");}
           renderProjectHome();
         });
         list.append(card);
@@ -265,6 +283,46 @@ export function createProjectStudio({
     const project=findCodeProject(localStorage,uid,id);
     if(!project)return alert("This project is no longer available on this device.");
     activateProject(project);
+  }
+
+  /**
+   * Importing from the project home creates a named project; importing inside
+   * an open project replaces that project's files after an undo snapshot.
+   * Metadata and quota checks run before either case writes imported data.
+   */
+  function importZipWorkspace(state,bundle=null){
+    const templateByLang={java:"java-blank",python:"python-console",web:"web"};
+    const templateId=bundle?.template||templateByLang[state?.lang]||"java-blank";
+    const template=CODE_PROJECT_TEMPLATES[templateId]||CODE_PROJECT_TEMPLATES["java-blank"];
+    const base=activeProject||{
+      title:"Imported "+String(state?.lang||"Code").toUpperCase()+" Project",
+      template:template.id,lang:state?.lang,config:clone(template.config),
+      state, database:clone(template.database||{tables:{},history:[]}),
+      design:clone(template.design||{}),evidence:{events:[],runs:[]}
+    };
+    const next=prepareProjectImport(base,state,bundle,policy);
+    validateProject(next,{creating:!activeProject});
+    if(activeProject){
+      localStorage.setItem("Adminerva_Code_Project_Undo_v1_"+uid+"_"+activeProject.id,
+        JSON.stringify(captureState()));
+      store(next,true);
+      openProject(activeProject);
+      el("undoRestoreBtn")?.classList.remove("hidden");
+      dbSelectedTable="";dbView="browse";renderDatabase();renderEvidence();loadDesignEditor();
+      return activeProject;
+    }
+    const created=createCodeProject(localStorage,uid,{
+      title:next.title,templateId:template.id,config:next.config
+    });
+    try{
+      const imported={...next,id:created.id,ownerUid:uid,createdAt:created.createdAt};
+      validateProject(imported);
+      activateProject(imported);
+      return activeProject;
+    }catch(error){
+      deleteCodeProject(localStorage,uid,created.id);
+      throw error;
+    }
   }
 
   function importBundleMetadata(bundle){
@@ -305,9 +363,12 @@ export function createProjectStudio({
     openProject(activeProject);
     switchStudioView("code");
     window.dispatchEvent(new CustomEvent("adminerva:studio-ready",{detail:{projectId:activeProject.id}}));
-    for(const id of ["cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","undoRestoreBtn","snapshotBtn"]){
+    for(const id of ["cloudSaveProjectBtn","cloudLoadProjectBtn","loadProjectBtn","snapshotBtn"]){
       const control=el(id);if(control)control.classList.add("hidden");
     }
+    const undo=el("undoRestoreBtn");
+    if(undo)undo.classList.toggle("hidden",
+      !localStorage.getItem("Adminerva_Code_Project_Undo_v1_"+uid+"_"+activeProject.id));
     updateQuotaUI();
     if(cloudEnabled)scheduleCloudSave(activeProject);
   }
@@ -387,20 +448,22 @@ export function createProjectStudio({
     if(!activeProject)return;
     const title=el("projectSettingsTitle").value.trim();
     if(!title)return alert("Project name cannot be empty.");
-    activeProject.title=title.slice(0,120);
-    if(activeProject.lang==="java"){
-      activeProject.config.runMode=el("projectSettingsRunMode").value==="desktop"?"desktop":"console";
-      activeProject.config.database=Boolean(el("projectSettingsDatabase").checked);
+    const next={...activeProject,title:title.slice(0,120),config:{...activeProject.config}};
+    if(next.lang==="java"){
+      next.config.runMode=el("projectSettingsRunMode").value==="desktop"?"desktop":"console";
+      next.config.database=Boolean(el("projectSettingsDatabase").checked);
     }
-    store(activeProject,true);onConfigChange?.(activeProject.config);
-    el("projectSettingsModal")?.classList.add("hidden");
-    renderDatabase();renderEvidence();
+    try{
+      store(next,true);onConfigChange?.(activeProject.config);
+      el("projectSettingsModal")?.classList.add("hidden");
+      renderDatabase();renderEvidence();
+    }catch(error){alert("Project settings could not be saved: "+error.message);}
   }
   function updateConfig(patch){
     if(!activeProject)return;
-    activeProject.config={...(activeProject.config||{}),...patch};
-    store(activeProject,true);onConfigChange?.(activeProject.config);
-    renderDatabase();
+    const next={...activeProject,config:{...(activeProject.config||{}),...patch}};
+    try{store(next,true);onConfigChange?.(activeProject.config);renderDatabase();}
+    catch(error){alert("Project settings could not be saved: "+error.message);}
   }
 
   function switchStudioView(view){
@@ -453,7 +516,7 @@ export function createProjectStudio({
   }
 
   function sqlLiteral(value){
-    if(value===null||value===undefined||value==="")return "NULL";
+    if(value===null||value===undefined)return "NULL";
     if(typeof value==="number"&&Number.isFinite(value))return String(value);
     if(typeof value==="boolean")return value?"TRUE":"FALSE";
     return "'"+String(value).replace(/'/g,"''")+"'";
@@ -544,7 +607,7 @@ export function createProjectStudio({
   function formDbValues(){
     const result={};el("dbRowEditor")?.querySelectorAll("[data-db-field]").forEach(input=>{
       const raw=input.value;
-      result[input.dataset.dbField]=input.type==="number"&&raw!==""?Number(raw):raw;
+      result[input.dataset.dbField]=input.type==="number"?(raw===""?null:Number(raw)):raw;
     });return result;
   }
   function saveDbRow(rowIndex=null){
@@ -554,6 +617,8 @@ export function createProjectStudio({
     if(editing){
       const primary=columns.find(column=>column.primaryKey);if(!primary)return alert("Visual editing requires a primary key.");
       const original=table.rows[rowIndex]?.[primary.name];
+      if(original==null||table.rows.filter(row=>row[primary.name]===original).length!==1)
+        return alert("This older row has a missing or duplicate primary key. Visual editing is blocked to protect other rows. Repair the key in SQL or export a backup first.");
       const set=columns.map(column=>column.name+" = "+sqlLiteral(values[column.name])).join(", ");
       sql="UPDATE "+dbSelectedTable+" SET "+set+" WHERE "+primary.name+" = "+sqlLiteral(original)+";";
     }else{
@@ -569,7 +634,10 @@ export function createProjectStudio({
   function deleteDbRow(rowIndex){
     const table=selectedDbTable();if(!table)return;
     const primary=(table.columns||[]).find(column=>column.primaryKey);if(!primary)return alert("Visual deletion requires a primary key.");
-    const value=table.rows[rowIndex]?.[primary.name];if(!confirm("Delete this row from "+dbSelectedTable+"?"))return;
+    const value=table.rows[rowIndex]?.[primary.name];
+    if(value==null||table.rows.filter(row=>row[primary.name]===value).length!==1)
+      return alert("This older row has a missing or duplicate primary key. Visual deletion is blocked to prevent removing other records. Repair the key in SQL or export a backup first.");
+    if(!confirm("Delete this row from "+dbSelectedTable+"?"))return;
     try{
       const result=executeAdminervaSql(activeProject.database,"DELETE FROM "+dbSelectedTable+" WHERE "+primary.name+" = "+sqlLiteral(value)+";");
       activeProject.database=result.db;store(activeProject,true);renderDatabase();renderEvidence();
