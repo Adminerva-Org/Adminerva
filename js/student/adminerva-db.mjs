@@ -43,7 +43,7 @@ function tableOrThrow(db,name){
 }
 /** Validate imported DB metadata before it can replace an existing project.
  * Keep this independent of the UI and the SQL interpreter's mutation path. */
-export function validateAdminervaDb(value,{maxTables=50,maxRows=5000}={}){
+export function validateAdminervaDb(value,{maxTables=50,maxRows=5000,strictPrimaryKeys=false}={}){
   if(!value||typeof value!=="object"||Array.isArray(value)||
     !value.tables||typeof value.tables!=="object"||Array.isArray(value.tables)||
     !Array.isArray(value.history))throw Error("Invalid project database structure.");
@@ -77,7 +77,7 @@ export function validateAdminervaDb(value,{maxTables=50,maxRows=5000}={}){
             typeof cell==="number"&&Number.isFinite(cell)))
           throw Error("Invalid cell value in table "+name);
       }
-      if(primary){
+      if(primary&&strictPrimaryKeys){
         const key=row[primary.name];
         if(key===undefined||key===null)throw Error("Missing primary key in table "+name);
         const normalized=String(key);
