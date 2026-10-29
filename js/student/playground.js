@@ -1259,7 +1259,7 @@ function enablePracticeSandbox(){
   // This workspace is temporary. Never allow saving it over personal projects
   // or uploading it to the student's regular cloud version history.
   for(const id of ["languageSelect","cloudSaveProjectBtn","cloudLoadProjectBtn",
-    "loadProjectBtn","snapshotBtn","legacyImportBtn","undoRestoreBtn"]){
+    "loadProjectBtn","snapshotBtn","legacyImportBtn","undoRestoreBtn","importZipBtn","importCodeProjectBtn"]){
     const control=document.getElementById(id);
     if(control){control.disabled=true;control.classList.add("hidden")}
   }
@@ -1310,18 +1310,34 @@ function bindUIEvents() {
         const raw=entry.unsafeOriginalName||entry.name;
         if(raw==="adminerva-project.json")continue;
         const path=projectPath(raw.replace(/\/$/,''));
-        if(entry.dir){folders.push(path);continue;}
+        if(entry.dir){folders.push(path);if(folders.length>100)throw Error("The ZIP has more than 100 folders.");continue;}
+        if(Object.hasOwn(files,path))throw Error("The ZIP contains duplicate paths: "+path);
         if(Object.keys(files).length>=limits.maxFiles)throw Error('Import up to '+limits.maxFiles+' files in this project.');
-        const text=await entry.async('string');size+=new TextEncoder().encode(text).length;if(size>limits.maxProjectBytes)throw Error('This ZIP exceeds the project size limit.');files[path]=text;
+        // Reject oversized extracted entries before allocating their contents.
+        const entryBytes=entry._data?.uncompressedSize;
+        if(Number.isFinite(entryBytes)&&size+entryBytes>limits.maxProjectBytes)
+          throw Error("The ZIP contains a file larger than this project tier allows.");
+        const text=await entry.async('string');size+=new TextEncoder().encode(text).length;
+        if(size>limits.maxProjectBytes)throw Error('This ZIP exceeds the project size limit.');
+        files[path]=text;
       }
       if(!Object.keys(files).length)throw Error('No source files found in this ZIP.');
       const bundleLabel=bundle?" with its Adminerva DB/design data":"";
-      if(!confirm('Replace the editor with '+Object.keys(files).length+' imported files'+bundleLabel+'? Current work will be backed up on this device.'))return;
+      const hasProject=Boolean(projectStudio?.getActiveProject?.());
+      const message=projectStudio&&!hasProject
+        ?'Create a new project from '+Object.keys(files).length+' imported files'+bundleLabel+'?'
+        :'Replace this project\'s editor with '+Object.keys(files).length+' imported files'+bundleLabel+'? The current code will be kept in Undo Restore.';
+      if(!confirm(message))return;
       const nextLang=bundle?.lang||currentLang;
       const order=Object.keys(files);
-      const preferred=bundle?.entry&&files[bundle.entry]?bundle.entry:(files["Main.java"]?"Main.java":order[0]);
-      if(!window.adminervaRestorePlayground({...currentState(),lang:nextLang,files,folders,fileOrder:order,activeFilename:preferred,projectOrder:[...folders,...order]}))throw Error('The current draft could not be backed up. Export it first.');
-      if(bundle&&projectStudio?.importBundleMetadata)projectStudio.importBundleMetadata(bundle);
+      const preferred=bundle?.entry&&Object.hasOwn(files,bundle.entry)?bundle.entry:(Object.hasOwn(files,"Main.java")?"Main.java":order[0]);
+      const imported={lang:nextLang,files,folders,fileOrder:order,activeFilename:preferred,projectOrder:[...folders,...order]};
+      if(projectStudio){
+        if(hasProject&&!persistWorkspace())throw Error("Could not save current project. Export a ZIP before importing.");
+        projectStudio.importZipWorkspace(imported,bundle);
+        showSaveStatus("ZIP imported and saved as a Code Studio project");
+      }else if(!window.adminervaRestorePlayground({...currentState(),...imported}))
+        throw Error("The current draft could not be backed up. Export it first.");
     }catch(error){alert('Import failed: '+error.message);}
   });
   document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='s'){event.preventDefault();persistWorkspace();}if((event.ctrlKey||event.metaKey)&&event.key==='Enter'){event.preventDefault();void executeCode();}});
