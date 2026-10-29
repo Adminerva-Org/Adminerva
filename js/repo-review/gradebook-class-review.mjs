@@ -81,7 +81,11 @@ async function decidePendingClaim(claim,decision){
   }finally{busy=false;if(context===active)await load(active);}
 }
 const badge=(text,tone="slate")=>'<span class="inline-flex rounded-full px-2 py-1 font-bold bg-'+tone+'-50 text-'+tone+'-800 border border-'+tone+'-200">'+text+'</span>';
-function reviewUrl(studentId){const p=new URLSearchParams({section:context.section,assessment:context.taskId,student:studentId,view:"grade"});return "repofetch.html?"+p.toString();}
+function reviewUrl(studentId){
+  if(Number(context?.schemaVersion)===3)return "studio-submissions.html";
+  const p=new URLSearchParams({section:context.section,assessment:context.taskId,student:studentId,view:"grade"});
+  return "repofetch.html?"+p.toString();
+}
 function missingEvidenceReason(student){
   if(!student||context?.grades?.[student.id]||draftMap.has(student.id))return "";
   const evidence=evidenceMap.get(student.id);
@@ -137,6 +141,10 @@ async function copyMissingReminder(){
 }
 function statusFor(student){
   const evidence=evidenceMap.get(student.id),grade=context.grades?.[student.id],draft=draftMap.get(student.id);
+  if(Number(context?.schemaVersion)===3)
+    return grade?.published?{label:"Published Studio grade",tone:"emerald"}:
+      grade?{label:"Studio draft · ready",tone:"cyan",next:"View Studio review"}:
+      {label:"Studio · review project",tone:"blue",next:"Open Studio submissions"};
   if(grade?.published)return {label:"Published",tone:"emerald"};
   // V2 evidence lifecycle takes precedence over older unpublished drafts.
   // A grade from the previous approved revision must not look publishable.
