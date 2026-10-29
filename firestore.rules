@@ -1104,6 +1104,7 @@ service cloud.firestore {
         data.projectTitle is string && data.projectTitle.size() > 0 && data.projectTitle.size() <= 120 &&
         data.snapshotHash is string && data.snapshotHash.matches("^[a-f0-9]{64}$") &&
         data.status == "submitted" && data.reviewNote == "" && data.reviewedBy == "" &&
+        !("reviewedAt" in data) &&
         data.submittedAt == request.time && version.revision == data.revision &&
         version.snapshotHash == data.snapshotHash && version.ownerUid == data.ownerUid &&
         version.studentId == data.studentId && version.assessmentId == data.assessmentId &&
@@ -1166,6 +1167,7 @@ service cloud.firestore {
           studioEvidenceStudent(request.resource.data) &&
           getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.revision == request.resource.data.revision &&
           getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.snapshotHash == request.resource.data.snapshotHash &&
+          getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.submittedAt == request.time &&
           evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId;
         allow update,delete: if false;
       }
