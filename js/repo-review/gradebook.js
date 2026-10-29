@@ -1,6 +1,6 @@
 import {feedbackSummary,inlineTask,reviewNotice} from "./review-ui.mjs?v=1.3.0";
 import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=1.3.0";
-import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.2";
+import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=3.0.0";
 import {legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.2";
 import {assertGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
 import {writePublicationRevision} from "./grade-publication.mjs?v=1.3.2";
