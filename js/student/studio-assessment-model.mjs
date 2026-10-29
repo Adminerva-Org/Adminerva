@@ -27,7 +27,7 @@ export function snapshotStudioProject(project,liveState){
     throw Error("Open and save a named Studio project before submission.");
   const files=liveState.files;
   const names=Object.keys(files);
-  if(!names.length||names.length>100||new Set(liveState.fileOrder).size!==names.length||
+  if(!names.length||names.length>100||liveState.fileOrder.length!==names.length||new Set(liveState.fileOrder).size!==names.length||
       !liveState.fileOrder.every(name=>Object.hasOwn(files,name))||
       names.some(name=>typeof files[name]!=="string"||!name||name.length>220||name.startsWith("/")||
         name.split("/").some(part=>part===".."||part==="."||!part)))
