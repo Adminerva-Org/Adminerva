@@ -67,7 +67,14 @@ test("import preflight rejects malformed database metadata before editors render
     {...valid.tables.students,rows:[{id:1,name:"Ana",grade:11},{id:1,name:"Copy",grade:12}]},
     {...valid.tables.students,rows:[{id:1,name:{nested:"value"},grade:11}]},
     {...valid.tables.students,rows:[{id:1,name:"Ana",extra:"hidden"}]}
-  ])assert.throws(()=>validateAdminervaDb({tables:{students:table},history:[]}));
+  ])assert.throws(()=>validateAdminervaDb({tables:{students:table},history:[]},{strictPrimaryKeys:true}));
+  // Legacy projects with old duplicate IDs must remain editable so the
+  // learner can repair them; newly imported metadata uses strict validation.
+  const legacy={tables:{students:{...valid.tables.students,rows:[
+    {id:1,name:"Ana",grade:11},{id:1,name:"Duplicate old record",grade:12}
+  ]}},history:[]};
+  assert.equal(validateAdminervaDb(legacy),true);
+  assert.throws(()=>validateAdminervaDb(legacy,{strictPrimaryKeys:true}),/Duplicate primary key/);
   assert.throws(()=>validateAdminervaDb({tables:{},history:"bad"}));
   assert.throws(()=>validateAdminervaDb({tables:{students:valid.tables.students},history:[]},{maxTables:0}));
 });
