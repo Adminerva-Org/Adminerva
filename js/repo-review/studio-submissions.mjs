@@ -97,7 +97,11 @@ async function inspect(item){
      add(designs,"pre",JSON.stringify(snapshot.design,null,2),"whitespace-pre-wrap text-xs mt-2 overflow-auto max-h-48");
    }
    if(item.status==="reviewed")add(detail,"p","Reviewed. Existing private grade: "+(grade.exists()?grade.data().score+" / "+grade.data().maxScore:"Unavailable"),"text-sm font-semibold text-teal-900 mt-4");
-   if(item.status!=="submitted")return;
+   if(!["submitted","reviewed"].includes(item.status))return;
+   if(item.status==="reviewed"&&grade.exists()&&grade.data().published){
+     add(detail,"p","Published grade protected. Unpublish in Gradebook before requesting a revision.","text-sm text-amber-900 mt-2");
+     return;
+   }
    const form=add(detail,"section","","border-t mt-5 pt-4 grid gap-3");
    add(form,"h3","Teacher review (private until Gradebook publication)","font-bold");
    const note=add(form,"textarea","","w-full border rounded-lg p-3 text-sm");
@@ -112,6 +116,10 @@ async function inspect(item){
    const buttons=add(form,"div","","flex gap-3 flex-wrap");
    const revise=add(buttons,"button","Request revision","border rounded-lg px-4 py-2 text-amber-950 bg-amber-100 font-semibold");
    const gradeBtn=add(buttons,"button","Save reviewed grade draft","bg-teal-700 text-white rounded-lg px-4 py-2 font-semibold");
+   if(item.status==="reviewed"){
+     gradeBtn.hidden=true;scoreLabel.hidden=true;feedbackLabel.hidden=true;
+     note.placeholder="Explain why you are reopening this reviewed Studio submission. The current private grade becomes stale until the new revision is reviewed.";
+   }
    const save=async(type)=>{
      if(busy)return;
      const reason=note.value.trim(),points=Number(score.value),text=feedback.value.trim();
@@ -129,7 +137,9 @@ async function inspect(item){
            tx.get(headRef),tx.get(gradeRef),tx.get(doc(db,"assessments",item.assessmentId))
          ]);
          if(auth.currentUser?.uid!==uid)throw Error("Staff account changed. Review cancelled.");
-         if(!latest.exists()||latest.data().revision!==item.revision||latest.data().status!=="submitted")
+         if(!latest.exists()||latest.data().revision!==item.revision||
+           (type==="reviewed"&&latest.data().status!=="submitted")||
+           (type==="revision_requested"&&!["submitted","reviewed"].includes(latest.data().status)))
            throw Error("The submitted revision changed. Refresh the inbox to review the latest work.");
          if(!taskDoc.exists()||taskDoc.data().schemaVersion!==3||taskDoc.data().maxScore!==max)
            throw Error("The assessment changed. Refresh before grading.");
