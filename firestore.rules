@@ -532,7 +532,7 @@ service cloud.firestore {
           (currentStudioEvidence(request.resource.data) &&
             (resource.data.get("published",false) == false ||
               (request.resource.data.published == false &&
-                request.resource.data.diff(resource.data).affectedKeys().hasOnly(["published"])))) &&
+                request.resource.data.diff(resource.data).affectedKeys().hasOnly(["published"]))))) &&
         request.resource.data.studentId == resource.data.studentId && request.resource.data.taskId == resource.data.taskId &&
         request.resource.data.section == resource.data.section && (
         (!v2Grade(resource.data) && !v2Grade(request.resource.data)) ||
