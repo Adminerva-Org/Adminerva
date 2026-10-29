@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {executeAdminervaSql} from "./adminerva-db.mjs";
+import {executeAdminervaSql,validateAdminervaDb} from "./adminerva-db.mjs";
 
 const initial=()=>({tables:{},history:[]});
 const run=(db,sql)=>executeAdminervaSql(db,sql);
@@ -56,4 +56,18 @@ test("UPDATE and DELETE preserve ordinary row operations and history",()=>{
   const removed=run(updated.db,"DELETE FROM students WHERE id = 1");
   assert.equal(removed.affected,1);
   assert.deepEqual(run(removed.db,"SELECT id FROM students").rows,[[2]]);
+});
+
+test("import preflight rejects malformed database metadata before editors render it",()=>{
+  const valid=created();
+  valid.tables.students.rows.push({id:1,name:"Ana",grade:11});
+  assert.equal(validateAdminervaDb(valid),true);
+  for(const table of [
+    {...valid.tables.students,columns:[{name:"id",type:"INTEGER",primaryKey:true},{name:"id",type:"TEXT"}]},
+    {...valid.tables.students,rows:[{id:1,name:"Ana",grade:11},{id:1,name:"Copy",grade:12}]},
+    {...valid.tables.students,rows:[{id:1,name:{nested:"value"},grade:11}]},
+    {...valid.tables.students,rows:[{id:1,name:"Ana",extra:"hidden"}]}
+  ])assert.throws(()=>validateAdminervaDb({tables:{students:table},history:[]}));
+  assert.throws(()=>validateAdminervaDb({tables:{},history:"bad"}));
+  assert.throws(()=>validateAdminervaDb({tables:{students:valid.tables.students},history:[]},{maxTables:0}));
 });
