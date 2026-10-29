@@ -1328,7 +1328,13 @@ function bindUIEvents() {
         ?'Create a new project from '+Object.keys(files).length+' imported files'+bundleLabel+'?'
         :'Replace this project\'s editor with '+Object.keys(files).length+' imported files'+bundleLabel+'? The current code will be kept in Undo Restore.';
       if(!confirm(message))return;
-      const nextLang=bundle?.lang||currentLang;
+      const inferredLang=Object.keys(files).some(path=>path.endsWith(".java"))?"java":
+        Object.keys(files).some(path=>path.endsWith(".py"))?"python":
+        Object.keys(files).some(path=>/\.html?$/i.test(path))?"web":
+        Object.keys(files).some(path=>path.endsWith(".cs"))?"csharp":
+        Object.keys(files).some(path=>/\.(cpp|cc|cxx)$/i.test(path))?"cpp":
+        Object.keys(files).some(path=>path.endsWith(".dart"))?"dart":currentLang;
+      const nextLang=bundle?.lang||(projectStudio&&!hasProject?inferredLang:currentLang);
       const order=Object.keys(files);
       const preferred=bundle?.entry&&Object.hasOwn(files,bundle.entry)?bundle.entry:(Object.hasOwn(files,"Main.java")?"Main.java":order[0]);
       const imported={lang:nextLang,files,folders,fileOrder:order,activeFilename:preferred,projectOrder:[...folders,...order]};
