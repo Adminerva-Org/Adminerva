@@ -7,7 +7,7 @@ import {
   CODE_PROJECT_TEMPLATES,createCodeProject,deleteCodeProject,findCodeProject,
   projectTemplateLabel,readCodeProjects,saveCodeProject,writeCodeProjects
 } from "./code-projects.mjs?v=2.0.0";
-import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=2.0.0";
+import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=2.0.1";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
