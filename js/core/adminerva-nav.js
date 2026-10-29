@@ -55,7 +55,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const staffGroups = [
     { name: "Assessment", area: "educator", items: [
       ["studio", "Assessment studio", "assessment-studio.html"],
-      ["submissions", "Submission inbox", "submissions.html"]
+      ["submissions", "Submission inbox", "submissions.html"],
+      ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
     ] },
     { name: "Review & grade", area: "educator", items: [
       ["repofetch", "Review & grade", "repofetch.html"],
