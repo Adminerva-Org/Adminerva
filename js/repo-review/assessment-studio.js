@@ -239,7 +239,12 @@ function updatePracticalExamOption(){
   document.getElementById("assessPracticalExam").disabled=!studio;
   document.getElementById("practicalExamOption").classList.toggle("opacity-60",!studio);
 }
-document.getElementById("assessSubmissionSource").addEventListener("change",updatePracticalExamOption);
+document.getElementById("assessSubmissionSource").addEventListener("change",()=>{
+  updatePracticalExamOption();
+  if(!currentAssessmentId&&document.getElementById("assessSubmissionSource").value==="studio"&&
+    document.getElementById("assessType").value==="Practical Exam")
+    document.getElementById("assessPracticalExam").checked=true;
+});
 document.getElementById("assessType").addEventListener("change",event=>{
   if(event.target.value==="Practical Exam"&&document.getElementById("assessSubmissionSource").value==="studio")
     document.getElementById("assessPracticalExam").checked=true;
@@ -253,7 +258,6 @@ window.openCreateModal = function () {
   document.getElementById("assessTitle").value = "";
   document.getElementById("maxScore").value = "20";
   document.getElementById("assessType").value = "Mini PETA";
-  document.getElementById("assessQuarter").value = "";
   document.getElementById("assessQuarter").value=assessments.find(item=>["Q1","Q2","Q3","Q4"].includes(item.quarter))?.quarter||"Q1";
   document.getElementById("assessSubject").value=subjectFocus.length===1?subjectFocus[0]:"";
   document.getElementById("assessSubmissionSource").value="repository";
