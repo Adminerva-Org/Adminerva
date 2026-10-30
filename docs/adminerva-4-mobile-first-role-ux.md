@@ -246,6 +246,14 @@ Role switch within one school follows equivalent privilege boundary and should n
 - No school name in device push if privacy mode is enabled. Avoid actual grade or student names in push preview on shared devices.
 - Opening a notification never silently changes data or grants school access; badges and unread states are user-scoped but content is tenant scoped.
 
+## Additional required UX: teacher-owned work and consolidated People & Access
+
+**Assessment Studio:** implement *My Assessments* (default and private), *Shared with Me*, *School Library* and *Archived*. Each resource shows owner, privacy status, course/subject, last updated time and capability-dependent actions: owner sees Edit / Deploy / Share; specific/school-wide recipient sees Preview / Make Copy; authorized academic reviewer sees Review only for a separately delegated deployed task. The Share sheet has "Keep private", "Specific teachers in this school" and "All teachers in this school" with same-school verified recipient lookup; default recipient action is **view/copy**, not edit/grade.
+
+**School Admin User Directory:** rename/restructure as *People & Access* with Overview, People, Students, Teachers & Staff, Requests, Classes, Imports & Exports, Audit & Recovery. Mobile displays school-scoped person cards, person-detail full-screen sheet, class-grant editor, school-specific import preview before applying changes, protected bulk-suspend and role audit. One-school school admin still has **no switcher**. Teacher sharing recipient picker exposes only minimal verified same-school faculty names; it does not open the full People directory.
+
+Full interaction contracts: [Teacher Resource Ownership](adminerva-4-teacher-ownership-sharing.md) and [Unified School Directory](adminerva-4-user-directory.md).
+
 ## Component design contracts
 
 | Component | Minimum states | Important behavior |
