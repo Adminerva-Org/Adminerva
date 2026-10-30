@@ -136,6 +136,29 @@ Severity: **P0** means release blocker (privacy/authorization/data loss/grade co
 | F15 | P2 | One-school user sees empty selector area | Treat as UI regression; remove unused slot entirely |
 | F16 | P2 | Mobile dropdown long school name truncates | Accessible full name via text/tooltip and two-line menu row, usable at 320 px |
 
+## F2. Teacher ownership and user-directory what-if extensions
+
+| ID | Priority | What if? | Expected behavior |
+| --- | --- | --- | --- |
+| T01 | P0 | Teacher B handles same section and subject but A's assessment is private | B cannot list/read original resource or teacher-only rubric, attachments or draft; public student task remains available to assigned learners |
+| T02 | P0 | A shares blueprint with B, B tries grading A's submitted students | Deny: template view/copy is not grading/reviewer grant |
+| T03 | P0 | A shares with *all teachers in MCS*, user from School B opens URL | Deny even if URL is known; server verifies both active membership and school |
+| T04 | P0 | A revokes share while B has cached editor | No new reads/writes/copied original; handle recoverable local draft and revision conflict |
+| T05 | P0 | Teacher A leaves MCS during active assessment | Preserve deployed tasks, student grades and evidence; school admin uses audited handover, does not assume private original authorship |
+| T06 | P0 | School admin reads private teacher plan without authorized support | Deny or explicit audited recovery, never broad hidden privilege |
+| T07 | P0 | Teacher copies shared assessment | New owner/ID, no original student data, private notes, tokens, grade review or ACL |
+| T08 | P0 | Directory imported CSV grants privileged teacher or school-admin role | Deny role escalation; only separate verified invitation/approval creates grants |
+| T09 | P0 | Old roster email+section identity duplicates same student person | Manual identity matching; do not merge unrelated people or lose historical grade references |
+| T10 | P0 | School admin exports directory of wrong school | Server denies; school and field-scoped export with audit |
+| T11 | P1 | CSV/Sheet import fails after partial batch | Idempotent import journal; status per row and safe retry without duplicate accounts |
+| T12 | P1 | Student enrolled in two academic years | Separate enrollments, historical grades retained and scoped to each offering |
+| T13 | P1 | School admin bulk suspends 100 students by mistake | Confirmation with exact scope/count, privileged audit and reversible admission restore |
+| T14 | P1 | Teacher needs to share with colleague in same school but not assigned section | Minimal staff lookup allowed, no school-wide roster or other-school teacher enumeration |
+| T15 | P1 | Ownerless legacy assessment found in migration | Read-only reconciliation queue; no silent transfer to first staff member |
+| T16 | P1 | Mobile People editor/Share sheet used at 320px | Bounded accessible controls, visible close, cancel, save state; no clipped role selector |
+
+These are extensions to the existing cross-school invariants, not an alternative permission model. More complete contracts: [Teacher Ownership](adminerva-4-teacher-ownership-sharing.md), [User Directory](adminerva-4-user-directory.md) and [Owner Decisions](adminerva-4-owner-decisions-pilot-readiness.md).
+
 ## G. Test roles and data fixture contract
 
 Fixture schools:
