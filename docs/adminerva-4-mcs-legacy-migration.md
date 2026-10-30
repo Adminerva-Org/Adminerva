@@ -149,6 +149,14 @@ The school picker is **presentation**, never authentication. Membership data is 
 - Current `firestore.rules` includes a broad top-level `match /{collection}/{document}` administrator rule. Before enabling any school namespace audit all overlapping match conditions: a restrictive rule does not override another permissive overlapping match.
 - Public PWA/offline state can retain a previous user's code. Version and partition data caches by UID + verified school + workspace; logout and account switching invalidate sensitive session state.
 
+## G0. Teacher-owned resource and directory compatibility details
+
+- Migration must map every historical assessment blueprint to a verified teacher `ownerUid` and independent student-facing deployment. The current rules allowed some section-assigned colleagues to *read* another teacher's assessment; do not infer that the creator explicitly shared it. In 4.0 migrated teacher originals become **private unless an explicit valid sharing grant is recovered**. Their deployed tasks and students' grades/evidence remain available to authorized course reviewers.
+- Migrated lesson plans, presentation drafts, private references, teaching integration configurations and files retain verified individual creator attribution and personal privacy. Ownerless items enter a **read-only owner reconciliation queue** and are not automatically assigned to Platform Owner or a school administrator.
+- The unified school directory must recognize that multiple legacy `students` roster entries can represent the same person in separate classes or years. Person identity ≠ login UID ≠ enrollment ID. Historical grade IDs and assessment/evidence references must not be rewritten based solely on an email match.
+- Legacy teacher `staff_access` section and subject focus is not an authorization to view all teacher-authored content. During conversion create course-grant permissions and explicit resource ACLs separately.
+- Validate migration history using the owner decision register: [readiness, data authority and approved school admin](adminerva-4-owner-decisions-pilot-readiness.md), and the [teacher sharing contract](adminerva-4-teacher-ownership-sharing.md).
+
 ## G. Acceptance checklist
 
 - Existing MCS pilot accounts land on the same familiar student/teacher workspaces with **no school selector** and with all legitimate past academic records available.
