@@ -13,6 +13,18 @@ Related roadmap: [five-role access epic #100](https://github.com/Adminerva-Org/A
 - **Same next release:** implement a coordinated multi-school authorization and schema cutover across all existing features before announcing Adminerva 4.0. Separate feature branches/workstreams may be used internally; production rollouts use compatible backend-first flags and one public major-release record.
 - **No production migration in planning:** these agreements are specifications only, not evidence of a completed tenant schema or record transfer.
 
+### Additional required subsystems: teacher ownership, directory and pilot decisions
+
+**Teacher-scoped privacy is separate from school-scoped isolation.** Every author-created assessment blueprint, rubric template, presentation, lesson, teacher file and teaching workspace is **private by default** and belongs to its verified creator/owner. It is NOT automatically visible to other teachers assigned to the same section. The teacher can opt to share with **specific teachers** or **all teachers inside the same school**, with **view and independent copy** as default permissions. Optional coediting and delegated student review/grade publication require independent, explicit server grants. Preserve private teacher resources and school-owned historical student assessment evidence when staff leave.
+
+**Unified User Directory:** one school-aware **People & Access** application replaces disjoint student directory, teacher grants and access requests. Separates global Auth UID, school person identity, school membership/roles, student term enrollment, staff appointment, course offering assignments and invitations. Teachers see only assigned-class rosters and minimal same-school colleague search for deliberate sharing. School Admin sees only that institution; Platform Owner manages school registry and operational metadata only.
+
+**Owner decisions register:** school/data authority, first MCS school admin, verified legacy provenance, actual academic terms, data steward/consent/retention and AI provider policy before live migration. Continue building with synthetic data and conservative defaults while owner inputs are pending.
+
+4. [Teacher-owned private work, specific/school-wide sharing, cloning and co-review](adminerva-4-teacher-ownership-sharing.md) — [implementation track #110](https://github.com/Adminerva-Org/Adminerva/issues/110).
+5. [Unified User Directory, roster, admissions, staff and import/exports](adminerva-4-user-directory.md) — [track #111](https://github.com/Adminerva-Org/Adminerva/issues/111).
+6. [Owner attention and pilot readiness decision record](adminerva-4-owner-decisions-pilot-readiness.md) — [track #112](https://github.com/Adminerva-Org/Adminerva/issues/112).
+
 ### Detailed implementation documents
 
 1. [MCS legacy default, data mapping, controlled migration and one-school hidden switcher](adminerva-4-mcs-legacy-migration.md).
