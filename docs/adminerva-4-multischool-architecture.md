@@ -4,6 +4,22 @@ Status: **architecture and implementation plan only**. Nothing here is deployed,
 
 Related roadmap: [five-role access epic #100](https://github.com/Adminerva-Org/Adminerva/issues/100).
 
+
+## Agreed requirements for the 4.0 design (October 30, 2026)
+
+- **Legacy pilot by default, with verified provenance:** preserve the existing test/production academic data, grades, revision histories and school memberships by assigning confirmed Manila Cathedral School records to the `mcs-manila` migration destination. This is a **data migration default**, **not a blanket account admission default**; unknown or conflicting legacy records are quarantined. Existing authorized single-school users continue into MCS without an extra selector.
+- **School switcher conditional:** count distinct server-verified *active* school memberships. When the count is zero show guest/request access, when one auto-select and hide school switcher completely, when more than one show a compact accessible picker. This applies equally to students, teachers and school admins. Platform Owner Console's School Directory remains available independent of the ordinary school switcher.
+- **Mobile-first redesign:** redesign the current workspaces for 320 px upward, reduce unnecessary persistent toolbars, move school switching into the account surface for multi-school users, keep submit/save status visible, touch-friendly file controls, scroll-contained Gradebook/teacher modals and explicit processing/recovery states.
+- **Same next release:** implement a coordinated multi-school authorization and schema cutover across all existing features before announcing Adminerva 4.0. Separate feature branches/workstreams may be used internally; production rollouts use compatible backend-first flags and one public major-release record.
+- **No production migration in planning:** these agreements are specifications only, not evidence of a completed tenant schema or record transfer.
+
+### Detailed implementation documents
+
+1. [MCS legacy default, data mapping, controlled migration and one-school hidden switcher](adminerva-4-mcs-legacy-migration.md).
+2. [Mobile-first five-role navigation, screen sketches, workflows and interaction contracts](adminerva-4-mobile-first-role-ux.md).
+3. [Cross-school what-if scenarios, critical invariants and release acceptance](adminerva-4-scope-what-if-matrix.md).
+
+
 ## 1. Product decision and boundaries
 
 Adminerva is one application used by multiple independently administered schools. Platform administrators manually create and configure the schools. One school must never see another school's private students, grades, teacher drafts, code projects, library, school AI prompts, notifications, usage statistics or files.
