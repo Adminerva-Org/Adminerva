@@ -162,6 +162,31 @@ function createPeopleDirectoryService({db}) {
       });
       return result;
     }
+    if(input.action==="export_people"){
+      const snap=await base.orderBy("searchKey").limit(2001).get();
+      if(snap.size===2001)
+        throw new TenantAccessError("resource-exhausted","Directory export exceeds 2,000 people. Use a reviewed paginated export.");
+      const rows=[];
+      for(const person of snap.docs){
+        const data=person.data();
+        if(data.schoolId!==ctx.schoolId)continue;
+        let membership=null;
+        if(typeof data.authUid==="string"&&/^[A-Za-z0-9_-]{1,128}$/.test(data.authUid)){
+          const member=await db.doc("schools/"+ctx.schoolId+"/memberships/"+data.authUid).get();
+          if(member.exists&&member.data().schoolId===ctx.schoolId)
+            membership={status:member.data().status,
+              roles:Array.isArray(member.data().roles)?member.data().roles:[]};
+        }
+        rows.push({
+          personId:person.id,displayName:data.displayName||"",kind:data.kind||"",
+          status:data.status||"",accountLinked:Boolean(data.authUid),
+          membershipStatus:membership?.status||"",
+          roles:membership?.roles||[],
+          revision:data.revision||1
+        });
+      }
+      return {schoolId:ctx.schoolId,generatedAt:Date.now(),rows};
+    }
     if(input.action==="get_person"){
       const personId=id(input.personId),personRef=base.doc(personId);
       const person=await personRef.get();
