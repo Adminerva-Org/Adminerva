@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Project Hub · Adminerva</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8">
+</head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="student" data-page="school-student-projects"></div>
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+  <header class="rounded-2xl bg-slate-900 text-white p-5 sm:p-7">
+    <p class="text-xs uppercase tracking-widest font-bold text-cyan-300">Verified school workspace</p>
+    <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Project Hub</h1>
+    <p class="text-sm text-slate-200 mt-2 max-w-4xl">Open your school repository configurations, recent GitHub activity, current assignments and Adminerva Studio projects. Commit activity is context only—not proof of mastery, authorship or effort.</p>
+    <div id="projectHubSchoolSwitcher" hidden class="mt-4 max-w-sm"></div>
+  </header>
+  <section class="bg-white border rounded-2xl p-4 sm:p-5 shadow-sm">
+    <div class="flex flex-col sm:flex-row gap-3 sm:items-end sm:justify-between">
+      <label class="text-sm font-bold flex-1 max-w-xl">Course offering
+        <select id="projectHubClass" class="mt-1 w-full border rounded-lg p-2.5"></select>
+      </label>
+      <div class="flex flex-wrap gap-2">
+        <a href="school-student-settings.html" class="rounded-lg border px-4 py-2.5 text-sm font-bold">Repository settings</a>
+        <button id="projectHubGithubConnect" type="button" class="rounded-lg bg-slate-900 text-white px-4 py-2.5 text-sm font-bold">Authorize private GitHub for this session</button>
+        <button id="projectHubRefresh" type="button" class="rounded-lg bg-cyan-800 text-white px-4 py-2.5 text-sm font-bold">Refresh</button>
+      </div>
+    </div>
+    <p id="projectHubStatus" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Checking verified school access…</p>
+    <p id="projectHubGithubSession" class="text-xs text-slate-500 mt-1">Private GitHub authorization is not active. Public repositories can still load.</p>
+  </section>
+  <section id="projectHubWorkspace" hidden class="grid lg:grid-cols-[minmax(0,1.35fr)_minmax(300px,.65fr)] gap-5 items-start">
+    <div class="space-y-5">
+      <section class="bg-white border rounded-2xl shadow-sm overflow-hidden">
+        <div class="p-4 sm:p-5 border-b flex flex-wrap gap-3 justify-between items-start">
+          <div><h2 id="projectHubRepositoryTitle" class="font-extrabold text-lg">Repository activity</h2><p id="projectHubRepositoryMeta" class="text-xs text-slate-500 mt-1"></p></div>
+          <a id="projectHubRepositoryLink" hidden target="_blank" rel="noopener noreferrer" class="text-sm font-bold text-cyan-800 underline">Open GitHub ↗</a>
+        </div>
+        <div id="projectHubActivitySummary" class="grid sm:grid-cols-3 gap-3 p-4 sm:p-5"></div>
+        <div class="border-t">
+          <div class="px-4 sm:px-5 py-3 bg-slate-50"><h3 class="font-bold text-sm">Recent commits</h3></div>
+          <div id="projectHubCommits" class="divide-y"></div>
+        </div>
+      </section>
+      <section class="bg-white border rounded-2xl p-4 sm:p-5 shadow-sm">
+        <div class="flex flex-wrap justify-between gap-3 items-start">
+          <div><h2 class="font-extrabold text-lg">Adminerva Studio projects</h2><p class="text-xs text-slate-500 mt-1">School-scoped code projects saved to Adminerva Studio.</p></div>
+          <a href="student-playground.html" class="rounded-lg bg-indigo-700 text-white px-4 py-2 text-sm font-bold">Open Studio</a>
+        </div>
+        <div id="projectHubStudio" class="grid sm:grid-cols-2 gap-3 mt-4"></div>
+      </section>
+    </div>
+    <aside class="space-y-5">
+      <section class="bg-white border rounded-2xl p-4 sm:p-5 shadow-sm">
+        <div class="flex justify-between gap-3 items-start"><div><h2 class="font-extrabold text-lg">Current assignments</h2><p class="text-xs text-slate-500 mt-1">Verified school tasks for your active enrollments.</p></div><a href="student-assessments.html" class="text-xs font-bold text-cyan-800 underline">All assignments</a></div>
+        <div id="projectHubAssignments" class="space-y-3 mt-4"></div>
+      </section>
+      <section class="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-950">
+        GitHub OAuth access is temporary on this page. The token stays in memory only and is discarded on reload/sign-out; canonical school records store only repository configuration.
+      </section>
+    </aside>
+  </section>
+</main>
+<script src="js/core/adminerva-loader.js?v=1.3.2"></script>
+<script src="js/core/adminerva-nav.js?v=4.0.0"></script>
+<script type="module" src="js/core/auth-guard.js?v=4.0.0"></script>
+<script type="module" src="js/student/school-student-projects.mjs?v=4.0.0"></script>
+</body></html>
