@@ -373,7 +373,11 @@ async function showSnapshot(evidence,assessment){
 }
 async function renderClaims(){
   const target=el("evidenceReclaims");target.replaceChildren();
-  if(!state.claims.length){add(target,"p","No reclaim requests for this student's assessment.","text-sm text-slate-600");return;}
+  if(!state.claimsReadable){
+    add(target,"p","Reclaim-request context is unavailable for this assessment. This does not block teacher evidence approval; cross-student attribution disputes remain subject to administrator review.","text-sm text-amber-800");
+    return;
+  }
+  if(!state.claims.length){add(target,"p","No reclaim requests found for this student's assessment.","text-sm text-slate-600");return;}
   const mayDecide=state.claims.some(c=>c.status==="pending") &&
     await resolveStaffRole(auth.currentUser)==="admin";
   for(const claim of state.claims){
