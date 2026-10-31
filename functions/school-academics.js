@@ -5,6 +5,7 @@
  * references are checked on the server for every mutation or class-roster read.
  */
 const {FieldValue}=require("firebase-admin/firestore");
+const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const CATALOG=new Set(["academic_years","terms","subjects","sections"]);
 function deny(code,message){throw new TenantAccessError(code,message)}
@@ -17,7 +18,10 @@ function checkName(value,label="Name"){
   deny("invalid-argument",label+" is required and cannot exceed 140 characters.");
  return value.trim();
 }
-function rowKey(...values){return values.map(v=>checkId(v,"Key segment",330)).join("--")}
+function rowKey(...values){
+ const checked=values.map(v=>checkId(v,"Key segment",330));
+ return createHash("sha256").update(JSON.stringify(checked)).digest("hex");
+}
 function createSchoolAcademicsService({db}) {
  const root=id=>({doc:path=>db.doc("schools/"+id+"/"+path)});
  return async request=>{
