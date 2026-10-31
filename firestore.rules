@@ -632,13 +632,40 @@ service cloud.firestore {
 
     // Evidence needs both student and assessment scope. Check the role once
     // rather than repeat it through mayTeachStudent and mayTeachAssessment.
+    function assessmentIncludesSection(assessment,section) {
+      let deployments = assessment.get("deployments",[]);
+      return section is string && (
+        section in assessment.get("sectionIds",[]) ||
+        section in assessment.get("targetSections",[]) ||
+        (deployments.size() > 0 && deployments[0].get("section","") == section) ||
+        (deployments.size() > 1 && deployments[1].get("section","") == section) ||
+        (deployments.size() > 2 && deployments[2].get("section","") == section) ||
+        (deployments.size() > 3 && deployments[3].get("section","") == section) ||
+        (deployments.size() > 4 && deployments[4].get("section","") == section) ||
+        (deployments.size() > 5 && deployments[5].get("section","") == section) ||
+        (deployments.size() > 6 && deployments[6].get("section","") == section) ||
+        (deployments.size() > 7 && deployments[7].get("section","") == section) ||
+        (deployments.size() > 8 && deployments[8].get("section","") == section) ||
+        (deployments.size() > 9 && deployments[9].get("section","") == section) ||
+        (deployments.size() > 10 && deployments[10].get("section","") == section) ||
+        (deployments.size() > 11 && deployments[11].get("section","") == section) ||
+        (deployments.size() > 12 && deployments[12].get("section","") == section) ||
+        (deployments.size() > 13 && deployments[13].get("section","") == section) ||
+        (deployments.size() > 14 && deployments[14].get("section","") == section) ||
+        (deployments.size() > 15 && deployments[15].get("section","") == section) ||
+        (deployments.size() > 16 && deployments[16].get("section","") == section) ||
+        (deployments.size() > 17 && deployments[17].get("section","") == section) ||
+        (deployments.size() > 18 && deployments[18].get("section","") == section) ||
+        (deployments.size() > 19 && deployments[19].get("section","") == section)
+      );
+    }
     function teacherEvidenceScope(studentId,assessmentId) {
       let section = get(/databases/$(database)/documents/students/$(studentId)).data.section;
       let assessment = get(/databases/$(database)/documents/assessments/$(assessmentId)).data;
       let sections = teacherSections();
       return section is string && section in sections &&
         (assessment.get("ownerUid","") == request.auth.uid ||
-          assessment.get("sectionIds",[]).hasAny(sections));
+          assessmentIncludesSection(assessment,section));
     }
     function mayTeachEvidence(studentId,assessmentId) {
       return isAdmin() || (isTeacher() && studentId is string &&
