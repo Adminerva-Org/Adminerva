@@ -303,6 +303,7 @@ async function createGithub(db,approved,row){
     legacyRevision:row.migration?.legacyRevision||0,
     verifiedContributionCommits:row.migration?.verifiedContributionCommits||[],
     contributionScope:row.migration?.contributionScope||"",
+    legacyReviewedBy:row.migration?.legacyReviewedBy||null,
     originalStatus:row.migration?.originalStatus||row.status}
   });
   tx.create(db.collection(prefix+"submission_audit").doc(),{
@@ -353,12 +354,13 @@ async function createStudio(db,approved,row){
    contentDigest:row.contentDigest,status:row.status,currentVersion:row.currentVersion,
    revisionRequestMessage:row.status==="reopened"?(row.revisionRequestMessage||"Historical revision request migrated."):null,
    revisionDueAt:row.status==="reopened"?extension:null,
-   reviewedByUid:row.status==="reviewed"?(row.migration?.legacyReviewedBy||null):null,
+   reviewedByUid:row.status==="reviewed"?(row.reviewedByUid||null):null,
    reviewedVersion:row.status==="reviewed"?row.currentVersion:null,
    createdAt:timestamp(row.versions[0]?.submittedAt),updatedAt:importedAt,
    migration:{...meta(approved,"studio_submission",row.submissionId),
     sourcePath:row.migration?.sourcePath,legacySubmissionId:row.migration?.legacySubmissionId,
     originalStatus:row.migration?.originalStatus||row.status,
+    legacyReviewedBy:row.migration?.legacyReviewedBy||null,
     legacyReviewNote:row.migration?.legacyReviewNote||""}
   });
   tx.create(db.collection(prefix+"submission_audit").doc(),{
@@ -419,7 +421,8 @@ async function createGrade(db,approved,row){
    migration:{...meta(approved,"grade",row.gradeId),
     sourcePath:row.migration?.sourcePath,legacyGradeId:row.migration?.legacyGradeId,
     legacyGradeSource:row.migration?.legacyGradeSource||"",
-    compatibilityReason:row.migration?.compatibilityReason||null}
+    compatibilityReason:row.migration?.compatibilityReason||null,
+    legacyReviewedBy:row.migration?.legacyReviewedBy||null}
   };
   tx.create(ref,values);
   tx.create(ref.collection("revisions").doc(String(row.revision)),{
