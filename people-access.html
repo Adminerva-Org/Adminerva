@@ -65,7 +65,10 @@
           </form>
           <p id="pa-person-filter-note" class="pa-muted" hidden></p>
           <div id="pa-person-list" role="list"></div>
-          <button type="button" id="pa-more" class="pa-action" hidden>Load more</button>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem">
+            <button type="button" id="pa-more" class="pa-action" hidden>Load more</button>
+            <button type="button" id="pa-export-people" class="pa-action" style="background:#475569">Export directory CSV</button>
+          </div>
         </div>
         <form id="pa-add-person" class="pa-card">
           <h2 style="font-weight:750;font-size:1.2rem;margin-bottom:.75rem">Add person</h2>
