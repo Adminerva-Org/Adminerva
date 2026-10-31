@@ -74,6 +74,109 @@ function createPeopleDirectoryService({db}) {
       const counts=await Promise.all(scopes.map(name=>db.collection("schools/"+ctx.schoolId+"/"+name).count().get()));
       return {schoolId:ctx.schoolId,counts:Object.fromEntries(scopes.map((name,i)=>[name,counts[i].data().count]))};
     }
+    if(input.action==="reconcile_directory") {
+      const names=["people","memberships","enrollments","staff_assignments","course_offerings","invitations"];
+      const snapshots=await Promise.all(names.map(name=>
+        db.collection("schools/"+ctx.schoolId+"/"+name).limit(501).get()));
+      if(snapshots.some(snapshot=>snapshot.size===501))
+        throw new TenantAccessError("resource-exhausted",
+          "Directory reconciliation exceeded the 500-record pilot review limit for one or more school collections.");
+      const byName=Object.fromEntries(names.map((name,index)=>[name,snapshots[index].docs]));
+      const people=new Map(byName.people.filter(doc=>doc.data().schoolId===ctx.schoolId)
+        .map(doc=>[doc.id,doc.data()]));
+      const members=new Map(byName.memberships.filter(doc=>doc.data().schoolId===ctx.schoolId)
+        .map(doc=>[doc.id,doc.data()]));
+      const offerings=new Map(byName.course_offerings.filter(doc=>
+        doc.data().schoolId===ctx.schoolId&&doc.data().status==="active").map(doc=>[doc.id,doc.data()]));
+      const activeEnrollments=byName.enrollments.filter(doc=>
+        doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
+      const activeAssignments=byName.staff_assignments.filter(doc=>
+        doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
+      const enrollmentsByPerson=new Set(activeEnrollments.map(doc=>doc.data().personId));
+      const assignmentsByTeacher=new Set(activeAssignments.map(doc=>doc.data().teacherUid));
+      const issues=[];
+      const add=(type,severity,label,detail,extra={})=>issues.push({
+        type,severity,label:String(label||"Record").slice(0,160),
+        detail:String(detail||"").slice(0,300),...extra
+      });
+
+      for(const [personId,person] of people){
+        if(person.status!=="active")continue;
+        const label=String(person.displayName||"School person").slice(0,140);
+        if(person.kind==="student"){
+          if(!person.authUid){
+            add("student_account_unlinked","attention",label,
+              "Active student person has no verified account link.",{personId,targetTab:"invites"});
+          }else{
+            const member=members.get(person.authUid),roles=Array.isArray(member?.roles)?member.roles:[];
+            if(!member||member.status!=="active"||member.personId!==personId||!roles.includes("student"))
+              add("student_access_missing","integrity",label,
+                "Linked account does not have a matching active student membership.",{personId,targetUid:person.authUid,targetTab:"access"});
+          }
+          if(!enrollmentsByPerson.has(personId))
+            add("student_no_enrollment","attention",label,
+              "Active student is not enrolled in any active course offering.",{personId,targetTab:"classes"});
+        }else if(person.kind==="staff"&&!person.authUid){
+          add("staff_account_unlinked","review",label,
+            "Active staff person has no verified account link. This may be intentional for non-teaching staff.",{personId,targetTab:"invites"});
+        }
+      }
+
+      for(const [uid,member] of members){
+        if(member.status!=="active")continue;
+        const roles=Array.isArray(member.roles)?member.roles:[],
+          requiresPerson=roles.some(role=>["student","teacher"].includes(role));
+        if(requiresPerson){
+          const person=member.personId?people.get(member.personId):null;
+          if(!person||person.status!=="active"||person.authUid!==uid)
+            add("membership_person_mismatch","integrity",
+              String(member.displayName||"School member").slice(0,140),
+              "Active student/teacher membership does not reconcile to one active linked person record.",
+              {targetUid:uid,personId:member.personId||null,targetTab:"access"});
+        }
+        if(roles.includes("teacher")&&!assignmentsByTeacher.has(uid))
+          add("teacher_no_assignment","attention",
+            String(member.displayName||"Teacher").slice(0,140),
+            "Active teacher membership has no active course assignment.",{targetUid:uid,targetTab:"classes"});
+      }
+
+      for(const enrollment of activeEnrollments){
+        const data=enrollment.data(),person=people.get(data.personId);
+        if(!person||person.kind!=="student"||person.status!=="active"||!offerings.has(data.offeringId))
+          add("enrollment_dependency","integrity","Enrollment "+enrollment.id,
+            "Active enrollment references a missing/inactive student or course offering.",
+            {personId:data.personId||null,recordId:enrollment.id,targetTab:"classes"});
+      }
+      for(const assignment of activeAssignments){
+        const data=assignment.data(),member=members.get(data.teacherUid),roles=Array.isArray(member?.roles)?member.roles:[];
+        if(!member||member.status!=="active"||!roles.includes("teacher")||!offerings.has(data.offeringId))
+          add("assignment_dependency","integrity","Teaching assignment "+assignment.id,
+            "Active teaching assignment references a missing/inactive teacher membership or course offering.",
+            {targetUid:data.teacherUid||null,recordId:assignment.id,targetTab:"classes"});
+      }
+
+      const now=Date.now();
+      for(const invitation of byName.invitations){
+        const data=invitation.data();
+        if(data.schoolId!==ctx.schoolId||data.status!=="pending")continue;
+        const expiresAt=data.expiresAt?.toMillis?.()||0;
+        if(expiresAt&&expiresAt<=now)
+          add("expired_invitation","attention","Expired pending invitation",
+            "A pending school invitation has passed its expiry and should be renewed or left inactive.",
+            {personId:data.personId||null,recordId:invitation.id,targetTab:"invites"});
+      }
+
+      const priority={integrity:0,attention:1,review:2};
+      issues.sort((a,b)=>(priority[a.severity]??9)-(priority[b.severity]??9)||
+        a.label.localeCompare(b.label));
+      const counts={integrity:0,attention:0,review:0,total:issues.length};
+      for(const issue of issues)if(Object.hasOwn(counts,issue.severity))counts[issue.severity]++;
+      return {
+        schoolId:ctx.schoolId,counts,
+        issues:issues.slice(0,150),truncated:issues.length>150,
+        note:"Reconciliation uses directory, membership and active academic relationships only. Grades, evidence and private teacher resources are not inspected."
+      };
+    }
     if(input.action==="list_people") {
       const pageSize=Math.min(25,Math.max(1,Number.isInteger(input.limit)?input.limit:25));
       let query=base.orderBy("searchKey").limit(pageSize+1);
