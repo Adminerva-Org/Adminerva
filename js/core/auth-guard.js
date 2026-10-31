@@ -125,7 +125,7 @@ async function checkAccess(user){
     replacePage(roleHome(actualRole));return;
   }
   if(actualRole==="schooladmin"&&!access.schoolTeacher&&
-     !/\/(teacher-home|school-admin|people-access|settings|issues|join-school|wiki)\.html$/.test(currentPath)){
+     !/\/(teacher-home|school-admin|people-access|reclaim-inbox|settings|issues|join-school|wiki)\.html$/.test(currentPath)){
     replacePage("school-admin.html");return;
   }
   const isIssuesPage = currentPath.includes("issues.html");
