@@ -10,7 +10,7 @@ const unavailableStaffLookups = new Set();
 const tenantPending=new Map();
 const tenantCallable=httpsCallable(getFunctions(app,"asia-southeast1"),"tenantSchools");
 async function resolveTenantMemberships(user){
-  if(!user?.emailVerified)return {schools:[],roles:[],platformAdmin:false,available:false};
+  if(!user?.emailVerified)return {schools:[],roles:[],platformAdmin:false,available:false,legacyCompatibilityAllowed:true};
   if(!tenantPending.has(user.uid)){
     const operation=tenantCallable({preferredSchoolId:null}).then(response=>{
       const schools=Array.isArray(response.data?.schools)?response.data.schools:[];
@@ -19,13 +19,14 @@ async function resolveTenantMemberships(user){
         roles:[...new Set(schools.flatMap(s=>Array.isArray(s.roles)?s.roles:[]))],
         platformAdmin:response.data?.platformAdmin===true,
         available:true,
+        legacyCompatibilityAllowed:response.data?.legacyCompatibilityAllowed!==false,
         v4Cutover:schools.length>0&&schools.every(s=>s.compatibilityMode==="v4_only")
       };
     }).catch(error=>{
       // During the 3.0→4.0 rollout, absence of the new callable must not lock
       // out a valid legacy MCS user. New school-only users still fail closed.
       console.warn("Verified school membership lookup unavailable:",error?.code||error?.message||error);
-      return {schools:[],roles:[],available:false};
+      return {schools:[],roles:[],available:false,legacyCompatibilityAllowed:true};
     }).finally(()=>tenantPending.delete(user.uid));
     tenantPending.set(user.uid,operation);
   }
@@ -44,12 +45,15 @@ export function resolveAccountAccess(user) {
       const schoolTeacher=tenant.roles.includes("teacher");
       const schoolStudent=tenant.roles.includes("student");
       const platformAdmin=tenant.platformAdmin===true;
-      // V4 school_admin deliberately does NOT become legacy "admin".
-      // "admin" remains the old platform-wide administrator presentation role.
-      const role=legacyRole|| (schoolTeacher?"teacher":null);
+      const effectiveLegacyRole=tenant.legacyCompatibilityAllowed===false?null:legacyRole;
+      // Once MCS is V4-only, flat staff_access/bootstrap identities stop
+      // contributing any presentation role. Canonical school/platform grants
+      // remain authoritative and are returned independently.
+      const role=effectiveLegacyRole|| (schoolTeacher?"teacher":null);
       return {
-        role,legacyRole,platformAdmin,schoolAdmin,schoolTeacher,schoolStudent,
+        role,legacyRole:effectiveLegacyRole,platformAdmin,schoolAdmin,schoolTeacher,schoolStudent,
         v4Schools:tenant.schools,v4MembershipLookupAvailable:tenant.available,
+        legacyCompatibilityAllowed:tenant.legacyCompatibilityAllowed!==false,
         v4Cutover:tenant.v4Cutover===true,
         teachers:teachers.docs,students:activeStudents,
         needsTeacherApproval:!role&&!schoolAdmin&&!schoolStudent&&!teachers.empty,
