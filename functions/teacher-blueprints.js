@@ -62,6 +62,17 @@ function createTeacherBlueprintService({db}) {
         deny("permission-denied","Your teaching access changed. Refresh and try again.");
     };
     const action=input.action;
+    if(action==="recipients") {
+      const snap=await db.collection("schools/"+ctx.schoolId+"/memberships")
+        .where("roles","array-contains","teacher").limit(101).get();
+      const teachers=snap.docs.filter(doc=>doc.id!==ctx.uid&&doc.data().status==="active"&&
+        doc.data().schoolId===ctx.schoolId).slice(0,100).map(doc=>({
+          uid:doc.id,
+          name:typeof doc.data().displayName==="string"&&doc.data().displayName.trim()
+            ?doc.data().displayName.trim().slice(0,120):"Teacher "+doc.id.slice(0,8)
+        }));
+      return {teachers,truncated:snap.size===101};
+    }
     if(action==="create") {
       const fields=reusableContent(input.blueprint);
       const ref=collection.doc();
