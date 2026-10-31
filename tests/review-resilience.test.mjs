@@ -62,6 +62,19 @@ test("recovery survives refresh, validates stored IDs and never executes an acti
   values.set("owner:section",JSON.stringify({pending:["../forged"],completed:[]}));assert.equal(journal.read(),null);
   assert.equal(publicationJournal({getItem(){throw Error("blocked");},setItem(){throw Error("quota");}},"key").write({}),false);
 });
+test("teacher evidence approval reuses authorized section reclaim context instead of re-querying per commit",()=>{
+  const review=readFileSync("js/repo-review/assessment-evidence-review.mjs","utf8");
+  assert.match(review,/state\.sectionClaims/);
+  assert.match(review,/state\.claimsReadable/);
+  assert.match(review,/if\(reviewerRole==="admin"\)[\s\S]*where\("sha","==",sha\)/);
+  assert.match(review,/else\{[\s\S]*state\.sectionClaims\.some/);
+});
+test("gradebook bulk approval keeps teacher reclaim checks inside the already authorized section query",()=>{
+  const source=readFileSync("js/repo-review/gradebook-class-review.mjs","utf8");
+  assert.match(source,/claimsReadable=true/);
+  assert.match(source,/if\(canDecideClaims\)[\s\S]*where\("sha","==",sha\)/);
+  assert.match(source,/else\{[\s\S]*\[\.\.\.claimMap\.values\(\)\]\.some/);
+});
 test("account registry, own teacher directory and student membership start in parallel",async()=>{
   const started=[],finish=[],user={uid:"parallel",email:"new.teacher@example.edu",emailVerified:true};
   const pending=kind=>{started.push(kind);return new Promise(resolve=>finish.push(()=>resolve(kind==="staff_access"?{exists:()=>true,data:()=>({email:user.email,status:"active",role:"teacher"})}:{docs:[],empty:true})));};

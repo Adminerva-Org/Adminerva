@@ -33,9 +33,9 @@ export const evidenceReviewMarkup=`
 </details>
 <div id="evidenceCommitDetails" class="space-y-2"></div>
 <div id="evidenceAttributionOverride" class="rounded-lg border border-amber-200 bg-amber-50 p-3">
-  <strong class="block text-sm text-amber-950">Commit authored under another GitHub identity?</strong>
-  <p class="text-xs text-amber-900 mt-1">After inspecting the commit diff, an instructor can add an unmatched repository commit to this learner's evidence. The commit is not credited until you explicitly verify it and approve the checkpoint.</p>
-  <button id="evidenceAddCommit" type="button" class="mt-2 rounded-lg border border-amber-400 bg-white px-3 py-2 text-sm font-bold text-amber-950">Add unmatched repository commit</button>
+  <strong class="block text-sm text-amber-950">Need to add or correct repository evidence?</strong>
+  <p class="text-xs text-amber-900 mt-1">After inspecting the commit diff, an instructor can add a repository commit that automatic attribution missed, including unverified or alternate GitHub identities. The commit is not credited until you explicitly verify it and approve the checkpoint.</p>
+  <button id="evidenceAddCommit" type="button" class="mt-2 rounded-lg border border-amber-400 bg-white px-3 py-2 text-sm font-bold text-amber-950">Add / attribute repository commit</button>
 </div>
 <details class="border rounded p-3"><summary class="font-bold cursor-pointer">Pinned project source — shared context, not individual credit</summary><div id="evidenceSnapshot" class="mt-2"></div></details>
 <h3 class="text-sm font-bold">Reclaim requests for this student</h3>

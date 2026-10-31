@@ -1,7 +1,7 @@
 /** Class-level submission triage and safe bulk review orchestration. */
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {collection,deleteDoc,doc,getDoc,getDocFromServer,getDocs,getDocsFromServer,query,where,serverTimestamp,setDoc,runTransaction} from "../core/teaching-firestore.mjs?v=1.3.2";
-import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
+import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.1";
 import {normalizeSelection,parseRepository} from "./services/assessment-evidence.mjs?v=1.4.3";
 import {verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
 import {approvalContribution,evidenceRevision} from "./services/evidence-lifecycle.mjs?v=1.4.3";
@@ -15,7 +15,7 @@ import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.1";
 
 const el=id=>document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
-let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map(),claimMap=new Map(),canDecideClaims=false,loadSequence=0;
+let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map(),claimMap=new Map(),claimsReadable=false,canDecideClaims=false,loadSequence=0;
 const draftRef=(studentId,taskId)=>doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId);
 function showBulkExceptions(failures){
   const box=el("gbBulkExceptionDetails"),list=el("gbBulkExceptionList");
@@ -228,7 +228,7 @@ function render(){
 async function load(detail){
   if(!detail)return;
   const sequence=++loadSequence;
-  context=detail;evidenceReadable=false;evidenceMap=new Map();draftMap=new Map();receiptMap=new Map();claimMap=new Map();
+  context=detail;evidenceReadable=false;evidenceMap=new Map();draftMap=new Map();receiptMap=new Map();claimMap=new Map();claimsReadable=false;
   render();
   const isV2=Number(detail.schemaVersion)===2;
   // An unavailable optional collection must never erase the evidence roster or
@@ -269,10 +269,14 @@ async function load(detail){
       }).map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
     }else warnings.push("evaluation drafts: "+sources[2].reason?.message);
     if(sources[3].status==="fulfilled"){
+      claimsReadable=true;
       claimMap=new Map(sources[3].value.docs
         .filter(record=>record.data().assessmentId===detail.taskId)
         .map(record=>[record.id,{id:record.id,...record.data()}]));
-    }else warnings.push("reclaim requests: "+sources[3].reason?.message);
+    }else{
+      claimsReadable=false;
+      warnings.push("reclaim requests: "+sources[3].reason?.message);
+    }
   }
   // If evidence cannot be read, bulk actions must fail closed instead of
   // treating missing query results as students without submissions.
@@ -401,9 +405,20 @@ async function inspectForApproval(student,evidence){
     const response=await fetch(api+"/commits/"+encodeURIComponent(selection.checkpointSha),{headers});
     if(!response.ok)throw Error("checkpoint could not be verified (GitHub HTTP "+response.status+")");
   }
-  const claims=await Promise.all(selection.selectedCommits.map(sha=>getDocs(query(collection(db,"commit_reclaims"),where("sha","==",sha)))));
-  if(claims.some(snapshot=>snapshot.docs.some(record=>record.data().repository===evidence.repository&&record.data().status==="pending")))
-    throw Error("pending attribution reclaim");
+  if(canDecideClaims){
+    const claims=await Promise.all(selection.selectedCommits.map(sha=>
+      getDocs(query(collection(db,"commit_reclaims"),where("sha","==",sha)))));
+    if(claims.some(snapshot=>snapshot.docs.some(record=>
+      record.data().repository===evidence.repository&&record.data().status==="pending")))
+      throw Error("pending attribution reclaim");
+  }else{
+    if(!claimsReadable)throw Error("reclaim-request context unavailable; review this learner individually");
+    const selected=new Set(selection.selectedCommits.map(sha=>String(sha).toLowerCase()));
+    if([...claimMap.values()].some(claim=>
+      selected.has(String(claim.sha||"").toLowerCase())&&
+      claim.repository===evidence.repository&&claim.status==="pending"))
+      throw Error("pending attribution reclaim");
+  }
   const expected=linkedLogin(student);
   const verified=expected?selection.selectedCommits.filter(sha=>
     String(seen.get(sha)?.author?.login||"").toLowerCase()===expected):[];
