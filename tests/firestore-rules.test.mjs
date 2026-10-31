@@ -775,6 +775,23 @@ test('reclaim is initially pending, owner-private and can only be withdrawn by c
 
 });
 
+test('students can create assessment-scoped reclaim records and query their own requests',async()=>{
+  const alice=client('alice',EMAIL_A),repository='https://github.com/example/project',second='b'.repeat(40);
+  await env.withSecurityRulesDisabled(async ctx=>{
+    const db=ctx.firestore();
+    await setDoc(doc(db,'students','alice'),{name:'Alice',email:EMAIL_A,section:'11-A',repoUrl:repository});
+    await setDoc(doc(db,'assessments','v2b'),{ownerUid:'staff',schemaVersion:2,sectionIds:['11-A'],targetSections:['11-A'],deployments:[{section:'11-A'}]});
+  });
+  const first={studentId:'alice',assessmentId:'v2',section:'11-A',repository,sha:SHA,
+    detectedAuthorName:'Shared device',detectedAuthorLogin:'',explanation:'This commit used an older Git identity.',
+    status:'pending',createdAt:serverTimestamp()};
+  const secondClaim={...first,assessmentId:'v2b',sha:second,explanation:'This second assessment also used the older Git identity.'};
+  await assertSucceeds(setDoc(doc(alice,'commit_reclaims',SHA+'_alice_v2'),first));
+  await assertSucceeds(setDoc(doc(alice,'commit_reclaims',second+'_alice_v2b'),secondClaim));
+  const own=await assertSucceeds(getDocs(query(collection(alice,'commit_reclaims'),where('studentId','==','alice'))));
+  assert.equal(own.size,2);
+});
+
 test('teacher evidence review may list reclaim claims for an assigned section',async()=>{
   const teacher=client('staff',TEACHER);
   await env.withSecurityRulesDisabled(async ctx=>{
@@ -815,10 +832,22 @@ test('legacy teacher can read and approve deployed assessment evidence even when
       source:'teacher_discovered',discoveredBy:'staff',recordedAt:Timestamp.now(),
       updatedAt:Timestamp.now(),revision:2
     });
+    await setDoc(doc(db,'student_submissions','alice_v2_receipt'),{
+      studentId:'alice',assessmentId:'v2',section:'11-A',submittedAt:Timestamp.now()
+    });
+    await setDoc(doc(db,'student_grades','alice_v2'),{
+      studentId:'alice',taskId:'v2',section:'11-A',score:10,maxScore:20,published:false
+    });
   });
   const claims=await assertSucceeds(getDocs(query(collection(teacher,'commit_reclaims'),
     where('section','==','11-A'),where('assessmentId','==','v2'))));
-  assert.equal(claims.size,1);
+  const evidenceRows=await assertSucceeds(getDocs(query(collection(teacher,'assessment_evidence'),
+    where('assessmentId','==','v2'),where('section','==','11-A'))));
+  const receipts=await assertSucceeds(getDocs(query(collection(teacher,'student_submissions'),
+    where('assessmentId','==','v2'),where('section','==','11-A'))));
+  const grades=await assertSucceeds(getDocs(query(collection(teacher,'student_grades'),
+    where('taskId','==','v2'),where('section','==','11-A'))));
+  assert.equal(claims.size,1);assert.equal(evidenceRows.size,1);assert.equal(receipts.size,1);assert.equal(grades.size,1);
   await env.withSecurityRulesDisabled(async ctx=>{
     await updateDoc(doc(ctx.firestore(),'commit_reclaims',SHA+'_alice'),{status:'withdrawn'});
   });
@@ -847,9 +876,27 @@ test('unassigned ordinary teachers cannot use deployment scope to read another t
       explanation:'This claim belongs to another teacher assessment.',
       status:'pending',createdAt:Timestamp.now()
     });
+    await setDoc(doc(db,'assessment_evidence','alice_v2'),{
+      studentId:'alice',assessmentId:'v2',section:'11-A',repository,
+      selectedCommits:[SHA],checkpointSha:SHA,status:'needs_review',
+      source:'teacher_discovered',discoveredBy:'different-owner',recordedAt:Timestamp.now(),
+      updatedAt:Timestamp.now(),revision:2
+    });
+    await setDoc(doc(db,'student_submissions','alice_v2_receipt'),{
+      studentId:'alice',assessmentId:'v2',section:'11-A',submittedAt:Timestamp.now()
+    });
+    await setDoc(doc(db,'student_grades','alice_v2'),{
+      studentId:'alice',taskId:'v2',section:'11-A',score:10,maxScore:20,published:false
+    });
   });
   await assertFails(getDocs(query(collection(teacher,'commit_reclaims'),
     where('section','==','11-A'),where('assessmentId','==','v2'))));
+  await assertFails(getDocs(query(collection(teacher,'assessment_evidence'),
+    where('assessmentId','==','v2'),where('section','==','11-A'))));
+  await assertFails(getDocs(query(collection(teacher,'student_submissions'),
+    where('assessmentId','==','v2'),where('section','==','11-A'))));
+  await assertFails(getDocs(query(collection(teacher,'student_grades'),
+    where('taskId','==','v2'),where('section','==','11-A'))));
 });
 
 test('instructor-only V2 grading config and admin-only reclaim decisions',async()=>{
