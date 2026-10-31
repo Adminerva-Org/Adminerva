@@ -126,6 +126,9 @@ async function checkAccess(user){
      !(["teacher","admin"].includes(admittedRole))){
     replacePage(roleHome(actualRole));return;
   }
+  if(/\/(school-gradebook)\.html$/.test(currentPath)&&!access.schoolTeacher){
+    replacePage(roleHome(actualRole));return;
+  }
   if(actualRole==="schooladmin"&&!access.schoolTeacher&&
      !/\/(teacher-home|school-admin|people-access|reclaim-inbox|settings|issues|school-support|join-school|wiki)\.html$/.test(currentPath)){
     replacePage("school-admin.html");return;
