@@ -28,7 +28,7 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
-    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();suspendUid=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;
+    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();suspendUid=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;
     get("pa-more").hidden=true;
   },
   onReady:scope=>{
@@ -37,7 +37,7 @@ const picker=createTenantSchoolPicker({
       return;
     }
     workspace.hidden=false;
-    void Promise.all([loadOverview(),loadPeople(false),loadAcademics(),loadMemberships()]).catch(error=>say(error.message||"Directory access unavailable."));
+    void Promise.all([loadOverview(),loadPeople(false),loadAcademics(),loadMemberships(),loadInvitePeople()]).catch(error=>say(error.message||"Directory access unavailable."));
   }
 });
 async function perform(action,details={}) {
@@ -46,6 +46,35 @@ async function perform(action,details={}) {
   picker.scope.assertLease(lease);
   return result.data;
 }
+async function loadInvitePeople(){
+  const form=get("pa-create-invite"),role=String(form.elements.role.value||"student");
+  const select=get("pa-invite-person"),previous=select.value;
+  select.replaceChildren();
+  const loading=document.createElement("option");loading.value="";loading.disabled=true;loading.selected=true;
+  loading.textContent="Loading active unlinked "+(role==="student"?"students":"staff")+"…";select.append(loading);
+  try{
+    const result=await perform("list_invitable_people",{role});
+    select.replaceChildren();
+    const blank=document.createElement("option");blank.value="";blank.disabled=true;blank.selected=true;
+    blank.textContent=result.people?.length?"Choose an active unlinked person":"No matching unlinked person records";
+    select.append(blank);
+    for(const person of result.people||[]){
+      const option=document.createElement("option");option.value=person.personId;option.textContent=person.displayName;
+      select.append(option);
+    }
+    if((result.people||[]).some(person=>person.personId===previous))select.value=previous;
+    form.querySelector('button[type="submit"]').disabled=!(result.people||[]).length;
+  }catch(error){
+    select.replaceChildren();
+    const unavailable=document.createElement("option");unavailable.value="";unavailable.disabled=true;unavailable.selected=true;
+    unavailable.textContent="Person records unavailable";select.append(unavailable);
+    form.querySelector('button[type="submit"]').disabled=true;
+    throw error;
+  }
+}
+get("pa-create-invite").elements.role.addEventListener("change",()=>
+  void loadInvitePeople().catch(error=>say(error.message||"Invitation person list unavailable.")));
+
 async function performAcademic(action,details={}){
   const lease=picker.scope.lease();
   const response=(await academicsApi({schoolId:lease.schoolId,action,...details})).data;
@@ -311,7 +340,7 @@ async function submitForm(form,action,details) {
       hint.textContent="The invited person's verified email must match. This link is not a public school signup.";
       host.append(title,link,hint);
     }
-    if(action==="create_person")await Promise.all([loadPeople(false),loadOverview(),loadAcademics()]);
+    if(action==="create_person")await Promise.all([loadPeople(false),loadOverview(),loadAcademics(),loadInvitePeople()]);
     else await loadOverview();
     return result;
   }catch(error){say(error.message||"This change was not saved.");return null;}
@@ -326,8 +355,9 @@ get("pa-add-person").addEventListener("submit",event=>{
 get("pa-create-invite").addEventListener("submit",event=>{
   event.preventDefault();const values=new FormData(event.currentTarget);
   void submitForm(event.currentTarget,"invite",{
-    email:String(values.get("email")||""),role:String(values.get("role")||"")
-  });
+    email:String(values.get("email")||""),role:String(values.get("role")||""),
+    personId:String(values.get("personId")||"")
+  }).then(result=>{if(result)void loadInvitePeople().catch(()=>{});});
 });
 try{
   await picker.load();
