@@ -36,6 +36,7 @@ function serialize(doc,access) {
     title:data.title,description:data.description,instructions:data.instructions,
     rubric:data.rubric,contentRevision:data.contentRevision,aclRevision:data.aclRevision,
     copiedFrom:data.copiedFrom||null,
+    sharedWithUids:access.uid===data.ownerUid?(Array.isArray(data.sharedWithUids)?data.sharedWithUids:[]):[],
     canShare:access.uid===data.ownerUid,
     updatedAt:data.updatedAt?.toMillis?.()||null
   };
