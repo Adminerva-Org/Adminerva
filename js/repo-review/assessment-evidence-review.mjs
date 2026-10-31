@@ -227,7 +227,7 @@ async function loadEvidence(initialRecord){
     let claimReadWarning="";
     state.sectionClaims=[];state.claimsReadable=false;
     try{
-      const claims=await getDocs(query(collection(db,"commit_reclaims"),where("section","==",student.section)));
+      const claims=await getDocs(query(collection(db,"commit_reclaims"),where("section","==",student.section),where("assessmentId","==",assessment.id)));
       if(destroyed||sequence!==state.sequence)return;
       state.sectionClaims=claims.docs.map(d=>({id:d.id,...d.data()}));
       state.claimsReadable=true;
@@ -398,9 +398,18 @@ async function renderClaims(){
 }
 async function showConflicts(sha,box){
   try{
-    const snap=await getDocs(query(collection(db,"commit_reclaims"),where("sha","==",sha)));
-    const results=snap.docs.map(d=>d.data()).filter(c=>c.repository===state.evidence.repository);
-    add(box,"p","Claim records for this commit: "+results.length+
+    const role=await resolveStaffRole(auth.currentUser);
+    let results=[];
+    if(role==="admin"){
+      const snap=await getDocs(query(collection(db,"commit_reclaims"),where("sha","==",sha)));
+      results=snap.docs.map(d=>d.data()).filter(claim=>claim.repository===state.evidence.repository);
+    }else{
+      if(!state.claimsReadable)throw Error("Reclaim-request context for this assessment is unavailable.");
+      results=state.sectionClaims.filter(claim=>
+        String(claim.sha||"").toLowerCase()===String(sha).toLowerCase() &&
+        claim.repository===state.evidence.repository);
+    }
+    add(box,"p","Claim records visible for this commit: "+results.length+
       " ("+results.map(x=>x.studentId+": "+x.status).join("; ")+")",
       "text-xs text-amber-900 break-words mt-2");
   }catch(e){status("Unable to check overlapping claims: "+e.message);}
