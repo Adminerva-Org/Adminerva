@@ -129,6 +129,13 @@ function reconcileCurrentSeason({score,states,awards,progress,currentSeason,stud
   if(state.data?.completed===true&&!awardMissions.has(seasonKey(season,state.data?.missionId)))
    blockers.push({type:"practice_completed_state_without_award",sourcePath:state.path});
  }
+ for(const course of currentProgress){
+  const completed=Array.isArray(course.data?.completed)?course.data.completed:[],
+   courseId=clean(course.data?.courseId,128);
+  for(const missionId of completed)
+   if(typeof missionId==="string"&&!awardMissions.has(seasonKey(season,missionId)))
+    blockers.push({type:"practice_progress_without_award",sourcePath:course.path,courseId,missionId});
+ }
  if(score.data?.optIn===true)reviewItems.push({
   type:"practice_legacy_public_opt_in_not_carried_forward",uid:student.uid,
   legacyAlias:clean(score.data?.alias,24),
@@ -176,25 +183,42 @@ function reconcileCurrentSeason({score,states,awards,progress,currentSeason,stud
  return {current:{score:scoreTarget,missionStates,awards:awardRows,
   courses:courseRows,classRankings},blockers,reviewItems};
 }
+function legacyMillis(value){
+ return value?.toMillis?.()||0;
+}
 function historicalSeasonArchive({score,states,awards,progress,student,currentSeason}){
  if(!score)return null;
  const season=clean(score.data?.season,80);
  if(!season||season===currentSeason)return null;
- const archiveId="season_"+sha(season).slice(0,24);
+ const archiveId="season_"+sha(season).slice(0,24),
+  base="schools/"+SCHOOL_ID+"/practice_season_history/"+student.uid+"/seasons/"+archiveId;
  return {
-  archiveId,season,targetPath:"schools/"+SCHOOL_ID+
-   "/practice_season_history/"+student.uid+"/seasons/"+archiveId,
+  archiveId,season,targetPath:base,
   schoolId:SCHOOL_ID,ownerUid:student.uid,personId:student.personId,
   score:{points:number(score.data?.points,0),completedCount:Number(score.data?.completedCount)||0,
-   legacyAlias:clean(score.data?.alias,24),legacyOptIn:score.data?.optIn===true},
+   legacyAlias:clean(score.data?.alias,24),legacyOptIn:score.data?.optIn===true,
+   legacyUpdatedAt:legacyMillis(score.data?.updatedAt)},
   missionStates:states.filter(row=>clean(row.data?.season,80)===season).map(row=>({
-   id:row.id,data:row.data,sourcePath:row.path
+   id:row.id,targetPath:base+"/mission_state/"+row.id,
+   season,courseId:clean(row.data?.courseId,128),missionId:clean(row.data?.missionId,128),
+   wrongSubmissions:Math.max(0,Number(row.data?.wrongSubmissions)||0),
+   completed:row.data?.completed===true,earnedPoints:Math.max(0,number(row.data?.earnedPoints,0)),
+   legacyLastSubmittedAt:legacyMillis(row.data?.lastSubmittedAt),sourcePath:row.path
   })),
   awards:awards.filter(row=>clean(row.data?.season,80)===season).map(row=>({
-   id:row.id,data:row.data,sourcePath:row.path
+   id:row.id,targetPath:base+"/awards/"+row.id,
+   season,courseId:clean(row.data?.courseId,128),missionId:clean(row.data?.missionId,128),
+   points:Math.max(0,number(row.data?.points,0)),
+   wrongSubmissions:Math.max(0,Number(row.data?.wrongSubmissions)||0),
+   legacyAwardedAt:legacyMillis(row.data?.awardedAt),sourcePath:row.path
   })),
   courses:progress.filter(row=>clean(row.data?.season,80)===season).map(row=>({
-   id:row.id,data:row.data,sourcePath:row.path
+   id:row.id,targetPath:base+"/courses/"+row.id,
+   season,courseId:clean(row.data?.courseId,128),
+   completed:Array.isArray(row.data?.completed)?[...new Set(row.data.completed.filter(value=>typeof value==="string"&&value))]:[],
+   missionScores:row.data?.missionScores&&typeof row.data.missionScores==="object"&&!Array.isArray(row.data.missionScores)?
+    row.data.missionScores:{},
+   legacyUpdatedAt:legacyMillis(row.data?.updatedAt),sourcePath:row.path
   })),
   migration:{sourcePath:score.path}
  };
