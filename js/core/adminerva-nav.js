@@ -35,6 +35,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const isPlatformOwner=userRole==="platformowner";
   const hasPlatformAuthority=isPlatformOwner||root.dataset.platformAdmin==="true";
   const isSchoolAdmin=userRole==="schooladmin";
+  const hasVerifiedSchoolRole=root.dataset.schoolAdmin==="true"||
+    root.dataset.schoolTeacher==="true"||root.dataset.schoolStudent==="true";
+  const supportRoute=!isSuperAdmin&&hasVerifiedSchoolRole?"school-support.html":"issues.html";
   const canTeach=!isPlatformOwner&&(!isSchoolAdmin||root.dataset.schoolTeacher==="true");
   currentRole=isStudent?"student":isSuperAdmin?"superadmin":isPlatformOwner?"platformowner":isSchoolAdmin?"schooladmin":"teacher";
   const homeRoute = isStudent ? "student-home.html" : isPlatformOwner ? "owner-schools.html" : "teacher-home.html";
@@ -100,7 +103,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ] : [] },
     { name: "Account", area: "settings", items: [
       ["settings", "Account & integrations", "settings.html"],
-      ["issues", "Reports & support", "issues.html"]
+      ["issues", "Reports & support", supportRoute]
     ] }
   ];
   const area = ["repo", "educator"].includes(activeModule) ? "educator" : activeModule;
@@ -120,9 +123,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const currentPage = activePage === "home" ? homeLabel
     : activeModule === "global" ? "Reports & support" : currentItem?.[1] || currentArea;
   const currentRoute = activeModule.endsWith("home") ? homeRoute
-    : activeModule === "global" ? "issues.html" : currentItem?.[2];
+    : activeModule === "global" ? supportRoute : currentItem?.[2];
   const workspaceRoute = activeModule.endsWith("home") ? homeRoute
-    : activeModule === "global" ? "issues.html"
+    : activeModule === "global" ? supportRoute
     : isStudent ? studentGroup?.items[0]?.[2]
     : area === "lesson" ? "lesson-planner.html"
     : area === "admin" ? "school-admin.html"
@@ -134,7 +137,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ["Project Hub", "student-dashboard.html", "Projects and assignments"],
     ["Practice Lab", "student-practice.html", "Courses, challenges and XML Lab"],
     ["Adminerva Studio", "student-playground.html", "Write and run code"],
-    ["My reports", "issues.html", "Report a problem or follow an update"]
+    ["My reports", supportRoute, "Report a problem or follow an update"]
   ] : isPlatformOwner ? [
     ["Owner Console","owner-schools.html","Provision and govern institutions"],
     ["Reports & support","issues.html","Follow reports and get help"]
@@ -145,7 +148,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ...((isSuperAdmin||isSchoolAdmin||hasPlatformAuthority)?[["School administration",
       hasPlatformAuthority&&!isSchoolAdmin&&!isSuperAdmin?"owner-schools.html":"school-admin.html",
       hasPlatformAuthority&&!isSchoolAdmin&&!isSuperAdmin?"Institution registry":"People, access, classes and school operations"]]:[]),
-    ["Reports & support","issues.html","Follow reports and get help"]
+    ["Reports & support",supportRoute,"Follow school reports and get help"]
   ];
   root.innerHTML = `
     <nav aria-label="Adminerva main navigation" class="bg-gray-900/95 backdrop-blur-md text-white shadow-lg relative z-50 border-b border-cyan-900/50 sticky top-0">
@@ -180,7 +183,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 </summary>
                 <div class="av-nav-menu-panel absolute right-0 top-full mt-2 w-64 z-[120] rounded-xl bg-slate-900 border border-slate-600 shadow-2xl p-2 text-left">
                   <div id="av-school-context" hidden></div>
-                  <a href="issues.html" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">My reports & support</a>
+                  <a href="${supportRoute}" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">My reports & support</a>
                   <a href="wiki.html#privacy" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Privacy</a>
                   <a data-account-settings href="${isStudent ? "student-settings.html" : "settings.html"}" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Settings</a>
                 </div>
