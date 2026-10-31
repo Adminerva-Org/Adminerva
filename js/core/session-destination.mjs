@@ -12,6 +12,15 @@ export function sessionDestination(candidate,access){
     const base=new URL(".",location.href),target=new URL(candidate,base);
     let page=target.pathname.slice(base.pathname.length);
     if(target.origin!==base.origin||!target.pathname.startsWith(base.pathname)||page.includes("/"))return fallback;
+    if(access.v4OnlyStudent){
+      const v4StudentRoutes={
+        "student-dashboard.html":"school-student-projects.html",
+        "student-assessments.html":"school-student-assessments.html",
+        "student-settings.html":"school-student-settings.html",
+        "issues.html":"school-support.html"
+      };
+      page=v4StudentRoutes[page]||page;
+    }
     if(access.v4OnlyTeacher){
       const v4Routes={
         "gradebook.html":"school-gradebook.html","repofetch.html":"school-gradebook.html",
