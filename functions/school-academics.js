@@ -158,16 +158,17 @@ function createSchoolAcademicsService({db}) {
    });
    return {personId,offeringId,status:"active"};
   }
-  if(input.action==="assign_teacher"||input.action==="end_teacher_assignment"){
+  if(["assign_teacher","end_teacher_assignment","restore_teacher_assignment"].includes(input.action)){
    requireAdmin();
    const teacherUid=checkId(input.teacherUid,"Teacher account UID",128),
-     offeringId=checkId(input.offeringId,"Course offering ID");
+     offeringId=checkId(input.offeringId,"Course offering ID",330);
    const ref=schoolRoot.doc("staff_assignments/"+rowKey(teacherUid,offeringId));
    const offeringRef=schoolRoot.doc("course_offerings/"+offeringId),
     teacherMemberRef=schoolRoot.doc("memberships/"+teacherUid);
    const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
    const ending=input.action==="end_teacher_assignment";
-   const reason=ending?checkName(input.reason,"Handover reason"):null;
+   const restoring=input.action==="restore_teacher_assignment";
+   const reason=(ending||restoring)?checkName(input.reason,restoring?"Restore reason":"Handover reason"):null;
    await db.runTransaction(async tx=>{
     await checkWriteAuthority(tx);
     const [offering,staff,prior]=await Promise.all([
@@ -184,17 +185,62 @@ function createSchoolAcademicsService({db}) {
         deny("failed-precondition","There is no active appointment to end.");
       tx.update(ref,{status:"ended",endedByUid:uid,endedAt:FieldValue.serverTimestamp(),
         endReason:reason,revision:(prior.data().revision||1)+1});
+    }else if(restoring){
+      if(!prior.exists||prior.data().status!=="ended")
+        deny("failed-precondition","Only an ended teaching assignment can be restored.");
+      if(offering.data().status!=="active")
+        deny("failed-precondition","A teacher cannot be restored to a closed course offering.");
+      tx.update(ref,{status:"active",restoredByUid:uid,restoredAt:FieldValue.serverTimestamp(),
+        restoreReason:reason,revision:(prior.data().revision||1)+1});
     }else{
-      if(prior.exists)deny("already-exists","A teaching assignment exists. Use audited recovery rather than replacing its history.");
+      if(prior.exists)deny("already-exists","A teaching assignment already has history. Restore an ended assignment instead of replacing it.");
       if(offering.data().status!=="active")deny("failed-precondition","Cannot assign a closed course offering.");
       tx.create(ref,{schoolId:ctx.schoolId,teacherUid,offeringId,
         yearId:offering.data().yearId,termId:offering.data().termId,
         subjectId:offering.data().subjectId,sectionId:offering.data().sectionId,
         status:"active",revision:1,createdByUid:uid,createdAt:FieldValue.serverTimestamp()});
     }
-    tx.create(auditRef,audit(ending?"teacher_assignment_ended":"teacher_assigned",{teacherUid,offeringId}));
+    tx.create(auditRef,audit(ending?"teacher_assignment_ended":
+      restoring?"teacher_assignment_restored":"teacher_assigned",{teacherUid,offeringId,reason}));
    });
    return {teacherUid,offeringId,status:ending?"ended":"active"};
+  }
+  if(["end_enrollment","restore_enrollment"].includes(input.action)){
+   requireAdmin();
+   const enrollmentId=checkId(input.enrollmentId,"Enrollment ID",128);
+   const reason=checkName(input.reason,input.action==="end_enrollment"?"Enrollment end reason":"Enrollment restore reason");
+   const ref=schoolRoot.doc("enrollments/"+enrollmentId);
+   const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const record=await tx.get(ref);
+    if(!record.exists||record.data().schoolId!==ctx.schoolId)
+      deny("not-found","The enrollment is not in this school.");
+    const data=record.data(),ending=input.action==="end_enrollment";
+    if(ending&&data.status!=="active")
+      deny("failed-precondition","Only an active enrollment can be ended.");
+    if(!ending&&data.status!=="ended")
+      deny("failed-precondition","Only an ended enrollment can be restored.");
+    if(!ending){
+      const [person,offering]=await Promise.all([
+        tx.get(schoolRoot.doc("people/"+data.personId)),
+        tx.get(schoolRoot.doc("course_offerings/"+data.offeringId))
+      ]);
+      if(!person.exists||person.data().schoolId!==ctx.schoolId||
+         person.data().kind!=="student"||person.data().status!=="active"||
+         !offering.exists||offering.data().schoolId!==ctx.schoolId||
+         offering.data().status!=="active")
+        deny("failed-precondition","The student and course offering must both be active before restoring enrollment.");
+    }
+    const now=FieldValue.serverTimestamp(),revision=(data.revision||1)+1;
+    tx.update(ref,ending?
+      {status:"ended",endedByUid:uid,endedAt:now,endReason:reason,revision}:
+      {status:"active",restoredByUid:uid,restoredAt:now,restoreReason:reason,revision});
+    tx.create(auditRef,audit(ending?"student_enrollment_ended":"student_enrollment_restored",{
+      enrollmentId,personId:data.personId,offeringId:data.offeringId,reason
+    }));
+   });
+   return {enrollmentId,status:input.action==="end_enrollment"?"ended":"active"};
   }
   if(input.action==="class_roster"){
    if(!admin&&!teacher)deny("permission-denied","Class roster access is restricted.");
@@ -209,16 +255,30 @@ function createSchoolAcademicsService({db}) {
       grant.data().teacherUid!==uid)
       deny("permission-denied","Only an assigned teacher can read this class roster.");
    }
-   const snap=await db.collection("schools/"+ctx.schoolId+"/enrollments")
-     .where("offeringId","==",offeringId).limit(101).get();
-   if(snap.size===101)deny("resource-exhausted","Class roster exceeds the first page. Use paginated school roster.");
-   const current=snap.docs.filter(d=>d.data().schoolId===ctx.schoolId&&d.data().status==="active");
-   const people=await Promise.all(current.map(record=>schoolRoot.doc("people/"+record.data().personId).get()));
-   return {offeringId,students:current.map((record,i)=>({
-     personId:record.data().personId,enrollmentId:record.id,
+   const [snap,staffSnap]=await Promise.all([
+    db.collection("schools/"+ctx.schoolId+"/enrollments").where("offeringId","==",offeringId).limit(101).get(),
+    admin?db.collection("schools/"+ctx.schoolId+"/staff_assignments").where("offeringId","==",offeringId).limit(101).get():Promise.resolve(null)
+   ]);
+   if(snap.size===101||staffSnap?.size===101)
+    deny("resource-exhausted","Class roster exceeds the first page. Use paginated school roster.");
+   const rows=snap.docs.filter(d=>d.data().schoolId===ctx.schoolId&&(admin||d.data().status==="active"));
+   const people=await Promise.all(rows.map(record=>schoolRoot.doc("people/"+record.data().personId).get()));
+   let staff=[];
+   if(admin&&staffSnap){
+    const grants=staffSnap.docs.filter(d=>d.data().schoolId===ctx.schoolId);
+    const memberships=await Promise.all(grants.map(record=>schoolRoot.doc("memberships/"+record.data().teacherUid).get()));
+    staff=grants.map((record,i)=>({
+      assignmentId:record.id,teacherUid:record.data().teacherUid,status:record.data().status,
+      name:memberships[i].exists&&memberships[i].data().schoolId===ctx.schoolId?
+        memberships[i].data().displayName||("Teacher "+record.data().teacherUid.slice(0,8)):
+        "Teacher "+record.data().teacherUid.slice(0,8)
+    }));
+   }
+   return {offeringId,students:rows.map((record,i)=>({
+     personId:record.data().personId,enrollmentId:record.id,status:record.data().status,
      name:people[i].exists&&people[i].data().schoolId===ctx.schoolId?
        people[i].data().displayName:"Unlinked student record"
-   }))};
+   })),teachers:staff};
   }
   deny("invalid-argument","Unknown academic operation.");
  };
