@@ -4,6 +4,7 @@ const {initializeApp}=require("firebase-admin/app");
 const {getFirestore,FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {getAuth}=require("firebase-admin/auth");
 const {getMessaging}=require("firebase-admin/messaging");
+const {getStorage}=require("firebase-admin/storage");
 const {onDocumentCreated,onDocumentUpdated,onDocumentWritten}=require("firebase-functions/v2/firestore");
 const {onSchedule}=require("firebase-functions/v2/scheduler");
 const {onCall,HttpsError}=require("firebase-functions/v2/https");
@@ -63,13 +64,22 @@ exports.acceptSchoolInvitation=onCall(callOptions,safeCallable(createInvitationA
 const {createPlatformSchoolService}=require("./platform-schools.js");
 exports.platformSchools=onCall(callOptions,safeCallable(createPlatformSchoolService({db})));
 const {createSchoolSupportService}=require("./school-support.js");
-exports.schoolSupport=onCall(callOptions,safeCallable(createSchoolSupportService({db})));
+const storageBucket=()=>getStorage().bucket();
+exports.schoolSupport=onCall(callOptions,safeCallable(createSchoolSupportService({db,bucket:storageBucket})));
+const {createSchoolFilePolicyService}=require("./school-file-policy.js");
+exports.schoolFilePolicy=onCall(callOptions,safeCallable(createSchoolFilePolicyService({db})));
 const {createSchoolAnalyticsService}=require("./school-analytics.js");
 exports.schoolAnalytics=onCall(callOptions,safeCallable(createSchoolAnalyticsService({db})));
 const {createSchoolPracticeAnalyticsService}=require("./school-practice-analytics.js");
 exports.schoolPracticeAnalytics=onCall(callOptions,safeCallable(createSchoolPracticeAnalyticsService({db})));
 const {createSchoolTeacherAnalyticsService}=require("./school-teacher-analytics.js");
 exports.schoolTeacherAnalytics=onCall(callOptions,safeCallable(createSchoolTeacherAnalyticsService({db})));
+const {createSchoolFileRetentionJob}=require("./school-file-retention.js");
+const schoolFileRetention=createSchoolFileRetentionJob({db,bucket:storageBucket,Timestamp,FieldValue});
+exports.schoolFileRetentionCleanup=onSchedule({
+  schedule:"every 6 hours",timeZone:"Asia/Manila",region:"asia-southeast1",
+  maxInstances:1,timeoutSeconds:300
+},schoolFileRetention);
 const {createSchoolPlanningService}=require("./school-planning.js");
 exports.schoolPlanning=onCall(callOptions,safeCallable(createSchoolPlanningService({db})));
 const {createSchoolScheduleService}=require("./school-schedules.js");
