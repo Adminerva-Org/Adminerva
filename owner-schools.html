@@ -22,7 +22,8 @@
     @media(max-width:740px){.own-grid{grid-template-columns:minmax(0,1fr)}}
   </style>
 </head>
-<body style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
+<body id="pageBody" class="hidden" style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
+<div id="adminerva-nav" data-module="admin" data-page="owner-schools"></div>
 <main class="own-shell">
  <header style="margin-bottom:1.25rem">
   <a href="index.html">Adminerva home</a>
@@ -70,6 +71,8 @@
   </section>
  </div>
 </main>
-<script type="module" src="js/core/owner-school-registry.mjs"></script>
+<script src="js/core/adminerva-nav.js?v=4.0.0"></script>
+<script type="module" src="js/core/auth-guard.js?v=4.0.0"></script>
+<script type="module" src="js/core/owner-school-registry.mjs?v=4.0.0"></script>
 </body>
 </html>
