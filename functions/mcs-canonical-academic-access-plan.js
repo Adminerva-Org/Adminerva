@@ -10,6 +10,7 @@ const {readFileSync,writeFileSync}=require("node:fs");
 const {createHash}=require("node:crypto");
 const {SCHOOL_ID}=require("./mcs-canonical-foundation-plan.js");
 const {validatePlan,validateApproval}=require("./mcs-canonical-foundation-apply.js");
+const {rowKey}=require("./school-academics.js");
 
 const SCHEMA="adminerva-v4-mcs-canonical-academic-access-plan-v1";
 const sha=value=>createHash("sha256").update(value).digest("hex");
@@ -89,9 +90,10 @@ function buildAcademicAccessPlan({foundationPlan,foundationPlanRaw,foundationApp
      continue;
     }
     enrollmentKeys.add(key);
+    const enrollmentId=rowKey(person.personId,offering.offeringId);
     enrollments.push({
-     enrollmentId:"mcsenr_"+sha(key).slice(0,40),
-     targetPath:"schools/"+SCHOOL_ID+"/enrollments/mcsenr_"+sha(key).slice(0,40),
+     enrollmentId,
+     targetPath:"schools/"+SCHOOL_ID+"/enrollments/"+enrollmentId,
      personId:person.personId,studentUid:member.uid,offeringId:offering.offeringId,
      yearId:offering.yearId,termId:offering.termId,sectionId:offering.sectionId,subjectId:offering.subjectId,
      status:active?"active":"ended",requiresApproval:true,
@@ -140,9 +142,10 @@ function buildAcademicAccessPlan({foundationPlan,foundationPlanRaw,foundationApp
      const key=member.uid+"|"+offering.offeringId;
      if(assignmentKeys.has(key))continue;
      assignmentKeys.add(key);any=true;
+     const assignmentId=rowKey(member.uid,offering.offeringId);
      assignments.push({
-      assignmentId:"mcsasg_"+sha(key).slice(0,40),
-      targetPath:"schools/"+SCHOOL_ID+"/staff_assignments/mcsasg_"+sha(key).slice(0,40),
+      assignmentId,
+      targetPath:"schools/"+SCHOOL_ID+"/staff_assignments/"+assignmentId,
       teacherUid:member.uid,personId:person.personId,offeringId:offering.offeringId,
       yearId:offering.yearId,termId:offering.termId,sectionId:offering.sectionId,subjectId:offering.subjectId,
       status:"active",requiresApproval:true,
