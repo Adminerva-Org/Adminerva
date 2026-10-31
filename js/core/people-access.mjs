@@ -5,10 +5,10 @@ const api=httpsCallable(getFunctions(app,"asia-southeast1"),"peopleDirectory");
 const rosterSourceApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolRosterSource");
 const get=id=>document.getElementById(id);
 const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
-let schoolTerms=[];
+let schoolTerms=[],schoolSections=[],schoolOfferings=[];
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false;
-let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null;
+let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false;
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
 function setTab(name,{remember=true}={}) {
@@ -29,7 +29,7 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
-    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;
+    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
     get("pa-more").hidden=true;
   },
   onReady:scope=>{
@@ -58,11 +58,11 @@ async function loadRosterSourceStatus(){
   return result;
 }
 async function previewImportRows(rows,sourceLabel){
-  importRows=rows;importDigest=null;importPreview=null;
-  get("pa-import-commit").disabled=true;
+  importRows=rows;importDigest=null;importPreview=null;importCommitted=false;
+  get("pa-import-commit").disabled=true;resetImportCourseMapping("Validating section hints after the roster preview…");
   get("pa-import-status").textContent="Validating "+sourceLabel+" against the active school directory…";
   const preview=await perform("preview_import_people",{rows:importRows});
-  importPreview=preview;importDigest=preview.digest;renderImportPreview(preview);
+  importPreview=preview;importDigest=preview.digest;renderImportPreview(preview);renderImportCourseMapping();
   const invalid=Number(preview.summary?.invalid||0);
   get("pa-import-commit").disabled=invalid>0||!importDigest;
   get("pa-import-status").textContent=invalid?
@@ -176,6 +176,125 @@ function renderImportPreview(preview){
     row.append(info);host.append(row);
   }
 }
+function sectionKey(value){
+  return String(value||"").trim().replace(/\s+/g," ").toLocaleLowerCase("en");
+}
+function resetImportCourseMapping(message="Preview a roster with student section hints to prepare reviewed enrollment groups."){
+  get("pa-import-course-groups")?.replaceChildren();
+  if(get("pa-import-course-status"))get("pa-import-course-status").textContent=message;
+}
+function offeringLabel(item){
+  return [item.sectionId,item.subjectId,item.termId,item.yearId].filter(Boolean).join(" · ");
+}
+function renderImportCourseMapping(){
+  const host=get("pa-import-course-groups"),statusNode=get("pa-import-course-status");
+  if(!host||!statusNode)return;
+  host.replaceChildren();
+  if(!importPreview){
+    statusNode.textContent="Preview a roster with student section hints to prepare reviewed enrollment groups.";
+    return;
+  }
+  const valid=(importPreview.rows||[]).filter(item=>
+    item.status!=="invalid"&&(!Array.isArray(item.errors)||item.errors.length===0));
+  const students=valid.filter(item=>item.kind==="student"&&item.sectionHint&&item.personId);
+  const staffHints=valid.filter(item=>item.kind==="staff"&&item.sectionHint).length;
+  if(!students.length){
+    statusNode.textContent=staffHints?
+      "Staff section hints are advisory only. Invite and verify each teacher account before assigning courses.":
+      "This preview has no student section hints to map.";
+    return;
+  }
+  const groups=new Map();
+  for(const item of students){
+    const key=sectionKey(item.sectionHint);
+    if(!groups.has(key))groups.set(key,{hint:item.sectionHint,rows:[]});
+    groups.get(key).rows.push(item);
+  }
+  for(const group of groups.values()){
+    const matches=schoolSections.filter(section=>
+      section.status==="active"&&sectionKey(section.name)===sectionKey(group.hint));
+    const section=matches.length===1?matches[0]:null;
+    const offerings=section?schoolOfferings.filter(item=>
+      item.status==="active"&&item.sectionId===section.id):[];
+    const card=document.createElement("section");card.className="pa-row";card.setAttribute("role","listitem");
+    const info=document.createElement("div");
+    const title=document.createElement("strong");
+    title.textContent=group.hint+" · "+group.rows.length+" student"+(group.rows.length===1?"":"s");
+    const detail=document.createElement("p");detail.className="pa-muted";
+    if(matches.length>1)detail.textContent="More than one active section has this display name. Resolve the catalog ambiguity in Classes before enrolling.";
+    else if(!section)detail.textContent="No exact active section match. The hint remains unapplied.";
+    else if(!offerings.length)detail.textContent="Matched section "+section.name+", but it has no active course offering.";
+    else detail.textContent="Matched section "+section.name+". Choose the exact subject/term offering; nothing is selected automatically.";
+    info.append(title,detail);
+    card.append(info);
+
+    if(section&&offerings.length){
+      const form=document.createElement("form");
+      form.style.cssText="width:100%;margin-top:.65rem";
+      const selectLabel=document.createElement("label");selectLabel.textContent="Course offering";
+      const select=document.createElement("select");select.className="pa-field";select.required=true;
+      const blank=document.createElement("option");blank.value="";blank.disabled=true;blank.selected=true;blank.textContent="Choose the exact offering";
+      select.append(blank);
+      for(const offering of offerings){
+        const option=document.createElement("option");option.value=offering.offeringId;
+        option.textContent=offeringLabel(offering)||offering.offeringId;select.append(option);
+      }
+      selectLabel.append(select);
+
+      const reasonLabel=document.createElement("label");reasonLabel.textContent="Enrollment reason";
+      const reason=document.createElement("input");reason.className="pa-field";reason.minLength=12;reason.maxLength=140;
+      reason.placeholder="Explain this reviewed roster-to-course enrollment";reason.required=true;
+      reasonLabel.append(reason);
+
+      const button=document.createElement("button");button.type="submit";button.className="pa-action";
+      button.textContent="Enroll "+group.rows.length+" reviewed student"+(group.rows.length===1?"":"s");
+      button.disabled=!importCommitted||group.rows.length>80;
+      form.append(selectLabel,reasonLabel,button);
+      if(group.rows.length>80){
+        const limit=document.createElement("p");limit.className="pa-muted";
+        limit.textContent="This section group exceeds the 80-student reviewed bulk limit. Use the Classes bulk enrollment tool in smaller groups.";
+        form.append(limit);
+      }else if(!importCommitted){
+        const pending=document.createElement("p");pending.className="pa-muted";
+        pending.textContent="Commit this exact people preview before enrollment controls become available.";
+        form.append(pending);
+      }
+      form.addEventListener("submit",event=>{
+        event.preventDefault();
+        if(pendingWrite||!importCommitted)return;
+        const offeringId=String(select.value||""),reasonText=String(reason.value||"").trim();
+        if(!offeringId){statusNode.textContent="Choose an exact course offering for "+group.hint+".";return;}
+        if(reasonText.length<12){statusNode.textContent="Enter an enrollment reason of at least 12 characters.";return;}
+        const personIds=[...new Set(group.rows.map(item=>item.personId))];
+        if(personIds.length>80){statusNode.textContent="This reviewed group exceeds the safe bulk enrollment limit.";return;}
+        if(!confirm("Enroll "+personIds.length+" reviewed student(s) from section hint “"+group.hint+"” into the selected course offering? Existing active enrollments will be skipped and ended history will not be restored."))return;
+        void (async()=>{
+          pendingWrite=true;button.disabled=true;
+          statusNode.textContent="Applying the reviewed "+group.hint+" enrollment…";
+          try{
+            const result=await performAcademic("bulk_enroll_students",{personIds,offeringId,reason:reasonText});
+            await Promise.all([loadAcademics(),loadOverview()]);
+            renderImportCourseMapping();
+            statusNode.textContent="Reviewed enrollment complete: "+result.created+" created · "+
+              result.alreadyActive+" already active · "+result.historyExists+" historical enrollment(s) left unchanged.";
+          }catch(error){
+            statusNode.textContent=error?.message||"Reviewed import enrollment was not saved.";
+            button.disabled=false;
+          }finally{pendingWrite=false;}
+        })();
+      });
+      card.append(form);
+    }
+    host.append(card);
+  }
+  if(!importCommitted){
+    statusNode.textContent="Section groups are advisory. Commit the exact people preview before any reviewed enrollment can be applied.";
+  }else if(staffHints){
+    statusNode.textContent="Student section groups are ready for review. Staff section hints remain unapplied until verified teacher memberships exist.";
+  }else{
+    statusNode.textContent="People import committed. Review each section group and explicitly choose a course offering before enrolling.";
+  }
+}
 get("pa-sheet-source-form").addEventListener("submit",event=>{
   event.preventDefault();if(pendingWrite)return;
   const form=event.currentTarget,values=new FormData(form);
@@ -212,7 +331,7 @@ get("pa-sheet-preview").addEventListener("click",()=>{
       await previewImportRows(rows,"the configured Google Sheet");
       get("pa-sheet-status").textContent="Google Sheet fetched and previewed. Review the rows before committing.";
     }catch(error){
-      importRows=[];importDigest=null;importPreview=null;
+      importRows=[];importDigest=null;importPreview=null;importCommitted=false;resetImportCourseMapping();
       get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="Preview failed.";
       get("pa-sheet-status").textContent=error?.message||"The configured Google Sheet could not be previewed.";
     }finally{button.disabled=false;}
@@ -235,7 +354,7 @@ get("pa-sheet-clear").addEventListener("click",()=>{
   })();
 });
 get("pa-import-file").addEventListener("change",event=>{
-  importRows=[];importDigest=null;importPreview=null;
+  importRows=[];importDigest=null;importPreview=null;importCommitted=false;resetImportCourseMapping();
   get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";
   get("pa-import-commit").disabled=true;
   const file=event.target.files?.[0]||null;
@@ -262,7 +381,7 @@ get("pa-import-preview").addEventListener("click",()=>{
       importRows=importRowsFromCsv(await file.text());
       await previewImportRows(importRows,"this CSV");
     }catch(error){
-      importRows=[];importDigest=null;importPreview=null;
+      importRows=[];importDigest=null;importPreview=null;importCommitted=false;resetImportCourseMapping();
       get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="Preview failed.";
       get("pa-import-status").textContent=error?.message||"The CSV could not be previewed.";
     }finally{get("pa-import-preview").disabled=!get("pa-import-file").files?.length;}
@@ -279,8 +398,9 @@ get("pa-import-commit").addEventListener("click",()=>{
       get("pa-import-status").textContent=result.alreadyCommitted?
         "This exact import was already committed. No duplicate people were created.":
         "Import committed: "+result.created+" people created · "+result.skipped+" already present.";
+      importCommitted=true;importDigest=null;
       await Promise.all([loadPeople(false),loadOverview(),loadInvitePeople(),loadAcademics()]);
-      importDigest=null;importPreview=null;
+      renderImportCourseMapping();
     }catch(error){
       get("pa-import-status").textContent=error?.message||"Import was not committed. Preview the file again before retrying.";
       get("pa-import-commit").disabled=false;
@@ -338,15 +458,17 @@ async function loadAcademics(){
   ]);
   for(let i=0;i<kinds.length;i++){
     if(kinds[i]==="terms"){schoolTerms=catalogs[i].items||[];continue;}
+    if(kinds[i]==="sections")schoolSections=catalogs[i].items||[];
     populateOptions('[data-catalog="'+kinds[i]+'"]',catalogs[i].items||[],"id");
   }
   refreshTerms();
-  const offeringRows=offerings.offerings||[];
-  populateOptions("[data-offering]",offeringRows,"offeringId","offeringId");
+  schoolOfferings=offerings.offerings||[];
+  populateOptions("[data-offering]",schoolOfferings,"offeringId","offeringId");
   populateOptions("[data-student-person]",people.students||[],"personId");
   populateOptions("[data-school-teacher]",teachers.teachers||[],"uid");
   populateMultiOptions("[data-student-person-bulk]",people.students||[],"personId");
   populateMultiOptions("[data-school-teacher-bulk]",teachers.teachers||[],"uid");
+  renderImportCourseMapping();
 }
 get("pa-bulk-enrollment-form").addEventListener("submit",event=>{
   event.preventDefault();const form=event.currentTarget;
