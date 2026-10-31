@@ -49,6 +49,7 @@ function mount(){
       schoolAdmin:navigation?.dataset.schoolAdmin==="true",
       schoolTeacher:navigation?.dataset.schoolTeacher==="true",
       schoolStudent:navigation?.dataset.schoolStudent==="true",
+      v4OnlyTeacher:navigation?.dataset.v4OnlyTeacher==="true",
       students:role==="student"?[{}]:[]
     });
     if(!destination.endsWith("-home.html")){
@@ -63,7 +64,11 @@ function mount(){
         "lesson-planner.html":"Lesson Planner","repofetch.html":"Review & Grade",
         "gradebook.html":"Gradebook","assessment-studio.html":"Assessment Studio",
         "submissions.html":"Review Inbox","teacher-analytics.html":"Teaching Analytics",
-        "presentation.html":"Presentation Workspace","schedule.html":"Schedule","school-support.html":"School Support"
+        "presentation.html":"Presentation Workspace","schedule.html":"Schedule",
+        "teacher-assessment-library.html":"Assessment Library","school-gradebook.html":"Gradebook",
+        "teacher-reference-library.html":"My References","school-reference-library.html":"School References",
+        "school-teacher-analytics.html":"Class Analytics","school-practice-analytics.html":"Practice Progress",
+        "school-support.html":"School Support"
       };
       const name=names[page]||"your last workspace";
       title.textContent="Continue: "+name;
