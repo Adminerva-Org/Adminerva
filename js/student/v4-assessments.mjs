@@ -22,8 +22,10 @@ if(panel&&list&&status&&schoolHost){
   const submissionsApi=httpsCallable(functions,"schoolStudioSubmissions");
   const gradebookApi=httpsCallable(functions,"schoolGradebook");
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
+  const reclaimsApi=httpsCallable(functions,"schoolReclaims");
   let renderGeneration=0,picker=null,githubTask=null,githubTaskStatus=null;
-  let githubCommits=[],githubSelected=new Set(),githubCheckpoint="",githubBusy=false;
+  let githubCommits=[],githubSelected=new Set(),githubCheckpoint="",githubBusy=false,reclaimTarget=null;
+  let githubClaims=new Map();
   async function scoped(scope,api,action,details={}){
     const lease=scope.lease();
     const result=(await api({schoolId:lease.schoolId,action,...details})).data;
@@ -129,12 +131,14 @@ if(panel&&list&&status&&schoolHost){
           actions.append(link);
         }else if(task.submissionSource==="github"){
           const canEdit=!submission?.submitted||submission.status==="reopened";
+          const canOpen=canEdit||submission?.status==="submitted";
           const evidenceButton=node("button",
-            "rounded-lg px-4 py-2.5 text-sm font-bold "+(canEdit?"bg-indigo-700 text-white":"border border-slate-300 text-slate-600"),
+            "rounded-lg px-4 py-2.5 text-sm font-bold "+(canOpen?"bg-indigo-700 text-white":"border border-slate-300 text-slate-600"),
             canEdit?(submission?.status==="reopened"?"Revise GitHub evidence":"Select GitHub evidence"):
-              submission?.status==="approved"?"Evidence approved":"Evidence submitted");
-          evidenceButton.type="button";evidenceButton.disabled=!canEdit;
-          if(canEdit)evidenceButton.addEventListener("click",()=>void openGithubEvidence(task,submission));
+              submission?.status==="submitted"?"Review evidence & attribution":
+              submission?.status==="approved"?"Evidence approved":"Evidence reviewed");
+          evidenceButton.type="button";evidenceButton.disabled=!canOpen;
+          if(canOpen)evidenceButton.addEventListener("click",()=>void openGithubEvidence(task,submission));
           actions.append(evidenceButton);
           if(submission?.repository){
             const repoLink=node("a","rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700","Open repository ↗");
