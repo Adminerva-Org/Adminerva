@@ -8,6 +8,14 @@ let schoolCache=null,pendingSchool=null;
 const schoolKey=uid=>"Adminerva_last_verified_school_"+uid;
 
 function preferred(uid){try{return sessionStorage.getItem(schoolKey(uid))||null;}catch{return null;}}
+function invalidateSchoolCache(nextSchoolId=null){
+  if(!schoolCache)return;
+  if(!nextSchoolId||schoolCache.schoolId!==nextSchoolId)schoolCache=null;
+}
+document.addEventListener("adminerva:preferred-school-changed",event=>
+  invalidateSchoolCache(event.detail?.schoolId||null));
+document.addEventListener("adminerva:school-ready",event=>
+  invalidateSchoolCache(event.detail?.schoolId||null));
 function revisionKey(uid,schoolId,kind,clientKey){
   return "Adminerva_v4_planning_revision_"+uid+"_"+schoolId+"_"+kind+"_"+encodeURIComponent(clientKey);
 }
@@ -53,7 +61,8 @@ export async function activePlanningSchool({refresh=false}={}){
         "No active school membership is available.");
       const school=schools.find(item=>item.schoolId===schoolId);
       if(!school?.roles?.includes("teacher"))throw Error("The selected school has not granted you teacher planning access.");
-      schoolCache={uid:user.uid,schoolId,name:school.name||schoolId,roles:school.roles};return schoolCache;
+      schoolCache={uid:user.uid,schoolId,name:school.name||schoolId,roles:school.roles,
+        compatibilityMode:school.compatibilityMode||"legacy_allowed"};return schoolCache;
     }).finally(()=>{pendingSchool=null;});
   }
   return pendingSchool;
