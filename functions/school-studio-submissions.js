@@ -138,7 +138,7 @@ function createSchoolStudioSubmissionService({db}){
    });
    if(!receipt.alreadyExisted){
     await writeSchoolNotification({
-      db,schoolId:ctx.schoolId,uid:task.data().ownerUid,
+      db,schoolId:ctx.schoolId,uid:task.data().reviewerUid||task.data().ownerUid,
       id:"studio_submission_"+taskId+"_"+ctx.uid+"_"+receipt.version,
       title:receipt.version>1?"Studio project resubmitted":"Studio project submitted",
       body:(task.data().title||"Assessment")+" · a student submission is ready for review.",
@@ -153,16 +153,16 @@ function createSchoolStudioSubmissionService({db}){
   const isAuthorized=async tx=>{
    const member=await verifySchool(tx,"teacher");
    const [currentTask,grant]=await Promise.all([tx.get(taskRef),tx.get(assignmentRef)]);
-   if(!currentTask.exists||currentTask.data().ownerUid!==ctx.uid||
+   if(!currentTask.exists||(currentTask.data().reviewerUid||currentTask.data().ownerUid)!==ctx.uid||
       currentTask.data().schoolId!==ctx.schoolId||!grant.exists||
       grant.data().teacherUid!==ctx.uid||grant.data().offeringId!==offeringId||
       grant.data().schoolId!==ctx.schoolId||grant.data().status!=="active")
-    deny("permission-denied","Only the assessment-owning authorized teacher may review this class task.");
+    deny("permission-denied","Only the currently responsible assigned teacher may review this class task.");
    return currentTask.data();
   };
   // Verify course rights for reads as well, not only in mutation transactions.
   const [grant,member]=await Promise.all([assignmentRef.get(),membershipRef.get()]);
-  if(task.data().ownerUid!==ctx.uid||!grant.exists||
+  if((task.data().reviewerUid||task.data().ownerUid)!==ctx.uid||!grant.exists||
     grant.data().schoolId!==ctx.schoolId||grant.data().teacherUid!==ctx.uid||
     grant.data().offeringId!==offeringId||grant.data().status!=="active"||
     !member.exists||member.data().status!=="active")
