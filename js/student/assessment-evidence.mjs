@@ -373,9 +373,10 @@ async function load(){
     if(!checkpoint&&historyHeadSha)checkpoint=historyHeadSha;
     historyPage=1;hasOlderCommits=hasOlderCommitPage(historyPage,result.length);
     refreshHistoryControl();render();
-    status(hasOlderCommits
-      ?"Showing "+commits.length+" recent commits. Your latest project revision is suggested as the checkpoin+claimWarning); select only your own relevant commits as evidence. Use Load older commits to find historical evidence."
-      :"Select your own relevant commits, then use the latest suitable project revision as the checkpoint. The checkpoint may belong to a teammate. Reclaims remain pending staff review.");
+    const loadMessage=hasOlderCommits
+      ?"Showing "+commits.length+" recent commits. Your latest project revision is suggested as the checkpoint; select only your own relevant commits as evidence. Use Load older commits to find historical evidence."
+      :"Select your own relevant commits, then use the latest suitable project revision as the checkpoint. The checkpoint may belong to a teammate. Reclaims remain pending staff review.";
+    status(loadMessage+claimWarning);
     if(saved?.status==="approved")status("Checkpoint approved. Ask your instructor to reopen it before resubmitting or withdrawing. Your current evidence and grade remain protected.");
     else if(saved?.status==="reopened")status("Your instructor reopened this evidence"+(saved.reopenReason?": "+saved.reopenReason:"")+". Update your selection and resubmit for fresh approval. Previous evidence remains in the audit history.");
     else if(saved?.status==="withdrawn")status("Evidence withdrawn. You may revise and resubmit; the previous submission remains in the audit history.");
