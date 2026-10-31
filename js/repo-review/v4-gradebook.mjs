@@ -44,6 +44,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       busy||!loaded||published||reopened||currentGrade?.status!=="draft";
     document.getElementById("gbV4RequestRevision").disabled=
       busy||!loaded||published||reopened;
+    document.getElementById("gbV4Correct").disabled=busy||!loaded||!published;
+    document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published);
     document.getElementById("gbV4Refresh").disabled=busy;
   }
   function setBusy(value,message=""){
@@ -172,6 +174,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4Code").textContent="Loading…";
     document.getElementById("gbV4File").replaceChildren();
     document.getElementById("gbV4Rubric").replaceChildren();
+    document.getElementById("gbV4CorrectionReason").value="";
+    document.getElementById("gbV4CorrectionPanel").classList.add("hidden");
     dialog.showModal();
     try{
       const result=await Promise.all([
@@ -240,6 +244,43 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       await loadInbox();
     }catch(error){
       document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Grade was not published.";
+    }finally{setBusy(false);}
+  })());
+  document.getElementById("gbV4Correct").addEventListener("click",()=>void (async()=>{
+    if(busy||!currentTask||!currentRow||currentGrade?.status!=="published")return;
+    const reason=document.getElementById("gbV4CorrectionReason").value.trim();
+    if(reason.length<12){
+      document.getElementById("gbV4ReviewStatus").textContent=
+        "Explain why this published grade is being corrected in at least 12 characters.";return;
+    }
+    let criteria;
+    try{criteria=collectCriteria();}catch(error){
+      document.getElementById("gbV4ReviewStatus").textContent=error.message;return;
+    }
+    if(criteria.some(item=>item.pendingPoints>0)){
+      document.getElementById("gbV4ReviewStatus").textContent=
+        "Resolve all pending rubric points before correcting a published grade.";return;
+    }
+    if(!confirm("Record a new published-grade revision? The prior published revision will remain in audit history."))return;
+    try{
+      setBusy(true,"Verifying the frozen submission and recording the published-grade correction…");
+      const result=await scoped(gradeApi,"correct_published",{
+        taskId:currentTask.taskId,studentUid:currentRow.studentUid,
+        expectedRevision:currentGrade.revision,criteria,
+        feedback:document.getElementById("gbV4Feedback").value.trim(),reason
+      });
+      const refreshed=await scoped(gradeApi,"get_draft",{
+        taskId:currentTask.taskId,studentUid:currentRow.studentUid
+      });
+      currentGrade=refreshed.grade;
+      renderRubric(currentGrade);refreshReviewControls();
+      document.getElementById("gbV4CorrectionReason").value="";
+      document.getElementById("gbV4ReviewStatus").textContent=
+        "Published grade corrected to "+result.awarded+" / "+result.total+
+        ". The earlier published revision remains in history.";
+    }catch(error){
+      document.getElementById("gbV4ReviewStatus").textContent=
+        error?.message||"Published-grade correction was not recorded.";
     }finally{setBusy(false);}
   })());
   document.getElementById("gbV4RequestRevision").addEventListener("click",()=>void (async()=>{
