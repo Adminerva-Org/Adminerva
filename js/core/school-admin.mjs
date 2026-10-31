@@ -8,16 +8,17 @@ const status=document.getElementById("adminOverviewStatus");
 const legacy=document.getElementById("adminLegacyActions");
 const schoolActions=document.getElementById("adminSchoolActions");
 const peopleApi=httpsCallable(getFunctions(app,"asia-southeast1"),"peopleDirectory");
+const supportApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolSupport");
 const set=(id,value)=>{const node=document.getElementById(id);if(node)node.textContent=value;};
 
 function configureSchoolLabels(){
   set("adminMetricOneLabel","School people");
   set("adminMetricTwoLabel","Teaching assignments");
-  set("adminMetricThreeLabel","Invitations");
+  set("adminMetricThreeLabel","Open school reports");
   const links=[
     ["adminMetricOneLink","people-access.html","Open People & Access"],
     ["adminMetricTwoLink","people-access.html#classes","Manage classes"],
-    ["adminMetricThreeLink","people-access.html#invites","Review invitations"]
+    ["adminMetricThreeLink","school-support.html","Triage school reports"]
   ];
   for(const [id,href,label] of links){const node=document.getElementById(id);if(node){node.href=href;node.textContent=label;}}
 }
@@ -48,11 +49,14 @@ async function loadSchoolAdmin(access){
     if(!scope.current)return;
     try{
       const lease=scope.lease();
-      const result=(await peopleApi({schoolId:lease.schoolId,action:"overview"})).data;
+      const [people,support]=await Promise.all([
+        peopleApi({schoolId:lease.schoolId,action:"overview"}),
+        supportApi({schoolId:lease.schoolId,action:"overview"})
+      ]);
       scope.assertLease(lease);
-      set("adminStudentCount",result.counts?.people??0);
-      set("adminTeacherCount",result.counts?.staff_assignments??0);
-      set("adminReportCount",result.counts?.invitations??0);
+      set("adminStudentCount",people.data.counts?.people??0);
+      set("adminTeacherCount",people.data.counts?.staff_assignments??0);
+      set("adminReportCount",support.data.counts?.open??0);
       status.textContent="Verified school administration loaded for "+lease.schoolId+".";
     }catch(error){status.textContent=error?.message||"School administration summary is unavailable.";}
   }
