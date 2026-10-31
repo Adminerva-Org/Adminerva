@@ -8,10 +8,10 @@ import {parseRepository,normalizeSelection,validSha}
   from "./services/assessment-evidence.mjs?v=1.4.4";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
 import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.4.3";
-import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
+import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.1";
 import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
-import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.4";
+import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.5";
 import {searchStudents} from "./services/student-search.mjs?v=1.3.0";
 import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.2";
 
@@ -19,7 +19,7 @@ export function createEvidenceReview({root=document,inlineContext=null,requests=
 const el=id=>root.querySelector("#"+id);
 const state={students:[],assessments:[],evidence:null,student:null,assessment:null,claims:[],loaded:false,busy:false,sequence:0,editing:false,verificationEditing:false};
 let stopEvidence=null,watchedId=null,destroyed=false,resolveInitial=null,initialTimer=null,initialSnapshot=null,hasServerSnapshot=false;
-const discovery={commits:[],selected:new Set(),checkpoint:"",page:0,hasOlder:false,loading:false,sequence:0,branch:""};
+const discovery={commits:[],selected:new Set(),locked:new Set(),checkpoint:"",page:0,hasOlder:false,loading:false,sequence:0,branch:"",mode:"create"};
 const embedded=new URLSearchParams(location.search).get("embedded")==="1";
 if(embedded&&!inlineContext){
   document.body.classList.add("evidence-embedded");
@@ -41,6 +41,17 @@ function updateDiscoveryPaging(){
   button.classList.toggle("hidden",!discovery.hasOlder);
   button.disabled=discovery.loading;
   button.textContent=discovery.loading?"Loading older commits…":"Load older commits";
+}
+function configureDiscovery(mode="create"){
+  discovery.mode=mode;
+  const augment=mode==="augment";
+  if(el("evidenceDiscoveryTitle"))el("evidenceDiscoveryTitle").textContent=augment?"Add unmatched repository commit":"Discover historical GitHub evidence";
+  if(el("evidenceDiscoveryHelp"))el("evidenceDiscoveryHelp").textContent=augment
+    ?"Select only commit(s) you inspected and can attribute to this learner despite a different or unlinked GitHub identity. Existing selected evidence stays locked. Choose a checkpoint containing all selected commits. Added commits still require explicit contribution verification before evaluation."
+    :"For assessments already assigned in class: select relevant commits from the linked repository without asking the student to resubmit. This records an instructor-discovered proposal, not a student submission or proof of on-time work.";
+  if(el("evidenceFindCommits"))el("evidenceFindCommits").textContent=augment?"Load repository commits":"Find repository commits";
+  if(el("evidenceSaveDiscovery"))el("evidenceSaveDiscovery").textContent=augment?"Add selected commit(s) to evidence":"Save proposed historical evidence";
+  for(const id of ["evidenceDiscoveryNoteLabel","evidenceDiscoveryNote"])el(id)?.classList.toggle("hidden",!augment);
 }
 function add(parent,tag,text,style=""){
   const x=document.createElement(tag);x.textContent=String(text??"");if(style)x.className=style;
