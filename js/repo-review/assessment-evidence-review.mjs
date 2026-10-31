@@ -668,7 +668,13 @@ el("evidenceLoad")?.addEventListener("click",()=>{if(state.editing&&!confirm("Di
 el("evidenceApprove").addEventListener("click",()=>{void approve();});
 el("evidenceReopen").addEventListener("click",()=>{void reopen();});
 
-return {load:loadEvidence,loadDirectory,startAttributionOverride:()=>startAttributionOverride(),hasUnsavedChanges:()=>state.editing,destroy(){destroyed=true;stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);state.sequence++;state.loaded=false;state.evidence=null;discovery.sequence++;}};
+return {load:loadEvidence,loadDirectory,startAttributionOverride:()=>startAttributionOverride(),focusReview(){
+  configureDiscovery("create");
+  el("evidenceDiscovery").classList.add("hidden");
+  el("evidenceDetails").classList.remove("hidden");
+  el("evidenceDetails").scrollIntoView({behavior:"smooth",block:"start"});
+  status("Review the selected commits, verify the learner's contribution, then approve this evidence revision.");
+},hasUnsavedChanges:()=>state.editing,destroy(){destroyed=true;stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);state.sequence++;state.loaded=false;state.evidence=null;discovery.sequence++;}};
 }
 
 if(document.getElementById("evidenceWorkspace")){
