@@ -343,7 +343,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const role = event.detail?.role;
     if(!["student","teacher","schooladmin","superadmin","platformowner"].includes(role))return;
     renderNavigation(role);
-    import("./account-school-context.mjs?v=4.0.0")
+    import("./account-school-context.mjs?v=4.0.1")
       .then(module=>module.mountAccountSchoolSwitcher(root))
       .catch(error=>console.warn("School account context unavailable:",error?.message||error));
   });
