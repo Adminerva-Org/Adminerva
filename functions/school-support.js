@@ -5,7 +5,7 @@
  * triage all reports for that school. No platform-owner or email-domain
  * shortcut grants access to private school reports.
  */
-const {FieldValue}=require("firebase-admin/firestore");
+const {FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
 
@@ -13,6 +13,8 @@ function deny(code,message){throw new TenantAccessError(code,message)}
 const CATEGORIES=new Set(["Bug","Feature","Access","UI","Other"]);
 const STATUSES=new Set(["Open","Triaged","Waiting for Reporter","In Progress","Resolved","Closed"]);
 const PRIORITIES=new Set(["Low","Medium","High","Critical"]);
+const FILE_TYPES=new Set(["image/png","image/jpeg","image/webp","application/pdf","text/plain"]);
+const MAX_ATTACHMENTS=12;
 
 function text(value,max,label,{required=true,min=1}={}){
   const result=typeof value==="string"?value.trim():"";
@@ -37,7 +39,7 @@ function serializeReport(doc,viewerUid,isAdmin){
     createdAt:data.createdAt?.toMillis?.()||null,updatedAt:data.updatedAt?.toMillis?.()||null
   };
 }
-function createSchoolSupportService({db}){
+function createSchoolSupportService({db,bucket}){
  return async request=>{
   const input=request.data||{};
   const ctx=await getSchoolContext({db,request,schoolId:input.schoolId});
@@ -128,12 +130,146 @@ function createSchoolSupportService({db}){
       deny("permission-denied","This private school support report is not assigned to you.");
     const comments=await reportRef.collection("comments").orderBy("createdAt","asc").limit(101).get();
     if(comments.size===101)deny("resource-exhausted","This discussion needs pagination before more comments are shown.");
+    const attachments=await reportRef.collection("attachments").orderBy("createdAt","asc").limit(MAX_ATTACHMENTS+1).get();
+    if(attachments.size>MAX_ATTACHMENTS)
+      deny("resource-exhausted","This report has more attachments than the supported page limit.");
     return {report:serializeReport(report,ctx.uid,isAdmin),comments:comments.docs.map(doc=>({
       commentId:doc.id,text:doc.data().text,authorUid:doc.data().authorUid,
       authorLabel:doc.data().authorUid===ctx.uid?"You":
         isAdmin?(doc.data().authorDisplayName||"School member"):"School administrator",
       authorRole:doc.data().authorRole||"member",createdAt:doc.data().createdAt?.toMillis?.()||null
+    })),attachments:attachments.docs.filter(doc=>doc.data().state==="active").map(doc=>({
+      attachmentId:doc.id,originalName:doc.data().originalName,
+      contentType:doc.data().contentType,size:doc.data().size,
+      storagePath:doc.data().storagePath,
+      createdAt:doc.data().createdAt?.toMillis?.()||null,
+      expiresAt:doc.data().expiresAt?.toMillis?.()||null
     }))};
+  }
+
+
+  if(input.action==="prepare_attachment"){
+    if(!bucket)deny("unavailable","School file storage is not available in this environment.");
+    const fileId=recordId(input.fileId,"Attachment ID"),
+      originalName=text(input.originalName,180,"File name",{min:1}),
+      contentType=text(input.contentType,100,"Content type",{min:3}),
+      size=Number(input.size);
+    if(!/^[a-f0-9]{32,64}$/.test(fileId))
+      deny("invalid-argument","Attachment ID must be a secure hexadecimal identifier.");
+    if(!FILE_TYPES.has(contentType))
+      deny("invalid-argument","This attachment type is not allowed.");
+    if(!Number.isInteger(size)||size<1)
+      deny("invalid-argument","Attachment size is invalid.");
+    const policyRef=db.doc(prefix+"private_config/file_policy"),
+      attachmentRef=reportRef.collection("attachments").doc(fileId),
+      auditRef=db.collection(prefix+"support_audit").doc();
+    let storagePath,maxBytes;
+    await db.runTransaction(async tx=>{
+      await currentAuthority(tx);
+      const [report,policy,existing,attachments]=await Promise.all([
+        tx.get(reportRef),tx.get(policyRef),tx.get(attachmentRef),
+        tx.get(reportRef.collection("attachments").limit(MAX_ATTACHMENTS+1))
+      ]);
+      if(!report.exists||report.data().schoolId!==ctx.schoolId)
+        deny("not-found","School support report is unavailable.");
+      if(report.data().reporterUid!==ctx.uid)
+        deny("permission-denied","Only the report owner can add an attachment.");
+      if(report.data().locked||report.data().status==="Closed")
+        deny("failed-precondition","Attachments cannot be added to a locked or closed report.");
+      const filePolicy=policy.data();
+      if(!policy.exists||filePolicy?.enabled!==true||filePolicy?.supportAttachmentsEnabled!==true)
+        deny("failed-precondition","School support attachments are not enabled by the school file policy.");
+      if(!Number.isInteger(filePolicy.maxBytes)||size>filePolicy.maxBytes)
+        deny("invalid-argument","The attachment exceeds this school's per-file limit.");
+      if(existing.exists)
+        deny("already-exists","This attachment reservation already exists.");
+      if(attachments.size>=MAX_ATTACHMENTS)
+        deny("resource-exhausted","This report already has the maximum number of attachments.");
+      maxBytes=filePolicy.maxBytes;
+      storagePath="schools/"+ctx.schoolId+"/support/"+reportId+"/"+ctx.uid+"/"+fileId;
+      const now=FieldValue.serverTimestamp();
+      tx.create(attachmentRef,{
+        schoolId:ctx.schoolId,reportId,attachmentId:fileId,uploaderUid:ctx.uid,
+        originalName,contentType,size,storagePath,state:"pending",revision:1,
+        createdAt:now,updatedAt:now,
+        expiresAt:Timestamp.fromMillis(Date.now()+60*60*1000)
+      });
+      tx.create(auditRef,{schoolId:ctx.schoolId,reportId,actorUid:ctx.uid,
+        action:"support_attachment_reserved",attachmentId:fileId,
+        contentType,size,createdAt:now});
+    });
+    return {reportId,attachmentId:fileId,storagePath,contentType,size,maxBytes,
+      requiredMetadata:{schoolId:ctx.schoolId,reportId,ownerUid:ctx.uid,
+        fileId,kind:"support_attachment"}};
+  }
+
+  if(input.action==="finalize_attachment"){
+    if(!bucket)deny("unavailable","School file storage is not available in this environment.");
+    const fileId=recordId(input.fileId,"Attachment ID");
+    if(!/^[a-f0-9]{32,64}$/.test(fileId))
+      deny("invalid-argument","Attachment ID is invalid.");
+    const attachmentRef=reportRef.collection("attachments").doc(fileId),
+      policyRef=db.doc(prefix+"private_config/file_policy");
+    const [report,attachment,policy]=await Promise.all([
+      reportRef.get(),attachmentRef.get(),policyRef.get()
+    ]);
+    if(!report.exists||report.data().schoolId!==ctx.schoolId)
+      deny("not-found","School support report is unavailable.");
+    if(report.data().reporterUid!==ctx.uid)
+      deny("permission-denied","Only the report owner can finalize an attachment.");
+    if(!attachment.exists||attachment.data().schoolId!==ctx.schoolId||
+       attachment.data().uploaderUid!==ctx.uid||attachment.data().state!=="pending")
+      deny("failed-precondition","The attachment reservation is unavailable or already finalized.");
+    const filePolicy=policy.data();
+    if(!policy.exists||filePolicy?.enabled!==true||filePolicy?.supportAttachmentsEnabled!==true)
+      deny("failed-precondition","School support attachments are not currently enabled.");
+    const expected=attachment.data(),file=bucket().file(expected.storagePath);
+    let metadata;
+    try{[metadata]=await file.getMetadata();}catch(error){
+      if(Number(error?.code)===404)deny("failed-precondition","Upload the reserved file before finalizing it.");
+      throw error;
+    }
+    const custom=metadata.metadata||{},actualSize=Number(metadata.size);
+    const valid=metadata.name===expected.storagePath&&
+      metadata.contentType===expected.contentType&&actualSize===expected.size&&
+      actualSize<=filePolicy.maxBytes&&FILE_TYPES.has(metadata.contentType)&&
+      custom.schoolId===ctx.schoolId&&custom.reportId===reportId&&
+      custom.ownerUid===ctx.uid&&custom.fileId===fileId&&
+      custom.kind==="support_attachment";
+    if(!valid){
+      await file.delete({ignoreNotFound:true}).catch(()=>{});
+      deny("failed-precondition","The uploaded file metadata does not match its secure reservation.");
+    }
+    const retentionDays=Number(filePolicy.retentionDays);
+    if(![30,90,180,365].includes(retentionDays))
+      deny("failed-precondition","The school file policy has an invalid retention period.");
+    const expiresAt=Timestamp.fromMillis(Date.now()+retentionDays*86400000),
+      auditRef=db.collection(prefix+"support_audit").doc();
+    await db.runTransaction(async tx=>{
+      await currentAuthority(tx);
+      const [current,currentReport,currentPolicy]=await Promise.all([
+        tx.get(attachmentRef),tx.get(reportRef),tx.get(policyRef)
+      ]);
+      if(!current.exists||current.data().state!=="pending"||
+         current.data().storagePath!==expected.storagePath||
+         current.data().uploaderUid!==ctx.uid)
+        deny("failed-precondition","The attachment reservation changed before finalization.");
+      if(!currentReport.exists||currentReport.data().reporterUid!==ctx.uid||
+         currentReport.data().locked||currentReport.data().status==="Closed")
+        deny("failed-precondition","This report can no longer accept the attachment.");
+      if(!currentPolicy.exists||currentPolicy.data().enabled!==true||
+         currentPolicy.data().supportAttachmentsEnabled!==true)
+        deny("failed-precondition","The school file policy changed before finalization.");
+      const now=FieldValue.serverTimestamp();
+      tx.update(attachmentRef,{state:"active",revision:2,expiresAt,
+        finalizedAt:now,updatedAt:now});
+      tx.update(reportRef,{updatedAt:now});
+      tx.create(auditRef,{schoolId:ctx.schoolId,reportId,actorUid:ctx.uid,
+        action:"support_attachment_finalized",attachmentId:fileId,
+        retentionDays,expiresAt,createdAt:now});
+    });
+    return {reportId,attachmentId:fileId,state:"active",
+      expiresAt:expiresAt.toMillis()};
   }
 
   if(input.action==="comment"){
@@ -219,4 +355,4 @@ function createSchoolSupportService({db}){
   deny("invalid-argument","Unknown school support operation.");
  };
 }
-module.exports={createSchoolSupportService};
+module.exports={FILE_TYPES,MAX_ATTACHMENTS,createSchoolSupportService};
