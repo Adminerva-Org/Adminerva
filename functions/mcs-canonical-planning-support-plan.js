@@ -123,6 +123,10 @@ function convertReferenceFolder(folder,uid){
   source:"nested",sourceId:doc.id,sourcePath:doc.path,data:doc.data
  });
  const documents=[],seen=new Map(),blockers=[];
+ if(candidates.length>100)blockers.push({
+  type:"reference_folder_document_count_exceeds_v4_list_contract",
+  sourcePath:folder.path,count:candidates.length,maximum:100
+ });
  for(const candidate of candidates){
   const converted=referenceText(candidate.data);
   if(!converted.ok){
@@ -220,6 +224,10 @@ async function buildPlanningSupportPlan(db,{foundationPlan,foundationPlanRaw,fou
   const [legacyFolders,legacySchedules]=await Promise.all([
    teacherFolders(db,teacher.uid),teacherSchedules(db,teacher.uid)
   ]);
+  if(legacyFolders.length>100)blockers.push({
+   type:"teacher_reference_folder_count_exceeds_v4_list_contract",
+   uid:teacher.uid,count:legacyFolders.length,maximum:100
+  });
   for(const folder of legacyFolders){
    const converted=convertReferenceFolder(folder,teacher.uid);
    folders.push(converted.folder);
