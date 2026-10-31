@@ -86,6 +86,39 @@ function createPeopleDirectoryService({db}) {
       });
       return {targetUid,status:"suspended"};
     }
+    if(input.action==="restore_access"){
+      const targetUid=id(input.targetUid);
+      const reason=field(input.reason,500,"Restore reason");
+      if(reason.length<12)invalid("Restore reason must explain the institutional decision.");
+      const targetRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+targetUid);
+      const indexRef=db.doc("platform_users/"+targetUid+"/memberships/"+ctx.schoolId);
+      const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const current=await tx.get(targetRef);
+        if(!current.exists||current.data().schoolId!==ctx.schoolId||
+          current.data().status!=="suspended")
+          throw new TenantAccessError("failed-precondition","The school membership is not suspended.");
+        if(Array.isArray(current.data().roles)&&current.data().roles.includes("school_admin"))
+          throw new TenantAccessError("permission-denied","School administrator recovery requires platform-owner review.");
+        if(current.data().personId){
+          const person=await tx.get(base.doc(id(current.data().personId)));
+          if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().status!=="active"||
+             person.data().authUid!==targetUid)
+            throw new TenantAccessError("failed-precondition","The linked person record must be active and bound to this account before access is restored.");
+        }
+        const roles=Array.isArray(current.data().roles)?current.data().roles:[];
+        if(!roles.some(role=>["student","teacher"].includes(role)))
+          throw new TenantAccessError("failed-precondition","This membership has no recoverable school role.");
+        const now=FieldValue.serverTimestamp(),revision=(current.data().revision||0)+1;
+        tx.update(targetRef,{status:"active",revision,restoredAt:now,
+          restoredByUid:ctx.uid,restoreReason:reason,updatedAt:now,updatedByUid:ctx.uid});
+        tx.set(indexRef,{schoolId:ctx.schoolId,status:"active",roles,revision,updatedAt:now});
+        tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,targetUid,
+          action:"school_membership_restored",reason,createdAt:now});
+      });
+      return {targetUid,status:"active"};
+    }
     if(input.action==="list_invitable_people") {
       const role=input.role;
       if(!["student","teacher"].includes(role))invalid("Choose a student or teacher invitation.");
