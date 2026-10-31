@@ -40,6 +40,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const supportRoute=!isSuperAdmin&&hasVerifiedSchoolRole?"school-support.html":"issues.html";
   const gradebookRoute=root.dataset.schoolTeacher==="true"?"school-gradebook.html":"gradebook.html";
   const v4OnlyTeacher=root.dataset.v4OnlyTeacher==="true";
+  const v4OnlyStudent=root.dataset.v4OnlyStudent==="true";
+  const studentProjectRoute=v4OnlyStudent?"school-student-projects.html":"student-dashboard.html";
+  const studentAssessmentRoute=v4OnlyStudent?"school-student-assessments.html":"student-assessments.html";
+  const studentSettingsRoute=v4OnlyStudent?"school-student-settings.html":"student-settings.html";
   const canTeach=!isPlatformOwner&&(!isSchoolAdmin||root.dataset.schoolTeacher==="true");
   currentRole=isStudent?"student":isSuperAdmin?"superadmin":isPlatformOwner?"platformowner":isSchoolAdmin?"schooladmin":"teacher";
   const homeRoute = isStudent ? "student-home.html" : isPlatformOwner ? "owner-schools.html" : "teacher-home.html";
@@ -49,9 +53,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // Destinations and page labels share one source, including bookmarked tools.
   const studentGroups = {
     student: { name: "Project Hub", items: [
-      ["dashboard", "Projects", "student-dashboard.html"],
-      ["assessments", "Assignments", "student-assessments.html"],
-      ["settings", "Account settings", "student-settings.html"]
+      [v4OnlyStudent?"school-student-projects":"dashboard", "Projects", studentProjectRoute],
+      [v4OnlyStudent?"school-student-assessments":"assessments", "Assignments", studentAssessmentRoute],
+      [v4OnlyStudent?"school-student-settings":"settings", "Account settings", studentSettingsRoute]
     ] },
     "student-practice": { name: "Practice Lab", items: [
       ["practice", "Practice courses", "student-practice.html"],
@@ -152,7 +156,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
   const modules = isStudent ? [
     [homeLabel, homeRoute, "Start here and continue your work"],
-    ["Project Hub", "student-dashboard.html", "Projects and assignments"],
+    ["Project Hub", studentProjectRoute, "Projects and assignments"],
     ["Practice Lab", "student-practice.html", "Courses, challenges and XML Lab"],
     ["Adminerva Studio", "student-playground.html", "Write and run code"],
     ["My reports", supportRoute, "Report a problem or follow an update"]
@@ -197,7 +201,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <div id="av-desktop-nav" class="hidden xl:flex gap-1 items-center"></div>
           <div id="av-account-controls" class="av-nav-tools flex items-center gap-2">
             <button type="button" title="Report Issue" aria-label="Help and updates" class="min-h-10 min-w-10 rounded-lg border border-slate-600 text-base font-bold hover:bg-slate-800" onclick="const m=document.getElementById('bug-modal');if(m){m.hidden=false;m.classList.remove('hidden')}">?</button>
-            <a href="${isStudent ? "student-settings.html" : "settings.html"}" title="Account settings" aria-label="Account settings" class="min-h-10 min-w-10 flex items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800"><span aria-hidden="true">⚙</span></a>
+            <a href="${isStudent ? studentSettingsRoute : "settings.html"}" title="Account settings" aria-label="Account settings" class="min-h-10 min-w-10 flex items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800"><span aria-hidden="true">⚙</span></a>
             <div class="flex flex-col items-end border-l border-slate-600 pl-3 min-w-0">
               <button type="button" id="signOutBtn" class="min-h-6 text-[11px] sm:text-xs text-slate-200 hover:text-white font-bold">Sign out</button>
               <details class="av-account-menu relative">
@@ -209,7 +213,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   <div id="av-school-context" hidden></div>
                   <a data-support-route href="${supportRoute}" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">My reports & support</a>
                   <a href="wiki.html#privacy" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Privacy</a>
-                  <a data-account-settings href="${isStudent ? "student-settings.html" : "settings.html"}" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Settings</a>
+                  <a data-account-settings href="${isStudent ? studentSettingsRoute : "settings.html"}" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Settings</a>
                 </div>
               </details>
             </div>
@@ -227,9 +231,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const roleDisplay = accountControls.querySelector(".av-nav-role");
     if (roleDisplay) roleDisplay.textContent = roleLabel;
     const settings = accountControls.querySelector('a[title="Account settings"]');
-    if (settings) settings.href = isStudent ? "student-settings.html" : "settings.html";
+    if (settings) settings.href = isStudent ? studentSettingsRoute : "settings.html";
     const accountSettings=accountControls.querySelector("[data-account-settings]");
-    if(accountSettings)accountSettings.href=isStudent?"student-settings.html":"settings.html";
+    if(accountSettings)accountSettings.href=isStudent?studentSettingsRoute:"settings.html";
     const supportLink=accountControls.querySelector("[data-support-route]");
     if(supportLink)supportLink.href=supportRoute;
   }
@@ -237,7 +241,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const emailDisplay = root.querySelector("#userEmailDisplay");
   if (emailDisplay && root.dataset.accountEmail) emailDisplay.textContent = root.dataset.accountEmail;
   const informationSettings = root.querySelector("[data-information-settings]");
-  if (informationSettings) informationSettings.href = isStudent ? "student-settings.html" : "settings.html";
+  if (informationSettings) informationSettings.href = isStudent ? studentSettingsRoute : "settings.html";
 
   const makeLink = (item, mobile) => {
     const link = document.createElement("a");
@@ -303,7 +307,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // The shared support page has data-module="global" for both roles.
       // Its account shortcut must still lead students to student settings.
       const settingsLink = root.querySelector("[data-information-settings]");
-      if (settingsLink) settingsLink.href = currentRole === "student" ? "student-settings.html" : "settings.html";
+      if (settingsLink) settingsLink.href = currentRole === "student" ? studentSettingsRoute : "settings.html";
     })
     .catch(() => {
       reportButton.title = "Report Issue";
