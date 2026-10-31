@@ -35,7 +35,7 @@
 <link rel="stylesheet" href="css/workspace-navigation.css?v=1.3.0"></head>
   <body id="pageBody" class="hidden bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="settings" data-page="settings"></div>
-    <script src="js/core/adminerva-nav.js?v=1.4.17"></script>
+    <script src="js/core/adminerva-nav.js?v=4.0.3"></script>
 
     <!-- Main Workspace (Responsive Vertical Layout) -->
     <div
@@ -130,11 +130,11 @@
               <p id="firebase-connection-hint" class="av-form-hint">Read-only details for the application currently connected to your school. The connection is configured by the site deployment.</p>
             </div>
 
-            <div class="p-4 sm:p-5 border rounded-lg bg-gray-50">
+            <div id="legacyPersonalConnections" class="p-4 sm:p-5 border rounded-lg bg-gray-50">
               <h4
                 class="text-xs sm:text-sm font-bold text-gray-800 uppercase tracking-wider mb-3 flex items-center gap-2"
               >
-                <span>🔑</span> API Credentials
+                <span>🔑</span> Legacy personal API credentials
               </h4>
 
               <div class="mb-5">
@@ -187,7 +187,7 @@
               </div>
             </div>
 
-            <p class="av-form-hint">API keys are stored on this browser and in your signed-in teacher profile. Cloud mode checks the Gemini key and selected model before saving.</p>
+            <p id="legacyConnectionHint" class="av-form-hint">These personal credentials support only legacy compatibility workflows during migration. Verified-school AI uses the school connection above and never falls back to a browser Gemini key.</p>
             <p id="security-save-status" class="av-status-message" role="status" aria-live="polite"></p>
             <button id="saveSettingsBtn" type="button"
               onclick="saveSecuritySettings()"
@@ -724,9 +724,9 @@
 
     <script type="module" src="js/settings/settings-core.js?v=1.3.0"></script>
     <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
-    <script type="module" src="js/settings/settings-security.js?v=1.3.0"></script>
+    <script type="module" src="js/settings/settings-security.js?v=4.0.0"></script>
     <script type="module" src="js/settings/settings-repo.js?v=1.3.0"></script>
     <script type="module" src="js/settings/settings-lesson.js?v=1.3.0"></script>
     <script type="module" src="js/settings/settings-presentation.js?v=1.3.0"></script>
-<script type="module" src="js/settings/account-preferences.mjs?v=1.4.16"></script>  <script type="module" src="js/core/auth-guard.js?v=1.4.2"></script></body>
+<script type="module" src="js/settings/account-preferences.mjs?v=1.4.16"></script>  <script type="module" src="js/core/auth-guard.js?v=4.0.2"></script></body>
 </html>
