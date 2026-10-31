@@ -36,6 +36,23 @@ function createSchoolAcademicsService({db}) {
   }
   const audit=(action,extra={})=>({schoolId:ctx.schoolId,actorUid:uid,action,
     ...extra,createdAt:FieldValue.serverTimestamp()});
+  if(input.action==="list_teachers"){
+   requireAdmin();
+   const snap=await db.collection("schools/"+ctx.schoolId+"/memberships")
+     .where("roles","array-contains","teacher").limit(101).get();
+   if(snap.size===101)deny("resource-exhausted","Teacher directory requires pagination.");
+   return {teachers:snap.docs.filter(doc=>doc.data().status==="active"&&doc.data().schoolId===ctx.schoolId)
+     .map(doc=>({uid:doc.id,name:typeof doc.data().displayName==="string"?
+       doc.data().displayName:"Teacher "+doc.id.slice(0,8)}))};
+  }
+  if(input.action==="list_students"){
+   requireAdmin();
+   const snap=await db.collection("schools/"+ctx.schoolId+"/people")
+     .where("kind","==","student").limit(101).get();
+   if(snap.size===101)deny("resource-exhausted","Student picker requires paginated school directory search.");
+   return {students:snap.docs.filter(doc=>doc.data().status==="active"&&doc.data().schoolId===ctx.schoolId)
+     .map(doc=>({personId:doc.id,name:doc.data().displayName}))};
+  }
   if(input.action==="create_catalog"){
    requireAdmin();
    const kind=input.kind;
