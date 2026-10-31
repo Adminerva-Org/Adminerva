@@ -284,7 +284,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const mountPoint = document.createElement("div");
     mountPoint.id = "adminerva-notifications";
     reportButton.parentNode.insertBefore(mountPoint, reportButton);
-    import("./notifications.mjs?v=1.4.19").then(module => module.mountNotificationCenter())
+    import("./notifications.mjs?v=4.0.0").then(module => module.mountNotificationCenter())
       .catch(error => console.warn("Notification center unavailable:", error));
   }
   };
