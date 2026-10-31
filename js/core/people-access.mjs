@@ -30,6 +30,7 @@ const picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
     workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
+    get("pa-reconcile-results")?.replaceChildren();for(const id of ["pa-reconcile-integrity","pa-reconcile-attention","pa-reconcile-review","pa-reconcile-total"]){if(get(id))get(id).textContent="—";}if(get("pa-reconcile-status"))get("pa-reconcile-status").textContent="Loading school relationship checks…";
     get("pa-more").hidden=true;
   },
   onReady:scope=>{
@@ -699,12 +700,64 @@ get("pa-suspension-form").addEventListener("submit",event=>{
     void loadMemberships().catch(error=>say(error.message||"Refresh membership access status."));
   });
 });
+function reconciliationTabLabel(tab){
+  return tab==="classes"?"Open Classes":tab==="invites"?"Open Invitations":
+    tab==="access"?"Open School Access":"Open People";
+}
+function renderReconciliation(result){
+  const counts=result?.counts||{},host=get("pa-reconcile-results");
+  get("pa-reconcile-integrity").textContent=counts.integrity??0;
+  get("pa-reconcile-attention").textContent=counts.attention??0;
+  get("pa-reconcile-review").textContent=counts.review??0;
+  get("pa-reconcile-total").textContent=counts.total??0;
+  host.replaceChildren();
+  if(!(result?.issues||[]).length){
+    const clear=document.createElement("p");clear.className="pa-muted";
+    clear.textContent="No unresolved directory or active class relationships were found in the bounded school review.";
+    host.append(clear);
+  }else{
+    for(const issue of result.issues){
+      const row=document.createElement("div");row.className="pa-row";row.setAttribute("role","listitem");
+      const info=document.createElement("div");
+      const title=document.createElement("strong");title.textContent=issue.label||"School record";
+      const detail=document.createElement("p");detail.className="pa-muted";
+      detail.textContent=(issue.severity==="integrity"?"Integrity":issue.severity==="attention"?"Attention":"Review")+" · "+(issue.detail||"Review this school relationship.");
+      info.append(title,detail);row.append(info);
+      if(issue.targetTab&&tabNames.has(issue.targetTab)){
+        const button=document.createElement("button");button.type="button";button.className="pa-action";
+        button.style.background="#475569";button.textContent=reconciliationTabLabel(issue.targetTab);
+        button.addEventListener("click",()=>setTab(issue.targetTab));
+        row.append(button);
+      }
+      host.append(row);
+    }
+  }
+  get("pa-reconcile-status").textContent=(result.truncated?
+    "Showing the first 150 unresolved relationships. Resolve these before requesting another bounded review. ":
+    "")+(result.note||"");
+}
+async function loadReconciliation(){
+  const button=get("pa-reconcile-refresh");
+  if(button)button.disabled=true;
+  get("pa-reconcile-status").textContent="Checking school identity, access and active class relationships…";
+  try{
+    const result=await perform("reconcile_directory");
+    renderReconciliation(result);
+    return result;
+  }catch(error){
+    get("pa-reconcile-status").textContent=error?.message||"Directory reconciliation is unavailable.";
+    throw error;
+  }finally{if(button)button.disabled=false;}
+}
+get("pa-reconcile-refresh").addEventListener("click",()=>
+  void loadReconciliation().catch(()=>{}));
 async function loadOverview(){
   const response=await perform("overview");
   get("pa-people-count").textContent=response.counts.people;
   get("pa-enroll-count").textContent=response.counts.enrollments;
   get("pa-staff-count").textContent=response.counts.staff_assignments;
   get("pa-invite-count").textContent=response.counts.invitations;
+  await loadReconciliation().catch(()=>{});
 }
 function openPersonDialog(person,mode){
   personChange={person,mode};
