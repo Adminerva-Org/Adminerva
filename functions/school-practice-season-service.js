@@ -64,7 +64,7 @@ function createSchoolPracticeSeasonService({
     String(sectionDocs[index].data().name||sectionId):sectionId
   }));
   return {
-   ...ctx,uid:ctx.uid,schoolId:ctx.schoolId,personId,
+   ...ctx,uid:ctx.uid,schoolId:ctx.schoolId,personId,token,
    memberRef,personRef,
    enrollments:active.map(row=>({
     ref:row.ref,id:row.id,offeringId:row.data().offeringId,
