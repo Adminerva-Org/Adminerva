@@ -107,7 +107,7 @@ function teacherUidForRow(row,indexes){
  return null;
 }
 function buildFoundationPlan({identity,rows,reconciliationSha256,identitySha256}){
- const indexes=identityIndexes(identity),grouped=new Map(),blockers=[];
+ const indexes=identityIndexes(identity),grouped=new Map(),blockers=[],reviewItems=[];
  function add(uid,kind,row,sourceKind){
   const existing=grouped.get(uid)||{uid,kinds:new Set(),rows:[],roles:new Set()};
   existing.kinds.add(kind);existing.rows.push({...row,sourceKind});
@@ -143,7 +143,7 @@ function buildFoundationPlan({identity,rows,reconciliationSha256,identitySha256}
   const kind=[...group.kinds][0],personId=stablePersonId(group.uid);
   const names=[...new Set(group.rows.map(row=>displayName(row.data,"")).filter(Boolean))];
   const name=names[0]||((kind==="student"?"Student ":"Staff ")+personId.slice(-8));
-  if(names.length>1)blockers.push({type:"display_name_review",uid:group.uid,personId,names});
+  if(names.length>1)reviewItems.push({type:"display_name_review",uid:group.uid,personId,names});
   const active=group.rows.some(row=>statusActive(row.data?.status));
   const sourceDigest=canonicalDigest(group.rows.map(row=>({
    sourcePath:row.path,sourceDigest:row.digest
@@ -164,12 +164,12 @@ function buildFoundationPlan({identity,rows,reconciliationSha256,identitySha256}
  return {
   schema:SCHEMA,schoolId:SCHOOL_ID,readOnly:true,generatedAt:new Date().toISOString(),
   source:{reconciliationSha256,identitySha256},
-  people,memberships,academicObservations:academic,blockers,
+  people,memberships,academicObservations:academic,blockers,reviewItems,
   summary:{
    mirroredStudents:(rows.students||[]).length,mirroredTeachers:(rows.teachers||[]).length,
    mirroredAssessments:(rows.assessments||[]).length,
    personCandidates:people.length,membershipCandidates:memberships.length,
-   blockers:blockers.length,
+   blockers:blockers.length,reviewItems:reviewItems.length,
    observedYears:academic.years.length,observedSections:academic.sections.length,
    observedSubjects:academic.subjects.length,observedTerms:academic.terms.length
   },
