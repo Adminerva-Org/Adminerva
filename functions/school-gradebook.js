@@ -8,7 +8,7 @@ const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
-const {digestFiles}=require("./school-studio-projects.js");
+const {digestProject}=require("./school-studio-projects.js");
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
 function deny(code,message){throw new TenantAccessError(code,message)}
 function validateScores(criteria,rubric){
@@ -120,7 +120,7 @@ function createSchoolGradebookService({db}){
      deny("failed-precondition","Student resubmitted. Refresh the frozen submission before grading.");
     const snapshot=await tx.get(submissionRef.collection("versions").doc(String(submissionVersion)));
     if(!snapshot.exists||snapshot.data().contentDigest!==submission.contentDigest||
-       snapshot.data().contentDigest!==digestFiles(snapshot.data().files))
+       snapshot.data().contentDigest!==digestProject(snapshot.data().files,snapshot.data().artifacts||{}))
      deny("failed-precondition","The frozen submission evidence changed or is missing.");
     const scores=validateScores(input.criteria,task.rubric);
     const revision=grade.exists?(grade.data().revision||0)+1:1;
@@ -160,7 +160,7 @@ function createSchoolGradebookService({db}){
     if(data.pending>0)deny("failed-precondition","Resolve pending rubric points before publishing a final grade.");
     const snapshot=await tx.get(submissionRef.collection("versions").doc(String(data.submissionVersion)));
     if(!snapshot.exists||snapshot.data().contentDigest!==submission.contentDigest||
-       snapshot.data().contentDigest!==digestFiles(snapshot.data().files))
+       snapshot.data().contentDigest!==digestProject(snapshot.data().files,snapshot.data().artifacts||{}))
      deny("failed-precondition","The frozen student submission could not be verified.");
     const now=FieldValue.serverTimestamp(),revision=data.revision+1;
     tx.update(gradeRef,{status:"published",publishedAt:now,publishedByUid:ctx.uid,
