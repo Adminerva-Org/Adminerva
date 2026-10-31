@@ -7,9 +7,10 @@
  * transient runtime/session data are deliberately excluded.
  */
 const {FieldPath}=require("firebase-admin/firestore");
+const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 
-const EXPORT_SCHEMA="adminerva-school-continuity-export-v1";
+const EXPORT_SCHEMA="adminerva-school-continuity-export-v2";
 function deny(code,message){throw new TenantAccessError(code,message)}
 function scalar(value){
  if(value?.toMillis)return new Date(value.toMillis()).toISOString();
@@ -37,6 +38,26 @@ const definitions={
  support_reports:{path:"support_reports",fields:["reporterUid","reporterDisplayName","reporterRole","title","description","category","module","audience","status","priority","locked","revision","createdAt","updatedAt","triagedByUid","lastDecisionReason"]}
 };
 const CATEGORY_NAMES=Object.keys(definitions);
+const categoryDigest=rows=>createHash("sha256").update(JSON.stringify(rows)).digest("hex");
+async function readCategoryRows(db,prefix,category,{limit=20001}={}){
+ const def=definitions[category];
+ if(!def)deny("invalid-argument","Choose a supported continuity-export category.");
+ const rows=[];let cursor=null;
+ while(rows.length<limit){
+  let query=db.collection(prefix+def.path);
+  if(def.publishedOnly)query=query.where("status","==","published");
+  query=query.orderBy(FieldPath.documentId()).limit(Math.min(200,limit-rows.length));
+  if(cursor)query=query.startAfter(cursor);
+  const snap=await query.get();
+  for(const doc of snap.docs)rows.push({id:doc.id,...pick(doc.data(),def.fields)});
+  if(snap.size<Math.min(200,limit-rows.length+snap.size))break;
+  if(!snap.size)break;
+  cursor=snap.docs.at(-1).id;
+ }
+ if(rows.length>=limit)
+  deny("resource-exhausted","This continuity-export category exceeds the 20,000-record safety boundary.");
+ return rows;
+}
 function createSchoolDataExportService({db}){
  return async request=>{
   const input=request.data||{};
@@ -103,7 +124,14 @@ function createSchoolDataExportService({db}){
    return {schema:EXPORT_SCHEMA,schoolId:ctx.schoolId,category,rows,
     nextCursor:hasMore&&last?last:null};
   }
+  if(input.action==="integrity"){
+   await authority();
+   const category=String(input.category||"");
+   const rows=await readCategoryRows(db,prefix,category);
+   return {schema:EXPORT_SCHEMA,schoolId:ctx.schoolId,category,
+    count:rows.length,sha256:categoryDigest(rows)};
+  }
   deny("invalid-argument","Unknown school continuity-export operation.");
  };
 }
-module.exports={EXPORT_SCHEMA,CATEGORY_NAMES,definitions,scalar,createSchoolDataExportService};
+module.exports={EXPORT_SCHEMA,CATEGORY_NAMES,definitions,scalar,categoryDigest,readCategoryRows,createSchoolDataExportService};
