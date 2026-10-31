@@ -73,6 +73,7 @@ async function checkAccess(user){
     showAccessRecovery("Your school access check is temporarily unavailable. Your account remains signed in. Please retry before continuing.");return;
   }
   const admittedRole=access.role;
+  const v4Cutover=access.v4Cutover===true;
   if (["admin", "teacher"].includes(admittedRole) && auth.currentUser?.uid === user.uid) {
     try{writeConnectionPreferences(user.uid, access.teachers?.[0]?.data?.() || {});}catch{}
   }
@@ -114,7 +115,7 @@ async function checkAccess(user){
     activeRole=actualRole;
   }
   const legacyAdminPage=currentPath.match(/\/(teacher-accounts|admin-analytics|admin-hub|users|manage-sections|manage-programs|manage-subjects)\.html$/)?.[1]||null;
-  if(legacyAdminPage&&admittedRole!=="admin"){
+  if(legacyAdminPage&&(admittedRole!=="admin"||(v4Cutover&&access.schoolAdmin))){
     if(access.schoolAdmin){
       const destination=legacyAdminPage==="users"?"people-access.html#people":
         ["teacher-accounts","manage-sections","manage-subjects"].includes(legacyAdminPage)?
@@ -162,7 +163,7 @@ async function checkAccess(user){
   if(v4OnlyStudent&&currentPath.endsWith("/issues.html")){
     replacePage("school-support.html");return;
   }
-  const v4OnlyTeacher=access.schoolTeacher&&!["teacher","admin"].includes(access.legacyRole);
+  const v4OnlyTeacher=access.schoolTeacher&&(v4Cutover||!["teacher","admin"].includes(access.legacyRole));
   if(v4OnlyTeacher){
     const page=currentPath.split("/").pop();
     const allowed=new Set([
@@ -222,7 +223,7 @@ async function checkAccess(user){
   document.dispatchEvent(new CustomEvent("adminerva:role-ready", {
     detail:{role:activeRole,platformAdmin:Boolean(access.platformAdmin),schoolAdmin:Boolean(access.schoolAdmin),
       schoolTeacher:Boolean(access.schoolTeacher),schoolStudent:Boolean(access.schoolStudent),
-      legacyTeacher:access.legacyRole==="teacher",v4OnlyTeacher}
+      legacyTeacher:access.legacyRole==="teacher",v4OnlyTeacher,v4Cutover}
   }));
 
   // Only verified administrator accounts see management shortcuts.
