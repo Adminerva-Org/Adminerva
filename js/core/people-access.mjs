@@ -7,7 +7,7 @@ const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcad
 let schoolTerms=[];
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false;
-let suspendUid=null;
+let suspendUid=null,lifecycleChange=null,currentRosterOfferingId=null;
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","invites","classes","access"]);
 function setTab(name,{remember=true}={}) {
@@ -28,7 +28,7 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
-    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-suspension-dialog").close?.();suspendUid=null;after=null;
+    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();suspendUid=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;
     get("pa-more").hidden=true;
   },
   onReady:scope=>{
@@ -134,20 +134,83 @@ get("pa-assignment-form").addEventListener("submit",event=>{
     teacherUid:String(d.get("teacherUid")||""),offeringId:String(d.get("offeringId")||"")
   },"Teaching assignment created. Private teacher resources remain private.");
 });
+function lifecycleButton(label,action,details,targetName){
+  const button=document.createElement("button");button.type="button";button.className="pa-action";
+  button.style.background=action.startsWith("end_")?"#9a3412":"#166534";
+  button.textContent=label;
+  button.addEventListener("click",()=>{
+    lifecycleChange={action,details,targetName};
+    get("pa-academic-lifecycle-title").textContent=
+      action.startsWith("end_")?"End class membership":"Restore class membership";
+    get("pa-academic-lifecycle-target").textContent=targetName;
+    get("pa-academic-lifecycle-form").reset();
+    get("pa-academic-lifecycle-dialog").showModal();
+  });
+  return button;
+}
+async function loadClassRoster(offeringId){
+  const target=get("pa-class-roster");
+  currentRosterOfferingId=offeringId;target.replaceChildren();say("Loading class roster…");
+  const result=await performAcademic("class_roster",{offeringId});
+  const studentHeading=document.createElement("h3");
+  studentHeading.style.cssText="font-weight:750;margin-top:.75rem";
+  studentHeading.textContent="Students";target.append(studentHeading);
+  const students=result.students||[];
+  if(!students.length){const empty=document.createElement("p");empty.className="pa-muted";
+    empty.textContent="No student enrollment history for this offering.";target.append(empty);}
+  for(const student of students){
+    const row=document.createElement("div");row.className="pa-row";row.setAttribute("role","listitem");
+    const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p");
+    name.textContent=student.name;meta.className="pa-muted";meta.textContent="Enrollment · "+student.status;
+    info.append(name,meta);row.append(info);
+    row.append(student.status==="active"?
+      lifecycleButton("End enrollment","end_enrollment",{enrollmentId:student.enrollmentId},student.name):
+      lifecycleButton("Restore enrollment","restore_enrollment",{enrollmentId:student.enrollmentId},student.name));
+    target.append(row);
+  }
+  const teacherHeading=document.createElement("h3");
+  teacherHeading.style.cssText="font-weight:750;margin-top:1rem";
+  teacherHeading.textContent="Teaching assignments";target.append(teacherHeading);
+  const teachers=result.teachers||[];
+  if(!teachers.length){const empty=document.createElement("p");empty.className="pa-muted";
+    empty.textContent="No teaching assignment history for this offering.";target.append(empty);}
+  for(const teacher of teachers){
+    const row=document.createElement("div");row.className="pa-row";row.setAttribute("role","listitem");
+    const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p");
+    name.textContent=teacher.name;meta.className="pa-muted";meta.textContent="Teacher · "+teacher.status;
+    info.append(name,meta);row.append(info);
+    row.append(teacher.status==="active"?
+      lifecycleButton("End assignment","end_teacher_assignment",{
+        teacherUid:teacher.teacherUid,offeringId
+      },teacher.name):
+      lifecycleButton("Restore assignment","restore_teacher_assignment",{
+        teacherUid:teacher.teacherUid,offeringId
+      },teacher.name));
+    target.append(row);
+  }
+  say(students.filter(row=>row.status==="active").length+" active students · "+
+    teachers.filter(row=>row.status==="active").length+" active teachers.");
+}
 get("pa-roster-form").addEventListener("submit",event=>{
   event.preventDefault();
-  const target=get("pa-class-roster"),id=String(new FormData(event.currentTarget).get("offeringId")||"");
-  target.replaceChildren();say("Loading class roster…");
-  void performAcademic("class_roster",{offeringId:id}).then(result=>{
-    const people=result.students||[];
-    if(!people.length){const empty=document.createElement("p");empty.className="pa-muted";
-      empty.textContent="No students enrolled in this offering.";target.append(empty);}
-    for(const student of people){
-      const row=document.createElement("div");row.className="pa-row";row.setAttribute("role","listitem");
-      row.textContent=student.name;target.append(row);
-    }
-    say(people.length+" students enrolled in the selected offering.");
-  }).catch(error=>say(error.message||"Roster unavailable."));
+  const id=String(new FormData(event.currentTarget).get("offeringId")||"");
+  void loadClassRoster(id).catch(error=>say(error.message||"Roster unavailable."));
+});
+get("pa-academic-lifecycle-cancel").addEventListener("click",()=>{
+  lifecycleChange=null;get("pa-academic-lifecycle-dialog").close();
+});
+get("pa-academic-lifecycle-form").addEventListener("submit",event=>{
+  event.preventDefault();if(!lifecycleChange||pendingWrite)return;
+  const form=event.currentTarget,reason=String(new FormData(form).get("reason")||"").trim();
+  const change=lifecycleChange;
+  void submitAcademic(form,change.action,{...change.details,reason},
+    change.action.startsWith("end_")?
+      "Class membership ended. Historical records were preserved.":
+      "Class membership restored with a new audit revision.").then(()=>{
+        lifecycleChange=null;get("pa-academic-lifecycle-dialog").close();
+        if(currentRosterOfferingId)
+          void loadClassRoster(currentRosterOfferingId).catch(error=>say(error.message||"Refresh class roster."));
+      });
 });
 async function loadMemberships(){
   const result=await perform("list_memberships");
