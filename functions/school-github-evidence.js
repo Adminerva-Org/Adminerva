@@ -262,6 +262,14 @@ function createSchoolGithubEvidenceService({db}){
        record.data().status!=="submitted")
       deny("failed-precondition","Only currently submitted evidence may be approved.");
     const data=record.data(),selected=[...(data.selectedCommitShas||[])].sort();
+    const claimQuery=db.collection(prefix+"commit_reclaims").where("evidenceId","==",targetId).limit(101);
+    const claims=await tx.get(claimQuery);
+    if(claims.size===101)deny("resource-exhausted","Attribution history requires pagination before evidence approval.");
+    const relevantClaims=claims.docs.map(doc=>doc.data()).filter(claim=>selected.includes(claim.sha));
+    if(relevantClaims.some(claim=>claim.status==="pending"))
+      deny("failed-precondition","A selected commit still has a pending school attribution decision.");
+    if(relevantClaims.some(claim=>claim.status==="rejected"))
+      deny("failed-precondition","A selected commit has a rejected attribution claim. Remove or resolve that evidence before approval.");
     if(verifiedCheckpoint!==data.checkpointSha||
        verified.length!==selected.length||verified.some((value,index)=>value!==selected[index]))
       deny("failed-precondition","Teacher verification must match the student's exact frozen commit selection and checkpoint.");
