@@ -40,11 +40,14 @@ const {listVerifiedSchools,selectVerifiedSchool,platformAuthority}=require("./te
 const {createTeacherBlueprintService}=require("./teacher-blueprints.js");
 const teacherBlueprints=createTeacherBlueprintService({db});
 exports.tenantSchools=onCall(callOptions,safeCallable(async request=>{
-  const [schools,authority]=await Promise.all([
-    listVerifiedSchools({db,request}),platformAuthority({db,request})
+  const [schools,authority,legacySchool]=await Promise.all([
+    listVerifiedSchools({db,request}),platformAuthority({db,request}),
+    db.doc("platform_schools/mcs-manila").get()
   ]);
+  const legacyCompatibilityAllowed=!legacySchool.exists||
+    legacySchool.data().compatibilityMode!=="v4_only";
   return {schools,selection:selectVerifiedSchool(schools,request.data?.preferredSchoolId),
-    platformAdmin:authority.platformAdmin};
+    platformAdmin:authority.platformAdmin,legacyCompatibilityAllowed};
 }));
 exports.teacherBlueprints=onCall(callOptions,safeCallable(teacherBlueprints));
 const {createPeopleDirectoryService,createInvitationAcceptanceService}=require("./people-directory.js");
