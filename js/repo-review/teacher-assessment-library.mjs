@@ -2,17 +2,19 @@ import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs";
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"teacherBlueprints");
+const scopedAssessmentApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAssessments");
+const schoolAcademicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 const el=id=>document.getElementById(id),status=el("tl-status"),workspace=el("tl-workspace");
 const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
   previewDialog=el("tl-preview-dialog");
-let items=[],filter="mine",editing=null,sharing=null,pendingWrite=false;
+let items=[],deployments=[],filter="mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,pendingWrite=false;
 const say=message=>status.textContent=message;
 const picker=createTenantSchoolPicker({
   host:el("tl-school-switcher"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
-    items=[];editing=null;sharing=null;list.replaceChildren();workspace.hidden=true;
-    shareDialog.close?.();previewDialog.close?.();
+    items=[];deployments=[];editing=null;sharing=null;deploying=null;deployRequestKey=null;list.replaceChildren();workspace.hidden=true;
+    shareDialog.close?.();previewDialog.close?.();el("tl-deploy-dialog").close?.();
     form.reset();
   },
   onReady:scope=>{
@@ -29,6 +31,28 @@ async function perform(action,details={}) {
   const result=(await api({action,schoolId:lease.schoolId,...details})).data;
   picker.scope.assertLease(lease);
   return result;
+}
+async function performScoped(api,action,details={}){
+  const lease=picker.scope.lease();
+  const result=(await api({schoolId:lease.schoolId,action,...details})).data;
+  picker.scope.assertLease(lease);
+  return result;
+}
+function parseRubric(text){
+  const lines=String(text||"").split(/\\r?\\n/).map(s=>s.trim()).filter(Boolean);
+  if(lines.length>20)throw new Error("Maximum 20 rubric criteria are supported.");
+  return lines.map((line,index)=>{
+    const position=line.lastIndexOf("|");
+    if(position<1)throw new Error("Rubric line "+(index+1)+" must use Criterion | points.");
+    const name=line.slice(0,position).trim(),value=line.slice(position+1).trim();
+    const points=Number(value);
+    if(!name||name.length>160||!value||!Number.isFinite(points)||points<=0||points>100)
+      throw new Error("Rubric line "+(index+1)+" needs a name and 1–100 points.");
+    return {name,points};
+  });
+}
+function localDateInput(date){
+  return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
 }
 async function write(action,details,success) {
   if(pendingWrite)throw new Error("An assessment operation is still processing.");
@@ -73,6 +97,23 @@ function render(){
     button.setAttribute("aria-pressed",String(button.dataset.filter===filter)));
   list.replaceChildren();
   const uid=picker.scope.current?.uid;
+  if(filter==="deployed"){
+    if(!deployments.length){
+      const empty=document.createElement("p");empty.className="tl-muted";
+      empty.textContent="No class assessment deployments yet.";
+      list.append(empty);
+    }
+    for(const task of deployments){
+      const row=document.createElement("article");row.className="tl-row";
+      const text=document.createElement("div"),heading=document.createElement("h3"),meta=document.createElement("p");
+      heading.style.fontWeight="750";heading.textContent=task.title;
+      meta.className="tl-muted";
+      meta.textContent=task.submissionSource+" · "+task.status+" · due "+(task.dueAt?
+        new Date(task.dueAt).toLocaleString():"not scheduled");
+      text.append(heading,meta);row.append(text);list.append(row);
+    }
+    return;
+  }
   const visible=items.filter(item=>{
     if(filter==="mine")return item.ownerUid===uid;
     if(filter==="shared")return item.ownerUid!==uid&&item.visibility==="selected_teachers";
@@ -97,6 +138,7 @@ function render(){
     if(item.canShare){
       controls.append(actionButton("Edit",()=>edit(item),true));
       controls.append(actionButton("Share",()=>void share(item)));
+      controls.append(actionButton("Deploy",()=>void prepareDeployment(item),true));
       controls.append(actionButton("Archive",()=>{
         if(!confirm("Archive this draft? Existing independent copies will remain available."))return;
         void write("archive",{resourceId:item.id,expectedRevision:item.contentRevision},"Assessment archived without deleting student records.").catch(()=>{});
@@ -113,6 +155,7 @@ function edit(item){
   form.elements.title.value=item.title;
   form.elements.description.value=item.description||"";
   form.elements.instructions.value=item.instructions||"";
+  form.elements.rubric.value=(item.rubric||[]).map(criterion=>criterion.name+" | "+criterion.points).join("\\n");
   form.querySelector("h2").textContent="Edit private draft";
   form.querySelector('button[type="submit"]').textContent="Save draft revision";
   form.scrollIntoView({behavior:"smooth",block:"start"});
@@ -124,10 +167,13 @@ function resetEditor(){
   form.querySelector('button[type="submit"]').textContent="Create private assessment";
 }
 async function refresh(){
-  const result=await perform("list");
+  const [result,deployed]=await Promise.all([
+    perform("list"),performScoped(scopedAssessmentApi,"list_teacher")
+  ]);
   items=result.items||[];
+  deployments=deployed.assessments||[];
   render();
-  if(result.truncated)say("Only the first assessment records are shown. Refine the library or request pagination support.");
+  if(result.truncated)say("Only the first assessment records are shown. Pagination is required for more.");
 }
 document.querySelectorAll("[data-filter]").forEach(button=>button.addEventListener("click",()=>{
   filter=button.dataset.filter;render();
@@ -136,9 +182,12 @@ el("tl-refresh").addEventListener("click",()=>void refresh().catch(error=>say(er
 form.addEventListener("submit",event=>{
   event.preventDefault();if(!form.reportValidity())return;
   const data=new FormData(form);
+  let criteria;
+  try{criteria=parseRubric(data.get("rubric"));}
+  catch(error){say(error.message);form.elements.rubric.focus();return;}
   const blueprint={
     title:String(data.get("title")||""),description:String(data.get("description")||""),
-    instructions:String(data.get("instructions")||""),rubric:editing?.rubric||[]
+    instructions:String(data.get("instructions")||""),rubric:criteria
   };
   const action=editing?"update":"create",details=editing?{
     resourceId:editing.id,expectedRevision:editing.contentRevision,blueprint
@@ -189,6 +238,68 @@ el("tl-share-form").addEventListener("submit",event=>{
   void write("share",{resourceId:sharing.id,visibility,teacherUids},
     "Assessment sharing updated. Recipients receive view and independent copy rights only.")
     .then(()=>{shareDialog.close();sharing=null;}).catch(()=>{});
+});
+async function prepareDeployment(item){
+  deploying=item;deployRequestKey=crypto.randomUUID();
+  el("tl-deploy-title").textContent=item.title;
+  const form=el("tl-deploy-form");
+  form.reset();
+  const now=new Date(),tomorrow=new Date(now.getTime()+24*60*60*1000);
+  form.elements.opensAt.value=localDateInput(now);
+  form.elements.dueAt.value=localDateInput(tomorrow);
+  const select=el("tl-deploy-offering");
+  select.replaceChildren();
+  const placeholder=document.createElement("option");
+  placeholder.value="";placeholder.textContent="Loading your assigned classes…";
+  select.append(placeholder);
+  el("tl-deploy-dialog").showModal();
+  try{
+    const offerings=(await performScoped(schoolAcademicsApi,"list_offerings")).offerings||[];
+    if(deploying?.id!==item.id)return;
+    select.replaceChildren();
+    const initial=document.createElement("option");
+    initial.value="";initial.textContent=offerings.length?"Choose your assigned class":"No active course offerings assigned";
+    initial.selected=true;initial.disabled=true;select.append(initial);
+    for(const offering of offerings.filter(row=>row.status==="active")){
+      const option=document.createElement("option");
+      option.value=offering.offeringId;
+      option.textContent=offering.sectionId+" · "+offering.subjectId+" · "+offering.yearId+" / "+offering.termId;
+      select.append(option);
+    }
+    if(select.options.length===1)say("Your school administrator must assign you a class offering before deployment.");
+  }catch(error){say(error.message||"Could not load assigned classes.");}
+}
+el("tl-cancel-deploy").addEventListener("click",()=>el("tl-deploy-dialog").close());
+el("tl-deploy-form").addEventListener("input",()=>{deployRequestKey=crypto.randomUUID();});
+el("tl-deploy-form").addEventListener("submit",event=>{
+  event.preventDefault();if(!deploying||pendingWrite)return;
+  const form=event.currentTarget;
+  if(!form.reportValidity())return;
+  const fields=new FormData(form);
+  const key=deployRequestKey||crypto.randomUUID();
+  const opensAt=new Date(String(fields.get("opensAt")||""));
+  const dueAt=new Date(String(fields.get("dueAt")||""));
+  if(!Number.isFinite(opensAt.getTime())||!Number.isFinite(dueAt.getTime())||dueAt<=opensAt){
+    say("Choose a valid opening time and later deadline.");return;
+  }
+  void (async()=>{
+    pendingWrite=true;
+    const buttons=[...form.querySelectorAll("button")];
+    buttons.forEach(button=>button.disabled=true);
+    say("Checking your course assignment and deploying a frozen assessment…");
+    try{
+      const task=await performScoped(scopedAssessmentApi,"deploy",{
+        blueprintId:deploying.id,offeringId:String(fields.get("offeringId")||""),
+        submissionSource:String(fields.get("submissionSource")||""),
+        opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),requestKey:key
+      });
+      say(task.alreadyExisted?"This assessment was already deployed. No duplicate created.":
+        "Assessment deployed to your assigned school class. Students can view the task after its start time.");
+      el("tl-deploy-dialog").close();deploying=null;deployRequestKey=null;
+      await refresh();
+    }catch(error){say(error.message||"Deployment could not be completed. Retry the same request safely.");}
+    finally{pendingWrite=false;buttons.forEach(button=>button.disabled=false);}
+  })();
 });
 el("tl-preview-close").addEventListener("click",()=>previewDialog.close());
 try{
