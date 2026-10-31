@@ -67,10 +67,10 @@
    <label style="display:block;padding:.5rem 0"><input type="radio" name="visibility" value="selected_teachers"> Selected teachers at this school</label>
    <label style="display:block;padding:.5rem 0"><input type="radio" name="visibility" value="school_teachers"> All active teachers at this school</label>
   </fieldset>
-  <label id="tl-recipient-container" hidden>Selected teacher account UIDs (one per line)
-   <textarea id="tl-recipients" class="tl-input" rows="4" placeholder="Select verified active teachers"></textarea>
-   <span class="tl-muted">Pilot only: use verified teacher UIDs. The production directory recipient picker is a pending integration.</span>
-  </label>
+  <div id="tl-recipient-container" hidden>
+    <p style="font-weight:700">Choose active teachers at this school</p>
+    <div id="tl-recipients" role="group" aria-label="Select teachers" style="max-height:240px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:9px;padding:.5rem"></div>
+  </div>
   <p class="tl-muted">Recipients may preview and make independent copies only. Sharing never grants access to student submissions, grades, answer keys or the original's editing rights.</p>
   <div class="tl-actions">
    <button type="submit" class="tl-action">Save sharing rights</button>
