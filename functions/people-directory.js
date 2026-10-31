@@ -11,6 +11,49 @@ function id(value){
   if(typeof value!=="string"||!/^[A-Za-z0-9_-]{1,128}$/.test(value))invalid("Invalid record identifier.");
   return value;
 }
+function importText(value,max=200){return typeof value==="string"?value.trim().slice(0,max):"";}
+function importIdentity(row,index){
+  if(!row||typeof row!=="object"||Array.isArray(row))
+    return {index,valid:false,errors:["Row is not a record."]};
+  const first=importText(row.firstName,80),last=importText(row.lastName,80);
+  const displayName=importText(row.displayName,140)||[first,last].filter(Boolean).join(" ");
+  const kind=importText(row.kind,20).toLowerCase()||"student";
+  const email=importText(row.email,254).toLowerCase();
+  const externalId=importText(row.externalId,120);
+  const sectionHint=importText(row.section,140);
+  const errors=[];
+  if(!displayName)errors.push("Display name is required.");
+  if(!["student","staff"].includes(kind))errors.push("Kind must be student or staff.");
+  if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))errors.push("Email is invalid.");
+  if(externalId&&!/^[A-Za-z0-9._-]{1,120}$/.test(externalId))errors.push("External ID contains unsupported characters.");
+  if(!email&&!externalId)errors.push("Provide an email or externalId so the row can be imported idempotently.");
+  const identitySource=externalId?"external:"+externalId.toLowerCase():"email:"+email;
+  const identityHash=errors.length?null:createHash("sha256").update(kind+"\0"+identitySource).digest("hex");
+  return {index,valid:errors.length===0,errors,displayName,kind,email,externalId,sectionHint,
+    identityHash,personId:identityHash?"imp_"+identityHash.slice(0,40):null};
+}
+function normalizedImport(rows){
+  if(!Array.isArray(rows)||!rows.length||rows.length>200)
+    invalid("Import between 1 and 200 people at a time.");
+  const normalized=rows.map((row,index)=>importIdentity(row,index));
+  const seen=new Map();
+  for(const row of normalized){
+    if(!row.valid)continue;
+    if(seen.has(row.identityHash)){
+      row.valid=false;row.errors.push("Duplicate identity in this import file.");
+      const first=normalized[seen.get(row.identityHash)];
+      if(first?.valid){first.valid=false;first.errors.push("Duplicate identity in this import file.");}
+    }else seen.set(row.identityHash,row.index);
+  }
+  const canonical=normalized.map(row=>({
+    index:row.index,valid:row.valid,displayName:row.displayName,kind:row.kind,
+    identityHash:row.identityHash,personId:row.personId,sectionHint:row.sectionHint||"",
+    errors:row.errors
+  }));
+  const digest=createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
+  return {rows:normalized,digest};
+}
+
 function createPeopleDirectoryService({db}) {
   return async request=>{
     const input=request.data||{};
@@ -48,6 +91,76 @@ function createPeopleDirectoryService({db}) {
         })),
         nextCursor:snap.docs.length>pageSize?(docs.at(-1)?.data().searchKey||null):null
       };
+    }
+    if(input.action==="preview_import_people"){
+      const normalized=normalizedImport(input.rows);
+      const existing=new Map();
+      const valid=normalized.rows.filter(row=>row.valid);
+      const docs=await Promise.all(valid.map(row=>base.doc(row.personId).get()));
+      docs.forEach((doc,index)=>{if(doc.exists)existing.set(valid[index].personId,doc.data());});
+      return {digest:normalized.digest,summary:{
+        rows:normalized.rows.length,
+        create:normalized.rows.filter(row=>row.valid&&!existing.has(row.personId)).length,
+        existing:normalized.rows.filter(row=>row.valid&&existing.has(row.personId)).length,
+        invalid:normalized.rows.filter(row=>!row.valid).length
+      },rows:normalized.rows.map(row=>({
+        index:row.index,displayName:row.displayName,kind:row.kind,email:row.email,
+        externalId:row.externalId,sectionHint:row.sectionHint,personId:row.personId,
+        status:!row.valid?"invalid":existing.has(row.personId)?"existing":"create",
+        errors:row.errors,
+        existingName:existing.get(row.personId)?.displayName||null
+      }))};
+    }
+    if(input.action==="commit_import_people"){
+      const normalized=normalizedImport(input.rows);
+      if(typeof input.expectedDigest!=="string"||input.expectedDigest!==normalized.digest)
+        throw new TenantAccessError("failed-precondition","Import preview changed. Preview this exact file again before committing.");
+      if(normalized.rows.some(row=>!row.valid))
+        throw new TenantAccessError("failed-precondition","Resolve invalid or duplicate import rows before committing.");
+      const batchId=normalized.digest.slice(0,40);
+      const batchRef=db.doc("schools/"+ctx.schoolId+"/directory_imports/"+batchId);
+      const refs=normalized.rows.map(row=>base.doc(row.personId));
+      const audits=normalized.rows.map(()=>db.collection("schools/"+ctx.schoolId+"/directory_audit").doc());
+      let result;
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const [batch,...existing]=await Promise.all([tx.get(batchRef),...refs.map(ref=>tx.get(ref))]);
+        if(batch.exists){
+          const prior=batch.data();
+          if(prior.schoolId===ctx.schoolId&&prior.digest===normalized.digest&&prior.status==="committed"){
+            result={batchId,created:prior.created||0,skipped:prior.skipped||0,alreadyCommitted:true};return;
+          }
+          throw new TenantAccessError("failed-precondition","This import batch requires administrator review.");
+        }
+        const now=FieldValue.serverTimestamp();
+        let created=0,skipped=0;
+        normalized.rows.forEach((row,index)=>{
+          const prior=existing[index];
+          if(prior.exists){
+            const data=prior.data();
+            if(data.schoolId!==ctx.schoolId||data.importIdentityHash!==row.identityHash)
+              throw new TenantAccessError("failed-precondition","An import identity collision requires manual review.");
+            skipped++;return;
+          }
+          created++;
+          tx.create(refs[index],{
+            schoolId:ctx.schoolId,displayName:row.displayName,
+            searchKey:row.displayName.toLocaleLowerCase("en")+"#"+row.personId,
+            kind:row.kind,status:"active",authUid:null,importIdentityHash:row.identityHash,
+            importBatchId:batchId,importSource:"csv",createdByUid:ctx.uid,
+            createdAt:now,updatedAt:now,revision:1
+          });
+          tx.create(audits[index],{schoolId:ctx.schoolId,actorUid:ctx.uid,
+            personId:row.personId,action:"person_imported",batchId,
+            sectionHintPresent:Boolean(row.sectionHint),createdAt:now});
+        });
+        tx.create(batchRef,{schoolId:ctx.schoolId,digest:normalized.digest,status:"committed",
+          source:"csv",rowCount:normalized.rows.length,created,skipped,
+          createdByUid:ctx.uid,createdAt:now,
+          note:"People only; no account, membership, enrollment or teacher assignment was granted."});
+        result={batchId,created,skipped,alreadyCommitted:false};
+      });
+      return result;
     }
     if(input.action==="search_people"){
       const raw=typeof input.query==="string"?input.query.trim().toLocaleLowerCase("en"):"";
@@ -357,4 +470,4 @@ function createInvitationAcceptanceService({db}) {
   };
 }
 
-module.exports={createPeopleDirectoryService,createInvitationAcceptanceService};
+module.exports={createPeopleDirectoryService,createInvitationAcceptanceService,importIdentity,normalizedImport};
