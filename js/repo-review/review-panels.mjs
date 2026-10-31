@@ -1,7 +1,7 @@
 /** Inline review panels share bounded reads, preload independently and never run other page applications. */
 import {db} from "../core/firebase-core.js?v=1.3.0";
 import {collection,getDocs,query,where} from "../core/teaching-firestore.mjs?v=1.3.0";
-import {createEvidenceReview} from "./assessment-evidence-review.mjs?v=1.4.12";
+import {createEvidenceReview} from "./assessment-evidence-review.mjs?v=1.4.13";
 import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.6";
 import {parseRepository} from "./services/assessment-evidence.mjs?v=1.3.1";
 import {analyzePatchSubstance} from "./services/commit-substance.mjs?v=1.3.0";
@@ -12,7 +12,7 @@ export function mountReviewPanels({root,student,assessment,evidence,requests,onE
   const el=id=>root.querySelector("#"+id);
   const panel=el("integratedEvidencePanel");
   panel.innerHTML=evidenceReviewMarkup;
-  const controller=createEvidenceReview({root:panel,inlineContext:{student,assessment},requests,onChange:onEvidenceChange});
+  const controller=createEvidenceReview({root:panel,inlineContext:{student,assessment},requests,onChange:onEvidenceChange,authoritativeInitialRecord:true});
   const repo=parseRepository(student.repoUrl),api="/repos/"+encodeURIComponent(repo.owner)+"/"+encodeURIComponent(repo.repo);
   let current=evidence,roster=[],records=new Map(),generation=0;
   function groupRows(){
