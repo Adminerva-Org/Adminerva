@@ -10,7 +10,7 @@ const {initializeApp,getApps,applicationDefault}=require("firebase-admin/app");
 const {getFirestore}=require("firebase-admin/firestore");
 const {readFileSync,writeFileSync}=require("node:fs");
 const {createHash}=require("node:crypto");
-const {EXPORT_SCHEMA,definitions}=require("./school-data-export.js");
+const {EXPORT_SCHEMA,definitions,categoryDigest}=require("./school-data-export.js");
 
 const PLAN_SCHEMA="adminerva-school-continuity-restore-plan-v1";
 const AUTO_CATEGORIES=[
@@ -42,9 +42,18 @@ function verifyBundle(bundle){
  if(digest!==bundle.sha256)throw Error("Continuity export integrity check failed.");
  if(!bundle.categories||typeof bundle.categories!=="object"||Array.isArray(bundle.categories))
   throw Error("Continuity export categories are missing.");
+ const counts=bundle.sourceManifest?.counts,integrity=bundle.sourceManifest?.categoryIntegrity;
+ if(!counts||typeof counts!=="object"||!integrity||typeof integrity!=="object")
+  throw Error("Continuity export category-integrity manifest is missing.");
  for(const category of Object.keys(definitions)){
-  if(!Array.isArray(bundle.categories[category]))
+  const rows=bundle.categories[category],saved=integrity[category];
+  if(!Array.isArray(rows))
    throw Error("Continuity export category is missing: "+category);
+  if(Number(counts[category])!==rows.length||!saved||saved.count!==rows.length||
+     typeof saved.sha256!=="string"||!/^[a-f0-9]{64}$/.test(saved.sha256))
+   throw Error("Continuity export category metadata is invalid: "+category);
+  if(categoryDigest(rows)!==saved.sha256)
+   throw Error("Continuity export category integrity check failed: "+category);
  }
  return {schoolId:bundle.schoolId,digest};
 }
