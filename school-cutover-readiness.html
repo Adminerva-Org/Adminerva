@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>4.0 Readiness · Adminerva</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8">
+</head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="admin" data-page="cutover-readiness"></div>
+<main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+  <header class="rounded-2xl bg-slate-900 text-white p-5 sm:p-7">
+    <p class="text-xs uppercase tracking-widest font-bold text-cyan-300">School administration</p>
+    <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Adminerva 4.0 readiness</h1>
+    <p class="text-sm text-slate-200 mt-2 max-w-4xl">Review canonical data integrity before the platform owner retires legacy compatibility. This page does not expose teacher-private content and cannot enable cutover.</p>
+    <div id="cutoverSchoolSwitcher" hidden class="mt-4 max-w-sm"></div>
+  </header>
+  <section class="bg-white border rounded-2xl p-4 sm:p-5 shadow-sm">
+    <div class="flex flex-wrap gap-3 items-center justify-between">
+      <div><h2 class="font-extrabold text-lg">Technical readiness</h2><p id="cutoverMode" class="text-sm text-slate-500 mt-1"></p></div>
+      <button id="cutoverRefresh" type="button" class="rounded-lg bg-cyan-800 text-white px-4 py-2.5 font-bold">Refresh checks</button>
+    </div>
+    <p id="cutoverStatus" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Checking verified school access…</p>
+  </section>
+  <section id="cutoverWorkspace" hidden class="space-y-5">
+    <div id="cutoverSummary" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+    <section class="bg-white border rounded-2xl overflow-hidden shadow-sm">
+      <div class="p-4 sm:p-5 border-b"><h2 class="font-extrabold">Integrity checks</h2><p class="text-xs text-slate-500 mt-1">A failed blocking check must be resolved before V4-only cutover.</p></div>
+      <div id="cutoverChecks" class="divide-y"></div>
+    </section>
+    <section class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+      Technical readiness is only one gate. The platform owner must also review the protected migration reconciliation, continuity backup, institutional authority and rollback procedure before changing compatibility mode.
+    </section>
+  </section>
+</main>
+<script src="js/core/adminerva-loader.js?v=1.3.2"></script>
+<script src="js/core/adminerva-nav.js?v=4.0.0"></script>
+<script type="module" src="js/core/auth-guard.js?v=4.0.0"></script>
+<script type="module" src="js/core/school-cutover-readiness.mjs?v=4.0.0"></script>
+</body></html>
