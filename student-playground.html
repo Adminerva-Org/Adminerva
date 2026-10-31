@@ -27,7 +27,7 @@
 
   <div class="studio-project-bar">
     <button id="backToProjectsBtn" type="button" class="studio-back">← Projects</button>
-    <div class="studio-project-identity"><div class="studio-project-title-row"><strong id="activeProjectTitle">Code project</strong><span id="activeProjectStorageBadge" class="studio-storage-badge">Cloud sync</span></div><span id="activeProjectMeta">Java project</span></div>
+    <div class="studio-project-identity"><div class="studio-project-title-row"><strong id="activeProjectTitle">Code project</strong><span id="activeProjectStorageBadge" class="studio-storage-badge">Cloud sync</span></div><span id="activeProjectMeta">Java project</span><span id="studioSchoolStatus" class="hidden text-[10px] text-slate-400" role="status" aria-live="polite"></span><div id="studioSchoolSwitcher" hidden class="text-xs"></div></div>
     <div class="studio-project-actions"><div class="studio-command-bar" aria-label="Project commands"><label class="sr-only" for="languageSelect">Programming language</label><select id="languageSelect"><option value="java">Java</option><option value="python">Python</option><option value="web">HTML / CSS / JS</option><option value="csharp">C#</option><option value="cpp">C++</option><option value="dart">Dart</option></select>
       <label id="javaRunModeLabel" for="javaRunMode" class="hidden">Run as</label><select id="javaRunMode" class="hidden" title="Choose how Java should run"><option value="console">Console application</option><option value="desktop">Desktop GUI (Swing) · Beta</option></select>
       <button id="saveProjectBtn" type="button" class="pg-save" title="Save project · Ctrl+S">Save</button><button id="formatBtn" type="button">Format</button>
