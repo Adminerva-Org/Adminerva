@@ -837,7 +837,8 @@ service cloud.firestore {
         request.resource.data.repository.size() <= 300 &&
         request.resource.data.sha is string &&
         request.resource.data.sha.matches("^[a-fA-F0-9]{40}$") &&
-        claimId == request.resource.data.sha + "_" + request.resource.data.studentId &&
+        (claimId == request.resource.data.sha + "_" + request.resource.data.studentId ||
+         claimId == request.resource.data.sha + "_" + request.resource.data.studentId + "_" + request.resource.data.assessmentId) &&
         request.resource.data.explanation is string &&
         request.resource.data.explanation.size() >= 10 &&
         request.resource.data.explanation.size() <= 1500 &&
