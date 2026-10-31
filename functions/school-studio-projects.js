@@ -95,6 +95,15 @@ function createSchoolStudioProjectService({db}){
       revision:d.data().revision,status:d.data().status||"active",
       updatedAt:d.data().updatedAt?.toMillis?.()||null}))};
   }
+  if(action==="list_archived"){
+   const snap=await projectCollection.limit(100).get();
+   return {projects:snap.docs.filter(d=>d.data().schoolId===ctx.schoolId&&
+      d.data().ownerUid===ctx.uid&&d.data().status==="archived")
+    .map(d=>({projectId:d.id,title:d.data().title,language:d.data().language,
+      revision:d.data().revision,status:"archived",
+      updatedAt:d.data().updatedAt?.toMillis?.()||null,
+      archivedAt:d.data().archivedAt?.toMillis?.()||null}))};
+  }
   if(action==="create"){
    const title=safeTitle(input.title),files=validateFiles(input.files||[]),artifacts=validateArtifacts(input.artifacts);
    const language=input.language;
