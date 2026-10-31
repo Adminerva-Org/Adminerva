@@ -11,6 +11,7 @@ const {getFirestore}=require("firebase-admin/firestore");
 const {readFileSync,writeFileSync}=require("node:fs");
 const {createHash}=require("node:crypto");
 const {EXPORT_SCHEMA,definitions,categoryDigest}=require("./school-data-export.js");
+const {rowKey}=require("./school-academics.js");
 
 const PLAN_SCHEMA="adminerva-school-continuity-restore-plan-v1";
 const AUTO_CATEGORIES=[
@@ -112,6 +113,13 @@ async function dependencyReview(db,bundle,states){
   if(["ready","identical"].includes(state))return true;
   return (await db.doc("schools/"+schoolId+"/"+definitions[category].path+"/"+id).get()).exists;
  };
+ const activeMembership=async(uid,role,personId=null)=>{
+  if(typeof uid!=="string"||!uid)return false;
+  const member=await db.doc("schools/"+schoolId+"/memberships/"+uid).get();
+  if(!member.exists||member.data().schoolId!==schoolId||member.data().status!=="active"||
+     !Array.isArray(member.data().roles)||!member.data().roles.includes(role))return false;
+  return personId?member.data().personId===personId:true;
+ };
  for(const row of bundle.categories.course_offerings){
   for(const [category,id] of [["academic_years",row.yearId],["terms",row.termId],["subjects",row.subjectId],["sections",row.sectionId]])
    if(!await existsOrPlanned(category,id))
@@ -123,23 +131,48 @@ async function dependencyReview(db,bundle,states){
   if(!await existsOrPlanned("course_offerings",row.offeringId))
    issues.push({type:"restore_dependency_missing",category:"enrollments",recordId:row.id,dependsOn:"course_offerings/"+row.offeringId});
  }
- for(const row of bundle.categories.staff_assignments)
+ for(const row of bundle.categories.staff_assignments){
   if(!await existsOrPlanned("course_offerings",row.offeringId))
    issues.push({type:"restore_dependency_missing",category:"staff_assignments",recordId:row.id,dependsOn:"course_offerings/"+row.offeringId});
+  if(row.status==="active"&&!await activeMembership(row.teacherUid,"teacher"))
+   issues.push({type:"restore_active_membership_required",category:"staff_assignments",
+    recordId:row.id,dependsOn:"memberships/"+row.teacherUid,
+    resolution:"Recover the active teacher membership separately before restoring this assignment."});
+ }
  for(const row of bundle.categories.student_repository_configs){
   if(!await existsOrPlanned("people",row.personId))
    issues.push({type:"restore_dependency_missing",category:"student_repository_configs",recordId:row.id,dependsOn:"people/"+row.personId});
   if(!await existsOrPlanned("course_offerings",row.offeringId))
    issues.push({type:"restore_dependency_missing",category:"student_repository_configs",recordId:row.id,dependsOn:"course_offerings/"+row.offeringId});
+  if(!await activeMembership(row.studentUid,"student",row.personId))
+   issues.push({type:"restore_active_membership_required",category:"student_repository_configs",
+    recordId:row.id,dependsOn:"memberships/"+row.studentUid,
+    resolution:"Recover the linked active student membership separately before restoring repository configuration."});
  }
- for(const row of bundle.categories.assessments)
+ for(const row of bundle.categories.assessments){
   if(!await existsOrPlanned("course_offerings",row.offeringId))
    issues.push({type:"restore_dependency_missing",category:"assessments",recordId:row.id,dependsOn:"course_offerings/"+row.offeringId});
+  const reviewerUid=row.reviewerUid||row.ownerUid;
+  if(row.status==="deployed"&&row.lifecycle!=="cancelled"){
+   if(!await activeMembership(reviewerUid,"teacher"))
+    issues.push({type:"restore_active_membership_required",category:"assessments",
+     recordId:row.id,dependsOn:"memberships/"+reviewerUid,
+     resolution:"Recover the responsible teacher membership separately before restoring this deployed assessment."});
+   const assignmentId=rowKey(reviewerUid,row.offeringId);
+   if(!await existsOrPlanned("staff_assignments",assignmentId))
+    issues.push({type:"restore_dependency_missing",category:"assessments",
+     recordId:row.id,dependsOn:"staff_assignments/"+assignmentId});
+  }
+ }
  for(const row of bundle.categories.student_grades){
   if(!await existsOrPlanned("assessments",row.taskId))
    issues.push({type:"restore_dependency_missing",category:"student_grades",recordId:row.id,dependsOn:"assessments/"+row.taskId});
   if(!await existsOrPlanned("people",row.personId))
    issues.push({type:"restore_dependency_missing",category:"student_grades",recordId:row.id,dependsOn:"people/"+row.personId});
+  if(!await activeMembership(row.studentUid,"student",row.personId))
+   issues.push({type:"restore_active_membership_required",category:"student_grades",
+    recordId:row.id,dependsOn:"memberships/"+row.studentUid,
+    resolution:"Recover the linked active student membership separately before restoring this published grade."});
  }
  return issues;
 }
