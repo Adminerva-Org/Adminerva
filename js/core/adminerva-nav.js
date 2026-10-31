@@ -81,9 +81,12 @@ document.addEventListener("DOMContentLoaded", () => {
         ["gradebook-v4", "Gradebook", gradebookRoute],
         ["repobank", "Repository investigation", "repobank.html"]
       ]) : [] },
-    { name: "Insights", area: "educator", items: canTeach&&!v4OnlyTeacher ? [
-      ["dashboard", "Analytics", "teacher-analytics.html"],
-      ["followup", "Learning follow-up", "learning-follow-up.html"]
+    { name: "Insights", area: "educator", items: canTeach ? [
+      ["practice-v4", "Practice progress", "school-practice-analytics.html"],
+      ...(!v4OnlyTeacher ? [
+        ["dashboard", "Analytics", "teacher-analytics.html"],
+        ["followup", "Learning follow-up", "learning-follow-up.html"]
+      ] : [])
     ] : [] },
     { name: "Planning", area: "lesson", items: canTeach&&!v4OnlyTeacher ? [
       ["planner", "Lesson planner", "lesson-planner.html"],
@@ -107,6 +110,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["overview","School overview","school-admin.html"],
       ["people-v4","People & Access","people-access.html"],
       ["school-analytics","School operations","school-analytics.html"],
+      ["practice-v4","Practice progress","school-practice-analytics.html"],
       ["reclaims-v4","Commit attribution requests","reclaim-inbox.html"]
     ] : hasPlatformAuthority ? [
       ["owner-schools","Institution registry","owner-schools.html"]
@@ -154,8 +158,10 @@ document.addEventListener("DOMContentLoaded", () => {
   ] : [
     [homeLabel,homeRoute,isSchoolAdmin?"School operations and teaching workspace":"Your teaching workspace"],
     ...(canTeach?(v4OnlyTeacher?
-      [["Assessment & Grade","teacher-assessment-library.html","School assessments, evidence and grading"]]:
+      [["Assessment & Grade","teacher-assessment-library.html","School assessments, evidence and grading"],
+       ["Practice Progress","school-practice-analytics.html","Current-season class Practice analytics"]]:
       [["Repository Management","teacher-assessment-library.html","Assessments, submissions, grading and repositories"],
+       ["Practice Progress","school-practice-analytics.html","Verified-school Practice analytics"],
        ["Lesson Planning","lesson-planner.html","Lessons, slides, schedule and references"]]):[]),
     ...((isSuperAdmin||isSchoolAdmin||hasPlatformAuthority)?[["School administration",
       hasPlatformAuthority&&!isSchoolAdmin&&!isSuperAdmin?"owner-schools.html":"school-admin.html",
