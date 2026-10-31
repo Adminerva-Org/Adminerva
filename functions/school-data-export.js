@@ -44,15 +44,16 @@ async function readCategoryRows(db,prefix,category,{limit=20001}={}){
  if(!def)deny("invalid-argument","Choose a supported continuity-export category.");
  const rows=[];let cursor=null;
  while(rows.length<limit){
+  const batchLimit=Math.min(200,limit-rows.length);
   let query=db.collection(prefix+def.path);
   if(def.publishedOnly)query=query.where("status","==","published");
-  query=query.orderBy(FieldPath.documentId()).limit(Math.min(200,limit-rows.length));
+  query=query.orderBy(FieldPath.documentId()).limit(batchLimit);
   if(cursor)query=query.startAfter(cursor);
   const snap=await query.get();
   for(const doc of snap.docs)rows.push({id:doc.id,...pick(doc.data(),def.fields)});
-  if(snap.size<Math.min(200,limit-rows.length+snap.size))break;
-  if(!snap.size)break;
-  cursor=snap.docs.at(-1).id;
+  if(snap.size<batchLimit)break;
+  cursor=snap.docs.at(-1)?.id||null;
+  if(!cursor)break;
  }
  if(rows.length>=limit)
   deny("resource-exhausted","This continuity-export category exceeds the 20,000-record safety boundary.");
