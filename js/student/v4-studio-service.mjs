@@ -50,8 +50,25 @@ function projectPayload(project,state){
     }
   };
 }
+function canonicalJson(value){
+  function normalize(node){
+    if(node===null||typeof node==="string"||typeof node==="boolean")return node;
+    if(typeof node==="number"){
+      if(!Number.isFinite(node))throw Error("Project data contains a non-finite number.");
+      return Object.is(node,-0)?0:node;
+    }
+    if(Array.isArray(node))return node.map(normalize);
+    if(node&&typeof node==="object"){
+      const result={};
+      for(const key of Object.keys(node).sort())result[key]=normalize(node[key]);
+      return result;
+    }
+    throw Error("Project data contains an unsupported value.");
+  }
+  return JSON.stringify(normalize(value));
+}
 async function digestPayload(payload){
-  const data=JSON.stringify({files:payload.files,artifacts:payload.artifacts});
+  const data=canonicalJson({files:payload.files,artifacts:payload.artifacts});
   const bytes=new TextEncoder().encode(data);
   if(!crypto?.subtle)throw Error("Secure project verification is unavailable in this browser.");
   const digest=await crypto.subtle.digest("SHA-256",bytes);
