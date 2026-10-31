@@ -1,6 +1,6 @@
 import {auth} from "./firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {sessionDestination} from "./session-destination.mjs?v=4.0.0";
+import {sessionDestination} from "./session-destination.mjs?v=4.0.1";
 const main=document.querySelector("main"),navigation=document.getElementById("adminerva-nav");
 let mounted=false;
 function mount(){
@@ -50,6 +50,7 @@ function mount(){
       schoolTeacher:navigation?.dataset.schoolTeacher==="true",
       schoolStudent:navigation?.dataset.schoolStudent==="true",
       v4OnlyTeacher:navigation?.dataset.v4OnlyTeacher==="true",
+      v4OnlyStudent:navigation?.dataset.v4OnlyStudent==="true",
       students:role==="student"?[{}]:[]
     });
     if(!destination.endsWith("-home.html")){
