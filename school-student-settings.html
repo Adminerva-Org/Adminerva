@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Student Settings · Adminerva</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8">
+</head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="student" data-page="school-student-settings"></div>
+<main class="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+  <header class="rounded-2xl bg-slate-900 text-white p-5 sm:p-7">
+    <p class="text-xs uppercase tracking-widest font-bold text-cyan-300">Verified school account</p>
+    <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Student settings</h1>
+    <p class="text-sm text-slate-200 mt-2 max-w-3xl">Review your school identity and save a GitHub repository for each active course offering. Provider access tokens are never stored in the school profile.</p>
+    <div id="studentSettingsSchoolSwitcher" hidden class="mt-4 max-w-sm"></div>
+  </header>
+  <p id="studentSettingsStatus" class="text-sm text-slate-600" role="status" aria-live="polite">Checking verified school access…</p>
+  <section id="studentSettingsWorkspace" hidden class="space-y-5">
+    <section class="bg-white border rounded-2xl p-4 sm:p-6 shadow-sm">
+      <p class="text-xs uppercase tracking-wide font-bold text-slate-500">School identity</p>
+      <h2 id="studentSettingsName" class="text-xl font-extrabold mt-1"></h2>
+      <p id="studentSettingsIdentity" class="text-sm text-slate-600 mt-2"></p>
+    </section>
+    <section class="bg-white border rounded-2xl p-4 sm:p-6 shadow-sm">
+      <div class="flex flex-wrap gap-3 justify-between items-start">
+        <div><h2 class="text-xl font-extrabold">Class repositories</h2><p class="text-sm text-slate-600 mt-1">Repository configuration is per course offering, so one project does not leak into another class.</p></div>
+        <a href="school-student-projects.html" class="rounded-lg border px-4 py-2 text-sm font-bold">Open Project Hub</a>
+      </div>
+      <div id="studentSettingsClasses" class="mt-5 grid gap-4"></div>
+    </section>
+    <section class="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-950">
+      GitHub OAuth tokens are session credentials. Adminerva 4.0 does not store them in canonical school Firestore. Private repository access can be authorized temporarily from Project Hub when needed.
+    </section>
+  </section>
+</main>
+<script src="js/core/adminerva-loader.js?v=1.3.2"></script>
+<script src="js/core/adminerva-nav.js?v=4.0.0"></script>
+<script type="module" src="js/core/auth-guard.js?v=4.0.0"></script>
+<script type="module" src="js/student/school-student-settings.mjs?v=4.0.0"></script>
+</body></html>
