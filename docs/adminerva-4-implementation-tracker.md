@@ -126,6 +126,15 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 - Practice migration planning now fails closed on mirror read failures and validates source owner UID/document runtime keys instead of treating malformed/misbound history as valid progress.
 - Focused regression coverage validates deterministic school ranking IDs, score/award/progress reconciliation, consent reset, historical-season archiving and verified-progress ownership.
 
+## Canonical V4 Class Analytics — October 31, 2026
+
+- `functions/school-teacher-analytics.js` adds offering-scoped academic analytics for verified teachers and school administrators. Authorization follows the canonical course offering and active staff assignment rather than legacy section-name access.
+- Teachers see only their own deployed assessment tasks in an offering. They may explicitly include **their own** unpublished Gradebook drafts; another teacher's drafts are never exposed through this service.
+- School administrators may aggregate deployed school tasks and published grades for an offering but do not gain access to private teacher drafts, feedback or teacher-owned blueprint content.
+- `school-teacher-analytics.html` + `js/analytics/school-teacher-analytics.mjs` provide the dedicated V4 Class Analytics workspace with assessment averages, published-result coverage and per-student visible averages.
+- Missing grades are excluded from averages rather than interpreted as zero. Legacy repository commit-count / ghost / equity heuristics are deliberately not carried into the canonical academic analytics surface because commit volume is not evidence of mastery, effort or authorship.
+- V4 navigation now uses **Class Analytics** as the school-safe results workspace. Existing `teacher-analytics.html` remains a legacy compatibility page for 3.x staff during migration; V4-only analytics bookmarks are redirected to the canonical page.
+
 ## Delivery and remaining work
 
 | Track | Actual implementation in PR #113 | Remaining before Adminerva 4.0 |
