@@ -105,7 +105,7 @@ function createSchoolGithubEvidenceService({db}){
    if(data.schoolId!==ctx.schoolId||data.taskId!==taskId||data.studentUid!==ctx.uid||
       data.personId!==personId||data.offeringId!==offeringId)
     deny("permission-denied","Stored evidence belongs to a different school context.");
-   return {taskId,submitted:true,status:data.status,version:data.currentVersion,
+   return {taskId,evidenceId,currentVersion:data.currentVersion,submitted:true,status:data.status,version:data.currentVersion,
     repository:data.repository?.fullName||"",selectedCommitShas:Array.isArray(data.selectedCommitShas)?data.selectedCommitShas:[],selectedCount:Array.isArray(data.selectedCommitShas)?data.selectedCommitShas.length:0,
     checkpointSha:data.checkpointSha||"",reopenReason:data.status==="reopened"?data.reopenReason||"":"",
     revisionDueAt:data.status==="reopened"?data.revisionDueAt?.toMillis?.()||null:null,
