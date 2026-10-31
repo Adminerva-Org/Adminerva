@@ -89,11 +89,11 @@
       <dialog id="pa-suspension-dialog" aria-labelledby="pa-suspension-title" style="width:min(480px,calc(100vw - 1rem));border:0;border-radius:14px;padding:1.3rem">
         <form id="pa-suspension-form">
           <h2 id="pa-suspension-title" style="font-size:1.2rem;font-weight:750">Suspend school access</h2>
-          <p class="pa-muted">This affects only the selected school. Academic history is retained.</p>
+          <p id="pa-access-change-help" class="pa-muted">This affects only the selected school. Academic history is retained.</p>
           <p id="pa-suspension-member" style="font-weight:650"></p>
-          <label>Reason for suspension<input name="reason" class="pa-field" minlength="12" maxlength="500" required placeholder="Explain the institutional reason"></label>
+          <label><span id="pa-access-reason-label">Reason for suspension</span><input name="reason" class="pa-field" minlength="12" maxlength="500" required placeholder="Explain the institutional reason"></label>
           <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-            <button class="pa-action" type="submit" style="background:#9a3412">Confirm suspension</button>
+            <button id="pa-access-change-confirm" class="pa-action" type="submit" style="background:#9a3412">Confirm suspension</button>
             <button class="pa-action" type="button" id="pa-cancel-suspend" style="background:#475569">Cancel</button>
           </div>
         </form>
