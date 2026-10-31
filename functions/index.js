@@ -29,6 +29,11 @@ const legacyRecovery=createLegacyLessonRecovery({db,FieldValue,resolveUserByEmai
 const legacySetup=createLegacySchoolSetup({db,FieldValue,resolveUserByEmail:email=>getAuth().getUserByEmail(email)});
 const callOptions={region:"asia-southeast1",maxInstances:3,concurrency:10,timeoutSeconds:120,cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
 function safeCallable(handler){return async request=>{try{return await handler(request);}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
+async function requireLegacyMcsCompatibility(){
+  const school=await db.doc("platform_schools/mcs-manila").get();
+  if(school.exists&&school.data().compatibilityMode==="v4_only")
+    throw new HttpsError("failed-precondition","Legacy MCS compatibility is disabled after the Adminerva 4.0 cutover.");
+}
 // 4.0 tenant API: requires server-verified active school membership for every call.
 // Legacy 3.0 APIs remain untouched until a separately approved pilot cutover.
 const {listVerifiedSchools,selectVerifiedSchool,platformAuthority}=require("./tenant-access.js");
@@ -91,8 +96,8 @@ exports.schoolPlanning=onCall(callOptions,safeCallable(createSchoolPlanningServi
 const {createSchoolScheduleService}=require("./school-schedules.js");
 exports.schoolSchedules=onCall(callOptions,safeCallable(createSchoolScheduleService({db})));
 exports.schoolAI=onCall(callOptions,safeCallable(schoolAI));
-exports.legacyLessonRecovery=onCall(callOptions,safeCallable(legacyRecovery));
-exports.legacySchoolSetup=onCall(callOptions,safeCallable(legacySetup));
+exports.legacyLessonRecovery=onCall(callOptions,safeCallable(async request=>{await requireLegacyMcsCompatibility();return legacyRecovery(request);}));
+exports.legacySchoolSetup=onCall(callOptions,safeCallable(async request=>{await requireLegacyMcsCompatibility();return legacySetup(request);}));
 exports.pushTestPing=onCall(callOptions,async request=>{
   const uid=request.auth?.uid;
   if(!uid)throw new HttpsError("unauthenticated","Sign in before sending a test notification.");
@@ -139,6 +144,7 @@ async function rebuildStudentAccess(email){
   return {sections,studentIds};
 }
 exports.refreshStudentAccess=onCall(callOptions,async request=>{
+  await requireLegacyMcsCompatibility();
   const uid=request.auth?.uid,email=String(request.auth?.token?.email||"").toLowerCase().trim();
   if(!uid||request.auth?.token?.email_verified!==true||!email)
     throw new HttpsError("unauthenticated","Use a verified school account before loading assignments.");
@@ -159,7 +165,7 @@ const practiceOptions={region:"asia-southeast1",maxInstances:3,concurrency:20,ti
   cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
 for(const [name,action] of Object.entries({practiceSession:"acquire",practiceStart:"start",practicePredict:"predict",practiceComplete:"complete",practiceHub:"hub",practiceSeasonSession:"acquireSeason",practiceMissionStart:"startSeason",practiceMissionSubmit:"submitSeason",practicePreferences:"preferences"}))
   exports[name]=onCall(practiceOptions,async request=>{
-    try{return await practice[action](request);}
+    try{await requireLegacyMcsCompatibility();return await practice[action](request);}
     catch(error){
       if(error instanceof PracticeError)throw new HttpsError(error.code,error.message,error.details);
       console.error("Practice request failed",{action,code:error.code||"internal"});
