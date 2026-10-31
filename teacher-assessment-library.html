@@ -103,11 +103,11 @@
   </label>
   <label>Submission method<select name="submissionSource" class="tl-input" required>
     <option value="studio">Adminerva Studio project</option>
-    <option value="github" disabled>GitHub evidence (available after V4 evidence integration)</option>
+    <option value="github">GitHub commit evidence</option>
   </select></label>
   <label>Opens at<input name="opensAt" type="datetime-local" class="tl-input" required></label>
   <label>Deadline<input name="dueAt" type="datetime-local" class="tl-input" required></label>
-  <p class="tl-muted">Student submissions and Gradebook review are being integrated into the 4.0 scoped backend. This pilot deployment creates the task record, not a submitted project or grade.</p>
+  <p class="tl-muted">Choose Adminerva Studio for a frozen project version or GitHub commit evidence for a frozen repository checkpoint and selected commits. Both use the same private-draft and published Gradebook workflow.</p>
   <div class="tl-actions">
     <button type="submit" class="tl-action">Deploy task</button>
     <button type="button" id="tl-cancel-deploy" class="tl-action alt">Cancel</button>
