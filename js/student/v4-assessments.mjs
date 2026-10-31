@@ -152,12 +152,143 @@ if(panel&&list&&status&&schoolHost){
         "Your existing pilot assignment list below remains unchanged."));
     }
   }
+  const ghDialog=document.getElementById("v4GithubEvidenceDialog");
+  const ghRepository=document.getElementById("v4GithubRepository");
+  const ghList=document.getElementById("v4GithubCommitList");
+  const ghStatus=document.getElementById("v4GithubEvidenceStatus");
+  const ghSelectedCount=document.getElementById("v4GithubSelectedCount");
+  const ghCheckpoint=document.getElementById("v4GithubCheckpoint");
+  const ghSubmit=document.getElementById("v4GithubEvidenceSubmit");
+  function renderGithubCommits(){
+    ghList.replaceChildren();
+    ghSelectedCount.textContent=githubSelected.size+" selected";
+    ghCheckpoint.textContent=githubCheckpoint||"No checkpoint selected";
+    if(!githubCommits.length){
+      ghList.append(node("p","rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-600",
+        "Load the repository commit history to choose evidence."));
+      return;
+    }
+    for(const commit of githubCommits){
+      const full=String(commit.sha||"").toLowerCase();
+      if(!/^[a-f0-9]{40}$/.test(full))continue;
+      const row=node("article","rounded-xl border border-slate-200 p-3");
+      const controls=node("div","flex flex-wrap items-center gap-3");
+      const include=node("label","inline-flex items-center gap-2 text-xs font-bold text-slate-700");
+      const check=document.createElement("input");check.type="checkbox";check.checked=githubSelected.has(full);
+      check.disabled=githubBusy||commit.unavailable===true;
+      check.addEventListener("change",()=>{
+        if(check.checked)githubSelected.add(full);else githubSelected.delete(full);
+        renderGithubCommits();
+      });
+      include.append(check,node("span","","Include"));
+      const checkpointLabel=node("label","inline-flex items-center gap-2 text-xs font-bold text-indigo-800");
+      const radio=document.createElement("input");radio.type="radio";radio.name="v4GithubCheckpoint";
+      radio.checked=githubCheckpoint===full;radio.disabled=githubBusy||commit.unavailable===true;
+      radio.addEventListener("change",()=>{githubCheckpoint=full;renderGithubCommits();});
+      checkpointLabel.append(radio,node("span","","Checkpoint"));
+      controls.append(include,checkpointLabel,node("span","font-mono text-xs text-indigo-800",full.slice(0,12)));
+      row.append(controls);
+      row.append(node("p","mt-2 text-sm font-bold text-slate-900",
+        String(commit.commit?.message||"Commit unavailable").split("\n")[0].slice(0,180)));
+      const author=commit.commit?.author||{};
+      row.append(node("p","mt-1 text-xs text-slate-500",
+        (author.name||"Unknown Git author")+" · "+(author.date?new Date(author.date).toLocaleString():"Date unavailable")));
+      if(commit.unavailable)row.append(node("p","mt-2 text-xs text-amber-800",
+        "This commit is part of your prior frozen selection but was not returned in the loaded history window."));
+      ghList.append(row);
+    }
+  }
+  async function openGithubEvidence(task,current){
+    githubTask=task;githubTaskStatus=current||null;
+    githubCommits=[];githubSelected=new Set(current?.selectedCommitShas||[]);
+    githubCheckpoint=current?.checkpointSha||"";
+    const savedKey="adminerva:v4:github-repository:"+(auth.currentUser?.uid||"")+":"+
+      (picker?.scope.current?.schoolId||"");
+    let remembered="";try{remembered=sessionStorage.getItem(savedKey)||"";}catch{}
+    ghRepository.value=current?.repository||remembered;
+    document.getElementById("v4GithubEvidenceMeta").textContent=
+      task.title+" · due "+date(task.dueAt);
+    ghStatus.textContent=current?.status==="reopened"?
+      "Your teacher requested a revision. Load the repository, adjust the frozen commit selection, and resubmit before the extension deadline.":
+      "Choose commits representing your work and a project checkpoint containing that work.";
+    renderGithubCommits();ghDialog.showModal();
+    if(ghRepository.value)await loadGithubHistory().catch(error=>{ghStatus.textContent=error.message;});
+  }
+  async function loadGithubHistory(){
+    if(githubBusy)return;
+    const repositoryValue=ghRepository.value.trim();
+    const parsed=parseGithubRepository(repositoryValue);
+    githubBusy=true;document.getElementById("v4GithubLoad").disabled=true;ghSubmit.disabled=true;
+    ghStatus.textContent="Loading pinned GitHub commit history…";
+    try{
+      const preferences=auth.currentUser?activateConnectionOwner(auth.currentUser.uid):{};
+      const client=createGithubEvidenceClient({token:preferences.githubToken||null,maxPages:5,retryCount:1});
+      const head=await client.getBranchHead(parsed.fullName);
+      const ref=githubTaskStatus?.checkpointSha||head.sha;
+      const history=await client.listCommits({repository:parsed.fullName,ref});
+      githubCommits=history.commits.slice(0,500);
+      const returned=new Set(githubCommits.map(item=>String(item.sha||"").toLowerCase()));
+      for(const oldSha of githubSelected){
+        if(!returned.has(oldSha))githubCommits.push({sha:oldSha,unavailable:true,commit:{message:"Previously frozen evidence commit"}});
+      }
+      if(!githubCheckpoint)githubCheckpoint=head.sha;
+      if(!githubCommits.some(item=>String(item.sha||"").toLowerCase()===githubCheckpoint))
+        githubCommits.unshift({sha:githubCheckpoint,unavailable:false,commit:{message:"Selected checkpoint"}});
+      try{
+        sessionStorage.setItem("adminerva:v4:github-repository:"+
+          auth.currentUser.uid+":"+picker.scope.current.schoolId,parsed.fullName);
+      }catch{}
+      ghRepository.value=parsed.fullName;
+      ghStatus.textContent=history.historyComplete?
+        githubCommits.length+" commits loaded from pinned repository history.":
+        githubCommits.length+" commits loaded. History hit the safe page limit; do not treat absent commits as proof of no contribution.";
+    }catch(error){
+      ghStatus.textContent=(error?.message||"GitHub history unavailable")+
+        ". For a private repository, reconnect the account-owned GitHub integration before retrying.";
+      throw error;
+    }finally{
+      githubBusy=false;document.getElementById("v4GithubLoad").disabled=false;ghSubmit.disabled=false;
+      renderGithubCommits();
+    }
+  }
+  document.getElementById("v4GithubLoad").addEventListener("click",()=>
+    void loadGithubHistory().catch(()=>{}));
+  document.getElementById("v4GithubEvidenceClose").addEventListener("click",()=>ghDialog.close());
+  ghDialog.addEventListener("cancel",event=>{if(githubBusy)event.preventDefault();});
+  ghSubmit.addEventListener("click",()=>void (async()=>{
+    if(githubBusy||!githubTask)return;
+    let parsed;
+    try{parsed=parseGithubRepository(ghRepository.value);}
+    catch(error){ghStatus.textContent=error.message;return;}
+    if(!githubSelected.size){ghStatus.textContent="Select at least one evidence commit.";return;}
+    if(!/^[a-f0-9]{40}$/.test(githubCheckpoint)){
+      ghStatus.textContent="Choose a full Git commit as the project checkpoint.";return;
+    }
+    if(!confirm("Submit "+githubSelected.size+" frozen GitHub commit(s) for \""+githubTask.title+
+      "\"? Changes require a teacher revision request after submission."))return;
+    githubBusy=true;ghSubmit.disabled=true;document.getElementById("v4GithubLoad").disabled=true;
+    ghStatus.textContent="Freezing the verified-school evidence selection…";
+    try{
+      const receipt=await scoped(picker.scope,githubEvidenceApi,"submit",{
+        taskId:githubTask.taskId,repository:parsed.fullName,
+        selectedCommitShas:[...githubSelected],checkpointSha:githubCheckpoint
+      });
+      ghStatus.textContent=receipt.alreadyExisted?
+        "This exact evidence version was already submitted; no duplicate was created.":
+        "GitHub evidence version "+receipt.version+" submitted for teacher verification.";
+      setTimeout(()=>{if(ghDialog.open)ghDialog.close();},900);
+      await render(picker.scope);
+    }catch(error){ghStatus.textContent=error?.message||"GitHub evidence was not submitted.";}
+    finally{githubBusy=false;ghSubmit.disabled=false;document.getElementById("v4GithubLoad").disabled=false;}
+  })());
+
   await auth.authStateReady();
   if(auth.currentUser){
     picker=createTenantSchoolPicker({
       host:schoolHost,status:null,
       onReady:scope=>void render(scope),
       onBeforeChange:async()=>{
+        if(githubBusy||ghDialog.open)throw Error("Close the GitHub evidence editor before switching schools.");
         renderGeneration++;list.replaceChildren();
         status.textContent="Switching verified school…";
       }
