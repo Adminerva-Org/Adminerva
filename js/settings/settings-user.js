@@ -326,7 +326,7 @@ window.loadDirectory = async function () {
         pillId: `status_${documentSnapshot.id.replace(/[^a-zA-Z0-9]/g, "")}`,
         ghStatusText: isLinked ? "Verifying..." : "Missing Info",
         ghStatusClass: isLinked
-          ? "bg-blue-100 text-blue-700 animate-pulse"
+          ? "bg-blue-100 text-blue-700"
           : "bg-slate-200 text-slate-600",
         verified: false,
       });
