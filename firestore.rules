@@ -456,7 +456,7 @@ service cloud.firestore {
       allow create: if legacyMcsAllowed() && (isAdmin() || (isTeacher() && teacherId == request.auth.uid &&
         request.resource.data.keys().hasOnly(["email","name","uid","githubToken","githubUsername","geminiKey","aiModel","engineMode"]) &&
         request.resource.data.email == request.auth.token.email.lower() && request.resource.data.uid == request.auth.uid &&
-        validTeacherConnection());
+        validTeacherConnection()));
       allow update: if isAdmin() || (isTeacher() && ownTeacher() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(["githubToken","githubUsername","name","geminiKey","aiModel","engineMode"]) &&
         validTeacherConnection());
