@@ -10,6 +10,7 @@ const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {digestProject}=require("./school-studio-projects.js");
 const {digestEvidence}=require("./school-github-evidence.js");
+const {writeSchoolNotification}=require("./school-notifications.js");
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
 function deny(code,message){throw new TenantAccessError(code,message)}
 function validateScores(criteria,rubric){
@@ -204,6 +205,13 @@ function createSchoolGradebookService({db}){
     result={taskId,studentUid,status:"published",revision,
       awarded:scores.awarded,total:scores.total,corrected:true};
    });
+   await writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:studentUid,
+     id:"grade_corrected_"+taskId+"_"+String(result.revision),
+     title:"Published grade updated",
+     body:(task.data().title||"Assessment")+" · your teacher recorded a reviewed grade correction.",
+     type:"grade",sourceId:taskId,target:"student-assessments.html"
+   }).catch(()=>{});
    return result;
   }
   if(input.action==="publish"){
@@ -238,6 +246,13 @@ function createSchoolGradebookService({db}){
       action:"grade_published",revision,createdAt:now});
     result={taskId,studentUid,status:"published",awarded:data.awarded,total:data.total};
    });
+   await writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:studentUid,
+     id:"grade_published_"+taskId+"_"+String(result.awarded)+"_"+String(result.total),
+     title:"Grade published",
+     body:(task.data().title||"Assessment")+" · your reviewed result is now available.",
+     type:"grade",sourceId:taskId,target:"student-assessments.html"
+   }).catch(()=>{});
    return result;
   }
   deny("invalid-argument","Unknown Gradebook operation.");
