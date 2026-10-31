@@ -43,18 +43,18 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const loaded=Boolean(currentTask&&currentRow&&currentSnapshot);
     const evidenceReady=currentTask?.submissionSource!=="github"||
       ["approved","reviewed"].includes(currentSnapshot?.status);
+    const legacyScalar=currentGrade?.gradeSchema==="legacy_scalar_v1";
     document.getElementById("gbV4SaveDraft").disabled=
-      busy||!loaded||!evidenceReady||published||reopened;
+      busy||!loaded||!evidenceReady||published||reopened||legacyScalar;
     document.getElementById("gbV4Publish").disabled=
-      busy||!loaded||published||reopened||currentGrade?.status!=="draft";
+      busy||!loaded||published||reopened||currentGrade?.status!=="draft"||legacyScalar;
     document.getElementById("gbV4RequestRevision").disabled=
       busy||!loaded||published||reopened;
-    const legacyScalar=published&&currentGrade?.gradeSchema==="legacy_scalar_v1";
     document.getElementById("gbV4Correct").disabled=busy||!loaded||!published||legacyScalar;
     const convert=document.getElementById("gbV4ConvertLegacy");
-    convert.hidden=!legacyScalar;convert.disabled=busy||!loaded||!legacyScalar;
-    document.getElementById("gbV4LegacyGradeNotice").hidden=!legacyScalar;
-    document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published);
+    convert.disabled=busy||!loaded||!legacyScalar;
+    document.getElementById("gbV4LegacyGradePanel").hidden=!legacyScalar;
+    document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published||legacyScalar);
     document.getElementById("gbV4Refresh").disabled=busy;
   }
   function setBusy(value,message=""){
@@ -257,6 +257,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4File").replaceChildren();
     document.getElementById("gbV4Rubric").replaceChildren();
     document.getElementById("gbV4CorrectionReason").value="";
+    document.getElementById("gbV4LegacyReason").value="";
+    document.getElementById("gbV4LegacyGradePanel").hidden=true;
     document.getElementById("gbV4CorrectionPanel").classList.add("hidden");
     document.getElementById("gbV4StudioEvidence").classList.toggle("hidden",currentTask.submissionSource!=="studio");
     document.getElementById("gbV4GithubEvidence").classList.toggle("hidden",currentTask.submissionSource!=="github");
@@ -375,9 +377,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     }finally{setBusy(false);}
   })());
   document.getElementById("gbV4ConvertLegacy").addEventListener("click",()=>void (async()=>{
-    if(busy||!currentTask||!currentRow||currentGrade?.status!=="published"||
+    if(busy||!currentTask||!currentRow||
+       !["draft","published"].includes(currentGrade?.status)||
        currentGrade?.gradeSchema!=="legacy_scalar_v1")return;
-    const reason=document.getElementById("gbV4CorrectionReason").value.trim();
+    const reason=document.getElementById("gbV4LegacyReason").value.trim();
     if(reason.length<12){
       document.getElementById("gbV4ReviewStatus").textContent=
         "Explain how you reconstructed the historical rubric breakdown in at least 12 characters.";return;
@@ -396,12 +399,12 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
        Math.abs(total-Number(currentGrade.total))>0.000001){
       document.getElementById("gbV4ReviewStatus").textContent=
         "The reconstructed rubric must total exactly "+currentGrade.awarded+" / "+currentGrade.total+
-        ". Convert the historical breakdown first; score changes belong in a separate correction.";return;
+        ". Reconstruction cannot change the historical score.";return;
     }
-    if(!confirm("Reconstruct the missing historical rubric breakdown while preserving the exact published score?"))return;
+    if(!confirm("Reconstruct the missing historical rubric breakdown while preserving the exact saved score?"))return;
     try{
       setBusy(true,"Verifying frozen evidence and reconstructing the historical rubric breakdown…");
-      const result=await scoped(gradeApi,"convert_legacy_published",{
+      const result=await scoped(gradeApi,"convert_legacy_scalar",{
         taskId:currentTask.taskId,studentUid:currentRow.studentUid,
         expectedRevision:currentGrade.revision,criteria,reason
       });
@@ -409,7 +412,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         taskId:currentTask.taskId,studentUid:currentRow.studentUid
       });
       currentGrade=refreshed.grade;renderRubric(currentGrade);refreshReviewControls();
-      document.getElementById("gbV4CorrectionReason").value="";
+      document.getElementById("gbV4LegacyReason").value="";
       document.getElementById("gbV4ReviewStatus").textContent=
         "Historical rubric breakdown reconstructed at "+result.awarded+" / "+result.total+
         ". The original imported revision remains in audit history.";
