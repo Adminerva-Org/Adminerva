@@ -38,7 +38,7 @@ Do not repeat the mixed-schools question. Retain source document identifiers, ex
 
 **Safety update:** The school-aware GitHub evidence adapter is now implemented with frozen commit selections, teacher verification/approval and school-admin attribution reclaim handling. A scorable rubric is mandatory at deployment. Studio/GitHub revisions requested after the original deadline require explicit reviewed extension handling; academic publication still fails closed against stale evidence.
 
-**Remaining:** finish migration of legacy 3.0 lesson/presentation/practice/admin surfaces and historical V2/V3 records, complete MCS ledger/reconciliation and cutover tooling, then retire compatibility paths. The existing Studio already has a progressive V4 bridge and the dedicated V4 Gradebook/GitHub evidence/reclaim paths are present, but no production Firestore copy or role grant has been executed. Do not present the new callables as deployed features.
+**Remaining:** finish migration/cutover of the remaining legacy 3.0 analytics/admin surfaces and historical V2/V3 records not already covered by canonical planners, complete MCS ledger/reconciliation/cutover execution, then retire compatibility paths. The existing Studio already has a progressive V4 bridge and the dedicated V4 Gradebook/GitHub evidence/reclaim paths are present, but no production Firestore copy or role grant has been executed. Do not present the new callables as deployed features.
 
 ## Role, navigation and People & Access integration — October 31, 2026
 
@@ -114,6 +114,17 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 - Legacy public-leaderboard consent is intentionally reset: migrated learners begin opted out of the new school leaderboard with a deterministic pseudonymous alias. The old alias/opt-in is provenance only.
 - `mcs-canonical-practice-approval-template.js` and `mcs-canonical-practice-apply.js` provide explicit per-student approve/exclude review and resumable create-only batches. A migration marker becomes complete only after every expected target reconciles.
 - Previous-season score state, if still present in the legacy head, is retained under a school-scoped historical archive. Ephemeral attempts, browser/session locks, security events and derived legacy rankings remain in the quarantined mirror instead of being promoted as current authorization state.
+
+## Canonical MCS Practice migration and analytics — October 31, 2026
+
+- `functions/school-practice-season-service.js` is the verified-school Practice runtime. Student identity is resolved through canonical membership → linked student person → active school enrollment; Practice sessions and scores are school-scoped.
+- `functions/school-practice-analytics.js` + `school-practice-analytics.html` provide teacher/school-admin current-season Practice analytics without reading global `students`, `practice_profiles`, `practice_scores` or `practice_rankings`. Teachers see only sections backed by their current active staff assignments; school administrators see active sections for the selected school.
+- The shared navigation now gives verified teachers a dedicated Practice Progress workspace, and school administrators can open the same school-scoped view. V4-only teachers do not need to enter the legacy mixed Teacher Analytics page.
+- `mcs-canonical-practice-plan.js` → approval template → resumable apply engine preserves durable verified course progress, current-season score/progress/awards/completion state, rebuilds class ranking rows from approved canonical enrollment sections, and archives an older season head separately when present.
+- Legacy public-leaderboard consent is deliberately reset. A migrated student starts opted out with a deterministic school-scoped alias/public ID; the previous alias/opt-in is retained only as migration provenance.
+- Browser sessions, active attempts, attempt responses, rate-limit/security events and derived legacy ranking rows are not promoted into live V4 runtime state. During a partial Practice migration, the school runtime fails closed for that student until their migration marker reconciles.
+- Practice migration planning now fails closed on mirror read failures and validates source owner UID/document runtime keys instead of treating malformed/misbound history as valid progress.
+- Focused regression coverage validates deterministic school ranking IDs, score/award/progress reconciliation, consent reset, historical-season archiving and verified-progress ownership.
 
 ## Delivery and remaining work
 
