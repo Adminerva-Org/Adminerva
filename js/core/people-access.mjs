@@ -179,7 +179,8 @@ get("pa-suspension-form").addEventListener("submit",event=>{
   const form=event.currentTarget;
   const reason=String(new FormData(form).get("reason")||"").trim();
   if(!confirm("Suspend this account for the current school? Existing grades and evidence will be preserved."))return;
-  void submitForm(form,"suspend_access",{targetUid:suspendUid,reason}).then(()=>{
+  void submitForm(form,"suspend_access",{targetUid:suspendUid,reason}).then(result=>{
+    if(!result)return;
     get("pa-suspension-dialog").close();suspendUid=null;
     void loadMemberships().catch(error=>say(error.message||"Refresh membership access status."));
   });
@@ -215,12 +216,15 @@ async function loadPeople(append) {
 }
 get("pa-more").addEventListener("click",()=>void loadPeople(true));
 async function submitForm(form,action,details) {
+  if(pendingWrite)return null;
   const button=form.querySelector('button[type="submit"]');
   pendingWrite=true;button.disabled=true;say("Saving within your verified school…");
   try {
     const result=await perform(action,details);
     form.reset();
-    say(action==="invite"?"Pending invitation recorded. Access has not been granted.":"Person created. No account or enrollment was created.");
+    say(action==="invite"?"Pending invitation recorded. Access has not been granted.":
+      action==="suspend_access"?"School access suspended. Historical academic records were preserved.":
+      "Person created. No account or enrollment was created.");
     if(action==="invite"&&result.invitationId){
       const host=get("pa-invitation-result");
       host.replaceChildren();
@@ -238,7 +242,7 @@ async function submitForm(form,action,details) {
     if(action==="create_person")await Promise.all([loadPeople(false),loadOverview(),loadAcademics()]);
     else await loadOverview();
     return result;
-  }catch(error){say(error.message||"This change was not saved.");}
+  }catch(error){say(error.message||"This change was not saved.");return null;}
   finally{pendingWrite=false;button.disabled=false;}
 }
 get("pa-add-person").addEventListener("submit",event=>{
