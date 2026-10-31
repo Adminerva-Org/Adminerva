@@ -227,7 +227,7 @@ service cloud.firestore {
     function mayReadStudentAssessment(data) {
       let path=/databases/$(database)/documents/student_access/$(request.auth.uid);
       let sections=exists(path)?get(path).data.get("sections",[]):[];
-      return signedIn() && !isInstructor() && exists(path) &&
+      return legacyMcsAllowed() && signedIn() && !isInstructor() && exists(path) &&
         (data.get("sectionIds",[]).hasAny(sections) || data.get("targetSections",[]).hasAny(sections));
     }
 
@@ -279,13 +279,13 @@ service cloud.firestore {
           data.diff(resource.data).affectedKeys().hasOnly(["status","revision","approvedRole","studentId","reason","decidedBy","updatedAt"]) &&
           audit.before == resource.data && audit.after == data && audit.actorUid == request.auth.uid && audit.createdAt == request.time && decisionMatches(data);
       }
-      allow get: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
+      allow get: if legacyMcsAllowed() && signedIn() && (request.auth.uid == ownerUid || isAdmin());
       allow list: if isAdmin();
-      allow create: if signedIn() && request.auth.token.email_verified == true && request.auth.uid == ownerUid &&
+      allow create: if legacyMcsAllowed() && signedIn() && request.auth.token.email_verified == true && request.auth.uid == ownerUid &&
         validRequest(request.resource.data) && request.resource.data.email == request.auth.token.email.lower() &&
         request.resource.data.status == "pending" && request.resource.data.revision == 0 && request.resource.data.createdAt == request.time &&
         request.resource.data.keys().hasOnly(["ownerUid","email","displayName","requestedRole","status","revision","createdAt","updatedAt"]);
-      allow update: if validRequest(request.resource.data) &&
+      allow update: if legacyMcsAllowed() && validRequest(request.resource.data) &&
         ((signedIn() && request.auth.token.email_verified == true && request.auth.uid == ownerUid &&
           resource.data.status == "pending" && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["displayName","requestedRole","updatedAt"])) ||
          (isAdmin() && auditedDecision()));
@@ -442,7 +442,7 @@ service cloud.firestore {
     }
 
     match /teachers/{teacherId} {
-      function ownTeacher() { return signedIn() && request.auth.token.email_verified == true && resource.data.email.lower() == request.auth.token.email.lower(); }
+      function ownTeacher() { return legacyMcsAllowed() && signedIn() && request.auth.token.email_verified == true && resource.data.email.lower() == request.auth.token.email.lower(); }
       function validTeacherConnection() {
         let data=request.resource.data;
         return data.get("githubToken","") is string && data.get("githubToken","").size() <= 1000 &&
@@ -453,7 +453,7 @@ service cloud.firestore {
           data.get("name","") is string && data.get("name","").size() <= 120;
       }
       allow read: if isAdmin() || ownTeacher();
-      allow create: if isAdmin() || (isTeacher() && teacherId == request.auth.uid &&
+      allow create: if legacyMcsAllowed() && (isAdmin() || (isTeacher() && teacherId == request.auth.uid &&
         request.resource.data.keys().hasOnly(["email","name","uid","githubToken","githubUsername","geminiKey","aiModel","engineMode"]) &&
         request.resource.data.email == request.auth.token.email.lower() && request.resource.data.uid == request.auth.uid &&
         validTeacherConnection());
@@ -1382,7 +1382,7 @@ service cloud.firestore {
       allow write: if false;
     }
     match /practice_verified_progress/{uid}/courses/{courseId} {
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow read: if legacyMcsAllowed() && (isAdmin() || (signedIn() && request.auth.uid == uid));
       allow write: if false;
     }
     match /practice_class_progress/{studentId}/courses/{courseId} {
@@ -1390,7 +1390,7 @@ service cloud.firestore {
       allow write: if false;
     }
     match /practice_awards/{uid}/missions/{missionId} {
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow read: if legacyMcsAllowed() && (isAdmin() || (signedIn() && request.auth.uid == uid));
       allow write: if false;
     }
     match /practice_sessions/{uid} { allow read: if isAdmin(); allow write: if false; }
@@ -1408,8 +1408,8 @@ service cloud.firestore {
           data.alias is string && data.alias.matches("^[A-Za-z0-9_ -]{3,24}$") &&
           data.leaderboardOptIn is bool && data.updatedAt == request.time;
       }
-      allow read: if mayTeachSection(resource.data.section) || (signedIn() && request.auth.uid == uid);
-      allow create, update: if signedIn() && request.auth.uid == uid && validPracticeProfile();
+      allow read: if legacyMcsAllowed() && (mayTeachSection(resource.data.section) || (signedIn() && request.auth.uid == uid));
+      allow create, update: if legacyMcsAllowed() && signedIn() && request.auth.uid == uid && validPracticeProfile();
       allow delete: if false;
     }
     match /practice_scores/{studentId} {
@@ -1450,7 +1450,7 @@ service cloud.firestore {
       allow delete: if mayTeachStudent(studentId);
     }
     match /student_practice_progress/{uid}/courses/{courseId} {
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow read: if legacyMcsAllowed() && (isAdmin() || (signedIn() && request.auth.uid == uid));
       allow write: if false;
     }
 
