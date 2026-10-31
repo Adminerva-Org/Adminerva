@@ -34,6 +34,8 @@ exports.tenantSchools=onCall(callOptions,safeCallable(async request=>{
   return {schools,selection:selectVerifiedSchool(schools,request.data?.preferredSchoolId)};
 }));
 exports.teacherBlueprints=onCall(callOptions,safeCallable(teacherBlueprints));
+const {createPeopleDirectoryService}=require("./people-directory.js");
+exports.peopleDirectory=onCall(callOptions,safeCallable(createPeopleDirectoryService({db})));
 exports.schoolAI=onCall(callOptions,safeCallable(schoolAI));
 exports.legacyLessonRecovery=onCall(callOptions,safeCallable(legacyRecovery));
 exports.legacySchoolSetup=onCall(callOptions,safeCallable(legacySetup));
