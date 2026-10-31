@@ -39,6 +39,7 @@
     <div class="pa-tabs" role="tablist" aria-label="Directory sections">
       <button type="button" data-tab="overview" aria-selected="true" role="tab">Overview</button>
       <button type="button" data-tab="people" aria-selected="false" role="tab">People</button>
+      <button type="button" data-tab="import" aria-selected="false" role="tab">Import</button>
       <button type="button" data-tab="invites" aria-selected="false" role="tab">Access invitations</button>
       <button type="button" data-tab="classes" aria-selected="false" role="tab">Classes &amp; Assignments</button>
       <button type="button" data-tab="access" aria-selected="false" role="tab">School Access</button>
@@ -86,6 +87,27 @@
           </div>
         </form>
       </dialog>
+    </section>
+    <section id="pa-import" role="tabpanel" hidden>
+      <div class="pa-layout">
+        <section class="pa-card">
+          <h2 style="font-size:1.2rem;font-weight:750">Preview roster CSV</h2>
+          <p class="pa-muted">Import creates school person records only. It does not create Firebase accounts, school memberships, enrollments, teaching assignments, grades, or invitations.</p>
+          <p class="pa-muted">Accepted columns: <code>displayName</code> or <code>firstName,lastName</code>; optional <code>kind</code>, <code>email</code>, <code>externalId</code>, and <code>section</code>. Each row needs an email or externalId for idempotent matching. <code>kind</code> defaults to <code>student</code>.</p>
+          <p><a id="pa-import-template" href="#" class="pa-muted" style="color:#1d4ed8;text-decoration:underline">Download CSV template</a></p>
+          <label>Choose CSV<input id="pa-import-file" type="file" accept=".csv,text/csv" class="pa-field"></label>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button id="pa-import-preview" type="button" class="pa-action" disabled>Preview import</button>
+            <button id="pa-import-commit" type="button" class="pa-action" disabled style="background:#166534">Commit valid preview</button>
+          </div>
+          <p id="pa-import-status" class="pa-muted" role="status" aria-live="polite">Choose a CSV with up to 200 people.</p>
+        </section>
+        <section class="pa-card">
+          <h2 style="font-size:1.2rem;font-weight:750">Preview results</h2>
+          <div id="pa-import-summary" class="pa-muted">No file previewed.</div>
+          <div id="pa-import-results" role="list" aria-live="polite"></div>
+        </section>
+      </div>
     </section>
     <section id="pa-invites" role="tabpanel" hidden>
       <form id="pa-create-invite" class="pa-card" style="max-width:600px">
