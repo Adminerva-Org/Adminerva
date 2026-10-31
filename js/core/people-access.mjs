@@ -73,6 +73,20 @@ async function submitForm(form,action,details) {
     const result=await perform(action,details);
     form.reset();
     say(action==="invite"?"Pending invitation recorded. Access has not been granted.":"Person created. No account or enrollment was created.");
+    if(action==="invite"&&result.invitationId){
+      const host=get("pa-invitation-result");
+      host.replaceChildren();
+      const title=document.createElement("p");
+      title.textContent="Invitation recorded. Give this link only to the intended account holder:";
+      const link=document.createElement("a");
+      const url=new URL("join-school.html",location.href);
+      url.searchParams.set("schoolId",picker.scope.current.schoolId);
+      url.searchParams.set("invitationId",result.invitationId);
+      link.href=url.href;link.textContent=url.href;link.style.cssText="overflow-wrap:anywhere;color:#1d4ed8;text-decoration:underline";
+      const hint=document.createElement("p");hint.className="pa-muted";
+      hint.textContent="The invited person's verified email must match. This link is not a public school signup.";
+      host.append(title,link,hint);
+    }
     if(action==="create_person")await Promise.all([loadPeople(false),loadOverview()]);
     else await loadOverview();
     return result;
