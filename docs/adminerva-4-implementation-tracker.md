@@ -3,7 +3,7 @@
 **Updated:** 2026-10-31  
 **Development:** draft PR #113, feature branch `feat/adminerva-4-verified-tenant-foundation`  
 **Architecture:** draft PR #103, issues #100 and #102–#112.  
-**Production:** Adminerva 3.0.0 continues to use legacy paths. **No live MCS records migrated, no deployment made.**
+**Production:** Adminerva 3.0.0 continues to use legacy paths. **Owner confirmed all legacy data are MCS pilot records; no live records migrated, no deployment made.**
 
 ## Pilot workspaces now in this branch
 
@@ -13,6 +13,28 @@
 - `teacher-assessment-library.html` + `js/repo-review/teacher-assessment-library.mjs`: owned/shared/school-wide blueprint tabs, private creation, owner editing/archive, preview, active same-school teacher picker, audited sharing, recipient-independent copies. These are *blueprints*, not deployed student assessment or Gradebook records.
 
 All four are **opt-in pilot pages**, intentionally not substituted for the existing 3.0 navigation, assessment, directory or grading pages. The pages will not function until compatible Firebase callables, owner grants, active school membership and the separate backend deployment are in place. The new V4 school paths remain unavailable to direct browser Firestore reads/writes by design.
+
+## Owner confirmation recorded — October 31, 2026
+
+The product owner confirms that **all existing Adminerva data currently belong to the Manila Cathedral School pilot**, and **no other school's data have been mixed into the legacy collections**. Therefore the controlled migration destination for existing MCS academic records is `schools/mcs-manila/...` by default. This is an origin classification, **not** blanket live account authorization, legal-policy attestation, or permission to execute a production copy.
+
+Do not repeat the mixed-schools question. Retain source document identifiers, exact original evidence versions, saved code projects, grade snapshots/publication states, teacher original authorship and associated subcollection history. A conflicting explicit `schoolId`, unsupported source shape, unknown root or hash mismatch is still flagged instead of overwritten.
+
+## Additional 4.0 backend capabilities implemented (not deployed)
+
+- `functions/mcs-migration-ledger.js`: canonical document digests, legacy-root classification, MCS target path mapping and collision/explicit-school-conflict decisions.
+- `functions/mcs-migration-dryrun.js`: read-only, restricted-file inventory of nested Firestore data including evidence/grade revision paths, existing destination comparison and incomplete-inventory blockers.
+- `functions/mcs-identity-candidates.js`: read-only verified UID candidate reconciliation for legacy MCS student and staff rows; preserves multiple historical roster rows and never automatically grants roles or rewrites grades.
+- `functions/school-academics.js`: school-controlled academic year/term/subject/section catalog, course offerings, separate student enrollments and teacher-course grants; class roster reads constrained by verified assignments. People & Access pilot has corresponding responsive controls.
+- `functions/people-directory.js`: active school membership listing and audited non-destructive suspension. A school admin cannot revoke their own or a peer's school-admin grant through this action.
+- `functions/school-assessments.js`: teacher-owned blueprint deployment to an assigned offering, frozen rubric and instructions, explicit server window and submission source, idempotent request key; authorized student assignment discovery via linked person and active enrollment.
+- `functions/school-studio-projects.js`: bounded school project text-file save and owner-only revision checks.
+- `functions/school-studio-submissions.js`: immutable project submission snapshots from saved school projects, owner/student/course/deadline verification, idempotent resubmission receipts, teacher-only frozen-code inspection and formal revision request.
+- `functions/school-gradebook.js`: rubric breakdown including awarded vs pending points, teacher-private draft versions, exact current Studio submission hash/revision verification, audited publication and student-only published grade reads.
+- `teacher-assessment-library.html`: rubric editor, verified teacher recipient chooser, deployed task tab, assigned-course deployment sheet and retry-safe request key.
+- Focused mapping and tenant-selection checks, without claiming full V4 integration acceptance.
+
+**Remaining:** the existing 3.0 Studio IDE must be connected to the new project/submission APIs; the existing Review & Grade and Gradebook interfaces must use the V4 backend; V2 GitHub evidence and attribution reclaim need a tenant-preserving migration; nested production ledger must be generated/reconciled; no Firestore copy or role grant has been executed. Do not present the new callables as deployed features.
 
 ## Delivery and remaining work
 
@@ -47,7 +69,7 @@ All four are **opt-in pilot pages**, intentionally not substituted for the exist
 
 ### Owner decisions required before **real pilot cutover**, not before engineering
 
-1. Confirm legal/institutional authorization to use the Manila Cathedral School identity and live student/staff/test records; identify which historical records are truly MCS and which are ambiguous or external.
+1. **Answered in part:** all current records belong to the MCS pilot, with no other school mixed in (owner confirmation October 31, 2026). Institutional/data processing authority and consent policies still need documentation before a live cutover.
 2. Identify and verify the **first MCS School Administrator UID**. Do not grant any role by school email domain or via the legacy bootstrap email.
 3. Confirm academic year/term structure, school privacy/data steward/retention and backups, and external AI/repository integration permissions.
 4. Decide before onboarding a second actual school if logical Firestore namespace separation is sufficient or physical databases/projects are required.
