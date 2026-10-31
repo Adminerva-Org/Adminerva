@@ -76,14 +76,21 @@ function normalize(value,visited=new Set()){
 function canonicalDigest(value) {
  return createHash("sha256").update(JSON.stringify(normalize(value))).digest("hex");
 }
+function legacyMirrorPath(sourcePath,schoolId="mcs-manila"){
+ const segments=sourcePath.split("/"),root=segments[0],rest=segments.slice(1);
+ // V3 schema is intentionally quarantined from canonical V4 collections:
+ // schools/{school}/legacy_roots/{legacyRoot}/documents/{legacyDoc}/...
+ return ["schools",schoolId,"legacy_roots",root,"documents",...rest].join("/");
+}
 function mapPath(sourcePath,schoolId="mcs-manila"){
  if(typeof sourcePath!=="string"||sourcePath.startsWith("/")||sourcePath.endsWith("/"))
   throw Error("A valid Firestore document path is required.");
  const segments=sourcePath.split("/");
  if(segments.length%2!==0||segments.some(s=>!s))throw Error("Invalid document path.");
  const kind=classification(segments[0]);
- return {sourcePath,classification:kind,
-  targetPath:kind==="school_candidate"?"schools/"+schoolId+"/"+sourcePath:null};
+ return {sourcePath,classification:kind,migrationMode:kind==="school_candidate"?"legacy_mirror":"manual_review",
+  targetPath:kind==="school_candidate"?legacyMirrorPath(sourcePath,schoolId):null,
+  canonicalV4TargetPath:null};
 }
 function candidateEntry({sourcePath,data,updateTime,schoolId="mcs-manila",destination=null}){
  const mapping=mapPath(sourcePath,schoolId);
@@ -96,10 +103,10 @@ function candidateEntry({sourcePath,data,updateTime,schoolId="mcs-manila",destin
  let decision="manual_review";
  if(conflictingSchool)decision="school_conflict";
  else if(mapping.classification==="school_candidate"&&destination?.exists)
-  decision=destinationDigest===sourceDigest?"identical_destination":"destination_conflict";
- else if(mapping.classification==="school_candidate")decision="eligible_for_approved_copy";
+  decision=destinationDigest===sourceDigest?"identical_legacy_mirror":"legacy_mirror_conflict";
+ else if(mapping.classification==="school_candidate")decision="eligible_for_approved_mirror";
  return {...mapping,decision,sourceDigest,destinationDigest,
   sourceUpdateTime:updateTime||null,hasOwnerAttribution:Boolean(owner),
   schoolIdConflict:conflictingSchool,destinationExists:Boolean(destination?.exists)};
 }
-module.exports={SCHOOL_ROOTS,IDENTITY_ROOTS,PLATFORM_ROOTS,classification,normalize,canonicalDigest,mapPath,candidateEntry};
+module.exports={SCHOOL_ROOTS,IDENTITY_ROOTS,PLATFORM_ROOTS,classification,normalize,canonicalDigest,legacyMirrorPath,mapPath,candidateEntry};
