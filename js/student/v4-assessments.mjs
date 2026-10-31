@@ -1,4 +1,5 @@
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
+import {GithubAuthProvider,linkWithPopup,reauthenticateWithPopup} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
 import {createGithubEvidenceClient,parseGithubRepository} from "../repo-review/services/github-evidence-client.mjs?v=1.3.0";
@@ -24,7 +25,7 @@ if(panel&&list&&status&&schoolHost){
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
   const reclaimsApi=httpsCallable(functions,"schoolReclaims");
   let renderGeneration=0,picker=null,githubTask=null,githubTaskStatus=null;
-  let githubCommits=[],githubSelected=new Set(),githubCheckpoint="",githubBusy=false,reclaimTarget=null;
+  let githubCommits=[],githubSelected=new Set(),githubCheckpoint="",githubBusy=false,reclaimTarget=null,githubSessionToken="";
   let githubClaims=new Map();
   async function scoped(scope,api,action,details={}){
     const lease=scope.lease();
@@ -81,7 +82,7 @@ if(panel&&list&&status&&schoolHost){
       if(!tasks.length){
         status.textContent="No verified school assignments are currently deployed to your active enrollments.";
         list.append(node("div","rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600",
-          "Your legacy pilot assignments remain available below during migration."));
+          "No other active verified-school tasks are available in this school."));
         return;
       }
       status.textContent=tasks.length+" verified school assignment"+(tasks.length===1?"":"s")+" loaded.";
@@ -153,7 +154,7 @@ if(panel&&list&&status&&schoolHost){
       if(generation!==renderGeneration)return;
       status.textContent="Verified school assignments are temporarily unavailable: "+(error?.message||"retry later");
       list.append(node("p","text-xs text-slate-500",
-        "Your existing pilot assignment list below remains unchanged."));
+        "No school assignment data was changed. Retry when the verified-school service is available."));
     }
   }
   const ghDialog=document.getElementById("v4GithubEvidenceDialog");
@@ -280,7 +281,9 @@ if(panel&&list&&status&&schoolHost){
     ghStatus.textContent="Loading pinned GitHub commit history…";
     try{
       const preferences=auth.currentUser?activateConnectionOwner(auth.currentUser.uid):{};
-      const client=createGithubEvidenceClient({token:preferences.githubToken||null,maxPages:5,retryCount:1});
+      const client=createGithubEvidenceClient({
+        token:githubSessionToken||preferences.githubToken||null,maxPages:5,retryCount:1
+      });
       const head=await client.getBranchHead(parsed.fullName);
       const ref=githubTaskStatus?.checkpointSha||head.sha;
       const history=await client.listCommits({repository:parsed.fullName,ref});
@@ -336,6 +339,27 @@ if(panel&&list&&status&&schoolHost){
   })());
   document.getElementById("v4GithubLoad").addEventListener("click",()=>
     void loadGithubHistory().catch(()=>{}));
+  const authorizeButton=document.getElementById("v4GithubAuthorize");
+  authorizeButton?.addEventListener("click",()=>void (async()=>{
+    if(githubBusy)return;
+    const user=auth.currentUser;if(!user)return;
+    const provider=new GithubAuthProvider();provider.addScope("repo");provider.addScope("read:user");
+    githubBusy=true;authorizeButton.disabled=true;ghStatus.textContent="Authorizing GitHub for this browser session…";
+    try{
+      const linked=user.providerData.some(item=>item.providerId==="github.com");
+      const result=linked?await reauthenticateWithPopup(user,provider):await linkWithPopup(user,provider);
+      if(auth.currentUser?.uid!==user.uid)throw new Error("Adminerva account changed during GitHub authorization.");
+      const credential=GithubAuthProvider.credentialFromResult(result);
+      if(!credential?.accessToken)throw new Error("GitHub did not return a usable session credential.");
+      githubSessionToken=credential.accessToken;
+      ghStatus.textContent="GitHub authorized for this page session only. The OAuth token was not written to school Firestore.";
+      if(ghRepository.value.trim())await loadGithubHistory();
+    }catch(error){
+      ghStatus.textContent=error?.code==="auth/credential-already-in-use"?
+        "This GitHub identity is linked to another Adminerva sign-in. No school data changed.":
+        error?.message||"GitHub authorization did not finish.";
+    }finally{githubBusy=false;authorizeButton.disabled=false;renderGithubCommits();}
+  })());
   document.getElementById("v4GithubEvidenceClose").addEventListener("click",()=>ghDialog.close());
   ghDialog.addEventListener("cancel",event=>{if(githubBusy)event.preventDefault();});
   ghSubmit.addEventListener("click",()=>void (async()=>{
