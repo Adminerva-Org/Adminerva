@@ -19,7 +19,7 @@ import {isAndroidUiAssessment} from "./services/android-evidence.mjs?v=1.3.0";
 import {evidenceRevision,gradeMatchesEvidence,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.3.0";
 import {verifyGradePublication} from "./services/evidence-transaction.mjs?v=1.3.0";
 import {createReviewRequests} from "./services/review-requests.mjs?v=1.3.0";
-import {mountReviewPanels} from "./review-panels.mjs?v=1.4.10";
+import {mountReviewPanels} from "./review-panels.mjs?v=1.4.11";
 
 const el = id => document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
@@ -499,6 +499,8 @@ function applyEvidenceState(record,{initial=false}={}){
   el("manualReviewExternal").disabled=protectedGrade||!verified;el("manualReviewExternal").title=blocker;
   el("manualReviewAIGenerate").title=blocker;if(!state.aiBusy)aiStatus((active.previous?.aiAssistance?"Saved feedback includes automated assistance reviewed by a teacher. ":"")+blocker,!verified);
   el("manualReviewVerifyContributions").classList.toggle("hidden",!approved||verified||protectedGrade);
+  const mayAttribute=Boolean(record)&&["submitted","needs_review","approved"].includes(record.status)&&!protectedGrade;
+  el("manualReviewAddUnmatchedCommit").classList.toggle("hidden",!mayAttribute);
   el("manualReviewSave").disabled=protectedGrade||!approved;
   for(const id of ["manualReviewScore","manualReviewFeedback","manualReviewFiles","manualReviewReason","manualReviewConfirm"])el(id).disabled=protectedGrade||!approved;
   el("manualReviewPublish").disabled=protectedGrade||!approved||!gradeMatchesEvidence(active.previous,record)||state.dirty;
@@ -528,6 +530,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
   el("manualReviewPublish").classList.add("hidden");
   el("manualReviewAIGenerate").disabled=true;
   el("manualReviewExternal").disabled=true;
+  el("manualReviewAddUnmatchedCommit").classList.add("hidden");
   el("manualReviewAIGenerate").textContent="Evaluate";
   el("manualReviewSave").textContent="Save unpublished grade";
   el("integratedEvidence").classList.add("hidden");
@@ -834,6 +837,14 @@ function init() {
   el("manualReviewVerifyContributions").addEventListener("click",()=>{
     el("integratedEvidenceDetails").open=true;
     document.getElementById("evidenceEditVerification")?.click();
+  });
+  el("manualReviewAddUnmatchedCommit").addEventListener("click",async()=>{
+    el("integratedEvidenceDetails").open=true;
+    try{
+      await state.panels?.ready;
+      if(!state.panels?.startAttributionOverride)throw Error("Evidence attribution controls are unavailable. Reload this review.");
+      await state.panels.startAttributionOverride();
+    }catch(error){message("Could not open commit attribution: "+error.message,true);}
   });
   el("manualReviewUseScore").addEventListener("click",()=>applySuggestion("score"));
   el("manualReviewUseFeedback").addEventListener("click",()=>applySuggestion("feedback"));
