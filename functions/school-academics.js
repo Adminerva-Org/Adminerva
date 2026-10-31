@@ -41,6 +41,52 @@ function createSchoolAcademicsService({db}) {
   }
   const audit=(action,extra={})=>({schoolId:ctx.schoolId,actorUid:uid,action,
     ...extra,createdAt:FieldValue.serverTimestamp()});
+  if(input.action==="planning_options"){
+   if(!admin&&!teacher)deny("permission-denied","Teaching access is required.");
+   let allowed=null;
+   if(!admin){
+    const grants=await db.collection("schools/"+ctx.schoolId+"/staff_assignments")
+      .where("teacherUid","==",uid).limit(101).get();
+    if(grants.size===101)deny("resource-exhausted","Teaching assignments require pagination before planning options can load.");
+    allowed=new Set(grants.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active")
+      .map(doc=>doc.data().offeringId));
+   }
+   const offerings=await db.collection("schools/"+ctx.schoolId+"/course_offerings").limit(201).get();
+   if(offerings.size===201)deny("resource-exhausted","Course offerings require pagination before planning options can load.");
+   const active=offerings.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"&&
+     (admin||allowed.has(doc.id)));
+   const sectionIds=[...new Set(active.map(doc=>doc.data().sectionId).filter(Boolean))],
+     subjectIds=[...new Set(active.map(doc=>doc.data().subjectId).filter(Boolean))],
+     yearIds=[...new Set(active.map(doc=>doc.data().yearId).filter(Boolean))],
+     termIds=[...new Set(active.map(doc=>doc.data().termId).filter(Boolean))];
+   if(sectionIds.length+subjectIds.length+yearIds.length+termIds.length>500)
+    deny("resource-exhausted","Planning option references exceed the bounded pilot review limit.");
+   const [sections,subjects,years,terms]=await Promise.all([
+    Promise.all(sectionIds.map(id=>schoolRoot.doc("sections/"+id).get())),
+    Promise.all(subjectIds.map(id=>schoolRoot.doc("subjects/"+id).get())),
+    Promise.all(yearIds.map(id=>schoolRoot.doc("academic_years/"+id).get())),
+    Promise.all(termIds.map(id=>schoolRoot.doc("terms/"+id).get()))
+   ]);
+   const named=docs=>new Map(docs.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId&&
+      doc.data().status==="active"&&typeof doc.data().name==="string"&&doc.data().name.trim())
+     .map(doc=>[doc.id,doc.data().name.trim().slice(0,140)]));
+   const sectionNames=named(sections),subjectNames=named(subjects),yearNames=named(years),termNames=named(terms);
+   return {
+    schoolId:ctx.schoolId,
+    sections:[...sectionNames.values()].sort((a,b)=>a.localeCompare(b)),
+    subjects:[...subjectNames.values()].sort((a,b)=>a.localeCompare(b)),
+    schoolYears:[...yearNames.values()].sort((a,b)=>a.localeCompare(b)),
+    terms:[...termNames.values()].sort((a,b)=>a.localeCompare(b)),
+    programs:[],
+    offerings:active.map(doc=>({
+      offeringId:doc.id,
+      sectionId:doc.data().sectionId,sectionName:sectionNames.get(doc.data().sectionId)||null,
+      subjectId:doc.data().subjectId,subjectName:subjectNames.get(doc.data().subjectId)||null,
+      yearId:doc.data().yearId,yearName:yearNames.get(doc.data().yearId)||null,
+      termId:doc.data().termId,termName:termNames.get(doc.data().termId)||null
+    })).filter(item=>item.sectionName&&item.subjectName)
+   };
+  }
   if(input.action==="list_teachers"){
    requireAdmin();
    const snap=await db.collection("schools/"+ctx.schoolId+"/memberships")
