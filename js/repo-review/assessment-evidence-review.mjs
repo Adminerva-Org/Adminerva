@@ -45,7 +45,7 @@ function updateDiscoveryPaging(){
 function configureDiscovery(mode="create"){
   discovery.mode=mode;
   const augment=mode==="augment";
-  if(el("evidenceDiscoveryTitle"))el("evidenceDiscoveryTitle").textContent=augment?"Add unmatched repository commit":"Discover historical GitHub evidence";
+  if(el("evidenceDiscoveryTitle"))el("evidenceDiscoveryTitle").textContent=augment?"Add / attribute repository commit":"Discover historical GitHub evidence";
   if(el("evidenceDiscoveryHelp"))el("evidenceDiscoveryHelp").textContent=augment
     ?"Select only commit(s) you inspected and can attribute to this learner despite a different or unlinked GitHub identity. Existing selected evidence stays locked. Choose a checkpoint containing all selected commits. Added commits still require explicit contribution verification before evaluation."
     :"For assessments already assigned in class: select relevant commits from the linked repository without asking the student to resubmit. This records an instructor-discovered proposal, not a student submission or proof of on-time work.";
