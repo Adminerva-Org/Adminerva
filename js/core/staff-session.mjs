@@ -10,11 +10,11 @@ const unavailableStaffLookups = new Set();
 const tenantPending=new Map();
 const tenantCallable=httpsCallable(getFunctions(app,"asia-southeast1"),"tenantSchools");
 async function resolveTenantMemberships(user){
-  if(!user?.emailVerified)return {schools:[],roles:[],available:false};
+  if(!user?.emailVerified)return {schools:[],roles:[],platformAdmin:false,available:false};
   if(!tenantPending.has(user.uid)){
     const operation=tenantCallable({preferredSchoolId:null}).then(response=>{
       const schools=Array.isArray(response.data?.schools)?response.data.schools:[];
-      return {schools,roles:[...new Set(schools.flatMap(s=>Array.isArray(s.roles)?s.roles:[]))],available:true};
+      return {schools,roles:[...new Set(schools.flatMap(s=>Array.isArray(s.roles)?s.roles:[]))],platformAdmin:response.data?.platformAdmin===true,available:true};
     }).catch(error=>{
       // During the 3.0→4.0 rollout, absence of the new callable must not lock
       // out a valid legacy MCS user. New school-only users still fail closed.
@@ -37,11 +37,12 @@ export function resolveAccountAccess(user) {
       const schoolAdmin=tenant.roles.includes("school_admin");
       const schoolTeacher=tenant.roles.includes("teacher");
       const schoolStudent=tenant.roles.includes("student");
+      const platformAdmin=tenant.platformAdmin===true;
       // V4 school_admin deliberately does NOT become legacy "admin".
       // "admin" remains the old platform-wide administrator presentation role.
       const role=legacyRole|| (schoolTeacher?"teacher":null);
       return {
-        role,legacyRole,schoolAdmin,schoolTeacher,schoolStudent,
+        role,legacyRole,platformAdmin,schoolAdmin,schoolTeacher,schoolStudent,
         v4Schools:tenant.schools,v4MembershipLookupAvailable:tenant.available,
         teachers:teachers.docs,students:activeStudents,
         needsTeacherApproval:!role&&!schoolAdmin&&!schoolStudent&&!teachers.empty,
