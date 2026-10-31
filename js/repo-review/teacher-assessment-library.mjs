@@ -39,7 +39,7 @@ async function performScoped(api,action,details={}){
   return result;
 }
 function parseRubric(text){
-  const lines=String(text||"").split(/\\r?\\n/).map(s=>s.trim()).filter(Boolean);
+  const lines=String(text||"").split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
   if(lines.length>20)throw new Error("Maximum 20 rubric criteria are supported.");
   return lines.map((line,index)=>{
     const position=line.lastIndexOf("|");
@@ -155,7 +155,7 @@ function edit(item){
   form.elements.title.value=item.title;
   form.elements.description.value=item.description||"";
   form.elements.instructions.value=item.instructions||"";
-  form.elements.rubric.value=(item.rubric||[]).map(criterion=>criterion.name+" | "+criterion.points).join("\\n");
+  form.elements.rubric.value=(item.rubric||[]).map(criterion=>criterion.name+" | "+criterion.points).join("\n");
   form.querySelector("h2").textContent="Edit private draft";
   form.querySelector('button[type="submit"]').textContent="Save draft revision";
   form.scrollIntoView({behavior:"smooth",block:"start"});
