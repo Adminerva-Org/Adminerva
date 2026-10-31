@@ -492,12 +492,15 @@ function applyEvidenceState(record,{initial=false}={}){
   state.active=changed?next:Object.assign(active,next);
   const blocker=protectedGrade?"Published grade protected. Unpublish for revision before evaluating or changing verification.":
     !approved?record?.status==="reopened"?"Evidence is reopened. The student can change selections now, then must resubmit for fresh approval.":
+      record?.status==="needs_review"?"Evidence revision "+evidenceRevision(record)+" needs review after contribution changes. Verify the selected commits and approve this revision before evaluating.":
       "Approve the submitted checkpoint in Review before evaluating.":!verified?
       "Individual contributing commits have not been verified. Complete commit verification below, or grade manually.":
       "Approved, independently verified checkpoint "+record.approvedCheckpointSha.slice(0,12)+". Choose Evaluate to generate a private system draft.";
   el("manualReviewAIGenerate").disabled=state.aiBusy||protectedGrade||!verified;el("manualReviewAIGenerate").textContent=state.aiBusy?"Evaluating…":"Evaluate";
   el("manualReviewExternal").disabled=protectedGrade||!verified;el("manualReviewExternal").title=blocker;
   el("manualReviewAIGenerate").title=blocker;if(!state.aiBusy)aiStatus((active.previous?.aiAssistance?"Saved feedback includes automated assistance reviewed by a teacher. ":"")+blocker,!verified);
+  const needsApproval=Boolean(record)&&["submitted","needs_review"].includes(record.status)&&!protectedGrade;
+  el("manualReviewReviewEvidence").classList.toggle("hidden",!needsApproval);
   el("manualReviewVerifyContributions").classList.toggle("hidden",!approved||verified||protectedGrade);
   const mayAttribute=Boolean(record)&&["submitted","needs_review","approved"].includes(record.status)&&!protectedGrade;
   el("manualReviewAddUnmatchedCommit").classList.toggle("hidden",!mayAttribute);
@@ -531,6 +534,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
   el("manualReviewAIGenerate").disabled=true;
   el("manualReviewExternal").disabled=true;
   el("manualReviewAddUnmatchedCommit").classList.add("hidden");
+  el("manualReviewReviewEvidence").classList.add("hidden");
   el("manualReviewAIGenerate").textContent="Evaluate";
   el("manualReviewSave").textContent="Save unpublished grade";
   el("integratedEvidence").classList.add("hidden");
@@ -834,6 +838,14 @@ function init() {
     el("manualReviewForm").scrollIntoView({behavior:"smooth",block:"start"});el("manualReviewScore").focus();
   });
   el("manualReviewPreview").addEventListener("click",()=>{renderFeedbackMarkdown(el("manualReviewFeedbackPreview"),el("manualReviewFeedback").value);});
+  el("manualReviewReviewEvidence").addEventListener("click",async()=>{
+    el("integratedEvidenceDetails").open=true;
+    try{
+      await state.panels?.ready;
+      if(!state.panels?.focusReview)throw Error("Evidence review controls are unavailable. Reload this review.");
+      state.panels.focusReview();
+    }catch(error){message("Could not open evidence approval: "+error.message,true);}
+  });
   el("manualReviewVerifyContributions").addEventListener("click",()=>{
     el("integratedEvidenceDetails").open=true;
     document.getElementById("evidenceEditVerification")?.click();
