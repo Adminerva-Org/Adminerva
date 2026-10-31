@@ -312,7 +312,7 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
   blueprints:approvedAssessments.blueprints};
  const students=approvedStudentMap(foundationPlan,foundationPlanRaw,foundationApproval);
  const access=validateAccessApproval(validateAccessPlan(academicAccessPlan),academicAccessPlanRaw,academicAccessApproval);
- const enrolled=new Set(access.enrollments.filter(row=>row.status==="active").map(row=>row.personId+"|"+row.offeringId));
+ const enrolled=new Set(access.enrollments.map(row=>row.personId+"|"+row.offeringId));
  const [githubRows,studioRows,gradeRows,gradeRevisionRows]=await Promise.all([
   readMirrorRoot(db,"assessment_evidence"),readMirrorRoot(db,"studio_submissions"),
   readMirrorRoot(db,"student_grades"),readMirrorRoot(db,"grade_revisions")
@@ -325,7 +325,7 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
   if(!student){blockers.push({type:"github_student_identity_unmapped",sourcePath:row.path,legacyStudentId});continue;}
   if(!task){blockers.push({type:"github_task_mapping_unresolved",sourcePath:row.path});continue;}
   if(!enrolled.has(student.personId+"|"+task.offeringId)){
-   blockers.push({type:"github_student_not_enrolled",sourcePath:row.path,personId:student.personId,offeringId:task.offeringId});continue;
+   blockers.push({type:"github_student_enrollment_unapproved",sourcePath:row.path,personId:student.personId,offeringId:task.offeringId});continue;
   }
   const revisions=await readMirrorSubcollection(db,"assessment_evidence",row.id,"revisions");
   const candidate=githubCandidate({row,revisions,task,student});
@@ -342,7 +342,7 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
   if(!student){blockers.push({type:"studio_student_identity_unmapped",sourcePath:row.path,legacyStudentId});continue;}
   if(!task){blockers.push({type:"studio_task_mapping_unresolved",sourcePath:row.path});continue;}
   if(!enrolled.has(student.personId+"|"+task.offeringId)){
-   blockers.push({type:"studio_student_not_enrolled",sourcePath:row.path,personId:student.personId,offeringId:task.offeringId});continue;
+   blockers.push({type:"studio_student_enrollment_unapproved",sourcePath:row.path,personId:student.personId,offeringId:task.offeringId});continue;
   }
   const versions=await readMirrorSubcollection(db,"studio_submissions",row.id,"versions");
   const candidate=studioCandidate({row,versions,task,student});
@@ -361,7 +361,7 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
     row.data.gradeSource==="studio_teacher_review"?"studio":"github");
   if(!task){blockers.push({type:"grade_task_mapping_unresolved",sourcePath:row.path});continue;}
   if(!enrolled.has(student.personId+"|"+task.offeringId)){
-   blockers.push({type:"grade_student_not_enrolled",sourcePath:row.path,personId:student.personId,offeringId:task.offeringId});continue;
+   blockers.push({type:"grade_student_enrollment_unapproved",sourcePath:row.path,personId:student.personId,offeringId:task.offeringId});continue;
   }
   const revisions=gradeRevisionRows.filter(item=>item.data.gradeId===row.id);
   const candidate=gradeCandidate({row,task,student,
