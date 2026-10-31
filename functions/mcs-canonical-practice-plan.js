@@ -74,10 +74,25 @@ function canonicalPublicId(uid){
  return "mcspr_"+sha(SCHOOL_ID+"\0"+uid).slice(0,32);
 }
 function normalizeVerifiedProgress(row,student){
- const completed=Array.isArray(row.data?.completed)?
-  [...new Set(row.data.completed.filter(value=>typeof value==="string"&&value).slice(0,1000))]:[];
- const reflections=row.data?.reflections&&typeof row.data.reflections==="object"&&!Array.isArray(row.data.reflections)?
-  row.data.reflections:{};
+ const data=row.data||{},declaredCourse=clean(data.courseId,128);
+ if(data.ownerUid!==student.uid)
+  throw Error("Verified Practice progress owner does not match the reviewed student UID.");
+ if(declaredCourse&&declaredCourse!==row.id)
+  throw Error("Verified Practice progress course ID does not match its document ID.");
+ if(!Array.isArray(data.completed)||data.completed.length>1000||
+    data.completed.some(value=>typeof value!=="string"||!value||value.length>128))
+  throw Error("Verified Practice completed mission IDs are invalid.");
+ const completed=[...new Set(data.completed)];
+ const reflections={};
+ if(data.reflections!==undefined&&
+    (!data.reflections||typeof data.reflections!=="object"||Array.isArray(data.reflections)))
+  throw Error("Verified Practice reflections are invalid.");
+ for(const [mission,value] of Object.entries(data.reflections||{})){
+  if(typeof mission!=="string"||!mission||mission.length>128||
+     typeof value!=="string"||value.length>1000)
+   throw Error("Verified Practice reflection content is outside the migration contract.");
+  reflections[mission]=value;
+ }
  return {
   courseId:row.id,targetPath:"schools/"+SCHOOL_ID+
    "/practice_verified_progress/"+student.uid+"/courses/"+row.id,
@@ -92,19 +107,40 @@ function reconcileCurrentSeason({score,states,awards,progress,currentSeason,stud
  const season=clean(score.data?.season,80);
  if(!season)return {current:null,blockers:[{type:"practice_score_season_missing",sourcePath:score.path}],reviewItems};
  if(season!==currentSeason)return {current:null,blockers,reviewItems,historical:true};
+ if(score.data?.ownerUid!==student.uid)
+  blockers.push({type:"practice_score_owner_mismatch",sourcePath:score.path});
  const scorePoints=number(score.data?.points,NaN),completedCount=Number(score.data?.completedCount);
  if(!Number.isFinite(scorePoints)||scorePoints<0||!Number.isInteger(completedCount)||completedCount<0)
   blockers.push({type:"practice_score_invalid",sourcePath:score.path});
  const currentAwards=awards.filter(row=>clean(row.data?.season,80)===season),
   currentStates=states.filter(row=>clean(row.data?.season,80)===season),
   currentProgress=progress.filter(row=>clean(row.data?.season,80)===season);
- const stateMap=new Map(currentStates.map(row=>[seasonKey(season,row.data?.missionId),row])),
-  progressByCourse=new Map(currentProgress.map(row=>[clean(row.data?.courseId,128),row]));
+ const stateMap=new Map(),progressByCourse=new Map();
+ for(const state of currentStates){
+  const missionId=clean(state.data?.missionId,128),courseId=clean(state.data?.courseId,128),
+   key=seasonKey(season,missionId);
+  if(state.data?.ownerUid!==student.uid||!missionId||!courseId||state.id!==key||
+     stateMap.has(key)){
+   blockers.push({type:"practice_mission_state_identity_or_key_mismatch",sourcePath:state.path});
+   continue;
+  }
+  stateMap.set(key,state);
+ }
+ for(const row of currentProgress){
+  const courseId=clean(row.data?.courseId,128);
+  if(row.data?.ownerUid!==student.uid||!courseId||row.id!==season+"_"+courseId||
+     progressByCourse.has(courseId)){
+   blockers.push({type:"practice_course_progress_identity_or_key_mismatch",sourcePath:row.path});
+   continue;
+  }
+  progressByCourse.set(courseId,row);
+ }
  const awardMissions=new Set(),awardPoints=[];
  for(const award of currentAwards){
   const courseId=clean(award.data?.courseId,128),missionId=clean(award.data?.missionId,128),
    points=number(award.data?.points,NaN),key=seasonKey(season,missionId);
-  if(!courseId||!missionId||!Number.isFinite(points)||points<0||awardMissions.has(key)){
+  if(award.data?.ownerUid!==student.uid||award.id!==key||
+     !courseId||!missionId||!Number.isFinite(points)||points<0||awardMissions.has(key)){
    blockers.push({type:"practice_award_invalid_or_duplicate",sourcePath:award.path});continue;
   }
   awardMissions.add(key);awardPoints.push(points);
@@ -233,11 +269,11 @@ async function buildPracticePlan(db,{foundationPlan,foundationPlanRaw,foundation
  for(const student of students.values()){
   const base="schools/"+SCHOOL_ID+"/legacy_roots/";
   const [verified,score,states,progress,awards]=await Promise.all([
-   listCollection(db,base+"practice_verified_progress/documents/"+student.uid+"/courses").catch(()=>[]),
+   listCollection(db,base+"practice_verified_progress/documents/"+student.uid+"/courses"),
    readDoc(db,base+"practice_season_scores/documents/"+student.uid),
-   listCollection(db,base+"practice_season_scores/documents/"+student.uid+"/mission_state").catch(()=>[]),
-   listCollection(db,base+"practice_season_progress/documents/"+student.uid+"/courses").catch(()=>[]),
-   listCollection(db,base+"practice_season_awards/documents/"+student.uid+"/missions").catch(()=>[])
+   listCollection(db,base+"practice_season_scores/documents/"+student.uid+"/mission_state"),
+   listCollection(db,base+"practice_season_progress/documents/"+student.uid+"/courses"),
+   listCollection(db,base+"practice_season_awards/documents/"+student.uid+"/missions")
   ]);
   const current=reconcileCurrentSeason({score,states,awards,progress,currentSeason,student,
    sections:sections.get(student.personId)||new Set()});
@@ -246,7 +282,14 @@ async function buildPracticePlan(db,{foundationPlan,foundationPlanRaw,foundation
   const historical=historicalSeasonArchive({score,states,awards,progress,student,currentSeason});
   const candidate={
    uid:student.uid,personId:student.personId,
-   verifiedProgress:verified.map(row=>normalizeVerifiedProgress(row,student)),
+   verifiedProgress:verified.map(row=>{
+    try{return normalizeVerifiedProgress(row,student);}
+    catch(error){
+     blockers.push({type:"practice_verified_progress_invalid",uid:student.uid,
+      sourcePath:row.path,message:error.message});
+     return null;
+    }
+   }).filter(Boolean),
    currentSeason:current.current||null,historicalSeason:historical
   };
   if(candidate.verifiedProgress.length||candidate.currentSeason||candidate.historicalSeason)
