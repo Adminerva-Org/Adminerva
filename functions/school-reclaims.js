@@ -8,6 +8,7 @@ const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
+const {writeSchoolNotification}=require("./school-notifications.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
@@ -86,6 +87,16 @@ function createSchoolReclaimService({db}){
       claimId,sha,action:"commit_reclaim_requested",revision:1,createdAt:now});
     result={claimId,status:"pending",revision:1};
    });
+   const admins=await db.collection(prefix+"memberships")
+     .where("roles","array-contains","school_admin").limit(50).get().catch(()=>null);
+   if(admins)await Promise.allSettled(admins.docs.filter(doc=>
+     doc.id!==ctx.uid&&doc.data().schoolId===ctx.schoolId&&doc.data().status==="active")
+     .map(doc=>writeSchoolNotification({
+       db,schoolId:ctx.schoolId,uid:doc.id,id:"reclaim_pending_"+result.claimId+"_"+result.revision,
+       title:"Commit attribution request",
+       body:"A student submitted a commit attribution claim that needs school review.",
+       type:"reclaim",sourceId:result.claimId,target:"reclaim-inbox.html"
+     })));
    return result;
   }
   if(input.action==="withdraw"){
@@ -154,6 +165,15 @@ function createSchoolReclaimService({db}){
       decision,reason,revision,createdAt:now});
     result={claimId,status:decision,revision};
    });
+   const decided=await claims.doc(claimId).get().catch(()=>null);
+   const studentUid=decided?.exists?decided.data().studentUid:null;
+   if(studentUid)await writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:studentUid,
+     id:"reclaim_decision_"+claimId+"_"+result.revision,
+     title:"Commit attribution request decided",
+     body:"Your attribution claim was marked "+result.status+".",
+     type:"reclaim",sourceId:claimId,target:"student-assessments.html"
+   }).catch(()=>{});
    return result;
   }
   if(input.action==="for_evidence"){
