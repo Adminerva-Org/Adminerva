@@ -30,7 +30,6 @@ export function createTenantSchoolPicker({host,status,onBeforeChange=async()=>{}
           const uid=auth.currentUser?.uid;
           const response=await scope.refresh({uid,preferredSchoolId:schoolId});
           if(response?.schoolId!==schoolId)throw new Error("School access changed. Choose an available school.");
-          onReady(scope);
         }
       });
       if(state.context)onReady(scope);
