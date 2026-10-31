@@ -11,6 +11,8 @@
     .pa-layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(250px,1fr);gap:1rem}
     .pa-card{background:white;border:1px solid #cbd5e1;border-radius:14px;padding:1rem;min-width:0}
     .pa-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;margin-bottom:1rem}
+    .pa-academic-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+    .pa-card summary{min-height:44px;display:list-item;align-content:center}
     .pa-count{font-weight:750;font-size:1.65rem;display:block}
     .pa-row{padding:.75rem 0;border-bottom:1px solid #e2e8f0;display:flex;gap:.5rem;justify-content:space-between;align-items:center;flex-wrap:wrap}
     .pa-field{display:block;width:100%;min-height:44px;padding:.65rem .75rem;border:1px solid #94a3b8;border-radius:8px;margin:.3rem 0 1rem;font:inherit}
@@ -22,7 +24,7 @@
     .pa-tabs button{min-height:44px;padding:.55rem .9rem;border:1px solid #cbd5e1;border-radius:8px;background:#fff;white-space:nowrap}
     .pa-tabs button[aria-selected="true"]{color:#fff;background:#155eaa}
     [hidden]{display:none!important}
-    @media(max-width:720px){.pa-layout{grid-template-columns:minmax(0,1fr)}.pa-shell{padding:.75rem}.pa-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:720px){.pa-layout,.pa-academic-grid{grid-template-columns:minmax(0,1fr)}.pa-shell{padding:.75rem}.pa-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
   </style>
 </head>
 <body style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
@@ -38,6 +40,7 @@
       <button type="button" data-tab="overview" aria-selected="true" role="tab">Overview</button>
       <button type="button" data-tab="people" aria-selected="false" role="tab">People</button>
       <button type="button" data-tab="invites" aria-selected="false" role="tab">Access invitations</button>
+      <button type="button" data-tab="classes" aria-selected="false" role="tab">Classes &amp; Assignments</button>
     </div>
     <section id="pa-overview" class="pa-card" role="tabpanel">
       <h2 style="font-size:1.2rem;font-weight:750;margin-bottom:1rem">School overview</h2>
@@ -73,6 +76,59 @@
         <p class="pa-muted">This records a pending request; sending an invitation and granting an active membership require the separate verified approval workflow.</p>
         <div id="pa-invitation-result" role="status" aria-live="polite"></div>
       </form>
+    </section>
+    <section id="pa-classes" role="tabpanel" hidden>
+      <p class="pa-muted">School-specific teaching assignments. Enrolling a person does not alter earlier grades or term history.</p>
+      <div class="pa-academic-grid">
+        <details class="pa-card">
+          <summary style="font-weight:750;cursor:pointer">1. Academic catalog (year, term, subject, section)</summary>
+          <form id="pa-catalog-form" style="padding-top:1rem">
+            <label>Catalog type<select class="pa-field" name="kind" id="pa-catalog-kind">
+              <option value="academic_years">Academic year</option><option value="terms">Term</option>
+              <option value="subjects">Subject</option><option value="sections">Section</option>
+            </select></label>
+            <label>Stable ID<input class="pa-field" name="recordId" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,79}" maxlength="80" placeholder="e.g. 2026-2027" required></label>
+            <label>Display name<input class="pa-field" name="name" maxlength="140" required></label>
+            <label id="pa-term-year" hidden>Term's academic year<select class="pa-field" name="yearId" data-catalog="academic_years"></select></label>
+            <button class="pa-action" type="submit">Create catalog record</button>
+          </form>
+        </details>
+        <details class="pa-card">
+          <summary style="font-weight:750;cursor:pointer">2. Create course offering</summary>
+          <form id="pa-offering-form" style="padding-top:1rem">
+            <label>Academic year<select class="pa-field" name="yearId" data-catalog="academic_years" required></select></label>
+            <label>Term<select class="pa-field" name="termId" data-catalog="terms" required></select></label>
+            <label>Subject<select class="pa-field" name="subjectId" data-catalog="subjects" required></select></label>
+            <label>Section<select class="pa-field" name="sectionId" data-catalog="sections" required></select></label>
+            <button class="pa-action" type="submit">Create class offering</button>
+          </form>
+        </details>
+        <details class="pa-card">
+          <summary style="font-weight:750;cursor:pointer">3. Enroll student in offering</summary>
+          <form id="pa-enrollment-form" style="padding-top:1rem">
+            <label>Student school record<select class="pa-field" name="personId" data-student-person required></select></label>
+            <label>Course offering<select class="pa-field" name="offeringId" data-offering required></select></label>
+            <button class="pa-action" type="submit">Create enrollment</button>
+          </form>
+        </details>
+        <details class="pa-card">
+          <summary style="font-weight:750;cursor:pointer">4. Assign teacher to class</summary>
+          <form id="pa-assignment-form" style="padding-top:1rem">
+            <label>Verified school teacher<select class="pa-field" name="teacherUid" data-school-teacher required></select></label>
+            <label>Course offering<select class="pa-field" name="offeringId" data-offering required></select></label>
+            <button class="pa-action" type="submit">Assign teacher</button>
+            <p class="pa-muted">Class assignment does not grant access to another teacher's private assessments.</p>
+          </form>
+        </details>
+        <section class="pa-card">
+          <h2 style="font-weight:750;font-size:1.1rem">Class roster</h2>
+          <form id="pa-roster-form">
+            <label>Course offering<select class="pa-field" name="offeringId" data-offering required></select></label>
+            <button class="pa-action" type="submit">View class students</button>
+          </form>
+          <div id="pa-class-roster" role="list" aria-live="polite"></div>
+        </section>
+      </div>
     </section>
   </section>
 </main>
