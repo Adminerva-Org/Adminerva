@@ -92,7 +92,8 @@ function createSchoolAssessmentService({db}){
      offeringId,yearId:offering.data().yearId,termId:offering.data().termId,
      subjectId:offering.data().subjectId,sectionId:offering.data().sectionId,
      submissionSource:source,opensAt:start,dueAt:end,
-     requestKey:key,status:"deployed",createdAt:now
+     requestKey:key,status:"deployed",lifecycle:"active",revision:1,
+     createdAt:now,updatedAt:now
     });
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
      action:"assessment_deployed",offeringId,source,createdAt:now});
@@ -119,6 +120,106 @@ function createSchoolAssessmentService({db}){
    }
    return result;
   }
+
+  if(["close","reopen","archive","restore_archive","cancel"].includes(input.action)){
+   if(!ctx.roles.includes("teacher"))
+    deny("permission-denied","Only an authorized teacher may change an assessment lifecycle.");
+   const taskId=checkId(input.taskId,"Assessment task",128),
+    taskRef=tasks.doc(taskId),reason=String(input.reason||"").trim(),
+    expectedRevision=Number(input.expectedRevision);
+   if(reason.length<12||reason.length>1000)
+    deny("invalid-argument","Explain the assessment lifecycle change in 12–1,000 characters.");
+   if(!Number.isInteger(expectedRevision)||expectedRevision<1)
+    deny("invalid-argument","The current assessment revision is required.");
+   let newDueAt=null;
+   if(input.action==="reopen"&&input.newDueAt){
+    newDueAt=timestamp(input.newDueAt,"Reopened deadline");
+    if(newDueAt.toMillis()<=Date.now()||newDueAt.toMillis()>Date.now()+90*86400000)
+     deny("invalid-argument","Choose a reopened deadline within the next 90 days.");
+   }
+   const auditRef=db.collection(prefix+"assessment_audit").doc();
+   let result;
+   await db.runTransaction(async tx=>{
+    const [school,membership,task]=await Promise.all([
+     tx.get(schoolRef),tx.get(membershipRef),tx.get(taskRef)
+    ]);
+    if(!school.exists||school.data().state!=="active"||!membership.exists||
+       membership.data().schoolId!==ctx.schoolId||membership.data().status!=="active"||
+       !Array.isArray(membership.data().roles)||!membership.data().roles.includes("teacher"))
+      deny("permission-denied","Your school teaching access changed.");
+    if(!task.exists||task.data().schoolId!==ctx.schoolId||task.data().ownerUid!==ctx.uid)
+      deny("permission-denied","Only the assessment owner may change this deployment.");
+    const data=task.data(),revision=data.revision||1,lifecycle=data.lifecycle||"active",
+      grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,data.offeringId)),
+      grant=await tx.get(grantRef);
+    if(!grant.exists||grant.data().schoolId!==ctx.schoolId||
+       grant.data().teacherUid!==ctx.uid||grant.data().offeringId!==data.offeringId||
+       grant.data().status!=="active")
+      deny("permission-denied","You must still be assigned to this course offering.");
+    if(revision!==expectedRevision)
+      deny("failed-precondition","This assessment changed. Reload it before saving the lifecycle change.");
+    let next=lifecycle,extra={};
+    if(input.action==="close"){
+      if(lifecycle!=="active")deny("failed-precondition","Only an active assessment can be closed.");
+      next="closed";
+    }else if(input.action==="reopen"){
+      if(lifecycle!=="closed")deny("failed-precondition","Only a closed assessment can be reopened.");
+      if(data.dueAt.toMillis()<=Date.now()&&!newDueAt)
+       deny("failed-precondition","The original deadline passed. Set a new deadline before reopening.");
+      next="active";if(newDueAt)extra.dueAt=newDueAt;
+    }else if(input.action==="archive"){
+      if(!["active","closed"].includes(lifecycle))
+       deny("failed-precondition","Only an active or closed assessment can be archived.");
+      next="archived";extra.preArchiveLifecycle=lifecycle;
+    }else if(input.action==="restore_archive"){
+      if(lifecycle!=="archived")
+       deny("failed-precondition","Only an archived assessment can be restored.");
+      next=["active","closed"].includes(data.preArchiveLifecycle)?data.preArchiveLifecycle:"closed";
+      extra.preArchiveLifecycle=FieldValue.delete();
+    }else if(input.action==="cancel"){
+      if(!["active","closed"].includes(lifecycle))
+       deny("failed-precondition","Only an active or closed assessment can be cancelled.");
+      const [studio,github,grades]=await Promise.all([
+       tx.get(db.collection(prefix+"studio_submissions").where("taskId","==",taskId).limit(1)),
+       tx.get(db.collection(prefix+"github_evidence").where("taskId","==",taskId).limit(1)),
+       tx.get(db.collection(prefix+"student_grades").where("taskId","==",taskId).limit(1))
+      ]);
+      if(!studio.empty||!github.empty||!grades.empty)
+       deny("failed-precondition","This assessment already has submission or grade history. Close or archive it instead of cancelling.");
+      next="cancelled";
+    }
+    const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
+    tx.update(taskRef,{lifecycle:next,revision:nextRevision,updatedAt:now,
+      lastLifecycleReason:reason,lastLifecycleByUid:ctx.uid,...extra});
+    tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
+      action:"assessment_"+input.action,beforeLifecycle:lifecycle,afterLifecycle:next,
+      beforeRevision:revision,afterRevision:nextRevision,reason,
+      ...(newDueAt?{newDueAt}:{}),createdAt:now});
+    result={taskId,lifecycle:next,revision:nextRevision,offeringId:data.offeringId,
+      title:data.title||"Assessment",dueAt:(newDueAt||data.dueAt).toMillis()};
+   });
+   const enrolled=await db.collection(prefix+"enrollments")
+    .where("offeringId","==",result.offeringId).limit(101).get().catch(()=>null);
+   if(enrolled&&enrolled.size<=100&&["close","reopen","cancel"].includes(input.action)){
+    const active=enrolled.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"),
+     people=await Promise.all(active.map(doc=>db.doc(prefix+"people/"+doc.data().personId).get()));
+    const label=input.action==="close"?"Assessment closed":
+      input.action==="reopen"?"Assessment reopened":"Assessment cancelled";
+    await Promise.allSettled(people.map(person=>{
+     const uid=person.exists&&person.data().schoolId===ctx.schoolId&&person.data().status==="active"?
+      person.data().authUid:null;
+     return uid?writeSchoolNotification({
+      db,schoolId:ctx.schoolId,uid,
+      id:"assessment_lifecycle_"+taskId+"_"+result.revision,
+      title:label,body:result.title+" · "+(input.action==="reopen"?
+       "review the updated deadline in Adminerva.":"your teacher updated this task."),
+      type:"assessment",sourceId:taskId,target:"student-assessments.html"
+     }):Promise.resolve();
+    }));
+   }
+   return result;
+  }
+
   if(input.action==="list_teacher"){
    if(!ctx.roles.includes("teacher"))deny("permission-denied","Teacher access is required.");
    const snap=await tasks.where("ownerUid","==",ctx.uid).limit(100).get();
@@ -129,7 +230,8 @@ function createSchoolAssessmentService({db}){
       yearId:doc.data().yearId,termId:doc.data().termId,
       subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,
       opensAt:doc.data().opensAt?.toMillis(),dueAt:doc.data().dueAt?.toMillis(),
-      submissionSource:doc.data().submissionSource,status:doc.data().status}))};
+      submissionSource:doc.data().submissionSource,status:doc.data().status,
+      lifecycle:doc.data().lifecycle||"active",revision:doc.data().revision||1}))};
   }
   if(input.action==="list_student"){
    if(!ctx.roles.includes("student"))deny("permission-denied","Student access is required.");
@@ -156,13 +258,16 @@ function createSchoolAssessmentService({db}){
     if(snap.size===100)deny("resource-exhausted","Too many assigned assessments. A paginated class view is required.");
     for(const doc of snap.docs){
      const task=doc.data();
-     if(task.schoolId!==ctx.schoolId||task.status!=="deployed"||!offered.includes(task.offeringId))continue;
+     const lifecycle=task.lifecycle||"active";
+     if(task.schoolId!==ctx.schoolId||task.status!=="deployed"||
+        ["archived","cancelled"].includes(lifecycle)||!offered.includes(task.offeringId))continue;
      const now=Date.now(),open=task.opensAt.toMillis(),due=task.dueAt.toMillis();
      results.push({taskId:doc.id,title:task.title,description:task.description||"",
       instructions:task.instructions||"",rubric:task.rubric||[],
       rubricMax:task.rubricMax,offeringId:task.offeringId,
       submissionSource:task.submissionSource,opensAt:open,dueAt:due,
-      windowStatus:now<open?"upcoming":now>due?"closed":"open"});
+      lifecycle,windowStatus:lifecycle==="closed"?"closed":
+       now<open?"upcoming":now>due?"closed":"open"});
     }
    }
    return {assignments:results.sort((a,b)=>a.dueAt-b.dueAt)};
