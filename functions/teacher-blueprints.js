@@ -91,6 +91,31 @@ function createTeacherBlueprintService({db}) {
       }
       return {items:[...records.values()].slice(0,150),truncated:owned.size===50||schoolShared.size===50||individual.size===50};
     }
+    if(action==="update" || action==="archive") {
+      const id=documentId(input.resourceId),ref=collection.doc(id);
+      const expectedRevision=input.expectedRevision;
+      if(!Number.isInteger(expectedRevision)||expectedRevision<1)
+        deny("invalid-argument","The current assessment revision is required.");
+      const fields=action==="update"?reusableContent(input.blueprint):null;
+      const auditRef=db.collection("schools/"+ctx.schoolId+"/resource_audit").doc();
+      await db.runTransaction(async tx=>{
+        const original=await tx.get(ref);
+        assertCurrentTeacher(await tx.get(selfMemberRef));
+        assertCurrentSchool(await tx.get(schoolRef));
+        if(!original.exists||original.data().schoolId!==ctx.schoolId||original.data().ownerUid!==ctx.uid)
+          deny("permission-denied","Only the creator's authorized owner can change this blueprint.");
+        if(original.data().status!=="draft")
+          deny("failed-precondition","Only an undeployed draft blueprint may be changed.");
+        if(original.data().contentRevision!==expectedRevision)
+          deny("failed-precondition","This assessment has changed. Reload it before saving.");
+        const now=FieldValue.serverTimestamp();
+        tx.update(ref,fields?{...fields,contentRevision:expectedRevision+1,updatedAt:now}
+          :{status:"archived",contentRevision:expectedRevision+1,updatedAt:now});
+        tx.create(auditRef,{schoolId:ctx.schoolId,resourceId:id,actorUid:ctx.uid,
+          action,contentRevision:expectedRevision+1,createdAt:now});
+      });
+      return {id,status:action==="archive"?"archived":"draft",contentRevision:expectedRevision+1};
+    }
     if(action==="share") {
       const id=documentId(input.resourceId),ref=collection.doc(id);
       const visibility=input.visibility;
