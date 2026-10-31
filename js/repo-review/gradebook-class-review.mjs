@@ -150,6 +150,8 @@ async function copyMissingReminder(){
 }
 function statusFor(student){
   const evidence=evidenceMap.get(student.id),grade=context.grades?.[student.id],draft=draftMap.get(student.id);
+  if(Number(context?.schemaVersion)===2&&!evidenceReadable&&!gradesReadable&&!receiptsReadable&&!draftsReadable)
+    return {label:"Review data unavailable",tone:"amber",next:"Refresh evidence"};
   if(Number(context?.schemaVersion)===3)
     return grade?.published?{label:"Published Studio grade",tone:"emerald"}:
       grade?{label:"Studio draft · ready",tone:"cyan",next:"View Studio review"}:
@@ -206,27 +208,37 @@ function render(){
     const e=evidenceMap.get(student.id),g=context.grades?.[student.id];
     return e?.status==="approved"&&Array.isArray(e.verifiedContributionCommits)&&e.verifiedContributionCommits.length>0&&!g&&!draftMap.has(student.id);
   }):[];
-  el("gbClassReviewSummary").textContent=context.students.length+" learners · "+ready+" ready to publish · "+flagged+" need review · "+published+" published"+(submitted?" · "+submitted+" awaiting evidence review":"")+(exceptions?" · "+exceptions+" exceptions":"");
+  const reviewDataComplete=!isV2||(evidenceReadable&&gradesReadable&&receiptsReadable&&draftsReadable);
+  el("gbClassReviewSummary").textContent=reviewDataComplete
+    ?context.students.length+" learners · "+ready+" ready to publish · "+flagged+" need review · "+published+" published"+(submitted?" · "+submitted+" awaiting evidence review":"")+(exceptions?" · "+exceptions+" exceptions":"")
+    :context.students.length+" learners · review data incomplete — refresh evidence";
   if(el("gbForceGather")){
-    el("gbForceGather").textContent=isV2?"Force gather evidence ("+gatherCandidates.length+")":"Force gather · V2 evidence only";
-    el("gbForceGather").disabled=busy||!evidenceReadable||!gatherCandidates.length;
+    const gatherReady=!isV2||(evidenceReadable&&gradesReadable);
+    el("gbForceGather").textContent=isV2?(gatherReady?"Force gather evidence ("+gatherCandidates.length+")":"Force gather evidence (?)"):"Force gather · V2 evidence only";
+    el("gbForceGather").disabled=busy||!gatherReady||!gatherCandidates.length;
   }
-  const missingReminder=isV2?missingEvidenceCandidates():[];
+  const missingReminder=isV2&&reviewDataComplete?missingEvidenceCandidates():[];
   if(el("gbCopyMissingReminder")){
-    el("gbCopyMissingReminder").textContent=isV2?"Copy missing reminder ("+missingReminder.length+")":"Missing reminder · V2 evidence only";
-    el("gbCopyMissingReminder").disabled=busy||!evidenceReadable||!missingReminder.length;
+    el("gbCopyMissingReminder").textContent=isV2?(reviewDataComplete?"Copy missing reminder ("+missingReminder.length+")":"Copy missing reminder (?)"):"Missing reminder · V2 evidence only";
+    el("gbCopyMissingReminder").disabled=busy||!reviewDataComplete||!missingReminder.length;
   }
   if(el("gbBulkReopen")){
-    el("gbBulkReopen").textContent=isV2?"Reopen section evidence ("+reopenCandidates.length+")":"Reopen · V2 evidence only";
-    el("gbBulkReopen").disabled=busy||!evidenceReadable||!reopenCandidates.length;
+    const reopenReady=!isV2||(evidenceReadable&&gradesReadable);
+    el("gbBulkReopen").textContent=isV2?(reopenReady?"Reopen section evidence ("+reopenCandidates.length+")":"Reopen section evidence (?)"):"Reopen · V2 evidence only";
+    el("gbBulkReopen").disabled=busy||!reopenReady||!reopenCandidates.length;
   }
   if(el("gbRefreshEvidence"))el("gbRefreshEvidence").disabled=busy||!context;
-  el("gbBulkApprove").textContent=isV2?"Approve evidence ("+approveCandidates.length+")":"Approval · V2 evidence only";
-  el("gbBulkApprove").disabled=busy||!evidenceReadable||!approveCandidates.length;
-  el("gbBulkEvaluate").textContent=isV2?"Run system evaluation ("+evaluateCandidates.length+")":"System evaluation · V2 evidence only";
-  el("gbBulkEvaluate").disabled=busy||!evidenceReadable||!evaluateCandidates.length;
-  const reruns=isV2?context.students.filter(student=>eligibleToRerun(evidenceMap.get(student.id),context.grades?.[student.id])):[];
-  if(el("gbBulkRerun")){el("gbBulkRerun").textContent="Re-evaluate drafts ("+reruns.length+")";el("gbBulkRerun").disabled=busy||!evidenceReadable||!reruns.length;}
+  const approvalReady=!isV2||(evidenceReadable&&gradesReadable);
+  el("gbBulkApprove").textContent=isV2?(approvalReady?"Approve evidence ("+approveCandidates.length+")":"Approve evidence (?)"):"Approval · V2 evidence only";
+  el("gbBulkApprove").disabled=busy||!approvalReady||!approveCandidates.length;
+  const evaluationReady=!isV2||(evidenceReadable&&gradesReadable&&draftsReadable);
+  el("gbBulkEvaluate").textContent=isV2?(evaluationReady?"Run system evaluation ("+evaluateCandidates.length+")":"Run system evaluation (?)"):"System evaluation · V2 evidence only";
+  el("gbBulkEvaluate").disabled=busy||!evaluationReady||!evaluateCandidates.length;
+  const reruns=isV2&&evaluationReady?context.students.filter(student=>eligibleToRerun(evidenceMap.get(student.id),context.grades?.[student.id])):[];
+  if(el("gbBulkRerun")){
+    el("gbBulkRerun").textContent=isV2?(evaluationReady?"Re-evaluate drafts ("+reruns.length+")":"Re-evaluate drafts (?)"):"Re-evaluate drafts (0)";
+    el("gbBulkRerun").disabled=busy||!evaluationReady||!reruns.length;
+  }
   el("gbCancelEvaluation")?.classList.toggle("hidden",!busyEvaluation);
   const p=new URLSearchParams({section:context.section,assessment:context.taskId});el("gbReviewExceptions").href="repofetch.html?"+p.toString();
   renderReclaimQueue();
