@@ -135,6 +135,17 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 - Missing grades are excluded from averages rather than interpreted as zero. Legacy repository commit-count / ghost / equity heuristics are deliberately not carried into the canonical academic analytics surface because commit volume is not evidence of mastery, effort or authorship.
 - V4 navigation now uses **Class Analytics** as the school-safe results workspace. Existing `teacher-analytics.html` remains a legacy compatibility page for 3.x staff during migration; V4-only analytics bookmarks are redirected to the canonical page.
 
+## School files, retention and continuity export — October 31, 2026
+
+- `functions/school-file-policy.js` adds an explicit school-admin file policy. Storage remains closed until an administrator deliberately enables support attachments, selects a 30/90/180/365-day retention period, selects a 1/2/5 MB per-file cap and records an audited reason.
+- `storage.rules` now opens only the reserved support-attachment path. Uploads require verified active membership, the report owner, a pending Firestore reservation, exact size/type/custom metadata and the current school policy. Reads require the finalized attachment record plus report ownership or active school-admin access. Client overwrite/delete/list operations remain denied; all other Storage paths remain deny-by-default.
+- School support now uses a two-phase attachment lifecycle: server reservation → direct authenticated Storage upload → server metadata verification/finalization. Files are not returned in report reads until finalization succeeds.
+- `school-file-retention.js` runs a bounded scheduled cleanup for expired pending reservations and finalized retained files, deletes the Storage object and records an audit state transition.
+- `school-data-controls.html` provides the school-admin Data & Files workspace. It configures the audited file policy, shows the current retention contract and creates an integrity-hashed continuity export.
+- `school-data-export.js` exports only canonical school operational data: people/membership linkage, academic catalog, offerings, enrollments, teacher assignments, deployed assessment snapshots, **published** grades and school support report records.
+- The continuity export deliberately excludes teacher-private blueprints/planning/reference resources, student Studio/GitHub source/evidence payloads, unpublished teacher grade drafts, Practice runtime/session state, nested support comments/attachment binaries, secrets and audit/event streams.
+- Restore remains **preview-only** in the browser at this stage: schema, school binding, SHA-256 integrity and saved category counts are checked without writing Firestore. Canonical restore planning/apply remains the next controlled migration step.
+
 ## Delivery and remaining work
 
 | Track | Actual implementation in PR #113 | Remaining before Adminerva 4.0 |
