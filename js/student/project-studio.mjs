@@ -18,6 +18,19 @@ const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
 const enc=value=>new TextEncoder().encode(JSON.stringify(value)).length;
 const escapeHtml=value=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]));
+function projectScopeToken(scope){
+  return String(scope||"").trim().replace(/[^A-Za-z0-9_-]/g,"_").slice(0,180);
+}
+function scopedProjectStorage(storage,scope){
+  const token=projectScopeToken(scope);
+  if(!token)return storage;
+  const prefix="Adminerva_Scoped_Studio_"+token+"_";
+  return Object.freeze({
+    getItem:key=>storage.getItem(prefix+String(key)),
+    setItem:(key,value)=>storage.setItem(prefix+String(key),value),
+    removeItem:key=>storage.removeItem(prefix+String(key))
+  });
+}
 const prettyDate=value=>{
   try{
     const date=new Date(value),delta=Date.now()-date.getTime();
@@ -104,7 +117,7 @@ function defaultDiagramName(key){
 
 export function createProjectStudio({
   uid,openProject,captureState,onConfigChange,legacyDraftAvailable=false,importLegacyDraft=null,
-  cloudEnabled=true,guest=false,limits={}
+  cloudEnabled=true,guest=false,limits={},projectScope=""
 }){
   const policy={
     maxProjects:guest?3:Infinity,
@@ -115,6 +128,9 @@ export function createProjectStudio({
     maxRuns:guest?15:30,
     ...limits
   };
+  const scopeToken=projectScopeToken(projectScope);
+  const projectStorage=scopedProjectStorage(localStorage,scopeToken);
+  const undoKey=projectId=>"Adminerva_Code_Project_Undo_v1_"+uid+"_"+(scopeToken?scopeToken+"_":"")+projectId;
   let activeProject=null,selectedTemplate="java-information",initialized=false;
   const cloudTimers=new Map(),cloudWrites=new Map(),deletedProjects=new Set();
   let dbSelectedTable="",dbView="browse";
@@ -128,12 +144,12 @@ export function createProjectStudio({
     const tables=Object.values(project.database?.tables||{});
     if(tables.length>policy.maxDbTables)throw Error("This project exceeds the "+policy.maxDbTables+" database table limit.");
     if(tables.some(table=>(table.rows||[]).length>policy.maxDbRowsPerTable))throw Error("A database table exceeds the "+policy.maxDbRowsPerTable+" row limit.");
-    if(creating&&readCodeProjects(localStorage,uid).filter(item=>item.status!=="archived").length>=policy.maxProjects)
+    if(creating&&readCodeProjects(projectStorage,uid).filter(item=>item.status!=="archived").length>=policy.maxProjects)
       throw Error("Guest Code Studio keeps up to "+policy.maxProjects+" local projects. Export or delete one before creating another.");
     return true;
   }
   function quotaText(){
-    const count=readCodeProjects(localStorage,uid).filter(item=>item.status!=="archived").length;
+    const count=readCodeProjects(projectStorage,uid).filter(item=>item.status!=="archived").length;
     return Number.isFinite(policy.maxProjects)?count+" / "+policy.maxProjects+" local projects":count+" projects";
   }
 
@@ -150,15 +166,16 @@ export function createProjectStudio({
     resetToTemplate,
     importBundleMetadata,
     importZipWorkspace,
+    importLegacyState,
     getLimits:()=>({...policy}),
-    canCreateProject:()=>!Number.isFinite(policy.maxProjects)||readCodeProjects(localStorage,uid).filter(item=>item.status!=="archived").length<policy.maxProjects,
+    canCreateProject:()=>!Number.isFinite(policy.maxProjects)||readCodeProjects(projectStorage,uid).filter(item=>item.status!=="archived").length<policy.maxProjects,
     canAddFile:()=>!activeProject||Object.keys(captureState()?.files||{}).length<policy.maxFiles,
     isGuest:()=>guest
   };
 
   function store(project,cloud=cloudEnabled){
     validateProject(project);
-    activeProject=saveCodeProject(localStorage,uid,project);
+    activeProject=saveCodeProject(projectStorage,uid,project);
     updateProjectHeading();
     updateQuotaUI();
     if(cloudEnabled&&cloud){
@@ -205,7 +222,7 @@ export function createProjectStudio({
   }
   async function mergeCloudProjects(){
     if(!cloudEnabled)return;
-    const local=readCodeProjects(localStorage,uid),map=new Map(local.map(project=>[project.id,project]));
+    const local=readCodeProjects(projectStorage,uid),map=new Map(local.map(project=>[project.id,project]));
     let changed=false,school=null;
     try{school=await currentV4StudioSchool();}catch{}
     if(school?.compatibilityMode!=="v4_only"){
@@ -238,7 +255,7 @@ export function createProjectStudio({
       }
     }catch(error){console.warn("Verified school projects unavailable; using existing device projects.",error);}
     if(changed){
-      writeCodeProjects(localStorage,uid,[...map.values()]);
+      writeCodeProjects(projectStorage,uid,[...map.values()]);
       if(!activeProject)renderProjectHome();
     }
   }
@@ -281,7 +298,7 @@ export function createProjectStudio({
         const restore=document.createElement("button");restore.type="button";restore.textContent="Restore";
         restore.className="px-3 py-2 rounded-lg bg-indigo-700 text-white text-sm font-bold";
         restore.addEventListener("click",async()=>{
-          const existing=findCodeProject(localStorage,uid,summary.projectId);
+          const existing=findCodeProject(projectStorage,uid,summary.projectId);
           if(existing){
             alert("This device already has a project with the same ID. Export or remove that device copy before restoring the archived school version so no work is overwritten.");
             return;
@@ -292,7 +309,7 @@ export function createProjectStudio({
             await restoreV4StudioProject(summary.projectId,summary.revision);
             const detail=await loadV4StudioProject(summary.projectId);
             const project=v4ProjectToLocal(uid,detail);
-            validateProject(project);saveCodeProject(localStorage,uid,project);
+            validateProject(project);saveCodeProject(projectStorage,uid,project);
             row.remove();renderProjectHome();
             if(!rows.children.length)modal.classList.add("hidden");
           }catch(error){alert("School project could not be restored: "+(error?.message||error));}
@@ -364,12 +381,12 @@ export function createProjectStudio({
     const quota=el("projectQuotaStatus");if(quota)quota.textContent=quotaText();
     const storage=el("projectStorageMode");if(storage)storage.textContent=guest?"Local-only guest storage":"Private account storage · cloud sync";
     const badge=el("activeProjectStorageBadge");if(badge)badge.textContent=guest?"Local only":"Cloud sync";
-    const create=el("newCodeProjectBtn"),count=readCodeProjects(localStorage,uid).filter(item=>item.status!=="archived").length;
+    const create=el("newCodeProjectBtn"),count=readCodeProjects(projectStorage,uid).filter(item=>item.status!=="archived").length;
     if(create&&Number.isFinite(policy.maxProjects)){create.disabled=count>=policy.maxProjects;create.title=create.disabled?"Guest project limit reached. Export or delete a project to create another.":"";}
   }
   function renderProjectHome(){
     const list=el("codeProjectList");if(!list)return;
-    const projects=readCodeProjects(localStorage,uid).filter(project=>project.status!=="archived");
+    const projects=readCodeProjects(projectStorage,uid).filter(project=>project.status!=="archived");
     updateQuotaUI();
     list.replaceChildren();
     if(!projects.length){
@@ -383,9 +400,9 @@ export function createProjectStudio({
         card.querySelector("[data-copy]").addEventListener("click",()=>{
           try{
             validateProject(project,{creating:true});
-            const copy=createCodeProject(localStorage,uid,{title:project.title+" Copy",templateId:project.template,config:project.config});
+            const copy=createCodeProject(projectStorage,uid,{title:project.title+" Copy",templateId:project.template,config:project.config});
             copy.state=clone(project.state);copy.database=clone(project.database);copy.design=clone(project.design);copy.evidence={events:[],runs:[]};
-            saveCodeProject(localStorage,uid,copy);renderProjectHome();
+            saveCodeProject(projectStorage,uid,copy);renderProjectHome();
           }catch(error){alert(error.message);}
         });
         card.querySelector("[data-open]").addEventListener("click",()=>openProjectById(project.id));
@@ -405,7 +422,7 @@ export function createProjectStudio({
               deletedProjects.add(project.id);
             }
           }
-          deleteCodeProject(localStorage,uid,project.id);
+          deleteCodeProject(projectStorage,uid,project.id);
           let activeSchool=null;
           try{activeSchool=await currentV4StudioSchool();}catch{}
           if(cloudEnabled&&activeSchool?.compatibilityMode!=="v4_only")try{
@@ -423,7 +440,9 @@ export function createProjectStudio({
   }
 
   function showHome(){
-    initialize();renderProjectHome();
+    initialize();
+    window.dispatchEvent(new CustomEvent("adminerva:studio-home"));
+    renderProjectHome();
     el("projectHome")?.classList.remove("hidden");
     el("studioShell")?.classList.add("hidden");
     document.title=(guest?"Adminerva Studio · Guest":"Adminerva Studio")+" · Adminerva";
@@ -432,14 +451,14 @@ export function createProjectStudio({
   }
 
   async function openProjectById(id){
-    let project=findCodeProject(localStorage,uid,id);
+    let project=findCodeProject(projectStorage,uid,id);
     if(!project&&cloudEnabled){
       try{
         const remote=await loadV4StudioProject(id);
         if(remote){
           project=v4ProjectToLocal(uid,remote);
           validateProject(project);
-          project=saveCodeProject(localStorage,uid,project);
+          project=saveCodeProject(projectStorage,uid,project);
         }
       }catch(error){
         console.warn("Verified-school Studio project could not be opened:",error?.message||error);
@@ -447,6 +466,24 @@ export function createProjectStudio({
     }
     if(!project)return alert("This project is not available in this device or your active verified school.");
     activateProject(project);
+  }
+
+  function importLegacyState({title,templateId,config={},state}={}){
+    if(!state?.files||!Array.isArray(state.fileOrder)||!state.fileOrder.length)
+      throw Error("The older Studio draft is unavailable or invalid.");
+    validateProject({...CODE_PROJECT_TEMPLATES[templateId]||CODE_PROJECT_TEMPLATES["java-blank"],
+      title:String(title||"Imported project"),state},{creating:true});
+    const project=createCodeProject(projectStorage,uid,{title,templateId,config});
+    try{
+      project.lang=state.lang||project.lang;
+      project.state=clone(state);
+      validateProject(project);
+      activateProject(project);
+      return activeProject;
+    }catch(error){
+      deleteCodeProject(projectStorage,uid,project.id);
+      throw error;
+    }
   }
 
   /**
@@ -467,7 +504,7 @@ export function createProjectStudio({
     const next=prepareProjectImport(base,state,bundle,policy);
     validateProject(next,{creating:!activeProject});
     if(activeProject){
-      localStorage.setItem("Adminerva_Code_Project_Undo_v1_"+uid+"_"+activeProject.id,
+      localStorage.setItem(undoKey(activeProject.id),
         JSON.stringify(captureState()));
       store(next,true);
       openProject(activeProject);
@@ -475,7 +512,7 @@ export function createProjectStudio({
       dbSelectedTable="";dbView="browse";renderDatabase();renderEvidence();loadDesignEditor();
       return activeProject;
     }
-    const created=createCodeProject(localStorage,uid,{
+    const created=createCodeProject(projectStorage,uid,{
       title:next.title,templateId:template.id,config:next.config
     });
     try{
@@ -484,7 +521,7 @@ export function createProjectStudio({
       activateProject(imported);
       return activeProject;
     }catch(error){
-      deleteCodeProject(localStorage,uid,created.id);
+      deleteCodeProject(projectStorage,uid,created.id);
       throw error;
     }
   }
@@ -520,7 +557,7 @@ export function createProjectStudio({
   function activateProject(project){
     initialize();
     activeProject={...project,lastOpenedAt:new Date().toISOString()};
-    activeProject=saveCodeProject(localStorage,uid,activeProject);
+    activeProject=saveCodeProject(projectStorage,uid,activeProject);
     el("projectHome")?.classList.add("hidden");
     el("studioShell")?.classList.remove("hidden");
     updateProjectHeading();
@@ -532,7 +569,7 @@ export function createProjectStudio({
     }
     const undo=el("undoRestoreBtn");
     if(undo)undo.classList.toggle("hidden",
-      !localStorage.getItem("Adminerva_Code_Project_Undo_v1_"+uid+"_"+activeProject.id));
+      !localStorage.getItem(undoKey(activeProject.id)));
     updateQuotaUI();
     if(cloudEnabled)scheduleCloudSave(activeProject);
   }
@@ -595,8 +632,8 @@ export function createProjectStudio({
       config.runMode=el("wizardRunMode").value==="desktop"?"desktop":"console";
       config.database=Boolean(el("wizardDatabase").checked);
     }
-    const project=createCodeProject(localStorage,uid,{title,templateId:template.id,config});
-    try{validateProject(project);}catch(error){deleteCodeProject(localStorage,uid,project.id);return alert(error.message);}
+    const project=createCodeProject(projectStorage,uid,{title,templateId:template.id,config});
+    try{validateProject(project);}catch(error){deleteCodeProject(projectStorage,uid,project.id);return alert(error.message);}
     closeWizard();activateProject(project);
   }
 
