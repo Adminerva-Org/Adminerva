@@ -563,26 +563,28 @@ function renderHistorical(){
   const list=el("evidenceDiscoverList");list.replaceChildren();
   for(const commit of discovery.commits){
     const sha=String(commit.sha||"").toLowerCase();if(!validSha(sha))continue;
-    const row=add(list,"div","","p-3 border rounded-lg");
-    const line=add(row,"div","","flex flex-wrap items-center gap-3");
-    const check=document.createElement("input");check.type="checkbox";
-    const locked=discovery.locked.has(sha);
-    check.checked=discovery.selected.has(sha);
-    check.disabled=locked;
-    check.setAttribute("aria-label",(locked?"Already selected commit ":"Select commit ")+sha.slice(0,12)+" as evidence");
-    check.addEventListener("change",()=>{if(check.checked)discovery.selected.add(sha);
-      else{discovery.selected.delete(sha);if(discovery.checkpoint===sha)discovery.checkpoint="";}
-      renderHistorical();});
-    line.append(check);
-    if(locked)add(line,"span","Already selected","text-[11px] font-bold text-slate-500");
-    const radio=document.createElement("input");radio.type="radio";
-    radio.name="historicalCheckpoint";radio.checked=discovery.checkpoint===sha;
-    radio.setAttribute("aria-label","Use "+sha.slice(0,12)+" as project checkpoint");
-    radio.addEventListener("change",()=>{discovery.checkpoint=sha;renderHistorical();});
-    line.append(radio);
-    add(line,"span",sha.slice(0,12),"text-xs font-mono text-indigo-700");
-    add(line,"strong",String(commit.commit?.message||"").split("\n")[0].slice(0,180),
+    const locked=discovery.locked.has(sha),evidenceSelected=discovery.selected.has(sha),checkpointSelected=discovery.checkpoint===sha;
+    const row=add(list,"div","","p-3 border rounded-lg "+(evidenceSelected||checkpointSelected?"border-indigo-300 bg-indigo-50/40":"border-slate-200"));
+    const line=add(row,"div","","flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3");
+    const summary=add(line,"div","","min-w-0 flex-1");
+    const heading=add(summary,"div","","flex flex-wrap items-center gap-2");
+    add(heading,"span",sha.slice(0,12),"text-xs font-mono text-indigo-700");
+    add(heading,"strong",String(commit.commit?.message||"").split("\n")[0].slice(0,180),
       "text-xs break-words");
+    if(locked)add(summary,"span","Already selected evidence","inline-block mt-2 text-[11px] font-bold text-slate-500");
+    const actions=add(line,"div","","flex flex-wrap gap-2 sm:justify-end sm:shrink-0");
+    const selectButton=add(actions,"button",locked?"✓ Already selected":evidenceSelected?"✓ Evidence selected":"Select as evidence",
+      "min-h-10 rounded-lg border px-3 py-2 text-xs font-bold transition "+
+      (evidenceSelected?"border-indigo-600 bg-indigo-600 text-white":"border-slate-300 bg-white text-slate-800 hover:border-indigo-400 hover:bg-indigo-50"));
+    selectButton.type="button";selectButton.disabled=locked;
+    selectButton.setAttribute("aria-pressed",String(evidenceSelected));
+    selectButton.addEventListener("click",()=>{if(discovery.selected.has(sha)){discovery.selected.delete(sha);if(discovery.checkpoint===sha)discovery.checkpoint="";}else discovery.selected.add(sha);renderHistorical();});
+    const checkpointButton=add(actions,"button",checkpointSelected?"✓ Project checkpoint":"Use as checkpoint",
+      "min-h-10 rounded-lg border px-3 py-2 text-xs font-bold transition "+
+      (checkpointSelected?"border-emerald-700 bg-emerald-700 text-white":"border-emerald-300 bg-white text-emerald-900 hover:bg-emerald-50"));
+    checkpointButton.type="button";
+    checkpointButton.setAttribute("aria-pressed",String(checkpointSelected));
+    checkpointButton.addEventListener("click",()=>{discovery.checkpoint=sha;renderHistorical();});
     const detectedLogin=String(commit.author?.login||"").toLowerCase();
     const expectedLogin=String(state.student?.githubUsername||"").replace(/^@/,"").toLowerCase();
     const detectedId=Number.isSafeInteger(Number(commit.author?.id))&&Number(commit.author?.id)>0?Number(commit.author.id):null;
