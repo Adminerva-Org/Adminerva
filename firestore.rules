@@ -522,7 +522,8 @@ service cloud.firestore {
           data.get("evaluationDraft",{}) is map &&
           data.get("evaluationDraft",{}).get("teacherReviewed",true) == false;
       }
-      allow read: if mayTeachSection(resource.data.get("section",null));
+      allow read: if mayTeachSection(resource.data.get("section",null)) ||
+        mayReviewAssessmentSection(resource.data.get("section",""),resource.data.get("taskId",""));
       allow create: if mayGrade(request.resource.data) &&
         (!v2Grade(request.resource.data) || (request.resource.data.published == false &&
           (currentEvidence(request.resource.data) || validSystemDraft(request.resource.data)))) &&
@@ -671,11 +672,16 @@ service cloud.firestore {
           assessmentIncludesSection(assessment,section))
       );
     }
-    function mayReviewClaimScope(section,assessmentId) {
+    function mayReviewAssessmentSection(section,assessmentId) {
       let assessment = get(/databases/$(database)/documents/assessments/$(assessmentId)).data;
       return isTeacher() && section is string && assessmentId is string &&
-        (assessment.get("ownerUid","") == request.auth.uid || isOriginalTeacher()) &&
-        assessmentIncludesSection(assessment,section);
+        assessmentIncludesSection(assessment,section) &&
+        (section in teacherSections() ||
+          assessment.get("ownerUid","") == request.auth.uid ||
+          isOriginalTeacher());
+    }
+    function mayReviewClaimScope(section,assessmentId) {
+      return mayReviewAssessmentSection(section,assessmentId);
     }
     function mayTeachEvidence(studentId,assessmentId) {
       return isAdmin() || (isTeacher() && studentId is string &&
@@ -740,6 +746,7 @@ service cloud.firestore {
         mayTeachEvidence(resource.data.studentId,resource.data.assessmentId) ||
         (signedIn() && ownsStudentProfile(resource.data.studentId));
       allow list: if mayTeachSection(resource.data.section) ||
+        mayReviewAssessmentSection(resource.data.get("section",""),resource.data.get("assessmentId","")) ||
         (signedIn() && ownsStudentProfile(resource.data.studentId));
       // Audited updates use set() and include revision/teacher metadata. Reject
       // their create alternative before spending the evidence validation budget.
@@ -811,7 +818,7 @@ service cloud.firestore {
       // context even when an older staff_access section list is stale. This is
       // still bounded by the learner + assessment teaching scope.
       allow read: if mayTeachSection(resource.data.get("section","")) ||
-        mayReviewClaimScope(resource.data.get("section",""),resource.data.get("assessmentId","")) ||
+        mayReviewAssessmentSection(resource.data.get("section",""),resource.data.get("assessmentId","")) ||
         (signedIn() && ownsStudentProfile(resource.data.get("studentId","")));
       allow create: if signedIn() &&
         request.resource.data.keys().hasOnly(["studentId","assessmentId","section",
@@ -830,7 +837,8 @@ service cloud.firestore {
         request.resource.data.repository.size() <= 300 &&
         request.resource.data.sha is string &&
         request.resource.data.sha.matches("^[a-fA-F0-9]{40}$") &&
-        claimId == request.resource.data.sha + "_" + request.resource.data.studentId &&
+        (claimId == request.resource.data.sha + "_" + request.resource.data.studentId ||
+         claimId == request.resource.data.sha + "_" + request.resource.data.studentId + "_" + request.resource.data.assessmentId) &&
         request.resource.data.explanation is string &&
         request.resource.data.explanation.size() >= 10 &&
         request.resource.data.explanation.size() <= 1500 &&
@@ -1552,7 +1560,8 @@ service cloud.firestore {
 
     // Student-initiated submission receipts are immutable, reviewable evidence.
     match /student_submissions/{submissionId} {
-      allow read: if mayTeachSection(resource.data.section);
+      allow read: if mayTeachSection(resource.data.section) ||
+        mayReviewAssessmentSection(resource.data.get("section",""),resource.data.get("assessmentId",""));
       allow read: if signedIn() && ownsStudentProfile(resource.data.studentId);
       allow create: if signedIn() &&
         request.resource.data.keys().hasOnly([

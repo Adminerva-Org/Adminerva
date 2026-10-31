@@ -15,7 +15,7 @@ import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.1";
 
 const el=id=>document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
-let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map(),claimMap=new Map(),claimsReadable=false,canDecideClaims=false,loadSequence=0;
+let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,gradesReadable=false,receiptsReadable=false,draftsReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map(),claimMap=new Map(),claimsReadable=false,canDecideClaims=false,loadSequence=0;
 const draftRef=(studentId,taskId)=>doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId);
 function showBulkExceptions(failures){
   const box=el("gbBulkExceptionDetails"),list=el("gbBulkExceptionList");
@@ -31,13 +31,19 @@ function showBulkExceptions(failures){
 }
 function renderReclaimQueue(){
   const list=el("gbReclaimList"),label=el("gbReclaimCount");if(!list||!label)return;
+  list.replaceChildren();
+  if(!claimsReadable){
+    label.textContent="(unavailable)";
+    const unavailable=document.createElement("p");unavailable.className="text-xs text-amber-800";
+    unavailable.textContent="Reclaim-request status could not be loaded for this assessment and section. This is not the same as zero pending requests.";
+    list.append(unavailable);return;
+  }
   const learners=new Map((context?.students||[]).map(student=>[student.id,student]));
   const pending=[...claimMap.values()].filter(claim=>claim.status==="pending"&&learners.has(claim.studentId));
   label.textContent="("+pending.length+" pending)";
-  list.replaceChildren();
   if(!pending.length){
     const empty=document.createElement("p");empty.className="text-xs text-slate-600";
-    empty.textContent="No pending reclaim requests for this assessment and section.";
+    empty.textContent="No pending reclaim requests found for this assessment and section.";
     list.append(empty);return;
   }
   for(const claim of pending){
@@ -144,6 +150,8 @@ async function copyMissingReminder(){
 }
 function statusFor(student){
   const evidence=evidenceMap.get(student.id),grade=context.grades?.[student.id],draft=draftMap.get(student.id);
+  if(Number(context?.schemaVersion)===2&&!evidenceReadable&&!gradesReadable&&!receiptsReadable&&!draftsReadable)
+    return {label:"Review data unavailable",tone:"amber",next:"Refresh evidence"};
   if(Number(context?.schemaVersion)===3)
     return grade?.published?{label:"Published Studio grade",tone:"emerald"}:
       grade?{label:"Studio draft · ready",tone:"cyan",next:"View Studio review"}:
@@ -200,27 +208,37 @@ function render(){
     const e=evidenceMap.get(student.id),g=context.grades?.[student.id];
     return e?.status==="approved"&&Array.isArray(e.verifiedContributionCommits)&&e.verifiedContributionCommits.length>0&&!g&&!draftMap.has(student.id);
   }):[];
-  el("gbClassReviewSummary").textContent=context.students.length+" learners · "+ready+" ready to publish · "+flagged+" need review · "+published+" published"+(submitted?" · "+submitted+" awaiting evidence review":"")+(exceptions?" · "+exceptions+" exceptions":"");
+  const reviewDataComplete=!isV2||(evidenceReadable&&gradesReadable&&receiptsReadable&&draftsReadable);
+  el("gbClassReviewSummary").textContent=reviewDataComplete
+    ?context.students.length+" learners · "+ready+" ready to publish · "+flagged+" need review · "+published+" published"+(submitted?" · "+submitted+" awaiting evidence review":"")+(exceptions?" · "+exceptions+" exceptions":"")
+    :context.students.length+" learners · review data incomplete — refresh evidence";
   if(el("gbForceGather")){
-    el("gbForceGather").textContent=isV2?"Force gather evidence ("+gatherCandidates.length+")":"Force gather · V2 evidence only";
-    el("gbForceGather").disabled=busy||!evidenceReadable||!gatherCandidates.length;
+    const gatherReady=!isV2||(evidenceReadable&&gradesReadable);
+    el("gbForceGather").textContent=isV2?(gatherReady?"Force gather evidence ("+gatherCandidates.length+")":"Force gather evidence (?)"):"Force gather · V2 evidence only";
+    el("gbForceGather").disabled=busy||!gatherReady||!gatherCandidates.length;
   }
-  const missingReminder=isV2?missingEvidenceCandidates():[];
+  const missingReminder=isV2&&reviewDataComplete?missingEvidenceCandidates():[];
   if(el("gbCopyMissingReminder")){
-    el("gbCopyMissingReminder").textContent=isV2?"Copy missing reminder ("+missingReminder.length+")":"Missing reminder · V2 evidence only";
-    el("gbCopyMissingReminder").disabled=busy||!evidenceReadable||!missingReminder.length;
+    el("gbCopyMissingReminder").textContent=isV2?(reviewDataComplete?"Copy missing reminder ("+missingReminder.length+")":"Copy missing reminder (?)"):"Missing reminder · V2 evidence only";
+    el("gbCopyMissingReminder").disabled=busy||!reviewDataComplete||!missingReminder.length;
   }
   if(el("gbBulkReopen")){
-    el("gbBulkReopen").textContent=isV2?"Reopen section evidence ("+reopenCandidates.length+")":"Reopen · V2 evidence only";
-    el("gbBulkReopen").disabled=busy||!evidenceReadable||!reopenCandidates.length;
+    const reopenReady=!isV2||(evidenceReadable&&gradesReadable);
+    el("gbBulkReopen").textContent=isV2?(reopenReady?"Reopen section evidence ("+reopenCandidates.length+")":"Reopen section evidence (?)"):"Reopen · V2 evidence only";
+    el("gbBulkReopen").disabled=busy||!reopenReady||!reopenCandidates.length;
   }
   if(el("gbRefreshEvidence"))el("gbRefreshEvidence").disabled=busy||!context;
-  el("gbBulkApprove").textContent=isV2?"Approve evidence ("+approveCandidates.length+")":"Approval · V2 evidence only";
-  el("gbBulkApprove").disabled=busy||!evidenceReadable||!approveCandidates.length;
-  el("gbBulkEvaluate").textContent=isV2?"Run system evaluation ("+evaluateCandidates.length+")":"System evaluation · V2 evidence only";
-  el("gbBulkEvaluate").disabled=busy||!evidenceReadable||!evaluateCandidates.length;
-  const reruns=isV2?context.students.filter(student=>eligibleToRerun(evidenceMap.get(student.id),context.grades?.[student.id])):[];
-  if(el("gbBulkRerun")){el("gbBulkRerun").textContent="Re-evaluate drafts ("+reruns.length+")";el("gbBulkRerun").disabled=busy||!evidenceReadable||!reruns.length;}
+  const approvalReady=!isV2||(evidenceReadable&&gradesReadable);
+  el("gbBulkApprove").textContent=isV2?(approvalReady?"Approve evidence ("+approveCandidates.length+")":"Approve evidence (?)"):"Approval · V2 evidence only";
+  el("gbBulkApprove").disabled=busy||!approvalReady||!approveCandidates.length;
+  const evaluationReady=!isV2||(evidenceReadable&&gradesReadable&&draftsReadable);
+  el("gbBulkEvaluate").textContent=isV2?(evaluationReady?"Run system evaluation ("+evaluateCandidates.length+")":"Run system evaluation (?)"):"System evaluation · V2 evidence only";
+  el("gbBulkEvaluate").disabled=busy||!evaluationReady||!evaluateCandidates.length;
+  const reruns=isV2&&evaluationReady?context.students.filter(student=>eligibleToRerun(evidenceMap.get(student.id),context.grades?.[student.id])):[];
+  if(el("gbBulkRerun")){
+    el("gbBulkRerun").textContent=isV2?(evaluationReady?"Re-evaluate drafts ("+reruns.length+")":"Re-evaluate drafts (?)"):"Re-evaluate drafts (0)";
+    el("gbBulkRerun").disabled=busy||!evaluationReady||!reruns.length;
+  }
   el("gbCancelEvaluation")?.classList.toggle("hidden",!busyEvaluation);
   const p=new URLSearchParams({section:context.section,assessment:context.taskId});el("gbReviewExceptions").href="repofetch.html?"+p.toString();
   renderReclaimQueue();
@@ -228,7 +246,7 @@ function render(){
 async function load(detail){
   if(!detail)return;
   const sequence=++loadSequence;
-  context=detail;evidenceReadable=false;evidenceMap=new Map();draftMap=new Map();receiptMap=new Map();claimMap=new Map();claimsReadable=false;
+  context=detail;evidenceReadable=false;gradesReadable=false;receiptsReadable=false;draftsReadable=false;evidenceMap=new Map();draftMap=new Map();receiptMap=new Map();claimMap=new Map();claimsReadable=false;
   render();
   const isV2=Number(detail.schemaVersion)===2;
   // An unavailable optional collection must never erase the evidence roster or
@@ -247,21 +265,25 @@ async function load(detail){
   if(sequence!==loadSequence)return;
   if(isV2){
     try{const grades=await getDocsFromServer(query(collection(db,"student_grades"),where("taskId","==",detail.taskId),where("section","==",detail.section)));
+      gradesReadable=true;
       context.grades=Object.fromEntries(grades.docs.filter(record=>detail.students.some(student=>student.id===record.data().studentId))
         .map(record=>[record.data().studentId,record.data()]));
-    }catch(error){warnings.push("gradebook drafts: "+error.message);}
+    }catch(error){gradesReadable=false;warnings.push("gradebook drafts: "+error.message);}
   }
   if(sequence!==loadSequence)return;
-  if(sources[0].status==="fulfilled")for(const record of sources[0].value.docs){
+  receiptsReadable=sources[0].status==="fulfilled";
+  if(receiptsReadable)for(const record of sources[0].value.docs){
     const data={id:record.id,...record.data()},prior=receiptMap.get(data.studentId);
     const stamp=value=>value?.toMillis?.()||Date.parse(value||"")||0;
     if(!prior||stamp(data.submittedAt)>stamp(prior.submittedAt))receiptMap.set(data.studentId,data);
   }else warnings.push("submission receipts: "+sources[0].reason?.message);
   if(isV2){
-    if(sources[1].status==="fulfilled"){
+    evidenceReadable=sources[1].status==="fulfilled";
+    if(evidenceReadable){
       evidenceMap=new Map(sources[1].value.docs.map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
     }else warnings.push("evidence: "+sources[1].reason?.message);
-    if(sources[2].status==="fulfilled"){
+    draftsReadable=sources[2].status==="fulfilled";
+    if(draftsReadable){
       draftMap=new Map(sources[2].value.docs.filter(record=>{
         const draft=record.data(),evidence=evidenceMap.get(draft.studentId);
         return draft.taskId===detail.taskId&&draft.section===detail.section&&draft.status==="private_suggestion"&&
@@ -278,11 +300,10 @@ async function load(detail){
       warnings.push("reclaim requests: "+sources[3].reason?.message);
     }
   }
-  // If evidence cannot be read, bulk actions must fail closed instead of
-  // treating missing query results as students without submissions.
-  evidenceReadable=!isV2||sources[1].status==="fulfilled";
+  // Failed reads remain unknown, never implicit zeros.
+  if(!isV2){evidenceReadable=true;gradesReadable=true;draftsReadable=true;}
   render();
-  if(warnings.length)el("gbBulkStatus").textContent="Some review data could not load ("+warnings.join(" | ")+"). Evidence actions are disabled if evidence could not be read.";
+  if(warnings.length)el("gbBulkStatus").textContent="Some review data could not load ("+warnings.join(" | ")+"). Affected counts are shown as unavailable/incomplete, and dependent bulk actions stay disabled until refresh succeeds.";
 }
 const linkedLogin=student=>String(student?.githubUsername||"").trim().replace(/^@/,"").toLowerCase();
 const dateMillis=value=>{
