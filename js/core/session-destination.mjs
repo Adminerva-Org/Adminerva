@@ -22,6 +22,8 @@ export function sessionDestination(candidate,access){
       page=v4StudentRoutes[page]||page;
     }
     if(access.v4OnlyTeacher){
+      if(page==="teacher-analytics.html"&&target.hash==="#practice")
+        page="school-practice-analytics.html";
       const v4Routes={
         "gradebook.html":"school-gradebook.html","repofetch.html":"school-gradebook.html",
         "repobank.html":"school-gradebook.html","grading.html":"school-gradebook.html",
