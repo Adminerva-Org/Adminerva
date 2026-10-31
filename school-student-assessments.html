@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Assignments · Adminerva</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8">
+</head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="student" data-page="school-student-assessments"></div>
+<main class="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+  <header class="mb-5 rounded-2xl bg-slate-900 text-white p-5 sm:p-7">
+    <p class="text-xs uppercase tracking-widest font-bold text-cyan-300">Verified school assignments</p>
+    <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">My assignments</h1>
+    <p class="text-sm text-slate-200 mt-2">Tasks are based on your active school enrollments. Studio and GitHub submissions are frozen and reviewed through the school-scoped evidence workflow.</p>
+  </header>
+  <section id="v4AssignmentsPanel" class="hidden rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 sm:p-5">
+    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+      <div><h2 class="text-lg font-extrabold">Current school tasks</h2><p class="text-sm text-slate-600 mt-1">Published grades and revision requests appear with the exact task they belong to.</p></div>
+      <div id="v4AssignmentsSchoolSwitcher" hidden class="min-w-[220px]"></div>
+    </div>
+    <p id="v4AssignmentsStatus" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Checking verified school assignments…</p>
+    <div id="v4AssignmentsList" class="grid gap-3 mt-4"></div>
+  </section>
+</main>
+
+<dialog id="v4GithubEvidenceDialog" class="rounded-2xl border-0 shadow-2xl p-0 w-[min(96vw,900px)] max-h-[94dvh] backdrop:bg-slate-950/70" aria-labelledby="v4GithubEvidenceTitle">
+  <div class="bg-white flex flex-col max-h-[94dvh]">
+    <header class="p-4 sm:p-5 bg-slate-900 text-white flex items-start justify-between gap-4">
+      <div><p class="text-xs uppercase tracking-wider text-cyan-300 font-bold">Verified school GitHub evidence</p>
+        <h2 id="v4GithubEvidenceTitle" class="text-xl font-extrabold mt-1">Select committed evidence</h2>
+        <p id="v4GithubEvidenceMeta" class="text-xs text-slate-300 mt-1"></p></div>
+      <button id="v4GithubEvidenceClose" type="button" class="rounded-lg border border-slate-600 px-3 py-2">Close</button>
+    </header>
+    <div class="overflow-y-auto p-4 sm:p-5 space-y-4">
+      <label class="block text-sm font-bold text-slate-700">GitHub repository
+        <input id="v4GithubRepository" class="mt-1 w-full border border-slate-300 rounded-lg p-3" placeholder="https://github.com/owner/repository">
+      </label>
+      <div class="flex flex-wrap gap-2">
+        <button id="v4GithubLoad" type="button" class="rounded-lg bg-slate-800 text-white font-bold px-4 py-2.5">Load repository commits</button>
+        <span class="text-xs text-slate-500 self-center">Private repositories require the account-owned GitHub session connection.</span>
+      </div>
+      <p id="v4GithubEvidenceStatus" class="text-sm text-slate-600" role="status" aria-live="polite"></p>
+      <div class="grid lg:grid-cols-[minmax(0,1fr)_250px] gap-4">
+        <section>
+          <div class="flex justify-between gap-3 items-center"><h3 class="font-extrabold">Commit history</h3><span id="v4GithubSelectedCount" class="text-xs font-bold text-indigo-700">0 selected</span></div>
+          <div id="v4GithubCommitList" class="mt-2 max-h-[48dvh] overflow-y-auto space-y-2"></div>
+        </section>
+        <aside class="rounded-xl border bg-slate-50 p-3 h-fit">
+          <h3 class="font-bold">Submission checkpoint</h3>
+          <p class="text-xs text-slate-600 mt-1">Choose the project version containing the selected work. Git identity is not proof of authorship.</p>
+          <p id="v4GithubCheckpoint" class="font-mono text-xs break-all mt-3 text-indigo-800">No checkpoint selected</p>
+        </aside>
+      </div>
+      <section id="v4GithubReclaimEditor" class="hidden rounded-xl border border-amber-300 bg-amber-50 p-4">
+        <div class="flex justify-between gap-3">
+          <div><h3 class="font-bold text-amber-950">Request commit attribution review</h3><p id="v4GithubReclaimSubject" class="text-xs text-amber-900 mt-1 font-mono break-all"></p></div>
+          <button id="v4GithubReclaimCancel" type="button" class="text-xs font-bold underline">Cancel</button>
+        </div>
+        <p class="text-xs text-amber-900 mt-2">Explain why the commit contains your contribution when the Git identity does not represent you correctly.</p>
+        <textarea id="v4GithubReclaimReason" rows="3" minlength="10" maxlength="1500" class="mt-3 w-full rounded-lg border border-amber-300 bg-white p-3 text-sm"></textarea>
+        <button id="v4GithubReclaimSubmit" type="button" class="mt-3 rounded-lg bg-amber-800 text-white font-bold px-4 py-2.5">Send attribution request</button>
+        <p id="v4GithubReclaimStatus" class="text-xs text-amber-900 mt-2" role="status"></p>
+      </section>
+    </div>
+    <footer class="border-t p-4 sm:p-5 flex justify-end">
+      <button id="v4GithubEvidenceSubmit" type="button" class="rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5">Submit frozen evidence</button>
+    </footer>
+  </div>
+</dialog>
+<script src="js/core/adminerva-loader.js?v=1.3.2"></script>
+<script src="js/core/adminerva-nav.js?v=4.0.0"></script>
+<script type="module" src="js/core/auth-guard.js?v=4.0.0"></script>
+<script type="module" src="js/student/v4-assessments.mjs?v=4.0.0"></script>
+</body></html>
