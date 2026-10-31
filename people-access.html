@@ -236,6 +236,17 @@
             <p class="pa-muted">Class assignment does not grant access to another teacher's private assessments.</p>
           </form>
         </details>
+        <details class="pa-card">
+          <summary style="font-weight:750;cursor:pointer">Teacher handover</summary>
+          <form id="pa-handover-form" style="padding-top:1rem">
+            <label>Course offering<select class="pa-field" name="offeringId" data-offering required></select></label>
+            <label>Current teacher<select class="pa-field" name="fromTeacherUid" data-school-teacher required></select></label>
+            <label>Replacement teacher<select class="pa-field" name="toTeacherUid" data-school-teacher required></select></label>
+            <label>Handover reason<input class="pa-field" name="reason" minlength="12" maxlength="140" required placeholder="Explain the staffing handover"></label>
+            <button class="pa-action" type="submit" style="background:#0f766e">Transfer class responsibility</button>
+            <p class="pa-muted">This ends the current class assignment, activates the replacement assignment, and transfers review responsibility for existing deployed assessments. The original teacher's private blueprints, lessons, presentations and reference materials remain private and keep their original ownership.</p>
+          </form>
+        </details>
         <section class="pa-card">
           <h2 style="font-weight:750;font-size:1.1rem">Class roster</h2>
           <form id="pa-roster-form">
