@@ -7,7 +7,7 @@ const policyApi=httpsCallable(functions,"schoolFilePolicy");
 const exportApi=httpsCallable(functions,"schoolDataExport");
 const el=id=>document.getElementById(id);
 let policy=null,manifest=null,busy=false,epoch=0;
-const EXPORT_SCHEMA="adminerva-school-continuity-export-v1";
+const EXPORT_SCHEMA="adminerva-school-continuity-export-v2";
 
 function say(message,error=false){
   el("dataFilesStatus").textContent=message;
@@ -81,18 +81,36 @@ async function createExport(){
   if(total>20000)throw new Error("This continuity export exceeds the current 20,000-record browser export limit.");
   setBusy(true);
   try{
-    const categories={};let done=0;
+    const categories={},localIntegrity={};let done=0;
     for(const category of manifest.categories||[]){
       say("Exporting "+category.replaceAll("_"," ")+"…");
-      categories[category]=await exportCategory(category);done++;
+      categories[category]=await exportCategory(category);
+      localIntegrity[category]={
+        count:categories[category].length,
+        sha256:await sha256(categories[category])
+      };
+      done++;
       say("Exported "+done+" of "+manifest.categories.length+" categories…");
     }
+    // Re-read each category server-side after assembly. A continuity file is
+    // refused if any collection changed while browser pagination was running.
+    for(let index=0;index<(manifest.categories||[]).length;index++){
+      const category=manifest.categories[index];
+      say("Verifying export consistency "+(index+1)+" of "+manifest.categories.length+"…");
+      const remote=await call(exportApi,{action:"integrity",category});
+      const local=localIntegrity[category];
+      if(remote.count!==local.count||remote.sha256!==local.sha256)
+        throw new Error("School data changed while exporting "+category.replaceAll("_"," ")+
+          ". No continuity file was created; run the export again.");
+    }
+    const finalCounts=Object.fromEntries(Object.entries(localIntegrity).map(([category,row])=>[category,row.count]));
     const payload={
       schema:EXPORT_SCHEMA,schoolId:manifest.schoolId,
       schoolDisplayName:manifest.schoolDisplayName,
       generatedAt:new Date().toISOString(),
       sourceManifest:{
-        generatedAt:manifest.generatedAt,counts:manifest.counts,
+        generatedAt:manifest.generatedAt,counts:finalCounts,
+        initialCounts:manifest.counts,categoryIntegrity:localIntegrity,
         includes:manifest.includes,excludes:manifest.excludes,
         privacyNotice:manifest.privacyNotice
       },
@@ -119,17 +137,25 @@ async function previewRestore(file){
   if(!/^[a-f0-9]{64}$/.test(supplied))throw new Error("The continuity file has no valid SHA-256 integrity value.");
   const {sha256:_,...payload}=parsed,computed=await sha256(payload);
   if(computed!==supplied)throw new Error("Continuity export integrity check failed. The file changed after export.");
-  const categories=parsed.categories&&typeof parsed.categories==="object"?parsed.categories:{};
-  const rows=Object.entries(categories).map(([name,value])=>[name,Array.isArray(value)?value.length:0]);
+  const categories=parsed.categories&&typeof parsed.categories==="object"?parsed.categories:{},
+    expected=parsed.sourceManifest?.counts||{},
+    integrity=parsed.sourceManifest?.categoryIntegrity||{},
+    rows=Object.entries(categories).map(([name,value])=>[name,Array.isArray(value)?value.length:0]),
+    mismatches=[];
+  for(const [name,count] of rows){
+    if(Number(expected[name])!==count){mismatches.push(name+" count");continue;}
+    const saved=integrity[name];
+    if(!saved||saved.count!==count||!/^([a-f0-9]{64})$/.test(String(saved.sha256||""))){
+      mismatches.push(name+" integrity metadata");continue;
+    }
+    if(await sha256(categories[name])!==saved.sha256)mismatches.push(name+" digest");
+  }
+  if(mismatches.length)
+    throw new Error("Continuity category integrity failed: "+mismatches.join(", ")+".");
   const total=rows.reduce((sum,row)=>sum+row[1],0);
-  const expected=parsed.sourceManifest?.counts||{},mismatches=rows.filter(([name,count])=>
-    expected[name]!==undefined&&Number(expected[name])!==count);
   el("restorePreviewResult").textContent=
     "Integrity verified for "+parsed.schoolDisplayName+" · "+total.toLocaleString()+" records across "+
-    rows.length+" categories."+(
-      mismatches.length?" Count differences: "+mismatches.map(([name,count])=>
-        name+" "+count+"/"+expected[name]).join(", ")+".":" Export counts match the saved manifest."
-    )+" Preview only: no records were written.";
+    rows.length+" categories. Category counts and SHA-256 digests match the saved manifest. Preview only: no records were written.";
 }
 const picker=createTenantSchoolPicker({
   host:el("dataFilesSchoolSwitcher"),status:el("dataFilesStatus"),
