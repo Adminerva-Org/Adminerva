@@ -25,6 +25,22 @@ const el = id => document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
 const state = { active: null, request: null, token: 0, flags: [], aiBusy: false, dirty:false, abort:null,panels:null,requests:null,aiAbort:null,
   externalEvidence:null,externalPackage:"",externalEvidenceKey:"",externalBusy:false };
+const MAX_REVIEW_PATHS=40;
+function isSafeReviewPath(path){
+  const value=String(path||"").trim();
+  return Boolean(value)&&value.length<=240&&!value.startsWith("/")&&!value.split("/").includes("..");
+}
+function generatedReviewPaths(patches,{excludeMergeContext=false}={}){
+  const paths=[],seen=new Set();
+  for(const patch of Array.isArray(patches)?patches:[]){
+    if(patch?.substantive!==true||(excludeMergeContext&&patch.mergeContext))continue;
+    const path=String(patch.path||"").trim();
+    if(!isSafeReviewPath(path)||seen.has(path))continue;
+    seen.add(path);paths.push(path);
+    if(paths.length>=MAX_REVIEW_PATHS)break;
+  }
+  return paths;
+}
 function message(text, error=false) {
   const node=el("manualReviewStatus");
   node.textContent=text; node.className=error ? "text-sm text-rose-700" : "text-sm text-slate-600";
@@ -346,7 +362,7 @@ async function importExternalEvaluation(){
     renderFeedbackMarkdown(el("manualReviewAIFeedback"),draft.feedback);
     el("manualReviewUseScore").disabled=draft.score===null;
     el("manualReviewUseFeedback").disabled=!draft.feedback;
-    el("manualReviewFiles").value=[...new Set(evidence.patches.filter(p=>p.substantive===true&&!p.mergeContext).map(p=>p.path))].join("\n");
+    el("manualReviewFiles").value=generatedReviewPaths(evidence.patches,{excludeMergeContext:true}).join("\n");
     const scoreField=el("manualReviewScore"),feedbackField=el("manualReviewFeedback"),applied=[];
     if(draft.score!==null&&!scoreField.value.trim()){scoreField.value=String(draft.score);applied.push("score");}
     if(draft.feedback&&!feedbackField.value.trim()){feedbackField.value=String(draft.feedback);applied.push("feedback");}
@@ -446,7 +462,7 @@ async function generateAIDraft(){
     renderFeedbackMarkdown(el("manualReviewAIFeedback"),draft.feedback);
     el("manualReviewUseScore").disabled=draft.score===null;
     el("manualReviewUseFeedback").disabled=!draft.feedback;
-    el("manualReviewFiles").value=[...new Set(evidence.patches.filter(p=>p.substantive===true).map(p=>p.path))].join("\n");
+    el("manualReviewFiles").value=generatedReviewPaths(evidence.patches).join("\n");
     aiStatus(draft.pendingPoints>0?"System proposal ready. "+draft.pendingPoints+" point"+(draft.pendingPoints===1?"":"s")+" still need teacher confirmation; the proposed score can be adjusted in Teacher grade. Nothing was saved or published.":"System proposal ready with no pending rubric points. Your teacher fields are unchanged; saving and publication remain separate.");
     el("manualReviewFallback").classList.add("hidden");
   }catch(error){
@@ -671,8 +687,10 @@ async function save(event) {
   if(!raw.trim()||!Number.isFinite(score)||score<0||score>active.maxScore)return message("Score must be between 0 and "+active.maxScore+".",true);
   if(!feedback)return message("Add feedback for the student before saving.",true);
   if(!el("manualReviewConfirm").checked)return message("Confirm you inspected the evidence before saving.",true);
-  if(paths.length>40 || paths.some(p=>p.length>240 || p.startsWith("/") || p.split("/").includes("..")))
-    return message("Provide at most 40 safe repository-relative file paths.",true);
+  if(paths.length>MAX_REVIEW_PATHS)
+    return message("Files considered supports up to "+MAX_REVIEW_PATHS+" repository paths. Adminerva-generated paths are capped automatically; remove manually added extras.",true);
+  if(paths.some(p=>!isSafeReviewPath(p)))
+    return message("Use repository-relative file paths only (no leading slash or '..' segments).",true);
   const button=el("manualReviewSave");button.disabled=true;message("Saving manual grade and audit record…");
   try {
     const revision=doc(collection(db,"grade_revisions"));
