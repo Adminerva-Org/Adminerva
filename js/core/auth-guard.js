@@ -115,14 +115,18 @@ async function checkAccess(user){
     activeRole=actualRole;
   }
   const legacyAdminPage=currentPath.match(/\/(teacher-accounts|admin-analytics|admin-hub|users|manage-sections|manage-programs|manage-subjects)\.html$/)?.[1]||null;
-  if(legacyAdminPage&&(admittedRole!=="admin"||(v4Cutover&&access.schoolAdmin))){
+  if(legacyAdminPage&&(admittedRole!=="admin"||v4Cutover)){
     if(access.schoolAdmin){
       const destination=legacyAdminPage==="users"?"people-access.html#people":
         ["teacher-accounts","manage-sections","manage-subjects"].includes(legacyAdminPage)?
           "people-access.html#classes":"school-admin.html";
       replacePage(destination);return;
     }
+    if(v4Cutover&&access.platformAdmin){replacePage("owner-schools.html");return;}
     replacePage(roleHome(actualRole));return;
+  }
+  if(v4Cutover&&actualRole==="platformowner"&&currentPath.endsWith("/issues.html")){
+    replacePage("owner-schools.html");return;
   }
   if(/\/(owner-schools)\.html$/.test(currentPath)&&
      !(access.platformAdmin||admittedRole==="admin")){
