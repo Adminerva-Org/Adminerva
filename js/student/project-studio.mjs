@@ -425,8 +425,20 @@ export function createProjectStudio({
   }
 
   async function openProjectById(id){
-    const project=findCodeProject(localStorage,uid,id);
-    if(!project)return alert("This project is no longer available on this device.");
+    let project=findCodeProject(localStorage,uid,id);
+    if(!project&&cloudEnabled){
+      try{
+        const remote=await loadV4StudioProject(id);
+        if(remote){
+          project=v4ProjectToLocal(uid,remote);
+          validateProject(project);
+          project=saveCodeProject(localStorage,uid,project);
+        }
+      }catch(error){
+        console.warn("Verified-school Studio project could not be opened:",error?.message||error);
+      }
+    }
+    if(!project)return alert("This project is not available in this device or your active verified school.");
     activateProject(project);
   }
 
