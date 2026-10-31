@@ -101,7 +101,7 @@ async function checkAccess(user){
   let activeRole = actualRole;
 
   // 3. The Shape-Shifter Logic (ONLY permitted for authorized admins/teachers)
-  if(actualRole==="superadmin"||actualRole==="teacher"){
+  if(actualRole==="superadmin"||(actualRole==="teacher"&&access.legacyRole==="teacher")){
     const mockRole=localStorage.getItem("Adminerva_Mock_Role");
     if((actualRole==="superadmin"?["superadmin","teacher","student"]:["teacher","student"]).includes(mockRole))
       activeRole=mockRole;
@@ -141,6 +141,26 @@ async function checkAccess(user){
      !(access.schoolAdmin||access.schoolTeacher||access.schoolStudent)){
     replacePage(roleHome(actualRole));return;
   }
+  const v4OnlyTeacher=access.schoolTeacher&&!["teacher","admin"].includes(access.legacyRole);
+  if(v4OnlyTeacher){
+    const page=currentPath.split("/").pop();
+    const allowed=new Set([
+      "teacher-home.html","teacher-assessment-library.html","school-gradebook.html",
+      "school-support.html","people-access.html","school-admin.html","reclaim-inbox.html",
+      "settings.html","join-school.html","wiki.html"
+    ]);
+    if(!allowed.has(page)){
+      const gradingPages=new Set([
+        "gradebook.html","repofetch.html","repobank.html","grading.html","activity-grader.html",
+        "group-inspector.html","contribution-inspector.html","assessment-evidence-review.html",
+        "submissions.html","studio-submissions.html"
+      ]);
+      const destination=gradingPages.has(page)?"school-gradebook.html":
+        page==="assessment-studio.html"?"teacher-assessment-library.html":
+        page==="issues.html"?"school-support.html":"teacher-home.html";
+      replacePage(destination);return;
+    }
+  }
   const isIssuesPage = currentPath.includes("issues.html");
   const isSchoolSupportPage = currentPath.includes("school-support.html");
 
@@ -176,7 +196,8 @@ async function checkAccess(user){
   }
   document.dispatchEvent(new CustomEvent("adminerva:role-ready", {
     detail:{role:activeRole,platformAdmin:Boolean(access.platformAdmin),schoolAdmin:Boolean(access.schoolAdmin),
-      schoolTeacher:Boolean(access.schoolTeacher),schoolStudent:Boolean(access.schoolStudent)}
+      schoolTeacher:Boolean(access.schoolTeacher),schoolStudent:Boolean(access.schoolStudent),
+      legacyTeacher:access.legacyRole==="teacher",v4OnlyTeacher}
   }));
 
   // Only verified administrator accounts see management shortcuts.
