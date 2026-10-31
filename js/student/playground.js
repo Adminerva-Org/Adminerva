@@ -1341,6 +1341,21 @@ function bindUIEvents() {
   window.addEventListener("blur",hideExplorerContextMenu);
   window.addEventListener("resize",hideExplorerContextMenu);
   document.addEventListener("scroll",hideExplorerContextMenu,true);
+  const studioExplorer=document.getElementById("studioExplorer");
+  if(studioExplorer){
+    try{studioExplorer.open=localStorage.getItem("Adminerva_Studio_Explorer_Open_v1")!=="0";}catch{}
+    studioExplorer.addEventListener("toggle",()=>{
+      try{localStorage.setItem("Adminerva_Studio_Explorer_Open_v1",studioExplorer.open?"1":"0");}catch{}
+      hideExplorerContextMenu();
+    });
+  }
+  const toolsMenu=document.querySelector(".studio-tools-menu");
+  toolsMenu?.querySelector(".pg-menu")?.addEventListener("click",event=>{
+    if(event.target.closest("button,a[href]"))toolsMenu.removeAttribute("open");
+  });
+  document.addEventListener("click",event=>{
+    if(toolsMenu?.open&&!toolsMenu.contains(event.target))toolsMenu.removeAttribute("open");
+  });
   document.getElementById('cancelRunBtn')?.addEventListener('click',()=>executionController?.abort());
   document.getElementById('stopDesktopBtn')?.addEventListener('click',()=>stopJavaDesktop());
   document.getElementById('javaRunMode')?.addEventListener('change',event=>{
