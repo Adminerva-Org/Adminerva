@@ -113,7 +113,8 @@ function githubCandidate({row,revisions,task,student}){
   const approvedCheckpoint=String(head.approvedCheckpointSha||"").toLowerCase();
   if(approvedCheckpoint!==latest.checkpointSha||!clean(head.reviewedBy,128))
    return {ok:false,reason:"legacy_github_approval_incomplete"};
-  verification={teacherUid:clean(head.reviewedBy,128),note:clean(head.verificationNote,2000),
+  verification={teacherUid:task.ownerUid,note:clean(head.verificationNote,2000)||
+    "Historical MCS evidence approval migrated under the canonical assessment owner.",
    verifiedCheckpointSha:latest.checkpointSha,verifiedCommitShas:[...latest.selectedCommitShas],
    version:latest.version};
  }
@@ -134,7 +135,7 @@ function githubCandidate({row,revisions,task,student}){
    migration:{legacyRevision:version.legacyRevision,legacyStatus:version.legacyStatus}})),
   migration:{sourcePath:row.path,legacyEvidenceId:row.id,legacyRevision:Number(head.revision)||0,
    verifiedContributionCommits:verifiedSubset,contributionScope:clean(head.contributionScope,3000),
-   originalStatus:status}};
+   legacyReviewedBy:clean(head.reviewedBy,128),originalStatus:status}};
 }
 function convertStudioSnapshot(version){
  const json=typeof version?.snapshotJson==="string"?version.snapshotJson:"";
@@ -188,6 +189,7 @@ function studioCandidate({row,versions,task,student,now=Date.now()}){
   projectRevision:current.projectRevision,contentDigest:current.contentDigest,status:mappedStatus,
   currentVersion:current.version,revisionRequestMessage:mappedStatus==="reopened"?clean(head.reviewNote||head.revisionRequestMessage,2000):null,
   revisionDueAt:null,requiresRevisionExtension,
+  reviewedByUid:mappedStatus==="reviewed"?task.ownerUid:null,
   versions:converted.map(item=>({schoolId:SCHOOL_ID,taskId:task.taskId,studentUid:student.uid,
    personId:student.personId,projectId:item.projectId,projectRevision:item.projectRevision,
    files:item.files,artifacts:item.artifacts,contentDigest:item.contentDigest,
@@ -277,13 +279,14 @@ function gradeCandidate({row,task,student,github,studio,revisions}){
  const gradeId=v4Key(task.taskId,student.uid);
  return {ok:true,gradeId,targetPath:"schools/"+SCHOOL_ID+"/student_grades/"+gradeId,
   schoolId:SCHOOL_ID,taskId:task.taskId,offeringId:task.offeringId,
-  personId:student.personId,studentUid:student.uid,reviewerUid:clean(grade.reviewedBy,128)||task.ownerUid,
+  personId:student.personId,studentUid:student.uid,reviewerUid:task.ownerUid,
   evidenceType,submissionId,submissionVersion,submissionDigest,
   gradeSchema,criteria:scoreModel.criteria,awarded:scoreModel.awarded,pending:scoreModel.pending,total:scoreModel.total,
   feedback:clean(grade.feedback,5000),status,revision:Math.max(1,Number(grade.gradeVersion)||1),
   publishedAt:status==="published"?(timeMillis(grade.publishedAt)||timeMillis(grade.updatedAt)||timeMillis(grade.gradedAt)):null,
   migration:{sourcePath:row.path,legacyGradeId:row.id,legacyGradeSource:clean(grade.gradeSource,80),
    compatibilityReason:scoreModel.compatibilityReason||null,
+   legacyReviewedBy:clean(grade.reviewedBy,128)||null,
    legacyRevisions:revisions.map(item=>({id:item.id,reason:clean(item.data.reason,1000),
     editorUid:clean(item.data.editorUid,128),before:item.data.before||null,after:item.data.after||null,
     createdAt:timeMillis(item.data.createdAt)}))}};
