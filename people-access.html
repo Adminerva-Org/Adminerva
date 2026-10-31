@@ -139,6 +139,12 @@
           <h2 style="font-size:1.2rem;font-weight:750">Preview results</h2>
           <div id="pa-import-summary" class="pa-muted">No file previewed.</div>
           <div id="pa-import-results" role="list" aria-live="polite"></div>
+          <section id="pa-import-course-map" style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid #cbd5e1">
+            <h3 style="font-size:1.05rem;font-weight:750">Reviewed section-to-course mapping</h3>
+            <p class="pa-muted">Section values from the roster are hints only. After the people import is committed, review each matched section, choose the exact active course offering, and explicitly enroll the listed students. No section hint grants access or creates an enrollment automatically.</p>
+            <div id="pa-import-course-groups" role="list" aria-live="polite"></div>
+            <p id="pa-import-course-status" class="pa-muted" role="status" aria-live="polite">Preview a roster with student section hints to prepare reviewed enrollment groups.</p>
+          </section>
         </section>
       </div>
     </section>
@@ -274,6 +280,6 @@
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script src="js/core/adminerva-nav.js?v=4.0.0"></script>
 <script type="module" src="js/core/auth-guard.js?v=4.0.0"></script>
-<script type="module" src="js/core/people-access.mjs?v=4.0.0"></script>
+<script type="module" src="js/core/people-access.mjs?v=4.0.1"></script>
 </body>
 </html>
