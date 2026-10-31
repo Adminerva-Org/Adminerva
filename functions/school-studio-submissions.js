@@ -8,6 +8,7 @@ const {FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {digestProject}=require("./school-studio-projects.js");
+const {writeSchoolNotification}=require("./school-notifications.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
 function createSchoolStudioSubmissionService({db}){
@@ -129,6 +130,15 @@ function createSchoolStudioSubmissionService({db}){
       action:version===1?"studio_submitted":"studio_resubmitted",version,createdAt:when});
     receipt={submissionId,version,status:"submitted",alreadyExisted:false};
    });
+   if(!receipt.alreadyExisted){
+    await writeSchoolNotification({
+      db,schoolId:ctx.schoolId,uid:task.data().ownerUid,
+      id:"studio_submission_"+taskId+"_"+ctx.uid+"_"+receipt.version,
+      title:receipt.version>1?"Studio project resubmitted":"Studio project submitted",
+      body:(task.data().title||"Assessment")+" · a student submission is ready for review.",
+      type:"submission",sourceId:taskId,target:"gradebook.html"
+    }).catch(()=>{});
+   }
    return receipt;
   }
   if(!ctx.roles.includes("teacher"))
@@ -197,6 +207,7 @@ function createSchoolStudioSubmissionService({db}){
    if(Date.now()>task.data().dueAt.toMillis()&&!extensionDueAt)
     deny("failed-precondition","The original deadline passed. Set an explicit revision extension before reopening.");
    const auditRef=db.collection(prefix+"submission_audit").doc();
+   let revisionStudentUid=null;
    await db.runTransaction(async tx=>{
     await isAuthorized(tx);
     const submission=await tx.get(submissionRef);
@@ -206,6 +217,7 @@ function createSchoolStudioSubmissionService({db}){
      deny("failed-precondition","Only a submitted, unpublished revision can be reopened.");
     // Grade publication is a separate guarded service; if a published grade
     // exists, this operation must fail closed and require formal correction.
+    revisionStudentUid=submission.data().studentUid;
     const gradeRef=db.doc(prefix+"student_grades/"+hash(taskId,submission.data().studentUid));
     const grade=await tx.get(gradeRef);
     if(grade.exists&&grade.data().publishedAt)
@@ -216,6 +228,13 @@ function createSchoolStudioSubmissionService({db}){
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,submissionId,
       actorUid:ctx.uid,action:"studio_revision_requested",createdAt:now});
    });
+   if(revisionStudentUid)await writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:revisionStudentUid,
+     id:"studio_revision_"+taskId+"_"+submissionId,
+     title:"Studio revision requested",
+     body:(task.data().title||"Assessment")+" · your teacher requested changes before grading.",
+     type:"submission",sourceId:taskId,target:"student-assessments.html"
+   }).catch(()=>{});
    return {submissionId,status:"reopened"};
   }
   deny("invalid-argument","Unknown Studio submission operation.");
