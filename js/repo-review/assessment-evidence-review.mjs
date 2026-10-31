@@ -437,6 +437,7 @@ async function approve(){
   }
   state.busy=true;el("evidenceApprove").disabled=true;
   const end=window.beginLoading?.("Verifying selected commits and approving checkpoint…",el("evidenceDetails"))||(()=>{});
+  let approvalStage="initial validation";
   try{
     const repo=parseRepository(state.evidence.repository);
     const selection=normalizeSelection(state.evidence.selectedCommits,state.evidence.checkpointSha,{allowEmpty:state.evidence.source==="teacher_discovered"});
@@ -446,6 +447,7 @@ async function approve(){
       throw Error("A rejected attribution claim is selected for individual credit. Refresh review and remove it before approval.");
     const scope=el("evidenceContributionScope").value.trim()||(verified.length?"Instructor verified "+verified.length+" selected commit(s) for "+(state.student.name||state.student.id)+" at checkpoint "+selection.checkpointSha+". Individual review is limited to these selected changes; shared project features are context only.":"No individual contributing commits were verified. This checkpoint approval records shared project context only.");
     const contribution=approvalContribution(selection,verified,scope);
+    approvalStage="reclaim conflict check";
     status("Checking for competing pending reclaim requests…");
     await Promise.all(selection.selectedCommits.map(async sha=>{
       const reviewerRole=await resolveStaffRole(auth.currentUser);
@@ -457,17 +459,20 @@ async function approve(){
         d.data().repository===state.evidence.repository&&d.data().status==="pending"))
         throw Error("A selected commit has an unresolved reclaim request. Ask the administrator to review the attribution before approving this student's checkpoint.");
     }));
+    approvalStage="checkpoint ancestry verification";
     status("Verifying checkpoint ancestry with GitHub…");
     await verifyAncestry(repo,selection.checkpointSha,selection.selectedCommits);
     if(destroyed||sequence!==state.sequence)return;
+    approvalStage="approval transaction";
     const ref=doc(db,"assessment_evidence",studentId+"_"+assessmentId);
     await changeEvidence(ref,opened,{status:"approved",reviewedBy:auth.currentUser.uid,
         reviewedAt:serverTimestamp(),verificationNote:note,
         approvedCheckpointSha:selection.checkpointSha,...contribution},note);
+    approvalStage="post-approval reload";
     await loadEvidence();
     notifyWorkspace();
     status(contribution.verifiedContributionCommits.length?"Checkpoint approved and the review controls refreshed. Evaluate is available for verified individual contributions; grades remain unpublished.":"Checkpoint approved with no verified individual contributions. No shared-project credit is inferred; use manual review. Grades remain unpublished.");
-  }catch(e){if(e.code==="evidence-changed")state.loaded=false;status("Approval failed: "+e.message);}
+  }catch(e){if(e.code==="evidence-changed")state.loaded=false;status("Approval failed during "+approvalStage+": "+e.message);}
   finally{end();state.busy=false;el("evidenceApprove").disabled=!state.loaded||(!["submitted","needs_review"].includes(state.evidence?.status)&&!(state.evidence?.status==="approved"&&state.verificationEditing));}
 }
 async function reopen(){
