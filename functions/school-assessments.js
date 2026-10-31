@@ -105,7 +105,11 @@ function createSchoolAssessmentService({db}){
    if(!ctx.roles.includes("teacher"))deny("permission-denied","Teacher access is required.");
    const snap=await tasks.where("ownerUid","==",ctx.uid).limit(100).get();
    return {assessments:snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId)
-    .map(doc=>({taskId:doc.id,title:doc.data().title,offeringId:doc.data().offeringId,
+    .map(doc=>({taskId:doc.id,title:doc.data().title,description:doc.data().description||"",
+      instructions:doc.data().instructions||"",rubric:doc.data().rubric||[],
+      rubricMax:doc.data().rubricMax||0,offeringId:doc.data().offeringId,
+      yearId:doc.data().yearId,termId:doc.data().termId,
+      subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,
       opensAt:doc.data().opensAt?.toMillis(),dueAt:doc.data().dueAt?.toMillis(),
       submissionSource:doc.data().submissionSource,status:doc.data().status}))};
   }
