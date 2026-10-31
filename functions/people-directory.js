@@ -1,6 +1,6 @@
 "use strict";
 const {getSchoolContext,TenantAccessError,checkedSchoolId,verifiedUid}=require("./tenant-access.js");
-const {FieldValue}=require("firebase-admin/firestore");
+const {FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 function invalid(message){throw new TenantAccessError("invalid-argument",message)}
 function field(value,max,label) {
@@ -90,6 +90,7 @@ function createPeopleDirectoryService({db}) {
         const now=FieldValue.serverTimestamp();
         tx.create(ref,{schoolId:ctx.schoolId,email,requestedRole:input.role,
           personId:linkedPersonId,status:"pending",createdByUid:ctx.uid,createdAt:now,
+          expiresAt:Timestamp.fromMillis(Date.now()+7*24*60*60*1000),
           // Invitation does not confer active membership. Approval is a separate server action.
           acceptedByUid:null,revision:1});
         tx.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,
@@ -147,6 +148,8 @@ function createInvitationAcceptanceService({db}) {
       }
       if(invited.status!=="pending")
         throw new TenantAccessError("failed-precondition","This invitation is no longer pending.");
+      if(!invited.expiresAt?.toMillis||invited.expiresAt.toMillis()<=Date.now())
+        throw new TenantAccessError("failed-precondition","This invitation has expired. Ask your school administrator for a new invitation.");
       const roles=[...new Set([...(Array.isArray(member.exists?member.data().roles:null)?member.data().roles:[]),invited.requestedRole])];
       const revision=(member.exists?member.data().revision||0:0)+1;
       const now=FieldValue.serverTimestamp();
