@@ -149,6 +149,18 @@
           </form>
           <div id="pa-class-roster" role="list" aria-live="polite"></div>
         </section>
+        <dialog id="pa-academic-lifecycle-dialog" aria-labelledby="pa-academic-lifecycle-title" style="width:min(480px,calc(100vw - 1rem));border:0;border-radius:14px;padding:1.3rem">
+          <form id="pa-academic-lifecycle-form">
+            <h2 id="pa-academic-lifecycle-title" style="font-size:1.2rem;font-weight:750">Update class membership</h2>
+            <p id="pa-academic-lifecycle-target" class="pa-muted"></p>
+            <label>Reason<input name="reason" class="pa-field" minlength="12" maxlength="140" required placeholder="Explain why this status is changing"></label>
+            <p class="pa-muted">This keeps the existing academic history and records an audit event.</p>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+              <button class="pa-action" type="submit">Confirm change</button>
+              <button class="pa-action" type="button" id="pa-academic-lifecycle-cancel" style="background:#475569">Cancel</button>
+            </div>
+          </form>
+        </dialog>
       </div>
     </section>
   </section>
