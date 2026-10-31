@@ -115,6 +115,23 @@
   </div>
  </form>
 </dialog>
+<dialog id="tl-lifecycle-dialog" class="tl-dialog" aria-labelledby="tl-lifecycle-heading">
+ <form id="tl-lifecycle-form" class="tl-dialog-inner">
+  <h2 id="tl-lifecycle-heading" style="font-size:1.3rem;font-weight:750">Update deployment</h2>
+  <p id="tl-lifecycle-task" class="tl-muted"></p>
+  <p id="tl-lifecycle-help" class="tl-muted"></p>
+  <label>Administrative reason
+    <textarea name="reason" class="tl-input" minlength="12" maxlength="1000" rows="3" required></textarea>
+  </label>
+  <label id="tl-lifecycle-deadline-field" hidden>New deadline
+    <input name="newDueAt" type="datetime-local" class="tl-input">
+  </label>
+  <div class="tl-actions">
+    <button type="submit" class="tl-action" id="tl-lifecycle-save">Save change</button>
+    <button type="button" class="tl-action alt" id="tl-lifecycle-cancel">Cancel</button>
+  </div>
+ </form>
+</dialog>
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script src="js/core/adminerva-nav.js?v=4.0.0"></script>
 <script type="module" src="js/core/auth-guard.js?v=4.0.0"></script>
