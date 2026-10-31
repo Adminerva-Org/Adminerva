@@ -7,7 +7,7 @@ const unsafePages=new Set([
   // These pages already own a verified-school picker and may have unsaved
   // editor/review state. The account menu stays read-only there.
   "student-playground.html","gradebook.html","school-gradebook.html","teacher-assessment-library.html",
-  "people-access.html","owner-schools.html"
+  "people-access.html","school-support.html","school-analytics.html","owner-schools.html"
 ]);
 let mountedFor=null,requestId=0;
 function pageName(){return location.pathname.split("/").pop()||"index.html";}
