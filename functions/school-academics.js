@@ -256,6 +256,101 @@ function createSchoolAcademicsService({db}) {
    });
    return {personId,offeringId,status:"active"};
   }
+
+  if(input.action==="handover_offering"){
+   requireAdmin();
+   const offeringId=checkId(input.offeringId,"Course offering ID",330),
+    fromTeacherUid=checkId(input.fromTeacherUid,"Current teacher UID",128),
+    toTeacherUid=checkId(input.toTeacherUid,"Replacement teacher UID",128),
+    reason=checkName(input.reason,"Teacher handover reason");
+   if(fromTeacherUid===toTeacherUid)
+    deny("invalid-argument","Choose a different replacement teacher.");
+   if(reason.length<12)
+    deny("invalid-argument","Explain the teacher handover in at least 12 characters.");
+   const offeringRef=schoolRoot.doc("course_offerings/"+offeringId),
+    fromRef=schoolRoot.doc("staff_assignments/"+rowKey(fromTeacherUid,offeringId)),
+    toRef=schoolRoot.doc("staff_assignments/"+rowKey(toTeacherUid,offeringId)),
+    toMemberRef=schoolRoot.doc("memberships/"+toTeacherUid),
+    directoryAudit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc(),
+    assessmentAudit=db.collection("schools/"+ctx.schoolId+"/assessment_audit").doc();
+   let result;
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const taskQuery=db.collection("schools/"+ctx.schoolId+"/assessments")
+      .where("offeringId","==",offeringId).limit(101);
+    const [offering,fromAssignment,toAssignment,toMember,tasks]=await Promise.all([
+      tx.get(offeringRef),tx.get(fromRef),tx.get(toRef),tx.get(toMemberRef),tx.get(taskQuery)
+    ]);
+    if(!offering.exists||offering.data().schoolId!==ctx.schoolId||
+       offering.data().status!=="active")
+      deny("failed-precondition","Teacher handover requires an active course offering.");
+    if(!fromAssignment.exists||fromAssignment.data().schoolId!==ctx.schoolId||
+       fromAssignment.data().teacherUid!==fromTeacherUid||
+       fromAssignment.data().offeringId!==offeringId||
+       fromAssignment.data().status!=="active")
+      deny("failed-precondition","The current teacher does not have an active assignment for this offering.");
+    if(!toMember.exists||toMember.data().schoolId!==ctx.schoolId||
+       toMember.data().status!=="active"||!Array.isArray(toMember.data().roles)||
+       !toMember.data().roles.includes("teacher"))
+      deny("permission-denied","The replacement account must be an active verified teacher in this school.");
+    if(tasks.size===101)
+      deny("resource-exhausted","This offering has more than 100 assessment deployments. Use a paginated handover workflow.");
+    if(toAssignment.exists&&
+       (toAssignment.data().schoolId!==ctx.schoolId||
+        toAssignment.data().teacherUid!==toTeacherUid||
+        toAssignment.data().offeringId!==offeringId))
+      deny("failed-precondition","The replacement teaching-assignment key conflicts with another record.");
+    const applicable=tasks.docs.filter(doc=>{
+      const data=doc.data(),reviewerUid=data.reviewerUid||data.ownerUid;
+      return data.schoolId===ctx.schoolId&&reviewerUid===fromTeacherUid&&
+        data.lifecycle!=="cancelled";
+    });
+    const now=FieldValue.serverTimestamp();
+    tx.update(fromRef,{status:"ended",endedByUid:uid,endedAt:now,
+      endReason:reason,revision:(fromAssignment.data().revision||1)+1});
+    let replacementAssignmentState;
+    if(!toAssignment.exists){
+      replacementAssignmentState="created";
+      tx.create(toRef,{schoolId:ctx.schoolId,teacherUid:toTeacherUid,offeringId,
+        yearId:offering.data().yearId,termId:offering.data().termId,
+        subjectId:offering.data().subjectId,sectionId:offering.data().sectionId,
+        status:"active",revision:1,createdByUid:uid,createdAt:now});
+    }else if(toAssignment.data().status==="ended"){
+      replacementAssignmentState="restored";
+      tx.update(toRef,{status:"active",restoredByUid:uid,restoredAt:now,
+        restoreReason:reason,revision:(toAssignment.data().revision||1)+1});
+    }else if(toAssignment.data().status==="active"){
+      replacementAssignmentState="already_active";
+    }else{
+      deny("failed-precondition","The replacement teacher assignment is in an unsupported state.");
+    }
+    for(const task of applicable){
+      const data=task.data(),revision=data.revision||1;
+      tx.update(task.ref,{
+        reviewerUid:toTeacherUid,
+        handoverFromUid:fromTeacherUid,
+        handoverByUid:uid,
+        handoverAt:now,
+        handoverReason:reason,
+        revision:revision+1,
+        updatedAt:now
+      });
+    }
+    tx.create(directoryAudit,audit("teacher_offering_handed_over",{
+      offeringId,fromTeacherUid,toTeacherUid,reason,
+      replacementAssignmentState,assessmentCount:applicable.length
+    }));
+    tx.create(assessmentAudit,{
+      schoolId:ctx.schoolId,actorUid:uid,action:"assessment_review_responsibility_handover",
+      offeringId,fromTeacherUid,toTeacherUid,taskIds:applicable.map(doc=>doc.id),
+      assessmentCount:applicable.length,reason,createdAt:now
+    });
+    result={offeringId,fromTeacherUid,toTeacherUid,
+      replacementAssignmentState,assessmentCount:applicable.length};
+   });
+   return result;
+  }
+
   if(["assign_teacher","end_teacher_assignment","restore_teacher_assignment"].includes(input.action)){
    requireAdmin();
    const teacherUid=checkId(input.teacherUid,"Teacher account UID",128),
