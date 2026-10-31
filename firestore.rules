@@ -228,8 +228,20 @@ service cloud.firestore {
     // Administrators retain existing system-wide maintenance privileges.
     match /{collection}/{document} {
       allow read, write: if isAdmin() && !serverOwned(collection) && !monitoringCollection(collection) && !personalCollection(collection) && collection != "assessment_evidence" && collection != "commit_reclaims" && collection != "student_grades" && collection != "assessments" && collection != "assessment_private" &&
-        !(collection in ["practice_profiles","practice_scores","practice_boards","practice_rankings"]);
+        !(collection in ["practice_profiles","practice_scores","practice_boards","practice_rankings","schools","platform_schools","platform_users","platform_admins","platform_audit","provisioning_jobs","migration_runs","system_health"]);
     }
+
+    // V4 school collections use server-side verified membership APIs until their
+    // granular Firestore rules and data cutover are approved. A legacy admin
+    // wildcard MUST NOT grant access to the new platform registry or index.
+    match /platform_schools/{schoolId} { allow read, write: if false; }
+    match /platform_users/{userId}/{record=**} { allow read, write: if false; }
+    match /platform_admins/{uid} { allow read, write: if false; }
+    match /platform_audit/{record=**} { allow read, write: if false; }
+    match /provisioning_jobs/{record=**} { allow read, write: if false; }
+    match /migration_runs/{record=**} { allow read, write: if false; }
+    match /system_health/{record=**} { allow read, write: if false; }
+    match /schools/{schoolId}/{record=**} { allow read, write: if false; }
 
     match /student_access/{ownerUid} {
       allow get: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
