@@ -4,9 +4,10 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 const tenantSchools=httpsCallable(getFunctions(app,"asia-southeast1"),"tenantSchools");
 const preferredKey=uid=>"Adminerva_last_verified_school_"+uid;
 const unsafePages=new Set([
-  "student-playground.html","assessment-studio.html","gradebook.html","repofetch.html",
-  "assessment-evidence-review.html","submissions.html","studio-submissions.html",
-  "teacher-assessment-library.html","people-access.html","owner-schools.html"
+  // These pages already own a verified-school picker and may have unsaved
+  // editor/review state. The account menu stays read-only there.
+  "student-playground.html","gradebook.html","teacher-assessment-library.html",
+  "people-access.html","owner-schools.html"
 ]);
 let mountedFor=null,requestId=0;
 function pageName(){return location.pathname.split("/").pop()||"index.html";}
