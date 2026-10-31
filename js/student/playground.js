@@ -854,7 +854,7 @@ window.adminervaImportLegacyPlayground = function () {
 async function exportZIP() {
   const btn = document.getElementById("exportZipBtn");
   if (!btn) return;
-  btn.innerHTML = `<span class="animate-spin">↻</span> Packing...`;
+  btn.textContent = "Packing...";
   try {
     const zip = new JSZip();
     workspaceFolders.forEach(folder=>zip.folder(folder));
@@ -953,7 +953,7 @@ window.adminervaUndoPlaygroundRestore=function(){
 async function shareSnapshot() {
   const btn = document.getElementById("snapshotBtn");
   if (!btn) return;
-  btn.innerHTML = `<span class="animate-spin">↻</span> Generating...`;
+  btn.textContent = "Generating...";
   const state = {
     lang: currentLang,
     files: {},
@@ -1264,7 +1264,7 @@ async function askMinerva() {
   const consoleOut = document.getElementById("consoleOutput");
 
   document.getElementById("consoleTab")?.click();
-  if (btn){btn.disabled=true;btn.innerHTML = `<span class="animate-spin">✨</span> Thinking...`;}
+  if (btn){btn.disabled=true;btn.textContent = "Thinking...";}
   const end=window.beginLoading?.("Minerva is preparing coding guidance…")||(()=>{});
 
   let context = `I am a student learning to program in ${currentLang}.\nHere are my files:\n`;
