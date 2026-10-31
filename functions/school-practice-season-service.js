@@ -37,7 +37,11 @@ function createSchoolPracticeSeasonService({
   const personId=member.data()?.personId;
   if(typeof personId!=="string"||!/^[A-Za-z0-9_-]{1,128}$/.test(personId))
    reject("permission-denied","Your school account is not linked to a student person record.","enrollment");
-  const personRef=db.doc(prefix(ctx.schoolId)+"people/"+personId),person=await personRef.get();
+  const personRef=db.doc(prefix(ctx.schoolId)+"people/"+personId),
+   migrationRef=db.doc(prefix(ctx.schoolId)+"practice_migration_state/"+ctx.uid);
+  const [person,migrationState]=await Promise.all([personRef.get(),migrationRef.get()]);
+  if(migrationState.exists&&migrationState.data().status==="in_progress")
+   reject("unavailable","Your Practice progress is being finalized for this school. No score can be submitted until reconciliation completes.","practice-migration");
   if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().kind!=="student"||
      person.data().status!=="active"||person.data().authUid!==ctx.uid)
    reject("permission-denied","Your linked school student record is inactive or changed.","enrollment");
@@ -65,7 +69,7 @@ function createSchoolPracticeSeasonService({
   }));
   return {
    ...ctx,uid:ctx.uid,schoolId:ctx.schoolId,personId,token,
-   memberRef,personRef,
+   memberRef,personRef,migrationRef,
    enrollments:active.map(row=>({
     ref:row.ref,id:row.id,offeringId:row.data().offeringId,
     sectionId:row.data().sectionId,subjectId:row.data().subjectId
@@ -75,11 +79,13 @@ function createSchoolPracticeSeasonService({
  }
  async function eligibility(tx,a){
   const schoolRef=db.doc("platform_schools/"+a.schoolId);
-  const [school,member,person,...records]=await Promise.all([
-   tx.get(schoolRef),tx.get(a.memberRef),tx.get(a.personRef),
+  const [school,member,person,migrationState,...records]=await Promise.all([
+   tx.get(schoolRef),tx.get(a.memberRef),tx.get(a.personRef),tx.get(a.migrationRef),
    ...a.enrollments.map(item=>tx.get(item.ref)),
    ...a.enrollments.map(item=>tx.get(ref(a,"course_offerings/"+item.offeringId)))
   ]);
+  if(migrationState.exists&&migrationState.data().status==="in_progress")
+   reject("unavailable","Your Practice progress is still being reconciled. Retry after the migration is complete.","practice-migration");
   if(!school.exists||school.data().state!=="active"||
      !member.exists||member.data().schoolId!==a.schoolId||member.data().status!=="active"||
      !Array.isArray(member.data().roles)||!member.data().roles.includes("student")||
