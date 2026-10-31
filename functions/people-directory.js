@@ -49,6 +49,43 @@ function createPeopleDirectoryService({db}) {
         nextCursor:snap.docs.length>pageSize?(docs.at(-1)?.data().searchKey||null):null
       };
     }
+    if(input.action==="list_memberships"){
+      const snapshot=await db.collection("schools/"+ctx.schoolId+"/memberships").limit(101).get();
+      if(snapshot.size===101)throw new TenantAccessError("resource-exhausted","Member directory is too large for this pilot page.");
+      return {members:snapshot.docs.filter(member=>member.data().schoolId===ctx.schoolId)
+        .map(member=>({
+          uid:member.id,status:member.data().status,
+          roles:Array.isArray(member.data().roles)?member.data().roles:[],
+          displayName:typeof member.data().displayName==="string"?member.data().displayName:""
+        }))};
+    }
+    if(input.action==="suspend_access"){
+      const targetUid=id(input.targetUid);
+      const reason=field(input.reason,500,"Suspension reason");
+      if(reason.length<12)invalid("Suspension reason must explain the institutional decision.");
+      if(targetUid===ctx.uid)
+        throw new TenantAccessError("failed-precondition","You cannot suspend your own school administrator account.");
+      const targetRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+targetUid);
+      const indexRef=db.doc("platform_users/"+targetUid+"/memberships/"+ctx.schoolId);
+      const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const current=await tx.get(targetRef);
+        if(!current.exists||current.data().schoolId!==ctx.schoolId||
+          current.data().status!=="active")
+          throw new TenantAccessError("failed-precondition","The school membership is not active.");
+        if(Array.isArray(current.data().roles)&&current.data().roles.includes("school_admin"))
+          throw new TenantAccessError("permission-denied","School administrator suspension requires platform-owner review.");
+        const now=FieldValue.serverTimestamp(),revision=(current.data().revision||0)+1;
+        tx.update(targetRef,{status:"suspended",revision,updatedAt:now,updatedByUid:ctx.uid});
+        tx.set(indexRef,{schoolId:ctx.schoolId,status:"suspended",
+          roles:Array.isArray(current.data().roles)?current.data().roles:[],
+          revision,updatedAt:now});
+        tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,targetUid,
+          action:"school_membership_suspended",reason,createdAt:now});
+      });
+      return {targetUid,status:"suspended"};
+    }
     if(input.action==="create_person") {
       const person=input.person||{};
       const displayName=field(person.displayName,140,"Person name");
@@ -164,6 +201,7 @@ function createInvitationAcceptanceService({db}) {
       const revision=(member.exists?member.data().revision||0:0)+1;
       const now=FieldValue.serverTimestamp();
       tx.set(memberRef,{schoolId,status:"active",roles,revision,
+        ...(person?.exists?{displayName:String(person.data().displayName||"").slice(0,140)}:{}),
         updatedByUid:uid,updatedAt:now},{merge:true});
       tx.set(indexRef,{schoolId,status:"active",roles,revision,updatedAt:now});
       tx.update(inviteRef,{status:"accepted",acceptedByUid:uid,acceptedAt:now,revision:(invited.revision||1)+1});
