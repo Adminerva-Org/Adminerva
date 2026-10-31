@@ -12,7 +12,7 @@ export function mountReviewPanels({root,student,assessment,evidence,requests,onE
   const el=id=>root.querySelector("#"+id);
   const panel=el("integratedEvidencePanel");
   panel.innerHTML=evidenceReviewMarkup;
-  const controller=createEvidenceReview({root:panel,inlineContext:{student,assessment},requests,onChange:onEvidenceChange});
+  const controller=createEvidenceReview({root:panel,inlineContext:{student,assessment},requests,onChange:onEvidenceChange,authoritativeInitialRecord:true});
   const repo=parseRepository(student.repoUrl),api="/repos/"+encodeURIComponent(repo.owner)+"/"+encodeURIComponent(repo.repo);
   let current=evidence,roster=[],records=new Map(),generation=0;
   function groupRows(){
