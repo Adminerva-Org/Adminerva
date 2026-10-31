@@ -90,9 +90,10 @@ function createSchoolStudioProjectService({db}){
   const action=input.action;
   if(action==="list"){
    const snap=await projectCollection.limit(100).get();
-   return {projects:snap.docs.filter(d=>d.data().schoolId===ctx.schoolId&&d.data().ownerUid===ctx.uid)
+   return {projects:snap.docs.filter(d=>d.data().schoolId===ctx.schoolId&&d.data().ownerUid===ctx.uid&&d.data().status!=="archived")
     .map(d=>({projectId:d.id,title:d.data().title,language:d.data().language,
-      revision:d.data().revision,updatedAt:d.data().updatedAt?.toMillis?.()||null}))};
+      revision:d.data().revision,status:d.data().status||"active",
+      updatedAt:d.data().updatedAt?.toMillis?.()||null}))};
   }
   if(action==="create"){
    const title=safeTitle(input.title),files=validateFiles(input.files||[]),artifacts=validateArtifacts(input.artifacts);
@@ -103,7 +104,7 @@ function createSchoolStudioProjectService({db}){
    await db.runTransaction(async tx=>{
     await authorizeTransaction(tx);
     tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,
-      language,files,artifacts,contentDigest:digestProject(files,artifacts),revision:1,
+      language,files,artifacts,contentDigest:digestProject(files,artifacts),status:"active",revision:1,
       createdAt:now,updatedAt:now});
    });
    return {projectId:ref.id,revision:1,contentDigest:digestProject(files,artifacts)};
@@ -120,7 +121,7 @@ function createSchoolStudioProjectService({db}){
     await authorizeTransaction(tx);
     const current=await tx.get(ref),now=FieldValue.serverTimestamp();
     if(!current.exists){
-     tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,language,files,artifacts,
+     tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,language,files,artifacts,status:"active",
        contentDigest:digest,revision:1,createdAt:now,updatedAt:now});
      result={projectId,revision:1,contentDigest:digest,created:true};return;
     }
@@ -148,8 +149,34 @@ function createSchoolStudioProjectService({db}){
    if(!doc.exists||doc.data().ownerUid!==ctx.uid||doc.data().schoolId!==ctx.schoolId)
     deny("not-found","Project is unavailable.");
    const data=doc.data();
-   return {projectId,title:data.title,language:data.language,
-    revision:data.revision,files:data.files,artifacts:data.artifacts||{},contentDigest:data.contentDigest};
+   if(data.status==="archived")deny("failed-precondition","This school project is archived. Restore it before opening.");
+   return {projectId,title:data.title,language:data.language,status:data.status||"active",
+    revision:data.revision,files:data.files,artifacts:data.artifacts||{},contentDigest:data.contentDigest,
+    createdAt:data.createdAt?.toMillis?.()||null,updatedAt:data.updatedAt?.toMillis?.()||null};
+  }
+  if(action==="archive"||action==="restore"){
+   const expectedRevision=input.expectedRevision;
+   if(!Number.isInteger(expectedRevision)||expectedRevision<1)
+    deny("invalid-argument","The current school project revision is required.");
+   const restoring=action==="restore";
+   let result;
+   await db.runTransaction(async tx=>{
+    await authorizeTransaction(tx);
+    const doc=await tx.get(ref);
+    if(!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().ownerUid!==ctx.uid)
+     deny("not-found","School project is unavailable.");
+    const data=doc.data();
+    if(data.revision!==expectedRevision)
+     deny("failed-precondition","Project changed in school storage. Reload before changing its status.");
+    const current=data.status||"active";
+    if(restoring&&current!=="archived")deny("failed-precondition","Only an archived project can be restored.");
+    if(!restoring&&current==="archived")deny("failed-precondition","This project is already archived.");
+    const revision=expectedRevision+1,now=FieldValue.serverTimestamp();
+    tx.update(ref,{status:restoring?"active":"archived",revision,updatedAt:now,
+      ...(restoring?{restoredAt:now}:{archivedAt:now})});
+    result={projectId,status:restoring?"active":"archived",revision};
+   });
+   return result;
   }
   if(action==="save"){
    const title=safeTitle(input.title),files=validateFiles(input.files),artifacts=validateArtifacts(input.artifacts);
@@ -162,6 +189,8 @@ function createSchoolStudioProjectService({db}){
     const doc=await tx.get(ref);
     if(!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().ownerUid!==ctx.uid)
      deny("permission-denied","This project is not yours in this school.");
+    if(doc.data().status==="archived")
+     deny("failed-precondition","Restore this archived school project before saving.");
     if(doc.data().revision!==revision)
      deny("failed-precondition","Project changed elsewhere. Load the latest version before saving.");
     tx.update(ref,{title,files,artifacts,contentDigest:digest,revision:revision+1,
