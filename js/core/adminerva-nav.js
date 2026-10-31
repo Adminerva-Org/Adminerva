@@ -82,9 +82,10 @@ document.addEventListener("DOMContentLoaded", () => {
         ["repobank", "Repository investigation", "repobank.html"]
       ]) : [] },
     { name: "Insights", area: "educator", items: canTeach ? [
+      ["class-analytics-v4", "Class analytics", "school-teacher-analytics.html"],
       ["practice-v4", "Practice progress", "school-practice-analytics.html"],
       ...(!v4OnlyTeacher ? [
-        ["dashboard", "Analytics", "teacher-analytics.html"],
+        ["dashboard", "Legacy analytics", "teacher-analytics.html"],
         ["followup", "Learning follow-up", "learning-follow-up.html"]
       ] : [])
     ] : [] },
@@ -110,6 +111,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["overview","School overview","school-admin.html"],
       ["people-v4","People & Access","people-access.html"],
       ["school-analytics","School operations","school-analytics.html"],
+      ["class-analytics-v4","Class analytics","school-teacher-analytics.html"],
       ["practice-v4","Practice progress","school-practice-analytics.html"],
       ["reclaims-v4","Commit attribution requests","reclaim-inbox.html"]
     ] : hasPlatformAuthority ? [
@@ -159,8 +161,10 @@ document.addEventListener("DOMContentLoaded", () => {
     [homeLabel,homeRoute,isSchoolAdmin?"School operations and teaching workspace":"Your teaching workspace"],
     ...(canTeach?(v4OnlyTeacher?
       [["Assessment & Grade","teacher-assessment-library.html","School assessments, evidence and grading"],
+       ["Class Analytics","school-teacher-analytics.html","Published class results and your private drafts"],
        ["Practice Progress","school-practice-analytics.html","Current-season class Practice analytics"]]:
       [["Repository Management","teacher-assessment-library.html","Assessments, submissions, grading and repositories"],
+       ["Class Analytics","school-teacher-analytics.html","Verified-school assessment results"],
        ["Practice Progress","school-practice-analytics.html","Verified-school Practice analytics"],
        ["Lesson Planning","lesson-planner.html","Lessons, slides, schedule and references"]]):[]),
     ...((isSuperAdmin||isSchoolAdmin||hasPlatformAuthority)?[["School administration",
