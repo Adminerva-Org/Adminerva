@@ -18,7 +18,7 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
-    workspace.hidden=true;list.replaceChildren();after=null;
+    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();after=null;
     get("pa-more").hidden=true;
   },
   onReady:scope=>{
