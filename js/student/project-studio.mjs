@@ -9,6 +9,7 @@ import {
 } from "./code-projects.mjs?v=2.0.0";
 import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=3.0.0";
 import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
+import {queueV4StudioProjectSync} from "./v4-studio-service.mjs?v=4.0.0";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -119,7 +120,15 @@ export function createProjectStudio({
     activeProject=saveCodeProject(localStorage,uid,project);
     updateProjectHeading();
     updateQuotaUI();
-    if(cloudEnabled&&cloud)scheduleCloudSave(activeProject);
+    if(cloudEnabled&&cloud){
+      scheduleCloudSave(activeProject);
+      // Progressive V4 sync reuses the exact project saved by this editor.
+      // It is debounced and failure does not erase the existing local/legacy copy.
+      queueV4StudioProjectSync(activeProject,activeProject.state);
+    }
+    window.dispatchEvent(new CustomEvent("adminerva:studio-project-saved",{detail:{
+      projectId:activeProject.id,updatedAt:activeProject.updatedAt
+    }}));
     return activeProject;
   }
   function saveState(state){
