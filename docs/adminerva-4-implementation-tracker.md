@@ -34,6 +34,8 @@ Do not repeat the mixed-schools question. Retain source document identifiers, ex
 - `teacher-assessment-library.html`: rubric editor, verified teacher recipient chooser, deployed task tab, assigned-course deployment sheet and retry-safe request key.
 - Focused mapping and tenant-selection checks, without claiming full V4 integration acceptance.
 
+**Safety update:** Until the school-aware GitHub evidence adapter is available, the V4 pilot prevents deploying a GitHub-mode task that students could not submit. A scorable rubric is mandatory at deployment. Studio teacher revisions requested after the original deadline require an explicit teacher-selected extension (maximum 30 days); the student resubmission server checks that extension.
+
 **Remaining:** the existing 3.0 Studio IDE must be connected to the new project/submission APIs; the existing Review & Grade and Gradebook interfaces must use the V4 backend; V2 GitHub evidence and attribution reclaim need a tenant-preserving migration; nested production ledger must be generated/reconciled; no Firestore copy or role grant has been executed. Do not present the new callables as deployed features.
 
 ## Delivery and remaining work
