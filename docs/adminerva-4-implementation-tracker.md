@@ -160,6 +160,26 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 - Studio submission review, GitHub evidence review, Gradebook, Class Analytics, lifecycle controls, submission alerts, continuity export and restore all use `reviewerUid || ownerUid` for backward-compatible responsibility.
 - People & Access includes a reviewed Teacher Handover form and explains that private teacher resources retain their original ownership.
 
+## Studio compact/mobile workspace completion — October 31, 2026
+
+- Adminerva Studio now keeps Save, Run, Tools and assessment Submit as the primary narrow-screen actions instead of permanently exposing secondary project controls.
+- Format, project settings, Minerva, XML Layout Lab, ZIP/import/export/reset/restore and compatibility project actions are consolidated under a single Tools disclosure.
+- Explorer is collapsible, persists its device preference and becomes a bounded horizontal workspace strip on phones instead of permanently consuming editor width/height.
+- Optional program input is collapsed by default and expands only when needed.
+- Older two-row mobile toolbar rules are explicitly overridden so the 4.0 command surface remains one row; very narrow phones receive additional compact sizing without hiding Save.
+- Terminal/Web preview/Desktop application remain output views inside Code rather than separate top-level Studio workspaces.
+
+## 4.0 cutover readiness and reversible compatibility retirement — October 31, 2026
+
+- `school-cutover-readiness.js` performs a bounded canonical integrity review without reading teacher-private reusable content. It checks active school administration, academic catalog/offerings, student person links, enrollments, teacher assignments, deployed-task responsibility, published-grade identity links, Practice migration markers, Storage-policy consistency and activation attestations.
+- School administrators can review the same checks in `school-cutover-readiness.html`; the page is read-only and cannot retire compatibility.
+- Platform-owner school records now carry a reversible `compatibilityMode`: `legacy_allowed` or `v4_only`. Existing schools with no field default to `legacy_allowed`, preventing accidental MCS cutover. Newly provisioned schools start `v4_only`.
+- Switching an existing school to `v4_only` requires a clean server readiness result plus explicit owner attestations for continuity backup, migration reconciliation, rollback review and required V4 route validation. The operation is audited and does not delete 3.x or canonical data.
+- Rollback switches the school back to `legacy_allowed` and records the rollback reason; it does not reverse or delete V4 data.
+- Verified tenant context now includes the server compatibility mode. Staff admission treats a migrated legacy teacher as V4-only only after every verified school on that account is `v4_only`; multi-school accounts therefore fail conservatively if any school still needs compatibility.
+- Once cut over, migrated school administrators/teachers are fenced from legacy global administration/teacher workspaces and redirected to canonical V4 surfaces. The legacy role records remain present solely for reversible compatibility until final retirement.
+- The owner registry shows compatibility mode and canonical readiness blockers before offering the cutover control.
+
 ## Delivery and remaining work
 
 | Track | Actual implementation in PR #113 | Remaining before Adminerva 4.0 |
