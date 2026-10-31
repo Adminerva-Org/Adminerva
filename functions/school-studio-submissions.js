@@ -4,7 +4,7 @@
  * Independent of live 3.0 Studio/Gradebook until the tenant cutover.
  */
 const {createHash}=require("node:crypto");
-const {FieldValue}=require("firebase-admin/firestore");
+const {FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {digestFiles}=require("./school-studio-projects.js");
@@ -56,7 +56,9 @@ function createSchoolStudioSubmissionService({db}){
       version:submission.exists?submission.data().currentVersion:0,
       revisionRequested:submission.exists&&submission.data().status==="reopened",
       requestMessage:submission.exists&&submission.data().status==="reopened"?
-       submission.data().revisionRequestMessage||"":""};
+       submission.data().revisionRequestMessage||"":"",
+      revisionDueAt:submission.exists&&submission.data().status==="reopened"?
+       submission.data().revisionDueAt?.toMillis?.()||null:null};
    }
    const projectId=checkId(input.projectId,"Studio project",128);
    const revision=input.projectRevision;
@@ -82,8 +84,11 @@ function createSchoolStudioSubmissionService({db}){
        assessment.offeringId!==offeringId)
      deny("failed-precondition","The assigned Studio assessment is no longer available.");
     const now=Date.now();
-    if(now<assessment.opensAt.toMillis()||now>assessment.dueAt.toMillis())
-     deny("failed-precondition","The Studio submission window is not currently open.");
+    const revisionDeadline=submission.exists&&submission.data().status==="reopened"?
+      submission.data().revisionDueAt?.toMillis?.()||0:0;
+    if(now<assessment.opensAt.toMillis()||
+       (now>assessment.dueAt.toMillis()&&now>revisionDeadline))
+     deny("failed-precondition","The Studio submission deadline has passed. Ask your teacher for an explicit revision extension.");
     if(!project.exists||project.data().schoolId!==ctx.schoolId||
        project.data().ownerUid!==ctx.uid)
      deny("permission-denied","Choose one of your saved school Studio projects.");
@@ -114,7 +119,7 @@ function createSchoolStudioSubmissionService({db}){
     if(submission.exists){
      tx.update(submissionRef,{status:"submitted",currentVersion:version,
        projectId,projectRevision:revision,contentDigest:frozenDigest,
-       revisionRequestMessage:null,updatedAt:when});
+       revisionRequestMessage:null,revisionDueAt:null,updatedAt:when});
     }else{
      tx.create(submissionRef,{schoolId:ctx.schoolId,taskId,offeringId,studentUid:ctx.uid,
        personId,projectId,projectRevision:revision,contentDigest:frozenDigest,
@@ -175,6 +180,18 @@ function createSchoolStudioSubmissionService({db}){
    const reason=String(input.reason||"").trim();
    if(reason.length<12||reason.length>2000)
     deny("invalid-argument","Explain the requested revision in 12–2000 characters.");
+   let extensionDueAt=null;
+   if(input.extensionDueAt!==undefined&&input.extensionDueAt!==null&&input.extensionDueAt!==""){
+    const raw=input.extensionDueAt;
+    if(typeof raw!=="string"||!/(Z|[+-]\d\d:\d\d)$/.test(raw))
+      deny("invalid-argument","Revision extension must include an explicit timezone.");
+    const until=Date.parse(raw);
+    if(!Number.isFinite(until)||until<=Date.now()||until>Date.now()+30*86400000)
+      deny("invalid-argument","Choose a future revision deadline no more than 30 days from now.");
+    extensionDueAt=Timestamp.fromMillis(until);
+   }
+   if(Date.now()>task.data().dueAt.toMillis()&&!extensionDueAt)
+    deny("failed-precondition","The original deadline passed. Set an explicit revision extension before reopening.");
    const auditRef=db.collection(prefix+"submission_audit").doc();
    await db.runTransaction(async tx=>{
     await isAuthorized(tx);
@@ -191,7 +208,7 @@ function createSchoolStudioSubmissionService({db}){
      deny("failed-precondition","Published grades cannot be reopened without the correction workflow.");
     const now=FieldValue.serverTimestamp();
     tx.update(submissionRef,{status:"reopened",revisionRequestMessage:reason,
-      revisionRequestedByUid:ctx.uid,updatedAt:now});
+      revisionDueAt:extensionDueAt,revisionRequestedByUid:ctx.uid,updatedAt:now});
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,submissionId,
       actorUid:ctx.uid,action:"studio_revision_requested",createdAt:now});
    });
