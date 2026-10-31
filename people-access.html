@@ -24,7 +24,7 @@
     .pa-tabs button{min-height:44px;padding:.55rem .9rem;border:1px solid #cbd5e1;border-radius:8px;background:#fff;white-space:nowrap}
     .pa-tabs button[aria-selected="true"]{color:#fff;background:#155eaa}
     [hidden]{display:none!important}
-    @media(max-width:720px){.pa-layout,.pa-academic-grid{grid-template-columns:minmax(0,1fr)}.pa-shell{padding:.75rem}.pa-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media(max-width:720px){.pa-layout,.pa-academic-grid{grid-template-columns:minmax(0,1fr)}#pa-person-search{grid-template-columns:minmax(0,1fr)!important}.pa-shell{padding:.75rem}.pa-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
   </style>
 </head>
 <body style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
@@ -56,6 +56,12 @@
     <section id="pa-people" role="tabpanel" hidden>
       <div class="pa-layout">
         <div class="pa-card"><h2 style="font-weight:750;font-size:1.2rem">People</h2><p class="pa-muted">School-specific identity records, separate from accounts and enrollment.</p>
+          <form id="pa-person-search" style="display:grid;grid-template-columns:minmax(0,1fr) repeat(2,minmax(120px,.45fr));gap:.5rem;align-items:end;margin:.75rem 0 1rem">
+            <label>Search name<input id="pa-person-query" name="query" class="pa-field" style="margin-bottom:0" maxlength="80" placeholder="Start typing a name"></label>
+            <label>Type<select name="kind" class="pa-field" style="margin-bottom:0"><option value="all">All people</option><option value="student">Students</option><option value="staff">Staff</option></select></label>
+            <label>Status<select name="status" class="pa-field" style="margin-bottom:0"><option value="active">Active</option><option value="all">All statuses</option><option value="archived">Archived</option></select></label>
+          </form>
+          <p id="pa-person-filter-note" class="pa-muted" hidden></p>
           <div id="pa-person-list" role="list"></div>
           <button type="button" id="pa-more" class="pa-action" hidden>Load more</button>
         </div>
