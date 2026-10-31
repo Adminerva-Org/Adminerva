@@ -57,7 +57,7 @@ function renderStudio(){
         (project.language||"code")+" · revision "+(project.revision||1)+
         (project.updatedAt?" · "+new Date(project.updatedAt).toLocaleString():"")));
     const link=make("a","inline-block mt-3 text-xs font-bold text-indigo-700 underline","Open Studio →");
-    link.href="student-playground.html?project="+encodeURIComponent(project.projectId);card.append(link);host.append(card);
+    link.href="student-playground.html?codeProject="+encodeURIComponent(project.projectId);card.append(link);host.append(card);
   }
 }
 function renderAssignments(){
