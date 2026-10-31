@@ -1,11 +1,13 @@
 /** Shared static evidence-review markup; user content is rendered separately with text nodes. */
 export const evidenceReviewMarkup=`
 <section id="evidenceDiscovery" class="hidden bg-white mt-5 p-5 rounded-xl border space-y-3">
-<h2 class="font-bold text-lg">Discover historical GitHub evidence</h2>
-<p class="text-sm text-slate-600">For assessments already assigned in class: select relevant commits from the linked repository without asking the student to resubmit. This records an instructor-discovered proposal, not a student submission or proof of on-time work.</p>
+<h2 id="evidenceDiscoveryTitle" class="font-bold text-lg">Discover historical GitHub evidence</h2>
+<p id="evidenceDiscoveryHelp" class="text-sm text-slate-600">For assessments already assigned in class: select relevant commits from the linked repository without asking the student to resubmit. This records an instructor-discovered proposal, not a student submission or proof of on-time work.</p>
 <button id="evidenceFindCommits" type="button" class="rounded bg-slate-800 text-white px-4 py-3 font-bold text-sm">Find repository commits</button>
 <div id="evidenceDiscoverList" class="space-y-2 "></div>
 <button id="evidenceFindOlder" type="button" class="hidden rounded border border-indigo-200 bg-indigo-50 text-indigo-900 px-4 py-3 text-sm font-bold">Load older commits</button>
+<label id="evidenceDiscoveryNoteLabel" class="hidden block text-sm font-semibold" for="evidenceDiscoveryNote">Teacher attribution note</label>
+<textarea id="evidenceDiscoveryNote" rows="3" maxlength="3000" class="hidden w-full border rounded-lg p-3" placeholder="Explain why the added commit belongs to this learner despite the GitHub identity mismatch."></textarea>
 <button id="evidenceSaveDiscovery" type="button" class="rounded bg-indigo-700 text-white px-4 py-3 font-bold text-sm">Save proposed historical evidence</button>
 </section>
 <section id="evidenceDetails" class="hidden bg-white mt-5 p-5 rounded-xl border space-y-4">
@@ -29,6 +31,11 @@ export const evidenceReviewMarkup=`
 <div id="evidenceContributionChecks" class="space-y-2 mt-3"></div>
 </details>
 <div id="evidenceCommitDetails" class="space-y-2"></div>
+<div id="evidenceAttributionOverride" class="rounded-lg border border-amber-200 bg-amber-50 p-3">
+  <strong class="block text-sm text-amber-950">Commit authored under another GitHub identity?</strong>
+  <p class="text-xs text-amber-900 mt-1">After inspecting the commit diff, an instructor can add an unmatched repository commit to this learner's evidence. The commit is not credited until you explicitly verify it and approve the checkpoint.</p>
+  <button id="evidenceAddCommit" type="button" class="mt-2 rounded-lg border border-amber-400 bg-white px-3 py-2 text-sm font-bold text-amber-950">Add unmatched repository commit</button>
+</div>
 <details class="border rounded p-3"><summary class="font-bold cursor-pointer">Pinned project source — shared context, not individual credit</summary><div id="evidenceSnapshot" class="mt-2"></div></details>
 <h3 class="text-sm font-bold">Reclaim requests for this student</h3>
 <div id="evidenceReclaims" class="space-y-3"></div>
