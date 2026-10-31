@@ -90,8 +90,16 @@ export async function archiveSchoolPlanning(resource){
   if(!resource?.canEdit)throw Error("Only the owner can archive this planning resource.");
   return scoped("archive",{resourceId:resource.resourceId,expectedRevision:resource.revision});
 }
-export async function shareSchoolPlanning(resourceId,visibility,teacherUids=[]){
-  return scoped("share",{resourceId,visibility,teacherUids});
+export async function planningRecipients(){
+  return scoped("recipients");
+}
+export async function shareSchoolPlanning(resource,visibility,teacherUids=[]){
+  const result=await scoped("share",{resourceId:resource.resourceId,visibility,teacherUids});
+  if(result.revision&&resource.clientKey&&auth.currentUser){
+    const school=await activePlanningSchool();
+    setRevision(auth.currentUser.uid,school.schoolId,resource.kind,resource.clientKey,result.revision);
+  }
+  return result;
 }
 export async function copySchoolPlanning(resourceId){return scoped("copy",{resourceId});}
 export async function schoolPlanningHistory(resourceId){return scoped("history",{resourceId});}
@@ -103,6 +111,65 @@ export function mountSchoolPlanningLibraryButton({kind,anchor,label="School copi
   button.className=anchor.className;button.removeAttribute("onclick");
   button.addEventListener("click",()=>void openLibrary(kind));
   anchor.after(button);return button;
+}
+
+async function openShareDialog(resource,onSaved){
+  let dialog=document.getElementById("v4PlanningShareDialog");
+  if(!dialog){
+    dialog=document.createElement("dialog");dialog.id="v4PlanningShareDialog";
+    dialog.className="rounded-2xl border-0 shadow-2xl p-0 w-[min(94vw,620px)] max-h-[88dvh] backdrop:bg-slate-950/70";
+    dialog.innerHTML='<form method="dialog" data-form class="bg-white p-5 max-h-[88dvh] overflow-y-auto">'+
+      '<div class="flex justify-between gap-3 items-start"><div><p class="text-xs font-bold uppercase tracking-wider text-indigo-700">Teacher sharing</p>'+
+      '<h2 class="text-xl font-extrabold">Share school planning resource</h2></div>'+
+      '<button value="cancel" type="button" data-close class="rounded-lg border px-3 py-2">Close</button></div>'+
+      '<p class="text-sm text-slate-600 mt-2">Recipients can preview and make an independent private copy. They cannot edit, archive, or reshare your original.</p>'+
+      '<label class="block mt-4 text-sm font-bold">Audience<select data-visibility class="mt-1 w-full rounded-lg border p-2.5">'+
+      '<option value="private">Private</option><option value="selected_teachers">Specific teachers</option>'+
+      '<option value="school_teachers">All active teachers in this school</option></select></label>'+
+      '<div data-recipients class="mt-3 rounded-xl border p-3 max-h-52 overflow-y-auto"></div>'+
+      '<p data-status class="text-sm text-slate-600 mt-3" role="status"></p>'+
+      '<div class="mt-4 flex gap-2 flex-wrap"><button type="submit" class="rounded-lg bg-indigo-700 text-white px-4 py-2.5 font-bold">Save sharing</button>'+
+      '<button type="button" data-cancel class="rounded-lg border px-4 py-2.5 font-bold">Cancel</button></div></form>';
+    document.body.append(dialog);
+    dialog.querySelector("[data-close]").addEventListener("click",()=>dialog.close());
+    dialog.querySelector("[data-cancel]").addEventListener("click",()=>dialog.close());
+  }
+  const form=dialog.querySelector("[data-form]"),
+    recipients=dialog.querySelector("[data-recipients]"),status=dialog.querySelector("[data-status]");
+  // Defensive re-query because old browsers may reject a malformed selector in
+  // an earlier cached module instance.
+  const audience=dialog.querySelector("[data-visibility]");
+  audience.value=resource.visibility||"private";recipients.replaceChildren();
+  status.textContent="Loading active teachers in this school…";
+  let teachers=[];
+  try{
+    const result=await planningRecipients();teachers=result.teachers||[];
+    status.textContent=result.truncated?
+      "Showing the first 100 active teacher recipients.":"Choose who may preview and copy this resource.";
+  }catch(error){status.textContent=error?.message||"Teacher recipients are unavailable.";}
+  const selected=new Set(Array.isArray(resource.sharedWithUids)?resource.sharedWithUids:[]);
+  for(const teacher of teachers){
+    const label=document.createElement("label");label.className="flex items-start gap-2 py-1.5 text-sm";
+    const input=document.createElement("input");input.type="checkbox";input.value=teacher.uid;input.checked=selected.has(teacher.uid);
+    const text=document.createElement("span");text.textContent=teacher.name;label.append(input,text);recipients.append(label);
+  }
+  const sync=()=>{recipients.hidden=audience.value!=="selected_teachers";};
+  audience.onchange=sync;sync();
+  form.onsubmit=event=>{event.preventDefault();void (async()=>{
+    const submit=form.querySelector('button[type="submit"]');submit.disabled=true;
+    try{
+      const ids=audience.value==="selected_teachers"?
+        [...recipients.querySelectorAll('input[type="checkbox"]:checked')].map(input=>input.value):[];
+      const result=await shareSchoolPlanning(resource,audience.value,ids);
+      resource.visibility=result.visibility;
+      resource.revision=result.revision||resource.revision;
+      resource.sharedWithUids=ids;
+      status.textContent="Sharing saved. Recipients still receive read/copy-only access.";
+      await onSaved?.();dialog.close();
+    }catch(error){status.textContent=error?.message||"Sharing was not changed.";}
+    finally{submit.disabled=false;}
+  })();};
+  dialog.showModal();
 }
 async function openLibrary(kind){
   let dialog=document.getElementById("v4PlanningLibraryDialog");
@@ -130,6 +197,9 @@ async function openLibrary(kind){
       meta.textContent=(item.canEdit?"Owned by you":"Shared with you")+" · "+item.visibility+" · revision "+item.revision;
       info.append(title,meta);const actions=document.createElement("div");actions.className="flex gap-2 flex-wrap";
       if(item.canEdit){
+        const share=document.createElement("button");share.type="button";share.className="rounded-lg border border-indigo-300 text-indigo-800 px-3 py-2 text-sm font-bold";share.textContent="Share";
+        share.addEventListener("click",()=>void openShareDialog(item,async()=>{dialog.close();await openLibrary(kind);}));
+        actions.append(share);
         const archive=document.createElement("button");archive.type="button";archive.className="rounded-lg border px-3 py-2 text-sm font-bold";archive.textContent="Archive";
         archive.addEventListener("click",()=>void (async()=>{
           if(!confirm("Archive this school planning resource? Prior revisions remain retained."))return;
