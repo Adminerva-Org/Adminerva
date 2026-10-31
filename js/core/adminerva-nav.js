@@ -32,12 +32,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const activePage = root.getAttribute("data-page") || "planner";
   const isStudent = userRole === "student" || (!userRole && activeModule.startsWith("student"));
   const isSuperAdmin=userRole==="superadmin";
+  const isPlatformOwner=userRole==="platformowner";
+  const hasPlatformAuthority=isPlatformOwner||root.dataset.platformAdmin==="true";
   const isSchoolAdmin=userRole==="schooladmin";
-  const canTeach=!isSchoolAdmin||root.dataset.schoolTeacher==="true";
-  currentRole=isStudent?"student":isSuperAdmin?"superadmin":isSchoolAdmin?"schooladmin":"teacher";
-  const homeRoute = isStudent ? "student-home.html" : "teacher-home.html";
-  const homeLabel = isStudent ? "Student Home" : "Staff Home";
-  const roleLabel=isStudent?"Student":isSuperAdmin?"Platform administrator":isSchoolAdmin?"School administrator":"Teacher";
+  const canTeach=!isPlatformOwner&&(!isSchoolAdmin||root.dataset.schoolTeacher==="true");
+  currentRole=isStudent?"student":isSuperAdmin?"superadmin":isPlatformOwner?"platformowner":isSchoolAdmin?"schooladmin":"teacher";
+  const homeRoute = isStudent ? "student-home.html" : isPlatformOwner ? "owner-schools.html" : "teacher-home.html";
+  const homeLabel = isStudent ? "Student Home" : isPlatformOwner ? "Owner Console" : "Staff Home";
+  const roleLabel=isStudent?"Student":isPlatformOwner?"Platform owner":isSuperAdmin?"Legacy platform administrator":isSchoolAdmin?"School administrator":"Teacher";
 
   // Destinations and page labels share one source, including bookmarked tools.
   const studentGroups = {
@@ -86,10 +88,15 @@ document.addEventListener("DOMContentLoaded", () => {
       ["teachers", "Teacher assignments", "teacher-accounts.html"],
       ["programs", "Tracks & pathways", "manage-programs.html"],
       ["subjects", "Subjects", "manage-subjects.html"]
+    ] : isPlatformOwner ? [
+      ["owner-schools","Institution registry","owner-schools.html"]
     ] : isSchoolAdmin ? [
+      ...(hasPlatformAuthority?[["owner-schools","Institution registry","owner-schools.html"]]:[]),
       ["overview","School overview","school-admin.html"],
       ["people-v4","People & Access","people-access.html"],
       ["reclaims-v4","Commit attribution requests","reclaim-inbox.html"]
+    ] : hasPlatformAuthority ? [
+      ["owner-schools","Institution registry","owner-schools.html"]
     ] : [] },
     { name: "Account", area: "settings", items: [
       ["settings", "Account & integrations", "settings.html"],
@@ -128,12 +135,16 @@ document.addEventListener("DOMContentLoaded", () => {
     ["Practice Lab", "student-practice.html", "Courses, challenges and XML Lab"],
     ["Adminerva Studio", "student-playground.html", "Write and run code"],
     ["My reports", "issues.html", "Report a problem or follow an update"]
+  ] : isPlatformOwner ? [
+    ["Owner Console","owner-schools.html","Provision and govern institutions"],
+    ["Reports & support","issues.html","Follow reports and get help"]
   ] : [
     [homeLabel,homeRoute,isSchoolAdmin?"School operations and teaching workspace":"Your teaching workspace"],
     ...(canTeach?[["Repository Management","teacher-assessment-library.html","Assessments, submissions, grading and repositories"],
       ["Lesson Planning","lesson-planner.html","Lessons, slides, schedule and references"]]:[]),
-    ...((isSuperAdmin||isSchoolAdmin)?[["School administration","school-admin.html",
-      isSuperAdmin?"Platform and school operations":"People, access, classes and school operations"]]:[]),
+    ...((isSuperAdmin||isSchoolAdmin||hasPlatformAuthority)?[["School administration",
+      hasPlatformAuthority&&!isSchoolAdmin&&!isSuperAdmin?"owner-schools.html":"school-admin.html",
+      hasPlatformAuthority&&!isSchoolAdmin&&!isSuperAdmin?"Institution registry":"People, access, classes and school operations"]]:[]),
     ["Reports & support","issues.html","Follow reports and get help"]
   ];
   root.innerHTML = `
