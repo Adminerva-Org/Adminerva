@@ -787,8 +787,69 @@ test('teacher evidence review may list reclaim claims for an assigned section',a
       status:'pending',createdAt:Timestamp.now()
     });
   });
-  const result=await assertSucceeds(getDocs(query(collection(teacher,'commit_reclaims'),where('section','==','11-A'))));
+  const result=await assertSucceeds(getDocs(query(collection(teacher,'commit_reclaims'),
+    where('section','==','11-A'),where('assessmentId','==','v2'))));
   assert.equal(result.size,1);
+});
+
+test('legacy teacher can read and approve deployed assessment evidence even when staff section assignments are stale',async()=>{
+  const teacher=client('staff',TEACHER);
+  const repository='https://github.com/example/project';
+  await env.withSecurityRulesDisabled(async ctx=>{
+    const db=ctx.firestore();
+    await updateDoc(doc(db,'staff_access',TEACHER),{sections:[]});
+    await updateDoc(doc(db,'students','alice'),{repoUrl:repository});
+    await setDoc(doc(db,'assessments','v2'),{
+      ownerUid:'legacy-owner',schemaVersion:2,title:'Legacy Mini PETA',quarter:'Q3',
+      sectionIds:[],targetSections:[],deployments:[{section:'11-A'}]
+    });
+    await setDoc(doc(db,'commit_reclaims',SHA+'_alice'),{
+      studentId:'alice',assessmentId:'v2',section:'11-A',repository,sha:SHA,
+      detectedAuthorName:'Alice',detectedAuthorLogin:'alice',
+      explanation:'Legacy teacher reclaim review for a deployed assessment.',
+      status:'pending',createdAt:Timestamp.now()
+    });
+    await setDoc(doc(db,'assessment_evidence','alice_v2'),{
+      studentId:'alice',assessmentId:'v2',section:'11-A',repository,
+      selectedCommits:[SHA],checkpointSha:SHA,status:'needs_review',
+      source:'teacher_discovered',discoveredBy:'staff',recordedAt:Timestamp.now(),
+      updatedAt:Timestamp.now(),revision:2
+    });
+  });
+  const claims=await assertSucceeds(getDocs(query(collection(teacher,'commit_reclaims'),
+    where('section','==','11-A'),where('assessmentId','==','v2'))));
+  assert.equal(claims.size,1);
+  await env.withSecurityRulesDisabled(async ctx=>{
+    await updateDoc(doc(ctx.firestore(),'commit_reclaims',SHA+'_alice'),{status:'withdrawn'});
+  });
+  await assertSucceeds(auditedEvidence(teacher,{
+    status:'approved',reviewedBy:'staff',reviewedAt:serverTimestamp(),
+    approvedCheckpointSha:SHA,verifiedContributionCommits:[SHA],
+    contributionScope:'Instructor verified the selected commit as the learner\'s relevant individual work.',
+    verificationNote:'Teacher inspected the selected changes and project checkpoint before approving this evidence.'
+  },{actor:'staff',reason:'Teacher inspected the selected changes and project checkpoint before approving this evidence.'}));
+});
+
+test('unassigned ordinary teachers cannot use deployment scope to read another teacher\'s reclaim context',async()=>{
+  const email='unassigned.teacher@example.edu',teacher=client('unassigned',email);
+  const repository='https://github.com/example/project';
+  await env.withSecurityRulesDisabled(async ctx=>{
+    const db=ctx.firestore();
+    await setDoc(doc(db,'staff_access',email),{email,role:'teacher',status:'active',sections:[]});
+    await updateDoc(doc(db,'students','alice'),{repoUrl:repository});
+    await setDoc(doc(db,'assessments','v2'),{
+      ownerUid:'different-owner',schemaVersion:2,title:'Scoped Mini PETA',quarter:'Q3',
+      sectionIds:[],targetSections:[],deployments:[{section:'11-A'}]
+    });
+    await setDoc(doc(db,'commit_reclaims',SHA+'_alice'),{
+      studentId:'alice',assessmentId:'v2',section:'11-A',repository,sha:SHA,
+      detectedAuthorName:'Alice',detectedAuthorLogin:'alice',
+      explanation:'This claim belongs to another teacher assessment.',
+      status:'pending',createdAt:Timestamp.now()
+    });
+  });
+  await assertFails(getDocs(query(collection(teacher,'commit_reclaims'),
+    where('section','==','11-A'),where('assessmentId','==','v2'))));
 });
 
 test('instructor-only V2 grading config and admin-only reclaim decisions',async()=>{
