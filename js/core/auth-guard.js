@@ -147,7 +147,8 @@ async function checkAccess(user){
     const allowed=new Set([
       "teacher-home.html","teacher-assessment-library.html","school-gradebook.html",
       "school-support.html","people-access.html","school-admin.html","reclaim-inbox.html",
-      "settings.html","join-school.html","wiki.html"
+      "settings.html","join-school.html","wiki.html",
+      ...(access.platformAdmin?["owner-schools.html"]:[])
     ]);
     if(!allowed.has(page)){
       const gradingPages=new Set([
