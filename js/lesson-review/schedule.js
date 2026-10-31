@@ -657,16 +657,19 @@ window.adminervaScheduleBridgeState=function(){
   const rows=isEditing?getTableDataFromDOM():cachedRows(scope);
   return {schoolYear:scope.year,semester:scope.semester,rows:structuredClone(rows),editing:isEditing};
 };
-window.adminervaApplySchoolSchedule=function({schoolYear,semester,rows,revision}){
+window.adminervaApplySchoolSchedule=function({
+  schoolYear,semester,rows,revision,saved=false,compatibilityMode="legacy_allowed"
+}){
   const scope=currentScope();
   if(scope.year!==schoolYear||scope.semester!==semester)
     throw Error("Switch the timetable to "+schoolYear+" · "+semester+" before loading this school schedule.");
-  if(isEditing&&!confirm("Discard the unsaved timetable edits in this view and load the verified-school schedule?"))
+  if(isEditing&&!saved&&!confirm("Discard the unsaved timetable edits in this view and load the verified-school schedule?"))
     return false;
   const normalized=Array.isArray(rows)?structuredClone(rows):[];
   cacheRows(scope,normalized,scheduleRowsToText(normalized));
   isEditing=false;draftRows=null;updateEditControls();renderTable();
-  updateScopeStatus("Loaded verified-school schedule · revision "+revision+". Legacy personal cloud storage remains separate during migration.");
+  updateScopeStatus((saved?"Saved":"Loaded")+" verified-school schedule · revision "+revision+
+    (compatibilityMode==="v4_only"?".":". Legacy personal cloud storage remains separate during migration."));
   return true;
 };
 
