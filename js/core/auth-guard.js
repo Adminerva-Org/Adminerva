@@ -113,7 +113,16 @@ async function checkAccess(user){
     localStorage.removeItem("Adminerva_Mock_Role");
     activeRole=actualRole;
   }
-  if (/\/(teacher-accounts|admin-analytics|admin-hub|users|manage-sections|manage-programs|manage-subjects)\.html$/.test(currentPath) && admittedRole !== "admin") { replacePage(roleHome(actualRole)); return; }
+  const legacyAdminPage=currentPath.match(/\/(teacher-accounts|admin-analytics|admin-hub|users|manage-sections|manage-programs|manage-subjects)\.html$/)?.[1]||null;
+  if(legacyAdminPage&&admittedRole!=="admin"){
+    if(access.schoolAdmin){
+      const destination=legacyAdminPage==="users"?"people-access.html#people":
+        ["teacher-accounts","manage-sections","manage-subjects"].includes(legacyAdminPage)?
+          "people-access.html#classes":"school-admin.html";
+      replacePage(destination);return;
+    }
+    replacePage(roleHome(actualRole));return;
+  }
   if(/\/(owner-schools)\.html$/.test(currentPath)&&
      !(access.platformAdmin||admittedRole==="admin")){
     replacePage(roleHome(actualRole));return;
@@ -140,6 +149,10 @@ async function checkAccess(user){
   if(/\/(school-support)\.html$/.test(currentPath)&&
      !(access.schoolAdmin||access.schoolTeacher||access.schoolStudent)){
     replacePage(roleHome(actualRole));return;
+  }
+  const v4OnlyStudent=access.schoolStudent&&!access.students?.length&&!access.schoolTeacher&&!access.schoolAdmin;
+  if(v4OnlyStudent&&currentPath.endsWith("/issues.html")){
+    replacePage("school-support.html");return;
   }
   const v4OnlyTeacher=access.schoolTeacher&&!["teacher","admin"].includes(access.legacyRole);
   if(v4OnlyTeacher){
