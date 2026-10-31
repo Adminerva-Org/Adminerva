@@ -94,7 +94,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         "No student evidence yet for this assessment.";
       if(!rows.length){
         inbox.append(make("div","rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600",
-          "Students will appear here after a verified project version is submitted."));
+          "Students will appear here after a verified assessment evidence version is submitted."));
         return;
       }
       for(const row of rows){
@@ -284,14 +284,47 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const reopened=row.status==="reopened";
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=published?
-        "This grade is published. Use the future correction workflow for changes.":
+        "This grade is published. Use the correction workflow for changes.":
         reopened?"A revision is already requested. Wait for the student to resubmit.":
+        currentTask.submissionSource==="github"&&!["approved","reviewed"].includes(currentSnapshot.status)?
+          "Verify and approve the exact frozen GitHub evidence before starting a grade draft.":
         currentGrade?.status==="draft"?"Private draft loaded. Review before publishing.":
         "No grade draft yet. Scores remain private until you save and publish.";
     }catch(error){
       document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Review data unavailable.";
     }
   }
+  document.getElementById("gbV4GithubVerify").addEventListener("click",()=>
+    void verifyGithubEvidence());
+  document.getElementById("gbV4GithubApprove").addEventListener("click",()=>void (async()=>{
+    if(busy||currentTask?.submissionSource!=="github"||!currentSnapshot||!githubVerification)return;
+    const note=document.getElementById("gbV4GithubApprovalNote").value.trim();
+    if(note.length<12){
+      document.getElementById("gbV4GithubVerifyStatus").textContent=
+        "Add a verification note of at least 12 characters before approving evidence.";return;
+    }
+    if(!confirm("Approve this exact frozen repository checkpoint and commit set for grading?"))return;
+    try{
+      setBusy(true,"Recording teacher approval for the exact frozen GitHub evidence…");
+      await scoped(githubEvidenceApi,"approve",{
+        taskId:currentTask.taskId,evidenceId:currentRow.recordId,note,
+        verifiedCheckpointSha:githubVerification.verifiedCheckpointSha,
+        verifiedCommitShas:githubVerification.verifiedCommitShas
+      });
+      currentSnapshot={...currentSnapshot,status:"approved"};
+      currentRow={...currentRow,status:"approved"};
+      document.getElementById("gbV4GithubApproval").classList.add("hidden");
+      document.getElementById("gbV4GithubVerifyStatus").textContent=
+        "Evidence approved for grading. The exact commit set and checkpoint are frozen in the audit record.";
+      refreshReviewControls();
+      document.getElementById("gbV4ReviewStatus").textContent=
+        "GitHub evidence approved. You can now save a private rubric draft.";
+      await loadInbox();
+    }catch(error){
+      document.getElementById("gbV4GithubVerifyStatus").textContent=
+        error?.message||"Evidence approval was not recorded.";
+    }finally{setBusy(false);}
+  })());
   document.getElementById("gbV4Close").addEventListener("click",()=>dialog.close());
   taskSelect.addEventListener("change",()=>void loadInbox());
   document.getElementById("gbV4Refresh").addEventListener("click",()=>void loadInbox());
@@ -323,6 +356,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       document.getElementById("gbV4ReviewStatus").textContent="Published "+result.awarded+" / "+result.total+" to the student.";
       currentGrade={...(currentGrade||{}),status:"published"};
       currentRow={...currentRow,status:"reviewed"};
+      currentSnapshot={...(currentSnapshot||{}),status:"reviewed"};
       refreshReviewControls();
       await loadInbox();
     }catch(error){
@@ -385,11 +419,14 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(!confirm("Reopen this frozen submission for a student revision?"))return;
     try{
       setBusy(true,"Requesting a new student revision…");
-      await scoped(submissionApi,"request_revision",{
-        taskId:currentTask.taskId,submissionId:currentRow.submissionId,
-        reason,extensionDueAt
+      const evidenceApi=currentTask.submissionSource==="github"?githubEvidenceApi:submissionApi;
+      const identity=currentTask.submissionSource==="github"?
+        {evidenceId:currentRow.recordId}:{submissionId:currentRow.recordId};
+      await scoped(evidenceApi,"request_revision",{
+        taskId:currentTask.taskId,...identity,reason,extensionDueAt
       });
       currentRow={...currentRow,status:"reopened"};
+      currentSnapshot={...(currentSnapshot||{}),status:"reopened"};
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent="Revision requested. The current submission remains preserved in history.";
       await loadInbox();
