@@ -4,7 +4,7 @@
  */
 import {app,auth} from "./firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {createVerifiedSchoolScope,renderSchoolSwitcher} from "./verified-school-scope.mjs";
+import {createVerifiedSchoolScope,renderSchoolSwitcher} from "./verified-school-scope.mjs?v=4.0.1";
 const callable=httpsCallable(getFunctions(app,"asia-southeast1"),"tenantSchools");
 const preferredKey=uid=>"Adminerva_last_verified_school_"+uid;
 function preferred(uid) {try{return sessionStorage.getItem(preferredKey(uid))||null;}catch{return null;}}
@@ -21,7 +21,8 @@ export function createTenantSchoolPicker({host,status,onBeforeChange=async()=>{}
       if(state.context){
         remember(state.context.uid,state.context.schoolId);
         document.dispatchEvent(new CustomEvent("adminerva:school-ready",{detail:{
-          schoolId:state.context.schoolId,roles:state.context.roles,generation:state.generation
+          schoolId:state.context.schoolId,roles:state.context.roles,
+          compatibilityMode:state.context.compatibilityMode,generation:state.generation
         }}));
       }
       renderSchoolSwitcher(host,{
