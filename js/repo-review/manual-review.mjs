@@ -25,7 +25,6 @@ const el = id => document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
 const state = { active: null, request: null, token: 0, flags: [], aiBusy: false, dirty:false, abort:null,panels:null,requests:null,aiAbort:null,
   externalEvidence:null,externalPackage:"",externalEvidenceKey:"",externalBusy:false };
-const MAX_REVIEW_PATHS=40;
 function isSafeReviewPath(path){
   const value=String(path||"").trim();
   return Boolean(value)&&value.length<=240&&!value.startsWith("/")&&!value.split("/").includes("..");
@@ -37,7 +36,6 @@ function generatedReviewPaths(patches,{excludeMergeContext=false}={}){
     const path=String(patch.path||"").trim();
     if(!isSafeReviewPath(path)||seen.has(path))continue;
     seen.add(path);paths.push(path);
-    if(paths.length>=MAX_REVIEW_PATHS)break;
   }
   return paths;
 }
@@ -687,8 +685,6 @@ async function save(event) {
   if(!raw.trim()||!Number.isFinite(score)||score<0||score>active.maxScore)return message("Score must be between 0 and "+active.maxScore+".",true);
   if(!feedback)return message("Add feedback for the student before saving.",true);
   if(!el("manualReviewConfirm").checked)return message("Confirm you inspected the evidence before saving.",true);
-  if(paths.length>MAX_REVIEW_PATHS)
-    return message("Files considered supports up to "+MAX_REVIEW_PATHS+" repository paths. Adminerva-generated paths are capped automatically; remove manually added extras.",true);
   if(paths.some(p=>!isSafeReviewPath(p)))
     return message("Use repository-relative file paths only (no leading slash or '..' segments).",true);
   const button=el("manualReviewSave");button.disabled=true;message("Saving manual grade and audit record…");
