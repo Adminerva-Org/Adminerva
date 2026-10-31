@@ -67,6 +67,19 @@
           <p class="pa-muted">Creating a person does not create an account, enroll a student or grant school access.</p>
         </form>
       </div>
+      <dialog id="pa-person-dialog" aria-labelledby="pa-person-dialog-title" style="width:min(500px,calc(100vw - 1rem));border:0;border-radius:14px;padding:1.3rem">
+        <form id="pa-person-dialog-form">
+          <h2 id="pa-person-dialog-title" style="font-size:1.2rem;font-weight:750">Update person</h2>
+          <p id="pa-person-dialog-target" class="pa-muted"></p>
+          <label id="pa-person-name-field">Display name<input name="displayName" class="pa-field" maxlength="140"></label>
+          <label id="pa-person-reason-field" hidden>Reason<input name="reason" class="pa-field" minlength="12" maxlength="500" placeholder="Explain why this record status is changing"></label>
+          <p id="pa-person-dialog-help" class="pa-muted"></p>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button id="pa-person-dialog-confirm" class="pa-action" type="submit">Save</button>
+            <button id="pa-person-dialog-cancel" class="pa-action" type="button" style="background:#475569">Cancel</button>
+          </div>
+        </form>
+      </dialog>
     </section>
     <section id="pa-invites" role="tabpanel" hidden>
       <form id="pa-create-invite" class="pa-card" style="max-width:600px">
