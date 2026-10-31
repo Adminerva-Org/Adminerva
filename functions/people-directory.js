@@ -130,6 +130,80 @@ function createPeopleDirectoryService({db}) {
           person.data().status==="active"&&!person.data().authUid)
         .map(person=>({personId:person.id,displayName:person.data().displayName,kind}))};
     }
+    if(input.action==="update_person"){
+      const personId=id(input.personId),displayName=field(input.displayName,140,"Person name");
+      const ref=base.doc(personId),audit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const person=await tx.get(ref);
+        if(!person.exists||person.data().schoolId!==ctx.schoolId)
+          throw new TenantAccessError("not-found","The person is not in this school directory.");
+        const now=FieldValue.serverTimestamp(),revision=(person.data().revision||0)+1;
+        tx.update(ref,{displayName,searchKey:displayName.toLocaleLowerCase("en")+"#"+personId,
+          revision,updatedAt:now,updatedByUid:ctx.uid});
+        if(person.data().authUid){
+          const memberRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+id(person.data().authUid));
+          const member=await tx.get(memberRef);
+          if(member.exists&&member.data().schoolId===ctx.schoolId)
+            tx.update(memberRef,{displayName,updatedAt:now});
+        }
+        tx.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId,
+          action:"person_name_updated",revision,createdAt:now});
+      });
+      return {personId,displayName};
+    }
+    if(input.action==="archive_person"||input.action==="restore_person"){
+      const personId=id(input.personId),reason=field(input.reason,500,"Lifecycle reason");
+      if(reason.length<12)invalid("Explain the person record lifecycle change in at least 12 characters.");
+      const ref=base.doc(personId),audit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+      const restoring=input.action==="restore_person";
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const person=await tx.get(ref);
+        if(!person.exists||person.data().schoolId!==ctx.schoolId)
+          throw new TenantAccessError("not-found","The person is not in this school directory.");
+        const data=person.data();
+        if(restoring&&data.status!=="archived")
+          throw new TenantAccessError("failed-precondition","Only an archived person record can be restored.");
+        if(!restoring&&data.status!=="active")
+          throw new TenantAccessError("failed-precondition","Only an active person record can be archived.");
+        if(!restoring){
+          if(data.authUid){
+            const membership=await tx.get(db.doc("schools/"+ctx.schoolId+"/memberships/"+id(data.authUid)));
+            if(membership.exists&&membership.data().schoolId===ctx.schoolId&&membership.data().status==="active")
+              throw new TenantAccessError("failed-precondition","Suspend this person's active school membership before archiving the directory record.");
+          }
+          const invitations=await tx.get(db.collection("schools/"+ctx.schoolId+"/invitations")
+            .where("personId","==",personId).limit(101));
+          if(invitations.size===101)
+            throw new TenantAccessError("resource-exhausted","Invitation history requires reviewed pagination before archiving.");
+          if(invitations.docs.some(doc=>doc.data().status==="pending"))
+            throw new TenantAccessError("failed-precondition","Resolve or expire this person's pending invitation before archiving.");
+          if(data.kind==="student"){
+            const enrollments=await tx.get(db.collection("schools/"+ctx.schoolId+"/enrollments")
+              .where("personId","==",personId).limit(101));
+            if(enrollments.size===101)
+              throw new TenantAccessError("resource-exhausted","Enrollment history requires reviewed pagination before archiving.");
+            if(enrollments.docs.some(doc=>doc.data().status==="active"))
+              throw new TenantAccessError("failed-precondition","End this student's active course enrollments before archiving the person record.");
+          }else if(data.kind==="staff"&&data.authUid){
+            const assignments=await tx.get(db.collection("schools/"+ctx.schoolId+"/staff_assignments")
+              .where("teacherUid","==",id(data.authUid)).limit(101));
+            if(assignments.size===101)
+              throw new TenantAccessError("resource-exhausted","Teaching assignment history requires reviewed pagination before archiving.");
+            if(assignments.docs.some(doc=>doc.data().status==="active"))
+              throw new TenantAccessError("failed-precondition","End this teacher's active course assignments before archiving the person record.");
+          }
+        }
+        const now=FieldValue.serverTimestamp(),revision=(data.revision||0)+1;
+        tx.update(ref,restoring?
+          {status:"active",revision,restoredAt:now,restoredByUid:ctx.uid,restoreReason:reason,updatedAt:now}:
+          {status:"archived",revision,archivedAt:now,archivedByUid:ctx.uid,archiveReason:reason,updatedAt:now});
+        tx.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId,
+          action:restoring?"person_restored":"person_archived",reason,revision,createdAt:now});
+      });
+      return {personId,status:restoring?"active":"archived"};
+    }
     if(input.action==="create_person") {
       const person=input.person||{};
       const displayName=field(person.displayName,140,"Person name");
