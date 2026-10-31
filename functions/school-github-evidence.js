@@ -220,7 +220,8 @@ function createSchoolGithubEvidenceService({db}){
    if(!grant.exists||grant.data().schoolId!==ctx.schoolId||grant.data().teacherUid!==ctx.uid||
       grant.data().offeringId!==offeringId||grant.data().status!=="active"||
       !currentTask.exists||currentTask.data().schoolId!==ctx.schoolId||
-      currentTask.data().ownerUid!==ctx.uid||currentTask.data().submissionSource!=="github")
+      (currentTask.data().reviewerUid||currentTask.data().ownerUid)!==ctx.uid||
+      currentTask.data().submissionSource!=="github")
     deny("permission-denied","Teacher review scope changed.");
    return currentTask.data();
   }
