@@ -163,8 +163,8 @@ async function prerequisiteState(db,row,source){
   return "student_person_mismatch";
  if(!enrollment.exists||enrollment.data().schoolId!==SCHOOL_ID||
     enrollment.data().personId!==row.personId||enrollment.data().offeringId!==row.offeringId||
-    enrollment.data().status!=="active")
-  return "active_enrollment_missing";
+    !["active","ended"].includes(enrollment.data().status))
+  return "approved_enrollment_missing";
  return "ok";
 }
 function validateGithub(row){
@@ -274,7 +274,7 @@ async function createGithub(db,approved,row){
    throw Error("GitHub task changed after approval.");
   if(!member.exists||!member.data().roles?.includes("student")||
      !person.exists||person.data().authUid!==row.studentUid||
-     !enrollment.exists||enrollment.data().status!=="active")
+     !enrollment.exists||!["active","ended"].includes(enrollment.data().status))
    throw Error("GitHub student identity or active enrollment changed after approval.");
   const importedAt=FieldValue.serverTimestamp(),extension=timestamp(row.revisionExtensionDueAt);
   for(const version of row.versions){
@@ -334,7 +334,7 @@ async function createStudio(db,approved,row){
    throw Error("Studio task changed after approval.");
   if(!member.exists||!member.data().roles?.includes("student")||
      !person.exists||person.data().authUid!==row.studentUid||
-     !enrollment.exists||enrollment.data().status!=="active")
+     !enrollment.exists||!["active","ended"].includes(enrollment.data().status))
    throw Error("Studio student identity or active enrollment changed after approval.");
   const importedAt=FieldValue.serverTimestamp(),extension=timestamp(row.revisionExtensionDueAt);
   for(const version of row.versions){
