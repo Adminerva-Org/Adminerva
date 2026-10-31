@@ -18,6 +18,7 @@ const {validatePlan:validateAccessPlan,validateApproval:validateAccessApproval}=
  require("./mcs-canonical-academic-access-apply.js");
 const {repository,digestEvidence}=require("./school-github-evidence.js");
 const {validateFiles,validateArtifacts,digestProject}=require("./school-studio-projects.js");
+const {validatePlan:validateAssessmentPlan,validateApproval:validateAssessmentApproval}=require("./mcs-canonical-assessment-apply.js");
 
 const SCHEMA="adminerva-v4-mcs-canonical-evidence-grade-plan-v1";
 const sha=value=>createHash("sha256").update(value).digest("hex");
@@ -52,7 +53,7 @@ function approvedStudentMap(foundationPlan,foundationPlanRaw,foundationApproval)
  }
  return map;
 }
-function exactTask(assessmentPlan,legacyAssessmentId,section,source){
+function exactTask(approvedAssessmentView,legacyAssessmentId,section,source){
  const candidates=(assessmentPlan.tasks||[]).filter(task=>
   task.sourceAssessmentId===legacyAssessmentId&&task.submissionSource===source&&
   (!section||task.migration?.legacySection===section));
@@ -301,10 +302,12 @@ async function readMirrorSubcollection(db,root,id,subcollection,max=2000){
  throw Error(root+"/"+id+"/"+subcollection+" exceeded the migration planner cap.");
 }
 async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,foundationApproval,
- academicAccessPlan,academicAccessPlanRaw,academicAccessApproval,assessmentPlan,assessmentPlanRaw}){
- if(assessmentPlan?.schema!=="adminerva-v4-mcs-canonical-assessment-plan-v1"||
-    assessmentPlan.schoolId!==SCHOOL_ID||assessmentPlan.readOnly!==true)
-  throw Error("Use a current MCS canonical assessment plan.");
+ academicAccessPlan,academicAccessPlanRaw,academicAccessApproval,
+ assessmentPlan,assessmentPlanRaw,assessmentApproval}){
+ const approvedAssessments=validateAssessmentApproval(
+  validateAssessmentPlan(assessmentPlan),assessmentPlanRaw,assessmentApproval);
+ const approvedAssessmentView={...assessmentPlan,tasks:approvedAssessments.tasks,
+  blueprints:approvedAssessments.blueprints};
  const students=approvedStudentMap(foundationPlan,foundationPlanRaw,foundationApproval);
  const access=validateAccessApproval(validateAccessPlan(academicAccessPlan),academicAccessPlanRaw,academicAccessApproval);
  const enrolled=new Set(access.enrollments.filter(row=>row.status==="active").map(row=>row.personId+"|"+row.offeringId));
@@ -316,7 +319,7 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
  const githubByKey=new Map(),studioByKey=new Map();
  for(const row of githubRows){
   const legacyStudentId=clean(row.data.studentId,128),student=students.get(legacyStudentId),
-   task=exactTask(assessmentPlan,clean(row.data.assessmentId,128),clean(row.data.section,140),"github");
+   task=exactTask(approvedAssessmentView,clean(row.data.assessmentId,128),clean(row.data.section,140),"github");
   if(!student){blockers.push({type:"github_student_identity_unmapped",sourcePath:row.path,legacyStudentId});continue;}
   if(!task){blockers.push({type:"github_task_mapping_unresolved",sourcePath:row.path});continue;}
   if(!enrolled.has(student.personId+"|"+task.offeringId)){
@@ -329,7 +332,7 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
  }
  for(const row of studioRows){
   const legacyStudentId=clean(row.data.studentId,128),student=students.get(legacyStudentId),
-   task=exactTask(assessmentPlan,clean(row.data.assessmentId,128),clean(row.data.section,140),"studio");
+   task=exactTask(approvedAssessmentView,clean(row.data.assessmentId,128),clean(row.data.section,140),"studio");
   if(!student){blockers.push({type:"studio_student_identity_unmapped",sourcePath:row.path,legacyStudentId});continue;}
   if(!task){blockers.push({type:"studio_task_mapping_unresolved",sourcePath:row.path});continue;}
   if(!enrolled.has(student.personId+"|"+task.offeringId)){
@@ -344,7 +347,7 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
  for(const row of gradeRows){
   const legacyStudentId=clean(row.data.studentId,128),student=students.get(legacyStudentId);
   if(!student){blockers.push({type:"grade_student_identity_unmapped",sourcePath:row.path,legacyStudentId});continue;}
-  const task=exactTask(assessmentPlan,clean(row.data.taskId,128),clean(row.data.section,140),
+  const task=exactTask(approvedAssessmentView,clean(row.data.taskId,128),clean(row.data.section,140),
     row.data.gradeSource==="studio_teacher_review"?"studio":"github");
   if(!task){blockers.push({type:"grade_task_mapping_unresolved",sourcePath:row.path});continue;}
   if(!enrolled.has(student.personId+"|"+task.offeringId)){
@@ -388,12 +391,13 @@ async function main(){
  const args=process.argv.slice(2);
  const foundation=read(arg(args,"foundation-plan")),foundationApproval=read(arg(args,"foundation-approval")),
   access=read(arg(args,"academic-access-plan")),accessApproval=read(arg(args,"academic-access-approval")),
-  assessment=read(arg(args,"assessment-plan")),output=arg(args,"output");
+  assessment=read(arg(args,"assessment-plan")),assessmentApproval=read(arg(args,"assessment-approval")),
+  output=arg(args,"output");
  if(!getApps().length)initializeApp({credential:applicationDefault()});
  const plan=await buildEvidenceGradePlan(getFirestore(),{
   foundationPlan:foundation.data,foundationPlanRaw:foundation.raw,foundationApproval:foundationApproval.data,
   academicAccessPlan:access.data,academicAccessPlanRaw:access.raw,academicAccessApproval:accessApproval.data,
-  assessmentPlan:assessment.data,assessmentPlanRaw:assessment.raw
+  assessmentPlan:assessment.data,assessmentPlanRaw:assessment.raw,assessmentApproval:assessmentApproval.data
  });
  writeFileSync(output,JSON.stringify(plan,null,2)+"\n",{flag:"wx",mode:0o600});
  console.info(JSON.stringify({evidenceGradePlanCreated:true,schoolId:SCHOOL_ID,summary:plan.summary,readyForApply:false}));
