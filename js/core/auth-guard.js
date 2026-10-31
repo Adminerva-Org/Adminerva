@@ -124,6 +124,10 @@ async function checkAccess(user){
      !(["teacher","admin"].includes(admittedRole))){
     replacePage(roleHome(actualRole));return;
   }
+  if(actualRole==="schooladmin"&&!access.schoolTeacher&&
+     !/\/(teacher-home|school-admin|people-access|settings|issues|join-school|wiki)\.html$/.test(currentPath)){
+    replacePage("school-admin.html");return;
+  }
   const isIssuesPage = currentPath.includes("issues.html");
 
   // 4. Strict Routing Enforcement
