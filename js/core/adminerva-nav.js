@@ -183,7 +183,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 </summary>
                 <div class="av-nav-menu-panel absolute right-0 top-full mt-2 w-64 z-[120] rounded-xl bg-slate-900 border border-slate-600 shadow-2xl p-2 text-left">
                   <div id="av-school-context" hidden></div>
-                  <a href="${supportRoute}" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">My reports & support</a>
+                  <a data-support-route href="${supportRoute}" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">My reports & support</a>
                   <a href="wiki.html#privacy" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Privacy</a>
                   <a data-account-settings href="${isStudent ? "student-settings.html" : "settings.html"}" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Settings</a>
                 </div>
@@ -206,6 +206,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (settings) settings.href = isStudent ? "student-settings.html" : "settings.html";
     const accountSettings=accountControls.querySelector("[data-account-settings]");
     if(accountSettings)accountSettings.href=isStudent?"student-settings.html":"settings.html";
+    const supportLink=accountControls.querySelector("[data-support-route]");
+    if(supportLink)supportLink.href=supportRoute;
   }
   if (informationPanel) root.append(informationPanel);
   const emailDisplay = root.querySelector("#userEmailDisplay");
