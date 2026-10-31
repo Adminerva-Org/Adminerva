@@ -238,7 +238,7 @@ async function load(detail){
     ...(isV2?[
       getDocsFromServer(query(collection(db,"assessment_evidence"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
       getDocs(collection(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items")),
-      getDocsFromServer(query(collection(db,"commit_reclaims"),where("section","==",detail.section)))
+      getDocsFromServer(query(collection(db,"commit_reclaims"),where("section","==",detail.section),where("assessmentId","==",detail.taskId)))
     ]:[])
   ]);
   if(sequence!==loadSequence)return;
