@@ -7,7 +7,7 @@ const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcad
 let schoolTerms=[];
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false;
-let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null;
+let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null;
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","invites","classes","access"]);
 function setTab(name,{remember=true}={}) {
@@ -345,17 +345,34 @@ get("pa-person-dialog-form").addEventListener("submit",event=>{
   if(warning&&!confirm(warning))return;
   void submitForm(form,action,details).then(result=>{
     if(!result)return;
-    personChange=null;get("pa-person-dialog").close();
+    personChange=null;get("pa-person-dialog").close();after=null;
+    void Promise.all([loadPeople(false),loadOverview(),loadInvitePeople(),loadMemberships(),loadAcademics()])
+      .catch(error=>say(error.message||"Refresh the updated directory."));
   });
 });
 
+function directoryFilters(){
+  const values=new FormData(get("pa-person-search"));
+  return {
+    query:String(values.get("query")||"").trim(),
+    kind:String(values.get("kind")||"all"),
+    status:String(values.get("status")||"all")
+  };
+}
+function directoryFilterActive(filters){
+  return Boolean(filters.query)||filters.kind!=="all"||filters.status!=="all";
+}
 async function loadPeople(append) {
   if(loadingPeople)return;
-  loadingPeople=true;const button=get("pa-more");button.disabled=true;
+  loadingPeople=true;const button=get("pa-more"),note=get("pa-person-filter-note");
+  button.disabled=true;
   try {
-    const response=await perform("list_people",append&&after?{after}:undefined);
-    if(!append)list.replaceChildren();
-    for(const person of response.items){
+    const filters=directoryFilters(),filtered=directoryFilterActive(filters);
+    const response=filtered?
+      await perform("search_people",filters):
+      await perform("list_people",append&&after?{after}:undefined);
+    if(!append||filtered)list.replaceChildren();
+    for(const person of response.items||[]){
       const row=document.createElement("div");row.className="pa-row";row.setAttribute("role","listitem");
       const identity=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("div");
       name.textContent=person.displayName;meta.className="pa-muted";
@@ -376,14 +393,27 @@ async function loadPeople(append) {
     }
     if(!list.children.length){
       const empty=document.createElement("p");empty.className="pa-muted";
-      empty.textContent="No people records yet. Verify migration before importing historical rosters.";
+      empty.textContent=filtered?"No school people match these filters.":
+        "No people records yet. Verify migration before importing historical rosters.";
       list.append(empty);
     }
-    after=response.nextCursor;button.hidden=!after;
+    if(filtered){
+      after=null;button.hidden=true;
+      note.hidden=!response.truncated;
+      note.textContent=response.truncated?
+        "Showing the first 50 matches. Narrow the search or filters to refine the result.":"";
+    }else{
+      after=response.nextCursor;button.hidden=!after;note.hidden=true;note.textContent="";
+    }
   }catch(error){say(error.message||"Could not load this school directory.");}
   finally{loadingPeople=false;button.disabled=false;}
 }
 get("pa-more").addEventListener("click",()=>void loadPeople(true));
+get("pa-person-search").addEventListener("input",()=>{
+  clearTimeout(peopleSearchTimer);
+  peopleSearchTimer=setTimeout(()=>{after=null;void loadPeople(false);},250);
+});
+get("pa-person-search").addEventListener("change",()=>{after=null;void loadPeople(false);});
 async function submitForm(form,action,details) {
   if(pendingWrite)return null;
   const button=form.querySelector('button[type="submit"]');
