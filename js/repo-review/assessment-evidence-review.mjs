@@ -193,9 +193,11 @@ async function loadEvidence(initialRecord){
     onChange(record);
     if(!record){
       showLifecycle(null);
+      configureDiscovery("create");
       el("evidenceDiscovery").classList.remove("hidden");
       el("evidenceDiscoverList").replaceChildren();
-      discovery.commits=[];discovery.selected=new Set();discovery.checkpoint="";
+      el("evidenceDiscoveryNote").value="";
+      discovery.commits=[];discovery.selected=new Set();discovery.locked=new Set();discovery.checkpoint="";
       status("No student submission. You may discover historical commits without changing the student's GitHub history.");
       return;
     }
@@ -289,6 +291,9 @@ async function loadEvidence(initialRecord){
     el("evidenceApprove").textContent=evidence.status==="approved"?"Checkpoint approved":"Verify and approve checkpoint";
     el("evidenceDetails").classList.remove("hidden");
     state.loaded=true;
+    const mayAddUnmatched=["submitted","needs_review","approved"].includes(evidence.status);
+    el("evidenceAttributionOverride")?.classList.toggle("hidden",!mayAddUnmatched);
+    if(el("evidenceAddCommit"))el("evidenceAddCommit").disabled=!mayAddUnmatched;
     el("evidenceContributionScope").disabled=evidence.status==="approved";
     el("evidenceReviewNote").disabled=false;el("evidenceConfirm").disabled=false;el("evidenceVerifyAll").disabled=evidence.status==="approved";el("evidenceEditVerification").disabled=false;
     status(evidence.selectedCommits.length
@@ -472,11 +477,11 @@ async function reopen(){
   finally{state.busy=false;end();}
 }
 
-async function findHistoricalCommits(){
+async function findHistoricalCommits({preserve=false}={}){
   const student=state.student;if(!student)return status("Choose student and assessment.");
   const sequence=++discovery.sequence;
   discovery.loading=true;discovery.hasOlder=false;updateDiscoveryPaging();
-  const end=window.beginLoading?.("Finding historical repository commits…")||(()=>{});
+  const end=window.beginLoading?.(discovery.mode==="augment"?"Loading commits for attribution review…":"Finding historical repository commits…")||(()=>{});
   try{
     const repo=parseRepository(student.repoUrl);
     const info=await github(api(repo));
@@ -485,7 +490,7 @@ async function findHistoricalCommits(){
     const commits=await github(commitPagePath(api(repo),1,{branch}));
     if(sequence!==discovery.sequence)return;
     discovery.commits=appendUniqueCommits([],commits);
-    discovery.selected=new Set();discovery.checkpoint="";
+    if(!preserve){discovery.selected=new Set();discovery.locked=new Set();discovery.checkpoint="";}
     discovery.page=1;discovery.branch=branch;
     discovery.hasOlder=hasOlderCommitPage(1,commits.length);
     updateDiscoveryPaging();renderHistorical();
@@ -519,12 +524,15 @@ function renderHistorical(){
     const row=add(list,"div","","p-3 border rounded-lg");
     const line=add(row,"div","","flex flex-wrap items-center gap-3");
     const check=document.createElement("input");check.type="checkbox";
+    const locked=discovery.locked.has(sha);
     check.checked=discovery.selected.has(sha);
-    check.setAttribute("aria-label","Select commit "+sha.slice(0,12)+" as historical evidence");
+    check.disabled=locked;
+    check.setAttribute("aria-label",(locked?"Already selected commit ":"Select commit ")+sha.slice(0,12)+" as evidence");
     check.addEventListener("change",()=>{if(check.checked)discovery.selected.add(sha);
       else{discovery.selected.delete(sha);if(discovery.checkpoint===sha)discovery.checkpoint="";}
       renderHistorical();});
     line.append(check);
+    if(locked)add(line,"span","Already selected","text-[11px] font-bold text-slate-500");
     const radio=document.createElement("input");radio.type="radio";
     radio.name="historicalCheckpoint";radio.checked=discovery.checkpoint===sha;
     radio.setAttribute("aria-label","Use "+sha.slice(0,12)+" as project checkpoint");
@@ -533,9 +541,13 @@ function renderHistorical(){
     add(line,"span",sha.slice(0,12),"text-xs font-mono text-indigo-700");
     add(line,"strong",String(commit.commit?.message||"").split("\n")[0].slice(0,180),
       "text-xs break-words");
+    const detectedLogin=String(commit.author?.login||"").toLowerCase();
+    const expectedLogin=String(state.student?.githubUsername||"").replace(/^@/,"").toLowerCase();
     add(row,"p",(commit.commit?.author?.name||"Unknown author")+" · "+
       (commit.author?.login?"@"+commit.author.login:"GitHub login unknown"),
       "text-xs text-slate-600 mt-2");
+    if(discovery.mode==="augment"&&(!detectedLogin||!expectedLogin||detectedLogin!==expectedLogin))
+      add(row,"p","Identity differs from the learner's linked GitHub account. Inspect the diff before attributing this commit.","text-xs font-semibold text-amber-800 mt-1");
     const preview=add(row,"button","Preview changed files","text-xs text-indigo-700 underline mt-2");
     preview.type="button";
     preview.addEventListener("click",()=>{void previewCommit(parseRepository(state.student.repoUrl),sha,row,preview);});
