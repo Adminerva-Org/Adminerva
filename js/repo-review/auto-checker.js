@@ -84,9 +84,10 @@ window.startAutoCheck = async function (
     ? taskCard.querySelector(".grade-action-area")
     : null;
 
+  const end=window.beginLoading?.("Evaluating repository evidence…",actionArea)||(()=>{});
   const updateStatus = (message) => {
     if (actionArea)
-      actionArea.innerHTML = `<span class="text-xs font-bold text-blue-500 flex items-center gap-2"><div class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div> ${message}</span>`;
+      actionArea.innerHTML = `<span class="text-xs font-bold text-blue-500">${message}</span>`;
   };
 
   try {
@@ -511,7 +512,7 @@ window.startAutoCheck = async function (
       actionArea.replaceChildren(wrapper);
     }
     return { success: false, reason: error.message };
-  } finally {runningChecks.delete(jobKey);}
+  } finally {runningChecks.delete(jobKey);end();}
 };
 
 function renderGradeResult(container,score,maxScore,feedback,penaltyTags,exactPath,studentId,owner,repo,taskId,currentSha,isProvisional=false) {
