@@ -68,6 +68,21 @@ byId("owner-grant").addEventListener("submit",event=>{
   void submit(f,"grant_school_admin",{schoolId:selected.schoolId,targetUid:String(d.get("targetUid")||"").trim(),
     reason:String(d.get("reason")||"").trim()});
 });
+byId("owner-admin-suspend").addEventListener("submit",event=>{
+  event.preventDefault();if(!selected)return;
+  const f=event.currentTarget,d=new FormData(f);
+  const targetUid=String(d.get("targetUid")||"").trim();
+  if(!confirm("Suspend this school administrator for "+selected.displayName+"? This pauses all V4 access for that school membership."))return;
+  void submit(f,"suspend_school_admin",{schoolId:selected.schoolId,targetUid,
+    reason:String(d.get("reason")||"").trim()});
+});
+byId("owner-admin-restore").addEventListener("submit",event=>{
+  event.preventDefault();if(!selected)return;
+  const f=event.currentTarget,d=new FormData(f);
+  void submit(f,"restore_school_admin",{schoolId:selected.schoolId,
+    targetUid:String(d.get("targetUid")||"").trim(),
+    reason:String(d.get("reason")||"").trim()});
+});
 byId("owner-activate").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
   const f=event.currentTarget,d=new FormData(f);
