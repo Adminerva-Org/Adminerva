@@ -13,6 +13,7 @@ const {createHash}=require("node:crypto");
 const {canonicalDigest}=require("./mcs-migration-ledger.js");
 const {readMirrorRoot,SCHOOL_ID}=require("./mcs-canonical-foundation-plan.js");
 const {validatePlan,validateApproval}=require("./mcs-canonical-foundation-apply.js");
+const {validatePlan:validateAccessPlan,validateApproval:validateAccessApproval}=require("./mcs-canonical-academic-access-apply.js");
 
 const SCHEMA="adminerva-v4-mcs-canonical-assessment-plan-v1";
 function sha(value){return createHash("sha256").update(value).digest("hex");}
@@ -105,8 +106,11 @@ function deploymentWindow(assessment,deployment){
  }
  return {ok:false,reason:"deployment_window_invalid"};
 }
-function buildAssessmentPlan({rows,foundationPlan,foundationPlanRaw,foundationApproval}){
+function buildAssessmentPlan({rows,foundationPlan,foundationPlanRaw,foundationApproval,
+ academicAccessPlan,academicAccessPlanRaw,academicAccessApproval}){
  const approved=validateApproval(validatePlan(foundationPlan),foundationPlanRaw,foundationApproval);
+ const approvedAccess=validateAccessApproval(validateAccessPlan(academicAccessPlan),academicAccessPlanRaw,academicAccessApproval);
+ const teachingGrants=new Set(approvedAccess.assignments.map(row=>row.teacherUid+"|"+row.offeringId));
  const teachers=new Map(approved.memberships.filter(member=>member.roles.includes("teacher"))
    .map(member=>[member.uid,member]));
  const privateById=new Map((rows.private||[]).map(row=>[row.id,row.data]));
@@ -141,6 +145,10 @@ function buildAssessmentPlan({rows,foundationPlan,foundationPlanRaw,foundationAp
    const window=deploymentWindow(legacy,deployment);
    if(!window.ok){blockers.push({type:"assessment_deployment_window_invalid",assessmentId:row.id,
      deploymentIndex:index,section:deployment?.section||""});continue;}
+   if(!teachingGrants.has(ownerUid+"|"+offering.offeringId)){
+    blockers.push({type:"assessment_teacher_not_assigned_to_offering",assessmentId:row.id,
+      deploymentIndex:index,ownerUid,offeringId:offering.offeringId});continue;
+   }
    const deploymentKey=clean(deployment?.id,100)||String(index)+"_"+offering.sectionId;
    const taskId=stableId("mcstask",row.id,deploymentKey,offering.offeringId);
    tasks.push({
@@ -189,7 +197,7 @@ function buildAssessmentPlan({rows,foundationPlan,foundationPlanRaw,foundationAp
     sourcePath:ref.sourcePath,candidateTaskIds:ref.candidateTaskIds});
  return {
   schema:SCHEMA,schoolId:SCHOOL_ID,readOnly:true,generatedAt:new Date().toISOString(),
-  foundationPlanSha256:sha(foundationPlanRaw),blueprints,tasks,
+  foundationPlanSha256:sha(foundationPlanRaw),academicAccessPlanSha256:sha(academicAccessPlanRaw),blueprints,tasks,
   historicalLinks:{githubEvidence:evidenceRefs,studioSubmissions:studioRefs,grades:gradeRefs},
   blockers,reviewItems,readyForApply:false,
   summary:{legacyAssessments:(rows.assessments||[]).length,blueprints:blueprints.length,tasks:tasks.length,
@@ -219,11 +227,15 @@ function arg(args,name){
 function read(path){const raw=readFileSync(path),data=JSON.parse(raw.toString("utf8"));return {raw,data};}
 async function main(){
  const args=process.argv.slice(2),foundationPath=arg(args,"foundation-plan"),
-  approvalPath=arg(args,"foundation-approval"),output=arg(args,"output");
- const foundation=read(foundationPath),approval=read(approvalPath);
+  approvalPath=arg(args,"foundation-approval"),accessPlanPath=arg(args,"academic-access-plan"),
+  accessApprovalPath=arg(args,"academic-access-approval"),output=arg(args,"output");
+ const foundation=read(foundationPath),approval=read(approvalPath),
+  accessPlan=read(accessPlanPath),accessApproval=read(accessApprovalPath);
  if(!getApps().length)initializeApp({credential:applicationDefault()});
  const plan=await generateAssessmentPlan(getFirestore(),{
-  foundationPlan:foundation.data,foundationPlanRaw:foundation.raw,foundationApproval:approval.data
+  foundationPlan:foundation.data,foundationPlanRaw:foundation.raw,foundationApproval:approval.data,
+  academicAccessPlan:accessPlan.data,academicAccessPlanRaw:accessPlan.raw,
+  academicAccessApproval:accessApproval.data
  });
  writeFileSync(output,JSON.stringify(plan,null,2)+"\n",{flag:"wx",mode:0o600});
  console.info(JSON.stringify({assessmentPlanCreated:true,schoolId:SCHOOL_ID,
