@@ -55,7 +55,8 @@ function createSchoolGradebookService({db}){
       doc.data().status==="published"&&doc.data().personId===personId)
      .map(doc=>({gradeId:doc.id,taskId:doc.data().taskId,
       total:doc.data().total,awarded:doc.data().awarded,
-      criteria:doc.data().criteria,feedback:doc.data().feedback,
+      criteria:Array.isArray(doc.data().criteria)?doc.data().criteria:[],feedback:doc.data().feedback,
+      gradeSchema:doc.data().gradeSchema||"rubric_v1",
       evidenceType:doc.data().evidenceType||"studio",revision:doc.data().revision,
       publishedAt:doc.data().publishedAt?.toMillis?.()||null,
       lastCorrectedAt:doc.data().lastCorrectedAt?.toMillis?.()||null}))};
@@ -114,7 +115,8 @@ function createSchoolGradebookService({db}){
     deny("not-found","Student submission is unavailable.");
    return {taskId,studentUid,evidenceType:source,currentVersion:submission.data().currentVersion,
     grade:grade.exists&&grade.data().schoolId===ctx.schoolId?{
-      status:grade.data().status,evidenceType:grade.data().evidenceType||source,criteria:grade.data().criteria,
+      status:grade.data().status,evidenceType:grade.data().evidenceType||source,
+      gradeSchema:grade.data().gradeSchema||"rubric_v1",criteria:Array.isArray(grade.data().criteria)?grade.data().criteria:[],
       awarded:grade.data().awarded,total:grade.data().total,
       pending:grade.data().pending,feedback:grade.data().feedback,
       version:grade.data().submissionVersion,revision:grade.data().revision,
@@ -151,7 +153,7 @@ function createSchoolGradebookService({db}){
     const values={schoolId:ctx.schoolId,taskId,offeringId,
      personId:submission.personId,studentUid,reviewerUid:ctx.uid,
      evidenceType:source,submissionId:submissionRef.id,submissionVersion,submissionDigest:evidenceDigest(submission),
-     criteria:scores.criteria,awarded:scores.awarded,pending:scores.pending,total:scores.total,
+     gradeSchema:"rubric_v1",criteria:scores.criteria,awarded:scores.awarded,pending:scores.pending,total:scores.total,
      feedback,status:"draft",revision,updatedAt:now};
     if(grade.exists)tx.update(gradeRef,values);
     else tx.create(gradeRef,{...values,createdAt:now});
@@ -162,6 +164,51 @@ function createSchoolGradebookService({db}){
      action:"grade_draft_saved",revision,createdAt:now});
    });
    return {taskId,studentUid,status:"draft"};
+  }
+  if(input.action==="convert_legacy_published"){
+   const expectedRevision=input.expectedRevision;
+   if(!Number.isInteger(expectedRevision)||expectedRevision<1)
+    deny("invalid-argument","The imported grade revision is required.");
+   const reason=String(input.reason||"").trim();
+   if(reason.length<12||reason.length>2000)
+    deny("invalid-argument","Explain the historical rubric reconstruction in 12–2,000 characters.");
+   const auditRef=db.collection(prefix+"grade_audit").doc();
+   let result;
+   await db.runTransaction(async tx=>{
+    const {task,submission}=await authorize(tx);
+    const grade=await tx.get(gradeRef);
+    if(!grade.exists||grade.data().status!=="published"||grade.data().gradeSchema!=="legacy_scalar_v1")
+     deny("failed-precondition","Only a published imported scalar grade can use historical rubric reconstruction.");
+    const previous=grade.data();
+    if(previous.revision!==expectedRevision)
+     deny("failed-precondition","This historical grade changed. Reload it before reconstructing the rubric.");
+    if(previous.evidenceType!==source||previous.submissionVersion!==submission.currentVersion||
+       previous.submissionDigest!==evidenceDigest(submission)||submission.status!=="reviewed")
+     deny("failed-precondition","The historical grade is no longer bound to the current reviewed evidence.");
+    const snapshot=await tx.get(submissionRef.collection("versions").doc(String(previous.submissionVersion)));
+    if(!snapshot.exists||evidenceDigest(snapshot.data())!==evidenceDigest(submission)||!verifyFrozen(snapshot))
+     deny("failed-precondition","The frozen historical evidence could not be verified.");
+    const scores=validateScores(input.criteria,task.rubric);
+    if(scores.pending>0)
+     deny("failed-precondition","Historical rubric reconstruction cannot leave pending points.");
+    if(Math.abs(scores.awarded-Number(previous.awarded))>0.000001||
+       Math.abs(scores.total-Number(previous.total))>0.000001)
+     deny("failed-precondition","Rubric reconstruction must preserve the exact historical score and maximum. Convert first, then use a separate correction if the published score must change.");
+    const now=FieldValue.serverTimestamp(),revision=previous.revision+1;
+    const converted={gradeSchema:"rubric_v1",criteria:scores.criteria,pending:0,
+      revision,updatedAt:now,legacyScalarConvertedAt:now,legacyScalarConvertedByUid:ctx.uid};
+    tx.update(gradeRef,converted);
+    tx.create(gradeRef.collection("revisions").doc(String(revision)),{
+      ...previous,...converted,status:"published",action:"legacy_grade_breakdown_converted",
+      conversionReason:reason,previousRevision:expectedRevision,createdAt:now
+    });
+    tx.create(auditRef,{schoolId:ctx.schoolId,taskId,studentUid,actorUid:ctx.uid,
+      action:"legacy_grade_breakdown_converted",reason,previousRevision:expectedRevision,
+      revision,awarded:previous.awarded,total:previous.total,createdAt:now});
+    result={taskId,studentUid,status:"published",revision,awarded:previous.awarded,
+      total:previous.total,converted:true};
+   });
+   return result;
   }
   if(input.action==="correct_published"){
    const expectedRevision=input.expectedRevision;
@@ -180,6 +227,8 @@ function createSchoolGradebookService({db}){
     if(!grade.exists||grade.data().status!=="published")
      deny("failed-precondition","Only a published grade may use the correction workflow.");
     const previous=grade.data();
+    if(previous.gradeSchema==="legacy_scalar_v1")
+     deny("failed-precondition","This imported historical grade has no saved criterion breakdown. Convert its rubric breakdown without changing the historical total before using the correction workflow.");
     if(previous.revision!==expectedRevision)
      deny("failed-precondition","This published grade changed. Reload it before recording a correction.");
     if(previous.evidenceType!==source||previous.submissionVersion!==submission.currentVersion||
@@ -193,7 +242,7 @@ function createSchoolGradebookService({db}){
     if(scores.pending>0)
      deny("failed-precondition","Published-grade corrections cannot leave pending rubric points.");
     const now=FieldValue.serverTimestamp(),revision=previous.revision+1;
-    const corrected={criteria:scores.criteria,awarded:scores.awarded,pending:0,total:scores.total,
+    const corrected={gradeSchema:"rubric_v1",criteria:scores.criteria,awarded:scores.awarded,pending:0,total:scores.total,
       feedback,revision,updatedAt:now,lastCorrectedAt:now,lastCorrectedByUid:ctx.uid};
     tx.update(gradeRef,corrected);
     tx.create(gradeRef.collection("revisions").doc(String(revision)),{
