@@ -236,7 +236,7 @@ async function loadEvidence(initialRecord){
         (claim.assessmentId===assessment.id || evidence.selectedCommits.includes(claim.sha)));
     }catch(error){
       state.claims=[];state.sectionClaims=[];
-      claimReadWarning=" Reclaim-request context could not be loaded ("+error.message+"). Approval is blocked until this section-scoped attribution context can be refreshed.";
+      claimReadWarning=" Reclaim-request context could not be loaded ("+error.message+"). Teacher approval may continue after direct evidence inspection; cross-student reclaim conflicts remain an administrator review concern.";
     }
     const unresolved=state.claims.filter(claim=>claim.status==="pending"&&evidence.selectedCommits.includes(claim.sha));
     if(unresolved.length){
@@ -467,13 +467,13 @@ async function approve(){
         if(competing.docs.some(d=>d.data().repository===state.evidence.repository&&d.data().status==="pending"))
           throw Error("A selected commit has an unresolved reclaim request. Resolve the attribution claim before approving this checkpoint.");
       }));
-    }else{
-      if(!state.claimsReadable)
-        throw Error("Reclaim-request context for this section is unavailable. Reload evidence before approving.");
+    }else if(state.claimsReadable){
       const selected=new Set(selection.selectedCommits.map(sha=>String(sha).toLowerCase()));
       if(state.sectionClaims.some(claim=>selected.has(String(claim.sha||"").toLowerCase()) &&
         claim.repository===state.evidence.repository&&claim.status==="pending"))
-        throw Error("A selected commit has an unresolved reclaim request in this section. Ask an administrator to resolve the attribution before approving this checkpoint.");
+        throw Error("A selected commit has an unresolved reclaim request in this assessment. Ask an administrator to resolve the attribution before approving this checkpoint.");
+    }else{
+      status("Reclaim-request context is unavailable. Continuing with the teacher's explicit evidence verification; cross-student reclaim disputes remain subject to administrator review.");
     }
     approvalStage="checkpoint ancestry verification";
     status("Verifying checkpoint ancestry with GitHub…");
