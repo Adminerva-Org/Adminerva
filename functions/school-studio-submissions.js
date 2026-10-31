@@ -154,11 +154,15 @@ function createSchoolStudioSubmissionService({db}){
   if(input.action==="inbox"){
    const snap=await submissions.where("taskId","==",taskId).limit(101).get();
    if(snap.size===101)deny("resource-exhausted","Submission inbox requires pagination.");
-   return {taskId,submissions:snap.docs.filter(d=>
-    d.data().schoolId===ctx.schoolId&&d.data().offeringId===offeringId)
-    .map(d=>({submissionId:d.id,personId:d.data().personId,
+   const rows=snap.docs.filter(d=>d.data().schoolId===ctx.schoolId&&d.data().offeringId===offeringId);
+   const people=await Promise.all(rows.map(d=>db.doc(prefix+"people/"+d.data().personId).get()));
+   return {taskId,submissions:rows.map((d,index)=>({
+      submissionId:d.id,studentUid:d.data().studentUid,personId:d.data().personId,
+      studentName:people[index].exists&&people[index].data().schoolId===ctx.schoolId?
+        people[index].data().displayName:"Student",
       status:d.data().status,version:d.data().currentVersion,
-      updatedAt:d.data().updatedAt?.toMillis?.()||null}))};
+      updatedAt:d.data().updatedAt?.toMillis?.()||null
+    }))};
   }
   const submissionId=checkId(input.submissionId,"Submission ID",128);
   const submissionRef=submissions.doc(submissionId);
