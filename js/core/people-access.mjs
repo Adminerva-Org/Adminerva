@@ -3,6 +3,8 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {createTenantSchoolPicker} from "./tenant-school-picker.mjs";
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"peopleDirectory");
 const get=id=>document.getElementById(id);
+const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
+let schoolTerms=[];
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false;
 function say(message){status.textContent=message;}
@@ -18,7 +20,7 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
-    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();after=null;
+    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();after=null;
     get("pa-more").hidden=true;
   },
   onReady:scope=>{
@@ -27,7 +29,7 @@ const picker=createTenantSchoolPicker({
       return;
     }
     workspace.hidden=false;
-    void Promise.all([loadOverview(),loadPeople(false)]).catch(error=>say(error.message||"Directory access unavailable."));
+    void Promise.all([loadOverview(),loadPeople(false),loadAcademics()]).catch(error=>say(error.message||"Directory access unavailable."));
   }
 });
 async function perform(action,details={}) {
@@ -36,6 +38,109 @@ async function perform(action,details={}) {
   picker.scope.assertLease(lease);
   return result.data;
 }
+async function performAcademic(action,details={}){
+  const lease=picker.scope.lease();
+  const response=(await academicsApi({schoolId:lease.schoolId,action,...details})).data;
+  picker.scope.assertLease(lease);
+  return response;
+}
+function populateOptions(selector,items,idField,nameField="name"){
+  const controls=[...document.querySelectorAll(selector)];
+  for(const control of controls){
+    const previous=control.value;control.replaceChildren();
+    const blank=document.createElement("option");
+    blank.value="";blank.textContent="Choose an option";blank.disabled=true;
+    blank.selected=true;control.append(blank);
+    for(const item of items){
+      const option=document.createElement("option");
+      option.value=item[idField];
+      option.textContent=item[nameField]||item[idField];
+      control.append(option);
+    }
+    if(items.some(item=>item[idField]===previous))control.value=previous;
+  }
+}
+function refreshTerms(){
+  const year=get("pa-offering-form").elements.yearId.value;
+  populateOptions('#pa-offering-form [data-catalog="terms"]',
+    schoolTerms.filter(item=>item.yearId===year),"id");
+}
+async function loadAcademics(){
+  const kinds=["academic_years","terms","subjects","sections"];
+  const [catalogs,offerings,people,teachers]=await Promise.all([
+    Promise.all(kinds.map(kind=>performAcademic("list_catalog",{kind}))),
+    performAcademic("list_offerings"),
+    performAcademic("list_students"),
+    performAcademic("list_teachers")
+  ]);
+  for(let i=0;i<kinds.length;i++){
+    if(kinds[i]==="terms"){schoolTerms=catalogs[i].items||[];continue;}
+    populateOptions('[data-catalog="'+kinds[i]+'"]',catalogs[i].items||[],"id");
+  }
+  refreshTerms();
+  const offeringRows=offerings.offerings||[];
+  populateOptions("[data-offering]",offeringRows,"offeringId","offeringId");
+  populateOptions("[data-student-person]",people.students||[],"personId");
+  populateOptions("[data-school-teacher]",teachers.teachers||[],"uid");
+}
+get("pa-offering-form").elements.yearId.addEventListener("change",refreshTerms);
+get("pa-catalog-kind").addEventListener("change",event=>{
+  get("pa-term-year").hidden=event.target.value!=="terms";
+  get("pa-term-year").querySelector("select").required=event.target.value==="terms";
+});
+async function submitAcademic(form,action,fields,message){
+  if(pendingWrite)return;
+  pendingWrite=true;
+  const button=form.querySelector('button[type="submit"]');
+  button.disabled=true;say("Saving academic records for your school…");
+  try{
+    await performAcademic(action,fields);
+    say(message);
+    form.reset();
+    await loadAcademics();
+  }catch(error){say(error?.message||"Academic operation was not saved.");}
+  finally{pendingWrite=false;button.disabled=false;}
+}
+get("pa-catalog-form").addEventListener("submit",event=>{
+  event.preventDefault();const form=event.currentTarget,d=new FormData(form);
+  void submitAcademic(form,"create_catalog",{
+    kind:String(d.get("kind")||""),recordId:String(d.get("recordId")||"").trim(),
+    name:String(d.get("name")||"").trim(),yearId:String(d.get("yearId")||"")||null
+  },"Academic catalog record created.");
+});
+get("pa-offering-form").addEventListener("submit",event=>{
+  event.preventDefault();const form=event.currentTarget,d=new FormData(form);
+  void submitAcademic(form,"create_offering",Object.fromEntries(
+    ["yearId","termId","subjectId","sectionId"].map(k=>[k,String(d.get(k)||"")])
+  ),"Class offering created without altering historical grades.");
+});
+get("pa-enrollment-form").addEventListener("submit",event=>{
+  event.preventDefault();const form=event.currentTarget,d=new FormData(form);
+  void submitAcademic(form,"enroll_student",{
+    personId:String(d.get("personId")||""),offeringId:String(d.get("offeringId")||"")
+  },"Student enrollment created; previous academic history remains unchanged.");
+});
+get("pa-assignment-form").addEventListener("submit",event=>{
+  event.preventDefault();const form=event.currentTarget,d=new FormData(form);
+  void submitAcademic(form,"assign_teacher",{
+    teacherUid:String(d.get("teacherUid")||""),offeringId:String(d.get("offeringId")||"")
+  },"Teaching assignment created. Private teacher resources remain private.");
+});
+get("pa-roster-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  const target=get("pa-class-roster"),id=String(new FormData(event.currentTarget).get("offeringId")||"");
+  target.replaceChildren();say("Loading class roster…");
+  void performAcademic("class_roster",{offeringId:id}).then(result=>{
+    const people=result.students||[];
+    if(!people.length){const empty=document.createElement("p");empty.className="pa-muted";
+      empty.textContent="No students enrolled in this offering.";target.append(empty);}
+    for(const student of people){
+      const row=document.createElement("div");row.className="pa-row";row.setAttribute("role","listitem");
+      row.textContent=student.name;target.append(row);
+    }
+    say(people.length+" students enrolled in the selected offering.");
+  }).catch(error=>say(error.message||"Roster unavailable."));
+});
 async function loadOverview(){
   const response=await perform("overview");
   get("pa-people-count").textContent=response.counts.people;
@@ -87,7 +192,7 @@ async function submitForm(form,action,details) {
       hint.textContent="The invited person's verified email must match. This link is not a public school signup.";
       host.append(title,link,hint);
     }
-    if(action==="create_person")await Promise.all([loadPeople(false),loadOverview()]);
+    if(action==="create_person")await Promise.all([loadPeople(false),loadOverview(),loadAcademics()]);
     else await loadOverview();
     return result;
   }catch(error){say(error.message||"This change was not saved.");}
