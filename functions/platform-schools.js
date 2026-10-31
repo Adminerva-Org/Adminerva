@@ -77,6 +77,47 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       });
       return {schoolId,adminUid:targetUid,status:"active"};
     }
+    if(action==="suspend_school_admin"||action==="restore_school_admin") {
+      const targetUid=phrase(input.targetUid,8,128,"School administrator UID");
+      const reason=phrase(input.reason,12,500,action==="restore_school_admin"?"Recovery reason":"Suspension reason");
+      const target=await auth.getUser(targetUid);
+      if(!target.emailVerified||target.disabled)
+        fail("failed-precondition","The target account is not a verified active identity.");
+      const memberRef=db.doc("schools/"+schoolId+"/memberships/"+targetUid);
+      const indexRef=db.doc("platform_users/"+targetUid+"/memberships/"+schoolId);
+      const restoring=action==="restore_school_admin";
+      await db.runTransaction(async tx=>{
+        const school=await tx.get(schoolRef),member=await tx.get(memberRef);
+        if(!school.exists||!["draft","active","suspended"].includes(school.data().state))
+          fail("failed-precondition","The school must exist and must not be archived.");
+        if(!member.exists||member.data().schoolId!==schoolId||
+           !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
+          fail("failed-precondition","The target is not a school administrator for this institution.");
+        if(restoring){
+          if(member.data().status!=="suspended")
+            fail("failed-precondition","Only a suspended school administrator can be recovered.");
+        }else{
+          if(member.data().status!=="active")
+            fail("failed-precondition","Only an active school administrator can be suspended.");
+          const admins=await tx.get(db.collection("schools/"+schoolId+"/memberships")
+            .where("roles","array-contains","school_admin").limit(50));
+          const otherActive=admins.docs.some(doc=>doc.id!==targetUid&&doc.data().schoolId===schoolId&&
+            doc.data().status==="active");
+          if(!otherActive)
+            fail("failed-precondition","Designate another active school administrator before suspending the last administrator.");
+        }
+        const now=FieldValue.serverTimestamp(),roles=member.data().roles,
+          revision=(member.data().revision||0)+1,status=restoring?"active":"suspended";
+        tx.update(memberRef,{status,revision,updatedAt:now,updatedByUid:uid,
+          ...(restoring?{restoredAt:now,restoredByUid:uid,restoreReason:reason}:
+            {suspendedAt:now,suspendedByUid:uid,suspensionReason:reason})});
+        tx.set(indexRef,{schoolId,status,roles,revision,updatedAt:now});
+        tx.create(auditRef,{schoolId,actorUid:uid,targetUid,
+          action:restoring?"school_admin_recovered":"school_admin_suspended",
+          reason,createdAt:now});
+      });
+      return {schoolId,adminUid:targetUid,status:restoring?"active":"suspended"};
+    }
     if(action==="activate") {
       const attestation=input.attestation||{};
       if(requiredAttestations.some(key=>attestation[key]!==true))
