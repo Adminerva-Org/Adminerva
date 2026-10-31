@@ -5,7 +5,7 @@
  * data, grade rights or deployment rights are inherited.
  */
 const {FieldValue}=require("firebase-admin/firestore");
-const {createHash}=require("node:crypto");
+const {createHash,randomUUID}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
@@ -233,7 +233,7 @@ function createSchoolPlanningService({db}){
    const source=await ref.get();
    if(!source.exists||source.data().schoolId!==ctx.schoolId||source.data().status==="archived"||
       !canRead(source.data(),ctx.uid))deny("permission-denied","This planning resource is not shared with you.");
-   const data=source.data(),copyKey="copy:"+id+":"+Date.now()+":"+createHash("sha256").update(ctx.uid+id+String(Math.random())).digest("hex").slice(0,12);
+   const data=source.data(),copyKey="copy:"+id+":"+randomUUID();
    const copyId=deterministicId(ctx,data.kind,copyKey),target=resources.doc(copyId),now=FieldValue.serverTimestamp();
    await db.runTransaction(async tx=>{
     await currentTeacher(tx);
