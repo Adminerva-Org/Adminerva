@@ -92,24 +92,13 @@ function createSchoolDataExportService({db}){
    if(!def)deny("invalid-argument","Choose a supported continuity-export category.");
    const cursor=typeof input.cursor==="string"&&input.cursor?input.cursor:null,
     limit=Math.min(100,Math.max(1,Number.isInteger(input.limit)?input.limit:100));
-   let query=db.collection(prefix+def.path).orderBy(FieldPath.documentId()).limit(limit+1);
+   let query=db.collection(prefix+def.path);
    if(def.publishedOnly)query=query.where("status","==","published");
+   query=query.orderBy(FieldPath.documentId()).limit(limit+1);
    if(cursor)query=query.startAfter(cursor);
-   let snap;
-   try{snap=await query.get();}
-   catch(error){
-    // Firestore can require a composite index when equality filtering and
-    // document-ID ordering are combined. Fall back to bounded collection scan.
-    if(!def.publishedOnly)throw error;
-    let fallback=db.collection(prefix+def.path).orderBy(FieldPath.documentId()).limit(limit*4+1);
-    if(cursor)fallback=fallback.startAfter(cursor);
-    snap=await fallback.get();
-   }
-   let docs=snap.docs;
-   if(def.publishedOnly)docs=docs.filter(doc=>doc.data().status==="published");
-   const page=docs.slice(0,limit),rows=page.map(doc=>({id:doc.id,...pick(doc.data(),def.fields)}));
-   const last=page.at(-1)?.id||null,
-    hasMore=def.publishedOnly?snap.size>page.length:snap.size>limit;
+   const snap=await query.get(),page=snap.docs.slice(0,limit),
+    rows=page.map(doc=>({id:doc.id,...pick(doc.data(),def.fields)})),
+    last=page.at(-1)?.id||null,hasMore=snap.size>limit;
    return {schema:EXPORT_SCHEMA,schoolId:ctx.schoolId,category,rows,
     nextCursor:hasMore&&last?last:null};
   }
