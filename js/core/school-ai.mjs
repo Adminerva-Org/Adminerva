@@ -30,7 +30,8 @@ async function activeSchool({refresh=false}={}){
       const school=schools.find(item=>item.schoolId===schoolId);
       if(!school)throw Error("The selected school is no longer available.");
       cachedSchool={uid:user.uid,schoolId,name:school.name||schoolId,
-        roles:Array.isArray(school.roles)?school.roles:[]};
+        roles:Array.isArray(school.roles)?school.roles:[],
+        compatibilityMode:school.compatibilityMode||"legacy_allowed"};
       return cachedSchool;
     }).finally(()=>{schoolLookup=null;});
   }
