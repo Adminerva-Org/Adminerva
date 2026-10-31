@@ -1,5 +1,5 @@
 "use strict";
-const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
+const {getSchoolContext,TenantAccessError,checkedSchoolId,verifiedUid}=require("./tenant-access.js");
 const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 function invalid(message){throw new TenantAccessError("invalid-argument",message)}
@@ -100,4 +100,64 @@ function createPeopleDirectoryService({db}) {
     invalid("Unknown People & Access operation.");
   };
 }
-module.exports={createPeopleDirectoryService};
+
+/**
+ * Accept an explicitly issued same-school invitation. A verified email match
+ * is mandatory; a guessed school ID or an existing roster row is not authority.
+ * The invitation is a prior administrator approval, never an open self-join.
+ */
+function createInvitationAcceptanceService({db}) {
+  return async request=>{
+    const uid=verifiedUid(request),input=request.data||{};
+    const schoolId=checkedSchoolId(input.schoolId);
+    const email=String(request.auth?.token?.email||"").trim().toLowerCase();
+    if(!email)throw new TenantAccessError("unauthenticated","A verified email is required.");
+    const inviteId=id(input.invitationId);
+    const schoolRef=db.doc("platform_schools/"+schoolId);
+    const inviteRef=db.doc("schools/"+schoolId+"/invitations/"+inviteId);
+    const memberRef=db.doc("schools/"+schoolId+"/memberships/"+uid);
+    const indexRef=db.doc("platform_users/"+uid+"/memberships/"+schoolId);
+    const auditRef=db.collection("schools/"+schoolId+"/directory_audit").doc();
+    let acceptedRole=null;
+    await db.runTransaction(async tx=>{
+      const school=await tx.get(schoolRef),invitation=await tx.get(inviteRef);
+      if(!school.exists||school.data().state!=="active"||!invitation.exists)
+        throw new TenantAccessError("permission-denied","This school invitation is unavailable.");
+      const invited=invitation.data();
+      if(invited.schoolId!==schoolId||invited.email!==email||
+         !["teacher","student"].includes(invited.requestedRole))
+        throw new TenantAccessError("permission-denied","This invitation does not match your verified account.");
+      const member=await tx.get(memberRef);
+      if(member.exists && !["active"].includes(member.data().status))
+        throw new TenantAccessError("failed-precondition","Your previous school access needs administrator recovery.");
+      const personRef=invited.personId?db.doc("schools/"+schoolId+"/people/"+id(invited.personId)):null;
+      const person=personRef?await tx.get(personRef):null;
+      if(personRef&&(!person.exists||person.data().schoolId!==schoolId||
+        (person.data().authUid&&person.data().authUid!==uid)))
+        throw new TenantAccessError("failed-precondition","The invitation's person link requires administrator review.");
+      if(invited.status==="accepted"&&invited.acceptedByUid===uid) {
+        if(member.exists&&member.data().status==="active"&&
+          Array.isArray(member.data().roles)&&member.data().roles.includes(invited.requestedRole)){
+          acceptedRole=invited.requestedRole;return;
+        }
+        throw new TenantAccessError("failed-precondition","Invitation and school role records need recovery.");
+      }
+      if(invited.status!=="pending")
+        throw new TenantAccessError("failed-precondition","This invitation is no longer pending.");
+      const roles=[...new Set([...(Array.isArray(member.exists?member.data().roles:null)?member.data().roles:[]),invited.requestedRole])];
+      const revision=(member.exists?member.data().revision||0:0)+1;
+      const now=FieldValue.serverTimestamp();
+      tx.set(memberRef,{schoolId,status:"active",roles,revision,
+        updatedByUid:uid,updatedAt:now},{merge:true});
+      tx.set(indexRef,{schoolId,status:"active",roles,revision,updatedAt:now});
+      tx.update(inviteRef,{status:"accepted",acceptedByUid:uid,acceptedAt:now,revision:(invited.revision||1)+1});
+      if(personRef)tx.update(personRef,{authUid:uid,updatedAt:now,revision:(person.data().revision||1)+1});
+      tx.create(auditRef,{schoolId,actorUid:uid,invitationId:inviteId,
+        action:"invitation_accepted",role:invited.requestedRole,createdAt:now});
+      acceptedRole=invited.requestedRole;
+    });
+    return {schoolId,status:"active",role:acceptedRole};
+  };
+}
+
+module.exports={createPeopleDirectoryService,createInvitationAcceptanceService};
