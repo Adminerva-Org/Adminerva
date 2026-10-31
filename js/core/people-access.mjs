@@ -7,7 +7,7 @@ const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcad
 let schoolTerms=[];
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false;
-let suspendUid=null,lifecycleChange=null,currentRosterOfferingId=null;
+let accessChange=null,lifecycleChange=null,currentRosterOfferingId=null;
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","invites","classes","access"]);
 function setTab(name,{remember=true}={}) {
@@ -28,7 +28,7 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
-    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();suspendUid=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;
+    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;
     get("pa-more").hidden=true;
   },
   onReady:scope=>{
@@ -253,13 +253,27 @@ async function loadMemberships(){
     const detail=document.createElement("p");detail.className="pa-muted";
     detail.textContent=member.roles.join(", ")+" · "+member.status+" · account "+member.uid.slice(0,9);
     info.append(name,detail);row.append(info);
-    if(member.status==="active"&&!member.roles.includes("school_admin")&&
-      member.uid!==picker.scope.current?.uid){
+    if(!member.roles.includes("school_admin")&&member.uid!==picker.scope.current?.uid&&
+      ["active","suspended"].includes(member.status)){
+      const restoring=member.status==="suspended";
       const button=document.createElement("button");button.type="button";button.className="pa-action";
-      button.style.background="#9a3412";button.textContent="Suspend access";
+      button.style.background=restoring?"#166534":"#9a3412";
+      button.textContent=restoring?"Restore access":"Suspend access";
       button.addEventListener("click",()=>{
-        suspendUid=member.uid;
-        get("pa-suspension-member").textContent=member.displayName||member.uid.slice(0,9);
+        accessChange={
+          targetUid:member.uid,action:restoring?"restore_access":"suspend_access",
+          name:member.displayName||member.uid.slice(0,9)
+        };
+        get("pa-suspension-title").textContent=restoring?"Restore school access":"Suspend school access";
+        get("pa-suspension-member").textContent=accessChange.name;
+        get("pa-access-reason-label").textContent=restoring?"Reason for restoring access":"Reason for suspension";
+        get("pa-access-change-help").textContent=restoring?
+          "This restores only the selected school membership after verifying its linked person record. Academic history remains unchanged.":
+          "This blocks future work only in the selected school. Academic history remains unchanged.";
+        const confirmButton=get("pa-access-change-confirm");
+        confirmButton.textContent=restoring?"Confirm restore":"Confirm suspension";
+        confirmButton.style.background=restoring?"#166534":"#9a3412";
+        get("pa-suspension-form").reset();
         get("pa-suspension-dialog").showModal();
       });
       row.append(button);
@@ -273,16 +287,19 @@ async function loadMemberships(){
 }
 get("pa-refresh-memberships").addEventListener("click",()=>
   void loadMemberships().catch(error=>say(error.message||"Membership list unavailable.")));
-get("pa-cancel-suspend").addEventListener("click",()=>get("pa-suspension-dialog").close());
+get("pa-cancel-suspend").addEventListener("click",()=>{accessChange=null;get("pa-suspension-dialog").close();});
 get("pa-suspension-form").addEventListener("submit",event=>{
   event.preventDefault();
-  if(!suspendUid)return;
-  const form=event.currentTarget;
+  if(!accessChange)return;
+  const form=event.currentTarget,change=accessChange;
   const reason=String(new FormData(form).get("reason")||"").trim();
-  if(!confirm("Suspend this account for the current school? Existing grades and evidence will be preserved."))return;
-  void submitForm(form,"suspend_access",{targetUid:suspendUid,reason}).then(result=>{
+  const restoring=change.action==="restore_access";
+  if(!confirm(restoring?
+    "Restore this account for the current school after its linked identity is revalidated?":
+    "Suspend this account for the current school? Existing grades and evidence will be preserved."))return;
+  void submitForm(form,change.action,{targetUid:change.targetUid,reason}).then(result=>{
     if(!result)return;
-    get("pa-suspension-dialog").close();suspendUid=null;
+    get("pa-suspension-dialog").close();accessChange=null;
     void loadMemberships().catch(error=>say(error.message||"Refresh membership access status."));
   });
 });
@@ -325,6 +342,7 @@ async function submitForm(form,action,details) {
     form.reset();
     say(action==="invite"?"Pending invitation recorded. Access has not been granted.":
       action==="suspend_access"?"School access suspended. Historical academic records were preserved.":
+      action==="restore_access"?"School access restored after identity revalidation. Historical records were unchanged.":
       "Person created. No account or enrollment was created.");
     if(action==="invite"&&result.invitationId){
       const host=get("pa-invitation-result");
