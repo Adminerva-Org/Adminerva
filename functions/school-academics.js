@@ -7,6 +7,7 @@
 const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
+const {writeSchoolNotification}=require("./school-notifications.js");
 const CATALOG=new Set(["academic_years","terms","subjects","sections"]);
 function deny(code,message){throw new TenantAccessError(code,message)}
 function checkId(value,label="Identifier",max=80){
@@ -348,6 +349,13 @@ function createSchoolAcademicsService({db}) {
     result={offeringId,fromTeacherUid,toTeacherUid,
       replacementAssignmentState,assessmentCount:applicable.length};
    });
+   await writeSchoolNotification({
+    db,schoolId:ctx.schoolId,uid:toTeacherUid,
+    id:"teacher_handover_"+offeringId+"_"+fromTeacherUid+"_"+toTeacherUid,
+    title:"Class responsibility assigned",
+    body:"You are now responsible for this course offering and its existing deployed assessment reviews.",
+    type:"assessment",sourceId:offeringId,target:"teacher-assessment-library.html"
+   }).catch(()=>{});
    return result;
   }
 
@@ -365,8 +373,11 @@ function createSchoolAcademicsService({db}) {
    if(reason&&reason.length<12)deny("invalid-argument","Explain the teaching assignment change in at least 12 characters.");
    await db.runTransaction(async tx=>{
     await checkWriteAuthority(tx);
-    const [offering,staff,prior]=await Promise.all([
-      tx.get(offeringRef),tx.get(teacherMemberRef),tx.get(ref)
+    const taskQuery=ending?db.collection("schools/"+ctx.schoolId+"/assessments")
+      .where("offeringId","==",offeringId).limit(101):null;
+    const [offering,staff,prior,responsibilities]=await Promise.all([
+      tx.get(offeringRef),tx.get(teacherMemberRef),tx.get(ref),
+      taskQuery?tx.get(taskQuery):Promise.resolve(null)
     ]);
     if(!offering.exists||offering.data().schoolId!==ctx.schoolId)
       deny("failed-precondition","Course offering is not in this school.");
@@ -377,6 +388,15 @@ function createSchoolAcademicsService({db}) {
     if(ending) {
       if(!prior.exists||prior.data().status!=="active")
         deny("failed-precondition","There is no active appointment to end.");
+      if(responsibilities?.size===101)
+        deny("resource-exhausted","This class has more than 100 assessment deployments. Review handover before ending the teacher assignment.");
+      const outstanding=(responsibilities?.docs||[]).filter(doc=>{
+        const data=doc.data();
+        return data.schoolId===ctx.schoolId&&(data.reviewerUid||data.ownerUid)===teacherUid&&
+          data.lifecycle!=="cancelled";
+      });
+      if(outstanding.length)
+        deny("failed-precondition","This teacher still has review responsibility for deployed assessments. Use Teacher handover so submissions and Gradebook access are not stranded.");
       tx.update(ref,{status:"ended",endedByUid:uid,endedAt:FieldValue.serverTimestamp(),
         endReason:reason,revision:(prior.data().revision||1)+1});
     }else if(restoring){
