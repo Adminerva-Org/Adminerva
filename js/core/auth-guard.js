@@ -154,6 +154,9 @@ async function checkAccess(user){
      !(access.schoolTeacher||access.schoolAdmin||admittedRole==="admin")){
     replacePage(roleHome(actualRole));return;
   }
+  if(v4Cutover&&access.schoolAdmin&&currentPath.endsWith("/issues.html")){
+    replacePage("school-support.html");return;
+  }
   if(actualRole==="schooladmin"&&!access.schoolTeacher&&
      !/\/(teacher-home|school-admin|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-reference-library|reclaim-inbox|settings|issues|school-support|join-school|wiki)\.html$/.test(currentPath)){
     replacePage("school-admin.html");return;
@@ -207,7 +210,8 @@ async function checkAccess(user){
       ]);
       const destination=gradingPages.has(page)?"school-gradebook.html":
         page==="assessment-studio.html"?"teacher-assessment-library.html":
-        ["teacher-analytics.html","practice-analytics.html"].includes(page)?"school-teacher-analytics.html":
+        page==="teacher-analytics.html"?"school-teacher-analytics.html":
+        page==="practice-analytics.html"?"school-practice-analytics.html":
         page==="issues.html"?"school-support.html":"teacher-home.html";
       replacePage(destination);return;
     }
