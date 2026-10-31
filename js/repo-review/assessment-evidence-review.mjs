@@ -162,7 +162,17 @@ async function loadEvidence(initialRecord){
     const documentId=student.id+"_"+assessment.id;
     if(watchedId!==documentId){stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);stopEvidence=null;watchedId=documentId;}
     let record=initialRecord;
-    if(!stopEvidence){
+    if(inlineContext){
+      // Review & Grade already loaded this exact evidence document. Avoid opening
+      // a second live listener with a different rules/query path inside the same
+      // modal; use a bounded server read only when the controller explicitly
+      // refreshes after a write.
+      if(initialRecord===undefined){
+        const snapshot=await getDocFromServer(doc(db,"assessment_evidence",documentId));
+        record=snapshot.exists()?snapshot.data():null;
+      }
+      hasServerSnapshot=true;
+    }else if(!stopEvidence){
       hasServerSnapshot=false;
       let waiting=true,rejectInitial,finishInitial;
       const initial=new Promise((resolve,reject)=>{finishInitial=resolve;resolveInitial=resolve;rejectInitial=reject;});
@@ -211,14 +221,21 @@ async function loadEvidence(initialRecord){
     el("evidenceContributionScope").value=evidence.contributionScope||"";
     el("evidenceContributionScope").disabled=evidence.status==="approved";
     el("evidenceReviewNote").value="";el("evidenceConfirm").checked=false;
-    // Section-scoped query satisfies teacher Firestore permissions without
-    // requiring a composite index for studentId + section.
-    const claims=await getDocs(query(collection(db,"commit_reclaims"),where("section","==",student.section)));
-    if(destroyed||sequence!==state.sequence)return;
-    state.claims=claims.docs.filter(d=>d.data().studentId===student.id &&
-      d.data().repository===evidence.repository &&
-      (d.data().assessmentId===assessment.id || evidence.selectedCommits.includes(d.data().sha)))
-      .map(d=>({id:d.id,...d.data()}));
+    // Reclaim claims are supplemental attribution context. A denied/temporarily
+    // unavailable claim listing must not erase the already-authorized evidence
+    // review UI. Approval performs its own conflict check before writing.
+    let claimReadWarning="";
+    try{
+      const claims=await getDocs(query(collection(db,"commit_reclaims"),where("section","==",student.section)));
+      if(destroyed||sequence!==state.sequence)return;
+      state.claims=claims.docs.filter(d=>d.data().studentId===student.id &&
+        d.data().repository===evidence.repository &&
+        (d.data().assessmentId===assessment.id || evidence.selectedCommits.includes(d.data().sha)))
+        .map(d=>({id:d.id,...d.data()}));
+    }catch(error){
+      state.claims=[];
+      claimReadWarning=" Reclaim-request context could not be loaded ("+error.message+"). You can still inspect the selected commits; approval will re-check conflicts before saving.";
+    }
     const unresolved=state.claims.filter(claim=>claim.status==="pending"&&evidence.selectedCommits.includes(claim.sha));
     if(unresolved.length){
       el("evidenceLifecycleHelp").textContent+=" Approval blocked: "+unresolved.length+
@@ -296,9 +313,9 @@ async function loadEvidence(initialRecord){
     if(el("evidenceAddCommit"))el("evidenceAddCommit").disabled=!mayAddUnmatched;
     el("evidenceContributionScope").disabled=evidence.status==="approved";
     el("evidenceReviewNote").disabled=false;el("evidenceConfirm").disabled=false;el("evidenceVerifyAll").disabled=evidence.status==="approved";el("evidenceEditVerification").disabled=false;
-    status(evidence.selectedCommits.length
+    status((evidence.selectedCommits.length
       ?"Loaded "+evidence.selectedCommits.length+" selected commits. Approval will verify checkpoint ancestry and the contribution choices."
-      :"Loaded a checkpoint-only teacher snapshot. No individual commit is attributed to this learner; you may approve the checkpoint as project context, but system evaluation remains unavailable until individual contribution is verified.");
+      :"Loaded a checkpoint-only teacher snapshot. No individual commit is attributed to this learner; you may approve the checkpoint as project context, but system evaluation remains unavailable until individual contribution is verified.")+claimReadWarning);
     if(evidence.status==="reopened")status("Reopened: the student can change commit selections now. They must resubmit before a new approval. Contribution checks here verify authorship; they do not edit the student's selected commits.");
     else if(evidence.status==="submitted")status(isResubmitted(evidence)?"Student resubmitted evidence after reopening. Check the selected commits and attribution claims, then approve the new revision.":"Student evidence is awaiting review. If approval fails or the selection needs correction, enter a reason below and choose Return for student changes.");
     else if(evidence.status==="approved")status(evidence.verifiedContributionCommits?.length?"Approved. To let the student submit different commits, enter a reopening reason below and choose Reopen for student changes.":"Approved checkpoint has no verified individual contributions. To let the student change commits, enter a reopening reason below and choose Reopen for student changes.");
