@@ -148,15 +148,17 @@ async function inspectTargets(db,approved){
  const school=await db.doc("platform_schools/"+SCHOOL_ID).get();
  if(!school.exists||!["draft","active"].includes(school.data().state))
   rows.push({state:"school_missing_or_unavailable",targetPath:"platform_schools/"+SCHOOL_ID});
+ const personStates=new Map();
  for(const person of approved.people){
   const ref=db.doc(person.targetPath),doc=await ref.get();
-  rows.push({kind:"person",key:person.personId,targetPath:ref.path,
-    state:!doc.exists?"ready":sameMigration(doc.data(),approved.planSha256,"person",person.personId)?"already_applied":"target_conflict"});
+  const state=!doc.exists?"ready":sameMigration(doc.data(),approved.planSha256,"person",person.personId)?"already_applied":"target_conflict";
+  rows.push({kind:"person",key:person.personId,targetPath:ref.path,state});
+  personStates.set(person.uid,state);
  }
  for(const member of approved.memberships){
   const memberRef=db.doc(member.targetPath),indexRef=db.doc("platform_users/"+member.uid+"/memberships/"+SCHOOL_ID);
   const [doc,index]=await Promise.all([memberRef.get(),indexRef.get()]);
-  const personState=rows.at(-1).state;
+  const personState=personStates.get(member.uid)||"target_conflict";
   const membershipState=!doc.exists?"ready":sameMigration(doc.data(),approved.planSha256,"membership",member.uid)?"already_applied":"target_conflict";
   const indexState=!index.exists?"ready":sameMigration(index.data(),approved.planSha256,"membership_index",member.uid)?"already_applied":"target_conflict";
   rows.push({kind:"membership",key:member.uid,targetPath:memberRef.path,state:membershipState});
