@@ -887,10 +887,10 @@ body[data-playground-access="student"] #adminerva-nav .av-nav-tools :is(button,a
     gap:4px;
   }
   .studio-command-bar{gap:3px}
-  .studio-command-bar #languageSelect{width:66px}
-  .studio-command-bar #javaRunModeLabel{display:none!important}
-  .studio-command-bar #javaRunMode:not(.hidden){width:92px}
-  .studio-command-bar .pg-save{display:none}
+  .studio-command-bar #languageSelect,
+  .studio-command-bar #javaRunModeLabel,
+  .studio-command-bar #javaRunMode{display:none!important}
+  .studio-command-bar .pg-save{min-width:42px}
   .studio-command-bar .pg-run{
     min-width:48px;
     padding-inline:7px;
