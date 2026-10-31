@@ -16,6 +16,10 @@ initializeApp();
 const db=getFirestore();
 const messaging=getMessaging();
 const practice=createPracticeService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)});
+const {createSchoolPracticeSeasonService}=require("./school-practice-season-service.js");
+const schoolPractice=createSchoolPracticeSeasonService({
+  db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)
+});
 const teachingAccess=createTeachingAccessService({db,Timestamp});
 const {createSchoolAI}=require("./school-ai-service.js");
 const schoolAI=createSchoolAI({db,FieldValue,Timestamp,resolveUser:uid=>getAuth().getUser(uid)});
@@ -140,6 +144,23 @@ for(const [name,action] of Object.entries({practiceSession:"acquire",practiceSta
       if(error instanceof PracticeError)throw new HttpsError(error.code,error.message,error.details);
       console.error("Practice request failed",{action,code:error.code||"internal"});
       throw new HttpsError("unavailable","Practice could not complete this request. Your score has not been published; retry the same challenge safely.");
+    }
+  });
+for(const [name,action] of Object.entries({
+  schoolPracticeSeasonSession:"acquireSeason",
+  schoolPracticeHub:"hub",
+  schoolPracticeMissionStart:"startSeason",
+  schoolPracticeMissionSubmit:"submitSeason",
+  schoolPracticePreferences:"preferences"
+}))
+  exports[name]=onCall(practiceOptions,async request=>{
+    try{return await schoolPractice[action](request);}
+    catch(error){
+      if(error instanceof PracticeError)throw new HttpsError(error.code,error.message,error.details);
+      if(["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","not-found"].includes(error.code))
+        throw new HttpsError(error.code,error.message);
+      console.error("School Practice request failed",{action,code:error.code||"internal"});
+      throw new HttpsError("unavailable","School Practice could not complete this request. Saved progress is unchanged; retry safely.");
     }
   });
 const monitoring=createMonitoringService({db,Timestamp,FieldValue,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users});
