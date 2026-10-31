@@ -81,6 +81,16 @@ test("individual and bulk evidence review scope reclaim reads to the current ass
   assert.match(review,/where\("section","==",student\.section\),where\("assessmentId","==",assessment\.id\)/);
   assert.match(gradebook,/where\("section","==",detail\.section\),where\("assessmentId","==",detail\.taskId\)/);
 });
+test("teacher approval treats unavailable reclaim context as advisory while admins retain cross-student checks",()=>{
+  const review=readFileSync("js/repo-review/assessment-evidence-review.mjs","utf8");
+  const gradebook=readFileSync("js/repo-review/gradebook-class-review.mjs","utf8");
+  assert.doesNotMatch(review,/throw Error\("Reclaim-request context for this section is unavailable/);
+  assert.match(review,/else if\(state\.claimsReadable\)/);
+  assert.match(review,/reviewerRole==="admin"[\s\S]*where\("sha","==",sha\)/);
+  assert.doesNotMatch(gradebook,/if\(!claimsReadable\)throw Error\("reclaim-request context unavailable/);
+  assert.match(gradebook,/else if\(claimsReadable\)/);
+  assert.match(gradebook,/if\(canDecideClaims\)[\s\S]*where\("sha","==",sha\)/);
+});
 test("account registry, own teacher directory and student membership start in parallel",async()=>{
   const started=[],finish=[],user={uid:"parallel",email:"new.teacher@example.edu",emailVerified:true};
   const pending=kind=>{started.push(kind);return new Promise(resolve=>finish.push(()=>resolve(kind==="staff_access"?{exists:()=>true,data:()=>({email:user.email,status:"active",role:"teacher"})}:{docs:[],empty:true})));};
