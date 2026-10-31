@@ -201,7 +201,7 @@ function createInvitationAcceptanceService({db}) {
       const revision=(member.exists?member.data().revision||0:0)+1;
       const now=FieldValue.serverTimestamp();
       tx.set(memberRef,{schoolId,status:"active",roles,revision,
-        ...(person?.exists?{displayName:String(person.data().displayName||"").slice(0,140)}:{}),
+        ...(person?.exists?{personId:invited.personId,displayName:String(person.data().displayName||"").slice(0,140)}:{}),
         updatedByUid:uid,updatedAt:now},{merge:true});
       tx.set(indexRef,{schoolId,status:"active",roles,revision,updatedAt:now});
       tx.update(inviteRef,{status:"accepted",acceptedByUid:uid,acceptedAt:now,revision:(invited.revision||1)+1});
