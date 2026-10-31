@@ -208,6 +208,26 @@
           </form>
         </details>
         <details class="pa-card">
+          <summary style="font-weight:750;cursor:pointer">Bulk class enrollment</summary>
+          <form id="pa-bulk-enrollment-form" style="padding-top:1rem">
+            <label>Students<select class="pa-field" name="personIds" data-student-person-bulk multiple size="8" required></select></label>
+            <label>Course offering<select class="pa-field" name="offeringId" data-offering required></select></label>
+            <label>Reason<input class="pa-field" name="reason" minlength="12" maxlength="140" required placeholder="Explain this reviewed bulk enrollment"></label>
+            <button class="pa-action" type="submit">Enroll selected students</button>
+            <p class="pa-muted">Existing active enrollments are skipped. Ended historical enrollments are not silently restored.</p>
+          </form>
+        </details>
+        <details class="pa-card">
+          <summary style="font-weight:750;cursor:pointer">Bulk teacher assignment</summary>
+          <form id="pa-bulk-assignment-form" style="padding-top:1rem">
+            <label>Teachers<select class="pa-field" name="teacherUids" data-school-teacher-bulk multiple size="6" required></select></label>
+            <label>Course offering<select class="pa-field" name="offeringId" data-offering required></select></label>
+            <label>Reason<input class="pa-field" name="reason" minlength="12" maxlength="140" required placeholder="Explain this reviewed bulk assignment"></label>
+            <button class="pa-action" type="submit">Assign selected teachers</button>
+            <p class="pa-muted">Existing active assignments are skipped. Ended assignment history must be restored explicitly.</p>
+          </form>
+        </details>
+        <details class="pa-card">
           <summary style="font-weight:750;cursor:pointer">4. Assign teacher to class</summary>
           <form id="pa-assignment-form" style="padding-top:1rem">
             <label>Verified school teacher<select class="pa-field" name="teacherUid" data-school-teacher required></select></label>
