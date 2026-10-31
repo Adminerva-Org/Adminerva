@@ -87,6 +87,17 @@ function createSchoolPlanningService({db}){
   }
   const action=input.action;
 
+  if(action==="recipients"){
+   const snap=await db.collection(prefix+"memberships")
+    .where("roles","array-contains","teacher").limit(101).get();
+   return {teachers:snap.docs.filter(doc=>doc.id!==ctx.uid&&
+      doc.data().schoolId===ctx.schoolId&&doc.data().status==="active")
+     .slice(0,100).map(doc=>({
+       uid:doc.id,name:typeof doc.data().displayName==="string"&&doc.data().displayName.trim()
+         ?doc.data().displayName.trim().slice(0,140):"Teacher "+doc.id.slice(0,8)
+     })),truncated:snap.size===101};
+  }
+
   if(action==="list"){
    const kind=input.kind;
    if(kind&&!KINDS.has(kind))deny("invalid-argument","Invalid planning resource kind.");
@@ -226,7 +237,8 @@ function createSchoolPlanningService({db}){
       schoolId:ctx.schoolId,resourceId:id,actorUid:ctx.uid,action:"planning_resource_shared",
       audience:visibility,recipientCount:selected.length,revision,createdAt:now});
    });
-   return {resourceId:id,visibility,recipientCount:selected.length};
+   const updated=await ref.get();
+   return {resourceId:id,visibility,recipientCount:selected.length,revision:updated.data()?.revision||null};
   }
 
   if(action==="copy"){
