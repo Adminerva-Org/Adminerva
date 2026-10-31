@@ -483,6 +483,22 @@ test('V2 evidence is individual, editable while submitted, and cannot self-appro
   await assertFails(updateDoc(ref,{selectedCommits:[SHA],checkpointSha:SHA,updatedAt:serverTimestamp()}));
   await assertSucceeds(auditedEvidence(alice,{selectedCommits:[SHA],checkpointSha:SHA,submittedAt:serverTimestamp()}));
 });
+test('teacher can read legacy evidence whose stored section is stale when current student and assessment remain in scope',async()=>{
+  const teacher=client('staff',TEACHER),other=client('other','other.teacher@example.edu');
+  await env.withSecurityRulesDisabled(async ctx=>{
+    const db=ctx.firestore();
+    await setDoc(doc(db,'staff_access','other.teacher@example.edu'),{email:'other.teacher@example.edu',role:'teacher',status:'active',sections:['11-B']});
+    await setDoc(doc(db,'assessment_evidence','alice_v2'),{
+      studentId:'alice',assessmentId:'v2',section:'Legacy Pilot Section',
+      repository:'https://github.com/example/project',selectedCommits:[SHA],checkpointSha:SHA,
+      status:'needs_review',source:'teacher_discovered',discoveredBy:'staff',
+      recordedAt:Timestamp.now(),updatedAt:Timestamp.now()
+    });
+  });
+  await assertSucceeds(getDoc(doc(teacher,'assessment_evidence','alice_v2')));
+  await assertFails(getDoc(doc(other,'assessment_evidence','alice_v2')));
+});
+
 test('V2 evidence approval is staff-only',async()=>{
   const alice=client('alice',EMAIL_A),staff=client('staff',TEACHER);
   const repository='https://github.com/example/project';
@@ -704,6 +720,22 @@ test('reclaim is initially pending, owner-private and can only be withdrawn by c
   await assertFails(updateDoc(doc(ref,'revisions','1'),{actorUid:'bob'}));
   await assertFails(updateDoc(ref,{status:'rejected',reviewedBy:'alice'}));
 
+});
+
+test('teacher evidence review may list reclaim claims for an assigned section',async()=>{
+  const teacher=client('staff',TEACHER);
+  await env.withSecurityRulesDisabled(async ctx=>{
+    const db=ctx.firestore();
+    await setDoc(doc(db,'commit_reclaims',SHA+'_alice'),{
+      studentId:'alice',assessmentId:'v2',section:'11-A',
+      repository:'https://github.com/example/project',sha:SHA,
+      detectedAuthorName:'Alice',detectedAuthorLogin:'alice',
+      explanation:'Teacher review fixture for a section-scoped reclaim query.',
+      status:'pending',createdAt:Timestamp.now()
+    });
+  });
+  const result=await assertSucceeds(getDocs(query(collection(teacher,'commit_reclaims'),where('section','==','11-A'))));
+  assert.equal(result.size,1);
 });
 
 test('instructor-only V2 grading config and admin-only reclaim decisions',async()=>{

@@ -696,9 +696,14 @@ service cloud.firestore {
     }
 
     match /assessment_evidence/{evidenceId} {
-      allow get: if isInstructor() && !exists(/databases/$(database)/documents/assessment_evidence/$(evidenceId));
-      allow read: if mayTeachSection(resource.data.section);
-      allow read: if signedIn() && ownsStudentProfile(resource.data.studentId);
+      // Single-record review follows the current student + assessment scope so
+      // legacy evidence with a stale stored section does not lock out an
+      // otherwise authorized teacher. Collection queries remain section-scoped.
+      allow get: if (isInstructor() && !exists(/databases/$(database)/documents/assessment_evidence/$(evidenceId))) ||
+        mayTeachEvidence(resource.data.studentId,resource.data.assessmentId) ||
+        (signedIn() && ownsStudentProfile(resource.data.studentId));
+      allow list: if mayTeachSection(resource.data.section) ||
+        (signedIn() && ownsStudentProfile(resource.data.studentId));
       // Audited updates use set() and include revision/teacher metadata. Reject
       // their create alternative before spending the evidence validation budget.
       allow create: if request.resource.data.keys().hasOnly(["studentId","assessmentId","section","repository",
