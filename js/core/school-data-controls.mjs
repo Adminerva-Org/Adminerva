@@ -146,8 +146,12 @@ async function previewRestore(file){
   const categories=parsed.categories&&typeof parsed.categories==="object"?parsed.categories:{},
     expected=parsed.sourceManifest?.counts||{},
     integrity=parsed.sourceManifest?.categoryIntegrity||{},
+    required=[...(manifest?.categories||[])].sort(),
+    actual=Object.keys(categories).sort(),
     rows=Object.entries(categories).map(([name,value])=>[name,Array.isArray(value)?value.length:0]),
     mismatches=[];
+  if(!required.length||JSON.stringify(required)!==JSON.stringify(actual))
+    throw new Error("Continuity export category set does not match the current Adminerva export contract.");
   for(const [name,count] of rows){
     if(Number(expected[name])!==count){mismatches.push(name+" count");continue;}
     const saved=integrity[name];
