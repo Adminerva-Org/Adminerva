@@ -51,6 +51,11 @@ function createTeacherBlueprintService({db}) {
     const ctx=await getSchoolContext({db,request,schoolId,roles:["teacher"]});
     const collection=db.collection("schools/"+ctx.schoolId+"/assessment_blueprints");
     const selfMemberRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+ctx.uid);
+    const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
+    const assertCurrentSchool=school=>{
+      if(!school.exists||school.data().state!=="active")
+        deny("permission-denied","This school is not currently active.");
+    };
     const assertCurrentTeacher=member=>{
       if(!member.exists||member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
          !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher"))
@@ -63,6 +68,7 @@ function createTeacherBlueprintService({db}) {
       const now=FieldValue.serverTimestamp();
       await db.runTransaction(async tx=>{
         assertCurrentTeacher(await tx.get(selfMemberRef));
+        assertCurrentSchool(await tx.get(schoolRef));
         tx.create(ref,{
           ...fields,schoolId:ctx.schoolId,creatorUid:ctx.uid,ownerUid:ctx.uid,
           visibility:"private",sharedWithUids:[],status:"draft",
@@ -104,6 +110,7 @@ function createTeacherBlueprintService({db}) {
       await db.runTransaction(async tx=>{
         const original=await tx.get(ref);
         assertCurrentTeacher(await tx.get(selfMemberRef));
+        assertCurrentSchool(await tx.get(schoolRef));
         if(!original.exists||original.data().schoolId!==ctx.schoolId||original.data().ownerUid!==ctx.uid)
           deny("permission-denied","Only the assessment owner can change sharing.");
         if(original.data().status==="archived")deny("failed-precondition","Archived work cannot be shared.");
