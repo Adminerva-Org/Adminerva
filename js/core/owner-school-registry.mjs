@@ -62,7 +62,7 @@ async function refresh(prefer=selected?.schoolId){
     button.type="button";button.dataset.schoolId=school.schoolId;
     const name=document.createElement("strong");name.textContent=school.displayName;
     const meta=document.createElement("span");meta.className="own-muted";
-    meta.textContent=" · "+school.state+" · "+school.schoolId;
+    meta.textContent=" · "+school.state+" · "+school.schoolId+" · "+String(school.compatibilityMode||"legacy_allowed").replace("_"," ");
     button.append(name,meta);
     button.addEventListener("click",()=>choose(school.schoolId));
     item.append(button);schoolList.append(item);
