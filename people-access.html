@@ -54,6 +54,23 @@
         <div class="pa-card"><span class="pa-muted">Invitations (all states)</span><span class="pa-count" id="pa-invite-count">—</span></div>
       </div>
       <p class="pa-muted">Counts reflect only this verified school. Historical migration records are not shown until approved and imported.</p>
+      <section style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid #cbd5e1">
+        <div style="display:flex;gap:.75rem;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">
+          <div>
+            <h3 style="font-size:1.05rem;font-weight:750">Directory reconciliation</h3>
+            <p class="pa-muted">Find unresolved identity, school-access and active class relationships without inspecting grades, evidence or private teacher content.</p>
+          </div>
+          <button id="pa-reconcile-refresh" type="button" class="pa-action" style="background:#475569">Refresh</button>
+        </div>
+        <div class="pa-cards" style="margin-top:.75rem">
+          <div class="pa-card"><span class="pa-muted">Integrity issues</span><span class="pa-count" id="pa-reconcile-integrity">—</span></div>
+          <div class="pa-card"><span class="pa-muted">Needs attention</span><span class="pa-count" id="pa-reconcile-attention">—</span></div>
+          <div class="pa-card"><span class="pa-muted">Review items</span><span class="pa-count" id="pa-reconcile-review">—</span></div>
+          <div class="pa-card"><span class="pa-muted">Total unresolved</span><span class="pa-count" id="pa-reconcile-total">—</span></div>
+        </div>
+        <div id="pa-reconcile-results" role="list" aria-live="polite"></div>
+        <p id="pa-reconcile-status" class="pa-muted" role="status" aria-live="polite">Loading school relationship checks…</p>
+      </section>
     </section>
     <section id="pa-people" role="tabpanel" hidden>
       <div class="pa-layout">
