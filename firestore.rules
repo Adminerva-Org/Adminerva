@@ -663,9 +663,11 @@ service cloud.firestore {
       let section = get(/databases/$(database)/documents/students/$(studentId)).data.section;
       let assessment = get(/databases/$(database)/documents/assessments/$(assessmentId)).data;
       let sections = teacherSections();
-      return section is string && section in sections &&
-        (assessment.get("ownerUid","") == request.auth.uid ||
-          assessmentIncludesSection(assessment,section));
+      return section is string &&
+        assessmentIncludesSection(assessment,section) &&
+        (section in sections ||
+          assessment.get("ownerUid","") == request.auth.uid ||
+          isOriginalTeacher());
     }
     function mayTeachEvidence(studentId,assessmentId) {
       return isAdmin() || (isTeacher() && studentId is string &&
@@ -797,7 +799,11 @@ service cloud.firestore {
     // A reclaim is an unverified attribution request, not a transfer of
     // authorship. Only staff can accept/reject it; students may withdraw.
     match /commit_reclaims/{claimId} {
+      // Teachers reviewing a specific deployed assessment may read its reclaim
+      // context even when an older staff_access section list is stale. This is
+      // still bounded by the learner + assessment teaching scope.
       allow read: if mayTeachSection(resource.data.section) ||
+        mayTeachEvidence(resource.data.studentId,resource.data.assessmentId) ||
         (signedIn() && ownsStudentProfile(resource.data.studentId));
       allow create: if signedIn() &&
         request.resource.data.keys().hasOnly(["studentId","assessmentId","section",
