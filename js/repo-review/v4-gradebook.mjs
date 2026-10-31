@@ -49,7 +49,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       busy||!loaded||published||reopened||currentGrade?.status!=="draft";
     document.getElementById("gbV4RequestRevision").disabled=
       busy||!loaded||published||reopened;
-    document.getElementById("gbV4Correct").disabled=busy||!loaded||!published;
+    const legacyScalar=published&&currentGrade?.gradeSchema==="legacy_scalar_v1";
+    document.getElementById("gbV4Correct").disabled=busy||!loaded||!published||legacyScalar;
+    const convert=document.getElementById("gbV4ConvertLegacy");
+    convert.hidden=!legacyScalar;convert.disabled=busy||!loaded||!legacyScalar;
+    document.getElementById("gbV4LegacyGradeNotice").hidden=!legacyScalar;
     document.getElementById("gbV4CorrectionPanel").classList.toggle("hidden",!published);
     document.getElementById("gbV4Refresh").disabled=busy;
   }
@@ -289,7 +293,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const reopened=row.status==="reopened";
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=published?
-        "This grade is published. Use the correction workflow for changes.":
+        (currentGrade?.gradeSchema==="legacy_scalar_v1"?
+          "This imported historical grade preserves the original total but has no saved rubric breakdown. Reconstruct the breakdown without changing the score before any correction.":
+          "This grade is published. Use the correction workflow for changes."):
         reopened?"A revision is already requested. Wait for the student to resubmit.":
         currentTask.submissionSource==="github"&&!["approved","reviewed"].includes(currentSnapshot.status)?
           "Verify and approve the exact frozen GitHub evidence before starting a grade draft.":
@@ -366,6 +372,50 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       await loadInbox();
     }catch(error){
       document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Grade was not published.";
+    }finally{setBusy(false);}
+  })());
+  document.getElementById("gbV4ConvertLegacy").addEventListener("click",()=>void (async()=>{
+    if(busy||!currentTask||!currentRow||currentGrade?.status!=="published"||
+       currentGrade?.gradeSchema!=="legacy_scalar_v1")return;
+    const reason=document.getElementById("gbV4CorrectionReason").value.trim();
+    if(reason.length<12){
+      document.getElementById("gbV4ReviewStatus").textContent=
+        "Explain how you reconstructed the historical rubric breakdown in at least 12 characters.";return;
+    }
+    let criteria;
+    try{criteria=collectCriteria();}catch(error){
+      document.getElementById("gbV4ReviewStatus").textContent=error.message;return;
+    }
+    if(criteria.some(item=>item.pendingPoints>0)){
+      document.getElementById("gbV4ReviewStatus").textContent=
+        "Historical rubric reconstruction cannot leave pending points.";return;
+    }
+    const awarded=criteria.reduce((sum,item)=>sum+item.awardedPoints,0);
+    const total=(currentTask.rubric||[]).reduce((sum,item)=>sum+Number(item.points||0),0);
+    if(Math.abs(awarded-Number(currentGrade.awarded))>0.000001||
+       Math.abs(total-Number(currentGrade.total))>0.000001){
+      document.getElementById("gbV4ReviewStatus").textContent=
+        "The reconstructed rubric must total exactly "+currentGrade.awarded+" / "+currentGrade.total+
+        ". Convert the historical breakdown first; score changes belong in a separate correction.";return;
+    }
+    if(!confirm("Reconstruct the missing historical rubric breakdown while preserving the exact published score?"))return;
+    try{
+      setBusy(true,"Verifying frozen evidence and reconstructing the historical rubric breakdown…");
+      const result=await scoped(gradeApi,"convert_legacy_published",{
+        taskId:currentTask.taskId,studentUid:currentRow.studentUid,
+        expectedRevision:currentGrade.revision,criteria,reason
+      });
+      const refreshed=await scoped(gradeApi,"get_draft",{
+        taskId:currentTask.taskId,studentUid:currentRow.studentUid
+      });
+      currentGrade=refreshed.grade;renderRubric(currentGrade);refreshReviewControls();
+      document.getElementById("gbV4CorrectionReason").value="";
+      document.getElementById("gbV4ReviewStatus").textContent=
+        "Historical rubric breakdown reconstructed at "+result.awarded+" / "+result.total+
+        ". The original imported revision remains in audit history.";
+    }catch(error){
+      document.getElementById("gbV4ReviewStatus").textContent=
+        error?.message||"Historical rubric reconstruction was not recorded.";
     }finally{setBusy(false);}
   })());
   document.getElementById("gbV4Correct").addEventListener("click",()=>void (async()=>{
