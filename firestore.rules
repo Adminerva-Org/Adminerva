@@ -11,19 +11,25 @@ service cloud.firestore {
       return hasVerifiedEmail() && email is string && email != "" &&
         email.lower() == request.auth.token.email.lower();
     }
+    // MCS is the only legacy 3.x tenant. Once the platform owner enables
+    // v4_only, flat legacy collections stop granting browser authority.
+    function legacyMcsAllowed() {
+      let path = /databases/$(database)/documents/platform_schools/mcs-manila;
+      return !exists(path) || get(path).data.get("compatibilityMode","legacy_allowed") != "v4_only";
+    }
     // Verified Firebase Auth identity, never the browser's simulated role.
     // Migrate this temporary email mapping to Firebase custom claims later.
     function isAdmin() {
       let email = signedIn() ? request.auth.token.email.lower() : "";
       let path = /databases/$(database)/documents/staff_access/$(email);
-      return signedIn() && request.auth.token.email_verified == true &&
+      return legacyMcsAllowed() && signedIn() && request.auth.token.email_verified == true &&
         (email == "babaynike2013@gmail.com" ||
           (exists(path) && get(path).data.role == "admin" && get(path).data.status == "active" && get(path).data.email == email));
     }
     function isTeacher() {
       let email = signedIn() ? request.auth.token.email.lower() : "";
       let path = /databases/$(database)/documents/staff_access/$(email);
-      return signedIn() && request.auth.token.email_verified == true &&
+      return legacyMcsAllowed() && signedIn() && request.auth.token.email_verified == true &&
         (exists(path) ? (get(path).data.role == "teacher" && get(path).data.status == "active" && get(path).data.email == email)
           : email == "josephsixson@mcstayuman.edu.ph");
     }
@@ -79,23 +85,23 @@ service cloud.firestore {
     match /school_ai_results/{record=**} { allow read, write: if false; }
     match /school_ai_usage/{record=**} { allow read, write: if false; }
     // Public visibility is explicit opt-in. Only backend handlers may publish scores.
-    match /practice_public_rankings/{recordId} { allow read: if true; allow write: if false; }
+    match /practice_public_rankings/{recordId} { allow read: if legacyMcsAllowed(); allow write: if false; }
     match /practice_season_scores/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow read: if legacyMcsAllowed() && signedIn() && request.auth.uid == uid;
       allow write: if false;
       match /mission_state/{missionId} { allow read, write: if false; }
     }
     match /practice_season_progress/{uid}/courses/{courseId} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow read: if legacyMcsAllowed() && signedIn() && request.auth.uid == uid;
       allow write: if false;
     }
     match /practice_season_awards/{uid}/missions/{missionId} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow read: if legacyMcsAllowed() && signedIn() && request.auth.uid == uid;
       allow write: if false;
     }
     match /practice_season_attempts/{attemptId} { allow read, write: if false; }
     match /practice_class_season_rankings/{studentId} {
-      allow read: if mayTeachSection(resource.data.section);
+      allow read: if legacyMcsAllowed() && mayTeachSection(resource.data.section);
       allow write: if false;
     }
     match /staff_access/{email} {
@@ -213,7 +219,7 @@ service cloud.firestore {
         mayReadIssue(get(/databases/$(database)/documents/issues/$(issueId)).data);
     }
     function ownsStudentProfile(studentId) {
-      return hasVerifiedEmail() &&
+      return legacyMcsAllowed() && hasVerifiedEmail() &&
         exists(/databases/$(database)/documents/students/$(studentId)) &&
         verifiedEmailMatches(get(/databases/$(database)/documents/students/$(studentId)).data.email) &&
         get(/databases/$(database)/documents/students/$(studentId)).data.get("status","active") == "active";
@@ -244,7 +250,7 @@ service cloud.firestore {
     match /schools/{schoolId}/{record=**} { allow read, write: if false; }
 
     match /student_access/{ownerUid} {
-      allow get: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
+      allow get: if legacyMcsAllowed() && signedIn() && (request.auth.uid == ownerUid || isAdmin());
       allow list: if isAdmin();
       allow create, update, delete: if false;
     }
@@ -421,12 +427,12 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
     match /students/{studentId} {
-      allow read: if hasVerifiedEmail() && resource.data.email is string &&
+      allow read: if legacyMcsAllowed() && hasVerifiedEmail() && resource.data.email is string &&
         verifiedEmailMatches(resource.data.email);
       // Do not permit students to change identity, section, or role information.
       // githubToken remains writable for compatibility with the existing OAuth flow;
       // migrate that token to a secure backend in a later release.
-      allow update: if hasVerifiedEmail() && resource.data.email is string &&
+      allow update: if legacyMcsAllowed() && hasVerifiedEmail() && resource.data.email is string &&
         verifiedEmailMatches(resource.data.email) &&
         resource.data.get("status","active") == "active" &&
         request.resource.data.email == resource.data.email &&
