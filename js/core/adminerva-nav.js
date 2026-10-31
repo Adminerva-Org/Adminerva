@@ -88,7 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["subjects", "Subjects", "manage-subjects.html"]
     ] : isSchoolAdmin ? [
       ["overview","School overview","school-admin.html"],
-      ["people-v4","People & Access","people-access.html"]
+      ["people-v4","People & Access","people-access.html"],\n      ["reclaims-v4","Commit attribution requests","reclaim-inbox.html"]
     ] : [] },
     { name: "Account", area: "settings", items: [
       ["settings", "Account & integrations", "settings.html"],
