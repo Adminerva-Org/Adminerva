@@ -102,6 +102,14 @@ The current 4.0 runtime already has school-scoped teacher planning, schedules an
 - Timetables are revalidated against canonical teacher section/subject assignments and use the live V4 `scheduleId(uid,year,semester)` contract. Folder/document and schedule/revision units are atomic; partial target state is a preflight blocker.
 - Legacy administrator-shared reference folders and shared `app_config` timetables are identified from the reviewed dry-run ledger but are **not** copied into every teacher account. They require an explicit school-shared policy or archived-history decision.
 
+## V4 Staff Home routing cleanup — October 31, 2026
+
+- Staff Home now applies V4-only presentation state from either the verified `adminerva:role-ready` payload or the already-published navigation dataset, so a late-loaded home module cannot leave legacy links visible.
+- V4-only teacher quick access now routes directly to Assessment Library, Lesson Planner, Teacher Schedule, private references, Class Analytics, Practice Progress, commit-attribution requests and School Support.
+- The V4 Staff Home introduction now reflects both assessment and planning workflows instead of implying the retired repository-only workflow is the complete teaching workspace.
+- Session resume routing translates remembered legacy teacher destinations to canonical V4 pages before the Continue card is rendered: legacy grading/review pages → V4 Gradebook, legacy Assessment Studio → Assessment Library, legacy analytics → canonical analytics, legacy issue reporting → School Support, and legacy Reference Library → private verified-school references.
+- The shared session-destination allowlists now recognize current V4 assessment, planning/reference and school-admin readiness pages. Auth Guard remains authoritative; these changes only prevent avoidable legacy hops and stale presentation.
+
 ## V4 settings credential retirement — October 31, 2026
 
 - Settings now labels browser/profile Gemini and GitHub credentials as **legacy personal API credentials** rather than implying they power verified-school AI.
