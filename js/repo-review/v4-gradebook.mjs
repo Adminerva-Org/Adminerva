@@ -243,24 +243,34 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4ReviewTitle").textContent=row.studentName||"Review student project";
     document.getElementById("gbV4ReviewMeta").textContent=
       currentTask.title+" · version "+row.version+" · "+row.status;
-    document.getElementById("gbV4ReviewStatus").textContent="Loading frozen project and private grade draft…";
+    document.getElementById("gbV4ReviewStatus").textContent="Loading frozen evidence and private grade draft…";
     document.getElementById("gbV4Code").textContent="Loading…";
     document.getElementById("gbV4File").replaceChildren();
     document.getElementById("gbV4Rubric").replaceChildren();
     document.getElementById("gbV4CorrectionReason").value="";
     document.getElementById("gbV4CorrectionPanel").classList.add("hidden");
-    dialog.showModal();
+    document.getElementById("gbV4StudioEvidence").classList.toggle("hidden",currentTask.submissionSource!=="studio");
+    document.getElementById("gbV4GithubEvidence").classList.toggle("hidden",currentTask.submissionSource!=="github");
+    document.getElementById("gbV4EvidenceType").textContent=
+      currentTask.submissionSource==="github"?"Verified GitHub evidence":"Verified Studio submission";
+    githubVerification=null;dialog.showModal();
     try{
+      const evidenceApi=currentTask.submissionSource==="github"?githubEvidenceApi:submissionApi;
+      const evidenceDetails=currentTask.submissionSource==="github"?
+        {taskId:currentTask.taskId,evidenceId:row.recordId}:
+        {taskId:currentTask.taskId,submissionId:row.recordId};
       const result=await Promise.all([
-        scoped(submissionApi,"inspect",{taskId:currentTask.taskId,submissionId:row.submissionId}),
+        scoped(evidenceApi,"inspect",evidenceDetails),
         scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:row.studentUid})
       ]);
       currentSnapshot=result[0];currentGrade=result[1].grade;
-      const fileSelect=document.getElementById("gbV4File");
-      for(const file of currentSnapshot.files||[])fileSelect.add(new Option(file.path,file.path));
-      fileSelect.onchange=renderFile;renderFile();
-      document.getElementById("gbV4Artifacts").textContent=
-        JSON.stringify(currentSnapshot.artifacts||{},null,2);
+      if(currentTask.submissionSource==="studio"){
+        const fileSelect=document.getElementById("gbV4File");
+        for(const file of currentSnapshot.files||[])fileSelect.add(new Option(file.path,file.path));
+        fileSelect.onchange=renderFile;renderFile();
+        document.getElementById("gbV4Artifacts").textContent=
+          JSON.stringify(currentSnapshot.artifacts||{},null,2);
+      }else renderGithubEvidence(currentSnapshot);
       renderRubric(currentGrade);
       const revisionDue=document.getElementById("gbV4RevisionDue");
       const revisionDueLabel=document.getElementById("gbV4RevisionDueLabel");
