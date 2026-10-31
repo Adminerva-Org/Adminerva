@@ -1,7 +1,7 @@
 /** Class-level submission triage and safe bulk review orchestration. */
 import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {collection,deleteDoc,doc,getDoc,getDocFromServer,getDocs,getDocsFromServer,query,where,serverTimestamp,setDoc,runTransaction} from "../core/teaching-firestore.mjs?v=1.3.2";
-import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
+import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.1";
 import {normalizeSelection,parseRepository} from "./services/assessment-evidence.mjs?v=1.4.3";
 import {verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
 import {approvalContribution,evidenceRevision} from "./services/evidence-lifecycle.mjs?v=1.4.3";
