@@ -134,6 +134,8 @@ function createSchoolGradebookService({db}){
    await db.runTransaction(async tx=>{
     const {task,submission}=await authorize(tx);
     const grade=await tx.get(gradeRef);
+    if(grade.exists&&grade.data().gradeSchema==="legacy_scalar_v1")
+     deny("failed-precondition","This imported historical grade has no saved rubric breakdown. Reconstruct the breakdown without changing its historical score before editing the draft.");
     if(grade.exists&&grade.data().status==="published")
      deny("failed-precondition","Published grades require a formal correction workflow.");
     if(!gradeable(submission))
@@ -165,7 +167,7 @@ function createSchoolGradebookService({db}){
    });
    return {taskId,studentUid,status:"draft"};
   }
-  if(input.action==="convert_legacy_published"){
+  if(["convert_legacy_scalar","convert_legacy_published"].includes(input.action)){
    const expectedRevision=input.expectedRevision;
    if(!Number.isInteger(expectedRevision)||expectedRevision<1)
     deny("invalid-argument","The imported grade revision is required.");
@@ -177,14 +179,19 @@ function createSchoolGradebookService({db}){
    await db.runTransaction(async tx=>{
     const {task,submission}=await authorize(tx);
     const grade=await tx.get(gradeRef);
-    if(!grade.exists||grade.data().status!=="published"||grade.data().gradeSchema!=="legacy_scalar_v1")
-     deny("failed-precondition","Only a published imported scalar grade can use historical rubric reconstruction.");
-    const previous=grade.data();
+    if(!grade.exists||!["draft","published"].includes(grade.data().status)||
+       grade.data().gradeSchema!=="legacy_scalar_v1")
+     deny("failed-precondition","Only an imported scalar grade can use historical rubric reconstruction.");
+    const previous=grade.data(),published=previous.status==="published";
     if(previous.revision!==expectedRevision)
      deny("failed-precondition","This historical grade changed. Reload it before reconstructing the rubric.");
     if(previous.evidenceType!==source||previous.submissionVersion!==submission.currentVersion||
-       previous.submissionDigest!==evidenceDigest(submission)||submission.status!=="reviewed")
-     deny("failed-precondition","The historical grade is no longer bound to the current reviewed evidence.");
+       previous.submissionDigest!==evidenceDigest(submission))
+     deny("failed-precondition","The historical grade is no longer bound to the current frozen evidence.");
+    if(published&&submission.status!=="reviewed")
+     deny("failed-precondition","Published historical grades require the reviewed frozen evidence version.");
+    if(!published&&!gradeable(submission))
+     deny("failed-precondition","The frozen evidence is no longer in a gradeable state.");
     const snapshot=await tx.get(submissionRef.collection("versions").doc(String(previous.submissionVersion)));
     if(!snapshot.exists||evidenceDigest(snapshot.data())!==evidenceDigest(submission)||!verifyFrozen(snapshot))
      deny("failed-precondition","The frozen historical evidence could not be verified.");
@@ -193,19 +200,20 @@ function createSchoolGradebookService({db}){
      deny("failed-precondition","Historical rubric reconstruction cannot leave pending points.");
     if(Math.abs(scores.awarded-Number(previous.awarded))>0.000001||
        Math.abs(scores.total-Number(previous.total))>0.000001)
-     deny("failed-precondition","Rubric reconstruction must preserve the exact historical score and maximum. Convert first, then use a separate correction if the published score must change.");
+     deny("failed-precondition","Rubric reconstruction must preserve the exact historical score and maximum. Reconstruct first, then use a separate grade edit or correction if the score must change.");
     const now=FieldValue.serverTimestamp(),revision=previous.revision+1;
     const converted={gradeSchema:"rubric_v1",criteria:scores.criteria,pending:0,
       revision,updatedAt:now,legacyScalarConvertedAt:now,legacyScalarConvertedByUid:ctx.uid};
     tx.update(gradeRef,converted);
     tx.create(gradeRef.collection("revisions").doc(String(revision)),{
-      ...previous,...converted,status:"published",action:"legacy_grade_breakdown_converted",
+      ...previous,...converted,status:previous.status,
+      action:"legacy_grade_breakdown_converted",
       conversionReason:reason,previousRevision:expectedRevision,createdAt:now
     });
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,studentUid,actorUid:ctx.uid,
       action:"legacy_grade_breakdown_converted",reason,previousRevision:expectedRevision,
-      revision,awarded:previous.awarded,total:previous.total,createdAt:now});
-    result={taskId,studentUid,status:"published",revision,awarded:previous.awarded,
+      revision,status:previous.status,awarded:previous.awarded,total:previous.total,createdAt:now});
+    result={taskId,studentUid,status:previous.status,revision,awarded:previous.awarded,
       total:previous.total,converted:true};
    });
    return result;
