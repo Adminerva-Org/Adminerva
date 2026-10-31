@@ -111,6 +111,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["overview","School overview","school-admin.html"],
       ["people-v4","People & Access","people-access.html"],
       ["school-analytics","School operations","school-analytics.html"],
+      ["data-files","Data & files","school-data-controls.html"],
       ["class-analytics-v4","Class analytics","school-teacher-analytics.html"],
       ["practice-v4","Practice progress","school-practice-analytics.html"],
       ["reclaims-v4","Commit attribution requests","reclaim-inbox.html"]
