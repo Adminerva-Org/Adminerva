@@ -595,6 +595,31 @@ async function loadPeople(append) {
   finally{loadingPeople=false;button.disabled=false;}
 }
 get("pa-more").addEventListener("click",()=>void loadPeople(true));
+get("pa-export-people").addEventListener("click",()=>{
+  if(pendingWrite)return;
+  void (async()=>{
+    const button=get("pa-export-people");button.disabled=true;
+    say("Preparing a school-scoped directory export…");
+    try{
+      const result=await perform("export_people");
+      const quote=value=>'"'+String(value??"").replaceAll('"','""')+'"';
+      const lines=[["personId","displayName","kind","recordStatus","accountLinked","membershipStatus","roles","revision"]
+        .map(quote).join(",")];
+      for(const row of result.rows||[])lines.push([
+        row.personId,row.displayName,row.kind,row.status,row.accountLinked?"yes":"no",
+        row.membershipStatus,(row.roles||[]).join("|"),row.revision
+      ].map(quote).join(","));
+      const blob=new Blob([lines.join("\r\n")+"\r\n"],{type:"text/csv;charset=utf-8"});
+      const url=URL.createObjectURL(blob),link=document.createElement("a");
+      link.href=url;
+      link.download="adminerva-"+picker.scope.current.schoolId+"-people-"+new Date(result.generatedAt||Date.now()).toISOString().slice(0,10)+".csv";
+      document.body.append(link);link.click();link.remove();URL.revokeObjectURL(url);
+      say("Directory export prepared from the active verified school only.");
+    }catch(error){say(error?.message||"Directory export could not be prepared.");}
+    finally{button.disabled=false;}
+  })();
+});
+
 get("pa-person-search").addEventListener("input",()=>{
   clearTimeout(peopleSearchTimer);
   peopleSearchTimer=setTimeout(()=>{after=null;void loadPeople(false);},250);
