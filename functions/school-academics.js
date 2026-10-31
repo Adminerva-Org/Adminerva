@@ -169,6 +169,7 @@ function createSchoolAcademicsService({db}) {
    const ending=input.action==="end_teacher_assignment";
    const restoring=input.action==="restore_teacher_assignment";
    const reason=(ending||restoring)?checkName(input.reason,restoring?"Restore reason":"Handover reason"):null;
+   if(reason&&reason.length<12)deny("invalid-argument","Explain the teaching assignment change in at least 12 characters.");
    await db.runTransaction(async tx=>{
     await checkWriteAuthority(tx);
     const [offering,staff,prior]=await Promise.all([
@@ -209,6 +210,7 @@ function createSchoolAcademicsService({db}) {
    requireAdmin();
    const enrollmentId=checkId(input.enrollmentId,"Enrollment ID",128);
    const reason=checkName(input.reason,input.action==="end_enrollment"?"Enrollment end reason":"Enrollment restore reason");
+   if(reason.length<12)deny("invalid-argument","Explain the enrollment change in at least 12 characters.");
    const ref=schoolRoot.doc("enrollments/"+enrollmentId);
    const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
    await db.runTransaction(async tx=>{
