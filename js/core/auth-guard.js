@@ -155,13 +155,31 @@ async function checkAccess(user){
      !/\/(owner-schools|settings|issues|wiki)\.html$/.test(currentPath)){
     replacePage("owner-schools.html");return;
   }
+  if(/\/(school-student-projects|school-student-settings|school-student-assessments)\.html$/.test(currentPath)&&
+     !access.schoolStudent){
+    replacePage(roleHome(actualRole));return;
+  }
   if(/\/(school-support)\.html$/.test(currentPath)&&
      !(access.schoolAdmin||access.schoolTeacher||access.schoolStudent)){
     replacePage(roleHome(actualRole));return;
   }
-  const v4OnlyStudent=access.schoolStudent&&!access.students?.length&&!access.schoolTeacher&&!access.schoolAdmin;
-  if(v4OnlyStudent&&currentPath.endsWith("/issues.html")){
-    replacePage("school-support.html");return;
+  const v4OnlyStudent=access.schoolStudent&&
+    (v4Cutover||!access.students?.length)&&!access.schoolTeacher&&!access.schoolAdmin;
+  if(v4OnlyStudent){
+    const page=currentPath.split("/").pop();
+    const legacyStudentRoutes={
+      "student-dashboard.html":"school-student-projects.html",
+      "student-settings.html":"school-student-settings.html",
+      "student-assessments.html":"school-student-assessments.html",
+      "issues.html":"school-support.html"
+    };
+    if(legacyStudentRoutes[page]){replacePage(legacyStudentRoutes[page]);return;}
+    const allowed=new Set([
+      "student-home.html","school-student-projects.html","school-student-settings.html",
+      "school-student-assessments.html","student-practice.html","student-playground.html",
+      "student-xml-lab.html","school-support.html","join-school.html","wiki.html"
+    ]);
+    if(!allowed.has(page)){replacePage("student-home.html");return;}
   }
   const v4OnlyTeacher=access.schoolTeacher&&(v4Cutover||!["teacher","admin"].includes(access.legacyRole));
   if(v4OnlyTeacher){
@@ -218,12 +236,14 @@ async function checkAccess(user){
     navigation.dataset.schoolTeacher=String(Boolean(access.schoolTeacher));
     navigation.dataset.schoolStudent=String(Boolean(access.schoolStudent));
     navigation.dataset.v4OnlyTeacher=String(Boolean(v4OnlyTeacher));
+    navigation.dataset.v4OnlyStudent=String(Boolean(v4OnlyStudent));
+    navigation.dataset.v4Cutover=String(Boolean(v4Cutover));
     navigation.dataset.legacyTeacher=String(access.legacyRole==="teacher");
   }
   document.dispatchEvent(new CustomEvent("adminerva:role-ready", {
     detail:{role:activeRole,platformAdmin:Boolean(access.platformAdmin),schoolAdmin:Boolean(access.schoolAdmin),
       schoolTeacher:Boolean(access.schoolTeacher),schoolStudent:Boolean(access.schoolStudent),
-      legacyTeacher:access.legacyRole==="teacher",v4OnlyTeacher,v4Cutover}
+      legacyTeacher:access.legacyRole==="teacher",v4OnlyTeacher,v4OnlyStudent,v4Cutover}
   }));
 
   // Only verified administrator accounts see management shortcuts.
