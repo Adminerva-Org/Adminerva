@@ -37,6 +37,12 @@ async function getSchoolContext({db,request,schoolId,roles=[]}) {
     throw new TenantAccessError("permission-denied","This action is not granted for your school role.");
   return Object.freeze({uid,schoolId:id,roles:memberRoles,membershipRevision:grant.revision||0});
 }
+async function platformAuthority({db,request}) {
+  const uid=verifiedUid(request);
+  const snapshot=await db.doc("platform_admins/"+uid).get();
+  const data=snapshot.exists?snapshot.data():null;
+  return Object.freeze({uid,platformAdmin:Boolean(data?.status==="active"&&data?.role==="platform_admin")});
+}
 async function listVerifiedSchools({db,request}) {
   const uid=verifiedUid(request);
   const snapshot=await db.collection("platform_users").doc(uid).collection("memberships").limit(50).get();
@@ -59,4 +65,4 @@ function selectVerifiedSchool(options,preferredId) {
   const preferred=options.find(option=>option.schoolId===preferredId);
   return {state:preferred?"ready":"choose_school",schoolId:preferred?.schoolId||null,showSwitcher:true};
 }
-module.exports={TenantAccessError,checkedSchoolId,verifiedUid,activeRoles,getSchoolContext,listVerifiedSchools,selectVerifiedSchool};
+module.exports={TenantAccessError,checkedSchoolId,verifiedUid,activeRoles,getSchoolContext,listVerifiedSchools,selectVerifiedSchool,platformAuthority};
