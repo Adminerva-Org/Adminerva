@@ -154,13 +154,17 @@ async function inspectTargets(db,approved){
  for(const member of approved.memberships){
   const memberRef=db.doc(member.targetPath),indexRef=db.doc("platform_users/"+member.uid+"/memberships/"+SCHOOL_ID);
   const [doc,index]=await Promise.all([memberRef.get(),indexRef.get()]);
-  rows.push({kind:"membership",key:member.uid,targetPath:memberRef.path,
-    state:!doc.exists?"ready":sameMigration(doc.data(),approved.planSha256,"membership",member.uid)?"already_applied":"target_conflict"});
-  rows.push({kind:"membership_index",key:member.uid,targetPath:indexRef.path,
-    state:!index.exists?"ready":sameMigration(index.data(),approved.planSha256,"membership_index",member.uid)?"already_applied":"target_conflict"});
+  const personState=rows.at(-1).state;
+  const membershipState=!doc.exists?"ready":sameMigration(doc.data(),approved.planSha256,"membership",member.uid)?"already_applied":"target_conflict";
+  const indexState=!index.exists?"ready":sameMigration(index.data(),approved.planSha256,"membership_index",member.uid)?"already_applied":"target_conflict";
+  rows.push({kind:"membership",key:member.uid,targetPath:memberRef.path,state:membershipState});
+  rows.push({kind:"membership_index",key:member.uid,targetPath:indexRef.path,state:indexState});
+  const unitStates=[personState,membershipState,indexState];
+  if(unitStates.every(state=>["ready","already_applied"].includes(state))&&new Set(unitStates).size>1)
+   rows.push({kind:"identity_unit",key:member.uid,targetPath:memberRef.path,state:"identity_partial_state"});
  }
- for(const [collection,kind] of [["academic_years","year"],["sections","section"],["subjects","subject"],["terms","term"]]){
-  for(const row of approved.catalog[collection==="academic_years"?"years":collection+"s"]?.values?.()||[]){
+ for(const [collection,kind,key] of [["academic_years","year","years"],["sections","section","sections"],["subjects","subject","subjects"],["terms","term","terms"]]){
+  for(const row of approved.catalog[key].values()){
    const ref=db.doc("schools/"+SCHOOL_ID+"/"+collection+"/"+row.targetId),doc=await ref.get();
    rows.push({kind,key:row.targetId,targetPath:ref.path,
     state:!doc.exists?"ready":sameMigration(doc.data(),approved.planSha256,"catalog_"+kind,row.targetId)?"already_applied":"target_conflict"});
@@ -265,7 +269,7 @@ function workUnits(approved){
 }
 async function applyFoundation(db,approved,{apply=false,maxUnits=50}={}){
  const inspected=await inspectTargets(db,approved);
- const blockers=inspected.filter(row=>["target_conflict","school_missing_or_unavailable"].includes(row.state));
+ const blockers=inspected.filter(row=>["target_conflict","school_missing_or_unavailable","identity_partial_state"].includes(row.state));
  const receipt={schema:RECEIPT_SCHEMA,schoolId:SCHOOL_ID,scope:"canonical_foundation_only",
   planSha256:approved.planSha256,mode:apply?"apply":"preflight",generatedAt:new Date().toISOString(),
   approvedPeople:approved.people.length,approvedMemberships:approved.memberships.length,
@@ -273,13 +277,14 @@ async function applyFoundation(db,approved,{apply=false,maxUnits=50}={}){
   blockers,created:0,alreadyApplied:0,processedUnits:0,remainingUnits:workUnits(approved).length,
   complete:false,assessmentsMigrated:false,gradesMigrated:false,lessonsMigrated:false};
  if(blockers.length||!apply)return receipt;
- const units=workUnits(approved);
- for(const unit of units.slice(0,maxUnits)){
+ const units=workUnits(approved);let newlyCreated=0;
+ for(const unit of units){
+  if(newlyCreated>=maxUnits)break;
   const result=unit.kind==="identity"?await createPersonAndMembership(db,approved,unit.member):
    unit.kind==="catalog"?await createCatalog(db,approved,unit.collection,unit.catalogKind,unit.row):
    await createOffering(db,approved,unit.row);
   receipt.processedUnits++;
-  if(result==="created")receipt.created++;else receipt.alreadyApplied++;
+  if(result==="created"){receipt.created++;newlyCreated++;}else receipt.alreadyApplied++;
  }
  receipt.remainingUnits=Math.max(0,units.length-receipt.processedUnits);
  receipt.complete=receipt.remainingUnits===0;return receipt;
