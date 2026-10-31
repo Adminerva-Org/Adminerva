@@ -730,3 +730,221 @@ body[data-playground-access="student"] #adminerva-nav .av-nav-tools :is(button,a
  .code-project-card{padding:12px}
  .pg-explorer{max-height:115px}
 }
+
+
+/* 4.0 Studio compact command surface and mobile workspace. */
+.studio-save-state{
+  display:block;
+  max-width:210px;
+  margin-top:1px;
+  color:#168265!important;
+  font-size:8px!important;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.studio-command-bar .studio-tools-menu{position:relative;flex:none}
+.studio-command-bar .studio-tools-menu>summary{
+  min-height:32px;
+  display:flex;
+  align-items:center;
+  border:1px solid #d5e0e8;
+  border-radius:8px;
+  padding:5px 8px;
+  background:#fff;
+  color:#294a62;
+  font-size:10px;
+  font-weight:800;
+  white-space:nowrap;
+  cursor:pointer;
+  list-style:none;
+}
+.studio-command-bar .studio-tools-menu>summary::-webkit-details-marker{display:none}
+.studio-command-bar .studio-tools-menu .pg-menu{
+  top:calc(100% + 5px);
+  right:0;
+  left:auto;
+  z-index:120;
+  min-width:220px;
+  max-height:min(70dvh,520px);
+  overflow:auto;
+}
+.studio-command-bar .studio-tools-menu .pg-menu>a{
+  display:flex;
+  align-items:center;
+  width:100%;
+  min-height:31px;
+  padding:6px 8px;
+  border-radius:6px;
+  color:#294a62;
+  font-size:10px;
+  font-weight:800;
+  text-decoration:none;
+}
+.studio-command-bar .studio-tools-menu .pg-menu>a:hover,
+.studio-command-bar .studio-tools-menu .pg-menu>a:focus-visible{
+  background:#edf4f8;
+  outline:none;
+}
+.pg-explorer{
+  width:190px;
+  min-width:0;
+  flex:none;
+  overflow:hidden;
+  transition:width .14s ease,max-height .14s ease;
+}
+.pg-explorer>.pg-explorer-header{
+  cursor:pointer;
+  list-style:none;
+  user-select:none;
+}
+.pg-explorer>.pg-explorer-header::-webkit-details-marker{display:none}
+.pg-explorer>.pg-explorer-header>span:first-child::before{
+  content:"▾";
+  display:inline-block;
+  width:12px;
+  margin-right:3px;
+  color:#6f8ba1;
+  font-size:8px;
+}
+.pg-explorer:not([open]){
+  width:34px;
+}
+.pg-explorer:not([open])>.pg-explorer-header{
+  min-height:100%;
+  padding:8px 6px;
+  align-items:flex-start;
+}
+.pg-explorer:not([open])>.pg-explorer-header>span:first-child{
+  writing-mode:vertical-rl;
+  transform:rotate(180deg);
+  white-space:nowrap;
+}
+.pg-explorer:not([open])>.pg-explorer-header>span:first-child::before{
+  content:"▸";
+  writing-mode:horizontal-tb;
+  transform:rotate(180deg);
+}
+.pg-explorer:not([open]) .pg-explorer-help{display:none}
+.pg-stdin{
+  flex:none;
+  border-bottom:1px solid #334155;
+  background:#1e293b;
+  color:#cbd5e1;
+}
+.pg-stdin>summary{
+  min-height:28px;
+  display:flex;
+  align-items:center;
+  gap:5px;
+  padding:5px 9px;
+  cursor:pointer;
+  list-style:none;
+  font-size:9px;
+  font-weight:800;
+}
+.pg-stdin>summary::-webkit-details-marker{display:none}
+.pg-stdin>summary::before{content:"▸";font-size:8px;color:#67e8f9}
+.pg-stdin[open]>summary::before{content:"▾"}
+.pg-stdin>summary span{color:#8296a8;font-weight:600}
+.pg-stdin #stdinInput{
+  display:block;
+  margin:0 8px 8px;
+  width:calc(100% - 16px);
+  min-height:48px;
+  resize:vertical;
+}
+@media(max-width:1180px){
+  .studio-project-identity{flex-basis:180px}
+  .studio-save-state{max-width:170px}
+}
+@media(max-width:767px){
+  .studio-project-bar{
+    overflow:visible;
+    gap:5px;
+  }
+  .studio-back{
+    width:30px;
+    min-width:30px;
+    padding-inline:0!important;
+  }
+  .studio-back-label{display:none}
+  .studio-project-identity{
+    flex:1 1 auto;
+    min-width:82px;
+    max-width:none;
+  }
+  .studio-project-title-row{
+    display:block;
+  }
+  .studio-storage-badge,
+  .studio-project-identity>#activeProjectMeta,
+  .studio-save-state{
+    display:none!important;
+  }
+  .studio-project-actions{
+    flex:0 0 auto;
+    gap:4px;
+  }
+  .studio-command-bar{gap:3px}
+  .studio-command-bar #languageSelect{width:66px}
+  .studio-command-bar #javaRunModeLabel{display:none!important}
+  .studio-command-bar #javaRunMode:not(.hidden){width:92px}
+  .studio-command-bar .pg-save{display:none}
+  .studio-command-bar .pg-run{
+    min-width:48px;
+    padding-inline:7px;
+  }
+  .studio-command-bar .studio-tools-menu>summary,
+  .studio-settings-button{
+    min-height:30px;
+    padding:4px 6px;
+    font-size:9px;
+  }
+  #studioSubmitAssessment{
+    max-width:58px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  #projectWorkspace{
+    flex-direction:column!important;
+  }
+  .pg-explorer,
+  .pg-explorer:not([open]){
+    width:100%;
+    max-height:34px;
+    border-right:0;
+    border-bottom:1px solid #31445a;
+  }
+  .pg-explorer[open]{
+    width:100%;
+    max-height:132px;
+  }
+  .pg-explorer:not([open])>.pg-explorer-header{
+    min-height:32px;
+    padding:5px 8px;
+    align-items:center;
+  }
+  .pg-explorer:not([open])>.pg-explorer-header>span:first-child{
+    writing-mode:horizontal-tb;
+    transform:none;
+  }
+  .pg-explorer:not([open])>.pg-explorer-header>span:first-child::before{
+    content:"▸";
+    transform:none;
+  }
+  .pg-explorer[open] .pg-tree{
+    max-height:72px;
+    overflow:auto;
+  }
+  .pg-explorer[open] .pg-folder-count{
+    min-height:20px;
+  }
+  #workspaceContainer{flex:1;min-height:0}
+  #activeFilePath{display:none}
+  #fileTabsContainer{min-height:29px}
+  #editorPane{height:59%!important;min-height:150px}
+  #outputPane{height:41%!important;min-height:120px}
+  .pg-stdin>summary{min-height:25px;padding:4px 7px}
+  .pg-stdin #stdinInput{min-height:42px}
+}
