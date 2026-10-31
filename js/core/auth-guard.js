@@ -68,14 +68,17 @@ async function checkAccess(user){
   try {access=await resolveAccountAccess(user);}
   catch {if(check===accessEpoch&&auth.currentUser?.uid===user.uid)showAccessRecovery("We couldn’t check your school access. Check your connection, then retry. If it continues, ask your school administrator to review access.");return;}
   if(check!==accessEpoch||auth.currentUser?.uid!==user.uid)return;
-  if(access.staffLookupUnavailable){showAccessRecovery("Your school access check is temporarily unavailable. Your account remains signed in. Please retry before continuing.");return;}
+  const hasVerifiedV4Role=Boolean(access.schoolAdmin||access.schoolTeacher||access.schoolStudent);
+  if(access.staffLookupUnavailable&&!hasVerifiedV4Role){
+    showAccessRecovery("Your school access check is temporarily unavailable. Your account remains signed in. Please retry before continuing.");return;
+  }
   const admittedRole=access.role;
   if (["admin", "teacher"].includes(admittedRole) && auth.currentUser?.uid === user.uid) {
     try{writeConnectionPreferences(user.uid, access.teachers?.[0]?.data?.() || {});}catch{}
   }
 
   // 1. Strict Whitelist Enforcement
-  if (!admittedRole) {
+  if (!admittedRole && !access.schoolAdmin && !access.schoolStudent) {
     try {
       if (access.needsTeacherApproval || !access.students.length) {
         replacePage(roleHome("guest"));
@@ -89,26 +92,38 @@ async function checkAccess(user){
   }
 
   // 2. Determine absolute hardware role based strictly on the verified email
-  let actualRole = "student";
-  if (admittedRole === "admin") actualRole = "superadmin";
-  else if (admittedRole === "teacher") actualRole = "teacher";
+  let actualRole="student";
+  if(admittedRole==="admin")actualRole="superadmin";
+  else if(access.schoolAdmin)actualRole="schooladmin";
+  else if(admittedRole==="teacher")actualRole="teacher";
 
   let activeRole = actualRole;
 
   // 3. The Shape-Shifter Logic (ONLY permitted for authorized admins/teachers)
-  if (actualRole === "superadmin" || actualRole === "teacher") {
-    const mockRole = localStorage.getItem("Adminerva_Mock_Role");
-    if ((actualRole === "superadmin" ? ["superadmin","teacher","student"] : ["teacher","student"]).includes(mockRole)) {
-      activeRole = mockRole;
-    }
-    localStorage.setItem("Adminerva_Role", activeRole);
-  } else {
-    // 🔥 ANTI-HACK MEASURE: Force students back to their assigned role
-    localStorage.setItem("Adminerva_Role", "student");
+  if(actualRole==="superadmin"||actualRole==="teacher"){
+    const mockRole=localStorage.getItem("Adminerva_Mock_Role");
+    if((actualRole==="superadmin"?["superadmin","teacher","student"]:["teacher","student"]).includes(mockRole))
+      activeRole=mockRole;
+    localStorage.setItem("Adminerva_Role",activeRole);
+  }else{
+    // School administrators are a distinct role and never become platform
+    // superadmin through browser state. Students likewise cannot elevate.
+    localStorage.setItem("Adminerva_Role",actualRole);
     localStorage.removeItem("Adminerva_Mock_Role");
-    activeRole = "student";
+    activeRole=actualRole;
   }
   if (/\/(teacher-accounts|admin-analytics|admin-hub|users|manage-sections|manage-programs|manage-subjects)\.html$/.test(currentPath) && admittedRole !== "admin") { replacePage(roleHome(actualRole)); return; }
+  if(/\/(owner-schools)\.html$/.test(currentPath)&&admittedRole!=="admin"){
+    replacePage(roleHome(actualRole));return;
+  }
+  if(/\/(school-admin|people-access)\.html$/.test(currentPath)&&
+     !(access.schoolAdmin||admittedRole==="admin")){
+    replacePage(roleHome(actualRole));return;
+  }
+  if(/\/(teacher-assessment-library)\.html$/.test(currentPath)&&
+     !(["teacher","admin"].includes(admittedRole))){
+    replacePage(roleHome(actualRole));return;
+  }
   const isIssuesPage = currentPath.includes("issues.html");
 
   // 4. Strict Routing Enforcement
@@ -137,13 +152,15 @@ async function checkAccess(user){
     navigation.dataset.accountEmail = accountEmail;
   }
   document.dispatchEvent(new CustomEvent("adminerva:role-ready", {
-    detail: { role: activeRole }
+    detail:{role:activeRole,schoolAdmin:Boolean(access.schoolAdmin),
+      schoolTeacher:Boolean(access.schoolTeacher),schoolStudent:Boolean(access.schoolStudent)}
   }));
 
   // Only verified administrator accounts see management shortcuts.
-  if (actualRole === "superadmin" && activeRole === "superadmin") {
-    document.querySelectorAll("[data-admin-only]").forEach(el => el.classList.remove("hidden"));
-  }
+  if(actualRole==="superadmin"&&activeRole==="superadmin")
+    document.querySelectorAll("[data-admin-only]").forEach(el=>el.classList.remove("hidden"));
+  if(access.schoolAdmin&&activeRole==="schooladmin")
+    document.querySelectorAll("[data-school-admin-only]").forEach(el=>el.classList.remove("hidden"));
   // 5. Security cleared: Display the UI
   dismissAccessRecovery();rememberWorkspace(user.uid);
   const pageBody = document.getElementById("pageBody");
