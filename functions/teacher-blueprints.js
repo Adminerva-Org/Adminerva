@@ -50,15 +50,24 @@ function createTeacherBlueprintService({db}) {
     const schoolId=input.schoolId;
     const ctx=await getSchoolContext({db,request,schoolId,roles:["teacher"]});
     const collection=db.collection("schools/"+ctx.schoolId+"/assessment_blueprints");
+    const selfMemberRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+ctx.uid);
+    const assertCurrentTeacher=member=>{
+      if(!member.exists||member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
+         !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher"))
+        deny("permission-denied","Your teaching access changed. Refresh and try again.");
+    };
     const action=input.action;
     if(action==="create") {
       const fields=reusableContent(input.blueprint);
       const ref=collection.doc();
       const now=FieldValue.serverTimestamp();
-      await ref.create({
-        ...fields,schoolId:ctx.schoolId,creatorUid:ctx.uid,ownerUid:ctx.uid,
-        visibility:"private",sharedWithUids:[],status:"draft",
-        contentRevision:1,aclRevision:1,createdAt:now,updatedAt:now
+      await db.runTransaction(async tx=>{
+        assertCurrentTeacher(await tx.get(selfMemberRef));
+        tx.create(ref,{
+          ...fields,schoolId:ctx.schoolId,creatorUid:ctx.uid,ownerUid:ctx.uid,
+          visibility:"private",sharedWithUids:[],status:"draft",
+          contentRevision:1,aclRevision:1,createdAt:now,updatedAt:now
+        });
       });
       return {id:ref.id,visibility:"private",contentRevision:1};
     }
@@ -94,6 +103,7 @@ function createTeacherBlueprintService({db}) {
       const auditRef=db.collection("schools/"+ctx.schoolId+"/resource_audit").doc();
       await db.runTransaction(async tx=>{
         const original=await tx.get(ref);
+        assertCurrentTeacher(await tx.get(selfMemberRef));
         if(!original.exists||original.data().schoolId!==ctx.schoolId||original.data().ownerUid!==ctx.uid)
           deny("permission-denied","Only the assessment owner can change sharing.");
         if(original.data().status==="archived")deny("failed-precondition","Archived work cannot be shared.");
@@ -114,6 +124,7 @@ function createTeacherBlueprintService({db}) {
       const id=documentId(input.resourceId),source=collection.doc(id),target=collection.doc();
       await db.runTransaction(async tx=>{
         const original=await tx.get(source);
+        assertCurrentTeacher(await tx.get(selfMemberRef));
         if(!original.exists||original.data().schoolId!==ctx.schoolId ||
           original.data().status==="archived"||!canReadBlueprint(original.data(),ctx.uid))
           deny("permission-denied","This assessment is not shared with you.");
