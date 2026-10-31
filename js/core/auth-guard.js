@@ -127,7 +127,7 @@ async function checkAccess(user){
      !(access.platformAdmin||admittedRole==="admin")){
     replacePage(roleHome(actualRole));return;
   }
-  if(/\/(school-admin|people-access)\.html$/.test(currentPath)&&
+  if(/\/(school-admin|people-access|school-analytics)\.html$/.test(currentPath)&&
      !(access.schoolAdmin||admittedRole==="admin")){
     replacePage(roleHome(actualRole));return;
   }
@@ -139,7 +139,7 @@ async function checkAccess(user){
     replacePage(roleHome(actualRole));return;
   }
   if(actualRole==="schooladmin"&&!access.schoolTeacher&&
-     !/\/(teacher-home|school-admin|people-access|reclaim-inbox|settings|issues|school-support|join-school|wiki)\.html$/.test(currentPath)){
+     !/\/(teacher-home|school-admin|people-access|school-analytics|reclaim-inbox|settings|issues|school-support|join-school|wiki)\.html$/.test(currentPath)){
     replacePage("school-admin.html");return;
   }
   if(actualRole==="platformowner"&&!access.schoolAdmin&&!access.schoolTeacher&&!access.schoolStudent&&
@@ -159,7 +159,7 @@ async function checkAccess(user){
     const page=currentPath.split("/").pop();
     const allowed=new Set([
       "teacher-home.html","teacher-assessment-library.html","school-gradebook.html",
-      "school-support.html","people-access.html","school-admin.html","reclaim-inbox.html",
+      "school-support.html","people-access.html","school-admin.html","school-analytics.html","reclaim-inbox.html",
       "settings.html","join-school.html","wiki.html",
       ...(access.platformAdmin?["owner-schools.html"]:[])
     ]);
