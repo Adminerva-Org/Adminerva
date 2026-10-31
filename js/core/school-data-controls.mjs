@@ -116,13 +116,19 @@ async function createExport(){
       },
       categories
     };
-    const digest=await sha256(payload),bundle={...payload,sha256:digest},
-      json=JSON.stringify(bundle,null,2)+"\n",blob=new Blob([json],{type:"application/json"}),
+    const digest=await sha256(payload),bundle={...payload,sha256:digest};
+    say("Recording verified continuity export receipt…");
+    const receipt=await call(exportApi,{
+      action:"record_receipt",bundleSha256:digest,categoryIntegrity:localIntegrity
+    });
+    if(!receipt.recorded||receipt.bundleSha256!==digest)
+      throw new Error("The continuity export receipt could not be verified.");
+    const json=JSON.stringify(bundle,null,2)+"\n",blob=new Blob([json],{type:"application/json"}),
       url=URL.createObjectURL(blob),link=document.createElement("a"),
       date=new Date().toISOString().slice(0,10);
     link.href=url;link.download="adminerva-"+manifest.schoolId+"-continuity-"+date+".json";
     document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
-    say("Continuity export created. SHA-256: "+digest.slice(0,16)+"…");
+    say("Continuity export prepared, verified and recorded. SHA-256: "+digest.slice(0,16)+"…");
   }finally{setBusy(false);}
 }
 async function previewRestore(file){
