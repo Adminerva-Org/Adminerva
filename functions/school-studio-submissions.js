@@ -136,7 +136,7 @@ function createSchoolStudioSubmissionService({db}){
       id:"studio_submission_"+taskId+"_"+ctx.uid+"_"+receipt.version,
       title:receipt.version>1?"Studio project resubmitted":"Studio project submitted",
       body:(task.data().title||"Assessment")+" · a student submission is ready for review.",
-      type:"submission",sourceId:taskId,target:"gradebook.html"
+      type:"submission",sourceId:taskId,target:"school-gradebook.html"
     }).catch(()=>{});
    }
    return receipt;
