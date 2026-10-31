@@ -1,6 +1,8 @@
 import {app,auth} from "./firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-const api=httpsCallable(getFunctions(app,"asia-southeast1"),"platformSchools");
+const functions=getFunctions(app,"asia-southeast1");
+const api=httpsCallable(functions,"platformSchools");
+const readinessApi=httpsCallable(functions,"schoolCutoverReadiness");
 const byId=id=>document.getElementById(id);
 const status=byId("owner-status"),workspace=byId("owner-content"),
   schoolList=byId("owner-schools"),actions=byId("owner-actions");
@@ -19,6 +21,36 @@ function choose(id){
   byId("owner-activate").hidden=selected.state!=="draft";
   byId("owner-suspend").hidden=selected.state!=="active";
   byId("owner-grant").hidden=selected.state==="archived";
+  byId("owner-cutover").hidden=selected.compatibilityMode==="v4_only";
+  byId("owner-cutover-rollback").hidden=selected.compatibilityMode!=="v4_only";
+  byId("owner-cutover-mode").textContent="Compatibility: "+(selected.compatibilityMode||"legacy_allowed").replace("_"," ");
+  void loadReadiness(selected.schoolId);
+}
+async function loadReadiness(schoolId=selected?.schoolId){
+  const host=byId("owner-readiness");
+  if(!schoolId){host.textContent="Select a school.";return null;}
+  host.textContent="Checking canonical school integrity…";
+  try{
+    const result=(await readinessApi({action:"overview",schoolId})).data;
+    if(selected?.schoolId!==schoolId)return null;
+    host.replaceChildren();
+    const summary=document.createElement("p");summary.style.fontWeight="700";
+    summary.textContent=result.ready?"Technical readiness checks passed.":"Cutover blocked by "+result.blockers.length+" technical check(s).";
+    host.append(summary);
+    const list=document.createElement("ul");list.style.cssText="margin:.6rem 0 0;padding-left:1.2rem";
+    for(const check of result.checks||[]){
+      const item=document.createElement("li");
+      item.textContent=(check.ok?"✓ ":"✕ ")+check.label+" — "+check.detail;
+      if(!check.ok)item.style.color="#9f1239";
+      list.append(item);
+    }
+    host.append(list);
+    byId("owner-cutover").querySelector('button[type="submit"]').disabled=!result.ready;
+    return result;
+  }catch(error){
+    if(selected?.schoolId===schoolId)host.textContent=error?.message||"Cutover readiness could not be checked.";
+    return null;
+  }
 }
 async function refresh(prefer=selected?.schoolId){
   const records=await execute("list");
@@ -91,6 +123,26 @@ byId("owner-activate").addEventListener("submit",event=>{
   if(!Object.values(attestation).every(Boolean)){say("Complete all required institutional attestations.");return;}
   if(!confirm("Activate "+selected.displayName+"? Only proceed with verified authority and readiness."))return;
   void submit(f,"activate",{schoolId:selected.schoolId,reason:String(d.get("reason")||"").trim(),attestation});
+});
+byId("owner-readiness-refresh").addEventListener("click",()=>{
+  if(selected)void loadReadiness(selected.schoolId);
+});
+byId("owner-cutover").addEventListener("submit",event=>{
+  event.preventDefault();if(!selected)return;
+  const f=event.currentTarget,d=new FormData(f),
+    keys=["continuityBackupCaptured","migrationReconciled","rollbackReviewed","v4RoutesValidated"],
+    attestation=Object.fromEntries(keys.map(key=>[key,d.get(key)==="on"]));
+  if(!Object.values(attestation).every(Boolean)){say("Complete all cutover attestations.");return;}
+  if(!confirm("Enable V4-only compatibility for "+selected.displayName+"? Legacy 3.x data is preserved, but migrated staff will be fenced from legacy global workspaces."))return;
+  void submit(f,"set_compatibility_mode",{schoolId:selected.schoolId,mode:"v4_only",
+    reason:String(d.get("reason")||"").trim(),attestation});
+});
+byId("owner-cutover-rollback").addEventListener("submit",event=>{
+  event.preventDefault();if(!selected)return;
+  const f=event.currentTarget,d=new FormData(f);
+  if(!confirm("Restore legacy compatibility for "+selected.displayName+"? Canonical V4 data will remain unchanged."))return;
+  void submit(f,"set_compatibility_mode",{schoolId:selected.schoolId,mode:"legacy_allowed",
+    reason:String(d.get("reason")||"").trim()});
 });
 byId("owner-suspend").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
