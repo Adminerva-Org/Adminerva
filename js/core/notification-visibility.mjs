@@ -18,8 +18,8 @@ export function notificationVisible(item, role) {
     if (!item.reportCategory || !["teacher", "admin"].includes(item.reportAudience)) return false;
     return role === "teacher" || role === "student";
   }
-  if (role === "teacher") return ["submission", "grading", "grade", "assessment"].includes(item.type);
-  if (role === "student") return ["submission", "grade", "assessment"].includes(item.type);
+  if (role === "teacher") return ["submission", "grading", "grade", "assessment", "reclaim"].includes(item.type);
+  if (role === "student") return ["submission", "grade", "assessment", "reclaim"].includes(item.type);
   return false;
 }
 export function unreadNotificationCount(items, muted, readKeys) {
