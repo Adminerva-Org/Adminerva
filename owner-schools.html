@@ -45,6 +45,27 @@
   <section id="owner-actions" class="own-card" hidden>
    <h2 id="owner-current" style="font-size:1.2rem;font-weight:750"></h2>
    <p id="owner-current-status" class="own-muted"></p>
+   <section style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc">
+    <div style="display:flex;gap:.75rem;align-items:center;justify-content:space-between;flex-wrap:wrap">
+      <div><h3 style="font-weight:750">4.0 cutover readiness</h3><p id="owner-cutover-mode" class="own-muted"></p></div>
+      <button id="owner-readiness-refresh" type="button" class="own-button" style="min-height:38px;padding:.45rem .75rem">Refresh readiness</button>
+    </div>
+    <div id="owner-readiness" class="own-muted" style="margin-top:.75rem"></div>
+    <form id="owner-cutover" hidden style="margin-top:1rem">
+      <p class="own-muted">Switching to V4-only fences migrated staff from legacy global workspaces. It does not delete 3.x data and can be rolled back.</p>
+      <label class="own-confirm"><input name="continuityBackupCaptured" type="checkbox" required> A protected continuity backup/export has been captured.</label>
+      <label class="own-confirm"><input name="migrationReconciled" type="checkbox" required> Canonical migration and reconciliation receipts have been reviewed.</label>
+      <label class="own-confirm"><input name="rollbackReviewed" type="checkbox" required> The rollback procedure and legacy compatibility fallback have been reviewed.</label>
+      <label class="own-confirm"><input name="v4RoutesValidated" type="checkbox" required> Required V4 teacher/student/admin routes have been validated for this school.</label>
+      <label>Cutover reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button">Enable V4-only compatibility mode</button>
+    </form>
+    <form id="owner-cutover-rollback" hidden style="margin-top:1rem">
+      <p class="own-muted">Rollback re-allows legacy compatibility routes. It does not undo canonical data or delete V4 records.</p>
+      <label>Rollback reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button warn">Restore legacy compatibility</button>
+    </form>
+   </section>
    <form id="owner-grant">
     <h3 style="font-weight:750;margin:1rem 0 .5rem">Designate verified school administrator</h3>
     <label>Existing verified Firebase account UID<input class="own-field" name="targetUid" maxlength="128" minlength="8" required autocomplete="off"></label>
