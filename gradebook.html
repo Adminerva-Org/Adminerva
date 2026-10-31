@@ -94,14 +94,33 @@
       <dialog id="gbV4ReviewDialog" class="rounded-2xl border-0 shadow-2xl p-0 w-[min(96vw,980px)] max-h-[94dvh] backdrop:bg-slate-950/70" aria-labelledby="gbV4ReviewTitle">
         <div class="bg-white flex flex-col max-h-[94dvh]">
           <header class="p-4 sm:p-5 bg-slate-900 text-white flex items-start justify-between gap-4">
-            <div><p class="text-xs uppercase tracking-wider text-cyan-300 font-bold">Verified Studio submission</p><h2 id="gbV4ReviewTitle" class="text-xl font-extrabold mt-1">Review student project</h2><p id="gbV4ReviewMeta" class="text-xs text-slate-300 mt-1"></p></div>
+            <div><p id="gbV4EvidenceType" class="text-xs uppercase tracking-wider text-cyan-300 font-bold">Verified assessment evidence</p><h2 id="gbV4ReviewTitle" class="text-xl font-extrabold mt-1">Review student project</h2><p id="gbV4ReviewMeta" class="text-xs text-slate-300 mt-1"></p></div>
             <button id="gbV4Close" type="button" class="rounded-lg border border-slate-600 px-3 py-2">Close</button>
           </header>
           <div class="overflow-y-auto p-4 sm:p-5 space-y-5">
-            <section class="grid lg:grid-cols-[220px_minmax(0,1fr)] gap-3">
+            <section id="gbV4StudioEvidence" class="grid lg:grid-cols-[220px_minmax(0,1fr)] gap-3">
               <div><label class="text-sm font-bold text-slate-700" for="gbV4File">Frozen file</label><select id="gbV4File" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></select>
                 <details class="mt-3 text-xs text-slate-600"><summary class="font-bold cursor-pointer">Project artifacts</summary><pre id="gbV4Artifacts" class="mt-2 max-h-48 overflow-auto whitespace-pre-wrap bg-slate-100 rounded-lg p-3"></pre></details></div>
               <pre id="gbV4Code" class="min-h-56 max-h-[42dvh] overflow-auto bg-slate-950 text-slate-100 rounded-xl p-4 text-xs whitespace-pre-wrap"></pre>
+            </section>
+            <section id="gbV4GithubEvidence" class="hidden rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                <div><h3 class="font-extrabold text-slate-900">Frozen GitHub evidence</h3>
+                  <p id="gbV4GithubMeta" class="text-xs text-slate-600 mt-1"></p></div>
+                <a id="gbV4GithubRepoLink" class="text-sm font-bold text-indigo-700 underline" target="_blank" rel="noopener noreferrer">Open repository ↗</a>
+              </div>
+              <div id="gbV4GithubCommits" class="grid gap-2 mt-3"></div>
+              <p id="gbV4GithubVerifyStatus" class="text-sm text-slate-600 mt-3" role="status"></p>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button id="gbV4GithubVerify" type="button" class="rounded-lg border border-indigo-300 bg-white text-indigo-800 font-bold px-4 py-2.5">Verify frozen commit set</button>
+              </div>
+              <div id="gbV4GithubApproval" class="hidden mt-4 border-t border-slate-200 pt-4">
+                <label class="block text-sm font-bold text-slate-700">Teacher verification note
+                  <textarea id="gbV4GithubApprovalNote" rows="3" minlength="12" maxlength="2000" class="mt-1 w-full border border-slate-300 rounded-lg p-3" placeholder="Describe what you inspected in the checkpoint and selected commit set."></textarea>
+                </label>
+                <button id="gbV4GithubApprove" type="button" class="mt-3 rounded-lg bg-emerald-700 text-white font-bold px-4 py-2.5">Approve exact evidence version</button>
+                <p class="text-xs text-slate-500 mt-2">Approval confirms your review of this frozen evidence set; Git commit authorship alone is not treated as proof of individual contribution.</p>
+              </div>
             </section>
             <section><div class="flex items-center justify-between gap-3"><h3 class="font-extrabold text-slate-900">Private rubric draft</h3><span id="gbV4ScoreSummary" class="text-sm font-bold text-indigo-700"></span></div>
               <div id="gbV4Rubric" class="grid gap-3 mt-3"></div>
