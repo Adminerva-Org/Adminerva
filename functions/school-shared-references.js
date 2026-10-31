@@ -293,23 +293,24 @@ function createSchoolSharedReferenceService({db,fetchImpl=fetch}){
   if(action==="copy_folder"){
    if(!teacher)deny("permission-denied","Active teacher access is required to copy a school reference folder.");
    const folderId=id(input.folderId,"Folder ID"),folderRef=folders.doc(folderId),
-    sourceDocs=await folderRef.collection("documents").limit(101).get();
-   if(sourceDocs.size===101)
-    deny("resource-exhausted","This shared folder requires pagination before it can be copied safely.");
-   const activeDocs=sourceDocs.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
-     doc.data().status==="active");
-   const privateFolders=db.collection(prefix+"teacher_reference_folders"),
+    privateFolders=db.collection(prefix+"teacher_reference_folders"),
     destination=privateFolders.doc(),auditRef=db.collection(prefix+"planning_audit").doc();
    let result;
    await db.runTransaction(async tx=>{
     await currentAuthority(tx,"teacher");
-    const [source,existingPrivate]=await Promise.all([
-      tx.get(folderRef),tx.get(privateFolders.where("ownerUid","==",ctx.uid).limit(101))
+    const [source,sourceDocs,existingPrivate]=await Promise.all([
+      tx.get(folderRef),
+      tx.get(folderRef.collection("documents").limit(101)),
+      tx.get(privateFolders.where("ownerUid","==",ctx.uid).limit(101))
     ]);
     if(!source.exists||source.data().schoolId!==ctx.schoolId||source.data().status!=="active")
      deny("failed-precondition","Only an active school shared folder can be copied.");
+    if(sourceDocs.size===101)
+     deny("resource-exhausted","This shared folder requires pagination before it can be copied safely.");
     if(existingPrivate.size>=100)
      deny("resource-exhausted","Your private reference library supports up to 100 folders until pagination is enabled.");
+    const activeDocs=sourceDocs.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+      doc.data().status==="active");
     const now=FieldValue.serverTimestamp(),name=text(source.data().name,140,"Folder name");
     tx.create(destination,{schoolId:ctx.schoolId,ownerUid:ctx.uid,name,status:"active",
       documentCount:activeDocs.length,revision:1,createdAt:now,updatedAt:now,
