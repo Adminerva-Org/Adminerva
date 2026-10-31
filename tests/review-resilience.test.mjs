@@ -91,6 +91,23 @@ test("teacher approval treats unavailable reclaim context as advisory while admi
   assert.match(gradebook,/else if\(claimsReadable\)/);
   assert.match(gradebook,/if\(canDecideClaims\)[\s\S]*where\("sha","==",sha\)/);
 });
+test("gradebook never renders failed reclaim or review reads as zero",()=>{
+  const source=readFileSync("js/repo-review/gradebook-class-review.mjs","utf8");
+  assert.match(source,/label\.textContent="\(unavailable\)"/);
+  assert.match(source,/review data incomplete — refresh evidence/);
+  assert.match(source,/Approve evidence \(\?\)/);
+  assert.match(source,/Run system evaluation \(\?\)/);
+  assert.match(source,/Affected counts are shown as unavailable\/incomplete/);
+});
+test("student reclaim workflow is assessment-scoped, live and server-confirmed",()=>{
+  const source=readFileSync("js/student/assessment-evidence.mjs","utf8");
+  assert.match(source,/claim\.repository===repository&&claim\.assessmentId===assessmentId/);
+  assert.match(source,/claimDocumentId\(sha,profile\.id,active\.task\.id\)/);
+  assert.match(source,/stopClaims=onSnapshot/);
+  assert.match(source,/const confirmed=await getDoc\(ref\)/);
+  assert.match(source,/Request sent and confirmed on the server/);
+  assert.match(source,/previous\?\.id\|\|claimDocumentId/);
+});
 test("account registry, own teacher directory and student membership start in parallel",async()=>{
   const started=[],finish=[],user={uid:"parallel",email:"new.teacher@example.edu",emailVerified:true};
   const pending=kind=>{started.push(kind);return new Promise(resolve=>finish.push(()=>resolve(kind==="staff_access"?{exists:()=>true,data:()=>({email:user.email,status:"active",role:"teacher"})}:{docs:[],empty:true})));};
