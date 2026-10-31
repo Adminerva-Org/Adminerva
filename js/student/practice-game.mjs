@@ -1,19 +1,18 @@
 /** One public mission map. Authenticated submissions and every point are checked by the server. */
 import {app,auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {collection,query,orderBy,limit,onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.3.0";
 import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.3.7";
-import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest} from "./practice-session.mjs?v=1.3.0";
+import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest,practiceAccountRequest,practiceScope} from "./practice-session.mjs?v=4.0.0";
 import {practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.3.0";
-const functions=getFunctions(app,"asia-southeast1"),field=id=>document.getElementById(id),guestPage=document.body.dataset.practiceAccess==="public";
+const field=id=>document.getElementById(id),guestPage=document.body.dataset.practiceAccess==="public";
 const typeNames={choice:"Choose the answer",output:"Write the output",ordering:"Build the sequence",matching:"Match the pairs",debugging:"Fix the bug"},typeIcons={choice:"◉",output:"⌨",ordering:"⇅",matching:"⇄",debugging:"⌁"};
-let user=null,eligible=false,hub={},course=COURSES[0],mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false;
+let user=null,eligible=false,hub={},course=COURSES[0],mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,practiceStorageScope="legacy";
 function node(tag,text,className=""){const item=document.createElement(tag);if(text!==undefined)item.textContent=text;item.className=className;return item;}
 function localGet(key){try{return JSON.parse(sessionStorage.getItem(key)||"null");}catch{return null;}}
 function localSet(key,value){try{if(value===null)sessionStorage.removeItem(key);else sessionStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
-const owner=()=>user?.uid||"public-visitor-v1",pendingKey=()=>"Adminerva_Season_Pending_"+owner(),draftKey=()=>"Adminerva_Season_Draft_"+owner()+"_"+(mission?.id||"");
+const owner=()=>user?.uid||"public-visitor-v1",storageOwner=()=>owner()+"_"+practiceStorageScope,pendingKey=()=>"Adminerva_Season_Pending_"+storageOwner(),draftKey=()=>"Adminerva_Season_Draft_"+storageOwner()+"_"+(mission?.id||"");
 function saveDraft(){if(mission)localSet(draftKey(),{answer});}
 function sync(message,tone="ready"){field("labSync").textContent=message;field("labSync").dataset.tone=tone;}
 function notice(message,tone="info"){field("labNoticeText").textContent=message;field("labNotice").hidden=!message;field("labNotice").dataset.tone=tone;}
@@ -55,8 +54,8 @@ function renderBoard(){
   if(!rows.length){const message=boardMode==="global"?(publicBoardError?"Rankings could not connect. Refresh to try again.":publicBoardReady?"A new season is starting. Opt in and set the pace.":"Connecting to public rankings…"):(eligible?"No class scores yet. Finish a mission to begin.":"Sign in with a linked student account to see your class.");list.append(node("li",message,"lab-board-empty"));return;}
   let rank=0,prior=null;rows.forEach((row,index)=>{if(row.points!==prior)rank=index+1;prior=row.points;const item=node("li",undefined,"lab-rank-row"+(row.isCurrent?" is-you":""));item.append(node("span",rank<=3?["🥇","🥈","🥉"][rank-1]:String(rank),"lab-rank-number"),node("span",row.alias+(row.isCurrent?" · You":"")),node("strong",row.points.toLocaleString()+" points"));list.append(item);});
 }
-async function call(name,payload={}){const uid=auth.currentUser?.uid,result=await httpsCallable(functions,name)(payload);if(auth.currentUser?.uid!==uid)throw Error("Account changed. Reload practice before continuing.");return result.data;}
-async function refreshHub(classId=field("practiceClass").value){const version=epoch,uid=user?.uid;try{const result=await call("practiceHub",{classId:classId||""});if(version!==epoch||uid!==user?.uid)return;hub=result;eligible=result.eligible===true;renderSummary();renderCourses();renderBoard();sync(user?"Saved to your account":"Public preview");if(user&&!eligible)notice("Finish your access request to save practice. You can still browse every mission.");else if(!pending)notice("");}catch(error){if(version!==epoch)return;eligible=false;sync("Connection needed","error");notice(error.details?.reason==="guest-registration"?"Finish your access request from My workspace, then refresh practice.":"Practice could not connect. The map remains available. Refresh to reconnect before submitting an answer.","error");renderSummary();}}
+async function call(name,payload={}){const uid=auth.currentUser?.uid,result=await practiceAccountRequest(name,payload);if(auth.currentUser?.uid!==uid)throw Error("Account changed. Reload practice before continuing.");return result;}
+async function refreshHub(classId=field("practiceClass").value){const version=epoch,uid=user?.uid;try{const result=await call("practiceHub",{classId:classId||""});if(version!==epoch||uid!==user?.uid)return;hub=result;eligible=result.eligible===true;if(result.schoolId){practiceStorageScope=result.schoolId;globalRows=Array.isArray(result.publicRows)?result.publicRows:[];publicBoardReady=true;publicBoardError=false;}renderSummary();renderCourses();renderBoard();sync(user?(result.schoolId?"Saved to your school account":"Saved to your account"):"Public preview");if(user&&!eligible)notice("Finish your access request to save practice. You can still browse every mission.");else if(!pending)notice("");}catch(error){if(version!==epoch)return;eligible=false;sync("Connection needed","error");const reason=error.details?.reason;notice(reason==="school-selection-required"?"Choose a school from the account menu before starting Practice.":reason==="guest-registration"?"Finish your access request from My workspace, then refresh practice.":"Practice could not connect. The map remains available. Refresh to reconnect before submitting an answer.","error");renderSummary();}}
 function errorFeedback(error){const reason=error.details?.reason,transfer=["transfer-required","recent-sign-in","session-moved","revoked-sign-in"].includes(reason);field("practiceTransferBtn").hidden=!transfer;if(transfer)notice("Practice needs to reconnect. Continue on this device to resume safely.","warning");sync("Not saved yet","error");feedback(transfer?"Continue practice on this device to reconnect. Your saved points stay safe.":error.message||"The answer could not be confirmed. Retry the same answer to avoid counting it twice.","warning");}
 async function connect(takeover=false){const result=await resumePracticeSession({season:true,takeover,reauthenticate:takeover});field("practiceTransferBtn").hidden=true;sync(result.transferred?"Practice moved here":"Connected");return result;}
 function readAnswer(){
@@ -143,11 +142,41 @@ field("practiceTransferBtn").addEventListener("click",async()=>{if(busy||!user||
 field("labPendingResume").addEventListener("click",()=>{if(busy||!pending)return;const entry=COURSES.find(item=>item.id===pending.courseId),target=entry?.missions.find(item=>item.id===pending.missionId);if(target)void openMission(entry,target);});
 field("labNextMission").addEventListener("click",()=>{if(busy||!mission)return;const index=course.missions.findIndex(item=>item.id===mission.id),next=course.missions.slice(index+1).find(item=>!completed(item.id))||course.missions.find(item=>!completed(item.id))||course.missions[(index+1)%course.missions.length];void openMission(course,next);});
 field("labGlobalTab").addEventListener("click",()=>{boardMode="global";renderBoard();});field("labClassTab").addEventListener("click",()=>{boardMode="class";renderBoard();});field("practiceClass").addEventListener("change",()=>void refreshHub());
-field("labPreferences").addEventListener("submit",async event=>{event.preventDefault();if(busy||!eligible)return;const uid=user?.uid;field("labPreferencesSave").disabled=true;const end=window.beginLoading?.("Saving leaderboard choices…")||(()=>{});field("labPreferencesStatus").textContent="Saving choice…";try{const result=await call("practicePreferences",{alias:field("labAlias").value.trim(),optIn:field("labOptIn").checked});if(uid!==user?.uid)return;hub={...hub,...result};field("labPreferencesStatus").textContent=result.optIn?"Saved. Your alias is on the public leaderboard.":"Saved. Your alias is hidden from the public leaderboard.";await refreshHub();}catch(error){if(uid===user?.uid)field("labPreferencesStatus").textContent=error.message||"Choice could not save. Try again.";}finally{field("labPreferencesSave").disabled=false;end();}});
+field("labPreferences").addEventListener("submit",async event=>{event.preventDefault();if(busy||!eligible)return;const uid=user?.uid;field("labPreferencesSave").disabled=true;const end=window.beginLoading?.("Saving leaderboard choices…")||(()=>{});field("labPreferencesStatus").textContent="Saving choice…";try{const result=await call("practicePreferences",{alias:field("labAlias").value.trim(),optIn:field("labOptIn").checked});if(uid!==user?.uid)return;hub={...hub,...result};field("labPreferencesStatus").textContent=result.optIn?(result.schoolId?"Saved. Your alias is on this school’s Practice leaderboard.":"Saved. Your alias is on the public leaderboard."):(result.schoolId?"Saved. Your alias is hidden from this school’s Practice leaderboard.":"Saved. Your alias is hidden from the public leaderboard.");await refreshHub();}catch(error){if(uid===user?.uid)field("labPreferencesStatus").textContent=error.message||"Choice could not save. Try again.";}finally{field("labPreferencesSave").disabled=false;end();}});
 let stopBoard=()=>{};
-function connectBoard(){stopBoard();publicBoardError=false;stopBoard=onSnapshot(query(collection(db,"practice_public_rankings"),orderBy("points","desc"),limit(30)),snapshot=>{globalRows=snapshot.docs.map(row=>row.data()).filter(row=>row.season===PRACTICE_SEASON);publicBoardReady=true;publicBoardError=false;renderBoard();},()=>{publicBoardError=true;renderBoard();});}
-connectBoard();
-onAuthStateChanged(auth,async current=>{epoch++;loadSequence++;user=current;eligible=false;hub={};mission=null;attempt=null;answer=null;busy=false;resetPracticeSession();pending=localGet(pendingKey());field("practiceMissionPanel").hidden=true;field("labMapPanel").hidden=false;field("practiceTransferBtn").hidden=true;renderSummary();renderCourses();renderBoard();await refreshHub();pendingNotice();const params=new URLSearchParams(location.search),requested=COURSES.find(item=>item.id===params.get("course")),target=requested?.missions.find(item=>item.id===params.get("mission"));if(target)await openMission(requested,target);});
+async function connectBoard(scope=null){
+  stopBoard();stopBoard=()=>{};publicBoardError=false;globalRows=[];
+  const resolved=scope||await practiceScope();
+  if(resolved.mode==="school"){publicBoardReady=true;renderBoard();return;}
+  publicBoardReady=false;
+  stopBoard=onSnapshot(query(collection(db,"practice_public_rankings"),orderBy("points","desc"),limit(30)),snapshot=>{
+    globalRows=snapshot.docs.map(row=>row.data()).filter(row=>row.season===PRACTICE_SEASON);
+    publicBoardReady=true;publicBoardError=false;renderBoard();
+  },()=>{publicBoardError=true;renderBoard();});
+}
+onAuthStateChanged(auth,async current=>{
+  epoch++;loadSequence++;user=current;eligible=false;hub={};mission=null;attempt=null;answer=null;busy=false;
+  resetPracticeSession();practiceStorageScope="legacy";
+  let scope;
+  try{
+    scope=await practiceScope();
+    practiceStorageScope=scope.mode==="school"?scope.schoolId||"school":"legacy";
+    await connectBoard(scope);
+  }catch(error){
+    stopBoard();publicBoardReady=true;publicBoardError=false;
+    sync("Choose a school","error");
+    notice(error?.message||"Choose a school from the account menu before starting Practice.","error");
+    return;
+  }
+  pending=localGet(pendingKey());
+  field("practiceMissionPanel").hidden=true;field("labMapPanel").hidden=false;
+  field("practiceTransferBtn").hidden=true;renderSummary();renderCourses();renderBoard();
+  await refreshHub();pendingNotice();
+  const params=new URLSearchParams(location.search),requested=COURSES.find(item=>item.id===params.get("course")),
+    target=requested?.missions.find(item=>item.id===params.get("mission"));
+  if(target)await openMission(requested,target);
+});
+document.addEventListener("adminerva:preferred-school-changed",()=>location.reload());
 window.addEventListener("pagehide",()=>stopBoard());
 
 
