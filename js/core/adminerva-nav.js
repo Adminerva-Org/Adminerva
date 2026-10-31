@@ -31,11 +31,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const activeModule = root.getAttribute("data-module") || "lesson";
   const activePage = root.getAttribute("data-page") || "planner";
   const isStudent = userRole === "student" || (!userRole && activeModule.startsWith("student"));
-  const isSuperAdmin = userRole === "superadmin";
-  currentRole = isStudent ? "student" : isSuperAdmin ? "superadmin" : "teacher";
+  const isSuperAdmin=userRole==="superadmin";
+  const isSchoolAdmin=userRole==="schooladmin";
+  const canTeach=!isSchoolAdmin||root.dataset.schoolTeacher==="true";
+  currentRole=isStudent?"student":isSuperAdmin?"superadmin":isSchoolAdmin?"schooladmin":"teacher";
   const homeRoute = isStudent ? "student-home.html" : "teacher-home.html";
   const homeLabel = isStudent ? "Student Home" : "Staff Home";
-  const roleLabel = isStudent ? "Student" : isSuperAdmin ? "Administrator" : "Teacher";
+  const roleLabel=isStudent?"Student":isSuperAdmin?"Platform administrator":isSchoolAdmin?"School administrator":"Teacher";
 
   // Destinations and page labels share one source, including bookmarked tools.
   const studentGroups = {
@@ -53,35 +55,40 @@ document.addEventListener("DOMContentLoaded", () => {
     ] }
   };
   const staffGroups = [
-    { name: "Assessment", area: "educator", items: [
-      ["studio", "Assessment studio", "assessment-studio.html"],
+    { name: "Assessment", area: "educator", items: canTeach ? [
+      ["library-v4","Assessment library","teacher-assessment-library.html"],
+      ["studio", "Legacy assessment studio", "assessment-studio.html"],
       ["submissions", "Submission inbox", "submissions.html"],
       ["studio-submissions", "Studio project submissions", "studio-submissions.html"],
       ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
-    ] },
-    { name: "Review & grade", area: "educator", items: [
+    ] : [] },
+    { name: "Review & grade", area: "educator", items: canTeach ? [
       ["repofetch", "Review & grade", "repofetch.html"],
       ["gradebook", "Gradebook", "gradebook.html"],
       ["repobank", "Repository investigation", "repobank.html"]
-    ] },
-    { name: "Insights", area: "educator", items: [
+    ] : [] },
+    { name: "Insights", area: "educator", items: canTeach ? [
       ["dashboard", "Analytics", "teacher-analytics.html"],
       ["followup", "Learning follow-up", "learning-follow-up.html"]
-    ] },
-    { name: "Planning", area: "lesson", items: [
+    ] : [] },
+    { name: "Planning", area: "lesson", items: canTeach ? [
       ["planner", "Lesson planner", "lesson-planner.html"],
       ["presentation", "Slide editor", "presentation.html"],
       ["schedule", "Teacher schedule", "schedule.html"],
       ["library", "Reference library", "library.html"]
-    ] },
+    ] : [] },
     { name: "School setup", area: "admin", items: isSuperAdmin ? [
+      ["owner-schools","Institution registry","owner-schools.html"],
       ["overview", "Administration overview", "school-admin.html"],
       ["analytics", "Administration analytics", "admin-analytics.html"],
-      ["directory", "User directory", "users.html"],
+      ["directory", "Legacy user directory", "users.html"],
       ["sections", "Sections", "manage-sections.html"],
       ["teachers", "Teacher assignments", "teacher-accounts.html"],
       ["programs", "Tracks & pathways", "manage-programs.html"],
       ["subjects", "Subjects", "manage-subjects.html"]
+    ] : isSchoolAdmin ? [
+      ["overview","School overview","school-admin.html"],
+      ["people-v4","People & Access","people-access.html"]
     ] : [] },
     { name: "Account", area: "settings", items: [
       ["settings", "Account & integrations", "settings.html"],
@@ -121,11 +128,12 @@ document.addEventListener("DOMContentLoaded", () => {
     ["Adminerva Studio", "student-playground.html", "Write and run code"],
     ["My reports", "issues.html", "Report a problem or follow an update"]
   ] : [
-    [homeLabel, homeRoute, "Your teaching workspace"],
-    ["Repository Management", "assessment-studio.html", "Assessments, submissions, grading and repositories"],
-    ["Lesson Planning", "lesson-planner.html", "Lessons, slides, schedule and references"],
-    ...(isSuperAdmin ? [["School administration", "school-admin.html", "Students, staff, catalogs, reports and operations"]] : []),
-    ["Reports & support", "issues.html", "Follow reports and get help"]
+    [homeLabel,homeRoute,isSchoolAdmin?"School operations and teaching workspace":"Your teaching workspace"],
+    ...(canTeach?[["Repository Management","teacher-assessment-library.html","Assessments, submissions, grading and repositories"],
+      ["Lesson Planning","lesson-planner.html","Lessons, slides, schedule and references"]]:[]),
+    ...((isSuperAdmin||isSchoolAdmin)?[["School administration","school-admin.html",
+      isSuperAdmin?"Platform and school operations":"People, access, classes and school operations"]]:[]),
+    ["Reports & support","issues.html","Follow reports and get help"]
   ];
   root.innerHTML = `
     <nav aria-label="Adminerva main navigation" class="bg-gray-900/95 backdrop-blur-md text-white shadow-lg relative z-50 border-b border-cyan-900/50 sticky top-0">
@@ -275,8 +283,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // This event changes presentation; it does not authorize any data operation.
   document.addEventListener("adminerva:role-ready", event => {
     const role = event.detail?.role;
-    if (!["student", "teacher", "superadmin"].includes(role)) return;
-    if (role !== currentRole) renderNavigation(role);
+    if(!["student","teacher","schooladmin","superadmin"].includes(role))return;
+    renderNavigation(role);
   });
   document.addEventListener("click", event => {
     for (const details of disclosures) if (details.open && !details.contains(event.target)) details.open = false;
