@@ -214,6 +214,7 @@ async function checkAccess(user){
       ]);
       const destination=gradingPages.has(page)?"school-gradebook.html":
         page==="assessment-studio.html"?"teacher-assessment-library.html":
+        page==="teacher-analytics.html"&&location.hash==="#practice"?"school-practice-analytics.html":
         page==="teacher-analytics.html"?"school-teacher-analytics.html":
         page==="practice-analytics.html"?"school-practice-analytics.html":
         page==="issues.html"?"school-support.html":"teacher-home.html";
