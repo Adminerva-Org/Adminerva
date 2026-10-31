@@ -10,7 +10,7 @@ import {
 import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=3.0.0";
 import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
 import {
-  archiveV4StudioProject,listArchivedV4StudioProjects,listV4StudioProjects,loadV4StudioProject,
+  archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,loadV4StudioProject,
   queueV4StudioProjectSync,restoreV4StudioProject
 } from "./v4-studio-service.mjs?v=4.0.0";
 
@@ -195,6 +195,8 @@ export function createProjectStudio({
   async function saveCloud(project){
     if(!cloudEnabled||deletedProjects.has(project.id))return;
     try{
+      const school=await currentV4StudioSchool();
+      if(school?.compatibilityMode==="v4_only")return;
       if(!project||enc(project)>policy.maxProjectBytes)return;
       await setDoc(doc(db,"student_code_projects",uid,"projects",project.id),{...project,ownerUid:uid});
       const indicator=el("autoSaveIndicator");
@@ -204,16 +206,19 @@ export function createProjectStudio({
   async function mergeCloudProjects(){
     if(!cloudEnabled)return;
     const local=readCodeProjects(localStorage,uid),map=new Map(local.map(project=>[project.id,project]));
-    let changed=false;
-    try{
-      const snap=await getDocs(collection(db,"student_code_projects",uid,"projects"));
-      for(const record of snap.docs){
-        const cloud=record.data(),current=map.get(cloud.id);
-        if(!current||String(cloud.updatedAt||"")>String(current.updatedAt||"")){
-          map.set(cloud.id,cloud);changed=true;
+    let changed=false,school=null;
+    try{school=await currentV4StudioSchool();}catch{}
+    if(school?.compatibilityMode!=="v4_only"){
+      try{
+        const snap=await getDocs(collection(db,"student_code_projects",uid,"projects"));
+        for(const record of snap.docs){
+          const cloud=record.data(),current=map.get(cloud.id);
+          if(!current||String(cloud.updatedAt||"")>String(current.updatedAt||"")){
+            map.set(cloud.id,cloud);changed=true;
+          }
         }
-      }
-    }catch(error){console.warn("Legacy cloud code projects unavailable; continuing with school storage.",error);}
+      }catch(error){console.warn("Legacy cloud code projects unavailable; continuing with school storage.",error);}
+    }
     try{
       const remote=await listV4StudioProjects();
       const archived=await listArchivedV4StudioProjects();
@@ -401,11 +406,13 @@ export function createProjectStudio({
             }
           }
           deleteCodeProject(localStorage,uid,project.id);
-          if(cloudEnabled)try{
+          let activeSchool=null;
+          try{activeSchool=await currentV4StudioSchool();}catch{}
+          if(cloudEnabled&&activeSchool?.compatibilityMode!=="v4_only")try{
             await (cloudWrites.get(project.id)||Promise.resolve()).catch(()=>{});
             await deleteDoc(doc(db,"student_code_projects",uid,"projects",project.id));
           }catch(error){console.warn("Cloud project deletion unavailable:",error);
-            alert("The local project was deleted, but its cloud copy could not be removed. It may reappear after cloud sync. Please retry when online.");}
+            alert("The local project was deleted, but its legacy cloud copy could not be removed. It may reappear while compatibility mode is enabled.");}
           renderProjectHome();
         });
         list.append(card);
