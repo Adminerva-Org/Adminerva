@@ -188,7 +188,7 @@ function createSchoolGithubEvidenceService({db}){
      id:"github_submission_"+taskId+"_"+ctx.uid+"_"+receipt.version,
      title:receipt.version>1?"GitHub evidence resubmitted":"GitHub evidence submitted",
      body:(taskData.title||"Assessment")+" · a student evidence package is ready for review.",
-     type:"submission",sourceId:taskId,target:"gradebook.html"
+     type:"submission",sourceId:taskId,target:"school-gradebook.html"
    }).catch(()=>{});
    return receipt;
   }
