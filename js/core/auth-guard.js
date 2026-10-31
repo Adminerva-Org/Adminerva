@@ -179,6 +179,7 @@ async function checkAccess(user){
       ]);
       const destination=gradingPages.has(page)?"school-gradebook.html":
         page==="assessment-studio.html"?"teacher-assessment-library.html":
+        ["teacher-analytics.html","practice-analytics.html"].includes(page)?"school-teacher-analytics.html":
         page==="issues.html"?"school-support.html":"teacher-home.html";
       replacePage(destination);return;
     }
