@@ -38,6 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const hasVerifiedSchoolRole=root.dataset.schoolAdmin==="true"||
     root.dataset.schoolTeacher==="true"||root.dataset.schoolStudent==="true";
   const supportRoute=!isSuperAdmin&&hasVerifiedSchoolRole?"school-support.html":"issues.html";
+  const gradebookRoute=root.dataset.schoolTeacher==="true"?"school-gradebook.html":"gradebook.html";
   const canTeach=!isPlatformOwner&&(!isSchoolAdmin||root.dataset.schoolTeacher==="true");
   currentRole=isStudent?"student":isSuperAdmin?"superadmin":isPlatformOwner?"platformowner":isSchoolAdmin?"schooladmin":"teacher";
   const homeRoute = isStudent ? "student-home.html" : isPlatformOwner ? "owner-schools.html" : "teacher-home.html";
@@ -69,7 +70,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ] : [] },
     { name: "Review & grade", area: "educator", items: canTeach ? [
       ["repofetch", "Review & grade", "repofetch.html"],
-      ["gradebook", "Gradebook", "gradebook.html"],
+      ["gradebook-v4", "Gradebook", gradebookRoute],
       ["repobank", "Repository investigation", "repobank.html"]
     ] : [] },
     { name: "Insights", area: "educator", items: canTeach ? [
