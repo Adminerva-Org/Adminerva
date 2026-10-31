@@ -6,7 +6,7 @@ if(root){
   const card=document.createElement("section");
   card.id="schoolAIConnection";
   card.className="rounded-2xl border border-cyan-200 bg-cyan-50 p-5 mb-6";
-  card.innerHTML=\`<h3 class="text-lg font-extrabold text-cyan-950">School AI connection</h3>
+  card.innerHTML=`<h3 class="text-lg font-extrabold text-cyan-950">School AI connection</h3>
     <p class="text-sm text-cyan-950 mt-2">The connection is isolated to the active verified school. Teachers never receive the school API key.</p>
     <p id="schoolAISettingsStatus" role="status" class="text-sm mt-3">Loading active school connection…</p>
     <form id="schoolAIConnectionForm" hidden class="mt-4 space-y-3">
@@ -32,7 +32,7 @@ if(root){
       </label>
       <button type="submit" class="rounded-lg bg-cyan-800 text-white font-bold px-4 py-2">Save school AI settings</button>
       <p class="text-xs text-cyan-950">4.0 does not fall back to a personal browser Gemini key. If this school connection is disabled, teachers continue manually.</p>
-    </form>\`;
+    </form>`;
   root.prepend(card);
 
   const el=id=>card.querySelector("#"+id);
