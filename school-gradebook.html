@@ -76,20 +76,21 @@
             <button id="gbV4SaveDraft" type="button" class="rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5">Save private draft</button>
             <button id="gbV4Publish" type="button" class="rounded-lg border border-emerald-400 text-emerald-800 font-bold px-4 py-2.5">Publish grade</button>
           </div>
+          <section id="gbV4LegacyGradePanel" hidden class="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3">
+            <strong class="text-sm text-amber-950">Imported historical score</strong>
+            <p class="text-xs text-amber-900 mt-1">The legacy record preserved the final score and feedback but not a trustworthy criterion-by-criterion allocation. Enter the reviewed rubric breakdown above; reconstruction must keep the exact historical score and maximum.</p>
+            <label class="block text-sm font-bold text-amber-950 mt-3">Reconstruction reason
+              <textarea id="gbV4LegacyReason" rows="2" minlength="12" maxlength="2000" class="mt-1 w-full border border-amber-300 rounded-lg p-2.5 bg-white"></textarea>
+            </label>
+            <button id="gbV4ConvertLegacy" type="button" class="mt-3 rounded-lg border border-amber-500 bg-amber-100 text-amber-950 font-bold px-4 py-2.5">Reconstruct historical rubric breakdown</button>
+          </section>
           <details id="gbV4CorrectionPanel" class="hidden mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
             <summary class="font-bold text-rose-900 cursor-pointer">Correct a published grade</summary>
             <p class="text-xs text-rose-800 mt-2">Corrections preserve the prior published revision and cannot alter the frozen student evidence.</p>
-            <div id="gbV4LegacyGradeNotice" hidden class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-950">
-              <strong>Imported historical score.</strong>
-              <p class="mt-1">The legacy record preserved the final score but not a criterion-by-criterion allocation. Enter the reviewed rubric breakdown below and convert it without changing the historical score before using the correction workflow.</p>
-            </div>
-            <label class="block text-sm font-bold text-rose-900 mt-3">Correction / reconstruction reason
+            <label class="block text-sm font-bold text-rose-900 mt-3">Correction reason
               <textarea id="gbV4CorrectionReason" rows="2" minlength="12" maxlength="2000" class="mt-1 w-full border border-rose-300 rounded-lg p-2.5 bg-white"></textarea>
             </label>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <button id="gbV4ConvertLegacy" type="button" hidden class="rounded-lg border border-amber-500 bg-amber-100 text-amber-950 font-bold px-4 py-2.5">Reconstruct historical rubric breakdown</button>
-              <button id="gbV4Correct" type="button" class="rounded-lg border border-rose-400 bg-white text-rose-800 font-bold px-4 py-2.5">Record grade correction</button>
-            </div>
+            <button id="gbV4Correct" type="button" class="mt-3 rounded-lg border border-rose-400 bg-white text-rose-800 font-bold px-4 py-2.5">Record grade correction</button>
           </details>
           <p id="gbV4ReviewStatus" class="text-sm text-slate-600 mt-2" role="status" aria-live="polite"></p>
         </section>
