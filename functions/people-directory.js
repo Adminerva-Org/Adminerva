@@ -132,6 +132,9 @@ function createInvitationAcceptanceService({db}) {
         throw new TenantAccessError("failed-precondition","Your previous school access needs administrator recovery.");
       const personRef=invited.personId?db.doc("schools/"+schoolId+"/people/"+id(invited.personId)):null;
       const person=personRef?await tx.get(personRef):null;
+      if(personRef&&person.exists&&
+        (invited.requestedRole==="student"?person.data().kind!=="student":person.data().kind!=="staff"))
+        throw new TenantAccessError("failed-precondition","The invitation role does not match the school person record.");
       if(personRef&&(!person.exists||person.data().schoolId!==schoolId||
         (person.data().authUid&&person.data().authUid!==uid)))
         throw new TenantAccessError("failed-precondition","The invitation's person link requires administrator review.");
