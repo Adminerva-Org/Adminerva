@@ -4,7 +4,8 @@ const {FieldValue}=require("firebase-admin/firestore");
 const allowedTypes=new Set(["assessment","submission","grade","grading","issue","reclaim"]);
 const allowedPages=new Set([
   "student-assessments.html","gradebook.html","teacher-assessment-library.html",
-  "reclaim-inbox.html","people-access.html","issues.html","student-playground.html"
+  "reclaim-inbox.html","people-access.html","issues.html","student-playground.html",
+  "school-support.html"
 ]);
 function cleanId(value){return String(value||"event").replace(/[^A-Za-z0-9_-]/g,"_").slice(0,180);}
 function safeTarget(value){
