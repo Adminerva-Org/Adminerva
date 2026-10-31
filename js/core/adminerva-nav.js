@@ -39,6 +39,7 @@ document.addEventListener("DOMContentLoaded", () => {
     root.dataset.schoolTeacher==="true"||root.dataset.schoolStudent==="true";
   const supportRoute=!isSuperAdmin&&hasVerifiedSchoolRole?"school-support.html":"issues.html";
   const gradebookRoute=root.dataset.schoolTeacher==="true"?"school-gradebook.html":"gradebook.html";
+  const v4OnlyTeacher=root.dataset.v4OnlyTeacher==="true";
   const canTeach=!isPlatformOwner&&(!isSchoolAdmin||root.dataset.schoolTeacher==="true");
   currentRole=isStudent?"student":isSuperAdmin?"superadmin":isPlatformOwner?"platformowner":isSchoolAdmin?"schooladmin":"teacher";
   const homeRoute = isStudent ? "student-home.html" : isPlatformOwner ? "owner-schools.html" : "teacher-home.html";
@@ -61,23 +62,30 @@ document.addEventListener("DOMContentLoaded", () => {
     ] }
   };
   const staffGroups = [
-    { name: "Assessment", area: "educator", items: canTeach ? [
-      ["library-v4","Assessment library","teacher-assessment-library.html"],
-      ["studio", "Legacy assessment studio", "assessment-studio.html"],
-      ["submissions", "Submission inbox", "submissions.html"],
-      ["studio-submissions", "Studio project submissions", "studio-submissions.html"],
-      ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
-    ] : [] },
-    { name: "Review & grade", area: "educator", items: canTeach ? [
-      ["repofetch", "Review & grade", "repofetch.html"],
-      ["gradebook-v4", "Gradebook", gradebookRoute],
-      ["repobank", "Repository investigation", "repobank.html"]
-    ] : [] },
-    { name: "Insights", area: "educator", items: canTeach ? [
+    { name: "Assessment", area: "educator", items: canTeach ? (
+      v4OnlyTeacher ? [
+        ["library-v4","Assessment library","teacher-assessment-library.html"],
+        ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
+      ] : [
+        ["library-v4","Assessment library","teacher-assessment-library.html"],
+        ["studio", "Legacy assessment studio", "assessment-studio.html"],
+        ["submissions", "Submission inbox", "submissions.html"],
+        ["studio-submissions", "Studio project submissions", "studio-submissions.html"],
+        ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
+      ]) : [] },
+    { name: "Review & grade", area: "educator", items: canTeach ? (
+      v4OnlyTeacher ? [
+        ["gradebook-v4", "Gradebook", "school-gradebook.html"]
+      ] : [
+        ["repofetch", "Review & grade", "repofetch.html"],
+        ["gradebook-v4", "Gradebook", gradebookRoute],
+        ["repobank", "Repository investigation", "repobank.html"]
+      ]) : [] },
+    { name: "Insights", area: "educator", items: canTeach&&!v4OnlyTeacher ? [
       ["dashboard", "Analytics", "teacher-analytics.html"],
       ["followup", "Learning follow-up", "learning-follow-up.html"]
     ] : [] },
-    { name: "Planning", area: "lesson", items: canTeach ? [
+    { name: "Planning", area: "lesson", items: canTeach&&!v4OnlyTeacher ? [
       ["planner", "Lesson planner", "lesson-planner.html"],
       ["presentation", "Slide editor", "presentation.html"],
       ["schedule", "Teacher schedule", "schedule.html"],
@@ -144,8 +152,10 @@ document.addEventListener("DOMContentLoaded", () => {
     ["Reports & support","issues.html","Follow reports and get help"]
   ] : [
     [homeLabel,homeRoute,isSchoolAdmin?"School operations and teaching workspace":"Your teaching workspace"],
-    ...(canTeach?[["Repository Management","teacher-assessment-library.html","Assessments, submissions, grading and repositories"],
-      ["Lesson Planning","lesson-planner.html","Lessons, slides, schedule and references"]]:[]),
+    ...(canTeach?(v4OnlyTeacher?
+      [["Assessment & Grade","teacher-assessment-library.html","School assessments, evidence and grading"]]:
+      [["Repository Management","teacher-assessment-library.html","Assessments, submissions, grading and repositories"],
+       ["Lesson Planning","lesson-planner.html","Lessons, slides, schedule and references"]]):[]),
     ...((isSuperAdmin||isSchoolAdmin||hasPlatformAuthority)?[["School administration",
       hasPlatformAuthority&&!isSchoolAdmin&&!isSuperAdmin?"owner-schools.html":"school-admin.html",
       hasPlatformAuthority&&!isSchoolAdmin&&!isSuperAdmin?"Institution registry":"People, access, classes and school operations"]]:[]),
