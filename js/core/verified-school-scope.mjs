@@ -18,20 +18,21 @@ export function pickerState(options,preferredSchoolId) {
   return {state:current?"ready":"choose_school",schoolId:current?.schoolId||null,showSwitcher:true};
 }
 export function createVerifiedSchoolScope({loadSchools,beforeChange=async()=>{},onChange=()=>{}}) {
-  let generation=0,active=null,options=[];
+  let generation=0,active=null,options=[],refreshRequest=0;
   async function refresh({uid,preferredSchoolId=null}={}) {
     if(typeof uid!=="string"||!uid)throw new Error("A signed-in account is required.");
+    const requested=++refreshRequest,previous=active;
+    // A host may veto switching while a submission/import is still being saved.
+    // Do not invalidate that action's lease if the switch is vetoed.
+    if(previous)await beforeChange({previous,next:null});
+    if(requested!==refreshRequest)return null;
     const run=++generation;
-    const previous=active;
-    // Rechecking or switching invalidates old leases immediately. No stale
-    // async save may operate under a previous school's UI or permissions.
+    // After cleanup, old school leases and private views are invalid immediately.
     active=null;options=[];
     onChange({state:"checking",schoolId:null,showSwitcher:false,options:[],context:null,generation});
     try {
-      if(previous)await beforeChange({previous,next:null});
-      if(run!==generation)return null;
       const payload=await loadSchools(preferredSchoolId);
-      if(run!==generation)return null;
+      if(requested!==refreshRequest||run!==generation)return null;
       const nextOptions=Array.isArray(payload?.schools)?payload.schools:[];
       const state=pickerState(nextOptions,preferredSchoolId);
       active=state.schoolId?{
@@ -43,7 +44,7 @@ export function createVerifiedSchoolScope({loadSchools,beforeChange=async()=>{},
       onChange(resolved);
       return resolved;
     }catch(error) {
-      if(run===generation){
+      if(requested===refreshRequest && run===generation){
         active=null;options=[];
         onChange({state:"unavailable",schoolId:null,showSwitcher:false,
           options:[],context:null,generation,error:error?.message||"School access unavailable"});
@@ -64,7 +65,7 @@ export function createVerifiedSchoolScope({loadSchools,beforeChange=async()=>{},
       return true;
     },
     clear(){
-      generation++;const previous=active;active=null;options=[];
+      refreshRequest++;generation++;const previous=active;active=null;options=[];
       onChange({state:"no_school",schoolId:null,showSwitcher:false,options:[],context:null,generation,previous});
     }
   });
