@@ -1,6 +1,8 @@
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
+import {createGithubEvidenceClient} from "./services/github-evidence-client.mjs?v=1.3.0";
+import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
 
 const panel=document.getElementById("gbV4Panel");
 const taskSelect=document.getElementById("gbV4Task");
@@ -23,9 +25,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const functions=getFunctions(app,"asia-southeast1");
   const assessmentApi=httpsCallable(functions,"schoolAssessments");
   const submissionApi=httpsCallable(functions,"schoolStudioSubmissions");
+  const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
   const gradeApi=httpsCallable(functions,"schoolGradebook");
   let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null;
-  let generation=0,busy=false;
+  let generation=0,busy=false,githubVerification=null;
 
   async function scoped(api,action,details={}){
     if(!picker?.scope.current)throw Error("Choose a verified school first.");
@@ -57,34 +60,36 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     status.textContent="Loading your verified school assessments…";
     const result=await scoped(assessmentApi,"list_teacher");
     if(token!==generation)return;
-    const items=(result.assessments||[]).filter(item=>item.submissionSource==="studio"&&item.status==="deployed");
+    const items=(result.assessments||[]).filter(item=>["studio","github"].includes(item.submissionSource)&&item.status==="deployed");
     tasks=new Map(items.map(item=>[item.taskId,item]));
     taskSelect.replaceChildren();
-    const start=new Option(items.length?"Choose an assessment…":"No deployed Studio assessments","");
+    const start=new Option(items.length?"Choose an assessment…":"No deployed V4 assessments","");
     start.disabled=true;start.selected=true;taskSelect.add(start);
     for(const task of items){
-      const label=task.title+" · "+(task.sectionId||"class")+" · "+(task.subjectId||"subject");
+      const label=(task.submissionSource==="github"?"GitHub · ":"Studio · ")+task.title+" · "+(task.sectionId||"class")+" · "+(task.subjectId||"subject");
       taskSelect.add(new Option(label,task.taskId));
     }
     panel.classList.remove("hidden");
     inbox.replaceChildren();
     status.textContent=items.length?
-      items.length+" deployed Studio assessment"+(items.length===1?"":"s")+" available.":
-      "No verified Studio assessments owned by this teacher in the active school.";
+      items.length+" deployed V4 assessment"+(items.length===1?"":"s")+" available.":
+      "No verified V4 assessments owned by this teacher in the active school." ;
   }
   async function loadInbox(){
     const task=tasks.get(taskSelect.value);
     currentTask=task||null;inbox.replaceChildren();
     if(!task){status.textContent="Choose an assessment to load submissions.";return;}
     const token=++generation;
-    status.textContent="Loading frozen Studio submissions…";
+    status.textContent=task.submissionSource==="github"?
+      "Loading frozen GitHub evidence…":"Loading frozen Studio submissions…";
     try{
-      const result=await scoped(submissionApi,"inbox",{taskId:task.taskId});
+      const evidenceApi=task.submissionSource==="github"?githubEvidenceApi:submissionApi;
+      const result=await scoped(evidenceApi,"inbox",{taskId:task.taskId});
       if(token!==generation)return;
-      const rows=result.submissions||[];
+      const rows=task.submissionSource==="github"?(result.evidence||[]):(result.submissions||[]);
       status.textContent=rows.length?
-        rows.length+" submitted project"+(rows.length===1?"":"s")+" loaded.":
-        "No student Studio submissions yet for this assessment.";
+        rows.length+" frozen evidence item"+(rows.length===1?"":"s")+" loaded.":
+        "No student evidence yet for this assessment.";
       if(!rows.length){
         inbox.append(make("div","rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600",
           "Students will appear here after a verified project version is submitted."));
@@ -98,8 +103,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           make("p","text-xs text-slate-500 mt-1",
             "Version "+row.version+" · "+row.status+" · "+(row.updatedAt?new Date(row.updatedAt).toLocaleString():"recently"))
         );
-        const button=make("button","rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5 text-sm","Review frozen project");
-        button.type="button";button.addEventListener("click",()=>void openReview(row));
+        const button=make("button","rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5 text-sm",task.submissionSource==="github"?"Verify evidence":"Review frozen project");
+        button.type="button";
+        const normalized=task.submissionSource==="github"?
+          {...row,recordId:row.evidenceId}:{...row,recordId:row.submissionId};
+        button.addEventListener("click",()=>void openReview(normalized));
         card.append(details,button);inbox.append(card);
       }
     }catch(error){
