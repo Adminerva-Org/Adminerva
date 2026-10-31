@@ -213,19 +213,8 @@ function externalStatus(text,error=false){
   const node=el("externalEvaluationStatus");if(!node)return;
   node.textContent=text;node.className="text-xs "+(error?"text-rose-700":"text-indigo-900");
 }
-let externalLoadingGeneration=0;
 function beginExternalOperation(message){
-  const indicator=el("externalEvaluationProcessing"),label=el("externalEvaluationProcessingText");
-  const generation=++externalLoadingGeneration;
-  if(label)label.textContent=message;
-  if(indicator){indicator.hidden=false;indicator.classList.remove("hidden");indicator.style.display="flex";}
-  const end=window.beginLoading?.(message)||(()=>{});
-  return ()=>{
-    end();
-    if(generation===externalLoadingGeneration&&indicator){
-      indicator.hidden=true;indicator.classList.add("hidden");indicator.style.display="none";
-    }
-  };
+  return window.beginLoading?.(message)||(()=>{});
 }
 function closeExternalEvaluation(){
   el("externalEvaluationModal")?.classList.add("hidden");
@@ -345,7 +334,6 @@ async function importExternalEvaluation(){
     if(!evidence){
       // Recover an interrupted/closed handoff from the current approved snapshot, not a mutable branch.
       externalStatus("Restoring verified evidence from the approved checkpoint before validation…");
-      el("externalEvaluationProcessingText").textContent="Restoring approved checkpoint evidence for validation…";
       evidence=await loadPinnedV2Source({
         repository:active.base,checkpointSha:active.checkpointSha,
         selectedCommits:active.selectedEvidenceCommits,assessment:active.assessment,
