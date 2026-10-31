@@ -1,6 +1,6 @@
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {activePlanningSchool} from "./school-planning.mjs?v=4.0.0";
+import {activePlanningSchool} from "./school-planning.mjs?v=4.0.1";
 
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolSchedules");
 function key(uid,schoolId,year,semester){
@@ -41,7 +41,9 @@ async function loadSchoolSchedule(){
   const {school,result}=await call("get",{schoolYear:state.schoolYear,semester:state.semester});
   if(result.revision===0&&!result.rows.length)
     throw Error("No verified-school timetable has been saved for this period.");
-  const loaded=window.adminervaApplySchoolSchedule?.(result);
+  const loaded=window.adminervaApplySchoolSchedule?.({
+    ...result,compatibilityMode:school.compatibilityMode||"legacy_allowed"
+  });
   if(loaded===false)return;
   remember(auth.currentUser.uid,school.schoolId,state.schoolYear,state.semester,result.revision);
 }
@@ -63,12 +65,18 @@ async function saveSchoolSchedule(){
     schoolYear:state.schoolYear,semester:state.semester,rows:state.rows,expectedRevision:expected
   })).result;
   remember(uid,school.schoolId,state.schoolYear,state.semester,result.revision);
+  window.adminervaApplySchoolSchedule?.({
+    schoolYear:state.schoolYear,semester:state.semester,rows:state.rows,
+    revision:result.revision,saved:true,compatibilityMode:school.compatibilityMode||"legacy_allowed"
+  });
   return {...result,schoolName:school.name||school.schoolId};
 }
 async function mount(){
   const anchor=document.getElementById("editSaveBtn");
   if(!anchor||document.getElementById("v4ScheduleSave"))return;
-  try{await activePlanningSchool();}catch{return;}
+  let school;
+  try{school=await activePlanningSchool();}catch{return;}
+  const v4Only=school.compatibilityMode==="v4_only";
   const load=document.createElement("button");
   load.id="v4ScheduleLoad";load.type="button";
   load.className="w-full sm:w-auto justify-center border border-indigo-300 bg-white text-indigo-800 px-4 py-3 sm:py-2 rounded font-bold hover:bg-indigo-50 transition shadow-sm flex items-center gap-2 text-sm";
@@ -89,15 +97,30 @@ async function mount(){
     try{
       const result=await saveSchoolSchedule();
       alert("Timetable saved to "+result.schoolName+" · revision "+result.revision+
-        ". The legacy personal Save Schedule remains separate during migration.");
+        (v4Only?".":"; the legacy personal schedule remains separate during migration."));
     }catch(error){alert("School timetable was not saved: "+(error?.message||"review the class assignments and current school revision."));}
     finally{end();setBusy(false);}
   })());
   anchor.after(save);anchor.after(load);
   const note=document.createElement("p");note.id="v4ScheduleNote";
   note.className="text-xs text-indigo-800 mt-2";
-  note.textContent="Verified-school timetable controls are separate from the legacy personal cloud schedule during the 4.0 migration.";
+  note.textContent=v4Only?
+    "This timetable saves only to the selected verified school. Class rows are validated against your active teaching assignments.":
+    "Verified-school timetable controls are separate from the legacy personal cloud schedule during the 4.0 migration.";
   document.getElementById("scheduleScopeStatus")?.parentElement?.append(note);
+  if(v4Only){
+    save.hidden=true;
+    window.saveScheduleData=async()=>{
+      try{await saveSchoolSchedule();return true;}
+      catch(error){alert("School timetable was not saved: "+(error?.message||"review the class assignments and current school revision."));return false;}
+    };
+    try{await loadSchoolSchedule();}
+    catch(error){
+      const message=String(error?.message||"");
+      if(!message.includes("No verified-school timetable"))
+        note.textContent="Verified-school timetable could not load: "+message;
+    }
+  }
 }
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>void mount(),{once:true});
 else void mount();
