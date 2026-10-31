@@ -1,12 +1,16 @@
 import {app,auth} from "./firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "./tenant-school-picker.mjs?v=4.0.0";
+import {getStorage,ref as storageRef,uploadBytes,getBytes} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js";
 
-const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolSupport");
+const functions=getFunctions(app,"asia-southeast1");
+const api=httpsCallable(functions,"schoolSupport");
+const filePolicyApi=httpsCallable(functions,"schoolFilePolicy");
+const storage=getStorage(app);
 const el=id=>document.getElementById(id);
 const workspace=el("schoolSupportWorkspace"),status=el("schoolSupportStatus"),
   list=el("schoolSupportList"),detail=el("schoolSupportDetail"),empty=el("schoolSupportEmpty");
-let reports=[],selected=null,selectedDetail=null,busy=false,loadEpoch=0;
+let reports=[],selected=null,selectedDetail=null,busy=false,loadEpoch=0,filePolicy=null;
 
 function say(message){status.textContent=message;}
 function date(value){return value?new Date(value).toLocaleString():"—";}
@@ -24,13 +28,67 @@ const picker=createTenantSchoolPicker({
   onReady:scope=>{
     if(!scope.current){workspace.hidden=true;return;}
     workspace.hidden=false;
-    void refresh(scope).catch(error=>say(error?.message||"School reports are unavailable."));
+    void (async()=>{
+      try{await loadFilePolicy();}catch(error){
+        filePolicy=null;el("schoolSupportAttachmentField").hidden=true;
+        el("schoolSupportFilePolicy").textContent="Attachment policy could not be loaded.";
+      }
+      await refresh(scope);
+    })().catch(error=>say(error?.message||"School reports are unavailable."));
   }
 });
 async function perform(action,details={}){
   const lease=picker.scope.lease();
   const result=(await api({schoolId:lease.schoolId,action,...details})).data;
   picker.scope.assertLease(lease);return result;
+}
+async function loadFilePolicy(){
+  const lease=picker.scope.lease();
+  const result=(await filePolicyApi({schoolId:lease.schoolId,action:"status"})).data;
+  picker.scope.assertLease(lease);
+  filePolicy=result.policy||null;
+  const enabled=Boolean(filePolicy?.supportAttachmentsEnabled);
+  el("schoolSupportAttachmentField").hidden=!enabled;
+  el("schoolSupportFiles").disabled=!enabled;
+  el("schoolSupportFilePolicy").textContent=enabled?
+    "Attachments are private to this report and authorized school administrators. "+
+      "Retention: "+filePolicy.retentionDays+" days · per-file limit: "+
+      Math.round(filePolicy.maxBytes/1048576)+" MB.":
+    "Attachments are disabled until a school administrator enables the school file-retention policy.";
+  el("schoolSupportAttachmentHelp").textContent=enabled?
+    "PNG, JPEG, WebP, PDF or text. Up to 12 files per report; each file must stay within the school limit.":"";
+  return filePolicy;
+}
+function attachmentId(){
+  const bytes=crypto.getRandomValues(new Uint8Array(16));
+  return [...bytes].map(value=>value.toString(16).padStart(2,"0")).join("");
+}
+async function uploadAttachment(reportId,file){
+  if(!filePolicy?.supportAttachmentsEnabled)
+    throw new Error("School attachments are not enabled.");
+  if(!filePolicy.allowedContentTypes?.includes(file.type))
+    throw new Error(file.name+": unsupported file type.");
+  if(file.size>filePolicy.maxBytes)
+    throw new Error(file.name+": file exceeds the school limit.");
+  const fileId=attachmentId(),reservation=await perform("prepare_attachment",{
+    reportId,fileId,originalName:file.name,contentType:file.type,size:file.size
+  });
+  await uploadBytes(storageRef(storage,reservation.storagePath),file,{
+    contentType:reservation.contentType,
+    customMetadata:reservation.requiredMetadata
+  });
+  return perform("finalize_attachment",{reportId,fileId});
+}
+async function downloadAttachment(item){
+  say("Downloading private attachment…");
+  try{
+    const bytes=await getBytes(storageRef(storage,item.storagePath),filePolicy?.maxBytes||5242880);
+    const blob=new Blob([bytes],{type:item.contentType||"application/octet-stream"}),
+      url=URL.createObjectURL(blob),link=document.createElement("a");
+    link.href=url;link.download=item.originalName||"attachment";document.body.append(link);link.click();
+    link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    say("Attachment downloaded.");
+  }catch(error){say(error?.message||"Attachment download failed.");}
 }
 function filteredReports(){
   const mode=el("schoolSupportFilter").value;
@@ -68,6 +126,22 @@ async function refresh(scope=picker.scope){
     selected&&reports.some(item=>item.reportId===selected)?selected:null;
   if(target)await openReport(target,{replaceUrl:false});
 }
+function renderAttachments(items){
+  const section=el("schoolSupportAttachmentsSection"),host=el("schoolSupportAttachments"),
+    count=el("schoolSupportAttachmentCount");
+  host.replaceChildren();
+  const rows=items||[];section.hidden=!rows.length;count.textContent=rows.length?rows.length+" file"+(rows.length===1?"":"s"):"";
+  for(const item of rows){
+    const row=make("div","flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between border rounded-lg p-3");
+    const info=make("div","min-w-0");
+    info.append(make("strong","block text-sm break-all",item.originalName),
+      make("span","block text-xs text-slate-500 mt-1",
+        item.contentType+" · "+Math.max(1,Math.round(item.size/1024))+" KB · expires "+date(item.expiresAt)));
+    const button=make("button","rounded-lg border px-3 py-2 text-sm font-bold","Download");
+    button.type="button";button.addEventListener("click",()=>void downloadAttachment(item));
+    row.append(info,button);host.append(row);
+  }
+}
 function renderComments(comments){
   const host=el("schoolSupportComments");host.replaceChildren();
   for(const comment of comments||[]){
@@ -87,6 +161,7 @@ function renderDetail(payload){
   el("schoolSupportDescription").textContent=report.description;
   el("schoolSupportBadge").textContent=report.status+" · "+report.priority;
   renderComments(payload.comments);
+  renderAttachments(payload.attachments);
   const current=picker.scope.current,isAdmin=Boolean(current?.roles.includes("school_admin"));
   el("schoolSupportAdmin").hidden=!isAdmin;
   const triage=el("schoolSupportTriage");
@@ -124,8 +199,10 @@ async function submitAction(form,operation){
   finally{busy=false;controls.forEach(control=>control.disabled=false);}
 }
 el("schoolSupportCreate").addEventListener("submit",event=>{
-  event.preventDefault();const form=event.currentTarget,values=new FormData(form);
+  event.preventDefault();const form=event.currentTarget,values=new FormData(form),
+    files=[...el("schoolSupportFiles").files];
   void submitAction(form,async()=>{
+    if(files.length>12)throw new Error("A report supports up to 12 attachments.");
     say("Creating a private school report…");
     const result=await perform("create",{
       category:String(values.get("category")||""),
@@ -133,8 +210,16 @@ el("schoolSupportCreate").addEventListener("submit",event=>{
       title:String(values.get("title")||""),
       description:String(values.get("description")||"")
     });
+    if(files.length){
+      let completed=0;
+      for(const file of files){
+        say("Uploading private attachment "+(completed+1)+" of "+files.length+"…");
+        await uploadAttachment(result.reportId,file);completed++;
+      }
+    }
     form.reset();await refresh();await openReport(result.reportId);
-    say("School report created. Only you and authorized school administrators can access it.");
+    say("School report created"+(files.length?" with "+files.length+" private attachment"+(files.length===1?"":"s"):"")+
+      ". Only you and authorized school administrators can access it.");
     return result;
   });
 });
