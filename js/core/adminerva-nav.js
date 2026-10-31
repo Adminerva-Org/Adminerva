@@ -178,7 +178,8 @@ document.addEventListener("DOMContentLoaded", () => {
                   <span id="userEmailDisplay" class="block text-[10px] text-slate-400 truncate max-w-[150px]"></span>
                   <span class="av-nav-role block text-[10px] text-cyan-300">${roleLabel} ▾</span>
                 </summary>
-                <div class="av-nav-menu-panel absolute right-0 top-full mt-2 w-56 z-[120] rounded-xl bg-slate-900 border border-slate-600 shadow-2xl p-2 text-left">
+                <div class="av-nav-menu-panel absolute right-0 top-full mt-2 w-64 z-[120] rounded-xl bg-slate-900 border border-slate-600 shadow-2xl p-2 text-left">
+                  <div id="av-school-context" hidden></div>
                   <a href="issues.html" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">My reports & support</a>
                   <a href="wiki.html#privacy" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Privacy</a>
                   <a data-account-settings href="${isStudent ? "student-settings.html" : "settings.html"}" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Settings</a>
@@ -295,8 +296,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // This event changes presentation; it does not authorize any data operation.
   document.addEventListener("adminerva:role-ready", event => {
     const role = event.detail?.role;
-    if(!["student","teacher","schooladmin","superadmin"].includes(role))return;
+    if(!["student","teacher","schooladmin","superadmin","platformowner"].includes(role))return;
     renderNavigation(role);
+    import("./account-school-context.mjs?v=4.0.0")
+      .then(module=>module.mountAccountSchoolSwitcher(root))
+      .catch(error=>console.warn("School account context unavailable:",error?.message||error));
   });
   document.addEventListener("click", event => {
     for (const details of disclosures) if (details.open && !details.contains(event.target)) details.open = false;
