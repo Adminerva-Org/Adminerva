@@ -178,8 +178,9 @@ if(panel&&list&&status&&schoolHost){
       const row=node("article","rounded-xl border border-slate-200 p-3");
       const controls=node("div","flex flex-wrap items-center gap-3");
       const include=node("label","inline-flex items-center gap-2 text-xs font-bold text-slate-700");
+      const editable=!githubTaskStatus?.submitted||githubTaskStatus?.status==="reopened";
       const check=document.createElement("input");check.type="checkbox";check.checked=githubSelected.has(full);
-      check.disabled=githubBusy||commit.unavailable===true;
+      check.disabled=githubBusy||!editable||commit.unavailable===true;
       check.addEventListener("change",()=>{
         if(check.checked)githubSelected.add(full);else githubSelected.delete(full);
         renderGithubCommits();
@@ -187,7 +188,7 @@ if(panel&&list&&status&&schoolHost){
       include.append(check,node("span","","Include"));
       const checkpointLabel=node("label","inline-flex items-center gap-2 text-xs font-bold text-indigo-800");
       const radio=document.createElement("input");radio.type="radio";radio.name="v4GithubCheckpoint";
-      radio.checked=githubCheckpoint===full;radio.disabled=githubBusy||commit.unavailable===true;
+      radio.checked=githubCheckpoint===full;radio.disabled=githubBusy||!editable||commit.unavailable===true;
       radio.addEventListener("change",()=>{githubCheckpoint=full;renderGithubCommits();});
       checkpointLabel.append(radio,node("span","","Checkpoint"));
       controls.append(include,checkpointLabel,node("span","font-mono text-xs text-indigo-800",full.slice(0,12)));
@@ -199,13 +200,62 @@ if(panel&&list&&status&&schoolHost){
         (author.name||"Unknown Git author")+" · "+(author.date?new Date(author.date).toLocaleString():"Date unavailable")));
       if(commit.unavailable)row.append(node("p","mt-2 text-xs text-amber-800",
         "This commit is part of your prior frozen selection but was not returned in the loaded history window."));
+      if(githubTaskStatus?.status==="submitted"&&githubSelected.has(full)){
+        const claim=githubClaims.get(full),claimBox=node("div","mt-2 flex flex-wrap items-center gap-2");
+        if(claim){
+          claimBox.append(node("span","text-xs font-bold "+(
+            claim.status==="approved"||claim.status==="shared"?"text-emerald-800":
+            claim.status==="rejected"?"text-rose-800":"text-amber-800"),
+            "Attribution: "+claim.status.replace(/_/g," ")));
+          if(claim.status==="pending"){
+            const withdraw=node("button","text-xs font-bold text-rose-700 underline","Withdraw request");
+            withdraw.type="button";withdraw.addEventListener("click",()=>void withdrawReclaim(claim));
+            claimBox.append(withdraw);
+          }
+          if(claim.decisionReason)claimBox.append(node("span","text-xs text-slate-500",claim.decisionReason));
+        }else{
+          const request=node("button","text-xs font-bold text-amber-800 underline","Request attribution review");
+          request.type="button";request.addEventListener("click",()=>openReclaim(commit));
+          claimBox.append(request);
+        }
+        row.append(claimBox);
+      }
       ghList.append(row);
     }
+  }
+  async function loadGithubClaims(){
+    githubClaims=new Map();
+    if(!githubTask||githubTaskStatus?.status!=="submitted")return;
+    try{
+      const result=await scoped(picker.scope,reclaimsApi,"mine",{taskId:githubTask.taskId});
+      githubClaims=new Map((result.claims||[]).map(claim=>[claim.sha,claim]));
+    }catch(error){ghStatus.textContent="Attribution status unavailable: "+(error?.message||"retry later");}
+  }
+  function openReclaim(commit){
+    reclaimTarget=commit;
+    document.getElementById("v4GithubReclaimSubject").textContent=String(commit.sha||"");
+    document.getElementById("v4GithubReclaimReason").value="";
+    document.getElementById("v4GithubReclaimStatus").textContent="";
+    document.getElementById("v4GithubReclaimEditor").classList.remove("hidden");
+    document.getElementById("v4GithubReclaimReason").focus();
+  }
+  function closeReclaim(){
+    reclaimTarget=null;document.getElementById("v4GithubReclaimEditor").classList.add("hidden");
+  }
+  async function withdrawReclaim(claim){
+    if(githubBusy||!confirm("Withdraw this pending attribution request? The evidence submission itself remains unchanged."))return;
+    githubBusy=true;renderGithubCommits();
+    try{
+      await scoped(picker.scope,reclaimsApi,"withdraw",{claimId:claim.claimId});
+      await loadGithubClaims();renderGithubCommits();
+      ghStatus.textContent="Attribution request withdrawn. Your frozen evidence was not changed.";
+    }catch(error){ghStatus.textContent=error?.message||"Attribution request could not be withdrawn.";}
+    finally{githubBusy=false;renderGithubCommits();}
   }
   async function openGithubEvidence(task,current){
     githubTask=task;githubTaskStatus=current||null;
     githubCommits=[];githubSelected=new Set(current?.selectedCommitShas||[]);
-    githubCheckpoint=current?.checkpointSha||"";
+    githubCheckpoint=current?.checkpointSha||"";githubClaims=new Map();closeReclaim();
     const savedKey="adminerva:v4:github-repository:"+(auth.currentUser?.uid||"")+":"+
       (picker?.scope.current?.schoolId||"");
     let remembered="";try{remembered=sessionStorage.getItem(savedKey)||"";}catch{}
@@ -215,8 +265,12 @@ if(panel&&list&&status&&schoolHost){
     ghStatus.textContent=current?.status==="reopened"?
       "Your teacher requested a revision. Load the repository, adjust the frozen commit selection, and resubmit before the extension deadline.":
       "Choose commits representing your work and a project checkpoint containing that work.";
+    const editable=!current?.submitted||current?.status==="reopened";
+    ghSubmit.classList.toggle("hidden",!editable);ghSubmit.disabled=!editable;
     renderGithubCommits();ghDialog.showModal();
+    if(current?.status==="submitted")await loadGithubClaims();
     if(ghRepository.value)await loadGithubHistory().catch(error=>{ghStatus.textContent=error.message;});
+    renderGithubCommits();
   }
   async function loadGithubHistory(){
     if(githubBusy)return;
@@ -255,6 +309,31 @@ if(panel&&list&&status&&schoolHost){
       renderGithubCommits();
     }
   }
+  document.getElementById("v4GithubReclaimCancel").addEventListener("click",closeReclaim);
+  document.getElementById("v4GithubReclaimSubmit").addEventListener("click",()=>void (async()=>{
+    if(githubBusy||!reclaimTarget||githubTaskStatus?.status!=="submitted")return;
+    const explanation=document.getElementById("v4GithubReclaimReason").value.trim();
+    if(explanation.length<10){
+      document.getElementById("v4GithubReclaimStatus").textContent=
+        "Explain the attribution issue in at least 10 characters.";return;
+    }
+    const author=reclaimTarget.commit?.author||{};
+    if(!confirm("Send this commit attribution request to your school administrator?"))return;
+    githubBusy=true;document.getElementById("v4GithubReclaimSubmit").disabled=true;
+    try{
+      await scoped(picker.scope,reclaimsApi,"request",{
+        taskId:githubTask.taskId,evidenceId:githubTaskStatus.evidenceId,
+        sha:String(reclaimTarget.sha||"").toLowerCase(),explanation,
+        detectedAuthorName:String(author.name||""),
+        detectedAuthorLogin:String(reclaimTarget.author?.login||"")
+      });
+      await loadGithubClaims();closeReclaim();renderGithubCommits();
+      ghStatus.textContent="Attribution request sent. Evidence approval waits for any pending claim decision.";
+    }catch(error){
+      document.getElementById("v4GithubReclaimStatus").textContent=
+        error?.message||"Attribution request was not sent.";
+    }finally{githubBusy=false;document.getElementById("v4GithubReclaimSubmit").disabled=false;}
+  })());
   document.getElementById("v4GithubLoad").addEventListener("click",()=>
     void loadGithubHistory().catch(()=>{}));
   document.getElementById("v4GithubEvidenceClose").addEventListener("click",()=>ghDialog.close());
