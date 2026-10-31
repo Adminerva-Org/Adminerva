@@ -240,7 +240,16 @@ function legacyGradeCriteria(grade,task){
 }
 function gradeCandidate({row,task,student,github,studio,revisions}){
  const grade=row.data,scored=legacyGradeCriteria(grade,task);
- if(!scored.ok)return scored;
+ let scoreModel=scored,gradeSchema="rubric_v1";
+ if(!scored.ok&&["grade_criterion_breakdown_missing","grade_criterion_total_stale"].includes(scored.reason)){
+  const awarded=Number(grade.score),total=(task.rubric||[]).reduce((sum,item)=>sum+Number(item.points||0),0);
+  const legacyMax=Number(grade.maxScore);
+  if(!Number.isFinite(awarded)||awarded<0||awarded>total+0.000001||
+     (Number.isFinite(legacyMax)&&Math.abs(legacyMax-total)>0.001))return scored;
+  gradeSchema="legacy_scalar_v1";
+  scoreModel={ok:true,criteria:[],awarded,pending:0,total,
+   compatibilityReason:scored.reason};
+ }else if(!scored.ok)return scored;
  const status=grade.published===true?"published":"draft";
  let evidenceType,submissionId,submissionVersion,submissionDigest;
  if(task.submissionSource==="github"){
@@ -270,10 +279,11 @@ function gradeCandidate({row,task,student,github,studio,revisions}){
   schoolId:SCHOOL_ID,taskId:task.taskId,offeringId:task.offeringId,
   personId:student.personId,studentUid:student.uid,reviewerUid:clean(grade.reviewedBy,128)||task.ownerUid,
   evidenceType,submissionId,submissionVersion,submissionDigest,
-  criteria:scored.criteria,awarded:scored.awarded,pending:scored.pending,total:scored.total,
+  gradeSchema,criteria:scoreModel.criteria,awarded:scoreModel.awarded,pending:scoreModel.pending,total:scoreModel.total,
   feedback:clean(grade.feedback,5000),status,revision:Math.max(1,Number(grade.gradeVersion)||1),
   publishedAt:status==="published"?(timeMillis(grade.publishedAt)||timeMillis(grade.updatedAt)||timeMillis(grade.gradedAt)):null,
   migration:{sourcePath:row.path,legacyGradeId:row.id,legacyGradeSource:clean(grade.gradeSource,80),
+   compatibilityReason:scoreModel.compatibilityReason||null,
    legacyRevisions:revisions.map(item=>({id:item.id,reason:clean(item.data.reason,1000),
     editorUid:clean(item.data.editorUid,128),before:item.data.before||null,after:item.data.after||null,
     createdAt:timeMillis(item.data.createdAt)}))}};
@@ -345,11 +355,14 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
    github:githubByKey.get(task.taskId+"|"+student.uid),
    studio:studioByKey.get(task.taskId+"|"+student.uid),revisions});
   if(!candidate.ok){
-   const type=candidate.reason==="grade_criterion_breakdown_missing"?
-    "grade_requires_historical_scalar_compatibility":candidate.reason;
-   blockers.push({type,sourcePath:row.path,legacyGradeId:row.id,
+   blockers.push({type:candidate.reason,sourcePath:row.path,legacyGradeId:row.id,
     legacyScore:Number(row.data.score),taskId:task.taskId});continue;
   }
+  if(candidate.gradeSchema==="legacy_scalar_v1")reviewItems.push({
+   type:"historical_scalar_grade_preserved",legacyGradeId:row.id,taskId:task.taskId,
+   studentUid:student.uid,awarded:candidate.awarded,total:candidate.total,
+   resolution:"Preserve exact scalar score/feedback. Teacher may later reconstruct rubric allocation without changing the published score."
+  });
   grades.push(candidate);
  }
  return {schema:SCHEMA,schoolId:SCHOOL_ID,readOnly:true,generatedAt:new Date().toISOString(),
@@ -361,7 +374,7 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
   nextRequiredReview:[
    "Do not auto-convert withdrawn or teacher-discovered checkpoint-only GitHub evidence into ordinary submitted evidence.",
    "Provide an explicit revision extension policy for historical Studio revision requests whose original deadline already passed.",
-   "Multi-criterion scalar grades without a saved criterion breakdown require a read-only historical-grade compatibility representation; do not distribute points across rubric rows.",
+   "Multi-criterion scalar grades without a trustworthy saved breakdown use the read-only legacy_scalar_v1 representation; do not distribute points across rubric rows.",
    "Preserve grade publication state and revision history without firing student notifications during migration."
   ]};
 }
