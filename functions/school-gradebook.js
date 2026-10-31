@@ -9,6 +9,7 @@ const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {digestProject}=require("./school-studio-projects.js");
+const {digestEvidence}=require("./school-github-evidence.js");
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
 function deny(code,message){throw new TenantAccessError(code,message)}
 function validateScores(criteria,rubric){
@@ -54,7 +55,7 @@ function createSchoolGradebookService({db}){
      .map(doc=>({gradeId:doc.id,taskId:doc.data().taskId,
       total:doc.data().total,awarded:doc.data().awarded,
       criteria:doc.data().criteria,feedback:doc.data().feedback,
-      revision:doc.data().revision,
+      evidenceType:doc.data().evidenceType||"studio",revision:doc.data().revision,
       publishedAt:doc.data().publishedAt?.toMillis?.()||null,
       lastCorrectedAt:doc.data().lastCorrectedAt?.toMillis?.()||null}))};
   }
@@ -62,13 +63,27 @@ function createSchoolGradebookService({db}){
   const taskId=checkId(input.taskId,"Task ID",128),
    studentUid=checkId(input.studentUid,"Student UID",128);
   const taskRef=db.doc(prefix+"assessments/"+taskId);
-  const submissionRef=db.doc(prefix+"studio_submissions/"+hash(ctx.schoolId,taskId,studentUid));
   const gradeRef=grades.doc(hash(taskId,studentUid));
   const task=await taskRef.get();
-  if(!task.exists||task.data().schoolId!==ctx.schoolId||
-     task.data().ownerUid!==ctx.uid||task.data().submissionSource!=="studio")
+  if(!task.exists||task.data().schoolId!==ctx.schoolId||task.data().ownerUid!==ctx.uid||
+     !["studio","github"].includes(task.data().submissionSource))
    deny("permission-denied","You cannot grade an assessment you do not own in this school.");
+  const source=task.data().submissionSource;
+  const submissionRef=db.doc(prefix+
+    (source==="studio"?"studio_submissions/":"github_evidence/")+
+    hash(ctx.schoolId,taskId,studentUid));
   const offeringId=task.data().offeringId;
+  const evidenceDigest=data=>source==="studio"?data.contentDigest:data.evidenceDigest;
+  const gradeable=data=>source==="studio"?
+    ["submitted","reviewed"].includes(data.status):["approved","reviewed"].includes(data.status);
+  const verifyFrozen=snapshot=>{
+    if(!snapshot.exists)return false;
+    const data=snapshot.data();
+    if(source==="studio")
+      return data.contentDigest&&data.contentDigest===digestProject(data.files,data.artifacts||{});
+    return data.evidenceDigest&&data.evidenceDigest===
+      digestEvidence(data.repository,data.selectedCommitShas||[],data.checkpointSha);
+  };
   const grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,offeringId));
   async function authorize(tx){
    const [school,member,grant,currentTask,submission]=await Promise.all([
@@ -96,9 +111,9 @@ function createSchoolGradebookService({db}){
    if(!submission.exists||submission.data().schoolId!==ctx.schoolId||
       submission.data().taskId!==taskId||submission.data().studentUid!==studentUid)
     deny("not-found","Student submission is unavailable.");
-   return {taskId,studentUid,currentVersion:submission.data().currentVersion,
+   return {taskId,studentUid,evidenceType:source,currentVersion:submission.data().currentVersion,
     grade:grade.exists&&grade.data().schoolId===ctx.schoolId?{
-      status:grade.data().status,criteria:grade.data().criteria,
+      status:grade.data().status,evidenceType:grade.data().evidenceType||source,criteria:grade.data().criteria,
       awarded:grade.data().awarded,total:grade.data().total,
       pending:grade.data().pending,feedback:grade.data().feedback,
       version:grade.data().submissionVersion,revision:grade.data().revision,
@@ -118,14 +133,15 @@ function createSchoolGradebookService({db}){
     const grade=await tx.get(gradeRef);
     if(grade.exists&&grade.data().status==="published")
      deny("failed-precondition","Published grades require a formal correction workflow.");
-    if(submission.status!=="submitted"&&submission.status!=="reviewed")
-     deny("failed-precondition","Only the currently submitted revision may be graded.");
+    if(!gradeable(submission))
+     deny("failed-precondition",source==="github"?
+       "Teacher-approved GitHub evidence is required before grading.":
+       "Only the currently submitted Studio revision may be graded.");
     if(submission.currentVersion!==submissionVersion)
      deny("failed-precondition","Student resubmitted. Refresh the frozen submission before grading.");
     const snapshot=await tx.get(submissionRef.collection("versions").doc(String(submissionVersion)));
-    if(!snapshot.exists||snapshot.data().contentDigest!==submission.contentDigest||
-       snapshot.data().contentDigest!==digestProject(snapshot.data().files,snapshot.data().artifacts||{}))
-     deny("failed-precondition","The frozen submission evidence changed or is missing.");
+    if(!snapshot.exists||evidenceDigest(snapshot.data())!==evidenceDigest(submission)||!verifyFrozen(snapshot))
+     deny("failed-precondition","The frozen assessment evidence changed or is missing.");
     const scores=validateScores(input.criteria,task.rubric);
     const revision=grade.exists?(grade.data().revision||0)+1:1;
     if(grade.exists&&grade.data().status!=="draft")
@@ -133,7 +149,7 @@ function createSchoolGradebookService({db}){
     const now=FieldValue.serverTimestamp();
     const values={schoolId:ctx.schoolId,taskId,offeringId,
      personId:submission.personId,studentUid,reviewerUid:ctx.uid,
-     submissionId:submissionRef.id,submissionVersion,submissionDigest:submission.contentDigest,
+     evidenceType:source,submissionId:submissionRef.id,submissionVersion,submissionDigest:evidenceDigest(submission),
      criteria:scores.criteria,awarded:scores.awarded,pending:scores.pending,total:scores.total,
      feedback,status:"draft",revision,updatedAt:now};
     if(grade.exists)tx.update(gradeRef,values);
@@ -165,14 +181,13 @@ function createSchoolGradebookService({db}){
     const previous=grade.data();
     if(previous.revision!==expectedRevision)
      deny("failed-precondition","This published grade changed. Reload it before recording a correction.");
-    if(previous.submissionVersion!==submission.currentVersion||
-       previous.submissionDigest!==submission.contentDigest||
+    if(previous.evidenceType!==source||previous.submissionVersion!==submission.currentVersion||
+       previous.submissionDigest!==evidenceDigest(submission)||
        submission.status!=="reviewed")
      deny("failed-precondition","The published grade is no longer bound to the current reviewed submission.");
     const snapshot=await tx.get(submissionRef.collection("versions").doc(String(previous.submissionVersion)));
-    if(!snapshot.exists||snapshot.data().contentDigest!==submission.contentDigest||
-       snapshot.data().contentDigest!==digestProject(snapshot.data().files,snapshot.data().artifacts||{}))
-     deny("failed-precondition","The frozen student submission could not be verified.");
+    if(!snapshot.exists||evidenceDigest(snapshot.data())!==evidenceDigest(submission)||!verifyFrozen(snapshot))
+     deny("failed-precondition","The frozen student evidence could not be verified.");
     const scores=validateScores(input.criteria,task.rubric);
     if(scores.pending>0)
      deny("failed-precondition","Published-grade corrections cannot leave pending rubric points.");
@@ -200,17 +215,16 @@ function createSchoolGradebookService({db}){
     if(!grade.exists||grade.data().status!=="draft")
      deny("failed-precondition","Save and review an unpublished grade draft before publication.");
     const data=grade.data();
-    if(submission.status!=="submitted"&&submission.status!=="reviewed")
-     deny("failed-precondition","Student evidence was reopened or withdrawn; refresh before publishing.");
-    if(data.submissionVersion!==submission.currentVersion||
-       data.submissionDigest!==submission.contentDigest||
+    if(!gradeable(submission))
+     deny("failed-precondition","Student evidence is no longer in an approved grading state; refresh before publishing.");
+    if(data.evidenceType!==source||data.submissionVersion!==submission.currentVersion||
+       data.submissionDigest!==evidenceDigest(submission)||
        data.studentUid!==studentUid||data.taskId!==taskId)
      deny("failed-precondition","The grade draft is stale relative to the student's frozen submission.");
     if(data.pending>0)deny("failed-precondition","Resolve pending rubric points before publishing a final grade.");
     const snapshot=await tx.get(submissionRef.collection("versions").doc(String(data.submissionVersion)));
-    if(!snapshot.exists||snapshot.data().contentDigest!==submission.contentDigest||
-       snapshot.data().contentDigest!==digestProject(snapshot.data().files,snapshot.data().artifacts||{}))
-     deny("failed-precondition","The frozen student submission could not be verified.");
+    if(!snapshot.exists||evidenceDigest(snapshot.data())!==evidenceDigest(submission)||!verifyFrozen(snapshot))
+     deny("failed-precondition","The frozen student evidence could not be verified.");
     const now=FieldValue.serverTimestamp(),revision=data.revision+1;
     tx.update(gradeRef,{status:"published",publishedAt:now,publishedByUid:ctx.uid,
       revision,updatedAt:now});
