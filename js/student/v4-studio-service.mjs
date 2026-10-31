@@ -178,6 +178,19 @@ export function queueV4StudioProjectSync(project,state){
       .catch(error=>console.warn("V4 Studio sync skipped:",callableMessage(error,"save conflict")));
   },2200);
 }
+export async function listArchivedV4StudioProjects(){
+  const result=await scopedCall(projectsApi,"list_archived");
+  return result?result.projects||[]:null;
+}
+export async function restoreV4StudioProject(projectId,expectedRevision){
+  await init();
+  if(!activeSchool||!auth.currentUser)return null;
+  if(!Number.isInteger(expectedRevision)||expectedRevision<1)
+    throw Error("The archived school project revision is required.");
+  const result=await scopedCall(projectsApi,"restore",{projectId,expectedRevision});
+  setRevision(auth.currentUser.uid,activeSchool.schoolId,projectId,result.revision);
+  return result;
+}
 export async function listV4StudioProjects(){
   const result=await scopedCall(projectsApi,"list");
   return result?result.projects||[]:null;
