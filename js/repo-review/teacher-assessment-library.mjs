@@ -7,14 +7,16 @@ const schoolAcademicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"scho
 const el=id=>document.getElementById(id),status=el("tl-status"),workspace=el("tl-workspace");
 const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
   previewDialog=el("tl-preview-dialog");
-let items=[],deployments=[],filter="mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,pendingWrite=false;
+let items=[],deployments=[],filter="mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,
+  lifecycleTask=null,lifecycleAction=null,pendingWrite=false;
 const say=message=>status.textContent=message;
 const picker=createTenantSchoolPicker({
   host:el("tl-school-switcher"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
-    items=[];deployments=[];editing=null;sharing=null;deploying=null;deployRequestKey=null;list.replaceChildren();workspace.hidden=true;
-    shareDialog.close?.();previewDialog.close?.();el("tl-deploy-dialog").close?.();
+    items=[];deployments=[];editing=null;sharing=null;deploying=null;deployRequestKey=null;
+    lifecycleTask=null;lifecycleAction=null;list.replaceChildren();workspace.hidden=true;
+    shareDialog.close?.();previewDialog.close?.();el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();
     form.reset();
   },
   onReady:scope=>{
@@ -78,6 +80,28 @@ function actionButton(text,handler,alternate=false) {
   button.addEventListener("click",handler);
   return button;
 }
+function openLifecycle(task,action){
+  lifecycleTask=task;lifecycleAction=action;
+  const dialog=el("tl-lifecycle-dialog"),form=el("tl-lifecycle-form"),
+    deadlineField=el("tl-lifecycle-deadline-field");
+  form.reset();deadlineField.hidden=action!=="reopen";
+  const labels={
+    close:["Close assessment","Stops new first submissions. Existing teacher-requested revisions can still be resubmitted."],
+    reopen:["Reopen assessment","Allows new submissions again. If the prior deadline passed, set a new deadline."],
+    archive:["Archive assessment","Removes the task from active student assignment lists while preserving submissions and grades."],
+    restore_archive:["Restore archived assessment","Restores the task to its prior active/closed lifecycle state."],
+    cancel:["Cancel assessment","Allowed only when no Studio/GitHub submission or grade history exists."]
+  };
+  el("tl-lifecycle-heading").textContent=labels[action]?.[0]||"Update deployment";
+  el("tl-lifecycle-help").textContent=labels[action]?.[1]||"";
+  el("tl-lifecycle-task").textContent=task.title+" · current state: "+(task.lifecycle||"active");
+  if(action==="reopen"&&task.dueAt&&task.dueAt<=Date.now()){
+    const next=new Date(Date.now()+24*60*60*1000);
+    form.elements.newDueAt.value=localDateInput(next);
+    form.elements.newDueAt.required=true;
+  }else form.elements.newDueAt.required=false;
+  dialog.showModal();
+}
 function showPreview(item){
   el("tl-preview-heading").textContent=item.title;
   el("tl-preview-meta").textContent="Owner: "+(item.canShare?"You":item.ownerUid.slice(0,8))+" · "+item.visibility;
@@ -104,18 +128,32 @@ function render(){
       list.append(empty);
     }
     for(const task of deployments){
+      const lifecycle=task.lifecycle||"active";
       const row=document.createElement("article");row.className="tl-row";
       const text=document.createElement("div"),heading=document.createElement("h3"),meta=document.createElement("p");
       heading.style.fontWeight="750";heading.textContent=task.title;
       meta.className="tl-muted";
-      meta.textContent=task.submissionSource+" · "+task.status+" · due "+(task.dueAt?
+      meta.textContent=task.submissionSource+" · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
         new Date(task.dueAt).toLocaleString():"not scheduled");
       text.append(heading,meta);
       const controls=document.createElement("div");controls.className="tl-actions";
-      const gradebook=document.createElement("a");gradebook.className="tl-action alt";
-      gradebook.href="school-gradebook.html?task="+encodeURIComponent(task.taskId);
-      gradebook.textContent="Review & Grade";
-      controls.append(gradebook);row.append(text,controls);list.append(row);
+      if(lifecycle!=="cancelled"){
+        const gradebook=document.createElement("a");gradebook.className="tl-action alt";
+        gradebook.href="school-gradebook.html?task="+encodeURIComponent(task.taskId);
+        gradebook.textContent="Review & Grade";controls.append(gradebook);
+      }
+      if(lifecycle==="active"){
+        controls.append(actionButton("Close",()=>openLifecycle(task,"close"),true));
+        controls.append(actionButton("Archive",()=>openLifecycle(task,"archive"),true));
+        controls.append(actionButton("Cancel",()=>openLifecycle(task,"cancel"),true));
+      }else if(lifecycle==="closed"){
+        controls.append(actionButton("Reopen",()=>openLifecycle(task,"reopen")));
+        controls.append(actionButton("Archive",()=>openLifecycle(task,"archive"),true));
+        controls.append(actionButton("Cancel",()=>openLifecycle(task,"cancel"),true));
+      }else if(lifecycle==="archived"){
+        controls.append(actionButton("Restore",()=>openLifecycle(task,"restore_archive"),true));
+      }
+      row.append(text,controls);list.append(row);
     }
     return;
   }
@@ -274,6 +312,38 @@ async function prepareDeployment(item){
     if(select.options.length===1)say("Your school administrator must assign you a class offering before deployment.");
   }catch(error){say(error.message||"Could not load assigned classes.");}
 }
+el("tl-lifecycle-cancel").addEventListener("click",()=>{
+  lifecycleTask=null;lifecycleAction=null;el("tl-lifecycle-dialog").close();
+});
+el("tl-lifecycle-form").addEventListener("submit",event=>{
+  event.preventDefault();if(!lifecycleTask||!lifecycleAction||pendingWrite)return;
+  const form=event.currentTarget;if(!form.reportValidity())return;
+  const values=new FormData(form),details={
+    taskId:lifecycleTask.taskId,expectedRevision:lifecycleTask.revision||1,
+    reason:String(values.get("reason")||"")
+  };
+  if(lifecycleAction==="reopen"){
+    const raw=String(values.get("newDueAt")||"");
+    if(raw){
+      const due=new Date(raw);
+      if(!Number.isFinite(due.getTime())){say("Choose a valid reopened deadline.");return;}
+      details.newDueAt=due.toISOString();
+    }
+  }
+  const action=lifecycleAction,task=lifecycleTask;
+  void (async()=>{
+    pendingWrite=true;
+    [...form.elements].forEach(control=>control.disabled=true);
+    try{
+      say("Saving audited assessment lifecycle change…");
+      const result=await performScoped(scopedAssessmentApi,action,details);
+      el("tl-lifecycle-dialog").close();lifecycleTask=null;lifecycleAction=null;
+      await refresh();
+      say(task.title+" is now "+result.lifecycle+".");
+    }catch(error){say(error?.message||"Assessment lifecycle change could not be saved.");}
+    finally{pendingWrite=false;[...form.elements].forEach(control=>control.disabled=false);}
+  })();
+});
 el("tl-cancel-deploy").addEventListener("click",()=>el("tl-deploy-dialog").close());
 el("tl-deploy-form").addEventListener("input",()=>{deployRequestKey=crypto.randomUUID();});
 el("tl-deploy-form").addEventListener("submit",event=>{
