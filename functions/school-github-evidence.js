@@ -190,7 +190,7 @@ function createSchoolGithubEvidenceService({db}){
     receipt={evidenceId,version,status:"submitted",alreadyExisted:false};
    });
    if(!receipt.alreadyExisted)await writeSchoolNotification({
-     db,schoolId:ctx.schoolId,uid:taskData.ownerUid,
+     db,schoolId:ctx.schoolId,uid:taskData.reviewerUid||taskData.ownerUid,
      id:"github_submission_"+taskId+"_"+ctx.uid+"_"+receipt.version,
      title:receipt.version>1?"GitHub evidence resubmitted":"GitHub evidence submitted",
      body:(taskData.title||"Assessment")+" · a student evidence package is ready for review.",
@@ -210,8 +210,9 @@ function createSchoolGithubEvidenceService({db}){
       !grant.exists||grant.data().schoolId!==ctx.schoolId||grant.data().teacherUid!==ctx.uid||
       grant.data().offeringId!==offeringId||grant.data().status!=="active"||
       !currentTask.exists||currentTask.data().schoolId!==ctx.schoolId||
-      currentTask.data().ownerUid!==ctx.uid||currentTask.data().submissionSource!=="github")
-    deny("permission-denied","Only the assessment-owning assigned teacher may review this evidence.");
+      (currentTask.data().reviewerUid||currentTask.data().ownerUid)!==ctx.uid||
+      currentTask.data().submissionSource!=="github")
+    deny("permission-denied","Only the currently responsible assigned teacher may review this evidence.");
   }
   async function teacherWriteAuthority(tx){
    await verifyMembership(tx,"teacher");
