@@ -34,7 +34,7 @@ const countLabels=[
   ["pendingInvitations","Pending invites"]
 ];
 
-let activeScope=null;
+let activeScope=null,refreshEpoch=0;
 function escapeText(value){return document.createTextNode(String(value??""))}
 function setText(node,value){node.replaceChildren(escapeText(value))}
 function badgeLabel(status){
@@ -111,20 +111,21 @@ function render(data){
 }
 async function refresh(scope){
   if(!scope?.current)return;
+  const sequence=++refreshEpoch;
   refreshButton.disabled=true;
   setText(statusNode,"Refreshing verified school setup…");
   try{
     const lease=scope.lease();
     const response=await api({schoolId:lease.schoolId,action:"overview"});
-    scope.assertLease(lease);
+    scope.assertLease(lease);if(sequence!==refreshEpoch)return;
     render(response.data);
     setText(statusNode,response.data.operationalReady
       ?"Operational setup is ready. Optional services may still be configured."
       :"Setup still has required items needing attention.");
   }catch(error){
-    setText(statusNode,error?.message||"School setup readiness is unavailable.");
+    if(sequence===refreshEpoch)setText(statusNode,error?.message||"School setup readiness is unavailable.");
   }finally{
-    refreshButton.disabled=false;
+    if(sequence===refreshEpoch)refreshButton.disabled=false;
   }
 }
 
@@ -137,7 +138,13 @@ if(!access.schoolAdmin){
     host:document.getElementById("setupSchoolSwitcher"),
     status:statusNode,
     onReady:scope=>{activeScope=scope;void refresh(scope);},
-    onBeforeChange:async()=>{setText(statusNode,"Switching verified school context…");}
+    onBeforeChange:async()=>{
+      activeScope=null;++refreshEpoch;
+      setText(summaryNode,"Loading verified school setup…");
+      progressBar.style.width="0%";countsNode.replaceChildren();stepsNode.replaceChildren();
+      setText(noteNode,"Operational setup and cutover readiness are separate checks.");
+      setText(statusNode,"Switching verified school context…");
+    }
   });
   refreshButton.addEventListener("click",()=>{if(activeScope)void refresh(activeScope);});
   const state=await picker.load();
