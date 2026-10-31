@@ -93,11 +93,20 @@ document.addEventListener("DOMContentLoaded", () => {
         ["followup", "Learning follow-up", "learning-follow-up.html"]
       ] : [])
     ] : [] },
-    { name: "Planning", area: "lesson", items: canTeach&&!v4OnlyTeacher ? [
+    { name: "Planning", area: "lesson", items: canTeach ? [
       ["planner", "Lesson planner", "lesson-planner.html"],
       ["presentation", "Slide editor", "presentation.html"],
       ["schedule", "Teacher schedule", "schedule.html"],
-      ["library", "Reference library", "library.html"]
+      ...(v4OnlyTeacher ? [
+        ["teacher-reference-library", "My references", "teacher-reference-library.html"],
+        ["school-reference-library", "School references", "school-reference-library.html"]
+      ] : [
+        ["library", "Legacy reference library", "library.html"],
+        ...(root.dataset.schoolTeacher==="true" ? [
+          ["teacher-reference-library", "My verified-school references", "teacher-reference-library.html"],
+          ["school-reference-library", "School shared references", "school-reference-library.html"]
+        ] : [])
+      ])
     ] : [] },
     { name: "School setup", area: "admin", items: isSuperAdmin ? [
       ["owner-schools","Institution registry","owner-schools.html"],
@@ -115,8 +124,10 @@ document.addEventListener("DOMContentLoaded", () => {
       ["overview","School overview","school-admin.html"],
       ["people-v4","People & Access","people-access.html"],
       ["school-analytics","School operations","school-analytics.html"],
+      ["setup-readiness","Setup readiness","school-onboarding-readiness.html"],
       ["data-files","Data & files","school-data-controls.html"],
-      ["cutover-readiness","4.0 readiness","school-cutover-readiness.html"],
+      ["school-reference-library","Shared reference library","school-reference-library.html"],
+      ["cutover-readiness","4.0 cutover readiness","school-cutover-readiness.html"],
       ["class-analytics-v4","Class analytics","school-teacher-analytics.html"],
       ["practice-v4","Practice progress","school-practice-analytics.html"],
       ["reclaims-v4","Commit attribution requests","reclaim-inbox.html"]
@@ -168,7 +179,8 @@ document.addEventListener("DOMContentLoaded", () => {
     ...(canTeach?(v4OnlyTeacher?
       [["Assessment & Grade","teacher-assessment-library.html","School assessments, evidence and grading"],
        ["Class Analytics","school-teacher-analytics.html","Published class results and your private drafts"],
-       ["Practice Progress","school-practice-analytics.html","Current-season class Practice analytics"]]:
+       ["Practice Progress","school-practice-analytics.html","Current-season class Practice analytics"],
+       ["Lesson Planning","lesson-planner.html","Verified-school lessons, slides, timetable and references"]]:
       [["Repository Management","teacher-assessment-library.html","Assessments, submissions, grading and repositories"],
        ["Class Analytics","school-teacher-analytics.html","Verified-school assessment results"],
        ["Practice Progress","school-practice-analytics.html","Verified-school Practice analytics"],
