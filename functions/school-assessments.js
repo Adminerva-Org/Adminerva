@@ -31,6 +31,8 @@ function createSchoolAssessmentService({db}){
    const source=input.submissionSource;
    if(!["studio","github"].includes(source))
     deny("invalid-argument","Choose Adminerva Studio or GitHub evidence.");
+   if(source==="github")
+    deny("failed-precondition","The school-scoped GitHub evidence adapter is not active yet. No unsubmitable task was deployed.");
    const start=timestamp(input.opensAt,"Opening time");
    const end=timestamp(input.dueAt,"Deadline");
    if(end.toMillis()<=start.toMillis())
@@ -82,7 +84,7 @@ function createSchoolAssessmentService({db}){
      rubricMax:Array.isArray(original.rubric)?
        original.rubric.reduce((sum,row)=>sum+Number(row.points||0),0):0
     };
-    if(!frozen.title||frozen.rubricMax<0||frozen.rubricMax>2000)
+    if(!frozen.title||!frozen.rubric.length||frozen.rubricMax<=0||frozen.rubricMax>2000)
       deny("failed-precondition","The blueprint must have a valid title and rubric.");
     const now=FieldValue.serverTimestamp();
     tx.create(taskRef,{
