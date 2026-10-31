@@ -8,6 +8,7 @@ const {createHash}=require("node:crypto");
 const {Timestamp,FieldValue}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
+const {writeSchoolNotification}=require("./school-notifications.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
 function timestamp(value,label){
  if(typeof value!=="string"||!/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(value)||
@@ -97,6 +98,25 @@ function createSchoolAssessmentService({db}){
      action:"assessment_deployed",offeringId,source,createdAt:now});
     result={taskId,status:"deployed",alreadyExisted:false};
    });
+   if(!result.alreadyExisted){
+     // Notification fan-out is best-effort and never changes deployment success.
+     const enrolled=await db.collection(prefix+"enrollments")
+       .where("offeringId","==",offeringId).limit(101).get().catch(()=>null);
+     if(enrolled&&enrolled.size<=100){
+       const active=enrolled.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
+       const people=await Promise.all(active.map(doc=>db.doc(prefix+"people/"+doc.data().personId).get()));
+       await Promise.allSettled(people.map(person=>{
+         const uid=person.exists&&person.data().schoolId===ctx.schoolId&&person.data().status==="active"?
+           person.data().authUid:null;
+         return uid?writeSchoolNotification({
+           db,schoolId:ctx.schoolId,uid,id:"assessment_deployed_"+result.taskId,
+           title:"New assessment assigned",
+           body:frozen.title+" · open Adminerva to review the task and submission method.",
+           type:"assessment",sourceId:result.taskId,target:"student-assessments.html"
+         }):Promise.resolve();
+       }));
+     }
+   }
    return result;
   }
   if(input.action==="list_teacher"){
