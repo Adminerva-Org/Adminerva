@@ -15,7 +15,7 @@ const {EXPORT_SCHEMA,definitions}=require("./school-data-export.js");
 const PLAN_SCHEMA="adminerva-school-continuity-restore-plan-v1";
 const AUTO_CATEGORIES=[
  "people","academic_years","terms","subjects","sections","course_offerings",
- "enrollments","staff_assignments","assessments","student_grades","support_reports"
+ "enrollments","staff_assignments","student_repository_configs","assessments","student_grades","support_reports"
 ];
 const sha=value=>createHash("sha256").update(value).digest("hex");
 function arg(args,name){
@@ -117,6 +117,12 @@ async function dependencyReview(db,bundle,states){
  for(const row of bundle.categories.staff_assignments)
   if(!await existsOrPlanned("course_offerings",row.offeringId))
    issues.push({type:"restore_dependency_missing",category:"staff_assignments",recordId:row.id,dependsOn:"course_offerings/"+row.offeringId});
+ for(const row of bundle.categories.student_repository_configs){
+  if(!await existsOrPlanned("people",row.personId))
+   issues.push({type:"restore_dependency_missing",category:"student_repository_configs",recordId:row.id,dependsOn:"people/"+row.personId});
+  if(!await existsOrPlanned("course_offerings",row.offeringId))
+   issues.push({type:"restore_dependency_missing",category:"student_repository_configs",recordId:row.id,dependsOn:"course_offerings/"+row.offeringId});
+ }
  for(const row of bundle.categories.assessments)
   if(!await existsOrPlanned("course_offerings",row.offeringId))
    issues.push({type:"restore_dependency_missing",category:"assessments",recordId:row.id,dependsOn:"course_offerings/"+row.offeringId});
