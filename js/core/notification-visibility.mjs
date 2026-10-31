@@ -10,8 +10,11 @@ export function notificationVisible(item, role) {
     return role === "teacher" || role === "student";
   }
   if (item.type === "issue") {
-    // Source issue feeds are already audience-scoped, while official notification
-    // records are private to the recipient. Missing metadata remains hidden.
+    // V4 school support alerts are written only to an explicit per-user feed,
+    // tagged with schoolId, and filtered again by the user's active verified
+    // school before rendering. They do not need legacy report audience fields.
+    if(item.schoolId)return ["admin","teacher","student"].includes(role);
+    // Legacy source issue feeds still require their historical audience metadata.
     if (!item.reportCategory || !["teacher", "admin"].includes(item.reportAudience)) return false;
     return role === "teacher" || role === "student";
   }
