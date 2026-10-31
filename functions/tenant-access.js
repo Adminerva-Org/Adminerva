@@ -51,7 +51,12 @@ async function listVerifiedSchools({db,request}) {
       const ctx=await getSchoolContext({db,request,schoolId:entry.id});
       const school=await db.doc("platform_schools/"+ctx.schoolId).get();
       const label=school.data()?.displayName;
-      return {schoolId:ctx.schoolId, name:typeof label==="string"&&label.trim()?label.trim().slice(0,120):ctx.schoolId, roles:ctx.roles};
+      return {
+        schoolId:ctx.schoolId,
+        name:typeof label==="string"&&label.trim()?label.trim().slice(0,120):ctx.schoolId,
+        roles:ctx.roles,
+        compatibilityMode:school.data()?.compatibilityMode||"legacy_allowed"
+      };
     }catch(error) {
       if(error instanceof TenantAccessError)return null;
       throw error;
