@@ -244,11 +244,13 @@ async function buildPracticePlan(db,{foundationPlan,foundationPlanRaw,foundation
   blockers.push(...current.blockers.map(item=>({...item,uid:student.uid})));
   reviewItems.push(...current.reviewItems);
   const historical=historicalSeasonArchive({score,states,awards,progress,student,currentSeason});
-  candidates.push({
+  const candidate={
    uid:student.uid,personId:student.personId,
    verifiedProgress:verified.map(row=>normalizeVerifiedProgress(row,student)),
    currentSeason:current.current||null,historicalSeason:historical
-  });
+  };
+  if(candidate.verifiedProgress.length||candidate.currentSeason||candidate.historicalSeason)
+   candidates.push(candidate);
  }
  return {
   schema:SCHEMA,schoolId:SCHOOL_ID,readOnly:true,generatedAt:new Date().toISOString(),
