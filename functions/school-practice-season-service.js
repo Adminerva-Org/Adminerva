@@ -14,6 +14,7 @@ const hash=value=>createHash("sha256").update(value).digest("hex");
 const millis=value=>value?.toMillis?.()||0;
 const randomId=()=>randomBytes(24).toString("hex");
 const reject=(code,message,reason)=>{throw new PracticeError(code,message,reason);};
+const schoolPracticeClassRankId=(sectionId,uid)=>hash(JSON.stringify([sectionId,uid])).slice(0,40);
 async function defaultCatalog(){return import("./practice-courses.mjs");}
 async function defaultSeason(){return import("./practice-season.mjs");}
 
@@ -25,7 +26,6 @@ function createSchoolPracticeSeasonService({
  const prefix=schoolId=>"schools/"+schoolId+"/";
  const ref=(actor,path)=>db.doc(prefix(actor.schoolId)+path);
  const col=(actor,path)=>db.collection(prefix(actor.schoolId)+path);
- const classRankId=(sectionId,uid)=>hash(JSON.stringify([sectionId,uid])).slice(0,40);
 
  async function actor(request){
   const ctx=await getSchoolContext({db,request,schoolId:request.data?.schoolId,roles:["student"]});
@@ -297,7 +297,7 @@ function createSchoolPracticeSeasonService({
     else tx.delete(publicRef);
     const sections=[...new Set(enrollments.map(item=>item.sectionId).filter(Boolean))];
     for(const sectionId of sections)
-     tx.set(ref(a,"practice_class_season_rankings/"+classRankId(sectionId,a.uid)),{
+     tx.set(ref(a,"practice_class_season_rankings/"+schoolPracticeClassRankId(sectionId,a.uid)),{
       schoolId:a.schoolId,ownerUid:a.uid,personId:a.personId,sectionId,
       alias:next.alias,points:next.points,completedCount:next.completedCount,
       season:attempt.season,updatedAt:stamp(time)});
@@ -325,7 +325,7 @@ function createSchoolPracticeSeasonService({
    if(score.optIn)tx.set(publicRef,boardData(a,score,time));else tx.delete(publicRef);
    const sections=[...new Set(enrollments.map(item=>item.sectionId).filter(Boolean))];
    for(const sectionId of sections)
-    tx.set(ref(a,"practice_class_season_rankings/"+classRankId(sectionId,a.uid)),{
+    tx.set(ref(a,"practice_class_season_rankings/"+schoolPracticeClassRankId(sectionId,a.uid)),{
      schoolId:a.schoolId,ownerUid:a.uid,personId:a.personId,sectionId,
      alias:score.alias,points:score.points,completedCount:score.completedCount,
      season:rules.PRACTICE_SEASON,updatedAt:stamp(time)});
@@ -335,4 +335,4 @@ function createSchoolPracticeSeasonService({
 
  return {acquireSeason,hub,startSeason,submitSeason,preferences};
 }
-module.exports={createSchoolPracticeSeasonService};
+module.exports={createSchoolPracticeSeasonService,schoolPracticeClassRankId};
