@@ -1,6 +1,8 @@
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
+import {createGithubEvidenceClient,parseGithubRepository} from "../repo-review/services/github-evidence-client.mjs?v=1.3.0";
+import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
 
 const panel=document.getElementById("v4AssignmentsPanel");
 const list=document.getElementById("v4AssignmentsList");
@@ -19,7 +21,9 @@ if(panel&&list&&status&&schoolHost){
   const assessmentsApi=httpsCallable(functions,"schoolAssessments");
   const submissionsApi=httpsCallable(functions,"schoolStudioSubmissions");
   const gradebookApi=httpsCallable(functions,"schoolGradebook");
-  let renderGeneration=0;
+  const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
+  let renderGeneration=0,picker=null,githubTask=null,githubTaskStatus=null;
+  let githubCommits=[],githubSelected=new Set(),githubCheckpoint="",githubBusy=false;
   async function scoped(scope,api,action,details={}){
     const lease=scope.lease();
     const result=(await api({schoolId:lease.schoolId,action,...details})).data;
@@ -34,7 +38,8 @@ if(panel&&list&&status&&schoolHost){
         className:"bg-amber-100 text-amber-900"};
     }
     if(submission?.submitted)return {
-      label:submission.status==="reviewed"?"Reviewed":"Submitted",
+      label:submission.status==="reviewed"?"Reviewed":
+        submission.status==="approved"?"Evidence approved":"Submitted",
       className:"bg-blue-100 text-blue-800"
     };
     if(task.windowStatus==="upcoming")return {label:"Upcoming",className:"bg-slate-100 text-slate-700"};
@@ -62,9 +67,10 @@ if(panel&&list&&status&&schoolHost){
       const tasks=results[0].assignments||[];
       const grades=new Map((results[1].grades||[]).map(item=>[item.taskId,item]));
       const statuses=new Map();
-      await Promise.all(tasks.filter(task=>task.submissionSource==="studio").map(async task=>{
+      await Promise.all(tasks.map(async task=>{
         try{
-          statuses.set(task.taskId,await scoped(scope,submissionsApi,"my_status",{taskId:task.taskId}));
+          const api=task.submissionSource==="github"?githubEvidenceApi:submissionsApi;
+          statuses.set(task.taskId,await scoped(scope,api,"my_status",{taskId:task.taskId}));
         }catch(error){
           statuses.set(task.taskId,{error:error?.message||"Status unavailable"});
         }
@@ -115,13 +121,28 @@ if(panel&&list&&status&&schoolHost){
           if(grade.feedback)result.append(node("p","mt-2 whitespace-pre-wrap",grade.feedback));
           article.append(result);
         }
+        const actions=node("div","mt-4 flex flex-wrap gap-2");
         if(task.submissionSource==="studio"){
-          const actions=node("div","mt-4 flex flex-wrap gap-2");
           const link=node("a","rounded-lg bg-indigo-700 text-white px-4 py-2.5 text-sm font-bold",
             submission?.status==="reopened"?"Open Studio to revise":"Open Adminerva Studio");
           link.href="student-playground.html?assessment="+encodeURIComponent(task.taskId);
-          actions.append(link);article.append(actions);
+          actions.append(link);
+        }else if(task.submissionSource==="github"){
+          const canEdit=!submission?.submitted||submission.status==="reopened";
+          const evidenceButton=node("button",
+            "rounded-lg px-4 py-2.5 text-sm font-bold "+(canEdit?"bg-indigo-700 text-white":"border border-slate-300 text-slate-600"),
+            canEdit?(submission?.status==="reopened"?"Revise GitHub evidence":"Select GitHub evidence"):
+              submission?.status==="approved"?"Evidence approved":"Evidence submitted");
+          evidenceButton.type="button";evidenceButton.disabled=!canEdit;
+          if(canEdit)evidenceButton.addEventListener("click",()=>void openGithubEvidence(task,submission));
+          actions.append(evidenceButton);
+          if(submission?.repository){
+            const repoLink=node("a","rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-bold text-slate-700","Open repository ↗");
+            repoLink.href="https://github.com/"+submission.repository;repoLink.target="_blank";repoLink.rel="noopener noreferrer";
+            actions.append(repoLink);
+          }
         }
+        if(actions.children.length)article.append(actions);
         list.append(article);
       }
     }catch(error){
@@ -133,7 +154,7 @@ if(panel&&list&&status&&schoolHost){
   }
   await auth.authStateReady();
   if(auth.currentUser){
-    const picker=createTenantSchoolPicker({
+    picker=createTenantSchoolPicker({
       host:schoolHost,status:null,
       onReady:scope=>void render(scope),
       onBeforeChange:async()=>{
