@@ -136,8 +136,6 @@ async function openShareDialog(resource,onSaved){
   }
   const form=dialog.querySelector("[data-form]"),
     recipients=dialog.querySelector("[data-recipients]"),status=dialog.querySelector("[data-status]");
-  // Defensive re-query because old browsers may reject a malformed selector in
-  // an earlier cached module instance.
   const audience=dialog.querySelector("[data-visibility]");
   audience.value=resource.visibility||"private";recipients.replaceChildren();
   status.textContent="Loading active teachers in this school…";
