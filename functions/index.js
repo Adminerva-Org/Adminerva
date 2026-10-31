@@ -36,6 +36,8 @@ exports.tenantSchools=onCall(callOptions,safeCallable(async request=>{
 exports.teacherBlueprints=onCall(callOptions,safeCallable(teacherBlueprints));
 const {createPeopleDirectoryService,createInvitationAcceptanceService}=require("./people-directory.js");
 exports.peopleDirectory=onCall(callOptions,safeCallable(createPeopleDirectoryService({db})));
+const {createSchoolAcademicsService}=require("./school-academics.js");
+exports.schoolAcademics=onCall(callOptions,safeCallable(createSchoolAcademicsService({db})));
 exports.acceptSchoolInvitation=onCall(callOptions,safeCallable(createInvitationAcceptanceService({db})));
 const {createPlatformSchoolService}=require("./platform-schools.js");
 exports.platformSchools=onCall(callOptions,safeCallable(createPlatformSchoolService({db})));
