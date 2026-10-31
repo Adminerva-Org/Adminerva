@@ -83,8 +83,18 @@ function createPeopleDirectoryService({db}) {
         if(personRef&&(!person.exists||person.data().schoolId!==ctx.schoolId))
           throw new TenantAccessError("failed-precondition","The person is not in this school directory.");
         if(existing.exists) {
-          if(existing.data().status==="pending"&&existing.data().email===email&&
-            existing.data().requestedRole===input.role)return;
+          const prior=existing.data();
+          if(prior.status==="pending"&&prior.email===email&&prior.requestedRole===input.role){
+            if((prior.personId||null)!==linkedPersonId)
+              throw new TenantAccessError("failed-precondition","The linked person changed. Review the original invitation.");
+            if(prior.expiresAt?.toMillis?.() && prior.expiresAt.toMillis()>Date.now())return;
+            const now=FieldValue.serverTimestamp();
+            tx.update(ref,{expiresAt:Timestamp.fromMillis(Date.now()+7*24*60*60*1000),
+              revision:(prior.revision||1)+1,updatedAt:now,updatedByUid:ctx.uid});
+            tx.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,
+              action:"invitation_renewed",invitationId,createdAt:now});
+            return;
+          }
           throw new TenantAccessError("already-exists","This invitation has already been processed. Use the recovery workflow.");
         }
         const now=FieldValue.serverTimestamp();
