@@ -127,21 +127,27 @@ async function checkAccess(user){
     replacePage(roleHome(actualRole));return;
   }
   if(actualRole==="schooladmin"&&!access.schoolTeacher&&
-     !/\/(teacher-home|school-admin|people-access|reclaim-inbox|settings|issues|join-school|wiki)\.html$/.test(currentPath)){
+     !/\/(teacher-home|school-admin|people-access|reclaim-inbox|settings|issues|school-support|join-school|wiki)\.html$/.test(currentPath)){
     replacePage("school-admin.html");return;
   }
   if(actualRole==="platformowner"&&!access.schoolAdmin&&!access.schoolTeacher&&!access.schoolStudent&&
      !/\/(owner-schools|settings|issues|wiki)\.html$/.test(currentPath)){
     replacePage("owner-schools.html");return;
   }
+  if(/\/(school-support)\.html$/.test(currentPath)&&
+     !(access.schoolAdmin||access.schoolTeacher||access.schoolStudent)){
+    replacePage(roleHome(actualRole));return;
+  }
   const isIssuesPage = currentPath.includes("issues.html");
+  const isSchoolSupportPage = currentPath.includes("school-support.html");
 
   // 4. Strict Routing Enforcement
   if (
     activeRole === "student" &&
     !currentPath.includes("student-") &&
     !isLoginPage &&
-    !isIssuesPage
+    !isIssuesPage &&
+    !isSchoolSupportPage
   ) {
     replacePage(roleHome("student"));
     return;
