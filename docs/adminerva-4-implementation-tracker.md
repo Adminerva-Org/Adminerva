@@ -38,7 +38,7 @@ Do not repeat the mixed-schools question. Retain source document identifiers, ex
 
 **Safety update:** The school-aware GitHub evidence adapter is now implemented with frozen commit selections, teacher verification/approval and school-admin attribution reclaim handling. A scorable rubric is mandatory at deployment. Studio/GitHub revisions requested after the original deadline require explicit reviewed extension handling; academic publication still fails closed against stale evidence.
 
-**Remaining:** finish the controlled compatibility-mode cutover/rollback control, retire remaining legacy 3.0 compatibility surfaces after MCS reconciliation, complete production migration execution, then remove legacy authorization/bootstrap paths. The existing Studio already has a progressive V4 bridge and the dedicated V4 Gradebook/GitHub evidence/reclaim paths are present, but no production Firestore copy or role grant has been executed. Do not present the new callables as deployed features.
+**Remaining:** finish remaining legacy support/history cleanup and bootstrap-authority retirement, complete production MCS migration/reconciliation execution, then remove compatibility-only code that is no longer required after an observed rollback window. The existing Studio already has a progressive V4 bridge and the dedicated V4 Gradebook/GitHub evidence/reclaim paths are present, but no production Firestore copy or role grant has been executed. Do not present the new callables as deployed features.
 
 ## Role, navigation and People & Access integration — October 31, 2026
 
@@ -189,6 +189,15 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 - The restore planner rejects any bundle whose category set/count/digest metadata does not match its actual contents, even if a modified file has a recomputed top-level SHA-256.
 - Restore planning now surfaces separately required active teacher/student memberships before approval for active teaching assignments, repository configuration, deployed assessments and published grades. Automatic restore still never creates memberships or grants roles.
 - Relationship identifiers are validated before dependency-key construction so malformed recovery rows become explicit blockers instead of aborting the planner unexpectedly.
+
+## Controlled V4-only compatibility retirement — October 31, 2026
+
+- The platform-owner school control plane already provides audited `legacy_allowed` ↔ `v4_only` switching. V4-only enablement re-runs school cutover readiness and requires continuity backup, migration reconciliation, rollback review and V4 route validation attestations; rollback is separately audited and does not delete canonical data.
+- Verified account admission already propagates `compatibilityMode` through `tenantSchools`. When all active school memberships for the account are V4-only, the auth guard fences migrated teachers/students from legacy workspaces and routes legacy analytics/grading bookmarks to canonical V4 pages.
+- Firestore rules now use the authoritative MCS school compatibility mode to disable legacy `isAdmin()` / `isTeacher()` authority after cutover. Student-owned flat `students`, `student_access`, legacy Practice profile/progress/award/season data, legacy account requests and teacher connection records are also fenced.
+- Legacy MCS callable services now fail closed after V4-only cutover: legacy lesson recovery/setup, legacy student-access refresh and legacy Practice callables reject direct invocation even when a caller bypasses the browser UI.
+- Canonical `schools/{schoolId}` data remains server-authorized and unaffected by this legacy gate. Rollback to `legacy_allowed` reopens compatibility paths without undoing V4 data.
+- Legacy support/history records that are intentionally retained for reference are not treated as canonical authority and are not automatically deleted by cutover.
 
 ## Delivery and remaining work
 
