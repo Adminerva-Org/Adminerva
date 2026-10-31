@@ -7,6 +7,7 @@
  */
 const {checkedSchoolId,verifiedUid,getSchoolContext,platformAuthority,TenantAccessError}=
  require("./tenant-access.js");
+const {EXPORT_SCHEMA}=require("./school-data-export.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 async function authorized({db,request,schoolId}){
@@ -154,6 +155,21 @@ async function evaluateSchoolCutoverReadiness({db,schoolId}){
   check("file_policy",true,"Storage remains fail-closed or explicitly governed",
     "School Storage is not enabled.",false);
  }
+ const exportReceipt=await db.doc(prefix+"private_config/continuity_export").get();
+ const preparedAt=exportReceipt.data()?.preparedAt?.toMillis?.()||0,
+  receiptAge=preparedAt?Date.now()-preparedAt:Number.POSITIVE_INFINITY,
+  receiptOkay=exportReceipt.exists&&exportReceipt.data().schoolId===schoolId&&
+   exportReceipt.data().schema===EXPORT_SCHEMA&&
+   /^[a-f0-9]{64}$/.test(String(exportReceipt.data().bundleSha256||""))&&
+   receiptAge>=0&&receiptAge<=24*60*60*1000;
+ check("continuity_export_receipt",receiptOkay,
+  "Recent integrity-verified continuity export is prepared",
+  receiptOkay?
+   "Verified continuity export receipt recorded within the last 24 hours.":
+   exportReceipt.exists?
+    "The recorded continuity export is stale or not on the current export schema. Prepare a fresh verified export before cutover.":
+    "No verified continuity export receipt is recorded. Prepare a school continuity export before cutover.");
+
  const readiness=schoolData.readiness||{};
  check("institutional_attestations",
   ["institutionalDataAuthority","provenanceVerified","calendarConfigured","privacyPolicyApproved"]
