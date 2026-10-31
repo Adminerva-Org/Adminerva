@@ -82,6 +82,8 @@ function validateApproval(plan,planRaw,approval){
   if(approval.acknowledgements?.[key]!==true)throw Error("Missing approval acknowledgement: "+key);
  if(Array.isArray(approval.unresolvedBlockers)&&approval.unresolvedBlockers.length)
   throw Error("Resolve canonical foundation blockers before apply.");
+ if(Array.isArray(approval.reviewItems)&&approval.reviewItems.some(item=>item.resolved!==true))
+  throw Error("Resolve every canonical foundation review item before apply.");
  const planPeople=new Map(plan.people.map(row=>[row.personId,row]));
  const planMembers=new Map(plan.memberships.map(row=>[row.uid,row]));
  const people=[];
