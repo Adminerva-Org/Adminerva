@@ -2,6 +2,7 @@ import {app,auth} from "./firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "./tenant-school-picker.mjs";
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"peopleDirectory");
+const rosterSourceApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolRosterSource");
 const get=id=>document.getElementById(id);
 const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 let schoolTerms=[];
@@ -37,9 +38,38 @@ const picker=createTenantSchoolPicker({
       return;
     }
     workspace.hidden=false;
-    void Promise.all([loadOverview(),loadPeople(false),loadAcademics(),loadMemberships(),loadInvitePeople()]).catch(error=>say(error.message||"Directory access unavailable."));
+    void Promise.all([loadOverview(),loadPeople(false),loadAcademics(),loadMemberships(),loadInvitePeople(),loadRosterSourceStatus()]).catch(error=>say(error.message||"Directory access unavailable."));
   }
 });
+async function performRosterSource(action,details={}){
+  const lease=picker.scope.lease();
+  const result=(await rosterSourceApi({schoolId:lease.schoolId,action,...details})).data;
+  picker.scope.assertLease(lease);return result;
+}
+async function loadRosterSourceStatus(){
+  const result=await performRosterSource("status");
+  const form=get("pa-sheet-source-form");
+  form.elements.url.value=result.url||"";
+  get("pa-sheet-preview").disabled=!result.configured;
+  get("pa-sheet-clear").disabled=!result.configured;
+  get("pa-sheet-status").textContent=result.configured?
+    "Configured Google Sheets roster source"+(result.gid?" · tab "+result.gid:"")+".":
+    "No Google Sheets roster source configured for this school.";
+  return result;
+}
+async function previewImportRows(rows,sourceLabel){
+  importRows=rows;importDigest=null;importPreview=null;
+  get("pa-import-commit").disabled=true;
+  get("pa-import-status").textContent="Validating "+sourceLabel+" against the active school directory…";
+  const preview=await perform("preview_import_people",{rows:importRows});
+  importPreview=preview;importDigest=preview.digest;renderImportPreview(preview);
+  const invalid=Number(preview.summary?.invalid||0);
+  get("pa-import-commit").disabled=invalid>0||!importDigest;
+  get("pa-import-status").textContent=invalid?
+    "Resolve invalid or duplicate rows at the source, then preview again.":
+    "Preview ready. Committing creates people only; no access or enrollment will be granted.";
+  return preview;
+}
 async function perform(action,details={}) {
   const lease=picker.scope.lease();
   const result=await api({schoolId:lease.schoolId,action,...details});
@@ -146,6 +176,64 @@ function renderImportPreview(preview){
     row.append(info);host.append(row);
   }
 }
+get("pa-sheet-source-form").addEventListener("submit",event=>{
+  event.preventDefault();if(pendingWrite)return;
+  const form=event.currentTarget,values=new FormData(form);
+  void (async()=>{
+    pendingWrite=true;
+    const controls=[...form.querySelectorAll("button,input")];controls.forEach(control=>control.disabled=true);
+    get("pa-sheet-status").textContent="Validating and saving this school roster source…";
+    try{
+      const result=await performRosterSource("configure",{
+        url:String(values.get("url")||"").trim(),
+        reason:String(values.get("reason")||"").trim()
+      });
+      form.elements.url.value=result.url||"";
+      form.elements.reason.value="";
+      get("pa-sheet-preview").disabled=false;get("pa-sheet-clear").disabled=false;
+      get("pa-sheet-status").textContent="Google Sheets roster source saved for this school.";
+    }catch(error){get("pa-sheet-status").textContent=error?.message||"Roster source was not saved.";}
+    finally{
+      pendingWrite=false;
+      controls.forEach(control=>control.disabled=false);
+      const configured=Boolean(form.elements.url.value);
+      get("pa-sheet-preview").disabled=!configured;get("pa-sheet-clear").disabled=!configured;
+    }
+  })();
+});
+get("pa-sheet-preview").addEventListener("click",()=>{
+  if(pendingWrite)return;
+  void (async()=>{
+    const button=get("pa-sheet-preview");button.disabled=true;get("pa-import-commit").disabled=true;
+    get("pa-sheet-status").textContent="Fetching the configured published Google Sheet…";
+    try{
+      const result=await performRosterSource("fetch_csv");
+      const rows=importRowsFromCsv(result.csv);
+      await previewImportRows(rows,"the configured Google Sheet");
+      get("pa-sheet-status").textContent="Google Sheet fetched and previewed. Review the rows before committing.";
+    }catch(error){
+      importRows=[];importDigest=null;importPreview=null;
+      get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="Preview failed.";
+      get("pa-sheet-status").textContent=error?.message||"The configured Google Sheet could not be previewed.";
+    }finally{button.disabled=false;}
+  })();
+});
+get("pa-sheet-clear").addEventListener("click",()=>{
+  if(pendingWrite)return;
+  const reason=prompt("Explain why this school roster source is being removed:");
+  if(reason===null)return;
+  void (async()=>{
+    pendingWrite=true;get("pa-sheet-clear").disabled=true;get("pa-sheet-preview").disabled=true;
+    try{
+      await performRosterSource("clear",{reason:String(reason).trim()});
+      get("pa-sheet-source-form").reset();
+      get("pa-sheet-status").textContent="Google Sheets roster source cleared for this school.";
+    }catch(error){
+      get("pa-sheet-status").textContent=error?.message||"Roster source was not cleared.";
+      await loadRosterSourceStatus().catch(()=>{});
+    }finally{pendingWrite=false;}
+  })();
+});
 get("pa-import-file").addEventListener("change",event=>{
   importRows=[];importDigest=null;importPreview=null;
   get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";
@@ -172,14 +260,7 @@ get("pa-import-preview").addEventListener("click",()=>{
     get("pa-import-status").textContent="Validating this CSV against the active school directory…";
     try{
       importRows=importRowsFromCsv(await file.text());
-      const preview=await perform("preview_import_people",{rows:importRows});
-      importPreview=preview;importDigest=preview.digest;
-      renderImportPreview(preview);
-      const invalid=Number(preview.summary?.invalid||0);
-      get("pa-import-commit").disabled=invalid>0||!importDigest;
-      get("pa-import-status").textContent=invalid?
-        "Resolve invalid or duplicate rows in the CSV, then preview again.":
-        "Preview ready. Committing will create people only; no access or enrollment will be granted.";
+      await previewImportRows(importRows,"this CSV");
     }catch(error){
       importRows=[];importDigest=null;importPreview=null;
       get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="Preview failed.";
