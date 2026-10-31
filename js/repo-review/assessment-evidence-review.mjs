@@ -11,7 +11,7 @@ import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.m
 import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.1";
 import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
-import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.5";
+import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.6";
 import {searchStudents} from "./services/student-search.mjs?v=1.3.0";
 import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.2";
 
@@ -668,7 +668,7 @@ el("evidenceLoad")?.addEventListener("click",()=>{if(state.editing&&!confirm("Di
 el("evidenceApprove").addEventListener("click",()=>{void approve();});
 el("evidenceReopen").addEventListener("click",()=>{void reopen();});
 
-return {load:loadEvidence,loadDirectory,hasUnsavedChanges:()=>state.editing,destroy(){destroyed=true;stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);state.sequence++;state.loaded=false;state.evidence=null;discovery.sequence++;}};
+return {load:loadEvidence,loadDirectory,startAttributionOverride:()=>startAttributionOverride(),hasUnsavedChanges:()=>state.editing,destroy(){destroyed=true;stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);state.sequence++;state.loaded=false;state.evidence=null;discovery.sequence++;}};
 }
 
 if(document.getElementById("evidenceWorkspace")){
