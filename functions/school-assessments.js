@@ -31,8 +31,6 @@ function createSchoolAssessmentService({db}){
    const source=input.submissionSource;
    if(!["studio","github"].includes(source))
     deny("invalid-argument","Choose Adminerva Studio or GitHub evidence.");
-   if(source==="github")
-    deny("failed-precondition","The school-scoped GitHub evidence adapter is not active yet. No unsubmitable task was deployed.");
    const start=timestamp(input.opensAt,"Opening time");
    const end=timestamp(input.dueAt,"Deadline");
    if(end.toMillis()<=start.toMillis())
