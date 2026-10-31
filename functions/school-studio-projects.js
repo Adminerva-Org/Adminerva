@@ -128,6 +128,8 @@ function createSchoolStudioProjectService({db}){
     const data=current.data();
     if(data.schoolId!==ctx.schoolId||data.ownerUid!==ctx.uid)
      deny("permission-denied","This project ID belongs to a different school account.");
+    if(data.status==="archived")
+     deny("failed-precondition","Restore this archived school project before synchronizing changes.");
     const expected=input.expectedRevision;
     if(!Number.isInteger(expected)||expected<1)
      deny("failed-precondition","This project already exists in school storage. Reload its school revision before saving.");
