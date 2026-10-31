@@ -10,7 +10,7 @@ export function sessionDestination(candidate,access){
   try{
     const base=new URL(".",location.href),target=new URL(candidate,base),page=target.pathname.slice(base.pathname.length);
     if(target.origin!==base.origin||!target.pathname.startsWith(base.pathname)||page.includes("/"))return fallback;
-    const allowed=page==="issues.html"||studentPages.has(page)&&(Boolean(access.role)||access.students?.length)||staffPages.has(page)&&Boolean(access.role)||adminPages.has(page)&&access.role==="admin"||guestPages.has(page)&&!access.role&&!access.students?.length;
+    const allowed=page==="join-school.html"||page==="issues.html"||studentPages.has(page)&&(Boolean(access.role)||access.students?.length)||staffPages.has(page)&&Boolean(access.role)||adminPages.has(page)&&access.role==="admin"||guestPages.has(page)&&!access.role&&!access.students?.length;
     return allowed?page+target.search+target.hash:fallback;
   }catch{return fallback;}
 }
