@@ -23,7 +23,7 @@ function reusableContent(input) {
     const name=cleanText(item.name,160,"Criterion",{required:true});
     const points=item.points;
     if(typeof points!=="number"||!Number.isFinite(points)||points<=0||points>100)
-      deny("invalid-argument","Each criterion must have between 0 and 100 points.");
+      deny("invalid-argument","Each criterion must have between 1 and 100 points.");
     return {name,points};
   });
   return {title,description,instructions,rubric:criteria};
