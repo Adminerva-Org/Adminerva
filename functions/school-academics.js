@@ -131,6 +131,104 @@ function createSchoolAcademicsService({db}) {
     .map(doc=>({offeringId:doc.id,yearId:doc.data().yearId,termId:doc.data().termId,
       subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,status:doc.data().status}))};
   }
+  if(input.action==="bulk_enroll_students"){
+   requireAdmin();
+   const offeringId=checkId(input.offeringId,"Course offering ID",330);
+   const personIds=Array.isArray(input.personIds)?[...new Set(input.personIds.map(value=>checkId(value,"Person ID",128)))]:[];
+   if(!personIds.length||personIds.length>80)
+    deny("invalid-argument","Select between 1 and 80 students for a bulk enrollment.");
+   const reason=checkName(input.reason,"Bulk enrollment reason");
+   if(reason.length<12)deny("invalid-argument","Explain the bulk enrollment in at least 12 characters.");
+   const offeringRef=schoolRoot.doc("course_offerings/"+offeringId);
+   const personRefs=personIds.map(personId=>schoolRoot.doc("people/"+personId));
+   const enrollmentRefs=personIds.map(personId=>schoolRoot.doc("enrollments/"+rowKey(personId,offeringId)));
+   const auditRefs=personIds.map(()=>db.collection("schools/"+ctx.schoolId+"/directory_audit").doc());
+   let result;
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const [offering,...records]=await Promise.all([
+      tx.get(offeringRef),
+      ...personRefs.map(ref=>tx.get(ref)),
+      ...enrollmentRefs.map(ref=>tx.get(ref))
+    ]);
+    if(!offering.exists||offering.data().schoolId!==ctx.schoolId||offering.data().status!=="active")
+      deny("failed-precondition","Select an active school course offering.");
+    const people=records.slice(0,personIds.length),existing=records.slice(personIds.length);
+    if(people.some(person=>!person.exists||person.data().schoolId!==ctx.schoolId||
+       person.data().kind!=="student"||person.data().status!=="active"))
+      deny("failed-precondition","Every selected person must be an active student in this school.");
+    const now=FieldValue.serverTimestamp();let created=0,alreadyActive=0,historyExists=0;
+    personIds.forEach((personId,index)=>{
+      const prior=existing[index];
+      if(prior.exists){
+        if(prior.data().schoolId!==ctx.schoolId||prior.data().personId!==personId||
+           prior.data().offeringId!==offeringId)
+          deny("failed-precondition","An enrollment key collision requires manual review.");
+        if(prior.data().status==="active")alreadyActive++;
+        else historyExists++;
+        return;
+      }
+      created++;
+      tx.create(enrollmentRefs[index],{schoolId:ctx.schoolId,personId,offeringId,
+        yearId:offering.data().yearId,termId:offering.data().termId,
+        sectionId:offering.data().sectionId,subjectId:offering.data().subjectId,
+        status:"active",revision:1,createdByUid:uid,createdAt:now});
+      tx.create(auditRefs[index],audit("student_bulk_enrolled",{personId,offeringId,reason}));
+    });
+    result={offeringId,selected:personIds.length,created,alreadyActive,historyExists};
+   });
+   return result;
+  }
+  if(input.action==="bulk_assign_teachers"){
+   requireAdmin();
+   const offeringId=checkId(input.offeringId,"Course offering ID",330);
+   const teacherUids=Array.isArray(input.teacherUids)?[...new Set(input.teacherUids.map(value=>
+     checkId(value,"Teacher account UID",128)))]:[];
+   if(!teacherUids.length||teacherUids.length>30)
+    deny("invalid-argument","Select between 1 and 30 teachers for a bulk class assignment.");
+   const reason=checkName(input.reason,"Bulk teacher assignment reason");
+   if(reason.length<12)deny("invalid-argument","Explain the bulk teacher assignment in at least 12 characters.");
+   const offeringRef=schoolRoot.doc("course_offerings/"+offeringId);
+   const memberRefs=teacherUids.map(teacherUid=>schoolRoot.doc("memberships/"+teacherUid));
+   const assignmentRefs=teacherUids.map(teacherUid=>schoolRoot.doc("staff_assignments/"+rowKey(teacherUid,offeringId)));
+   const auditRefs=teacherUids.map(()=>db.collection("schools/"+ctx.schoolId+"/directory_audit").doc());
+   let result;
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const [offering,...records]=await Promise.all([
+      tx.get(offeringRef),
+      ...memberRefs.map(ref=>tx.get(ref)),
+      ...assignmentRefs.map(ref=>tx.get(ref))
+    ]);
+    if(!offering.exists||offering.data().schoolId!==ctx.schoolId||offering.data().status!=="active")
+      deny("failed-precondition","Select an active school course offering.");
+    const members=records.slice(0,teacherUids.length),existing=records.slice(teacherUids.length);
+    if(members.some(member=>!member.exists||member.data().schoolId!==ctx.schoolId||
+       member.data().status!=="active"||!Array.isArray(member.data().roles)||
+       !member.data().roles.includes("teacher")))
+      deny("permission-denied","Every selected account must be an active teacher in this school.");
+    const now=FieldValue.serverTimestamp();let created=0,alreadyActive=0,historyExists=0;
+    teacherUids.forEach((teacherUid,index)=>{
+      const prior=existing[index];
+      if(prior.exists){
+        if(prior.data().schoolId!==ctx.schoolId||prior.data().teacherUid!==teacherUid||
+           prior.data().offeringId!==offeringId)
+          deny("failed-precondition","A teaching-assignment key collision requires manual review.");
+        if(prior.data().status==="active")alreadyActive++;
+        else historyExists++;
+        return;
+      }
+      created++;
+      tx.create(assignmentRefs[index],{schoolId:ctx.schoolId,teacherUid,offeringId,
+        yearId:offering.data().yearId,termId:offering.data().termId,
+        subjectId:offering.data().subjectId,sectionId:offering.data().sectionId,
+        status:"active",revision:1,createdByUid:uid,createdAt:now});
+      tx.create(auditRefs[index],audit("teacher_bulk_assigned",{teacherUid,offeringId,reason}));
+    });
+    result={offeringId,selected:teacherUids.length,created,alreadyActive,historyExists};
+   });
+   return result;
+  }
   if(input.action==="enroll_student"){
    requireAdmin();
    const personId=checkId(input.personId,"Person ID"),
