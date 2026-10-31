@@ -185,6 +185,14 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       document.getElementById("gbV4Artifacts").textContent=
         JSON.stringify(currentSnapshot.artifacts||{},null,2);
       renderRubric(currentGrade);
+      const revisionDue=document.getElementById("gbV4RevisionDue");
+      const revisionDueLabel=document.getElementById("gbV4RevisionDueLabel");
+      const originalDeadlinePassed=Number(currentTask.dueAt||0)>0&&Date.now()>Number(currentTask.dueAt);
+      revisionDue.value="";
+      revisionDue.required=originalDeadlinePassed;
+      revisionDueLabel.textContent=originalDeadlinePassed?
+        "Revision extension deadline (required because the original deadline passed)":
+        "Extension deadline (optional before original deadline)";
       const published=currentGrade?.status==="published";
       const reopened=row.status==="reopened";
       refreshReviewControls();
@@ -241,6 +249,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       document.getElementById("gbV4ReviewStatus").textContent="Explain the revision request in at least 12 characters.";return;
     }
     const raw=document.getElementById("gbV4RevisionDue").value;
+    const originalDeadlinePassed=Number(currentTask.dueAt||0)>0&&Date.now()>Number(currentTask.dueAt);
+    if(originalDeadlinePassed&&!raw){
+      document.getElementById("gbV4ReviewStatus").textContent=
+        "The original deadline passed. Choose an explicit revision extension deadline.";return;
+    }
     const extensionDueAt=raw?localIso(raw):null;
     if(raw&&!extensionDueAt){
       document.getElementById("gbV4ReviewStatus").textContent="Choose a valid revision extension deadline.";return;
