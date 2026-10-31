@@ -61,10 +61,12 @@ async function resolveScope(){
   return promise;
 }
 async function rawCall(name,payload){
-  const uid=auth.currentUser?.uid;
-  if(!uid)throw Error("Sign in to continue practice.");
+  const uid=auth.currentUser?.uid||null;
   const result=await httpsCallable(functions,name)(payload);
-  if(auth.currentUser?.uid!==uid)throw Error("Account changed. Reload practice before continuing.");
+  if(uid&&auth.currentUser?.uid!==uid)
+    throw Error("Account changed. Reload practice before continuing.");
+  if(!uid&&auth.currentUser)
+    throw Error("Account changed while Practice was loading. Reload before continuing.");
   return result.data;
 }
 function mappedName(name,scope){
