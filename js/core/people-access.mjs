@@ -4,7 +4,7 @@ import {createTenantSchoolPicker} from "./tenant-school-picker.mjs";
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"peopleDirectory");
 const get=id=>document.getElementById(id);
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
-let after=null,loadingPeople=false;
+let after=null,loadingPeople=false,pendingWrite=false;
 function say(message){status.textContent=message;}
 function setTab(name) {
   for(const button of document.querySelectorAll("[data-tab]")){
@@ -17,6 +17,7 @@ document.querySelectorAll("[data-tab]").forEach(button=>button.addEventListener(
 const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
+    if(pendingWrite)throw new Error("Finish saving before switching schools.");
     workspace.hidden=true;list.replaceChildren();after=null;
     get("pa-more").hidden=true;
   },
@@ -67,7 +68,7 @@ async function loadPeople(append) {
 get("pa-more").addEventListener("click",()=>void loadPeople(true));
 async function submitForm(form,action,details) {
   const button=form.querySelector('button[type="submit"]');
-  button.disabled=true;say("Saving within your verified school…");
+  pendingWrite=true;button.disabled=true;say("Saving within your verified school…");
   try {
     const result=await perform(action,details);
     form.reset();
@@ -76,7 +77,7 @@ async function submitForm(form,action,details) {
     else await loadOverview();
     return result;
   }catch(error){say(error.message||"This change was not saved.");}
-  finally{button.disabled=false;}
+  finally{pendingWrite=false;button.disabled=false;}
 }
 get("pa-add-person").addEventListener("submit",event=>{
   event.preventDefault();const values=new FormData(event.currentTarget);
