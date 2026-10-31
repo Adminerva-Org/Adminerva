@@ -110,7 +110,12 @@ function render(){
       meta.className="tl-muted";
       meta.textContent=task.submissionSource+" · "+task.status+" · due "+(task.dueAt?
         new Date(task.dueAt).toLocaleString():"not scheduled");
-      text.append(heading,meta);row.append(text);list.append(row);
+      text.append(heading,meta);
+      const controls=document.createElement("div");controls.className="tl-actions";
+      const gradebook=document.createElement("a");gradebook.className="tl-action alt";
+      gradebook.href="school-gradebook.html?task="+encodeURIComponent(task.taskId);
+      gradebook.textContent="Review & Grade";
+      controls.append(gradebook);row.append(text,controls);list.append(row);
     }
     return;
   }
