@@ -41,6 +41,7 @@
       <button type="button" data-tab="people" aria-selected="false" role="tab">People</button>
       <button type="button" data-tab="invites" aria-selected="false" role="tab">Access invitations</button>
       <button type="button" data-tab="classes" aria-selected="false" role="tab">Classes &amp; Assignments</button>
+      <button type="button" data-tab="access" aria-selected="false" role="tab">School Access</button>
     </div>
     <section id="pa-overview" class="pa-card" role="tabpanel">
       <h2 style="font-size:1.2rem;font-weight:750;margin-bottom:1rem">School overview</h2>
@@ -76,6 +77,26 @@
         <p class="pa-muted">This records a pending request; sending an invitation and granting an active membership require the separate verified approval workflow.</p>
         <div id="pa-invitation-result" role="status" aria-live="polite"></div>
       </form>
+    </section>
+    <section id="pa-access" role="tabpanel" hidden>
+      <div class="pa-card">
+        <h2 style="font-size:1.2rem;font-weight:750">Verified school memberships</h2>
+        <p class="pa-muted">Suspending a membership blocks future v4 school operations but preserves the person's history, evidence and existing grades. School administrators cannot suspend other school administrators here.</p>
+        <div id="pa-membership-list" role="list"></div>
+        <button class="pa-action" type="button" id="pa-refresh-memberships">Refresh access status</button>
+      </div>
+      <dialog id="pa-suspension-dialog" aria-labelledby="pa-suspension-title" style="width:min(480px,calc(100vw - 1rem));border:0;border-radius:14px;padding:1.3rem">
+        <form id="pa-suspension-form">
+          <h2 id="pa-suspension-title" style="font-size:1.2rem;font-weight:750">Suspend school access</h2>
+          <p class="pa-muted">This affects only the selected school. Academic history is retained.</p>
+          <p id="pa-suspension-member" style="font-weight:650"></p>
+          <label>Reason for suspension<input name="reason" class="pa-field" minlength="12" maxlength="500" required placeholder="Explain the institutional reason"></label>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button class="pa-action" type="submit" style="background:#9a3412">Confirm suspension</button>
+            <button class="pa-action" type="button" id="pa-cancel-suspend" style="background:#475569">Cancel</button>
+          </div>
+        </form>
+      </dialog>
     </section>
     <section id="pa-classes" role="tabpanel" hidden>
       <p class="pa-muted">School-specific teaching assignments. Enrolling a person does not alter earlier grades or term history.</p>
