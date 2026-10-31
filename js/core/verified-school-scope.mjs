@@ -35,9 +35,12 @@ export function createVerifiedSchoolScope({loadSchools,beforeChange=async()=>{},
       if(requested!==refreshRequest||run!==generation)return null;
       const nextOptions=Array.isArray(payload?.schools)?payload.schools:[];
       const state=pickerState(nextOptions,preferredSchoolId);
-      active=state.schoolId?{
-        uid,schoolId:state.schoolId,
-        roles:nextOptions.find(s=>s.schoolId===state.schoolId)?.roles||[]
+      const selected=state.schoolId?nextOptions.find(s=>s.schoolId===state.schoolId):null;
+      active=selected?{
+        uid,schoolId:selected.schoolId,
+        name:typeof selected.name==="string"&&selected.name.trim()?selected.name.trim().slice(0,120):selected.schoolId,
+        roles:Array.isArray(selected.roles)?selected.roles:[],
+        compatibilityMode:selected.compatibilityMode==="v4_only"?"v4_only":"legacy_allowed"
       }:null;
       options=nextOptions;
       const resolved={...state,options:[...options],context:active,generation};
