@@ -52,7 +52,7 @@ async function identityCandidates({db,resolveUserByEmail,schoolId="mcs-manila"})
   const user=email?resolved.get(email):null;
   if(!email||!user){notes.push({source:"students/"+row.id,issue:!email?"missing_or_invalid_email":"no_verified_active_auth_link"});continue;}
   const current=records.get(user.uid)||{
-   uid:user.uid,schoolId,legacyStudentIds:[],legacyStaffRecordIds:[],rolesToReview:[],
+   uid:user.uid,schoolId,legacyStudentIds:[],legacyStaffRecordIds:[],legacyStaffScopes:[],rolesToReview:[],
    requiresManualSchoolApproval:true
   };
   current.legacyStudentIds.push({
@@ -67,10 +67,17 @@ async function identityCandidates({db,resolveUserByEmail,schoolId="mcs-manila"})
   const email=normalizeEmail(row.data.email||row.id),user=email?resolved.get(email):null;
   if(!email||!user){notes.push({source:"staff_access/"+row.id,issue:!email?"missing_or_invalid_email":"no_verified_active_auth_link"});continue;}
   const current=records.get(user.uid)||{
-   uid:user.uid,schoolId,legacyStudentIds:[],legacyStaffRecordIds:[],rolesToReview:[],
+   uid:user.uid,schoolId,legacyStudentIds:[],legacyStaffRecordIds:[],legacyStaffScopes:[],rolesToReview:[],
    requiresManualSchoolApproval:true
   };
   current.legacyStaffRecordIds.push(row.id);
+  const scope={
+   recordId:row.id,role:typeof row.data.role==="string"?row.data.role:null,
+   status:typeof row.data.status==="string"?row.data.status:"active",
+   sections:Array.isArray(row.data.sections)?[...new Set(row.data.sections.filter(value=>typeof value==="string"&&value.trim()).map(value=>value.trim()))].slice(0,100):[],
+   subjects:Array.isArray(row.data.subjects)?[...new Set(row.data.subjects.filter(value=>typeof value==="string"&&value.trim()).map(value=>value.trim()))].slice(0,100):[]
+  };
+  current.legacyStaffScopes.push(scope);
   if(row.data.status!=="active"){notes.push({source:"staff_access/"+row.id,issue:"inactive_staff_grant"});continue;}
   if(row.data.role==="teacher") {
    if(!current.rolesToReview.includes("teacher"))current.rolesToReview.push("teacher");
@@ -92,7 +99,7 @@ async function identityCandidates({db,resolveUserByEmail,schoolId="mcs-manila"})
    "Preserve every historical studentId and schoolYear/section relationship; multiple rows may map to one UID.",
    "A verified Auth UID does not establish a school person record, enrollment or active membership.",
    "Suspended/archived students must retain history without automatic current enrollment.",
-   "Legacy admin grants, teacher assignment scopes and private resource owner UIDs require review.",
+   "Legacy admin grants and private resource owner UIDs require review. Teacher section/subject scopes are preserved only as non-authoritative assignment hints.",
    "No school grants, grades, evidence or personal resources are changed by this report."
   ]
  };
