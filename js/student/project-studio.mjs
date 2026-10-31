@@ -9,7 +9,9 @@ import {
 } from "./code-projects.mjs?v=2.0.0";
 import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=3.0.0";
 import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
-import {queueV4StudioProjectSync} from "./v4-studio-service.mjs?v=4.0.0";
+import {
+  archiveV4StudioProject,listV4StudioProjects,loadV4StudioProject,queueV4StudioProjectSync
+} from "./v4-studio-service.mjs?v=4.0.0";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -57,6 +59,44 @@ function renderGridTable(target,columns,rows){
   const body=(rows||[]).map(row=>"<tr>"+columns.map((_,i)=>"<td>"+escapeHtml(row[i]??"NULL")+"</td>").join("")+"</tr>").join("");
   target.innerHTML='<div class="studio-table-wrap"><table class="studio-table"><thead><tr>'+head+'</tr></thead><tbody>'+body+'</tbody></table></div>';
 }
+function v4ProjectTemplate(language,artifacts={}){
+  if(language==="python")return "python-console";
+  if(language==="web")return "web";
+  if(language==="java"){
+    if(artifacts.config?.database)return "java-information";
+    if(artifacts.config?.runMode==="desktop")return "java-desktop";
+    return "java-blank";
+  }
+  return "java-blank";
+}
+function v4ProjectToLocal(uid,remote){
+  const entries=Array.isArray(remote?.files)?remote.files:[];
+  if(!remote?.projectId||!entries.length)throw Error("School project is missing its source files.");
+  const files={},folders=new Set(),order=[];
+  for(const item of entries){
+    if(!item||typeof item.path!=="string"||typeof item.content!=="string")continue;
+    files[item.path]=item.content;order.push(item.path);
+    const parts=item.path.split("/");
+    for(let i=1;i<parts.length;i++)folders.add(parts.slice(0,i).join("/"));
+  }
+  if(!order.length)throw Error("School project has no readable source files.");
+  const artifacts=remote.artifacts&&typeof remote.artifacts==="object"?remote.artifacts:{};
+  const time=value=>{
+    const date=new Date(Number(value)||Date.now());
+    return Number.isFinite(date.getTime())?date.toISOString():new Date().toISOString();
+  };
+  return {
+    id:remote.projectId,ownerUid:uid,title:remote.title||"School project",
+    template:v4ProjectTemplate(remote.language,artifacts),lang:remote.language||"text",status:"active",
+    config:artifacts.config||{},
+    state:{lang:remote.language||"text",files,fileOrder:order,activeFilename:order[0],
+      folders:[...folders].sort(),projectOrder:[...folders,...order]},
+    database:artifacts.database||{tables:{},history:[]},
+    design:artifacts.design||{},evidence:artifacts.evidence||{events:[],runs:[]},
+    createdAt:time(remote.createdAt),updatedAt:time(remote.updatedAt),lastOpenedAt:time(remote.updatedAt)
+  };
+}
+
 function defaultDiagramName(key){
   return ({useCase:"Use Case",classDiagram:"Class Diagram",sequence:"Sequence Diagram",architecture:"Architecture"})[key]||key;
 }
@@ -162,17 +202,36 @@ export function createProjectStudio({
   }
   async function mergeCloudProjects(){
     if(!cloudEnabled)return;
+    const local=readCodeProjects(localStorage,uid),map=new Map(local.map(project=>[project.id,project]));
+    let changed=false;
     try{
       const snap=await getDocs(collection(db,"student_code_projects",uid,"projects"));
-      if(!snap.size)return;
-      const local=readCodeProjects(localStorage,uid),map=new Map(local.map(project=>[project.id,project]));
       for(const record of snap.docs){
         const cloud=record.data(),current=map.get(cloud.id);
-        if(!current||String(cloud.updatedAt||"")>String(current.updatedAt||""))map.set(cloud.id,cloud);
+        if(!current||String(cloud.updatedAt||"")>String(current.updatedAt||"")){
+          map.set(cloud.id,cloud);changed=true;
+        }
       }
+    }catch(error){console.warn("Legacy cloud code projects unavailable; continuing with school storage.",error);}
+    try{
+      const remote=await listV4StudioProjects();
+      for(const summary of remote||[]){
+        if(map.has(summary.projectId))continue;
+        try{
+          const detail=await loadV4StudioProject(summary.projectId);
+          if(!detail)continue;
+          const schoolProject=v4ProjectToLocal(uid,detail);
+          validateProject(schoolProject);
+          map.set(schoolProject.id,schoolProject);changed=true;
+        }catch(error){
+          console.warn("School Studio project could not be materialized on this device:",summary.projectId,error?.message||error);
+        }
+      }
+    }catch(error){console.warn("Verified school projects unavailable; using existing device projects.",error);}
+    if(changed){
       writeCodeProjects(localStorage,uid,[...map.values()]);
       if(!activeProject)renderProjectHome();
-    }catch(error){console.warn("Cloud code projects unavailable; using device projects.",error);}
+    }
   }
 
   function initialize(){
@@ -264,6 +323,17 @@ export function createProjectStudio({
           if(!confirm(warning))return;
           deletedProjects.add(project.id);
           clearTimeout(cloudTimers.get(project.id));cloudTimers.delete(project.id);
+          if(cloudEnabled){
+            try{await archiveV4StudioProject(project.id);}
+            catch(error){
+              deletedProjects.delete(project.id);
+              const localOnly=confirm("The verified-school copy could not be archived: "+
+                (error?.message||"school storage unavailable")+
+                "\n\nDelete only this device/legacy copy anyway? The school copy may reappear after synchronization.");
+              if(!localOnly)return;
+              deletedProjects.add(project.id);
+            }
+          }
           deleteCodeProject(localStorage,uid,project.id);
           if(cloudEnabled)try{
             await (cloudWrites.get(project.id)||Promise.resolve()).catch(()=>{});
