@@ -38,7 +38,7 @@ Do not repeat the mixed-schools question. Retain source document identifiers, ex
 
 **Safety update:** The school-aware GitHub evidence adapter is now implemented with frozen commit selections, teacher verification/approval and school-admin attribution reclaim handling. A scorable rubric is mandatory at deployment. Studio/GitHub revisions requested after the original deadline require explicit reviewed extension handling; academic publication still fails closed against stale evidence.
 
-**Remaining:** finish migration/cutover of the remaining legacy 3.0 analytics/admin surfaces and historical V2/V3 records not already covered by canonical planners, complete MCS ledger/reconciliation/cutover execution, then retire compatibility paths. The existing Studio already has a progressive V4 bridge and the dedicated V4 Gradebook/GitHub evidence/reclaim paths are present, but no production Firestore copy or role grant has been executed. Do not present the new callables as deployed features.
+**Remaining:** finish the controlled compatibility-mode cutover/rollback control, retire remaining legacy 3.0 compatibility surfaces after MCS reconciliation, complete production migration execution, then remove legacy authorization/bootstrap paths. The existing Studio already has a progressive V4 bridge and the dedicated V4 Gradebook/GitHub evidence/reclaim paths are present, but no production Firestore copy or role grant has been executed. Do not present the new callables as deployed features.
 
 ## Role, navigation and People & Access integration — October 31, 2026
 
@@ -179,6 +179,16 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 - Verified tenant context now includes the server compatibility mode. Staff admission treats a migrated legacy teacher as V4-only only after every verified school on that account is `v4_only`; multi-school accounts therefore fail conservatively if any school still needs compatibility.
 - Once cut over, migrated school administrators/teachers are fenced from legacy global administration/teacher workspaces and redirected to canonical V4 surfaces. The legacy role records remain present solely for reversible compatibility until final retirement.
 - The owner registry shows compatibility mode and canonical readiness blockers before offering the cutover control.
+
+## Continuity-export v2 integrity and restore readiness — October 31, 2026
+
+- The school continuity export now uses `adminerva-school-continuity-export-v2`. Each exported canonical category carries its own record count and SHA-256 digest in addition to the top-level bundle hash.
+- Browser export assembly performs a final server-side integrity pass for every category. If school data changes while pages are being collected, no continuity file is produced.
+- The server records only a privacy-safe export receipt after it independently re-verifies every category: bundle hash, category counts/digests, actor, revision and timestamp. Exported personal/academic records are not copied into the receipt.
+- The 4.0 readiness gate now requires a current-schema verified continuity-export receipt prepared within the last 24 hours. This is evidence that a fresh recovery bundle was prepared; it does not claim that an institution stored the downloaded file correctly.
+- The restore planner rejects any bundle whose category set/count/digest metadata does not match its actual contents, even if a modified file has a recomputed top-level SHA-256.
+- Restore planning now surfaces separately required active teacher/student memberships before approval for active teaching assignments, repository configuration, deployed assessments and published grades. Automatic restore still never creates memberships or grants roles.
+- Relationship identifiers are validated before dependency-key construction so malformed recovery rows become explicit blockers instead of aborting the planner unexpectedly.
 
 ## Delivery and remaining work
 
