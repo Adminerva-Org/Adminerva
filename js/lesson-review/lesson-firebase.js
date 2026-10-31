@@ -1,6 +1,7 @@
 import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.3.0";
 import {captureLessonSettings} from "./lesson-settings.mjs?v=1.3.0";
 import {resolveReferenceLibrary,assertReferenceOwner,referenceFolders,referenceFolder,normalizeReferenceFolder,cacheReferenceFolders} from "./reference-library.mjs?v=1.3.4";
+import {verifiedPlanningMode} from "./school-academic-options.mjs?v=4.0.0";
 /** Saved lesson records, version handling and lesson loading. */
 // Import centralized database instead of initializing locally
 import { auth,db } from "../core/firebase-core.js?v=1.3.0";
@@ -69,12 +70,14 @@ window.fetchScheduleForLesson = async function (schoolYear, academicTerm, grade=
   return local();
 };
 
-window.initFirebase = function () {
+window.initFirebase = async function () {
+  if(await verifiedPlanningMode())return;
   if (window.loadLibraryFolders) {
-    window.loadLibraryFolders();
+    await window.loadLibraryFolders();
   }
 };
 workspaceOnReady(async()=>{
+  if(await verifiedPlanningMode())return;
   const parameters=new URLSearchParams(location.search),legacyId=parameters.get("legacyPlan");
   if(!legacyId&&parameters.get("saved")==="1"){await window.openLoadPlanModal();return;}
   if(!legacyId)return;
@@ -105,6 +108,7 @@ workspaceOnReady(async()=>{
 
 let referenceFolderLoadSerial=0;
 window.loadLibraryFolders = async function () {
+  if(await verifiedPlanningMode())return;
   const serial=++referenceFolderLoadSerial;
   const container = document.getElementById("libraryFolderContainer");
   if (!container) return;
