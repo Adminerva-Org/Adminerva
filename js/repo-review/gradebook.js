@@ -126,7 +126,8 @@ async function loadGrid() {
   const serial=++gridSerial;gridEntries=[];syncPublishButton(true);
   if (!section || !taskId) {syncPublishButton();return;}
 
-  tbody.innerHTML = `<tr aria-busy="true"><td colspan="5" class="px-6 py-8"><div class="animate-pulse space-y-3"><div class="h-4 rounded bg-slate-200 w-1/3"></div><div class="h-4 rounded bg-slate-100 w-2/3"></div><span class="text-sm text-slate-500">Loading saved scores…</span></div></td></tr>`;
+  tbody.innerHTML = `<tr aria-busy="true"><td colspan="5" class="px-6 py-8 text-center text-sm text-slate-500">Loading saved scores…</td></tr>`;
+  const end=window.beginLoading?.("Loading gradebook scores…",tbody)||(()=>{});
 
   try {
     const gradesSnap = await getDocs(
@@ -176,7 +177,7 @@ async function loadGrid() {
           <div class="flex flex-col gap-1 w-32">
             <a href="${escapeHTML(commitUrl)}" target="_blank" class="text-blue-500 hover:text-blue-700 hover:underline text-center text-xs font-mono bg-blue-50 px-2 py-1 rounded border border-blue-100 transition">View Commits</a>
             <div id="stats-${student.id}" class="text-[10px] text-slate-500 font-medium mt-1">
-               <span class="animate-pulse">Loading stats...</span>
+               <span>Loading stats...</span>
             </div>
           </div>
         `;
@@ -297,7 +298,7 @@ async function loadGrid() {
     if(serial!==gridSerial)return;
     console.error(error);
     tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-12 text-center text-red-500 font-bold border border-red-200 bg-red-50">Failed to load matrix. Check permissions.</td></tr>`;
-  }
+  } finally { end(); }
 }
 
 window.matrixTogglePub = async function (studentId, taskId, checkbox) {
