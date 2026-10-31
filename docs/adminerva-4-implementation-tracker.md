@@ -199,6 +199,14 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 - Canonical `schools/{schoolId}` data remains server-authorized and unaffected by this legacy gate. Rollback to `legacy_allowed` reopens compatibility paths without undoing V4 data.
 - Legacy support/history records that are intentionally retained for reference are not treated as canonical authority and are not automatically deleted by cutover.
 
+## Bootstrap-authority retirement at V4 cutover — October 31, 2026
+
+- `tenantSchools` now returns the authoritative MCS legacy-compatibility state in addition to verified school memberships and platform-owner authority.
+- `staff-session.mjs` suppresses all legacy `staff_access` / hardcoded bootstrap presentation roles when MCS compatibility is disabled. A cut-over account retains privilege only through canonical school membership or `platform_admins/{uid}`.
+- This removes the prior half-authorized state where a legacy bootstrap administrator could still render as `superadmin` after Firestore had already denied legacy data access.
+- Cached browser role state remains presentation-only; the auth guard re-resolves server-backed access and routes accounts without canonical authority away from privileged workspaces.
+- The hardcoded legacy email and old notification/issue compatibility code remain in source only for the rollback window. They no longer provide authority after V4-only cutover and can be physically removed after the migration has been observed stable.
+
 ## Delivery and remaining work
 
 | Track | Actual implementation in PR #113 | Remaining before Adminerva 4.0 |
