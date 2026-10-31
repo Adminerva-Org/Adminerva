@@ -194,6 +194,8 @@ async function checkAccess(user){
     navigation.dataset.schoolAdmin=String(Boolean(access.schoolAdmin));
     navigation.dataset.schoolTeacher=String(Boolean(access.schoolTeacher));
     navigation.dataset.schoolStudent=String(Boolean(access.schoolStudent));
+    navigation.dataset.v4OnlyTeacher=String(Boolean(v4OnlyTeacher));
+    navigation.dataset.legacyTeacher=String(access.legacyRole==="teacher");
   }
   document.dispatchEvent(new CustomEvent("adminerva:role-ready", {
     detail:{role:activeRole,platformAdmin:Boolean(access.platformAdmin),schoolAdmin:Boolean(access.schoolAdmin),
