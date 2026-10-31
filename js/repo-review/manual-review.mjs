@@ -246,6 +246,16 @@ async function copyExternalPackage(){
     externalStatus(copied?"Evaluation package copied.":"Clipboard access was blocked. Select the package text and copy it manually.",!copied);
   }finally{button.disabled=false;end();}
 }
+// Prevent a stalled GitHub read from leaving the handoff in an endless loading state.
+async function boundedExternalPreparation(work,timeoutMs=120000){
+  let timer;
+  try{
+    return await Promise.race([
+      work,
+      new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error("Preparing the verified evidence timed out. Close and reopen External evaluation to retry; no grade was changed.")),timeoutMs);})
+    ]);
+  }finally{clearTimeout(timer);}
+}
 async function openExternalEvaluation(){
   const active=state.active;
   if(!active||active.assessment.schemaVersion!==2||!active.checkpointSha||!evaluationResponsibilityReady(active.assessment,active.evidence))
@@ -278,7 +288,7 @@ async function openExternalEvaluation(){
   const session=state.token;
   try{
     const criteria=parseWeightedRubric(active.assessment.evalCriteria,active.maxScore);
-    const [evidence,privateAssessment]=await Promise.all([
+    const [evidence,privateAssessment]=await boundedExternalPreparation(Promise.all([
       loadPinnedV2Source({
         repository:active.base,checkpointSha:active.checkpointSha,
         selectedCommits:active.selectedEvidenceCommits,assessment:active.assessment,
@@ -288,7 +298,7 @@ async function openExternalEvaluation(){
       getDoc(doc(db,"assessment_private",active.taskId))
         .then(snapshot=>snapshot.exists()?snapshot.data():{})
         .catch(()=>({}))
-    ]);
+    ]));
     if(session!==state.token||state.active!==active||key!==currentExternalEvidenceKey(active))return;
     const pack=buildExternalEvaluationPackage({
       assessment:active.assessment,criteria,evidence,privateAssessment,
@@ -310,7 +320,7 @@ async function openExternalEvaluation(){
   }catch(error){
     if(session===state.token&&state.active===active){
       el("externalEvaluationPackageStatus").textContent="Could not prepare the external package: "+error.message;
-      externalStatus("Evidence could not be prepared. Check the GitHub connection and reopen External evaluation to retry; your pasted result is preserved.",true);
+      externalStatus("Evidence preparation failed: "+error.message+" Your pasted result is preserved. Close and reopen this dialog to retry.",true);
     }
   }finally{end();if(session===state.token)state.externalBusy=false;}
 }
