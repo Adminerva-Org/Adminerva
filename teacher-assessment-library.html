@@ -78,6 +78,16 @@
   </div>
  </form>
 </dialog>
+<dialog id="tl-preview-dialog" class="tl-dialog" aria-labelledby="tl-preview-heading">
+ <div class="tl-dialog-inner">
+  <h2 id="tl-preview-heading" style="font-size:1.3rem;font-weight:750"></h2>
+  <p id="tl-preview-meta" class="tl-muted"></p>
+  <h3 style="font-weight:700">Description</h3><p id="tl-preview-description" style="white-space:pre-wrap"></p>
+  <h3 style="font-weight:700;margin-top:1rem">Instructions</h3><p id="tl-preview-instructions" style="white-space:pre-wrap"></p>
+  <h3 style="font-weight:700;margin-top:1rem">Rubric</h3><ul id="tl-preview-rubric"></ul>
+  <button type="button" id="tl-preview-close" class="tl-action alt">Close preview</button>
+ </div>
+</dialog>
 <script type="module" src="js/repo-review/teacher-assessment-library.mjs"></script>
 </body>
 </html>
