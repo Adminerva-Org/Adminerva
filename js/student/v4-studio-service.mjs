@@ -6,7 +6,7 @@
  */
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
+import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.1";
 
 const functions=getFunctions(app,"asia-southeast1");
 const projectsApi=httpsCallable(functions,"schoolStudioProjects");
@@ -15,6 +15,7 @@ const assessmentsApi=httpsCallable(functions,"schoolAssessments");
 const host=document.getElementById("studioSchoolSwitcher");
 const status=document.getElementById("studioSchoolStatus");
 let picker=null,loadPromise=null,activeSchool=null,lastError="",syncTimer=null,queued=null,syncing=Promise.resolve();
+let loadedSchoolId=null,waitingForSchool=false,openProjectId="",syncActive=false;
 
 function setStatus(message,tone="info"){
   if(!status)return;
@@ -87,20 +88,29 @@ async function init(){
       host:host||document.createElement("div"),
       status:null,
       onBeforeChange:async()=>{
-        if(queued||syncTimer)throw Error("Finish the current Studio save before switching schools.");
+        if(openProjectId)
+          throw Error("Return to the Studio project home before switching schools.");
+        if(queued||syncTimer||syncActive)
+          throw Error("Finish the current Studio save before switching schools.");
       },
       onReady:scope=>{
-        activeSchool=scope.current;
-        if(activeSchool){
-          const name=picker?.scope?.current?.schoolId||"school";
-          setStatus("School project sync ready · "+name);
+        const next=scope.current,nextId=next?.schoolId||null,previous=loadedSchoolId;
+        activeSchool=next;
+        if(nextId&&(waitingForSchool||(previous&&previous!==nextId))){
+          waitingForSchool=false;loadedSchoolId=nextId;
+          setStatus("Switching verified school Studio workspace…");
+          location.reload();
+          return;
         }
+        waitingForSchool=false;loadedSchoolId=nextId;
+        if(activeSchool)setStatus("School project sync ready · "+activeSchool.schoolId);
       }
     });
     try{
       const state=await picker.load();
       activeSchool=picker.scope.current;
       if(state?.state==="choose_school"){
+        waitingForSchool=true;
         setStatus("Choose your active school before school project synchronization.","attention");
         return null;
       }
@@ -174,8 +184,11 @@ export function queueV4StudioProjectSync(project,state){
     syncTimer=null;
     const next=queued;queued=null;
     if(!next)return;
-    syncing=syncing.catch(()=>{}).then(()=>syncV4StudioProject(next.project,next.state,{quiet:true}))
-      .catch(error=>console.warn("V4 Studio sync skipped:",callableMessage(error,"save conflict")));
+    syncing=syncing.catch(()=>{}).then(async()=>{
+      syncActive=true;
+      try{return await syncV4StudioProject(next.project,next.state,{quiet:true});}
+      finally{syncActive=false;}
+    }).catch(error=>console.warn("V4 Studio sync skipped:",callableMessage(error,"save conflict")));
   },2200);
 }
 export async function listArchivedV4StudioProjects(){
@@ -232,9 +245,15 @@ export async function submitV4StudioProject({taskId,project,state}){
 export function v4StudioBridgeState(){
   return {school:activeSchool,lastError,available:Boolean(activeSchool)};
 }
+window.addEventListener("adminerva:studio-ready",event=>{
+  openProjectId=String(event.detail?.projectId||"");
+});
+window.addEventListener("adminerva:studio-home",()=>{openProjectId="";});
 window.addEventListener("adminerva:school-ready",event=>{
   if(!picker)return;
-  activeSchool=picker.scope.current;
-  if(activeSchool?.schoolId===event.detail?.schoolId)
-    setStatus("School project sync ready · "+activeSchool.schoolId);
+  const scoped=picker.scope.current;
+  if(scoped?.schoolId===event.detail?.schoolId){
+    activeSchool=scoped;
+    setStatus("School project sync ready · "+scoped.schoolId);
+  }
 });
