@@ -102,6 +102,13 @@ The current 4.0 runtime already has school-scoped teacher planning, schedules an
 - Timetables are revalidated against canonical teacher section/subject assignments and use the live V4 `scheduleId(uid,year,semester)` contract. Folder/document and schedule/revision units are atomic; partial target state is a preflight blocker.
 - Legacy administrator-shared reference folders and shared `app_config` timetables are identified from the reviewed dry-run ledger but are **not** copied into every teacher account. They require an explicit school-shared policy or archived-history decision.
 
+## V4 Student Home routing cleanup — October 31, 2026
+
+- Student Home now loads the current V4 auth/navigation/home-routing assets, so the existing school-scoped Project Hub, Assignments, Settings and Support rewrites actually run for V4-only student accounts.
+- The shared Continue/resume helper now receives verified `v4OnlyStudent` state and translates remembered legacy student dashboard, assignment, settings and issue-report destinations before rendering the resume card.
+- Practice, Adminerva Studio and XML Lab remain direct student workspaces; school-scoped Practice selects verified school context internally and no longer needs a legacy landing-page detour.
+- Auth Guard remains authoritative. This cleanup removes stale 3.x entry-point presentation and redirect-after-click behavior without widening student access.
+
 ## V4 Staff Home routing cleanup — October 31, 2026
 
 - Staff Home now applies V4-only presentation state from either the verified `adminerva:role-ready` payload or the already-published navigation dataset, so a late-loaded home module cannot leave legacy links visible.
