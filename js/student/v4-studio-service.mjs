@@ -178,6 +178,30 @@ export function queueV4StudioProjectSync(project,state){
       .catch(error=>console.warn("V4 Studio sync skipped:",callableMessage(error,"save conflict")));
   },2200);
 }
+export async function listV4StudioProjects(){
+  const result=await scopedCall(projectsApi,"list");
+  return result?result.projects||[]:null;
+}
+export async function loadV4StudioProject(projectId){
+  const result=await scopedCall(projectsApi,"get",{projectId});
+  if(result&&auth.currentUser&&picker?.scope.current)
+    setRevision(auth.currentUser.uid,picker.scope.current.schoolId,projectId,result.revision);
+  return result;
+}
+export async function archiveV4StudioProject(projectId){
+  await init();
+  if(!activeSchool||!auth.currentUser)return null;
+  let revision=getRevision(auth.currentUser.uid,activeSchool.schoolId,projectId);
+  if(!revision){
+    const current=await scopedCall(projectsApi,"get",{projectId});
+    if(!current)return null;
+    revision=current.revision;
+    setRevision(auth.currentUser.uid,activeSchool.schoolId,projectId,revision);
+  }
+  const result=await scopedCall(projectsApi,"archive",{projectId,expectedRevision:revision});
+  setRevision(auth.currentUser.uid,activeSchool.schoolId,projectId,result.revision);
+  return result;
+}
 export async function listV4StudioAssignments(){
   const result=await scopedCall(assessmentsApi,"list_student");
   return result?result.assignments||[]:null;
