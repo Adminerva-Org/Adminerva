@@ -706,6 +706,22 @@ test('reclaim is initially pending, owner-private and can only be withdrawn by c
 
 });
 
+test('teacher evidence review may list reclaim claims for an assigned section',async()=>{
+  const teacher=client('staff',TEACHER);
+  await env.withSecurityRulesDisabled(async ctx=>{
+    const db=ctx.firestore();
+    await setDoc(doc(db,'commit_reclaims',SHA+'_alice'),{
+      studentId:'alice',assessmentId:'v2',section:'11-A',
+      repository:'https://github.com/example/project',sha:SHA,
+      detectedAuthorName:'Alice',detectedAuthorLogin:'alice',
+      explanation:'Teacher review fixture for a section-scoped reclaim query.',
+      status:'pending',createdAt:Timestamp.now()
+    });
+  });
+  const result=await assertSucceeds(getDocs(query(collection(teacher,'commit_reclaims'),where('section','==','11-A'))));
+  assert.equal(result.size,1);
+});
+
 test('instructor-only V2 grading config and admin-only reclaim decisions',async()=>{
   const alice=client('alice',EMAIL_A),teacher=client('staff',TEACHER);
   const admin=client('admin',ADMIN);
