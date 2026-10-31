@@ -13,6 +13,18 @@ function mount(){
   if(hasSchoolRole)for(const link of main.querySelectorAll('a[href="issues.html"]')){
     link.href="school-support.html";
   }
+  const v4OnlyStudent=navigation?.dataset.v4OnlyStudent==="true";
+  if(v4OnlyStudent){
+    const routes={
+      "student-dashboard.html":"school-student-projects.html",
+      "student-assessments.html":"school-student-assessments.html",
+      "student-settings.html":"school-student-settings.html"
+    };
+    for(const link of main.querySelectorAll("a[href]")){
+      const href=link.getAttribute("href");
+      if(routes[href])link.setAttribute("href",routes[href]);
+    }
+  }
   // Students have a filterable tool gallery; teachers use the shared Ctrl/Cmd+K
   // finder rather than a search form that has no matching cards.
   const cards=[...main.querySelectorAll("a.av-home-task")];
@@ -45,6 +57,8 @@ function mount(){
       const page=destination.split(/[?#]/)[0];
       const names={
         "student-playground.html":"Adminerva Studio","student-assessments.html":"Assignments","student-dashboard.html":"Project Hub",
+        "school-student-assessments.html":"Assignments","school-student-projects.html":"Project Hub",
+        "school-student-settings.html":"Student Settings",
         "student-practice.html":"Practice Lab","student-xml-lab.html":"XML Layout Lab",
         "lesson-planner.html":"Lesson Planner","repofetch.html":"Review & Grade",
         "gradebook.html":"Gradebook","assessment-studio.html":"Assessment Studio",
