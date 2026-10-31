@@ -23,7 +23,7 @@ test("CSV usernames require a matching live GitHub profile, never invented owner
   const csv={id:"csv",githubUsername:" @Alice ",githubAccountVerified:undefined};
   const linked=linkGithubProfile(csv,{id:71,login:"alice"});assert.equal(linked.githubUserId,71);assert.equal(linked.githubAccountVerified,undefined);
   assert.equal(attributeCommit({author:{id:71,login:"alice"}},linked).status,"verified");
-  assert.equal(attributeCommit({author:{id:72,login:"alice"}},linked).status,"other");
+  const conflict=attributeCommit({author:{id:72,login:"alice"}},linked); assert.equal(conflict.status,"review"); assert.equal(conflict.reason,"github_user_id_conflict");
   assert.equal(attributeCommit({author:{login:"alice"}},csv).status,"review");
   assert.throws(()=>linkGithubProfile(csv,{id:72,login:"bob"}));assert.throws(()=>linkGithubProfile({...csv,githubUserId:72},{id:71,login:"alice"}));
   assert.notEqual(attributeCommit({author:{id:0,login:"alice"}},{...csv,githubUserId:""}).status,"verified");
