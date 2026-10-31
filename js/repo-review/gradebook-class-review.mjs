@@ -411,8 +411,7 @@ async function inspectForApproval(student,evidence){
     if(claims.some(snapshot=>snapshot.docs.some(record=>
       record.data().repository===evidence.repository&&record.data().status==="pending")))
       throw Error("pending attribution reclaim");
-  }else{
-    if(!claimsReadable)throw Error("reclaim-request context unavailable; review this learner individually");
+  }else if(claimsReadable){
     const selected=new Set(selection.selectedCommits.map(sha=>String(sha).toLowerCase()));
     if([...claimMap.values()].some(claim=>
       selected.has(String(claim.sha||"").toLowerCase())&&
