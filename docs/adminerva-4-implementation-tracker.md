@@ -102,6 +102,13 @@ The current 4.0 runtime already has school-scoped teacher planning, schedules an
 - Timetables are revalidated against canonical teacher section/subject assignments and use the live V4 `scheduleId(uid,year,semester)` contract. Folder/document and schedule/revision units are atomic; partial target state is a preflight blocker.
 - Legacy administrator-shared reference folders and shared `app_config` timetables are identified from the reviewed dry-run ledger but are **not** copied into every teacher account. They require an explicit school-shared policy or archived-history decision.
 
+## Legacy issue/monitoring rule retirement — October 31, 2026
+
+- Firestore's legacy MCS gate now explicitly covers reporter access to global `issues`, creation of new global issue reports, activity-preference reads/writes, activity-event writes and issue-diagnostic writes.
+- This closes the paths that did not necessarily pass through `isAdmin()`, `isTeacher()` or `ownsStudentProfile()`, all of which were already compatibility-gated.
+- Once MCS enters `v4_only`, browsers can no longer use the flat legacy issue/monitoring collections even with a copied old page or stale SDK client. School Support remains available through the tenant-scoped callable service.
+- Existing global records are retained for migration/history; the change removes browser authority rather than deleting historical data.
+
 ## Legacy background-trigger retirement — October 31, 2026
 
 - The MCS compatibility gate now exposes a non-throwing `legacyMcsCompatibilityAllowed()` check for background handlers in addition to the callable failure gate.
