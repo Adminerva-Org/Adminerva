@@ -126,7 +126,7 @@ function githubCandidate({row,revisions,task,student}){
   verification,approvedByUid:verification?.teacherUid||null,
   approvedAt:status==="approved"?(timeMillis(head.reviewedAt)||null):null,
   reopenReason:status==="reopened"?clean(head.reopenReason,2000):"",
-  revisionDueAt:null,
+  revisionDueAt:null,requiresRevisionExtension:status==="reopened"&&Number(task.dueAt)<Date.now(),
   versions:versions.map(version=>({schoolId:SCHOOL_ID,taskId:task.taskId,offeringId:task.offeringId,
    studentUid:student.uid,personId:student.personId,repository:version.repository,
    selectedCommitShas:version.selectedCommitShas,checkpointSha:version.checkpointSha,
@@ -180,15 +180,14 @@ function studioCandidate({row,versions,task,student,now=Date.now()}){
  if(headRevision!==current.version||String(head.snapshotHash||"").toLowerCase()!==current.legacySnapshotHash)
   return {ok:false,reason:"studio_head_version_mismatch"};
  const mappedStatus=status==="revision_requested"?"reopened":status;
- if(mappedStatus==="reopened"&&Number(task.dueAt)<now)
-  return {ok:false,reason:"studio_revision_extension_required",taskDueAt:task.dueAt};
+ const requiresRevisionExtension=mappedStatus==="reopened"&&Number(task.dueAt)<now;
  const submissionId=v4Key(SCHOOL_ID,task.taskId,student.uid);
  return {ok:true,submissionId,targetPath:"schools/"+SCHOOL_ID+"/studio_submissions/"+submissionId,
   schoolId:SCHOOL_ID,taskId:task.taskId,offeringId:task.offeringId,
   studentUid:student.uid,personId:student.personId,projectId:clean(head.projectId,128)||current.projectId,
   projectRevision:current.projectRevision,contentDigest:current.contentDigest,status:mappedStatus,
   currentVersion:current.version,revisionRequestMessage:mappedStatus==="reopened"?clean(head.reviewNote||head.revisionRequestMessage,2000):null,
-  revisionDueAt:null,
+  revisionDueAt:null,requiresRevisionExtension,
   versions:converted.map(item=>({schoolId:SCHOOL_ID,taskId:task.taskId,studentUid:student.uid,
    personId:student.personId,projectId:item.projectId,projectRevision:item.projectRevision,
    files:item.files,artifacts:item.artifacts,contentDigest:item.contentDigest,
@@ -328,6 +327,10 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
   const revisions=await readMirrorSubcollection(db,"assessment_evidence",row.id,"revisions");
   const candidate=githubCandidate({row,revisions,task,student});
   if(!candidate.ok){blockers.push({type:candidate.reason,sourcePath:row.path,status:candidate.status||null});continue;}
+  if(candidate.requiresRevisionExtension)reviewItems.push({
+   type:"github_reopened_extension_required",evidenceId:candidate.evidenceId,taskId:task.taskId,
+   studentUid:student.uid,originalDueAt:task.dueAt,resolvedBy:"Set an explicit reviewed migration revisionExtensionDueAt."
+  });
   githubEvidence.push(candidate);githubByKey.set(task.taskId+"|"+student.uid,candidate);
  }
  for(const row of studioRows){
@@ -342,6 +345,10 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
   const candidate=studioCandidate({row,versions,task,student});
   if(!candidate.ok){blockers.push({type:candidate.reason,sourcePath:row.path,
     taskDueAt:candidate.taskDueAt||null,message:candidate.message||""});continue;}
+  if(candidate.requiresRevisionExtension)reviewItems.push({
+   type:"studio_reopened_extension_required",submissionId:candidate.submissionId,taskId:task.taskId,
+   studentUid:student.uid,originalDueAt:task.dueAt,resolvedBy:"Set an explicit reviewed migration revisionExtensionDueAt."
+  });
   studioSubmissions.push(candidate);studioByKey.set(task.taskId+"|"+student.uid,candidate);
  }
  for(const row of gradeRows){
