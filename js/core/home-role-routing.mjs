@@ -4,14 +4,15 @@ function applyRole(detail={}){
   const role=detail.role||navigation?.dataset.verifiedRole||"";
   const schoolTeacher=detail.schoolTeacher===true||
     navigation?.dataset.schoolTeacher==="true";
-  const v4OnlyTeacher=detail.v4OnlyTeacher===true;
+  const v4OnlyTeacher=detail.v4OnlyTeacher===true||
+    navigation?.dataset.v4OnlyTeacher==="true";
   if(v4OnlyTeacher){
     const title=document.getElementById("staffTitle"),intro=document.getElementById("staffIntro");
     const primary=document.getElementById("staffPrimaryAction"),secondary=document.getElementById("staffSecondaryAction");
     if(title)title.textContent="Your verified school teaching workspace.";
-    if(intro)intro.textContent="Create school-owned assessments, review frozen submissions, and publish grades through tenant-scoped workflows.";
+    if(intro)intro.textContent="Create school-owned assessments, plan lessons, review frozen submissions, publish grades, and follow class progress through tenant-scoped workflows.";
     if(primary){primary.href="school-gradebook.html";primary.textContent="Review & Grade →";}
-    if(secondary){secondary.href="teacher-assessment-library.html";secondary.textContent="Assessment library";}
+    if(secondary){secondary.href="lesson-planner.html";secondary.textContent="Plan a lesson";}
     const workflow=document.getElementById("teacherWorkflowSection");
     if(workflow){
       const links=[...workflow.querySelectorAll("li a")];
@@ -26,7 +27,11 @@ function applyRole(detail={}){
         row.replaceChildren();
         for(const [href,label] of [
           ["teacher-assessment-library.html","Assessment library"],
-          ["school-gradebook.html","Review & Grade"],
+          ["lesson-planner.html","Lesson planner"],
+          ["schedule.html","Teacher schedule"],
+          ["teacher-reference-library.html","My references"],
+          ["school-teacher-analytics.html","Class analytics"],
+          ["school-practice-analytics.html","Practice progress"],
           ["reclaim-inbox.html","Commit attribution requests"],
           ["school-support.html","School support"]
         ]){
