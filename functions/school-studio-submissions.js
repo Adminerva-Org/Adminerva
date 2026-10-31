@@ -7,7 +7,7 @@ const {createHash}=require("node:crypto");
 const {FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
-const {digestFiles}=require("./school-studio-projects.js");
+const {digestProject}=require("./school-studio-projects.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
 function createSchoolStudioSubmissionService({db}){
@@ -95,7 +95,7 @@ function createSchoolStudioSubmissionService({db}){
     if(project.data().revision!==revision)
      deny("failed-precondition","Project changed. Save the latest revision before submitting.");
     const files=project.data().files;
-    if(!Array.isArray(files)||project.data().contentDigest!==digestFiles(files))
+    if(!Array.isArray(files)||project.data().contentDigest!==digestProject(files,project.data().artifacts||{}))
      deny("failed-precondition","The saved project checksum could not be verified.");
     let version=1;
     if(submission.exists){
@@ -112,9 +112,9 @@ function createSchoolStudioSubmissionService({db}){
      version=prior.currentVersion+1;
     }
     const versionRef=submissionRef.collection("versions").doc(String(version));
-    const frozenDigest=digestFiles(files),when=FieldValue.serverTimestamp();
+    const artifacts=project.data().artifacts||{},frozenDigest=digestProject(files,artifacts),when=FieldValue.serverTimestamp();
     tx.create(versionRef,{schoolId:ctx.schoolId,taskId,studentUid:ctx.uid,personId,
-      projectId,projectRevision:revision,files,contentDigest:frozenDigest,
+      projectId,projectRevision:revision,files,artifacts,contentDigest:frozenDigest,
       sourceLanguage:project.data().language,submittedAt:when,version});
     if(submission.exists){
      tx.update(submissionRef,{status:"submitted",currentVersion:version,
@@ -170,10 +170,10 @@ function createSchoolStudioSubmissionService({db}){
    const version=submission.data().currentVersion;
    const snapshot=await submissionRef.collection("versions").doc(String(version)).get();
    if(!snapshot.exists||snapshot.data().schoolId!==ctx.schoolId||
-     snapshot.data().contentDigest!==digestFiles(snapshot.data().files))
+     snapshot.data().contentDigest!==digestProject(snapshot.data().files,snapshot.data().artifacts||{}))
     deny("failed-precondition","Frozen submission content is not verifiable.");
    return {submissionId,taskId,status:submission.data().status,version,
-     files:snapshot.data().files,contentDigest:snapshot.data().contentDigest,
+     files:snapshot.data().files,artifacts:snapshot.data().artifacts||{},contentDigest:snapshot.data().contentDigest,
      language:snapshot.data().sourceLanguage};
   }
   if(input.action==="request_revision"){
