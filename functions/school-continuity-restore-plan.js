@@ -85,8 +85,29 @@ function validateRows(bundle){
     const key=category+"/"+row.id;
     if(seen.has(key))throw Error("Duplicate continuity record ID.");
     seen.add(key);
-    if(category==="student_grades"&&row.status!=="published")
-     throw Error("Continuity restore accepts published grades only.");
+    if(category==="course_offerings")
+     for(const [key,label] of [["yearId","academic year"],["termId","term"],["subjectId","subject"],["sectionId","section"]])
+      validateId(row[key],label+" ID");
+    if(category==="enrollments"){
+     validateId(row.personId,"enrollment person ID");validateId(row.offeringId,"enrollment offering ID");
+    }
+    if(category==="staff_assignments"){
+     validateId(row.teacherUid,"teacher UID");validateId(row.offeringId,"teacher assignment offering ID");
+    }
+    if(category==="student_repository_configs"){
+     validateId(row.personId,"repository person ID");validateId(row.studentUid,"repository student UID");
+     validateId(row.offeringId,"repository offering ID");
+    }
+    if(category==="assessments"){
+     validateId(row.ownerUid,"assessment owner UID");validateId(row.offeringId,"assessment offering ID");
+     if(row.reviewerUid!==undefined&&row.reviewerUid!==null&&row.reviewerUid!=="")
+      validateId(row.reviewerUid,"assessment reviewer UID");
+    }
+    if(category==="student_grades"){
+     if(row.status!=="published")throw Error("Continuity restore accepts published grades only.");
+     validateId(row.taskId,"grade assessment ID");validateId(row.personId,"grade person ID");
+     validateId(row.studentUid,"grade student UID");
+    }
     if(category==="memberships"){
      reviewItems.push({type:"membership_access_restore_required",recordId:row.id,
        roles:Array.isArray(row.roles)?row.roles:[],status:row.status||"",
