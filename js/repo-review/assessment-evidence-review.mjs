@@ -553,6 +553,22 @@ function renderHistorical(){
     preview.addEventListener("click",()=>{void previewCommit(parseRepository(state.student.repoUrl),sha,row,preview);});
   }
 }
+async function startAttributionOverride(){
+  const evidence=state.evidence;
+  if(state.busy||!evidence||!["submitted","needs_review","approved"].includes(evidence.status))
+    return status("Commit attribution can only be amended while evidence is submitted, awaiting review, or approved.");
+  configureDiscovery("augment");
+  discovery.commits=[];
+  discovery.selected=new Set(evidence.selectedCommits||[]);
+  discovery.locked=new Set(evidence.selectedCommits||[]);
+  discovery.checkpoint=evidence.checkpointSha||"";
+  discovery.page=0;discovery.hasOlder=false;discovery.branch="";
+  el("evidenceDiscoveryNote").value="";
+  el("evidenceDiscoverList").replaceChildren();
+  el("evidenceDiscovery").classList.remove("hidden");
+  el("evidenceDiscovery").scrollIntoView({behavior:"smooth",block:"start"});
+  await findHistoricalCommits({preserve:true});
+}
 async function saveDiscovery(){
   const student=state.student,assessment=state.assessment;
   if(!student||!assessment)return status("Choose a student and assessment.");
@@ -560,27 +576,58 @@ async function saveDiscovery(){
     const selection=normalizeSelection([...discovery.selected],discovery.checkpoint);
     if(!discovery.commits.some(c=>String(c.sha||"").toLowerCase()===selection.checkpointSha))
       throw Error("Checkpoint must belong to the retrieved repository commits.");
+    if(discovery.mode==="augment"){
+      const opened=state.evidence;
+      if(!opened||!["submitted","needs_review","approved"].includes(opened.status))
+        throw Error("Current evidence changed. Refresh before adding an unmatched commit.");
+      const existing=new Set(opened.selectedCommits||[]);
+      if([...existing].some(sha=>!selection.selectedCommits.includes(sha)))
+        throw Error("Teacher attribution may add commits but cannot remove the learner's existing selected evidence.");
+      const added=selection.selectedCommits.filter(sha=>!existing.has(sha));
+      if(!added.length)throw Error("Select at least one additional repository commit to attribute.");
+      const note=el("evidenceDiscoveryNote").value.trim();
+      if(note.length<10||note.length>3000)
+        throw Error("Enter a teacher attribution note of 10–3,000 characters explaining why the added commit belongs to this learner.");
+      if(!confirm("Add "+added.length+" inspected commit"+(added.length===1?"":"s")+" to this learner's evidence? This records an audited teacher attribution amendment. The commit still requires contribution verification before evaluation."))return;
+      const endLoading=window.beginLoading?.("Saving teacher-attributed commit evidence…",el("evidenceDiscovery"))||(()=>{});
+      try{
+        const repo=parseRepository(opened.repository);
+        status("Checking that the selected checkpoint contains all evidence commits…");
+        await verifyAncestry(repo,selection.checkpointSha,selection.selectedCommits);
+        const changes={selectedCommits:selection.selectedCommits,checkpointSha:selection.checkpointSha,status:"needs_review"};
+        if(opened.status==="approved")Object.assign(changes,{
+          approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:"",
+          reviewedBy:null,reviewedAt:null,verificationNote:""
+        });
+        await changeEvidence(doc(db,"assessment_evidence",student.id+"_"+assessment.id),opened,changes,note);
+        discovery.mode="create";discovery.locked=new Set();el("evidenceDiscovery").classList.add("hidden");
+        await loadEvidence();notifyWorkspace();
+        status("Teacher-attributed commit added. Inspect and verify the added commit below, then approve the checkpoint before evaluation.");
+      }finally{endLoading();}
+      return;
+    }
     if(!confirm("Record historical evidence for "+student.name+
       "? This is NOT a student submission, a verified push time, or an approved checkpoint."))return;
-    const end=window.beginLoading?.("Saving proposed historical evidence…")||(()=>{});
+    const endLoading=window.beginLoading?.("Saving proposed historical evidence…")||(()=>{});
     try{
-    const ref=doc(db,"assessment_evidence",student.id+"_"+assessment.id);
-    await runTransaction(db,async tx=>{
-      const existing=await tx.get(ref);
-      if(existing.exists())throw Error("Evidence was submitted or discovered by someone else. Reload it.");
-      tx.set(ref,{
-      studentId:student.id,assessmentId:assessment.id,section:student.section,
-      repository:student.repoUrl,selectedCommits:selection.selectedCommits,
-      checkpointSha:selection.checkpointSha,status:"needs_review",
-      source:"teacher_discovered",discoveredBy:auth.currentUser.uid,
-      recordedAt:serverTimestamp(),updatedAt:serverTimestamp()
+      const ref=doc(db,"assessment_evidence",student.id+"_"+assessment.id);
+      await runTransaction(db,async tx=>{
+        const existing=await tx.get(ref);
+        if(existing.exists())throw Error("Evidence was submitted or discovered by someone else. Reload it.");
+        tx.set(ref,{
+          studentId:student.id,assessmentId:assessment.id,section:student.section,
+          repository:student.repoUrl,selectedCommits:selection.selectedCommits,
+          checkpointSha:selection.checkpointSha,status:"needs_review",
+          source:"teacher_discovered",discoveredBy:auth.currentUser.uid,
+          recordedAt:serverTimestamp(),updatedAt:serverTimestamp()
+        });
       });
-    });
-    await loadEvidence();
-    status("Historical candidate evidence saved. Independently verify before approving; no submission date was asserted.");
-    }finally{end();}
-  }catch(error){status("Unable to save historical evidence: "+error.message);}
+      await loadEvidence();
+      status("Historical candidate evidence saved. Independently verify before approving; no submission date was asserted.");
+    }finally{endLoading();}
+  }catch(error){status("Unable to save evidence: "+error.message);}
 }
+
 el("evidenceEditVerification").addEventListener("click",()=>{
   if(state.busy||state.evidence?.status!=="approved")return;
   state.verificationEditing=true;state.editing=true;
@@ -611,9 +658,10 @@ el("evidenceVerifyAll").addEventListener("change",()=>{
 root.addEventListener("change",event=>{
   if(event.target?.matches?.("[data-contribution-sha]")){state.editing=true;syncBulkVerification();}
 });
-el("evidenceFindCommits").addEventListener("click",()=>{void findHistoricalCommits();});
+el("evidenceFindCommits").addEventListener("click",()=>{void findHistoricalCommits({preserve:discovery.mode==="augment"});});
 el("evidenceFindOlder")?.addEventListener("click",()=>{void loadOlderHistorical();});
 el("evidenceSaveDiscovery").addEventListener("click",()=>{void saveDiscovery();});
+el("evidenceAddCommit")?.addEventListener("click",()=>{void startAttributionOverride();});
 el("evidenceStudentSearch")?.addEventListener("input",()=>renderStudentSearch());
 el("evidenceSection")?.addEventListener("change",()=>renderStudentSearch());
 el("evidenceLoad")?.addEventListener("click",()=>{if(state.editing&&!confirm("Discard unsaved review text and load the selected evidence?"))return;void loadEvidence();});
