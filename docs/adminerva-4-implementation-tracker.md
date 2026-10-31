@@ -144,7 +144,10 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 - `school-data-controls.html` provides the school-admin Data & Files workspace. It configures the audited file policy, shows the current retention contract and creates an integrity-hashed continuity export.
 - `school-data-export.js` exports only canonical school operational data: people/membership linkage, academic catalog, offerings, enrollments, teacher assignments, deployed assessment snapshots, **published** grades and school support report records.
 - The continuity export deliberately excludes teacher-private blueprints/planning/reference resources, student Studio/GitHub source/evidence payloads, unpublished teacher grade drafts, Practice runtime/session state, nested support comments/attachment binaries, secrets and audit/event streams.
-- Restore remains **preview-only** in the browser at this stage: schema, school binding, SHA-256 integrity and saved category counts are checked without writing Firestore. Canonical restore planning/apply remains the next controlled migration step.
+- The browser restore control remains **preview-only**: schema, school binding, SHA-256 integrity and saved category counts are checked without writing Firestore.
+- `school-continuity-restore-plan.js` adds a read-only same-school restore planner. It classifies canonical targets as ready/identical/conflict and explicitly excludes membership/role restoration.
+- `school-continuity-restore-approval-template.js` binds operator review to the exact export and plan hashes, requires explicit per-category approve/exclude decisions and records the access records that must be recovered separately.
+- `school-continuity-restore-apply.js` is preflight-only by default and requires an exact environment acknowledgement for write mode. It is create-only, never overwrites canonical records, rechecks dependencies, requires active separately restored teacher/student memberships for access-bearing active records, suppresses notifications, and cannot restore memberships or grant roles.
 
 ## Delivery and remaining work
 
