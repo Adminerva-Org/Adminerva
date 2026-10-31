@@ -29,8 +29,13 @@ export function mountInformationMenu(button, root) {
   });
   menu.querySelector("[data-information-report]").addEventListener("click", () => {
     close();
-    document.getElementById("bug-modal")?.classList.remove("hidden");
-    document.getElementById("bug-title")?.focus();
+    const modal=document.getElementById("bug-modal");
+    if(modal){
+      modal.classList.remove("hidden");document.getElementById("bug-title")?.focus();return;
+    }
+    const schoolScoped=root?.dataset.schoolAdmin==="true"||
+      root?.dataset.schoolTeacher==="true"||root?.dataset.schoolStudent==="true";
+    location.assign(schoolScoped?"school-support.html":"issues.html");
   });
   document.addEventListener("adminerva-menu-open", event => { if (event.detail !== menu.id) close(); });
   document.addEventListener("click", event => { if (!menu.contains(event.target) && !button.contains(event.target)) close(); });
