@@ -51,10 +51,10 @@ async function resolveScope(){
       return {mode:"school",schoolId:selected.schoolId,uid:user.uid};
     }catch(error){
       if(error?.details?.reason==="school-selection-required")throw error;
-      // Staged 3.x compatibility only. Once V4 is the sole production route,
-      // tenant lookup failures should fail closed rather than use legacy Practice.
-      console.warn("Verified Practice school lookup unavailable; using legacy compatibility.",error?.code||error?.message||error);
-      return {mode:"legacy",schoolId:null,uid:user.uid};
+      console.warn("Verified Practice school lookup unavailable; refusing legacy fallback.",error?.code||error?.message||error);
+      throw scopeError(
+        "Verified school context is unavailable. Reload Practice after school access reconnects; no legacy score was used.",
+        "school-context-unavailable");
     }
   })();
   scopePromise={uid:user.uid,promise};
