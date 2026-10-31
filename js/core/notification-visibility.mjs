@@ -6,7 +6,7 @@ export function notificationVisible(item, role) {
   if (role === "admin") return true;
   if (item.type === "release") {
     const audience=Array.isArray(item.audience)?item.audience:[];
-    if(audience.length)return audience.includes("all")||audience.includes(role);
+    if(audience.length)return audience.includes("all")||audience.includes(role)||role==="schooladmin"&&audience.includes("teacher");
     return role === "teacher" || role === "student";
   }
   if (item.type === "issue") {
