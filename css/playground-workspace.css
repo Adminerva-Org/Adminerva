@@ -733,6 +733,10 @@ body[data-playground-access="student"] #adminerva-nav .av-nav-tools :is(button,a
 
 
 /* 4.0 Studio compact command surface and mobile workspace. */
+.studio-project-bar{flex-wrap:nowrap}
+.studio-project-actions{flex-wrap:nowrap}
+.studio-project-actions .studio-command-bar{flex-wrap:nowrap;overflow:visible}
+
 .studio-save-state{
   display:block;
   max-width:210px;
@@ -862,6 +866,21 @@ body[data-playground-access="student"] #adminerva-nav .av-nav-tools :is(button,a
   .studio-project-bar{
     overflow:visible;
     gap:5px;
+    flex-wrap:nowrap;
+  }
+  .studio-project-actions{
+    order:initial;
+    width:auto;
+    margin-left:auto;
+    justify-content:flex-end;
+    flex:0 0 auto;
+    flex-wrap:nowrap;
+  }
+  .studio-project-actions .studio-command-bar{
+    flex:0 0 auto;
+    max-width:none;
+    overflow:visible;
+    flex-wrap:nowrap;
   }
   .studio-back{
     width:30px;
@@ -947,4 +966,14 @@ body[data-playground-access="student"] #adminerva-nav .av-nav-tools :is(button,a
   #outputPane{height:41%!important;min-height:120px}
   .pg-stdin>summary{min-height:25px;padding:4px 7px}
   .pg-stdin #stdinInput{min-height:42px}
+}
+@media(max-width:375px){
+  .studio-project-bar{gap:3px;padding-inline:4px}
+  .studio-project-identity{min-width:52px}
+  .studio-project-identity strong{font-size:10px}
+  .studio-command-bar{gap:2px}
+  .studio-command-bar .pg-save{min-width:38px;padding-inline:5px}
+  .studio-command-bar .pg-run{min-width:43px;padding-inline:5px}
+  .studio-command-bar .studio-tools-menu>summary{padding-inline:5px}
+  #studioSubmitAssessment{max-width:49px;padding-inline:5px}
 }
