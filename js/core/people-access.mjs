@@ -7,6 +7,7 @@ const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcad
 let schoolTerms=[];
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false;
+let suspendUid=null;
 function say(message){status.textContent=message;}
 function setTab(name) {
   for(const button of document.querySelectorAll("[data-tab]")){
@@ -20,7 +21,7 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
-    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();after=null;
+    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-suspension-dialog").close?.();suspendUid=null;after=null;
     get("pa-more").hidden=true;
   },
   onReady:scope=>{
@@ -29,7 +30,7 @@ const picker=createTenantSchoolPicker({
       return;
     }
     workspace.hidden=false;
-    void Promise.all([loadOverview(),loadPeople(false),loadAcademics()]).catch(error=>say(error.message||"Directory access unavailable."));
+    void Promise.all([loadOverview(),loadPeople(false),loadAcademics(),loadMemberships()]).catch(error=>say(error.message||"Directory access unavailable."));
   }
 });
 async function perform(action,details={}) {
@@ -140,6 +141,48 @@ get("pa-roster-form").addEventListener("submit",event=>{
     }
     say(people.length+" students enrolled in the selected offering.");
   }).catch(error=>say(error.message||"Roster unavailable."));
+});
+async function loadMemberships(){
+  const result=await perform("list_memberships");
+  const host=get("pa-membership-list");host.replaceChildren();
+  for(const member of result.members||[]){
+    const row=document.createElement("div");row.className="pa-row";row.setAttribute("role","listitem");
+    const info=document.createElement("div");
+    const name=document.createElement("strong");name.textContent=member.displayName||"Verified school account";
+    const detail=document.createElement("p");detail.className="pa-muted";
+    detail.textContent=member.roles.join(", ")+" · "+member.status+" · account "+member.uid.slice(0,9);
+    info.append(name,detail);row.append(info);
+    if(member.status==="active"&&!member.roles.includes("school_admin")&&
+      member.uid!==picker.scope.current?.uid){
+      const button=document.createElement("button");button.type="button";button.className="pa-action";
+      button.style.background="#9a3412";button.textContent="Suspend access";
+      button.addEventListener("click",()=>{
+        suspendUid=member.uid;
+        get("pa-suspension-member").textContent=member.displayName||member.uid.slice(0,9);
+        get("pa-suspension-dialog").showModal();
+      });
+      row.append(button);
+    }
+    host.append(row);
+  }
+  if(!host.children.length){
+    const empty=document.createElement("p");empty.className="pa-muted";
+    empty.textContent="No verified school memberships yet.";host.append(empty);
+  }
+}
+get("pa-refresh-memberships").addEventListener("click",()=>
+  void loadMemberships().catch(error=>say(error.message||"Membership list unavailable.")));
+get("pa-cancel-suspend").addEventListener("click",()=>get("pa-suspension-dialog").close());
+get("pa-suspension-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  if(!suspendUid)return;
+  const form=event.currentTarget;
+  const reason=String(new FormData(form).get("reason")||"").trim();
+  if(!confirm("Suspend this account for the current school? Existing grades and evidence will be preserved."))return;
+  void submitForm(form,"suspend_access",{targetUid:suspendUid,reason}).then(()=>{
+    get("pa-suspension-dialog").close();suspendUid=null;
+    void loadMemberships().catch(error=>say(error.message||"Refresh membership access status."));
+  });
 });
 async function loadOverview(){
   const response=await perform("overview");
