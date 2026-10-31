@@ -11,6 +11,7 @@ const {getAuth}=require("firebase-admin/auth");
 const {readFileSync,writeFileSync}=require("node:fs");
 const {createHash}=require("node:crypto");
 const {definitions}=require("./school-data-export.js");
+const {rowKey}=require("./school-academics.js");
 const {
  PLAN_SCHEMA,AUTO_CATEGORIES,verifyBundle,comparable
 }=require("./school-continuity-restore-plan.js");
@@ -152,21 +153,18 @@ async function ensureDependencies(db,approved,category,row){
  if(category==="assessments"){
   const [offering,member,assignment]=await Promise.all([
    get("course_offerings/"+row.offeringId),get("memberships/"+row.ownerUid),
-   get("staff_assignments/"+createHash("sha256")
-    .update(JSON.stringify([row.ownerUid,row.offeringId])).digest("hex"))
+   get("staff_assignments/"+rowKey(row.ownerUid,row.offeringId))
   ]);
   if(!offering.exists)throw Error("Assessment "+row.id+" requires its course offering.");
   if(row.status==="deployed"){
    if(!member.exists||member.data().status!=="active"||
       !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher"))
     throw Error("Deployed assessment "+row.id+" requires separately restored active teacher membership.");
-   // Existing assignment IDs use school-academics rowKey, not the hash above.
-   const grants=await db.collection(prefix+"staff_assignments")
-    .where("teacherUid","==",row.ownerUid).where("offeringId","==",row.offeringId).limit(2).get();
-   if(!grants.docs.some(doc=>doc.data().status==="active"))
+   if(!assignment.exists||assignment.data().schoolId!==approved.schoolId||
+      assignment.data().teacherUid!==row.ownerUid||
+      assignment.data().offeringId!==row.offeringId||assignment.data().status!=="active")
     throw Error("Deployed assessment "+row.id+" requires an active teacher assignment.");
   }
-  void assignment;
  }
  if(category==="student_grades"){
   const [task,person,member]=await Promise.all([
