@@ -58,6 +58,19 @@ function createSchoolSupportService({db}){
     return {roles,displayName:String(member.data().displayName||"").slice(0,140)};
   }
 
+  if(input.action==="overview"){
+    if(!isAdmin)deny("permission-denied","School administration access is required for support counts.");
+    const snap=await reports.limit(501).get();
+    if(snap.size===501)deny("resource-exhausted","School support counts require a paginated aggregate.");
+    const schoolRows=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId);
+    return {counts:{
+      total:schoolRows.length,
+      open:schoolRows.filter(doc=>!["Resolved","Closed"].includes(doc.data().status)).length,
+      waiting:schoolRows.filter(doc=>doc.data().status==="Waiting for Reporter").length,
+      critical:schoolRows.filter(doc=>doc.data().priority==="Critical"&&!["Resolved","Closed"].includes(doc.data().status)).length
+    }};
+  }
+
   if(input.action==="create"){
     const title=text(input.title,160,"Title",{min:4});
     const description=text(input.description,6000,"Description",{min:12});
