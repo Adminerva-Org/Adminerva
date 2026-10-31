@@ -452,7 +452,8 @@ window.initiateBugReport = async function () {
 
   const btn = document.getElementById("submit-bug-btn");
   btn.disabled = true;
-  btn.innerHTML = `<span class="animate-pulse">Checking records...</span>`;
+  btn.textContent = "Checking records...";
+  const end=window.beginLoading?.("Checking similar reports…")||(()=>{});
 
   try {
     const { collection, getDocs, query, where, limit } =
@@ -568,6 +569,7 @@ window.initiateBugReport = async function () {
     console.error("Similarity engine bypassed:", error);
     window.finalizeBugReport(); // Failsafe
   } finally {
+    end();
     btn.disabled = false;
     btn.textContent = "Submit Report";
   }
@@ -586,7 +588,8 @@ window.finalizeBugReport = async function () {
   document.getElementById("bug-similarity-overlay").classList.add("hidden");
   const btn = document.getElementById("submit-bug-btn");
   btn.disabled = true;
-  btn.innerHTML = `<span class="animate-pulse">Submitting Report...</span>`;
+  btn.textContent = "Submitting Report...";
+  const end=window.beginLoading?.("Submitting report…")||(()=>{});
 
   try {
     const { collection, addDoc, serverTimestamp } =
@@ -655,6 +658,7 @@ window.finalizeBugReport = async function () {
     console.error(error);
     alert("Failed to submit report: " + error.message);
   } finally {
+    end();
     btn.disabled = false;
     btn.textContent = "Submit Report";
   }
