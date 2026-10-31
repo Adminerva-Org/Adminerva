@@ -451,7 +451,7 @@ async function approve(){
       const reviewerRole=await resolveStaffRole(auth.currentUser);
       const claimQuery=reviewerRole==="admin"
         ?query(collection(db,"commit_reclaims"),where("sha","==",sha))
-        :query(collection(db,"commit_reclaims"),where("section","==",state.evidence.section));
+        :query(collection(db,"commit_reclaims"),where("section","==",state.student.section));
       const competing=await getDocs(claimQuery);
       if(competing.docs.some(d=>d.data().sha===sha &&
         d.data().repository===state.evidence.repository&&d.data().status==="pending"))
