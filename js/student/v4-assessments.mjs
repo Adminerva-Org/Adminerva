@@ -143,8 +143,7 @@ if(panel&&list&&status&&schoolHost){
     });
     try{
       const state=await picker.load();
-      if(state?.context)await render(picker.scope);
-      else if(state?.state==="choose_school"){
+      if(state?.state==="choose_school"){
         panel.classList.remove("hidden");
         status.textContent="Choose your active school to load verified assignments.";
       }
