@@ -68,6 +68,8 @@ const storageBucket=()=>getStorage().bucket();
 exports.schoolSupport=onCall(callOptions,safeCallable(createSchoolSupportService({db,bucket:storageBucket})));
 const {createSchoolFilePolicyService}=require("./school-file-policy.js");
 exports.schoolFilePolicy=onCall(callOptions,safeCallable(createSchoolFilePolicyService({db})));
+const {createSchoolDataExportService}=require("./school-data-export.js");
+exports.schoolDataExport=onCall(callOptions,safeCallable(createSchoolDataExportService({db})));
 const {createSchoolAnalyticsService}=require("./school-analytics.js");
 exports.schoolAnalytics=onCall(callOptions,safeCallable(createSchoolAnalyticsService({db})));
 const {createSchoolPracticeAnalyticsService}=require("./school-practice-analytics.js");
