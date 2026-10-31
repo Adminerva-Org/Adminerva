@@ -312,6 +312,17 @@ function populateOptions(selector,items,idField,nameField="name"){
     if(items.some(item=>item[idField]===previous))control.value=previous;
   }
 }
+function populateMultiOptions(selector,items,idField,nameField="name"){
+  for(const control of document.querySelectorAll(selector)){
+    const selected=new Set([...control.selectedOptions].map(option=>option.value));
+    control.replaceChildren();
+    for(const item of items){
+      const option=document.createElement("option");
+      option.value=item[idField];option.textContent=item[nameField]||item[idField];
+      option.selected=selected.has(option.value);control.append(option);
+    }
+  }
+}
 function refreshTerms(){
   const year=get("pa-offering-form").elements.yearId.value;
   populateOptions('#pa-offering-form [data-catalog="terms"]',
@@ -334,7 +345,35 @@ async function loadAcademics(){
   populateOptions("[data-offering]",offeringRows,"offeringId","offeringId");
   populateOptions("[data-student-person]",people.students||[],"personId");
   populateOptions("[data-school-teacher]",teachers.teachers||[],"uid");
+  populateMultiOptions("[data-student-person-bulk]",people.students||[],"personId");
+  populateMultiOptions("[data-school-teacher-bulk]",teachers.teachers||[],"uid");
 }
+get("pa-bulk-enrollment-form").addEventListener("submit",event=>{
+  event.preventDefault();const form=event.currentTarget;
+  const personIds=[...form.elements.personIds.selectedOptions].map(option=>option.value);
+  const offeringId=String(form.elements.offeringId.value||"");
+  const reason=String(form.elements.reason.value||"").trim();
+  if(!personIds.length){say("Select at least one student for bulk enrollment.");return;}
+  if(!confirm("Enroll "+personIds.length+" selected student(s) into this course offering? Existing active enrollments will be skipped."))return;
+  void submitAcademic(form,"bulk_enroll_students",{personIds,offeringId,reason},
+    "Bulk enrollment completed. Existing history was preserved.").then(async saved=>{
+      if(!saved)return;
+      await loadAcademics();
+    });
+});
+get("pa-bulk-assignment-form").addEventListener("submit",event=>{
+  event.preventDefault();const form=event.currentTarget;
+  const teacherUids=[...form.elements.teacherUids.selectedOptions].map(option=>option.value);
+  const offeringId=String(form.elements.offeringId.value||"");
+  const reason=String(form.elements.reason.value||"").trim();
+  if(!teacherUids.length){say("Select at least one teacher for bulk assignment.");return;}
+  if(!confirm("Assign "+teacherUids.length+" selected teacher(s) to this course offering? Existing active assignments will be skipped."))return;
+  void submitAcademic(form,"bulk_assign_teachers",{teacherUids,offeringId,reason},
+    "Bulk teacher assignment completed. Existing history was preserved.").then(async saved=>{
+      if(!saved)return;
+      await loadAcademics();
+    });
+});
 get("pa-offering-form").elements.yearId.addEventListener("change",refreshTerms);
 get("pa-catalog-kind").addEventListener("change",event=>{
   get("pa-term-year").hidden=event.target.value!=="terms";
