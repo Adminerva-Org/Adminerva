@@ -106,7 +106,8 @@ async function submitAcademic(form,action,fields,message){
     say(message);
     form.reset();
     await loadAcademics();
-  }catch(error){say(error?.message||"Academic operation was not saved.");}
+    return true;
+  }catch(error){say(error?.message||"Academic operation was not saved.");return false;}
   finally{pendingWrite=false;button.disabled=false;}
 }
 get("pa-catalog-form").addEventListener("submit",event=>{
@@ -206,7 +207,8 @@ get("pa-academic-lifecycle-form").addEventListener("submit",event=>{
   void submitAcademic(form,change.action,{...change.details,reason},
     change.action.startsWith("end_")?
       "Class membership ended. Historical records were preserved.":
-      "Class membership restored with a new audit revision.").then(()=>{
+      "Class membership restored with a new audit revision.").then(saved=>{
+        if(!saved)return;
         lifecycleChange=null;get("pa-academic-lifecycle-dialog").close();
         if(currentRosterOfferingId)
           void loadClassRoster(currentRosterOfferingId).catch(error=>say(error.message||"Refresh class roster."));
