@@ -1,6 +1,7 @@
 "use strict";
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {FieldValue}=require("firebase-admin/firestore");
+const {createHash}=require("node:crypto");
 function invalid(message){throw new TenantAccessError("invalid-argument",message)}
 function field(value,max,label) {
   if(typeof value!=="string"||!value.trim()||value.trim().length>max)invalid(label+" is required and must be shorter.");
@@ -57,20 +58,32 @@ function createPeopleDirectoryService({db}) {
     }
     if(input.action==="invite") {
       const email=field(input.email,254,"Email").toLowerCase();
-      if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email))invalid("Enter a valid invitation email.");
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))invalid("Enter a valid invitation email.");
       if(!["student","teacher"].includes(input.role))invalid("Choose a student or teacher invitation.");
-      const ref=db.collection("schools/"+ctx.schoolId+"/invitations").doc();
+      const linkedPersonId=input.personId?id(input.personId):null;
+      const invitationId=createHash("sha256").update(input.role+"\0"+email).digest("hex").slice(0,48);
+      const ref=db.collection("schools/"+ctx.schoolId+"/invitations").doc(invitationId);
       const audit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
-      const batch=db.batch(),now=FieldValue.serverTimestamp();
-      batch.create(ref,{schoolId:ctx.schoolId,email,requestedRole:input.role,
-        personId:input.personId?id(input.personId):null,
-        status:"pending",createdByUid:ctx.uid,createdAt:now,
-        // This is a request only: NEVER creates an active membership/privilege.
-        acceptedByUid:null,revision:1});
-      batch.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,
-        action:"create_invitation",invitationId:ref.id,createdAt:now});
-      await batch.commit();
-      return {invitationId:ref.id,status:"pending"};
+      const personRef=linkedPersonId?base.doc(linkedPersonId):null;
+      await db.runTransaction(async tx=>{
+        const existing=await tx.get(ref);
+        const person=personRef?await tx.get(personRef):null;
+        if(personRef&&(!person.exists||person.data().schoolId!==ctx.schoolId))
+          throw new TenantAccessError("failed-precondition","The person is not in this school directory.");
+        if(existing.exists) {
+          if(existing.data().status==="pending"&&existing.data().email===email&&
+            existing.data().requestedRole===input.role)return;
+          throw new TenantAccessError("already-exists","This invitation has already been processed. Use the recovery workflow.");
+        }
+        const now=FieldValue.serverTimestamp();
+        tx.create(ref,{schoolId:ctx.schoolId,email,requestedRole:input.role,
+          personId:linkedPersonId,status:"pending",createdByUid:ctx.uid,createdAt:now,
+          // Invitation does not confer active membership. Approval is a separate server action.
+          acceptedByUid:null,revision:1});
+        tx.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,
+          action:"create_invitation",invitationId,createdAt:now});
+      });
+      return {invitationId,status:"pending"};
     }
     invalid("Unknown People & Access operation.");
   };
