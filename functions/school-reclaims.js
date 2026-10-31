@@ -111,12 +111,17 @@ function createSchoolReclaimService({db}){
    const snap=await claims.where("status","==","pending").limit(101).get();
    if(snap.size===101)deny("resource-exhausted","Attribution inbox requires pagination.");
    const rows=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId);
-   const people=await Promise.all(rows.map(doc=>db.doc(prefix+"people/"+doc.data().personId).get()));
+   const [people,evidence]=await Promise.all([
+    Promise.all(rows.map(doc=>db.doc(prefix+"people/"+doc.data().personId).get())),
+    Promise.all(rows.map(doc=>db.doc(prefix+"github_evidence/"+doc.data().evidenceId).get()))
+   ]);
    return {claims:rows.map((doc,index)=>({claimId:doc.id,taskId:doc.data().taskId,
      evidenceId:doc.data().evidenceId,evidenceVersion:doc.data().evidenceVersion,
      studentUid:doc.data().studentUid,personId:doc.data().personId,
      studentName:people[index].exists&&people[index].data().schoolId===ctx.schoolId?
        people[index].data().displayName:"Student",
+     repository:evidence[index].exists&&evidence[index].data().schoolId===ctx.schoolId?
+       evidence[index].data().repository?.fullName||"":"",
      sha:doc.data().sha,explanation:doc.data().explanation,
      detectedAuthorName:doc.data().detectedAuthorName||"",
      detectedAuthorLogin:doc.data().detectedAuthorLogin||"",status:doc.data().status,
