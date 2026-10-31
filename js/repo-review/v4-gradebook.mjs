@@ -41,8 +41,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const published=currentGrade?.status==="published";
     const reopened=currentRow?.status==="reopened";
     const loaded=Boolean(currentTask&&currentRow&&currentSnapshot);
+    const evidenceReady=currentTask?.submissionSource!=="github"||
+      ["approved","reviewed"].includes(currentSnapshot?.status);
     document.getElementById("gbV4SaveDraft").disabled=
-      busy||!loaded||published||reopened;
+      busy||!loaded||!evidenceReady||published||reopened;
     document.getElementById("gbV4Publish").disabled=
       busy||!loaded||published||reopened||currentGrade?.status!=="draft";
     document.getElementById("gbV4RequestRevision").disabled=
@@ -120,6 +122,69 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const select=document.getElementById("gbV4File");
     const file=currentSnapshot.files.find(item=>item.path===select.value)||currentSnapshot.files[0];
     document.getElementById("gbV4Code").textContent=file?.content||"";
+  }
+  function renderGithubEvidence(snapshot,commitMap=null){
+    const host=document.getElementById("gbV4GithubCommits");host.replaceChildren();
+    const repo=snapshot?.repository?.fullName||"";
+    document.getElementById("gbV4GithubMeta").textContent=
+      (repo||"Repository unavailable")+" · checkpoint "+String(snapshot?.checkpointSha||"").slice(0,12)+
+      " · "+(snapshot?.selectedCommitShas?.length||0)+" selected commit(s)";
+    const link=document.getElementById("gbV4GithubRepoLink");
+    link.href=snapshot?.repository?.url||("https://github.com/"+repo);
+    for(const sha of snapshot?.selectedCommitShas||[]){
+      const commit=commitMap?.get(sha)||null;
+      const row=make("div","rounded-lg border border-slate-200 bg-white p-3");
+      const top=make("div","flex flex-wrap items-center justify-between gap-2");
+      top.append(make("span","font-mono text-xs font-bold text-indigo-800",sha.slice(0,12)));
+      const github=make("a","text-xs font-bold text-indigo-700 underline","Inspect diff ↗");
+      github.href="https://github.com/"+repo+"/commit/"+sha;github.target="_blank";github.rel="noopener noreferrer";
+      top.append(github);row.append(top);
+      if(commit){
+        row.append(make("p","text-sm font-bold text-slate-900 mt-2",
+          String(commit.commit?.message||"No commit message").split("\n")[0].slice(0,180)));
+        const author=commit.commit?.author||{};
+        row.append(make("p","text-xs text-slate-500 mt-1",
+          (author.name||"Unknown Git author")+" · "+(author.date?new Date(author.date).toLocaleString():"Date unavailable")));
+      }
+      host.append(row);
+    }
+    const approved=["approved","reviewed"].includes(snapshot?.status);
+    document.getElementById("gbV4GithubVerifyStatus").textContent=approved?
+      "This exact frozen evidence version already has teacher approval. Re-verification is optional before grading.":
+      "Verify that every selected commit is reachable from the frozen checkpoint, then inspect the diffs before approval.";
+    document.getElementById("gbV4GithubApproval").classList.add("hidden");
+    document.getElementById("gbV4GithubApprovalNote").value="";
+    githubVerification=null;
+  }
+  async function verifyGithubEvidence(){
+    if(busy||currentTask?.submissionSource!=="github"||!currentSnapshot)return;
+    const verifyStatus=document.getElementById("gbV4GithubVerifyStatus");
+    const verifyButton=document.getElementById("gbV4GithubVerify");
+    verifyButton.disabled=true;verifyStatus.textContent="Checking the frozen checkpoint and selected commit reachability…";
+    try{
+      const prefs=auth.currentUser?activateConnectionOwner(auth.currentUser.uid):{};
+      const client=createGithubEvidenceClient({token:prefs.githubToken||null,maxPages:10,retryCount:1});
+      const repo=currentSnapshot.repository.fullName,checkpoint=currentSnapshot.checkpointSha;
+      const history=await client.listCommits({repository:repo,ref:checkpoint});
+      const map=new Map(history.commits.map(commit=>[String(commit.sha||"").toLowerCase(),commit]));
+      const selected=(currentSnapshot.selectedCommitShas||[]).map(value=>String(value).toLowerCase());
+      const missing=selected.filter(value=>!map.has(value));
+      renderGithubEvidence(currentSnapshot,map);
+      if(missing.length){
+        verifyStatus.textContent="Cannot approve yet: "+missing.length+
+          " selected commit(s) were not found in the loaded checkpoint history. Increase repository access or inspect the evidence manually.";
+        githubVerification=null;return;
+      }
+      githubVerification={verifiedCheckpointSha:checkpoint,verifiedCommitShas:selected};
+      verifyStatus.textContent="All "+selected.length+
+        " frozen evidence commit(s) are reachable from the selected checkpoint. Inspect the diffs, then record your verification note.";
+      if(currentSnapshot.status==="submitted")
+        document.getElementById("gbV4GithubApproval").classList.remove("hidden");
+    }catch(error){
+      githubVerification=null;
+      verifyStatus.textContent=(error?.message||"GitHub verification failed")+
+        ". Private repositories require the teacher's account-owned GitHub connection.";
+    }finally{verifyButton.disabled=false;}
   }
   function updateScore(){
     if(!currentTask)return;
