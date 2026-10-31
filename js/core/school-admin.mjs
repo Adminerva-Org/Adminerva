@@ -10,6 +10,7 @@ const schoolActions=document.getElementById("adminSchoolActions");
 const peopleApi=httpsCallable(getFunctions(app,"asia-southeast1"),"peopleDirectory");
 const supportApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolSupport");
 const set=(id,value)=>{const node=document.getElementById(id);if(node)node.textContent=value;};
+let refreshEpoch=0;
 
 function configureSchoolLabels(){
   set("adminMetricOneLabel","School people");
@@ -43,22 +44,27 @@ async function loadSchoolAdmin(access){
   const picker=createTenantSchoolPicker({
     host:document.getElementById("adminSchoolSwitcher"),status,
     onReady:scope=>void refresh(scope),
-    onBeforeChange:async()=>{status.textContent="Switching verified school context…";}
+    onBeforeChange:async()=>{
+      ++refreshEpoch;
+      set("adminStudentCount","—");set("adminTeacherCount","—");set("adminReportCount","—");
+      status.textContent="Switching verified school context…";
+    }
   });
   async function refresh(scope){
     if(!scope.current)return;
+    const sequence=++refreshEpoch;
     try{
       const lease=scope.lease();
       const [people,support]=await Promise.all([
         peopleApi({schoolId:lease.schoolId,action:"overview"}),
         supportApi({schoolId:lease.schoolId,action:"overview"})
       ]);
-      scope.assertLease(lease);
+      scope.assertLease(lease);if(sequence!==refreshEpoch)return;
       set("adminStudentCount",people.data.counts?.people??0);
       set("adminTeacherCount",people.data.counts?.staff_assignments??0);
       set("adminReportCount",support.data.counts?.open??0);
       status.textContent="Verified school administration loaded for "+lease.schoolId+".";
-    }catch(error){status.textContent=error?.message||"School administration summary is unavailable.";}
+    }catch(error){if(sequence===refreshEpoch)status.textContent=error?.message||"School administration summary is unavailable.";}
   }
   const state=await picker.load();
   if(state?.state==="choose_school")status.textContent="Choose an active school to load administration.";
