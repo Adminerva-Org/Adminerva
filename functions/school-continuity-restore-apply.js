@@ -150,6 +150,21 @@ async function ensureDependencies(db,approved,category,row){
      !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher")))
    throw Error("Active teacher assignment "+row.id+" requires separately restored active teacher membership.");
  }
+ if(category==="student_repository_configs"){
+  const [person,offering,member]=await Promise.all([
+   get("people/"+row.personId),get("course_offerings/"+row.offeringId),
+   get("memberships/"+row.studentUid)
+  ]);
+  if(!person.exists||person.data().schoolId!==approved.schoolId||
+     person.data().kind!=="student"||person.data().authUid!==row.studentUid)
+   throw Error("Repository configuration "+row.id+" requires its canonical student person/Auth link.");
+  if(!offering.exists||offering.data().schoolId!==approved.schoolId)
+   throw Error("Repository configuration "+row.id+" requires its course offering.");
+  if(!member.exists||member.data().status!=="active"||
+     !Array.isArray(member.data().roles)||!member.data().roles.includes("student")||
+     member.data().personId!==row.personId)
+   throw Error("Repository configuration "+row.id+" requires separately restored active student membership.");
+ }
  if(category==="assessments"){
   const reviewerUid=row.reviewerUid||row.ownerUid;
   const [offering,member,assignment]=await Promise.all([
