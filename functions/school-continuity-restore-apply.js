@@ -151,19 +151,20 @@ async function ensureDependencies(db,approved,category,row){
    throw Error("Active teacher assignment "+row.id+" requires separately restored active teacher membership.");
  }
  if(category==="assessments"){
+  const reviewerUid=row.reviewerUid||row.ownerUid;
   const [offering,member,assignment]=await Promise.all([
-   get("course_offerings/"+row.offeringId),get("memberships/"+row.ownerUid),
-   get("staff_assignments/"+rowKey(row.ownerUid,row.offeringId))
+   get("course_offerings/"+row.offeringId),get("memberships/"+reviewerUid),
+   get("staff_assignments/"+rowKey(reviewerUid,row.offeringId))
   ]);
   if(!offering.exists)throw Error("Assessment "+row.id+" requires its course offering.");
-  if(row.status==="deployed"){
+  if(row.status==="deployed"&&row.lifecycle!=="cancelled"){
    if(!member.exists||member.data().status!=="active"||
       !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher"))
-    throw Error("Deployed assessment "+row.id+" requires separately restored active teacher membership.");
+    throw Error("Deployed assessment "+row.id+" requires separately restored active responsible-teacher membership.");
    if(!assignment.exists||assignment.data().schoolId!==approved.schoolId||
-      assignment.data().teacherUid!==row.ownerUid||
+      assignment.data().teacherUid!==reviewerUid||
       assignment.data().offeringId!==row.offeringId||assignment.data().status!=="active")
-    throw Error("Deployed assessment "+row.id+" requires an active teacher assignment.");
+    throw Error("Deployed assessment "+row.id+" requires an active responsible-teacher assignment.");
   }
  }
  if(category==="student_grades"){
