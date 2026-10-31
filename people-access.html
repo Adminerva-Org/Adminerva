@@ -119,6 +119,20 @@
             <button id="pa-import-preview" type="button" class="pa-action" disabled>Preview import</button>
             <button id="pa-import-commit" type="button" class="pa-action" disabled style="background:#166534">Commit valid preview</button>
           </div>
+          <details style="margin-top:1rem">
+            <summary style="font-weight:750;cursor:pointer">Google Sheets roster source</summary>
+            <p class="pa-muted">Use a published or exportable Google Sheets link. Adminerva stores only the normalized spreadsheet export URL for this school and never stores Google credentials.</p>
+            <form id="pa-sheet-source-form" style="padding-top:.75rem">
+              <label>Google Sheets URL<input id="pa-sheet-url" name="url" type="url" class="pa-field" placeholder="https://docs.google.com/spreadsheets/d/…/edit#gid=0" required></label>
+              <label>Configuration reason<input name="reason" class="pa-field" minlength="12" maxlength="500" placeholder="Why this roster source is approved for the school" required></label>
+              <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+                <button type="submit" class="pa-action">Save sheet source</button>
+                <button id="pa-sheet-preview" type="button" class="pa-action" style="background:#0f766e" disabled>Preview configured sheet</button>
+                <button id="pa-sheet-clear" type="button" class="pa-action" style="background:#9a3412" disabled>Clear source</button>
+              </div>
+            </form>
+            <p id="pa-sheet-status" class="pa-muted">No Google Sheets roster source loaded.</p>
+          </details>
           <p id="pa-import-status" class="pa-muted" role="status" aria-live="polite">Choose a CSV with up to 200 people.</p>
         </section>
         <section class="pa-card">
