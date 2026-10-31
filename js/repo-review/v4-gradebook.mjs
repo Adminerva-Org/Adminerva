@@ -76,6 +76,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     status.textContent=items.length?
       items.length+" deployed V4 assessment"+(items.length===1?"":"s")+" available.":
       "No verified V4 assessments owned by this teacher in the active school." ;
+    const requested=new URL(location.href).searchParams.get("task");
+    if(requested&&tasks.has(requested)){
+      taskSelect.value=requested;
+      await loadInbox();
+    }
   }
   async function loadInbox(){
     const task=tasks.get(taskSelect.value);
