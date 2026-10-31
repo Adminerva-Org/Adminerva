@@ -29,9 +29,12 @@ const legacyRecovery=createLegacyLessonRecovery({db,FieldValue,resolveUserByEmai
 const legacySetup=createLegacySchoolSetup({db,FieldValue,resolveUserByEmail:email=>getAuth().getUserByEmail(email)});
 const callOptions={region:"asia-southeast1",maxInstances:3,concurrency:10,timeoutSeconds:120,cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
 function safeCallable(handler){return async request=>{try{return await handler(request);}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
-async function requireLegacyMcsCompatibility(){
+async function legacyMcsCompatibilityAllowed(){
   const school=await db.doc("platform_schools/mcs-manila").get();
-  if(school.exists&&school.data().compatibilityMode==="v4_only")
+  return !school.exists||school.data().compatibilityMode!=="v4_only";
+}
+async function requireLegacyMcsCompatibility(){
+  if(!(await legacyMcsCompatibilityAllowed()))
     throw new HttpsError("failed-precondition","Legacy MCS compatibility is disabled after the Adminerva 4.0 cutover.");
 }
 // 4.0 tenant API: requires server-verified active school membership for every call.
@@ -165,11 +168,15 @@ exports.refreshStudentAccess=onCall(callOptions,async request=>{
   return result;
 });
 exports.studentAccessChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const emails=[event.data?.before.data()?.email,event.data?.after.data()?.email]
     .map(value=>String(value||"").toLowerCase().trim()).filter(Boolean);
   await Promise.all([...new Set(emails)].map(email=>rebuildStudentAccess(email)));
 });
-exports.teachingRosterChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},event=>teachingAccess.synchronize(event.params.studentId));
+exports.teachingRosterChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
+  return teachingAccess.synchronize(event.params.studentId);
+});
 const practiceOptions={region:"asia-southeast1",maxInstances:3,concurrency:20,timeoutSeconds:30,
   cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
 for(const [name,action] of Object.entries({practiceSession:"acquire",practiceStart:"start",practicePredict:"predict",practiceComplete:"complete",practiceHub:"hub",practiceSeasonSession:"acquireSeason",practiceMissionStart:"startSeason",practiceMissionSubmit:"submitSeason",practicePreferences:"preferences"}))
@@ -199,8 +206,14 @@ for(const [name,action] of Object.entries({
     }
   });
 const monitoring=createMonitoringService({db,Timestamp,FieldValue,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users});
-exports.monitoringMaintenance=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},()=>monitoring.runScheduled());
-exports.activityConsentChanged=onDocumentWritten({document:"activity_preferences/{ownerUid}",region:"asia-southeast1",maxInstances:1,concurrency:1,timeoutSeconds:120},event=>monitoring.applyConsentChange(event.params.ownerUid,event.data?.before.data()?.studentId));
+exports.monitoringMaintenance=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},async()=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
+  return monitoring.runScheduled();
+});
+exports.activityConsentChanged=onDocumentWritten({document:"activity_preferences/{ownerUid}",region:"asia-southeast1",maxInstances:1,concurrency:1,timeoutSeconds:120},async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
+  return monitoring.applyConsentChange(event.params.ownerUid,event.data?.before.data()?.studentId);
+});
 const BOOTSTRAP_ADMIN_EMAIL="babaynike2013@gmail.com";
 // Bug reports are always administrator-directed. Legacy reports have admin scope.
 const reportAudience=issue=>issue.category==="Bug"?"admin":issue.audience==="teacher"?"teacher":"admin";
@@ -340,6 +353,7 @@ async function evidenceLabels(item){
   };
 }
 exports.issueOpened=onDocumentCreated("issues/{issueId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const data=event.data?.data();if(!data)return;
   await notifyMany(await audienceIds(data),"report_new_"+event.params.issueId,{
     type:"issue",push:true,title:"New issue report",body:data.title||"Untitled report",
@@ -348,6 +362,7 @@ exports.issueOpened=onDocumentCreated("issues/{issueId}",async event=>{
   });
 });
 exports.issueStatusUpdated=onDocumentUpdated("issues/{issueId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const old=event.data?.before.data(),now=event.data?.after.data();
   if(!old||!now||old.status===now.status&&old.priority===now.priority)return;
   const uid=now.reporterUid||await byEmail(now.reporterEmail);
@@ -359,6 +374,7 @@ exports.issueStatusUpdated=onDocumentUpdated("issues/{issueId}",async event=>{
   });
 });
 exports.issueCommentAdded=onDocumentCreated("issues/{issueId}/comments/{commentId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const comment=event.data?.data();if(!comment)return;
   const issue=await db.doc("issues/"+event.params.issueId).get();if(!issue.exists)return;
   const item=issue.data(),reporter=item.reporterUid||await byEmail(item.reporterEmail);
@@ -374,6 +390,7 @@ exports.issueCommentAdded=onDocumentCreated("issues/{issueId}/comments/{commentI
 // A reclaim never changes Git's recorded author. Administrators receive a
 // private review alert; overlapping claims on the same SHA are flagged once.
 exports.commitReclaimRequested=onDocumentCreated("commit_reclaims/{claimId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const claim=event.data?.data();if(!claim||claim.status!=="pending")return;
   const adminId=await byEmail(staffEmails[0]);
   if(!adminId)return;
@@ -423,6 +440,7 @@ exports.commitReclaimRequested=onDocumentCreated("commit_reclaims/{claimId}",asy
 
 // V2 evidence receipts are distinct from legacy submission receipts.
 exports.assessmentEvidenceSubmitted=onDocumentCreated("assessment_evidence/{evidenceId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const item=event.data?.data();
   if(!item||item.status!=="submitted"||item.source==="teacher_discovered")return;
   const labels=await evidenceLabels(item);
@@ -433,6 +451,7 @@ exports.assessmentEvidenceSubmitted=onDocumentCreated("assessment_evidence/{evid
   });
 });
 exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{evidenceId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const before=event.data?.before.data(),after=event.data?.after.data();
   if(!before||!after)return;
   if(before.status!=="reopened"&&after.status==="reopened"){
@@ -490,6 +509,7 @@ exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{eviden
 });
 
 exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const item=event.data?.data();if(!item)return;
   await notifyMany(await teacherIds(item.section),"submission_"+event.params.submissionId,{
     type:"submission",push:true,title:"Work submitted — "+(item.studentName||"Student"),
@@ -498,6 +518,7 @@ exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}
   });
 });
 exports.gradePublished=onDocumentUpdated("student_grades/{gradeId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const old=event.data?.before.data(),now=event.data?.after.data();
   if(!old||!now||old.published===now.published||!now.studentId)return;
   const student=await db.doc("students/"+now.studentId).get();if(!student.exists)return;
@@ -519,6 +540,7 @@ function assessmentSections(data){
   ].filter(Boolean))];
 }
 exports.assessmentAssigned=onDocumentUpdated("assessments/{assessmentId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const old=event.data?.before.data(),now=event.data?.after.data();
   if(!old||!now)return;
   const previous=new Set(assessmentSections(old));
@@ -535,6 +557,7 @@ exports.assessmentAssigned=onDocumentUpdated("assessments/{assessmentId}",async 
 });
 
 exports.gradingNeedsReview=onDocumentCreated("grading_alerts/{alertId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const item=event.data?.data();if(!item)return;
   await notifyMany(await teacherIds(item.section),"grading_"+event.params.alertId,{
     type:"grading",push:true,title:"Grading requires attention",
@@ -545,6 +568,7 @@ exports.gradingNeedsReview=onDocumentCreated("grading_alerts/{alertId}",async ev
 
 // Cover blueprints deployed at creation time, including older targetSections.
 exports.assessmentCreated=onDocumentCreated("assessments/{assessmentId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const data=event.data?.data();if(!data)return;
   const sections=assessmentSections(data);
   for(const section of sections){
@@ -559,6 +583,7 @@ exports.assessmentCreated=onDocumentCreated("assessments/{assessmentId}",async e
 });
 // A small number of older workflows can create a grade already published.
 exports.gradeCreatedPublished=onDocumentCreated("student_grades/{gradeId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const grade=event.data?.data();
   if(!grade||grade.published!==true||!grade.studentId)return;
   const student=await db.doc("students/"+grade.studentId).get();
@@ -572,6 +597,7 @@ exports.gradeCreatedPublished=onDocumentCreated("student_grades/{gradeId}",async
 });
 // Notify only when an already-published grade is actually corrected.
 exports.gradeCorrection=onDocumentUpdated("student_grades/{gradeId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const before=event.data?.before.data(),after=event.data?.after.data();
   if(!before||!after||before.published!==true||after.published!==true)return;
   if(before.score===after.score && before.feedback===after.feedback)return;
