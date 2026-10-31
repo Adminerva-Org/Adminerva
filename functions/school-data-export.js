@@ -132,6 +132,50 @@ function createSchoolDataExportService({db}){
    return {schema:EXPORT_SCHEMA,schoolId:ctx.schoolId,category,
     count:rows.length,sha256:categoryDigest(rows)};
   }
+  if(input.action==="record_receipt"){
+   await authority();
+   const bundleSha256=String(input.bundleSha256||""),
+    categoryIntegrity=input.categoryIntegrity;
+   if(!/^[a-f0-9]{64}$/.test(bundleSha256))
+    deny("invalid-argument","Continuity bundle SHA-256 is invalid.");
+   if(!categoryIntegrity||typeof categoryIntegrity!=="object"||Array.isArray(categoryIntegrity))
+    deny("invalid-argument","Continuity category integrity is missing.");
+   const verified={};
+   for(const category of CATEGORY_NAMES){
+    const supplied=categoryIntegrity[category];
+    if(!supplied||!Number.isInteger(supplied.count)||supplied.count<0||
+       typeof supplied.sha256!=="string"||!/^[a-f0-9]{64}$/.test(supplied.sha256))
+      deny("invalid-argument","Continuity category integrity is invalid: "+category);
+    const rows=await readCategoryRows(db,prefix,category),
+      actual={count:rows.length,sha256:categoryDigest(rows)};
+    if(actual.count!==supplied.count||actual.sha256!==supplied.sha256)
+      deny("failed-precondition","School data changed before the continuity export receipt was recorded. Recreate the export.");
+    verified[category]=actual;
+   }
+   const receiptRef=db.doc(prefix+"private_config/continuity_export"),
+    auditRef=db.collection(prefix+"continuity_export_audit").doc(),
+    now=require("firebase-admin/firestore").FieldValue.serverTimestamp();
+   await db.runTransaction(async tx=>{
+    const [member,school]=await Promise.all([tx.get(memberRef),tx.get(schoolRef)]);
+    if(!school.exists||school.data().state!=="active"||!member.exists||
+       member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
+       !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
+      deny("permission-denied","Your school administration access changed before the export receipt was recorded.");
+    const prior=await tx.get(receiptRef),revision=(prior.data()?.revision||0)+1;
+    tx.set(receiptRef,{
+      schema:EXPORT_SCHEMA,schoolId:ctx.schoolId,bundleSha256,
+      categoryIntegrity:verified,revision,preparedByUid:ctx.uid,preparedAt:now
+    });
+    tx.create(auditRef,{
+      schoolId:ctx.schoolId,actorUid:ctx.uid,action:"continuity_export_receipt_recorded",
+      schema:EXPORT_SCHEMA,bundleSha256,revision,
+      counts:Object.fromEntries(Object.entries(verified).map(([name,row])=>[name,row.count])),
+      createdAt:now
+    });
+   });
+   return {schoolId:ctx.schoolId,schema:EXPORT_SCHEMA,bundleSha256,
+    recorded:true,categoryIntegrity:verified};
+  }
   deny("invalid-argument","Unknown school continuity-export operation.");
  };
 }
