@@ -75,6 +75,21 @@
           <p class="pa-muted">Creating a person does not create an account, enroll a student or grant school access.</p>
         </form>
       </div>
+      <dialog id="pa-person-detail-dialog" aria-labelledby="pa-person-detail-title" style="width:min(680px,calc(100vw - 1rem));max-height:88dvh;overflow:auto;border:0;border-radius:14px;padding:1.3rem">
+        <div>
+          <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start">
+            <div><h2 id="pa-person-detail-title" style="font-size:1.25rem;font-weight:800">Person details</h2><p id="pa-person-detail-meta" class="pa-muted"></p></div>
+            <button id="pa-person-detail-close" type="button" class="pa-action" style="background:#475569">Close</button>
+          </div>
+          <div class="pa-cards" style="margin-top:1rem">
+            <div class="pa-card"><span class="pa-muted">School access</span><strong id="pa-person-detail-access">—</strong></div>
+            <div class="pa-card"><span class="pa-muted">Academic relationships</span><strong id="pa-person-detail-relationships">—</strong></div>
+          </div>
+          <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Invitations</h3><div id="pa-person-detail-invites"></div></section>
+          <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Enrollments / teaching assignments</h3><div id="pa-person-detail-links"></div></section>
+          <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Recent audit history</h3><div id="pa-person-detail-audit"></div></section>
+        </div>
+      </dialog>
       <dialog id="pa-person-dialog" aria-labelledby="pa-person-dialog-title" style="width:min(500px,calc(100vw - 1rem));border:0;border-radius:14px;padding:1.3rem">
         <form id="pa-person-dialog-form">
           <h2 id="pa-person-dialog-title" style="font-size:1.2rem;font-weight:750">Update person</h2>
