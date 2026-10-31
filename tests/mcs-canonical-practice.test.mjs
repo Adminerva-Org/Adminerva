@@ -5,7 +5,7 @@ import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 
 const {
-  canonicalAlias,canonicalPublicId,reconcileCurrentSeason,historicalSeasonArchive
+  canonicalAlias,canonicalPublicId,normalizeVerifiedProgress,reconcileCurrentSeason,historicalSeasonArchive
 }=require("../functions/mcs-canonical-practice-plan.js");
 const {
   validateCurrent,flattenStudent
@@ -23,17 +23,32 @@ test("school Practice aliases and class-ranking IDs are deterministic but school
   schoolPracticeClassRankId("section_b",uid));
 });
 
+test("verified Practice progress requires reviewed owner and bounded reflection values",()=>{
+ const student={uid:"student_1",personId:"person_1"};
+ assert.throws(()=>normalizeVerifiedProgress({id:"java",path:"legacy/java",data:{
+  ownerUid:"other",courseId:"java",completed:["j1"],reflections:{j1:"ok"}
+ }},student),/owner/);
+ assert.throws(()=>normalizeVerifiedProgress({id:"java",path:"legacy/java",data:{
+  ownerUid:"student_1",courseId:"python",completed:["j1"],reflections:{j1:"ok"}
+ }},student),/course ID/);
+ const row=normalizeVerifiedProgress({id:"java",path:"legacy/java",data:{
+  ownerUid:"student_1",courseId:"java",completed:["j1","j1"],reflections:{j1:"reviewed"}
+ }},student);
+ assert.deepEqual(row.completed,["j1"]);
+ assert.equal(row.ownerUid,"student_1");
+});
+
 test("current season score must reconcile with award, mission state and course progress",()=>{
  const student={uid:"student_1",personId:"person_1"},season="2026.1",
-  score={path:"legacy/score",data:{season,points:50,completedCount:1,optIn:true,alias:"OldAlias"}},
-  states=[{id:"state1",path:"legacy/state",data:{
-   season,courseId:"java",missionId:"m1",completed:true,earnedPoints:50,wrongSubmissions:0
+  score={path:"legacy/score",data:{ownerUid:student.uid,season,points:50,completedCount:1,optIn:true,alias:"OldAlias"}},
+  states=[{id:season+"_m1",path:"legacy/state",data:{
+   ownerUid:student.uid,season,courseId:"java",missionId:"m1",completed:true,earnedPoints:50,wrongSubmissions:0
   }}],
-  awards=[{id:"award1",path:"legacy/award",data:{
-   season,courseId:"java",missionId:"m1",points:50,wrongSubmissions:0
+  awards=[{id:season+"_m1",path:"legacy/award",data:{
+   ownerUid:student.uid,season,courseId:"java",missionId:"m1",points:50,wrongSubmissions:0
   }}],
-  progress=[{id:"course1",path:"legacy/progress",data:{
-   season,courseId:"java",completed:["m1"],missionScores:{m1:50}
+  progress=[{id:season+"_java",path:"legacy/progress",data:{
+   ownerUid:student.uid,season,courseId:"java",completed:["m1"],missionScores:{m1:50}
   }}];
  const result=reconcileCurrentSeason({score,states,awards,progress,currentSeason:season,
   student,sections:new Set(["section_a"])});
@@ -46,15 +61,15 @@ test("current season score must reconcile with award, mission state and course p
 
 test("score mismatch becomes a blocker instead of recalculating silently",()=>{
  const result=reconcileCurrentSeason({
-  score:{path:"legacy/score",data:{season:"2026.1",points:80,completedCount:1}},
-  states:[{id:"s",path:"legacy/state",data:{
-   season:"2026.1",courseId:"java",missionId:"m1",completed:true,earnedPoints:50
+  score:{path:"legacy/score",data:{ownerUid:"student_1",season:"2026.1",points:80,completedCount:1}},
+  states:[{id:"2026.1_m1",path:"legacy/state",data:{
+   ownerUid:"student_1",season:"2026.1",courseId:"java",missionId:"m1",completed:true,earnedPoints:50
   }}],
-  awards:[{id:"a",path:"legacy/award",data:{
-   season:"2026.1",courseId:"java",missionId:"m1",points:50
+  awards:[{id:"2026.1_m1",path:"legacy/award",data:{
+   ownerUid:"student_1",season:"2026.1",courseId:"java",missionId:"m1",points:50
   }}],
-  progress:[{id:"p",path:"legacy/progress",data:{
-   season:"2026.1",courseId:"java",completed:["m1"],missionScores:{m1:50}
+  progress:[{id:"2026.1_java",path:"legacy/progress",data:{
+   ownerUid:"student_1",season:"2026.1",courseId:"java",completed:["m1"],missionScores:{m1:50}
   }}],
   currentSeason:"2026.1",student:{uid:"student_1",personId:"person_1"},sections:new Set()
  });
