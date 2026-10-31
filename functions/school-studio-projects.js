@@ -11,8 +11,8 @@ function safeTitle(value){
  return value.trim();
 }
 function validateFiles(files){
- if(!Array.isArray(files)||files.length>30)
-  deny("invalid-argument","A Studio project may contain up to 30 text files.");
+ if(!Array.isArray(files)||files.length>100)
+  deny("invalid-argument","A Studio project may contain up to 100 text files.");
  const checked=[],paths=new Set();let total=0;
  for(const row of files){
   const path=row?.path,content=row?.content;
@@ -25,16 +25,35 @@ function validateFiles(files){
   if(paths.has(path))deny("invalid-argument","Duplicate file path: "+path);
   if(typeof content!=="string")deny("invalid-argument","Only text source files can be saved.");
   const size=Buffer.byteLength(content,"utf8");
-  if(size>50000)deny("invalid-argument","A single source file exceeds 50 KB.");
+  if(size>150000)deny("invalid-argument","A single source file exceeds 150 KB.");
   total+=size;
-  if(total>150000)deny("invalid-argument","The project exceeds the 150 KB save limit.");
+  if(total>600000)deny("invalid-argument","The project source exceeds the 600 KB save limit.");
   paths.add(path);checked.push({path,content});
  }
  return checked.sort((a,b)=>a.path.localeCompare(b.path));
 }
-function digestFiles(files){
- return createHash("sha256").update(JSON.stringify(files)).digest("hex");
+function validateArtifacts(value){
+ const source=value&&typeof value==="object"?value:{};
+ let json;
+ try{json=JSON.stringify(source);}
+ catch{deny("invalid-argument","Project design/database artifacts must be JSON-serializable.");}
+ if(Buffer.byteLength(json,"utf8")>180000)
+  deny("invalid-argument","Project database/design artifacts exceed the 180 KB save limit.");
+ const parsed=JSON.parse(json);
+ function safe(node){
+  if(!node||typeof node!=="object")return;
+  for(const [key,child] of Object.entries(node)){
+   if(["__proto__","prototype","constructor"].includes(key))
+    deny("invalid-argument","Project artifacts contain a reserved field name.");
+   safe(child);
+  }
+ }
+ safe(parsed);return parsed;
 }
+function digestProject(files,artifacts={}){
+ return createHash("sha256").update(JSON.stringify({files,artifacts})).digest("hex");
+}
+function digestFiles(files){return digestProject(files,{});}
 function createSchoolStudioProjectService({db}){
  return async request=>{
   const input=request.data||{},ctx=await getSchoolContext({
@@ -59,18 +78,51 @@ function createSchoolStudioProjectService({db}){
       revision:d.data().revision,updatedAt:d.data().updatedAt?.toMillis?.()||null}))};
   }
   if(action==="create"){
-   const title=safeTitle(input.title),files=validateFiles(input.files||[]);
+   const title=safeTitle(input.title),files=validateFiles(input.files||[]),artifacts=validateArtifacts(input.artifacts);
    const language=input.language;
-   if(!["java","web","python","text"].includes(language))
+   if(!["java","web","python","csharp","cpp","dart","text"].includes(language))
     deny("invalid-argument","Choose a supported Studio project language.");
    const ref=projectCollection.doc(),now=FieldValue.serverTimestamp();
    await db.runTransaction(async tx=>{
     await authorizeTransaction(tx);
     tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,
-      language,files,contentDigest:digestFiles(files),revision:1,
+      language,files,artifacts,contentDigest:digestProject(files,artifacts),revision:1,
       createdAt:now,updatedAt:now});
    });
-   return {projectId:ref.id,revision:1,contentDigest:digestFiles(files)};
+   return {projectId:ref.id,revision:1,contentDigest:digestProject(files,artifacts)};
+  }
+  if(action==="sync"){
+   const projectId=checkId(input.projectId,"Project ID",128);
+   const title=safeTitle(input.title),files=validateFiles(input.files||[]);
+   const artifacts=validateArtifacts(input.artifacts),language=input.language;
+   if(!["java","web","python","csharp","cpp","dart","text"].includes(language))
+    deny("invalid-argument","Choose a supported Studio project language.");
+   const ref=projectCollection.doc(projectId),digest=digestProject(files,artifacts);
+   let result;
+   await db.runTransaction(async tx=>{
+    await authorizeTransaction(tx);
+    const current=await tx.get(ref),now=FieldValue.serverTimestamp();
+    if(!current.exists){
+     tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,language,files,artifacts,
+       contentDigest:digest,revision:1,createdAt:now,updatedAt:now});
+     result={projectId,revision:1,contentDigest:digest,created:true};return;
+    }
+    const data=current.data();
+    if(data.schoolId!==ctx.schoolId||data.ownerUid!==ctx.uid)
+     deny("permission-denied","This project ID belongs to a different school account.");
+    const expected=input.expectedRevision;
+    if(!Number.isInteger(expected)||expected<1)
+     deny("failed-precondition","This project already exists in school storage. Reload its school revision before saving.");
+    if(data.revision!==expected)
+     deny("failed-precondition","Project changed in school storage. Reload before overwriting it.");
+    if(data.contentDigest===digest&&data.title===title&&data.language===language){
+     result={projectId,revision:data.revision,contentDigest:digest,created:false,unchanged:true};return;
+    }
+    const revision=data.revision+1;
+    tx.update(ref,{title,language,files,artifacts,contentDigest:digest,revision,updatedAt:now});
+    result={projectId,revision,contentDigest:digest,created:false,unchanged:false};
+   });
+   return result;
   }
   const projectId=checkId(input.projectId,"Project ID",128);
   const ref=projectCollection.doc(projectId);
@@ -80,14 +132,14 @@ function createSchoolStudioProjectService({db}){
     deny("not-found","Project is unavailable.");
    const data=doc.data();
    return {projectId,title:data.title,language:data.language,
-    revision:data.revision,files:data.files,contentDigest:data.contentDigest};
+    revision:data.revision,files:data.files,artifacts:data.artifacts||{},contentDigest:data.contentDigest};
   }
   if(action==="save"){
-   const title=safeTitle(input.title),files=validateFiles(input.files);
+   const title=safeTitle(input.title),files=validateFiles(input.files),artifacts=validateArtifacts(input.artifacts);
    const revision=input.expectedRevision;
    if(!Number.isInteger(revision)||revision<1)
     deny("invalid-argument","The existing saved project revision is required.");
-   const digest=digestFiles(files);
+   const digest=digestProject(files,artifacts);
    await db.runTransaction(async tx=>{
     await authorizeTransaction(tx);
     const doc=await tx.get(ref);
@@ -95,7 +147,7 @@ function createSchoolStudioProjectService({db}){
      deny("permission-denied","This project is not yours in this school.");
     if(doc.data().revision!==revision)
      deny("failed-precondition","Project changed elsewhere. Load the latest version before saving.");
-    tx.update(ref,{title,files,contentDigest:digest,revision:revision+1,
+    tx.update(ref,{title,files,artifacts,contentDigest:digest,revision:revision+1,
       updatedAt:FieldValue.serverTimestamp()});
    });
    return {projectId,revision:revision+1,contentDigest:digest};
@@ -103,4 +155,4 @@ function createSchoolStudioProjectService({db}){
   deny("invalid-argument","Unknown school Studio project action.");
  };
 }
-module.exports={createSchoolStudioProjectService,validateFiles,digestFiles};
+module.exports={createSchoolStudioProjectService,validateFiles,validateArtifacts,digestFiles,digestProject};
