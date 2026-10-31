@@ -1,5 +1,5 @@
 import {staffRole} from "./staff-role.mjs?v=1.3.0";
-import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
+import {resolveAccountAccess} from "./staff-session.mjs?v=4.0.0";
 /** Shared navigation, account access, reporting and release infrastructure: notifications. */
 import { auth, db } from "./firebase-core.js?v=1.3.0";
 import {notificationTarget,previewDestination} from "./notification-routing.mjs?v=1.3.8";
@@ -10,7 +10,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/f
 import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "./teaching-firestore.mjs?v=1.3.2";
 
 let listenEpoch=0;
-const state = { user:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false, pushState:null };
+const state = { user:null, access:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false, pushState:null };
 const isAdmin = () => staffRole(state.user)==="admin";
 const isTeacher = () => staffRole(state.user)==="teacher";
 const verifiedRole = () => isAdmin() ? "admin" : isTeacher() ? "teacher" : "student";
@@ -160,7 +160,7 @@ async function markAllRead(){
 async function listen(user){
   const current=++listenEpoch;
   state.unsubscribe.forEach(stop=>stop());state.unsubscribe=[];
-  state.user=user;state.notifications=[];state.issues=[];state.submissions=[];state.gradingAlerts=[];state.history=user?localHistory():[];
+  state.user=user;state.access=null;state.notifications=[];state.issues=[];state.submissions=[];state.gradingAlerts=[];state.history=user?localHistory():[];
   state.errors.clear();
   state.read=restoreRead();state.muted=restorePreferences();
   document.querySelectorAll("#av-alert-panel input[data-alert-category]").forEach(input=>{
@@ -171,7 +171,7 @@ async function listen(user){
   await resolveStaffRole(user);
   if(current!==listenEpoch||state.user?.uid!==user.uid)return;
   const settingsLink=el("av-alert-preferences-link");
-  if(settingsLink)settingsLink.href=(staffRole(user)?"settings.html":"student-settings.html")+"#notifications";
+  if(settingsLink)settingsLink.href=(isAdmin()||isSchoolAdmin()||isTeacher()?"settings.html":"student-settings.html")+"#notifications";
   void refreshReleases();
   void refreshPushPrompt();
   state.unsubscribe.push(onSnapshot(query(
@@ -224,7 +224,7 @@ async function refreshPushPrompt(){
     const show=prefs.enabled!==false&&device.supported&&device.configured&&device.permission!=="denied"&&!(device.permission==="granted"&&device.registered);
     prompt.classList.toggle("hidden",!show);
     if(!show)return;
-    const teaching=Boolean(staffRole(state.user));
+    const teaching=isAdmin()||isSchoolAdmin()||isTeacher();
     message.textContent=device.permission==="granted"
       ?(teaching?"Device permission is granted. Reconnect this device to receive teaching alerts.":"Device permission is granted. Reconnect this device to receive assessment, submission, grade, and report alerts.")
       :(teaching?"Important teaching alerts can reach this device outside Adminerva. Enable this device once.":"Important student alerts are ON by default. Enable this device once to receive them outside Adminerva.");
