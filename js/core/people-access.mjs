@@ -7,7 +7,7 @@ const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcad
 let schoolTerms=[];
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false;
-let accessChange=null,lifecycleChange=null,currentRosterOfferingId=null;
+let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null;
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","invites","classes","access"]);
 function setTab(name,{remember=true}={}) {
@@ -28,7 +28,7 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
-    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;
+    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;
     get("pa-more").hidden=true;
   },
   onReady:scope=>{
@@ -310,6 +310,45 @@ async function loadOverview(){
   get("pa-staff-count").textContent=response.counts.staff_assignments;
   get("pa-invite-count").textContent=response.counts.invitations;
 }
+function openPersonDialog(person,mode){
+  personChange={person,mode};
+  const form=get("pa-person-dialog-form"),nameField=get("pa-person-name-field"),
+    reasonField=get("pa-person-reason-field"),nameInput=form.elements.displayName,
+    reasonInput=form.elements.reason,confirm=get("pa-person-dialog-confirm");
+  form.reset();get("pa-person-dialog-target").textContent=person.displayName+" · "+person.kind;
+  nameField.hidden=mode!=="edit";reasonField.hidden=mode==="edit";
+  nameInput.required=mode==="edit";reasonInput.required=mode!=="edit";
+  nameInput.value=person.displayName||"";
+  get("pa-person-dialog-title").textContent=mode==="edit"?"Edit school person":
+    mode==="archive"?"Archive school person":"Restore school person";
+  confirm.textContent=mode==="edit"?"Save name":mode==="archive"?"Archive person":"Restore person";
+  confirm.style.background=mode==="archive"?"#9a3412":mode==="restore"?"#166534":"#1d4ed8";
+  get("pa-person-dialog-help").textContent=mode==="archive"?
+    "Archiving is blocked until active school access, enrollments or teaching assignments are ended. Nothing is deleted.":
+    mode==="restore"?"Restoring the person record does not automatically restore school access, enrollments or teaching assignments.":
+    "Updating the display name also updates the linked school membership label when one exists.";
+  get("pa-person-dialog").showModal();
+}
+get("pa-person-dialog-cancel").addEventListener("click",()=>{
+  personChange=null;get("pa-person-dialog").close();
+});
+get("pa-person-dialog-form").addEventListener("submit",event=>{
+  event.preventDefault();if(!personChange||pendingWrite)return;
+  const form=event.currentTarget,{person,mode}=personChange,values=new FormData(form);
+  const action=mode==="edit"?"update_person":mode==="archive"?"archive_person":"restore_person";
+  const details={personId:person.personId};
+  if(mode==="edit")details.displayName=String(values.get("displayName")||"").trim();
+  else details.reason=String(values.get("reason")||"").trim();
+  const warning=mode==="archive"?
+    "Archive this school person record? Active access and academic assignments must already be ended.":
+    mode==="restore"?"Restore this school person record without automatically restoring access or enrollment?":null;
+  if(warning&&!confirm(warning))return;
+  void submitForm(form,action,details).then(result=>{
+    if(!result)return;
+    personChange=null;get("pa-person-dialog").close();
+  });
+});
+
 async function loadPeople(append) {
   if(loadingPeople)return;
   loadingPeople=true;const button=get("pa-more");button.disabled=true;
@@ -321,7 +360,19 @@ async function loadPeople(append) {
       const identity=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("div");
       name.textContent=person.displayName;meta.className="pa-muted";
       meta.textContent=person.kind+" · "+person.status+" · "+(person.accountLinked?"Account linked":"Account not linked");
-      identity.append(name,meta);row.append(identity);list.append(row);
+      identity.append(name,meta);row.append(identity);
+      const actions=document.createElement("div");actions.style.cssText="display:flex;gap:.4rem;flex-wrap:wrap";
+      const edit=document.createElement("button");edit.type="button";edit.className="pa-action";edit.textContent="Edit";
+      edit.addEventListener("click",()=>openPersonDialog(person,"edit"));
+      actions.append(edit);
+      if(["active","archived"].includes(person.status)){
+        const lifecycle=document.createElement("button");lifecycle.type="button";lifecycle.className="pa-action";
+        lifecycle.style.background=person.status==="active"?"#9a3412":"#166534";
+        lifecycle.textContent=person.status==="active"?"Archive":"Restore";
+        lifecycle.addEventListener("click",()=>openPersonDialog(person,person.status==="active"?"archive":"restore"));
+        actions.append(lifecycle);
+      }
+      row.append(actions);list.append(row);
     }
     if(!list.children.length){
       const empty=document.createElement("p");empty.className="pa-muted";
@@ -343,6 +394,9 @@ async function submitForm(form,action,details) {
     say(action==="invite"?"Pending invitation recorded. Access has not been granted.":
       action==="suspend_access"?"School access suspended. Historical academic records were preserved.":
       action==="restore_access"?"School access restored after identity revalidation. Historical records were unchanged.":
+      action==="update_person"?"School person record updated.":
+      action==="archive_person"?"School person archived without deleting academic history.":
+      action==="restore_person"?"School person restored. Access and class assignments remain separately controlled.":
       "Person created. No account or enrollment was created.");
     if(action==="invite"&&result.invitationId){
       const host=get("pa-invitation-result");
@@ -358,7 +412,8 @@ async function submitForm(form,action,details) {
       hint.textContent="The invited person's verified email must match. This link is not a public school signup.";
       host.append(title,link,hint);
     }
-    if(action==="create_person")await Promise.all([loadPeople(false),loadOverview(),loadAcademics(),loadInvitePeople()]);
+    if(["create_person","update_person","archive_person","restore_person"].includes(action))
+      await Promise.all([loadPeople(false),loadOverview(),loadAcademics(),loadInvitePeople(),loadMemberships()]);
     else await loadOverview();
     return result;
   }catch(error){say(error.message||"This change was not saved.");return null;}
