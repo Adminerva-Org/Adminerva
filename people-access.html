@@ -27,7 +27,8 @@
     @media(max-width:720px){.pa-layout,.pa-academic-grid{grid-template-columns:minmax(0,1fr)}#pa-person-search{grid-template-columns:minmax(0,1fr)!important}.pa-shell{padding:.75rem}.pa-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
   </style>
 </head>
-<body style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
+<body id="pageBody" class="hidden" style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
+<div id="adminerva-nav" data-module="admin" data-page="people-v4"></div>
 <main class="pa-shell">
   <header class="pa-header">
     <div><a href="teacher-home.html" class="pa-muted">Adminerva</a><h1 style="font-weight:800;font-size:clamp(1.5rem,4vw,2rem);margin:.15rem 0">People &amp; Access</h1>
@@ -207,6 +208,9 @@
     </section>
   </section>
 </main>
-<script type="module" src="js/core/people-access.mjs"></script>
+<script src="js/core/adminerva-loader.js?v=1.3.2"></script>
+<script src="js/core/adminerva-nav.js?v=4.0.0"></script>
+<script type="module" src="js/core/auth-guard.js?v=4.0.0"></script>
+<script type="module" src="js/core/people-access.mjs?v=4.0.0"></script>
 </body>
 </html>
