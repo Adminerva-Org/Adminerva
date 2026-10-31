@@ -242,6 +242,34 @@ test('legacy approved checkpoints can be reverified only by instructors with imm
   await assertFails(deleteDoc(doc(staff,'assessment_evidence','alice_v2','revisions','1')));
 });
 
+test('teacher-discovered revision with two selected commits can be approved after attribution amendment',async()=>{
+  const staff=client('staff',TEACHER);
+  const repository='https://github.com/example/project';
+  const secondSha='b'.repeat(40);
+  await env.withSecurityRulesDisabled(async ctx=>{
+    const db=ctx.firestore();
+    await updateDoc(doc(db,'students','alice'),{repoUrl:repository});
+    await setDoc(doc(db,'assessment_evidence','alice_v2'),{
+      studentId:'alice',assessmentId:'v2',section:'11-A',repository,
+      selectedCommits:[SHA,secondSha],checkpointSha:SHA,
+      status:'needs_review',source:'teacher_discovered',discoveredBy:'staff',
+      recordedAt:Timestamp.now(),updatedAt:Timestamp.now(),
+      discoveryCutoff:'2026-10-23T23:59:59.000Z',
+      revision:2
+    });
+  });
+  await assertSucceeds(auditedEvidence(staff,{
+    status:'approved',reviewedBy:'staff',reviewedAt:serverTimestamp(),
+    approvedCheckpointSha:SHA,verifiedContributionCommits:[SHA,secondSha],
+    contributionScope:'Instructor verified both selected commits as the learner\'s relevant individual work.',
+    verificationNote:'Teacher inspected the selected changes and project checkpoint before approving this evidence.'
+  },{actor:'staff',reason:'Teacher inspected the selected changes and project checkpoint before approving this evidence.'}));
+  const approved=(await getDoc(doc(staff,'assessment_evidence','alice_v2'))).data();
+  assert.equal(approved.status,'approved');
+  assert.equal(approved.revision,3);
+  assert.deepEqual(approved.verifiedContributionCommits,[SHA,secondSha]);
+});
+
 test('an instructor may release a historical proposal for audited student revision before approval',async()=>{
   const staff=client('staff',TEACHER),alice=client('alice',EMAIL_A),repository='https://github.com/example/project';
   await env.withSecurityRulesDisabled(async ctx=>{
