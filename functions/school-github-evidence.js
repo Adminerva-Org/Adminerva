@@ -10,6 +10,7 @@ const {FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
+const {writeSchoolNotification}=require("./school-notifications.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 const sha=value=>{
@@ -182,6 +183,13 @@ function createSchoolGithubEvidenceService({db}){
       version,evidenceDigest:digest,createdAt:when});
     receipt={evidenceId,version,status:"submitted",alreadyExisted:false};
    });
+   if(!receipt.alreadyExisted)await writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:taskData.ownerUid,
+     id:"github_submission_"+taskId+"_"+ctx.uid+"_"+receipt.version,
+     title:receipt.version>1?"GitHub evidence resubmitted":"GitHub evidence submitted",
+     body:(taskData.title||"Assessment")+" · a student evidence package is ready for review.",
+     type:"submission",sourceId:taskId,target:"gradebook.html"
+   }).catch(()=>{});
    return receipt;
   }
 
@@ -254,6 +262,7 @@ function createSchoolGithubEvidenceService({db}){
     deny("invalid-argument","Provide the verified commit SHA set.");
    const verified=[...new Set(input.verifiedCommitShas.map(sha))].sort();
    const auditRef=db.collection(prefix+"submission_audit").doc();
+   let approvedStudentUid=null;
    await db.runTransaction(async tx=>{
     await teacherWriteAuthority(tx);
     const record=await tx.get(targetRef);
@@ -262,6 +271,7 @@ function createSchoolGithubEvidenceService({db}){
        record.data().status!=="submitted")
       deny("failed-precondition","Only currently submitted evidence may be approved.");
     const data=record.data(),selected=[...(data.selectedCommitShas||[])].sort();
+    approvedStudentUid=data.studentUid;
     const claimQuery=db.collection(prefix+"commit_reclaims").where("evidenceId","==",targetId).limit(101);
     const claims=await tx.get(claimQuery);
     if(claims.size===101)deny("resource-exhausted","Attribution history requires pagination before evidence approval.");
@@ -285,6 +295,13 @@ function createSchoolGithubEvidenceService({db}){
       actorUid:ctx.uid,studentUid:data.studentUid,action:"github_evidence_approved",
       version:data.currentVersion,evidenceDigest:data.evidenceDigest,createdAt:when});
    });
+   if(approvedStudentUid)await writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:approvedStudentUid,
+     id:"github_approved_"+taskId+"_"+targetId,
+     title:"GitHub evidence approved",
+     body:(taskData.title||"Assessment")+" · your submitted evidence passed teacher verification.",
+     type:"submission",sourceId:taskId,target:"student-assessments.html"
+   }).catch(()=>{});
    return {evidenceId:targetId,status:"approved"};
   }
 
@@ -296,6 +313,7 @@ function createSchoolGithubEvidenceService({db}){
    if(Date.now()>taskData.dueAt.toMillis()&&!extension)
     deny("failed-precondition","The original deadline passed. Set an explicit revision extension.");
    const auditRef=db.collection(prefix+"submission_audit").doc();
+   let revisionStudentUid=null;
    await db.runTransaction(async tx=>{
     await teacherWriteAuthority(tx);
     const record=await tx.get(targetRef);
@@ -304,6 +322,7 @@ function createSchoolGithubEvidenceService({db}){
        !["submitted","approved"].includes(record.data().status))
       deny("failed-precondition","Only submitted or approved evidence can be reopened.");
     const data=record.data();
+    revisionStudentUid=data.studentUid;
     const gradeRef=db.doc(prefix+"student_grades/"+key(taskId,data.studentUid));
     const grade=await tx.get(gradeRef);
     if(grade.exists&&grade.data().status==="published")
@@ -315,6 +334,13 @@ function createSchoolGithubEvidenceService({db}){
       actorUid:ctx.uid,studentUid:data.studentUid,action:"github_evidence_revision_requested",
       version:data.currentVersion,reason,createdAt:when});
    });
+   if(revisionStudentUid)await writeSchoolNotification({
+     db,schoolId:ctx.schoolId,uid:revisionStudentUid,
+     id:"github_revision_"+taskId+"_"+targetId,
+     title:"GitHub evidence revision requested",
+     body:(taskData.title||"Assessment")+" · your teacher requested changes to the submitted evidence.",
+     type:"submission",sourceId:taskId,target:"student-assessments.html"
+   }).catch(()=>{});
    return {evidenceId:targetId,status:"reopened"};
   }
   deny("invalid-argument","Unknown GitHub evidence operation.");
