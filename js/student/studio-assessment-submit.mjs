@@ -4,7 +4,7 @@ import {collection,doc,getDocs,query,where,runTransaction,serverTimestamp} from 
 import {snapshotStudioProject,studioDigest,studioEvidenceId,studioSubmissionAllowed} from "./studio-assessment-model.mjs?v=1.0.0";
 import {
   currentV4StudioSchool,getV4StudioSubmissionStatus,listV4StudioAssignments,submitV4StudioProject
-} from "./v4-studio-service.mjs?v=4.0.0";
+} from "./v4-studio-service.mjs?v=4.0.1";
 
 const button=document.getElementById("studioSubmitAssessment");
 if(button){
