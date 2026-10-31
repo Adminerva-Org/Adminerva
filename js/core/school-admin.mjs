@@ -1,6 +1,8 @@
-import {auth,db} from "./firebase-core.js?v=1.3.0";
+import {app,auth,db} from "./firebase-core.js?v=1.3.0";
 import {collection,getDocs} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {resolveStaffRole} from "./staff-session.mjs?v=1.3.10";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
+import {resolveAccountAccess} from "./staff-session.mjs?v=4.0.0";
+import {createTenantSchoolPicker} from "./tenant-school-picker.mjs?v=4.0.0";
 await auth.authStateReady();const user=auth.currentUser,role=await resolveStaffRole(user);
 if(role!=="admin")location.replace("teacher-home.html");else try{
  const [students,teachers,reports]=await Promise.all([
