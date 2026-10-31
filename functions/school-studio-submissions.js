@@ -84,8 +84,14 @@ function createSchoolStudioSubmissionService({db}){
        assessment.submissionSource!=="studio"||assessment.status!=="deployed"||
        assessment.offeringId!==offeringId)
      deny("failed-precondition","The assigned Studio assessment is no longer available.");
+    const lifecycle=assessment.lifecycle||"active",
+      revisionOpen=submission.exists&&submission.data().status==="reopened";
+    if(["archived","cancelled"].includes(lifecycle))
+     deny("failed-precondition","This assessment is no longer accepting student submissions.");
+    if(lifecycle==="closed"&&!revisionOpen)
+     deny("failed-precondition","This assessment is closed to new submissions.");
     const now=Date.now();
-    const revisionDeadline=submission.exists&&submission.data().status==="reopened"?
+    const revisionDeadline=revisionOpen?
       submission.data().revisionDueAt?.toMillis?.()||0:0;
     if(now<assessment.opensAt.toMillis()||
        (now>assessment.dueAt.toMillis()&&now>revisionDeadline))
@@ -152,7 +158,7 @@ function createSchoolStudioSubmissionService({db}){
       grant.data().teacherUid!==ctx.uid||grant.data().offeringId!==offeringId||
       grant.data().schoolId!==ctx.schoolId||grant.data().status!=="active")
     deny("permission-denied","Only the assessment-owning authorized teacher may review this class task.");
-   return member;
+   return currentTask.data();
   };
   // Verify course rights for reads as well, not only in mutation transactions.
   const [grant,member]=await Promise.all([assignmentRef.get(),membershipRef.get()]);
@@ -209,7 +215,9 @@ function createSchoolStudioSubmissionService({db}){
    const auditRef=db.collection(prefix+"submission_audit").doc();
    let revisionStudentUid=null;
    await db.runTransaction(async tx=>{
-    await isAuthorized(tx);
+    const currentTask=await isAuthorized(tx),lifecycle=currentTask.lifecycle||"active";
+    if(["archived","cancelled"].includes(lifecycle))
+     deny("failed-precondition","Archived or cancelled assessments cannot request new student revisions.");
     const submission=await tx.get(submissionRef);
     if(!submission.exists||submission.data().schoolId!==ctx.schoolId||
        submission.data().taskId!==taskId||submission.data().offeringId!==offeringId||
