@@ -60,9 +60,9 @@ function createSchoolReclaimService({db}){
     const [evidence,task,prior]=await Promise.all([tx.get(evidenceRef),tx.get(taskRef),tx.get(claimRef)]);
     if(!task.exists||task.data().schoolId!==ctx.schoolId||task.data().submissionSource!=="github"||
        !evidence.exists||evidence.data().schoolId!==ctx.schoolId||evidence.data().taskId!==taskId||
-       evidence.data().studentUid!==ctx.uid||!Array.isArray(evidence.data().selectedCommitShas)||
-       !evidence.data().selectedCommitShas.includes(sha))
-      deny("permission-denied","Only a commit in your current frozen school evidence can be reclaimed.");
+       evidence.data().studentUid!==ctx.uid||evidence.data().status!=="submitted"||
+       !Array.isArray(evidence.data().selectedCommitShas)||!evidence.data().selectedCommitShas.includes(sha))
+      deny("permission-denied","Attribution can be requested only for a commit in your currently submitted evidence before teacher approval.");
     const now=FieldValue.serverTimestamp(),version=evidence.data().currentVersion;
     if(prior.exists){
       const data=prior.data();
