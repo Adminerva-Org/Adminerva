@@ -207,7 +207,7 @@ service cloud.firestore {
         data.expiresAt <= request.time + duration.value(31, "d");
     }
     function mayReadIssue(issue) {
-      return signedIn() && (
+      return legacyMcsAllowed() && signedIn() && (
         isAdmin() ||
         (isTeacher() && issue.get("audience", "admin") == "teacher" && mayTeachSection(issue.get("section",null))) ||
         issue.get("reporterUid", "") == request.auth.uid ||
@@ -341,15 +341,15 @@ service cloud.firestore {
           request.resource.data.updatedAt == request.time && request.resource.data.studentId is string &&
           ((isInstructor() && request.resource.data.studentId == "") || ownsStudentProfile(request.resource.data.studentId));
       }
-      allow get: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
+      allow get: if legacyMcsAllowed() && signedIn() && (request.auth.uid == ownerUid || isAdmin());
       allow list: if isAdmin();
-      allow create, update: if signedIn() && request.auth.token.email_verified == true &&
+      allow create, update: if legacyMcsAllowed() && signedIn() && request.auth.token.email_verified == true &&
         request.auth.uid == ownerUid && validPreference();
       allow delete: if isAdmin();
     }
     match /activity_events/{eventId} {
       allow read, delete: if isAdmin();
-      allow create: if signedIn() && request.auth.token.email_verified == true &&
+      allow create: if legacyMcsAllowed() && signedIn() && request.auth.token.email_verified == true &&
         request.resource.data.keys().hasOnly(["ownerUid", "studentId", "sessionId", "page", "action", "activeSeconds", "createdAt", "expiresAt"]) &&
         request.resource.data.ownerUid == request.auth.uid &&
         get(/databases/$(database)/documents/activity_preferences/$(request.auth.uid)).data.enabled == true &&
@@ -363,7 +363,7 @@ service cloud.firestore {
     }
     match /issue_diagnostics/{issueId} {
       allow read, delete: if isAdmin();
-      allow create: if signedIn() && request.resource.data.keys().hasOnly(["ownerUid", "pages", "actions", "createdAt", "expiresAt"]) &&
+      allow create: if legacyMcsAllowed() && signedIn() && request.resource.data.keys().hasOnly(["ownerUid", "pages", "actions", "createdAt", "expiresAt"]) &&
         request.resource.data.ownerUid == request.auth.uid &&
         getAfter(/databases/$(database)/documents/issues/$(issueId)).data.reporterUid == request.auth.uid &&
         getAfter(/databases/$(database)/documents/issues/$(issueId)).data.audience == "admin" &&
@@ -1222,7 +1222,7 @@ service cloud.firestore {
     // Missing audience on legacy records means admin until migrated.
     match /issues/{issueId} {
       allow read: if mayReadIssue(resource.data);
-      allow create: if signedIn() &&
+      allow create: if legacyMcsAllowed() && signedIn() &&
         request.resource.data.keys().hasOnly([
           "title", "description", "category", "priority", "images",
           "urlContext", "reporterEmail", "reporterUid", "reporterRole",
