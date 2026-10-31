@@ -5,7 +5,7 @@ import {createTenantSchoolPicker} from "./tenant-school-picker.mjs?v=4.0.0";
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAnalytics");
 const el=id=>document.getElementById(id),status=el("schoolAnalyticsStatus"),
   workspace=el("schoolAnalyticsWorkspace");
-let loading=false;
+let loading=false,epoch=0;
 function card(label,value,hint=""){
   const node=document.createElement("article");
   node.className="bg-white border rounded-2xl p-4 shadow-sm";
@@ -39,21 +39,32 @@ function render(data){
 }
 const picker=createTenantSchoolPicker({
   host:el("schoolAnalyticsSwitcher"),status,
-  onBeforeChange:async()=>{workspace.hidden=true;},
+  onBeforeChange:async()=>{
+    ++epoch;loading=false;workspace.hidden=true;
+    el("schoolAnalyticsSummary").replaceChildren();
+    el("schoolAnalyticsReview").replaceChildren();
+    el("schoolAnalyticsSupport").replaceChildren();
+  },
   onReady:()=>void refresh()
 });
 async function refresh(){
   if(loading||!picker.scope.current)return;
+  const sequence=++epoch;
   loading=true;el("schoolAnalyticsRefresh").disabled=true;
   status.textContent="Loading aggregate counts for the selected school…";
   try{
     const lease=picker.scope.lease();
     const data=(await api({schoolId:lease.schoolId,action:"overview"})).data;
-    picker.scope.assertLease(lease);render(data);workspace.hidden=false;
+    picker.scope.assertLease(lease);if(sequence!==epoch)return;
+    render(data);workspace.hidden=false;
     status.textContent="School operations updated "+new Date(data.generatedAt).toLocaleString()+".";
   }catch(error){
-    workspace.hidden=true;status.textContent=error?.message||"School operational analytics are unavailable.";
-  }finally{loading=false;el("schoolAnalyticsRefresh").disabled=false;}
+    if(sequence===epoch){
+      workspace.hidden=true;status.textContent=error?.message||"School operational analytics are unavailable.";
+    }
+  }finally{
+    if(sequence===epoch){loading=false;el("schoolAnalyticsRefresh").disabled=false;}
+  }
 }
 el("schoolAnalyticsRefresh").addEventListener("click",()=>void refresh());
 try{
