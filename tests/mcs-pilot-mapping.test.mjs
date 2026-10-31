@@ -8,7 +8,7 @@ const {classification,mapPath,candidateEntry,canonicalDigest}=
 test("all existing school assessment and nested evidence paths retain their IDs under MCS",()=>{
   const source="assessment_evidence/sampleEvidence/revisions/2";
   assert.equal(mapPath(source,"mcs-manila").targetPath,
-    "schools/mcs-manila/"+source);
+    "schools/mcs-manila/legacy_roots/assessment_evidence/documents/sampleEvidence/revisions/2");
   assert.equal(classification("staff_access"),"identity_review");
   assert.equal(classification("system_private"),"platform_or_secret_review");
 });
@@ -21,7 +21,16 @@ test("conflicting explicit school labels are held even with the MCS-only owner c
   const entry=candidateEntry({sourcePath:"students/example",
     data:{schoolId:"another-school",name:"Example"},schoolId:"mcs-manila"});
   assert.equal(entry.decision,"school_conflict");
-  assert.equal(entry.targetPath,"schools/mcs-manila/students/example");
+  assert.equal(entry.targetPath,"schools/mcs-manila/legacy_roots/students/documents/example");
+});
+test("raw V3 school records are mirror-only and never treated as canonical V4 documents",()=>{
+  const entry=candidateEntry({sourcePath:"assessments/legacy-task",
+    data:{title:"Legacy task"},schoolId:"mcs-manila"});
+  assert.equal(entry.migrationMode,"legacy_mirror");
+  assert.equal(entry.canonicalV4TargetPath,null);
+  assert.equal(entry.decision,"eligible_for_approved_mirror");
+  assert.equal(entry.targetPath,
+    "schools/mcs-manila/legacy_roots/assessments/documents/legacy-task");
 });
 test("identity and secret documents never receive an automatic destination",()=>{
   const entry=candidateEntry({sourcePath:"staff_access/staff",data:{role:"teacher"},schoolId:"mcs-manila"});
