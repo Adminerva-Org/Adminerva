@@ -10,6 +10,7 @@ export const evidenceReviewMarkup=`
 <textarea id="evidenceDiscoveryNote" rows="3" maxlength="3000" class="hidden w-full border rounded-lg p-3" placeholder="Explain why the added commit belongs to this learner despite the GitHub identity mismatch."></textarea>
 <button id="evidenceSaveDiscovery" type="button" class="rounded bg-indigo-700 text-white px-4 py-3 font-bold text-sm">Save proposed historical evidence</button>
 </section>
+<p id="evidenceReviewStatus" role="status" class="text-sm font-semibold text-indigo-900 mb-3">Loading evidence review…</p>
 <section id="evidenceDetails" class="hidden bg-white mt-5 p-5 rounded-xl border space-y-4">
 <h2 id="evidenceTitle" class="text-lg font-bold"></h2>
 <div id="evidenceLifecycleBanner" role="status" aria-live="polite" class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 flex flex-wrap items-start justify-between gap-3">
