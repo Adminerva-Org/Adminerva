@@ -12,8 +12,25 @@ import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, 
 let listenEpoch=0;
 const state = { user:null, access:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false, pushState:null };
 const isAdmin = () => staffRole(state.user)==="admin";
-const isTeacher = () => staffRole(state.user)==="teacher";
-const verifiedRole = () => isAdmin() ? "admin" : isTeacher() ? "teacher" : "student";
+const isTeacher = () => staffRole(state.user)==="teacher"||Boolean(state.access?.schoolTeacher);
+const isSchoolAdmin = () => Boolean(state.access?.schoolAdmin);
+const verifiedRole = () => isAdmin()||isSchoolAdmin() ? "admin" : isTeacher() ? "teacher" : "student";
+function activeSchoolId(){
+  const schools=Array.isArray(state.access?.v4Schools)?state.access.v4Schools:[];
+  if(schools.length===1)return schools[0].schoolId;
+  if(schools.length>1){
+    try{
+      const preferred=sessionStorage.getItem("Adminerva_last_verified_school_"+state.user?.uid);
+      if(schools.some(s=>s.schoolId===preferred))return preferred;
+    }catch{}
+  }
+  return null;
+}
+function schoolVisible(item){
+  if(!item?.schoolId)return true;
+  const selected=activeSchoolId();
+  return Boolean(selected&&item.schoolId===selected);
+}
 // Report alerts are authorization-filtered before reaching the visible inbox.
 function visibleForRole(item) {
   const match = String(item.target||"").match(/^issues[.]html[?]issue=([^&#]+)/);
@@ -72,7 +89,7 @@ function collectionItems(){
       body:(sub.studentName||"Student")+" · "+(sub.assessmentTitle||"Assessment"),
       at:timeOf(sub.submittedAt),target:previewDestination("submission"),saved:false});
   }
-  return mergeNotificationHistory(rows,state.history,state.read).filter(visibleForRole);
+  return mergeNotificationHistory(rows,state.history,state.read).filter(item=>schoolVisible(item)&&visibleForRole(item));
 }
 function render(){
   const list=el("av-alert-list"),badge=el("av-alert-count");if(!list||!badge)return;
@@ -168,7 +185,7 @@ async function listen(user){
   });
   render();
   if(!user)return;
-  await resolveStaffRole(user);
+  state.access=await resolveAccountAccess(user);
   if(current!==listenEpoch||state.user?.uid!==user.uid)return;
   const settingsLink=el("av-alert-preferences-link");
   if(settingsLink)settingsLink.href=(isAdmin()||isSchoolAdmin()||isTeacher()?"settings.html":"student-settings.html")+"#notifications";
@@ -236,6 +253,9 @@ async function refreshReleases(){
   try{const releases=await loadPublicReleases();if(state.user?.uid!==uid)return;state.releases=releaseNotifications(releases,verifiedRole());render();}
   catch{ }
 }
+document.addEventListener("adminerva:preferred-school-changed",()=>render());
+document.addEventListener("adminerva:school-ready",()=>render());
+
 export function mountNotificationCenter(){
   const root=el("adminerva-notifications");if(!root||root.dataset.ready)return;
   root.dataset.ready="true";root.className="relative mr-2";
