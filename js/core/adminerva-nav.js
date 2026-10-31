@@ -106,6 +106,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ...(hasPlatformAuthority?[["owner-schools","Institution registry","owner-schools.html"]]:[]),
       ["overview","School overview","school-admin.html"],
       ["people-v4","People & Access","people-access.html"],
+      ["school-analytics","School operations","school-analytics.html"],
       ["reclaims-v4","Commit attribution requests","reclaim-inbox.html"]
     ] : hasPlatformAuthority ? [
       ["owner-schools","Institution registry","owner-schools.html"]
