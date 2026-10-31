@@ -145,8 +145,14 @@ function createSchoolGithubEvidenceService({db}){
        enrollment.data().personId!==personId||enrollment.data().offeringId!==offeringId||
        enrollment.data().status!=="active")
       deny("permission-denied","Student identity or enrollment changed.");
-    const now=Date.now(),assessment=currentTask.data();
-    const revisionDeadline=current.exists&&current.data().status==="reopened"?
+    const now=Date.now(),assessment=currentTask.data(),
+      lifecycle=assessment.lifecycle||"active",
+      revisionOpen=current.exists&&current.data().status==="reopened";
+    if(["archived","cancelled"].includes(lifecycle))
+      deny("failed-precondition","This assessment is no longer accepting student evidence.");
+    if(lifecycle==="closed"&&!revisionOpen)
+      deny("failed-precondition","This assessment is closed to new evidence submissions.");
+    const revisionDeadline=revisionOpen?
       current.data().revisionDueAt?.toMillis?.()||0:0;
     if(now<assessment.opensAt.toMillis()||
        (now>assessment.dueAt.toMillis()&&now>revisionDeadline))
@@ -264,7 +270,9 @@ function createSchoolGithubEvidenceService({db}){
    const auditRef=db.collection(prefix+"submission_audit").doc();
    let approvedStudentUid=null;
    await db.runTransaction(async tx=>{
-    await teacherWriteAuthority(tx);
+    const currentTask=await teacherWriteAuthority(tx),lifecycle=currentTask.lifecycle||"active";
+    if(["archived","cancelled"].includes(lifecycle))
+      deny("failed-precondition","Archived or cancelled assessments cannot request new evidence revisions.");
     const record=await tx.get(targetRef);
     if(!record.exists||record.data().schoolId!==ctx.schoolId||
        record.data().taskId!==taskId||record.data().offeringId!==offeringId||
