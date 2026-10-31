@@ -165,6 +165,12 @@ function revisionList(row,converter){
  all.sort((a,b)=>a.version-b.version);
  for(let i=1;i<all.length;i++)if(all[i].version===all[i-1].version)
   return {ok:false,reason:"planning_duplicate_revision_number"};
+ if(all.length!==Math.max(0,headVersion-1)||
+    all.some((item,index)=>item.version!==index+1))
+  return {ok:false,reason:"planning_revision_history_incomplete",
+    expectedPriorRevisions:Math.max(0,headVersion-1),foundRevisions:all.map(item=>item.version)};
+ if(all.length>100)return {ok:false,reason:"planning_revision_history_requires_paginated_migration",
+   revisionCount:all.length};
  const current=converter(row.data);if(!current.ok)return current;
  return {ok:true,currentVersion:headVersion,current:current.content,revisions:all};
 }
