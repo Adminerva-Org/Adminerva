@@ -8,6 +8,11 @@ function mount(){
   if(!main||!role||!user||mounted)return;mounted=true;
   if(role==="superadmin"){const title=document.getElementById("staffTitle");if(title)title.textContent="Your school workspace, organized.";}
   const hero=main.querySelector(".av-home-hero");hero?.classList.add("av-home-entrance");
+  const hasSchoolRole=navigation?.dataset.schoolAdmin==="true"||
+    navigation?.dataset.schoolTeacher==="true"||navigation?.dataset.schoolStudent==="true";
+  if(hasSchoolRole)for(const link of main.querySelectorAll('a[href="issues.html"]')){
+    link.href="school-support.html";
+  }
   // Students have a filterable tool gallery; teachers use the shared Ctrl/Cmd+K
   // finder rather than a search form that has no matching cards.
   const cards=[...main.querySelectorAll("a.av-home-task")];
@@ -26,7 +31,14 @@ function mount(){
   }
   let candidate;try{candidate=sessionStorage.getItem("Adminerva_last_workspace_"+user.uid);}catch{}
   if(candidate){
-    const destination=sessionDestination(candidate,{role:role==="superadmin"?"admin":role==="teacher"?"teacher":null,students:role==="student"?[{}]:[]});
+    const destination=sessionDestination(candidate,{
+      role:role==="superadmin"?"admin":role==="teacher"?"teacher":null,
+      platformAdmin:navigation?.dataset.platformAdmin==="true",
+      schoolAdmin:navigation?.dataset.schoolAdmin==="true",
+      schoolTeacher:navigation?.dataset.schoolTeacher==="true",
+      schoolStudent:navigation?.dataset.schoolStudent==="true",
+      students:role==="student"?[{}]:[]
+    });
     if(!destination.endsWith("-home.html")){
       const resume=document.createElement("section");resume.className="av-home-resume";
       const text=document.createElement("div"),title=document.createElement("strong"),detail=document.createElement("p"),link=document.createElement("a");
@@ -37,7 +49,7 @@ function mount(){
         "lesson-planner.html":"Lesson Planner","repofetch.html":"Review & Grade",
         "gradebook.html":"Gradebook","assessment-studio.html":"Assessment Studio",
         "submissions.html":"Review Inbox","teacher-analytics.html":"Teaching Analytics",
-        "presentation.html":"Presentation Workspace","schedule.html":"Schedule"
+        "presentation.html":"Presentation Workspace","schedule.html":"Schedule","school-support.html":"School Support"
       };
       const name=names[page]||"your last workspace";
       title.textContent="Continue: "+name;
