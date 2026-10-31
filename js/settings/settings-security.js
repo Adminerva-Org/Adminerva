@@ -14,9 +14,17 @@ function feedback(message,tone="info"){
   const region=field("security-save-status");if(region){region.textContent=message;region.dataset.tone=tone;}
 }
 function assertAccount(user){if(!user?.uid||auth.currentUser?.uid!==user.uid||formOwnerUid!==user.uid)throw Error("Your account changed. Reload this page before saving.");}
-function setLegacyCredentialMode(detail={}){
-  const canonicalSchoolUser=Boolean(detail.schoolTeacher||detail.schoolAdmin),
-    retired=Boolean(canonicalSchoolUser&&(detail.v4Cutover||detail.v4OnlyTeacher||!detail.legacyTeacher));
+function setLegacyCredentialMode(detail=null){
+  const nav=document.getElementById("adminerva-nav"),
+    state=detail&&Object.keys(detail).length?detail:{
+      schoolTeacher:nav?.dataset.schoolTeacher==="true",
+      schoolAdmin:nav?.dataset.schoolAdmin==="true",
+      v4Cutover:nav?.dataset.v4Cutover==="true",
+      v4OnlyTeacher:nav?.dataset.v4OnlyTeacher==="true",
+      legacyTeacher:nav?.dataset.legacyTeacher==="true"
+    },
+    canonicalSchoolUser=Boolean(state.schoolTeacher||state.schoolAdmin),
+    retired=Boolean(canonicalSchoolUser&&(state.v4Cutover||state.v4OnlyTeacher||!state.legacyTeacher));
   legacyCredentialsRetired=retired;
   const card=field("legacyPersonalConnections"),hint=field("legacyConnectionHint"),button=field("saveSettingsBtn");
   if(card)card.hidden=retired;
@@ -28,6 +36,7 @@ function setLegacyCredentialMode(detail={}){
   }
 }
 document.addEventListener("adminerva:role-ready",event=>setLegacyCredentialMode(event.detail||{}));
+setLegacyCredentialMode();
 function fillPreferences(values){for(const [id,key] of preferences)safeSet(id,values[key]);}
 function showAppConnection(){
   const options=app?.options||{};
