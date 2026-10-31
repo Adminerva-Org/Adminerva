@@ -10,6 +10,14 @@ function cleanSlide(slide){
   return copy;
 }
 function presentationPayload(){
+  const loaded=window.adminervaLoadedSchoolPresentation;
+  if(loaded){
+    if(!Array.isArray(window.currentPresentationDeck)||!window.currentPresentationDeck.length)
+      throw Error("There are no presentation slides to save.");
+    const source=loaded.content||{};
+    return {clientKey:loaded.clientKey,title:loaded.title,
+      content:{...source,deck:window.currentPresentationDeck.map(cleanSlide)}};
+  }
   const plan=document.getElementById("presentationPlanSelect")?.value||"";
   const session=window.selectedSessionIndex;
   if(!plan||session===null||session===undefined)
@@ -31,6 +39,26 @@ function presentationPayload(){
     }
   };
 }
+async function openSchoolPresentation(resource){
+  if(resource?.kind!=="presentation"||
+     resource?.content?.schema!=="adminerva-school-presentation-v1"||
+     !Array.isArray(resource.content.deck))
+    throw Error("This school presentation copy is not compatible with the current editor.");
+  if(window.adminervaPresentationDirty&&
+     !confirm("Discard unsaved slide edits and open the selected verified-school presentation?"))return;
+  window.adminervaLoadedSchoolPresentation={
+    resourceId:resource.resourceId,clientKey:resource.clientKey,
+    revision:resource.revision,title:resource.title,content:structuredClone(resource.content)
+  };
+  window.currentPresentationDeck=resource.content.deck.map(cleanSlide);
+  window.activeSlideIndex=0;window.adminervaPresentationDirty=false;
+  window.presentationSourceLessonVersion=resource.content.sourceLesson?.sourceLessonVersion||null;
+  window.renderSlideBlocks?.();window.selectSlide?.(0);
+  const source=document.getElementById("presentationSourceStatus");
+  if(source)source.textContent="Verified-school presentation · revision "+resource.revision+
+    ". Save school copy updates this resource; legacy cloud Save remains separate during migration.";
+}
+
 async function mount(){
   const legacySave=document.getElementById("btnSavePresentation");
   if(!legacySave||document.getElementById("v4PresentationSave"))return;
@@ -48,6 +76,11 @@ async function mount(){
     try{
       const payload=presentationPayload();
       const result=await saveSchoolPlanning({kind:"presentation",...payload});
+      window.adminervaLoadedSchoolPresentation={
+        ...(window.adminervaLoadedSchoolPresentation||{}),
+        resourceId:result.resourceId,clientKey:payload.clientKey,
+        revision:result.revision,title:payload.title,content:structuredClone(payload.content)
+      };
       alert(result.unchanged?
         "The verified-school presentation copy already matches this editor draft.":
         "Presentation saved privately to "+(result.schoolName||result.schoolId)+" · revision "+result.revision+". The legacy Save remains separate during migration.");
@@ -56,7 +89,9 @@ async function mount(){
     }finally{end();schoolSave.disabled=false;}
   })());
   legacySave.after(schoolSave);
-  mountSchoolPlanningLibraryButton({kind:"presentation",anchor:schoolSave,label:"School copies"});
+  mountSchoolPlanningLibraryButton({kind:"presentation",anchor:schoolSave,label:"School copies",onOpen:openSchoolPresentation});
+  const legacyPlan=document.getElementById("presentationPlanSelect");
+  legacyPlan?.addEventListener("change",()=>{window.adminervaLoadedSchoolPresentation=null;});
 }
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>void mount(),{once:true});
 else void mount();
