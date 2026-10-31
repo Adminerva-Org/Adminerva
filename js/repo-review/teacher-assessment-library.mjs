@@ -133,8 +133,10 @@ function render(){
       const text=document.createElement("div"),heading=document.createElement("h3"),meta=document.createElement("p");
       heading.style.fontWeight="750";heading.textContent=task.title;
       meta.className="tl-muted";
+      const handedOver=task.ownerUid&&task.reviewerUid&&task.ownerUid!==task.reviewerUid;
       meta.textContent=task.submissionSource+" · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
-        new Date(task.dueAt).toLocaleString():"not scheduled");
+        new Date(task.dueAt).toLocaleString():"not scheduled")+
+        (handedOver?" · review responsibility handed over; original blueprint ownership unchanged":"");
       text.append(heading,meta);
       const controls=document.createElement("div");controls.className="tl-actions";
       if(lifecycle!=="cancelled"){
