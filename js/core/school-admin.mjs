@@ -57,7 +57,7 @@ async function loadSchoolAdmin(access){
     }catch(error){status.textContent=error?.message||"School administration summary is unavailable.";}
   }
   const state=await picker.load();
-  if(state?.context)await refresh(picker.scope);
+  if(state?.state==="choose_school")status.textContent="Choose an active school to load administration.";
 }
 await auth.authStateReady();
 const access=await resolveAccountAccess(auth.currentUser);
