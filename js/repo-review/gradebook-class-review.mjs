@@ -15,7 +15,7 @@ import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.1";
 
 const el=id=>document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
-let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map(),claimMap=new Map(),claimsReadable=false,canDecideClaims=false,loadSequence=0;
+let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,gradesReadable=false,receiptsReadable=false,draftsReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map(),claimMap=new Map(),claimsReadable=false,canDecideClaims=false,loadSequence=0;
 const draftRef=(studentId,taskId)=>doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId);
 function showBulkExceptions(failures){
   const box=el("gbBulkExceptionDetails"),list=el("gbBulkExceptionList");
@@ -31,13 +31,19 @@ function showBulkExceptions(failures){
 }
 function renderReclaimQueue(){
   const list=el("gbReclaimList"),label=el("gbReclaimCount");if(!list||!label)return;
+  list.replaceChildren();
+  if(!claimsReadable){
+    label.textContent="(unavailable)";
+    const unavailable=document.createElement("p");unavailable.className="text-xs text-amber-800";
+    unavailable.textContent="Reclaim-request status could not be loaded for this assessment and section. This is not the same as zero pending requests.";
+    list.append(unavailable);return;
+  }
   const learners=new Map((context?.students||[]).map(student=>[student.id,student]));
   const pending=[...claimMap.values()].filter(claim=>claim.status==="pending"&&learners.has(claim.studentId));
   label.textContent="("+pending.length+" pending)";
-  list.replaceChildren();
   if(!pending.length){
     const empty=document.createElement("p");empty.className="text-xs text-slate-600";
-    empty.textContent="No pending reclaim requests for this assessment and section.";
+    empty.textContent="No pending reclaim requests found for this assessment and section.";
     list.append(empty);return;
   }
   for(const claim of pending){
@@ -228,7 +234,7 @@ function render(){
 async function load(detail){
   if(!detail)return;
   const sequence=++loadSequence;
-  context=detail;evidenceReadable=false;evidenceMap=new Map();draftMap=new Map();receiptMap=new Map();claimMap=new Map();claimsReadable=false;
+  context=detail;evidenceReadable=false;gradesReadable=false;receiptsReadable=false;draftsReadable=false;evidenceMap=new Map();draftMap=new Map();receiptMap=new Map();claimMap=new Map();claimsReadable=false;
   render();
   const isV2=Number(detail.schemaVersion)===2;
   // An unavailable optional collection must never erase the evidence roster or
@@ -247,21 +253,25 @@ async function load(detail){
   if(sequence!==loadSequence)return;
   if(isV2){
     try{const grades=await getDocsFromServer(query(collection(db,"student_grades"),where("taskId","==",detail.taskId),where("section","==",detail.section)));
+      gradesReadable=true;
       context.grades=Object.fromEntries(grades.docs.filter(record=>detail.students.some(student=>student.id===record.data().studentId))
         .map(record=>[record.data().studentId,record.data()]));
-    }catch(error){warnings.push("gradebook drafts: "+error.message);}
+    }catch(error){gradesReadable=false;warnings.push("gradebook drafts: "+error.message);}
   }
   if(sequence!==loadSequence)return;
-  if(sources[0].status==="fulfilled")for(const record of sources[0].value.docs){
+  receiptsReadable=sources[0].status==="fulfilled";
+  if(receiptsReadable)for(const record of sources[0].value.docs){
     const data={id:record.id,...record.data()},prior=receiptMap.get(data.studentId);
     const stamp=value=>value?.toMillis?.()||Date.parse(value||"")||0;
     if(!prior||stamp(data.submittedAt)>stamp(prior.submittedAt))receiptMap.set(data.studentId,data);
   }else warnings.push("submission receipts: "+sources[0].reason?.message);
   if(isV2){
-    if(sources[1].status==="fulfilled"){
+    evidenceReadable=sources[1].status==="fulfilled";
+    if(evidenceReadable){
       evidenceMap=new Map(sources[1].value.docs.map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
     }else warnings.push("evidence: "+sources[1].reason?.message);
-    if(sources[2].status==="fulfilled"){
+    draftsReadable=sources[2].status==="fulfilled";
+    if(draftsReadable){
       draftMap=new Map(sources[2].value.docs.filter(record=>{
         const draft=record.data(),evidence=evidenceMap.get(draft.studentId);
         return draft.taskId===detail.taskId&&draft.section===detail.section&&draft.status==="private_suggestion"&&
@@ -278,11 +288,10 @@ async function load(detail){
       warnings.push("reclaim requests: "+sources[3].reason?.message);
     }
   }
-  // If evidence cannot be read, bulk actions must fail closed instead of
-  // treating missing query results as students without submissions.
-  evidenceReadable=!isV2||sources[1].status==="fulfilled";
+  // Failed reads remain unknown, never implicit zeros.
+  if(!isV2){evidenceReadable=true;gradesReadable=true;draftsReadable=true;}
   render();
-  if(warnings.length)el("gbBulkStatus").textContent="Some review data could not load ("+warnings.join(" | ")+"). Evidence actions are disabled if evidence could not be read.";
+  if(warnings.length)el("gbBulkStatus").textContent="Some review data could not load ("+warnings.join(" | ")+"). Affected counts are shown as unavailable/incomplete, and dependent bulk actions stay disabled until refresh succeeds.";
 }
 const linkedLogin=student=>String(student?.githubUsername||"").trim().replace(/^@/,"").toLowerCase();
 const dateMillis=value=>{
