@@ -162,6 +162,57 @@ function createPeopleDirectoryService({db}) {
       });
       return result;
     }
+    if(input.action==="get_person"){
+      const personId=id(input.personId),personRef=base.doc(personId);
+      const person=await personRef.get();
+      if(!person.exists||person.data().schoolId!==ctx.schoolId)
+        throw new TenantAccessError("not-found","The person is not in this school directory.");
+      const data=person.data(),authUid=typeof data.authUid==="string"?data.authUid:null;
+      const queries=[
+        db.collection("schools/"+ctx.schoolId+"/invitations").where("personId","==",personId).limit(50).get(),
+        db.collection("schools/"+ctx.schoolId+"/directory_audit").where("personId","==",personId).limit(50).get()
+      ];
+      if(data.kind==="student")
+        queries.push(db.collection("schools/"+ctx.schoolId+"/enrollments").where("personId","==",personId).limit(101).get());
+      else if(authUid)
+        queries.push(db.collection("schools/"+ctx.schoolId+"/staff_assignments").where("teacherUid","==",authUid).limit(101).get());
+      else queries.push(Promise.resolve({docs:[],size:0}));
+      const [invites,audits,relationships]=await Promise.all(queries);
+      if(relationships.size===101)
+        throw new TenantAccessError("resource-exhausted","This person's academic relationship history requires pagination.");
+      const membership=authUid?await db.doc("schools/"+ctx.schoolId+"/memberships/"+id(authUid)).get():null;
+      const recentAudit=audits.docs.filter(doc=>doc.data().schoolId===ctx.schoolId)
+        .sort((a,b)=>(b.data().createdAt?.toMillis?.()||0)-(a.data().createdAt?.toMillis?.()||0))
+        .slice(0,20).map(doc=>({
+          action:doc.data().action||"change",reason:doc.data().reason||"",
+          createdAt:doc.data().createdAt?.toMillis?.()||null,actorUid:doc.data().actorUid||""
+        }));
+      return {
+        person:{
+          personId,displayName:data.displayName,kind:data.kind,status:data.status,
+          accountLinked:Boolean(authUid),revision:data.revision||1
+        },
+        membership:membership?.exists&&membership.data().schoolId===ctx.schoolId?{
+          status:membership.data().status,
+          roles:Array.isArray(membership.data().roles)?membership.data().roles:[],
+          revision:membership.data().revision||1
+        }:null,
+        invitations:invites.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>({
+          invitationId:doc.id,status:doc.data().status,requestedRole:doc.data().requestedRole,
+          expiresAt:doc.data().expiresAt?.toMillis?.()||null,
+          acceptedAt:doc.data().acceptedAt?.toMillis?.()||null
+        })),
+        relationships:relationships.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>
+          data.kind==="student"?{
+            kind:"enrollment",id:doc.id,offeringId:doc.data().offeringId,
+            status:doc.data().status,revision:doc.data().revision||1
+          }:{
+            kind:"teaching_assignment",id:doc.id,offeringId:doc.data().offeringId,
+            status:doc.data().status,revision:doc.data().revision||1
+          }),
+        audit:recentAudit
+      };
+    }
     if(input.action==="search_people"){
       const raw=typeof input.query==="string"?input.query.trim().toLocaleLowerCase("en"):"";
       if(raw.length>80)invalid("Directory search is too long.");
