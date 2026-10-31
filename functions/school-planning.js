@@ -67,6 +67,7 @@ function summary(doc,uid){
  return {resourceId:doc.id,kind:data.kind,title:data.title,status:data.status,
   ownerUid:data.ownerUid,visibility:data.visibility,canEdit:data.ownerUid===uid,
   revision:data.revision||1,clientKey:data.ownerUid===uid?data.clientKey||null:null,
+  sharedWithUids:data.ownerUid===uid&&Array.isArray(data.sharedWithUids)?data.sharedWithUids:[],
   source:data.source||null,updatedAt:data.updatedAt?.toMillis?.()||null};
 }
 function createSchoolPlanningService({db}){
