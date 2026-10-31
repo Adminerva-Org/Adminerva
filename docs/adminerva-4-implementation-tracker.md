@@ -5,17 +5,26 @@
 **Architecture:** draft PR #103, issues #100 and #102–#112.  
 **Production:** Adminerva 3.0.0 continues to use legacy paths. **No live MCS records migrated, no deployment made.**
 
+## Pilot workspaces now in this branch
+
+- `owner-schools.html` + `js/core/owner-school-registry.mjs`: owner-only draft provisioning, reviewed admin grant, readiness attestation and suspension. No site-wide owner role is inferred from legacy email.
+- `people-access.html` + `js/core/people-access.mjs`: mobile-first school-admin People & Access overview, person records, pending invite creation and shareable verification links.
+- `join-school.html` + `js/core/school-invitation.mjs`: verified account acceptance of school/role-specific invitations (7-day expiry, safe renewal by school admin); pilot routing is separate from legacy 3.0 student/teacher access.
+- `teacher-assessment-library.html` + `js/repo-review/teacher-assessment-library.mjs`: owned/shared/school-wide blueprint tabs, private creation, owner editing/archive, preview, active same-school teacher picker, audited sharing, recipient-independent copies. These are *blueprints*, not deployed student assessment or Gradebook records.
+
+All four are **opt-in pilot pages**, intentionally not substituted for the existing 3.0 navigation, assessment, directory or grading pages. The pages will not function until compatible Firebase callables, owner grants, active school membership and the separate backend deployment are in place. The new V4 school paths remain unavailable to direct browser Firestore reads/writes by design.
+
 ## Delivery and remaining work
 
 | Track | Actual implementation in PR #113 | Remaining before Adminerva 4.0 |
 |---|---|---|
 | Verified tenant foundation / five roles (#104) | Server verifies email-verified UID, active school state and canonical membership roles; choice of zero/one/multiple schools; new namespace deny rules; owner provisioning service. | Migrate *all* existing Firestore/Functions/Storage paths, user admission, auth guard, account switching, role routes and course grants. Retire email bootstrap only after new owner/teacher grants exist. |
 | Legacy MCS pilot (#105) | Safe read-only top-level inventory in `functions/pilot-inventory.js`; candidate classification only. | Authorized provenance map, nested revision/grade evidence inventory, owner-approved ledger, immutable source hashing, controlled migration, side-effect suppression, counts/hashes reconciliation, rollback. |
-| Assessment Studio / LMS (#106) | Teacher blueprint creation, selected/school-wide sharing, owner-private copy using a server callable. | Integrate Assessment Studio UI; tenant-scope deployed tasks, V2/V3 submissions, immutable Studio versions, rubrics, evidence, Gradebook, repository ownership, practice, lessons, slides and class offering rights. |
+| Assessment Studio / LMS (#106) | Teacher blueprint creation, owner-only revision-checked edits/archive, selected/school-wide sharing, a verified teacher picker, and owner-private copy using a server callable. | Integrate Assessment Studio UI; tenant-scope deployed tasks, V2/V3 submissions, immutable Studio versions, rubrics, evidence, Gradebook, repository ownership, practice, lessons, slides and class offering rights. |
 | School control plane / operations (#107) | Manually create draft, explicitly grant verified school admin, activate only with attestations or suspend with an audit log. | Owner Console UI, onboarding invitation acceptance, AI policy and quotas, file storage rules, analytics and notification isolation, safe role recovery and school backups. |
 | Mobile-first (#108) | Optional callable-backed school picker hidden for one school; compact 320 px-ready People & Access pilot page; scope lease to reject stale writes. | Replace global navigation and remaining old pages, class review/Gradebook mobile UX, studio tool menus, modal processing and cache/listener invalidation on every live route. |
 | Teacher privacy (#110) | Private creator-owned resource, deliberate teacher audience, server re-verifies school/recipient/grant, audited share changes and clean independent copies. | Existing assessment and lesson migration, share sheet in Assessment Studio, searchable teacher recipient selector, optional coedit/reviewer/publish delegation, owner handover process. |
-| User Directory (#111) | New school-only People & Access API and pilot page: directory overview, paginated school people, person creation, pending teacher/student invitations, school-level audit writes. | Separate enrollments and staff offerings, admission verification/acceptance, classes, import preview/CSV/Sheets, export, person details, audit/recovery tabs and safe redirects from `users.html` and `teacher-accounts.html`. |
+| User Directory (#111) | New school-only People & Access API and pilot page: directory overview, paginated school people, person creation, pending teacher/student invitations with seven-day expiry, verified invitation acceptance and school-level audit writes. | Separate enrollments and staff offerings, admission verification/acceptance, classes, import preview/CSV/Sheets, export, person details, audit/recovery tabs and safe redirects from `users.html` and `teacher-accounts.html`. |
 | Release safety (#109) | Core deny-by-default scoped API, no production modifications, targeted selection/authority unit tests. | End-to-end cross-school rule and callable checks, backup/reconciliation, backend-first staged activation, public 4.0 version only after cutover. |
 
 ### Verified-school behavior
