@@ -73,8 +73,9 @@
         <h2 style="font-weight:750;font-size:1.2rem;margin-bottom:.75rem">Create pending invitation</h2>
         <label>Verified account email<input name="email" type="email" autocomplete="off" maxlength="254" required class="pa-field"></label>
         <label>Requested role<select name="role" class="pa-field"><option value="student">Student</option><option value="teacher">Teacher</option></select></label>
+        <label>School person record<select id="pa-invite-person" name="personId" class="pa-field" required><option value="" disabled selected>Choose an active unlinked person</option></select></label>
         <button type="submit" class="pa-action">Record invitation</button>
-        <p class="pa-muted">This records a pending request; sending an invitation and granting an active membership require the separate verified approval workflow.</p>
+        <p class="pa-muted">The invitation is tied to this school person record. Acceptance links the verified account to that person; it still does not create an enrollment or teaching assignment.</p>
         <div id="pa-invitation-result" role="status" aria-live="polite"></div>
       </form>
     </section>
