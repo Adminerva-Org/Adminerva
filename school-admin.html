@@ -3,12 +3,12 @@
 <script src="https://cdn.tailwindcss.com"></script><link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8"><link rel="stylesheet" href="css/home-motion.css?v=1.0.0"><link rel="stylesheet" href="css/home-experience.css?v=1.0.0"></head>
 <body id="pageBody" class="hidden bg-slate-50 text-slate-900 min-h-screen"><div id="adminerva-nav" data-module="admin" data-page="overview"></div>
 <main class="max-w-7xl mx-auto w-full px-4 sm:px-6 py-7 space-y-6 av-home-motion" data-home-motion="quiet" data-home-experience="admin">
-<header class="av-admin-motion-hero av-motion-hero"><p class="av-eyebrow">School administration</p><h1 class="text-3xl font-extrabold">Keep school operations moving.</h1><p class="text-slate-600 mt-2 max-w-3xl">Start with reports requiring attention, then manage teaching assignments, school catalog and operations.</p></header>
+<header class="av-admin-motion-hero av-motion-hero"><p class="av-eyebrow">School administration</p><h1 class="text-3xl font-extrabold">Keep school operations moving.</h1><p class="text-slate-600 mt-2 max-w-3xl">Start with people and access, then maintain classes, teaching assignments and school operations.</p><div id="adminSchoolSwitcher" hidden class="mt-3 max-w-sm"></div></header>
 <section class="grid sm:grid-cols-3 gap-4" aria-label="Administration summary">
-<div class="av-panel"><p class="text-xs font-bold uppercase text-slate-500">Active students</p><strong id="adminStudentCount" class="text-3xl">—</strong><a class="block mt-2 underline" href="users.html">Open user directory</a></div>
-<div class="av-panel"><p class="text-xs font-bold uppercase text-slate-500">Active teachers</p><strong id="adminTeacherCount" class="text-3xl">—</strong><a class="block mt-2 underline" href="teacher-accounts.html">Manage teachers</a></div>
-<div class="av-panel"><p class="text-xs font-bold uppercase text-slate-500">Open reports</p><strong id="adminReportCount" class="text-3xl">—</strong><a class="block mt-2 underline" href="issues.html">Triage reports</a></div></section>
-<nav class="grid md:grid-cols-2 xl:grid-cols-3 gap-4" aria-label="Administration workspaces">
+<div class="av-panel"><p id="adminMetricOneLabel" class="text-xs font-bold uppercase text-slate-500">Active students</p><strong id="adminStudentCount" class="text-3xl">—</strong><a id="adminMetricOneLink" class="block mt-2 underline" href="users.html">Open user directory</a></div>
+<div class="av-panel"><p id="adminMetricTwoLabel" class="text-xs font-bold uppercase text-slate-500">Active teachers</p><strong id="adminTeacherCount" class="text-3xl">—</strong><a id="adminMetricTwoLink" class="block mt-2 underline" href="teacher-accounts.html">Manage teachers</a></div>
+<div class="av-panel"><p id="adminMetricThreeLabel" class="text-xs font-bold uppercase text-slate-500">Open reports</p><strong id="adminReportCount" class="text-3xl">—</strong><a id="adminMetricThreeLink" class="block mt-2 underline" href="issues.html">Triage reports</a></div></section>
+<nav id="adminLegacyActions" class="grid md:grid-cols-2 xl:grid-cols-3 gap-4" aria-label="Legacy administration workspaces">
 <a href="users.html" class="av-panel block"><strong>User directory</strong><p class="text-sm text-slate-600 mt-1">Enroll students, review access requests and maintain roster records.</p></a>
 <a href="reclaim-inbox.html" class="av-panel block"><strong>Commit attribution reviews</strong><p class="text-sm text-slate-600 mt-1">Resolve disputed Git identities before instructors verify and evaluate selected student commits.</p></a>
 <a href="teacher-accounts.html" class="av-panel block"><strong>Teacher assignments</strong><p class="text-sm text-slate-600 mt-1">Control teacher access, sections and subject focus.</p></a>
@@ -16,5 +16,11 @@
 <a href="manage-subjects.html" class="av-panel block"><strong>Subjects</strong><p class="text-sm text-slate-600 mt-1">Maintain core, elective and school-defined subjects.</p></a>
 <a href="manage-programs.html" class="av-panel block"><strong>Tracks & pathways</strong><p class="text-sm text-slate-600 mt-1">Maintain tracks, strands, clusters and pathways.</p></a>
 <a href="admin-analytics.html" class="av-panel block"><strong>Operations & analytics</strong><p class="text-sm text-slate-600 mt-1">Review system health, optional activity and maintenance controls.</p></a>
+</nav>
+<nav id="adminSchoolActions" class="hidden grid md:grid-cols-2 xl:grid-cols-3 gap-4" aria-label="School administration workspaces">
+<a href="people-access.html" class="av-panel block"><strong>People &amp; Access</strong><p class="text-sm text-slate-600 mt-1">Students, staff, verified memberships, invitations and access suspension.</p></a>
+<a href="people-access.html#classes" class="av-panel block"><strong>Classes &amp; teaching assignments</strong><p class="text-sm text-slate-600 mt-1">Academic years, terms, subjects, sections, course offerings, enrollments and assigned teachers.</p></a>
+<a href="teacher-assessment-library.html" class="av-panel block" data-school-teacher-only><strong>Assessment library</strong><p class="text-sm text-slate-600 mt-1">Private teacher assessment blueprints and class deployment.</p></a>
+<a href="issues.html" class="av-panel block"><strong>Support &amp; reports</strong><p class="text-sm text-slate-600 mt-1">Review school issues and support requests.</p></a>
 </nav><p id="adminOverviewStatus" role="status" class="text-sm text-slate-600">Loading administration summary…</p></main>
 <script src="js/core/adminerva-nav.js?v=1.4.21"></script><script type="module" src="js/core/auth-guard.js?v=1.3.8"></script><script type="module" src="js/core/school-admin.mjs?v=1.4.0"></script><script src="js/core/adminerva-loader.js?v=1.3.2"></script><script type="module" src="js/core/home-motion.mjs?v=1.0.0"></script><script type="module" src="js/core/home-experience.mjs?v=1.0.0"></script></body></html>
