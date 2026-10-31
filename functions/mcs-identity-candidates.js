@@ -34,7 +34,7 @@ async function identityCandidates({db,resolveUserByEmail,schoolId="mcs-manila"})
  const [students,staff]=await Promise.all([
   readAll(db,"students"),readAll(db,"staff_access")
  ]);
- const emails=[...new Set([...students,...staff].map(row=>normalizeEmail(row.data.email)).filter(Boolean))];
+ const emails=[...new Set([...students.map(row=>normalizeEmail(row.data.email)),...staff.map(row=>normalizeEmail(row.data.email||row.id))].filter(Boolean))];
  const resolved=new Map();
  for(const email of emails) {
   try{
