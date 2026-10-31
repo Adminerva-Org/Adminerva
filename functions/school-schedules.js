@@ -145,4 +145,4 @@ function createSchoolScheduleService({db}){
   return result;
  };
 }
-module.exports={createSchoolScheduleService,normalizeRows,rowsToText,scheduleId};
+module.exports={createSchoolScheduleService,normalizeRows,rowsToText,scheduleId,assignedPairs};
