@@ -72,6 +72,63 @@
         </div>
       </section>
 
+      <section id="gbV4Panel" class="hidden mb-6 rounded-2xl border border-indigo-200 bg-white shadow-sm overflow-hidden" aria-labelledby="gbV4Heading">
+        <div class="p-4 sm:p-5 border-b border-slate-200 bg-indigo-50/60">
+          <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+            <div><p class="text-xs font-extrabold uppercase tracking-wider text-indigo-700">Verified school workflow</p>
+              <h2 id="gbV4Heading" class="text-xl font-extrabold text-slate-900 mt-1">Studio submissions &amp; Gradebook</h2>
+              <p class="text-sm text-slate-600 mt-1 max-w-2xl">Review a frozen student project version, save a private rubric draft, then publish only after the current submission is verified.</p></div>
+            <div id="gbV4SchoolSwitcher" hidden class="min-w-[220px]"></div>
+          </div>
+          <div class="mt-4 grid md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
+            <label class="text-sm font-bold text-slate-700">My deployed Studio assessment
+              <select id="gbV4Task" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2.5 bg-white"><option value="">Choose an assessment…</option></select>
+            </label>
+            <button id="gbV4Refresh" type="button" class="rounded-lg border border-indigo-300 bg-white text-indigo-800 font-bold px-4 py-2.5">Refresh submissions</button>
+          </div>
+          <p id="gbV4Status" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Checking verified school Gradebook access…</p>
+        </div>
+        <div id="gbV4Inbox" class="p-4 sm:p-5 grid gap-3"></div>
+      </section>
+
+      <dialog id="gbV4ReviewDialog" class="rounded-2xl border-0 shadow-2xl p-0 w-[min(96vw,980px)] max-h-[94dvh] backdrop:bg-slate-950/70" aria-labelledby="gbV4ReviewTitle">
+        <div class="bg-white flex flex-col max-h-[94dvh]">
+          <header class="p-4 sm:p-5 bg-slate-900 text-white flex items-start justify-between gap-4">
+            <div><p class="text-xs uppercase tracking-wider text-cyan-300 font-bold">Verified Studio submission</p><h2 id="gbV4ReviewTitle" class="text-xl font-extrabold mt-1">Review student project</h2><p id="gbV4ReviewMeta" class="text-xs text-slate-300 mt-1"></p></div>
+            <button id="gbV4Close" type="button" class="rounded-lg border border-slate-600 px-3 py-2">Close</button>
+          </header>
+          <div class="overflow-y-auto p-4 sm:p-5 space-y-5">
+            <section class="grid lg:grid-cols-[220px_minmax(0,1fr)] gap-3">
+              <div><label class="text-sm font-bold text-slate-700" for="gbV4File">Frozen file</label><select id="gbV4File" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2"></select>
+                <details class="mt-3 text-xs text-slate-600"><summary class="font-bold cursor-pointer">Project artifacts</summary><pre id="gbV4Artifacts" class="mt-2 max-h-48 overflow-auto whitespace-pre-wrap bg-slate-100 rounded-lg p-3"></pre></details></div>
+              <pre id="gbV4Code" class="min-h-56 max-h-[42dvh] overflow-auto bg-slate-950 text-slate-100 rounded-xl p-4 text-xs whitespace-pre-wrap"></pre>
+            </section>
+            <section><div class="flex items-center justify-between gap-3"><h3 class="font-extrabold text-slate-900">Private rubric draft</h3><span id="gbV4ScoreSummary" class="text-sm font-bold text-indigo-700"></span></div>
+              <div id="gbV4Rubric" class="grid gap-3 mt-3"></div>
+              <label class="block text-sm font-bold text-slate-700 mt-3">Overall feedback
+                <textarea id="gbV4Feedback" rows="4" maxlength="5000" class="mt-1 w-full border border-slate-300 rounded-lg p-3"></textarea>
+              </label>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button id="gbV4SaveDraft" type="button" class="rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5">Save private draft</button>
+                <button id="gbV4Publish" type="button" class="rounded-lg border border-emerald-400 text-emerald-800 font-bold px-4 py-2.5">Publish grade</button>
+              </div>
+              <p id="gbV4ReviewStatus" class="text-sm text-slate-600 mt-2" role="status" aria-live="polite"></p>
+            </section>
+            <details class="rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <summary class="font-bold text-amber-950 cursor-pointer">Request a student revision</summary>
+              <p class="text-xs text-amber-900 mt-2">After the original deadline, choose an explicit extension. Published grades require the correction workflow instead.</p>
+              <label class="block text-sm font-bold mt-3">Revision request
+                <textarea id="gbV4RevisionReason" rows="3" minlength="12" maxlength="2000" class="mt-1 w-full border border-amber-300 rounded-lg p-3 bg-white"></textarea>
+              </label>
+              <label class="block text-sm font-bold mt-3">Extension deadline (optional before original deadline)
+                <input id="gbV4RevisionDue" type="datetime-local" class="mt-1 w-full border border-amber-300 rounded-lg p-2.5 bg-white">
+              </label>
+              <button id="gbV4RequestRevision" type="button" class="mt-3 rounded-lg bg-amber-700 text-white font-bold px-4 py-2.5">Request revision</button>
+            </details>
+          </div>
+        </div>
+      </dialog>
+
       <div id="gbLegacyView" class="hidden">
       <!-- Matrix Controls -->
       <div
@@ -230,6 +287,7 @@
     <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
     <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.2"></script>
     <script type="module" src="js/repo-review/gradebook.js?v=3.0.0"></script>
+    <script type="module" src="js/repo-review/v4-gradebook.mjs?v=4.0.0"></script>
     <script type="module" src="js/repo-review/gradebook-quarter.mjs?v=1.4.6"></script>
   <script type="module" src="js/repo-review/gradebook-class-review.mjs?v=3.0.0"></script>
   </body>
