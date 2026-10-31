@@ -59,6 +59,7 @@ function createTemplate(plan,planRaw){
   },
   courseOfferings:[],
   unresolvedBlockers:plan.blockers||[],
+  reviewItems:(plan.reviewItems||[]).map(item=>({...item,resolved:false,resolution:""})),
   reviewNotes:"",
   warning:"UNAPPROVED TEMPLATE. This file does not grant school access or authorize canonical writes."
  };
@@ -69,7 +70,7 @@ function main(){
  writeFileSync(output,JSON.stringify(template,null,2)+"\n",{flag:"wx",mode:0o600});
  console.info(JSON.stringify({templateCreated:true,schoolId:SCHOOL_ID,
   people:template.people.length,memberships:template.memberships.length,
-  blockers:template.unresolvedBlockers.length,approved:false}));
+  blockers:template.unresolvedBlockers.length,reviewItems:template.reviewItems.length,approved:false}));
 }
 if(require.main===module)try{main();}catch(error){
  console.error("Canonical foundation approval template failed:",error.message);process.exitCode=1;
