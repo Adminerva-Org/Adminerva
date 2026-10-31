@@ -52,6 +52,20 @@
     <button type="submit" class="own-button">Grant school administrator</button>
     <p class="own-muted">Only this school is granted. This does not grant Platform Administrator access.</p>
    </form>
+   <details style="margin-top:1.25rem">
+    <summary style="font-weight:750;cursor:pointer">School administrator access recovery</summary>
+    <p class="own-muted">Platform-owner review only. Suspending a school administrator pauses all V4 access for that school membership. The last active school administrator cannot be suspended.</p>
+    <form id="owner-admin-suspend" style="margin-top:.75rem">
+      <label>Administrator UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" required autocomplete="off"></label>
+      <label>Suspension reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button warn">Suspend school administrator</button>
+    </form>
+    <form id="owner-admin-restore" style="margin-top:1rem">
+      <label>Suspended administrator UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" required autocomplete="off"></label>
+      <label>Recovery reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button">Restore school administrator</button>
+    </form>
+   </details>
    <form id="owner-activate" hidden>
     <h3 style="font-weight:750;margin:1.5rem 0 .5rem">Activate institution</h3>
     <p class="own-muted">All confirmations require external verification, not just checking the boxes.</p>
