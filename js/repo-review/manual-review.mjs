@@ -1,7 +1,7 @@
 /** Primary teacher evidence review, evaluation drafts and deliberate grade publication. */
 import { auth, db } from "../core/firebase-core.js?v=1.3.0";
 import {schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
-import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
+import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.1";
 import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
 import {renderFeedbackMarkdown} from "./review-ui.mjs?v=1.3.0";
 import { pickDefinedGradeFields } from "./services/grade-revision-snapshot.mjs?v=1.3.0";
@@ -347,6 +347,8 @@ async function importExternalEvaluation(){
     if(session!==state.token||state.active!==active||key!==currentExternalEvidenceKey(active))
       throw Error("The active learner or approved evidence changed. Reopen the current review.");
     const draft=parseSuggestedRubric(parsed,criteria,active.maxScore,evidence);
+    draft.feedback=cleanGradeFeedback(draft.feedback);
+    draft.feedback=cleanGradeFeedback(draft.feedback);
     if(evidence.truncatedDiffs?.length)
       draft.limitations=[draft.limitations,evidence.truncatedDiffs.length+" relevant commit diff(s) were bounded; omitted changes require teacher review before assigning credit."].filter(Boolean).join(" ").slice(0,1400);
     if(evidence.missingPrimaryPaths?.length)
@@ -361,7 +363,7 @@ async function importExternalEvaluation(){
     el("manualReviewFiles").value=generatedReviewPaths(evidence.patches,{excludeMergeContext:true}).join("\n");
     const scoreField=el("manualReviewScore"),feedbackField=el("manualReviewFeedback"),applied=[];
     if(draft.score!==null&&!scoreField.value.trim()){scoreField.value=String(draft.score);applied.push("score");}
-    if(draft.feedback&&!feedbackField.value.trim()){feedbackField.value=String(draft.feedback);applied.push("feedback");}
+    if(draft.feedback&&!feedbackField.value.trim()){feedbackField.value=cleanGradeFeedback(draft.feedback);applied.push("feedback");}
     if(applied.length){
       active.aiApplied=true;
       el("manualReviewConfirm").checked=false;
@@ -633,7 +635,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
         const queued=await getDoc(doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId));
         const saved=queued.exists()?queued.data():null;
         if(saved&&saved.status==="private_suggestion"&&saved.checkpointSha===approvedEvidence.approvedCheckpointSha&&saved.evidenceRevision===evidenceRevision(approvedEvidence)&&saved.draft){
-          state.active.aiDraft={model:saved.model||"",checkpointSha:saved.checkpointSha,...saved.draft};
+          state.active.aiDraft={model:saved.model||"",checkpointSha:saved.checkpointSha,...saved.draft,feedback:cleanGradeFeedback(saved.draft.feedback)};
           displayAISuggestion(state.active.aiDraft);
           renderFeedbackMarkdown(el("manualReviewAIFeedback"),state.active.aiDraft.feedback||"");
           el("manualReviewUseScore").disabled=state.active.aiDraft.score===null;
@@ -777,7 +779,7 @@ function applySuggestion(field){
   if(field==="score"&&draft.score===null)return;
   const target=el(field==="score"?"manualReviewScore":"manualReviewFeedback");
   if(target.value.trim()&&!confirm("Replace your current teacher "+field+" with this suggestion?"))return;
-  target.value=String(draft[field]);active.aiApplied=true;state.dirty=true;
+  target.value=field==="feedback"?cleanGradeFeedback(draft[field]):String(draft[field]);active.aiApplied=true;state.dirty=true;
   el("manualReviewConfirm").checked=false;el("manualReviewSave").disabled=false;
   message("Suggestion copied to teacher "+field+". Inspect it and save explicitly; nothing has been published.");
 }
