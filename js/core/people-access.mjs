@@ -7,9 +7,9 @@ const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcad
 let schoolTerms=[];
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false;
-let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null;
+let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null;
 function say(message){status.textContent=message;}
-const tabNames=new Set(["overview","people","invites","classes","access"]);
+const tabNames=new Set(["overview","people","import","invites","classes","access"]);
 function setTab(name,{remember=true}={}) {
   const target=tabNames.has(name)?name:"overview";
   for(const button of document.querySelectorAll("[data-tab]")){
@@ -28,7 +28,7 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
-    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;
+    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;
     get("pa-more").hidden=true;
   },
   onReady:scope=>{
@@ -74,6 +74,140 @@ async function loadInvitePeople(){
 }
 get("pa-create-invite").elements.role.addEventListener("change",()=>
   void loadInvitePeople().catch(error=>say(error.message||"Invitation person list unavailable.")));
+
+
+function parseCsv(text){
+  const rows=[];let row=[],field="",quoted=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i];
+    if(quoted){
+      if(ch==='"'&&text[i+1]==='"'){field+='"';i++;}
+      else if(ch==='"')quoted=false;
+      else field+=ch;
+      continue;
+    }
+    if(ch==='"'){quoted=true;continue;}
+    if(ch===","){row.push(field);field="";continue;}
+    if(ch==="\n"){row.push(field);rows.push(row);row=[];field="";continue;}
+    if(ch!=="\r")field+=ch;
+  }
+  if(quoted)throw new Error("CSV has an unclosed quoted field.");
+  if(field.length||row.length){row.push(field);rows.push(row);}
+  return rows.filter(values=>values.some(value=>String(value).trim()!==""));
+}
+function normalizeImportHeader(value){
+  return String(value||"").trim().toLowerCase().replace(/[\s_-]+/g,"");
+}
+function importRowsFromCsv(text){
+  const matrix=parseCsv(text);
+  if(matrix.length<2)throw new Error("CSV needs a header row and at least one person.");
+  const supported=new Map([
+    ["displayname","displayName"],["firstname","firstName"],["lastname","lastName"],
+    ["kind","kind"],["email","email"],["externalid","externalId"],["section","section"]
+  ]);
+  const headers=matrix[0].map(value=>supported.get(normalizeImportHeader(value))||null);
+  if(!headers.includes("displayName")&&!(headers.includes("firstName")||headers.includes("lastName")))
+    throw new Error("CSV needs displayName or firstName/lastName columns.");
+  if(!headers.includes("email")&&!headers.includes("externalId"))
+    throw new Error("CSV needs an email or externalId column for safe duplicate matching.");
+  const rows=matrix.slice(1).map(values=>{
+    const result={};
+    headers.forEach((header,index)=>{if(header)result[header]=String(values[index]??"").trim();});
+    return result;
+  });
+  if(rows.length>200)throw new Error("Import at most 200 people per batch.");
+  return rows;
+}
+function renderImportPreview(preview){
+  const host=get("pa-import-results");host.replaceChildren();
+  const summary=preview?.summary||{};
+  get("pa-import-summary").textContent=
+    (summary.rows||0)+" rows · "+(summary.create||0)+" new · "+
+    (summary.existing||0)+" already present · "+(summary.invalid||0)+" invalid";
+  for(const item of preview?.rows||[]){
+    const row=document.createElement("div");row.className="pa-row";row.setAttribute("role","listitem");
+    const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p");
+    name.textContent=item.displayName||"Unnamed row";
+    meta.className="pa-muted";
+    const hints=[
+      item.kind||"unknown",
+      item.email?"email supplied":item.externalId?"external ID supplied":"no identity key",
+      item.sectionHint?"section hint: "+item.sectionHint:null,
+      item.status==="create"?"will create person":
+        item.status==="existing"?"already exists":"invalid"
+    ].filter(Boolean);
+    meta.textContent=hints.join(" · ");
+    info.append(name,meta);
+    if(Array.isArray(item.errors)&&item.errors.length){
+      const error=document.createElement("p");error.className="pa-muted";
+      error.style.color="#9f1239";error.textContent=item.errors.join(" ");
+      info.append(error);
+    }
+    row.append(info);host.append(row);
+  }
+}
+get("pa-import-file").addEventListener("change",event=>{
+  importRows=[];importDigest=null;importPreview=null;
+  get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";
+  get("pa-import-commit").disabled=true;
+  const file=event.target.files?.[0]||null;
+  get("pa-import-preview").disabled=!file;
+  get("pa-import-status").textContent=file?
+    file.name+" selected. Preview before committing.":"Choose a CSV with up to 200 people.";
+});
+get("pa-import-template").addEventListener("click",event=>{
+  event.preventDefault();
+  const csv="email,firstName,lastName,section,kind,externalId\nstudent@example.edu,Ana,Santos,Grade 11 ICT A,student,MCS-0001\n";
+  const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  const link=document.createElement("a");link.href=url;link.download="adminerva-v4-people-import-template.csv";
+  document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),0);
+});
+get("pa-import-preview").addEventListener("click",()=>{
+  if(pendingWrite)return;
+  const file=get("pa-import-file").files?.[0];
+  if(!file)return;
+  void (async()=>{
+    if(file.size>512000)throw new Error("CSV is larger than 500 KB.");
+    get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;
+    get("pa-import-status").textContent="Validating this CSV against the active school directory…";
+    try{
+      importRows=importRowsFromCsv(await file.text());
+      const preview=await perform("preview_import_people",{rows:importRows});
+      importPreview=preview;importDigest=preview.digest;
+      renderImportPreview(preview);
+      const invalid=Number(preview.summary?.invalid||0);
+      get("pa-import-commit").disabled=invalid>0||!importDigest;
+      get("pa-import-status").textContent=invalid?
+        "Resolve invalid or duplicate rows in the CSV, then preview again.":
+        "Preview ready. Committing will create people only; no access or enrollment will be granted.";
+    }catch(error){
+      importRows=[];importDigest=null;importPreview=null;
+      get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="Preview failed.";
+      get("pa-import-status").textContent=error?.message||"The CSV could not be previewed.";
+    }finally{get("pa-import-preview").disabled=!get("pa-import-file").files?.length;}
+  })().catch(error=>{get("pa-import-status").textContent=error?.message||"The CSV could not be previewed.";});
+});
+get("pa-import-commit").addEventListener("click",()=>{
+  if(pendingWrite||!importDigest||!importRows.length)return;
+  if(!confirm("Create the previewed school person records? This does not grant accounts, memberships, enrollments, teaching assignments, or grades."))return;
+  void (async()=>{
+    pendingWrite=true;get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;
+    get("pa-import-status").textContent="Committing the exact reviewed CSV preview…";
+    try{
+      const result=await perform("commit_import_people",{rows:importRows,expectedDigest:importDigest});
+      get("pa-import-status").textContent=result.alreadyCommitted?
+        "This exact import was already committed. No duplicate people were created.":
+        "Import committed: "+result.created+" people created · "+result.skipped+" already present.";
+      await Promise.all([loadPeople(false),loadOverview(),loadInvitePeople(),loadAcademics()]);
+      importDigest=null;importPreview=null;
+    }catch(error){
+      get("pa-import-status").textContent=error?.message||"Import was not committed. Preview the file again before retrying.";
+      get("pa-import-commit").disabled=false;
+    }finally{
+      pendingWrite=false;get("pa-import-preview").disabled=!get("pa-import-file").files?.length;
+    }
+  })();
+});
 
 async function performAcademic(action,details={}){
   const lease=picker.scope.lease();
