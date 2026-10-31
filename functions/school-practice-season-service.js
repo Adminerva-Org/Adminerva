@@ -110,7 +110,8 @@ function createSchoolPracticeSeasonService({
   return session;
  }
  function scoreSeed(a,season,previous={}){
-  return previous.season===season?previous:{
+  return previous.season===season&&previous.schoolId===a.schoolId&&
+   previous.ownerUid===a.uid&&previous.personId===a.personId?previous:{
    schoolId:a.schoolId,ownerUid:a.uid,personId:a.personId,season,
    alias:"Learner-"+hash(a.schoolId+":"+a.uid).slice(0,7).toUpperCase(),
    optIn:false,points:0,completedCount:0,publicId:id()
