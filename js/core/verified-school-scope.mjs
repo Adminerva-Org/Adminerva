@@ -22,20 +22,34 @@ export function createVerifiedSchoolScope({loadSchools,beforeChange=async()=>{},
   async function refresh({uid,preferredSchoolId=null}={}) {
     if(typeof uid!=="string"||!uid)throw new Error("A signed-in account is required.");
     const run=++generation;
-    const payload=await loadSchools(preferredSchoolId);
-    if(run!==generation) return null;
-    const nextOptions=Array.isArray(payload?.schools)?payload.schools:[];
-    const state=pickerState(nextOptions,preferredSchoolId);
-    const next=state.schoolId?{uid,schoolId:state.schoolId,roles:nextOptions.find(s=>s.schoolId===state.schoolId)?.roles||[]}:null;
-    if(active && (active.uid!==next?.uid||active.schoolId!==next?.schoolId)) {
-      await beforeChange({previous:active,next});
+    const previous=active;
+    // Rechecking or switching invalidates old leases immediately. No stale
+    // async save may operate under a previous school's UI or permissions.
+    active=null;options=[];
+    onChange({state:"checking",schoolId:null,showSwitcher:false,options:[],context:null,generation});
+    try {
+      if(previous)await beforeChange({previous,next:null});
       if(run!==generation)return null;
+      const payload=await loadSchools(preferredSchoolId);
+      if(run!==generation)return null;
+      const nextOptions=Array.isArray(payload?.schools)?payload.schools:[];
+      const state=pickerState(nextOptions,preferredSchoolId);
+      active=state.schoolId?{
+        uid,schoolId:state.schoolId,
+        roles:nextOptions.find(s=>s.schoolId===state.schoolId)?.roles||[]
+      }:null;
+      options=nextOptions;
+      const resolved={...state,options:[...options],context:active,generation};
+      onChange(resolved);
+      return resolved;
+    }catch(error) {
+      if(run===generation){
+        active=null;options=[];
+        onChange({state:"unavailable",schoolId:null,showSwitcher:false,
+          options:[],context:null,generation,error:error?.message||"School access unavailable"});
+      }
+      throw error;
     }
-    active=next;
-    options=nextOptions;
-    const resolved={...state,options:[...options],context:active,generation};
-    onChange(resolved);
-    return resolved;
   }
   return Object.freeze({
     refresh,
