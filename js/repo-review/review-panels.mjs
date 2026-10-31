@@ -1,8 +1,8 @@
 /** Inline review panels share bounded reads, preload independently and never run other page applications. */
 import {db} from "../core/firebase-core.js?v=1.3.0";
 import {collection,getDocs,query,where} from "../core/teaching-firestore.mjs?v=1.3.0";
-import {createEvidenceReview} from "./assessment-evidence-review.mjs?v=1.4.9";
-import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.5";
+import {createEvidenceReview} from "./assessment-evidence-review.mjs?v=1.4.10";
+import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.6";
 import {parseRepository} from "./services/assessment-evidence.mjs?v=1.3.1";
 import {analyzePatchSubstance} from "./services/commit-substance.mjs?v=1.3.0";
 import {preloadReviewPanels} from "./services/review-requests.mjs?v=1.3.0";
@@ -83,7 +83,7 @@ export function mountReviewPanels({root,student,assessment,evidence,requests,onE
     return preloadReviewPanels(wrapped,{signal,onError:(name,error)=>{boxes[name].replaceChildren();add(boxes[name],"p","Could not load "+name+": "+error.message+". Other review panels remain available. Use Reload checkpoint / grade status to retry.");}});
   }
   const ready=run({evidence:()=>controller.load(evidence),group,history,contributions});
-  return {ready,hasUnsavedReview:()=>controller.hasUnsavedChanges(),destroy:()=>controller.destroy(),updateEvidence(record){
+  return {ready,startAttributionOverride:()=>controller.startAttributionOverride(),hasUnsavedReview:()=>controller.hasUnsavedChanges(),destroy:()=>controller.destroy(),updateEvidence(record){
     current=record;generation++;if(record)records.set(student.id,record);else records.delete(student.id);
     if(roster.length)groupRows();void run({history,contributions});
   }};
