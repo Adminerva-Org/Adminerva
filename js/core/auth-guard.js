@@ -147,9 +147,12 @@ async function checkAccess(user){
     ? ` (Simulating: ${activeRole})` : "";
   const accountEmail = userEmail + mockNotice;
   const navigation = document.getElementById("adminerva-nav");
-  if (navigation) {
-    navigation.dataset.verifiedRole = activeRole;
-    navigation.dataset.accountEmail = accountEmail;
+  if(navigation){
+    navigation.dataset.verifiedRole=activeRole;
+    navigation.dataset.accountEmail=accountEmail;
+    navigation.dataset.schoolAdmin=String(Boolean(access.schoolAdmin));
+    navigation.dataset.schoolTeacher=String(Boolean(access.schoolTeacher));
+    navigation.dataset.schoolStudent=String(Boolean(access.schoolStudent));
   }
   document.dispatchEvent(new CustomEvent("adminerva:role-ready", {
     detail:{role:activeRole,schoolAdmin:Boolean(access.schoolAdmin),
