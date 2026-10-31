@@ -1,6 +1,6 @@
 /** Per-account integration preferences; the application connection is managed by deployment. */
 import { app, auth, db } from "../core/firebase-core.js?v=1.3.0";
-import "./school-ai-settings.mjs?v=1.3.0";
+import "./school-ai-settings.mjs?v=4.0.0";
 import {CONNECTION_DEFAULTS,activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "../core/connection-cache.mjs?v=1.3.0";
 import {collection,query,where,getDocs,doc,updateDoc,setDoc} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 

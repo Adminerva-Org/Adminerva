@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Practice Analytics · Adminerva</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8">
+</head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="teacher" data-page="school-practice-analytics"></div>
+<main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-5">
+  <header class="rounded-2xl bg-slate-900 text-white p-5 sm:p-7">
+    <p class="text-xs uppercase tracking-widest font-bold text-cyan-300">Verified school analytics</p>
+    <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Practice progress</h1>
+    <p class="text-sm text-slate-200 mt-2 max-w-3xl">Current-season Practice Points for classes you are authorized to teach. Practice activity is a progress signal and does not change assessment grades.</p>
+    <div id="practiceSchoolSwitcher" hidden class="mt-4 max-w-sm"></div>
+  </header>
+
+  <section class="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm">
+    <div class="flex flex-col sm:flex-row gap-3 sm:items-end sm:justify-between">
+      <label class="text-sm font-bold flex-1 max-w-md">Class
+        <select id="practiceSection" class="mt-1 w-full border rounded-lg px-3 py-2.5"></select>
+      </label>
+      <button id="practiceRefresh" type="button" class="rounded-lg bg-cyan-800 text-white font-bold px-4 py-2.5">Refresh</button>
+    </div>
+    <p id="practiceStatus" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Checking verified school access…</p>
+  </section>
+
+  <section id="practiceWorkspace" hidden class="space-y-5">
+    <div id="practiceSummary" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+
+    <section class="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+      <div class="p-4 sm:p-5 border-b flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+        <div>
+          <h2 id="practiceHeading" class="font-extrabold text-lg">Current season</h2>
+          <p class="text-xs text-slate-500 mt-1">Students with no saved season record remain visible and are not interpreted as zero mastery.</p>
+        </div>
+        <label class="text-sm font-bold">Sort
+          <select id="practiceSort" class="ml-2 border rounded px-2 py-1.5">
+            <option value="points">Practice Points</option>
+            <option value="name">Student name</option>
+          </select>
+        </label>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-[680px] text-left">
+          <thead class="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+            <tr><th class="px-4 py-3">Rank</th><th class="px-4 py-3">Student</th><th class="px-4 py-3">Points</th><th class="px-4 py-3">Completed missions</th><th class="px-4 py-3">Progress</th></tr>
+          </thead>
+          <tbody id="practiceRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <p class="text-xs text-slate-500">This page reads canonical school enrollments and school-scoped Practice season records only. It does not read the legacy global student or ranking collections.</p>
+  </section>
+</main>
+<script src="js/core/adminerva-loader.js?v=1.3.2"></script>
+<script src="js/core/adminerva-nav.js?v=4.0.0"></script>
+<script type="module" src="js/core/auth-guard.js?v=4.0.0"></script>
+<script type="module" src="js/student/school-practice-analytics.mjs?v=4.0.0"></script>
+</body>
+</html>

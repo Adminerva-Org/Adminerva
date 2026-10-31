@@ -68,14 +68,17 @@ async function checkAccess(user){
   try {access=await resolveAccountAccess(user);}
   catch {if(check===accessEpoch&&auth.currentUser?.uid===user.uid)showAccessRecovery("We couldn’t check your school access. Check your connection, then retry. If it continues, ask your school administrator to review access.");return;}
   if(check!==accessEpoch||auth.currentUser?.uid!==user.uid)return;
-  if(access.staffLookupUnavailable){showAccessRecovery("Your school access check is temporarily unavailable. Your account remains signed in. Please retry before continuing.");return;}
+  const hasVerifiedV4Role=Boolean(access.platformAdmin||access.schoolAdmin||access.schoolTeacher||access.schoolStudent);
+  if(access.staffLookupUnavailable&&!hasVerifiedV4Role){
+    showAccessRecovery("Your school access check is temporarily unavailable. Your account remains signed in. Please retry before continuing.");return;
+  }
   const admittedRole=access.role;
   if (["admin", "teacher"].includes(admittedRole) && auth.currentUser?.uid === user.uid) {
     try{writeConnectionPreferences(user.uid, access.teachers?.[0]?.data?.() || {});}catch{}
   }
 
   // 1. Strict Whitelist Enforcement
-  if (!admittedRole) {
+  if (!admittedRole && !access.platformAdmin && !access.schoolAdmin && !access.schoolStudent) {
     try {
       if (access.needsTeacherApproval || !access.students.length) {
         replacePage(roleHome("guest"));
@@ -89,34 +92,108 @@ async function checkAccess(user){
   }
 
   // 2. Determine absolute hardware role based strictly on the verified email
-  let actualRole = "student";
-  if (admittedRole === "admin") actualRole = "superadmin";
-  else if (admittedRole === "teacher") actualRole = "teacher";
+  let actualRole="student";
+  if(admittedRole==="admin")actualRole="superadmin";
+  else if(access.platformAdmin&&!access.schoolAdmin&&!access.schoolTeacher)actualRole="platformowner";
+  else if(access.schoolAdmin)actualRole="schooladmin";
+  else if(admittedRole==="teacher")actualRole="teacher";
 
   let activeRole = actualRole;
 
   // 3. The Shape-Shifter Logic (ONLY permitted for authorized admins/teachers)
-  if (actualRole === "superadmin" || actualRole === "teacher") {
-    const mockRole = localStorage.getItem("Adminerva_Mock_Role");
-    if ((actualRole === "superadmin" ? ["superadmin","teacher","student"] : ["teacher","student"]).includes(mockRole)) {
-      activeRole = mockRole;
-    }
-    localStorage.setItem("Adminerva_Role", activeRole);
-  } else {
-    // 🔥 ANTI-HACK MEASURE: Force students back to their assigned role
-    localStorage.setItem("Adminerva_Role", "student");
+  if(actualRole==="superadmin"||(actualRole==="teacher"&&access.legacyRole==="teacher")){
+    const mockRole=localStorage.getItem("Adminerva_Mock_Role");
+    if((actualRole==="superadmin"?["superadmin","teacher","student"]:["teacher","student"]).includes(mockRole))
+      activeRole=mockRole;
+    localStorage.setItem("Adminerva_Role",activeRole);
+  }else{
+    // School administrators are a distinct role and never become platform
+    // superadmin through browser state. Students likewise cannot elevate.
+    localStorage.setItem("Adminerva_Role",actualRole);
     localStorage.removeItem("Adminerva_Mock_Role");
-    activeRole = "student";
+    activeRole=actualRole;
   }
-  if (/\/(teacher-accounts|admin-analytics|admin-hub|users|manage-sections|manage-programs|manage-subjects)\.html$/.test(currentPath) && admittedRole !== "admin") { replacePage(roleHome(actualRole)); return; }
+  const legacyAdminPage=currentPath.match(/\/(teacher-accounts|admin-analytics|admin-hub|users|manage-sections|manage-programs|manage-subjects)\.html$/)?.[1]||null;
+  if(legacyAdminPage&&admittedRole!=="admin"){
+    if(access.schoolAdmin){
+      const destination=legacyAdminPage==="users"?"people-access.html#people":
+        ["teacher-accounts","manage-sections","manage-subjects"].includes(legacyAdminPage)?
+          "people-access.html#classes":"school-admin.html";
+      replacePage(destination);return;
+    }
+    replacePage(roleHome(actualRole));return;
+  }
+  if(/\/(owner-schools)\.html$/.test(currentPath)&&
+     !(access.platformAdmin||admittedRole==="admin")){
+    replacePage(roleHome(actualRole));return;
+  }
+  if(/\/(school-admin|people-access|school-analytics|school-data-controls)\.html$/.test(currentPath)&&
+     !(access.schoolAdmin||admittedRole==="admin")){
+    replacePage(roleHome(actualRole));return;
+  }
+  if(/\/(teacher-assessment-library)\.html$/.test(currentPath)&&
+     !(["teacher","admin"].includes(admittedRole))){
+    replacePage(roleHome(actualRole));return;
+  }
+  if(/\/(school-teacher-analytics)\.html$/.test(currentPath)&&
+     !(access.schoolTeacher||access.schoolAdmin||admittedRole==="admin")){
+    replacePage(roleHome(actualRole));return;
+  }
+  if(/\/(school-practice-analytics)\.html$/.test(currentPath)&&
+     !(access.schoolTeacher||access.schoolAdmin||admittedRole==="admin")){
+    replacePage(roleHome(actualRole));return;
+  }
+  if(/\/(school-gradebook)\.html$/.test(currentPath)&&!access.schoolTeacher){
+    replacePage(roleHome(actualRole));return;
+  }
+  if(actualRole==="schooladmin"&&!access.schoolTeacher&&
+     !/\/(teacher-home|school-admin|people-access|school-analytics|reclaim-inbox|settings|issues|school-support|join-school|wiki)\.html$/.test(currentPath)){
+    replacePage("school-admin.html");return;
+  }
+  if(actualRole==="platformowner"&&!access.schoolAdmin&&!access.schoolTeacher&&!access.schoolStudent&&
+     !/\/(owner-schools|settings|issues|wiki)\.html$/.test(currentPath)){
+    replacePage("owner-schools.html");return;
+  }
+  if(/\/(school-support)\.html$/.test(currentPath)&&
+     !(access.schoolAdmin||access.schoolTeacher||access.schoolStudent)){
+    replacePage(roleHome(actualRole));return;
+  }
+  const v4OnlyStudent=access.schoolStudent&&!access.students?.length&&!access.schoolTeacher&&!access.schoolAdmin;
+  if(v4OnlyStudent&&currentPath.endsWith("/issues.html")){
+    replacePage("school-support.html");return;
+  }
+  const v4OnlyTeacher=access.schoolTeacher&&!["teacher","admin"].includes(access.legacyRole);
+  if(v4OnlyTeacher){
+    const page=currentPath.split("/").pop();
+    const allowed=new Set([
+      "teacher-home.html","teacher-assessment-library.html","school-gradebook.html",
+      "school-support.html","people-access.html","school-admin.html","school-analytics.html","school-data-controls.html","school-teacher-analytics.html","school-practice-analytics.html","reclaim-inbox.html",
+      "settings.html","join-school.html","wiki.html",
+      ...(access.platformAdmin?["owner-schools.html"]:[])
+    ]);
+    if(!allowed.has(page)){
+      const gradingPages=new Set([
+        "gradebook.html","repofetch.html","repobank.html","grading.html","activity-grader.html",
+        "group-inspector.html","contribution-inspector.html","assessment-evidence-review.html",
+        "submissions.html","studio-submissions.html"
+      ]);
+      const destination=gradingPages.has(page)?"school-gradebook.html":
+        page==="assessment-studio.html"?"teacher-assessment-library.html":
+        ["teacher-analytics.html","practice-analytics.html"].includes(page)?"school-teacher-analytics.html":
+        page==="issues.html"?"school-support.html":"teacher-home.html";
+      replacePage(destination);return;
+    }
+  }
   const isIssuesPage = currentPath.includes("issues.html");
+  const isSchoolSupportPage = currentPath.includes("school-support.html");
 
   // 4. Strict Routing Enforcement
   if (
     activeRole === "student" &&
     !currentPath.includes("student-") &&
     !isLoginPage &&
-    !isIssuesPage
+    !isIssuesPage &&
+    !isSchoolSupportPage
   ) {
     replacePage(roleHome("student"));
     return;
@@ -132,18 +209,27 @@ async function checkAccess(user){
     ? ` (Simulating: ${activeRole})` : "";
   const accountEmail = userEmail + mockNotice;
   const navigation = document.getElementById("adminerva-nav");
-  if (navigation) {
-    navigation.dataset.verifiedRole = activeRole;
-    navigation.dataset.accountEmail = accountEmail;
+  if(navigation){
+    navigation.dataset.verifiedRole=activeRole;
+    navigation.dataset.accountEmail=accountEmail;
+    navigation.dataset.platformAdmin=String(Boolean(access.platformAdmin));
+    navigation.dataset.schoolAdmin=String(Boolean(access.schoolAdmin));
+    navigation.dataset.schoolTeacher=String(Boolean(access.schoolTeacher));
+    navigation.dataset.schoolStudent=String(Boolean(access.schoolStudent));
+    navigation.dataset.v4OnlyTeacher=String(Boolean(v4OnlyTeacher));
+    navigation.dataset.legacyTeacher=String(access.legacyRole==="teacher");
   }
   document.dispatchEvent(new CustomEvent("adminerva:role-ready", {
-    detail: { role: activeRole }
+    detail:{role:activeRole,platformAdmin:Boolean(access.platformAdmin),schoolAdmin:Boolean(access.schoolAdmin),
+      schoolTeacher:Boolean(access.schoolTeacher),schoolStudent:Boolean(access.schoolStudent),
+      legacyTeacher:access.legacyRole==="teacher",v4OnlyTeacher}
   }));
 
   // Only verified administrator accounts see management shortcuts.
-  if (actualRole === "superadmin" && activeRole === "superadmin") {
-    document.querySelectorAll("[data-admin-only]").forEach(el => el.classList.remove("hidden"));
-  }
+  if(actualRole==="superadmin"&&activeRole==="superadmin")
+    document.querySelectorAll("[data-admin-only]").forEach(el=>el.classList.remove("hidden"));
+  if(access.schoolAdmin&&activeRole==="schooladmin")
+    document.querySelectorAll("[data-school-admin-only]").forEach(el=>el.classList.remove("hidden"));
   // 5. Security cleared: Display the UI
   dismissAccessRecovery();rememberWorkspace(user.uid);
   const pageBody = document.getElementById("pageBody");

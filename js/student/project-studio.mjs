@@ -9,6 +9,10 @@ import {
 } from "./code-projects.mjs?v=2.0.0";
 import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=3.0.0";
 import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
+import {
+  archiveV4StudioProject,listArchivedV4StudioProjects,listV4StudioProjects,loadV4StudioProject,
+  queueV4StudioProjectSync,restoreV4StudioProject
+} from "./v4-studio-service.mjs?v=4.0.0";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -56,6 +60,44 @@ function renderGridTable(target,columns,rows){
   const body=(rows||[]).map(row=>"<tr>"+columns.map((_,i)=>"<td>"+escapeHtml(row[i]??"NULL")+"</td>").join("")+"</tr>").join("");
   target.innerHTML='<div class="studio-table-wrap"><table class="studio-table"><thead><tr>'+head+'</tr></thead><tbody>'+body+'</tbody></table></div>';
 }
+function v4ProjectTemplate(language,artifacts={}){
+  if(language==="python")return "python-console";
+  if(language==="web")return "web";
+  if(language==="java"){
+    if(artifacts.config?.database)return "java-information";
+    if(artifacts.config?.runMode==="desktop")return "java-desktop";
+    return "java-blank";
+  }
+  return "java-blank";
+}
+function v4ProjectToLocal(uid,remote){
+  const entries=Array.isArray(remote?.files)?remote.files:[];
+  if(!remote?.projectId||!entries.length)throw Error("School project is missing its source files.");
+  const files={},folders=new Set(),order=[];
+  for(const item of entries){
+    if(!item||typeof item.path!=="string"||typeof item.content!=="string")continue;
+    files[item.path]=item.content;order.push(item.path);
+    const parts=item.path.split("/");
+    for(let i=1;i<parts.length;i++)folders.add(parts.slice(0,i).join("/"));
+  }
+  if(!order.length)throw Error("School project has no readable source files.");
+  const artifacts=remote.artifacts&&typeof remote.artifacts==="object"?remote.artifacts:{};
+  const time=value=>{
+    const date=new Date(Number(value)||Date.now());
+    return Number.isFinite(date.getTime())?date.toISOString():new Date().toISOString();
+  };
+  return {
+    id:remote.projectId,ownerUid:uid,title:remote.title||"School project",
+    template:v4ProjectTemplate(remote.language,artifacts),lang:remote.language||"text",status:"active",
+    config:artifacts.config||{},
+    state:{lang:remote.language||"text",files,fileOrder:order,activeFilename:order[0],
+      folders:[...folders].sort(),projectOrder:[...folders,...order]},
+    database:artifacts.database||{tables:{},history:[]},
+    design:artifacts.design||{},evidence:artifacts.evidence||{events:[],runs:[]},
+    createdAt:time(remote.createdAt),updatedAt:time(remote.updatedAt),lastOpenedAt:time(remote.updatedAt)
+  };
+}
+
 function defaultDiagramName(key){
   return ({useCase:"Use Case",classDiagram:"Class Diagram",sequence:"Sequence Diagram",architecture:"Architecture"})[key]||key;
 }
@@ -119,7 +161,15 @@ export function createProjectStudio({
     activeProject=saveCodeProject(localStorage,uid,project);
     updateProjectHeading();
     updateQuotaUI();
-    if(cloudEnabled&&cloud)scheduleCloudSave(activeProject);
+    if(cloudEnabled&&cloud){
+      scheduleCloudSave(activeProject);
+      // Progressive V4 sync reuses the exact project saved by this editor.
+      // It is debounced and failure does not erase the existing local/legacy copy.
+      queueV4StudioProjectSync(activeProject,activeProject.state);
+    }
+    window.dispatchEvent(new CustomEvent("adminerva:studio-project-saved",{detail:{
+      projectId:activeProject.id,updatedAt:activeProject.updatedAt
+    }}));
     return activeProject;
   }
   function saveState(state){
@@ -153,23 +203,107 @@ export function createProjectStudio({
   }
   async function mergeCloudProjects(){
     if(!cloudEnabled)return;
+    const local=readCodeProjects(localStorage,uid),map=new Map(local.map(project=>[project.id,project]));
+    let changed=false;
     try{
       const snap=await getDocs(collection(db,"student_code_projects",uid,"projects"));
-      if(!snap.size)return;
-      const local=readCodeProjects(localStorage,uid),map=new Map(local.map(project=>[project.id,project]));
       for(const record of snap.docs){
         const cloud=record.data(),current=map.get(cloud.id);
-        if(!current||String(cloud.updatedAt||"")>String(current.updatedAt||""))map.set(cloud.id,cloud);
+        if(!current||String(cloud.updatedAt||"")>String(current.updatedAt||"")){
+          map.set(cloud.id,cloud);changed=true;
+        }
       }
+    }catch(error){console.warn("Legacy cloud code projects unavailable; continuing with school storage.",error);}
+    try{
+      const remote=await listV4StudioProjects();
+      const archived=await listArchivedV4StudioProjects();
+      const archiveButton=el("archivedCodeProjectsBtn");
+      if(archiveButton)archiveButton.classList.toggle("hidden",!archived?.length);
+      for(const summary of remote||[]){
+        if(map.has(summary.projectId))continue;
+        try{
+          const detail=await loadV4StudioProject(summary.projectId);
+          if(!detail)continue;
+          const schoolProject=v4ProjectToLocal(uid,detail);
+          validateProject(schoolProject);
+          map.set(schoolProject.id,schoolProject);changed=true;
+        }catch(error){
+          console.warn("School Studio project could not be materialized on this device:",summary.projectId,error?.message||error);
+        }
+      }
+    }catch(error){console.warn("Verified school projects unavailable; using existing device projects.",error);}
+    if(changed){
       writeCodeProjects(localStorage,uid,[...map.values()]);
       if(!activeProject)renderProjectHome();
-    }catch(error){console.warn("Cloud code projects unavailable; using device projects.",error);}
+    }
+  }
+
+  async function showArchivedSchoolProjects(){
+    const button=el("archivedCodeProjectsBtn");
+    if(button)button.disabled=true;
+    try{
+      const archived=await listArchivedV4StudioProjects();
+      if(!archived?.length){alert("There are no archived projects in your active school workspace.");return;}
+      let modal=el("archivedSchoolProjectsModal");
+      if(!modal){
+        modal=document.createElement("div");modal.id="archivedSchoolProjectsModal";
+        modal.className="fixed inset-0 z-[280] bg-slate-950/80 p-3 flex items-center justify-center";
+        modal.setAttribute("role","dialog");modal.setAttribute("aria-modal","true");
+        const panel=document.createElement("div");
+        panel.className="bg-white rounded-xl max-w-2xl w-full p-5 max-h-[85dvh] overflow-y-auto";
+        const head=document.createElement("div");head.className="flex justify-between items-start gap-4 mb-4";
+        const copy=document.createElement("div");
+        const title=document.createElement("h2");title.className="font-bold text-slate-900";title.textContent="Archived school projects";
+        const hint=document.createElement("p");hint.className="text-xs text-slate-500 mt-1";
+        hint.textContent="Restore keeps the project ID and school history. It does not overwrite a different device copy.";
+        copy.append(title,hint);
+        const close=document.createElement("button");close.type="button";close.textContent="Close";
+        close.className="px-3 py-2 bg-slate-100 rounded-lg font-bold";
+        close.addEventListener("click",()=>modal.classList.add("hidden"));
+        head.append(copy,close);
+        const rows=document.createElement("div");rows.id="archivedSchoolProjectRows";rows.className="space-y-2";
+        panel.append(head,rows);modal.append(panel);document.body.append(modal);
+      }
+      modal.classList.remove("hidden");
+      const rows=modal.querySelector("#archivedSchoolProjectRows");rows.replaceChildren();
+      for(const summary of archived){
+        const row=document.createElement("div");row.className="p-3 border rounded-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3";
+        const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p");
+        name.textContent=summary.title||"Archived project";meta.className="text-xs text-slate-500 mt-1";
+        meta.textContent=(summary.language||"project")+" · archived "+
+          (summary.archivedAt?new Date(summary.archivedAt).toLocaleString():"recently");
+        info.append(name,meta);
+        const restore=document.createElement("button");restore.type="button";restore.textContent="Restore";
+        restore.className="px-3 py-2 rounded-lg bg-indigo-700 text-white text-sm font-bold";
+        restore.addEventListener("click",async()=>{
+          const existing=findCodeProject(localStorage,uid,summary.projectId);
+          if(existing){
+            alert("This device already has a project with the same ID. Export or remove that device copy before restoring the archived school version so no work is overwritten.");
+            return;
+          }
+          if(!confirm('Restore "'+(summary.title||"this project")+'" to your school Studio projects?'))return;
+          restore.disabled=true;restore.textContent="Restoring…";
+          try{
+            await restoreV4StudioProject(summary.projectId,summary.revision);
+            const detail=await loadV4StudioProject(summary.projectId);
+            const project=v4ProjectToLocal(uid,detail);
+            validateProject(project);saveCodeProject(localStorage,uid,project);
+            row.remove();renderProjectHome();
+            if(!rows.children.length)modal.classList.add("hidden");
+          }catch(error){alert("School project could not be restored: "+(error?.message||error));}
+          finally{restore.disabled=false;restore.textContent="Restore";}
+        });
+        row.append(info,restore);rows.append(row);
+      }
+    }catch(error){alert("Archived school projects are unavailable: "+(error?.message||error));}
+    finally{if(button)button.disabled=false;}
   }
 
   function initialize(){
     if(initialized)return;
     initialized=true;
     el("newCodeProjectBtn")?.addEventListener("click",()=>openWizard());
+    el("archivedCodeProjectsBtn")?.addEventListener("click",()=>void showArchivedSchoolProjects());
     el("importCodeProjectBtn")?.addEventListener("click",()=>el("projectZipInput")?.click());
     el("backToProjectsBtn")?.addEventListener("click",()=>{
       if(activeProject)saveState(captureState());
@@ -255,6 +389,17 @@ export function createProjectStudio({
           if(!confirm(warning))return;
           deletedProjects.add(project.id);
           clearTimeout(cloudTimers.get(project.id));cloudTimers.delete(project.id);
+          if(cloudEnabled){
+            try{await archiveV4StudioProject(project.id);}
+            catch(error){
+              deletedProjects.delete(project.id);
+              const localOnly=confirm("The verified-school copy could not be archived: "+
+                (error?.message||"school storage unavailable")+
+                "\n\nDelete only this device/legacy copy anyway? The school copy may reappear after synchronization.");
+              if(!localOnly)return;
+              deletedProjects.add(project.id);
+            }
+          }
           deleteCodeProject(localStorage,uid,project.id);
           if(cloudEnabled)try{
             await (cloudWrites.get(project.id)||Promise.resolve()).catch(()=>{});

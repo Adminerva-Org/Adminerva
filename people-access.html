@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>People &amp; Access | Adminerva 4.0 Pilot</title>
+  <link rel="stylesheet" href="css/adminerva-ui.css">
+  <style>
+    .pa-shell{max-width:1060px;margin:0 auto;padding:1rem}
+    .pa-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem}
+    .pa-layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(250px,1fr);gap:1rem}
+    .pa-card{background:white;border:1px solid #cbd5e1;border-radius:14px;padding:1rem;min-width:0}
+    .pa-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;margin-bottom:1rem}
+    .pa-academic-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+    .pa-card summary{min-height:44px;display:list-item;align-content:center}
+    .pa-count{font-weight:750;font-size:1.65rem;display:block}
+    .pa-row{padding:.75rem 0;border-bottom:1px solid #e2e8f0;display:flex;gap:.5rem;justify-content:space-between;align-items:center;flex-wrap:wrap}
+    .pa-field{display:block;width:100%;min-height:44px;padding:.65rem .75rem;border:1px solid #94a3b8;border-radius:8px;margin:.3rem 0 1rem;font:inherit}
+    .pa-action{min-height:44px;padding:.65rem 1rem;border-radius:8px;background:#155eaa;color:white;border:0;cursor:pointer;font-weight:650}
+    .pa-action:disabled{opacity:.55;cursor:wait}
+    .pa-action:focus-visible,.pa-field:focus-visible{outline:3px solid #38bdf8;outline-offset:2px}
+    .pa-muted{color:#475569;font-size:.9rem}
+    .pa-tabs{display:flex;gap:.5rem;margin-bottom:1rem;overflow-x:auto}
+    .pa-tabs button{min-height:44px;padding:.55rem .9rem;border:1px solid #cbd5e1;border-radius:8px;background:#fff;white-space:nowrap}
+    .pa-tabs button[aria-selected="true"]{color:#fff;background:#155eaa}
+    [hidden]{display:none!important}
+    @media(max-width:720px){.pa-layout,.pa-academic-grid{grid-template-columns:minmax(0,1fr)}#pa-person-search{grid-template-columns:minmax(0,1fr)!important}.pa-shell{padding:.75rem}.pa-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  </style>
+</head>
+<body id="pageBody" class="hidden" style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
+<div id="adminerva-nav" data-module="admin" data-page="people-v4"></div>
+<main class="pa-shell">
+  <header class="pa-header">
+    <div><a href="teacher-home.html" class="pa-muted">Adminerva</a><h1 style="font-weight:800;font-size:clamp(1.5rem,4vw,2rem);margin:.15rem 0">People &amp; Access</h1>
+    <p class="pa-muted">School-scoped directory preview · 4.0 pilot</p></div>
+    <div id="school-picker-host" class="av-school-picker" hidden></div>
+  </header>
+  <p id="school-status" role="status" aria-live="polite">Checking school access…</p>
+  <section id="pa-workspace" hidden aria-label="School people administration">
+    <div class="pa-tabs" role="tablist" aria-label="Directory sections">
+      <button type="button" data-tab="overview" aria-selected="true" role="tab">Overview</button>
+      <button type="button" data-tab="people" aria-selected="false" role="tab">People</button>
+      <button type="button" data-tab="import" aria-selected="false" role="tab">Import</button>
+      <button type="button" data-tab="invites" aria-selected="false" role="tab">Access invitations</button>
+      <button type="button" data-tab="classes" aria-selected="false" role="tab">Classes &amp; Assignments</button>
+      <button type="button" data-tab="access" aria-selected="false" role="tab">School Access</button>
+    </div>
+    <section id="pa-overview" class="pa-card" role="tabpanel">
+      <h2 style="font-size:1.2rem;font-weight:750;margin-bottom:1rem">School overview</h2>
+      <div class="pa-cards">
+        <div class="pa-card"><span class="pa-muted">People</span><span class="pa-count" id="pa-people-count">—</span></div>
+        <div class="pa-card"><span class="pa-muted">Enrollments</span><span class="pa-count" id="pa-enroll-count">—</span></div>
+        <div class="pa-card"><span class="pa-muted">Staff assignments</span><span class="pa-count" id="pa-staff-count">—</span></div>
+        <div class="pa-card"><span class="pa-muted">Invitations (all states)</span><span class="pa-count" id="pa-invite-count">—</span></div>
+      </div>
+      <p class="pa-muted">Counts reflect only this verified school. Historical migration records are not shown until approved and imported.</p>
+    </section>
+    <section id="pa-people" role="tabpanel" hidden>
+      <div class="pa-layout">
+        <div class="pa-card"><h2 style="font-weight:750;font-size:1.2rem">People</h2><p class="pa-muted">School-specific identity records, separate from accounts and enrollment.</p>
+          <form id="pa-person-search" style="display:grid;grid-template-columns:minmax(0,1fr) repeat(2,minmax(120px,.45fr));gap:.5rem;align-items:end;margin:.75rem 0 1rem">
+            <label>Search name<input id="pa-person-query" name="query" class="pa-field" style="margin-bottom:0" maxlength="80" placeholder="Start typing a name"></label>
+            <label>Type<select name="kind" class="pa-field" style="margin-bottom:0"><option value="all">All people</option><option value="student">Students</option><option value="staff">Staff</option></select></label>
+            <label>Status<select name="status" class="pa-field" style="margin-bottom:0"><option value="all">All statuses</option><option value="active">Active</option><option value="archived">Archived</option></select></label>
+          </form>
+          <p id="pa-person-filter-note" class="pa-muted" hidden></p>
+          <div id="pa-person-list" role="list"></div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem">
+            <button type="button" id="pa-more" class="pa-action" hidden>Load more</button>
+            <button type="button" id="pa-export-people" class="pa-action" style="background:#475569">Export directory CSV</button>
+          </div>
+        </div>
+        <form id="pa-add-person" class="pa-card">
+          <h2 style="font-weight:750;font-size:1.2rem;margin-bottom:.75rem">Add person</h2>
+          <label>Display name<input name="displayName" autocomplete="off" maxlength="140" required class="pa-field"></label>
+          <label>Record type<select name="kind" class="pa-field"><option value="student">Student</option><option value="staff">Teacher or staff</option></select></label>
+          <button type="submit" class="pa-action">Create directory record</button>
+          <p class="pa-muted">Creating a person does not create an account, enroll a student or grant school access.</p>
+        </form>
+      </div>
+      <dialog id="pa-person-detail-dialog" aria-labelledby="pa-person-detail-title" style="width:min(680px,calc(100vw - 1rem));max-height:88dvh;overflow:auto;border:0;border-radius:14px;padding:1.3rem">
+        <div>
+          <div style="display:flex;justify-content:space-between;gap:1rem;align-items:flex-start">
+            <div><h2 id="pa-person-detail-title" style="font-size:1.25rem;font-weight:800">Person details</h2><p id="pa-person-detail-meta" class="pa-muted"></p></div>
+            <button id="pa-person-detail-close" type="button" class="pa-action" style="background:#475569">Close</button>
+          </div>
+          <div class="pa-cards" style="margin-top:1rem">
+            <div class="pa-card"><span class="pa-muted">School access</span><strong id="pa-person-detail-access">—</strong></div>
+            <div class="pa-card"><span class="pa-muted">Academic relationships</span><strong id="pa-person-detail-relationships">—</strong></div>
+          </div>
+          <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Invitations</h3><div id="pa-person-detail-invites"></div></section>
+          <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Enrollments / teaching assignments</h3><div id="pa-person-detail-links"></div></section>
+          <section class="pa-card" style="margin-top:1rem"><h3 style="font-weight:750">Recent audit history</h3><div id="pa-person-detail-audit"></div></section>
+        </div>
+      </dialog>
+      <dialog id="pa-person-dialog" aria-labelledby="pa-person-dialog-title" style="width:min(500px,calc(100vw - 1rem));border:0;border-radius:14px;padding:1.3rem">
+        <form id="pa-person-dialog-form">
+          <h2 id="pa-person-dialog-title" style="font-size:1.2rem;font-weight:750">Update person</h2>
+          <p id="pa-person-dialog-target" class="pa-muted"></p>
+          <label id="pa-person-name-field">Display name<input name="displayName" class="pa-field" maxlength="140"></label>
+          <label id="pa-person-reason-field" hidden>Reason<input name="reason" class="pa-field" minlength="12" maxlength="500" placeholder="Explain why this record status is changing"></label>
+          <p id="pa-person-dialog-help" class="pa-muted"></p>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button id="pa-person-dialog-confirm" class="pa-action" type="submit">Save</button>
+            <button id="pa-person-dialog-cancel" class="pa-action" type="button" style="background:#475569">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+    </section>
+    <section id="pa-import" role="tabpanel" hidden>
+      <div class="pa-layout">
+        <section class="pa-card">
+          <h2 style="font-size:1.2rem;font-weight:750">Preview roster CSV</h2>
+          <p class="pa-muted">Import creates school person records only. It does not create Firebase accounts, school memberships, enrollments, teaching assignments, grades, or invitations.</p>
+          <p class="pa-muted">Accepted columns: <code>displayName</code> or <code>firstName,lastName</code>; optional <code>kind</code>, <code>email</code>, <code>externalId</code>, and <code>section</code>. Each row needs an email or externalId for idempotent matching. <code>kind</code> defaults to <code>student</code>.</p>
+          <p><a id="pa-import-template" href="#" class="pa-muted" style="color:#1d4ed8;text-decoration:underline">Download CSV template</a></p>
+          <label>Choose CSV<input id="pa-import-file" type="file" accept=".csv,text/csv" class="pa-field"></label>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button id="pa-import-preview" type="button" class="pa-action" disabled>Preview import</button>
+            <button id="pa-import-commit" type="button" class="pa-action" disabled style="background:#166534">Commit valid preview</button>
+          </div>
+          <details style="margin-top:1rem">
+            <summary style="font-weight:750;cursor:pointer">Google Sheets roster source</summary>
+            <p class="pa-muted">Use a published or exportable Google Sheets link. Adminerva stores only the normalized spreadsheet export URL for this school and never stores Google credentials.</p>
+            <form id="pa-sheet-source-form" style="padding-top:.75rem">
+              <label>Google Sheets URL<input id="pa-sheet-url" name="url" type="url" class="pa-field" placeholder="https://docs.google.com/spreadsheets/d/…/edit#gid=0" required></label>
+              <label>Configuration reason<input name="reason" class="pa-field" minlength="12" maxlength="500" placeholder="Why this roster source is approved for the school" required></label>
+              <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+                <button type="submit" class="pa-action">Save sheet source</button>
+                <button id="pa-sheet-preview" type="button" class="pa-action" style="background:#0f766e" disabled>Preview configured sheet</button>
+                <button id="pa-sheet-clear" type="button" class="pa-action" style="background:#9a3412" disabled>Clear source</button>
+              </div>
+            </form>
+            <p id="pa-sheet-status" class="pa-muted">No Google Sheets roster source loaded.</p>
+          </details>
+          <p id="pa-import-status" class="pa-muted" role="status" aria-live="polite">Choose a CSV with up to 200 people.</p>
+        </section>
+        <section class="pa-card">
+          <h2 style="font-size:1.2rem;font-weight:750">Preview results</h2>
+          <div id="pa-import-summary" class="pa-muted">No file previewed.</div>
+          <div id="pa-import-results" role="list" aria-live="polite"></div>
+        </section>
+      </div>
+    </section>
+    <section id="pa-invites" role="tabpanel" hidden>
+      <form id="pa-create-invite" class="pa-card" style="max-width:600px">
+        <h2 style="font-weight:750;font-size:1.2rem;margin-bottom:.75rem">Create pending invitation</h2>
+        <label>Verified account email<input name="email" type="email" autocomplete="off" maxlength="254" required class="pa-field"></label>
+        <label>Requested role<select name="role" class="pa-field"><option value="student">Student</option><option value="teacher">Teacher</option></select></label>
+        <label>School person record<select id="pa-invite-person" name="personId" class="pa-field" required><option value="" disabled selected>Choose an active unlinked person</option></select></label>
+        <button type="submit" class="pa-action">Record invitation</button>
+        <p class="pa-muted">The invitation is tied to this school person record. Acceptance links the verified account to that person; it still does not create an enrollment or teaching assignment.</p>
+        <div id="pa-invitation-result" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+    <section id="pa-access" role="tabpanel" hidden>
+      <div class="pa-card">
+        <h2 style="font-size:1.2rem;font-weight:750">Verified school memberships</h2>
+        <p class="pa-muted">Suspending a membership blocks future v4 school operations but preserves the person's history, evidence and existing grades. School administrators cannot suspend other school administrators here.</p>
+        <div id="pa-membership-list" role="list"></div>
+        <button class="pa-action" type="button" id="pa-refresh-memberships">Refresh access status</button>
+      </div>
+      <dialog id="pa-suspension-dialog" aria-labelledby="pa-suspension-title" style="width:min(480px,calc(100vw - 1rem));border:0;border-radius:14px;padding:1.3rem">
+        <form id="pa-suspension-form">
+          <h2 id="pa-suspension-title" style="font-size:1.2rem;font-weight:750">Suspend school access</h2>
+          <p id="pa-access-change-help" class="pa-muted">This affects only the selected school. Academic history is retained.</p>
+          <p id="pa-suspension-member" style="font-weight:650"></p>
+          <label><span id="pa-access-reason-label">Reason for suspension</span><input name="reason" class="pa-field" minlength="12" maxlength="500" required placeholder="Explain the institutional reason"></label>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+            <button id="pa-access-change-confirm" class="pa-action" type="submit" style="background:#9a3412">Confirm suspension</button>
+            <button class="pa-action" type="button" id="pa-cancel-suspend" style="background:#475569">Cancel</button>
+          </div>
+        </form>
+      </dialog>
+    </section>
+    <section id="pa-classes" role="tabpanel" hidden>
+      <p class="pa-muted">School-specific teaching assignments. Enrolling a person does not alter earlier grades or term history.</p>
+      <div class="pa-academic-grid">
+        <details class="pa-card">
+          <summary style="font-weight:750;cursor:pointer">1. Academic catalog (year, term, subject, section)</summary>
+          <form id="pa-catalog-form" style="padding-top:1rem">
+            <label>Catalog type<select class="pa-field" name="kind" id="pa-catalog-kind">
+              <option value="academic_years">Academic year</option><option value="terms">Term</option>
+              <option value="subjects">Subject</option><option value="sections">Section</option>
+            </select></label>
+            <label>Stable ID<input class="pa-field" name="recordId" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,79}" maxlength="80" placeholder="e.g. 2026-2027" required></label>
+            <label>Display name<input class="pa-field" name="name" maxlength="140" required></label>
+            <label id="pa-term-year" hidden>Term's academic year<select class="pa-field" name="yearId" data-catalog="academic_years"></select></label>
+            <button class="pa-action" type="submit">Create catalog record</button>
+          </form>
+        </details>
+        <details class="pa-card">
+          <summary style="font-weight:750;cursor:pointer">2. Create course offering</summary>
+          <form id="pa-offering-form" style="padding-top:1rem">
+            <label>Academic year<select class="pa-field" name="yearId" data-catalog="academic_years" required></select></label>
+            <label>Term<select class="pa-field" name="termId" data-catalog="terms" required></select></label>
+            <label>Subject<select class="pa-field" name="subjectId" data-catalog="subjects" required></select></label>
+            <label>Section<select class="pa-field" name="sectionId" data-catalog="sections" required></select></label>
+            <button class="pa-action" type="submit">Create class offering</button>
+          </form>
+        </details>
+        <details class="pa-card">
+          <summary style="font-weight:750;cursor:pointer">3. Enroll student in offering</summary>
+          <form id="pa-enrollment-form" style="padding-top:1rem">
+            <label>Student school record<select class="pa-field" name="personId" data-student-person required></select></label>
+            <label>Course offering<select class="pa-field" name="offeringId" data-offering required></select></label>
+            <button class="pa-action" type="submit">Create enrollment</button>
+          </form>
+        </details>
+        <details class="pa-card">
+          <summary style="font-weight:750;cursor:pointer">Bulk class enrollment</summary>
+          <form id="pa-bulk-enrollment-form" style="padding-top:1rem">
+            <label>Students<select class="pa-field" name="personIds" data-student-person-bulk multiple size="8" required></select></label>
+            <label>Course offering<select class="pa-field" name="offeringId" data-offering required></select></label>
+            <label>Reason<input class="pa-field" name="reason" minlength="12" maxlength="140" required placeholder="Explain this reviewed bulk enrollment"></label>
+            <button class="pa-action" type="submit">Enroll selected students</button>
+            <p class="pa-muted">Existing active enrollments are skipped. Ended historical enrollments are not silently restored.</p>
+          </form>
+        </details>
+        <details class="pa-card">
+          <summary style="font-weight:750;cursor:pointer">Bulk teacher assignment</summary>
+          <form id="pa-bulk-assignment-form" style="padding-top:1rem">
+            <label>Teachers<select class="pa-field" name="teacherUids" data-school-teacher-bulk multiple size="6" required></select></label>
+            <label>Course offering<select class="pa-field" name="offeringId" data-offering required></select></label>
+            <label>Reason<input class="pa-field" name="reason" minlength="12" maxlength="140" required placeholder="Explain this reviewed bulk assignment"></label>
+            <button class="pa-action" type="submit">Assign selected teachers</button>
+            <p class="pa-muted">Existing active assignments are skipped. Ended assignment history must be restored explicitly.</p>
+          </form>
+        </details>
+        <details class="pa-card">
+          <summary style="font-weight:750;cursor:pointer">4. Assign teacher to class</summary>
+          <form id="pa-assignment-form" style="padding-top:1rem">
+            <label>Verified school teacher<select class="pa-field" name="teacherUid" data-school-teacher required></select></label>
+            <label>Course offering<select class="pa-field" name="offeringId" data-offering required></select></label>
+            <button class="pa-action" type="submit">Assign teacher</button>
+            <p class="pa-muted">Class assignment does not grant access to another teacher's private assessments.</p>
+          </form>
+        </details>
+        <details class="pa-card">
+          <summary style="font-weight:750;cursor:pointer">Teacher handover</summary>
+          <form id="pa-handover-form" style="padding-top:1rem">
+            <label>Course offering<select class="pa-field" name="offeringId" data-offering required></select></label>
+            <label>Current teacher<select class="pa-field" name="fromTeacherUid" data-school-teacher required></select></label>
+            <label>Replacement teacher<select class="pa-field" name="toTeacherUid" data-school-teacher required></select></label>
+            <label>Handover reason<input class="pa-field" name="reason" minlength="12" maxlength="140" required placeholder="Explain the staffing handover"></label>
+            <button class="pa-action" type="submit" style="background:#0f766e">Transfer class responsibility</button>
+            <p class="pa-muted">This ends the current class assignment, activates the replacement assignment, and transfers review responsibility for existing deployed assessments. The original teacher's private blueprints, lessons, presentations and reference materials remain private and keep their original ownership.</p>
+          </form>
+        </details>
+        <section class="pa-card">
+          <h2 style="font-weight:750;font-size:1.1rem">Class roster</h2>
+          <form id="pa-roster-form">
+            <label>Course offering<select class="pa-field" name="offeringId" data-offering required></select></label>
+            <button class="pa-action" type="submit">View class students</button>
+          </form>
+          <div id="pa-class-roster" role="list" aria-live="polite"></div>
+        </section>
+        <dialog id="pa-academic-lifecycle-dialog" aria-labelledby="pa-academic-lifecycle-title" style="width:min(480px,calc(100vw - 1rem));border:0;border-radius:14px;padding:1.3rem">
+          <form id="pa-academic-lifecycle-form">
+            <h2 id="pa-academic-lifecycle-title" style="font-size:1.2rem;font-weight:750">Update class membership</h2>
+            <p id="pa-academic-lifecycle-target" class="pa-muted"></p>
+            <label>Reason<input name="reason" class="pa-field" minlength="12" maxlength="140" required placeholder="Explain why this status is changing"></label>
+            <p class="pa-muted">This keeps the existing academic history and records an audit event.</p>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+              <button class="pa-action" type="submit">Confirm change</button>
+              <button class="pa-action" type="button" id="pa-academic-lifecycle-cancel" style="background:#475569">Cancel</button>
+            </div>
+          </form>
+        </dialog>
+      </div>
+    </section>
+  </section>
+</main>
+<script src="js/core/adminerva-loader.js?v=1.3.2"></script>
+<script src="js/core/adminerva-nav.js?v=4.0.0"></script>
+<script type="module" src="js/core/auth-guard.js?v=4.0.0"></script>
+<script type="module" src="js/core/people-access.mjs?v=4.0.0"></script>
+</body>
+</html>

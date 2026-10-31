@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Join a school · Adminerva</title>
+  <link rel="stylesheet" href="css/adminerva-ui.css">
+  <style>
+    .join-main{max-width:36rem;margin:clamp(2rem,8vh,6rem) auto;padding:1rem;}
+    .join-card{background:#fff;border:1px solid #cbd5e1;border-radius:1rem;padding:clamp(1rem,4vw,2rem);box-shadow:0 12px 30px #0f172a12}
+    .join-field{width:100%;min-height:44px;border:1px solid #94a3b8;border-radius:.6rem;padding:.7rem .8rem;margin:.3rem 0 1rem;font:inherit}
+    .join-button{min-height:44px;padding:.7rem 1rem;border:0;border-radius:.65rem;background:#1d4ed8;color:white;font:inherit;font-weight:700}
+    .join-button:disabled{opacity:.5}
+    .join-field:focus-visible,.join-button:focus-visible{outline:3px solid #38bdf8;outline-offset:2px}
+    .join-muted{color:#475569}
+  </style>
+</head>
+<body style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
+  <main class="join-main">
+    <a href="index.html">Adminerva home</a>
+    <section class="join-card" aria-labelledby="join-title">
+      <h1 id="join-title" style="font-size:clamp(1.6rem,5vw,2rem);font-weight:800">Join your school</h1>
+      <p class="join-muted">Use the school ID and invitation ID provided by a school administrator. Signing in with a school email alone does not grant access.</p>
+      <p id="join-account" class="join-muted" role="status">Checking your account…</p>
+      <form id="join-form" hidden>
+        <label for="join-school">School ID</label>
+        <input id="join-school" name="schoolId" class="join-field" autocomplete="off" autocapitalize="none" spellcheck="false" pattern="[a-z][a-z0-9-]{1,63}" maxlength="64" required>
+        <label for="join-invite">Invitation ID</label>
+        <input id="join-invite" name="invitationId" class="join-field" autocomplete="off" autocapitalize="none" spellcheck="false" pattern="[A-Za-z0-9_-]{1,128}" maxlength="128" required>
+        <button type="submit" class="join-button">Confirm school invitation</button>
+      </form>
+      <p id="join-result" role="status" aria-live="polite"></p>
+      <p class="join-muted">If an invitation is missing, expired, already used by another account or linked to a different person, contact the school administrator.</p>
+    </section>
+  </main>
+  <script type="module" src="js/core/school-invitation.mjs"></script>
+</body>
+</html>

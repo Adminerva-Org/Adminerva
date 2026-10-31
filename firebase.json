@@ -9,5 +9,8 @@
     "predeploy": [
       "npm --prefix \"$RESOURCE_DIR\" run check"
     ]
+  },
+  "storage": {
+    "rules": "storage.rules"
   }
 }

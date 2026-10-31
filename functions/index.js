@@ -4,6 +4,7 @@ const {initializeApp}=require("firebase-admin/app");
 const {getFirestore,FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {getAuth}=require("firebase-admin/auth");
 const {getMessaging}=require("firebase-admin/messaging");
+const {getStorage}=require("firebase-admin/storage");
 const {onDocumentCreated,onDocumentUpdated,onDocumentWritten}=require("firebase-functions/v2/firestore");
 const {onSchedule}=require("firebase-functions/v2/scheduler");
 const {onCall,HttpsError}=require("firebase-functions/v2/https");
@@ -16,6 +17,10 @@ initializeApp();
 const db=getFirestore();
 const messaging=getMessaging();
 const practice=createPracticeService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)});
+const {createSchoolPracticeSeasonService}=require("./school-practice-season-service.js");
+const schoolPractice=createSchoolPracticeSeasonService({
+  db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)
+});
 const teachingAccess=createTeachingAccessService({db,Timestamp});
 const {createSchoolAI}=require("./school-ai-service.js");
 const schoolAI=createSchoolAI({db,FieldValue,Timestamp,resolveUser:uid=>getAuth().getUser(uid)});
@@ -24,6 +29,63 @@ const legacyRecovery=createLegacyLessonRecovery({db,FieldValue,resolveUserByEmai
 const legacySetup=createLegacySchoolSetup({db,FieldValue,resolveUserByEmail:email=>getAuth().getUserByEmail(email)});
 const callOptions={region:"asia-southeast1",maxInstances:3,concurrency:10,timeoutSeconds:120,cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
 function safeCallable(handler){return async request=>{try{return await handler(request);}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
+// 4.0 tenant API: requires server-verified active school membership for every call.
+// Legacy 3.0 APIs remain untouched until a separately approved pilot cutover.
+const {listVerifiedSchools,selectVerifiedSchool,platformAuthority}=require("./tenant-access.js");
+const {createTeacherBlueprintService}=require("./teacher-blueprints.js");
+const teacherBlueprints=createTeacherBlueprintService({db});
+exports.tenantSchools=onCall(callOptions,safeCallable(async request=>{
+  const [schools,authority]=await Promise.all([
+    listVerifiedSchools({db,request}),platformAuthority({db,request})
+  ]);
+  return {schools,selection:selectVerifiedSchool(schools,request.data?.preferredSchoolId),
+    platformAdmin:authority.platformAdmin};
+}));
+exports.teacherBlueprints=onCall(callOptions,safeCallable(teacherBlueprints));
+const {createPeopleDirectoryService,createInvitationAcceptanceService}=require("./people-directory.js");
+exports.peopleDirectory=onCall(callOptions,safeCallable(createPeopleDirectoryService({db})));
+const {createSchoolRosterSourceService}=require("./school-roster-source.js");
+exports.schoolRosterSource=onCall(callOptions,safeCallable(createSchoolRosterSourceService({db})));
+const {createSchoolAcademicsService}=require("./school-academics.js");
+exports.schoolAcademics=onCall(callOptions,safeCallable(createSchoolAcademicsService({db})));
+const {createSchoolAssessmentService}=require("./school-assessments.js");
+exports.schoolAssessments=onCall(callOptions,safeCallable(createSchoolAssessmentService({db})));
+const {createSchoolStudioProjectService}=require("./school-studio-projects.js");
+const {createSchoolStudioSubmissionService}=require("./school-studio-submissions.js");
+exports.schoolStudioProjects=onCall(callOptions,safeCallable(createSchoolStudioProjectService({db})));
+exports.schoolStudioSubmissions=onCall(callOptions,safeCallable(createSchoolStudioSubmissionService({db})));
+const {createSchoolGradebookService}=require("./school-gradebook.js");
+exports.schoolGradebook=onCall(callOptions,safeCallable(createSchoolGradebookService({db})));
+const {createSchoolGithubEvidenceService}=require("./school-github-evidence.js");
+exports.schoolGithubEvidence=onCall(callOptions,safeCallable(createSchoolGithubEvidenceService({db})));
+const {createSchoolReclaimService}=require("./school-reclaims.js");
+exports.schoolReclaims=onCall(callOptions,safeCallable(createSchoolReclaimService({db})));
+exports.acceptSchoolInvitation=onCall(callOptions,safeCallable(createInvitationAcceptanceService({db})));
+const {createPlatformSchoolService}=require("./platform-schools.js");
+exports.platformSchools=onCall(callOptions,safeCallable(createPlatformSchoolService({db})));
+const {createSchoolSupportService}=require("./school-support.js");
+const storageBucket=()=>getStorage().bucket();
+exports.schoolSupport=onCall(callOptions,safeCallable(createSchoolSupportService({db,bucket:storageBucket})));
+const {createSchoolFilePolicyService}=require("./school-file-policy.js");
+exports.schoolFilePolicy=onCall(callOptions,safeCallable(createSchoolFilePolicyService({db})));
+const {createSchoolDataExportService}=require("./school-data-export.js");
+exports.schoolDataExport=onCall(callOptions,safeCallable(createSchoolDataExportService({db})));
+const {createSchoolAnalyticsService}=require("./school-analytics.js");
+exports.schoolAnalytics=onCall(callOptions,safeCallable(createSchoolAnalyticsService({db})));
+const {createSchoolPracticeAnalyticsService}=require("./school-practice-analytics.js");
+exports.schoolPracticeAnalytics=onCall(callOptions,safeCallable(createSchoolPracticeAnalyticsService({db})));
+const {createSchoolTeacherAnalyticsService}=require("./school-teacher-analytics.js");
+exports.schoolTeacherAnalytics=onCall(callOptions,safeCallable(createSchoolTeacherAnalyticsService({db})));
+const {createSchoolFileRetentionJob}=require("./school-file-retention.js");
+const schoolFileRetention=createSchoolFileRetentionJob({db,bucket:storageBucket,Timestamp,FieldValue});
+exports.schoolFileRetentionCleanup=onSchedule({
+  schedule:"every 6 hours",timeZone:"Asia/Manila",region:"asia-southeast1",
+  maxInstances:1,timeoutSeconds:300
+},schoolFileRetention);
+const {createSchoolPlanningService}=require("./school-planning.js");
+exports.schoolPlanning=onCall(callOptions,safeCallable(createSchoolPlanningService({db})));
+const {createSchoolScheduleService}=require("./school-schedules.js");
+exports.schoolSchedules=onCall(callOptions,safeCallable(createSchoolScheduleService({db})));
 exports.schoolAI=onCall(callOptions,safeCallable(schoolAI));
 exports.legacyLessonRecovery=onCall(callOptions,safeCallable(legacyRecovery));
 exports.legacySchoolSetup=onCall(callOptions,safeCallable(legacySetup));
@@ -98,6 +160,23 @@ for(const [name,action] of Object.entries({practiceSession:"acquire",practiceSta
       if(error instanceof PracticeError)throw new HttpsError(error.code,error.message,error.details);
       console.error("Practice request failed",{action,code:error.code||"internal"});
       throw new HttpsError("unavailable","Practice could not complete this request. Your score has not been published; retry the same challenge safely.");
+    }
+  });
+for(const [name,action] of Object.entries({
+  schoolPracticeSeasonSession:"acquireSeason",
+  schoolPracticeHub:"hub",
+  schoolPracticeMissionStart:"startSeason",
+  schoolPracticeMissionSubmit:"submitSeason",
+  schoolPracticePreferences:"preferences"
+}))
+  exports[name]=onCall(practiceOptions,async request=>{
+    try{return await schoolPractice[action](request);}
+    catch(error){
+      if(error instanceof PracticeError)throw new HttpsError(error.code,error.message,error.details);
+      if(["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","not-found"].includes(error.code))
+        throw new HttpsError(error.code,error.message);
+      console.error("School Practice request failed",{action,code:error.code||"internal"});
+      throw new HttpsError("unavailable","School Practice could not complete this request. Saved progress is unchanged; retry safely.");
     }
   });
 const monitoring=createMonitoringService({db,Timestamp,FieldValue,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users});

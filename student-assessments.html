@@ -40,6 +40,16 @@
         ></select>
       </header>
       <div id="assignmentsNotice" class="av-status-message mb-4" role="status" aria-live="polite"><p id="assignmentsNoticeText">Loading your assignments…</p><button type="button" id="assignmentsRetry" class="hidden mt-2 font-bold underline">Retry loading assignments</button></div>
+      <section id="v4AssignmentsPanel" class="hidden mb-6 rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 sm:p-5" aria-labelledby="v4AssignmentsHeading">
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div><p class="text-xs font-extrabold uppercase tracking-wider text-indigo-700">Verified school assignments</p>
+            <h2 id="v4AssignmentsHeading" class="text-lg font-extrabold text-slate-900 mt-1">My school-scoped tasks</h2>
+            <p class="text-sm text-slate-600 mt-1">These tasks use your verified school membership, active enrollment and immutable Studio submissions.</p></div>
+          <div id="v4AssignmentsSchoolSwitcher" hidden class="min-w-[220px]"></div>
+        </div>
+        <p id="v4AssignmentsStatus" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Checking verified school assignments…</p>
+        <div id="v4AssignmentsList" class="grid gap-3 mt-4"></div>
+      </section>
 
       <div
         class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col sm:flex-row gap-4 items-center justify-between"
@@ -256,10 +266,57 @@
       </div>
     </div>
 
+    <dialog id="v4GithubEvidenceDialog" class="rounded-2xl border-0 shadow-2xl p-0 w-[min(96vw,900px)] max-h-[94dvh] backdrop:bg-slate-950/70" aria-labelledby="v4GithubEvidenceTitle">
+      <div class="bg-white flex flex-col max-h-[94dvh]">
+        <header class="p-4 sm:p-5 bg-slate-900 text-white flex items-start justify-between gap-4">
+          <div><p class="text-xs uppercase tracking-wider text-cyan-300 font-bold">Verified school GitHub evidence</p>
+            <h2 id="v4GithubEvidenceTitle" class="text-xl font-extrabold mt-1">Select committed evidence</h2>
+            <p id="v4GithubEvidenceMeta" class="text-xs text-slate-300 mt-1"></p></div>
+          <button id="v4GithubEvidenceClose" type="button" class="rounded-lg border border-slate-600 px-3 py-2">Close</button>
+        </header>
+        <div class="overflow-y-auto p-4 sm:p-5 space-y-4">
+          <label class="block text-sm font-bold text-slate-700">GitHub repository
+            <input id="v4GithubRepository" class="mt-1 w-full border border-slate-300 rounded-lg p-3" placeholder="https://github.com/owner/repository">
+          </label>
+          <div class="flex flex-wrap gap-2">
+            <button id="v4GithubLoad" type="button" class="rounded-lg bg-slate-800 text-white font-bold px-4 py-2.5">Load repository commits</button>
+            <span class="text-xs text-slate-500 self-center">Private repositories require your existing account-owned GitHub connection during the migration period.</span>
+          </div>
+          <p id="v4GithubEvidenceStatus" class="text-sm text-slate-600" role="status" aria-live="polite"></p>
+          <div class="grid lg:grid-cols-[minmax(0,1fr)_250px] gap-4">
+            <section>
+              <div class="flex justify-between gap-3 items-center"><h3 class="font-extrabold text-slate-900">Commit history</h3><span id="v4GithubSelectedCount" class="text-xs font-bold text-indigo-700">0 selected</span></div>
+              <div id="v4GithubCommitList" class="mt-2 max-h-[48dvh] overflow-y-auto space-y-2"></div>
+            </section>
+            <aside class="rounded-xl border border-slate-200 bg-slate-50 p-3 h-fit">
+              <h3 class="font-bold text-slate-900">Submission checkpoint</h3>
+              <p class="text-xs text-slate-600 mt-1">Choose the project version that contains your selected evidence. The teacher independently verifies this exact set before grading.</p>
+              <p id="v4GithubCheckpoint" class="font-mono text-xs break-all mt-3 text-indigo-800">No checkpoint selected</p>
+            </aside>
+          </div>
+          <section id="v4GithubReclaimEditor" class="hidden rounded-xl border border-amber-300 bg-amber-50 p-4">
+            <div class="flex justify-between gap-3">
+              <div><h3 class="font-bold text-amber-950">Request commit attribution review</h3>
+                <p id="v4GithubReclaimSubject" class="text-xs text-amber-900 mt-1 font-mono break-all"></p></div>
+              <button id="v4GithubReclaimCancel" type="button" class="text-xs font-bold text-slate-700 underline">Cancel</button>
+            </div>
+            <p class="text-xs text-amber-900 mt-2">Use this only when the selected commit contains your contribution but its Git identity does not represent you correctly. A school administrator decides the attribution claim; your teacher separately verifies the evidence.</p>
+            <textarea id="v4GithubReclaimReason" rows="3" minlength="10" maxlength="1500" class="mt-3 w-full rounded-lg border border-amber-300 bg-white p-3 text-sm" placeholder="Describe what you implemented and why the commit identity differs."></textarea>
+            <button id="v4GithubReclaimSubmit" type="button" class="mt-3 rounded-lg bg-amber-800 text-white font-bold px-4 py-2.5">Send attribution request</button>
+            <p id="v4GithubReclaimStatus" class="text-xs text-amber-900 mt-2" role="status"></p>
+          </section>
+        </div>
+        <footer class="border-t border-slate-200 p-4 sm:p-5 flex flex-wrap gap-2 justify-end">
+          <button id="v4GithubEvidenceSubmit" type="button" class="rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5">Submit frozen evidence</button>
+        </footer>
+      </div>
+    </dialog>
+
     <script src="js/core/adminerva-nav.js?v=3.0.0"></script>
     <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
     <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
     <script type="module" src="js/student/assessments.js?v=3.0.0"></script>
+    <script type="module" src="js/student/v4-assessments.mjs?v=4.0.0"></script>
     <script type="module" src="js/student/submission-receipts.mjs?v=1.3.1"></script>
     <script type="module" src="js/student/assessment-evidence.mjs?v=1.3.11"></script>
   </body>

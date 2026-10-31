@@ -31,11 +31,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const activeModule = root.getAttribute("data-module") || "lesson";
   const activePage = root.getAttribute("data-page") || "planner";
   const isStudent = userRole === "student" || (!userRole && activeModule.startsWith("student"));
-  const isSuperAdmin = userRole === "superadmin";
-  currentRole = isStudent ? "student" : isSuperAdmin ? "superadmin" : "teacher";
-  const homeRoute = isStudent ? "student-home.html" : "teacher-home.html";
-  const homeLabel = isStudent ? "Student Home" : "Staff Home";
-  const roleLabel = isStudent ? "Student" : isSuperAdmin ? "Administrator" : "Teacher";
+  const isSuperAdmin=userRole==="superadmin";
+  const isPlatformOwner=userRole==="platformowner";
+  const hasPlatformAuthority=isPlatformOwner||root.dataset.platformAdmin==="true";
+  const isSchoolAdmin=userRole==="schooladmin";
+  const hasVerifiedSchoolRole=root.dataset.schoolAdmin==="true"||
+    root.dataset.schoolTeacher==="true"||root.dataset.schoolStudent==="true";
+  const supportRoute=!isSuperAdmin&&hasVerifiedSchoolRole?"school-support.html":"issues.html";
+  const gradebookRoute=root.dataset.schoolTeacher==="true"?"school-gradebook.html":"gradebook.html";
+  const v4OnlyTeacher=root.dataset.v4OnlyTeacher==="true";
+  const canTeach=!isPlatformOwner&&(!isSchoolAdmin||root.dataset.schoolTeacher==="true");
+  currentRole=isStudent?"student":isSuperAdmin?"superadmin":isPlatformOwner?"platformowner":isSchoolAdmin?"schooladmin":"teacher";
+  const homeRoute = isStudent ? "student-home.html" : isPlatformOwner ? "owner-schools.html" : "teacher-home.html";
+  const homeLabel = isStudent ? "Student Home" : isPlatformOwner ? "Owner Console" : "Staff Home";
+  const roleLabel=isStudent?"Student":isPlatformOwner?"Platform owner":isSuperAdmin?"Legacy platform administrator":isSchoolAdmin?"School administrator":"Teacher";
 
   // Destinations and page labels share one source, including bookmarked tools.
   const studentGroups = {
@@ -53,39 +62,65 @@ document.addEventListener("DOMContentLoaded", () => {
     ] }
   };
   const staffGroups = [
-    { name: "Assessment", area: "educator", items: [
-      ["studio", "Assessment studio", "assessment-studio.html"],
-      ["submissions", "Submission inbox", "submissions.html"],
-      ["studio-submissions", "Studio project submissions", "studio-submissions.html"],
-      ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
-    ] },
-    { name: "Review & grade", area: "educator", items: [
-      ["repofetch", "Review & grade", "repofetch.html"],
-      ["gradebook", "Gradebook", "gradebook.html"],
-      ["repobank", "Repository investigation", "repobank.html"]
-    ] },
-    { name: "Insights", area: "educator", items: [
-      ["dashboard", "Analytics", "teacher-analytics.html"],
-      ["followup", "Learning follow-up", "learning-follow-up.html"]
-    ] },
-    { name: "Planning", area: "lesson", items: [
+    { name: "Assessment", area: "educator", items: canTeach ? (
+      v4OnlyTeacher ? [
+        ["library-v4","Assessment library","teacher-assessment-library.html"],
+        ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
+      ] : [
+        ["library-v4","Assessment library","teacher-assessment-library.html"],
+        ["studio", "Legacy assessment studio", "assessment-studio.html"],
+        ["submissions", "Submission inbox", "submissions.html"],
+        ["studio-submissions", "Studio project submissions", "studio-submissions.html"],
+        ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
+      ]) : [] },
+    { name: "Review & grade", area: "educator", items: canTeach ? (
+      v4OnlyTeacher ? [
+        ["gradebook-v4", "Gradebook", "school-gradebook.html"]
+      ] : [
+        ["repofetch", "Review & grade", "repofetch.html"],
+        ["gradebook-v4", "Gradebook", gradebookRoute],
+        ["repobank", "Repository investigation", "repobank.html"]
+      ]) : [] },
+    { name: "Insights", area: "educator", items: canTeach ? [
+      ["class-analytics-v4", "Class analytics", "school-teacher-analytics.html"],
+      ["practice-v4", "Practice progress", "school-practice-analytics.html"],
+      ...(!v4OnlyTeacher ? [
+        ["dashboard", "Legacy analytics", "teacher-analytics.html"],
+        ["followup", "Learning follow-up", "learning-follow-up.html"]
+      ] : [])
+    ] : [] },
+    { name: "Planning", area: "lesson", items: canTeach&&!v4OnlyTeacher ? [
       ["planner", "Lesson planner", "lesson-planner.html"],
       ["presentation", "Slide editor", "presentation.html"],
       ["schedule", "Teacher schedule", "schedule.html"],
       ["library", "Reference library", "library.html"]
-    ] },
+    ] : [] },
     { name: "School setup", area: "admin", items: isSuperAdmin ? [
+      ["owner-schools","Institution registry","owner-schools.html"],
       ["overview", "Administration overview", "school-admin.html"],
       ["analytics", "Administration analytics", "admin-analytics.html"],
-      ["directory", "User directory", "users.html"],
+      ["directory", "Legacy user directory", "users.html"],
       ["sections", "Sections", "manage-sections.html"],
       ["teachers", "Teacher assignments", "teacher-accounts.html"],
       ["programs", "Tracks & pathways", "manage-programs.html"],
       ["subjects", "Subjects", "manage-subjects.html"]
+    ] : isPlatformOwner ? [
+      ["owner-schools","Institution registry","owner-schools.html"]
+    ] : isSchoolAdmin ? [
+      ...(hasPlatformAuthority?[["owner-schools","Institution registry","owner-schools.html"]]:[]),
+      ["overview","School overview","school-admin.html"],
+      ["people-v4","People & Access","people-access.html"],
+      ["school-analytics","School operations","school-analytics.html"],
+      ["data-files","Data & files","school-data-controls.html"],
+      ["class-analytics-v4","Class analytics","school-teacher-analytics.html"],
+      ["practice-v4","Practice progress","school-practice-analytics.html"],
+      ["reclaims-v4","Commit attribution requests","reclaim-inbox.html"]
+    ] : hasPlatformAuthority ? [
+      ["owner-schools","Institution registry","owner-schools.html"]
     ] : [] },
     { name: "Account", area: "settings", items: [
       ["settings", "Account & integrations", "settings.html"],
-      ["issues", "Reports & support", "issues.html"]
+      ["issues", "Reports & support", supportRoute]
     ] }
   ];
   const area = ["repo", "educator"].includes(activeModule) ? "educator" : activeModule;
@@ -105,9 +140,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const currentPage = activePage === "home" ? homeLabel
     : activeModule === "global" ? "Reports & support" : currentItem?.[1] || currentArea;
   const currentRoute = activeModule.endsWith("home") ? homeRoute
-    : activeModule === "global" ? "issues.html" : currentItem?.[2];
+    : activeModule === "global" ? supportRoute : currentItem?.[2];
   const workspaceRoute = activeModule.endsWith("home") ? homeRoute
-    : activeModule === "global" ? "issues.html"
+    : activeModule === "global" ? supportRoute
     : isStudent ? studentGroup?.items[0]?.[2]
     : area === "lesson" ? "lesson-planner.html"
     : area === "admin" ? "school-admin.html"
@@ -119,13 +154,24 @@ document.addEventListener("DOMContentLoaded", () => {
     ["Project Hub", "student-dashboard.html", "Projects and assignments"],
     ["Practice Lab", "student-practice.html", "Courses, challenges and XML Lab"],
     ["Adminerva Studio", "student-playground.html", "Write and run code"],
-    ["My reports", "issues.html", "Report a problem or follow an update"]
+    ["My reports", supportRoute, "Report a problem or follow an update"]
+  ] : isPlatformOwner ? [
+    ["Owner Console","owner-schools.html","Provision and govern institutions"],
+    ["Reports & support","issues.html","Follow reports and get help"]
   ] : [
-    [homeLabel, homeRoute, "Your teaching workspace"],
-    ["Repository Management", "assessment-studio.html", "Assessments, submissions, grading and repositories"],
-    ["Lesson Planning", "lesson-planner.html", "Lessons, slides, schedule and references"],
-    ...(isSuperAdmin ? [["School administration", "school-admin.html", "Students, staff, catalogs, reports and operations"]] : []),
-    ["Reports & support", "issues.html", "Follow reports and get help"]
+    [homeLabel,homeRoute,isSchoolAdmin?"School operations and teaching workspace":"Your teaching workspace"],
+    ...(canTeach?(v4OnlyTeacher?
+      [["Assessment & Grade","teacher-assessment-library.html","School assessments, evidence and grading"],
+       ["Class Analytics","school-teacher-analytics.html","Published class results and your private drafts"],
+       ["Practice Progress","school-practice-analytics.html","Current-season class Practice analytics"]]:
+      [["Repository Management","teacher-assessment-library.html","Assessments, submissions, grading and repositories"],
+       ["Class Analytics","school-teacher-analytics.html","Verified-school assessment results"],
+       ["Practice Progress","school-practice-analytics.html","Verified-school Practice analytics"],
+       ["Lesson Planning","lesson-planner.html","Lessons, slides, schedule and references"]]):[]),
+    ...((isSuperAdmin||isSchoolAdmin||hasPlatformAuthority)?[["School administration",
+      hasPlatformAuthority&&!isSchoolAdmin&&!isSuperAdmin?"owner-schools.html":"school-admin.html",
+      hasPlatformAuthority&&!isSchoolAdmin&&!isSuperAdmin?"Institution registry":"People, access, classes and school operations"]]:[]),
+    ["Reports & support",supportRoute,"Follow school reports and get help"]
   ];
   root.innerHTML = `
     <nav aria-label="Adminerva main navigation" class="bg-gray-900/95 backdrop-blur-md text-white shadow-lg relative z-50 border-b border-cyan-900/50 sticky top-0">
@@ -158,8 +204,9 @@ document.addEventListener("DOMContentLoaded", () => {
                   <span id="userEmailDisplay" class="block text-[10px] text-slate-400 truncate max-w-[150px]"></span>
                   <span class="av-nav-role block text-[10px] text-cyan-300">${roleLabel} ▾</span>
                 </summary>
-                <div class="av-nav-menu-panel absolute right-0 top-full mt-2 w-56 z-[120] rounded-xl bg-slate-900 border border-slate-600 shadow-2xl p-2 text-left">
-                  <a href="issues.html" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">My reports & support</a>
+                <div class="av-nav-menu-panel absolute right-0 top-full mt-2 w-64 z-[120] rounded-xl bg-slate-900 border border-slate-600 shadow-2xl p-2 text-left">
+                  <div id="av-school-context" hidden></div>
+                  <a data-support-route href="${supportRoute}" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">My reports & support</a>
                   <a href="wiki.html#privacy" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Privacy</a>
                   <a data-account-settings href="${isStudent ? "student-settings.html" : "settings.html"}" class="block rounded-lg px-3 py-2 text-sm text-slate-100 hover:bg-slate-800">Settings</a>
                 </div>
@@ -182,6 +229,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (settings) settings.href = isStudent ? "student-settings.html" : "settings.html";
     const accountSettings=accountControls.querySelector("[data-account-settings]");
     if(accountSettings)accountSettings.href=isStudent?"student-settings.html":"settings.html";
+    const supportLink=accountControls.querySelector("[data-support-route]");
+    if(supportLink)supportLink.href=supportRoute;
   }
   if (informationPanel) root.append(informationPanel);
   const emailDisplay = root.querySelector("#userEmailDisplay");
@@ -263,7 +312,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const mountPoint = document.createElement("div");
     mountPoint.id = "adminerva-notifications";
     reportButton.parentNode.insertBefore(mountPoint, reportButton);
-    import("./notifications.mjs?v=1.4.19").then(module => module.mountNotificationCenter())
+    import("./notifications.mjs?v=4.0.0").then(module => module.mountNotificationCenter())
       .catch(error => console.warn("Notification center unavailable:", error));
   }
   };
@@ -275,8 +324,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // This event changes presentation; it does not authorize any data operation.
   document.addEventListener("adminerva:role-ready", event => {
     const role = event.detail?.role;
-    if (!["student", "teacher", "superadmin"].includes(role)) return;
-    if (role !== currentRole) renderNavigation(role);
+    if(!["student","teacher","schooladmin","superadmin","platformowner"].includes(role))return;
+    renderNavigation(role);
+    import("./account-school-context.mjs?v=4.0.0")
+      .then(module=>module.mountAccountSchoolSwitcher(root))
+      .catch(error=>console.warn("School account context unavailable:",error?.message||error));
   });
   document.addEventListener("click", event => {
     for (const details of disclosures) if (details.open && !details.contains(event.target)) details.open = false;

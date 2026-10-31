@@ -10,7 +10,7 @@
   <div class="code-project-home-inner">
     <div class="code-project-hero">
       <div><p class="code-project-kicker">ADMINERVA CODE STUDIO</p><h1 id="codeStudioHeading">Choose a project</h1><p>Create, continue, and manage programming projects as complete workspaces instead of one temporary editor.</p></div>
-      <div class="code-project-hero-actions"><button id="newCodeProjectBtn" type="button" class="primary">+ Create New Project</button><button id="legacyDraftProjectBtn" type="button" class="hidden secondary">Import older playground draft</button></div>
+      <div class="code-project-hero-actions"><button id="newCodeProjectBtn" type="button" class="primary">+ Create New Project</button><button id="legacyDraftProjectBtn" type="button" class="hidden secondary">Import older playground draft</button><button id="archivedCodeProjectsBtn" type="button" class="hidden secondary">Archived school projects</button></div>
     </div>
     <div class="code-project-section-head"><div><h2>Your projects</h2><p>Recent projects are saved on this device and synchronized to your private Adminerva account when cloud access is available.</p></div><div class="code-project-home-meta"><span id="projectStorageMode">Private account storage · cloud sync</span><span id="projectQuotaStatus">Projects</span></div></div>
     <div id="guestProjectNotice" class="hidden guest-project-limit"><div><strong>Guest Code Studio</strong><p>Projects stay only on this browser. Guest access is limited to 3 projects, 25 files per project, and about 300 KB per project.</p></div><button id="guestUpgradeBtn" type="button">Sign in for cloud sync</button></div>
@@ -27,7 +27,7 @@
 
   <div class="studio-project-bar">
     <button id="backToProjectsBtn" type="button" class="studio-back">← Projects</button>
-    <div class="studio-project-identity"><div class="studio-project-title-row"><strong id="activeProjectTitle">Code project</strong><span id="activeProjectStorageBadge" class="studio-storage-badge">Cloud sync</span></div><span id="activeProjectMeta">Java project</span></div>
+    <div class="studio-project-identity"><div class="studio-project-title-row"><strong id="activeProjectTitle">Code project</strong><span id="activeProjectStorageBadge" class="studio-storage-badge">Cloud sync</span></div><span id="activeProjectMeta">Java project</span><span id="studioSchoolStatus" class="hidden text-[10px] text-slate-400" role="status" aria-live="polite"></span><div id="studioSchoolSwitcher" hidden class="text-xs"></div></div>
     <div class="studio-project-actions"><div class="studio-command-bar" aria-label="Project commands"><label class="sr-only" for="languageSelect">Programming language</label><select id="languageSelect"><option value="java">Java</option><option value="python">Python</option><option value="web">HTML / CSS / JS</option><option value="csharp">C#</option><option value="cpp">C++</option><option value="dart">Dart</option></select>
       <label id="javaRunModeLabel" for="javaRunMode" class="hidden">Run as</label><select id="javaRunMode" class="hidden" title="Choose how Java should run"><option value="console">Console application</option><option value="desktop">Desktop GUI (Swing) · Beta</option></select>
       <button id="saveProjectBtn" type="button" class="pg-save" title="Save project · Ctrl+S">Save</button><button id="formatBtn" type="button">Format</button>

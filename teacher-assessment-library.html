@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+ <title>Teacher Assessment Library · Adminerva 4.0</title>
+ <link rel="stylesheet" href="css/adminerva-ui.css">
+ <style>
+  .tl-main{max-width:1100px;margin:auto;padding:1rem}
+  .tl-head{display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem}
+  .tl-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(250px,1fr);gap:1rem}
+  .tl-card,.tl-dialog-inner{border:1px solid #cbd5e1;border-radius:14px;padding:1rem;background:#fff;min-width:0}
+  .tl-tabs{display:flex;gap:.5rem;overflow-x:auto;margin:1rem 0}
+  .tl-tabs button{white-space:nowrap;border-radius:9px;padding:.6rem .9rem;border:1px solid #94a3b8;background:#fff;min-height:44px}
+  .tl-tabs button[aria-pressed="true"]{background:#1d4ed8;color:#fff}
+  .tl-row{border-bottom:1px solid #e2e8f0;padding:1rem 0;display:flex;gap:1rem;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+  .tl-actions{display:flex;flex-wrap:wrap;gap:.4rem}
+  .tl-action{min-height:44px;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font:inherit;padding:.55rem .9rem;cursor:pointer}
+  .tl-action.alt{background:#e2e8f0;color:#0f172a}
+  .tl-action:disabled{opacity:.5;cursor:wait}
+  .tl-input{min-height:44px;width:100%;border:1px solid #94a3b8;border-radius:9px;padding:.65rem .75rem;margin:.3rem 0 1rem;font:inherit}
+  .tl-muted{font-size:.9rem;color:#475569}
+  .tl-dialog{border:0;border-radius:14px;max-width:min(640px,calc(100vw - 1.5rem));width:100%;max-height:calc(100dvh - 2rem);overflow:auto;padding:0;box-shadow:0 16px 80px #0f172a55}
+  .tl-dialog::backdrop{background:#020617aa}
+  .tl-dialog-inner{border:0}
+  .tl-action:focus-visible,.tl-input:focus-visible,.tl-tabs button:focus-visible{outline:3px solid #38bdf8;outline-offset:2px}
+  [hidden]{display:none!important}
+  @media(max-width:700px){.tl-grid{grid-template-columns:minmax(0,1fr)}.tl-main{padding:.75rem}.tl-dialog{height:calc(100dvh - 1rem);max-height:none;max-width:100vw;border-radius:14px 14px 0 0;margin:auto 0 0}}
+ </style>
+</head>
+<body id="pageBody" class="hidden" style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
+<div id="adminerva-nav" data-module="educator" data-page="library-v4"></div>
+<main class="tl-main">
+ <header class="tl-head"><div><a href="teacher-home.html">Adminerva teacher workspace</a><h1 style="font-size:clamp(1.6rem,4vw,2.1rem);font-weight:800">Assessment Library</h1>
+  <p class="tl-muted">4.0 pilot · Private teacher drafts and deliberate school sharing</p></div>
+  <div id="tl-school-switcher" hidden></div>
+ </header>
+ <p id="tl-status" role="status" aria-live="polite">Checking verified school access…</p>
+ <section id="tl-workspace" hidden>
+  <nav class="tl-tabs" aria-label="Assessment library filters">
+   <button type="button" data-filter="mine" aria-pressed="true">My Assessments</button>
+   <button type="button" data-filter="shared" aria-pressed="false">Shared with Me</button>
+   <button type="button" data-filter="school" aria-pressed="false">School Library</button>
+   <button type="button" data-filter="deployed" aria-pressed="false">Deployed tasks</button>
+  </nav>
+  <div class="tl-grid">
+   <section class="tl-card" aria-label="Assessment list">
+    <div id="tl-list" role="list"></div>
+    <button id="tl-refresh" class="tl-action alt" type="button">Refresh library</button>
+   </section>
+   <form class="tl-card" id="tl-create">
+    <h2 style="font-size:1.2rem;font-weight:750">New private blueprint</h2>
+    <p class="tl-muted">Created material belongs to you. Only a deliberate share action makes it available to colleagues.</p>
+    <label>Title<input name="title" class="tl-input" maxlength="140" required></label>
+    <label>Description<textarea name="description" class="tl-input" maxlength="2000" rows="3"></textarea></label>
+    <label>Instructions<textarea name="instructions" class="tl-input" maxlength="20000" rows="5"></textarea></label>
+    <label>Rubric criteria (one per line, Criterion | points)
+      <textarea name="rubric" class="tl-input" rows="4" maxlength="4000" placeholder="Functionality | 10&#10;Code quality | 5"></textarea>
+    </label>
+    <p class="tl-muted">Each criterion must have 1–100 points, with at most 20 criteria.</p>
+    <button class="tl-action" type="submit">Create private assessment</button>
+    <p class="tl-muted">This saves a reusable blueprint only; it does not deploy a task or affect a student's Gradebook.</p>
+   </form>
+  </div>
+ </section>
+</main>
+<dialog id="tl-share-dialog" class="tl-dialog" aria-labelledby="tl-share-heading">
+ <form id="tl-share-form" class="tl-dialog-inner">
+  <h2 id="tl-share-heading" style="font-size:1.3rem;font-weight:750">Share assessment</h2>
+  <p class="tl-muted" id="tl-share-title"></p>
+  <fieldset>
+   <legend style="font-weight:700;margin:.6rem 0">Audience</legend>
+   <label style="display:block;padding:.5rem 0"><input type="radio" name="visibility" value="private" checked> Only me (private)</label>
+   <label style="display:block;padding:.5rem 0"><input type="radio" name="visibility" value="selected_teachers"> Selected teachers at this school</label>
+   <label style="display:block;padding:.5rem 0"><input type="radio" name="visibility" value="school_teachers"> All active teachers at this school</label>
+  </fieldset>
+  <div id="tl-recipient-container" hidden>
+    <p style="font-weight:700">Choose active teachers at this school</p>
+    <div id="tl-recipients" role="group" aria-label="Select teachers" style="max-height:240px;overflow-y:auto;border:1px solid #cbd5e1;border-radius:9px;padding:.5rem"></div>
+  </div>
+  <p class="tl-muted">Recipients may preview and make independent copies only. Sharing never grants access to student submissions, grades, answer keys or the original's editing rights.</p>
+  <div class="tl-actions">
+   <button type="submit" class="tl-action">Save sharing rights</button>
+   <button type="button" class="tl-action alt" id="tl-cancel-share">Cancel</button>
+  </div>
+ </form>
+</dialog>
+<dialog id="tl-preview-dialog" class="tl-dialog" aria-labelledby="tl-preview-heading">
+ <div class="tl-dialog-inner">
+  <h2 id="tl-preview-heading" style="font-size:1.3rem;font-weight:750"></h2>
+  <p id="tl-preview-meta" class="tl-muted"></p>
+  <h3 style="font-weight:700">Description</h3><p id="tl-preview-description" style="white-space:pre-wrap"></p>
+  <h3 style="font-weight:700;margin-top:1rem">Instructions</h3><p id="tl-preview-instructions" style="white-space:pre-wrap"></p>
+  <h3 style="font-weight:700;margin-top:1rem">Rubric</h3><ul id="tl-preview-rubric"></ul>
+  <button type="button" id="tl-preview-close" class="tl-action alt">Close preview</button>
+ </div>
+</dialog>
+<dialog id="tl-deploy-dialog" class="tl-dialog" aria-labelledby="tl-deploy-heading">
+ <form id="tl-deploy-form" class="tl-dialog-inner">
+  <h2 id="tl-deploy-heading" style="font-size:1.3rem;font-weight:750">Deploy to my class</h2>
+  <p id="tl-deploy-title" class="tl-muted"></p>
+  <p class="tl-muted">The rubric and task instructions are frozen at deployment. Other teachers receive no grading rights from sharing the blueprint.</p>
+  <label>Assigned course offering
+    <select name="offeringId" class="tl-input" id="tl-deploy-offering" required></select>
+  </label>
+  <label>Submission method<select name="submissionSource" class="tl-input" required>
+    <option value="studio">Adminerva Studio project</option>
+    <option value="github">GitHub commit evidence</option>
+  </select></label>
+  <label>Opens at<input name="opensAt" type="datetime-local" class="tl-input" required></label>
+  <label>Deadline<input name="dueAt" type="datetime-local" class="tl-input" required></label>
+  <p class="tl-muted">Choose Adminerva Studio for a frozen project version or GitHub commit evidence for a frozen repository checkpoint and selected commits. Both use the same private-draft and published Gradebook workflow.</p>
+  <div class="tl-actions">
+    <button type="submit" class="tl-action">Deploy task</button>
+    <button type="button" id="tl-cancel-deploy" class="tl-action alt">Cancel</button>
+  </div>
+ </form>
+</dialog>
+<dialog id="tl-lifecycle-dialog" class="tl-dialog" aria-labelledby="tl-lifecycle-heading">
+ <form id="tl-lifecycle-form" class="tl-dialog-inner">
+  <h2 id="tl-lifecycle-heading" style="font-size:1.3rem;font-weight:750">Update deployment</h2>
+  <p id="tl-lifecycle-task" class="tl-muted"></p>
+  <p id="tl-lifecycle-help" class="tl-muted"></p>
+  <label>Administrative reason
+    <textarea name="reason" class="tl-input" minlength="12" maxlength="1000" rows="3" required></textarea>
+  </label>
+  <label id="tl-lifecycle-deadline-field" hidden>New deadline
+    <input name="newDueAt" type="datetime-local" class="tl-input">
+  </label>
+  <div class="tl-actions">
+    <button type="submit" class="tl-action" id="tl-lifecycle-save">Save change</button>
+    <button type="button" class="tl-action alt" id="tl-lifecycle-cancel">Cancel</button>
+  </div>
+ </form>
+</dialog>
+<script src="js/core/adminerva-loader.js?v=1.3.2"></script>
+<script src="js/core/adminerva-nav.js?v=4.0.0"></script>
+<script type="module" src="js/core/auth-guard.js?v=4.0.0"></script>
+<script type="module" src="js/repo-review/teacher-assessment-library.mjs?v=4.0.0"></script>
+</body>
+</html>
