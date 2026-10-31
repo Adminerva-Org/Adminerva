@@ -13,7 +13,7 @@ const set=(id,value)=>{const node=document.getElementById(id);if(node)node.textC
 function configureSchoolLabels(){
   set("adminMetricOneLabel","School people");
   set("adminMetricTwoLabel","Teaching assignments");
-  set("adminMetricThreeLabel","Pending invitations");
+  set("adminMetricThreeLabel","Invitations");
   const links=[
     ["adminMetricOneLink","people-access.html","Open People & Access"],
     ["adminMetricTwoLink","people-access.html#classes","Manage classes"],
