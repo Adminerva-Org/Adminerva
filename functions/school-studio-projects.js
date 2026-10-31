@@ -50,8 +50,25 @@ function validateArtifacts(value){
  }
  safe(parsed);return parsed;
 }
+function canonicalJson(value){
+ function normalize(node){
+  if(node===null||typeof node==="string"||typeof node==="boolean")return node;
+  if(typeof node==="number"){
+   if(!Number.isFinite(node))deny("invalid-argument","Project data contains a non-finite number.");
+   return Object.is(node,-0)?0:node;
+  }
+  if(Array.isArray(node))return node.map(normalize);
+  if(node&&typeof node==="object"){
+   const result={};
+   for(const key of Object.keys(node).sort())result[key]=normalize(node[key]);
+   return result;
+  }
+  deny("invalid-argument","Project data contains an unsupported value.");
+ }
+ return JSON.stringify(normalize(value));
+}
 function digestProject(files,artifacts={}){
- return createHash("sha256").update(JSON.stringify({files,artifacts})).digest("hex");
+ return createHash("sha256").update(canonicalJson({files,artifacts})).digest("hex");
 }
 function digestFiles(files){return digestProject(files,{});}
 function createSchoolStudioProjectService({db}){
@@ -155,4 +172,4 @@ function createSchoolStudioProjectService({db}){
   deny("invalid-argument","Unknown school Studio project action.");
  };
 }
-module.exports={createSchoolStudioProjectService,validateFiles,validateArtifacts,digestFiles,digestProject};
+module.exports={createSchoolStudioProjectService,validateFiles,validateArtifacts,digestFiles,digestProject,canonicalJson};
