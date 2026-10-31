@@ -49,6 +49,26 @@ function createPeopleDirectoryService({db}) {
         nextCursor:snap.docs.length>pageSize?(docs.at(-1)?.data().searchKey||null):null
       };
     }
+    if(input.action==="search_people"){
+      const raw=typeof input.query==="string"?input.query.trim().toLocaleLowerCase("en"):"";
+      if(raw.length>80)invalid("Directory search is too long.");
+      const kind=input.kind||"all",status=input.status||"all";
+      if(!["all","student","staff"].includes(kind))invalid("Invalid person type filter.");
+      if(!["all","active","archived"].includes(status))invalid("Invalid person status filter.");
+      let query=base.orderBy("searchKey").limit(101);
+      if(raw)query=query.startAt(raw).endAt(raw+"\uf8ff");
+      const snap=await query.get();
+      const matches=snap.docs.filter(person=>{
+        const data=person.data();
+        return data.schoolId===ctx.schoolId&&(kind==="all"||data.kind===kind)&&
+          (status==="all"||data.status===status);
+      });
+      return {items:matches.slice(0,50).map(person=>({
+        personId:person.id,displayName:person.data().displayName,
+        kind:person.data().kind,status:person.data().status,
+        accountLinked:Boolean(person.data().authUid),schoolId:ctx.schoolId
+      })),truncated:snap.size===101||matches.length>50};
+    }
     if(input.action==="list_memberships"){
       const snapshot=await db.collection("schools/"+ctx.schoolId+"/memberships").limit(101).get();
       if(snapshot.size===101)throw new TenantAccessError("resource-exhausted","Member directory is too large for this pilot page.");
