@@ -15,7 +15,7 @@ import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.6";
 import {searchStudents} from "./services/student-search.mjs?v=1.3.0";
 import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.2";
 
-export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{}}={}){
+export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{},authoritativeInitialRecord=false}={}){
 const el=id=>root.querySelector("#"+id);
 const state={students:[],assessments:[],evidence:null,student:null,assessment:null,claims:[],loaded:false,busy:false,sequence:0,editing:false,verificationEditing:false};
 let stopEvidence=null,watchedId=null,destroyed=false,resolveInitial=null,initialTimer=null,initialSnapshot=null,hasServerSnapshot=false;
@@ -162,7 +162,7 @@ async function loadEvidence(initialRecord){
     const documentId=student.id+"_"+assessment.id;
     if(watchedId!==documentId){stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);stopEvidence=null;watchedId=documentId;}
     let record=initialRecord;
-    if(inlineContext){
+    if(authoritativeInitialRecord){
       // Review & Grade already loaded this exact evidence document. Avoid opening
       // a second live listener with a different rules/query path inside the same
       // modal; use a bounded server read only when the controller explicitly
