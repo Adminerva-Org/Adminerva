@@ -9,14 +9,21 @@ const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-per
 let after=null,loadingPeople=false,pendingWrite=false;
 let suspendUid=null;
 function say(message){status.textContent=message;}
-function setTab(name) {
+const tabNames=new Set(["overview","people","invites","classes","access"]);
+function setTab(name,{remember=true}={}) {
+  const target=tabNames.has(name)?name:"overview";
   for(const button of document.querySelectorAll("[data-tab]")){
-    const active=button.dataset.tab===name;
+    const active=button.dataset.tab===target;
     button.setAttribute("aria-selected",String(active));
     get("pa-"+button.dataset.tab).hidden=!active;
   }
+  if(remember&&location.hash!=="#"+target)
+    history.replaceState(null,"","#"+target);
 }
-document.querySelectorAll("[data-tab]").forEach(button=>button.addEventListener("click",()=>setTab(button.dataset.tab)));
+document.querySelectorAll("[data-tab]").forEach(button=>
+  button.addEventListener("click",()=>setTab(button.dataset.tab)));
+window.addEventListener("hashchange",()=>setTab(location.hash.slice(1),{remember:false}));
+setTab(location.hash.slice(1),{remember:false});
 const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
