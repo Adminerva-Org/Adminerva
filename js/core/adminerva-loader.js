@@ -22,6 +22,10 @@ loaderStyle.textContent=`
 @keyframes avEmblemBreathe{0%,100%{transform:scale(.94)}50%{transform:scale(1.06)}}
 @keyframes avSweep{0%{transform:translateX(-110%)}100%{transform:translateX(400%)}}
 @media (prefers-reduced-motion:reduce){.av-loader-orbit,.av-loader-emblem,#subtleLoader::after{animation:none!important}#subtleLoader::after{width:100%;opacity:.45}}
+/* One loading animation system: legacy overlays and secondary spinner/pulse motion stay visually suppressed. */
+.av-legacy-loader-suppressed{display:none!important}
+:is(#executionOverlay,#issuesFeed,#assignmentsFeed,#commitListContainer,#studentAssessmentsContainer,#submissionFeed) :is(.animate-spin,.animate-pulse),
+button :is(.animate-spin,.animate-pulse){animation:none!important}
 `;
 document.documentElement.append(loaderStyle);
 let legacyLoading = null;
@@ -72,6 +76,46 @@ window.withLoading = async function(message, action, {button=null, region=null}=
     end();
   }
 };
+const legacyLoaderJobs=new Map();
+function legacyLoaderRequested(node){
+  return Boolean(node)&&!node.hasAttribute("hidden")&&!node.classList.contains("hidden")&&node.style.display!=="none";
+}
+function legacyLoaderMessage(node){
+  const selectors=["#loaderMessage","#loaderMainText","#loaderSubMessage","#loaderSubText","[role='status']"];
+  const values=[];
+  for(const selector of selectors){
+    const item=node.querySelector(selector);
+    const value=String(item?.textContent||"").trim();
+    if(value&&!values.includes(value))values.push(value);
+  }
+  return values.join(" · ")||"Processing…";
+}
+function syncLegacyLoaders(){
+  for(const node of document.querySelectorAll("#globalLoader,#loaderOverlay,#loadingOverlay")){
+    const requested=legacyLoaderRequested(node),existing=legacyLoaderJobs.get(node),message=legacyLoaderMessage(node);
+    node.classList.add("av-legacy-loader-suppressed");
+    node.setAttribute("aria-hidden","true");
+    if(requested){
+      if(existing?.message===message)continue;
+      existing?.end?.();
+      legacyLoaderJobs.set(node,{message,end:window.beginLoading(message)});
+    }else if(existing){
+      existing.end?.();legacyLoaderJobs.delete(node);
+    }
+  }
+}
+let legacyLoaderSyncQueued=false;
+function queueLegacyLoaderSync(){
+  if(legacyLoaderSyncQueued)return;
+  legacyLoaderSyncQueued=true;
+  queueMicrotask(()=>{legacyLoaderSyncQueued=false;syncLegacyLoaders();});
+}
+const startLegacyLoaderBridge=()=>{
+  syncLegacyLoaders();
+  if(document.body)new MutationObserver(queueLegacyLoaderSync).observe(document.body,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:["class","style","hidden"]});
+};
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",startLegacyLoaderBridge,{once:true});else startLegacyLoaderBridge();
+
 const endPageLoading = window.beginLoading("Opening page…");
 window.addEventListener("load", endPageLoading, {once:true});
 document.addEventListener("DOMContentLoaded", () => {
