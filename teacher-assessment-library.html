@@ -39,6 +39,7 @@
    <button type="button" data-filter="mine" aria-pressed="true">My Assessments</button>
    <button type="button" data-filter="shared" aria-pressed="false">Shared with Me</button>
    <button type="button" data-filter="school" aria-pressed="false">School Library</button>
+   <button type="button" data-filter="deployed" aria-pressed="false">Deployed tasks</button>
   </nav>
   <div class="tl-grid">
    <section class="tl-card" aria-label="Assessment list">
@@ -51,6 +52,10 @@
     <label>Title<input name="title" class="tl-input" maxlength="140" required></label>
     <label>Description<textarea name="description" class="tl-input" maxlength="2000" rows="3"></textarea></label>
     <label>Instructions<textarea name="instructions" class="tl-input" maxlength="20000" rows="5"></textarea></label>
+    <label>Rubric criteria (one per line, Criterion | points)
+      <textarea name="rubric" class="tl-input" rows="4" maxlength="4000" placeholder="Functionality | 10&#10;Code quality | 5"></textarea>
+    </label>
+    <p class="tl-muted">Each criterion must have 1–100 points, with at most 20 criteria.</p>
     <button class="tl-action" type="submit">Create private assessment</button>
     <p class="tl-muted">This saves a reusable blueprint only; it does not deploy a task or affect a student's Gradebook.</p>
    </form>
@@ -87,6 +92,27 @@
   <h3 style="font-weight:700;margin-top:1rem">Rubric</h3><ul id="tl-preview-rubric"></ul>
   <button type="button" id="tl-preview-close" class="tl-action alt">Close preview</button>
  </div>
+</dialog>
+<dialog id="tl-deploy-dialog" class="tl-dialog" aria-labelledby="tl-deploy-heading">
+ <form id="tl-deploy-form" class="tl-dialog-inner">
+  <h2 id="tl-deploy-heading" style="font-size:1.3rem;font-weight:750">Deploy to my class</h2>
+  <p id="tl-deploy-title" class="tl-muted"></p>
+  <p class="tl-muted">The rubric and task instructions are frozen at deployment. Other teachers receive no grading rights from sharing the blueprint.</p>
+  <label>Assigned course offering
+    <select name="offeringId" class="tl-input" id="tl-deploy-offering" required></select>
+  </label>
+  <label>Submission method<select name="submissionSource" class="tl-input" required>
+    <option value="studio">Adminerva Studio project</option>
+    <option value="github">GitHub evidence</option>
+  </select></label>
+  <label>Opens at<input name="opensAt" type="datetime-local" class="tl-input" required></label>
+  <label>Deadline<input name="dueAt" type="datetime-local" class="tl-input" required></label>
+  <p class="tl-muted">Student submissions and Gradebook review are being integrated into the 4.0 scoped backend. This pilot deployment creates the task record, not a submitted project or grade.</p>
+  <div class="tl-actions">
+    <button type="submit" class="tl-action">Deploy task</button>
+    <button type="button" id="tl-cancel-deploy" class="tl-action alt">Cancel</button>
+  </div>
+ </form>
 </dialog>
 <script type="module" src="js/repo-review/teacher-assessment-library.mjs"></script>
 </body>
