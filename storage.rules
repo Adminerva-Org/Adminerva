@@ -1,0 +1,13 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Adminerva 4.0: Cloud Storage remains disabled until each school file
+    // workflow has an explicit ownership/readership, retention and size/type
+    // contract. Do not fall back to "authenticated users" or email-domain
+    // access; future school paths must verify canonical Firestore membership.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
