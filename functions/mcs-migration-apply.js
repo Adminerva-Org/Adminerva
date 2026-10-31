@@ -146,14 +146,14 @@ async function applyApprovedMirror(db,{eligible,ledgerSha256,maxWrites,apply}){
    receipt.blocked=false;receipt.complete=checked.ready.length===0;
    return receipt;
  }
- let copied=0,identical=receipt.alreadyIdentical;
+ let copied=0,identical=receipt.alreadyIdentical,processedReady=0;
  for(const row of checked.ready){
    if(copied>=maxWrites)break;
-   const result=await copyOne(db,row.entry);
+   const result=await copyOne(db,row.entry);processedReady++;
    if(result==="copied")copied++;else identical++;
  }
  receipt.copied=copied;receipt.alreadyIdentical=identical;
- receipt.remainingReady=Math.max(0,checked.ready.length-copied);
+ receipt.remainingReady=Math.max(0,checked.ready.length-processedReady);
  receipt.complete=receipt.remainingReady===0;
  receipt.blocked=false;
  return receipt;
