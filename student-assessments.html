@@ -40,6 +40,16 @@
         ></select>
       </header>
       <div id="assignmentsNotice" class="av-status-message mb-4" role="status" aria-live="polite"><p id="assignmentsNoticeText">Loading your assignments…</p><button type="button" id="assignmentsRetry" class="hidden mt-2 font-bold underline">Retry loading assignments</button></div>
+      <section id="v4AssignmentsPanel" class="hidden mb-6 rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 sm:p-5" aria-labelledby="v4AssignmentsHeading">
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div><p class="text-xs font-extrabold uppercase tracking-wider text-indigo-700">Verified school assignments</p>
+            <h2 id="v4AssignmentsHeading" class="text-lg font-extrabold text-slate-900 mt-1">My school-scoped tasks</h2>
+            <p class="text-sm text-slate-600 mt-1">These tasks use your verified school membership, active enrollment and immutable Studio submissions.</p></div>
+          <div id="v4AssignmentsSchoolSwitcher" hidden class="min-w-[220px]"></div>
+        </div>
+        <p id="v4AssignmentsStatus" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Checking verified school assignments…</p>
+        <div id="v4AssignmentsList" class="grid gap-3 mt-4"></div>
+      </section>
 
       <div
         class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col sm:flex-row gap-4 items-center justify-between"
@@ -260,6 +270,7 @@
     <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
     <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
     <script type="module" src="js/student/assessments.js?v=3.0.0"></script>
+    <script type="module" src="js/student/v4-assessments.mjs?v=4.0.0"></script>
     <script type="module" src="js/student/submission-receipts.mjs?v=1.3.1"></script>
     <script type="module" src="js/student/assessment-evidence.mjs?v=1.3.9"></script>
   </body>
