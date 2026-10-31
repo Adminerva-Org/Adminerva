@@ -6,11 +6,10 @@
  */
 const {FieldValue}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
-const ID=/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 const CATALOG=new Set(["academic_years","terms","subjects","sections"]);
 function deny(code,message){throw new TenantAccessError(code,message)}
-function checkId(value,label="Identifier"){
- if(typeof value!=="string"||!ID.test(value))deny("invalid-argument",label+" must contain 1–80 letters, digits, underscores or hyphens.");
+function checkId(value,label="Identifier",max=80){
+ if(typeof value!=="string"||value.length>max||!new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,"+(max-1)+"}$").test(value))deny("invalid-argument",label+" must contain 1–80 letters, digits, underscores or hyphens.");
  return value;
 }
 function checkName(value,label="Name"){
@@ -18,9 +17,9 @@ function checkName(value,label="Name"){
   deny("invalid-argument",label+" is required and cannot exceed 140 characters.");
  return value.trim();
 }
-function rowKey(...values){return values.map(v=>checkId(v)).join("--")}
+function rowKey(...values){return values.map(v=>checkId(v,"Key segment",330)).join("--")}
 function createSchoolAcademicsService({db}) {
- const root=id=>db.collection("schools/"+id);
+ const root=id=>({doc:path=>db.doc("schools/"+id+"/"+path)});
  return async request=>{
   const input=request.data||{},ctx=await getSchoolContext({db,request,schoolId:input.schoolId});
   const schoolRoot=root(ctx.schoolId),uid=ctx.uid;
@@ -42,7 +41,7 @@ function createSchoolAcademicsService({db}) {
    const kind=input.kind;
    if(!CATALOG.has(kind))deny("invalid-argument","Unknown academic catalog type.");
    const itemId=checkId(input.recordId),name=checkName(input.name),ref=schoolRoot.doc(kind+"/"+itemId);
-   const auditRef=schoolRoot.doc("directory_audit/"+schoolRoot.doc().id);
+   const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
    const parentYear=input.yearId?checkId(input.yearId,"Academic year ID"):null;
    await db.runTransaction(async tx=>{
     await checkWriteAuthority(tx);
@@ -65,7 +64,7 @@ function createSchoolAcademicsService({db}) {
    requireAdmin();
    const kind=input.kind;
    if(!CATALOG.has(kind))deny("invalid-argument","Unknown academic catalog type.");
-   const snap=await schoolRoot.doc(kind+"/_schema_placeholder").parent.orderBy("name").limit(200).get();
+   const snap=await db.collection("schools/"+ctx.schoolId+"/"+kind).orderBy("name").limit(200).get();
    return {items:snap.docs.map(doc=>({id:doc.id,name:doc.data().name,
     yearId:doc.data().yearId,status:doc.data().status})),truncated:snap.size===200};
   }
@@ -81,7 +80,7 @@ function createSchoolAcademicsService({db}) {
     schoolRoot.doc("subjects/"+subjectId),
     schoolRoot.doc("sections/"+sectionId)
    ];
-   const auditRef=schoolRoot.doc("directory_audit/"+schoolRoot.doc().id);
+   const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
    await db.runTransaction(async tx=>{
     await checkWriteAuthority(tx);
     const catalog=await Promise.all(refs.map(ref=>tx.get(ref)));
@@ -100,12 +99,12 @@ function createSchoolAcademicsService({db}) {
    if(!admin&&!teacher)deny("permission-denied","Teaching access is required.");
    let allowed=null;
    if(!admin) {
-    const grants=await schoolRoot.doc("staff_assignments/_schema_placeholder").parent
+    const grants=await db.collection("schools/"+ctx.schoolId+"/staff_assignments")
       .where("teacherUid","==",uid).limit(101).get();
     allowed=new Set(grants.docs.filter(d=>d.data().status==="active").map(d=>d.data().offeringId));
     if(grants.size===101)deny("resource-exhausted","Too many teaching assignments. Contact the school administrator.");
    }
-   const snap=await schoolRoot.doc("course_offerings/_schema_placeholder").parent.limit(201).get();
+   const snap=await db.collection("schools/"+ctx.schoolId+"/course_offerings").limit(201).get();
    if(snap.size===201)deny("resource-exhausted","Offering list is too large. Refine the academic year before continuing.");
    return {offerings:snap.docs.filter(doc=>admin||allowed.has(doc.id))
     .map(doc=>({offeringId:doc.id,yearId:doc.data().yearId,termId:doc.data().termId,
@@ -114,11 +113,11 @@ function createSchoolAcademicsService({db}) {
   if(input.action==="enroll_student"){
    requireAdmin();
    const personId=checkId(input.personId,"Person ID"),
-     offeringId=checkId(input.offeringId,"Course offering ID");
+     offeringId=checkId(input.offeringId,"Course offering ID",330);
    const ref=schoolRoot.doc("enrollments/"+rowKey(personId,offeringId));
    const personRef=schoolRoot.doc("people/"+personId);
    const offeringRef=schoolRoot.doc("course_offerings/"+offeringId);
-   const auditRef=schoolRoot.doc("directory_audit/"+schoolRoot.doc().id);
+   const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
    await db.runTransaction(async tx=>{
     await checkWriteAuthority(tx);
     const [person,offering,prior]=await Promise.all([
@@ -140,12 +139,12 @@ function createSchoolAcademicsService({db}) {
   }
   if(input.action==="assign_teacher"||input.action==="end_teacher_assignment"){
    requireAdmin();
-   const teacherUid=checkId(input.teacherUid,"Teacher account UID"),
+   const teacherUid=checkId(input.teacherUid,"Teacher account UID",128),
      offeringId=checkId(input.offeringId,"Course offering ID");
    const ref=schoolRoot.doc("staff_assignments/"+rowKey(teacherUid,offeringId));
    const offeringRef=schoolRoot.doc("course_offerings/"+offeringId),
     teacherMemberRef=schoolRoot.doc("memberships/"+teacherUid);
-   const auditRef=schoolRoot.doc("directory_audit/"+schoolRoot.doc().id);
+   const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
    const ending=input.action==="end_teacher_assignment";
    const reason=ending?checkName(input.reason,"Handover reason"):null;
    await db.runTransaction(async tx=>{
@@ -178,7 +177,7 @@ function createSchoolAcademicsService({db}) {
   }
   if(input.action==="class_roster"){
    if(!admin&&!teacher)deny("permission-denied","Class roster access is restricted.");
-   const offeringId=checkId(input.offeringId,"Course offering ID");
+   const offeringId=checkId(input.offeringId,"Course offering ID",330);
    const offeringRef=schoolRoot.doc("course_offerings/"+offeringId);
    const offering=await offeringRef.get();
    if(!offering.exists||offering.data().schoolId!==ctx.schoolId)
@@ -189,7 +188,7 @@ function createSchoolAcademicsService({db}) {
       grant.data().teacherUid!==uid)
       deny("permission-denied","Only an assigned teacher can read this class roster.");
    }
-   const snap=await schoolRoot.doc("enrollments/_schema_placeholder").parent
+   const snap=await db.collection("schools/"+ctx.schoolId+"/enrollments")
      .where("offeringId","==",offeringId).limit(101).get();
    if(snap.size===101)deny("resource-exhausted","Class roster exceeds the first page. Use paginated school roster.");
    const current=snap.docs.filter(d=>d.data().schoolId===ctx.schoolId&&d.data().status==="active");
