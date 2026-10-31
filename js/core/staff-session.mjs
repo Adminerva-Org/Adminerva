@@ -14,7 +14,13 @@ async function resolveTenantMemberships(user){
   if(!tenantPending.has(user.uid)){
     const operation=tenantCallable({preferredSchoolId:null}).then(response=>{
       const schools=Array.isArray(response.data?.schools)?response.data.schools:[];
-      return {schools,roles:[...new Set(schools.flatMap(s=>Array.isArray(s.roles)?s.roles:[]))],platformAdmin:response.data?.platformAdmin===true,available:true};
+      return {
+        schools,
+        roles:[...new Set(schools.flatMap(s=>Array.isArray(s.roles)?s.roles:[]))],
+        platformAdmin:response.data?.platformAdmin===true,
+        available:true,
+        v4Cutover:schools.length>0&&schools.every(s=>s.compatibilityMode==="v4_only")
+      };
     }).catch(error=>{
       // During the 3.0→4.0 rollout, absence of the new callable must not lock
       // out a valid legacy MCS user. New school-only users still fail closed.
@@ -44,6 +50,7 @@ export function resolveAccountAccess(user) {
       return {
         role,legacyRole,platformAdmin,schoolAdmin,schoolTeacher,schoolStudent,
         v4Schools:tenant.schools,v4MembershipLookupAvailable:tenant.available,
+        v4Cutover:tenant.v4Cutover===true,
         teachers:teachers.docs,students:activeStudents,
         needsTeacherApproval:!role&&!schoolAdmin&&!schoolStudent&&!teachers.empty,
         staffLookupUnavailable:unavailableStaffLookups.has(user.uid)
