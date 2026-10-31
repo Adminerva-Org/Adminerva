@@ -102,6 +102,14 @@ The current 4.0 runtime already has school-scoped teacher planning, schedules an
 - Timetables are revalidated against canonical teacher section/subject assignments and use the live V4 `scheduleId(uid,year,semester)` contract. Folder/document and schedule/revision units are atomic; partial target state is a preflight blocker.
 - Legacy administrator-shared reference folders and shared `app_config` timetables are identified from the reviewed dry-run ledger but are **not** copied into every teacher account. They require an explicit school-shared policy or archived-history decision.
 
+## V4 settings credential retirement — October 31, 2026
+
+- Settings now labels browser/profile Gemini and GitHub credentials as **legacy personal API credentials** rather than implying they power verified-school AI.
+- For canonical school accounts without an active legacy teacher compatibility role, and for schools already in `v4_only`, that personal credential card and write action are removed from the UI. The write handler also refuses a direct invocation in that mode.
+- School AI remains visible through the separate tenant-scoped connection card. Teachers can see readiness but never receive the school key; only active school administrators can change the school connection.
+- The settings behavior is driven from verified auth/navigation role state, with a dataset fallback for module/event ordering. It does not use local role state as authorization.
+- `school-ai.mjs` now retains the server-returned school compatibility mode in its cached school context for V4-aware consumers.
+
 ## V4-only planning/runtime cutover — October 31, 2026
 
 - The existing private and school-shared reference services are now exported as `schoolReferences` and `schoolSharedReferences`; the shared-reference UI no longer points at missing callables.
