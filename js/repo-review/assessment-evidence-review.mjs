@@ -543,11 +543,22 @@ function renderHistorical(){
       "text-xs break-words");
     const detectedLogin=String(commit.author?.login||"").toLowerCase();
     const expectedLogin=String(state.student?.githubUsername||"").replace(/^@/,"").toLowerCase();
+    const detectedId=Number.isSafeInteger(Number(commit.author?.id))&&Number(commit.author?.id)>0?Number(commit.author.id):null;
+    const expectedId=Number.isSafeInteger(Number(state.student?.githubUserId))&&Number(state.student?.githubUserId)>0?Number(state.student.githubUserId):null;
+    const loginMatches=Boolean(detectedLogin&&expectedLogin&&detectedLogin===expectedLogin);
     add(row,"p",(commit.commit?.author?.name||"Unknown author")+" · "+
       (commit.author?.login?"@"+commit.author.login:"GitHub login unknown"),
       "text-xs text-slate-600 mt-2");
-    if(discovery.mode==="augment"&&(!detectedLogin||!expectedLogin||detectedLogin!==expectedLogin))
-      add(row,"p","Identity differs from the learner's linked GitHub account. Inspect the diff before attributing this commit.","text-xs font-semibold text-amber-800 mt-1");
+    if(discovery.mode==="augment"){
+      if(!loginMatches)
+        add(row,"p","GitHub login differs from the learner's linked account. Inspect the diff before attributing this commit.","text-xs font-semibold text-amber-800 mt-1");
+      else if(expectedId&&detectedId&&expectedId!==detectedId)
+        add(row,"p","GitHub login matches this learner, but Adminerva's saved numeric GitHub account ID differs from the commit author ID. Treat this as an account-binding conflict requiring teacher review, not as a different username. Re-verify the learner's linked GitHub account when practical.","text-xs font-semibold text-amber-800 mt-1");
+      else if(state.student?.githubAccountVerified!==true)
+        add(row,"p","GitHub login matches this learner, but the linked GitHub account is not marked verified in Adminerva. Teacher verification is required before automatic attribution.","text-xs font-semibold text-amber-800 mt-1");
+      else
+        add(row,"p","GitHub login matches the learner's linked account.","text-xs font-semibold text-emerald-700 mt-1");
+    }
     const preview=add(row,"button","Preview changed files","text-xs text-indigo-700 underline mt-2");
     preview.type="button";
     preview.addEventListener("click",()=>{void previewCommit(parseRepository(state.student.repoUrl),sha,row,preview);});
