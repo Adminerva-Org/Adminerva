@@ -34,10 +34,20 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     picker.scope.assertLease(lease);
     return result;
   }
+  function refreshReviewControls(){
+    const published=currentGrade?.status==="published";
+    const reopened=currentRow?.status==="reopened";
+    const loaded=Boolean(currentTask&&currentRow&&currentSnapshot);
+    document.getElementById("gbV4SaveDraft").disabled=
+      busy||!loaded||published||reopened;
+    document.getElementById("gbV4Publish").disabled=
+      busy||!loaded||published||reopened||currentGrade?.status!=="draft";
+    document.getElementById("gbV4RequestRevision").disabled=
+      busy||!loaded||published||reopened;
+    document.getElementById("gbV4Refresh").disabled=busy;
+  }
   function setBusy(value,message=""){
-    busy=value;
-    for(const id of ["gbV4SaveDraft","gbV4Publish","gbV4RequestRevision","gbV4Refresh"])
-      document.getElementById(id).disabled=value;
+    busy=value;refreshReviewControls();
     if(message)document.getElementById("gbV4ReviewStatus").textContent=message;
   }
   async function loadTasks(){
@@ -177,9 +187,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       renderRubric(currentGrade);
       const published=currentGrade?.status==="published";
       const reopened=row.status==="reopened";
-      document.getElementById("gbV4SaveDraft").disabled=published||reopened;
-      document.getElementById("gbV4Publish").disabled=published||reopened||currentGrade?.status!=="draft";
-      document.getElementById("gbV4RequestRevision").disabled=published||reopened;
+      refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=published?
         "This grade is published. Use the future correction workflow for changes.":
         reopened?"A revision is already requested. Wait for the student to resubmit.":
@@ -204,7 +212,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       });
       const refreshed=await scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
       currentGrade=refreshed.grade;renderRubric(currentGrade);
-      document.getElementById("gbV4Publish").disabled=false;
+      refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=
         "Private draft saved against frozen submission version "+currentSnapshot.version+".";
     }catch(error){
@@ -219,9 +227,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const result=await scoped(gradeApi,"publish",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
       document.getElementById("gbV4ReviewStatus").textContent="Published "+result.awarded+" / "+result.total+" to the student.";
       currentGrade={...(currentGrade||{}),status:"published"};
-      document.getElementById("gbV4SaveDraft").disabled=true;
-      document.getElementById("gbV4Publish").disabled=true;
-      document.getElementById("gbV4RequestRevision").disabled=true;
+      currentRow={...currentRow,status:"reviewed"};
+      refreshReviewControls();
       await loadInbox();
     }catch(error){
       document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Grade was not published.";
@@ -245,10 +252,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         taskId:currentTask.taskId,submissionId:currentRow.submissionId,
         reason,extensionDueAt
       });
+      currentRow={...currentRow,status:"reopened"};
+      refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent="Revision requested. The current submission remains preserved in history.";
-      document.getElementById("gbV4SaveDraft").disabled=true;
-      document.getElementById("gbV4Publish").disabled=true;
-      document.getElementById("gbV4RequestRevision").disabled=true;
       await loadInbox();
     }catch(error){
       document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Revision request was not saved.";
@@ -267,8 +273,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     });
     try{
       const state=await picker.load();
-      if(state?.context)await loadTasks();
-      else if(state?.state==="choose_school"){
+      if(state?.state==="choose_school"){
         panel.classList.remove("hidden");
         status.textContent="Choose an active school to load your Gradebook.";
       }
