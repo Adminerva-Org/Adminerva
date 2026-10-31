@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>People &amp; Access | Adminerva 4.0 Pilot</title>
+  <link rel="stylesheet" href="css/adminerva-ui.css">
+  <style>
+    .pa-shell{max-width:1060px;margin:0 auto;padding:1rem}
+    .pa-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.25rem}
+    .pa-layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(250px,1fr);gap:1rem}
+    .pa-card{background:white;border:1px solid #cbd5e1;border-radius:14px;padding:1rem;min-width:0}
+    .pa-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;margin-bottom:1rem}
+    .pa-count{font-weight:750;font-size:1.65rem;display:block}
+    .pa-row{padding:.75rem 0;border-bottom:1px solid #e2e8f0;display:flex;gap:.5rem;justify-content:space-between;align-items:center;flex-wrap:wrap}
+    .pa-field{display:block;width:100%;min-height:44px;padding:.65rem .75rem;border:1px solid #94a3b8;border-radius:8px;margin:.3rem 0 1rem;font:inherit}
+    .pa-action{min-height:44px;padding:.65rem 1rem;border-radius:8px;background:#155eaa;color:white;border:0;cursor:pointer;font-weight:650}
+    .pa-action:disabled{opacity:.55;cursor:wait}
+    .pa-action:focus-visible,.pa-field:focus-visible{outline:3px solid #38bdf8;outline-offset:2px}
+    .pa-muted{color:#475569;font-size:.9rem}
+    .pa-tabs{display:flex;gap:.5rem;margin-bottom:1rem;overflow-x:auto}
+    .pa-tabs button{min-height:44px;padding:.55rem .9rem;border:1px solid #cbd5e1;border-radius:8px;background:#fff;white-space:nowrap}
+    .pa-tabs button[aria-selected="true"]{color:#fff;background:#155eaa}
+    [hidden]{display:none!important}
+    @media(max-width:720px){.pa-layout{grid-template-columns:minmax(0,1fr)}.pa-shell{padding:.75rem}.pa-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  </style>
+</head>
+<body style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
+<main class="pa-shell">
+  <header class="pa-header">
+    <div><a href="teacher-home.html" class="pa-muted">Adminerva</a><h1 style="font-weight:800;font-size:clamp(1.5rem,4vw,2rem);margin:.15rem 0">People &amp; Access</h1>
+    <p class="pa-muted">School-scoped directory preview · 4.0 pilot</p></div>
+    <div id="school-picker-host" class="av-school-picker" hidden></div>
+  </header>
+  <p id="school-status" role="status" aria-live="polite">Checking school access…</p>
+  <section id="pa-workspace" hidden aria-label="School people administration">
+    <div class="pa-tabs" role="tablist" aria-label="Directory sections">
+      <button type="button" data-tab="overview" aria-selected="true" role="tab">Overview</button>
+      <button type="button" data-tab="people" aria-selected="false" role="tab">People</button>
+      <button type="button" data-tab="invites" aria-selected="false" role="tab">Access invitations</button>
+    </div>
+    <section id="pa-overview" class="pa-card" role="tabpanel">
+      <h2 style="font-size:1.2rem;font-weight:750;margin-bottom:1rem">School overview</h2>
+      <div class="pa-cards">
+        <div class="pa-card"><span class="pa-muted">People</span><span class="pa-count" id="pa-people-count">—</span></div>
+        <div class="pa-card"><span class="pa-muted">Enrollments</span><span class="pa-count" id="pa-enroll-count">—</span></div>
+        <div class="pa-card"><span class="pa-muted">Staff assignments</span><span class="pa-count" id="pa-staff-count">—</span></div>
+        <div class="pa-card"><span class="pa-muted">Invitations (all states)</span><span class="pa-count" id="pa-invite-count">—</span></div>
+      </div>
+      <p class="pa-muted">Counts reflect only this verified school. Historical migration records are not shown until approved and imported.</p>
+    </section>
+    <section id="pa-people" role="tabpanel" hidden>
+      <div class="pa-layout">
+        <div class="pa-card"><h2 style="font-weight:750;font-size:1.2rem">People</h2><p class="pa-muted">School-specific identity records, separate from accounts and enrollment.</p>
+          <div id="pa-person-list" role="list"></div>
+          <button type="button" id="pa-more" class="pa-action" hidden>Load more</button>
+        </div>
+        <form id="pa-add-person" class="pa-card">
+          <h2 style="font-weight:750;font-size:1.2rem;margin-bottom:.75rem">Add person</h2>
+          <label>Display name<input name="displayName" autocomplete="off" maxlength="140" required class="pa-field"></label>
+          <label>Record type<select name="kind" class="pa-field"><option value="student">Student</option><option value="staff">Teacher or staff</option></select></label>
+          <button type="submit" class="pa-action">Create directory record</button>
+          <p class="pa-muted">Creating a person does not create an account, enroll a student or grant school access.</p>
+        </form>
+      </div>
+    </section>
+    <section id="pa-invites" role="tabpanel" hidden>
+      <form id="pa-create-invite" class="pa-card" style="max-width:600px">
+        <h2 style="font-weight:750;font-size:1.2rem;margin-bottom:.75rem">Create pending invitation</h2>
+        <label>Verified account email<input name="email" type="email" autocomplete="off" maxlength="254" required class="pa-field"></label>
+        <label>Requested role<select name="role" class="pa-field"><option value="student">Student</option><option value="teacher">Teacher</option></select></label>
+        <button type="submit" class="pa-action">Record invitation</button>
+        <p class="pa-muted">This records a pending request; sending an invitation and granting an active membership require the separate verified approval workflow.</p>
+      </form>
+    </section>
+  </section>
+</main>
+<script type="module" src="js/core/people-access.mjs"></script>
+</body>
+</html>
