@@ -118,7 +118,7 @@ service cloud.firestore {
           data.updatedBy == request.auth.uid && data.updatedAt == request.time &&
           audit.before == prior && audit.after == data && audit.actorUid == request.auth.uid && audit.createdAt == request.time;
       }
-      allow get: if isAdmin() || (signedIn() && request.auth.token.email_verified == true && email == request.auth.token.email.lower());
+      allow get: if legacyMcsAllowed() && (isAdmin() || (signedIn() && request.auth.token.email_verified == true && email == request.auth.token.email.lower()));
       allow list: if isAdmin();
       allow create, update: if isAdmin() && validStaff();
       allow delete: if false;
@@ -291,7 +291,7 @@ service cloud.firestore {
          (isAdmin() && auditedDecision()));
       allow delete: if false;
       match /revisions/{revision} {
-        allow read: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
+        allow read: if legacyMcsAllowed() && signedIn() && (request.auth.uid == ownerUid || isAdmin());
         allow create: if isAdmin() && request.resource.data.keys().hasOnly(["before","after","actorUid","createdAt"]) &&
           request.resource.data.actorUid == request.auth.uid && request.resource.data.createdAt == request.time &&
           request.resource.data.before == get(/databases/$(database)/documents/account_requests/$(ownerUid)).data &&
