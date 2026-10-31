@@ -33,10 +33,14 @@ form.addEventListener("submit",async event=>{
     status.replaceChildren();
     const message=document.createElement("span");
     message.textContent="School access approved for "+data.schoolId+". Your account is now a "+data.role+".";
-    const home=document.createElement("a");
-    home.href=data.role==="student"?"student-home.html":"teacher-home.html";
-    home.textContent="Open your workspace";
-    status.append(message," ",home);
+    if(data.role==="teacher"){
+      const home=document.createElement("a");
+      home.href="teacher-assessment-library.html";
+      home.textContent="Open the 4.0 teacher assessment library pilot";
+      status.append(message," ",home);
+    }else{
+      status.append(message," The full student workspace will use this membership after the 4.0 pilot cutover.");
+    }
     form.hidden=true;
   }catch(error){
     status.textContent=error?.message||"The invitation could not be accepted. Confirm the school and invitation IDs with your administrator.";
