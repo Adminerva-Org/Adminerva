@@ -26,12 +26,15 @@ const callOptions={region:"asia-southeast1",maxInstances:3,concurrency:10,timeou
 function safeCallable(handler){return async request=>{try{return await handler(request);}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
 // 4.0 tenant API: requires server-verified active school membership for every call.
 // Legacy 3.0 APIs remain untouched until a separately approved pilot cutover.
-const {listVerifiedSchools,selectVerifiedSchool}=require("./tenant-access.js");
+const {listVerifiedSchools,selectVerifiedSchool,platformAuthority}=require("./tenant-access.js");
 const {createTeacherBlueprintService}=require("./teacher-blueprints.js");
 const teacherBlueprints=createTeacherBlueprintService({db});
 exports.tenantSchools=onCall(callOptions,safeCallable(async request=>{
-  const schools=await listVerifiedSchools({db,request});
-  return {schools,selection:selectVerifiedSchool(schools,request.data?.preferredSchoolId)};
+  const [schools,authority]=await Promise.all([
+    listVerifiedSchools({db,request}),platformAuthority({db,request})
+  ]);
+  return {schools,selection:selectVerifiedSchool(schools,request.data?.preferredSchoolId),
+    platformAdmin:authority.platformAdmin};
 }));
 exports.teacherBlueprints=onCall(callOptions,safeCallable(teacherBlueprints));
 const {createPeopleDirectoryService,createInvitationAcceptanceService}=require("./people-directory.js");
