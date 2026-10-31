@@ -38,6 +38,15 @@ Do not repeat the mixed-schools question. Retain source document identifiers, ex
 
 **Remaining:** the existing 3.0 Studio IDE must be connected to the new project/submission APIs; the existing Review & Grade and Gradebook interfaces must use the V4 backend; V2 GitHub evidence and attribution reclaim need a tenant-preserving migration; nested production ledger must be generated/reconciled; no Firestore copy or role grant has been executed. Do not present the new callables as deployed features.
 
+## Role, navigation and People & Access integration — October 31, 2026
+
+- `tenantSchools` now returns independently verified `platformAdmin` authority from `platform_admins/{uid}`; platform ownership is no longer inferred from an email, school role or browser state.
+- Auth/session routing recognizes a distinct platform-owner presentation role. A platform-owner-only account lands in the institution registry instead of the teacher workspace; legacy 3.0 administrators remain a separate compatibility role during migration.
+- The shared navigation exposes Institution Registry only when server-backed platform authority is present. School-admin and teacher workspace access still depends on their school roles.
+- A shared account school context is mounted after verified admission. It is hidden for zero/one-school accounts and becomes selectable only for users with multiple active schools. Editor/review pages that already own a scoped school picker show the current school read-only in the account menu to avoid switching underneath unsaved work.
+- People & Access now includes school-scoped person name search, type/status filters, rename, archive and restore controls. Person lifecycle remains separate from Firebase identity, school membership, student enrollment and teacher assignment.
+- Platform-owner recovery now supports audited school-admin suspension/restoration. The platform service refuses to suspend the last active school administrator for an institution.
+
 ## Delivery and remaining work
 
 | Track | Actual implementation in PR #113 | Remaining before Adminerva 4.0 |
