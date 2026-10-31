@@ -67,9 +67,10 @@ function createSchoolGradebookService({db}){
   const taskRef=db.doc(prefix+"assessments/"+taskId);
   const gradeRef=grades.doc(hash(taskId,studentUid));
   const task=await taskRef.get();
-  if(!task.exists||task.data().schoolId!==ctx.schoolId||task.data().ownerUid!==ctx.uid||
+  if(!task.exists||task.data().schoolId!==ctx.schoolId||
+     (task.data().reviewerUid||task.data().ownerUid)!==ctx.uid||
      !["studio","github"].includes(task.data().submissionSource))
-   deny("permission-denied","You cannot grade an assessment you do not own in this school.");
+   deny("permission-denied","You are not the currently responsible teacher for this school assessment.");
   const source=task.data().submissionSource;
   const submissionRef=db.doc(prefix+
     (source==="studio"?"studio_submissions/":"github_evidence/")+
@@ -97,7 +98,8 @@ function createSchoolGradebookService({db}){
       !grant.exists||grant.data().status!=="active"||
       grant.data().teacherUid!==ctx.uid||grant.data().schoolId!==ctx.schoolId||
       grant.data().offeringId!==offeringId||!currentTask.exists||
-      currentTask.data().schoolId!==ctx.schoolId||currentTask.data().ownerUid!==ctx.uid||
+      currentTask.data().schoolId!==ctx.schoolId||
+      (currentTask.data().reviewerUid||currentTask.data().ownerUid)!==ctx.uid||
       !submission.exists||submission.data().schoolId!==ctx.schoolId||
       submission.data().taskId!==taskId||submission.data().studentUid!==studentUid||
       submission.data().offeringId!==offeringId)
