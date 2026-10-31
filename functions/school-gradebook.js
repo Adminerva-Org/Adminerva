@@ -54,7 +54,9 @@ function createSchoolGradebookService({db}){
      .map(doc=>({gradeId:doc.id,taskId:doc.data().taskId,
       total:doc.data().total,awarded:doc.data().awarded,
       criteria:doc.data().criteria,feedback:doc.data().feedback,
-      publishedAt:doc.data().publishedAt?.toMillis?.()||null}))};
+      revision:doc.data().revision,
+      publishedAt:doc.data().publishedAt?.toMillis?.()||null,
+      lastCorrectedAt:doc.data().lastCorrectedAt?.toMillis?.()||null}))};
   }
   if(!ctx.roles.includes("teacher"))deny("permission-denied","Gradebook teacher access is required.");
   const taskId=checkId(input.taskId,"Task ID",128),
@@ -99,7 +101,9 @@ function createSchoolGradebookService({db}){
       status:grade.data().status,criteria:grade.data().criteria,
       awarded:grade.data().awarded,total:grade.data().total,
       pending:grade.data().pending,feedback:grade.data().feedback,
-      version:grade.data().submissionVersion,revision:grade.data().revision
+      version:grade.data().submissionVersion,revision:grade.data().revision,
+      publishedAt:grade.data().publishedAt?.toMillis?.()||null,
+      lastCorrectedAt:grade.data().lastCorrectedAt?.toMillis?.()||null
     }:null};
   }
   if(input.action==="save_draft"){
@@ -141,6 +145,51 @@ function createSchoolGradebookService({db}){
      action:"grade_draft_saved",revision,createdAt:now});
    });
    return {taskId,studentUid,status:"draft"};
+  }
+  if(input.action==="correct_published"){
+   const expectedRevision=input.expectedRevision;
+   if(!Number.isInteger(expectedRevision)||expectedRevision<1)
+    deny("invalid-argument","The currently published grade revision is required.");
+   const reason=String(input.reason||"").trim();
+   if(reason.length<12||reason.length>2000)
+    deny("invalid-argument","Explain the published-grade correction in 12–2000 characters.");
+   const feedback=String(input.feedback||"").trim();
+   if(feedback.length>5000)deny("invalid-argument","Teacher feedback is too long.");
+   const auditRef=db.collection(prefix+"grade_audit").doc();
+   let result;
+   await db.runTransaction(async tx=>{
+    const {task,submission}=await authorize(tx);
+    const grade=await tx.get(gradeRef);
+    if(!grade.exists||grade.data().status!=="published")
+     deny("failed-precondition","Only a published grade may use the correction workflow.");
+    const previous=grade.data();
+    if(previous.revision!==expectedRevision)
+     deny("failed-precondition","This published grade changed. Reload it before recording a correction.");
+    if(previous.submissionVersion!==submission.currentVersion||
+       previous.submissionDigest!==submission.contentDigest||
+       submission.status!=="reviewed")
+     deny("failed-precondition","The published grade is no longer bound to the current reviewed submission.");
+    const snapshot=await tx.get(submissionRef.collection("versions").doc(String(previous.submissionVersion)));
+    if(!snapshot.exists||snapshot.data().contentDigest!==submission.contentDigest||
+       snapshot.data().contentDigest!==digestProject(snapshot.data().files,snapshot.data().artifacts||{}))
+     deny("failed-precondition","The frozen student submission could not be verified.");
+    const scores=validateScores(input.criteria,task.rubric);
+    if(scores.pending>0)
+     deny("failed-precondition","Published-grade corrections cannot leave pending rubric points.");
+    const now=FieldValue.serverTimestamp(),revision=previous.revision+1;
+    const corrected={criteria:scores.criteria,awarded:scores.awarded,pending:0,total:scores.total,
+      feedback,revision,updatedAt:now,lastCorrectedAt:now,lastCorrectedByUid:ctx.uid};
+    tx.update(gradeRef,corrected);
+    tx.create(gradeRef.collection("revisions").doc(String(revision)),{
+      ...previous,...corrected,status:"published",action:"grade_corrected",
+      correctionReason:reason,previousRevision:expectedRevision,createdAt:now
+    });
+    tx.create(auditRef,{schoolId:ctx.schoolId,taskId,studentUid,actorUid:ctx.uid,
+      action:"grade_corrected",reason,previousRevision:expectedRevision,revision,createdAt:now});
+    result={taskId,studentUid,status:"published",revision,
+      awarded:scores.awarded,total:scores.total,corrected:true};
+   });
+   return result;
   }
   if(input.action==="publish"){
    const auditRef=db.collection(prefix+"grade_audit").doc();
