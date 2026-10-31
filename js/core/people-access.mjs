@@ -385,11 +385,11 @@ async function submitAcademic(form,action,fields,message){
   const button=form.querySelector('button[type="submit"]');
   button.disabled=true;say("Saving academic records for your school…");
   try{
-    await performAcademic(action,fields);
+    const result=await performAcademic(action,fields);
     say(message);
     form.reset();
     await loadAcademics();
-    return true;
+    return result||true;
   }catch(error){say(error?.message||"Academic operation was not saved.");return false;}
   finally{pendingWrite=false;button.disabled=false;}
 }
@@ -417,6 +417,26 @@ get("pa-assignment-form").addEventListener("submit",event=>{
   void submitAcademic(form,"assign_teacher",{
     teacherUid:String(d.get("teacherUid")||""),offeringId:String(d.get("offeringId")||"")
   },"Teaching assignment created. Private teacher resources remain private.");
+});
+get("pa-handover-form").addEventListener("submit",event=>{
+  event.preventDefault();const form=event.currentTarget,d=new FormData(form),
+    offeringId=String(d.get("offeringId")||""),
+    fromTeacherUid=String(d.get("fromTeacherUid")||""),
+    toTeacherUid=String(d.get("toTeacherUid")||""),
+    reason=String(d.get("reason")||"").trim();
+  if(fromTeacherUid===toTeacherUid){say("Choose a different replacement teacher.");return;}
+  if(!confirm("Transfer this class to the replacement teacher? The current assignment will end and existing deployed assessment review responsibility will move. Private teacher resources will NOT transfer."))return;
+  void submitAcademic(form,"handover_offering",{
+    offeringId,fromTeacherUid,toTeacherUid,reason
+  },"Teacher handover completed. Private teacher resources kept their original ownership.")
+    .then(result=>{
+      if(!result)return;
+      say("Teacher handover completed · "+Number(result.assessmentCount||0)+
+        " deployed assessment review responsibilit"+(Number(result.assessmentCount||0)===1?"y":"ies")+
+        " transferred. Private resources were not transferred.");
+      if(currentRosterOfferingId===offeringId)
+        void loadClassRoster(offeringId).catch(error=>say(error.message||"Refresh class roster."));
+    });
 });
 function lifecycleButton(label,action,details,targetName){
   const button=document.createElement("button");button.type="button";button.className="pa-action";
