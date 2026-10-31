@@ -86,6 +86,17 @@ function createPeopleDirectoryService({db}) {
       });
       return {targetUid,status:"suspended"};
     }
+    if(input.action==="list_invitable_people") {
+      const role=input.role;
+      if(!["student","teacher"].includes(role))invalid("Choose a student or teacher invitation.");
+      const kind=role==="student"?"student":"staff";
+      const snap=await base.where("kind","==",kind).limit(201).get();
+      if(snap.size===201)
+        throw new TenantAccessError("resource-exhausted","The invitation picker requires paginated directory search.");
+      return {people:snap.docs.filter(person=>person.data().schoolId===ctx.schoolId&&
+          person.data().status==="active"&&!person.data().authUid)
+        .map(person=>({personId:person.id,displayName:person.data().displayName,kind}))};
+    }
     if(input.action==="create_person") {
       const person=input.person||{};
       const displayName=field(person.displayName,140,"Person name");
@@ -108,7 +119,7 @@ function createPeopleDirectoryService({db}) {
       const email=field(input.email,254,"Email").toLowerCase();
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))invalid("Enter a valid invitation email.");
       if(!["student","teacher"].includes(input.role))invalid("Choose a student or teacher invitation.");
-      const linkedPersonId=input.personId?id(input.personId):null;
+      const linkedPersonId=id(input.personId);
       const invitationId=createHash("sha256").update(input.role+"\0"+email).digest("hex").slice(0,48);
       const ref=db.collection("schools/"+ctx.schoolId+"/invitations").doc(invitationId);
       const audit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
@@ -116,9 +127,14 @@ function createPeopleDirectoryService({db}) {
       await db.runTransaction(async tx=>{
         await requireCurrentAdmin(tx);
         const existing=await tx.get(ref);
-        const person=personRef?await tx.get(personRef):null;
-        if(personRef&&(!person.exists||person.data().schoolId!==ctx.schoolId))
-          throw new TenantAccessError("failed-precondition","The person is not in this school directory.");
+        const person=await tx.get(personRef);
+        if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().status!=="active")
+          throw new TenantAccessError("failed-precondition","Choose an active person in this school directory.");
+        const expectedKind=input.role==="student"?"student":"staff";
+        if(person.data().kind!==expectedKind)
+          throw new TenantAccessError("failed-precondition","The selected person record does not match the invitation role.");
+        if(person.data().authUid)
+          throw new TenantAccessError("failed-precondition","This person already has a linked account. Use role or access recovery instead of another invitation.");
         if(existing.exists) {
           const prior=existing.data();
           if(prior.status==="pending"&&prior.email===email&&prior.requestedRole===input.role){
