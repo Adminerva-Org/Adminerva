@@ -485,6 +485,55 @@ get("pa-person-dialog-form").addEventListener("submit",event=>{
   });
 });
 
+function detailRow(label,value){
+  const row=document.createElement("p");row.className="pa-muted";
+  const strong=document.createElement("strong");strong.textContent=label+": ";
+  row.append(strong,document.createTextNode(value||"—"));return row;
+}
+function renderDetailList(host,items,formatter,emptyText){
+  host.replaceChildren();
+  if(!items?.length){host.append(detailRow("Status",emptyText));return;}
+  for(const item of items){
+    const row=document.createElement("div");row.className="pa-row";
+    row.append(formatter(item));host.append(row);
+  }
+}
+async function openPersonDetail(person){
+  const dialog=get("pa-person-detail-dialog");
+  get("pa-person-detail-title").textContent=person.displayName;
+  get("pa-person-detail-meta").textContent="Loading school-scoped identity and academic context…";
+  get("pa-person-detail-access").textContent="—";
+  get("pa-person-detail-relationships").textContent="—";
+  for(const id of ["pa-person-detail-invites","pa-person-detail-links","pa-person-detail-audit"])get(id).replaceChildren();
+  dialog.showModal();
+  try{
+    const result=await perform("get_person",{personId:person.personId});
+    if(!dialog.open)return;
+    const p=result.person;
+    get("pa-person-detail-title").textContent=p.displayName;
+    get("pa-person-detail-meta").textContent=p.kind+" · "+p.status+" · directory revision "+p.revision+
+      (p.accountLinked?" · verified account linked":" · no account linked");
+    get("pa-person-detail-access").textContent=result.membership?
+      result.membership.status+" · "+result.membership.roles.join(", "):"No school membership";
+    get("pa-person-detail-relationships").textContent=String(result.relationships?.length||0);
+    renderDetailList(get("pa-person-detail-invites"),result.invitations,item=>
+      detailRow(item.requestedRole||"Invitation",(item.status||"unknown")+
+        (item.expiresAt?" · expires "+new Date(item.expiresAt).toLocaleString():"")),
+      "No invitation records");
+    renderDetailList(get("pa-person-detail-links"),result.relationships,item=>
+      detailRow(item.kind==="enrollment"?"Enrollment":"Teaching assignment",
+        item.offeringId+" · "+item.status+" · revision "+item.revision),
+      "No enrollment or teaching assignment records");
+    renderDetailList(get("pa-person-detail-audit"),result.audit,item=>
+      detailRow(item.action,(item.reason?item.reason+" · ":"")+
+        (item.createdAt?new Date(item.createdAt).toLocaleString():"time unavailable")),
+      "No recent person audit entries");
+  }catch(error){
+    get("pa-person-detail-meta").textContent=error?.message||"Person details are unavailable.";
+  }
+}
+get("pa-person-detail-close").addEventListener("click",()=>get("pa-person-detail-dialog").close());
+
 function directoryFilters(){
   const values=new FormData(get("pa-person-search"));
   return {
@@ -513,6 +562,9 @@ async function loadPeople(append) {
       meta.textContent=person.kind+" · "+person.status+" · "+(person.accountLinked?"Account linked":"Account not linked");
       identity.append(name,meta);row.append(identity);
       const actions=document.createElement("div");actions.style.cssText="display:flex;gap:.4rem;flex-wrap:wrap";
+      const view=document.createElement("button");view.type="button";view.className="pa-action";view.style.background="#0f766e";view.textContent="View details";
+      view.addEventListener("click",()=>void openPersonDetail(person));
+      actions.append(view);
       const edit=document.createElement("button");edit.type="button";edit.className="pa-action";edit.textContent="Edit";
       edit.addEventListener("click",()=>openPersonDialog(person,"edit"));
       actions.append(edit);
