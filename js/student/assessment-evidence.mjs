@@ -135,24 +135,32 @@ function render(){
     const sha=String(commit.sha||"").toLowerCase();
     if(!validSha(sha))continue;
     const author=detectedAuthor(commit);
-    const row=add(list,"div","","rounded-xl border border-slate-200 p-3 hover:border-indigo-300 transition");
-    const top=add(row,"div","","flex flex-wrap items-center gap-3");
-    const includeLabel=add(top,"label","","inline-flex items-center gap-1 text-xs text-slate-700 font-semibold cursor-pointer");
-    const check=document.createElement("input");check.type="checkbox";check.checked=selected.has(sha);
-    check.disabled=!editable||evidenceBusy;check.setAttribute("aria-label","Include commit "+sha.slice(0,12)+" as evidence");
-    check.addEventListener("change",()=>{selectionDirty=true;if(check.checked)selected.add(sha);else selected.delete(sha);render();});includeLabel.append(check);
-    add(includeLabel,"span","Include commit");
-    const checkpointLabel=add(top,"label","","inline-flex items-center gap-1 text-xs text-indigo-800 font-semibold cursor-pointer");
-    const radio=document.createElement("input");radio.type="radio";radio.name="assessmentCheckpoint";
-    radio.checked=checkpoint===sha;radio.disabled=!editable||evidenceBusy;
-    radio.setAttribute("aria-label","Set commit "+sha.slice(0,12)+" as project checkpoint");
-    radio.addEventListener("change",()=>{selectionDirty=true;checkpoint=sha;render();});
-    checkpointLabel.append(radio);
-    add(checkpointLabel,"span","Use as project checkpoint");
-    add(top,"span",sha.slice(0,12),"font-mono text-xs text-indigo-800");
-    if(commit.unavailable)add(row,"p","Saved commit unavailable from GitHub. You can remove it, or ask your teacher to inspect the repository.","text-xs text-amber-800");
-    add(top,"strong",String(commit.commit?.message||"No message").split("\n")[0].slice(0,170),
+    const evidenceSelected=selected.has(sha),checkpointSelected=checkpoint===sha;
+    const row=add(list,"div","",
+      "rounded-xl border p-3 transition "+(evidenceSelected||checkpointSelected
+        ?"border-indigo-300 bg-indigo-50/40":"border-slate-200 hover:border-indigo-300"));
+    const top=add(row,"div","","flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3");
+    const summary=add(top,"div","","min-w-0 flex-1");
+    const heading=add(summary,"div","","flex flex-wrap items-center gap-2");
+    add(heading,"span",sha.slice(0,12),"font-mono text-xs text-indigo-800");
+    add(heading,"strong",String(commit.commit?.message||"No message").split("\n")[0].slice(0,170),
       "text-xs break-words");
+    const actions=add(top,"div","","flex flex-wrap gap-2 sm:justify-end sm:shrink-0");
+    const include=add(actions,"button",evidenceSelected?"✓ Evidence selected":"Select as evidence",
+      "min-h-10 rounded-lg border px-3 py-2 text-xs font-bold transition "+
+      (evidenceSelected?"border-indigo-600 bg-indigo-600 text-white":"border-slate-300 bg-white text-slate-800 hover:border-indigo-400 hover:bg-indigo-50"));
+    include.type="button";include.disabled=!editable||evidenceBusy;
+    include.setAttribute("aria-pressed",String(evidenceSelected));
+    include.setAttribute("aria-label",(evidenceSelected?"Remove ":"Select ")+sha.slice(0,12)+(evidenceSelected?" from":" as")+" evidence");
+    include.addEventListener("click",()=>{selectionDirty=true;if(selected.has(sha))selected.delete(sha);else selected.add(sha);render();});
+    const checkpointButton=add(actions,"button",checkpointSelected?"✓ Project checkpoint":"Use as checkpoint",
+      "min-h-10 rounded-lg border px-3 py-2 text-xs font-bold transition "+
+      (checkpointSelected?"border-emerald-700 bg-emerald-700 text-white":"border-emerald-300 bg-white text-emerald-900 hover:bg-emerald-50"));
+    checkpointButton.type="button";checkpointButton.disabled=!editable||evidenceBusy;
+    checkpointButton.setAttribute("aria-pressed",String(checkpointSelected));
+    checkpointButton.setAttribute("aria-label","Set commit "+sha.slice(0,12)+" as project checkpoint");
+    checkpointButton.addEventListener("click",()=>{selectionDirty=true;checkpoint=sha;render();});
+    if(commit.unavailable)add(row,"p","Saved commit unavailable from GitHub. You can remove it, or ask your teacher to inspect the repository.","text-xs text-amber-800");
     add(row,"p",author.name+" · "+(author.login?"@"+author.login:"Git login unavailable")+
       " · "+(author.date?new Date(author.date).toLocaleString():"Unknown date"),
       "text-xs text-slate-600 mt-1 break-words");
