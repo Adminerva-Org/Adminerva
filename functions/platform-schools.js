@@ -6,6 +6,7 @@
 const {getAuth}=require("firebase-admin/auth");
 const {FieldValue}=require("firebase-admin/firestore");
 const {TenantAccessError,checkedSchoolId,verifiedUid}=require("./tenant-access.js");
+const {evaluateSchoolCutoverReadiness}=require("./school-cutover-readiness.js");
 function fail(code,message){throw new TenantAccessError(code,message)}
 function phrase(value,min,max,label){
   if(typeof value!=="string"||value.trim().length<min||value.trim().length>max)
@@ -29,7 +30,8 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       const snap=await db.collection("platform_schools").orderBy("displayName").limit(100).get();
       return {schools:snap.docs.map(doc=>({
         schoolId:doc.id,displayName:doc.data().displayName,state:doc.data().state,
-        dataLocation:doc.data().dataLocation,revision:doc.data().revision
+        dataLocation:doc.data().dataLocation,revision:doc.data().revision,
+        compatibilityMode:doc.data().compatibilityMode||"legacy_allowed"
       }))};
     }
     const schoolId=checkedSchoolId(input.schoolId),schoolRef=db.doc("platform_schools/"+schoolId);
@@ -39,7 +41,7 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       await db.runTransaction(async tx=>{
         if((await tx.get(schoolRef)).exists)fail("already-exists","The school already exists.");
         tx.create(schoolRef,{
-          displayName,state:"draft",revision:1,
+          displayName,state:"draft",revision:1,compatibilityMode:"v4_only",
           dataLocation:{type:"shared_firestore_namespace",database:"(default)",path:"schools/"+schoolId},
           firstAdminUid:null,aiEnabled:false,storageEnabled:false,
           readiness:{},createdByUid:uid,createdAt:FieldValue.serverTimestamp(),
@@ -140,6 +142,48 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       });
       return {schoolId,state:"active"};
     }
+
+    if(action==="set_compatibility_mode"){
+      const mode=input.mode;
+      if(!["legacy_allowed","v4_only"].includes(mode))
+        fail("invalid-argument","Choose a supported school compatibility mode.");
+      const reason=phrase(input.reason,12,500,"Compatibility-mode reason");
+      if(mode==="v4_only"){
+        const readiness=await evaluateSchoolCutoverReadiness({db,schoolId});
+        if(!readiness.ready)
+          fail("failed-precondition","Resolve the school cutover readiness blockers before retiring legacy compatibility.");
+        const attestation=input.attestation||{};
+        for(const key of ["continuityBackupCaptured","migrationReconciled","rollbackReviewed","v4RoutesValidated"])
+          if(attestation[key]!==true)
+            fail("failed-precondition","Continuity backup, migration reconciliation, rollback and V4 route validation must all be confirmed.");
+      }
+      await db.runTransaction(async tx=>{
+        const school=await tx.get(schoolRef);
+        if(!school.exists||!["active","suspended"].includes(school.data().state))
+          fail("failed-precondition","Compatibility mode can be changed only for an active or suspended school.");
+        const before=school.data().compatibilityMode||"legacy_allowed";
+        if(before===mode)return;
+        const now=FieldValue.serverTimestamp();
+        tx.update(schoolRef,{
+          compatibilityMode:mode,revision:(school.data().revision||0)+1,updatedAt:now,
+          ...(mode==="v4_only"?{
+            cutoverAt:now,cutoverByUid:uid,cutoverReason:reason,
+            cutoverAttestations:{
+              continuityBackupCaptured:true,migrationReconciled:true,
+              rollbackReviewed:true,v4RoutesValidated:true
+            }
+          }:{
+            compatibilityRollbackAt:now,compatibilityRollbackByUid:uid,
+            compatibilityRollbackReason:reason
+          })
+        });
+        tx.create(auditRef,{schoolId,actorUid:uid,
+          action:mode==="v4_only"?"school_v4_cutover_enabled":"school_legacy_compatibility_restored",
+          beforeCompatibilityMode:before,afterCompatibilityMode:mode,reason,createdAt:now});
+      });
+      return {schoolId,compatibilityMode:mode};
+    }
+
     if(action==="suspend") {
       const reason=phrase(input.reason,12,500,"Suspension reason");
       await db.runTransaction(async tx=>{
