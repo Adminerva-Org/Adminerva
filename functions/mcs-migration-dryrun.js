@@ -7,7 +7,7 @@
 const {initializeApp,getApps,applicationDefault}=require("firebase-admin/app");
 const {getFirestore,FieldPath}=require("firebase-admin/firestore");
 const {writeFileSync}=require("node:fs");
-const {candidateEntry,classification}=require("./mcs-migration-ledger.js");
+const {candidateEntry,classification,mapPath}=require("./mcs-migration-ledger.js");
 const DEFAULT_LIMIT=20000,MAX_DEPTH=12;
 function safeTime(timestamp){
  if(!timestamp)return null;
@@ -23,8 +23,8 @@ async function dryRunLedger(db,{schoolId="mcs-manila",limit=DEFAULT_LIMIT,includ
   schema:"adminerva-v4-mcs-dryrun-v1",schoolId,readOnly:true,source:"live firestore read-only",
   ownerStatement:"Owner confirms legacy records belong to Manila Cathedral School; no other school's data mixed in (2026-10-31).",
   status:"needs_operational_review",generatedAt:new Date().toISOString(),
-  authorizedToWrite:false,entries:[],summary:{total:0,eligible_for_approved_copy:0,
-   identical_destination:0,destination_conflict:0,school_conflict:0,manual_review:0},
+  authorizedToWrite:false,entries:[],summary:{total:0,eligible_for_approved_mirror:0,
+   identical_legacy_mirror:0,legacy_mirror_conflict:0,school_conflict:0,manual_review:0},
   groups:{},unknownRoots:[],warnings:[],truncated:false
  };
  const excluded=new Set(["platform_schools","platform_users","platform_admins","platform_audit","provisioning_jobs","migration_runs","system_health","schools"]);
@@ -49,8 +49,8 @@ async function dryRunLedger(db,{schoolId="mcs-manila",limit=DEFAULT_LIMIT,includ
      const sourcePath=doc.ref.path;
      let destination=null;
      if(kind==="school_candidate"&&includeExistingTargets) {
-      const targetRef=db.doc("schools/"+schoolId+"/"+sourcePath);
-      const existing=await targetRef.get();
+      const targetPath=mapPath(sourcePath,schoolId).targetPath;
+      const existing=await db.doc(targetPath).get();
       destination={exists:existing.exists,data:existing.exists?existing.data():null};
      }
      const entry=candidateEntry({sourcePath,data:record,
@@ -76,15 +76,16 @@ async function dryRunLedger(db,{schoolId="mcs-manila",limit=DEFAULT_LIMIT,includ
   if(report.truncated)break;
  }
  if(report.unknownRoots.length)report.warnings.push("Unclassified roots require separate review before any cutover.");
- if(report.summary.school_conflict||report.summary.destination_conflict)
-  report.warnings.push("Conflicting school tags or existing destination checksums prohibit automatic copying.");
+ if(report.summary.school_conflict||report.summary.legacy_mirror_conflict)
+  report.warnings.push("Conflicting school tags or existing legacy-mirror checksums prohibit automatic mirroring.");
  if(report.summary.manual_review)
   report.warnings.push("Platform, identity and secret records require explicit mapping and never an automatic record copy.");
  if(report.truncated)
   report.warnings.push("Inventory document limit/depth reached. This ledger is incomplete; do not migrate.");
  report.warnings.push("Missing ancestor documents with nested children may be invisible to collection queries; reconcile collection group exports and backup before migration.");
  report.warnings.push("This inventory does not include Cloud Storage blobs, browser-local drafts or third-party repository data.");
- report.warnings.push("Even eligible rows need approved teacher ownership, enrollment mapping, backup and side-effect-safe copy before any write.");
+ report.warnings.push("Raw V3 records target only the school legacy mirror; they never become canonical V4 assessments, grades, people or submissions by copying.");
+ report.warnings.push("Even mirror-eligible rows need backup, approval and checksum reconciliation; canonical V4 records require separate typed transforms and ownership/enrollment mapping.");
  report.requiresReview=true;
  return report;
 }
