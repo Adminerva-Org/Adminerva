@@ -3,9 +3,9 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=4.0.1";
+import {createProjectStudio} from "./project-studio.mjs?v=4.0.2";
+import {currentV4StudioSchool} from "./v4-studio-service.mjs?v=4.0.1";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
-import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.0.0";
 import {
   collection,
   addDoc,
@@ -224,6 +224,16 @@ async function initializePlayground() {
       await loadSnapshot(snapshotId);
     } else {
       const uid=ownerUid();
+      let studioSchool=null;
+      try{studioSchool=await currentV4StudioSchool();}catch{}
+      const v4OnlyStudent=document.getElementById("adminerva-nav")?.dataset.v4OnlyStudent==="true";
+      if(v4OnlyStudent&&!studioSchool){
+        document.getElementById("projectHome")?.classList.remove("hidden");
+        document.getElementById("studioShell")?.classList.add("hidden");
+        const list=document.getElementById("codeProjectList");
+        if(list)list.innerHTML='<div class="studio-empty-card"><strong>Choose a verified school</strong><p>Select your active school above before opening or creating an Adminerva Studio project.</p></div>';
+        return;
+      }
       const legacyAvailable=PLAYGROUND_LANGUAGES.some(lang=>Boolean(readPlaygroundDraft(localStorage,uid,lang)));
       projectStudio=createProjectStudio({
         uid,
@@ -233,7 +243,8 @@ async function initializePlayground() {
         legacyDraftAvailable:legacyAvailable,
         importLegacyDraft:importLegacyDraftAsProject,
         cloudEnabled:!guestMode,
-        guest:guestMode
+        guest:guestMode,
+        projectScope:studioSchool?.compatibilityMode==="v4_only"?"school_"+studioSchool.schoolId:""
       });
       const requestedProject=urlParams.get("codeProject");
       if(requestedProject)await projectStudio.openProjectById(requestedProject);
@@ -281,12 +292,15 @@ function importLegacyDraftAsProject(){
   if((state.fileOrder||[]).length>limits.maxFiles)return alert("This older draft has more files than this project tier allows.");
   if(new TextEncoder().encode(JSON.stringify(state)).length>limits.maxProjectBytes)return alert("This older draft is larger than this project tier allows. Export it as a ZIP from the legacy workspace first.");
   const templateByLang={java:"java-blank",python:"python-console",web:"web"};
-  const project=createCodeProject(localStorage,uid,{title:"Imported "+chosen.toUpperCase()+" Project",templateId:templateByLang[chosen]||"java-blank",
-    config:{runMode:chosen==="web"?"web":"console",database:false}});
-  project.lang=chosen;project.state={lang:chosen,files:state.files,fileOrder:state.fileOrder,activeFilename:state.activeFilename,
-    folders:state.folders||[],projectOrder:state.projectOrder||state.fileOrder};
-  saveCodeProject(localStorage,uid,project);
-  projectStudio?.activateProject(project);
+  try{
+    projectStudio?.importLegacyState({
+      title:"Imported "+chosen.toUpperCase()+" Project",
+      templateId:templateByLang[chosen]||"java-blank",
+      config:{runMode:chosen==="web"?"web":"console",database:false},
+      state:{lang:chosen,files:state.files,fileOrder:state.fileOrder,activeFilename:state.activeFilename,
+        folders:state.folders||[],projectOrder:state.projectOrder||state.fileOrder}
+    });
+  }catch(error){alert("Older draft could not be imported: "+(error?.message||error));}
 }
 
 function createWorkspace(lang, initialFiles, initialOrder, initialActive,initialFolders=[],initialProjectOrder=[]) {
