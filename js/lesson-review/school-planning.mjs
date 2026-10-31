@@ -69,7 +69,14 @@ async function scoped(action,details={}){
 export async function listSchoolPlanning(kind){
   return (await scoped("list",{kind})).resources||[];
 }
-export async function getSchoolPlanning(resourceId){return scoped("get",{resourceId});}
+export async function getSchoolPlanning(resourceId){
+  const result=await scoped("get",{resourceId});
+  if(result?.canEdit&&result.clientKey&&auth.currentUser){
+    const school=await activePlanningSchool();
+    setRevision(auth.currentUser.uid,school.schoolId,result.kind,result.clientKey,result.revision);
+  }
+  return result;
+}
 export async function saveSchoolPlanning({kind,clientKey,title,content}){
   const school=await activePlanningSchool(),user=auth.currentUser;
   let expectedRevision=getRevision(user.uid,school.schoolId,kind,clientKey);
@@ -104,12 +111,12 @@ export async function shareSchoolPlanning(resource,visibility,teacherUids=[]){
 export async function copySchoolPlanning(resourceId){return scoped("copy",{resourceId});}
 export async function schoolPlanningHistory(resourceId){return scoped("history",{resourceId});}
 
-export function mountSchoolPlanningLibraryButton({kind,anchor,label="School copies"}){
+export function mountSchoolPlanningLibraryButton({kind,anchor,label="School copies",onOpen=null}){
   if(!anchor)return null;
   const button=document.createElement("button");
   button.type="button";button.textContent=label;
   button.className=anchor.className;button.removeAttribute("onclick");
-  button.addEventListener("click",()=>void openLibrary(kind));
+  button.addEventListener("click",()=>void openLibrary(kind,onOpen));
   anchor.after(button);return button;
 }
 
@@ -169,7 +176,7 @@ async function openShareDialog(resource,onSaved){
   })();};
   dialog.showModal();
 }
-async function openLibrary(kind){
+async function openLibrary(kind,onOpen=null){
   let dialog=document.getElementById("v4PlanningLibraryDialog");
   if(!dialog){
     dialog=document.createElement("dialog");dialog.id="v4PlanningLibraryDialog";
@@ -195,8 +202,20 @@ async function openLibrary(kind){
       meta.textContent=(item.canEdit?"Owned by you":"Shared with you")+" · "+item.visibility+" · revision "+item.revision;
       info.append(title,meta);const actions=document.createElement("div");actions.className="flex gap-2 flex-wrap";
       if(item.canEdit){
+        if(typeof onOpen==="function"){
+          const open=document.createElement("button");open.type="button";open.className="rounded-lg bg-indigo-700 text-white px-3 py-2 text-sm font-bold";open.textContent="Open";
+          open.addEventListener("click",()=>void (async()=>{
+            open.disabled=true;
+            try{
+              const full=await getSchoolPlanning(item.resourceId);
+              await onOpen(full);dialog.close();
+            }catch(error){status.textContent=error?.message||"School resource could not be opened.";}
+            finally{open.disabled=false;}
+          })());
+          actions.append(open);
+        }
         const share=document.createElement("button");share.type="button";share.className="rounded-lg border border-indigo-300 text-indigo-800 px-3 py-2 text-sm font-bold";share.textContent="Share";
-        share.addEventListener("click",()=>void openShareDialog(item,async()=>{dialog.close();await openLibrary(kind);}));
+        share.addEventListener("click",()=>void openShareDialog(item,async()=>{dialog.close();await openLibrary(kind,onOpen);}));
         actions.append(share);
         const archive=document.createElement("button");archive.type="button";archive.className="rounded-lg border px-3 py-2 text-sm font-bold";archive.textContent="Archive";
         archive.addEventListener("click",()=>void (async()=>{
@@ -210,7 +229,7 @@ async function openLibrary(kind){
         const copy=document.createElement("button");copy.type="button";copy.className="rounded-lg bg-indigo-700 text-white px-3 py-2 text-sm font-bold";copy.textContent="Make private copy";
         copy.addEventListener("click",()=>void (async()=>{
           copy.disabled=true;
-          try{await copySchoolPlanning(item.resourceId);status.textContent="Independent private school copy created.";dialog.close();await openLibrary(kind);}
+          try{await copySchoolPlanning(item.resourceId);status.textContent="Independent private school copy created.";dialog.close();await openLibrary(kind,onOpen);}
           catch(error){status.textContent=error?.message||"Copy failed.";}finally{copy.disabled=false;}
         })());
         actions.append(copy);
