@@ -16,6 +16,16 @@ function createPeopleDirectoryService({db}) {
     const input=request.data||{};
     const ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["school_admin"]});
     const base=db.collection("schools/"+ctx.schoolId+"/people");
+    const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
+    const adminRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+ctx.uid);
+    async function requireCurrentAdmin(tx) {
+      const school=await tx.get(schoolRef),member=await tx.get(adminRef);
+      if(!school.exists||school.data().state!=="active"||!member.exists||
+         member.data().status!=="active"||member.data().schoolId!==ctx.schoolId||
+         !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
+        throw new TenantAccessError("permission-denied","School administration access has changed.");
+    }
+
     if(input.action==="overview") {
       const scopes=["people","enrollments","staff_assignments","invitations"];
       const counts=await Promise.all(scopes.map(name=>db.collection("schools/"+ctx.schoolId+"/"+name).count().get()));
@@ -45,15 +55,16 @@ function createPeopleDirectoryService({db}) {
       if(!["student","staff"].includes(person.kind))invalid("Choose student or staff.");
       const ref=base.doc(),audit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
       const now=FieldValue.serverTimestamp();
-      const batch=db.batch();
-      batch.create(ref,{
-        schoolId:ctx.schoolId,displayName,searchKey:displayName.toLocaleLowerCase("en")+"#"+ref.id,
-        kind:person.kind,status:"active",authUid:null,createdByUid:ctx.uid,
-        createdAt:now,updatedAt:now,revision:1
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        tx.create(ref,{
+          schoolId:ctx.schoolId,displayName,searchKey:displayName.toLocaleLowerCase("en")+"#"+ref.id,
+          kind:person.kind,status:"active",authUid:null,createdByUid:ctx.uid,
+          createdAt:now,updatedAt:now,revision:1
+        });
+        tx.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId:ref.id,
+          action:"create_person",createdAt:now});
       });
-      batch.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId:ref.id,
-        action:"create_person",createdAt:now});
-      await batch.commit();
       return {personId:ref.id,accountLinked:false};
     }
     if(input.action==="invite") {
@@ -66,6 +77,7 @@ function createPeopleDirectoryService({db}) {
       const audit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
       const personRef=linkedPersonId?base.doc(linkedPersonId):null;
       await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
         const existing=await tx.get(ref);
         const person=personRef?await tx.get(personRef):null;
         if(personRef&&(!person.exists||person.data().schoolId!==ctx.schoolId))
