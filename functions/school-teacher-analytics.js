@@ -117,9 +117,10 @@ function createSchoolTeacherAnalyticsService({db}){
    const tasks=assessmentSnap.docs.filter(doc=>{
     const data=doc.data();
     return data.schoolId===ctx.schoolId&&data.status==="deployed"&&
-      (isAdmin||data.ownerUid===ctx.uid);
+      (isAdmin||(data.reviewerUid||data.ownerUid)===ctx.uid);
    }).map(doc=>({taskId:doc.id,title:String(doc.data().title||"Assessment").slice(0,180),
-     ownerUid:doc.data().ownerUid,rubricMax:Number(doc.data().rubricMax)||0,
+     ownerUid:doc.data().ownerUid,reviewerUid:doc.data().reviewerUid||doc.data().ownerUid,
+     rubricMax:Number(doc.data().rubricMax)||0,
      submissionSource:doc.data().submissionSource||"",dueAt:millis(doc.data().dueAt)}));
    const taskMap=new Map(tasks.map(task=>[task.taskId,task]));
    const rosterUids=new Set([...personMap.values()].map(person=>person.uid).filter(Boolean));
@@ -127,7 +128,7 @@ function createSchoolTeacherAnalyticsService({db}){
    for(const doc of gradeSnap.docs){
     const data=doc.data(),task=taskMap.get(data.taskId);
     if(!task||data.schoolId!==ctx.schoolId||!rosterUids.has(data.studentUid))continue;
-    const ownDraft=isTeacher&&task.ownerUid===ctx.uid&&data.reviewerUid===ctx.uid&&data.status==="draft";
+    const ownDraft=isTeacher&&task.reviewerUid===ctx.uid&&data.reviewerUid===ctx.uid&&data.status==="draft";
     if(data.status!=="published"&&!(includeDrafts&&ownDraft))continue;
     const awarded=Number(data.awarded),total=Number(data.total);
     if(!Number.isFinite(awarded)||!Number.isFinite(total)||total<=0)continue;
