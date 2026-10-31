@@ -17,7 +17,7 @@ import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.2";
 
 export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{},authoritativeInitialRecord=false}={}){
 const el=id=>root.querySelector("#"+id);
-const state={students:[],assessments:[],evidence:null,student:null,assessment:null,claims:[],loaded:false,busy:false,sequence:0,editing:false,verificationEditing:false};
+const state={students:[],assessments:[],evidence:null,student:null,assessment:null,claims:[],sectionClaims:[],claimsReadable:false,loaded:false,busy:false,sequence:0,editing:false,verificationEditing:false};
 let stopEvidence=null,watchedId=null,destroyed=false,resolveInitial=null,initialTimer=null,initialSnapshot=null,hasServerSnapshot=false;
 const discovery={commits:[],selected:new Set(),locked:new Set(),checkpoint:"",page:0,hasOlder:false,loading:false,sequence:0,branch:"",mode:"create"};
 const embedded=new URLSearchParams(location.search).get("embedded")==="1";
@@ -225,16 +225,18 @@ async function loadEvidence(initialRecord){
     // unavailable claim listing must not erase the already-authorized evidence
     // review UI. Approval performs its own conflict check before writing.
     let claimReadWarning="";
+    state.sectionClaims=[];state.claimsReadable=false;
     try{
       const claims=await getDocs(query(collection(db,"commit_reclaims"),where("section","==",student.section)));
       if(destroyed||sequence!==state.sequence)return;
-      state.claims=claims.docs.filter(d=>d.data().studentId===student.id &&
-        d.data().repository===evidence.repository &&
-        (d.data().assessmentId===assessment.id || evidence.selectedCommits.includes(d.data().sha)))
-        .map(d=>({id:d.id,...d.data()}));
+      state.sectionClaims=claims.docs.map(d=>({id:d.id,...d.data()}));
+      state.claimsReadable=true;
+      state.claims=state.sectionClaims.filter(claim=>claim.studentId===student.id &&
+        claim.repository===evidence.repository &&
+        (claim.assessmentId===assessment.id || evidence.selectedCommits.includes(claim.sha)));
     }catch(error){
-      state.claims=[];
-      claimReadWarning=" Reclaim-request context could not be loaded ("+error.message+"). You can still inspect the selected commits; approval will re-check conflicts before saving.";
+      state.claims=[];state.sectionClaims=[];
+      claimReadWarning=" Reclaim-request context could not be loaded ("+error.message+"). Approval is blocked until this section-scoped attribution context can be refreshed.";
     }
     const unresolved=state.claims.filter(claim=>claim.status==="pending"&&evidence.selectedCommits.includes(claim.sha));
     if(unresolved.length){
@@ -449,16 +451,21 @@ async function approve(){
     const contribution=approvalContribution(selection,verified,scope);
     approvalStage="reclaim conflict check";
     status("Checking for competing pending reclaim requests…");
-    await Promise.all(selection.selectedCommits.map(async sha=>{
-      const reviewerRole=await resolveStaffRole(auth.currentUser);
-      const claimQuery=reviewerRole==="admin"
-        ?query(collection(db,"commit_reclaims"),where("sha","==",sha))
-        :query(collection(db,"commit_reclaims"),where("section","==",state.student.section));
-      const competing=await getDocs(claimQuery);
-      if(competing.docs.some(d=>d.data().sha===sha &&
-        d.data().repository===state.evidence.repository&&d.data().status==="pending"))
-        throw Error("A selected commit has an unresolved reclaim request. Ask the administrator to review the attribution before approving this student's checkpoint.");
-    }));
+    const reviewerRole=await resolveStaffRole(auth.currentUser);
+    if(reviewerRole==="admin"){
+      await Promise.all(selection.selectedCommits.map(async sha=>{
+        const competing=await getDocs(query(collection(db,"commit_reclaims"),where("sha","==",sha)));
+        if(competing.docs.some(d=>d.data().repository===state.evidence.repository&&d.data().status==="pending"))
+          throw Error("A selected commit has an unresolved reclaim request. Resolve the attribution claim before approving this checkpoint.");
+      }));
+    }else{
+      if(!state.claimsReadable)
+        throw Error("Reclaim-request context for this section is unavailable. Reload evidence before approving.");
+      const selected=new Set(selection.selectedCommits.map(sha=>String(sha).toLowerCase()));
+      if(state.sectionClaims.some(claim=>selected.has(String(claim.sha||"").toLowerCase()) &&
+        claim.repository===state.evidence.repository&&claim.status==="pending"))
+        throw Error("A selected commit has an unresolved reclaim request in this section. Ask an administrator to resolve the attribution before approving this checkpoint.");
+    }
     approvalStage="checkpoint ancestry verification";
     status("Verifying checkpoint ancestry with GitHub…");
     await verifyAncestry(repo,selection.checkpointSha,selection.selectedCommits);
