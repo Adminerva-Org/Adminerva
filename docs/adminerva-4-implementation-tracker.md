@@ -159,6 +159,13 @@ The current 4.0 runtime already has school-scoped teacher planning, schedules an
 - Session resume routing translates remembered legacy teacher destinations to canonical V4 pages before the Continue card is rendered: legacy grading/review pages → V4 Gradebook, legacy Assessment Studio → Assessment Library, legacy analytics → canonical analytics, legacy issue reporting → School Support, and legacy Reference Library → private verified-school references.
 - The shared session-destination allowlists now recognize current V4 assessment, planning/reference and school-admin readiness pages. Auth Guard remains authoritative; these changes only prevent avoidable legacy hops and stale presentation.
 
+## V4 Lesson Settings tenant cleanup — November 6, 2026
+
+- Lesson Settings now imports the same verified-school workspace session used by the live planning editors, so teacher-private lesson/export preferences do not require a legacy `staff_access` role after cutover.
+- Subject suggestions use `schoolAcademics.planning_options` in `v4_only`, limited to the teacher's active course offerings. Compatibility-mode MCS keeps the legacy school-options adapter until migration is retired.
+- Existing teacher-private lesson settings remain under the staff workspace preference path; they were not moved into a school-shared configuration because they are personal export/signatory defaults rather than institutional academic records.
+- The Settings entry page was cache-versioned for this module change.
+
 ## V4 Settings legacy-read retirement — November 6, 2026
 
 - Settings now resolves tenant/platform access before loading legacy personal Gemini/GitHub credentials. Canonical school accounts whose compatibility is retired do not query the flat `teachers` profile for those secrets.
