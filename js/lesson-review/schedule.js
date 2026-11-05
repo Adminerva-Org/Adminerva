@@ -8,6 +8,7 @@ import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
 import {ADMIN_EMAIL,TEACHER_EMAIL} from "../core/staff-role.mjs?v=1.3.0";
 import { scheduleScope, parseScheduleRows, parseClockMinutes } from "./schedule-scope.mjs?v=1.3.0";
 import {isLegacySharedScope,isLegacyScheduleRetired,legacyScheduleNotice,resolveSectionGrade,scheduleRowsToText} from "./legacy-schedule-compat.mjs?v=1.4.18";
+import {loadVerifiedSchoolPlanningOptions,verifiedPlanningMode} from "./school-academic-options.mjs?v=4.0.0";
 import {
   doc,
   getDoc,
@@ -31,10 +32,17 @@ let schoolOptions=null;
 async function refreshSchoolChoices(){
   const label=document.getElementById("scheduleCatalogStatus");
   try{
-    schoolOptions=await loadSchoolOptions({schoolYear:activeYear});loadConfig();
+    const v4Only=await verifiedPlanningMode();
+    schoolOptions=v4Only?await loadVerifiedSchoolPlanningOptions():await loadSchoolOptions({schoolYear:activeYear});
+    loadConfig();
     fillSchoolDatalist("scheduleSchoolYears",[activeYear,...schoolOptions.schoolYears]);
     fillSchoolDatalist("scheduleSubjectChoices",schoolOptions.subjects);
-    if(label)label.textContent=schoolOptions.sections.length+" school sections and "+schoolOptions.subjects.length+" catalog subjects available."+(schoolOptions.warnings.length?" Some school records could not load; saved timetable values are preserved.":!schoolOptions.sections.length?" Ask an administrator to assign your exact roster sections before scheduling new classes.":"");
+    if(label)label.textContent=v4Only
+      ?schoolOptions.sections.length+" assigned section choice"+(schoolOptions.sections.length===1?"":"s")+" and "+
+        schoolOptions.subjects.length+" verified-school subject choice"+(schoolOptions.subjects.length===1?"":"s")+" available."+
+        (!schoolOptions.sections.length?" Ask the school administrator to assign an active course offering.":"")
+      :schoolOptions.sections.length+" school sections and "+schoolOptions.subjects.length+" catalog subjects available."+
+        (schoolOptions.warnings.length?" Some school records could not load; saved timetable values are preserved.":!schoolOptions.sections.length?" Ask an administrator to assign your exact roster sections before scheduling new classes.":"");
   }catch{if(label)label.textContent="School choices could not load. Saved timetable values and personal options are preserved. Select Refresh school choices to retry.";}
 }
 window.refreshScheduleSchoolChoices=async()=>{if(isSaving)return;if(isEditing)draftRows=getTableDataFromDOM();await refreshSchoolChoices();renderTable();};
@@ -218,7 +226,10 @@ window.hideLoader = function () {
 };
 
 workspaceOnReady( async () => {
-  try{const saved=await getDoc(ownedDoc(db,"preferences","schedule_options"));if(saved.exists())for(const [field,key] of [["subjects","Adminerva_subjects"],["events","Adminerva_events"]])if(typeof saved.data()[field]==="string")lessonStorage.setItem(key,saved.data()[field]);}catch{/* Personal device options remain usable offline. */}
+  const v4Only=await verifiedPlanningMode();
+  if(!v4Only){
+    try{const saved=await getDoc(ownedDoc(db,"preferences","schedule_options"));if(saved.exists())for(const [field,key] of [["subjects","Adminerva_subjects"],["events","Adminerva_events"]])if(typeof saved.data()[field]==="string")lessonStorage.setItem(key,saved.data()[field]);}catch{/* Personal device options remain usable offline. */}
+  }
   loadConfig();
   const year = lessonStorage.getItem("Adminerva_schedule_selected_year");
   const semester = lessonStorage.getItem("Adminerva_schedule_selected_semester");
@@ -233,7 +244,7 @@ workspaceOnReady( async () => {
   document.getElementById("scheduleSchoolYear")?.addEventListener("change", window.changeSchedulePeriod);
   document.getElementById("scheduleSemester")?.addEventListener("change", window.changeSchedulePeriod);
   updateEditControls();
-  await initFirebase();
+  if(!v4Only)await initFirebase();
 });
 
 // Warn when the user leaves while an editable timetable may contain
@@ -307,6 +318,7 @@ window.saveSettingsConfig = async function () {
   loadConfig();
   renderTable();
   try{
+    if(await verifiedPlanningMode()){window.closeSettingsModal();return;}
     const uid=await requireStaffWorkspace();
     await setDoc(ownedDoc(db,"preferences","schedule_options"),{subjects:document.getElementById("configSubjects").value,events:document.getElementById("configEvents").value});
     assertWorkspaceAccount(uid);window.closeSettingsModal();
