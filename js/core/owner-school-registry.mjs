@@ -25,6 +25,7 @@ function choose(id){
   byId("owner-cutover-rollback").hidden=selected.compatibilityMode!=="v4_only";
   byId("owner-cutover-mode").textContent="Compatibility: "+(selected.compatibilityMode||"legacy_allowed").replace("_"," ");
   void loadReadiness(selected.schoolId);
+  void loadCutoverDecisions(selected.schoolId);
 }
 async function loadReadiness(schoolId=selected?.schoolId){
   const host=byId("owner-readiness");
@@ -49,6 +50,32 @@ async function loadReadiness(schoolId=selected?.schoolId){
     return result;
   }catch(error){
     if(selected?.schoolId===schoolId)host.textContent=error?.message||"Cutover readiness could not be checked.";
+    return null;
+  }
+}
+async function loadCutoverDecisions(schoolId=selected?.schoolId){
+  const form=byId("owner-cutover-decisions"),message=byId("owner-cutover-decisions-status");
+  if(!form||!message||!schoolId)return null;
+  message.textContent="Loading owner decision record…";
+  try{
+    const result=await execute("get_cutover_decisions",{schoolId});
+    if(selected?.schoolId!==schoolId)return null;
+    const data=result.decisions||{};
+    for(const name of ["institutionalAuthorityReference","calendarReference","privacyPolicyReference",
+      "retentionPolicyReference","backupPolicyReference","dataStewardRole","aiPermission",
+      "repositoryPermission","notes"]){
+      const field=form.elements.namedItem(name);if(field)field.value=data[name]||"";
+    }
+    for(const name of ["firstAdminAcknowledged","schoolAdminConfigurationReviewed"]){
+      const field=form.elements.namedItem(name);if(field)field.checked=data[name]===true;
+    }
+    const first=result.firstAdminUid||"not designated";
+    message.textContent=result.decisions?
+      "Decision record loaded. First school administrator: "+first+(result.firstAdminActive?" (active).":" (not active)."):
+      "No decision record yet. First school administrator: "+first+(result.firstAdminActive?" (active).":" (not active).");
+    return result;
+  }catch(error){
+    if(selected?.schoolId===schoolId)message.textContent=error?.message||"Owner decisions could not be loaded.";
     return null;
   }
 }
@@ -123,6 +150,25 @@ byId("owner-activate").addEventListener("submit",event=>{
   if(!Object.values(attestation).every(Boolean)){say("Complete all required institutional attestations.");return;}
   if(!confirm("Activate "+selected.displayName+"? Only proceed with verified authority and readiness."))return;
   void submit(f,"activate",{schoolId:selected.schoolId,reason:String(d.get("reason")||"").trim(),attestation});
+});
+byId("owner-cutover-decisions").addEventListener("submit",event=>{
+  event.preventDefault();if(!selected)return;
+  const f=event.currentTarget,d=new FormData(f);
+  const decisions={
+    institutionalAuthorityReference:String(d.get("institutionalAuthorityReference")||"").trim(),
+    calendarReference:String(d.get("calendarReference")||"").trim(),
+    privacyPolicyReference:String(d.get("privacyPolicyReference")||"").trim(),
+    retentionPolicyReference:String(d.get("retentionPolicyReference")||"").trim(),
+    backupPolicyReference:String(d.get("backupPolicyReference")||"").trim(),
+    dataStewardRole:String(d.get("dataStewardRole")||"").trim(),
+    aiPermission:String(d.get("aiPermission")||""),
+    repositoryPermission:String(d.get("repositoryPermission")||""),
+    firstAdminAcknowledged:d.get("firstAdminAcknowledged")==="on",
+    schoolAdminConfigurationReviewed:d.get("schoolAdminConfigurationReviewed")==="on",
+    notes:String(d.get("notes")||"").trim()
+  };
+  void submit(f,"save_cutover_decisions",{schoolId:selected.schoolId,decisions,
+    reason:String(d.get("reason")||"").trim()});
 });
 byId("owner-readiness-refresh").addEventListener("click",()=>{
   if(selected)void loadReadiness(selected.schoolId);
