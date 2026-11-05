@@ -1,4 +1,4 @@
-import {resolveAccountAccess} from "./staff-session.mjs?v=1.3.0";
+import {resolveAccountAccess} from "./staff-session.mjs?v=4.0.1";
 import {activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "./connection-cache.mjs?v=1.3.0";
 import {rememberWorkspace,roleHome} from "./session-destination.mjs?v=1.3.8";
 /** Verified account admission, workspace visibility and sign-out routing. */
