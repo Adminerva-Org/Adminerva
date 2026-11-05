@@ -71,6 +71,8 @@ async function loadSchoolAdmin(access){
 }
 await auth.authStateReady();
 const access=await resolveAccountAccess(auth.currentUser);
-if(access.role==="admin")await loadLegacy();
-else if(access.schoolAdmin)await loadSchoolAdmin(access);
+if(access.schoolAdmin)await loadSchoolAdmin(access);
+else if(access.platformAdmin&&access.v4Cutover)window.location.assign("owner-schools.html");
+else if(access.role==="admin"&&access.legacyCompatibilityAllowed)await loadLegacy();
+else if(access.platformAdmin)window.location.assign("owner-schools.html");
 else window.location.assign("teacher-home.html");
