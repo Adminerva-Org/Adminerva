@@ -8,6 +8,8 @@
 const {checkedSchoolId,verifiedUid,getSchoolContext,platformAuthority,TenantAccessError}=
  require("./tenant-access.js");
 const {EXPORT_SCHEMA}=require("./school-data-export.js");
+const {SCHEMA:CUTOVER_DECISION_SCHEMA,evaluateCutoverDecisionRecord}=
+ require("./school-cutover-policy.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 async function authorized({db,request,schoolId}){
@@ -42,6 +44,16 @@ async function evaluateSchoolCutoverReadiness({db,schoolId}){
  const schoolData=school.data(),compatibilityMode=schoolData.compatibilityMode||"legacy_allowed";
  check("school_active",schoolData.state==="active","School is active",
   "Current state: "+String(schoolData.state||"unknown"));
+
+ const decisionDoc=await db.doc("platform_schools/"+schoolId+"/private_config/cutover_decisions").get(),
+  decisionState=evaluateCutoverDecisionRecord(decisionDoc.exists?decisionDoc.data():null,{
+   schoolId,firstAdminUid:schoolData.firstAdminUid||null
+  });
+ check("owner_cutover_decisions",decisionState.ok,
+  "Platform-owner cutover decisions are documented",
+  decisionState.ok?
+   "Authority, calendar, privacy, retention, backup, data-steward, AI and repository decisions are bound to the designated first school administrator.":
+   "Missing or stale owner decision fields: "+decisionState.missing.join(", ")+".");
 
  const [members,years,terms,subjects,sections,offerings,enrollments,assignments,tasks,grades,
   practiceMarkers]=await Promise.all([
