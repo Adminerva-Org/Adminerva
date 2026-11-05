@@ -167,6 +167,14 @@ The current 4.0 runtime already has school-scoped teacher planning, schedules an
 - The settings behavior is driven from verified auth/navigation role state, with a dataset fallback for module/event ordering. It does not use local role state as authorization.
 - `school-ai.mjs` now retains the server-returned school compatibility mode in its cached school context for V4-aware consumers.
 
+## Verified-school planning workspace admission — November 6, 2026
+
+- The shared planning `workspace-session.mjs` no longer calls legacy `resolveStaffRole()` when Lesson Planner, Slide Editor, Schedule or export helpers need an authenticated teacher UID.
+- Planning workspace admission now uses tenant-first `resolveAccountAccess()`: an active verified-school teacher membership is sufficient, while compatibility-mode legacy teacher/admin roles continue to work during migration.
+- The editor workspace banner reflects verified-school ownership for canonical teachers instead of calling the surface a personal legacy workspace.
+- Lesson, presentation, timetable, AI/UI and export modules now import the same updated workspace-session URL, preventing a browser from instantiating a second legacy-gated session module alongside the V4 bridge.
+- The three editor entry pages were cache-versioned again because their underlying module imports changed after the earlier planning cache pass.
+
 ## Tenant-first account resolution — November 6, 2026
 
 - `resolveAccountAccess()` now resolves the verified tenant/platform context before touching any flat legacy identity collection.
