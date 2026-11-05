@@ -66,6 +66,34 @@
       <button type="submit" class="own-button warn">Restore legacy compatibility</button>
     </form>
    </section>
+   <section style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#fff">
+    <h3 style="font-weight:750">Cutover owner decisions</h3>
+    <p class="own-muted">These references are required before V4-only readiness can pass. They document the approved MCS operating decisions without storing student records in the owner console.</p>
+    <p id="owner-cutover-decisions-status" class="own-muted">Select a school to load its decision record.</p>
+    <form id="owner-cutover-decisions">
+      <label>Institutional/data authority reference<input class="own-field" name="institutionalAuthorityReference" minlength="8" maxlength="240" required placeholder="Policy, approval record, or controlled document reference"></label>
+      <label>Academic calendar reference<input class="own-field" name="calendarReference" minlength="8" maxlength="240" required placeholder="Approved school year / term structure reference"></label>
+      <label>Privacy policy reference<input class="own-field" name="privacyPolicyReference" minlength="8" maxlength="240" required></label>
+      <label>Retention policy reference<input class="own-field" name="retentionPolicyReference" minlength="8" maxlength="240" required></label>
+      <label>Backup / recovery policy reference<input class="own-field" name="backupPolicyReference" minlength="8" maxlength="240" required></label>
+      <label>Data steward role<input class="own-field" name="dataStewardRole" minlength="3" maxlength="120" required placeholder="e.g. School Data Protection / Records Officer"></label>
+      <label>School AI decision
+        <select class="own-field" name="aiPermission" required>
+          <option value="">Choose…</option><option value="disabled">Disabled</option><option value="approved">Approved by school policy</option>
+        </select>
+      </label>
+      <label>External repository / GitHub decision
+        <select class="own-field" name="repositoryPermission" required>
+          <option value="">Choose…</option><option value="disabled">Disabled</option><option value="approved">Approved by school policy</option>
+        </select>
+      </label>
+      <label class="own-confirm"><input name="firstAdminAcknowledged" type="checkbox" required> The designated first school administrator has been verified and is the intended MCS administrator.</label>
+      <label class="own-confirm"><input name="schoolAdminConfigurationReviewed" type="checkbox" required> School administrator configuration and operational ownership have been reviewed.</label>
+      <label>Decision notes<textarea class="own-field" name="notes" maxlength="1000" rows="3"></textarea></label>
+      <label>Review reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button">Save cutover decisions</button>
+    </form>
+   </section>
    <form id="owner-grant">
     <h3 style="font-weight:750;margin:1rem 0 .5rem">Designate verified school administrator</h3>
     <label>Existing verified Firebase account UID<input class="own-field" name="targetUid" maxlength="128" minlength="8" required autocomplete="off"></label>
