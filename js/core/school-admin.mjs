@@ -1,7 +1,7 @@
 import {app,auth,db} from "./firebase-core.js?v=1.3.0";
 import {collection,getDocs} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {resolveAccountAccess} from "./staff-session.mjs?v=4.0.0";
+import {resolveAccountAccess} from "./staff-session.mjs?v=4.0.1";
 import {createTenantSchoolPicker} from "./tenant-school-picker.mjs?v=4.0.0";
 
 const status=document.getElementById("adminOverviewStatus");
