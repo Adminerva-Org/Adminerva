@@ -167,6 +167,15 @@ The current 4.0 runtime already has school-scoped teacher planning, schedules an
 - The settings behavior is driven from verified auth/navigation role state, with a dataset fallback for module/event ordering. It does not use local role state as authorization.
 - `school-ai.mjs` now retains the server-returned school compatibility mode in its cached school context for V4-aware consumers.
 
+## Tenant-first account resolution — November 6, 2026
+
+- `resolveAccountAccess()` now resolves the verified tenant/platform context before touching any flat legacy identity collection.
+- When the server reports legacy compatibility retired, canonical accounts do not query `staff_access`, `teachers` or `students` at all. School/platform roles from `tenantSchools` are sufficient for presentation and routing.
+- MCS compatibility mode preserves the existing legacy staff/student profile lookups so migration continuity is unchanged before cutover. If the tenant callable itself is unavailable during staged rollout, the resolver retains the existing compatibility fallback rather than falsely treating the account as V4-only.
+- School Administration now gives verified `school_admin` membership precedence over a historical global admin role. A dual-role user therefore receives tenant-scoped school counts/actions instead of the old flat platform summary.
+- Platform-owner-only accounts entering School Administration after V4 cutover are sent to Owner Console instead of probing legacy global admin collections.
+- Auth Guard and the affected canonical/retired entry pages were cache-versioned so direct navigation uses the tenant-first resolver before applying V4 route fences.
+
 ## V4 planning legacy-read retirement — November 6, 2026
 
 - `schoolAcademics.planning_options` now supplies tenant-scoped academic choices for planning. Teachers receive only active sections, subjects, school years and offerings backed by their active teaching assignments; school administrators may review all active offerings in their selected school.
@@ -338,7 +347,7 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 | Mobile-first (#108) | Conditional school context plus mobile-ready People & Access, School Support, V4 Gradebook/Operations, school-native lesson/presentation/timetable/reference planning, school-aware Practice and compact Studio tools; scoped editors invalidate or veto unsafe school changes. V4 planning inputs now also use canonical assigned course options and suppress flat legacy startup reads. | Finish remaining legacy compatibility/admin surfaces; continue applying the same generation/lease pattern when additional live routes are migrated. |
 | Teacher privacy (#110) | Private creator-owned blueprints/planning resources, deliberate teacher sharing/copy, verified recipients, and explicit deployed-task reviewer handover without changing private source ownership. | Optional coedit/reviewer/publish delegation for private reusable resources remains a future policy choice; it is not required for 4.0 task handover. |
 | User Directory (#111) | School-only People & Access API/page: overview, paginated/searchable/filterable people, rename/archive/restore lifecycle, consolidated person detail/audit history, preview-first idempotent CSV/Google Sheets import, reviewed section-hint-to-course enrollment, actionable bounded directory reconciliation, bounded CSV export, account invitations/acceptance, membership suspend/restore, academic catalog, offerings, single/bulk enrollments, single/bulk teacher assignments, class roster lifecycle and audit writes. | Remaining migration conveniences after MCS reconciliation. |
-| Release safety (#109) | Core deny-by-default scoped APIs, deny-all Cloud Storage baseline, V4-only legacy-page fence with canonical planning exceptions, legacy callable/background-trigger/Practice-browser cutover fences, tenant support/notifications/AI isolation, and school-scoped Studio browser/server state after cutover; no production modifications. | Complete remaining legacy surface migration, MCS reconciliation/rollback, focused cross-school denial and continuity checks, then backend-first staged activation and one public 4.0 release. |
+| Release safety (#109) | Core deny-by-default scoped APIs, deny-all Cloud Storage baseline, V4-only legacy-page fence with canonical planning exceptions, tenant-first account resolution, legacy callable/background-trigger/Practice-browser cutover fences, tenant support/notifications/AI isolation, and school-scoped Studio browser/server state after cutover; no production modifications. | Complete remaining legacy surface migration, MCS reconciliation/rollback, focused cross-school denial and continuity checks, then backend-first staged activation and one public 4.0 release. |
 
 ### Verified-school behavior
 
