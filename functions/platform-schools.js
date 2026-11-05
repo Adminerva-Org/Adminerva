@@ -7,6 +7,8 @@ const {getAuth}=require("firebase-admin/auth");
 const {FieldValue}=require("firebase-admin/firestore");
 const {TenantAccessError,checkedSchoolId,verifiedUid}=require("./tenant-access.js");
 const {evaluateSchoolCutoverReadiness}=require("./school-cutover-readiness.js");
+const {SCHEMA:CUTOVER_DECISION_SCHEMA,normalizeCutoverDecisions}=
+ require("./school-cutover-policy.js");
 function fail(code,message){throw new TenantAccessError(code,message)}
 function phrase(value,min,max,label){
   if(typeof value!=="string"||value.trim().length<min||value.trim().length>max)
@@ -36,6 +38,46 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
     }
     const schoolId=checkedSchoolId(input.schoolId),schoolRef=db.doc("platform_schools/"+schoolId);
     const auditRef=db.collection("platform_audit").doc();
+    const cutoverDecisionRef=db.doc("platform_schools/"+schoolId+"/private_config/cutover_decisions");
+    if(action==="get_cutover_decisions"){
+      const [school,decision]=await Promise.all([schoolRef.get(),cutoverDecisionRef.get()]);
+      if(!school.exists)fail("not-found","The school does not exist.");
+      const firstAdminUid=school.data().firstAdminUid||null;
+      let firstAdminActive=false;
+      if(firstAdminUid){
+        const member=await db.doc("schools/"+schoolId+"/memberships/"+firstAdminUid).get();
+        firstAdminActive=member.exists&&member.data().schoolId===schoolId&&
+          member.data().status==="active"&&Array.isArray(member.data().roles)&&
+          member.data().roles.includes("school_admin");
+      }
+      return {schoolId,firstAdminUid,firstAdminActive,
+        decisions:decision.exists?decision.data():null};
+    }
+    if(action==="save_cutover_decisions"){
+      let decisions;
+      try{decisions=normalizeCutoverDecisions(input.decisions||{});}
+      catch(error){fail("invalid-argument",error.message);}
+      const reason=phrase(input.reason,12,500,"Decision review reason");
+      await db.runTransaction(async tx=>{
+        const school=await tx.get(schoolRef);
+        if(!school.exists||!["draft","active","suspended"].includes(school.data().state))
+          fail("failed-precondition","The school must exist and must not be archived.");
+        const firstAdminUid=school.data().firstAdminUid;
+        if(!firstAdminUid)fail("failed-precondition","Designate the first verified school administrator first.");
+        const admin=await tx.get(db.doc("schools/"+schoolId+"/memberships/"+firstAdminUid));
+        if(!admin.exists||admin.data().schoolId!==schoolId||admin.data().status!=="active"||
+           !Array.isArray(admin.data().roles)||!admin.data().roles.includes("school_admin"))
+          fail("failed-precondition","The first school administrator grant is not active.");
+        const current=await tx.get(cutoverDecisionRef),now=FieldValue.serverTimestamp(),
+          revision=(current.data()?.revision||0)+1;
+        tx.set(cutoverDecisionRef,{schema:CUTOVER_DECISION_SCHEMA,schoolId,firstAdminUid,
+          ...decisions,revision,reviewedByUid:uid,reviewedAt:now,updatedAt:now});
+        tx.create(auditRef,{schoolId,actorUid:uid,action:"school_cutover_decisions_saved",
+          firstAdminUid,aiPermission:decisions.aiPermission,
+          repositoryPermission:decisions.repositoryPermission,revision,reason,createdAt:now});
+      });
+      return {schoolId,saved:true};
+    }
     if(action==="create_draft") {
       const displayName=phrase(input.displayName,3,120,"Institution name");
       await db.runTransaction(async tx=>{
