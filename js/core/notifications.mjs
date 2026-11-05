@@ -1,4 +1,3 @@
-import {staffRole} from "./staff-role.mjs?v=1.3.0";
 import {resolveAccountAccess} from "./staff-session.mjs?v=4.0.0";
 /** Shared navigation, account access, reporting and release infrastructure: notifications. */
 import { auth, db } from "./firebase-core.js?v=1.3.0";
@@ -7,14 +6,17 @@ import {notificationVisible,unreadNotificationCount} from "./notification-visibi
 import {historyDocId,historyRecord,mergeNotificationHistory,NOTIFICATION_HISTORY_LIMIT} from "./notification-history.mjs?v=1.3.8";
 import {loadPublicReleases,releaseNotifications} from "./patch-history.mjs?v=1.4.19";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "./teaching-firestore.mjs?v=1.3.2";
+import { collection, query, orderBy, limit, onSnapshot, doc, updateDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 let listenEpoch=0;
 const state = { user:null, access:null, notifications:[], issues:[], submissions:[], gradingAlerts:[], history:[], unsubscribe:[], read:new Set(), filter:"all", search:"", muted:new Set(), errors:new Set(), open:false, pushState:null };
-const isAdmin = () => staffRole(state.user)==="admin";
-const isTeacher = () => staffRole(state.user)==="teacher"||Boolean(state.access?.schoolTeacher);
-const isSchoolAdmin = () => Boolean(state.access?.schoolAdmin);
-const verifiedRole = () => isAdmin()||isSchoolAdmin() ? "admin" : isTeacher() ? "teacher" : "student";
+const legacyRole=()=>state.access?.legacyRole||null;
+const isLegacyAdmin=()=>state.access?.legacyCompatibilityAllowed!==false&&legacyRole()==="admin";
+const isPlatformAdmin=()=>Boolean(state.access?.platformAdmin);
+const isSchoolAdmin=()=>Boolean(state.access?.schoolAdmin);
+const isAdmin=()=>isLegacyAdmin()||isPlatformAdmin();
+const isTeacher=()=>legacyRole()==="teacher"||Boolean(state.access?.schoolTeacher);
+const verifiedRole=()=>isAdmin()||isSchoolAdmin()?"admin":isTeacher()?"teacher":"student";
 function activeSchoolId(){
   const schools=Array.isArray(state.access?.v4Schools)?state.access.v4Schools:[];
   if(schools.length===1)return schools[0].schoolId;
@@ -209,10 +211,9 @@ async function listen(user){
   state.unsubscribe.push(onSnapshot(
     query(collection(db,"notifications",user.uid,"items"),orderBy("createdAt","desc"),limit(60)),
     snap=>{state.notifications=snap.docs.map(d=>({id:d.id,...d.data()}));success("Notifications")},error("Notifications")));
-  const staff=!!staffRole(user);
   // Teachers use their authoritative per-user notification feed. Broad source
   // collection listeners can violate section-scoped Firestore query rules.
-  if(isAdmin()){
+  if(isLegacyAdmin()){
     state.unsubscribe.push(onSnapshot(
       query(collection(db,"issues"),orderBy("createdAt","desc"),limit(40)),
       snap=>{state.issues=snap.docs.map(d=>({id:d.id,...d.data()}));success("Issue reports")},
@@ -220,7 +221,7 @@ async function listen(user){
   }
   // Student submission/grade/report alerts come only from the authoritative
   // per-user notification feed written by backend triggers.
-  if(isAdmin()){
+  if(isLegacyAdmin()){
     state.unsubscribe.push(onSnapshot(
       query(collection(db,"grading_alerts"),orderBy("createdAt","desc"),limit(30)),
       snap=>{state.gradingAlerts=snap.docs.map(d=>({id:d.id,...d.data()}));success("Grading alerts")},
