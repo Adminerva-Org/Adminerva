@@ -1,5 +1,6 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "../lesson-review/workspace-session.mjs?v=1.3.0";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "../lesson-review/workspace-session.mjs?v=4.0.0";
 import {loadSchoolOptions,fillSchoolDatalist} from "../core/school-options.mjs?v=1.3.0";
+import {loadVerifiedSchoolPlanningOptions,verifiedPlanningMode} from "../lesson-review/school-academic-options.mjs?v=4.0.0";
 /** Scoped product configuration and staff preferences: settings lesson. */
 import {
   doc,
@@ -31,7 +32,12 @@ window.populateSettingsSubjectDropdown = async function () {
     option.value = sub;
     dataList.appendChild(option);
   });
-  try{const options=await loadSchoolOptions({schoolYear:document.getElementById("lpSchoolYear")?.value||""});fillSchoolDatalist("savedSubjectsList",[...subjects,...options.subjects]);}catch{/* Existing personal subject suggestions remain available. */}
+  try{
+    const options=await verifiedPlanningMode()
+      ?await loadVerifiedSchoolPlanningOptions()
+      :await loadSchoolOptions({schoolYear:document.getElementById("lpSchoolYear")?.value||""});
+    fillSchoolDatalist("savedSubjectsList",[...subjects,...options.subjects]);
+  }catch{/* Existing personal subject suggestions remain available. */}
 };
 
 window.loadLessonReviewSettings = async function () {
