@@ -4,7 +4,7 @@ import {
   getPushPreferences,savePushPreferences,getDevicePushState,
   enableDevicePush,disableDevicePush,syncDevicePush,sendTestPush
 } from "../core/push-notifications.mjs?v=1.4.0";
-import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
+import {resolveAccountAccess} from "../core/staff-session.mjs?v=4.0.1";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 
 const root=document.querySelector("[data-account-preferences]");
@@ -109,7 +109,7 @@ if(root){
       root.querySelector("[data-density]").value=localStorage.getItem("Adminerva_interface_density")||"comfortable";
       root.querySelector("[data-usage-analytics]").checked=localStorage.getItem("Adminerva_analytics_consent")==="granted";
     }catch{}
-    if(user&&staff)void resolveStaffRole(user).then(role=>root.querySelector("[data-release-admin]").hidden=role!=="admin");
+    if(user&&staff)void resolveAccountAccess(user).then(access=>root.querySelector("[data-release-admin]").hidden=!(access.platformAdmin||access.legacyRole==="admin"));
     const preferenceStatus=root.querySelector("[data-preference-status]");
     preferenceStatus.hidden=true;preferenceStatus.textContent="";
     if(!owner){
