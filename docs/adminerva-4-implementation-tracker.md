@@ -159,6 +159,15 @@ The current 4.0 runtime already has school-scoped teacher planning, schedules an
 - Session resume routing translates remembered legacy teacher destinations to canonical V4 pages before the Continue card is rendered: legacy grading/review pages → V4 Gradebook, legacy Assessment Studio → Assessment Library, legacy analytics → canonical analytics, legacy issue reporting → School Support, and legacy Reference Library → private verified-school references.
 - The shared session-destination allowlists now recognize current V4 assessment, planning/reference and school-admin readiness pages. Auth Guard remains authoritative; these changes only prevent avoidable legacy hops and stale presentation.
 
+## V4 Settings legacy-read retirement — November 6, 2026
+
+- Settings now resolves tenant/platform access before loading legacy personal Gemini/GitHub credentials. Canonical school accounts whose compatibility is retired do not query the flat `teachers` profile for those secrets.
+- Retired personal credentials are also cleared from the browser connection cache for that account, preventing a hidden legacy key from being reused accidentally by an older compatibility path.
+- The RepoReview **Grading Rubrics** settings module now retires its flat global `templates` client for canonical school accounts. It does not subscribe/read/write the legacy template collection after cutover.
+- Canonical users are directed to the school Assessment Library for assessment/rubric management; direct calls to legacy rubric mutation handlers are refused while the module is retired.
+- Compatibility-enabled MCS teachers retain the old personal credential/rubric settings until the migration/cutover gate removes that compatibility path.
+- Settings asset versions were refreshed so hidden legacy panels cannot keep running cached background reads after 4.0 is staged.
+
 ## V4 settings credential retirement — October 31, 2026
 
 - Settings now labels browser/profile Gemini and GitHub credentials as **legacy personal API credentials** rather than implying they power verified-school AI.
