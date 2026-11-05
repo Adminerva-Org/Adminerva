@@ -37,27 +37,36 @@ export function resolveAccountAccess(user) {
   if(!accountPending.has(user.uid)) {
     const email=String(user.email||"").toLowerCase();
     const profiles=name=>getDocsFromServer(query(collection(db,name),where("email","==",email)));
-    const operation=Promise.all([
-      resolveStaffRole(user),profiles("teachers"),profiles("students"),resolveTenantMemberships(user)
-    ]).then(([legacyRole,teachers,students,tenant])=>{
-      const activeStudents=students.docs.filter(record=>!["suspended","archived"].includes(String(record.data()?.status||"active")));
+    const operation=resolveTenantMemberships(user).then(async tenant=>{
+      const legacyAllowed=tenant.legacyCompatibilityAllowed!==false;
+      let legacyRole=null,legacyTeachers=[],activeStudents=[];
+      if(legacyAllowed){
+        const [role,teachers,students]=await Promise.all([
+          resolveStaffRole(user),profiles("teachers"),profiles("students")
+        ]);
+        legacyRole=role;
+        legacyTeachers=teachers.docs;
+        activeStudents=students.docs.filter(record=>
+          !["suspended","archived"].includes(String(record.data()?.status||"active")));
+      }else{
+        unavailableStaffLookups.delete(user.uid);
+        staffProfiles.delete(user.uid);
+      }
       const schoolAdmin=tenant.roles.includes("school_admin");
       const schoolTeacher=tenant.roles.includes("teacher");
       const schoolStudent=tenant.roles.includes("student");
       const platformAdmin=tenant.platformAdmin===true;
-      const effectiveLegacyRole=tenant.legacyCompatibilityAllowed===false?null:legacyRole;
-      // Once MCS is V4-only, flat staff_access/bootstrap identities stop
-      // contributing any presentation role. Canonical school/platform grants
-      // remain authoritative and are returned independently.
-      const role=effectiveLegacyRole|| (schoolTeacher?"teacher":null);
+      // Verified-school/platform grants are sufficient after V4 cutover.
+      // Do not probe flat staff_access/teachers/students once compatibility is retired.
+      const role=legacyRole|| (schoolTeacher?"teacher":null);
       return {
-        role,legacyRole:effectiveLegacyRole,platformAdmin,schoolAdmin,schoolTeacher,schoolStudent,
+        role,legacyRole,platformAdmin,schoolAdmin,schoolTeacher,schoolStudent,
         v4Schools:tenant.schools,v4MembershipLookupAvailable:tenant.available,
-        legacyCompatibilityAllowed:tenant.legacyCompatibilityAllowed!==false,
+        legacyCompatibilityAllowed:legacyAllowed,
         v4Cutover:tenant.v4Cutover===true,
-        teachers:teachers.docs,students:activeStudents,
-        needsTeacherApproval:!role&&!schoolAdmin&&!schoolStudent&&!teachers.empty,
-        staffLookupUnavailable:unavailableStaffLookups.has(user.uid)
+        teachers:legacyTeachers,students:activeStudents,
+        needsTeacherApproval:legacyAllowed&&!role&&!schoolAdmin&&!schoolStudent&&legacyTeachers.length>0,
+        staffLookupUnavailable:legacyAllowed&&unavailableStaffLookups.has(user.uid)
       };
     }).finally(()=>accountPending.delete(user.uid));
     accountPending.set(user.uid,operation);
