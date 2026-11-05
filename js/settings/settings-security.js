@@ -2,6 +2,7 @@
 import { app, auth, db } from "../core/firebase-core.js?v=1.3.0";
 import "./school-ai-settings.mjs?v=4.0.0";
 import {CONNECTION_DEFAULTS,activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "../core/connection-cache.mjs?v=1.3.0";
+import {resolveAccountAccess} from "../core/staff-session.mjs?v=4.0.1";
 import {collection,query,where,getDocs,doc,updateDoc,setDoc} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const field=id=>document.getElementById(id);
@@ -102,11 +103,30 @@ window.loadSecuritySettings=async function(){
     if(!user){clearConnectionPreferences();return;}
     try{
       if(auth.currentUser?.uid!==user.uid)return;
-      const owned=activateConnectionOwner(user.uid);formOwnerUid=user.uid;fillPreferences(owned);
+      const access=await resolveAccountAccess(user);
+      if(auth.currentUser?.uid!==user.uid||editRevision!==revision)return;
+      setLegacyCredentialMode({
+        schoolTeacher:access.schoolTeacher===true,
+        schoolAdmin:access.schoolAdmin===true,
+        v4Cutover:access.v4Cutover===true,
+        v4OnlyTeacher:access.schoolTeacher===true&&!access.legacyRole,
+        legacyTeacher:access.legacyRole==="teacher"
+      });
+      formOwnerUid=user.uid;
+      if(legacyCredentialsRetired){
+        clearConnectionPreferences();
+        fillPreferences(CONNECTION_DEFAULTS);
+        feedback("Legacy personal API credentials are retired for this account. Use the verified-school connection controls above.");
+        return;
+      }
+      const owned=activateConnectionOwner(user.uid);fillPreferences(owned);
       const snapshot=await getDocs(query(collection(db,"teachers"),where("email","==",user.email.toLowerCase())));
       if(auth.currentUser?.uid!==user.uid||formOwnerUid!==user.uid||editRevision!==revision||saving)return;
       const data=snapshot.empty?{}:snapshot.docs[0].data();
       fillPreferences(writeConnectionPreferences(user.uid,data));
-    }catch{if(auth.currentUser?.uid===user.uid&&editRevision===revision&&!saving)feedback("Saved profile settings could not load. This browser’s current values are shown. Check your connection before saving.","error");}
+    }catch{
+      if(auth.currentUser?.uid===user.uid&&editRevision===revision&&!saving)
+        feedback("Saved profile settings could not load. This browser’s current values are shown. Check your connection before saving.","error");
+    }
   });
 };
