@@ -2,8 +2,8 @@
 export * from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import * as sdk from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {auth,db} from "./firebase-core.js?v=1.3.0";
-import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
-import {staffRole,staffSections} from "./staff-role.mjs?v=1.3.0";
+import {resolveAccountAccess} from "./staff-session.mjs?v=4.0.1";
+import {staffSections} from "./staff-role.mjs?v=1.3.0";
 const descriptors=new WeakMap();
 const sectional=new Set(["teaching_roster","student_grades","grades","activity_grades","assessment_evidence","student_submissions","commit_reclaims","practice_profiles","practice_scores","practice_boards","practice_rankings","practice_class_season_rankings","grading_alerts","issues"]);
 const privateKinds=new Set(["repobank","group_repo_cache","github_stats_cache","system","templates","reference_folders"]);
@@ -12,7 +12,14 @@ const emptySnapshot=docs=>({docs,size:docs.length,empty:docs.length===0,forEach:
 async function actor(){
   await auth.authStateReady();const user=auth.currentUser;
   if(!pending||pending.uid!==user?.uid){
-    const operation=resolveStaffRole(user).then(role=>({uid:user?.uid,role,sections:staffSections(user)}));
+    const operation=resolveAccountAccess(user).then(access=>{
+      if(access.legacyCompatibilityAllowed===false||access.v4Cutover===true)
+        throw Error("Legacy teaching data access is retired for this verified-school account. Open the school-scoped workspace instead.");
+      const role=access.legacyRole;
+      if(!["admin","teacher"].includes(role))
+        throw Error("This legacy teaching workspace requires an active legacy staff grant during compatibility mode.");
+      return {uid:user?.uid,role,sections:role==="teacher"?staffSections(user):[]};
+    });
     pending={uid:user?.uid,operation};operation.finally(()=>{if(pending?.operation===operation)pending=null;}).catch(()=>{});
   }
   const current=await pending.operation;
