@@ -1,5 +1,5 @@
 import {requireCurrentVersion} from "./workspace-model.mjs?v=1.3.0";
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.3.0";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=4.0.0";
 /** Teacher schedule editing and scoped calendar workflow. */
 import { db } from "../core/firebase-core.js?v=1.3.0";
 import {loadSchoolOptions,fillSchoolDatalist} from "../core/school-options.mjs?v=1.3.0";
