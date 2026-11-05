@@ -52,3 +52,68 @@ node mcs-migration-apply.js --apply --max-writes=250 \
 ```
 
 A completed mirror still leaves separate work for verified identity/person mapping, memberships, academic offerings/enrollments, assessment ownership, canonical Studio/GitHub evidence, Gradebook publication history, teacher lesson/presentation resources, practice data, notifications, and any future school file storage.
+
+## Canonical migration stages after the legacy mirror
+
+After the mirror reconciliation is complete, generate and review the canonical stages in dependency order. Each planner is read-only; each approval file is bound to the exact plan bytes; each apply engine defaults to preflight and requires its stage-specific write acknowledgement before `--apply`.
+
+1. Canonical foundation: people, student/teacher memberships, academic catalog and course offerings.
+2. Academic access: active/historical student enrollments and teacher-course assignments.
+3. Assessments: teacher-owned blueprints and reviewed deployments.
+4. Evidence and grades: immutable Studio/GitHub evidence plus published/draft grade history as supported by the reviewed source.
+5. Student repository configuration: course-scoped durable GitHub repository URL/username only. **Legacy OAuth tokens are never migrated.**
+6. Planning support: private reference folders/documents and teacher timetables.
+7. Planning resources: private lesson plans and presentations with preserved revision history.
+8. Practice: verified progress, current-season state and approved historical archive.
+
+The student-repository stage is now executable through `mcs-canonical-student-repositories-apply.js`. It is create-only, requires an active canonical student identity plus active enrollment/offering, emits no notifications and refuses any OAuth credential migration.
+
+Example preflight/write shapes:
+
+```sh
+# Preflight only.
+node mcs-canonical-student-repositories-apply.js \
+  --plan=/restricted/mcs-student-repositories-plan.json \
+  --approval=/restricted/mcs-student-repositories-approval.json \
+  --receipt=/restricted/mcs-student-repositories-preflight.json
+
+# Write only in an approved migration window.
+ADMINERVA_MCS_STUDENT_REPOSITORY_WRITE=YES_I_APPROVE_MCS_CANONICAL_STUDENT_REPOSITORIES \
+node mcs-canonical-student-repositories-apply.js --apply --max-units=50 \
+  --plan=/restricted/mcs-student-repositories-plan.json \
+  --approval=/restricted/mcs-student-repositories-approval.json \
+  --receipt=/restricted/mcs-student-repositories-apply-001.json
+```
+
+Every stage receipt must be preserved and reconciled with the approved plan before the next dependent stage is treated as complete.
+
+## Restricted cutover operator packet
+
+The migration scripts do not substitute for the real MCS backup, identity review, policy decisions or rollback rehearsal. Once the legacy mirror is reconciled and the current identity-candidate report exists, create a local restricted operator packet:
+
+```sh
+node mcs-cutover-operator-template.js \
+  --ledger=/restricted/mcs-dryrun.json \
+  --reconciliation=/restricted/mcs-mirror-reconciliation.json \
+  --identity=/restricted/mcs-identity-candidates.json \
+  --output=/restricted/mcs-cutover-operator.json
+```
+
+The generated packet is deliberately **unapproved**. Complete it only from reviewed operational evidence. It records the protected backup reference/checksum and recovery owner, identity-review disposition, the school-shared planning/reference policy decision, receipt hashes for every canonical migration stage, the platform-owner decision-record reference, and the rollback rehearsal.
+
+After those fields have been independently completed, validate the packet offline:
+
+```sh
+node mcs-cutover-operator-validate.js \
+  --packet=/restricted/mcs-cutover-operator.json \
+  --output=/restricted/mcs-cutover-validation.json
+```
+
+A validation result of `ready: true` means only that the operator packet is structurally complete. It does **not** enable `v4_only`, deploy Firebase, grant school roles, or authorize production writes. Live school cutover readiness and the explicit Platform Owner cutover action remain separate gates.
+
+## MCS owner decision record
+
+Before technical cutover readiness can pass, the Platform Owner Console must contain a decision record bound to the currently designated first MCS school administrator. The record requires controlled references for institutional/data authority, the approved academic calendar, privacy, retention and backup/recovery policy; the data-steward role; and explicit `approved` or `disabled` decisions for School AI and external repository/GitHub integration.
+
+Do not infer these values from legacy email domains, historical administrator accounts or existing data. The first school administrator must be an existing verified active Firebase identity deliberately granted `school_admin`. Changing that first-admin binding makes the old decision record stale and blocks cutover readiness until reviewed again.
+
