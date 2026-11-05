@@ -1,6 +1,6 @@
 import {app} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {lessonStorage} from "./workspace-session.mjs?v=1.3.0";
+import {lessonStorage} from "./workspace-session.mjs?v=4.0.0";
 import {filterScheduleRowsForLesson,scheduleRowsToText} from "./legacy-schedule-compat.mjs?v=1.4.18";
 import {
   activePlanningSchool,saveSchoolPlanning,listSchoolPlanning,getSchoolPlanning,mountSchoolPlanningLibraryButton
