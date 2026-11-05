@@ -2,7 +2,7 @@
 import {auth} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {doc,collection} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {staffSessionReady,resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
+import {staffSessionReady,resolveAccountAccess} from "../core/staff-session.mjs?v=4.0.1";
 import {workspacePath,scopedStorage} from "./workspace-model.mjs?v=1.3.0";
 let boundUid=null,invalidated=false;
 staffSessionReady.then(({user,role})=>{if(role&&user?.uid===auth.currentUser?.uid&&!invalidated)boundUid=user.uid;});
@@ -14,10 +14,12 @@ export function workspaceOnReady(callback) {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded",start,{once:true});
   else void start();
 }
-workspaceOnReady(({user,role})=>{
+workspaceOnReady(({user,role,access})=>{
   if(!role||!/(lesson-planner|schedule|presentation)\.html$/.test(location.pathname)||document.getElementById("av-personal-workspace"))return;
   const label=document.createElement("p");label.id="av-personal-workspace";label.className="av-muted my-3";
-  label.textContent="Personal teaching workspace · "+user.email+". Saves stay in your account; authorized administrators can inspect retained teaching records.";
+  label.textContent=access?.schoolTeacher
+    ?"Verified-school teaching workspace · "+user.email+". Canonical school saves remain scoped to your active school and teacher account."
+    :"Personal teaching workspace · "+user.email+". Saves stay in your account; authorized administrators can inspect retained teaching records.";
   document.querySelector("h1")?.after(label);
 });
 export function workspaceUid() {
@@ -36,8 +38,9 @@ export const lessonStorage={
 export async function requireStaffWorkspace() {
   await auth.authStateReady();
   await staffSessionReady;
-  const user=auth.currentUser;
-  if (!await resolveStaffRole(user)) throw Error("Active teacher access is required.");
+  const user=auth.currentUser,access=await resolveAccountAccess(user);
+  if (!(access.schoolTeacher||["teacher","admin"].includes(access.role)))
+    throw Error("Active teacher access is required.");
   if(!invalidated&&!boundUid&&user?.uid===auth.currentUser?.uid)boundUid=user.uid;
   if(user?.uid!==auth.currentUser?.uid)throw Error("Account changed. Reload before continuing.");
   return workspaceUid();
