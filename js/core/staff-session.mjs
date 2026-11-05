@@ -73,6 +73,11 @@ export function resolveAccountAccess(user) {
   }
   return accountPending.get(user.uid);
 }
+export async function resolveLegacyStaffRole(user){
+  const access=await resolveAccountAccess(user);
+  if(access.legacyCompatibilityAllowed===false||access.v4Cutover===true)return null;
+  return access.legacyRole||null;
+}
 export async function resolveStaffRole(user) {
   if (!user?.emailVerified) return null;
   const email = String(user.email || "").toLowerCase();
