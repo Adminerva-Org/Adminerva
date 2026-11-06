@@ -18,6 +18,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - name: Install backend dependencies for canonical 4.0 contract tests
+        run: npm ci --prefix functions --no-audit --no-fund
       - name: Test grading evidence and feedback regressions
         run: |
           node --test tests/google-docs-export.test.mjs
