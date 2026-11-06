@@ -34,7 +34,9 @@ service cloud.firestore {
           : email == "josephsixson@mcstayuman.edu.ph");
     }
     function isInstructor() {
-      return isAdmin() || isTeacher();
+      // Teacher-first avoids evaluating the administrator lookup twice for the
+      // overwhelmingly common classroom path while preserving admin authority.
+      return isTeacher() || isAdmin();
     }
     function isOriginalTeacher() {
       return isTeacher() && verifiedEmailMatches("josephsixson@mcstayuman.edu.ph");
@@ -56,20 +58,24 @@ service cloud.firestore {
       return exists(path) ? get(path).data.get("sections",[]) : [];
     }
     function mayTeachSection(section) {
-      return isAdmin() || (isTeacher() && section is string && section in teacherSections());
+      return (isTeacher() && section is string && section in teacherSections()) || isAdmin();
     }
     function mayTeachStudent(studentId) {
-      return isAdmin() || (isTeacher() && studentId is string &&
-        mayTeachSection(get(/databases/$(database)/documents/students/$(studentId)).data.section));
+      return (isTeacher() && studentId is string &&
+        get(/databases/$(database)/documents/students/$(studentId)).data.section in teacherSections()) ||
+        isAdmin();
     }
     function mayTeachAssessment(assessmentId) {
       let data = get(/databases/$(database)/documents/assessments/$(assessmentId)).data;
-      return isAdmin() || (isTeacher() && (data.get("ownerUid","") == request.auth.uid || data.get("sectionIds",[]).hasAny(teacherSections())));
+      return (isTeacher() &&
+        (data.get("ownerUid","") == request.auth.uid || data.get("sectionIds",[]).hasAny(teacherSections()))) ||
+        isAdmin();
     }
     function mayGrade(data) {
-      return isAdmin() || (isTeacher() && data.section in teacherSections() &&
+      return (isTeacher() && data.section in teacherSections() &&
         data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
-        data.section in get(/databases/$(database)/documents/assessments/$(data.taskId)).data.get("sectionIds",[]));
+        data.section in get(/databases/$(database)/documents/assessments/$(data.taskId)).data.get("sectionIds",[])) ||
+        isAdmin();
     }
     function serverOwned(name) {
       return name in ["academic_access_preparations","teaching_roster","student_access","practice_sessions","practice_browser_sessions","practice_attempts","practice_awards","practice_verified_progress","practice_class_progress","practice_security_events","system_private","school_ai_results","school_ai_usage","practice_public_rankings","practice_season_scores","practice_season_progress","practice_season_awards","practice_season_attempts","practice_class_season_rankings"];
@@ -540,7 +546,8 @@ service cloud.firestore {
           data.get("evaluationDraft",{}) is map &&
           data.get("evaluationDraft",{}).get("teacherReviewed",true) == false;
       }
-      allow read: if mayTeachSection(resource.data.get("section",null));
+      allow read: if mayTeachSection(resource.data.get("section",null)) ||
+        mayReviewAssessmentSection(resource.data.get("section",""),resource.data.get("taskId",""));
       allow create: if mayGrade(request.resource.data) &&
         (!v2Grade(request.resource.data) || (request.resource.data.published == false &&
           (currentEvidence(request.resource.data) || validSystemDraft(request.resource.data)))) &&
@@ -685,7 +692,8 @@ service cloud.firestore {
         (section in sections &&
           (assessment.get("ownerUid","") == request.auth.uid ||
             assessmentIncludesSection(assessment,section))) ||
-        ((assessment.get("ownerUid","") == request.auth.uid || isOriginalTeacher()) &&
+        ((assessment.get("ownerUid","") == request.auth.uid ||
+          verifiedEmailMatches("josephsixson@mcstayuman.edu.ph")) &&
           assessmentIncludesSection(assessment,section))
       );
     }
@@ -695,14 +703,14 @@ service cloud.firestore {
         assessmentIncludesSection(assessment,section) &&
         (section in teacherSections() ||
           assessment.get("ownerUid","") == request.auth.uid ||
-          isOriginalTeacher());
+          verifiedEmailMatches("josephsixson@mcstayuman.edu.ph"));
     }
     function mayReviewClaimScope(section,assessmentId) {
       return mayReviewAssessmentSection(section,assessmentId);
     }
     function mayTeachEvidence(studentId,assessmentId) {
-      return isAdmin() || (isTeacher() && studentId is string &&
-        teacherEvidenceScope(studentId,assessmentId));
+      return (isTeacher() && studentId is string &&
+        teacherEvidenceScope(studentId,assessmentId)) || isAdmin();
     }
 
     function instructorEvidenceChange(evidenceId) {
@@ -1561,7 +1569,8 @@ service cloud.firestore {
 
     // Student-initiated submission receipts are immutable, reviewable evidence.
     match /student_submissions/{submissionId} {
-      allow read: if mayTeachSection(resource.data.section);
+      allow read: if mayTeachSection(resource.data.section) ||
+        mayReviewAssessmentSection(resource.data.get("section",""),resource.data.get("assessmentId",""));
       allow read: if signedIn() && ownsStudentProfile(resource.data.studentId);
       allow create: if signedIn() &&
         request.resource.data.keys().hasOnly([
