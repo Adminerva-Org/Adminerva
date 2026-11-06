@@ -60,7 +60,12 @@ async function evaluateSchoolOnboardingReadiness({db,schoolId}){
   const institutionalReady=[
     "institutionalDataAuthority","provenanceVerified","calendarConfigured","privacyPolicyApproved"
   ].every(key=>readiness[key]===true);
-  const catalogReady=years.length>0&&terms.length>0&&subjects.length>0&&sections.length>0;
+  const activeCatalog=docs=>docs.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active");
+  const activeYears=activeCatalog(years);
+  const activeTerms=activeCatalog(terms);
+  const activeSubjects=activeCatalog(subjects);
+  const activeSections=activeCatalog(sections);
+  const catalogReady=activeYears.length>0&&activeTerms.length>0&&activeSubjects.length>0&&activeSections.length>0;
   const fileData=filePolicy.exists?filePolicy.data():null;
   const aiData=aiConfig.exists?aiConfig.data():null;
 
@@ -80,8 +85,8 @@ async function evaluateSchoolOnboardingReadiness({db,schoolId}){
     row("student_access","Student access",students.length>0,
       students.length+" active student membership(s).",{count:students.length}),
     row("academic_catalog","Academic catalog",catalogReady,
-      years.length+" year(s), "+terms.length+" term(s), "+subjects.length+
-      " subject(s), "+sections.length+" section(s)."),
+      activeYears.length+" active year(s), "+activeTerms.length+" active term(s), "+activeSubjects.length+
+      " active subject(s), "+activeSections.length+" active section(s)."),
     row("course_offerings","Course offerings",activeOfferings.length>0,
       activeOfferings.length+" active course offering(s).",{count:activeOfferings.length}),
     row("teaching_assignments","Teaching assignments",activeAssignments.length>0,
