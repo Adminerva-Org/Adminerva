@@ -368,10 +368,68 @@ Documentation complete != feature implemented != backend deployed != production 
 - [Monitoring and maintenance](monitoring-maintenance.md)
 - [Teacher workspace and responsive review](teacher-workspaces-and-responsive-review.md)
 
-## 14. Change log
+## 14. Version 5.x feature discovery — additional candidates (2026-11-06)
+
+> **Discussion status: Proposed for evaluation, not approved or scheduled.** These candidates complement (and should be reconciled with) the earlier 5.1–5.5 feature table. Version assignments are provisional; avoid creating duplicate modules or a second gradebook.
+
+### Prioritized candidate backlog
+
+| ID | Candidate version | Priority | Proposal | Primary acceptance idea | Key dependency |
+| --- | --- | --- | --- | --- | --- |
+| CLASS-521 | 5.1–5.2 | P0 | Unified Classroom Workspace | Teacher/student open a section and find lessons, assessments, deadlines, projects, grades and allowed participants from one role-aware context | Course/section membership and existing module deep links |
+| PLAN-521 | 5.2 | P1 | Academic Calendar & Assignment Planner | Teachers schedule activities, extensions and conflicts; students see only assigned deadlines | Assessment deployments, academic years, timezone-aware due dates |
+| CONTENT-521 | 5.2 | P1 | Learning Materials & Resource Library | Teacher publishes reusable, versioned lesson assets to authorized classes | Permission model, storage and lesson-plan integration |
+| PRACTICE-521 | 5.2–5.3 | P1 | Formative assessments and low-stakes practice | Auto-check appropriate questions, preserve attempts, keep practice separate from official gradebook unless explicitly configured | Unified assessment catalogue, practice/summative distinction |
+| COMP-531 | 5.3 | P1 | Learning competency tracking | Map criteria/activities to competencies; teacher sees defensible evidence of mastery and uncertainty | Versioned rubrics, stable competency catalogue |
+| GROUP-531 | 5.3–5.4 | P1 | Group projects with individual accountability | Assign group projects while individual evidence, attribution and grades remain distinct | Studio/repository evidence, group memberships and reclaims |
+| SELF-531 | 5.3 | P2 | Student reflection and self-assessment | Student submits structured reflections linked to work; teacher may use as context but not authorship proof | Submission revisions and feedback |
+| ACCESS-531 | 5.3 | P1 | Differentiated assignments and accommodations | Teacher assigns individual deadlines/adjustments with privacy and audit; no leakage in class views | Deployment exceptions and authorized approval |
+| REMED-541 | 5.4 | P1 | Remediation and reassessment workflow | Teacher assigns targeted follow-up; previous outcome remains historically intact | Competencies, versioned assessments, grade correction rules |
+| HANDOVER-541 | 5.4 | P2 | Teacher handover and course continuity | Authorized teacher replacement inherits relevant class resources/queues without falsely changing ownership or audit authorship | Membership/assignment history and sharing |
+| GRADE-541 | 5.4 | P1 | Configurable grade calculation/policy engine | Transparent categories/weights, preview, effective-dated policy and audited override; no silent historical recalculation | One authoritative Gradebook, school grading policy |
+| COMMS-541 | 5.4–5.5 | P2 | Classroom announcements and communication | Targeted announcements with notifications and read state; no unrestricted student messaging | Notification preferences and scoped course access |
+| PORT-551 | 5.5 | P1 | Student progress portfolio | Student can curate permitted projects, feedback and achievements without exposing private grades or team members | Studio snapshots, artifact permissions |
+| INSIGHT-551 | 5.5 | P2 | Course-level insights and interventions | Teacher identifies missed work and rubric patterns, records supportive interventions; avoids unsupported risk labeling | Aggregate queries, privacy and clear metric denominators |
+
+### Product-design guidance
+
+**Unified Classroom Workspace:** Reorganize existing Lesson Planning, Review & Grade, Practice Labs, Studio, repository tools, Gradebook and materials by section/course. Do not rebuild those screens as independent copies. Support teacher/student variations, mobile task summaries, and persistent context.
+
+**Calendar:** School/term events, assignment dates, extension policies and students' personal due-date views. Source-of-truth due dates remain with authorized deployments and exceptions, not a separate mutable calendar copy.
+
+**Resource Library:** Teacher-owned and intentionally shared materials; link to lesson, course or assessment. Version or pin content used in official assessments. Preview before publishing and protect private resources.
+
+**Formative activity engine:** Draw on existing Practice Labs and Arcade concepts. Clearly label ungraded practice versus formative and summative results. Code/SQL execution must use an isolated resource-limited sandbox; no queries to real production student or school data.
+
+**Competencies:** Begin with teacher-configured rubrics/learning objectives and evidence links, not opaque AI-calculated student ability. Aggregation must explain which rubric versions and assessments support a conclusion.
+
+**Group assessment:** Shared artifact does not imply shared credit. Preserve individual attribution, verified commits, authorized reclaims, and teacher-controlled grades; work not attributable to a student must be marked uncertain rather than automatically penalized.
+
+**Accommodations:** Private, teacher/admin-approved per-learner adjustments to time, format, attempt count or modality. Separate sensitive rationale from ordinary class views.
+
+**Remediation:** Preserve first attempts and original published decisions; add a new explicit reassessment event, rubric/grade policy and teacher publication rule.
+
+**Grading engine:** Distinguish assessment rubric scoring from school-specific weighted grading or term aggregation. Require policy versioning and preview before changing released results.
+
+**Communication:** Favor announcements and actionable system notifications before implementing direct messages or social features. Apply moderation and retention considerations if messaging is later added.
+
+### Scope boundaries before version 6
+
+- **5.x:** Make one school's daily classroom teaching and learning workflows substantially more complete and useful, while retaining multi-school-safe data and permission architecture.
+- **6.x:** Mature multi-school onboarding, institutional-wide governance, interoperability APIs, broad analytics and administrative automation.
+- **Future:** Full cloud IDE, highly autonomous AI learning recommendations, extensive third-party LMS marketplace, complex parent/guardian portal (unless pilot need changes priorities).
+
+### Feature-selection rubric for next discussion
+
+Score each proposed feature on: (a) teacher time saved, (b) direct student learning value, (c) pilot demand, (d) dependency readiness, (e) implementation/maintenance cost, and (f) privacy/security complexity. Pick a cohesive 5.x slice instead of promising all candidates.
+
+**Proposed first planning slice:** Unified Classroom Workspace + Calendar + Resource Library + low-stakes Practice, followed by competencies, differentiated assessment, group accountability and remediation.
+
+## 15. Change log
 
 | Date | Revision | Change | Source |
 | --- | --- | --- | --- |
+| 2026-11-06 | 0.2 — feature discovery | Added fourteen provisional 5.x classroom, practice, competency, group-work, accommodation, grading and portfolio candidates with dependencies; no implementation approved | 5.x scope discussion |
 | 2026-11-06 | 0.1 — initial planning baseline | Established 5.0 summer transition, Supabase target architecture, 5.x daily workflows, 6.x institutional direction, future backlog, risk rules and open decisions | Adminerva roadmap discussion |
 
 ---
