@@ -38,7 +38,7 @@ function createSchoolStudentProfileService({db}){
   const input=request.data||{};
   if(Object.hasOwn(input,"githubToken")||Object.hasOwn(input,"accessToken")||Object.hasOwn(input,"token"))
    deny("invalid-argument","OAuth tokens are session credentials and cannot be stored in the school profile.");
-  const ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["student"]),
+  const ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["student"]}),
    prefix="schools/"+ctx.schoolId+"/",
    memberRef=db.doc(prefix+"memberships/"+ctx.uid),
    schoolRef=db.doc("platform_schools/"+ctx.schoolId);
