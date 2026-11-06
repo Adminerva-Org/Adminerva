@@ -360,6 +360,11 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 - Operational setup readiness is deliberately separate from `school-cutover-readiness.html`. Completing ordinary school setup does not authorize legacy retirement, production migration, continuity backup acceptance or MCS reconciliation.
 - Platform-owner authority alone does not grant access to this private school setup summary; the service requires an active `school_admin` membership for the selected school.
 
+## School setup readiness catalog accuracy — November 6, 2026
+
+- School Setup Readiness now counts only active academic years, terms, subjects and sections explicitly belonging to the verified selected school. Archived/ended or malformed cross-school catalog entries cannot make the academic catalog checklist appear complete.
+- The existing read-only school-admin overview, bounded listing, optional file/AI items and separate migration/cutover readiness remain unchanged.
+
 ## Delivery and remaining work
 
 | Track | Actual implementation in PR #113 | Remaining before Adminerva 4.0 |
