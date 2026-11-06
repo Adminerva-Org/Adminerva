@@ -66,6 +66,16 @@
       <button type="submit" class="own-button warn">Restore legacy compatibility</button>
     </form>
    </section>
+   <section id="owner-cutover-package-section" hidden style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#fff">
+    <h3 style="font-weight:750">MCS cutover package</h3>
+    <p class="own-muted">Generate the restricted package with <code>functions/mcs-cutover-package.js</code> after all approved migration stages complete. This console records only its verified summary and hashes; it does not upload student records or migration payloads.</p>
+    <p id="owner-cutover-package-status" class="own-muted">No package status loaded.</p>
+    <form id="owner-cutover-package">
+      <label>Cutover package JSON<input class="own-field" name="packageFile" type="file" accept="application/json,.json" required></label>
+      <label>Package review reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button">Record successful cutover package</button>
+    </form>
+   </section>
    <section style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#fff">
     <h3 style="font-weight:750">Cutover owner decisions</h3>
     <p class="own-muted">These references are required before V4-only readiness can pass. They document the approved MCS operating decisions without storing student records in the owner console.</p>
