@@ -35,6 +35,8 @@ jobs:
           node --test js/core/patch-history.test.mjs js/student/practice-points.test.mjs js/student/xml-layout.test.mjs js/presentation-review/lesson-to-slides.test.mjs js/presentation-review/lesson-slide-integration.test.mjs js/repo-review/services/review-snapshot.test.mjs
           node --test js/repo-review/services/evidence-lifecycle.test.mjs js/repo-review/services/review-requests.test.mjs tests/review-workspace.test.mjs
           node --test js/repo-review/services/v2-grading-assistant.test.mjs js/repo-review/services/grade-revision-snapshot.test.mjs js/core/feedback-format.test.mjs js/repo-review/services/commit-substance.test.mjs js/repo-review/services/contribution-resolver.test.mjs js/repo-review/services/assessment-evidence.test.mjs js/repo-review/services/commit-history.test.mjs js/repo-review/services/bulk-evidence.test.mjs js/repo-review/services/inspector-helpers.test.mjs js/core/notification-routing.test.mjs js/core/report-filters.test.mjs js/core/notification-visibility.test.mjs js/core/adminerva-nav.test.mjs js/lesson-review/lesson-plan-helpers.test.mjs js/lesson-review/reference-context.test.mjs js/lesson-review/lesson-editor.test.mjs js/lesson-review/schedule-scope.test.mjs js/lesson-review/lesson-workflow.test.mjs js/repo-review/assessment-dates.test.mjs js/student/assessment-state.test.mjs js/student/playground-storage.test.mjs js/student/practice-courses.test.mjs js/student/practice-playground-bridge.test.mjs tests/lesson-school-format.test.mjs
+          node --test tests/mcs-canonical-assessment.test.mjs tests/mcs-canonical-evidence-grade.test.mjs tests/mcs-canonical-foundation.test.mjs tests/mcs-canonical-planning-support.test.mjs tests/mcs-canonical-planning.test.mjs tests/mcs-canonical-practice.test.mjs tests/mcs-migration-reconcile.test.mjs tests/mcs-pilot-mapping.test.mjs
+          node --test tests/tenant-authority.test.mjs tests/tenant-selector.test.mjs tests/school-continuity-export.test.mjs tests/school-roster-source.test.mjs
       - name: Check notification, issue, and submission module syntax
         run: |
           for file in js/analytics/*.mjs js/help/*.mjs js/core/staff-role.mjs; do node --check "$file"; done
@@ -111,6 +113,8 @@ jobs:
           node --input-type=module --check < js/student/assessment-state.mjs
           node --input-type=module --check < js/student/submission-receipts.mjs
           node --check functions/index.js
+          for file in functions/school-*.js functions/teacher-blueprints.js functions/tenant-access.js functions/mcs-*.js; do node --check "$file"; done
+          for file in js/core/verified-school-scope.mjs js/core/account-school-context.mjs js/core/people-access.mjs js/core/owner-school-registry.mjs js/student/v4-assessments.mjs js/student/v4-studio-service.mjs js/repo-review/v4-gradebook.mjs js/repo-review/v4-reclaim-inbox.mjs; do node --check "$file"; done
           npm --prefix functions run check
           node --check scripts/prepare-academic-access.cjs
       - name: Verify packaged backend handler exports without data operations
