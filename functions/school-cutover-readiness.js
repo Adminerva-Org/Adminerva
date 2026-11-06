@@ -67,6 +67,9 @@ async function evaluateSchoolCutoverReadiness({db,schoolId}){
   activeAdmins=activeMembers.filter(doc=>Array.isArray(doc.data().roles)&&doc.data().roles.includes("school_admin")),
   activeStudents=activeMembers.filter(doc=>Array.isArray(doc.data().roles)&&doc.data().roles.includes("student")),
   activeTeachers=activeMembers.filter(doc=>Array.isArray(doc.data().roles)&&doc.data().roles.includes("teacher")),
+  activeCatalog=docs=>docs.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active"),
+  activeYears=activeCatalog(years),activeTerms=activeCatalog(terms),
+  activeSubjects=activeCatalog(subjects),activeSections=activeCatalog(sections),
   activeOfferings=offerings.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active"),
   activeEnrollments=enrollments.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active"),
   activeAssignments=assignments.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active"),
@@ -76,22 +79,49 @@ async function evaluateSchoolCutoverReadiness({db,schoolId}){
  Object.assign(counts,{
   activeMemberships:activeMembers.length,activeAdmins:activeAdmins.length,
   activeStudents:activeStudents.length,activeTeachers:activeTeachers.length,
-  academicYears:years.length,terms:terms.length,subjects:subjects.length,sections:sections.length,
+  academicYears:activeYears.length,terms:activeTerms.length,subjects:activeSubjects.length,sections:activeSections.length,
   activeOfferings:activeOfferings.length,activeEnrollments:activeEnrollments.length,
   activeAssignments:activeAssignments.length,deployedAssessments:deployedTasks.length,
   publishedGrades:publishedGrades.length
  });
  check("active_admin",activeAdmins.length>0,"At least one active school administrator",
   activeAdmins.length+" active school administrator(s).");
- check("academic_catalog",years.length>0&&terms.length>0&&subjects.length>0&&sections.length>0,
-  "Academic catalog is configured",
-  years.length+" year(s), "+terms.length+" term(s), "+subjects.length+" subject(s), "+sections.length+" section(s).");
- check("course_offerings",activeOfferings.length>0,"At least one active course offering",
-  activeOfferings.length+" active offering(s).");
+ const activeYearIds=new Set(activeYears.map(doc=>doc.id)),
+  activeTermIds=new Set(activeTerms.map(doc=>doc.id)),
+  activeSubjectIds=new Set(activeSubjects.map(doc=>doc.id)),
+  activeSectionIds=new Set(activeSections.map(doc=>doc.id)),
+  invalidTerms=activeTerms.filter(doc=>!activeYearIds.has(doc.data().yearId)),
+  invalidOfferings=activeOfferings.filter(doc=>{
+   const data=doc.data(),term=activeTerms.find(item=>item.id===data.termId);
+   return !activeYearIds.has(data.yearId)||!activeTermIds.has(data.termId)||
+    !activeSubjectIds.has(data.subjectId)||!activeSectionIds.has(data.sectionId)||
+    term?.data().yearId!==data.yearId;
+  });
+ check("academic_catalog",activeYears.length>0&&activeTerms.length>0&&activeSubjects.length>0&&
+   activeSections.length>0&&invalidTerms.length===0,
+  "Active academic catalog is coherent",
+  activeYears.length+" active year(s), "+activeTerms.length+" active term(s), "+
+  activeSubjects.length+" active subject(s), "+activeSections.length+" active section(s); "+
+  invalidTerms.length+" invalid term/year link(s).");
+ check("course_offerings",activeOfferings.length>0&&invalidOfferings.length===0,
+  "Active course offerings resolve to the active catalog",
+  activeOfferings.length+" active offering(s); "+invalidOfferings.length+
+  " have inactive or mismatched catalog dependencies.");
 
- const peopleById=new Map(),people=await bounded(db,prefix+"people",1001);
- for(const doc of people)peopleById.set(doc.id,doc.data());
+ const peopleById=new Map(),people=await bounded(db,prefix+"people",1001),
+  personIdsByAuthUid=new Map();
+ for(const doc of people){
+  peopleById.set(doc.id,doc.data());
+  const uid=doc.data().authUid;
+  if(typeof uid==="string"&&uid){
+   const ids=personIdsByAuthUid.get(uid)||[];ids.push(doc.id);personIdsByAuthUid.set(uid,ids);
+  }
+ }
  counts.people=people.length;
+ const duplicatePersonLinks=[...personIdsByAuthUid.entries()].filter(([,ids])=>ids.length>1);
+ check("unique_person_account_links",duplicatePersonLinks.length===0,
+  "Each verified account maps to at most one school person record",
+  duplicatePersonLinks.length?duplicatePersonLinks.length+" account UID(s) are linked to multiple people.":"No duplicate person/account links.");
  const memberByUid=new Map(activeMembers.map(doc=>[doc.id,doc.data()])),
   offeringById=new Map(activeOfferings.map(doc=>[doc.id,doc.data()])),
   assignmentKey=new Set(activeAssignments.map(doc=>doc.data().teacherUid+"|"+doc.data().offeringId)),
@@ -107,6 +137,20 @@ async function evaluateSchoolCutoverReadiness({db,schoolId}){
  check("student_identity_links",studentIdentityIssues.length===0,
   "Active student memberships have canonical person links",
   studentIdentityIssues.length?studentIdentityIssues.length+" student membership(s) need identity repair.":"All active student memberships reconcile.");
+ const teacherIdentityIssues=[];
+ for(const member of activeTeachers){
+  const personId=member.data().personId,person=peopleById.get(personId);
+  if(!personId||!person||person.schoolId!==schoolId||person.kind!=="staff"||
+     person.status!=="active"||person.authUid!==member.id)
+   teacherIdentityIssues.push(member.id);
+ }
+ check("teacher_identity_links",teacherIdentityIssues.length===0,
+  "Active teacher memberships have canonical staff-person links",
+  teacherIdentityIssues.length?teacherIdentityIssues.length+" teacher membership(s) need identity repair.":"All active teacher memberships reconcile.");
+ const roleless=activeMembers.filter(doc=>!Array.isArray(doc.data().roles)||!doc.data().roles.length);
+ check("membership_roles",roleless.length===0,
+  "Active memberships carry at least one verified school role",
+  roleless.length?roleless.length+" active membership(s) have no role.":"All active memberships have roles.");
 
  const enrollmentIssues=[];
  for(const enrollment of activeEnrollments){
