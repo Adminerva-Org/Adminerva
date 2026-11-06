@@ -90,7 +90,7 @@ test('home is a direct link and switching workspaces is an explicit disclosure',
 test('educator groups expose the integrated assessment, review and insights destinations', () => {
   const { desktop } = mount('repo', 'gradebook');
   assert.deepEqual(groupNames(desktop), ['Assessment ▾', 'Review & grade ▾', 'Insights ▾']);
-  assert.deepEqual(links(desktop.children[0]).map(link => link.href), ['assessment-studio.html', 'submissions.html', 'studio-submissions.html', 'reclaim-inbox.html']);
+  assert.deepEqual(links(desktop.children[0]).map(link => link.href), ['teacher-assessment-library.html', 'assessment-studio.html', 'submissions.html', 'studio-submissions.html', 'reclaim-inbox.html']);
   assert.deepEqual(links(desktop.children[1]).map(link => link.href), ['repofetch.html', 'gradebook.html', 'repobank.html']);
   assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['teacher-analytics.html', 'learning-follow-up.html']);
   assert.ok(!links(desktop).some(link => ['activity-grader.html', 'grading.html', 'lesson-planner.html', 'users.html'].includes(link.href)));
@@ -255,7 +255,12 @@ async function checkGuard({ role = 'admin', path = '/users.html', students = [],
     writeConnectionPreferences: (uid, preferences) => { cacheCalls.push('hydrate:' + uid); connectionWrites.push({ uid, preferences }); },
     resolveAccountAccess: async () => {
       cacheCalls.push('resolve'); if (switchDuringLookup) auth.currentUser = { uid: 'another-account' };
-      return { role, students, teachers: teacherPreferences ? [{ data: () => teacherPreferences }] : [], needsTeacherApproval: false };
+      return {
+        role, legacyRole: role==="teacher"?"teacher":role==="admin"?"admin":null,
+        legacyCompatibilityAllowed:true, students,
+        teachers: teacherPreferences ? [{ data: () => teacherPreferences }] : [],
+        needsTeacherApproval: false
+      };
     },
     window, location: window.location, URL, document, console, roleHome, rememberWorkspace() {}, CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }
