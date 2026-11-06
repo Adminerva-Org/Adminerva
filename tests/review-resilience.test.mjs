@@ -119,5 +119,9 @@ test("account registry, own teacher directory and student membership start in pa
     rememberStaff:(_user,profile)=>{remembered=profile;},staffRole:()=>remembered?.status==="active"?"teacher":null};
   const source=readFileSync("js/core/staff-session.mjs","utf8").replace(/^import[^;]+;\s*/gm,"").replace(/\bexport\s+/g,"");
   runInNewContext(source+"\nglobalThis.resolve=resolveAccountAccess;",context);
-  const result=context.resolve(user);assert.deepEqual(started,["staff_access","teachers","students"]);finish.forEach(resolve=>resolve());assert.equal((await result).role,"teacher");
+  const result=context.resolve(user);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(started,["staff_access","teachers","students"]);
+  finish.forEach(resolve=>resolve());
+  assert.equal((await result).role,"teacher");
 });
