@@ -208,6 +208,8 @@ function sharedLegacyObservations(ledger){
  return {
   sharedReferenceDocuments:references.length,
   sharedScheduleDocuments:schedules.length,
+  disposition:"retain_legacy_mirror_only",
+  canonicalSharingActivated:false,
   sourcePaths:[...references,...schedules].map(row=>row.sourcePath)
  };
 }
@@ -244,26 +246,25 @@ async function buildPlanningSupportPlan(db,{foundationPlan,foundationPlanRaw,fou
   }
  }
  const shared=sharedLegacyObservations(ledger);
- if(shared.sharedReferenceDocuments)reviewItems.push({
-  type:"legacy_shared_reference_policy_required",
-  count:shared.sharedReferenceDocuments,
-  resolution:"Do not replicate the administrator-wide library into teacher-private folders. Define or approve a school-shared reference-library policy separately."
- });
- if(shared.sharedScheduleDocuments)reviewItems.push({
-  type:"legacy_shared_schedule_policy_required",
-  count:shared.sharedScheduleDocuments,
-  resolution:"Do not copy the old shared timetable into every teacher. Map it to explicit teacher schedules or retain it as archived migration history."
- });
+ const informationalReviewItems=[];
+ if(shared.sharedReferenceDocuments||shared.sharedScheduleDocuments)
+  informationalReviewItems.push({
+   type:"legacy_shared_sources_retained_as_history",
+   count:shared.sharedReferenceDocuments+shared.sharedScheduleDocuments,
+   disposition:shared.disposition,
+   resolution:"Retain the reconciled legacy mirror as historical source. Create new school-shared resources explicitly after cutover if they are still needed."
+  });
  return {
   schema:SCHEMA,schoolId:SCHOOL_ID,readOnly:true,generatedAt:new Date().toISOString(),
   source:{foundationPlanSha256:sha(foundationPlanRaw),
    academicAccessPlanSha256:sha(academicAccessPlanRaw),ledgerSha256},
   referenceFolders:folders,schedules,sharedLegacySources:shared,
-  blockers,reviewItems,readyForApply:false,
+  blockers,reviewItems,informationalReviewItems,readyForApply:false,
   summary:{
    referenceFolders:folders.length,
    referenceDocuments:folders.reduce((sum,row)=>sum+row.documents.length,0),
    schedules:schedules.length,blockers:blockers.length,reviewItems:reviewItems.length,
+   informationalReviewItems:informationalReviewItems.length,
    sharedLegacyReferenceDocuments:shared.sharedReferenceDocuments,
    sharedLegacyScheduleDocuments:shared.sharedScheduleDocuments
   },
@@ -272,7 +273,7 @@ async function buildPlanningSupportPlan(db,{foundationPlan,foundationPlanRaw,fou
    "Raw PDFs are not migrated; only already-extracted bounded text is eligible.",
    "Preserved legacy folder IDs keep lesson reference links intact whenever the ID satisfies the V4 contract.",
    "Teacher schedules must validate against explicitly approved teacher-course assignments.",
-   "Administrator-shared references/timetables need a separate school-shared policy and are not copied into every teacher account."
+   "Administrator-shared references/timetables remain in the reconciled legacy mirror only; no current school sharing or teacher-private copies are created automatically."
   ]
  };
 }
