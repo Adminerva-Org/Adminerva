@@ -1,8 +1,8 @@
 /** Inline review panels share bounded reads, preload independently and never run other page applications. */
 import {db} from "../core/firebase-core.js?v=1.3.0";
 import {collection,getDocs,query,where} from "../core/teaching-firestore.mjs?v=1.3.0";
-import {createEvidenceReview} from "./assessment-evidence-review.mjs?v=1.4.8";
-import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.4";
+import {createEvidenceReview} from "./assessment-evidence-review.mjs?v=1.4.19";
+import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.7";
 import {parseRepository} from "./services/assessment-evidence.mjs?v=1.3.1";
 import {analyzePatchSubstance} from "./services/commit-substance.mjs?v=1.3.0";
 import {preloadReviewPanels} from "./services/review-requests.mjs?v=1.3.0";
@@ -12,7 +12,7 @@ export function mountReviewPanels({root,student,assessment,evidence,requests,onE
   const el=id=>root.querySelector("#"+id);
   const panel=el("integratedEvidencePanel");
   panel.innerHTML=evidenceReviewMarkup;
-  const controller=createEvidenceReview({root:panel,inlineContext:{student,assessment},requests,onChange:onEvidenceChange});
+  const controller=createEvidenceReview({root:panel,inlineContext:{student,assessment},requests,onChange:onEvidenceChange,authoritativeInitialRecord:true});
   const repo=parseRepository(student.repoUrl),api="/repos/"+encodeURIComponent(repo.owner)+"/"+encodeURIComponent(repo.repo);
   let current=evidence,roster=[],records=new Map(),generation=0;
   function groupRows(){
@@ -83,7 +83,7 @@ export function mountReviewPanels({root,student,assessment,evidence,requests,onE
     return preloadReviewPanels(wrapped,{signal,onError:(name,error)=>{boxes[name].replaceChildren();add(boxes[name],"p","Could not load "+name+": "+error.message+". Other review panels remain available. Use Reload checkpoint / grade status to retry.");}});
   }
   const ready=run({evidence:()=>controller.load(evidence),group,history,contributions});
-  return {ready,hasUnsavedReview:()=>controller.hasUnsavedChanges(),destroy:()=>controller.destroy(),updateEvidence(record){
+  return {ready,startAttributionOverride:()=>controller.startAttributionOverride(),focusReview:()=>controller.focusReview(),hasUnsavedReview:()=>controller.hasUnsavedChanges(),destroy:()=>controller.destroy(),updateEvidence(record){
     current=record;generation++;if(record)records.set(student.id,record);else records.delete(student.id);
     if(roster.length)groupRows();void run({history,contributions});
   }};

@@ -58,10 +58,14 @@ export function attributionLabel(commit,studentLogin){
  * Replacing or slugifying it would break the server's exact claimId equality
  * check and allow separate claim documents for the same learner.
  */
-export function claimDocumentId(sha,studentId){
-  const id=String(studentId??'');
+export function claimDocumentId(sha,studentId,assessmentId=''){
+  const id=String(studentId??''),assessment=String(assessmentId??'');
   if(!validSha(sha)||!id||id.length>500||id==='.'||id==='..'||
     /[\\/\u0000-\u001f\u007f]/.test(id))
     throw Error('Invalid claim identity. Refresh your student profile and try again.');
-  return String(sha).toLowerCase()+'_'+id;
+  if(!assessment)return String(sha).toLowerCase()+'_'+id; // legacy claim IDs remain readable.
+  if(assessment.length>500||assessment==='.'||assessment==='..'||
+    /[\\/\u0000-\u001f\u007f]/.test(assessment))
+    throw Error('Invalid assessment identity. Refresh the assessment and try again.');
+  return String(sha).toLowerCase()+'_'+id+'_'+assessment;
 }

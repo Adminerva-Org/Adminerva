@@ -40,6 +40,13 @@ test("a superseding load and close settle the first subscription without enablin
   page.review.destroy();
   const closing=fixture();const waiting=closing.review.load(closing.evidence);closing.review.destroy();await waiting;assert.equal(closing.elements.get("#evidenceApprove").disabled,true);
 });
+test("approval reclaim checks use current-section context without re-querying stale evidence metadata",()=>{
+  const source=readFileSync("js/repo-review/assessment-evidence-review.mjs","utf8");
+  assert.match(source,/where\("section","==",student\.section\)/);
+  assert.match(source,/state\.sectionClaims/);
+  assert.match(source,/state\.claimsReadable/);
+  assert.doesNotMatch(source,/where\("section","==",state\.evidence\.section\)/);
+});
 test("slow checkpoint previews cannot hold approval status and workspace handoff hostage",async()=>{
   let finish;
   const page=fixture({snapshotLoad:()=>new Promise(resolve=>{finish=resolve;})});

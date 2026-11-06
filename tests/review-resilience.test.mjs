@@ -23,7 +23,7 @@ test("CSV usernames require a matching live GitHub profile, never invented owner
   const csv={id:"csv",githubUsername:" @Alice ",githubAccountVerified:undefined};
   const linked=linkGithubProfile(csv,{id:71,login:"alice"});assert.equal(linked.githubUserId,71);assert.equal(linked.githubAccountVerified,undefined);
   assert.equal(attributeCommit({author:{id:71,login:"alice"}},linked).status,"verified");
-  assert.equal(attributeCommit({author:{id:72,login:"alice"}},linked).status,"other");
+  const conflict=attributeCommit({author:{id:72,login:"alice"}},linked); assert.equal(conflict.status,"review"); assert.equal(conflict.reason,"github_user_id_conflict");
   assert.equal(attributeCommit({author:{login:"alice"}},csv).status,"review");
   assert.throws(()=>linkGithubProfile(csv,{id:72,login:"bob"}));assert.throws(()=>linkGithubProfile({...csv,githubUserId:72},{id:71,login:"alice"}));
   assert.notEqual(attributeCommit({author:{id:0,login:"alice"}},{...csv,githubUserId:""}).status,"verified");
@@ -61,6 +61,52 @@ test("recovery survives refresh, validates stored IDs and never executes an acti
   assert.deepEqual(publicationJournal(storage,"owner:section").read().pending,["alice_task"]);assert.equal(publicationJournal(storage,"other-owner:section").read(),null);
   values.set("owner:section",JSON.stringify({pending:["../forged"],completed:[]}));assert.equal(journal.read(),null);
   assert.equal(publicationJournal({getItem(){throw Error("blocked");},setItem(){throw Error("quota");}},"key").write({}),false);
+});
+test("teacher evidence approval reuses authorized section reclaim context instead of re-querying per commit",()=>{
+  const review=readFileSync("js/repo-review/assessment-evidence-review.mjs","utf8");
+  assert.match(review,/state\.sectionClaims/);
+  assert.match(review,/state\.claimsReadable/);
+  assert.match(review,/if\(reviewerRole==="admin"\)[\s\S]*where\("sha","==",sha\)/);
+  assert.match(review,/else\{[\s\S]*state\.sectionClaims\.some/);
+});
+test("gradebook bulk approval keeps teacher reclaim checks inside the already authorized section query",()=>{
+  const source=readFileSync("js/repo-review/gradebook-class-review.mjs","utf8");
+  assert.match(source,/claimsReadable=true/);
+  assert.match(source,/if\(canDecideClaims\)[\s\S]*where\("sha","==",sha\)/);
+  assert.match(source,/else\{[\s\S]*\[\.\.\.claimMap\.values\(\)\]\.some/);
+});
+test("individual and bulk evidence review scope reclaim reads to the current assessment",()=>{
+  const review=readFileSync("js/repo-review/assessment-evidence-review.mjs","utf8");
+  const gradebook=readFileSync("js/repo-review/gradebook-class-review.mjs","utf8");
+  assert.match(review,/where\("section","==",student\.section\),where\("assessmentId","==",assessment\.id\)/);
+  assert.match(gradebook,/where\("section","==",detail\.section\),where\("assessmentId","==",detail\.taskId\)/);
+});
+test("teacher approval treats unavailable reclaim context as advisory while admins retain cross-student checks",()=>{
+  const review=readFileSync("js/repo-review/assessment-evidence-review.mjs","utf8");
+  const gradebook=readFileSync("js/repo-review/gradebook-class-review.mjs","utf8");
+  assert.doesNotMatch(review,/throw Error\("Reclaim-request context for this section is unavailable/);
+  assert.match(review,/else if\(state\.claimsReadable\)/);
+  assert.match(review,/reviewerRole==="admin"[\s\S]*where\("sha","==",sha\)/);
+  assert.doesNotMatch(gradebook,/if\(!claimsReadable\)throw Error\("reclaim-request context unavailable/);
+  assert.match(gradebook,/else if\(claimsReadable\)/);
+  assert.match(gradebook,/if\(canDecideClaims\)[\s\S]*where\("sha","==",sha\)/);
+});
+test("gradebook never renders failed reclaim or review reads as zero",()=>{
+  const source=readFileSync("js/repo-review/gradebook-class-review.mjs","utf8");
+  assert.match(source,/label\.textContent="\(unavailable\)"/);
+  assert.match(source,/review data incomplete — refresh evidence/);
+  assert.match(source,/Approve evidence \(\?\)/);
+  assert.match(source,/Run system evaluation \(\?\)/);
+  assert.match(source,/Affected counts are shown as unavailable\/incomplete/);
+});
+test("student reclaim workflow is assessment-scoped, live and server-confirmed",()=>{
+  const source=readFileSync("js/student/assessment-evidence.mjs","utf8");
+  assert.match(source,/claim\.repository===repository&&claim\.assessmentId===assessmentId/);
+  assert.match(source,/claimDocumentId\(sha,profile\.id,active\.task\.id\)/);
+  assert.match(source,/stopClaims=onSnapshot/);
+  assert.match(source,/const confirmed=await getDoc\(ref\)/);
+  assert.match(source,/Request sent and confirmed on the server/);
+  assert.match(source,/previous\?\.id\|\|claimDocumentId/);
 });
 test("account registry, own teacher directory and student membership start in parallel",async()=>{
   const started=[],finish=[],user={uid:"parallel",email:"new.teacher@example.edu",emailVerified:true};

@@ -3,7 +3,7 @@ import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {doc,getDoc,getDocs,setDoc,updateDoc,runTransaction,collection,query,where,serverTimestamp,onSnapshot}
   from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {parseRepository,normalizeSelection,evidenceSelectionGuidance,detectedAuthor,attributionLabel,claimDocumentId,validSha}
-  from "../repo-review/services/assessment-evidence.mjs?v=1.3.2";
+  from "../repo-review/services/assessment-evidence.mjs?v=1.3.3";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,resolveSubmissionCheckpoint} from "../repo-review/services/commit-history.mjs?v=1.3.2";
 import {studentMayChangeEvidence,sameEvidence} from "../repo-review/services/evidence-lifecycle.mjs?v=1.3.1";
 import {changeEvidence} from "../repo-review/services/evidence-transaction.mjs?v=1.3.0";
@@ -12,9 +12,31 @@ const el=id=>document.getElementById(id);
 let context=null,commits=[],selected=new Set(),checkpoint="",claims=new Map(),saved=null,loadSequence=0;
 let historyPage=0,hasOlderCommits=false,historyLoading=false,historyHeadSha="",commitFilter="all",reclaimTarget=null,reclaimBusy=false;
 let evidenceBusy=false;
-let stopEvidence=null,selectionDirty=false,evidenceSyncing=true;
+let stopEvidence=null,stopClaims=null,selectionDirty=false,evidenceSyncing=true,claimsReadable=false;
 const status=text=>{el("evidenceStatus").textContent=text;};
 function stopLiveEvidence(){stopEvidence?.();stopEvidence=null;}
+function stopLiveClaims(){stopClaims?.();stopClaims=null;}
+function currentClaims(records,repository,assessmentId){
+  return new Map(records.map(record=>({id:record.id,...record.data()}))
+    .filter(claim=>claim.repository===repository&&claim.assessmentId===assessmentId)
+    .map(claim=>[String(claim.sha||"").toLowerCase(),claim]));
+}
+function watchClaims(studentId,repository,assessmentId,sequence){
+  stopLiveClaims();
+  const owned=query(collection(db,"commit_reclaims"),where("studentId","==",studentId));
+  stopClaims=onSnapshot(owned,{includeMetadataChanges:true},snapshot=>{
+    if(sequence!==loadSequence||snapshot.metadata.hasPendingWrites)return;
+    claimsReadable=!snapshot.metadata.fromCache;
+    claims=currentClaims(snapshot.docs,repository,assessmentId);
+    render();
+    if(snapshot.metadata.fromCache)
+      status("Checking current attribution-request status with the server. Reclaim actions resume when connected.");
+  },error=>{
+    if(sequence!==loadSequence)return;
+    claimsReadable=false;render();
+    status("Cannot verify attribution-request status: "+error.message+". Evidence selection is still available, but reclaim actions are disabled until refresh succeeds.");
+  });
+}
 function watchEvidence(ref,sequence){
   stopLiveEvidence();
   const owned=query(collection(db,"assessment_evidence"),where("studentId","==",context.profile.id),where("assessmentId","==",context.task.id));
@@ -113,24 +135,32 @@ function render(){
     const sha=String(commit.sha||"").toLowerCase();
     if(!validSha(sha))continue;
     const author=detectedAuthor(commit);
-    const row=add(list,"div","","rounded-xl border border-slate-200 p-3 hover:border-indigo-300 transition");
-    const top=add(row,"div","","flex flex-wrap items-center gap-3");
-    const includeLabel=add(top,"label","","inline-flex items-center gap-1 text-xs text-slate-700 font-semibold cursor-pointer");
-    const check=document.createElement("input");check.type="checkbox";check.checked=selected.has(sha);
-    check.disabled=!editable||evidenceBusy;check.setAttribute("aria-label","Include commit "+sha.slice(0,12)+" as evidence");
-    check.addEventListener("change",()=>{selectionDirty=true;if(check.checked)selected.add(sha);else selected.delete(sha);render();});includeLabel.append(check);
-    add(includeLabel,"span","Include commit");
-    const checkpointLabel=add(top,"label","","inline-flex items-center gap-1 text-xs text-indigo-800 font-semibold cursor-pointer");
-    const radio=document.createElement("input");radio.type="radio";radio.name="assessmentCheckpoint";
-    radio.checked=checkpoint===sha;radio.disabled=!editable||evidenceBusy;
-    radio.setAttribute("aria-label","Set commit "+sha.slice(0,12)+" as project checkpoint");
-    radio.addEventListener("change",()=>{selectionDirty=true;checkpoint=sha;render();});
-    checkpointLabel.append(radio);
-    add(checkpointLabel,"span","Use as project checkpoint");
-    add(top,"span",sha.slice(0,12),"font-mono text-xs text-indigo-800");
-    if(commit.unavailable)add(row,"p","Saved commit unavailable from GitHub. You can remove it, or ask your teacher to inspect the repository.","text-xs text-amber-800");
-    add(top,"strong",String(commit.commit?.message||"No message").split("\n")[0].slice(0,170),
+    const evidenceSelected=selected.has(sha),checkpointSelected=checkpoint===sha;
+    const row=add(list,"div","",
+      "rounded-xl border p-3 transition "+(evidenceSelected||checkpointSelected
+        ?"border-indigo-300 bg-indigo-50/40":"border-slate-200 hover:border-indigo-300"));
+    const top=add(row,"div","","flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3");
+    const summary=add(top,"div","","min-w-0 flex-1");
+    const heading=add(summary,"div","","flex flex-wrap items-center gap-2");
+    add(heading,"span",sha.slice(0,12),"font-mono text-xs text-indigo-800");
+    add(heading,"strong",String(commit.commit?.message||"No message").split("\n")[0].slice(0,170),
       "text-xs break-words");
+    const actions=add(top,"div","","flex flex-wrap gap-2 sm:justify-end sm:shrink-0");
+    const include=add(actions,"button",evidenceSelected?"✓ Evidence selected":"Select as evidence",
+      "min-h-10 rounded-lg border px-3 py-2 text-xs font-bold transition "+
+      (evidenceSelected?"border-indigo-600 bg-indigo-600 text-white":"border-slate-300 bg-white text-slate-800 hover:border-indigo-400 hover:bg-indigo-50"));
+    include.type="button";include.disabled=!editable||evidenceBusy;
+    include.setAttribute("aria-pressed",String(evidenceSelected));
+    include.setAttribute("aria-label",(evidenceSelected?"Remove ":"Select ")+sha.slice(0,12)+(evidenceSelected?" from":" as")+" evidence");
+    include.addEventListener("click",()=>{selectionDirty=true;if(selected.has(sha))selected.delete(sha);else selected.add(sha);render();});
+    const checkpointButton=add(actions,"button",checkpointSelected?"✓ Project checkpoint":"Use as checkpoint",
+      "min-h-10 rounded-lg border px-3 py-2 text-xs font-bold transition "+
+      (checkpointSelected?"border-emerald-700 bg-emerald-700 text-white":"border-emerald-300 bg-white text-emerald-900 hover:bg-emerald-50"));
+    checkpointButton.type="button";checkpointButton.disabled=!editable||evidenceBusy;
+    checkpointButton.setAttribute("aria-pressed",String(checkpointSelected));
+    checkpointButton.setAttribute("aria-label","Set commit "+sha.slice(0,12)+" as project checkpoint");
+    checkpointButton.addEventListener("click",()=>{selectionDirty=true;checkpoint=sha;render();});
+    if(commit.unavailable)add(row,"p","Saved commit unavailable from GitHub. You can remove it, or ask your teacher to inspect the repository.","text-xs text-amber-800");
     add(row,"p",author.name+" · "+(author.login?"@"+author.login:"Git login unavailable")+
       " · "+(author.date?new Date(author.date).toLocaleString():"Unknown date"),
       "text-xs text-slate-600 mt-1 break-words");
@@ -152,11 +182,16 @@ function render(){
           claim.status==="rejected"?"text-rose-800":"text-amber-800"));
       if(claim.status==="pending"){
         const withdraw=add(controls,"button","Withdraw reclaim","text-xs text-rose-700 underline");
-        withdraw.type="button";withdraw.addEventListener("click",()=>{void window.withLoading("Updating attribution request…",()=>withdrawClaim(sha),{button:withdraw});});
+        withdraw.type="button";withdraw.disabled=!claimsReadable;
+        withdraw.addEventListener("click",()=>{void window.withLoading("Updating attribution request…",()=>withdrawClaim(sha),{button:withdraw});});
       }else if(claim.status==="withdrawn"){
         const retry=add(controls,"button","Resubmit reclaim","text-xs text-amber-800 font-bold underline");
-        retry.type="button";retry.addEventListener("click",()=>{void reclaimCommit(commit);});
+        retry.type="button";retry.disabled=!claimsReadable;
+        retry.addEventListener("click",()=>{void reclaimCommit(commit);});
       }
+    }else if(!claimsReadable){
+      add(controls,"span","Attribution-request status unavailable · refresh before requesting review",
+        "text-xs font-semibold text-amber-800");
     }else{
       const reclaim=add(controls,"button","Request attribution review","text-xs text-amber-800 font-bold underline");
       reclaim.type="button";reclaim.addEventListener("click",()=>{void reclaimCommit(commit);});
@@ -208,17 +243,18 @@ async function preview(commit){
       "\nThis diff is for review, not proof of individual authorship.";
   }catch(error){node.textContent="Unable to preview: "+error.message;}
 }
-async function loadClaims(studentId,repository){
+async function loadClaims(studentId,repository,assessmentId){
   const results=await getDocs(query(collection(db,"commit_reclaims"),where("studentId","==",studentId)));
-  return new Map(results.docs.map(d=>d.data()).filter(claim=>claim.repository===repository)
-    .map(claim=>[claim.sha,claim]));
+  return currentClaims(results.docs,repository,assessmentId);
 }
 async function reclaimCommit(commit){
   if(!context||reclaimBusy)return;
+  if(!claimsReadable)return status("Attribution-request status is unavailable. Refresh this assessment before requesting review.");
   openReclaimForm(commit);
 }
 async function sendReclaim(){
   if(!context||!reclaimTarget||reclaimBusy)return;
+  if(!claimsReadable)return status("Attribution-request status is unavailable. Refresh before sending a reclaim request.");
   const active=context,commit=reclaimTarget,sha=String(commit.sha).toLowerCase();
   const profile=active.profile,previous=claims.get(sha);
   const explanation=el("evidenceReclaimReason").value.trim();
@@ -230,7 +266,7 @@ async function sendReclaim(){
   reclaimBusy=true;el("evidenceReclaimSave").disabled=true;
   inline("Saving your attribution request…");
   try{
-    const ref=doc(db,"commit_reclaims",claimDocumentId(sha,profile.id));
+    const ref=doc(db,"commit_reclaims",previous?.id||claimDocumentId(sha,profile.id,active.task.id));
     if(previous){
       await runTransaction(db,async tx=>{
         const snapshot=await tx.get(ref);
@@ -250,10 +286,16 @@ async function sendReclaim(){
         status:"pending",createdAt:serverTimestamp()
       });
     }
+    const confirmed=await getDoc(ref);
+    if(!confirmed.exists())throw Error("The attribution request was not found after saving.");
+    const confirmedClaim={id:confirmed.id,...confirmed.data()};
+    if(confirmedClaim.studentId!==profile.id||confirmedClaim.assessmentId!==active.task.id||
+      confirmedClaim.repository!==profile.repoUrl||confirmedClaim.status!=="pending")
+      throw Error("The saved attribution request does not match this assessment. Refresh and try again.");
     if(context!==active)return;
-    claims.set(sha,{...previous,sha,status:"pending",explanation});
+    claimsReadable=true;claims.set(sha,confirmedClaim);
     render();
-    inline("Request sent. Status: Pending administrator review. You may still submit selected evidence, but it cannot be approved while this claim is pending.");
+    inline("Request sent and confirmed on the server. Status: Pending administrator review. You may still submit selected evidence, but teacher approval is separate from this claim.");
     status("Commit attribution request saved. An administrator will review it; your selected evidence has not changed.");
   }catch(error){
     if(context===active)inline("Could not send your attribution request: "+error.message+
@@ -263,24 +305,30 @@ async function sendReclaim(){
   }
 }
 async function withdrawClaim(sha){
+  if(!claimsReadable)return status("Attribution-request status is unavailable. Refresh before withdrawing.");
   if(!confirm("Withdraw your pending reclaim request?"))return;
   try{
-    await updateDoc(doc(db,"commit_reclaims",claimDocumentId(sha,context.profile.id)),{
-      status:"withdrawn",withdrawnAt:serverTimestamp()
-    });
-    claims.set(sha,{sha,status:"withdrawn"});render();
-    status("Reclaim withdrawn. Use Resubmit reclaim to send an updated explanation for administrator review.");
+    const active=context,previous=claims.get(String(sha).toLowerCase());
+    if(!previous?.id)throw Error("The current reclaim request could not be identified. Refresh and try again.");
+    const ref=doc(db,"commit_reclaims",previous.id);
+    await updateDoc(ref,{status:"withdrawn",withdrawnAt:serverTimestamp()});
+    const confirmed=await getDoc(ref);
+    if(!confirmed.exists()||confirmed.data().status!=="withdrawn")
+      throw Error("The withdrawal could not be confirmed on the server.");
+    if(context!==active)return;
+    claims.set(String(sha).toLowerCase(),{id:confirmed.id,...confirmed.data()});render();
+    status("Reclaim withdrawal confirmed. Use Resubmit reclaim to send an updated explanation for administrator review.");
   }catch(error){status("Unable to withdraw: "+error.message);}
 }
 async function load(){
-  stopLiveEvidence();
+  stopLiveEvidence();stopLiveClaims();
   const seq=++loadSequence,raw=window.__adminervaSubmissionContext?.();
   const v2=raw?.task?.schemaVersion===2&&raw?.task?.evidenceMode==="commit_selection";
   el("evidencePanel").classList.toggle("hidden",!v2);
   if(v2)el("evidencePanel").parentElement?.prepend(el("evidencePanel"));
   el("legacySubmitPanel").classList.toggle("hidden",v2);
   if(!v2){hasOlderCommits=false;refreshHistoryControl();return;}
-  context=null;commits=[];selected=new Set();checkpoint="";saved=null;claims=new Map();
+  context=null;commits=[];selected=new Set();checkpoint="";saved=null;claims=new Map();claimsReadable=false;
   commitFilter="all";reclaimTarget=null;reclaimBusy=false;
   el("evidenceReclaimEditor").classList.add("hidden");
   el("evidenceReclaimSave").disabled=false;
@@ -305,7 +353,20 @@ async function load(){
       }
     }catch(error){if(error?.code!=="permission-denied")throw error;}
     watchEvidence(doc(db,"assessment_evidence",docId),seq);
-    const [loadedClaims,result]=await Promise.all([loadClaims(active.profile.id,active.profile.repoUrl),github(commitPagePath(repositoryPath(repo),1))]);
+    const [claimResult,commitResult]=await Promise.allSettled([
+      loadClaims(active.profile.id,active.profile.repoUrl,active.task.id),
+      github(commitPagePath(repositoryPath(repo),1))
+    ]);
+    if(commitResult.status!=="fulfilled")throw commitResult.reason;
+    const result=commitResult.value;
+    let claimWarning="";
+    if(claimResult.status==="fulfilled"){
+      claimsReadable=true;claims=claimResult.value;
+      watchClaims(active.profile.id,active.profile.repoUrl,active.task.id,seq);
+    }else{
+      claimsReadable=false;claims=new Map();
+      claimWarning=" Attribution-request status could not be loaded ("+claimResult.reason?.message+"). Reclaim actions are disabled until refresh succeeds.";
+    }
     if(seq!==loadSequence)return;
     commits=appendUniqueCommits([],result);
     const missing=[...new Set([...selected,checkpoint].filter(validSha))].filter(sha=>!commits.some(commit=>commit.sha.toLowerCase()===sha));
@@ -314,15 +375,16 @@ async function load(){
       catch{return {sha,unavailable:true,commit:{message:"Saved evidence selection"}};}
     }));
     if(seq!==loadSequence)return;
-    commits=appendUniqueCommits(restored,commits);claims=loadedClaims;
+    commits=appendUniqueCommits(restored,commits);
     // Keep the actual branch head separate from restored older evidence commits.
     historyHeadSha=validSha(result[0]?.sha)?String(result[0].sha).toLowerCase():"";
     if(!checkpoint&&historyHeadSha)checkpoint=historyHeadSha;
     historyPage=1;hasOlderCommits=hasOlderCommitPage(historyPage,result.length);
     refreshHistoryControl();render();
-    status(hasOlderCommits
+    const loadMessage=hasOlderCommits
       ?"Showing "+commits.length+" recent commits. Your latest project revision is suggested as the checkpoint; select only your own relevant commits as evidence. Use Load older commits to find historical evidence."
-      :"Select your own relevant commits, then use the latest suitable project revision as the checkpoint. The checkpoint may belong to a teammate. Reclaims remain pending staff review.");
+      :"Select your own relevant commits, then use the latest suitable project revision as the checkpoint. The checkpoint may belong to a teammate. Reclaims remain pending staff review.";
+    status(loadMessage+claimWarning);
     if(saved?.status==="approved")status("Checkpoint approved. Ask your instructor to reopen it before resubmitting or withdrawing. Your current evidence and grade remain protected.");
     else if(saved?.status==="reopened")status("Your instructor reopened this evidence"+(saved.reopenReason?": "+saved.reopenReason:"")+". Update your selection and resubmit for fresh approval. Previous evidence remains in the audit history.");
     else if(saved?.status==="withdrawn")status("Evidence withdrawn. You may revise and resubmit; the previous submission remains in the audit history.");
@@ -445,5 +507,5 @@ el("evidenceClear")?.addEventListener("click",()=>{
   selected.clear();checkpoint="";selectionDirty=true;render();status("Selection cleared locally. Choose your commits and a new checkpoint, then resubmit.");
 });
 new MutationObserver(()=>{
-  if(el("assessmentModal").classList.contains("hidden")){stopLiveEvidence();loadSequence++;context=null;}
+  if(el("assessmentModal").classList.contains("hidden")){stopLiveEvidence();stopLiveClaims();loadSequence++;context=null;}
 }).observe(el("assessmentModal"),{attributes:true,attributeFilter:["class"]});

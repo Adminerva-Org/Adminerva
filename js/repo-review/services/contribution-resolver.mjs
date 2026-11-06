@@ -256,9 +256,13 @@ export function attributeCommit(commit, student) {
   const verifiedEmails = (student.verifiedGitEmails || []).map(v => String(v).toLowerCase());
 
   if (linkedId !== null && actualId !== null) {
-    return linkedId === actualId
-      ? { status: 'verified', reason: 'github_user_id' }
-      : { status: 'other', reason: 'different_github_user_id' };
+    if (linkedId === actualId) return { status: 'verified', reason: 'github_user_id' };
+    // A matching login with conflicting stable IDs is an account-binding conflict,
+    // not evidence that the commit belongs to another learner. Keep it in teacher
+    // review instead of silently discarding it as "other".
+    if (login && expectedLogin && login === expectedLogin)
+      return { status: 'review', reason: 'github_user_id_conflict' };
+    return { status: 'other', reason: 'different_github_user_id' };
   }
   if (login && expectedLogin && login === expectedLogin) {
     return student.githubAccountVerified === true

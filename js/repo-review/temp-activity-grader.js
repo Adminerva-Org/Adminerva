@@ -14,11 +14,10 @@ let commitDataMap = {};
 let firestoreGradesMap = {};
 
 window.showLoader = function (msg) {
-  document.getElementById("loaderMessage").textContent = msg;
-  document.getElementById("globalLoader").classList.remove("hidden");
+  window.showSubtleLoader?.(msg);
 };
 window.hideLoader = function () {
-  document.getElementById("globalLoader").classList.add("hidden");
+  window.hideSubtleLoader?.();
 };
 
 // 🔒 Security Patch: Helper to neutralize malicious HTML scripts from user input

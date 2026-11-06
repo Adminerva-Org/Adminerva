@@ -35,8 +35,13 @@ test('verify by stable GitHub ID even when display name changes',()=>{
   const c=commit('a',323893681,'completely different name');
   assert.equal(attributeCommit(c,student).status,'verified');
 });
-test('never attribute someone else’s GitHub user ID',()=>{
-  assert.equal(attributeCommit(commit('a',319500163,'Belo-mcs'),student).status,'other');
+test('matching login with a conflicting saved GitHub ID requires teacher review',()=>{
+  const result=attributeCommit(commit('a',319500163,'Belo-mcs'),student);
+  assert.equal(result.status,'review');
+  assert.equal(result.reason,'github_user_id_conflict');
+});
+test('different GitHub ID and different login remain other-user evidence',()=>{
+  assert.equal(attributeCommit(commit('a',319500163,'another-user'),student).status,'other');
 });
 test('unverified GitHub names require review',()=>{
   assert.equal(attributeCommit({sha:'a',author:{login:'Belo-mcs'},commit:{author:{}}},{id:'x',githubUsername:'Belo-mcs'}).status,'review');

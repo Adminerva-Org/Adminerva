@@ -8,18 +8,18 @@ import {parseRepository,normalizeSelection,validSha}
   from "./services/assessment-evidence.mjs?v=1.4.4";
 import {commitPagePath,appendUniqueCommits,hasOlderCommitPage,verifyCheckpointAncestry} from "./services/commit-history.mjs?v=1.4.3";
 import {approvalContribution,sameEvidence} from "./services/evidence-lifecycle.mjs?v=1.4.3";
-import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.0";
+import {changeEvidence} from "./services/evidence-transaction.mjs?v=1.3.1";
 import {loadReviewSnapshot} from "./services/review-snapshot.mjs?v=1.3.0";
 
-import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.4";
+import {evidenceReviewMarkup} from "./evidence-review-view.mjs?v=1.3.6";
 import {searchStudents} from "./services/student-search.mjs?v=1.3.0";
 import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.2";
 
-export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{}}={}){
+export function createEvidenceReview({root=document,inlineContext=null,requests=null,onChange=()=>{},authoritativeInitialRecord=false}={}){
 const el=id=>root.querySelector("#"+id);
-const state={students:[],assessments:[],evidence:null,student:null,assessment:null,claims:[],loaded:false,busy:false,sequence:0,editing:false,verificationEditing:false};
+const state={students:[],assessments:[],evidence:null,student:null,assessment:null,claims:[],sectionClaims:[],claimsReadable:false,loaded:false,busy:false,sequence:0,editing:false,verificationEditing:false};
 let stopEvidence=null,watchedId=null,destroyed=false,resolveInitial=null,initialTimer=null,initialSnapshot=null,hasServerSnapshot=false;
-const discovery={commits:[],selected:new Set(),checkpoint:"",page:0,hasOlder:false,loading:false,sequence:0,branch:""};
+const discovery={commits:[],selected:new Set(),locked:new Set(),checkpoint:"",page:0,hasOlder:false,loading:false,sequence:0,branch:"",mode:"create"};
 const embedded=new URLSearchParams(location.search).get("embedded")==="1";
 if(embedded&&!inlineContext){
   document.body.classList.add("evidence-embedded");
@@ -41,6 +41,17 @@ function updateDiscoveryPaging(){
   button.classList.toggle("hidden",!discovery.hasOlder);
   button.disabled=discovery.loading;
   button.textContent=discovery.loading?"Loading older commits…":"Load older commits";
+}
+function configureDiscovery(mode="create"){
+  discovery.mode=mode;
+  const augment=mode==="augment";
+  if(el("evidenceDiscoveryTitle"))el("evidenceDiscoveryTitle").textContent=augment?"Add / attribute repository commit":"Discover historical GitHub evidence";
+  if(el("evidenceDiscoveryHelp"))el("evidenceDiscoveryHelp").textContent=augment
+    ?"Select only commit(s) you inspected and can attribute to this learner despite a different or unlinked GitHub identity. Existing selected evidence stays locked. Choose a checkpoint containing all selected commits. Added commits still require explicit contribution verification before evaluation."
+    :"For assessments already assigned in class: select relevant commits from the linked repository without asking the student to resubmit. This records an instructor-discovered proposal, not a student submission or proof of on-time work.";
+  if(el("evidenceFindCommits"))el("evidenceFindCommits").textContent=augment?"Load repository commits":"Find repository commits";
+  if(el("evidenceSaveDiscovery"))el("evidenceSaveDiscovery").textContent=augment?"Add selected commit(s) to evidence":"Save proposed historical evidence";
+  for(const id of ["evidenceDiscoveryNoteLabel","evidenceDiscoveryNote"])el(id)?.classList.toggle("hidden",!augment);
 }
 function add(parent,tag,text,style=""){
   const x=document.createElement(tag);x.textContent=String(text??"");if(style)x.className=style;
@@ -151,7 +162,17 @@ async function loadEvidence(initialRecord){
     const documentId=student.id+"_"+assessment.id;
     if(watchedId!==documentId){stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);stopEvidence=null;watchedId=documentId;}
     let record=initialRecord;
-    if(!stopEvidence){
+    if(authoritativeInitialRecord){
+      // Review & Grade already loaded this exact evidence document. Avoid opening
+      // a second live listener with a different rules/query path inside the same
+      // modal; use a bounded server read only when the controller explicitly
+      // refreshes after a write.
+      if(initialRecord===undefined){
+        const snapshot=await getDocFromServer(doc(db,"assessment_evidence",documentId));
+        record=snapshot.exists()?snapshot.data():null;
+      }
+      hasServerSnapshot=true;
+    }else if(!stopEvidence){
       hasServerSnapshot=false;
       let waiting=true,rejectInitial,finishInitial;
       const initial=new Promise((resolve,reject)=>{finishInitial=resolve;resolveInitial=resolve;rejectInitial=reject;});
@@ -182,9 +203,11 @@ async function loadEvidence(initialRecord){
     onChange(record);
     if(!record){
       showLifecycle(null);
+      configureDiscovery("create");
       el("evidenceDiscovery").classList.remove("hidden");
       el("evidenceDiscoverList").replaceChildren();
-      discovery.commits=[];discovery.selected=new Set();discovery.checkpoint="";
+      el("evidenceDiscoveryNote").value="";
+      discovery.commits=[];discovery.selected=new Set();discovery.locked=new Set();discovery.checkpoint="";
       status("No student submission. You may discover historical commits without changing the student's GitHub history.");
       return;
     }
@@ -198,14 +221,23 @@ async function loadEvidence(initialRecord){
     el("evidenceContributionScope").value=evidence.contributionScope||"";
     el("evidenceContributionScope").disabled=evidence.status==="approved";
     el("evidenceReviewNote").value="";el("evidenceConfirm").checked=false;
-    // Section-scoped query satisfies teacher Firestore permissions without
-    // requiring a composite index for studentId + section.
-    const claims=await getDocs(query(collection(db,"commit_reclaims"),where("section","==",student.section)));
-    if(destroyed||sequence!==state.sequence)return;
-    state.claims=claims.docs.filter(d=>d.data().studentId===student.id &&
-      d.data().repository===evidence.repository &&
-      (d.data().assessmentId===assessment.id || evidence.selectedCommits.includes(d.data().sha)))
-      .map(d=>({id:d.id,...d.data()}));
+    // Reclaim claims are supplemental attribution context. A denied/temporarily
+    // unavailable claim listing must not erase the already-authorized evidence
+    // review UI. Approval performs its own conflict check before writing.
+    let claimReadWarning="";
+    state.sectionClaims=[];state.claimsReadable=false;
+    try{
+      const claims=await getDocs(query(collection(db,"commit_reclaims"),where("section","==",student.section),where("assessmentId","==",assessment.id)));
+      if(destroyed||sequence!==state.sequence)return;
+      state.sectionClaims=claims.docs.map(d=>({id:d.id,...d.data()}));
+      state.claimsReadable=true;
+      state.claims=state.sectionClaims.filter(claim=>claim.studentId===student.id &&
+        claim.repository===evidence.repository &&
+        (claim.assessmentId===assessment.id || evidence.selectedCommits.includes(claim.sha)));
+    }catch(error){
+      state.claims=[];state.sectionClaims=[];
+      claimReadWarning=" Reclaim-request context could not be loaded ("+error.message+"). Teacher approval may continue after direct evidence inspection; cross-student reclaim conflicts remain an administrator review concern.";
+    }
     const unresolved=state.claims.filter(claim=>claim.status==="pending"&&evidence.selectedCommits.includes(claim.sha));
     if(unresolved.length){
       el("evidenceLifecycleHelp").textContent+=" Approval blocked: "+unresolved.length+
@@ -278,11 +310,14 @@ async function loadEvidence(initialRecord){
     el("evidenceApprove").textContent=evidence.status==="approved"?"Checkpoint approved":"Verify and approve checkpoint";
     el("evidenceDetails").classList.remove("hidden");
     state.loaded=true;
+    const mayAddUnmatched=["submitted","needs_review","approved"].includes(evidence.status);
+    el("evidenceAttributionOverride")?.classList.toggle("hidden",!mayAddUnmatched);
+    if(el("evidenceAddCommit"))el("evidenceAddCommit").disabled=!mayAddUnmatched;
     el("evidenceContributionScope").disabled=evidence.status==="approved";
     el("evidenceReviewNote").disabled=false;el("evidenceConfirm").disabled=false;el("evidenceVerifyAll").disabled=evidence.status==="approved";el("evidenceEditVerification").disabled=false;
-    status(evidence.selectedCommits.length
+    status((evidence.selectedCommits.length
       ?"Loaded "+evidence.selectedCommits.length+" selected commits. Approval will verify checkpoint ancestry and the contribution choices."
-      :"Loaded a checkpoint-only teacher snapshot. No individual commit is attributed to this learner; you may approve the checkpoint as project context, but system evaluation remains unavailable until individual contribution is verified.");
+      :"Loaded a checkpoint-only teacher snapshot. No individual commit is attributed to this learner; you may approve the checkpoint as project context, but system evaluation remains unavailable until individual contribution is verified.")+claimReadWarning);
     if(evidence.status==="reopened")status("Reopened: the student can change commit selections now. They must resubmit before a new approval. Contribution checks here verify authorship; they do not edit the student's selected commits.");
     else if(evidence.status==="submitted")status(isResubmitted(evidence)?"Student resubmitted evidence after reopening. Check the selected commits and attribution claims, then approve the new revision.":"Student evidence is awaiting review. If approval fails or the selection needs correction, enter a reason below and choose Return for student changes.");
     else if(evidence.status==="approved")status(evidence.verifiedContributionCommits?.length?"Approved. To let the student submit different commits, enter a reopening reason below and choose Reopen for student changes.":"Approved checkpoint has no verified individual contributions. To let the student change commits, enter a reopening reason below and choose Reopen for student changes.");
@@ -338,7 +373,11 @@ async function showSnapshot(evidence,assessment){
 }
 async function renderClaims(){
   const target=el("evidenceReclaims");target.replaceChildren();
-  if(!state.claims.length){add(target,"p","No reclaim requests for this student's assessment.","text-sm text-slate-600");return;}
+  if(!state.claimsReadable){
+    add(target,"p","Reclaim-request context is unavailable for this assessment. This does not block teacher evidence approval; cross-student attribution disputes remain subject to administrator review.","text-sm text-amber-800");
+    return;
+  }
+  if(!state.claims.length){add(target,"p","No reclaim requests found for this student's assessment.","text-sm text-slate-600");return;}
   const mayDecide=state.claims.some(c=>c.status==="pending") &&
     await resolveStaffRole(auth.currentUser)==="admin";
   for(const claim of state.claims){
@@ -363,9 +402,18 @@ async function renderClaims(){
 }
 async function showConflicts(sha,box){
   try{
-    const snap=await getDocs(query(collection(db,"commit_reclaims"),where("sha","==",sha)));
-    const results=snap.docs.map(d=>d.data()).filter(c=>c.repository===state.evidence.repository);
-    add(box,"p","Claim records for this commit: "+results.length+
+    const role=await resolveStaffRole(auth.currentUser);
+    let results=[];
+    if(role==="admin"){
+      const snap=await getDocs(query(collection(db,"commit_reclaims"),where("sha","==",sha)));
+      results=snap.docs.map(d=>d.data()).filter(claim=>claim.repository===state.evidence.repository);
+    }else{
+      if(!state.claimsReadable)throw Error("Reclaim-request context for this assessment is unavailable.");
+      results=state.sectionClaims.filter(claim=>
+        String(claim.sha||"").toLowerCase()===String(sha).toLowerCase() &&
+        claim.repository===state.evidence.repository);
+    }
+    add(box,"p","Claim records visible for this commit: "+results.length+
       " ("+results.map(x=>x.studentId+": "+x.status).join("; ")+")",
       "text-xs text-amber-900 break-words mt-2");
   }catch(e){status("Unable to check overlapping claims: "+e.message);}
@@ -404,6 +452,7 @@ async function approve(){
   }
   state.busy=true;el("evidenceApprove").disabled=true;
   const end=window.beginLoading?.("Verifying selected commits and approving checkpoint…",el("evidenceDetails"))||(()=>{});
+  let approvalStage="initial validation";
   try{
     const repo=parseRepository(state.evidence.repository);
     const selection=normalizeSelection(state.evidence.selectedCommits,state.evidence.checkpointSha,{allowEmpty:state.evidence.source==="teacher_discovered"});
@@ -413,28 +462,37 @@ async function approve(){
       throw Error("A rejected attribution claim is selected for individual credit. Refresh review and remove it before approval.");
     const scope=el("evidenceContributionScope").value.trim()||(verified.length?"Instructor verified "+verified.length+" selected commit(s) for "+(state.student.name||state.student.id)+" at checkpoint "+selection.checkpointSha+". Individual review is limited to these selected changes; shared project features are context only.":"No individual contributing commits were verified. This checkpoint approval records shared project context only.");
     const contribution=approvalContribution(selection,verified,scope);
+    approvalStage="reclaim conflict check";
     status("Checking for competing pending reclaim requests…");
-    await Promise.all(selection.selectedCommits.map(async sha=>{
-      const reviewerRole=await resolveStaffRole(auth.currentUser);
-      const claimQuery=reviewerRole==="admin"
-        ?query(collection(db,"commit_reclaims"),where("sha","==",sha))
-        :query(collection(db,"commit_reclaims"),where("section","==",state.evidence.section));
-      const competing=await getDocs(claimQuery);
-      if(competing.docs.some(d=>d.data().sha===sha &&
-        d.data().repository===state.evidence.repository&&d.data().status==="pending"))
-        throw Error("A selected commit has an unresolved reclaim request. Ask the administrator to review the attribution before approving this student's checkpoint.");
-    }));
+    const reviewerRole=await resolveStaffRole(auth.currentUser);
+    if(reviewerRole==="admin"){
+      await Promise.all(selection.selectedCommits.map(async sha=>{
+        const competing=await getDocs(query(collection(db,"commit_reclaims"),where("sha","==",sha)));
+        if(competing.docs.some(d=>d.data().repository===state.evidence.repository&&d.data().status==="pending"))
+          throw Error("A selected commit has an unresolved reclaim request. Resolve the attribution claim before approving this checkpoint.");
+      }));
+    }else if(state.claimsReadable){
+      const selected=new Set(selection.selectedCommits.map(sha=>String(sha).toLowerCase()));
+      if(state.sectionClaims.some(claim=>selected.has(String(claim.sha||"").toLowerCase()) &&
+        claim.repository===state.evidence.repository&&claim.status==="pending"))
+        throw Error("A selected commit has an unresolved reclaim request in this assessment. Ask an administrator to resolve the attribution before approving this checkpoint.");
+    }else{
+      status("Reclaim-request context is unavailable. Continuing with the teacher's explicit evidence verification; cross-student reclaim disputes remain subject to administrator review.");
+    }
+    approvalStage="checkpoint ancestry verification";
     status("Verifying checkpoint ancestry with GitHub…");
     await verifyAncestry(repo,selection.checkpointSha,selection.selectedCommits);
     if(destroyed||sequence!==state.sequence)return;
+    approvalStage="approval transaction";
     const ref=doc(db,"assessment_evidence",studentId+"_"+assessmentId);
     await changeEvidence(ref,opened,{status:"approved",reviewedBy:auth.currentUser.uid,
         reviewedAt:serverTimestamp(),verificationNote:note,
         approvedCheckpointSha:selection.checkpointSha,...contribution},note);
+    approvalStage="post-approval reload";
     await loadEvidence();
     notifyWorkspace();
     status(contribution.verifiedContributionCommits.length?"Checkpoint approved and the review controls refreshed. Evaluate is available for verified individual contributions; grades remain unpublished.":"Checkpoint approved with no verified individual contributions. No shared-project credit is inferred; use manual review. Grades remain unpublished.");
-  }catch(e){if(e.code==="evidence-changed")state.loaded=false;status("Approval failed: "+e.message);}
+  }catch(e){if(e.code==="evidence-changed")state.loaded=false;status("Approval failed during "+approvalStage+": "+e.message);}
   finally{end();state.busy=false;el("evidenceApprove").disabled=!state.loaded||(!["submitted","needs_review"].includes(state.evidence?.status)&&!(state.evidence?.status==="approved"&&state.verificationEditing));}
 }
 async function reopen(){
@@ -461,11 +519,11 @@ async function reopen(){
   finally{state.busy=false;end();}
 }
 
-async function findHistoricalCommits(){
+async function findHistoricalCommits({preserve=false}={}){
   const student=state.student;if(!student)return status("Choose student and assessment.");
   const sequence=++discovery.sequence;
   discovery.loading=true;discovery.hasOlder=false;updateDiscoveryPaging();
-  const end=window.beginLoading?.("Finding historical repository commits…")||(()=>{});
+  const end=window.beginLoading?.(discovery.mode==="augment"?"Loading commits for attribution review…":"Finding historical repository commits…")||(()=>{});
   try{
     const repo=parseRepository(student.repoUrl);
     const info=await github(api(repo));
@@ -474,7 +532,7 @@ async function findHistoricalCommits(){
     const commits=await github(commitPagePath(api(repo),1,{branch}));
     if(sequence!==discovery.sequence)return;
     discovery.commits=appendUniqueCommits([],commits);
-    discovery.selected=new Set();discovery.checkpoint="";
+    if(!preserve){discovery.selected=new Set();discovery.locked=new Set();discovery.checkpoint="";}
     discovery.page=1;discovery.branch=branch;
     discovery.hasOlder=hasOlderCommitPage(1,commits.length);
     updateDiscoveryPaging();renderHistorical();
@@ -505,30 +563,66 @@ function renderHistorical(){
   const list=el("evidenceDiscoverList");list.replaceChildren();
   for(const commit of discovery.commits){
     const sha=String(commit.sha||"").toLowerCase();if(!validSha(sha))continue;
-    const row=add(list,"div","","p-3 border rounded-lg");
-    const line=add(row,"div","","flex flex-wrap items-center gap-3");
-    const check=document.createElement("input");check.type="checkbox";
-    check.checked=discovery.selected.has(sha);
-    check.setAttribute("aria-label","Select commit "+sha.slice(0,12)+" as historical evidence");
-    check.addEventListener("change",()=>{if(check.checked)discovery.selected.add(sha);
-      else{discovery.selected.delete(sha);if(discovery.checkpoint===sha)discovery.checkpoint="";}
-      renderHistorical();});
-    line.append(check);
-    const radio=document.createElement("input");radio.type="radio";
-    radio.name="historicalCheckpoint";radio.checked=discovery.checkpoint===sha;
-    radio.setAttribute("aria-label","Use "+sha.slice(0,12)+" as project checkpoint");
-    radio.addEventListener("change",()=>{discovery.checkpoint=sha;renderHistorical();});
-    line.append(radio);
-    add(line,"span",sha.slice(0,12),"text-xs font-mono text-indigo-700");
-    add(line,"strong",String(commit.commit?.message||"").split("\n")[0].slice(0,180),
+    const locked=discovery.locked.has(sha),evidenceSelected=discovery.selected.has(sha),checkpointSelected=discovery.checkpoint===sha;
+    const row=add(list,"div","","p-3 border rounded-lg "+(evidenceSelected||checkpointSelected?"border-indigo-300 bg-indigo-50/40":"border-slate-200"));
+    const line=add(row,"div","","flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3");
+    const summary=add(line,"div","","min-w-0 flex-1");
+    const heading=add(summary,"div","","flex flex-wrap items-center gap-2");
+    add(heading,"span",sha.slice(0,12),"text-xs font-mono text-indigo-700");
+    add(heading,"strong",String(commit.commit?.message||"").split("\n")[0].slice(0,180),
       "text-xs break-words");
+    if(locked)add(summary,"span","Already selected evidence","inline-block mt-2 text-[11px] font-bold text-slate-500");
+    const actions=add(line,"div","","flex flex-wrap gap-2 sm:justify-end sm:shrink-0");
+    const selectButton=add(actions,"button",locked?"✓ Already selected":evidenceSelected?"✓ Evidence selected":"Select as evidence",
+      "min-h-10 rounded-lg border px-3 py-2 text-xs font-bold transition "+
+      (evidenceSelected?"border-indigo-600 bg-indigo-600 text-white":"border-slate-300 bg-white text-slate-800 hover:border-indigo-400 hover:bg-indigo-50"));
+    selectButton.type="button";selectButton.disabled=locked;
+    selectButton.setAttribute("aria-pressed",String(evidenceSelected));
+    selectButton.addEventListener("click",()=>{if(discovery.selected.has(sha)){discovery.selected.delete(sha);if(discovery.checkpoint===sha)discovery.checkpoint="";}else discovery.selected.add(sha);renderHistorical();});
+    const checkpointButton=add(actions,"button",checkpointSelected?"✓ Project checkpoint":"Use as checkpoint",
+      "min-h-10 rounded-lg border px-3 py-2 text-xs font-bold transition "+
+      (checkpointSelected?"border-emerald-700 bg-emerald-700 text-white":"border-emerald-300 bg-white text-emerald-900 hover:bg-emerald-50"));
+    checkpointButton.type="button";
+    checkpointButton.setAttribute("aria-pressed",String(checkpointSelected));
+    checkpointButton.addEventListener("click",()=>{discovery.checkpoint=sha;renderHistorical();});
+    const detectedLogin=String(commit.author?.login||"").toLowerCase();
+    const expectedLogin=String(state.student?.githubUsername||"").replace(/^@/,"").toLowerCase();
+    const detectedId=Number.isSafeInteger(Number(commit.author?.id))&&Number(commit.author?.id)>0?Number(commit.author.id):null;
+    const expectedId=Number.isSafeInteger(Number(state.student?.githubUserId))&&Number(state.student?.githubUserId)>0?Number(state.student.githubUserId):null;
+    const loginMatches=Boolean(detectedLogin&&expectedLogin&&detectedLogin===expectedLogin);
     add(row,"p",(commit.commit?.author?.name||"Unknown author")+" · "+
       (commit.author?.login?"@"+commit.author.login:"GitHub login unknown"),
       "text-xs text-slate-600 mt-2");
+    if(discovery.mode==="augment"){
+      if(!loginMatches)
+        add(row,"p","GitHub login differs from the learner's linked account. Inspect the diff before attributing this commit.","text-xs font-semibold text-amber-800 mt-1");
+      else if(expectedId&&detectedId&&expectedId!==detectedId)
+        add(row,"p","GitHub login matches this learner, but Adminerva's saved numeric GitHub account ID differs from the commit author ID. Treat this as an account-binding conflict requiring teacher review, not as a different username. Re-verify the learner's linked GitHub account when practical.","text-xs font-semibold text-amber-800 mt-1");
+      else if(state.student?.githubAccountVerified!==true)
+        add(row,"p","GitHub login matches this learner, but the linked GitHub account is not marked verified in Adminerva. Teacher verification is required before automatic attribution.","text-xs font-semibold text-amber-800 mt-1");
+      else
+        add(row,"p","GitHub login matches the learner's linked account.","text-xs font-semibold text-emerald-700 mt-1");
+    }
     const preview=add(row,"button","Preview changed files","text-xs text-indigo-700 underline mt-2");
     preview.type="button";
     preview.addEventListener("click",()=>{void previewCommit(parseRepository(state.student.repoUrl),sha,row,preview);});
   }
+}
+async function startAttributionOverride(){
+  const evidence=state.evidence;
+  if(state.busy||!evidence||!["submitted","needs_review","approved"].includes(evidence.status))
+    return status("Commit attribution can only be amended while evidence is submitted, awaiting review, or approved.");
+  configureDiscovery("augment");
+  discovery.commits=[];
+  discovery.selected=new Set(evidence.selectedCommits||[]);
+  discovery.locked=new Set(evidence.selectedCommits||[]);
+  discovery.checkpoint=evidence.checkpointSha||"";
+  discovery.page=0;discovery.hasOlder=false;discovery.branch="";
+  el("evidenceDiscoveryNote").value="";
+  el("evidenceDiscoverList").replaceChildren();
+  el("evidenceDiscovery").classList.remove("hidden");
+  el("evidenceDiscovery").scrollIntoView({behavior:"smooth",block:"start"});
+  await findHistoricalCommits({preserve:true});
 }
 async function saveDiscovery(){
   const student=state.student,assessment=state.assessment;
@@ -537,27 +631,58 @@ async function saveDiscovery(){
     const selection=normalizeSelection([...discovery.selected],discovery.checkpoint);
     if(!discovery.commits.some(c=>String(c.sha||"").toLowerCase()===selection.checkpointSha))
       throw Error("Checkpoint must belong to the retrieved repository commits.");
+    if(discovery.mode==="augment"){
+      const opened=state.evidence;
+      if(!opened||!["submitted","needs_review","approved"].includes(opened.status))
+        throw Error("Current evidence changed. Refresh before adding an unmatched commit.");
+      const existing=new Set(opened.selectedCommits||[]);
+      if([...existing].some(sha=>!selection.selectedCommits.includes(sha)))
+        throw Error("Teacher attribution may add commits but cannot remove the learner's existing selected evidence.");
+      const added=selection.selectedCommits.filter(sha=>!existing.has(sha));
+      if(!added.length)throw Error("Select at least one additional repository commit to attribute.");
+      const note=el("evidenceDiscoveryNote").value.trim();
+      if(note.length<10||note.length>3000)
+        throw Error("Enter a teacher attribution note of 10–3,000 characters explaining why the added commit belongs to this learner.");
+      if(!confirm("Add "+added.length+" inspected commit"+(added.length===1?"":"s")+" to this learner's evidence? This records an audited teacher attribution amendment. The commit still requires contribution verification before evaluation."))return;
+      const endLoading=window.beginLoading?.("Saving teacher-attributed commit evidence…",el("evidenceDiscovery"))||(()=>{});
+      try{
+        const repo=parseRepository(opened.repository);
+        status("Checking that the selected checkpoint contains all evidence commits…");
+        await verifyAncestry(repo,selection.checkpointSha,selection.selectedCommits);
+        const changes={selectedCommits:selection.selectedCommits,checkpointSha:selection.checkpointSha,status:"needs_review"};
+        if(opened.status==="approved")Object.assign(changes,{
+          approvedCheckpointSha:null,verifiedContributionCommits:[],contributionScope:"",
+          reviewedBy:null,reviewedAt:null,verificationNote:""
+        });
+        await changeEvidence(doc(db,"assessment_evidence",student.id+"_"+assessment.id),opened,changes,note);
+        discovery.mode="create";discovery.locked=new Set();el("evidenceDiscovery").classList.add("hidden");
+        await loadEvidence();notifyWorkspace();
+        status("Teacher-attributed commit added. Inspect and verify the added commit below, then approve the checkpoint before evaluation.");
+      }finally{endLoading();}
+      return;
+    }
     if(!confirm("Record historical evidence for "+student.name+
       "? This is NOT a student submission, a verified push time, or an approved checkpoint."))return;
-    const end=window.beginLoading?.("Saving proposed historical evidence…")||(()=>{});
+    const endLoading=window.beginLoading?.("Saving proposed historical evidence…")||(()=>{});
     try{
-    const ref=doc(db,"assessment_evidence",student.id+"_"+assessment.id);
-    await runTransaction(db,async tx=>{
-      const existing=await tx.get(ref);
-      if(existing.exists())throw Error("Evidence was submitted or discovered by someone else. Reload it.");
-      tx.set(ref,{
-      studentId:student.id,assessmentId:assessment.id,section:student.section,
-      repository:student.repoUrl,selectedCommits:selection.selectedCommits,
-      checkpointSha:selection.checkpointSha,status:"needs_review",
-      source:"teacher_discovered",discoveredBy:auth.currentUser.uid,
-      recordedAt:serverTimestamp(),updatedAt:serverTimestamp()
+      const ref=doc(db,"assessment_evidence",student.id+"_"+assessment.id);
+      await runTransaction(db,async tx=>{
+        const existing=await tx.get(ref);
+        if(existing.exists())throw Error("Evidence was submitted or discovered by someone else. Reload it.");
+        tx.set(ref,{
+          studentId:student.id,assessmentId:assessment.id,section:student.section,
+          repository:student.repoUrl,selectedCommits:selection.selectedCommits,
+          checkpointSha:selection.checkpointSha,status:"needs_review",
+          source:"teacher_discovered",discoveredBy:auth.currentUser.uid,
+          recordedAt:serverTimestamp(),updatedAt:serverTimestamp()
+        });
       });
-    });
-    await loadEvidence();
-    status("Historical candidate evidence saved. Independently verify before approving; no submission date was asserted.");
-    }finally{end();}
-  }catch(error){status("Unable to save historical evidence: "+error.message);}
+      await loadEvidence();
+      status("Historical candidate evidence saved. Independently verify before approving; no submission date was asserted.");
+    }finally{endLoading();}
+  }catch(error){status("Unable to save evidence: "+error.message);}
 }
+
 el("evidenceEditVerification").addEventListener("click",()=>{
   if(state.busy||state.evidence?.status!=="approved")return;
   state.verificationEditing=true;state.editing=true;
@@ -588,16 +713,23 @@ el("evidenceVerifyAll").addEventListener("change",()=>{
 root.addEventListener("change",event=>{
   if(event.target?.matches?.("[data-contribution-sha]")){state.editing=true;syncBulkVerification();}
 });
-el("evidenceFindCommits").addEventListener("click",()=>{void findHistoricalCommits();});
+el("evidenceFindCommits").addEventListener("click",()=>{void findHistoricalCommits({preserve:discovery.mode==="augment"});});
 el("evidenceFindOlder")?.addEventListener("click",()=>{void loadOlderHistorical();});
 el("evidenceSaveDiscovery").addEventListener("click",()=>{void saveDiscovery();});
+el("evidenceAddCommit")?.addEventListener("click",()=>{void startAttributionOverride();});
 el("evidenceStudentSearch")?.addEventListener("input",()=>renderStudentSearch());
 el("evidenceSection")?.addEventListener("change",()=>renderStudentSearch());
 el("evidenceLoad")?.addEventListener("click",()=>{if(state.editing&&!confirm("Discard unsaved review text and load the selected evidence?"))return;void loadEvidence();});
 el("evidenceApprove").addEventListener("click",()=>{void approve();});
 el("evidenceReopen").addEventListener("click",()=>{void reopen();});
 
-return {load:loadEvidence,loadDirectory,hasUnsavedChanges:()=>state.editing,destroy(){destroyed=true;stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);state.sequence++;state.loaded=false;state.evidence=null;discovery.sequence++;}};
+return {load:loadEvidence,loadDirectory,startAttributionOverride:()=>startAttributionOverride(),focusReview(){
+  configureDiscovery("create");
+  el("evidenceDiscovery").classList.add("hidden");
+  el("evidenceDetails").classList.remove("hidden");
+  el("evidenceDetails").scrollIntoView({behavior:"smooth",block:"start"});
+  status("Review the selected commits, verify the learner's contribution, then approve this evidence revision.");
+},hasUnsavedChanges:()=>state.editing,destroy(){destroyed=true;stopEvidence?.();resolveInitial?.(null);clearTimeout(initialTimer);state.sequence++;state.loaded=false;state.evidence=null;discovery.sequence++;}};
 }
 
 if(document.getElementById("evidenceWorkspace")){

@@ -393,7 +393,8 @@ window.openGradingModal = async function (studentId, owner, repo) {
   document.getElementById("gradingModal").classList.remove("hidden");
 
   const listContainer = document.getElementById("dynamicAssessmentsList");
-  listContainer.innerHTML = `<div class="text-center text-gray-400 italic py-4 text-sm"><div class="animate-spin inline-block rounded-full h-4 w-4 border-b-2 border-gray-400 mr-2"></div>Loading assigned tasks...</div>`;
+  listContainer.innerHTML = `<div class="text-center text-gray-400 italic py-4 text-sm">Loading assigned tasks...</div>`;
+  const end=window.beginLoading?.("Loading assigned grading tasks…",listContainer)||(()=>{});
 
   try {
     const snap = await getDocs(collection(db, "assessments"));
@@ -581,7 +582,7 @@ window.openGradingModal = async function (studentId, owner, repo) {
   } catch (err) {
     console.error(err);
     listContainer.innerHTML = `<div class="text-center text-red-500 font-bold py-4 text-sm">Failed to load tasks.</div>`;
-  }
+  } finally { end(); }
 };
 
 window.closeGradingModal = function () {

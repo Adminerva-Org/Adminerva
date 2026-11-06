@@ -33,9 +33,9 @@ export async function changeEvidence(ref,opened,changes,reason){
     const snapshot=await transaction.get(ref);
     const current=snapshot.exists()?snapshot.data():null;
     assertSameEvidence(current,opened);
-    if(changes.status==="reopened"||(current.status==="approved"&&changes.status==="approved")){
+    if(current.status==="approved"||changes.status==="reopened"){
       const grade=await transaction.get(doc(db,"student_grades",ref.id));
-      if(grade.exists()&&grade.data().published)throw Error("Unpublish the protected grade in section 3 of Review & Grade (or Gradebook) before reopening evidence or revising verification.");
+      if(grade.exists()&&grade.data().published)throw Error("Unpublish the protected grade in section 3 of Review & Grade (or Gradebook) before reopening or amending approved evidence.");
     }
     const revision=evidenceRevision(current)+1;
     const after={...current,...changes,revision,updatedAt:serverTimestamp()};
