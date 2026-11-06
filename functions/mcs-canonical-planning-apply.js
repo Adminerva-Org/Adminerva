@@ -63,11 +63,18 @@ function validateApproval(plan,raw,approval){
   throw Error("Resolve every planning migration review item before apply.");
  if((approval.resources||[]).length!==(plan.resources||[]).length)
   throw Error("Approval resource count differs from the bound planning plan.");
- const planned=new Map((plan.resources||[]).map(row=>[row.resourceId,row])),resources=[];
+ const planned=new Map(),resources=[],seen=new Set();
+ for(const row of plan.resources||[]){
+  if(planned.has(row.resourceId))throw Error("The bound planning plan contains a duplicate resource ID.");
+  planned.set(row.resourceId,row);
+ }
  for(const review of approval.resources||[]){
   const row=planned.get(review.resourceId);
   if(!row||row.kind!==review.kind||row.ownerUid!==review.ownerUid)
    throw Error("Approval contains a planning resource not present in the bound plan.");
+  if(seen.has(review.resourceId))
+   throw Error("Every planning resource must have exactly one approval decision.");
+  seen.add(review.resourceId);
   if(!["approve","exclude"].includes(review.decision))
    throw Error("Every planning resource requires an explicit approve or exclude decision.");
   if(review.decision==="exclude"){
@@ -76,6 +83,7 @@ function validateApproval(plan,raw,approval){
     throw Error("Excluded planning resources require a 12–1,000 character reason.");
   }else resources.push(row);
  }
+ if(seen.size!==planned.size)throw Error("Every planning resource must have exactly one approval decision.");
  return {planSha256,resources};
 }
 function migration(approved,type,key){
