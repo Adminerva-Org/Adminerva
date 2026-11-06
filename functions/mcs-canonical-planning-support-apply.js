@@ -248,7 +248,9 @@ async function createFolder(db,approved,row){
    title:doc.title,text:doc.text,sourceType:doc.sourceType,
    status:"active",revision:1,createdAt:now,updatedAt:now,
    migration:{...migration(approved,"reference_document",doc.documentId),
-    sourcePath:doc.migration?.sourcePath,source:doc.migration?.source,digest:doc.digest}
+    sourcePath:doc.migration?.sourcePath,source:doc.migration?.source,digest:doc.digest,
+    duplicateSourcePaths:Array.isArray(doc.migration?.duplicateSourcePaths)?
+      doc.migration.duplicateSourcePaths.slice(0,100):[]}
   });
   tx.create(db.collection(prefix+"planning_audit").doc(),{
    schoolId:SCHOOL_ID,actorUid:"migration",resourceId:row.folderId,
