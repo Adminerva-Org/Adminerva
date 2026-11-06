@@ -22,12 +22,14 @@ test("safe legacy reference folder IDs are preserved to keep lesson references v
  assert.equal(result.folder.documents.length,1);
  assert.equal(result.reviewItems.length,0);
 });
-test("unsafe folder IDs are remapped and explicitly reviewed",()=>{
- const result=convertReferenceFolder({
-  id:"unsafe/folder",path:"legacy/folder",data:{name:"Refs",documents:[]},nestedDocuments:[]
- },"teacher_1");
- assert.notEqual(result.folder.folderId,"unsafe/folder");
- assert.equal(result.reviewItems[0].type,"reference_folder_id_remapped");
+test("unsafe folder IDs are deterministically remapped without creating a manual review blocker",()=>{
+ const input={id:"unsafe/folder",path:"legacy/folder",data:{name:"Refs",documents:[]},nestedDocuments:[]};
+ const first=convertReferenceFolder(input,"teacher_1"),second=convertReferenceFolder(input,"teacher_1");
+ assert.notEqual(first.folder.folderId,"unsafe/folder");
+ assert.match(first.folder.folderId,/^mcsref_[a-f0-9]{40}$/);
+ assert.equal(first.folder.folderId,second.folder.folderId);
+ assert.equal(first.reviewItems.length,0);
+ assert.equal(first.folder.migration.legacyFolderId,"unsafe/folder");
 });
 test("inline and nested duplicate reference text becomes one canonical document",()=>{
  const result=convertReferenceFolder({
@@ -37,7 +39,9 @@ test("inline and nested duplicate reference text becomes one canonical document"
     data:{title:"Same",text:"Identical extracted text"}}]
  },"teacher_1");
  assert.equal(result.folder.documents.length,1);
- assert.equal(result.reviewItems.some(item=>item.type==="reference_document_duplicate_content"),true);
+ assert.equal(result.reviewItems.length,0);
+ assert.deepEqual(result.folder.documents[0].migration.duplicateSourcePaths,
+  ["legacy/folder/documents/doc1"]);
 });
 test("raw PDF payloads are blocked while extracted text remains eligible",()=>{
  assert.equal(referenceText({title:"PDF",text:"Extracted",sourceType:"pdf"}).ok,true);
