@@ -54,7 +54,7 @@ function approvedStudentMap(foundationPlan,foundationPlanRaw,foundationApproval)
  return map;
 }
 function exactTask(approvedAssessmentView,legacyAssessmentId,section,source){
- const candidates=(assessmentPlan.tasks||[]).filter(task=>
+ const candidates=(approvedAssessmentView?.tasks||[]).filter(task=>
   task.sourceAssessmentId===legacyAssessmentId&&task.submissionSource===source&&
   (!section||task.migration?.legacySection===section));
  return candidates.length===1?candidates[0]:null;
@@ -190,13 +190,61 @@ function studioCandidate({row,versions,task,student,now=Date.now()}){
   currentVersion:current.version,revisionRequestMessage:mappedStatus==="reopened"?clean(head.reviewNote||head.revisionRequestMessage,2000):null,
   revisionDueAt:null,requiresRevisionExtension,
   reviewedByUid:mappedStatus==="reviewed"?task.ownerUid:null,
-  versions:converted.map(item=>({schoolId:SCHOOL_ID,taskId:task.taskId,studentUid:student.uid,
-   personId:student.personId,projectId:item.projectId,projectRevision:item.projectRevision,
+  versions:converted.map(item=>({schoolId:SCHOOL_ID,taskId:task.taskId,offeringId:task.offeringId,
+   studentUid:student.uid,personId:student.personId,projectId:item.projectId,projectRevision:item.projectRevision,
    files:item.files,artifacts:item.artifacts,contentDigest:item.contentDigest,
    sourceLanguage:item.sourceLanguage,submittedAt:item.submittedAt,version:item.version,
    migration:{legacySnapshotHash:item.legacySnapshotHash}})),
   migration:{sourcePath:row.path,legacySubmissionId:row.id,originalStatus:status,
    legacyReviewedBy:clean(head.reviewedBy,128),legacyReviewNote:clean(head.reviewNote,2000)}};
+}
+function legacyReclaimCandidate({row,revisions,decision,task,student,evidence}){
+ const data=row.data||{},status=clean(data.status,40).toLowerCase(),
+  allowed=new Set(["pending","approved","shared","rejected","withdrawn"]),
+  shaValue=String(data.sha||"").trim().toLowerCase();
+ if(!allowed.has(status))return {ok:false,reason:"unsupported_reclaim_status",status};
+ if(!validSha(shaValue))return {ok:false,reason:"reclaim_sha_invalid"};
+ if(!evidence||evidence.taskId!==task.taskId||evidence.studentUid!==student.uid)
+  return {ok:false,reason:"reclaim_evidence_unavailable"};
+ const repositoryValue=clean(data.repository,300);
+ let normalizedRepo;
+ try{normalizedRepo=repository(repositoryValue);}catch{return {ok:false,reason:"reclaim_repository_invalid"};}
+ if(normalizedRepo.fullName.toLowerCase()!==evidence.repository.fullName.toLowerCase())
+  return {ok:false,reason:"reclaim_repository_evidence_mismatch"};
+ const versions=(evidence.versions||[]).filter(version=>
+   Array.isArray(version.selectedCommitShas)&&version.selectedCommitShas.includes(shaValue));
+ if(!versions.length)return {ok:false,reason:"reclaim_sha_not_in_evidence_history"};
+ const evidenceVersion=versions.at(-1).version;
+ const explanation=clean(data.explanation,1500);
+ if(explanation.length<10)return {ok:false,reason:"reclaim_explanation_invalid"};
+ const decided=["approved","shared","rejected"].includes(status);
+ if(decided){
+  const d=decision?.data;
+  if(!d||clean(d.claimId,256)!==row.id||clean(d.studentId,128)!==clean(data.studentId,128)||
+     String(d.sha||"").toLowerCase()!==shaValue||clean(d.decision,40)!==status||
+     clean(d.reason,2000)!==clean(data.reviewNote,2000))
+   return {ok:false,reason:"reclaim_decision_provenance_mismatch"};
+ }
+ const claimId=v4Key(task.taskId,student.uid,shaValue);
+ return {ok:true,claimId,targetPath:"schools/"+SCHOOL_ID+"/commit_reclaims/"+claimId,
+  schoolId:SCHOOL_ID,taskId:task.taskId,evidenceId:evidence.evidenceId,evidenceVersion,
+  studentUid:student.uid,personId:student.personId,sha:shaValue,explanation,
+  detectedAuthorName:clean(data.detectedAuthorName,120),
+  detectedAuthorLogin:clean(data.detectedAuthorLogin,80).replace(/^@/,""),
+  status,decision:decided?status:null,decisionReason:decided?clean(data.reviewNote,2000):null,
+  decidedByUid:null,decidedAt:decided?timeMillis(data.reviewedAt):null,
+  revision:Math.max(1,Number(data.revision)||1),
+  createdAt:timeMillis(data.createdAt),updatedAt:timeMillis(data.reviewedAt)||
+   timeMillis(data.withdrawnAt)||timeMillis(data.resubmittedAt)||timeMillis(data.createdAt),
+  withdrawnAt:status==="withdrawn"?timeMillis(data.withdrawnAt):null,
+  migration:{sourcePath:row.path,legacyClaimId:row.id,legacyStudentId:clean(data.studentId,128),
+   legacyAssessmentId:clean(data.assessmentId,128),legacySection:clean(data.section,140),
+   legacyRepository:normalizedRepo.fullName,legacyReviewedBy:clean(data.reviewedBy,128)||null,
+   inferredEvidenceVersion:evidenceVersion,
+   legacyRevisions:(revisions||[]).map(item=>({id:item.id,reason:clean(item.data.reason,1500),
+    actorUid:clean(item.data.actorUid,128),before:item.data.before||null,after:item.data.after||null,
+    createdAt:timeMillis(item.data.createdAt)}))}
+ };
 }
 function normalizeCriterionArray(rows,rubric){
  if(!Array.isArray(rows)||rows.length!==rubric.length)return null;
@@ -313,12 +361,14 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
  const students=approvedStudentMap(foundationPlan,foundationPlanRaw,foundationApproval);
  const access=validateAccessApproval(validateAccessPlan(academicAccessPlan),academicAccessPlanRaw,academicAccessApproval);
  const enrolled=new Set(access.enrollments.map(row=>row.personId+"|"+row.offeringId));
- const [githubRows,studioRows,gradeRows,gradeRevisionRows]=await Promise.all([
+ const [githubRows,studioRows,reclaimRows,decisionRows,gradeRows,gradeRevisionRows]=await Promise.all([
   readMirrorRoot(db,"assessment_evidence"),readMirrorRoot(db,"studio_submissions"),
+  readMirrorRoot(db,"commit_reclaims"),readMirrorRoot(db,"commit_claim_decisions"),
   readMirrorRoot(db,"student_grades"),readMirrorRoot(db,"grade_revisions")
  ]);
- const githubEvidence=[],studioSubmissions=[],grades=[],blockers=[],reviewItems=[];
- const githubByKey=new Map(),studioByKey=new Map();
+ const githubEvidence=[],studioSubmissions=[],reclaims=[],grades=[],blockers=[],reviewItems=[];
+ const githubByKey=new Map(),studioByKey=new Map(),
+  decisionsByLegacyClaim=new Map(decisionRows.map(row=>[row.id,row]));
  for(const row of githubRows){
   const legacyStudentId=clean(row.data.studentId,128),student=students.get(legacyStudentId),
    task=exactTask(approvedAssessmentView,clean(row.data.assessmentId,128),clean(row.data.section,140),"github");
@@ -354,6 +404,22 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
   });
   studioSubmissions.push(candidate);studioByKey.set(task.taskId+"|"+student.uid,candidate);
  }
+ for(const row of reclaimRows){
+  const legacyStudentId=clean(row.data.studentId,128),student=students.get(legacyStudentId),
+   task=exactTask(approvedAssessmentView,clean(row.data.assessmentId,128),clean(row.data.section,140),"github");
+  if(!student){blockers.push({type:"reclaim_student_identity_unmapped",sourcePath:row.path,legacyStudentId});continue;}
+  if(!task){blockers.push({type:"reclaim_task_mapping_unresolved",sourcePath:row.path});continue;}
+  const evidence=githubByKey.get(task.taskId+"|"+student.uid);
+  if(!evidence){blockers.push({type:"reclaim_evidence_mapping_unresolved",sourcePath:row.path,taskId:task.taskId});continue;}
+  const revisions=await readMirrorSubcollection(db,"commit_reclaims",row.id,"revisions");
+  const candidate=legacyReclaimCandidate({row,revisions,decision:decisionsByLegacyClaim.get(row.id),task,student,evidence});
+  if(!candidate.ok){blockers.push({type:candidate.reason,sourcePath:row.path,status:candidate.status||null});continue;}
+  reclaims.push(candidate);
+ }
+ const reclaimByEvidence=new Map();
+ for(const claim of reclaims){
+  const rows=reclaimByEvidence.get(claim.evidenceId)||[];rows.push(claim);reclaimByEvidence.set(claim.evidenceId,rows);
+ }
  for(const row of gradeRows){
   const legacyStudentId=clean(row.data.studentId,128),student=students.get(legacyStudentId);
   if(!student){blockers.push({type:"grade_student_identity_unmapped",sourcePath:row.path,legacyStudentId});continue;}
@@ -371,6 +437,17 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
    blockers.push({type:candidate.reason,sourcePath:row.path,legacyGradeId:row.id,
     legacyScore:Number(row.data.score),taskId:task.taskId});continue;
   }
+  if(candidate.status==="published"&&candidate.evidenceType==="github"){
+   const evidence=githubByKey.get(task.taskId+"|"+student.uid),
+    claims=reclaimByEvidence.get(evidence?.evidenceId)||[],
+    selected=new Set(evidence?.selectedCommitShas||[]),
+    conflicts=claims.filter(claim=>selected.has(claim.sha)&&["pending","rejected"].includes(claim.status));
+   if(conflicts.length){
+    blockers.push({type:"published_grade_has_unresolved_reclaim_history",sourcePath:row.path,
+      taskId:task.taskId,legacyGradeId:row.id,claimIds:conflicts.map(claim=>claim.claimId)});
+    continue;
+   }
+  }
   if(candidate.gradeSchema==="legacy_scalar_v1")reviewItems.push({
    type:"historical_scalar_grade_preserved",legacyGradeId:row.id,taskId:task.taskId,
    studentUid:student.uid,awarded:candidate.awarded,total:candidate.total,
@@ -381,11 +458,11 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
  return {schema:SCHEMA,schoolId:SCHOOL_ID,readOnly:true,generatedAt:new Date().toISOString(),
   source:{foundationPlanSha256:sha(foundationPlanRaw),academicAccessPlanSha256:sha(academicAccessPlanRaw),
    assessmentPlanSha256:sha(assessmentPlanRaw)},
-  githubEvidence,studioSubmissions,grades,blockers,reviewItems,readyForApply:false,
+  githubEvidence,studioSubmissions,reclaims,grades,blockers,reviewItems,readyForApply:false,
   summary:{githubEvidence:githubEvidence.length,studioSubmissions:studioSubmissions.length,
-   grades:grades.length,blockers:blockers.length,reviewItems:reviewItems.length},
+   reclaims:reclaims.length,grades:grades.length,blockers:blockers.length,reviewItems:reviewItems.length},
   nextRequiredReview:[
-   "Do not auto-convert withdrawn or teacher-discovered checkpoint-only GitHub evidence into ordinary submitted evidence.",
+   "Preserve commit-attribution reclaim status and decision provenance; unresolved or rejected claims on evidence behind a published grade block canonical migration.",
    "Provide an explicit revision extension policy for historical Studio revision requests whose original deadline already passed.",
    "Multi-criterion scalar grades without a trustworthy saved breakdown use the read-only legacy_scalar_v1 representation; do not distribute points across rubric rows.",
    "Preserve grade publication state and revision history without firing student notifications during migration."
@@ -417,4 +494,5 @@ if(require.main===module)main().catch(error=>{
 });
 module.exports={SCHEMA,v4Key,timeMillis,studentIdFromPath,approvedStudentMap,exactTask,
  normalizeGithubFrozen,githubTimeline,githubCandidate,convertStudioSnapshot,studioCandidate,
- normalizeCriterionArray,legacyGradeCriteria,gradeCandidate,readMirrorSubcollection,buildEvidenceGradePlan};
+ legacyReclaimCandidate,normalizeCriterionArray,legacyGradeCriteria,gradeCandidate,
+ readMirrorSubcollection,buildEvidenceGradePlan};
