@@ -94,15 +94,45 @@ function createPeopleDirectoryService({db}) {
         doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
       const enrollmentsByPerson=new Set(activeEnrollments.map(doc=>doc.data().personId));
       const assignmentsByTeacher=new Set(activeAssignments.map(doc=>doc.data().teacherUid));
+      const peopleByAuthUid=new Map();
+      for(const [personId,person] of people){
+        if(typeof person.authUid!=="string"||!person.authUid)continue;
+        const linked=peopleByAuthUid.get(person.authUid)||[];
+        linked.push(personId);peopleByAuthUid.set(person.authUid,linked);
+      }
       const issues=[];
       const add=(type,severity,label,detail,extra={})=>issues.push({
         type,severity,label:String(label||"Record").slice(0,160),
         detail:String(detail||"").slice(0,300),...extra
       });
 
+      for(const [uid,personIds] of peopleByAuthUid){
+        if(personIds.length>1)
+          add("duplicate_auth_person_link","integrity","Account linked to multiple people",
+            "One verified account UID is linked to multiple school person records. Resolve the canonical person before cutover.",
+            {targetUid:uid,personIds:personIds.slice(0,10),targetTab:"access"});
+      }
+
       for(const [personId,person] of people){
-        if(person.status!=="active")continue;
         const label=String(person.displayName||"School person").slice(0,140);
+        if(person.status!=="active"){
+          if(person.authUid){
+            const member=members.get(person.authUid);
+            if(member?.status==="active"&&member.personId===personId)
+              add("inactive_person_active_membership","integrity",label,
+                "Inactive person still has an active school membership linked to this record.",
+                {personId,targetUid:person.authUid,targetTab:"access"});
+            if(assignmentsByTeacher.has(person.authUid))
+              add("inactive_person_active_assignment","integrity",label,
+                "Inactive staff person still has an active teaching assignment.",
+                {personId,targetUid:person.authUid,targetTab:"classes"});
+          }
+          if(enrollmentsByPerson.has(personId))
+            add("inactive_person_active_enrollment","integrity",label,
+              "Inactive student person still has an active course enrollment.",
+              {personId,targetTab:"classes"});
+          continue;
+        }
         if(person.kind==="student"){
           if(!person.authUid){
             add("student_account_unlinked","attention",label,
@@ -133,7 +163,29 @@ function createPeopleDirectoryService({db}) {
               String(member.displayName||"School member").slice(0,140),
               "Active student/teacher membership does not reconcile to one active linked person record.",
               {targetUid:uid,personId:member.personId||null,targetTab:"access"});
+          else{
+            if(roles.includes("student")&&person.kind!=="student")
+              add("student_role_person_kind_mismatch","integrity",
+                String(person.displayName||"School member").slice(0,140),
+                "Student access is linked to a person record that is not classified as a student.",
+                {targetUid:uid,personId:member.personId,targetTab:"access"});
+            if(roles.includes("teacher")&&person.kind!=="staff")
+              add("teacher_role_person_kind_mismatch","integrity",
+                String(person.displayName||"School member").slice(0,140),
+                "Teacher access is linked to a person record that is not classified as staff.",
+                {targetUid:uid,personId:member.personId,targetTab:"access"});
+            if(roles.includes("student")&&roles.includes("teacher"))
+              add("student_teacher_role_conflict","integrity",
+                String(person.displayName||"School member").slice(0,140),
+                "One active membership carries both student and teacher roles, which cannot map cleanly to one canonical person kind.",
+                {targetUid:uid,personId:member.personId,targetTab:"access"});
+          }
         }
+        if(!roles.length)
+          add("active_membership_without_role","integrity",
+            String(member.displayName||"School member").slice(0,140),
+            "Active membership has no school role and should not remain active.",
+            {targetUid:uid,personId:member.personId||null,targetTab:"access"});
         if(roles.includes("teacher")&&!assignmentsByTeacher.has(uid))
           add("teacher_no_assignment","attention",
             String(member.displayName||"Teacher").slice(0,140),
@@ -160,6 +212,11 @@ function createPeopleDirectoryService({db}) {
         const data=invitation.data();
         if(data.schoolId!==ctx.schoolId||data.status!=="pending")continue;
         const expiresAt=data.expiresAt?.toMillis?.()||0;
+        const invitePerson=data.personId?people.get(data.personId):null;
+        if(data.personId&&(!invitePerson||invitePerson.status!=="active"))
+          add("invitation_inactive_person","integrity","Invitation targets inactive person",
+            "A pending invitation references a missing or inactive person record and must not be used for account linking.",
+            {personId:data.personId,recordId:invitation.id,targetTab:"invites"});
         if(expiresAt&&expiresAt<=now)
           add("expired_invitation","attention","Expired pending invitation",
             "A pending school invitation has passed its expiry and should be renewed or left inactive.",
