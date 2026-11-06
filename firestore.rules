@@ -239,8 +239,16 @@ service cloud.firestore {
 
     // Administrators retain existing system-wide maintenance privileges.
     match /{collection}/{document} {
-      allow read, write: if isAdmin() && !serverOwned(collection) && !monitoringCollection(collection) && !personalCollection(collection) && collection != "assessment_evidence" && collection != "commit_reclaims" && collection != "student_grades" && collection != "assessments" && collection != "assessment_private" &&
-        !(collection in ["practice_profiles","practice_scores","practice_boards","practice_rankings","schools","platform_schools","platform_users","platform_admins","platform_audit","provisioning_jobs","migration_runs","system_health"]);
+      // Reject excluded/server-owned namespaces before evaluating the relatively
+      // expensive legacy administrator lookup. This preserves authority while
+      // keeping large evidence validations inside Firestore's expression budget.
+      allow read, write: if !serverOwned(collection) && !monitoringCollection(collection) &&
+        !personalCollection(collection) && collection != "assessment_evidence" &&
+        collection != "commit_reclaims" && collection != "student_grades" &&
+        collection != "assessments" && collection != "assessment_private" &&
+        !(collection in ["practice_profiles","practice_scores","practice_boards","practice_rankings",
+          "schools","platform_schools","platform_users","platform_admins","platform_audit",
+          "provisioning_jobs","migration_runs","system_health"]) && isAdmin();
     }
 
     // V4 school collections use server-side verified membership APIs until their
