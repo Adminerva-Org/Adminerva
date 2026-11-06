@@ -10,6 +10,7 @@
     "firebase-functions": "^6.0.0"
   },
   "scripts": {
-    "check": "node ../scripts/check-release-source.mjs --backend"
+    "check": "node ../scripts/check-release-source.mjs --backend",
+    "cutover:package": "node mcs-cutover-package.js"
   }
 }
