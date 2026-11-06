@@ -500,10 +500,10 @@ function applyEvidenceState(record,{initial=false}={}){
   el("manualReviewExternal").disabled=protectedGrade||!verified;el("manualReviewExternal").title=blocker;
   el("manualReviewAIGenerate").title=blocker;if(!state.aiBusy)aiStatus((active.previous?.aiAssistance?"Saved feedback includes automated assistance reviewed by a teacher. ":"")+blocker,!verified);
   const needsApproval=Boolean(record)&&["submitted","needs_review"].includes(record.status)&&!protectedGrade;
-  el("manualReviewReviewEvidence").classList.toggle("hidden",!needsApproval);
+  el("manualReviewReviewEvidence")?.classList.toggle("hidden",!needsApproval);
   el("manualReviewVerifyContributions").classList.toggle("hidden",!approved||verified||protectedGrade);
   const mayAttribute=Boolean(record)&&["submitted","needs_review","approved"].includes(record.status)&&!protectedGrade;
-  el("manualReviewAddUnmatchedCommit").classList.toggle("hidden",!mayAttribute);
+  el("manualReviewAddUnmatchedCommit")?.classList.toggle("hidden",!mayAttribute);
   el("manualReviewSave").disabled=protectedGrade||!approved;
   for(const id of ["manualReviewScore","manualReviewFeedback","manualReviewFiles","manualReviewReason","manualReviewConfirm"])el(id).disabled=protectedGrade||!approved;
   el("manualReviewPublish").disabled=protectedGrade||!approved||!gradeMatchesEvidence(active.previous,record)||state.dirty;
@@ -533,8 +533,8 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
   el("manualReviewPublish").classList.add("hidden");
   el("manualReviewAIGenerate").disabled=true;
   el("manualReviewExternal").disabled=true;
-  el("manualReviewAddUnmatchedCommit").classList.add("hidden");
-  el("manualReviewReviewEvidence").classList.add("hidden");
+  el("manualReviewAddUnmatchedCommit")?.classList.add("hidden");
+  el("manualReviewReviewEvidence")?.classList.add("hidden");
   el("manualReviewAIGenerate").textContent="Evaluate";
   el("manualReviewSave").textContent="Save unpublished grade";
   el("integratedEvidence").classList.add("hidden");
