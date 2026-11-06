@@ -27,6 +27,9 @@ function teacherIdentityMap(identity){
   throw Error("Use a current read-only MCS identity-candidate report.");
  const byEmailHash=new Map();
  for(const candidate of identity.candidates||[]){
+  const isTeacher=Array.isArray(candidate.rolesToReview)&&candidate.rolesToReview.includes("teacher");
+  if(isTeacher&&!candidate.emailHash)
+   throw Error("Regenerate the MCS identity-candidate report before planning teacher-owned resources.");
   if(candidate.emailHash){
    if(byEmailHash.has(candidate.emailHash)&&byEmailHash.get(candidate.emailHash)!==candidate.uid)
     throw Error("One verified email hash maps to multiple identity candidates.");
