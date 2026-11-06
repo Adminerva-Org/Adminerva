@@ -87,6 +87,14 @@ function createSchoolGradebookService({db}){
     return data.evidenceDigest&&data.evidenceDigest===
       digestEvidence(data.repository,data.selectedCommitShas||[],data.checkpointSha);
   };
+  const verifyFrozenBinding=(snapshot,submission,version)=>{
+    if(!snapshot.exists)return false;
+    const data=snapshot.data();
+    return data.schoolId===ctx.schoolId&&data.taskId===taskId&&
+      data.offeringId===offeringId&&data.studentUid===studentUid&&
+      data.personId===submission.personId&&data.version===version&&
+      evidenceDigest(data)===evidenceDigest(submission)&&verifyFrozen(snapshot);
+  };
   const grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,offeringId));
   async function authorize(tx){
    const [school,member,grant,currentTask,submission]=await Promise.all([
@@ -147,8 +155,8 @@ function createSchoolGradebookService({db}){
     if(submission.currentVersion!==submissionVersion)
      deny("failed-precondition","Student resubmitted. Refresh the frozen submission before grading.");
     const snapshot=await tx.get(submissionRef.collection("versions").doc(String(submissionVersion)));
-    if(!snapshot.exists||evidenceDigest(snapshot.data())!==evidenceDigest(submission)||!verifyFrozen(snapshot))
-     deny("failed-precondition","The frozen assessment evidence changed or is missing.");
+    if(!verifyFrozenBinding(snapshot,submission,submissionVersion))
+     deny("failed-precondition","The frozen assessment evidence changed, is missing, or belongs to another submission context.");
     const scores=validateScores(input.criteria,task.rubric);
     const revision=grade.exists?(grade.data().revision||0)+1:1;
     if(grade.exists&&grade.data().status!=="draft")
@@ -195,8 +203,8 @@ function createSchoolGradebookService({db}){
     if(!published&&!gradeable(submission))
      deny("failed-precondition","The frozen evidence is no longer in a gradeable state.");
     const snapshot=await tx.get(submissionRef.collection("versions").doc(String(previous.submissionVersion)));
-    if(!snapshot.exists||evidenceDigest(snapshot.data())!==evidenceDigest(submission)||!verifyFrozen(snapshot))
-     deny("failed-precondition","The frozen historical evidence could not be verified.");
+    if(!verifyFrozenBinding(snapshot,submission,previous.submissionVersion))
+     deny("failed-precondition","The frozen historical evidence could not be verified against its submission context.");
     const scores=validateScores(input.criteria,task.rubric);
     if(scores.pending>0)
      deny("failed-precondition","Historical rubric reconstruction cannot leave pending points.");
@@ -246,8 +254,8 @@ function createSchoolGradebookService({db}){
        submission.status!=="reviewed")
      deny("failed-precondition","The published grade is no longer bound to the current reviewed submission.");
     const snapshot=await tx.get(submissionRef.collection("versions").doc(String(previous.submissionVersion)));
-    if(!snapshot.exists||evidenceDigest(snapshot.data())!==evidenceDigest(submission)||!verifyFrozen(snapshot))
-     deny("failed-precondition","The frozen student evidence could not be verified.");
+    if(!verifyFrozenBinding(snapshot,submission,previous.submissionVersion))
+     deny("failed-precondition","The frozen student evidence could not be verified against its submission context.");
     const scores=validateScores(input.criteria,task.rubric);
     if(scores.pending>0)
      deny("failed-precondition","Published-grade corrections cannot leave pending rubric points.");
@@ -290,8 +298,8 @@ function createSchoolGradebookService({db}){
      deny("failed-precondition","The grade draft is stale relative to the student's frozen submission.");
     if(data.pending>0)deny("failed-precondition","Resolve pending rubric points before publishing a final grade.");
     const snapshot=await tx.get(submissionRef.collection("versions").doc(String(data.submissionVersion)));
-    if(!snapshot.exists||evidenceDigest(snapshot.data())!==evidenceDigest(submission)||!verifyFrozen(snapshot))
-     deny("failed-precondition","The frozen student evidence could not be verified.");
+    if(!verifyFrozenBinding(snapshot,submission,data.submissionVersion))
+     deny("failed-precondition","The frozen student evidence could not be verified against its submission context.");
     const now=FieldValue.serverTimestamp(),revision=data.revision+1;
     tx.update(gradeRef,{status:"published",publishedAt:now,publishedByUid:ctx.uid,
       revision,updatedAt:now});
