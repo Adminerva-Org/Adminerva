@@ -51,10 +51,14 @@ async function identityCandidates({db,resolveUserByEmail,schoolId="mcs-manila"})
   const email=normalizeEmail(row.data.email);
   const user=email?resolved.get(email):null;
   if(!email||!user){notes.push({source:"students/"+row.id,issue:!email?"missing_or_invalid_email":"no_verified_active_auth_link"});continue;}
+  const emailHash=fingerprint(normalizeEmail(user.email)||email);
   const current=records.get(user.uid)||{
-   uid:user.uid,schoolId,legacyStudentIds:[],legacyStaffRecordIds:[],legacyStaffScopes:[],rolesToReview:[],
+   uid:user.uid,schoolId,emailHash,legacyStudentIds:[],legacyStaffRecordIds:[],legacyStaffScopes:[],rolesToReview:[],
    requiresManualSchoolApproval:true
   };
+  if(current.emailHash&&current.emailHash!==emailHash)
+   throw Error("One verified Auth UID resolved from multiple legacy email identities; review identity mapping manually.");
+  current.emailHash=emailHash;
   current.legacyStudentIds.push({
    studentId:row.id,year:typeof row.data.schoolYear==="string"?row.data.schoolYear:null,
    section:typeof row.data.section==="string"?row.data.section:null,
@@ -66,10 +70,14 @@ async function identityCandidates({db,resolveUserByEmail,schoolId="mcs-manila"})
  for(const row of staff){
   const email=normalizeEmail(row.data.email||row.id),user=email?resolved.get(email):null;
   if(!email||!user){notes.push({source:"staff_access/"+row.id,issue:!email?"missing_or_invalid_email":"no_verified_active_auth_link"});continue;}
+  const emailHash=fingerprint(normalizeEmail(user.email)||email);
   const current=records.get(user.uid)||{
-   uid:user.uid,schoolId,legacyStudentIds:[],legacyStaffRecordIds:[],legacyStaffScopes:[],rolesToReview:[],
+   uid:user.uid,schoolId,emailHash,legacyStudentIds:[],legacyStaffRecordIds:[],legacyStaffScopes:[],rolesToReview:[],
    requiresManualSchoolApproval:true
   };
+  if(current.emailHash&&current.emailHash!==emailHash)
+   throw Error("One verified Auth UID resolved from multiple legacy email identities; review identity mapping manually.");
+  current.emailHash=emailHash;
   current.legacyStaffRecordIds.push(row.id);
   const scope={
    recordId:row.id,role:typeof row.data.role==="string"?row.data.role:null,
