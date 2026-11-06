@@ -233,6 +233,9 @@ async function administratorIds(){
 async function isAdministratorRequest(request){
   const email=String(request.auth?.token?.email||"").toLowerCase();
   if(!request.auth?.uid||request.auth?.token?.email_verified!==true||!email)return false;
+  const authority=await platformAuthority({db,request});
+  if(authority.platformAdmin===true)return true;
+  if(!(await legacyMcsCompatibilityAllowed()))return false;
   if(email===BOOTSTRAP_ADMIN_EMAIL)return true;
   const snapshot=await db.doc("staff_access/"+email).get();
   const data=snapshot.exists?snapshot.data():null;
