@@ -5,11 +5,11 @@ import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 
 const {
-  v4Key,normalizeGithubFrozen,convertStudioSnapshot,
-  legacyGradeCriteria,gradeCandidate
+  v4Key,exactTask,normalizeGithubFrozen,convertStudioSnapshot,
+  legacyReclaimCandidate,legacyGradeCriteria,gradeCandidate
 }=require("../functions/mcs-canonical-evidence-grade-plan.js");
 const {
-  validateExtension,validateGithub,validateStudio,validateGrade,MAX_EXTENSION_MS
+  validateExtension,validateGithub,validateStudio,validateReclaim,validateGrade,MAX_EXTENSION_MS
 }=require("../functions/mcs-canonical-evidence-grade-apply.js");
 const {digestEvidence}=require("../functions/school-github-evidence.js");
 const {digestProject}=require("../functions/school-studio-projects.js");
@@ -22,6 +22,21 @@ test("canonical evidence and grade IDs match runtime hash contracts",()=>{
     createHash("sha256").update(JSON.stringify([school,task,uid])).digest("hex"));
   assert.equal(v4Key(task,uid),
     createHash("sha256").update(JSON.stringify([task,uid])).digest("hex"));
+});
+
+test("assessment evidence resolves only one reviewed task in the exact source/section context",()=>{
+  const view={tasks:[
+    {taskId:"task_a",sourceAssessmentId:"legacy_1",submissionSource:"github",
+      migration:{legacySection:"ICT A"}},
+    {taskId:"task_b",sourceAssessmentId:"legacy_1",submissionSource:"github",
+      migration:{legacySection:"ICT B"}},
+    {taskId:"task_c",sourceAssessmentId:"legacy_1",submissionSource:"studio",
+      migration:{legacySection:"ICT A"}}
+  ]};
+  assert.equal(exactTask(view,"legacy_1","ICT A","github")?.taskId,"task_a");
+  assert.equal(exactTask(view,"legacy_1","ICT B","github")?.taskId,"task_b");
+  assert.equal(exactTask(view,"legacy_1","ICT A","studio")?.taskId,"task_c");
+  assert.equal(exactTask(view,"legacy_1","", "github"),null);
 });
 
 test("GitHub frozen evidence normalizes repository and verifies canonical digest",()=>{
@@ -89,6 +104,32 @@ test("migration revision extensions are explicit, future-dated and capped at 30 
   },now));
 });
 
+
+test("legacy reclaim migration binds the claim to evidence history and preserves decided provenance",()=>{
+  const commit="d".repeat(40),repo={owner:"Adminerva-Org",repo:"Adminerva",
+    fullName:"Adminerva-Org/Adminerva",url:"https://github.com/Adminerva-Org/Adminerva"},
+    task={taskId:"task_1",offeringId:"offer_1"},
+    student={uid:"student_1",personId:"person_1"},
+    evidence={evidenceId:"evidence_1",taskId:"task_1",studentUid:"student_1",repository:repo,
+      versions:[{version:1,selectedCommitShas:[commit]}]},
+    row={id:"legacy_claim",path:"commit_reclaims/legacy_claim",data:{
+      status:"approved",sha:commit,repository:repo.url,studentId:"legacy_student",
+      assessmentId:"legacy_assessment",section:"ICT A",
+      explanation:"This commit is my individual contribution.",
+      reviewNote:"Verified from the submitted project history."
+    }},
+    decision={data:{claimId:"legacy_claim",studentId:"legacy_student",sha:commit,
+      decision:"approved",reason:"Verified from the submitted project history."}};
+  const candidate=legacyReclaimCandidate({row,revisions:[],decision,task,student,evidence});
+  assert.equal(candidate.ok,true);
+  assert.equal(candidate.evidenceVersion,1);
+  assert.equal(candidate.status,"approved");
+  assert.doesNotThrow(()=>validateReclaim(candidate));
+  assert.equal(legacyReclaimCandidate({
+    row,revisions:[],decision:{data:{...decision.data,decision:"rejected"}},task,student,evidence
+  }).reason,"reclaim_decision_provenance_mismatch");
+});
+
 test("apply candidate validators reject stale immutable heads",()=>{
   const repo={owner:"Adminerva-Org",repo:"Adminerva",fullName:"Adminerva-Org/Adminerva",
     url:"https://github.com/Adminerva-Org/Adminerva"};
@@ -104,10 +145,13 @@ test("apply candidate validators reject stale immutable heads",()=>{
     artifacts={database:{tables:{},history:[]},design:{},config:{},evidence:{events:[],runs:[]}},
     contentDigest=digestProject(files,artifacts);
   const submissionId=v4Key("mcs-manila","task","student");
-  const studio={submissionId,taskId:"task",studentUid:"student",currentVersion:1,
-    versions:[{version:1,files,artifacts,contentDigest}],contentDigest};
+  const studio={submissionId,schoolId:"mcs-manila",taskId:"task",offeringId:"offer",
+    studentUid:"student",personId:"person",currentVersion:1,
+    versions:[{schoolId:"mcs-manila",taskId:"task",offeringId:"offer",
+      studentUid:"student",personId:"person",version:1,files,artifacts,contentDigest}],contentDigest};
   assert.doesNotThrow(()=>validateStudio(studio));
   assert.throws(()=>validateStudio({...studio,contentDigest:"0".repeat(64)}));
+  assert.throws(()=>validateStudio({...studio,versions:[{...studio.versions[0],offeringId:"wrong"}]}));
 
   assert.doesNotThrow(()=>validateGrade({
     gradeId:v4Key("task","student"),taskId:"task",studentUid:"student",
