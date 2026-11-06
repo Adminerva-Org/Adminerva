@@ -65,7 +65,35 @@ async function evaluateSchoolOnboardingReadiness({db,schoolId}){
   const activeTerms=activeCatalog(terms);
   const activeSubjects=activeCatalog(subjects);
   const activeSections=activeCatalog(sections);
-  const catalogReady=activeYears.length>0&&activeTerms.length>0&&activeSubjects.length>0&&activeSections.length>0;
+  const activeYearIds=new Set(activeYears.map(doc=>doc.id)),
+    activeTermIds=new Set(activeTerms.map(doc=>doc.id)),
+    activeSubjectIds=new Set(activeSubjects.map(doc=>doc.id)),
+    activeSectionIds=new Set(activeSections.map(doc=>doc.id)),
+    activePeopleById=new Map(activePeople.map(doc=>[doc.id,doc.data()])),
+    activeMembershipByUid=new Map(activeMemberships.map(doc=>[doc.id,doc.data()])),
+    activeOfferingById=new Map(activeOfferings.map(doc=>[doc.id,doc.data()]));
+  const invalidTerms=activeTerms.filter(doc=>!activeYearIds.has(doc.data().yearId));
+  const catalogReady=activeYears.length>0&&activeTerms.length>0&&activeSubjects.length>0&&
+    activeSections.length>0&&invalidTerms.length===0;
+  const invalidOfferings=activeOfferings.filter(doc=>{
+    const data=doc.data();
+    return !activeYearIds.has(data.yearId)||!activeTermIds.has(data.termId)||
+      !activeSubjectIds.has(data.subjectId)||!activeSectionIds.has(data.sectionId)||
+      activeTerms.find(term=>term.id===data.termId)?.data().yearId!==data.yearId;
+  });
+  const invalidEnrollments=activeEnrollments.filter(doc=>{
+    const data=doc.data(),person=activePeopleById.get(data.personId);
+    if(!person||person.kind!=="student"||!activeOfferingById.has(data.offeringId))return true;
+    if(!person.authUid)return false;
+    const member=activeMembershipByUid.get(person.authUid);
+    return !member||member.personId!==doc.data().personId||
+      !Array.isArray(member.roles)||!member.roles.includes("student");
+  });
+  const invalidAssignments=activeAssignments.filter(doc=>{
+    const data=doc.data(),member=activeMembershipByUid.get(data.teacherUid);
+    return !member||!Array.isArray(member.roles)||!member.roles.includes("teacher")||
+      !activeOfferingById.has(data.offeringId);
+  });
   const fileData=filePolicy.exists?filePolicy.data():null;
   const aiData=aiConfig.exists?aiConfig.data():null;
 
@@ -86,13 +114,17 @@ async function evaluateSchoolOnboardingReadiness({db,schoolId}){
       students.length+" active student membership(s).",{count:students.length}),
     row("academic_catalog","Academic catalog",catalogReady,
       activeYears.length+" active year(s), "+activeTerms.length+" active term(s), "+activeSubjects.length+
-      " active subject(s), "+activeSections.length+" active section(s)."),
-    row("course_offerings","Course offerings",activeOfferings.length>0,
-      activeOfferings.length+" active course offering(s).",{count:activeOfferings.length}),
-    row("teaching_assignments","Teaching assignments",activeAssignments.length>0,
-      activeAssignments.length+" active teacher-course assignment(s).",{count:activeAssignments.length}),
-    row("student_enrollments","Student enrollments",activeEnrollments.length>0,
-      activeEnrollments.length+" active course enrollment(s).",{count:activeEnrollments.length}),
+      " active subject(s), "+activeSections.length+" active section(s); "+invalidTerms.length+
+      " active term(s) have an invalid academic-year link."),
+    row("course_offerings","Course offerings",activeOfferings.length>0&&invalidOfferings.length===0,
+      activeOfferings.length+" active course offering(s); "+invalidOfferings.length+
+      " have inactive or mismatched catalog dependencies.",{count:activeOfferings.length}),
+    row("teaching_assignments","Teaching assignments",activeAssignments.length>0&&invalidAssignments.length===0,
+      activeAssignments.length+" active teacher-course assignment(s); "+invalidAssignments.length+
+      " have invalid teacher/offering dependencies.",{count:activeAssignments.length}),
+    row("student_enrollments","Student enrollments",activeEnrollments.length>0&&invalidEnrollments.length===0,
+      activeEnrollments.length+" active course enrollment(s); "+invalidEnrollments.length+
+      " have invalid student/offering access dependencies.",{count:activeEnrollments.length}),
     row("file_policy","School file policy",
       Boolean(fileData?.enabled&&fileData?.supportAttachmentsEnabled),
       fileData?.enabled
