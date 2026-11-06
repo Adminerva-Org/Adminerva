@@ -120,7 +120,7 @@ function createSchoolStudioSubmissionService({db}){
     }
     const versionRef=submissionRef.collection("versions").doc(String(version));
     const artifacts=project.data().artifacts||{},frozenDigest=digestProject(files,artifacts),when=FieldValue.serverTimestamp();
-    tx.create(versionRef,{schoolId:ctx.schoolId,taskId,studentUid:ctx.uid,personId,
+    tx.create(versionRef,{schoolId:ctx.schoolId,taskId,offeringId,studentUid:ctx.uid,personId,
       projectId,projectRevision:revision,files,artifacts,contentDigest:frozenDigest,
       sourceLanguage:project.data().language,submittedAt:when,version});
     if(submission.exists){
