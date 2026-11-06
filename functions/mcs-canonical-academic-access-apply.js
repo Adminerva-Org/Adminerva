@@ -36,11 +36,18 @@ function validatePlan(plan){
  return plan;
 }
 function decisionRows(planRows,approvalRows,keyField){
- const planned=new Map(planRows.map(row=>[row[keyField],row])),approved=[];
+ const planned=new Map(),approved=[],seen=new Set();
+ for(const row of planRows){
+  const key=row[keyField];
+  if(planned.has(key))throw Error("The bound academic-access plan contains a duplicate relationship key.");
+  planned.set(key,row);
+ }
  if(approvalRows.length!==planRows.length)throw Error("Approval relationship count differs from the bound plan.");
  for(const review of approvalRows){
-  const row=planned.get(review[keyField]);
+  const key=review[keyField],row=planned.get(key);
   if(!row)throw Error("Approval contains a relationship not present in the plan.");
+  if(seen.has(key))throw Error("Every planned relationship must have exactly one approval decision.");
+  seen.add(key);
   if(!["approve","exclude"].includes(review.decision))
    throw Error("Every relationship requires an explicit approve or exclude decision.");
   if(review.decision==="exclude"){
@@ -48,6 +55,7 @@ function decisionRows(planRows,approvalRows,keyField){
    if(reason.length<12||reason.length>1000)throw Error("Excluded migration relationships need a 12–1,000 character reason.");
   }else approved.push(row);
  }
+ if(seen.size!==planned.size)throw Error("Every planned relationship must have exactly one approval decision.");
  return approved;
 }
 function validateApproval(plan,raw,approval){
