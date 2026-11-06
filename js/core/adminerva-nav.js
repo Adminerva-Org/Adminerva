@@ -82,7 +82,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ["gradebook-v4", "Gradebook", "school-gradebook.html"]
       ] : [
         ["repofetch", "Review & grade", "repofetch.html"],
-        ["gradebook-v4", "Gradebook", gradebookRoute],
+        [root.dataset.schoolTeacher==="true"?"gradebook-v4":"gradebook", "Gradebook", gradebookRoute],
         ["repobank", "Repository investigation", "repobank.html"]
       ]) : [] },
     { name: "Insights", area: "educator", items: canTeach ? [
