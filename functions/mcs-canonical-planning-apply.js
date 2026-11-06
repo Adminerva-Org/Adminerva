@@ -172,6 +172,10 @@ async function createResource(db,approved,row){
     legacyId:row.migration?.legacyId,ownershipSource:row.migration?.ownershipSource,
     sourceLegacyPlan:row.migration?.sourceLegacyPlan||null,
     legacyPlanId:row.migration?.legacyPlanId||null,
+    legacyReferenceFolderIds:Array.isArray(row.migration?.legacyReferenceFolderIds)?
+      row.migration.legacyReferenceFolderIds.slice(0,100):[],
+    unresolvedReferenceFolderIds:Array.isArray(row.migration?.unresolvedReferenceFolderIds)?
+      row.migration.unresolvedReferenceFolderIds.slice(0,100):[],
     sourceLessonResolved:Boolean(row.migration?.sourceLessonResolved)}
   });
   tx.create(db.collection(prefix+"planning_audit").doc(),{
