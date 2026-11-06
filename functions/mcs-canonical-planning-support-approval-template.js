@@ -44,9 +44,10 @@ function createTemplate(plan,raw){
   })),
   unresolvedBlockers:plan.blockers||[],
   reviewItems:(plan.reviewItems||[]).map(item=>({...item,resolved:false,resolution:""})),
+  informationalReviewItems:plan.informationalReviewItems||[],
   sharedLegacySources:plan.sharedLegacySources||{},
   reviewNotes:"",
-  warning:"UNAPPROVED TEMPLATE. Teacher-owned references and timetables remain private. Shared legacy data is not replicated automatically."
+  warning:"UNAPPROVED TEMPLATE. Teacher-owned references and timetables remain private. Legacy shared sources stay in the reconciled mirror only and do not create active V4 sharing."
  };
 }
 function main(){
