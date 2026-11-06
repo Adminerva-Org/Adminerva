@@ -45,14 +45,21 @@ function validatePlan(plan){
  return plan;
 }
 function decisions(planRows,reviewRows,key){
- const planned=new Map(planRows.map(row=>[row[key],row]));
+ const planned=new Map(),seen=new Set();
+ for(const row of planRows){
+  const value=row[key];
+  if(planned.has(value))throw Error("The bound planning-support plan contains a duplicate record key.");
+  planned.set(value,row);
+ }
  if(reviewRows.length!==planRows.length)
   throw Error("Approval record count differs from the bound planning-support plan.");
  const approved=[];
  for(const review of reviewRows){
-  const row=planned.get(review[key]);
+  const value=review[key],row=planned.get(value);
   if(!row||row.ownerUid!==review.ownerUid)
    throw Error("Approval contains a planning-support record not present in the bound plan.");
+  if(seen.has(value))throw Error("Every planning-support record must have exactly one approval decision.");
+  seen.add(value);
   if(!["approve","exclude"].includes(review.decision))
    throw Error("Every reference/schedule record requires an explicit approve or exclude decision.");
   if(review.decision==="exclude"){
@@ -61,6 +68,7 @@ function decisions(planRows,reviewRows,key){
     throw Error("Excluded planning-support records require a 12–1,000 character reason.");
   }else approved.push(row);
  }
+ if(seen.size!==planned.size)throw Error("Every planning-support record must have exactly one approval decision.");
  return approved;
 }
 function validateApproval(plan,raw,approval){
@@ -84,6 +92,12 @@ function validateApproval(plan,raw,approval){
   throw Error("Resolve every planning-support migration blocker before apply.");
  if((approval.reviewItems||[]).some(item=>item.resolved!==true))
   throw Error("Resolve every planning-support migration review item before apply.");
+ if(plan.sharedLegacySources?.disposition!=="retain_legacy_mirror_only"||
+    plan.sharedLegacySources?.canonicalSharingActivated!==false)
+  throw Error("Shared legacy teacher resources require the mirror-only migration disposition.");
+ if(approval.sharedLegacySources?.disposition!==plan.sharedLegacySources.disposition||
+    approval.sharedLegacySources?.canonicalSharingActivated!==false)
+  throw Error("Approval must preserve the mirror-only disposition for shared legacy teacher resources.");
  return {
   planSha256,
   referenceFolders:decisions(plan.referenceFolders||[],approval.referenceFolders||[],"folderId"),
