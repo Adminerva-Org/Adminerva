@@ -838,7 +838,7 @@ function init() {
     el("manualReviewForm").scrollIntoView({behavior:"smooth",block:"start"});el("manualReviewScore").focus();
   });
   el("manualReviewPreview").addEventListener("click",()=>{renderFeedbackMarkdown(el("manualReviewFeedbackPreview"),el("manualReviewFeedback").value);});
-  el("manualReviewReviewEvidence").addEventListener("click",async()=>{
+  el("manualReviewReviewEvidence")?.addEventListener("click",async()=>{
     el("integratedEvidenceDetails").open=true;
     try{
       await state.panels?.ready;
@@ -850,7 +850,7 @@ function init() {
     el("integratedEvidenceDetails").open=true;
     document.getElementById("evidenceEditVerification")?.click();
   });
-  el("manualReviewAddUnmatchedCommit").addEventListener("click",async()=>{
+  el("manualReviewAddUnmatchedCommit")?.addEventListener("click",async()=>{
     el("integratedEvidenceDetails").open=true;
     try{
       await state.panels?.ready;
