@@ -47,6 +47,7 @@ function createTemplate(plan,raw){
    studioSnapshotsReviewed:false,
    studentTaskEnrollmentReviewed:false,
    publicationStatesReviewed:false,
+   reclaimHistoryReviewed:false,
    historicalScalarGradesReviewed:false,
    evidenceAndGradeRevisionsReviewed:false,
    revisionExtensionsReviewed:false,
@@ -55,6 +56,11 @@ function createTemplate(plan,raw){
   },
   githubEvidence:(plan.githubEvidence||[]).map(row=>decisionRow(row,"evidenceId")),
   studioSubmissions:(plan.studioSubmissions||[]).map(row=>decisionRow(row,"submissionId")),
+  reclaims:(plan.reclaims||[]).map(row=>({
+   claimId:row.claimId,taskId:row.taskId,studentUid:row.studentUid,evidenceId:row.evidenceId,
+   sha:row.sha,status:row.status,evidenceVersion:row.evidenceVersion,
+   decision:"pending",exclusionReason:""
+  })),
   grades:(plan.grades||[]).map(gradeRow),
   unresolvedBlockers:plan.blockers||[],
   reviewItems:(plan.reviewItems||[]).map(item=>({...item,resolved:false,resolution:""})),
@@ -71,7 +77,7 @@ function main(){
   templateCreated:true,schoolId:SCHOOL_ID,
   githubEvidence:template.githubEvidence.length,
   studioSubmissions:template.studioSubmissions.length,
-  grades:template.grades.length,
+  reclaims:template.reclaims.length,grades:template.grades.length,
   blockers:template.unresolvedBlockers.length,
   reviewItems:template.reviewItems.length,approved:false
  }));
