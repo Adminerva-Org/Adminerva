@@ -365,6 +365,13 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 - School Setup Readiness now counts only active academic years, terms, subjects and sections explicitly belonging to the verified selected school. Archived/ended or malformed cross-school catalog entries cannot make the academic catalog checklist appear complete.
 - The existing read-only school-admin overview, bounded listing, optional file/AI items and separate migration/cutover readiness remain unchanged.
 
+## MCS identity-to-resource ownership reconciliation — November 6, 2026
+
+- The restricted MCS identity-candidate report now preserves a SHA-256 fingerprint of each verified Auth email on the candidate record. The raw email is still not added to the migration artifact.
+- Teacher planning migration can therefore resolve legacy lesson/presentation ownership from a verified owner email when no reliable saved owner UID exists, while still requiring the teacher to be explicitly approved in the canonical foundation.
+- If an older identity report lacks the teacher email fingerprint, planning now stops and requires regeneration instead of silently classifying recoverable teacher resources as unresolved.
+- One verified Auth UID resolving from conflicting legacy email identities is treated as a manual reconciliation blocker rather than being merged automatically.
+
 ## Delivery and remaining work
 
 | Track | Actual implementation in PR #113 | Remaining before Adminerva 4.0 |
