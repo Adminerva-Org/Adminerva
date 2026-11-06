@@ -372,6 +372,13 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 - If an older identity report lacks the teacher email fingerprint, planning now stops and requires regeneration instead of silently classifying recoverable teacher resources as unresolved.
 - One verified Auth UID resolving from conflicting legacy email identities is treated as a manual reconciliation blocker rather than being merged automatically.
 
+## 4.0 reconciliation, compatibility and grading continuity pass — November 6, 2026
+
+- **Academic access reconciliation:** approval files must now contain exactly one decision for every planned student enrollment and teacher-course assignment. Duplicate decisions can no longer hide an omitted relationship while still satisfying the relationship-count check.
+- **Legacy compatibility retirement:** product-level administrator actions now prefer verified platform-owner authority. Once MCS is in `v4_only`, the bootstrap administrator email and legacy `staff_access` administrator records no longer authorize those actions; they remain available only during the compatibility window.
+- **Studio → Assessment → Gradebook continuity:** live Studio immutable versions now store the assigned course offering ID. Gradebook scoring, historical rubric reconstruction, published-grade correction and publication verify that the frozen version matches the same school, task, offering, student UID, person ID and version as the submission header in addition to verifying the content/evidence digest.
+- These changes affect only the undeployed 4.0 branch and migration/review safeguards. No production MCS records, memberships, grades or release metadata were changed.
+
 ## Delivery and remaining work
 
 | Track | Actual implementation in PR #113 | Remaining before Adminerva 4.0 |
