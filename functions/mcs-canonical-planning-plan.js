@@ -80,8 +80,7 @@ function referenceFolderId(uid,value){
  if(/^[A-Za-z0-9_-]{1,128}$/.test(id))return id;
  return "mcsref_"+sha(uid+"\0"+id).slice(0,40);
 }
-function lessonContent(data,ownerUid=""){
-
+function lessonContent(data,ownerUid="",folderMap=null){
  if(!Array.isArray(data.sessions)||!data.sessions.length||data.sessions.length>30)
   return {ok:false,reason:"lesson_sessions_invalid"};
  const plan={
@@ -97,7 +96,11 @@ function lessonContent(data,ownerUid=""){
   custom_instructions:clean(data.custom_instructions,120000),
   schedule:clean(data.schedule,120000),
   reference_folders:Array.isArray(data.reference_folders)?[...new Set(data.reference_folders
-   .filter(value=>typeof value==="string").map(value=>referenceFolderId(ownerUid,value)).filter(Boolean))].slice(0,100):[],
+   .filter(value=>typeof value==="string").map(value=>{
+    const legacy=clean(value,500);
+    if(!legacy)return "";
+    return folderMap instanceof Map?(folderMap.get(legacy)||""):referenceFolderId(ownerUid,legacy);
+   }).filter(Boolean))].slice(0,100):[],
   weekly_overview:data.weekly_overview&&typeof data.weekly_overview==="object"?data.weekly_overview:{},
   sessions:data.sessions
  };
@@ -199,11 +202,15 @@ async function buildPlanningPlan(db,{foundationPlan,foundationPlanRaw,foundation
  const [globalLessons,globalPresentations]=await Promise.all([
   globalRows(db,"lesson_plans"),globalRows(db,"presentations")
  ]);
- const personalLessons=[],personalPresentations=[];
+ const personalLessons=[],personalPresentations=[],referenceFolderMaps=new Map();
  for(const uid of teachers.keys()){
-  const [lessons,presentations]=await Promise.all([
-   workspaceRows(db,uid,"lesson_plans"),workspaceRows(db,uid,"presentations")
+  const [lessons,presentations,folders]=await Promise.all([
+   workspaceRows(db,uid,"lesson_plans"),workspaceRows(db,uid,"presentations"),
+   mirrorCollection(db,"schools/"+SCHOOL_ID+"/legacy_roots/teacher_materials/documents/"+uid+"/reference_folders").catch(()=>[])
   ]);
+  const folderMap=new Map();
+  for(const folder of folders)folderMap.set(folder.id,referenceFolderId(uid,folder.id));
+  referenceFolderMaps.set(uid,folderMap);
   lessons.forEach(row=>personalLessons.push({...row,workspaceUid:uid}));
   presentations.forEach(row=>personalPresentations.push({...row,workspaceUid:uid}));
  }
@@ -221,7 +228,11 @@ async function buildPlanningPlan(db,{foundationPlan,foundationPlanRaw,foundation
  function lessonCandidate(row,uid,ownershipSource,sourceKind){
   const key=lessonClientKey(row.data);
   if(!key){blockers.push({type:"lesson_identity_fields_missing",sourcePath:row.path});return null;}
-  const converted=revisionList(row,data=>lessonContent(data,uid));
+  const folderMap=referenceFolderMaps.get(uid)||new Map(),
+   legacyReferenceFolderIds=[...new Set((Array.isArray(row.data.reference_folders)?row.data.reference_folders:[])
+    .filter(value=>typeof value==="string").map(value=>clean(value,500)).filter(Boolean))],
+   unresolvedReferenceFolderIds=legacyReferenceFolderIds.filter(value=>!folderMap.has(value)),
+   converted=revisionList(row,data=>lessonContent(data,uid,folderMap));
   if(!converted.ok){blockers.push({type:converted.reason,sourcePath:row.path,message:converted.message||""});return null;}
   const resourceId=deterministicId({schoolId:SCHOOL_ID,uid},"lesson",key);
   const status=row.data.is_archived===true?"archived":"active";
@@ -230,7 +241,8 @@ async function buildPlanningPlan(db,{foundationPlan,foundationPlanRaw,foundation
    content:converted.current,status,visibility:"private",sharedWithUids:[],
    revision:converted.currentVersion,revisions:converted.revisions,
    migration:{sourcePath:row.path,sourceKind,legacyId:row.id,ownershipSource,
-    sourceLegacyPlan:clean(row.data.source_legacy_plan,128)||null}};
+    sourceLegacyPlan:clean(row.data.source_legacy_plan,128)||null,
+    legacyReferenceFolderIds,unresolvedReferenceFolderIds}};
   if(addResource(candidate)){
    lessonByLegacyKey.set(uid+"|"+row.id,candidate);
    if(candidate.migration.sourceLegacyPlan)lessonByLegacyKey.set(uid+"|"+candidate.migration.sourceLegacyPlan,candidate);
