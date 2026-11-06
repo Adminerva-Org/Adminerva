@@ -650,13 +650,55 @@ service cloud.firestore {
 
     // Evidence needs both student and assessment scope. Check the role once
     // rather than repeat it through mayTeachStudent and mayTeachAssessment.
+    function assessmentIncludesSection(assessment,section) {
+      let deployments = assessment.get("deployments",[]);
+      return section is string && (
+        section in assessment.get("sectionIds",[]) ||
+        section in assessment.get("targetSections",[]) ||
+        (deployments.size() > 0 && deployments[0].get("section","") == section) ||
+        (deployments.size() > 1 && deployments[1].get("section","") == section) ||
+        (deployments.size() > 2 && deployments[2].get("section","") == section) ||
+        (deployments.size() > 3 && deployments[3].get("section","") == section) ||
+        (deployments.size() > 4 && deployments[4].get("section","") == section) ||
+        (deployments.size() > 5 && deployments[5].get("section","") == section) ||
+        (deployments.size() > 6 && deployments[6].get("section","") == section) ||
+        (deployments.size() > 7 && deployments[7].get("section","") == section) ||
+        (deployments.size() > 8 && deployments[8].get("section","") == section) ||
+        (deployments.size() > 9 && deployments[9].get("section","") == section) ||
+        (deployments.size() > 10 && deployments[10].get("section","") == section) ||
+        (deployments.size() > 11 && deployments[11].get("section","") == section) ||
+        (deployments.size() > 12 && deployments[12].get("section","") == section) ||
+        (deployments.size() > 13 && deployments[13].get("section","") == section) ||
+        (deployments.size() > 14 && deployments[14].get("section","") == section) ||
+        (deployments.size() > 15 && deployments[15].get("section","") == section) ||
+        (deployments.size() > 16 && deployments[16].get("section","") == section) ||
+        (deployments.size() > 17 && deployments[17].get("section","") == section) ||
+        (deployments.size() > 18 && deployments[18].get("section","") == section) ||
+        (deployments.size() > 19 && deployments[19].get("section","") == section)
+      );
+    }
     function teacherEvidenceScope(studentId,assessmentId) {
       let section = get(/databases/$(database)/documents/students/$(studentId)).data.section;
       let assessment = get(/databases/$(database)/documents/assessments/$(assessmentId)).data;
       let sections = teacherSections();
-      return section is string && section in sections &&
-        (assessment.get("ownerUid","") == request.auth.uid ||
-          assessment.get("sectionIds",[]).hasAny(sections));
+      return section is string && (
+        (section in sections &&
+          (assessment.get("ownerUid","") == request.auth.uid ||
+            assessmentIncludesSection(assessment,section))) ||
+        ((assessment.get("ownerUid","") == request.auth.uid || isOriginalTeacher()) &&
+          assessmentIncludesSection(assessment,section))
+      );
+    }
+    function mayReviewAssessmentSection(section,assessmentId) {
+      let assessment = get(/databases/$(database)/documents/assessments/$(assessmentId)).data;
+      return isTeacher() && section is string && assessmentId is string &&
+        assessmentIncludesSection(assessment,section) &&
+        (section in teacherSections() ||
+          assessment.get("ownerUid","") == request.auth.uid ||
+          isOriginalTeacher());
+    }
+    function mayReviewClaimScope(section,assessmentId) {
+      return mayReviewAssessmentSection(section,assessmentId);
     }
     function mayTeachEvidence(studentId,assessmentId) {
       return isAdmin() || (isTeacher() && studentId is string &&
@@ -695,9 +737,16 @@ service cloud.firestore {
     }
 
     match /assessment_evidence/{evidenceId} {
-      allow get: if isInstructor() && !exists(/databases/$(database)/documents/assessment_evidence/$(evidenceId));
-      allow read: if mayTeachSection(resource.data.section);
-      allow read: if signedIn() && ownsStudentProfile(resource.data.studentId);
+      // Single-record review follows current student + assessment scope so stale
+      // legacy section values do not lock out an otherwise authorized teacher.
+      allow get: if legacyMcsAllowed() && (
+        (isInstructor() && !exists(/databases/$(database)/documents/assessment_evidence/$(evidenceId))) ||
+        mayTeachEvidence(resource.data.studentId,resource.data.assessmentId) ||
+        (signedIn() && ownsStudentProfile(resource.data.studentId)));
+      allow list: if legacyMcsAllowed() && (
+        mayTeachSection(resource.data.section) ||
+        mayReviewAssessmentSection(resource.data.get("section",""),resource.data.get("assessmentId","")) ||
+        (signedIn() && ownsStudentProfile(resource.data.studentId)));
       // Audited updates use set() and include revision/teacher metadata. Reject
       // their create alternative before spending the evidence validation budget.
       allow create: if request.resource.data.keys().hasOnly(["studentId","assessmentId","section","repository",
@@ -764,8 +813,12 @@ service cloud.firestore {
     // A reclaim is an unverified attribution request, not a transfer of
     // authorship. Only staff can accept/reject it; students may withdraw.
     match /commit_reclaims/{claimId} {
-      allow read: if mayTeachSection(resource.data.section) ||
-        (signedIn() && ownsStudentProfile(resource.data.studentId));
+      // Compatibility-mode teachers may review an assessment-scoped claim even
+      // when an older staff section list is stale.
+      allow read: if legacyMcsAllowed() && (
+        mayTeachSection(resource.data.get("section","")) ||
+        mayReviewAssessmentSection(resource.data.get("section",""),resource.data.get("assessmentId","")) ||
+        (signedIn() && ownsStudentProfile(resource.data.get("studentId",""))));
       allow create: if signedIn() &&
         request.resource.data.keys().hasOnly(["studentId","assessmentId","section",
           "repository","sha","detectedAuthorName","detectedAuthorLogin",
@@ -783,7 +836,8 @@ service cloud.firestore {
         request.resource.data.repository.size() <= 300 &&
         request.resource.data.sha is string &&
         request.resource.data.sha.matches("^[a-fA-F0-9]{40}$") &&
-        claimId == request.resource.data.sha + "_" + request.resource.data.studentId &&
+        (claimId == request.resource.data.sha + "_" + request.resource.data.studentId ||
+         claimId == request.resource.data.sha + "_" + request.resource.data.studentId + "_" + request.resource.data.assessmentId) &&
         request.resource.data.explanation is string &&
         request.resource.data.explanation.size() >= 10 &&
         request.resource.data.explanation.size() <= 1500 &&
