@@ -10,7 +10,16 @@ const records={
 };
 const db={
   doc(path){return {get:async()=>({exists:Boolean(records[path]),data:()=>records[path]})};},
-  collection(){return {limit(){return {get:async()=>({docs:[{id:"mcs-manila"},{id:"school-b"}]})}}};}
+  collection(path){
+    const chain=current=>({
+      doc:id=>chain(current+"/"+id),
+      collection:name=>chain(current+"/"+name),
+      limit(){return {get:async()=>({
+        docs:current==="platform_users/uid1/memberships"?[{id:"mcs-manila"},{id:"school-b"}]:[]
+      })};}
+    });
+    return chain(path);
+  }
 };
 test("a server-verified account is required",async()=>{
   await assert.rejects(tenant.getSchoolContext({db,request:{},schoolId:"mcs-manila"}),{code:"unauthenticated"});
