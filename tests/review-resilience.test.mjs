@@ -112,7 +112,7 @@ test("account registry, own teacher directory and student membership start in pa
   const started=[],finish=[],user={uid:"parallel",email:"new.teacher@example.edu",emailVerified:true};
   const pending=kind=>{started.push(kind);return new Promise(resolve=>finish.push(()=>resolve(kind==="staff_access"?{exists:()=>true,data:()=>({email:user.email,status:"active",role:"teacher"})}:{docs:[],empty:true})));};
   let remembered;
-  const context={auth:{authStateReady:()=>new Promise(()=>{}),currentUser:user},db:{},ADMIN_EMAIL:"admin@example.edu",
+  const context={app:{},auth:{authStateReady:()=>new Promise(()=>{}),currentUser:user},db:{},ADMIN_EMAIL:"admin@example.edu",
     getFunctions:()=>({}),httpsCallable:()=>async()=>({data:{schools:[],platformAdmin:false,legacyCompatibilityAllowed:true}}),
     doc:(_db,kind)=>kind,collection:(_db,kind)=>kind,query:kind=>kind,where:()=>{},
     getDocFromServer:kind=>pending(kind),getDocsFromServer:kind=>pending(kind),
