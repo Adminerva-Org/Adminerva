@@ -366,7 +366,7 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
   readMirrorRoot(db,"commit_reclaims"),readMirrorRoot(db,"commit_claim_decisions"),
   readMirrorRoot(db,"student_grades"),readMirrorRoot(db,"grade_revisions")
  ]);
- const githubEvidence=[],studioSubmissions=[],reclaims=[],grades=[],blockers=[],reviewItems=[];
+ const githubEvidence=[],studioSubmissions=[],reclaims=[],grades=[],blockers=[],reviewItems=[],informationalReviewItems=[];
  const githubByKey=new Map(),studioByKey=new Map(),
   decisionsByLegacyClaim=new Map(decisionRows.map(row=>[row.id,row]));
  for(const row of githubRows){
@@ -448,7 +448,7 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
     continue;
    }
   }
-  if(candidate.gradeSchema==="legacy_scalar_v1")reviewItems.push({
+  if(candidate.gradeSchema==="legacy_scalar_v1")informationalReviewItems.push({
    type:"historical_scalar_grade_preserved",legacyGradeId:row.id,taskId:task.taskId,
    studentUid:student.uid,awarded:candidate.awarded,total:candidate.total,
    resolution:"Preserve exact scalar score/feedback. Teacher may later reconstruct rubric allocation without changing the published score."
@@ -458,9 +458,10 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
  return {schema:SCHEMA,schoolId:SCHOOL_ID,readOnly:true,generatedAt:new Date().toISOString(),
   source:{foundationPlanSha256:sha(foundationPlanRaw),academicAccessPlanSha256:sha(academicAccessPlanRaw),
    assessmentPlanSha256:sha(assessmentPlanRaw)},
-  githubEvidence,studioSubmissions,reclaims,grades,blockers,reviewItems,readyForApply:false,
+  githubEvidence,studioSubmissions,reclaims,grades,blockers,reviewItems,informationalReviewItems,readyForApply:false,
   summary:{githubEvidence:githubEvidence.length,studioSubmissions:studioSubmissions.length,
-   reclaims:reclaims.length,grades:grades.length,blockers:blockers.length,reviewItems:reviewItems.length},
+   reclaims:reclaims.length,grades:grades.length,blockers:blockers.length,reviewItems:reviewItems.length,
+   informationalReviewItems:informationalReviewItems.length},
   nextRequiredReview:[
    "Preserve commit-attribution reclaim status and decision provenance; unresolved or rejected claims on evidence behind a published grade block canonical migration.",
    "Provide an explicit revision extension policy for historical Studio revision requests whose original deadline already passed.",
