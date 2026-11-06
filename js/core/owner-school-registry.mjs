@@ -6,10 +6,17 @@ const readinessApi=httpsCallable(functions,"schoolCutoverReadiness");
 const byId=id=>document.getElementById(id);
 const status=byId("owner-status"),workspace=byId("owner-content"),
   schoolList=byId("owner-schools"),actions=byId("owner-actions");
-let selected=null,schools=[],busy=false;
+let selected=null,schools=[],busy=false,latestReadiness=null,latestCutoverPackage=null;
 const say=text=>status.textContent=text;
 async function execute(action,details={}){
   return (await api({action,...details})).data;
+}
+function updateCutoverAvailability(){
+  const button=byId("owner-cutover")?.querySelector('button[type="submit"]');
+  if(!button||!selected)return;
+  const packageReady=selected.schoolId!=="mcs-manila"||
+    (latestCutoverPackage?.recorded===true&&latestCutoverPackage?.ready===true&&latestCutoverPackage?.fresh===true);
+  button.disabled=!(latestReadiness?.ready===true&&packageReady);
 }
 function choose(id){
   selected=schools.find(s=>s.schoolId===id)||null;
@@ -24,7 +31,12 @@ function choose(id){
   byId("owner-cutover").hidden=selected.compatibilityMode==="v4_only";
   byId("owner-cutover-rollback").hidden=selected.compatibilityMode!=="v4_only";
   byId("owner-cutover-mode").textContent="Compatibility: "+(selected.compatibilityMode||"legacy_allowed").replace("_"," ");
+  latestReadiness=null;latestCutoverPackage=null;
+  const packageSection=byId("owner-cutover-package-section");
+  if(packageSection)packageSection.hidden=selected.schoolId!=="mcs-manila";
+  updateCutoverAvailability();
   void loadReadiness(selected.schoolId);
+  void loadCutoverPackage(selected.schoolId);
   void loadCutoverDecisions(selected.schoolId);
 }
 async function loadReadiness(schoolId=selected?.schoolId){
@@ -46,10 +58,34 @@ async function loadReadiness(schoolId=selected?.schoolId){
       list.append(item);
     }
     host.append(list);
-    byId("owner-cutover").querySelector('button[type="submit"]').disabled=!result.ready;
+    latestReadiness=result;updateCutoverAvailability();
     return result;
   }catch(error){
     if(selected?.schoolId===schoolId)host.textContent=error?.message||"Cutover readiness could not be checked.";
+    return null;
+  }
+}
+async function loadCutoverPackage(schoolId=selected?.schoolId){
+  const host=byId("owner-cutover-package-status");
+  if(!host||!schoolId)return null;
+  if(schoolId!=="mcs-manila"){
+    latestCutoverPackage={required:false,recorded:false,ready:true,fresh:true};
+    updateCutoverAvailability();return latestCutoverPackage;
+  }
+  host.textContent="Checking the recorded MCS cutover package…";
+  try{
+    const result=await execute("get_mcs_cutover_package",{schoolId});
+    if(selected?.schoolId!==schoolId)return null;
+    latestCutoverPackage=result;
+    if(!result.recorded)host.textContent="No successful cutover package is recorded yet.";
+    else if(!result.ready)host.textContent="The recorded cutover package is not marked ready.";
+    else if(!result.fresh)host.textContent="The recorded cutover package is older than 24 hours. Generate and record a fresh package.";
+    else host.textContent="Cutover package recorded and fresh · package "+String(result.packageSha256||"").slice(0,12)+"…";
+    updateCutoverAvailability();
+    return result;
+  }catch(error){
+    latestCutoverPackage=null;updateCutoverAvailability();
+    if(selected?.schoolId===schoolId)host.textContent=error?.message||"Cutover package status could not be loaded.";
     return null;
   }
 }
@@ -150,6 +186,19 @@ byId("owner-activate").addEventListener("submit",event=>{
   if(!Object.values(attestation).every(Boolean)){say("Complete all required institutional attestations.");return;}
   if(!confirm("Activate "+selected.displayName+"? Only proceed with verified authority and readiness."))return;
   void submit(f,"activate",{schoolId:selected.schoolId,reason:String(d.get("reason")||"").trim(),attestation});
+});
+byId("owner-cutover-package").addEventListener("submit",async event=>{
+  event.preventDefault();if(!selected||selected.schoolId!=="mcs-manila"||busy)return;
+  const f=event.currentTarget;if(!f.reportValidity())return;
+  const d=new FormData(f),file=d.get("packageFile");
+  if(!(file instanceof File)||!file.size){say("Choose the generated MCS cutover package JSON.");return;}
+  if(file.size>512000){say("Cutover package file is unexpectedly large. Regenerate the summary package.");return;}
+  let packageData;
+  try{packageData=JSON.parse(await file.text());}
+  catch{say("The selected cutover package is not valid JSON.");return;}
+  if(!confirm("Record this successful MCS cutover package for "+selected.displayName+"? This does not switch compatibility mode."))return;
+  void submit(f,"record_mcs_cutover_package",{schoolId:selected.schoolId,package:packageData,
+    reason:String(d.get("reason")||"").trim()});
 });
 byId("owner-cutover-decisions").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
