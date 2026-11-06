@@ -109,10 +109,6 @@ async function teacherSchedules(db,uid){
 function convertReferenceFolder(folder,uid){
  const folderId=safeId(folder.id)?folder.id:stableId("mcsref",uid,folder.id),
   reviewItems=[];
- if(folderId!==folder.id)reviewItems.push({
-  type:"reference_folder_id_remapped",uid,legacyFolderId:folder.id,folderId,
-  resolution:"Update any migrated lesson reference_folders values that still point to the unsafe legacy ID."
- });
  const name=clean(folder.data?.name,140)||"Untitled folder";
  const candidates=[];
  const inline=Array.isArray(folder.data?.documents)?folder.data.documents:[];
@@ -134,21 +130,19 @@ function convertReferenceFolder(folder,uid){
   }
   const digest=documentDigest(converted),duplicate=seen.get(digest);
   if(duplicate){
-   reviewItems.push({type:"reference_document_duplicate_content",uid,folderId,
-    keptSourcePath:duplicate,duplicateSourcePath:candidate.sourcePath,
-    resolution:"Keep one canonical text copy; legacy duplicate remains represented by migration provenance."});
+   duplicate.migration.duplicateSourcePaths.push(candidate.sourcePath);
    continue;
   }
-  seen.set(digest,candidate.sourcePath);
   const documentId=candidate.source==="nested"&&safeId(candidate.sourceId)?
     candidate.sourceId:stableId("mcsdoc",uid,folder.id,candidate.source,candidate.sourceId,digest);
-  documents.push({
+  const record={
    documentId,targetPath:"schools/"+SCHOOL_ID+"/teacher_reference_folders/"+folderId+
     "/documents/"+documentId,
    folderId,ownerUid:uid,title:converted.title,text:converted.text,
    sourceType:converted.sourceType,status:"active",revision:1,digest,
-   migration:{sourcePath:candidate.sourcePath,source:candidate.source}
-  });
+   migration:{sourcePath:candidate.sourcePath,source:candidate.source,duplicateSourcePaths:[]}
+  };
+  documents.push(record);seen.set(digest,record);
  }
  return {folder:{
   folderId,targetPath:"schools/"+SCHOOL_ID+"/teacher_reference_folders/"+folderId,
