@@ -228,7 +228,7 @@ function createSchoolStudioSubmissionService({db}){
     revisionStudentUid=submission.data().studentUid;
     const gradeRef=db.doc(prefix+"student_grades/"+hash(taskId,submission.data().studentUid));
     const grade=await tx.get(gradeRef);
-    if(grade.exists&&grade.data().publishedAt)
+    if(grade.exists&&grade.data().status==="published")
      deny("failed-precondition","Published grades cannot be reopened without the correction workflow.");
     const now=FieldValue.serverTimestamp();
     tx.update(submissionRef,{status:"reopened",revisionRequestMessage:reason,
