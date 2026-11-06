@@ -1,6 +1,6 @@
 # Adminerva 4.0 — implementation tracker (Assessment Workflow Review)
 
-**Updated:** 2026-10-31  
+**Updated:** 2026-11-06  
 **Development:** draft PR #113, feature branch `feat/adminerva-4-verified-tenant-foundation`  
 **Architecture:** draft PR #103, issues #100 and #102–#112.  
 **Production:** Adminerva 3.0.0 continues to use legacy paths. **Owner confirmed all legacy data are MCS pilot records; no live records migrated, no deployment made.**
@@ -38,7 +38,7 @@ Do not repeat the mixed-schools question. Retain source document identifiers, ex
 
 **Safety update:** The school-aware GitHub evidence adapter is now implemented with frozen commit selections, teacher verification/approval and school-admin attribution reclaim handling. A scorable rubric is mandatory at deployment. Studio/GitHub revisions requested after the original deadline require explicit reviewed extension handling; academic publication still fails closed against stale evidence.
 
-**Remaining:** finish remaining legacy support/history cleanup and bootstrap-authority retirement, complete production MCS migration/reconciliation execution, then remove compatibility-only code that is no longer required after an observed rollback window. The existing Studio already has a progressive V4 bridge and the dedicated V4 Gradebook/GitHub evidence/reclaim paths are present, but no production Firestore copy or role grant has been executed. Do not present the new callables as deployed features.
+**Remaining:** the planned 4.0 engineering workstreams are implemented on this branch. Production still requires the real MCS administrator/calendar/policy decisions, protected migration and continuity execution, a successful recorded cutover package, backend-first activation, the final compatibility switch and frontend release. Compatibility-only rollback code remains until the observed rollback window is complete. No production Firestore copy, role grant or deployment has been executed; do not present the new callables as deployed features.
 
 ## Role, navigation and People & Access integration — October 31, 2026
 
@@ -386,6 +386,17 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 - **Historical grade migration (#6):** evidence/grade approval files now require exactly one decision per evidence, reclaim and grade candidate. Historical scalar-only grades remain `legacy_scalar_v1` with their exact score/maximum and are informational rather than redundant blockers; no rubric allocation is fabricated. Grade apply rechecks the exact immutable evidence version against school, task, offering, student UID, person ID, version and digest before creating a historical grade. Published-grade status, not an optional historical timestamp, blocks Studio reopening.
 - Migrated Studio immutable versions now carry their course-offering binding in both live and historical migration paths.
 - Focused syntax/guard checks passed for the changed migration and runtime files. No production migration, role grant, grade mutation, notification fan-out or 4.0 deployment was executed.
+
+## 4.0 workstreams 7–10 completion pass — November 6, 2026
+
+- **People & Access migration cleanup (#7):** directory reconciliation now detects one Auth UID linked to multiple people, inactive people retaining active memberships/enrollments/teacher assignments, role-to-person-kind mismatches, student+teacher role conflicts, active roleless memberships and pending invitations targeting inactive people. These remain explicit remediation findings; no relationship is silently rewritten.
+- **School operational configuration (#8):** setup readiness now requires coherent active academic relationships, not merely existing documents. Active terms must belong to active years; offerings must resolve to active year/term/subject/section records; active enrollments and teacher assignments must resolve to valid active identities and offerings. Cutover readiness applies the same active-catalog and identity integrity standard, including unique person/account links and canonical teacher staff-person linkage.
+- **Role/mobile UX completion (#9):** the student workspace now consistently presents the product as **Adminerva Studio**; V4 Gradebook school switching/evidence review has reduced narrow-screen overflow pressure; People & Access tabs/cards/actions adapt for very narrow phones while retaining 44px interaction targets. Existing conditional single-school/multi-school context, compact Studio toolbar, mobile setup/readiness pages and role-aware navigation remain the baseline.
+- **Cutover/release preparation (#10):** `functions/mcs-cutover-package.js` now creates one restricted, read-only MCS cutover package binding the completed mirror, mirror reconciliation, canonical foundation, academic access, assessment, evidence/grade/reclaim, teacher planning, planning-support and Practice receipts by SHA-256 while re-running live cutover readiness. The platform-owner control plane can validate and record that package summary; MCS cannot switch to `v4_only` without a fresh successful recorded package. The Owner Console exposes the package-recording workflow and disables final cutover until both live readiness and the package gate pass.
+- `docs/adminerva-4-cutover-runbook.md` documents package generation, backend-first activation, the small essential continuity checks, compatibility switch, frontend activation, release publication boundary and reversible rollback.
+- Focused syntax/consistency checks passed for the changed backend files and Owner Console integration. No production MCS migration, school-role grant, deployment, compatibility switch or public release was performed by this development pass.
+
+**Development status:** planned workstreams 1–10 are implemented on the 4.0 feature branch. What remains is protected production operation: provide the real MCS administrator/policy/calendar decisions, run the approved migration/continuity artifacts with production credentials, record the successful cutover package, deploy in the documented order, switch compatibility mode and publish 4.0 only after activation.
 
 ## Delivery and remaining work
 
