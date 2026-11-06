@@ -64,6 +64,7 @@ function createTemplate(plan,raw){
   grades:(plan.grades||[]).map(gradeRow),
   unresolvedBlockers:plan.blockers||[],
   reviewItems:(plan.reviewItems||[]).map(item=>({...item,resolved:false,resolution:""})),
+  informationalReviewItems:plan.informationalReviewItems||[],
   reviewNotes:"",
   warning:"UNAPPROVED TEMPLATE. Historical evidence and grades remain untouched until every row has an explicit decision and all review items are resolved."
  };
