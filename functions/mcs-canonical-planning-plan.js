@@ -74,7 +74,14 @@ function safeDeck(deck){
  }
  return {ok:true,deck};
 }
-function lessonContent(data){
+function referenceFolderId(uid,value){
+ const id=clean(value,500);
+ if(!id)return "";
+ if(/^[A-Za-z0-9_-]{1,128}$/.test(id))return id;
+ return "mcsref_"+sha(uid+"\0"+id).slice(0,40);
+}
+function lessonContent(data,ownerUid=""){
+
  if(!Array.isArray(data.sessions)||!data.sessions.length||data.sessions.length>30)
   return {ok:false,reason:"lesson_sessions_invalid"};
  const plan={
@@ -89,7 +96,8 @@ function lessonContent(data){
   document_settings:data.document_settings&&typeof data.document_settings==="object"?data.document_settings:{},
   custom_instructions:clean(data.custom_instructions,120000),
   schedule:clean(data.schedule,120000),
-  reference_folders:Array.isArray(data.reference_folders)?data.reference_folders.filter(value=>typeof value==="string").slice(0,100):[],
+  reference_folders:Array.isArray(data.reference_folders)?[...new Set(data.reference_folders
+   .filter(value=>typeof value==="string").map(value=>referenceFolderId(ownerUid,value)).filter(Boolean))].slice(0,100):[],
   weekly_overview:data.weekly_overview&&typeof data.weekly_overview==="object"?data.weekly_overview:{},
   sessions:data.sessions
  };
@@ -213,7 +221,7 @@ async function buildPlanningPlan(db,{foundationPlan,foundationPlanRaw,foundation
  function lessonCandidate(row,uid,ownershipSource,sourceKind){
   const key=lessonClientKey(row.data);
   if(!key){blockers.push({type:"lesson_identity_fields_missing",sourcePath:row.path});return null;}
-  const converted=revisionList(row,lessonContent);
+  const converted=revisionList(row,data=>lessonContent(data,uid));
   if(!converted.ok){blockers.push({type:converted.reason,sourcePath:row.path,message:converted.message||""});return null;}
   const resourceId=deterministicId({schoolId:SCHOOL_ID,uid},"lesson",key);
   const status=row.data.is_archived===true?"archived":"active";
@@ -322,5 +330,5 @@ if(require.main===module)main().catch(error=>{
  console.error("MCS canonical planning migration failed:",error.code||error.message);process.exitCode=1;
 });
 module.exports={SCHEMA,ownerEmailHash,teacherIdentityMap,approvedTeachers,lessonClientKey,
- presentationClientKey,safeDeck,lessonContent,presentationContent,explicitOwner,mirrorCollection,
+ presentationClientKey,safeDeck,referenceFolderId,lessonContent,presentationContent,explicitOwner,mirrorCollection,
  workspaceRows,globalRows,revisionList,buildPlanningPlan};
