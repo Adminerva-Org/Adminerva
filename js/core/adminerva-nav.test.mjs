@@ -92,7 +92,7 @@ test('educator groups expose the integrated assessment, review and insights dest
   assert.deepEqual(groupNames(desktop), ['Assessment ▾', 'Review & grade ▾', 'Insights ▾']);
   assert.deepEqual(links(desktop.children[0]).map(link => link.href), ['teacher-assessment-library.html', 'assessment-studio.html', 'submissions.html', 'studio-submissions.html', 'reclaim-inbox.html']);
   assert.deepEqual(links(desktop.children[1]).map(link => link.href), ['repofetch.html', 'gradebook.html', 'repobank.html']);
-  assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['teacher-analytics.html', 'learning-follow-up.html']);
+  assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['school-teacher-analytics.html', 'school-practice-analytics.html', 'teacher-analytics.html', 'learning-follow-up.html']);
   assert.ok(!links(desktop).some(link => ['activity-grader.html', 'grading.html', 'lesson-planner.html', 'users.html'].includes(link.href)));
 });
 
