@@ -52,13 +52,20 @@ function validatePlan(plan){
  return plan;
 }
 function decided(planRows,reviewRows,key){
- const planned=new Map(planRows.map(row=>[row[key],row]));
+ const planned=new Map(),seen=new Set();
+ for(const row of planRows){
+  const value=row[key];
+  if(planned.has(value))throw Error("The bound evidence/grade plan contains a duplicate record key.");
+  planned.set(value,row);
+ }
  if(reviewRows.length!==planRows.length)
   throw Error("Approval record count differs from the bound evidence/grade plan.");
  const approved=[];
  for(const review of reviewRows){
-  const row=planned.get(review[key]);
+  const value=review[key],row=planned.get(value);
   if(!row)throw Error("Approval contains a record not present in the bound plan.");
+  if(seen.has(value))throw Error("Every planned evidence/grade record must have exactly one approval decision.");
+  seen.add(value);
   if(!["approve","exclude"].includes(review.decision))
    throw Error("Every evidence/grade record requires an explicit approve or exclude decision.");
   if(review.decision==="exclude"){
@@ -69,6 +76,7 @@ function decided(planRows,reviewRows,key){
   }
   approved.push({...row,revisionExtensionDueAt:review.revisionExtensionDueAt||null});
  }
+ if(seen.size!==planned.size)throw Error("Every planned evidence/grade record must have exactly one approval decision.");
  return approved;
 }
 function validateExtension(row,now){
@@ -91,7 +99,7 @@ function validateApproval(plan,raw,approval,{now=Date.now()}={}){
     typeof approval.approvedAt!=="string"||!Number.isFinite(Date.parse(approval.approvedAt)))
   throw Error("Approval must identify the reviewer and timestamp.");
  for(const key of ["githubFrozenSetsReviewed","studioSnapshotsReviewed","studentTaskEnrollmentReviewed",
-   "publicationStatesReviewed","historicalScalarGradesReviewed","evidenceAndGradeRevisionsReviewed",
+   "publicationStatesReviewed","reclaimHistoryReviewed","historicalScalarGradesReviewed","evidenceAndGradeRevisionsReviewed",
    "revisionExtensionsReviewed","noMigrationNotifications","backupsAndRollbackReviewed"])
   if(approval.acknowledgements?.[key]!==true)
    throw Error("Missing approval acknowledgement: "+key);
@@ -102,6 +110,7 @@ function validateApproval(plan,raw,approval,{now=Date.now()}={}){
 
  const githubEvidence=decided(plan.githubEvidence||[],approval.githubEvidence||[],"evidenceId");
  const studioSubmissions=decided(plan.studioSubmissions||[],approval.studioSubmissions||[],"submissionId");
+ const reclaims=decided(plan.reclaims||[],approval.reclaims||[],"claimId");
  const grades=decided(plan.grades||[],approval.grades||[],"gradeId");
 
  for(const row of [...githubEvidence,...studioSubmissions]){
@@ -114,6 +123,13 @@ function validateApproval(plan,raw,approval,{now=Date.now()}={}){
   ...githubEvidence.map(row=>"github|"+row.taskId+"|"+row.studentUid),
   ...studioSubmissions.map(row=>"studio|"+row.taskId+"|"+row.studentUid)
  ]);
+ const githubById=new Map(githubEvidence.map(row=>[row.evidenceId,row]));
+ for(const claim of reclaims){
+  const evidence=githubById.get(claim.evidenceId);
+  if(!evidence||evidence.taskId!==claim.taskId||evidence.studentUid!==claim.studentUid||
+     evidence.personId!==claim.personId)
+   throw Error("An approved reclaim requires its exact approved GitHub evidence candidate.");
+ }
  for(const grade of grades){
   if(!["rubric_v1","legacy_scalar_v1"].includes(grade.gradeSchema))
    throw Error("Unsupported imported grade schema.");
@@ -128,7 +144,7 @@ function validateApproval(plan,raw,approval,{now=Date.now()}={}){
   if((grade.migration?.legacyRevisions||[]).length>100)
    throw Error("A migrated grade has more than 100 legacy revisions; review a paginated archival strategy first.");
  }
- return {planSha256,githubEvidence,studioSubmissions,grades,now};
+ return {planSha256,githubEvidence,studioSubmissions,reclaims,grades,now};
 }
 function meta(approved,type,key){
  return {source:"mcs_legacy_v3",planSha256:approved.planSha256,type,key};
@@ -140,6 +156,7 @@ function same(data,approved,type,key){
 function githubId(row){return v4Key(SCHOOL_ID,row.taskId,row.studentUid);}
 function studioId(row){return v4Key(SCHOOL_ID,row.taskId,row.studentUid);}
 function gradeId(row){return v4Key(row.taskId,row.studentUid);}
+function reclaimId(row){return v4Key(row.taskId,row.studentUid,row.sha);}
 
 async function prerequisiteState(db,row,source){
  const prefix="schools/"+SCHOOL_ID+"/";
@@ -196,12 +213,31 @@ function validateStudio(row){
  for(let index=0;index<row.versions.length;index++){
   const version=row.versions[index];
   if(version.version!==index+1)throw Error("Studio versions must be consecutive.");
+  if(version.schoolId!==SCHOOL_ID||version.taskId!==row.taskId||
+     version.offeringId!==row.offeringId||version.studentUid!==row.studentUid||
+     version.personId!==row.personId)
+   throw Error("Studio immutable version context does not match its submission.");
   validateFiles(version.files);validateArtifacts(version.artifacts||{});
   if(digestProject(version.files,version.artifacts||{})!==version.contentDigest)
    throw Error("Studio immutable content digest mismatch.");
  }
  if(row.versions.at(-1).contentDigest!==row.contentDigest)
   throw Error("Studio submission head differs from its latest immutable version.");
+}
+function validateReclaim(row){
+ if(row.claimId!==reclaimId(row))throw Error("Reclaim runtime ID mismatch.");
+ if(!/^[a-f0-9]{40}$/.test(String(row.sha||"")))throw Error("Reclaim commit SHA is invalid.");
+ if(!["pending","approved","shared","rejected","withdrawn"].includes(row.status))
+  throw Error("Unsupported reclaim status.");
+ if(typeof row.explanation!=="string"||row.explanation.trim().length<10||row.explanation.length>1500)
+  throw Error("Reclaim explanation is outside the V4 contract.");
+ if(!Number.isInteger(row.evidenceVersion)||row.evidenceVersion<1)
+  throw Error("Reclaim evidence version is invalid.");
+ if(!Number.isInteger(row.revision)||row.revision<1)
+  throw Error("Reclaim revision is invalid.");
+ const decided=["approved","shared","rejected"].includes(row.status);
+ if(decided&&row.decision!==row.status)throw Error("Decided reclaim status and decision differ.");
+ if(!decided&&row.decision!==null)throw Error("Undecided reclaim cannot carry a decision.");
 }
 function validateGrade(row){
  if(row.gradeId!==gradeId(row))throw Error("Grade runtime ID mismatch.");
@@ -243,6 +279,23 @@ async function inspect(db,approved){
    state=!current.exists?"ready":same(current.data(),approved,"studio_submission",row.submissionId)?"already_applied":"target_conflict";
   }
   rows.push({kind:"studio",key:row.submissionId,targetPath:row.targetPath,state});
+ }
+ for(const row of approved.reclaims){
+  let state="ok";
+  try{validateReclaim(row);}
+  catch(error){rows.push({kind:"reclaim",key:row.claimId,targetPath:row.targetPath,
+    state:"candidate_integrity_error",message:error.message});continue;}
+  const [current,evidence,version]=await Promise.all([
+   db.doc(row.targetPath).get(),db.doc("schools/"+SCHOOL_ID+"/github_evidence/"+row.evidenceId).get(),
+   db.doc("schools/"+SCHOOL_ID+"/github_evidence/"+row.evidenceId+"/versions/"+row.evidenceVersion).get()
+  ]);
+  if(!evidence.exists||evidence.data().schoolId!==SCHOOL_ID||
+     evidence.data().taskId!==row.taskId||evidence.data().studentUid!==row.studentUid||
+     evidence.data().personId!==row.personId||!version.exists||
+     !Array.isArray(version.data().selectedCommitShas)||!version.data().selectedCommitShas.includes(row.sha))
+   state="reclaim_evidence_binding_mismatch";
+  else state=!current.exists?"ready":same(current.data(),approved,"commit_reclaim",row.claimId)?"already_applied":"target_conflict";
+  rows.push({kind:"reclaim",key:row.claimId,targetPath:row.targetPath,state});
  }
  for(const row of approved.grades){
   let state="ok";
@@ -339,7 +392,8 @@ async function createStudio(db,approved,row){
   const importedAt=FieldValue.serverTimestamp(),extension=timestamp(row.revisionExtensionDueAt);
   for(const version of row.versions){
    tx.create(ref.collection("versions").doc(String(version.version)),{
-    schoolId:SCHOOL_ID,taskId:row.taskId,studentUid:row.studentUid,personId:row.personId,
+    schoolId:SCHOOL_ID,taskId:row.taskId,offeringId:row.offeringId,
+    studentUid:row.studentUid,personId:row.personId,
     projectId:version.projectId||row.projectId,projectRevision:version.projectRevision||0,
     files:version.files,artifacts:version.artifacts||{},contentDigest:version.contentDigest,
     sourceLanguage:version.sourceLanguage||"text",submittedAt:timestamp(version.submittedAt),
@@ -372,6 +426,67 @@ async function createStudio(db,approved,row){
   return "created";
  });
 }
+function legacyReclaimRevisionId(claimId,row,index){
+ return sha(JSON.stringify([claimId,row.id||"",row.createdAt||0,index]));
+}
+async function createReclaim(db,approved,row){
+ validateReclaim(row);
+ const ref=db.doc(row.targetPath),prefix="schools/"+SCHOOL_ID+"/",
+  evidenceRef=db.doc(prefix+"github_evidence/"+row.evidenceId),
+  versionRef=evidenceRef.collection("versions").doc(String(row.evidenceVersion));
+ return db.runTransaction(async tx=>{
+  const [current,evidence,version,member,person]=await Promise.all([
+   tx.get(ref),tx.get(evidenceRef),tx.get(versionRef),
+   tx.get(db.doc(prefix+"memberships/"+row.studentUid)),
+   tx.get(db.doc(prefix+"people/"+row.personId))
+  ]);
+  if(current.exists){
+   if(same(current.data(),approved,"commit_reclaim",row.claimId))return "already_applied";
+   throw Error("Reclaim target changed after preflight.");
+  }
+  if(!evidence.exists||evidence.data().schoolId!==SCHOOL_ID||
+     evidence.data().taskId!==row.taskId||evidence.data().studentUid!==row.studentUid||
+     evidence.data().personId!==row.personId||!version.exists||
+     !Array.isArray(version.data().selectedCommitShas)||!version.data().selectedCommitShas.includes(row.sha))
+   throw Error("Reclaim evidence binding changed after approval.");
+  if(!member.exists||!member.data().roles?.includes("student")||
+     !person.exists||person.data().authUid!==row.studentUid)
+   throw Error("Reclaim student identity changed after approval.");
+  const importedAt=FieldValue.serverTimestamp();
+  tx.create(ref,{schoolId:SCHOOL_ID,taskId:row.taskId,evidenceId:row.evidenceId,
+   evidenceVersion:row.evidenceVersion,studentUid:row.studentUid,personId:row.personId,
+   sha:row.sha,explanation:row.explanation,detectedAuthorName:row.detectedAuthorName||"",
+   detectedAuthorLogin:row.detectedAuthorLogin||"",status:row.status,
+   decision:row.decision||null,decisionReason:row.decisionReason||null,
+   decidedByUid:null,decidedAt:timestamp(row.decidedAt),revision:row.revision,
+   createdAt:timestamp(row.createdAt)||importedAt,updatedAt:timestamp(row.updatedAt)||importedAt,
+   ...(row.status==="withdrawn"?{withdrawnAt:timestamp(row.withdrawnAt)||importedAt}:{}),
+   migration:{...meta(approved,"commit_reclaim",row.claimId),
+    sourcePath:row.migration?.sourcePath,legacyClaimId:row.migration?.legacyClaimId,
+    legacyStudentId:row.migration?.legacyStudentId,legacyAssessmentId:row.migration?.legacyAssessmentId,
+    legacySection:row.migration?.legacySection,legacyRepository:row.migration?.legacyRepository,
+    legacyReviewedBy:row.migration?.legacyReviewedBy||null,
+    inferredEvidenceVersion:row.migration?.inferredEvidenceVersion||row.evidenceVersion}
+  });
+  for(let index=0;index<(row.migration?.legacyRevisions||[]).length;index++){
+   const legacy=row.migration.legacyRevisions[index],id=legacyReclaimRevisionId(row.claimId,legacy,index);
+   tx.create(ref.collection("legacy_revisions").doc(id),{
+    schoolId:SCHOOL_ID,claimId:row.claimId,studentUid:row.studentUid,taskId:row.taskId,
+    actorUid:legacy.actorUid||null,reason:legacy.reason||"",
+    before:legacy.before||null,after:legacy.after||null,
+    legacyCreatedAt:timestamp(legacy.createdAt),migrationImportedAt:importedAt,
+    migration:meta(approved,"legacy_reclaim_revision",id)
+   });
+  }
+  tx.create(db.collection(prefix+"submission_audit").doc(),{
+   schoolId:SCHOOL_ID,taskId:row.taskId,evidenceId:row.evidenceId,claimId:row.claimId,
+   studentUid:row.studentUid,actorUid:"migration",sha:row.sha,
+   action:"mcs_commit_reclaim_migrated",status:row.status,notificationsSuppressed:true,
+   planSha256:approved.planSha256,createdAt:importedAt
+  });
+  return "created";
+ });
+}
 function legacyRevisionId(gradeId,row,index){
  return sha(JSON.stringify([gradeId,row.id||"",row.createdAt||0,index]));
 }
@@ -381,9 +496,11 @@ async function createGrade(db,approved,row){
   evidencePath=row.evidenceType==="github"?
    prefix+"github_evidence/"+row.submissionId:prefix+"studio_submissions/"+row.submissionId;
  return db.runTransaction(async tx=>{
-  const [current,task,submission,member,person,grant]=await Promise.all([
+  const versionPath=evidencePath+"/versions/"+String(row.submissionVersion);
+  const [current,task,submission,version,member,person,grant]=await Promise.all([
    tx.get(ref),tx.get(db.doc(prefix+"assessments/"+row.taskId)),
-   tx.get(db.doc(evidencePath)),tx.get(db.doc(prefix+"memberships/"+row.studentUid)),
+   tx.get(db.doc(evidencePath)),tx.get(db.doc(versionPath)),
+   tx.get(db.doc(prefix+"memberships/"+row.studentUid)),
    tx.get(db.doc(prefix+"people/"+row.personId)),
    tx.get(db.doc(prefix+"staff_assignments/"+rowKey(row.reviewerUid,row.offeringId)))
   ]);
@@ -394,10 +511,16 @@ async function createGrade(db,approved,row){
   if(!task.exists||task.data().schoolId!==SCHOOL_ID||task.data().offeringId!==row.offeringId||
      task.data().submissionSource!==row.evidenceType)
    throw Error("Grade task changed after approval.");
+  const versionDigest=row.evidenceType==="github"?version.data()?.evidenceDigest:version.data()?.contentDigest;
   if(!submission.exists||submission.data().schoolId!==SCHOOL_ID||
-     submission.data().taskId!==row.taskId||submission.data().studentUid!==row.studentUid||
-     submission.data().currentVersion!==row.submissionVersion||
-     (row.evidenceType==="github"?submission.data().evidenceDigest:submission.data().contentDigest)!==row.submissionDigest)
+     submission.data().taskId!==row.taskId||submission.data().offeringId!==row.offeringId||
+     submission.data().studentUid!==row.studentUid||submission.data().personId!==row.personId||
+     submission.data().currentVersion!==row.submissionVersion||!version.exists||
+     version.data().schoolId!==SCHOOL_ID||version.data().taskId!==row.taskId||
+     version.data().offeringId!==row.offeringId||version.data().studentUid!==row.studentUid||
+     version.data().personId!==row.personId||version.data().version!==row.submissionVersion||
+     (row.evidenceType==="github"?submission.data().evidenceDigest:submission.data().contentDigest)!==row.submissionDigest||
+     versionDigest!==row.submissionDigest)
    throw Error("Grade frozen evidence binding changed after approval.");
   if(!member.exists||!member.data().roles?.includes("student")||
      !person.exists||person.data().authUid!==row.studentUid)
@@ -456,6 +579,7 @@ function units(approved){
  return [
   ...approved.githubEvidence.map(row=>({kind:"github",row})),
   ...approved.studioSubmissions.map(row=>({kind:"studio",row})),
+  ...approved.reclaims.map(row=>({kind:"reclaim",row})),
   ...approved.grades.map(row=>({kind:"grade",row}))
  ];
 }
@@ -468,7 +592,7 @@ async function applyEvidenceGrades(db,approved,{apply=false,maxUnits=30}={}){
   mode:apply?"apply":"preflight",generatedAt:new Date().toISOString(),
   approvedGithubEvidence:approved.githubEvidence.length,
   approvedStudioSubmissions:approved.studioSubmissions.length,
-  approvedGrades:approved.grades.length,
+  approvedReclaims:approved.reclaims.length,approvedGrades:approved.grades.length,
   blocked:!!blockers.length,blockers,created:0,alreadyApplied:0,
   processedUnits:0,remainingUnits:work.length,complete:false,
   notificationsSent:false};
@@ -478,6 +602,7 @@ async function applyEvidenceGrades(db,approved,{apply=false,maxUnits=30}={}){
   if(newWrites>=maxUnits)break;
   const result=unit.kind==="github"?await createGithub(db,approved,unit.row):
    unit.kind==="studio"?await createStudio(db,approved,unit.row):
+   unit.kind==="reclaim"?await createReclaim(db,approved,unit.row):
    await createGrade(db,approved,unit.row);
   receipt.processedUnits++;
   if(result==="created"){receipt.created++;newWrites++;}else receipt.alreadyApplied++;
@@ -509,4 +634,4 @@ if(require.main===module)main().catch(error=>{
  process.exitCode=1;
 });
 module.exports={WRITE_ACK,RECEIPT_SCHEMA,MAX_EXTENSION_MS,validatePlan,validateApproval,
- validateExtension,validateGithub,validateStudio,validateGrade,inspect,units,applyEvidenceGrades};
+ validateExtension,validateGithub,validateStudio,validateReclaim,validateGrade,inspect,units,applyEvidenceGrades};
