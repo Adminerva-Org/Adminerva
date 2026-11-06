@@ -398,6 +398,17 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 
 **Development status:** planned workstreams 1–10 are implemented on the 4.0 feature branch. What remains is protected production operation: provide the real MCS administrator/policy/calendar decisions, run the approved migration/continuity artifacts with production credentials, record the successful cutover package, deploy in the documented order, switch compatibility mode and publish 4.0 only after activation.
 
+## Main synchronization and stability pass — November 6, 2026
+
+- The 4.0 feature branch was synchronized with the current `main` hotfix line, including the 3.0.1 global-loader cleanup, evidence/reclaim authorization fixes, Gradebook review resilience, selector UX and feedback-formatting changes. Overlapping files were reconciled without replacing the V4 tenant/cutover fences.
+- Compatibility-mode Firestore rules now include the latest stale-section review behavior for legacy evidence, reclaim, submission-receipt and grade reads while short-circuiting excluded namespaces before expensive legacy administrator checks. The Firestore emulator suite passes the maximum supported 20-commit evidence-validation case without exceeding the rule expression budget.
+- Stability review found and fixed concrete V4 defects: malformed shared-reference confirmation strings; a school-student-profile syntax error; missing shared loader/help entry points on school invitation and owner registry pages; optional evidence-review shortcuts that could crash the manual review workspace on hosts that do not render those buttons; and incorrect legacy Gradebook current-page navigation state.
+- CI now runs the canonical MCS assessment, evidence/grade/reclaim, foundation, planning, planning-support, Practice, reconciliation, tenant-authority, tenant-selector, continuity-export and roster-source tests in addition to the legacy regression suite. Backend dependencies are installed before those contract tests.
+- Deployment-contract coverage verifies the exported 4.0 school workflow callables, region, concurrency, max-instance and timeout bounds without performing data operations.
+- Focused stability result on the synchronized runtime tree: JavaScript regressions **passed**, Firestore emulator security **passed**, release-source parsing/resolution **passed**, CodeQL **passed**, and JavaScript analysis **passed**.
+- The successful checks validate source, service contracts, migration transforms, permission rules and regression behavior; they are not a substitute for the small live pilot workflow confirmation after backend deployment.
+- No production deployment, MCS migration, compatibility switch, school-role grant or public 4.0 release was performed during this synchronization/stability pass.
+
 ## Delivery and remaining work
 
 | Track | Actual implementation in PR #113 | Remaining before Adminerva 4.0 |
