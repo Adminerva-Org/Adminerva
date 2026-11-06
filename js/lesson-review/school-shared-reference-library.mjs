@@ -159,7 +159,7 @@ function openEdit(doc){
 async function changeDocumentStatus(doc){
   if(!selectedPayload||busy)return;
   const next=doc.status==="active"?"archived":"active";
-  if(!confirm((next==="archived"?"Archive":"Restore")+" ""+doc.title+"" in the school shared library?"))return;
+  if(!confirm((next==="archived"?"Archive":"Restore")+" \""+doc.title+"\" in the school shared library?"))return;
   busy=true;
   try{
     await perform("set_document_status",{
@@ -197,7 +197,7 @@ el("schoolReferenceRename").addEventListener("click",()=>{
 el("schoolReferenceLifecycle").addEventListener("click",()=>{
   if(!selectedPayload||busy)return;
   const folder=selectedPayload.folder,next=folder.status==="active"?"archived":"active";
-  if(!confirm((next==="archived"?"Archive":"Restore")+" the shared folder ""+folder.name+""?"))return;
+  if(!confirm((next==="archived"?"Archive":"Restore")+" the shared folder \""+folder.name+"\"?"))return;
   void (async()=>{
     busy=true;
     try{
@@ -210,7 +210,7 @@ el("schoolReferenceLifecycle").addEventListener("click",()=>{
 el("schoolReferenceCopy").addEventListener("click",()=>{
   if(!selectedPayload||busy)return;
   const folder=selectedPayload.folder;
-  if(!confirm("Copy ""+folder.name+"" and its active documents into your private reference library? Future shared-library edits will not change your copy."))return;
+  if(!confirm("Copy \""+folder.name+"\" and its active documents into your private reference library? Future shared-library edits will not change your copy."))return;
   void (async()=>{
     busy=true;el("schoolReferenceCopy").disabled=true;
     try{
