@@ -6,7 +6,7 @@ const require=createRequire(import.meta.url);
 const {stablePersonId,stableCatalogId,buildFoundationPlan,SCHEMA,SCHOOL_ID}=
   require("../functions/mcs-canonical-foundation-plan.js");
 const {createTemplate}=require("../functions/mcs-canonical-foundation-approval-template.js");
-const {validateApproval}=require("../functions/mcs-canonical-foundation-apply.js");
+const {validateApproval,approvedCatalog}=require("../functions/mcs-canonical-foundation-apply.js");
 
 const sha=value=>createHash("sha256").update(value).digest("hex");
 
@@ -64,4 +64,37 @@ test("approval is cryptographically bound to the exact foundation plan bytes",()
   const raw=Buffer.from(JSON.stringify(plan));
   const approval=createTemplate(plan,raw);
   assert.equal(approval.planSha256,sha(raw));
+});
+
+test("approved academic catalog supports program-specific terms and semesters",()=>{
+  const catalog=approvedCatalog({academic:{
+    programs:[
+      {approved:true,targetId:"basic-ed",targetName:"Basic Education",legacyLabel:"Basic Ed"},
+      {approved:true,targetId:"senior-high",targetName:"Senior High School",legacyLabel:"SHS"}
+    ],
+    years:[{approved:true,targetId:"sy-2026-2027",targetName:"2026-2027",legacyLabel:"2026-2027"}],
+    subjects:[{approved:true,targetId:"programming",targetName:"Programming",legacyLabel:"Programming"}],
+    sections:[
+      {approved:true,targetId:"grade-10-a",targetName:"Grade 10 A",legacyLabel:"10-A",programId:"basic-ed"},
+      {approved:true,targetId:"grade-11-a",targetName:"Grade 11 A",legacyLabel:"11-A",programId:"senior-high"}
+    ],
+    terms:[
+      {approved:true,targetId:"be-t1",targetName:"Term 1",legacyLabel:"Term 1",
+       yearId:"sy-2026-2027",programId:"basic-ed",periodType:"term",sequence:1},
+      {approved:true,targetId:"shs-s1",targetName:"Semester 1",legacyLabel:"Semester 1",
+       yearId:"sy-2026-2027",programId:"senior-high",periodType:"semester",sequence:1}
+    ]
+  }});
+  assert.equal(catalog.terms.get("be-t1").programId,"basic-ed");
+  assert.equal(catalog.terms.get("shs-s1").periodType,"semester");
+  assert.equal(catalog.sections.get("grade-11-a").programId,"senior-high");
+});
+test("academic catalog rejects section or period references to an unapproved program",()=>{
+  assert.throws(()=>approvedCatalog({academic:{
+    programs:[{approved:true,targetId:"basic-ed",targetName:"Basic Education",legacyLabel:"Basic Ed"}],
+    years:[{approved:true,targetId:"sy-2026-2027",targetName:"2026-2027",legacyLabel:"2026-2027"}],
+    subjects:[],
+    sections:[{approved:true,targetId:"grade-11-a",targetName:"Grade 11 A",legacyLabel:"11-A",programId:"senior-high"}],
+    terms:[]
+  }}),/unapproved academic program/);
 });
