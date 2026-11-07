@@ -3,13 +3,13 @@
  * Adminerva 4.0 school file policy.
  *
  * Storage stays fail-closed until a school administrator explicitly enables the
- * narrow support-attachment workflow and chooses a bounded retention period.
+ * narrow support-attachment workflow and chooses an explicit retention period.
  */
 const {FieldValue}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 
 const POLICY_SCHEMA="adminerva-school-file-policy-v1";
-const RETENTION_DAYS=new Set([30,90,180,365]);
+const RETENTION_DAYS=new Set([0,30,90,180,365]);
 const MAX_BYTES=new Set([1048576,2097152,5242880]);
 const ALLOWED_CONTENT_TYPES=[
  "image/png","image/jpeg","image/webp","application/pdf","text/plain"
@@ -63,7 +63,7 @@ function createSchoolFilePolicyService({db}){
     retentionDays=Number(input.retentionDays),maxBytes=Number(input.maxBytes),
     reason=String(input.reason||"").trim();
    if(!RETENTION_DAYS.has(retentionDays))
-    deny("invalid-argument","Choose a supported retention period of 30, 90, 180 or 365 days.");
+    deny("invalid-argument","Choose retain-until-policy-change or a supported retention period of 30, 90, 180 or 365 days.");
    if(!MAX_BYTES.has(maxBytes))
     deny("invalid-argument","Choose a supported per-file limit of 1 MB, 2 MB or 5 MB.");
    if(reason.length<12||reason.length>1000)
