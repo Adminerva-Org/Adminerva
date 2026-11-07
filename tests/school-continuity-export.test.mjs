@@ -36,9 +36,11 @@ function bundleWith(categories){
 test("continuity export v2 verifies top-level and per-category integrity",()=>{
   const bundle=bundleWith({
     people:[{id:"person_1",displayName:"Student One",kind:"student",status:"active"}],
-    sections:[{id:"sec_1",name:"11-A",status:"active"}]
+    academic_programs:[{id:"senior-high",name:"Senior High School",status:"active"}],
+    sections:[{id:"sec_1",name:"11-A",programId:"senior-high",status:"active"}]
   });
-  assert.equal(bundle.schema,"adminerva-school-continuity-export-v2");
+  assert.equal(bundle.schema,"adminerva-school-continuity-export-v3");
+  assert.ok(CATEGORY_NAMES.includes("academic_programs"));
   assert.doesNotThrow(()=>verifyBundle(bundle));
 });
 
