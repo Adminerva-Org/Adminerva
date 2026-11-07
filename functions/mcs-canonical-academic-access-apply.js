@@ -125,11 +125,12 @@ async function createEnrollment(db,approved,row){
   if(row.status==="active"&&(person.data().status!=="active"||member.data().status!=="active"))
    throw Error("Active enrollment requires an active person and membership.");
   if(!offering.exists||offering.data().schoolId!==SCHOOL_ID||offering.data().status!=="active"||
-     ["yearId","termId","sectionId","subjectId"].some(key=>offering.data()[key]!==row[key]))
+     ["programId","yearId","termId","sectionId","subjectId"].some(key=>offering.data()[key]!==row[key]))
    throw Error("Enrollment course offering changed after approval.");
   const now=FieldValue.serverTimestamp();
   tx.create(ref,{schoolId:SCHOOL_ID,personId:row.personId,offeringId:row.offeringId,
-   yearId:row.yearId,termId:row.termId,sectionId:row.sectionId,subjectId:row.subjectId,
+   programId:row.programId,yearId:row.yearId,termId:row.termId,
+   sectionId:row.sectionId,subjectId:row.subjectId,
    status:row.status,revision:1,createdByUid:"migration",createdAt:now,
    ...(row.status==="ended"?{endedByUid:"migration",endedAt:now,endReason:"Historical MCS roster relationship migrated as ended."}:{}),
    migration:migration(approved.planSha256,"enrollment",row.enrollmentId)});
@@ -154,11 +155,12 @@ async function createAssignment(db,approved,row){
      !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher"))
    throw Error("Teacher assignment requires an active reviewed teacher membership.");
   if(!offering.exists||offering.data().schoolId!==SCHOOL_ID||offering.data().status!=="active"||
-     ["yearId","termId","sectionId","subjectId"].some(key=>offering.data()[key]!==row[key]))
+     ["programId","yearId","termId","sectionId","subjectId"].some(key=>offering.data()[key]!==row[key]))
    throw Error("Teacher assignment course offering changed after approval.");
   const now=FieldValue.serverTimestamp();
   tx.create(ref,{schoolId:SCHOOL_ID,teacherUid:row.teacherUid,offeringId:row.offeringId,
-   yearId:row.yearId,termId:row.termId,sectionId:row.sectionId,subjectId:row.subjectId,
+   programId:row.programId,yearId:row.yearId,termId:row.termId,
+   sectionId:row.sectionId,subjectId:row.subjectId,
    status:"active",revision:1,createdByUid:"migration",createdAt:now,
    migration:migration(approved.planSha256,"assignment",row.assignmentId)});
   tx.create(db.collection("schools/"+SCHOOL_ID+"/directory_audit").doc(),{
