@@ -15,7 +15,7 @@ const {rowKey}=require("./school-academics.js");
 
 const PLAN_SCHEMA="adminerva-school-continuity-restore-plan-v1";
 const AUTO_CATEGORIES=[
- "people","academic_years","terms","subjects","sections","course_offerings",
+ "people","academic_programs","academic_years","terms","subjects","sections","course_offerings",
  "enrollments","staff_assignments","student_repository_configs","assessments","student_grades","support_reports"
 ];
 const sha=value=>createHash("sha256").update(value).digest("hex");
@@ -85,8 +85,16 @@ function validateRows(bundle){
     const key=category+"/"+row.id;
     if(seen.has(key))throw Error("Duplicate continuity record ID.");
     seen.add(key);
+    if(category==="terms"){
+     validateId(row.yearId,"academic period year ID");validateId(row.programId,"academic period program ID");
+     if(!["term","semester","quarter","trimester","custom"].includes(row.periodType)||
+        !Number.isInteger(row.sequence)||row.sequence<1||row.sequence>12)
+      throw Error("Invalid academic period type or sequence.");
+    }
+    if(category==="sections")validateId(row.programId,"section program ID");
     if(category==="course_offerings")
-     for(const [key,label] of [["yearId","academic year"],["termId","term"],["subjectId","subject"],["sectionId","section"]])
+     for(const [key,label] of [["programId","academic program"],["yearId","academic year"],
+      ["termId","academic period"],["subjectId","subject"],["sectionId","section"]])
       validateId(row[key],label+" ID");
     if(category==="enrollments"){
      validateId(row.personId,"enrollment person ID");validateId(row.offeringId,"enrollment offering ID");
@@ -141,10 +149,30 @@ async function dependencyReview(db,bundle,states){
      !Array.isArray(member.data().roles)||!member.data().roles.includes(role))return false;
   return personId?member.data().personId===personId:true;
  };
+ const termById=new Map(bundle.categories.terms.map(row=>[row.id,row])),
+  sectionById=new Map(bundle.categories.sections.map(row=>[row.id,row]));
+ for(const row of bundle.categories.terms){
+  for(const [category,id] of [["academic_programs",row.programId],["academic_years",row.yearId]])
+   if(!await existsOrPlanned(category,id))
+    issues.push({type:"restore_dependency_missing",category:"terms",recordId:row.id,dependsOn:category+"/"+id});
+ }
+ for(const row of bundle.categories.sections){
+  if(!await existsOrPlanned("academic_programs",row.programId))
+   issues.push({type:"restore_dependency_missing",category:"sections",recordId:row.id,
+    dependsOn:"academic_programs/"+row.programId});
+ }
  for(const row of bundle.categories.course_offerings){
-  for(const [category,id] of [["academic_years",row.yearId],["terms",row.termId],["subjects",row.subjectId],["sections",row.sectionId]])
+  for(const [category,id] of [["academic_programs",row.programId],["academic_years",row.yearId],
+   ["terms",row.termId],["subjects",row.subjectId],["sections",row.sectionId]])
    if(!await existsOrPlanned(category,id))
     issues.push({type:"restore_dependency_missing",category:"course_offerings",recordId:row.id,dependsOn:category+"/"+id});
+  const term=termById.get(row.termId),section=sectionById.get(row.sectionId);
+  if(term&&(term.yearId!==row.yearId||term.programId!==row.programId))
+   issues.push({type:"restore_academic_scope_mismatch",category:"course_offerings",recordId:row.id,
+    dependsOn:"terms/"+row.termId});
+  if(section&&section.programId!==row.programId)
+   issues.push({type:"restore_academic_scope_mismatch",category:"course_offerings",recordId:row.id,
+    dependsOn:"sections/"+row.sectionId});
  }
  for(const row of bundle.categories.enrollments){
   if(!await existsOrPlanned("people",row.personId))
