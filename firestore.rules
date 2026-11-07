@@ -247,7 +247,7 @@ service cloud.firestore {
         collection != "commit_reclaims" && collection != "student_grades" &&
         collection != "assessments" && collection != "assessment_private" &&
         !(collection in ["practice_profiles","practice_scores","practice_boards","practice_rankings",
-          "schools","platform_schools","platform_users","platform_admins","platform_audit",
+          "schools","platform_schools","platform_users","platform_admins","platform_governance_roles","platform_audit",
           "provisioning_jobs","migration_runs","system_health"]) && isAdmin();
     }
 
@@ -257,6 +257,7 @@ service cloud.firestore {
     match /platform_schools/{schoolId} { allow read, write: if false; }
     match /platform_users/{userId}/{record=**} { allow read, write: if false; }
     match /platform_admins/{uid} { allow read, write: if false; }
+    match /platform_governance_roles/{record=**} { allow read, write: if false; }
     match /platform_audit/{record=**} { allow read, write: if false; }
     match /provisioning_jobs/{record=**} { allow read, write: if false; }
     match /migration_runs/{record=**} { allow read, write: if false; }
