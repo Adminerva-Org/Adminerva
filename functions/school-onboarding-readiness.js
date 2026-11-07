@@ -28,11 +28,12 @@ async function evaluateSchoolOnboardingReadiness({db,schoolId}){
   if(!school.exists)deny("not-found","The verified school record is unavailable.");
 
   const [
-    memberships,people,years,terms,subjects,sections,offerings,enrollments,
+    memberships,people,programs,years,terms,subjects,sections,offerings,enrollments,
     assignments,invitations,filePolicy,aiConfig
   ]=await Promise.all([
     bounded(db,prefix+"memberships"),
     bounded(db,prefix+"people"),
+    bounded(db,prefix+"academic_programs"),
     bounded(db,prefix+"academic_years"),
     bounded(db,prefix+"terms"),
     bounded(db,prefix+"subjects"),
@@ -61,25 +62,33 @@ async function evaluateSchoolOnboardingReadiness({db,schoolId}){
     "institutionalDataAuthority","provenanceVerified","calendarConfigured","privacyPolicyApproved"
   ].every(key=>readiness[key]===true);
   const activeCatalog=docs=>docs.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active");
+  const activePrograms=activeCatalog(programs);
   const activeYears=activeCatalog(years);
   const activeTerms=activeCatalog(terms);
   const activeSubjects=activeCatalog(subjects);
   const activeSections=activeCatalog(sections);
-  const activeYearIds=new Set(activeYears.map(doc=>doc.id)),
+  const activeProgramIds=new Set(activePrograms.map(doc=>doc.id)),
+    activeYearIds=new Set(activeYears.map(doc=>doc.id)),
     activeTermIds=new Set(activeTerms.map(doc=>doc.id)),
     activeSubjectIds=new Set(activeSubjects.map(doc=>doc.id)),
     activeSectionIds=new Set(activeSections.map(doc=>doc.id)),
     activePeopleById=new Map(activePeople.map(doc=>[doc.id,doc.data()])),
     activeMembershipByUid=new Map(activeMemberships.map(doc=>[doc.id,doc.data()])),
     activeOfferingById=new Map(activeOfferings.map(doc=>[doc.id,doc.data()]));
-  const invalidTerms=activeTerms.filter(doc=>!activeYearIds.has(doc.data().yearId));
-  const catalogReady=activeYears.length>0&&activeTerms.length>0&&activeSubjects.length>0&&
-    activeSections.length>0&&invalidTerms.length===0;
+  const invalidTerms=activeTerms.filter(doc=>
+    !activeYearIds.has(doc.data().yearId)||!activeProgramIds.has(doc.data().programId)||
+    !["term","semester","quarter","trimester","custom"].includes(doc.data().periodType)||
+    !Number.isInteger(doc.data().sequence)||doc.data().sequence<1||doc.data().sequence>12);
+  const invalidSections=activeSections.filter(doc=>!activeProgramIds.has(doc.data().programId));
+  const catalogReady=activePrograms.length>0&&activeYears.length>0&&activeTerms.length>0&&
+    activeSubjects.length>0&&activeSections.length>0&&invalidTerms.length===0&&invalidSections.length===0;
   const invalidOfferings=activeOfferings.filter(doc=>{
-    const data=doc.data();
-    return !activeYearIds.has(data.yearId)||!activeTermIds.has(data.termId)||
-      !activeSubjectIds.has(data.subjectId)||!activeSectionIds.has(data.sectionId)||
-      activeTerms.find(term=>term.id===data.termId)?.data().yearId!==data.yearId;
+    const data=doc.data(),term=activeTerms.find(item=>item.id===data.termId),
+      section=activeSections.find(item=>item.id===data.sectionId);
+    return !activeProgramIds.has(data.programId)||!activeYearIds.has(data.yearId)||
+      !activeTermIds.has(data.termId)||!activeSubjectIds.has(data.subjectId)||
+      !activeSectionIds.has(data.sectionId)||term?.data().yearId!==data.yearId||
+      term?.data().programId!==data.programId||section?.data().programId!==data.programId;
   });
   const invalidEnrollments=activeEnrollments.filter(doc=>{
     const data=doc.data(),person=activePeopleById.get(data.personId);
@@ -113,9 +122,10 @@ async function evaluateSchoolOnboardingReadiness({db,schoolId}){
     row("student_access","Student access",students.length>0,
       students.length+" active student membership(s).",{count:students.length}),
     row("academic_catalog","Academic catalog",catalogReady,
-      activeYears.length+" active year(s), "+activeTerms.length+" active term(s), "+activeSubjects.length+
-      " active subject(s), "+activeSections.length+" active section(s); "+invalidTerms.length+
-      " active term(s) have an invalid academic-year link."),
+      activePrograms.length+" active program(s), "+activeYears.length+" active year(s), "+
+      activeTerms.length+" active academic period(s), "+activeSubjects.length+
+      " active subject(s), "+activeSections.length+" active section(s); "+
+      (invalidTerms.length+invalidSections.length)+" program/year/period relationship issue(s)."),
     row("course_offerings","Course offerings",activeOfferings.length>0&&invalidOfferings.length===0,
       activeOfferings.length+" active course offering(s); "+invalidOfferings.length+
       " have inactive or mismatched catalog dependencies.",{count:activeOfferings.length}),
@@ -150,6 +160,7 @@ async function evaluateSchoolOnboardingReadiness({db,schoolId}){
     counts:{
       activeMemberships:activeMemberships.length,
       activePeople:activePeople.length,
+      activePrograms:activePrograms.length,
       activeAdmins:admins.length,
       activeTeachers:teachers.length,
       activeStudents:students.length,
