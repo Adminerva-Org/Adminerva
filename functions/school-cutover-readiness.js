@@ -55,10 +55,11 @@ async function evaluateSchoolCutoverReadiness({db,schoolId}){
    "Authority, calendar, privacy, retention, backup, data-steward, AI and repository decisions are bound to the designated first school administrator.":
    "Missing or stale owner decision fields: "+decisionState.missing.join(", ")+".");
 
- const [members,years,terms,subjects,sections,offerings,enrollments,assignments,tasks,grades,
+ const [members,programs,years,terms,subjects,sections,offerings,enrollments,assignments,tasks,grades,
   practiceMarkers]=await Promise.all([
-   bounded(db,prefix+"memberships"),bounded(db,prefix+"academic_years"),
-   bounded(db,prefix+"terms"),bounded(db,prefix+"subjects"),bounded(db,prefix+"sections"),
+   bounded(db,prefix+"memberships"),bounded(db,prefix+"academic_programs"),
+   bounded(db,prefix+"academic_years"),bounded(db,prefix+"terms"),
+   bounded(db,prefix+"subjects"),bounded(db,prefix+"sections"),
    bounded(db,prefix+"course_offerings"),bounded(db,prefix+"enrollments"),
    bounded(db,prefix+"staff_assignments"),bounded(db,prefix+"assessments"),
    bounded(db,prefix+"student_grades",1001),bounded(db,prefix+"practice_migration_state")
@@ -68,7 +69,7 @@ async function evaluateSchoolCutoverReadiness({db,schoolId}){
   activeStudents=activeMembers.filter(doc=>Array.isArray(doc.data().roles)&&doc.data().roles.includes("student")),
   activeTeachers=activeMembers.filter(doc=>Array.isArray(doc.data().roles)&&doc.data().roles.includes("teacher")),
   activeCatalog=docs=>docs.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active"),
-  activeYears=activeCatalog(years),activeTerms=activeCatalog(terms),
+  activePrograms=activeCatalog(programs),activeYears=activeCatalog(years),activeTerms=activeCatalog(terms),
   activeSubjects=activeCatalog(subjects),activeSections=activeCatalog(sections),
   activeOfferings=offerings.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active"),
   activeEnrollments=enrollments.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active"),
@@ -79,30 +80,39 @@ async function evaluateSchoolCutoverReadiness({db,schoolId}){
  Object.assign(counts,{
   activeMemberships:activeMembers.length,activeAdmins:activeAdmins.length,
   activeStudents:activeStudents.length,activeTeachers:activeTeachers.length,
-  academicYears:activeYears.length,terms:activeTerms.length,subjects:activeSubjects.length,sections:activeSections.length,
+  academicPrograms:activePrograms.length,academicYears:activeYears.length,
+  terms:activeTerms.length,subjects:activeSubjects.length,sections:activeSections.length,
   activeOfferings:activeOfferings.length,activeEnrollments:activeEnrollments.length,
   activeAssignments:activeAssignments.length,deployedAssessments:deployedTasks.length,
   publishedGrades:publishedGrades.length
  });
  check("active_admin",activeAdmins.length>0,"At least one active school administrator",
   activeAdmins.length+" active school administrator(s).");
- const activeYearIds=new Set(activeYears.map(doc=>doc.id)),
+ const activeProgramIds=new Set(activePrograms.map(doc=>doc.id)),
+  activeYearIds=new Set(activeYears.map(doc=>doc.id)),
   activeTermIds=new Set(activeTerms.map(doc=>doc.id)),
   activeSubjectIds=new Set(activeSubjects.map(doc=>doc.id)),
   activeSectionIds=new Set(activeSections.map(doc=>doc.id)),
-  invalidTerms=activeTerms.filter(doc=>!activeYearIds.has(doc.data().yearId)),
+  invalidTerms=activeTerms.filter(doc=>
+   !activeYearIds.has(doc.data().yearId)||!activeProgramIds.has(doc.data().programId)||
+   !["term","semester","quarter","trimester","custom"].includes(doc.data().periodType)||
+   !Number.isInteger(doc.data().sequence)||doc.data().sequence<1||doc.data().sequence>12),
+  invalidSections=activeSections.filter(doc=>!activeProgramIds.has(doc.data().programId)),
   invalidOfferings=activeOfferings.filter(doc=>{
-   const data=doc.data(),term=activeTerms.find(item=>item.id===data.termId);
-   return !activeYearIds.has(data.yearId)||!activeTermIds.has(data.termId)||
-    !activeSubjectIds.has(data.subjectId)||!activeSectionIds.has(data.sectionId)||
-    term?.data().yearId!==data.yearId;
+   const data=doc.data(),term=activeTerms.find(item=>item.id===data.termId),
+    section=activeSections.find(item=>item.id===data.sectionId);
+   return !activeProgramIds.has(data.programId)||!activeYearIds.has(data.yearId)||
+    !activeTermIds.has(data.termId)||!activeSubjectIds.has(data.subjectId)||
+    !activeSectionIds.has(data.sectionId)||term?.data().yearId!==data.yearId||
+    term?.data().programId!==data.programId||section?.data().programId!==data.programId;
   });
- check("academic_catalog",activeYears.length>0&&activeTerms.length>0&&activeSubjects.length>0&&
-   activeSections.length>0&&invalidTerms.length===0,
+ check("academic_catalog",activePrograms.length>0&&activeYears.length>0&&activeTerms.length>0&&
+   activeSubjects.length>0&&activeSections.length>0&&invalidTerms.length===0&&invalidSections.length===0,
   "Active academic catalog is coherent",
-  activeYears.length+" active year(s), "+activeTerms.length+" active term(s), "+
-  activeSubjects.length+" active subject(s), "+activeSections.length+" active section(s); "+
-  invalidTerms.length+" invalid term/year link(s).");
+  activePrograms.length+" active program(s), "+activeYears.length+" active year(s), "+
+  activeTerms.length+" active academic period(s), "+activeSubjects.length+" active subject(s), "+
+  activeSections.length+" active section(s); "+(invalidTerms.length+invalidSections.length)+
+  " invalid program/year/period relationship(s).");
  check("course_offerings",activeOfferings.length>0&&invalidOfferings.length===0,
   "Active course offerings resolve to the active catalog",
   activeOfferings.length+" active offering(s); "+invalidOfferings.length+
