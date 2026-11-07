@@ -25,15 +25,16 @@ const pick=(data,keys)=>Object.fromEntries(keys.filter(key=>data[key]!==undefine
 const definitions={
  people:{path:"people",fields:["displayName","kind","status","authUid","externalId","revision","createdAt","updatedAt"]},
  memberships:{path:"memberships",fields:["schoolId","status","roles","personId","displayName","revision","createdAt","updatedAt"]},
+ academic_programs:{path:"academic_programs",fields:["name","status","revision","createdByUid","createdAt","updatedAt"]},
  academic_years:{path:"academic_years",fields:["name","status","revision","createdByUid","createdAt","updatedAt"]},
- terms:{path:"terms",fields:["name","yearId","status","revision","createdByUid","createdAt","updatedAt"]},
+ terms:{path:"terms",fields:["name","yearId","programId","periodType","sequence","status","revision","createdByUid","createdAt","updatedAt"]},
  subjects:{path:"subjects",fields:["name","status","revision","createdByUid","createdAt","updatedAt"]},
- sections:{path:"sections",fields:["name","status","revision","createdByUid","createdAt","updatedAt"]},
- course_offerings:{path:"course_offerings",fields:["yearId","termId","subjectId","sectionId","status","createdByUid","createdAt"]},
- enrollments:{path:"enrollments",fields:["personId","offeringId","yearId","termId","subjectId","sectionId","status","revision","createdByUid","createdAt","endedAt","endReason","restoredAt","restoreReason"]},
- staff_assignments:{path:"staff_assignments",fields:["teacherUid","offeringId","yearId","termId","subjectId","sectionId","status","revision","createdByUid","createdAt","endedAt","endReason","restoredAt","restoreReason"]},
+ sections:{path:"sections",fields:["name","programId","status","revision","createdByUid","createdAt","updatedAt"]},
+ course_offerings:{path:"course_offerings",fields:["programId","yearId","termId","subjectId","sectionId","status","createdByUid","createdAt"]},
+ enrollments:{path:"enrollments",fields:["personId","offeringId","programId","yearId","termId","subjectId","sectionId","status","revision","createdByUid","createdAt","endedAt","endReason","restoredAt","restoreReason"]},
+ staff_assignments:{path:"staff_assignments",fields:["teacherUid","offeringId","programId","yearId","termId","subjectId","sectionId","status","revision","createdByUid","createdAt","endedAt","endReason","restoredAt","restoreReason"]},
  student_repository_configs:{path:"student_repository_configs",fields:["personId","studentUid","offeringId","repository","repositoryUrl","githubUsername","revision","createdAt","updatedAt"]},
- assessments:{path:"assessments",fields:["ownerUid","reviewerUid","blueprintId","blueprintRevision","offeringId","yearId","termId","subjectId","sectionId","title","description","instructions","rubric","rubricMax","submissionSource","opensAt","dueAt","requestKey","status","lifecycle","revision","preArchiveLifecycle","handoverFromUid","handoverByUid","handoverAt","handoverReason","createdAt","updatedAt"]},
+ assessments:{path:"assessments",fields:["ownerUid","reviewerUid","blueprintId","blueprintRevision","offeringId","programId","yearId","termId","subjectId","sectionId","title","description","instructions","rubric","rubricMax","submissionSource","opensAt","dueAt","requestKey","status","lifecycle","revision","preArchiveLifecycle","handoverFromUid","handoverByUid","handoverAt","handoverReason","createdAt","updatedAt"]},
  student_grades:{path:"student_grades",publishedOnly:true,fields:["taskId","offeringId","personId","studentUid","reviewerUid","evidenceType","submissionId","submissionVersion","submissionDigest","gradeSchema","criteria","awarded","pending","total","feedback","status","revision","publishedAt","publishedByUid","updatedAt","createdAt"]},
  support_reports:{path:"support_reports",fields:["reporterUid","reporterDisplayName","reporterRole","title","description","category","module","audience","status","priority","locked","revision","createdAt","updatedAt","triagedByUid","lastDecisionReason"]}
 };
