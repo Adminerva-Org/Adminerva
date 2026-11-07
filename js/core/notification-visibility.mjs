@@ -6,17 +6,20 @@ export function notificationVisible(item, role) {
   if (role === "admin") return true;
   if (item.type === "release") {
     const audience=Array.isArray(item.audience)?item.audience:[];
-    if(audience.length)return audience.includes("all")||audience.includes(role);
+    if(audience.length)return audience.includes("all")||audience.includes(role)||role==="schooladmin"&&audience.includes("teacher");
     return role === "teacher" || role === "student";
   }
   if (item.type === "issue") {
-    // Source issue feeds are already audience-scoped, while official notification
-    // records are private to the recipient. Missing metadata remains hidden.
+    // V4 school support alerts are written only to an explicit per-user feed,
+    // tagged with schoolId, and filtered again by the user's active verified
+    // school before rendering. They do not need legacy report audience fields.
+    if(item.schoolId)return ["admin","teacher","student"].includes(role);
+    // Legacy source issue feeds still require their historical audience metadata.
     if (!item.reportCategory || !["teacher", "admin"].includes(item.reportAudience)) return false;
     return role === "teacher" || role === "student";
   }
-  if (role === "teacher") return ["submission", "grading", "grade", "assessment"].includes(item.type);
-  if (role === "student") return ["submission", "grade", "assessment"].includes(item.type);
+  if (role === "teacher") return ["submission", "grading", "grade", "assessment", "reclaim"].includes(item.type);
+  if (role === "student") return ["submission", "grade", "assessment", "reclaim"].includes(item.type);
   return false;
 }
 export function unreadNotificationCount(items, muted, readKeys) {

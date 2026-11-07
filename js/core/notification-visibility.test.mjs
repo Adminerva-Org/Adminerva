@@ -20,6 +20,12 @@ test('student inbox includes its submission/report alerts but excludes staff gra
   assert.equal(notificationVisible({type:'grade'},'student'),true);
   assert.equal(notificationVisible({type:'assessment'},'student'),true);
 });
+test('school-tagged support and attribution notifications are visible only through recipient school context',()=>{
+  assert.equal(notificationVisible({type:'issue',schoolId:'mcs-manila',target:'school-support.html'},'student'),true);
+  assert.equal(notificationVisible({type:'issue',schoolId:'mcs-manila',target:'school-support.html'},'teacher'),true);
+  assert.equal(notificationVisible({type:'reclaim',schoolId:'mcs-manila'},'student'),true);
+  assert.equal(notificationVisible({type:'reclaim',schoolId:'mcs-manila'},'teacher'),true);
+});
 test('unclassified legacy report alerts are hidden from non-admin roles',()=>{
   const old={type:'issue',title:'Report changed'};
   assert.equal(notificationVisible(old,'student'),false);

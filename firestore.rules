@@ -11,24 +11,32 @@ service cloud.firestore {
       return hasVerifiedEmail() && email is string && email != "" &&
         email.lower() == request.auth.token.email.lower();
     }
+    // MCS is the only legacy 3.x tenant. Once the platform owner enables
+    // v4_only, flat legacy collections stop granting browser authority.
+    function legacyMcsAllowed() {
+      let path = /databases/$(database)/documents/platform_schools/mcs-manila;
+      return !exists(path) || get(path).data.get("compatibilityMode","legacy_allowed") != "v4_only";
+    }
     // Verified Firebase Auth identity, never the browser's simulated role.
     // Migrate this temporary email mapping to Firebase custom claims later.
     function isAdmin() {
       let email = signedIn() ? request.auth.token.email.lower() : "";
       let path = /databases/$(database)/documents/staff_access/$(email);
-      return signedIn() && request.auth.token.email_verified == true &&
+      return legacyMcsAllowed() && signedIn() && request.auth.token.email_verified == true &&
         (email == "babaynike2013@gmail.com" ||
           (exists(path) && get(path).data.role == "admin" && get(path).data.status == "active" && get(path).data.email == email));
     }
     function isTeacher() {
       let email = signedIn() ? request.auth.token.email.lower() : "";
       let path = /databases/$(database)/documents/staff_access/$(email);
-      return signedIn() && request.auth.token.email_verified == true &&
+      return legacyMcsAllowed() && signedIn() && request.auth.token.email_verified == true &&
         (exists(path) ? (get(path).data.role == "teacher" && get(path).data.status == "active" && get(path).data.email == email)
           : email == "josephsixson@mcstayuman.edu.ph");
     }
     function isInstructor() {
-      return isAdmin() || isTeacher();
+      // Teacher-first avoids evaluating the administrator lookup twice for the
+      // overwhelmingly common classroom path while preserving admin authority.
+      return isTeacher() || isAdmin();
     }
     function isOriginalTeacher() {
       return isTeacher() && verifiedEmailMatches("josephsixson@mcstayuman.edu.ph");
@@ -50,20 +58,24 @@ service cloud.firestore {
       return exists(path) ? get(path).data.get("sections",[]) : [];
     }
     function mayTeachSection(section) {
-      return isAdmin() || (isTeacher() && section is string && section in teacherSections());
+      return (isTeacher() && section is string && section in teacherSections()) || isAdmin();
     }
     function mayTeachStudent(studentId) {
-      return isAdmin() || (isTeacher() && studentId is string &&
-        mayTeachSection(get(/databases/$(database)/documents/students/$(studentId)).data.section));
+      return (isTeacher() && studentId is string &&
+        get(/databases/$(database)/documents/students/$(studentId)).data.section in teacherSections()) ||
+        isAdmin();
     }
     function mayTeachAssessment(assessmentId) {
       let data = get(/databases/$(database)/documents/assessments/$(assessmentId)).data;
-      return isAdmin() || (isTeacher() && (data.get("ownerUid","") == request.auth.uid || data.get("sectionIds",[]).hasAny(teacherSections())));
+      return (isTeacher() &&
+        (data.get("ownerUid","") == request.auth.uid || data.get("sectionIds",[]).hasAny(teacherSections()))) ||
+        isAdmin();
     }
     function mayGrade(data) {
-      return isAdmin() || (isTeacher() && data.section in teacherSections() &&
+      return (isTeacher() && data.section in teacherSections() &&
         data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
-        data.section in get(/databases/$(database)/documents/assessments/$(data.taskId)).data.get("sectionIds",[]));
+        data.section in get(/databases/$(database)/documents/assessments/$(data.taskId)).data.get("sectionIds",[])) ||
+        isAdmin();
     }
     function serverOwned(name) {
       return name in ["academic_access_preparations","teaching_roster","student_access","practice_sessions","practice_browser_sessions","practice_attempts","practice_awards","practice_verified_progress","practice_class_progress","practice_security_events","system_private","school_ai_results","school_ai_usage","practice_public_rankings","practice_season_scores","practice_season_progress","practice_season_awards","practice_season_attempts","practice_class_season_rankings"];
@@ -79,23 +91,23 @@ service cloud.firestore {
     match /school_ai_results/{record=**} { allow read, write: if false; }
     match /school_ai_usage/{record=**} { allow read, write: if false; }
     // Public visibility is explicit opt-in. Only backend handlers may publish scores.
-    match /practice_public_rankings/{recordId} { allow read: if true; allow write: if false; }
+    match /practice_public_rankings/{recordId} { allow read: if legacyMcsAllowed(); allow write: if false; }
     match /practice_season_scores/{uid} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow read: if legacyMcsAllowed() && signedIn() && request.auth.uid == uid;
       allow write: if false;
       match /mission_state/{missionId} { allow read, write: if false; }
     }
     match /practice_season_progress/{uid}/courses/{courseId} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow read: if legacyMcsAllowed() && signedIn() && request.auth.uid == uid;
       allow write: if false;
     }
     match /practice_season_awards/{uid}/missions/{missionId} {
-      allow read: if signedIn() && request.auth.uid == uid;
+      allow read: if legacyMcsAllowed() && signedIn() && request.auth.uid == uid;
       allow write: if false;
     }
     match /practice_season_attempts/{attemptId} { allow read, write: if false; }
     match /practice_class_season_rankings/{studentId} {
-      allow read: if mayTeachSection(resource.data.section);
+      allow read: if legacyMcsAllowed() && mayTeachSection(resource.data.section);
       allow write: if false;
     }
     match /staff_access/{email} {
@@ -112,7 +124,7 @@ service cloud.firestore {
           data.updatedBy == request.auth.uid && data.updatedAt == request.time &&
           audit.before == prior && audit.after == data && audit.actorUid == request.auth.uid && audit.createdAt == request.time;
       }
-      allow get: if isAdmin() || (signedIn() && request.auth.token.email_verified == true && email == request.auth.token.email.lower());
+      allow get: if legacyMcsAllowed() && (isAdmin() || (signedIn() && request.auth.token.email_verified == true && email == request.auth.token.email.lower()));
       allow list: if isAdmin();
       allow create, update: if isAdmin() && validStaff();
       allow delete: if false;
@@ -201,7 +213,7 @@ service cloud.firestore {
         data.expiresAt <= request.time + duration.value(31, "d");
     }
     function mayReadIssue(issue) {
-      return signedIn() && (
+      return legacyMcsAllowed() && signedIn() && (
         isAdmin() ||
         (isTeacher() && issue.get("audience", "admin") == "teacher" && mayTeachSection(issue.get("section",null))) ||
         issue.get("reporterUid", "") == request.auth.uid ||
@@ -213,7 +225,7 @@ service cloud.firestore {
         mayReadIssue(get(/databases/$(database)/documents/issues/$(issueId)).data);
     }
     function ownsStudentProfile(studentId) {
-      return hasVerifiedEmail() &&
+      return legacyMcsAllowed() && hasVerifiedEmail() &&
         exists(/databases/$(database)/documents/students/$(studentId)) &&
         verifiedEmailMatches(get(/databases/$(database)/documents/students/$(studentId)).data.email) &&
         get(/databases/$(database)/documents/students/$(studentId)).data.get("status","active") == "active";
@@ -221,18 +233,39 @@ service cloud.firestore {
     function mayReadStudentAssessment(data) {
       let path=/databases/$(database)/documents/student_access/$(request.auth.uid);
       let sections=exists(path)?get(path).data.get("sections",[]):[];
-      return signedIn() && !isInstructor() && exists(path) &&
+      return legacyMcsAllowed() && signedIn() && !isInstructor() && exists(path) &&
         (data.get("sectionIds",[]).hasAny(sections) || data.get("targetSections",[]).hasAny(sections));
     }
 
     // Administrators retain existing system-wide maintenance privileges.
     match /{collection}/{document} {
-      allow read, write: if isAdmin() && !serverOwned(collection) && !monitoringCollection(collection) && !personalCollection(collection) && collection != "assessment_evidence" && collection != "commit_reclaims" && collection != "student_grades" && collection != "assessments" && collection != "assessment_private" &&
-        !(collection in ["practice_profiles","practice_scores","practice_boards","practice_rankings"]);
+      // Reject excluded/server-owned namespaces before evaluating the relatively
+      // expensive legacy administrator lookup. This preserves authority while
+      // keeping large evidence validations inside Firestore's expression budget.
+      allow read, write: if !serverOwned(collection) && !monitoringCollection(collection) &&
+        !personalCollection(collection) && collection != "assessment_evidence" &&
+        collection != "commit_reclaims" && collection != "student_grades" &&
+        collection != "assessments" && collection != "assessment_private" &&
+        !(collection in ["practice_profiles","practice_scores","practice_boards","practice_rankings",
+          "schools","platform_schools","platform_users","platform_admins","platform_governance_roles","platform_audit",
+          "provisioning_jobs","migration_runs","system_health"]) && isAdmin();
     }
 
+    // V4 school collections use server-side verified membership APIs until their
+    // granular Firestore rules and data cutover are approved. A legacy admin
+    // wildcard MUST NOT grant access to the new platform registry or index.
+    match /platform_schools/{schoolId} { allow read, write: if false; }
+    match /platform_users/{userId}/{record=**} { allow read, write: if false; }
+    match /platform_admins/{uid} { allow read, write: if false; }
+    match /platform_governance_roles/{record=**} { allow read, write: if false; }
+    match /platform_audit/{record=**} { allow read, write: if false; }
+    match /provisioning_jobs/{record=**} { allow read, write: if false; }
+    match /migration_runs/{record=**} { allow read, write: if false; }
+    match /system_health/{record=**} { allow read, write: if false; }
+    match /schools/{schoolId}/{record=**} { allow read, write: if false; }
+
     match /student_access/{ownerUid} {
-      allow get: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
+      allow get: if legacyMcsAllowed() && signedIn() && (request.auth.uid == ownerUid || isAdmin());
       allow list: if isAdmin();
       allow create, update, delete: if false;
     }
@@ -261,19 +294,19 @@ service cloud.firestore {
           data.diff(resource.data).affectedKeys().hasOnly(["status","revision","approvedRole","studentId","reason","decidedBy","updatedAt"]) &&
           audit.before == resource.data && audit.after == data && audit.actorUid == request.auth.uid && audit.createdAt == request.time && decisionMatches(data);
       }
-      allow get: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
+      allow get: if legacyMcsAllowed() && signedIn() && (request.auth.uid == ownerUid || isAdmin());
       allow list: if isAdmin();
-      allow create: if signedIn() && request.auth.token.email_verified == true && request.auth.uid == ownerUid &&
+      allow create: if legacyMcsAllowed() && signedIn() && request.auth.token.email_verified == true && request.auth.uid == ownerUid &&
         validRequest(request.resource.data) && request.resource.data.email == request.auth.token.email.lower() &&
         request.resource.data.status == "pending" && request.resource.data.revision == 0 && request.resource.data.createdAt == request.time &&
         request.resource.data.keys().hasOnly(["ownerUid","email","displayName","requestedRole","status","revision","createdAt","updatedAt"]);
-      allow update: if validRequest(request.resource.data) &&
+      allow update: if legacyMcsAllowed() && validRequest(request.resource.data) &&
         ((signedIn() && request.auth.token.email_verified == true && request.auth.uid == ownerUid &&
           resource.data.status == "pending" && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["displayName","requestedRole","updatedAt"])) ||
          (isAdmin() && auditedDecision()));
       allow delete: if false;
       match /revisions/{revision} {
-        allow read: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
+        allow read: if legacyMcsAllowed() && signedIn() && (request.auth.uid == ownerUid || isAdmin());
         allow create: if isAdmin() && request.resource.data.keys().hasOnly(["before","after","actorUid","createdAt"]) &&
           request.resource.data.actorUid == request.auth.uid && request.resource.data.createdAt == request.time &&
           request.resource.data.before == get(/databases/$(database)/documents/account_requests/$(ownerUid)).data &&
@@ -323,15 +356,15 @@ service cloud.firestore {
           request.resource.data.updatedAt == request.time && request.resource.data.studentId is string &&
           ((isInstructor() && request.resource.data.studentId == "") || ownsStudentProfile(request.resource.data.studentId));
       }
-      allow get: if signedIn() && (request.auth.uid == ownerUid || isAdmin());
+      allow get: if legacyMcsAllowed() && signedIn() && (request.auth.uid == ownerUid || isAdmin());
       allow list: if isAdmin();
-      allow create, update: if signedIn() && request.auth.token.email_verified == true &&
+      allow create, update: if legacyMcsAllowed() && signedIn() && request.auth.token.email_verified == true &&
         request.auth.uid == ownerUid && validPreference();
       allow delete: if isAdmin();
     }
     match /activity_events/{eventId} {
       allow read, delete: if isAdmin();
-      allow create: if signedIn() && request.auth.token.email_verified == true &&
+      allow create: if legacyMcsAllowed() && signedIn() && request.auth.token.email_verified == true &&
         request.resource.data.keys().hasOnly(["ownerUid", "studentId", "sessionId", "page", "action", "activeSeconds", "createdAt", "expiresAt"]) &&
         request.resource.data.ownerUid == request.auth.uid &&
         get(/databases/$(database)/documents/activity_preferences/$(request.auth.uid)).data.enabled == true &&
@@ -345,7 +378,7 @@ service cloud.firestore {
     }
     match /issue_diagnostics/{issueId} {
       allow read, delete: if isAdmin();
-      allow create: if signedIn() && request.resource.data.keys().hasOnly(["ownerUid", "pages", "actions", "createdAt", "expiresAt"]) &&
+      allow create: if legacyMcsAllowed() && signedIn() && request.resource.data.keys().hasOnly(["ownerUid", "pages", "actions", "createdAt", "expiresAt"]) &&
         request.resource.data.ownerUid == request.auth.uid &&
         getAfter(/databases/$(database)/documents/issues/$(issueId)).data.reporterUid == request.auth.uid &&
         getAfter(/databases/$(database)/documents/issues/$(issueId)).data.audience == "admin" &&
@@ -409,12 +442,12 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
     match /students/{studentId} {
-      allow read: if hasVerifiedEmail() && resource.data.email is string &&
+      allow read: if legacyMcsAllowed() && hasVerifiedEmail() && resource.data.email is string &&
         verifiedEmailMatches(resource.data.email);
       // Do not permit students to change identity, section, or role information.
       // githubToken remains writable for compatibility with the existing OAuth flow;
       // migrate that token to a secure backend in a later release.
-      allow update: if hasVerifiedEmail() && resource.data.email is string &&
+      allow update: if legacyMcsAllowed() && hasVerifiedEmail() && resource.data.email is string &&
         verifiedEmailMatches(resource.data.email) &&
         resource.data.get("status","active") == "active" &&
         request.resource.data.email == resource.data.email &&
@@ -424,7 +457,7 @@ service cloud.firestore {
     }
 
     match /teachers/{teacherId} {
-      function ownTeacher() { return signedIn() && request.auth.token.email_verified == true && resource.data.email.lower() == request.auth.token.email.lower(); }
+      function ownTeacher() { return legacyMcsAllowed() && signedIn() && request.auth.token.email_verified == true && resource.data.email.lower() == request.auth.token.email.lower(); }
       function validTeacherConnection() {
         let data=request.resource.data;
         return data.get("githubToken","") is string && data.get("githubToken","").size() <= 1000 &&
@@ -435,10 +468,10 @@ service cloud.firestore {
           data.get("name","") is string && data.get("name","").size() <= 120;
       }
       allow read: if isAdmin() || ownTeacher();
-      allow create: if isAdmin() || (isTeacher() && teacherId == request.auth.uid &&
+      allow create: if legacyMcsAllowed() && (isAdmin() || (isTeacher() && teacherId == request.auth.uid &&
         request.resource.data.keys().hasOnly(["email","name","uid","githubToken","githubUsername","geminiKey","aiModel","engineMode"]) &&
         request.resource.data.email == request.auth.token.email.lower() && request.resource.data.uid == request.auth.uid &&
-        validTeacherConnection());
+        validTeacherConnection()));
       allow update: if isAdmin() || (isTeacher() && ownTeacher() &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(["githubToken","githubUsername","name","geminiKey","aiModel","engineMode"]) &&
         validTeacherConnection());
@@ -668,7 +701,8 @@ service cloud.firestore {
         (section in sections &&
           (assessment.get("ownerUid","") == request.auth.uid ||
             assessmentIncludesSection(assessment,section))) ||
-        ((assessment.get("ownerUid","") == request.auth.uid || isOriginalTeacher()) &&
+        ((assessment.get("ownerUid","") == request.auth.uid ||
+          verifiedEmailMatches("josephsixson@mcstayuman.edu.ph")) &&
           assessmentIncludesSection(assessment,section))
       );
     }
@@ -678,14 +712,14 @@ service cloud.firestore {
         assessmentIncludesSection(assessment,section) &&
         (section in teacherSections() ||
           assessment.get("ownerUid","") == request.auth.uid ||
-          isOriginalTeacher());
+          verifiedEmailMatches("josephsixson@mcstayuman.edu.ph"));
     }
     function mayReviewClaimScope(section,assessmentId) {
       return mayReviewAssessmentSection(section,assessmentId);
     }
     function mayTeachEvidence(studentId,assessmentId) {
-      return isAdmin() || (isTeacher() && studentId is string &&
-        teacherEvidenceScope(studentId,assessmentId));
+      return (isTeacher() && studentId is string &&
+        teacherEvidenceScope(studentId,assessmentId)) || isAdmin();
     }
 
     function instructorEvidenceChange(evidenceId) {
@@ -705,25 +739,6 @@ service cloud.firestore {
          after.verifiedContributionCommits.hasOnly(before.selectedCommits) &&
          after.diff(before).affectedKeys().hasOnly(["status","approvedCheckpointSha","reviewedBy",
            "reviewedAt","verificationNote","contributionScope","verifiedContributionCommits","revision","updatedAt"])) ||
-        (before.status in ["submitted","needs_review"] && after.status == "needs_review" &&
-         validTeacherEvidenceCommits(after.selectedCommits) &&
-         after.selectedCommits.size() > before.selectedCommits.size() &&
-         after.selectedCommits.hasAll(before.selectedCommits) &&
-         after.checkpointSha is string && after.checkpointSha.matches("^[a-fA-F0-9]{40}$") &&
-         after.diff(before).affectedKeys().hasOnly(["status","selectedCommits","checkpointSha","revision","updatedAt"])) ||
-        (before.status == "approved" && after.status == "needs_review" &&
-         (!exists(/databases/$(database)/documents/student_grades/$(evidenceId)) ||
-          get(/databases/$(database)/documents/student_grades/$(evidenceId)).data.published == false) &&
-         validTeacherEvidenceCommits(after.selectedCommits) &&
-         after.selectedCommits.size() > before.selectedCommits.size() &&
-         after.selectedCommits.hasAll(before.selectedCommits) &&
-         after.checkpointSha is string && after.checkpointSha.matches("^[a-fA-F0-9]{40}$") &&
-         after.approvedCheckpointSha == null && after.verifiedContributionCommits == [] &&
-         after.contributionScope == "" && after.reviewedBy == null &&
-         after.reviewedAt == null && after.verificationNote == "" &&
-         after.diff(before).affectedKeys().hasOnly(["status","selectedCommits","checkpointSha",
-           "approvedCheckpointSha","verifiedContributionCommits","contributionScope","reviewedBy",
-           "reviewedAt","verificationNote","revision","updatedAt"])) ||
         (before.status in ["submitted","approved","needs_review"] && after.status == "reopened" &&
          (!exists(/databases/$(database)/documents/student_grades/$(evidenceId)) ||
           get(/databases/$(database)/documents/student_grades/$(evidenceId)).data.published == false) &&
@@ -739,15 +754,16 @@ service cloud.firestore {
     }
 
     match /assessment_evidence/{evidenceId} {
-      // Single-record review follows the current student + assessment scope so
-      // legacy evidence with a stale stored section does not lock out an
-      // otherwise authorized teacher. Collection queries remain section-scoped.
-      allow get: if (isInstructor() && !exists(/databases/$(database)/documents/assessment_evidence/$(evidenceId))) ||
+      // Single-record review follows current student + assessment scope so stale
+      // legacy section values do not lock out an otherwise authorized teacher.
+      allow get: if legacyMcsAllowed() && (
+        (isInstructor() && !exists(/databases/$(database)/documents/assessment_evidence/$(evidenceId))) ||
         mayTeachEvidence(resource.data.studentId,resource.data.assessmentId) ||
-        (signedIn() && ownsStudentProfile(resource.data.studentId));
-      allow list: if mayTeachSection(resource.data.section) ||
+        (signedIn() && ownsStudentProfile(resource.data.studentId)));
+      allow list: if legacyMcsAllowed() && (
+        mayTeachSection(resource.data.section) ||
         mayReviewAssessmentSection(resource.data.get("section",""),resource.data.get("assessmentId","")) ||
-        (signedIn() && ownsStudentProfile(resource.data.studentId));
+        (signedIn() && ownsStudentProfile(resource.data.studentId)));
       // Audited updates use set() and include revision/teacher metadata. Reject
       // their create alternative before spending the evidence validation budget.
       allow create: if request.resource.data.keys().hasOnly(["studentId","assessmentId","section","repository",
@@ -814,12 +830,12 @@ service cloud.firestore {
     // A reclaim is an unverified attribution request, not a transfer of
     // authorship. Only staff can accept/reject it; students may withdraw.
     match /commit_reclaims/{claimId} {
-      // Teachers reviewing a specific deployed assessment may read its reclaim
-      // context even when an older staff_access section list is stale. This is
-      // still bounded by the learner + assessment teaching scope.
-      allow read: if mayTeachSection(resource.data.get("section","")) ||
+      // Compatibility-mode teachers may review an assessment-scoped claim even
+      // when an older staff section list is stale.
+      allow read: if legacyMcsAllowed() && (
+        mayTeachSection(resource.data.get("section","")) ||
         mayReviewAssessmentSection(resource.data.get("section",""),resource.data.get("assessmentId","")) ||
-        (signedIn() && ownsStudentProfile(resource.data.get("studentId","")));
+        (signedIn() && ownsStudentProfile(resource.data.get("studentId",""))));
       allow create: if signedIn() &&
         request.resource.data.keys().hasOnly(["studentId","assessmentId","section",
           "repository","sha","detectedAuthorName","detectedAuthorLogin",
@@ -937,9 +953,9 @@ service cloud.firestore {
           data.notes is string && data.notes.size() <= 3000 && data.dueDate is string && data.dueDate.size() <= 20 &&
           data.status in ["active","archived"] && data.updatedAt == request.time;
       }
-      allow read: if isAdmin() || (isTeacher() && resource.data.sectionIds.hasAny(teacherSections())) ||
+      allow read: if legacyMcsAllowed() && (isAdmin() || (isTeacher() && resource.data.sectionIds.hasAny(teacherSections())) ||
         (signedIn() && !isInstructor() && exists(/databases/$(database)/documents/student_access/$(request.auth.uid)) &&
-          resource.data.sectionIds.hasAny(get(/databases/$(database)/documents/student_access/$(request.auth.uid)).data.get("sections",[])));
+          resource.data.sectionIds.hasAny(get(/databases/$(database)/documents/student_access/$(request.auth.uid)).data.get("sections",[]))));
       allow create: if isInstructor() && validPracticePack(request.resource.data) && request.resource.data.ownerUid == request.auth.uid &&
         request.resource.data.sectionIds.hasOnly(isAdmin()?request.resource.data.sectionIds:teacherSections()) && request.resource.data.createdAt == request.time;
       allow update: if isInstructor() && resource.data.ownerUid == request.auth.uid && validPracticePack(request.resource.data) &&
@@ -1277,7 +1293,7 @@ service cloud.firestore {
     // Missing audience on legacy records means admin until migrated.
     match /issues/{issueId} {
       allow read: if mayReadIssue(resource.data);
-      allow create: if signedIn() &&
+      allow create: if legacyMcsAllowed() && signedIn() &&
         request.resource.data.keys().hasOnly([
           "title", "description", "category", "priority", "images",
           "urlContext", "reporterEmail", "reporterUid", "reporterRole",
@@ -1437,7 +1453,7 @@ service cloud.firestore {
       allow write: if false;
     }
     match /practice_verified_progress/{uid}/courses/{courseId} {
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow read: if legacyMcsAllowed() && (isAdmin() || (signedIn() && request.auth.uid == uid));
       allow write: if false;
     }
     match /practice_class_progress/{studentId}/courses/{courseId} {
@@ -1445,7 +1461,7 @@ service cloud.firestore {
       allow write: if false;
     }
     match /practice_awards/{uid}/missions/{missionId} {
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow read: if legacyMcsAllowed() && (isAdmin() || (signedIn() && request.auth.uid == uid));
       allow write: if false;
     }
     match /practice_sessions/{uid} { allow read: if isAdmin(); allow write: if false; }
@@ -1463,8 +1479,8 @@ service cloud.firestore {
           data.alias is string && data.alias.matches("^[A-Za-z0-9_ -]{3,24}$") &&
           data.leaderboardOptIn is bool && data.updatedAt == request.time;
       }
-      allow read: if mayTeachSection(resource.data.section) || (signedIn() && request.auth.uid == uid);
-      allow create, update: if signedIn() && request.auth.uid == uid && validPracticeProfile();
+      allow read: if legacyMcsAllowed() && (mayTeachSection(resource.data.section) || (signedIn() && request.auth.uid == uid));
+      allow create, update: if legacyMcsAllowed() && signedIn() && request.auth.uid == uid && validPracticeProfile();
       allow delete: if false;
     }
     match /practice_scores/{studentId} {
@@ -1505,7 +1521,7 @@ service cloud.firestore {
       allow delete: if mayTeachStudent(studentId);
     }
     match /student_practice_progress/{uid}/courses/{courseId} {
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow read: if legacyMcsAllowed() && (isAdmin() || (signedIn() && request.auth.uid == uid));
       allow write: if false;
     }
 
@@ -1514,7 +1530,7 @@ service cloud.firestore {
         return request.resource.data.keys().hasOnly([
             "ownerUid", "sourceKey", "type", "title", "body", "target",
             "at", "savedForLater", "openedAt", "lastInteractedAt",
-            "reportCategory", "reportAudience"
+            "reportCategory", "reportAudience", "schoolId"
           ]) &&
           request.resource.data.keys().hasAll([
             "ownerUid", "sourceKey", "type", "title", "body", "target",
@@ -1529,6 +1545,8 @@ service cloud.firestore {
           request.resource.data.body.size() <= 800 &&
           request.resource.data.type is string &&
           request.resource.data.type.size() <= 32 &&
+          request.resource.data.get("schoolId","") is string &&
+          request.resource.data.get("schoolId","").size() <= 64 &&
           request.resource.data.target is string &&
           request.resource.data.target.size() <= 220 &&
           request.resource.data.at is number &&

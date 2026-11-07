@@ -1,4 +1,4 @@
-import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
+import {resolveAccountAccess} from "../core/staff-session.mjs?v=4.0.1";
 /** Scoped product configuration and staff preferences: settings user. */
 import { auth, db } from "../core/firebase-core.js?v=1.3.0";
 import {
@@ -39,15 +39,19 @@ onAuthStateChanged(auth, async (user) => {
     window.location.href = "login.html";
     return;
   }
-  const email = user.email.toLowerCase();
-  if (!await resolveStaffRole(user)) {
-    window.location.href = "student-dashboard.html";
-  } else {
-    const pageBody = document.getElementById("pageBody");
-    if (pageBody) {
-      pageBody.classList.remove("hidden");
-      loadDirectory();
-    }
+  const access=await resolveAccountAccess(user);
+  if(access.v4Cutover===true||(access.schoolAdmin&&access.legacyCompatibilityAllowed===false)){
+    window.location.replace("people-access.html");
+    return;
+  }
+  if(!access.legacyRole){
+    window.location.replace(access.schoolAdmin?"people-access.html":"student-dashboard.html");
+    return;
+  }
+  const pageBody = document.getElementById("pageBody");
+  if (pageBody) {
+    pageBody.classList.remove("hidden");
+    loadDirectory();
   }
 });
 

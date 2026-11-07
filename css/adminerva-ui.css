@@ -849,3 +849,22 @@ body main > header[class*="mb-8"],body main > header[class*="mb-6"] {
 /* 1.4.7: the shared top navigation replaces the duplicate educator sidebar. */
 .av-educator-layout.av-educator-layout--single{grid-template-columns:minmax(0,1fr);max-width:112rem;width:100%}
 .av-educator-layout.av-educator-layout--single>.av-educator-content{grid-column:1/-1;min-width:0}
+
+
+/* V4 account-only school picker: no control or reserved space for one-school users. */
+.av-school-select {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  max-width: 22rem;
+  padding: .6rem .75rem;
+  margin-top: .35rem;
+  border: 1px solid #94a3b8;
+  border-radius: .65rem;
+  background: #fff;
+  color: #102a43;
+  font: inherit;
+}
+.av-school-select:focus-visible { outline: 3px solid #38bdf8; outline-offset: 2px; }
+[hidden] > .av-school-select, [hidden].av-school-picker { display: none !important; }
+@media (max-width: 480px) { .av-school-select { max-width: none; font-size: 16px; } }

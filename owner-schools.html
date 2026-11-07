@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>School registry | Adminerva Owner Console</title>
+  <link rel="stylesheet" href="css/adminerva-ui.css">
+  <style>
+    .own-shell{max-width:1100px;margin:0 auto;padding:1rem}
+    .own-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:1rem}
+    .own-card{background:#fff;padding:1rem;border:1px solid #cbd5e1;border-radius:14px;min-width:0}
+    .own-field{width:100%;min-height:44px;padding:.7rem;border:1px solid #94a3b8;border-radius:9px;margin:.3rem 0 1rem;font:inherit}
+    .own-button{min-height:44px;padding:.65rem 1rem;border:0;border-radius:9px;background:#1d4ed8;color:white;cursor:pointer}
+    .own-button:disabled{opacity:.5;cursor:wait}
+    .own-button.warn{background:#9a3412}
+    .own-button:focus-visible,.own-field:focus-visible,.own-list button:focus-visible{outline:3px solid #38bdf8;outline-offset:2px}
+    .own-list button{width:100%;display:block;padding:.85rem;text-align:left;background:#fff;border:1px solid #cbd5e1;border-radius:9px;margin:.4rem 0}
+    .own-list button[aria-pressed="true"]{border-color:#1d4ed8;box-shadow:0 0 0 2px #93c5fd}
+    .own-muted{color:#475569;font-size:.92rem}
+    .own-confirm{display:flex;gap:.6rem;align-items:flex-start;padding:.5rem 0}
+    [hidden]{display:none!important}
+    @media(max-width:740px){.own-grid{grid-template-columns:minmax(0,1fr)}}
+  </style>
+</head>
+<body id="pageBody" class="hidden" style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
+<div id="adminerva-nav" data-module="admin" data-page="owner-schools"></div>
+<main class="own-shell">
+ <header style="margin-bottom:1.25rem">
+  <a href="index.html">Adminerva home</a>
+  <h1 style="font-size:clamp(1.6rem,4vw,2rem);font-weight:800">Platform school registry</h1>
+  <p class="own-muted">Owner-only institution provisioning. No school student, grade or private teacher records are available in this console.</p>
+ </header>
+ <p id="owner-status" role="status" aria-live="polite">Verifying platform owner access…</p>
+ <div class="own-grid" id="owner-content" hidden>
+  <section class="own-card">
+   <h2 style="font-size:1.2rem;font-weight:750">Schools</h2>
+   <div id="owner-schools" class="own-list" role="list"></div>
+   <h3 style="font-weight:700;margin:1.5rem 0 .5rem">Create school draft</h3>
+   <form id="owner-create">
+    <label>School ID (permanent)<input class="own-field" name="schoolId" pattern="[a-z][a-z0-9-]{1,63}" maxlength="64" required placeholder="example-school"></label>
+    <label>Institution name<input class="own-field" name="displayName" maxlength="120" minlength="3" required></label>
+    <button type="submit" class="own-button">Create draft</button>
+   </form>
+  </section>
+  <section id="owner-actions" class="own-card" hidden>
+   <h2 id="owner-current" style="font-size:1.2rem;font-weight:750"></h2>
+   <p id="owner-current-status" class="own-muted"></p>
+   <section style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc">
+    <div style="display:flex;gap:.75rem;align-items:center;justify-content:space-between;flex-wrap:wrap">
+      <div><h3 style="font-weight:750">4.0 cutover readiness</h3><p id="owner-cutover-mode" class="own-muted"></p></div>
+      <button id="owner-readiness-refresh" type="button" class="own-button" style="min-height:38px;padding:.45rem .75rem">Refresh readiness</button>
+    </div>
+    <div id="owner-readiness" class="own-muted" style="margin-top:.75rem"></div>
+    <form id="owner-cutover" hidden style="margin-top:1rem">
+      <p class="own-muted">Switching to V4-only fences migrated staff from legacy global workspaces. It does not delete 3.x data and can be rolled back.</p>
+      <label class="own-confirm"><input name="continuityBackupCaptured" type="checkbox" required> A protected continuity backup/export has been captured.</label>
+      <label class="own-confirm"><input name="migrationReconciled" type="checkbox" required> Canonical migration and reconciliation receipts have been reviewed.</label>
+      <label class="own-confirm"><input name="rollbackReviewed" type="checkbox" required> The rollback procedure and legacy compatibility fallback have been reviewed.</label>
+      <label class="own-confirm"><input name="v4RoutesValidated" type="checkbox" required> Required V4 teacher/student/admin routes have been validated for this school.</label>
+      <label>Cutover reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button">Enable V4-only compatibility mode</button>
+    </form>
+    <form id="owner-cutover-rollback" hidden style="margin-top:1rem">
+      <p class="own-muted">Rollback re-allows legacy compatibility routes. It does not undo canonical data or delete V4 records.</p>
+      <label>Rollback reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button warn">Restore legacy compatibility</button>
+    </form>
+   </section>
+   <section id="owner-cutover-package-section" hidden style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#fff">
+    <h3 style="font-weight:750">MCS cutover package</h3>
+    <p class="own-muted">Generate the restricted package with <code>functions/mcs-cutover-package.js</code> after all approved migration stages complete. This console records only its verified summary and hashes; it does not upload student records or migration payloads.</p>
+    <p id="owner-cutover-package-status" class="own-muted">No package status loaded.</p>
+    <form id="owner-cutover-package">
+      <label>Cutover package JSON<input class="own-field" name="packageFile" type="file" accept="application/json,.json" required></label>
+      <label>Package review reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button">Record successful cutover package</button>
+    </form>
+   </section>
+   <details style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#fff">
+    <summary style="font-weight:750;cursor:pointer">Platform governance roles</summary>
+    <p class="own-muted">Governance roles document policy responsibility only. They do not grant teacher, School Admin, or Platform Admin permissions.</p>
+    <p id="owner-governance-status" class="own-muted">Select a school to review governance roles.</p>
+    <form id="owner-governance-create" style="margin-top:.75rem">
+      <label>Role ID<input class="own-field" name="roleId" pattern="[a-z][a-z0-9-]{1,63}" maxlength="64" required placeholder="e.g. data-protection-officer"></label>
+      <label>Display name<input class="own-field" name="displayName" minlength="3" maxlength="120" required></label>
+      <label>Description<textarea class="own-field" name="description" maxlength="500" rows="2"></textarea></label>
+      <button type="submit" class="own-button">Create governance role</button>
+    </form>
+    <form id="owner-governance-assign" style="margin-top:1rem">
+      <label>Governance role<select class="own-field" name="roleId" id="owner-governance-role-select" required></select></label>
+      <label>Assignment reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button">Assign role to selected school</button>
+    </form>
+   </details>
+   <section style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#fff">
+    <h3 style="font-weight:750">Cutover owner decisions</h3>
+    <p class="own-muted">These references are required before V4-only readiness can pass. They document the approved MCS operating decisions without storing student records in the owner console.</p>
+    <p id="owner-cutover-decisions-status" class="own-muted">Select a school to load its decision record.</p>
+    <form id="owner-cutover-decisions">
+      <label>Institutional/data authority reference<input class="own-field" name="institutionalAuthorityReference" minlength="8" maxlength="240" required placeholder="Policy, approval record, or controlled document reference"></label>
+      <label>Academic calendar reference<input class="own-field" name="calendarReference" minlength="8" maxlength="240" required placeholder="Approved school year / term structure reference"></label>
+      <label>Privacy policy reference<input class="own-field" name="privacyPolicyReference" minlength="8" maxlength="240" required></label>
+      <label>Retention policy reference<input class="own-field" name="retentionPolicyReference" minlength="8" maxlength="240" required></label>
+      <label>Data retention mode
+        <select class="own-field" name="retentionMode" required>
+          <option value="retain_all">Retain all historical data</option>
+          <option value="policy_defined">Follow the referenced retention schedule</option>
+        </select>
+      </label>
+      <label>Backup / recovery policy reference<input class="own-field" name="backupPolicyReference" minlength="8" maxlength="240" required></label>
+      <label>Data steward role<input class="own-field" name="dataStewardRole" minlength="3" maxlength="120" required value="school_admin" placeholder="e.g. school_admin or Data Protection Officer"></label>
+      <label>School AI decision
+        <select class="own-field" name="aiPermission" required>
+          <option value="">Choose…</option><option value="disabled">Disabled</option><option value="approved">Approved by school policy</option>
+        </select>
+      </label>
+      <label>External repository / GitHub decision
+        <select class="own-field" name="repositoryPermission" required>
+          <option value="">Choose…</option><option value="disabled">Disabled</option><option value="approved">Approved by school policy</option>
+        </select>
+      </label>
+      <label class="own-confirm"><input name="firstAdminAcknowledged" type="checkbox" required> The designated first school administrator has been verified and is the intended MCS administrator.</label>
+      <label class="own-confirm"><input name="schoolAdminConfigurationReviewed" type="checkbox" required> School administrator configuration and operational ownership have been reviewed.</label>
+      <label>Decision notes<textarea class="own-field" name="notes" maxlength="1000" rows="3"></textarea></label>
+      <label>Review reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button">Save cutover decisions</button>
+    </form>
+   </section>
+   <form id="owner-grant">
+    <h3 style="font-weight:750;margin:1rem 0 .5rem">Designate verified school administrator</h3>
+    <label>Existing verified Firebase account UID<input class="own-field" name="targetUid" maxlength="128" minlength="8" required autocomplete="off"></label>
+    <label>Reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+    <button type="submit" class="own-button">Grant school administrator</button>
+    <p class="own-muted">Only this school is granted. This does not grant Platform Administrator access.</p>
+   </form>
+   <details style="margin-top:1.25rem">
+    <summary style="font-weight:750;cursor:pointer">School administrator access recovery</summary>
+    <p class="own-muted">Platform-owner review only. Suspending a school administrator pauses all V4 access for that school membership. The last active school administrator cannot be suspended.</p>
+    <form id="owner-admin-suspend" style="margin-top:.75rem">
+      <label>Administrator UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" required autocomplete="off"></label>
+      <label>Suspension reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button warn">Suspend school administrator</button>
+    </form>
+    <form id="owner-admin-restore" style="margin-top:1rem">
+      <label>Suspended administrator UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" required autocomplete="off"></label>
+      <label>Recovery reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button">Restore school administrator</button>
+    </form>
+   </details>
+   <form id="owner-activate" hidden>
+    <h3 style="font-weight:750;margin:1.5rem 0 .5rem">Activate institution</h3>
+    <p class="own-muted">All confirmations require external verification, not just checking the boxes.</p>
+    <label class="own-confirm"><input name="institutionalDataAuthority" type="checkbox" required> Institutional authorization for data and identity is documented.</label>
+    <label class="own-confirm"><input name="provenanceVerified" type="checkbox" required> Legacy data provenance and ownership are verified (or no legacy data are being migrated).</label>
+    <label class="own-confirm"><input name="calendarConfigured" type="checkbox" required> Academic year/term and operational policies are configured.</label>
+    <label class="own-confirm"><input name="privacyPolicyApproved" type="checkbox" required> Privacy, retention and student data policies are approved.</label>
+    <label>Activation reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+    <button type="submit" class="own-button">Activate verified school</button>
+   </form>
+   <form id="owner-suspend" hidden>
+    <h3 style="font-weight:750;margin:1.5rem 0 .5rem">Suspend active school</h3>
+    <p class="own-muted">Suspension immediately denies new v4 school data calls. It does not delete students or grades.</p>
+    <label>Reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+    <button type="submit" class="own-button warn">Suspend school</button>
+   </form>
+  </section>
+ </div>
+</main>
+<script src="js/core/adminerva-nav.js?v=4.0.0"></script>
+<script type="module" src="js/core/auth-guard.js?v=4.0.0"></script>
+<script src="js/core/adminerva-loader.js?v=1.3.2"></script>
+<script type="module" src="js/core/owner-school-registry.mjs?v=4.0.1"></script>
+</body>
+</html>

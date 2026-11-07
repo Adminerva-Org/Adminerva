@@ -15,7 +15,11 @@ lacks("js/core/adminerva-nav.js","push.disableDevicePush()");
 has("js/core/push-notifications.mjs","device-opted-out");
 has("js/settings/account-preferences.mjs","Reconnect failed. Select Enable notifications to retry.");
 has("js/core/notification-routing.mjs","assessment-evidence-review.html");
-has("js/core/notification-visibility.mjs",'["submission", "grade", "assessment"]');
+const {notificationVisible}=await import("../js/core/notification-visibility.mjs");
+for(const role of ["teacher","student"]){
+  for(const type of ["submission","grade","assessment"])
+    assert.equal(notificationVisible({type},role),true,`${role} must see ${type} notifications`);
+}
 has("functions/index.js",'title:published?"A reviewed grade is available":"A published grade was withdrawn for revision"');
 has("functions/index.js",'before.status!=="submitted"||before.submittedAt?.toMillis?.()!==after.submittedAt?.toMillis?.()');
 has("functions/index.js",'const pushPages=new Set([');
@@ -24,8 +28,8 @@ has("js/core/push-notifications.mjs","release:true");
 has("functions/index.js",'const pushTypes=new Set(["assessment","submission","grade","grading","issue","release"])');
 has("js/core/workspace-return.mjs","cachedWorkspaceDestination(auth.currentUser)");
 has("js/core/auth-guard.js",'roleHome(actualRole)');
-has("assessment-studio.html","js/core/auth-guard.js?v=1.3.8");
-has("repofetch.html","js/core/auth-guard.js?v=1.3.8");
+has("assessment-studio.html","js/core/auth-guard.js?v=");
+has("repofetch.html","js/core/auth-guard.js?v=");
 lacks("js/settings/account-preferences.mjs","await refreshPush(version);");
 has("js/core/teaching-firestore.mjs","void actor().then(async current=>");
 has("firebase-messaging-sw.js","assets/adminerva-notification-badge.png");

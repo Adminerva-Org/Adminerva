@@ -1,0 +1,80 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function verifiedUser() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function activeMember(schoolId) {
+      return verifiedUser() &&
+        firestore.exists(/databases/(default)/documents/schools/$(schoolId)/memberships/$(request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/schools/$(schoolId)/memberships/$(request.auth.uid)).data.schoolId == schoolId &&
+        firestore.get(/databases/(default)/documents/schools/$(schoolId)/memberships/$(request.auth.uid)).data.status == "active";
+    }
+    function schoolAdmin(schoolId) {
+      return activeMember(schoolId) &&
+        firestore.get(/databases/(default)/documents/schools/$(schoolId)/memberships/$(request.auth.uid)).data.roles.hasAny(["school_admin"]);
+    }
+    function supportPolicyEnabled(schoolId) {
+      return firestore.exists(/databases/(default)/documents/schools/$(schoolId)/private_config/file_policy) &&
+        firestore.get(/databases/(default)/documents/schools/$(schoolId)/private_config/file_policy).data.enabled == true &&
+        firestore.get(/databases/(default)/documents/schools/$(schoolId)/private_config/file_policy).data.supportAttachmentsEnabled == true;
+    }
+    function supportedType(contentType) {
+      return contentType in [
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "application/pdf",
+        "text/plain"
+      ];
+    }
+
+    match /schools/{schoolId}/support/{reportId}/{ownerUid}/{fileId} {
+      allow create: if activeMember(schoolId) &&
+        request.auth.uid == ownerUid &&
+        resource == null &&
+        supportPolicyEnabled(schoolId) &&
+        firestore.exists(/databases/(default)/documents/schools/$(schoolId)/support_reports/$(reportId)) &&
+        firestore.get(/databases/(default)/documents/schools/$(schoolId)/support_reports/$(reportId)).data.schoolId == schoolId &&
+        firestore.get(/databases/(default)/documents/schools/$(schoolId)/support_reports/$(reportId)).data.reporterUid == request.auth.uid &&
+        firestore.exists(/databases/(default)/documents/schools/$(schoolId)/support_reports/$(reportId)/attachments/$(fileId)) &&
+        firestore.get(/databases/(default)/documents/schools/$(schoolId)/support_reports/$(reportId)/attachments/$(fileId)).data.state == "pending" &&
+        firestore.get(/databases/(default)/documents/schools/$(schoolId)/support_reports/$(reportId)/attachments/$(fileId)).data.uploaderUid == request.auth.uid &&
+        firestore.get(/databases/(default)/documents/schools/$(schoolId)/support_reports/$(reportId)/attachments/$(fileId)).data.storagePath ==
+          "schools/" + schoolId + "/support/" + reportId + "/" + ownerUid + "/" + fileId &&
+        request.resource.size ==
+          firestore.get(/databases/(default)/documents/schools/$(schoolId)/support_reports/$(reportId)/attachments/$(fileId)).data.size &&
+        request.resource.size <=
+          firestore.get(/databases/(default)/documents/schools/$(schoolId)/private_config/file_policy).data.maxBytes &&
+        request.resource.contentType ==
+          firestore.get(/databases/(default)/documents/schools/$(schoolId)/support_reports/$(reportId)/attachments/$(fileId)).data.contentType &&
+        supportedType(request.resource.contentType) &&
+        request.resource.metadata.schoolId == schoolId &&
+        request.resource.metadata.reportId == reportId &&
+        request.resource.metadata.ownerUid == ownerUid &&
+        request.resource.metadata.fileId == fileId &&
+        request.resource.metadata.kind == "support_attachment";
+
+      allow get: if activeMember(schoolId) &&
+        firestore.exists(/databases/(default)/documents/schools/$(schoolId)/support_reports/$(reportId)) &&
+        firestore.exists(/databases/(default)/documents/schools/$(schoolId)/support_reports/$(reportId)/attachments/$(fileId)) &&
+        firestore.get(/databases/(default)/documents/schools/$(schoolId)/support_reports/$(reportId)/attachments/$(fileId)).data.state == "active" &&
+        firestore.get(/databases/(default)/documents/schools/$(schoolId)/support_reports/$(reportId)/attachments/$(fileId)).data.storagePath ==
+          "schools/" + schoolId + "/support/" + reportId + "/" + ownerUid + "/" + fileId &&
+        (
+          firestore.get(/databases/(default)/documents/schools/$(schoolId)/support_reports/$(reportId)).data.reporterUid == request.auth.uid ||
+          schoolAdmin(schoolId)
+        );
+
+      allow list, update, delete: if false;
+    }
+
+    // Everything outside the explicitly reviewed school support path remains
+    // unavailable to browser clients. Server Admin SDK maintenance bypasses
+    // these rules for verified retention cleanup and controlled migrations.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

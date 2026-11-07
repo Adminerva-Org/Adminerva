@@ -4,7 +4,7 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {collection,getDocs} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {COURSES} from "./practice-courses.mjs?v=1.3.0";
 import {makeCheckedPracticeTransfer,readPracticeTransfer,practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.3.0";
-import {resumePracticeSession,resetPracticeSession,activePracticeSession,practiceRequest} from "./practice-session.mjs?v=1.3.0";
+import {resumePracticeSession,resetPracticeSession,activePracticeSession,practiceRequest} from "./practice-session.mjs?v=4.0.1";
 let user=null,completed=new Map(),reflections=new Map(),activeCourse=null,activeMission=null,checked=null,choice=null,busy=false,epoch=0;
 const field=id=>document.getElementById(id);
 const status=message=>{field("practiceStatus").textContent=message;};
