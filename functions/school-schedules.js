@@ -35,14 +35,14 @@ function periodId(value){
   deny("invalid-argument","Choose a valid academic period.");
  return text;
 }
-async function assignedPairs(db,prefix,uid,{periodId:nullPeriod=null}={}){
+async function assignedPairs(db,prefix,uid,{periodId:scopePeriodId=null}={}){
  const grants=await db.collection(prefix+"staff_assignments").where("teacherUid","==",uid).limit(101).get();
  if(grants.size===101)deny("resource-exhausted","Teaching assignments require pagination before schedule validation.");
  const active=grants.docs.filter(doc=>doc.data().status==="active"&&doc.data().schoolId===prefix.split("/")[1]);
  const offeringRefs=active.map(doc=>db.doc(prefix+"course_offerings/"+doc.data().offeringId));
  const offerings=await Promise.all(offeringRefs.map(ref=>ref.get()));
  const valid=offerings.filter(doc=>doc.exists&&doc.data().status==="active"&&
-   (!nullPeriod||doc.data().termId===nullPeriod));
+   (!scopePeriodId||doc.data().termId===scopePeriodId));
  const sectionIds=[...new Set(valid.map(doc=>doc.data().sectionId))],
    subjectIds=[...new Set(valid.map(doc=>doc.data().subjectId))];
  const [sections,subjects]=await Promise.all([
@@ -108,7 +108,7 @@ function rowsToText(rows){
 }
 function createSchoolScheduleService({db}){
  return async request=>{
-  const input=request.data||{},ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["teacher"]),
+  const input=request.data||{},ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["teacher"]}),
    prefix="schools/"+ctx.schoolId+"/",memberRef=db.doc(prefix+"memberships/"+ctx.uid),
    schoolRef=db.doc("platform_schools/"+ctx.schoolId);
   const canonicalPeriod=input.periodId?periodId(input.periodId):null;
