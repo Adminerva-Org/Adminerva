@@ -159,8 +159,9 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         tx.set(cutoverDecisionRef,{schema:CUTOVER_DECISION_SCHEMA,schoolId,firstAdminUid,
           ...decisions,revision,reviewedByUid:uid,reviewedAt:now,updatedAt:now});
         tx.create(auditRef,{schoolId,actorUid:uid,action:"school_cutover_decisions_saved",
-          firstAdminUid,aiPermission:decisions.aiPermission,
-          repositoryPermission:decisions.repositoryPermission,revision,reason,createdAt:now});
+          firstAdminUid,retentionMode:decisions.retentionMode,dataStewardRole:decisions.dataStewardRole,
+          aiPermission:decisions.aiPermission,repositoryPermission:decisions.repositoryPermission,
+          revision,reason,createdAt:now});
       });
       return {schoolId,saved:true};
     }
