@@ -54,6 +54,23 @@ async function evaluateSchoolCutoverReadiness({db,schoolId}){
   decisionState.ok?
    "Authority, calendar, privacy, retention, backup, data-steward, AI and repository decisions are bound to the designated first school administrator.":
    "Missing or stale owner decision fields: "+decisionState.missing.join(", ")+".");
+ const stewardRole=decisionDoc.data()?.dataStewardRole||null;
+ let stewardRoleOkay=stewardRole==="school_admin",stewardDetail=
+  stewardRole==="school_admin"?"School Admin is the default data steward.":"";
+ if(stewardRole&&stewardRole!=="school_admin"){
+  const [assignment,definition]=await Promise.all([
+   db.doc("platform_schools/"+schoolId+"/governance_roles/"+stewardRole).get(),
+   db.doc("platform_governance_roles/"+stewardRole).get()
+  ]);
+  stewardRoleOkay=assignment.exists&&assignment.data().status==="active"&&
+   definition.exists&&definition.data().status==="active";
+  stewardDetail=stewardRoleOkay?
+   "Custom governance role "+stewardRole+" is active and assigned to this school.":
+   "Custom data-steward role "+stewardRole+" is not an active assigned governance role.";
+ }
+ check("data_steward_governance",Boolean(stewardRole)&&stewardRoleOkay,
+  "Data-steward governance role is valid",
+  stewardRole?stewardDetail:"No data-steward role is recorded.");
 
  const [members,programs,years,terms,subjects,sections,offerings,enrollments,assignments,tasks,grades,
   practiceMarkers]=await Promise.all([
