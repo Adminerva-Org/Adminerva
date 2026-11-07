@@ -49,13 +49,13 @@ function createSchoolTeacherAnalyticsService({db}){
   async function labels(offering){
    const data=offering.data();
    const refs=[
-    ["academic_years",data.yearId],["terms",data.termId],
-    ["subjects",data.subjectId],["sections",data.sectionId]
+    ["academic_programs",data.programId],["academic_years",data.yearId],
+    ["terms",data.termId],["subjects",data.subjectId],["sections",data.sectionId]
    ];
    const docs=await Promise.all(refs.map(([kind,id])=>db.doc(prefix+kind+"/"+id).get()));
    const value=index=>docs[index].exists&&docs[index].data().schoolId===ctx.schoolId?
     String(docs[index].data().name||refs[index][1]).slice(0,140):refs[index][1];
-   return {year:value(0),term:value(1),subject:value(2),section:value(3)};
+   return {program:value(0),year:value(1),term:value(2),subject:value(3),section:value(4)};
   }
 
   if((input.action||"scope")==="scope"){
@@ -75,8 +75,8 @@ function createSchoolTeacherAnalyticsService({db}){
    const result=[];
    for(const offering of rows){
     result.push({
-     offeringId:offering.id,sectionId:offering.data().sectionId,
-     subjectId:offering.data().subjectId,...await labels(offering)
+     offeringId:offering.id,programId:offering.data().programId,
+     sectionId:offering.data().sectionId,subjectId:offering.data().subjectId,...await labels(offering)
     });
    }
    result.sort((a,b)=>(a.section+" "+a.subject).localeCompare(b.section+" "+b.subject));
