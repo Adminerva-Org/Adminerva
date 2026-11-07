@@ -123,16 +123,26 @@ async function ensureDependencies(db,approved,category,row){
  const get=path=>db.doc(prefix+path).get();
  if(category==="people")return;
  if(category==="terms"){
-  const year=await get("academic_years/"+row.yearId);
-  if(!year.exists)throw Error("Term "+row.id+" requires academic year "+row.yearId+".");
+  const [program,year]=await Promise.all([
+   get("academic_programs/"+row.programId),get("academic_years/"+row.yearId)
+  ]);
+  if(!program.exists||!year.exists)
+   throw Error("Academic period "+row.id+" requires its program and academic year.");
+ }
+ if(category==="sections"){
+  const program=await get("academic_programs/"+row.programId);
+  if(!program.exists)throw Error("Section "+row.id+" requires academic program "+row.programId+".");
  }
  if(category==="course_offerings"){
-  const [year,term,subject,section]=await Promise.all([
-   get("academic_years/"+row.yearId),get("terms/"+row.termId),
-   get("subjects/"+row.subjectId),get("sections/"+row.sectionId)
+  const [program,year,term,subject,section]=await Promise.all([
+   get("academic_programs/"+row.programId),get("academic_years/"+row.yearId),
+   get("terms/"+row.termId),get("subjects/"+row.subjectId),get("sections/"+row.sectionId)
   ]);
-  if([year,term,subject,section].some(doc=>!doc.exists))
+  if([program,year,term,subject,section].some(doc=>!doc.exists))
    throw Error("Course offering "+row.id+" has an unresolved catalog dependency.");
+  if(term.data().yearId!==row.yearId||term.data().programId!==row.programId||
+     section.data().programId!==row.programId)
+   throw Error("Course offering "+row.id+" has inconsistent program/year/period dependencies.");
  }
  if(category==="enrollments"){
   const [person,offering]=await Promise.all([
