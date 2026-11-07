@@ -8,7 +8,8 @@ const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
-const CATALOG=new Set(["academic_years","terms","subjects","sections"]);
+const CATALOG=new Set(["academic_years","academic_programs","terms","subjects","sections"]);
+const PERIOD_TYPES=new Set(["term","semester","quarter","trimester","custom"]);
 function deny(code,message){throw new TenantAccessError(code,message)}
 function checkId(value,label="Identifier",max=80){
  if(typeof value!=="string"||value.length>max||!new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,"+(max-1)+"}$").test(value))deny("invalid-argument",label+" must contain 1–80 letters, digits, underscores or hyphens.");
@@ -58,33 +59,37 @@ function createSchoolAcademicsService({db}) {
    const sectionIds=[...new Set(active.map(doc=>doc.data().sectionId).filter(Boolean))],
      subjectIds=[...new Set(active.map(doc=>doc.data().subjectId).filter(Boolean))],
      yearIds=[...new Set(active.map(doc=>doc.data().yearId).filter(Boolean))],
-     termIds=[...new Set(active.map(doc=>doc.data().termId).filter(Boolean))];
-   if(sectionIds.length+subjectIds.length+yearIds.length+termIds.length>500)
+     termIds=[...new Set(active.map(doc=>doc.data().termId).filter(Boolean))],
+     programIds=[...new Set(active.map(doc=>doc.data().programId).filter(Boolean))];
+   if(sectionIds.length+subjectIds.length+yearIds.length+termIds.length+programIds.length>500)
     deny("resource-exhausted","Planning option references exceed the bounded pilot review limit.");
-   const [sections,subjects,years,terms]=await Promise.all([
+   const [sections,subjects,years,terms,programs]=await Promise.all([
     Promise.all(sectionIds.map(id=>schoolRoot.doc("sections/"+id).get())),
     Promise.all(subjectIds.map(id=>schoolRoot.doc("subjects/"+id).get())),
     Promise.all(yearIds.map(id=>schoolRoot.doc("academic_years/"+id).get())),
-    Promise.all(termIds.map(id=>schoolRoot.doc("terms/"+id).get()))
+    Promise.all(termIds.map(id=>schoolRoot.doc("terms/"+id).get())),
+    Promise.all(programIds.map(id=>schoolRoot.doc("academic_programs/"+id).get()))
    ]);
    const named=docs=>new Map(docs.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId&&
       doc.data().status==="active"&&typeof doc.data().name==="string"&&doc.data().name.trim())
      .map(doc=>[doc.id,doc.data().name.trim().slice(0,140)]));
-   const sectionNames=named(sections),subjectNames=named(subjects),yearNames=named(years),termNames=named(terms);
+   const sectionNames=named(sections),subjectNames=named(subjects),yearNames=named(years),
+    termNames=named(terms),programNames=named(programs);
    return {
     schoolId:ctx.schoolId,
     sections:[...sectionNames.values()].sort((a,b)=>a.localeCompare(b)),
     subjects:[...subjectNames.values()].sort((a,b)=>a.localeCompare(b)),
     schoolYears:[...yearNames.values()].sort((a,b)=>a.localeCompare(b)),
     terms:[...termNames.values()].sort((a,b)=>a.localeCompare(b)),
-    programs:[],
+    programs:[...programNames.values()].sort((a,b)=>a.localeCompare(b)),
     offerings:active.map(doc=>({
       offeringId:doc.id,
+      programId:doc.data().programId,programName:programNames.get(doc.data().programId)||null,
       sectionId:doc.data().sectionId,sectionName:sectionNames.get(doc.data().sectionId)||null,
       subjectId:doc.data().subjectId,subjectName:subjectNames.get(doc.data().subjectId)||null,
       yearId:doc.data().yearId,yearName:yearNames.get(doc.data().yearId)||null,
       termId:doc.data().termId,termName:termNames.get(doc.data().termId)||null
-    })).filter(item=>item.sectionName&&item.subjectName)
+    })).filter(item=>item.programName&&item.sectionName&&item.subjectName)
    };
   }
   if(input.action==="list_teachers"){
@@ -110,20 +115,35 @@ function createSchoolAcademicsService({db}) {
    if(!CATALOG.has(kind))deny("invalid-argument","Unknown academic catalog type.");
    const itemId=checkId(input.recordId),name=checkName(input.name),ref=schoolRoot.doc(kind+"/"+itemId);
    const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
-   const parentYear=input.yearId?checkId(input.yearId,"Academic year ID"):null;
+   const parentYear=input.yearId?checkId(input.yearId,"Academic year ID"):null,
+    parentProgram=input.programId?checkId(input.programId,"Academic program ID"):null,
+    periodType=kind==="terms"?String(input.periodType||"term").trim().toLowerCase():null,
+    sequence=kind==="terms"?Number(input.sequence):null;
+   if(kind==="terms"&&!PERIOD_TYPES.has(periodType))
+    deny("invalid-argument","Academic period type must be term, semester, quarter, trimester or custom.");
+   if(kind==="terms"&&(!Number.isInteger(sequence)||sequence<1||sequence>12))
+    deny("invalid-argument","Academic period sequence must be between 1 and 12.");
    await db.runTransaction(async tx=>{
     await checkWriteAuthority(tx);
     if((await tx.get(ref)).exists)deny("already-exists","An academic catalog record with this ID exists.");
+    if(kind==="terms"||kind==="sections"){
+     if(!parentProgram)deny("invalid-argument",(kind==="terms"?"Academic period":"Section")+" requires an academic program/division.");
+     const program=await tx.get(schoolRoot.doc("academic_programs/"+parentProgram));
+     if(!program.exists||program.data().schoolId!==ctx.schoolId||program.data().status!=="active")
+      deny("failed-precondition","Academic program/division does not exist or is inactive.");
+    }
     if(kind==="terms"){
-     if(!parentYear)deny("invalid-argument","Term requires academic year ID.");
+     if(!parentYear)deny("invalid-argument","Academic period requires academic year ID.");
      const year=await tx.get(schoolRoot.doc("academic_years/"+parentYear));
-     if(!year.exists||year.data().schoolId!==ctx.schoolId)
-      deny("failed-precondition","Academic year does not exist in this school.");
+     if(!year.exists||year.data().schoolId!==ctx.schoolId||year.data().status!=="active")
+      deny("failed-precondition","Academic year does not exist or is inactive in this school.");
     }
     const now=FieldValue.serverTimestamp();
     tx.create(ref,{schoolId:ctx.schoolId,name,status:"active",
-      yearId:kind==="terms"?parentYear:null,revision:1,createdByUid:uid,
-      createdAt:now,updatedAt:now});
+      yearId:kind==="terms"?parentYear:null,
+      programId:["terms","sections"].includes(kind)?parentProgram:null,
+      periodType:kind==="terms"?periodType:null,sequence:kind==="terms"?sequence:null,
+      revision:1,createdByUid:uid,createdAt:now,updatedAt:now});
     tx.create(auditRef,audit("academic_catalog_created",{kind,recordId:itemId}));
    });
    return {recordId:itemId,kind,status:"active"};
@@ -134,15 +154,19 @@ function createSchoolAcademicsService({db}) {
    if(!CATALOG.has(kind))deny("invalid-argument","Unknown academic catalog type.");
    const snap=await db.collection("schools/"+ctx.schoolId+"/"+kind).orderBy("name").limit(200).get();
    return {items:snap.docs.map(doc=>({id:doc.id,name:doc.data().name,
-    yearId:doc.data().yearId,status:doc.data().status})),truncated:snap.size===200};
+    yearId:doc.data().yearId,programId:doc.data().programId,
+    periodType:doc.data().periodType,sequence:doc.data().sequence,
+    status:doc.data().status})),truncated:snap.size===200};
   }
   if(input.action==="create_offering"){
    requireAdmin();
-   const yearId=checkId(input.yearId,"Academic year"),termId=checkId(input.termId,"Term"),
+   const programId=checkId(input.programId,"Academic program/division"),
+    yearId=checkId(input.yearId,"Academic year"),termId=checkId(input.termId,"Academic period"),
     subjectId=checkId(input.subjectId,"Subject"),sectionId=checkId(input.sectionId,"Section");
-   const offeringId=rowKey(yearId,termId,sectionId,subjectId);
+   const offeringId=rowKey(programId,yearId,termId,sectionId,subjectId);
    const ref=schoolRoot.doc("course_offerings/"+offeringId);
    const refs=[
+    schoolRoot.doc("academic_programs/"+programId),
     schoolRoot.doc("academic_years/"+yearId),
     schoolRoot.doc("terms/"+termId),
     schoolRoot.doc("subjects/"+subjectId),
@@ -154,10 +178,12 @@ function createSchoolAcademicsService({db}) {
     const catalog=await Promise.all(refs.map(ref=>tx.get(ref)));
     if(catalog.some(doc=>!doc.exists||doc.data().schoolId!==ctx.schoolId||doc.data().status!=="active"))
       deny("failed-precondition","Offering references must be active catalog records at this school.");
-    if(catalog[1].data().yearId!==yearId)
-      deny("failed-precondition","The selected term belongs to another academic year.");
+    if(catalog[2].data().yearId!==yearId||catalog[2].data().programId!==programId)
+      deny("failed-precondition","The selected academic period belongs to another year or program.");
+    if(catalog[4].data().programId!==programId)
+      deny("failed-precondition","The selected section belongs to another academic program/division.");
     if((await tx.get(ref)).exists)deny("already-exists","This school course offering already exists.");
-    tx.create(ref,{schoolId:ctx.schoolId,yearId,termId,subjectId,sectionId,
+    tx.create(ref,{schoolId:ctx.schoolId,programId,yearId,termId,subjectId,sectionId,
       status:"active",revision:1,createdByUid:uid,createdAt:FieldValue.serverTimestamp()});
     tx.create(auditRef,audit("course_offering_created",{offeringId}));
    });
@@ -175,7 +201,8 @@ function createSchoolAcademicsService({db}) {
    const snap=await db.collection("schools/"+ctx.schoolId+"/course_offerings").limit(201).get();
    if(snap.size===201)deny("resource-exhausted","Offering list is too large. Refine the academic year before continuing.");
    return {offerings:snap.docs.filter(doc=>admin||allowed.has(doc.id))
-    .map(doc=>({offeringId:doc.id,yearId:doc.data().yearId,termId:doc.data().termId,
+    .map(doc=>({offeringId:doc.id,programId:doc.data().programId,
+      yearId:doc.data().yearId,termId:doc.data().termId,
       subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,status:doc.data().status}))};
   }
   if(input.action==="bulk_enroll_students"){
@@ -217,7 +244,7 @@ function createSchoolAcademicsService({db}) {
       }
       created++;
       tx.create(enrollmentRefs[index],{schoolId:ctx.schoolId,personId,offeringId,
-        yearId:offering.data().yearId,termId:offering.data().termId,
+        programId:offering.data().programId,yearId:offering.data().yearId,termId:offering.data().termId,
         sectionId:offering.data().sectionId,subjectId:offering.data().subjectId,
         status:"active",revision:1,createdByUid:uid,createdAt:now});
       tx.create(auditRefs[index],audit("student_bulk_enrolled",{personId,offeringId,reason}));
@@ -296,7 +323,7 @@ function createSchoolAcademicsService({db}) {
       deny("failed-precondition","Select an active school course offering.");
     if(prior.exists)deny("already-exists","The student already has an enrollment for this offering. Preserve its history.");
     tx.create(ref,{schoolId:ctx.schoolId,personId,offeringId,
-      yearId:offering.data().yearId,termId:offering.data().termId,
+      programId:offering.data().programId,yearId:offering.data().yearId,termId:offering.data().termId,
       sectionId:offering.data().sectionId,subjectId:offering.data().subjectId,
       status:"active",revision:1,createdByUid:uid,createdAt:FieldValue.serverTimestamp()});
     tx.create(auditRef,audit("student_enrolled",{personId,offeringId}));
