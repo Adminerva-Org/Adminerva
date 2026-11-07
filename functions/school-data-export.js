@@ -10,7 +10,7 @@ const {FieldPath}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 
-const EXPORT_SCHEMA="adminerva-school-continuity-export-v2";
+const EXPORT_SCHEMA="adminerva-school-continuity-export-v3";
 function deny(code,message){throw new TenantAccessError(code,message)}
 function scalar(value){
  if(value?.toMillis)return new Date(value.toMillis()).toISOString();
