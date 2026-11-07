@@ -85,8 +85,14 @@
       <label>Academic calendar reference<input class="own-field" name="calendarReference" minlength="8" maxlength="240" required placeholder="Approved school year / term structure reference"></label>
       <label>Privacy policy reference<input class="own-field" name="privacyPolicyReference" minlength="8" maxlength="240" required></label>
       <label>Retention policy reference<input class="own-field" name="retentionPolicyReference" minlength="8" maxlength="240" required></label>
+      <label>Data retention mode
+        <select class="own-field" name="retentionMode" required>
+          <option value="retain_all">Retain all historical data</option>
+          <option value="policy_defined">Follow the referenced retention schedule</option>
+        </select>
+      </label>
       <label>Backup / recovery policy reference<input class="own-field" name="backupPolicyReference" minlength="8" maxlength="240" required></label>
-      <label>Data steward role<input class="own-field" name="dataStewardRole" minlength="3" maxlength="120" required placeholder="e.g. School Data Protection / Records Officer"></label>
+      <label>Data steward role<input class="own-field" name="dataStewardRole" minlength="3" maxlength="120" required value="school_admin" placeholder="e.g. school_admin or Data Protection Officer"></label>
       <label>School AI decision
         <select class="own-field" name="aiPermission" required>
           <option value="">Choose…</option><option value="disabled">Disabled</option><option value="approved">Approved by school policy</option>
