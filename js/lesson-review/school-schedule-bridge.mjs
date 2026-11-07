@@ -3,17 +3,18 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {activePlanningSchool} from "./school-planning.mjs?v=4.0.1";
 
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolSchedules");
-function key(uid,schoolId,year,semester){
-  return "Adminerva_v4_schedule_revision_"+uid+"_"+schoolId+"_"+year+"_"+semester;
+function scopeToken(state){return state.periodId||state.semester}
+function key(uid,schoolId,year,period){
+  return "Adminerva_v4_schedule_revision_"+uid+"_"+schoolId+"_"+year+"_"+period;
 }
-function revision(uid,schoolId,year,semester){
+function revision(uid,schoolId,year,period){
   try{
-    const value=Number(localStorage.getItem(key(uid,schoolId,year,semester)));
+    const value=Number(localStorage.getItem(key(uid,schoolId,year,period)));
     return Number.isInteger(value)&&value>=0?value:null;
   }catch{return null;}
 }
-function remember(uid,schoolId,year,semester,value){
-  try{localStorage.setItem(key(uid,schoolId,year,semester),String(value));}catch{}
+function remember(uid,schoolId,year,period,value){
+  try{localStorage.setItem(key(uid,schoolId,year,period),String(value));}catch{}
 }
 function canonical(value){
   function normalize(node){
@@ -38,35 +39,37 @@ async function call(action,details){
 async function loadSchoolSchedule(){
   const state=window.adminervaScheduleBridgeState?.();
   if(!state)throw Error("The timetable editor is not ready.");
-  const {school,result}=await call("get",{schoolYear:state.schoolYear,semester:state.semester});
+  const details=state.periodId?{periodId:state.periodId}:{schoolYear:state.schoolYear,semester:state.semester};
+  const {school,result}=await call("get",details);
   if(result.revision===0&&!result.rows.length)
     throw Error("No verified-school timetable has been saved for this period.");
   const loaded=window.adminervaApplySchoolSchedule?.({
     ...result,compatibilityMode:school.compatibilityMode||"legacy_allowed"
   });
   if(loaded===false)return;
-  remember(auth.currentUser.uid,school.schoolId,state.schoolYear,state.semester,result.revision);
+  remember(auth.currentUser.uid,school.schoolId,state.schoolYear,scopeToken(state),result.revision);
 }
 async function saveSchoolSchedule(){
   const state=window.adminervaScheduleBridgeState?.();
   if(!state)throw Error("The timetable editor is not ready.");
   const school=await activePlanningSchool(),uid=auth.currentUser.uid;
-  let expected=revision(uid,school.schoolId,state.schoolYear,state.semester);
+  const token=scopeToken(state),details=state.periodId?
+    {periodId:state.periodId}:{schoolYear:state.schoolYear,semester:state.semester};
+  let expected=revision(uid,school.schoolId,state.schoolYear,token);
   if(expected===null){
-    const current=(await call("get",{schoolYear:state.schoolYear,semester:state.semester})).result;
+    const current=(await call("get",details)).result;
     if(current.revision>0){
       if(canonical(current.rows)!==canonical(state.rows))
         throw Error("A different verified-school timetable already exists for this period. Load it first before replacing anything.");
       expected=current.revision;
     }else expected=0;
-    remember(uid,school.schoolId,state.schoolYear,state.semester,expected);
+    remember(uid,school.schoolId,state.schoolYear,token,expected);
   }
-  const result=(await call("save",{
-    schoolYear:state.schoolYear,semester:state.semester,rows:state.rows,expectedRevision:expected
-  })).result;
-  remember(uid,school.schoolId,state.schoolYear,state.semester,result.revision);
+  const result=(await call("save",{...details,rows:state.rows,expectedRevision:expected})).result;
+  remember(uid,school.schoolId,state.schoolYear,token,result.revision);
   window.adminervaApplySchoolSchedule?.({
-    schoolYear:state.schoolYear,semester:state.semester,rows:state.rows,
+    schoolYear:result.schoolYear||state.schoolYear,semester:state.semester,
+    periodId:state.periodId||result.periodId||null,rows:state.rows,
     revision:result.revision,saved:true,compatibilityMode:school.compatibilityMode||"legacy_allowed"
   });
   return {...result,schoolName:school.name||school.schoolId};
