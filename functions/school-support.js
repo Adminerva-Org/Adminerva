@@ -241,9 +241,10 @@ function createSchoolSupportService({db,bucket}){
       deny("failed-precondition","The uploaded file metadata does not match its secure reservation.");
     }
     const retentionDays=Number(filePolicy.retentionDays);
-    if(![30,90,180,365].includes(retentionDays))
+    if(![0,30,90,180,365].includes(retentionDays))
       deny("failed-precondition","The school file policy has an invalid retention period.");
-    const expiresAt=Timestamp.fromMillis(Date.now()+retentionDays*86400000),
+    const expiresAt=retentionDays===0?null:
+      Timestamp.fromMillis(Date.now()+retentionDays*86400000),
       auditRef=db.collection(prefix+"support_audit").doc();
     await db.runTransaction(async tx=>{
       await currentAuthority(tx);
@@ -269,7 +270,7 @@ function createSchoolSupportService({db,bucket}){
         retentionDays,expiresAt,createdAt:now});
     });
     return {reportId,attachmentId:fileId,state:"active",
-      expiresAt:expiresAt.toMillis()};
+      expiresAt:expiresAt?.toMillis?.()||null};
   }
 
   if(input.action==="comment"){
