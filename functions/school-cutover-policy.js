@@ -2,6 +2,7 @@
 /** Shared validation for platform-owner school cutover policy decisions. */
 const SCHEMA="adminerva-v4-school-cutover-decisions-v1";
 const permissionModes=new Set(["approved","disabled"]);
+const retentionModes=new Set(["retain_all","policy_defined"]);
 const requiredReferences=[
  "institutionalAuthorityReference","calendarReference","privacyPolicyReference",
  "retentionPolicyReference","backupPolicyReference"
@@ -17,14 +18,17 @@ function normalizeCutoverDecisions(input={}){
   calendarReference:text(input.calendarReference,8,240,"Academic calendar reference"),
   privacyPolicyReference:text(input.privacyPolicyReference,8,240,"Privacy policy reference"),
   retentionPolicyReference:text(input.retentionPolicyReference,8,240,"Retention policy reference"),
+  retentionMode:String(input.retentionMode||"policy_defined"),
   backupPolicyReference:text(input.backupPolicyReference,8,240,"Backup policy reference"),
-  dataStewardRole:text(input.dataStewardRole,3,120,"Data steward role"),
+  dataStewardRole:text(input.dataStewardRole||"school_admin",3,120,"Data steward role"),
   aiPermission:String(input.aiPermission||""),
   repositoryPermission:String(input.repositoryPermission||""),
   firstAdminAcknowledged:input.firstAdminAcknowledged===true,
   schoolAdminConfigurationReviewed:input.schoolAdminConfigurationReviewed===true,
   notes:typeof input.notes==="string"?input.notes.trim().slice(0,1000):""
  };
+ if(!retentionModes.has(result.retentionMode))
+  throw Error("Data retention mode must be retain_all or policy_defined.");
  if(!permissionModes.has(result.aiPermission))
   throw Error("School AI permission must be approved or disabled.");
  if(!permissionModes.has(result.repositoryPermission))
@@ -42,6 +46,7 @@ function evaluateCutoverDecisionRecord(data,{schoolId,firstAdminUid}={}){
  if(!firstAdminUid||data?.firstAdminUid!==firstAdminUid)missing.push("first_admin_binding");
  for(const key of requiredReferences)
   if(typeof data?.[key]!=="string"||data[key].trim().length<8)missing.push(key);
+ if(!retentionModes.has(data?.retentionMode))missing.push("retentionMode");
  if(typeof data?.dataStewardRole!=="string"||data.dataStewardRole.trim().length<3)
   missing.push("dataStewardRole");
  if(!permissionModes.has(data?.aiPermission))missing.push("aiPermission");
@@ -50,4 +55,4 @@ function evaluateCutoverDecisionRecord(data,{schoolId,firstAdminUid}={}){
  if(data?.schoolAdminConfigurationReviewed!==true)missing.push("schoolAdminConfigurationReviewed");
  return {ok:missing.length===0,missing};
 }
-module.exports={SCHEMA,normalizeCutoverDecisions,evaluateCutoverDecisionRecord};
+module.exports={SCHEMA,retentionModes,normalizeCutoverDecisions,evaluateCutoverDecisionRecord};
