@@ -409,6 +409,21 @@ Practice is no longer treated as an acceptable global exception for 4.0.
 - The successful checks validate source, service contracts, migration transforms, permission rules and regression behavior; they are not a substitute for the small live pilot workflow confirmation after backend deployment.
 - No production deployment, MCS migration, compatibility switch, school-role grant or public 4.0 release was performed during this synchronization/stability pass.
 
+## MCS owner decisions and program-scoped academic calendar — November 7, 2026
+
+- The designated first MCS School Administrator is an existing verified MCS teacher account. Its Firebase UID is intentionally kept out of the public repository and must be entered only through the protected Platform Owner Console during production setup.
+- School memberships are explicitly multi-role. Granting `school_admin` preserves an existing `teacher` role; regression coverage verifies the additive role grant.
+- Academic calendars are no longer constrained to one school-wide term structure. Canonical `academic_programs` define divisions/programs, and academic periods are bound to program + academic year with a configurable type (`term`, `semester`, `quarter`, `trimester`, or `custom`) and sequence.
+- Initial MCS direction: **Basic Education = 3 terms**; **Senior High School = 2 semesters**. Legacy section/program mappings remain explicit operator decisions; migration does not infer Basic Ed versus Senior High from section names.
+- Sections and course offerings are program-scoped. Offerings, enrollments, teaching assignments, assessments, teacher analytics and V4 teacher schedules preserve the program/period relationship. V4 teacher schedules use canonical academic-period IDs; legacy S1/S2 schedules remain isolated to compatibility/migration.
+- School AI is approved for MCS subject to protected credential configuration. GitHub/external repository workflows are approved subject to the existing school/repository authorization controls.
+- MCS default data steward is `school_admin`. Platform Administrators can create non-operational governance-role definitions and assign them to selected schools; a custom steward role cannot pass cutover readiness unless it exists and is actively assigned to that school.
+- MCS retention direction is **retain all historical data**. Cutover decisions now record `retentionMode=retain_all`; optional finalized support attachments can use audited indefinite retention while abandoned upload reservations still expire.
+- Continuity export is now `adminerva-school-continuity-export-v3`, including academic programs, program-scoped periods/sections/offerings/access relationships and assessment program scope. Restore planning/apply validates the same dependency graph and rejects cross-program mismatches.
+- `docs/adminerva-4-mcs-production-decisions.md` records these non-sensitive decisions. Credentials, the first-admin UID, migration payloads and private institutional policy documents remain outside source control.
+- Focused validation after these changes: JavaScript regressions **passed**, release-source **passed**, CodeQL **passed**, JavaScript analysis **passed**, and Firestore emulator security **passed**.
+- No production role grant, MCS migration, AI credential setup, repository authorization, deployment, compatibility switch or public release was performed.
+
 ## Delivery and remaining work
 
 | Track | Actual implementation in PR #113 | Remaining before Adminerva 4.0 |
