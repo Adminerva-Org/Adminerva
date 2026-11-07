@@ -7,7 +7,7 @@ const require=createRequire(import.meta.url);
 const {
   EXPORT_SCHEMA,CATEGORY_NAMES,categoryDigest
 }=require("../functions/school-data-export.js");
-const {verifyBundle}=require("../functions/school-continuity-restore-plan.js");
+const {verifyBundle,AUTO_CATEGORIES}=require("../functions/school-continuity-restore-plan.js");
 
 const sha=value=>createHash("sha256").update(value).digest("hex");
 
@@ -44,6 +44,11 @@ test("continuity export v2 verifies top-level and per-category integrity",()=>{
   assert.doesNotThrow(()=>verifyBundle(bundle));
 });
 
+test("continuity restore orders academic programs before dependent periods and offerings",()=>{
+  assert.ok(AUTO_CATEGORIES.indexOf("academic_programs")<AUTO_CATEGORIES.indexOf("terms"));
+  assert.ok(AUTO_CATEGORIES.indexOf("academic_programs")<AUTO_CATEGORIES.indexOf("sections"));
+  assert.ok(AUTO_CATEGORIES.indexOf("terms")<AUTO_CATEGORIES.indexOf("course_offerings"));
+});
 test("continuity restore rejects category tampering even with recomputed top-level SHA",()=>{
   const bundle=bundleWith({
     people:[{id:"person_1",displayName:"Student One",kind:"student",status:"active"}]
