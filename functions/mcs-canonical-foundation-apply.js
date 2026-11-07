@@ -15,6 +15,7 @@ const {APPROVAL_SCHEMA}=require("./mcs-canonical-foundation-approval-template.js
 
 const WRITE_ACK="YES_I_APPROVE_MCS_CANONICAL_FOUNDATION";
 const RECEIPT_SCHEMA="adminerva-v4-mcs-canonical-foundation-receipt-v1";
+const PERIOD_TYPES=new Set(["term","semester","quarter","trimester","custom"]);
 function sha256(value){return createHash("sha256").update(value).digest("hex");}
 function id(value,label,max=128){
  const text=String(value||"");
@@ -49,22 +50,36 @@ function validatePlan(plan){
  return plan;
 }
 function approvedCatalog(approval){
- const out={years:new Map(),sections:new Map(),subjects:new Map(),terms:new Map()};
- for(const [key,kind] of [["years","year"],["sections","section"],["subjects","subject"],["terms","term"]]){
+ const out={programs:new Map(),years:new Map(),sections:new Map(),subjects:new Map(),terms:new Map()};
+ for(const [key,kind] of [["programs","program"],["years","year"],["sections","section"],
+  ["subjects","subject"],["terms","term"]]){
   for(const row of approval.academic?.[key]||[]){
    if(row.approved!==true)continue;
    const targetId=id(row.targetId,kind+" target",80),name=String(row.targetName||"").trim();
    if(!name||name.length>140)throw Error("Approved "+kind+" mapping needs a target name.");
+   let value={targetId,name,legacyLabel:String(row.legacyLabel||"").trim()};
+   if(key==="sections")value={...value,programId:id(row.programId,"Section academic program",80)};
+   if(key==="terms"){
+    const periodType=String(row.periodType||"").trim().toLowerCase(),sequence=Number(row.sequence);
+    if(!PERIOD_TYPES.has(periodType))throw Error("Approved academic period type is invalid.");
+    if(!Number.isInteger(sequence)||sequence<1||sequence>12)
+     throw Error("Approved academic period sequence must be between 1 and 12.");
+    value={...value,yearId:id(row.yearId,"Academic period year",80),
+      programId:id(row.programId,"Academic period program",80),periodType,sequence};
+   }
    const prior=out[key].get(targetId);
-   const value={targetId,name,legacyLabel:String(row.legacyLabel||"").trim(),
-     ...(key==="terms"?{yearId:id(row.yearId,"Term academic year",80)}:{})};
-   if(prior&&(prior.name!==value.name||(key==="terms"&&prior.yearId!==value.yearId)))
+   if(prior&&JSON.stringify(prior)!==JSON.stringify(value))
     throw Error("Multiple approved academic labels map inconsistently to "+targetId+".");
    out[key].set(targetId,value);
   }
  }
- for(const term of out.terms.values())
-  if(!out.years.has(term.yearId))throw Error("Approved term references an unapproved academic year.");
+ for(const section of out.sections.values())
+  if(!out.programs.has(section.programId))
+   throw Error("Approved section references an unapproved academic program.");
+ for(const term of out.terms.values()){
+  if(!out.years.has(term.yearId))throw Error("Approved academic period references an unapproved academic year.");
+  if(!out.programs.has(term.programId))throw Error("Approved academic period references an unapproved academic program.");
+ }
  return out;
 }
 function validateApproval(plan,planRaw,approval){
@@ -123,14 +138,18 @@ function validateApproval(plan,planRaw,approval){
  for(const row of approval.courseOfferings||[]){
   if(row.approved!==true)continue;
   const offeringId=id(row.offeringId,"Course offering",330),
-   yearId=id(row.yearId,"Academic year",80),termId=id(row.termId,"Term",80),
+   programId=id(row.programId,"Academic program",80),
+   yearId=id(row.yearId,"Academic year",80),termId=id(row.termId,"Academic period",80),
    subjectId=id(row.subjectId,"Subject",80),sectionId=id(row.sectionId,"Section",80);
-  if(!catalog.years.has(yearId)||!catalog.terms.has(termId)||
+  if(!catalog.programs.has(programId)||!catalog.years.has(yearId)||!catalog.terms.has(termId)||
      !catalog.subjects.has(subjectId)||!catalog.sections.has(sectionId))
    throw Error("Approved course offering references an unapproved academic mapping.");
-  if(catalog.terms.get(termId).yearId!==yearId)
-   throw Error("Course offering term belongs to another academic year.");
-  offerings.push({offeringId,yearId,termId,subjectId,sectionId});
+  const period=catalog.terms.get(termId),section=catalog.sections.get(sectionId);
+  if(period.yearId!==yearId||period.programId!==programId)
+   throw Error("Course offering academic period belongs to another year or program.");
+  if(section.programId!==programId)
+   throw Error("Course offering section belongs to another academic program.");
+  offerings.push({offeringId,programId,yearId,termId,subjectId,sectionId});
  }
  const duplicateOffering=new Set();
  for(const row of offerings){
@@ -167,7 +186,8 @@ async function inspectTargets(db,approved){
   if(unitStates.every(state=>["ready","already_applied"].includes(state))&&new Set(unitStates).size>1)
    rows.push({kind:"identity_unit",key:member.uid,targetPath:memberRef.path,state:"identity_partial_state"});
  }
- for(const [collection,kind,key] of [["academic_years","year","years"],["sections","section","sections"],["subjects","subject","subjects"],["terms","term","terms"]]){
+ for(const [collection,kind,key] of [["academic_programs","program","programs"],["academic_years","year","years"],
+  ["sections","section","sections"],["subjects","subject","subjects"],["terms","term","terms"]]){
   for(const row of approved.catalog[key].values()){
    const ref=db.doc("schools/"+SCHOOL_ID+"/"+collection+"/"+row.targetId),doc=await ref.get();
    rows.push({kind,key:row.targetId,targetPath:ref.path,
@@ -227,7 +247,9 @@ async function createCatalog(db,approved,collection,kind,row){
   }
   const now=FieldValue.serverTimestamp();
   tx.create(ref,{schoolId:SCHOOL_ID,name:row.name,status:"active",revision:1,
-   ...(kind==="term"?{yearId:row.yearId}:{}),
+   ...(kind==="section"?{programId:row.programId}:{}),
+   ...(kind==="term"?{yearId:row.yearId,programId:row.programId,
+     periodType:row.periodType,sequence:row.sequence}:{}),
    migration:migrationMeta(approved.planSha256,"catalog_"+kind,row.targetId),
    createdByUid:"migration",createdAt:now,updatedAt:now});
   tx.create(db.collection("schools/"+SCHOOL_ID+"/directory_audit").doc(),{
@@ -245,6 +267,7 @@ async function createOffering(db,approved,row){
    throw Error("Canonical offering target changed after preflight.");
   }
   const refs=[
+   db.doc("schools/"+SCHOOL_ID+"/academic_programs/"+row.programId),
    db.doc("schools/"+SCHOOL_ID+"/academic_years/"+row.yearId),
    db.doc("schools/"+SCHOOL_ID+"/terms/"+row.termId),
    db.doc("schools/"+SCHOOL_ID+"/subjects/"+row.subjectId),
@@ -252,7 +275,10 @@ async function createOffering(db,approved,row){
   ],catalog=await Promise.all(refs.map(item=>tx.get(item)));
   if(catalog.some(doc=>!doc.exists||doc.data().schoolId!==SCHOOL_ID||doc.data().status!=="active"))
    throw Error("Course offering catalog prerequisites are missing.");
-  if(catalog[1].data().yearId!==row.yearId)throw Error("Course offering term/year mismatch.");
+  if(catalog[2].data().yearId!==row.yearId||catalog[2].data().programId!==row.programId)
+   throw Error("Course offering academic period/year/program mismatch.");
+  if(catalog[4].data().programId!==row.programId)
+   throw Error("Course offering section/program mismatch.");
   const now=FieldValue.serverTimestamp();
   tx.create(ref,{schoolId:SCHOOL_ID,...row,status:"active",revision:1,
    migration:migrationMeta(approved.planSha256,"offering",row.offeringId),
@@ -265,7 +291,8 @@ async function createOffering(db,approved,row){
 }
 function workUnits(approved){
  const units=approved.memberships.map(member=>({kind:"identity",key:member.uid,member}));
- for(const [collection,kind,key] of [["academic_years","year","years"],["sections","section","sections"],
+ for(const [collection,kind,key] of [["academic_programs","program","programs"],
+  ["academic_years","year","years"],["sections","section","sections"],
   ["subjects","subject","subjects"],["terms","term","terms"]])
   for(const row of approved.catalog[key].values())units.push({kind:"catalog",key:row.targetId,collection,catalogKind:kind,row});
  for(const row of approved.offerings)units.push({kind:"offering",key:row.offeringId,row});
