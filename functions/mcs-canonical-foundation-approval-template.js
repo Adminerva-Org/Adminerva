@@ -43,25 +43,27 @@ function createTemplate(plan,planRaw){
    approveMembership:false,notes:""
   })),
   academic:{
+   programs:[],
    years:(plan.academicObservations?.years||[]).map(item=>({
     legacyLabel:item.legacyLabel,targetId:item.suggestedId,targetName:item.legacyLabel,approved:false
    })),
    sections:(plan.academicObservations?.sections||[]).map(item=>({
-    legacyLabel:item.legacyLabel,targetId:item.suggestedId,targetName:item.legacyLabel,approved:false
+    legacyLabel:item.legacyLabel,targetId:item.suggestedId,targetName:item.legacyLabel,
+    programId:"",approved:false
    })),
    subjects:(plan.academicObservations?.subjects||[]).map(item=>({
     legacyLabel:item.legacyLabel,targetId:item.suggestedId,targetName:item.legacyLabel,approved:false
    })),
    terms:(plan.academicObservations?.terms||[]).map(item=>({
     legacyLabel:item.legacyLabel,targetId:item.suggestedId,targetName:item.legacyLabel,
-    yearId:"",approved:false
+    yearId:"",programId:"",periodType:"term",sequence:1,approved:false
    }))
   },
   courseOfferings:[],
   unresolvedBlockers:plan.blockers||[],
   reviewItems:(plan.reviewItems||[]).map(item=>({...item,resolved:false,resolution:""})),
   reviewNotes:"",
-  warning:"UNAPPROVED TEMPLATE. This file does not grant school access or authorize canonical writes."
+  warning:"UNAPPROVED TEMPLATE. Add explicit academic programs/divisions, assign every section and academic period to one program, and define program-scoped offerings before approval. This file does not grant school access or authorize canonical writes."
  };
 }
 function main(){
