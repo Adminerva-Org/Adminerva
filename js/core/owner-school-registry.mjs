@@ -6,7 +6,7 @@ const readinessApi=httpsCallable(functions,"schoolCutoverReadiness");
 const byId=id=>document.getElementById(id);
 const status=byId("owner-status"),workspace=byId("owner-content"),
   schoolList=byId("owner-schools"),actions=byId("owner-actions");
-let selected=null,schools=[],busy=false,latestReadiness=null,latestCutoverPackage=null;
+let selected=null,schools=[],governanceRoles=[],busy=false,latestReadiness=null,latestCutoverPackage=null;
 const say=text=>status.textContent=text;
 async function execute(action,details={}){
   return (await api({action,...details})).data;
@@ -37,6 +37,7 @@ function choose(id){
   updateCutoverAvailability();
   void loadReadiness(selected.schoolId);
   void loadCutoverPackage(selected.schoolId);
+  void loadGovernanceRoles(selected.schoolId);
   void loadCutoverDecisions(selected.schoolId);
 }
 async function loadReadiness(schoolId=selected?.schoolId){
@@ -86,6 +87,35 @@ async function loadCutoverPackage(schoolId=selected?.schoolId){
   }catch(error){
     latestCutoverPackage=null;updateCutoverAvailability();
     if(selected?.schoolId===schoolId)host.textContent=error?.message||"Cutover package status could not be loaded.";
+    return null;
+  }
+}
+async function loadGovernanceRoles(schoolId=selected?.schoolId){
+  const message=byId("owner-governance-status"),select=byId("owner-governance-role-select");
+  if(!message||!select||!schoolId)return null;
+  message.textContent="Loading governance roles…";
+  try{
+    const [catalog,assigned]=await Promise.all([
+      execute("list_governance_roles"),execute("list_school_governance_roles",{schoolId})
+    ]);
+    if(selected?.schoolId!==schoolId)return null;
+    governanceRoles=(catalog.roles||[]).filter(role=>role.status==="active");
+    const assignedIds=new Set((assigned.roles||[]).filter(role=>role.status==="active").map(role=>role.roleId)),
+      previous=select.value;
+    select.replaceChildren();
+    const blank=document.createElement("option");blank.value="";blank.textContent="Choose governance role…";select.append(blank);
+    for(const role of governanceRoles){
+      const option=document.createElement("option");option.value=role.roleId;
+      option.textContent=role.displayName+" · "+role.roleId+(assignedIds.has(role.roleId)?" · assigned":"");
+      select.append(option);
+    }
+    if(governanceRoles.some(role=>role.roleId===previous))select.value=previous;
+    message.textContent=assignedIds.size?
+      assignedIds.size+" governance role(s) assigned to "+selected.displayName+".":
+      "No custom governance role is assigned to this school. School Admin remains the default data steward.";
+    return {catalog:governanceRoles,assigned:[...assignedIds]};
+  }catch(error){
+    if(selected?.schoolId===schoolId)message.textContent=error?.message||"Governance roles could not be loaded.";
     return null;
   }
 }
@@ -156,6 +186,22 @@ byId("owner-create").addEventListener("submit",event=>{
   event.preventDefault();const f=event.currentTarget,d=new FormData(f);
   void submit(f,"create_draft",{schoolId:String(d.get("schoolId")||"").trim(),
     displayName:String(d.get("displayName")||"").trim()});
+});
+byId("owner-governance-create").addEventListener("submit",event=>{
+  event.preventDefault();const f=event.currentTarget,d=new FormData(f);
+  void submit(f,"create_governance_role",{
+    roleId:String(d.get("roleId")||"").trim().toLowerCase(),
+    displayName:String(d.get("displayName")||"").trim(),
+    description:String(d.get("description")||"").trim()
+  });
+});
+byId("owner-governance-assign").addEventListener("submit",event=>{
+  event.preventDefault();if(!selected)return;
+  const f=event.currentTarget,d=new FormData(f);
+  void submit(f,"assign_governance_role",{
+    schoolId:selected.schoolId,roleId:String(d.get("roleId")||"").trim(),
+    reason:String(d.get("reason")||"").trim()
+  });
 });
 byId("owner-grant").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;
