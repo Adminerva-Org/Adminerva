@@ -19,6 +19,8 @@ export async function loadVerifiedSchoolPlanningOptions(){
     schoolYears:clean(result.schoolYears),
     terms:clean(result.terms),
     programs:clean(result.programs),
+    periodRecords:Array.isArray(result.periodRecords)?result.periodRecords:[],
+    programRecords:Array.isArray(result.programRecords)?result.programRecords:[],
     offerings:Array.isArray(result.offerings)?result.offerings:[]
   };
 }
