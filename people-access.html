@@ -201,25 +201,35 @@
       <p class="pa-muted">School-specific teaching assignments. Enrolling a person does not alter earlier grades or term history.</p>
       <div class="pa-academic-grid">
         <details class="pa-card">
-          <summary style="font-weight:750;cursor:pointer">1. Academic catalog (year, term, subject, section)</summary>
+          <summary style="font-weight:750;cursor:pointer">1. Academic catalog (program, year, period, subject, section)</summary>
           <form id="pa-catalog-form" style="padding-top:1rem">
             <label>Catalog type<select class="pa-field" name="kind" id="pa-catalog-kind">
-              <option value="academic_years">Academic year</option><option value="terms">Term</option>
+              <option value="academic_programs">Academic program / division</option>
+              <option value="academic_years">Academic year</option>
+              <option value="terms">Academic period</option>
               <option value="subjects">Subject</option><option value="sections">Section</option>
             </select></label>
-            <label>Stable ID<input class="pa-field" name="recordId" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,79}" maxlength="80" placeholder="e.g. 2026-2027" required></label>
+            <label>Stable ID<input class="pa-field" name="recordId" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,79}" maxlength="80" placeholder="e.g. basic-ed or 2026-2027" required></label>
             <label>Display name<input class="pa-field" name="name" maxlength="140" required></label>
-            <label id="pa-term-year" hidden>Term's academic year<select class="pa-field" name="yearId" data-catalog="academic_years"></select></label>
+            <label id="pa-catalog-program" hidden>Academic program / division<select class="pa-field" name="programId" data-catalog="academic_programs"></select></label>
+            <label id="pa-term-year" hidden>Academic year<select class="pa-field" name="yearId" data-catalog="academic_years"></select></label>
+            <label id="pa-period-type" hidden>Period type<select class="pa-field" name="periodType">
+              <option value="term">Term</option><option value="semester">Semester</option>
+              <option value="quarter">Quarter</option><option value="trimester">Trimester</option>
+              <option value="custom">Custom</option>
+            </select></label>
+            <label id="pa-period-sequence" hidden>Period sequence<input class="pa-field" type="number" name="sequence" min="1" max="12" step="1" value="1"></label>
             <button class="pa-action" type="submit">Create catalog record</button>
           </form>
         </details>
         <details class="pa-card">
           <summary style="font-weight:750;cursor:pointer">2. Create course offering</summary>
           <form id="pa-offering-form" style="padding-top:1rem">
+            <label>Academic program / division<select class="pa-field" name="programId" data-catalog="academic_programs" required></select></label>
             <label>Academic year<select class="pa-field" name="yearId" data-catalog="academic_years" required></select></label>
-            <label>Term<select class="pa-field" name="termId" data-catalog="terms" required></select></label>
+            <label>Academic period<select class="pa-field" name="termId" data-offering-period required></select></label>
             <label>Subject<select class="pa-field" name="subjectId" data-catalog="subjects" required></select></label>
-            <label>Section<select class="pa-field" name="sectionId" data-catalog="sections" required></select></label>
+            <label>Section<select class="pa-field" name="sectionId" data-offering-section required></select></label>
             <button class="pa-action" type="submit">Create class offering</button>
           </form>
         </details>
