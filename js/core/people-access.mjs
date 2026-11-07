@@ -5,7 +5,7 @@ const api=httpsCallable(getFunctions(app,"asia-southeast1"),"peopleDirectory");
 const rosterSourceApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolRosterSource");
 const get=id=>document.getElementById(id);
 const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
-let schoolTerms=[],schoolSections=[],schoolOfferings=[];
+let schoolPrograms=[],schoolTerms=[],schoolSections=[],schoolOfferings=[];
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
 let after=null,loadingPeople=false,pendingWrite=false;
 let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false;
@@ -29,7 +29,7 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
-    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
+    workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolPrograms=[];schoolTerms=[];schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
     get("pa-reconcile-results")?.replaceChildren();for(const id of ["pa-reconcile-integrity","pa-reconcile-attention","pa-reconcile-review","pa-reconcile-total"]){if(get(id))get(id).textContent="—";}if(get("pa-reconcile-status"))get("pa-reconcile-status").textContent="Loading school relationship checks…";
     get("pa-more").hidden=true;
   },
@@ -444,13 +444,19 @@ function populateMultiOptions(selector,items,idField,nameField="name"){
     }
   }
 }
-function refreshTerms(){
-  const year=get("pa-offering-form").elements.yearId.value;
-  populateOptions('#pa-offering-form [data-catalog="terms"]',
-    schoolTerms.filter(item=>item.yearId===year),"id");
+function refreshAcademicScope(){
+  const form=get("pa-offering-form"),programId=form.elements.programId.value,
+    yearId=form.elements.yearId.value;
+  populateOptions("[data-offering-period]",
+    schoolTerms.filter(item=>item.programId===programId&&item.yearId===yearId)
+      .sort((a,b)=>(Number(a.sequence)||0)-(Number(b.sequence)||0)||a.name.localeCompare(b.name)),
+    "id");
+  populateOptions("[data-offering-section]",
+    schoolSections.filter(item=>item.programId===programId).sort((a,b)=>a.name.localeCompare(b.name)),
+    "id");
 }
 async function loadAcademics(){
-  const kinds=["academic_years","terms","subjects","sections"];
+  const kinds=["academic_programs","academic_years","terms","subjects","sections"];
   const [catalogs,offerings,people,teachers]=await Promise.all([
     Promise.all(kinds.map(kind=>performAcademic("list_catalog",{kind}))),
     performAcademic("list_offerings"),
@@ -458,11 +464,14 @@ async function loadAcademics(){
     performAcademic("list_teachers")
   ]);
   for(let i=0;i<kinds.length;i++){
-    if(kinds[i]==="terms"){schoolTerms=catalogs[i].items||[];continue;}
-    if(kinds[i]==="sections")schoolSections=catalogs[i].items||[];
-    populateOptions('[data-catalog="'+kinds[i]+'"]',catalogs[i].items||[],"id");
+    const items=catalogs[i].items||[];
+    if(kinds[i]==="academic_programs")schoolPrograms=items;
+    if(kinds[i]==="terms"){schoolTerms=items;continue;}
+    if(kinds[i]==="sections"){schoolSections=items;continue;}
+    populateOptions('[data-catalog="'+kinds[i]+'"]',items,"id");
   }
-  refreshTerms();
+  populateOptions('[data-catalog="academic_programs"]',schoolPrograms,"id");
+  refreshAcademicScope();
   schoolOfferings=offerings.offerings||[];
   populateOptions("[data-offering]",schoolOfferings,"offeringId","offeringId");
   populateOptions("[data-student-person]",people.students||[],"personId");
@@ -497,10 +506,18 @@ get("pa-bulk-assignment-form").addEventListener("submit",event=>{
       await loadAcademics();
     });
 });
-get("pa-offering-form").elements.yearId.addEventListener("change",refreshTerms);
+get("pa-offering-form").elements.yearId.addEventListener("change",refreshAcademicScope);
+get("pa-offering-form").elements.programId.addEventListener("change",refreshAcademicScope);
 get("pa-catalog-kind").addEventListener("change",event=>{
-  get("pa-term-year").hidden=event.target.value!=="terms";
-  get("pa-term-year").querySelector("select").required=event.target.value==="terms";
+  const kind=event.target.value,isPeriod=kind==="terms",needsProgram=isPeriod||kind==="sections";
+  get("pa-term-year").hidden=!isPeriod;
+  get("pa-term-year").querySelector("select").required=isPeriod;
+  get("pa-catalog-program").hidden=!needsProgram;
+  get("pa-catalog-program").querySelector("select").required=needsProgram;
+  get("pa-period-type").hidden=!isPeriod;
+  get("pa-period-type").querySelector("select").required=isPeriod;
+  get("pa-period-sequence").hidden=!isPeriod;
+  get("pa-period-sequence").querySelector("input").required=isPeriod;
 });
 async function submitAcademic(form,action,fields,message){
   if(pendingWrite)return;
@@ -520,13 +537,16 @@ get("pa-catalog-form").addEventListener("submit",event=>{
   event.preventDefault();const form=event.currentTarget,d=new FormData(form);
   void submitAcademic(form,"create_catalog",{
     kind:String(d.get("kind")||""),recordId:String(d.get("recordId")||"").trim(),
-    name:String(d.get("name")||"").trim(),yearId:String(d.get("yearId")||"")||null
+    name:String(d.get("name")||"").trim(),yearId:String(d.get("yearId")||"")||null,
+    programId:String(d.get("programId")||"")||null,
+    periodType:String(d.get("periodType")||"term"),
+    sequence:Number(d.get("sequence")||1)
   },"Academic catalog record created.");
 });
 get("pa-offering-form").addEventListener("submit",event=>{
   event.preventDefault();const form=event.currentTarget,d=new FormData(form);
   void submitAcademic(form,"create_offering",Object.fromEntries(
-    ["yearId","termId","subjectId","sectionId"].map(k=>[k,String(d.get(k)||"")])
+    ["programId","yearId","termId","subjectId","sectionId"].map(k=>[k,String(d.get(k)||"")])
   ),"Class offering created without altering historical grades.");
 });
 get("pa-enrollment-form").addEventListener("submit",event=>{
