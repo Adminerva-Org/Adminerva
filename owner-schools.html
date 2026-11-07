@@ -76,6 +76,22 @@
       <button type="submit" class="own-button">Record successful cutover package</button>
     </form>
    </section>
+   <details style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#fff">
+    <summary style="font-weight:750;cursor:pointer">Platform governance roles</summary>
+    <p class="own-muted">Governance roles document policy responsibility only. They do not grant teacher, School Admin, or Platform Admin permissions.</p>
+    <p id="owner-governance-status" class="own-muted">Select a school to review governance roles.</p>
+    <form id="owner-governance-create" style="margin-top:.75rem">
+      <label>Role ID<input class="own-field" name="roleId" pattern="[a-z][a-z0-9-]{1,63}" maxlength="64" required placeholder="e.g. data-protection-officer"></label>
+      <label>Display name<input class="own-field" name="displayName" minlength="3" maxlength="120" required></label>
+      <label>Description<textarea class="own-field" name="description" maxlength="500" rows="2"></textarea></label>
+      <button type="submit" class="own-button">Create governance role</button>
+    </form>
+    <form id="owner-governance-assign" style="margin-top:1rem">
+      <label>Governance role<select class="own-field" name="roleId" id="owner-governance-role-select" required></select></label>
+      <label>Assignment reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+      <button type="submit" class="own-button">Assign role to selected school</button>
+    </form>
+   </details>
    <section style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#fff">
     <h3 style="font-weight:750">Cutover owner decisions</h3>
     <p class="own-muted">These references are required before V4-only readiness can pass. They document the approved MCS operating decisions without storing student records in the owner console.</p>
