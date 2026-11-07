@@ -27,14 +27,18 @@ function renderPolicy(){
   const form=el("filePolicyForm"),p=policy||{};
   form.elements.enabled.checked=Boolean(p.enabled);
   form.elements.supportAttachmentsEnabled.checked=Boolean(p.supportAttachmentsEnabled);
-  if(p.retentionDays)form.elements.retentionDays.value=String(p.retentionDays);
+  if(p.retentionDays!==null&&p.retentionDays!==undefined)form.elements.retentionDays.value=String(p.retentionDays);
   if(p.maxBytes)form.elements.maxBytes.value=String(p.maxBytes);
   el("filePolicySummary").textContent=!p.configured?
     "No file policy has been configured. Browser Storage remains closed.":
     (p.supportAttachmentsEnabled?
-      "Support attachments enabled · "+p.retentionDays+" day retention · "+
-        Math.round(p.maxBytes/1048576)+" MB per file. Existing finalized files expire according to their recorded retention date.":
-      "File policy configured but support attachments are disabled. Existing finalized files remain readable to authorized report participants until their recorded expiry.");
+      "Support attachments enabled · "+(Number(p.retentionDays)===0?
+        "retained until policy changes":
+        p.retentionDays+" day retention")+" · "+
+        Math.round(p.maxBytes/1048576)+" MB per file. "+(Number(p.retentionDays)===0?
+          "Finalized files have no automatic retention expiry.":
+          "Existing finalized files expire according to their recorded retention date."):
+      "File policy configured but support attachments are disabled. Existing finalized files remain governed by their recorded retention setting.");
 }
 function fillList(id,items){
   const host=el(id);host.replaceChildren();
