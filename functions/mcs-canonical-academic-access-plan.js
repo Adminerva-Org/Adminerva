@@ -95,7 +95,8 @@ function buildAcademicAccessPlan({foundationPlan,foundationPlanRaw,foundationApp
      enrollmentId,
      targetPath:"schools/"+SCHOOL_ID+"/enrollments/"+enrollmentId,
      personId:person.personId,studentUid:member.uid,offeringId:offering.offeringId,
-     yearId:offering.yearId,termId:offering.termId,sectionId:offering.sectionId,subjectId:offering.subjectId,
+     programId:offering.programId,yearId:offering.yearId,termId:offering.termId,
+     sectionId:offering.sectionId,subjectId:offering.subjectId,
      status:active?"active":"ended",requiresApproval:true,
      source:{legacyStudentId:history.studentId,legacySection:sectionLabel,legacyYear:yearLabel||null,
        legacyStatus:clean(history.status,40)||"active"}
@@ -147,7 +148,8 @@ function buildAcademicAccessPlan({foundationPlan,foundationPlanRaw,foundationApp
       assignmentId,
       targetPath:"schools/"+SCHOOL_ID+"/staff_assignments/"+assignmentId,
       teacherUid:member.uid,personId:person.personId,offeringId:offering.offeringId,
-      yearId:offering.yearId,termId:offering.termId,sectionId:offering.sectionId,subjectId:offering.subjectId,
+      programId:offering.programId,yearId:offering.yearId,termId:offering.termId,
+     sectionId:offering.sectionId,subjectId:offering.subjectId,
       status:"active",requiresApproval:true,
       source:{legacyStaffRecordId:scope.recordId,legacySection:sectionLabel,
        legacySubjects:Array.isArray(scope.subjects)?scope.subjects:[]}
