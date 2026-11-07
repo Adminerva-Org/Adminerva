@@ -82,6 +82,14 @@ function createSchoolAcademicsService({db}) {
     schoolYears:[...yearNames.values()].sort((a,b)=>a.localeCompare(b)),
     terms:[...termNames.values()].sort((a,b)=>a.localeCompare(b)),
     programs:[...programNames.values()].sort((a,b)=>a.localeCompare(b)),
+    periodRecords:terms.filter(doc=>doc.exists&&termNames.has(doc.id)).map(doc=>({
+      termId:doc.id,name:termNames.get(doc.id),yearId:doc.data().yearId,
+      programId:doc.data().programId,periodType:doc.data().periodType||"term",
+      sequence:Number(doc.data().sequence)||1
+    })).sort((a,b)=>a.sequence-b.sequence||a.name.localeCompare(b.name)),
+    programRecords:programs.filter(doc=>doc.exists&&programNames.has(doc.id)).map(doc=>({
+      programId:doc.id,name:programNames.get(doc.id)
+    })).sort((a,b)=>a.name.localeCompare(b.name)),
     offerings:active.map(doc=>({
       offeringId:doc.id,
       programId:doc.data().programId,programName:programNames.get(doc.data().programId)||null,
