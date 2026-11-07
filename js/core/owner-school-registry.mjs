@@ -98,8 +98,8 @@ async function loadCutoverDecisions(schoolId=selected?.schoolId){
     if(selected?.schoolId!==schoolId)return null;
     const data=result.decisions||{};
     for(const name of ["institutionalAuthorityReference","calendarReference","privacyPolicyReference",
-      "retentionPolicyReference","backupPolicyReference","dataStewardRole","aiPermission",
-      "repositoryPermission","notes"]){
+      "retentionPolicyReference","retentionMode","backupPolicyReference","dataStewardRole",
+      "aiPermission","repositoryPermission","notes"]){
       const field=form.elements.namedItem(name);if(field)field.value=data[name]||"";
     }
     for(const name of ["firstAdminAcknowledged","schoolAdminConfigurationReviewed"]){
@@ -208,8 +208,9 @@ byId("owner-cutover-decisions").addEventListener("submit",event=>{
     calendarReference:String(d.get("calendarReference")||"").trim(),
     privacyPolicyReference:String(d.get("privacyPolicyReference")||"").trim(),
     retentionPolicyReference:String(d.get("retentionPolicyReference")||"").trim(),
+    retentionMode:String(d.get("retentionMode")||""),
     backupPolicyReference:String(d.get("backupPolicyReference")||"").trim(),
-    dataStewardRole:String(d.get("dataStewardRole")||"").trim(),
+    dataStewardRole:String(d.get("dataStewardRole")||"school_admin").trim(),
     aiPermission:String(d.get("aiPermission")||""),
     repositoryPermission:String(d.get("repositoryPermission")||""),
     firstAdminAcknowledged:d.get("firstAdminAcknowledged")==="on",
