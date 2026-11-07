@@ -16,6 +16,9 @@ function phrase(value,min,max,label){
     fail("invalid-argument",label+" is missing or outside permitted length.");
   return value.trim();
 }
+function addSchoolAdminRole(roles){
+  return [...new Set([...(Array.isArray(roles)?roles:[]),"school_admin"])];
+}
 function governanceRoleId(value){
   const role=String(value||"").trim().toLowerCase();
   if(!/^[a-z][a-z0-9-]{1,63}$/.test(role))
@@ -253,7 +256,7 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         if(member.exists && member.data().status==="suspended")
           fail("failed-precondition","Use reviewed membership recovery for a suspended account.");
         const previous=member.exists?member.data():null;
-        const roles=[...new Set([...(Array.isArray(previous?.roles)?previous.roles:[]),"school_admin"])];
+        const roles=addSchoolAdminRole(previous?.roles);
         const revision=(previous?.revision||0)+1;
         const grant={schoolId,status:"active",roles,revision,
           updatedAt:FieldValue.serverTimestamp(),updatedByUid:uid};
@@ -416,4 +419,4 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
     fail("invalid-argument","Unknown platform school operation.");
   };
 }
-module.exports={createPlatformSchoolService,ownerContext};
+module.exports={addSchoolAdminRole,createPlatformSchoolService,ownerContext};
