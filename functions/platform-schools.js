@@ -16,6 +16,12 @@ function phrase(value,min,max,label){
     fail("invalid-argument",label+" is missing or outside permitted length.");
   return value.trim();
 }
+function governanceRoleId(value){
+  const role=String(value||"").trim().toLowerCase();
+  if(!/^[a-z][a-z0-9-]{1,63}$/.test(role))
+    fail("invalid-argument","Governance role ID must use 2–64 lowercase letters, digits or hyphens.");
+  return role;
+}
 async function ownerContext({db,request}) {
   const uid=verifiedUid(request),doc=await db.doc("platform_admins/"+uid).get();
   if(!doc.exists||doc.data().status!=="active"||doc.data().role!=="platform_admin")
@@ -85,9 +91,54 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         compatibilityMode:doc.data().compatibilityMode||"legacy_allowed"
       }))};
     }
+    if(action==="list_governance_roles"){
+      const snap=await db.collection("platform_governance_roles").orderBy("displayName").limit(100).get();
+      return {roles:snap.docs.map(doc=>({
+        roleId:doc.id,displayName:doc.data().displayName,description:doc.data().description||"",
+        status:doc.data().status||"active"
+      }))};
+    }
+    if(action==="create_governance_role"){
+      const roleId=governanceRoleId(input.roleId),
+        displayName=phrase(input.displayName,3,120,"Governance role name"),
+        description=typeof input.description==="string"?input.description.trim().slice(0,500):"",
+        ref=db.doc("platform_governance_roles/"+roleId),auditRef=db.collection("platform_audit").doc();
+      await db.runTransaction(async tx=>{
+        if((await tx.get(ref)).exists)fail("already-exists","That governance role already exists.");
+        const now=FieldValue.serverTimestamp();
+        tx.create(ref,{displayName,description,status:"active",revision:1,
+          createdByUid:uid,createdAt:now,updatedAt:now});
+        tx.create(auditRef,{actorUid:uid,action:"platform_governance_role_created",
+          roleId,displayName,createdAt:now});
+      });
+      return {roleId,displayName,status:"active"};
+    }
     const schoolId=checkedSchoolId(input.schoolId),schoolRef=db.doc("platform_schools/"+schoolId);
     const auditRef=db.collection("platform_audit").doc();
     const cutoverDecisionRef=db.doc("platform_schools/"+schoolId+"/private_config/cutover_decisions");
+    if(action==="list_school_governance_roles"){
+      const snap=await db.collection("platform_schools/"+schoolId+"/governance_roles").limit(100).get();
+      return {schoolId,roles:snap.docs.map(doc=>({
+        roleId:doc.id,status:doc.data().status||"active",assignedAt:doc.data().assignedAt?.toMillis?.()||null
+      }))};
+    }
+    if(action==="assign_governance_role"){
+      const roleId=governanceRoleId(input.roleId),reason=phrase(input.reason,12,500,"Assignment reason"),
+        roleRef=db.doc("platform_governance_roles/"+roleId),
+        assignmentRef=db.doc("platform_schools/"+schoolId+"/governance_roles/"+roleId);
+      await db.runTransaction(async tx=>{
+        const [school,role]=await Promise.all([tx.get(schoolRef),tx.get(roleRef)]);
+        if(!school.exists||!["draft","active","suspended"].includes(school.data().state))
+          fail("failed-precondition","The school must exist and must not be archived.");
+        if(!role.exists||role.data().status!=="active")
+          fail("failed-precondition","Choose an active platform governance role.");
+        const now=FieldValue.serverTimestamp();
+        tx.set(assignmentRef,{schoolId,roleId,status:"active",assignedByUid:uid,assignedAt:now},{merge:false});
+        tx.create(auditRef,{schoolId,actorUid:uid,action:"school_governance_role_assigned",
+          roleId,reason,createdAt:now});
+      });
+      return {schoolId,roleId,status:"active"};
+    }
     if(action==="get_cutover_decisions"){
       const [school,decision]=await Promise.all([schoolRef.get(),cutoverDecisionRef.get()]);
       if(!school.exists)fail("not-found","The school does not exist.");
@@ -154,6 +205,13 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         if(!admin.exists||admin.data().schoolId!==schoolId||admin.data().status!=="active"||
            !Array.isArray(admin.data().roles)||!admin.data().roles.includes("school_admin"))
           fail("failed-precondition","The first school administrator grant is not active.");
+        if(decisions.dataStewardRole!=="school_admin"){
+          const stewardRole=governanceRoleId(decisions.dataStewardRole),
+            assignment=await tx.get(db.doc("platform_schools/"+schoolId+"/governance_roles/"+stewardRole));
+          if(!assignment.exists||assignment.data().status!=="active")
+            fail("failed-precondition","Assign the selected data-steward governance role to this school first.");
+          decisions.dataStewardRole=stewardRole;
+        }
         const current=await tx.get(cutoverDecisionRef),now=FieldValue.serverTimestamp(),
           revision=(current.data()?.revision||0)+1;
         tx.set(cutoverDecisionRef,{schema:CUTOVER_DECISION_SCHEMA,schoolId,firstAdminUid,
