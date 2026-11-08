@@ -142,12 +142,22 @@ function renderMismatchRecords(data){
     const intro=document.createElement("p");intro.className="pilot-muted";
     intro.textContent="Compare these names with the protected current roster. Exclude only a duplicate, test, old or otherwise out-of-scope record.";
     details.append(intro);
-    for(const record of data.sectionRecords.filter(row=>row.sectionId===section.sectionId)){
+    const sectionRecords=data.sectionRecords.filter(row=>row.sectionId===section.sectionId)
+      .sort((a,b)=>Number(Boolean(b.rosterReviewHint))-Number(Boolean(a.rosterReviewHint))||
+        String(a.displayName).localeCompare(String(b.displayName)));
+    for(const record of sectionRecords){
       const row=document.createElement("div");row.className="pilot-roster-row";
       const info=document.createElement("div");const name=document.createElement("strong");name.textContent=record.displayName;
       const meta=document.createElement("p");meta.textContent=(record.linked?"Account linked":"Identity unresolved")+" · "+record.legacyStudentId+
         (record.excluded?" · excluded from pilot":"");
       info.append(name,meta);
+      if(record.rosterReviewHint==="protected_roster_no_name_match"){
+        const hint=document.createElement("p");
+        hint.style.cssText="margin:.35rem 0 0;color:#9a3412;font-weight:800;font-size:.82rem";
+        hint.textContent="Likely extra/duplicate: this live record has no matching student name in the protected current roster.";
+        info.append(hint);
+        row.style.cssText="border:2px solid #fb923c;background:#fff7ed;border-radius:10px;padding:.75rem;margin:.5rem 0";
+      }
       const button=document.createElement("button");button.type="button";
       button.className=record.excluded?"secondary":"danger";
       button.textContent=record.excluded?"Restore to pilot":"Exclude from pilot";
