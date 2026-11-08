@@ -36,11 +36,35 @@ async function main(){
    return !(u&&u.emailVerified&&!u.disabled);
  });
  let uniqueCrossProfile=0,githubBacked=0,withGithubUsername=0,sameNameCandidate=0,ambiguous=0,noCandidate=0;
+ const allAuthUsers=[];
+ let pageToken;
+ do{
+   const page=await auth.listUsers(1000,pageToken);
+   allAuthUsers.push(...page.users);pageToken=page.pageToken;
+ }while(pageToken);
+ const authByGithubProviderUid=new Map();
+ for(const user of allAuthUsers){
+   for(const provider of user.providerData||[]){
+     if(provider.providerId==="github.com"&&provider.uid)authByGithubProviderUid.set(String(provider.uid),user);
+   }
+ }
+ let exactGithubProviderMatches=0,githubUsernameLookupFailures=0;
  const bySection={};
  for(const row of unresolved){
    const section=sectionOf(row.d);bySection[section]??={unresolved:0,unique:0,ambiguous:0,none:0};bySection[section].unresolved++;
    const gh=norm(row.d.githubUsername);
    if(gh)withGithubUsername++;
+   if(gh){
+     try{
+       const response=await fetch("https://api.github.com/users/"+encodeURIComponent(gh),{
+         headers:{"Accept":"application/vnd.github+json","User-Agent":"Adminerva-MCS-identity-diagnostic"}
+       });
+       if(response.ok){
+         const profile=await response.json(),matched=authByGithubProviderUid.get(String(profile.id));
+         if(matched&&!matched.disabled)exactGithubProviderMatches++;
+       }else githubUsernameLookupFailures++;
+     }catch{githubUsernameLookupFailures++}
+   }
    const candidateDocs=rows.filter(other=>{
      if(other.id===row.id)return false;
      const e=validEmail(other.d.email);if(!e)return false;
@@ -72,6 +96,8 @@ async function main(){
    uniqueCrossProfile,
    uniqueCandidatesBackedByGithubProvider:githubBacked,
    uniqueCandidatesAlsoSameName:sameNameCandidate,
+   exactGithubProviderMatches,
+   githubUsernameLookupFailures,
    ambiguous,
    noCandidate,
    bySection
