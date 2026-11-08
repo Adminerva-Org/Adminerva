@@ -319,6 +319,26 @@ async function main(){
  if(rosterMismatch)fail("pilot_roster_count_mismatch");
  if(duplicateCurrentAccounts.length)fail("duplicate_current_identity");
 
+ // Some legacy rows were created through older/direct onboarding paths and
+ // may not carry a human display name even though their Firebase identity does.
+ // Use the verified Auth display name only in this in-memory migration source;
+ // never rewrite the legacy student record.
+ let authDisplayNamesUsed=0;
+ for(const row of selected){
+   if(legacyDisplayName(row.data))continue;
+   const uid=identityByStudent.get(row.id);
+   if(!uid)fail("student_identity_missing_for_display_name");
+   const user=await auth.getUser(uid);
+   const authName=String(user?.displayName||"").trim().replace(/\s+/g," ");
+   if(authName.length<2)fail("student_display_name_requires_manual_review");
+   row.data={...row.data,displayName:authName};
+   authDisplayNamesUsed++;
+ }
+ console.log("MCS_SHS_DISPLAY_NAME_ENRICHMENT "+JSON.stringify({
+   authDisplayNamesUsed,
+   legacyStudentDocumentsChanged:0
+ }));
+
  const teacherCandidates=(identity.candidates||[]).filter(candidate=>
    (candidate.rolesToReview||[]).includes("teacher")&&
    (candidate.legacyStaffScopes||[]).some(scope=>scope.role==="teacher"&&scope.status==="active"));
