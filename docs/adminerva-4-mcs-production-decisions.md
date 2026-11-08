@@ -76,14 +76,16 @@ Initial section scope:
 
 ### Initial pilot teaching assignments
 
-The teacher-led pilot currently covers two subjects:
+The teacher-led pilot uses a four-subject sequence across the full Senior High academic year:
 
-| Level | Subject | Sections |
-| --- | --- | --- |
-| Grade 11 TechPro (ICT) | Computer Programming 1 | St. Isidore of Seville; St. Carlo Acutis; St. Sebastian |
-| Grade 12 TVL (ICT), old curriculum | Computer Programming 2 | St. Philip the Apostle; St. Anselm of Canterbury |
+| Level | Semester | Subject | Sections |
+| --- | --- | --- | --- |
+| Grade 11 TechPro (ICT) | Semester 1 | Computer Programming 1 | St. Isidore of Seville; St. Carlo Acutis; St. Sebastian |
+| Grade 11 TechPro (ICT) | Semester 2 | Computer Programming 2 | St. Isidore of Seville; St. Carlo Acutis; St. Sebastian |
+| Grade 12 TVL (ICT), old curriculum | Semester 1 | Computer Programming 3 | St. Philip the Apostle; St. Anselm of Canterbury |
+| Grade 12 TVL (ICT), old curriculum | Semester 2 | Computer Programming 4 | St. Philip the Apostle; St. Anselm of Canterbury |
 
-These subject-to-section mappings are part of the provisional pilot configuration. The canonical system still requires each course offering to bind to one academic period, so Semester 1 / Semester 2 offering records remain pending until the actual period coverage of each subject is confirmed. No semester assignment is inferred from the subject number.
+The same pilot teacher handles all four subject/semester groups. This resolves the course-offering period binding: each section receives one Computer Programming offering per semester. The live academic-year identifier remains configurable rather than being embedded in these reusable pilot defaults.
 
 For canonical section records, the grade/track remains part of the display name so similarly named sections in another level cannot collide. Basic Education records discovered during migration must remain preserved and explicitly excluded/deferred rather than being marked inactive or silently remapped.
 

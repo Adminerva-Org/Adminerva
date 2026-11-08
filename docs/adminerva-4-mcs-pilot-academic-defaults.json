@@ -79,7 +79,8 @@
   },
   "guardrails": [
     "This file is non-secret planning input and does not authorize production writes.",
-    "The subject-to-section mapping is approved for pilot planning, but semester-specific course offerings remain pending until the teaching period is confirmed.",
+    "The four Computer Programming subjects form a two-semester yearly sequence: 1→2 for Grade 11 and 3→4 for Grade 12.",
+    "Course-offering templates are defined by semester and section; the live academic-year ID remains configurable.",
     "Do not mark institutional readiness attestations true from this file.",
     "Do not switch MCS to v4_only solely from this limited pilot scope.",
     "Preserve deferred legacy records until an authorized institutional review decides their migration scope."
@@ -89,6 +90,7 @@
       "subjectId": "computer-programming-1",
       "name": "Computer Programming 1",
       "level": "Grade 11",
+      "semester": 1,
       "intendedSections": [
         "shs-g11-techpro-ict-st-isidore-of-seville",
         "shs-g11-techpro-ict-st-carlo-acutis",
@@ -98,7 +100,29 @@
     {
       "subjectId": "computer-programming-2",
       "name": "Computer Programming 2",
+      "level": "Grade 11",
+      "semester": 2,
+      "intendedSections": [
+        "shs-g11-techpro-ict-st-isidore-of-seville",
+        "shs-g11-techpro-ict-st-carlo-acutis",
+        "shs-g11-techpro-ict-st-sebastian"
+      ]
+    },
+    {
+      "subjectId": "computer-programming-3",
+      "name": "Computer Programming 3",
       "level": "Grade 12",
+      "semester": 1,
+      "intendedSections": [
+        "shs-g12-tvl-ict-st-philip-the-apostle",
+        "shs-g12-tvl-ict-st-anselm-of-canterbury"
+      ]
+    },
+    {
+      "subjectId": "computer-programming-4",
+      "name": "Computer Programming 4",
+      "level": "Grade 12",
+      "semester": 2,
       "intendedSections": [
         "shs-g12-tvl-ict-st-philip-the-apostle",
         "shs-g12-tvl-ict-st-anselm-of-canterbury"
@@ -107,8 +131,10 @@
   ],
   "teacherPilotScope": {
     "role": "teacher",
-    "teaches": [
+    "yearlySequence": [
       {
+        "level": "Grade 11",
+        "semester": 1,
         "subjectId": "computer-programming-1",
         "sectionIds": [
           "shs-g11-techpro-ict-st-isidore-of-seville",
@@ -117,13 +143,105 @@
         ]
       },
       {
+        "level": "Grade 11",
+        "semester": 2,
         "subjectId": "computer-programming-2",
+        "sectionIds": [
+          "shs-g11-techpro-ict-st-isidore-of-seville",
+          "shs-g11-techpro-ict-st-carlo-acutis",
+          "shs-g11-techpro-ict-st-sebastian"
+        ]
+      },
+      {
+        "level": "Grade 12",
+        "semester": 1,
+        "subjectId": "computer-programming-3",
+        "sectionIds": [
+          "shs-g12-tvl-ict-st-philip-the-apostle",
+          "shs-g12-tvl-ict-st-anselm-of-canterbury"
+        ]
+      },
+      {
+        "level": "Grade 12",
+        "semester": 2,
+        "subjectId": "computer-programming-4",
         "sectionIds": [
           "shs-g12-tvl-ict-st-philip-the-apostle",
           "shs-g12-tvl-ict-st-anselm-of-canterbury"
         ]
       }
-    ],
-    "semesterBinding": "pending_confirmation"
-  }
+    ]
+  },
+  "courseOfferingTemplates": [
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 1,
+      "sectionId": "shs-g11-techpro-ict-st-isidore-of-seville",
+      "subjectId": "computer-programming-1"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 1,
+      "sectionId": "shs-g11-techpro-ict-st-carlo-acutis",
+      "subjectId": "computer-programming-1"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 1,
+      "sectionId": "shs-g11-techpro-ict-st-sebastian",
+      "subjectId": "computer-programming-1"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 2,
+      "sectionId": "shs-g11-techpro-ict-st-isidore-of-seville",
+      "subjectId": "computer-programming-2"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 2,
+      "sectionId": "shs-g11-techpro-ict-st-carlo-acutis",
+      "subjectId": "computer-programming-2"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 2,
+      "sectionId": "shs-g11-techpro-ict-st-sebastian",
+      "subjectId": "computer-programming-2"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 1,
+      "sectionId": "shs-g12-tvl-ict-st-philip-the-apostle",
+      "subjectId": "computer-programming-3"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 1,
+      "sectionId": "shs-g12-tvl-ict-st-anselm-of-canterbury",
+      "subjectId": "computer-programming-3"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 2,
+      "sectionId": "shs-g12-tvl-ict-st-philip-the-apostle",
+      "subjectId": "computer-programming-4"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 2,
+      "sectionId": "shs-g12-tvl-ict-st-anselm-of-canterbury",
+      "subjectId": "computer-programming-4"
+    }
+  ]
 }

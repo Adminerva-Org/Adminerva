@@ -44,8 +44,8 @@ Do not repeat the mixed-schools question. Retain source document identifiers, ex
 
 - Initial canonical academic configuration is limited to **Senior High School ICT**: Grade 11 TechPro (ICT) sections St. Isidore of Seville, St. Carlo Acutis and St. Sebastian; Grade 12 TVL (ICT, old curriculum) sections St. Philip the Apostle and St. Anselm of Canterbury.
 - Basic Education is intentionally deferred from the initial pilot. Deferred records remain preserved and must not be treated as inactive merely because they are outside the first pilot scope.
-- Pilot subject mapping is now explicit: **Computer Programming 1** for the three Grade 11 TechPro (ICT) sections and **Computer Programming 2** for the two Grade 12 TVL (ICT, old curriculum) sections.
-- Semester-specific course-offering records remain pending; Adminerva will not infer Semester 1 or Semester 2 from the subject number alone.
+- Pilot subject sequencing is now explicit across the full academic year: Grade 11 TechPro (ICT) uses **Computer Programming 1** in Semester 1 and **Computer Programming 2** in Semester 2; Grade 12 TVL (ICT, old curriculum) uses **Computer Programming 3** in Semester 1 and **Computer Programming 4** in Semester 2.
+- Semester-specific course-offering templates are defined for all five pilot sections. The live academic-year ID remains configurable and is supplied when the school creates/activates that year's catalog.
 - Academic years now support editable start/end month defaults. MCS uses **July → May** by default; exact dates remain an institutional calendar decision.
 - The provisional teaching escalation chain is Teacher → Strand/Level Leader → Subject Area Coordinator → Senior High Coordinator → appropriate administration/office. It is recorded for future governance/workflow modeling only and does not grant RBAC authority.
 - Institutional authority, privacy, retention, backup/recovery and complete organizational references remain unavailable to the teacher-led pilot and are explicitly **pending**, not fabricated.
