@@ -682,7 +682,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
       link(advanced,"Repository context ↗","repobank.html?"+contextParams);
       link(advanced,"Standalone contribution tools ↗","contribution-inspector.html?"+params);
       link(advanced,"Standalone group tools ↗","group-inspector.html?"+params);
-      state.panels=mountReviewPanels({root:el("integratedEvidence"),student:{...student,id:studentId,repoUrl:base},assessment:{...assessment,id:taskId},evidence:approvedEvidence,requests:state.requests,signal:state.abort.signal,
+      state.panels=mountReviewPanels({root:el("integratedEvidence"),student:{...student,id:studentId,repoUrl:approvedEvidence?.repository||base},assessment:{...assessment,id:taskId},evidence:approvedEvidence,requests:state.requests,signal:state.abort.signal,
         onEvidenceChange:record=>{if(session!==state.token)return;applyEvidenceState(record);state.panels?.updateEvidence(record);window.dispatchEvent(new CustomEvent("adminerva:manual-grade-saved"));}});
     }
     if(assessment.schemaVersion!==2)void sourceLinks(session,base,owner,repo,login,checkpointSha);
