@@ -89,8 +89,8 @@ async function main(){
      gh=await response.json();githubCache.set(username,gh);
    }
    const user=authByGithubProviderUid.get(String(gh.id));
-   if(!user||user.disabled||user.emailVerified!==true||!validEmail(user.email))
-     throw Error("GitHub provider identity does not resolve to one active verified Firebase user.");
+   if(!user||user.disabled||!validEmail(user.email))
+     throw Error("GitHub provider identity does not resolve to one active Firebase user with a primary email.");
    const prior=uidOwner.get(user.uid);
    if(prior&&prior!==row.id)throw Error("GitHub provider match collides with another included pilot record.");
    uidOwner.set(user.uid,row.id);
