@@ -5,5 +5,6 @@
   "productionAuthorized": false,
   "startPilot": false,
   "v4Only": false,
-  "historicalMigration": false
+  "historicalMigration": false,
+  "execution": 2
 }
