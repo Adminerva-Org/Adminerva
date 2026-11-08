@@ -62,7 +62,7 @@ function createSchoolAI({db,FieldValue,Timestamp,resolveUser,fetchImpl=fetch}){
         // Revalidate the school-admin grant immediately before changing the key.
         const school=await tx.get(db.doc("platform_schools/"+ctx.schoolId));
         const member=await tx.get(db.doc(prefix+"memberships/"+ctx.uid));
-        if(!school.exists||school.data().state!=="active"||!member.exists||
+        if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
            member.data().status!=="active"||member.data().schoolId!==ctx.schoolId||
            !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
           problem("permission-denied","Your school administration access changed.");
@@ -135,7 +135,7 @@ function createSchoolAI({db,FieldValue,Timestamp,resolveUser,fetchImpl=fetch}){
         tx.get(db.doc(prefix+"memberships/"+ctx.uid)),
         tx.get(resultRef),tx.get(usageRef),tx.get(slotsRef),tx.get(connection)
       ]);
-      if(!school.exists||school.data().state!=="active"||!member.exists||
+      if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
          member.data().status!=="active"||member.data().schoolId!==ctx.schoolId||
          !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher"))
         problem("permission-denied","Your teaching access changed before the AI request started.");
