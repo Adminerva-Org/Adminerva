@@ -9,6 +9,7 @@ on:
       - "firestore.rules"
       - "firestore.indexes.json"
       - "firebase.json"
+      - "ops/mcs-shs-pilot-trigger.json"
 
 permissions:
   contents: read
@@ -44,9 +45,11 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
       - name: Deploy Functions and Firestore indexes
+        if: ${{ !contains(github.event.head_commit.message || '', '[mcs-shs-pilot-operator]') }}
         run: npx -y firebase-tools@14 deploy --project reporeview-e7ca4 --only firestore:rules,firestore:indexes,functions --non-interactive
 
       - name: Run protected MCS migration inventory dry-run
+        if: ${{ !contains(github.event.head_commit.message || '', '[mcs-shs-pilot-operator]') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -54,6 +57,7 @@ jobs:
           node functions/mcs-migration-dryrun.js --output="$RUNNER_TEMP/mcs-dryrun.json"
 
       - name: Reconcile verified MCS identities without granting access
+        if: ${{ !contains(github.event.head_commit.message || '', '[mcs-shs-pilot-operator]') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -61,6 +65,7 @@ jobs:
           node functions/mcs-identity-candidates.js --output="$RUNNER_TEMP/mcs-identity.json"
 
       - name: Verify four populated MCS SHS pilot sections
+        if: ${{ !contains(github.event.head_commit.message || '', '[mcs-shs-pilot-operator]') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -141,7 +146,13 @@ jobs:
           }
           NODE
 
+      - name: Execute protected four-section MCS SHS migration
+        if: ${{ contains(github.event.head_commit.message || '', '[mcs-shs-pilot-operator]') }}
+        env:
+          NODE_PATH: ${{ github.workspace }}/functions/node_modules
+        run: node scripts/mcs-shs-pilot-live-execute.cjs
+
       - name: Remove protected MCS working files
         if: always()
         shell: bash
-        run: rm -f "$RUNNER_TEMP/mcs-dryrun.json" "$RUNNER_TEMP/mcs-identity.json"
+        run: rm -f "$RUNNER_TEMP/mcs-dryrun.json" "$RUNNER_TEMP/mcs-identity.json" "$RUNNER_TEMP/firebase-service-account.json"
