@@ -423,7 +423,7 @@ async function main(){
  };
  if((foundation.blockers||[]).length)fail("foundation_identity_blocker");
  if((foundation.reviewItems||[]).length)fail("foundation_manual_review_required");
- if(foundation.people.length!==168||foundation.memberships.length!==168)fail("foundation_identity_count_changed");
+ if(foundation.people.length!==(expectedTotal+1)||foundation.memberships.length!==(expectedTotal+1))fail("foundation_identity_count_changed");
  if(foundation.people.some(row=>row.status!=="active"))fail("foundation_contains_inactive_person");
  if(foundation.people.some(row=>/^(Student|Staff)\s+[A-Za-z0-9_-]+$/.test(row.displayName||"")))
    fail("foundation_display_name_requires_review");
@@ -435,7 +435,7 @@ async function main(){
    academicYear:ACADEMIC_YEAR,activeSectionIds:[...ACTIVE_SECTION_IDS],
    pendingSectionIds:[...PENDING_SECTION_IDS],rosterReference:"protected_drive_snapshot_2026-11-08",
    acknowledgements:{limitedScopeReviewed:true,rosterReferenceReviewed:true,productionNotAuthorized:true},
-   notes:"Four populated SHS ICT sections only. St. Sebastian and historical content remain deferred."
+   notes:"Four populated SHS ICT sections only. Reviewed live roster includes legitimate post-snapshot/direct-Firebase admissions. St. Sebastian and historical content remain deferred."
  };
  const foundationApproval=approveFoundation(createPilotTemplate(foundation,foundationRaw,operator,defaults));
  if((foundationApproval.unresolvedBlockers||[]).length)fail("foundation_approval_blocker");
@@ -452,7 +452,7 @@ async function main(){
  accessPlan.generatedAt=sourceSnapshotAt;
  if((accessPlan.blockers||[]).length)fail("academic_access_blocker");
  if((accessPlan.reviewItems||[]).length)fail("academic_access_manual_review_required");
- if(accessPlan.enrollments.length!==334)fail("pilot_enrollment_count_changed");
+ if(accessPlan.enrollments.length!==(expectedTotal*2))fail("pilot_enrollment_count_changed");
  if(accessPlan.assignments.length!==8)fail("pilot_teacher_assignment_count_changed");
  if(accessPlan.enrollments.some(row=>row.status!=="active"))fail("pilot_contains_ended_enrollment");
  const accessRaw=rawJson(accessPlan);
