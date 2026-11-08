@@ -79,8 +79,51 @@
   },
   "guardrails": [
     "This file is non-secret planning input and does not authorize production writes.",
+    "The subject-to-section mapping is approved for pilot planning, but semester-specific course offerings remain pending until the teaching period is confirmed.",
     "Do not mark institutional readiness attestations true from this file.",
     "Do not switch MCS to v4_only solely from this limited pilot scope.",
     "Preserve deferred legacy records until an authorized institutional review decides their migration scope."
-  ]
+  ],
+  "subjects": [
+    {
+      "subjectId": "computer-programming-1",
+      "name": "Computer Programming 1",
+      "level": "Grade 11",
+      "intendedSections": [
+        "shs-g11-techpro-ict-st-isidore-of-seville",
+        "shs-g11-techpro-ict-st-carlo-acutis",
+        "shs-g11-techpro-ict-st-sebastian"
+      ]
+    },
+    {
+      "subjectId": "computer-programming-2",
+      "name": "Computer Programming 2",
+      "level": "Grade 12",
+      "intendedSections": [
+        "shs-g12-tvl-ict-st-philip-the-apostle",
+        "shs-g12-tvl-ict-st-anselm-of-canterbury"
+      ]
+    }
+  ],
+  "teacherPilotScope": {
+    "role": "teacher",
+    "teaches": [
+      {
+        "subjectId": "computer-programming-1",
+        "sectionIds": [
+          "shs-g11-techpro-ict-st-isidore-of-seville",
+          "shs-g11-techpro-ict-st-carlo-acutis",
+          "shs-g11-techpro-ict-st-sebastian"
+        ]
+      },
+      {
+        "subjectId": "computer-programming-2",
+        "sectionIds": [
+          "shs-g12-tvl-ict-st-philip-the-apostle",
+          "shs-g12-tvl-ict-st-anselm-of-canterbury"
+        ]
+      }
+    ],
+    "semesterBinding": "pending_confirmation"
+  }
 }

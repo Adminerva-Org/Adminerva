@@ -74,6 +74,17 @@ Initial section scope:
 | Grade 12 TVL (ICT), old curriculum | St. Philip the Apostle |
 | Grade 12 TVL (ICT), old curriculum | St. Anselm of Canterbury |
 
+### Initial pilot teaching assignments
+
+The teacher-led pilot currently covers two subjects:
+
+| Level | Subject | Sections |
+| --- | --- | --- |
+| Grade 11 TechPro (ICT) | Computer Programming 1 | St. Isidore of Seville; St. Carlo Acutis; St. Sebastian |
+| Grade 12 TVL (ICT), old curriculum | Computer Programming 2 | St. Philip the Apostle; St. Anselm of Canterbury |
+
+These subject-to-section mappings are part of the provisional pilot configuration. The canonical system still requires each course offering to bind to one academic period, so Semester 1 / Semester 2 offering records remain pending until the actual period coverage of each subject is confirmed. No semester assignment is inferred from the subject number.
+
 For canonical section records, the grade/track remains part of the display name so similarly named sections in another level cannot collide. Basic Education records discovered during migration must remain preserved and explicitly excluded/deferred rather than being marked inactive or silently remapped.
 
 Because the compatibility switch is school-wide, this limited pilot scope does **not** by itself authorize MCS to enter `v4_only`. MCS should remain `legacy_allowed` while these Senior High classes pilot the canonical workflows. A later school-wide cutover requires the remaining active legacy population to be migrated, explicitly excluded as historical-only, or otherwise reviewed by the authorized school administration.
