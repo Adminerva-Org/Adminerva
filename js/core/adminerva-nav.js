@@ -34,6 +34,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const isSuperAdmin = userRole === "superadmin";
   const isSchoolAdmin = userRole === "schooladmin" || root.dataset.schoolAdmin === "true";
   const isPlatformOwner = userRole === "platformowner" || root.dataset.platformAdmin === "true";
+  const hasSchoolTeacher = root.dataset.schoolTeacher === "true";
+  const hasSchoolStudent = root.dataset.schoolStudent === "true";
+  const v4OnlyTeacher = root.dataset.v4OnlyTeacher === "true";
+  const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
   currentRole = isStudent ? "student" : isSuperAdmin ? "superadmin" :
     isPlatformOwner && !isSchoolAdmin ? "platformowner" : isSchoolAdmin ? "schooladmin" : "teacher";
   const homeRoute = isStudent ? "student-home.html" :
@@ -47,9 +51,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Destinations and page labels share one source, including bookmarked tools.
   const studentGroups = {
-    student: { name: "Project Hub", items: [
+    student: { name: "Project Hub", items: v4OnlyStudent ? [
+      ["school-student-projects", "Projects · 4.0", "school-student-projects.html"],
+      ["school-student-assessments", "Assignments · 4.0", "school-student-assessments.html"],
+      ["school-student-settings", "Account settings · 4.0", "school-student-settings.html"]
+    ] : [
       ["dashboard", "Projects", "student-dashboard.html"],
       ["assessments", "Assignments", "student-assessments.html"],
+      ...(hasSchoolStudent ? [
+        ["school-student-projects", "Projects · 4.0 pilot", "school-student-projects.html"],
+        ["school-student-assessments", "Assignments · 4.0 pilot", "school-student-assessments.html"],
+        ["school-student-settings", "Account settings · 4.0 pilot", "school-student-settings.html"]
+      ] : []),
       ["settings", "Account settings", "student-settings.html"]
     ] },
     "student-practice": { name: "Practice Lab", items: [
@@ -61,15 +74,22 @@ document.addEventListener("DOMContentLoaded", () => {
     ] }
   };
   const staffGroups = [
-    { name: "Assessment", area: "educator", items: [
+    { name: "Assessment", area: "educator", items: v4OnlyTeacher ? [
+      ["library-v4", "Assessment library · 4.0", "teacher-assessment-library.html"],
+      ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
+    ] : [
       ["studio", "Assessment studio", "assessment-studio.html"],
+      ...(hasSchoolTeacher ? [["library-v4", "Assessment library · 4.0 pilot", "teacher-assessment-library.html"]] : []),
       ["submissions", "Submission inbox", "submissions.html"],
       ["studio-submissions", "Studio project submissions", "studio-submissions.html"],
       ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
     ] },
-    { name: "Review & grade", area: "educator", items: [
+    { name: "Review & grade", area: "educator", items: v4OnlyTeacher ? [
+      ["gradebook-v4", "Gradebook · 4.0", "school-gradebook.html"]
+    ] : [
       ["repofetch", "Review & grade", "repofetch.html"],
       ["gradebook", "Gradebook", "gradebook.html"],
+      ...(hasSchoolTeacher ? [["gradebook-v4", "Gradebook · 4.0 pilot", "school-gradebook.html"]] : []),
       ["repobank", "Repository investigation", "repobank.html"]
     ] },
     { name: "Insights", area: "educator", items: [
