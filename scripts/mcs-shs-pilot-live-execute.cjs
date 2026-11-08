@@ -194,6 +194,20 @@ async function main(){
    }
  }
  const unresolvedStudents=selected.filter(row=>!identityByStudent.has(row.id));
+ const unresolvedBySection=Object.fromEntries(activeSections.map(section=>[section.sectionId,0]));
+ const mappedBySection=Object.fromEntries(activeSections.map(section=>[section.sectionId,0]));
+ for(const row of selected){
+   const section=selectedSectionById.get(row.id);
+   if(!section)continue;
+   if(identityByStudent.has(row.id))mappedBySection[section.sectionId]++;
+   else unresolvedBySection[section.sectionId]++;
+ }
+ console.log("MCS_SHS_IDENTITY_LINKAGE "+JSON.stringify({
+   selectedRows:selected.length,
+   verifiedLinkedRows:identityByStudent.size,
+   unresolvedSelectedRows:unresolvedStudents.length,
+   mappedBySection,unresolvedBySection
+ }));
  if(unresolvedStudents.length)fail("student_identity_unresolved");
  const duplicateCurrentAccounts=(identity.candidates||[]).filter(candidate=>
    (candidate.legacyStudentIds||[]).filter(row=>selectedSectionById.has(row.studentId)).length>1);
