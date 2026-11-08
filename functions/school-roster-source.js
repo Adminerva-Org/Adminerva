@@ -85,7 +85,7 @@ async function fetchPublishedCsv(url,{fetchImpl=fetch}={}){
 function createSchoolRosterSourceService({db,fetchImpl=fetch}){
   return async request=>{
     const input=request.data||{};
-    const ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["school_admin"]});
+    const ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["school_admin"],allowDraftAdmin:true});
     const prefix="schools/"+ctx.schoolId+"/";
     const ref=db.doc(prefix+"private_config/roster_source");
     const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
