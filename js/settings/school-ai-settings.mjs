@@ -1,5 +1,5 @@
 import {auth} from "../core/firebase-core.js?v=1.3.0";
-import {schoolAIStatus,configureSchoolAI} from "../core/school-ai.mjs?v=1.3.0";
+import {schoolAIStatus,configureSchoolAI} from "../core/school-ai.mjs?v=1.3.1";
 const root=document.getElementById("panel-security");
 if(root){
   const card=document.createElement("section");card.id="schoolAIConnection";card.className="rounded-2xl border border-cyan-200 bg-cyan-50 p-5 mb-6";
