@@ -1,0 +1,316 @@
+{
+  "schema": "adminerva-v4-mcs-pilot-academic-defaults-v1",
+  "schoolId": "mcs-manila",
+  "status": "provisional_teacher_supplied",
+  "rolloutMode": "limited_senior_high_pilot",
+  "compatibilityModeDuringPilot": "legacy_allowed",
+  "academicYearDefaults": {
+    "startMonth": 7,
+    "endMonth": 5,
+    "exactDates": "institutionally_configurable"
+  },
+  "programs": [
+    {
+      "programId": "senior-high",
+      "name": "Senior High School",
+      "periodStructure": {
+        "periodType": "semester",
+        "count": 2
+      }
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "shs-g11-techpro-ict-st-isidore-of-seville",
+      "programId": "senior-high",
+      "level": "Grade 11",
+      "track": "TechPro (ICT)",
+      "name": "Grade 11 TechPro (ICT) — St. Isidore of Seville",
+      "legacyLabels": [
+        "St. Isidore of Seville"
+      ]
+    },
+    {
+      "sectionId": "shs-g11-techpro-ict-st-carlo-acutis",
+      "programId": "senior-high",
+      "level": "Grade 11",
+      "track": "TechPro (ICT)",
+      "name": "Grade 11 TechPro (ICT) — St. Carlo Acutis",
+      "legacyLabels": [
+        "St. Carlo Acutis"
+      ]
+    },
+    {
+      "sectionId": "shs-g11-techpro-ict-st-sebastian",
+      "programId": "senior-high",
+      "level": "Grade 11",
+      "track": "TechPro (ICT)",
+      "name": "Grade 11 TechPro (ICT) — St. Sebastian",
+      "legacyLabels": [
+        "St. Sebastian"
+      ]
+    },
+    {
+      "sectionId": "shs-g12-tvl-ict-st-philip-the-apostle",
+      "programId": "senior-high",
+      "level": "Grade 12",
+      "track": "TVL (ICT)",
+      "curriculum": "old",
+      "name": "Grade 12 TVL (ICT) — St. Philip the Apostle",
+      "legacyLabels": [
+        "St. Philip the Apostle"
+      ]
+    },
+    {
+      "sectionId": "shs-g12-tvl-ict-st-anselm-of-canterbury",
+      "programId": "senior-high",
+      "level": "Grade 12",
+      "track": "TVL (ICT)",
+      "curriculum": "old",
+      "name": "Grade 12 TVL (ICT) — St. Anselm of Canterbury",
+      "legacyLabels": [
+        "St. Anselm of Canterbury"
+      ]
+    }
+  ],
+  "deferredScope": {
+    "basicEducation": true,
+    "interpretation": "not_configured_yet_not_inactive"
+  },
+  "provisionalEscalationChain": [
+    "teacher",
+    "strand_or_level_leader",
+    "subject_area_coordinator",
+    "senior_high_coordinator",
+    "appropriate_admin_or_office"
+  ],
+  "institutionalReferences": {
+    "institutionalAuthority": "pending",
+    "academicCalendar": "pending",
+    "privacyPolicy": "pending",
+    "retentionPolicy": "pending",
+    "backupRecoveryPolicy": "pending",
+    "organizationChart": "pending"
+  },
+  "guardrails": [
+    "This file is non-secret planning input and does not authorize production writes.",
+    "The four Computer Programming subjects form a two-semester yearly sequence: 1→2 for Grade 11 and 3→4 for Grade 12.",
+    "Course-offering templates are defined by semester and section; the live academic-year ID remains configurable.",
+    "Do not mark institutional readiness attestations true from this file.",
+    "Do not switch MCS to v4_only solely from this limited pilot scope.",
+    "Preserve deferred legacy records until an authorized institutional review decides their migration scope."
+  ],
+  "subjects": [
+    {
+      "subjectId": "computer-programming-1",
+      "name": "Computer Programming 1",
+      "level": "Grade 11",
+      "semester": 1,
+      "intendedSections": [
+        "shs-g11-techpro-ict-st-isidore-of-seville",
+        "shs-g11-techpro-ict-st-carlo-acutis",
+        "shs-g11-techpro-ict-st-sebastian"
+      ]
+    },
+    {
+      "subjectId": "computer-programming-2",
+      "name": "Computer Programming 2",
+      "level": "Grade 11",
+      "semester": 2,
+      "intendedSections": [
+        "shs-g11-techpro-ict-st-isidore-of-seville",
+        "shs-g11-techpro-ict-st-carlo-acutis",
+        "shs-g11-techpro-ict-st-sebastian"
+      ]
+    },
+    {
+      "subjectId": "computer-programming-3",
+      "name": "Computer Programming 3",
+      "level": "Grade 12",
+      "semester": 1,
+      "intendedSections": [
+        "shs-g12-tvl-ict-st-philip-the-apostle",
+        "shs-g12-tvl-ict-st-anselm-of-canterbury"
+      ]
+    },
+    {
+      "subjectId": "computer-programming-4",
+      "name": "Computer Programming 4",
+      "level": "Grade 12",
+      "semester": 2,
+      "intendedSections": [
+        "shs-g12-tvl-ict-st-philip-the-apostle",
+        "shs-g12-tvl-ict-st-anselm-of-canterbury"
+      ]
+    }
+  ],
+  "teacherPilotScope": {
+    "role": "teacher",
+    "yearlySequence": [
+      {
+        "level": "Grade 11",
+        "semester": 1,
+        "subjectId": "computer-programming-1",
+        "sectionIds": [
+          "shs-g11-techpro-ict-st-isidore-of-seville",
+          "shs-g11-techpro-ict-st-carlo-acutis",
+          "shs-g11-techpro-ict-st-sebastian"
+        ]
+      },
+      {
+        "level": "Grade 11",
+        "semester": 2,
+        "subjectId": "computer-programming-2",
+        "sectionIds": [
+          "shs-g11-techpro-ict-st-isidore-of-seville",
+          "shs-g11-techpro-ict-st-carlo-acutis",
+          "shs-g11-techpro-ict-st-sebastian"
+        ]
+      },
+      {
+        "level": "Grade 12",
+        "semester": 1,
+        "subjectId": "computer-programming-3",
+        "sectionIds": [
+          "shs-g12-tvl-ict-st-philip-the-apostle",
+          "shs-g12-tvl-ict-st-anselm-of-canterbury"
+        ]
+      },
+      {
+        "level": "Grade 12",
+        "semester": 2,
+        "subjectId": "computer-programming-4",
+        "sectionIds": [
+          "shs-g12-tvl-ict-st-philip-the-apostle",
+          "shs-g12-tvl-ict-st-anselm-of-canterbury"
+        ]
+      }
+    ]
+  },
+  "courseOfferingTemplates": [
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 1,
+      "sectionId": "shs-g11-techpro-ict-st-isidore-of-seville",
+      "subjectId": "computer-programming-1"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 1,
+      "sectionId": "shs-g11-techpro-ict-st-carlo-acutis",
+      "subjectId": "computer-programming-1"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 1,
+      "sectionId": "shs-g11-techpro-ict-st-sebastian",
+      "subjectId": "computer-programming-1"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 2,
+      "sectionId": "shs-g11-techpro-ict-st-isidore-of-seville",
+      "subjectId": "computer-programming-2"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 2,
+      "sectionId": "shs-g11-techpro-ict-st-carlo-acutis",
+      "subjectId": "computer-programming-2"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 2,
+      "sectionId": "shs-g11-techpro-ict-st-sebastian",
+      "subjectId": "computer-programming-2"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 1,
+      "sectionId": "shs-g12-tvl-ict-st-philip-the-apostle",
+      "subjectId": "computer-programming-3"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 1,
+      "sectionId": "shs-g12-tvl-ict-st-anselm-of-canterbury",
+      "subjectId": "computer-programming-3"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 2,
+      "sectionId": "shs-g12-tvl-ict-st-philip-the-apostle",
+      "subjectId": "computer-programming-4"
+    },
+    {
+      "programId": "senior-high",
+      "periodType": "semester",
+      "semester": 2,
+      "sectionId": "shs-g12-tvl-ict-st-anselm-of-canterbury",
+      "subjectId": "computer-programming-4"
+    }
+  ],
+  "rosterReference": {
+    "status": "protected_drive_snapshot_available",
+    "capturedDate": "2026-11-08",
+    "sourcePurpose": "teacher-collected pre-pilot roster cross-check; not authoritative live enrollment",
+    "populatedResponses": 168,
+    "uniqueAccountEmails": 168,
+    "duplicateAccountEmails": 0,
+    "pilotSectionCounts": {
+      "shs-g11-techpro-ict-st-isidore-of-seville": 44,
+      "shs-g11-techpro-ict-st-carlo-acutis": 34,
+      "shs-g11-techpro-ict-st-sebastian": 0,
+      "shs-g12-tvl-ict-st-philip-the-apostle": 45,
+      "shs-g12-tvl-ict-st-anselm-of-canterbury": 44
+    },
+    "rowsOutsidePilotSections": 1,
+    "sectionFieldNormalization": {
+      "note": "Some form responses include a club selection in the same multi-select field as the section.",
+      "additionalSelectionRows": {
+        "shs-g11-techpro-ict-st-isidore-of-seville": 11,
+        "shs-g11-techpro-ict-st-carlo-acutis": 8,
+        "shs-g12-tvl-ict-st-philip-the-apostle": 4,
+        "shs-g12-tvl-ict-st-anselm-of-canterbury": 1
+      },
+      "rule": "Match the canonical section token independently from club/activity selections; do not require exact full-cell equality."
+    },
+    "stSebastian": "pending_teacher_or_authorized_roster_source",
+    "privacy": "Names and email addresses remain only in the protected roster source/copy and are intentionally excluded from this public repository."
+  },
+  "operationalPilot": {
+    "activeSectionIds": [
+      "shs-g11-techpro-ict-st-isidore-of-seville",
+      "shs-g11-techpro-ict-st-carlo-acutis",
+      "shs-g12-tvl-ict-st-philip-the-apostle",
+      "shs-g12-tvl-ict-st-anselm-of-canterbury"
+    ],
+    "pendingSectionIds": [
+      "shs-g11-techpro-ict-st-sebastian"
+    ],
+    "migrationScope": [
+      "verified identity linkage",
+      "school people and memberships",
+      "Senior High academic catalog and semester offerings",
+      "student enrollments for active pilot sections",
+      "pilot teacher course assignments"
+    ],
+    "deferredMigration": [
+      "historical assessments",
+      "historical evidence and grades",
+      "teacher planning history",
+      "Practice history",
+      "Basic Education",
+      "St. Sebastian students until a reviewed roster/source is available"
+    ]
+  }
+}

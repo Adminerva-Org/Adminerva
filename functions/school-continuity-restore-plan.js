@@ -1,0 +1,282 @@
+"use strict";
+/**
+ * Read-only restore planner for Adminerva school continuity exports.
+ *
+ * Memberships/roles are never proposed for automatic restore. The planner
+ * validates bundle integrity, binds restoration to the same school ID, and
+ * classifies existing canonical targets as ready/identical/conflict.
+ */
+const {initializeApp,getApps,applicationDefault}=require("firebase-admin/app");
+const {getFirestore}=require("firebase-admin/firestore");
+const {readFileSync,writeFileSync}=require("node:fs");
+const {createHash}=require("node:crypto");
+const {EXPORT_SCHEMA,definitions,categoryDigest}=require("./school-data-export.js");
+const {rowKey}=require("./school-academics.js");
+
+const PLAN_SCHEMA="adminerva-school-continuity-restore-plan-v1";
+const AUTO_CATEGORIES=[
+ "people","academic_programs","academic_years","terms","subjects","sections","course_offerings",
+ "enrollments","staff_assignments","student_repository_configs","assessments","student_grades","support_reports"
+];
+const sha=value=>createHash("sha256").update(value).digest("hex");
+function arg(args,name){
+ const value=args.find(item=>item.startsWith("--"+name+"="))?.slice(name.length+3);
+ if(!value||!value.startsWith("/")||value.includes("\0"))
+  throw Error("Provide --"+name+" as a restricted absolute path.");
+ return value;
+}
+function read(path,label){
+ const raw=readFileSync(path);let data;
+ try{data=JSON.parse(raw.toString("utf8"));}catch{throw Error(label+" is not valid JSON.");}
+ return {raw,data};
+}
+function exportPayload(bundle){
+ const {sha256:_,...payload}=bundle||{};return payload;
+}
+function verifyBundle(bundle){
+ if(!bundle||bundle.schema!==EXPORT_SCHEMA||typeof bundle.schoolId!=="string"||
+    !/^[a-z0-9][a-z0-9_-]{1,63}$/.test(bundle.schoolId))
+  throw Error("Use a valid Adminerva school continuity export.");
+ if(typeof bundle.sha256!=="string"||!/^[a-f0-9]{64}$/.test(bundle.sha256))
+  throw Error("Continuity export has no valid SHA-256 integrity value.");
+ const digest=sha(JSON.stringify(exportPayload(bundle)));
+ if(digest!==bundle.sha256)throw Error("Continuity export integrity check failed.");
+ if(!bundle.categories||typeof bundle.categories!=="object"||Array.isArray(bundle.categories))
+  throw Error("Continuity export categories are missing.");
+ const counts=bundle.sourceManifest?.counts,integrity=bundle.sourceManifest?.categoryIntegrity;
+ if(!counts||typeof counts!=="object"||!integrity||typeof integrity!=="object")
+  throw Error("Continuity export category-integrity manifest is missing.");
+ for(const category of Object.keys(definitions)){
+  const rows=bundle.categories[category],saved=integrity[category];
+  if(!Array.isArray(rows))
+   throw Error("Continuity export category is missing: "+category);
+  if(Number(counts[category])!==rows.length||!saved||saved.count!==rows.length||
+     typeof saved.sha256!=="string"||!/^[a-f0-9]{64}$/.test(saved.sha256))
+   throw Error("Continuity export category metadata is invalid: "+category);
+  if(categoryDigest(rows)!==saved.sha256)
+   throw Error("Continuity export category integrity check failed: "+category);
+ }
+ return {schoolId:bundle.schoolId,digest};
+}
+function normalize(value){
+ if(value?.toMillis)return new Date(value.toMillis()).toISOString();
+ if(Array.isArray(value))return value.map(normalize);
+ if(value&&typeof value==="object"){
+  const result={};for(const [key,item] of Object.entries(value))result[key]=normalize(item);return result;
+ }
+ return value===undefined?null:value;
+}
+function comparable(category,row){
+ const def=definitions[category],data={};
+ for(const key of def.fields)if(row[key]!==undefined)data[key]=normalize(row[key]);
+ return data;
+}
+function validateId(value,label){
+ if(typeof value!=="string"||!/^[A-Za-z0-9_.:@+-]{1,330}$/.test(value))
+  throw Error("Invalid "+label+" in continuity export.");
+ return value;
+}
+function validateRows(bundle){
+ const blockers=[],reviewItems=[],seen=new Set();
+ for(const category of Object.keys(definitions)){
+  for(const row of bundle.categories[category]){
+   try{
+    validateId(row.id,category+" record ID");
+    const key=category+"/"+row.id;
+    if(seen.has(key))throw Error("Duplicate continuity record ID.");
+    seen.add(key);
+    if(category==="terms"){
+     validateId(row.yearId,"academic period year ID");validateId(row.programId,"academic period program ID");
+     if(!["term","semester","quarter","trimester","custom"].includes(row.periodType)||
+        !Number.isInteger(row.sequence)||row.sequence<1||row.sequence>12)
+      throw Error("Invalid academic period type or sequence.");
+    }
+    if(category==="sections")validateId(row.programId,"section program ID");
+    if(category==="course_offerings")
+     for(const [key,label] of [["programId","academic program"],["yearId","academic year"],
+      ["termId","academic period"],["subjectId","subject"],["sectionId","section"]])
+      validateId(row[key],label+" ID");
+    if(category==="enrollments"){
+     validateId(row.personId,"enrollment person ID");validateId(row.offeringId,"enrollment offering ID");
+    }
+    if(category==="staff_assignments"){
+     validateId(row.teacherUid,"teacher UID");validateId(row.offeringId,"teacher assignment offering ID");
+    }
+    if(category==="student_repository_configs"){
+     validateId(row.personId,"repository person ID");validateId(row.studentUid,"repository student UID");
+     validateId(row.offeringId,"repository offering ID");
+    }
+    if(category==="assessments"){
+     validateId(row.ownerUid,"assessment owner UID");validateId(row.offeringId,"assessment offering ID");
+     if(row.reviewerUid!==undefined&&row.reviewerUid!==null&&row.reviewerUid!=="")
+      validateId(row.reviewerUid,"assessment reviewer UID");
+    }
+    if(category==="student_grades"){
+     if(row.status!=="published")throw Error("Continuity restore accepts published grades only.");
+     validateId(row.taskId,"grade assessment ID");validateId(row.personId,"grade person ID");
+     validateId(row.studentUid,"grade student UID");
+    }
+    if(category==="memberships"){
+     reviewItems.push({type:"membership_access_restore_required",recordId:row.id,
+       roles:Array.isArray(row.roles)?row.roles:[],status:row.status||"",
+       resolution:"Restore school access through verified invitations/platform school-admin recovery, not through continuity apply."});
+    }
+   }catch(error){blockers.push({category,recordId:row?.id||null,type:"invalid_export_record",message:error.message});}
+  }
+ }
+ return {blockers,reviewItems};
+}
+async function targetState(db,schoolId,category,row){
+ const ref=db.doc("schools/"+schoolId+"/"+definitions[category].path+"/"+row.id),
+  current=await ref.get();
+ if(!current.exists)return {category,recordId:row.id,targetPath:ref.path,state:"ready"};
+ const existing=comparable(category,current.data()),expected=comparable(category,row);
+ return {category,recordId:row.id,targetPath:ref.path,
+  state:JSON.stringify(existing)===JSON.stringify(expected)?"identical":"target_conflict"};
+}
+async function dependencyReview(db,bundle,states){
+ const schoolId=bundle.schoolId,issues=[];
+ const stateMap=new Map(states.map(row=>[row.category+"/"+row.recordId,row.state]));
+ const existsOrPlanned=async(category,id)=>{
+  const state=stateMap.get(category+"/"+id);
+  if(["ready","identical"].includes(state))return true;
+  return (await db.doc("schools/"+schoolId+"/"+definitions[category].path+"/"+id).get()).exists;
+ };
+ const activeMembership=async(uid,role,personId=null)=>{
+  if(typeof uid!=="string"||!uid)return false;
+  const member=await db.doc("schools/"+schoolId+"/memberships/"+uid).get();
+  if(!member.exists||member.data().schoolId!==schoolId||member.data().status!=="active"||
+     !Array.isArray(member.data().roles)||!member.data().roles.includes(role))return false;
+  return personId?member.data().personId===personId:true;
+ };
+ const termById=new Map(bundle.categories.terms.map(row=>[row.id,row])),
+  sectionById=new Map(bundle.categories.sections.map(row=>[row.id,row]));
+ for(const row of bundle.categories.terms){
+  for(const [category,id] of [["academic_programs",row.programId],["academic_years",row.yearId]])
+   if(!await existsOrPlanned(category,id))
+    issues.push({type:"restore_dependency_missing",category:"terms",recordId:row.id,dependsOn:category+"/"+id});
+ }
+ for(const row of bundle.categories.sections){
+  if(!await existsOrPlanned("academic_programs",row.programId))
+   issues.push({type:"restore_dependency_missing",category:"sections",recordId:row.id,
+    dependsOn:"academic_programs/"+row.programId});
+ }
+ for(const row of bundle.categories.course_offerings){
+  for(const [category,id] of [["academic_programs",row.programId],["academic_years",row.yearId],
+   ["terms",row.termId],["subjects",row.subjectId],["sections",row.sectionId]])
+   if(!await existsOrPlanned(category,id))
+    issues.push({type:"restore_dependency_missing",category:"course_offerings",recordId:row.id,dependsOn:category+"/"+id});
+  const term=termById.get(row.termId),section=sectionById.get(row.sectionId);
+  if(term&&(term.yearId!==row.yearId||term.programId!==row.programId))
+   issues.push({type:"restore_academic_scope_mismatch",category:"course_offerings",recordId:row.id,
+    dependsOn:"terms/"+row.termId});
+  if(section&&section.programId!==row.programId)
+   issues.push({type:"restore_academic_scope_mismatch",category:"course_offerings",recordId:row.id,
+    dependsOn:"sections/"+row.sectionId});
+ }
+ for(const row of bundle.categories.enrollments){
+  if(!await existsOrPlanned("people",row.personId))
+   issues.push({type:"restore_dependency_missing",category:"enrollments",recordId:row.id,dependsOn:"people/"+row.personId});
+  if(!await existsOrPlanned("course_offerings",row.offeringId))
+   issues.push({type:"restore_dependency_missing",category:"enrollments",recordId:row.id,dependsOn:"course_offerings/"+row.offeringId});
+ }
+ for(const row of bundle.categories.staff_assignments){
+  if(!await existsOrPlanned("course_offerings",row.offeringId))
+   issues.push({type:"restore_dependency_missing",category:"staff_assignments",recordId:row.id,dependsOn:"course_offerings/"+row.offeringId});
+  if(row.status==="active"&&!await activeMembership(row.teacherUid,"teacher"))
+   issues.push({type:"restore_active_membership_required",category:"staff_assignments",
+    recordId:row.id,dependsOn:"memberships/"+row.teacherUid,
+    resolution:"Recover the active teacher membership separately before restoring this assignment."});
+ }
+ for(const row of bundle.categories.student_repository_configs){
+  if(!await existsOrPlanned("people",row.personId))
+   issues.push({type:"restore_dependency_missing",category:"student_repository_configs",recordId:row.id,dependsOn:"people/"+row.personId});
+  if(!await existsOrPlanned("course_offerings",row.offeringId))
+   issues.push({type:"restore_dependency_missing",category:"student_repository_configs",recordId:row.id,dependsOn:"course_offerings/"+row.offeringId});
+  if(!await activeMembership(row.studentUid,"student",row.personId))
+   issues.push({type:"restore_active_membership_required",category:"student_repository_configs",
+    recordId:row.id,dependsOn:"memberships/"+row.studentUid,
+    resolution:"Recover the linked active student membership separately before restoring repository configuration."});
+ }
+ for(const row of bundle.categories.assessments){
+  if(!await existsOrPlanned("course_offerings",row.offeringId))
+   issues.push({type:"restore_dependency_missing",category:"assessments",recordId:row.id,dependsOn:"course_offerings/"+row.offeringId});
+  const reviewerUid=row.reviewerUid||row.ownerUid;
+  if(row.status==="deployed"&&row.lifecycle!=="cancelled"){
+   if(!await activeMembership(reviewerUid,"teacher"))
+    issues.push({type:"restore_active_membership_required",category:"assessments",
+     recordId:row.id,dependsOn:"memberships/"+reviewerUid,
+     resolution:"Recover the responsible teacher membership separately before restoring this deployed assessment."});
+   const assignmentId=rowKey(reviewerUid,row.offeringId);
+   if(!await existsOrPlanned("staff_assignments",assignmentId))
+    issues.push({type:"restore_dependency_missing",category:"assessments",
+     recordId:row.id,dependsOn:"staff_assignments/"+assignmentId});
+  }
+ }
+ for(const row of bundle.categories.student_grades){
+  if(!await existsOrPlanned("assessments",row.taskId))
+   issues.push({type:"restore_dependency_missing",category:"student_grades",recordId:row.id,dependsOn:"assessments/"+row.taskId});
+  if(!await existsOrPlanned("people",row.personId))
+   issues.push({type:"restore_dependency_missing",category:"student_grades",recordId:row.id,dependsOn:"people/"+row.personId});
+  if(!await activeMembership(row.studentUid,"student",row.personId))
+   issues.push({type:"restore_active_membership_required",category:"student_grades",
+    recordId:row.id,dependsOn:"memberships/"+row.studentUid,
+    resolution:"Recover the linked active student membership separately before restoring this published grade."});
+ }
+ return issues;
+}
+async function buildRestorePlan(db,bundle){
+ const verified=verifyBundle(bundle),validation=validateRows(bundle),
+  school=await db.doc("platform_schools/"+bundle.schoolId).get();
+ const blockers=[...validation.blockers],states=[];
+ if(!school.exists||!["draft","active","suspended"].includes(school.data().state))
+  blockers.push({type:"target_school_missing_or_unavailable",schoolId:bundle.schoolId});
+ for(const category of AUTO_CATEGORIES)
+  for(const row of bundle.categories[category])
+   states.push(await targetState(db,bundle.schoolId,category,row));
+ blockers.push(...states.filter(row=>row.state==="target_conflict"));
+ const dependencyIssues=await dependencyReview(db,bundle,states);
+ blockers.push(...dependencyIssues);
+ const categories={};
+ for(const category of AUTO_CATEGORIES){
+  const rows=states.filter(row=>row.category===category);
+  categories[category]={
+   records:bundle.categories[category].length,
+   ready:rows.filter(row=>row.state==="ready").length,
+   identical:rows.filter(row=>row.state==="identical").length,
+   conflicts:rows.filter(row=>row.state==="target_conflict").length
+  };
+ }
+ return {
+  schema:PLAN_SCHEMA,schoolId:bundle.schoolId,readOnly:true,readyForApply:false,
+  generatedAt:new Date().toISOString(),exportSha256:verified.digest,
+  exportGeneratedAt:bundle.generatedAt||null,
+  categories,states,blockers,reviewItems:validation.reviewItems,
+  membershipRecords:(bundle.categories.memberships||[]).map(row=>({
+   uid:row.id,status:row.status,roles:row.roles||[],personId:row.personId||null
+  })),
+  autoRestoreCategories:AUTO_CATEGORIES,
+  excludedFromAutomaticRestore:["memberships"],
+  nextRequiredReview:[
+   "Resolve every target conflict and missing dependency.",
+   "Recover/verify school memberships and roles separately; continuity apply never grants access.",
+   "Review person-to-auth UID links before restoring records that depend on active student/teacher accounts.",
+   "Approve the exact export hash and create-only restore plan before any writes."
+  ]
+ };
+}
+async function main(){
+ const args=process.argv.slice(2),bundle=read(arg(args,"export"),"Continuity export").data,
+  output=arg(args,"output");
+ if(!getApps().length)initializeApp({credential:applicationDefault()});
+ const plan=await buildRestorePlan(getFirestore(),bundle);
+ writeFileSync(output,JSON.stringify(plan,null,2)+"\n",{flag:"wx",mode:0o600});
+ console.info(JSON.stringify({restorePlanCreated:true,schoolId:plan.schoolId,
+  exportSha256:plan.exportSha256,blockers:plan.blockers.length,
+  membershipAccessRecords:plan.membershipRecords.length,readyForApply:false}));
+}
+if(require.main===module)main().catch(error=>{
+ console.error("School continuity restore planning failed:",error.message);process.exitCode=1;
+});
+module.exports={PLAN_SCHEMA,AUTO_CATEGORIES,verifyBundle,normalize,comparable,
+ validateRows,targetState,dependencyReview,buildRestorePlan};

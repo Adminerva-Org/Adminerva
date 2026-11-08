@@ -4,6 +4,7 @@ const {initializeApp}=require("firebase-admin/app");
 const {getFirestore,FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {getAuth}=require("firebase-admin/auth");
 const {getMessaging}=require("firebase-admin/messaging");
+const {getStorage}=require("firebase-admin/storage");
 const {onDocumentCreated,onDocumentUpdated,onDocumentWritten}=require("firebase-functions/v2/firestore");
 const {onSchedule}=require("firebase-functions/v2/scheduler");
 const {onCall,HttpsError}=require("firebase-functions/v2/https");
@@ -16,6 +17,10 @@ initializeApp();
 const db=getFirestore();
 const messaging=getMessaging();
 const practice=createPracticeService({db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)});
+const {createSchoolPracticeSeasonService}=require("./school-practice-season-service.js");
+const schoolPractice=createSchoolPracticeSeasonService({
+  db,Timestamp,resolveUser:uid=>getAuth().getUser(uid)
+});
 const teachingAccess=createTeachingAccessService({db,Timestamp});
 const {createSchoolAI}=require("./school-ai-service.js");
 const schoolAI=createSchoolAI({db,FieldValue,Timestamp,resolveUser:uid=>getAuth().getUser(uid)});
@@ -24,9 +29,87 @@ const legacyRecovery=createLegacyLessonRecovery({db,FieldValue,resolveUserByEmai
 const legacySetup=createLegacySchoolSetup({db,FieldValue,resolveUserByEmail:email=>getAuth().getUserByEmail(email)});
 const callOptions={region:"asia-southeast1",maxInstances:3,concurrency:10,timeoutSeconds:120,cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
 function safeCallable(handler){return async request=>{try{return await handler(request);}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
+async function legacyMcsCompatibilityAllowed(){
+  const school=await db.doc("platform_schools/mcs-manila").get();
+  return !school.exists||school.data().compatibilityMode!=="v4_only";
+}
+async function requireLegacyMcsCompatibility(){
+  if(!(await legacyMcsCompatibilityAllowed()))
+    throw new HttpsError("failed-precondition","Legacy MCS compatibility is disabled after the Adminerva 4.0 cutover.");
+}
+// 4.0 tenant API: requires server-verified active school membership for every call.
+// Legacy 3.0 APIs remain untouched until a separately approved pilot cutover.
+const {listVerifiedSchools,selectVerifiedSchool,platformAuthority}=require("./tenant-access.js");
+const {createTeacherBlueprintService}=require("./teacher-blueprints.js");
+const teacherBlueprints=createTeacherBlueprintService({db});
+exports.tenantSchools=onCall(callOptions,safeCallable(async request=>{
+  const [schools,authority,legacySchool]=await Promise.all([
+    listVerifiedSchools({db,request}),platformAuthority({db,request}),
+    db.doc("platform_schools/mcs-manila").get()
+  ]);
+  const legacyCompatibilityAllowed=!legacySchool.exists||
+    legacySchool.data().compatibilityMode!=="v4_only";
+  return {schools,selection:selectVerifiedSchool(schools,request.data?.preferredSchoolId),
+    platformAdmin:authority.platformAdmin,legacyCompatibilityAllowed};
+}));
+exports.teacherBlueprints=onCall(callOptions,safeCallable(teacherBlueprints));
+const {createPeopleDirectoryService,createInvitationAcceptanceService}=require("./people-directory.js");
+exports.peopleDirectory=onCall(callOptions,safeCallable(createPeopleDirectoryService({db})));
+const {createSchoolRosterSourceService}=require("./school-roster-source.js");
+exports.schoolRosterSource=onCall(callOptions,safeCallable(createSchoolRosterSourceService({db})));
+const {createSchoolAcademicsService}=require("./school-academics.js");
+exports.schoolAcademics=onCall(callOptions,safeCallable(createSchoolAcademicsService({db})));
+const {createSchoolAssessmentService}=require("./school-assessments.js");
+exports.schoolAssessments=onCall(callOptions,safeCallable(createSchoolAssessmentService({db})));
+const {createSchoolStudentProfileService}=require("./school-student-profile.js");
+exports.schoolStudentProfile=onCall(callOptions,safeCallable(createSchoolStudentProfileService({db})));
+const {createSchoolStudioProjectService}=require("./school-studio-projects.js");
+const {createSchoolStudioSubmissionService}=require("./school-studio-submissions.js");
+exports.schoolStudioProjects=onCall(callOptions,safeCallable(createSchoolStudioProjectService({db})));
+exports.schoolStudioSubmissions=onCall(callOptions,safeCallable(createSchoolStudioSubmissionService({db})));
+const {createSchoolGradebookService}=require("./school-gradebook.js");
+exports.schoolGradebook=onCall(callOptions,safeCallable(createSchoolGradebookService({db})));
+const {createSchoolGithubEvidenceService}=require("./school-github-evidence.js");
+exports.schoolGithubEvidence=onCall(callOptions,safeCallable(createSchoolGithubEvidenceService({db})));
+const {createSchoolReclaimService}=require("./school-reclaims.js");
+exports.schoolReclaims=onCall(callOptions,safeCallable(createSchoolReclaimService({db})));
+exports.acceptSchoolInvitation=onCall(callOptions,safeCallable(createInvitationAcceptanceService({db})));
+const {createPlatformSchoolService}=require("./platform-schools.js");
+exports.platformSchools=onCall(callOptions,safeCallable(createPlatformSchoolService({db})));
+const {createSchoolSupportService}=require("./school-support.js");
+const storageBucket=()=>getStorage().bucket();
+exports.schoolSupport=onCall(callOptions,safeCallable(createSchoolSupportService({db,bucket:storageBucket})));
+const {createSchoolFilePolicyService}=require("./school-file-policy.js");
+exports.schoolFilePolicy=onCall(callOptions,safeCallable(createSchoolFilePolicyService({db})));
+const {createSchoolDataExportService}=require("./school-data-export.js");
+exports.schoolDataExport=onCall(callOptions,safeCallable(createSchoolDataExportService({db})));
+const {createSchoolAnalyticsService}=require("./school-analytics.js");
+exports.schoolAnalytics=onCall(callOptions,safeCallable(createSchoolAnalyticsService({db})));
+const {createSchoolPracticeAnalyticsService}=require("./school-practice-analytics.js");
+exports.schoolPracticeAnalytics=onCall(callOptions,safeCallable(createSchoolPracticeAnalyticsService({db})));
+const {createSchoolTeacherAnalyticsService}=require("./school-teacher-analytics.js");
+exports.schoolTeacherAnalytics=onCall(callOptions,safeCallable(createSchoolTeacherAnalyticsService({db})));
+const {createSchoolCutoverReadinessService}=require("./school-cutover-readiness.js");
+exports.schoolCutoverReadiness=onCall(callOptions,safeCallable(createSchoolCutoverReadinessService({db})));
+const {createSchoolOnboardingReadinessService}=require("./school-onboarding-readiness.js");
+exports.schoolOnboardingReadiness=onCall(callOptions,safeCallable(createSchoolOnboardingReadinessService({db})));
+const {createSchoolFileRetentionJob}=require("./school-file-retention.js");
+const schoolFileRetention=createSchoolFileRetentionJob({db,bucket:storageBucket,Timestamp,FieldValue});
+exports.schoolFileRetentionCleanup=onSchedule({
+  schedule:"every 6 hours",timeZone:"Asia/Manila",region:"asia-southeast1",
+  maxInstances:1,timeoutSeconds:300
+},schoolFileRetention);
+const {createSchoolPlanningService}=require("./school-planning.js");
+exports.schoolPlanning=onCall(callOptions,safeCallable(createSchoolPlanningService({db})));
+const {createSchoolScheduleService}=require("./school-schedules.js");
+exports.schoolSchedules=onCall(callOptions,safeCallable(createSchoolScheduleService({db})));
+const {createSchoolReferenceService}=require("./school-references.js");
+exports.schoolReferences=onCall(callOptions,safeCallable(createSchoolReferenceService({db})));
+const {createSchoolSharedReferenceService}=require("./school-shared-references.js");
+exports.schoolSharedReferences=onCall(callOptions,safeCallable(createSchoolSharedReferenceService({db})));
 exports.schoolAI=onCall(callOptions,safeCallable(schoolAI));
-exports.legacyLessonRecovery=onCall(callOptions,safeCallable(legacyRecovery));
-exports.legacySchoolSetup=onCall(callOptions,safeCallable(legacySetup));
+exports.legacyLessonRecovery=onCall(callOptions,safeCallable(async request=>{await requireLegacyMcsCompatibility();return legacyRecovery(request);}));
+exports.legacySchoolSetup=onCall(callOptions,safeCallable(async request=>{await requireLegacyMcsCompatibility();return legacySetup(request);}));
 exports.pushTestPing=onCall(callOptions,async request=>{
   const uid=request.auth?.uid;
   if(!uid)throw new HttpsError("unauthenticated","Sign in before sending a test notification.");
@@ -73,6 +156,7 @@ async function rebuildStudentAccess(email){
   return {sections,studentIds};
 }
 exports.refreshStudentAccess=onCall(callOptions,async request=>{
+  await requireLegacyMcsCompatibility();
   const uid=request.auth?.uid,email=String(request.auth?.token?.email||"").toLowerCase().trim();
   if(!uid||request.auth?.token?.email_verified!==true||!email)
     throw new HttpsError("unauthenticated","Use a verified school account before loading assignments.");
@@ -84,25 +168,52 @@ exports.refreshStudentAccess=onCall(callOptions,async request=>{
   return result;
 });
 exports.studentAccessChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const emails=[event.data?.before.data()?.email,event.data?.after.data()?.email]
     .map(value=>String(value||"").toLowerCase().trim()).filter(Boolean);
   await Promise.all([...new Set(emails)].map(email=>rebuildStudentAccess(email)));
 });
-exports.teachingRosterChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},event=>teachingAccess.synchronize(event.params.studentId));
+exports.teachingRosterChanged=onDocumentWritten({document:"students/{studentId}",region:"asia-southeast1",maxInstances:2,concurrency:10},async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
+  return teachingAccess.synchronize(event.params.studentId);
+});
 const practiceOptions={region:"asia-southeast1",maxInstances:3,concurrency:20,timeoutSeconds:30,
   cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
 for(const [name,action] of Object.entries({practiceSession:"acquire",practiceStart:"start",practicePredict:"predict",practiceComplete:"complete",practiceHub:"hub",practiceSeasonSession:"acquireSeason",practiceMissionStart:"startSeason",practiceMissionSubmit:"submitSeason",practicePreferences:"preferences"}))
   exports[name]=onCall(practiceOptions,async request=>{
-    try{return await practice[action](request);}
+    try{await requireLegacyMcsCompatibility();return await practice[action](request);}
     catch(error){
       if(error instanceof PracticeError)throw new HttpsError(error.code,error.message,error.details);
       console.error("Practice request failed",{action,code:error.code||"internal"});
       throw new HttpsError("unavailable","Practice could not complete this request. Your score has not been published; retry the same challenge safely.");
     }
   });
+for(const [name,action] of Object.entries({
+  schoolPracticeSeasonSession:"acquireSeason",
+  schoolPracticeHub:"hub",
+  schoolPracticeMissionStart:"startSeason",
+  schoolPracticeMissionSubmit:"submitSeason",
+  schoolPracticePreferences:"preferences"
+}))
+  exports[name]=onCall(practiceOptions,async request=>{
+    try{return await schoolPractice[action](request);}
+    catch(error){
+      if(error instanceof PracticeError)throw new HttpsError(error.code,error.message,error.details);
+      if(["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","not-found"].includes(error.code))
+        throw new HttpsError(error.code,error.message);
+      console.error("School Practice request failed",{action,code:error.code||"internal"});
+      throw new HttpsError("unavailable","School Practice could not complete this request. Saved progress is unchanged; retry safely.");
+    }
+  });
 const monitoring=createMonitoringService({db,Timestamp,FieldValue,resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users});
-exports.monitoringMaintenance=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},()=>monitoring.runScheduled());
-exports.activityConsentChanged=onDocumentWritten({document:"activity_preferences/{ownerUid}",region:"asia-southeast1",maxInstances:1,concurrency:1,timeoutSeconds:120},event=>monitoring.applyConsentChange(event.params.ownerUid,event.data?.before.data()?.studentId));
+exports.monitoringMaintenance=onSchedule({region:"asia-southeast1",schedule:"every 60 minutes",timeZone:"Etc/UTC",timeoutSeconds:240,maxInstances:1,concurrency:1,retryCount:0},async()=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
+  return monitoring.runScheduled();
+});
+exports.activityConsentChanged=onDocumentWritten({document:"activity_preferences/{ownerUid}",region:"asia-southeast1",maxInstances:1,concurrency:1,timeoutSeconds:120},async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
+  return monitoring.applyConsentChange(event.params.ownerUid,event.data?.before.data()?.studentId);
+});
 const BOOTSTRAP_ADMIN_EMAIL="babaynike2013@gmail.com";
 // Bug reports are always administrator-directed. Legacy reports have admin scope.
 const reportAudience=issue=>issue.category==="Bug"?"admin":issue.audience==="teacher"?"teacher":"admin";
@@ -122,6 +233,9 @@ async function administratorIds(){
 async function isAdministratorRequest(request){
   const email=String(request.auth?.token?.email||"").toLowerCase();
   if(!request.auth?.uid||request.auth?.token?.email_verified!==true||!email)return false;
+  const authority=await platformAuthority({db,request});
+  if(authority.platformAdmin===true)return true;
+  if(!(await legacyMcsCompatibilityAllowed()))return false;
   if(email===BOOTSTRAP_ADMIN_EMAIL)return true;
   const snapshot=await db.doc("staff_access/"+email).get();
   const data=snapshot.exists?snapshot.data():null;
@@ -242,6 +356,7 @@ async function evidenceLabels(item){
   };
 }
 exports.issueOpened=onDocumentCreated("issues/{issueId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const data=event.data?.data();if(!data)return;
   await notifyMany(await audienceIds(data),"report_new_"+event.params.issueId,{
     type:"issue",push:true,title:"New issue report",body:data.title||"Untitled report",
@@ -250,6 +365,7 @@ exports.issueOpened=onDocumentCreated("issues/{issueId}",async event=>{
   });
 });
 exports.issueStatusUpdated=onDocumentUpdated("issues/{issueId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const old=event.data?.before.data(),now=event.data?.after.data();
   if(!old||!now||old.status===now.status&&old.priority===now.priority)return;
   const uid=now.reporterUid||await byEmail(now.reporterEmail);
@@ -261,6 +377,7 @@ exports.issueStatusUpdated=onDocumentUpdated("issues/{issueId}",async event=>{
   });
 });
 exports.issueCommentAdded=onDocumentCreated("issues/{issueId}/comments/{commentId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const comment=event.data?.data();if(!comment)return;
   const issue=await db.doc("issues/"+event.params.issueId).get();if(!issue.exists)return;
   const item=issue.data(),reporter=item.reporterUid||await byEmail(item.reporterEmail);
@@ -276,6 +393,7 @@ exports.issueCommentAdded=onDocumentCreated("issues/{issueId}/comments/{commentI
 // A reclaim never changes Git's recorded author. Administrators receive a
 // private review alert; overlapping claims on the same SHA are flagged once.
 exports.commitReclaimRequested=onDocumentCreated("commit_reclaims/{claimId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const claim=event.data?.data();if(!claim||claim.status!=="pending")return;
   const adminId=await byEmail(staffEmails[0]);
   if(!adminId)return;
@@ -325,6 +443,7 @@ exports.commitReclaimRequested=onDocumentCreated("commit_reclaims/{claimId}",asy
 
 // V2 evidence receipts are distinct from legacy submission receipts.
 exports.assessmentEvidenceSubmitted=onDocumentCreated("assessment_evidence/{evidenceId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const item=event.data?.data();
   if(!item||item.status!=="submitted"||item.source==="teacher_discovered")return;
   const labels=await evidenceLabels(item);
@@ -335,6 +454,7 @@ exports.assessmentEvidenceSubmitted=onDocumentCreated("assessment_evidence/{evid
   });
 });
 exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{evidenceId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const before=event.data?.before.data(),after=event.data?.after.data();
   if(!before||!after)return;
   if(before.status!=="reopened"&&after.status==="reopened"){
@@ -392,6 +512,7 @@ exports.assessmentEvidenceUpdated=onDocumentUpdated("assessment_evidence/{eviden
 });
 
 exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const item=event.data?.data();if(!item)return;
   await notifyMany(await teacherIds(item.section),"submission_"+event.params.submissionId,{
     type:"submission",push:true,title:"Work submitted — "+(item.studentName||"Student"),
@@ -400,6 +521,7 @@ exports.submissionReceived=onDocumentCreated("student_submissions/{submissionId}
   });
 });
 exports.gradePublished=onDocumentUpdated("student_grades/{gradeId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const old=event.data?.before.data(),now=event.data?.after.data();
   if(!old||!now||old.published===now.published||!now.studentId)return;
   const student=await db.doc("students/"+now.studentId).get();if(!student.exists)return;
@@ -421,6 +543,7 @@ function assessmentSections(data){
   ].filter(Boolean))];
 }
 exports.assessmentAssigned=onDocumentUpdated("assessments/{assessmentId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const old=event.data?.before.data(),now=event.data?.after.data();
   if(!old||!now)return;
   const previous=new Set(assessmentSections(old));
@@ -437,6 +560,7 @@ exports.assessmentAssigned=onDocumentUpdated("assessments/{assessmentId}",async 
 });
 
 exports.gradingNeedsReview=onDocumentCreated("grading_alerts/{alertId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const item=event.data?.data();if(!item)return;
   await notifyMany(await teacherIds(item.section),"grading_"+event.params.alertId,{
     type:"grading",push:true,title:"Grading requires attention",
@@ -447,6 +571,7 @@ exports.gradingNeedsReview=onDocumentCreated("grading_alerts/{alertId}",async ev
 
 // Cover blueprints deployed at creation time, including older targetSections.
 exports.assessmentCreated=onDocumentCreated("assessments/{assessmentId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const data=event.data?.data();if(!data)return;
   const sections=assessmentSections(data);
   for(const section of sections){
@@ -461,6 +586,7 @@ exports.assessmentCreated=onDocumentCreated("assessments/{assessmentId}",async e
 });
 // A small number of older workflows can create a grade already published.
 exports.gradeCreatedPublished=onDocumentCreated("student_grades/{gradeId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const grade=event.data?.data();
   if(!grade||grade.published!==true||!grade.studentId)return;
   const student=await db.doc("students/"+grade.studentId).get();
@@ -474,6 +600,7 @@ exports.gradeCreatedPublished=onDocumentCreated("student_grades/{gradeId}",async
 });
 // Notify only when an already-published grade is actually corrected.
 exports.gradeCorrection=onDocumentUpdated("student_grades/{gradeId}",async event=>{
+  if(!(await legacyMcsCompatibilityAllowed()))return;
   const before=event.data?.before.data(),after=event.data?.after.data();
   if(!before||!after||before.published!==true||after.published!==true)return;
   if(before.score===after.score && before.feedback===after.feedback)return;

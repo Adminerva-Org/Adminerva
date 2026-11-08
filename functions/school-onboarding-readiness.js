@@ -1,0 +1,187 @@
+"use strict";
+/**
+ * Adminerva 4.0 school onboarding/setup readiness.
+ *
+ * This is an operational setup checklist for active school administrators.
+ * It intentionally does not replace migration/cutover readiness and never
+ * grants roles, changes school state or exposes private teacher/student data.
+ */
+const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
+
+function deny(code,message){throw new TenantAccessError(code,message)}
+async function bounded(db,path,limit=1001){
+  const snapshot=await db.collection(path).limit(limit).get();
+  if(snapshot.size===limit)
+    deny("resource-exhausted","School setup readiness exceeded its bounded review limit for "+path+".");
+  return snapshot.docs;
+}
+function row(id,label,ok,detail,{blocking=true,optional=false,count=null}={}){
+  return {
+    id,label,status:ok?"complete":optional?"optional":"attention",
+    blocking:Boolean(blocking),detail:String(detail||""),
+    ...(Number.isInteger(count)?{count}: {})
+  };
+}
+async function evaluateSchoolOnboardingReadiness({db,schoolId}){
+  const prefix="schools/"+schoolId+"/";
+  const school=await db.doc("platform_schools/"+schoolId).get();
+  if(!school.exists)deny("not-found","The verified school record is unavailable.");
+
+  const [
+    memberships,people,programs,years,terms,subjects,sections,offerings,enrollments,
+    assignments,invitations,filePolicy,aiConfig
+  ]=await Promise.all([
+    bounded(db,prefix+"memberships"),
+    bounded(db,prefix+"people"),
+    bounded(db,prefix+"academic_programs"),
+    bounded(db,prefix+"academic_years"),
+    bounded(db,prefix+"terms"),
+    bounded(db,prefix+"subjects"),
+    bounded(db,prefix+"sections"),
+    bounded(db,prefix+"course_offerings"),
+    bounded(db,prefix+"enrollments"),
+    bounded(db,prefix+"staff_assignments"),
+    bounded(db,prefix+"invitations"),
+    db.doc(prefix+"private_config/file_policy").get(),
+    db.doc(prefix+"private_config/ai").get()
+  ]);
+
+  const schoolData=school.data();
+  const activeMemberships=memberships.filter(doc=>
+    doc.data().schoolId===schoolId&&doc.data().status==="active");
+  const hasRole=role=>activeMemberships.filter(doc=>
+    Array.isArray(doc.data().roles)&&doc.data().roles.includes(role));
+  const admins=hasRole("school_admin"),teachers=hasRole("teacher"),students=hasRole("student");
+  const activePeople=people.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active");
+  const activeOfferings=offerings.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active");
+  const activeEnrollments=enrollments.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active");
+  const activeAssignments=assignments.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active");
+  const pendingInvitations=invitations.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="pending");
+  const readiness=schoolData.readiness||{};
+  const institutionalReady=[
+    "institutionalDataAuthority","provenanceVerified","calendarConfigured","privacyPolicyApproved"
+  ].every(key=>readiness[key]===true);
+  const activeCatalog=docs=>docs.filter(doc=>doc.data().schoolId===schoolId&&doc.data().status==="active");
+  const activePrograms=activeCatalog(programs);
+  const activeYears=activeCatalog(years);
+  const activeTerms=activeCatalog(terms);
+  const activeSubjects=activeCatalog(subjects);
+  const activeSections=activeCatalog(sections);
+  const activeProgramIds=new Set(activePrograms.map(doc=>doc.id)),
+    activeYearIds=new Set(activeYears.map(doc=>doc.id)),
+    activeTermIds=new Set(activeTerms.map(doc=>doc.id)),
+    activeSubjectIds=new Set(activeSubjects.map(doc=>doc.id)),
+    activeSectionIds=new Set(activeSections.map(doc=>doc.id)),
+    activePeopleById=new Map(activePeople.map(doc=>[doc.id,doc.data()])),
+    activeMembershipByUid=new Map(activeMemberships.map(doc=>[doc.id,doc.data()])),
+    activeOfferingById=new Map(activeOfferings.map(doc=>[doc.id,doc.data()]));
+  const invalidTerms=activeTerms.filter(doc=>
+    !activeYearIds.has(doc.data().yearId)||!activeProgramIds.has(doc.data().programId)||
+    !["term","semester","quarter","trimester","custom"].includes(doc.data().periodType)||
+    !Number.isInteger(doc.data().sequence)||doc.data().sequence<1||doc.data().sequence>12);
+  const invalidSections=activeSections.filter(doc=>!activeProgramIds.has(doc.data().programId));
+  const catalogReady=activePrograms.length>0&&activeYears.length>0&&activeTerms.length>0&&
+    activeSubjects.length>0&&activeSections.length>0&&invalidTerms.length===0&&invalidSections.length===0;
+  const invalidOfferings=activeOfferings.filter(doc=>{
+    const data=doc.data(),term=activeTerms.find(item=>item.id===data.termId),
+      section=activeSections.find(item=>item.id===data.sectionId);
+    return !activeProgramIds.has(data.programId)||!activeYearIds.has(data.yearId)||
+      !activeTermIds.has(data.termId)||!activeSubjectIds.has(data.subjectId)||
+      !activeSectionIds.has(data.sectionId)||term?.data().yearId!==data.yearId||
+      term?.data().programId!==data.programId||section?.data().programId!==data.programId;
+  });
+  const invalidEnrollments=activeEnrollments.filter(doc=>{
+    const data=doc.data(),person=activePeopleById.get(data.personId);
+    if(!person||person.kind!=="student"||!activeOfferingById.has(data.offeringId))return true;
+    if(!person.authUid)return false;
+    const member=activeMembershipByUid.get(person.authUid);
+    return !member||member.personId!==doc.data().personId||
+      !Array.isArray(member.roles)||!member.roles.includes("student");
+  });
+  const invalidAssignments=activeAssignments.filter(doc=>{
+    const data=doc.data(),member=activeMembershipByUid.get(data.teacherUid);
+    return !member||!Array.isArray(member.roles)||!member.roles.includes("teacher")||
+      !activeOfferingById.has(data.offeringId);
+  });
+  const fileData=filePolicy.exists?filePolicy.data():null;
+  const aiData=aiConfig.exists?aiConfig.data():null;
+
+  const steps=[
+    row("institution","Institution verification",schoolData.state==="active"&&institutionalReady,
+      schoolData.state!=="active"
+        ?"The institution is not active."
+        :institutionalReady
+          ?"Institution authority, provenance, calendar and privacy attestations are recorded."
+          :"One or more owner-reviewed institutional attestations are still missing."),
+    row("school_admin","School administration",admins.length>0,
+      admins.length+" active school administrator account(s).",{count:admins.length}),
+    row("people","People directory",activePeople.length>0,
+      activePeople.length+" active person record(s) are available.",{count:activePeople.length}),
+    row("teacher_access","Teacher access",teachers.length>0,
+      teachers.length+" active teacher membership(s).",{count:teachers.length}),
+    row("student_access","Student access",students.length>0,
+      students.length+" active student membership(s).",{count:students.length}),
+    row("academic_catalog","Academic catalog",catalogReady,
+      activePrograms.length+" active program(s), "+activeYears.length+" active year(s), "+
+      activeTerms.length+" active academic period(s), "+activeSubjects.length+
+      " active subject(s), "+activeSections.length+" active section(s); "+
+      (invalidTerms.length+invalidSections.length)+" program/year/period relationship issue(s)."),
+    row("course_offerings","Course offerings",activeOfferings.length>0&&invalidOfferings.length===0,
+      activeOfferings.length+" active course offering(s); "+invalidOfferings.length+
+      " have inactive or mismatched catalog dependencies.",{count:activeOfferings.length}),
+    row("teaching_assignments","Teaching assignments",activeAssignments.length>0&&invalidAssignments.length===0,
+      activeAssignments.length+" active teacher-course assignment(s); "+invalidAssignments.length+
+      " have invalid teacher/offering dependencies.",{count:activeAssignments.length}),
+    row("student_enrollments","Student enrollments",activeEnrollments.length>0&&invalidEnrollments.length===0,
+      activeEnrollments.length+" active course enrollment(s); "+invalidEnrollments.length+
+      " have invalid student/offering access dependencies.",{count:activeEnrollments.length}),
+    row("file_policy","School file policy",
+      Boolean(fileData?.enabled&&fileData?.supportAttachmentsEnabled),
+      fileData?.enabled
+        ?"School file retention is configured; support attachments are "+
+          (fileData.supportAttachmentsEnabled===true?"enabled.":"still disabled.")
+        :"School file uploads remain fail-closed until an administrator enables a retention policy.",
+      {blocking:false,optional:true}),
+    row("school_ai","School AI",
+      Boolean(aiData?.enabled&&aiData?.apiKey),
+      aiData?.enabled&&aiData?.apiKey
+        ?"A school-scoped AI connection is configured."
+        :"School AI is optional and remains unavailable until a school administrator configures it.",
+      {blocking:false,optional:true})
+  ];
+
+  const blocking=steps.filter(item=>item.blocking);
+  const completedRequired=blocking.filter(item=>item.status==="complete").length;
+  return {
+    schoolId,
+    schoolDisplayName:String(schoolData.displayName||schoolId).slice(0,120),
+    operationalReady:completedRequired===blocking.length,
+    progress:{completedRequired,totalRequired:blocking.length},
+    counts:{
+      activeMemberships:activeMemberships.length,
+      activePeople:activePeople.length,
+      activePrograms:activePrograms.length,
+      activeAdmins:admins.length,
+      activeTeachers:teachers.length,
+      activeStudents:students.length,
+      activeOfferings:activeOfferings.length,
+      activeEnrollments:activeEnrollments.length,
+      activeAssignments:activeAssignments.length,
+      pendingInvitations:pendingInvitations.length
+    },
+    steps,
+    note:"School setup readiness covers ordinary V4 operation only. Migration reconciliation, continuity backup and legacy retirement are checked separately by 4.0 cutover readiness."
+  };
+}
+function createSchoolOnboardingReadinessService({db}){
+  return async request=>{
+    const input=request.data||{};
+    const ctx=await getSchoolContext({
+      db,request,schoolId:input.schoolId,roles:["school_admin"]
+    });
+    if((input.action||"overview")!=="overview")
+      deny("invalid-argument","Unknown school setup-readiness operation.");
+    return evaluateSchoolOnboardingReadiness({db,schoolId:ctx.schoolId});
+  };
+}
+module.exports={evaluateSchoolOnboardingReadiness,createSchoolOnboardingReadinessService};

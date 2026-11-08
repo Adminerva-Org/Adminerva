@@ -10,6 +10,10 @@
     "firebase-functions": "^6.0.0"
   },
   "scripts": {
-    "check": "node ../scripts/check-release-source.mjs --backend"
+    "check": "node ../scripts/check-release-source.mjs --backend",
+    "cutover:package": "node mcs-cutover-package.js",
+    "pilot:operator-template": "node mcs-shs-pilot-operator-template.js",
+    "pilot:foundation-plan": "node mcs-shs-pilot-foundation-plan.js",
+    "pilot:foundation-approval": "node mcs-shs-pilot-foundation-approval-template.js"
   }
 }
