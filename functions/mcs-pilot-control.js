@@ -12,7 +12,7 @@ const {verifiedUid,TenantAccessError}=require("./tenant-access.js");
 const SCHOOL_ID="mcs-manila";
 const PILOT_SECTIONS=[
   {sectionId:"shs-g11-techpro-ict-st-isidore-of-seville",name:"St. Isidore of Seville",expected:45},
-  {sectionId:"shs-g11-techpro-ict-st-carlo-acutis",name:"St. Carlo Acutis",expected:34},
+  {sectionId:"shs-g11-techpro-ict-st-carlo-acutis",name:"St. Carlo Acutis",expected:35},
   {sectionId:"shs-g12-tvl-ict-st-philip-the-apostle",name:"St. Philip the Apostle",expected:45},
   {sectionId:"shs-g12-tvl-ict-st-anselm-of-canterbury",name:"St. Anselm of Canterbury",expected:44}
 ];
@@ -25,9 +25,7 @@ function email(value){
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)?normalized:null;
 }
 function hash(value){return createHash("sha256").update(String(value)).digest("hex");}
-const PILOT_ROSTER_EXTRA_FINGERPRINTS=new Set([
-  "30d7957afbc810af9073fbc9d3f7fda52f9eeaa1f785010de6f05e4e34c70473"
-]);
+const PILOT_ROSTER_EXTRA_FINGERPRINTS=new Set();
 function foldedName(value){
   return text(value,160).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
 }
