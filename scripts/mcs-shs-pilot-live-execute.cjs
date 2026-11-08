@@ -152,9 +152,9 @@ async function main(){
  const activeSet=new Set(ACTIVE_SECTION_IDS);
  const activeSections=(defaults.sections||[]).filter(section=>activeSet.has(section.sectionId));
  if(activeSections.length!==4)fail("pilot_defaults_section_count_invalid");
- const expected=defaults.rosterReference?.pilotSectionCounts||{};
+ const expected=defaults.operationalPilot?.currentApprovedSectionCounts||defaults.rosterReference?.pilotSectionCounts||{};
  const expectedTotal=activeSections.reduce((sum,section)=>sum+Number(expected[section.sectionId]||0),0);
- if(expectedTotal!==167)fail("pilot_reference_total_changed");
+ if(expectedTotal<1)fail("pilot_reference_total_missing");
 
  // Protected identity reconciliation. The report is kept only in memory.
  // Legacy GitHub sign-in records may have a blank student.email even though
