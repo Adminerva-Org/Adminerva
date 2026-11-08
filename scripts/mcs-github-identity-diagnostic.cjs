@@ -48,7 +48,7 @@ async function main(){
      if(provider.providerId==="github.com"&&provider.uid)authByGithubProviderUid.set(String(provider.uid),user);
    }
  }
- let exactGithubProviderMatches=0,githubUsernameLookupFailures=0;
+ let exactGithubProviderMatches=0,githubUsernameLookupFailures=0,githubMatchesEmailVerified=0,githubMatchesEmailUnverified=0,githubMatchesNoPrimaryEmail=0,githubMatchesDisabled=0;
  const bySection={};
  for(const row of unresolved){
    const section=sectionOf(row.d);bySection[section]??={unresolved:0,unique:0,ambiguous:0,none:0};bySection[section].unresolved++;
@@ -61,7 +61,12 @@ async function main(){
        });
        if(response.ok){
          const profile=await response.json(),matched=authByGithubProviderUid.get(String(profile.id));
-         if(matched&&!matched.disabled)exactGithubProviderMatches++;
+         if(matched){
+           exactGithubProviderMatches++;
+           if(matched.disabled)githubMatchesDisabled++;
+           if(validEmail(matched.email)){if(matched.emailVerified)githubMatchesEmailVerified++;else githubMatchesEmailUnverified++;}
+           else githubMatchesNoPrimaryEmail++;
+         }
        }else githubUsernameLookupFailures++;
      }catch{githubUsernameLookupFailures++}
    }
@@ -97,6 +102,10 @@ async function main(){
    uniqueCandidatesBackedByGithubProvider:githubBacked,
    uniqueCandidatesAlsoSameName:sameNameCandidate,
    exactGithubProviderMatches,
+   githubMatchesEmailVerified,
+   githubMatchesEmailUnverified,
+   githubMatchesNoPrimaryEmail,
+   githubMatchesDisabled,
    githubUsernameLookupFailures,
    ambiguous,
    noCandidate,
