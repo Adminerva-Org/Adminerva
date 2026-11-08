@@ -311,6 +311,13 @@
       "Practice history",
       "Basic Education",
       "St. Sebastian students until a reviewed roster/source is available"
-    ]
+    ],
+    "currentApprovedSectionCounts": {
+      "shs-g11-techpro-ict-st-isidore-of-seville": 45,
+      "shs-g11-techpro-ict-st-carlo-acutis": 34,
+      "shs-g12-tvl-ict-st-philip-the-apostle": 45,
+      "shs-g12-tvl-ict-st-anselm-of-canterbury": 44
+    },
+    "currentApprovedRosterNote": "The protected Drive sheet remains a snapshot. The live approved pilot baseline includes one legitimate St. Isidore student admitted through the audited guest-to-student approval workflow after the sheet snapshot."
   }
 }
