@@ -103,7 +103,7 @@ async function createBlueprint(db,approved,row){
    if(same(current.data(),approved,"blueprint",row.blueprintId))return "already_applied";
    throw Error("Blueprint target changed after preflight.");
   }
-  if(!school.exists||!["draft","active"].includes(school.data().state))
+  if(!school.exists||!["draft","pilot","active"].includes(school.data().state))
    throw Error("MCS school is unavailable.");
   if(!member.exists||member.data().schoolId!==SCHOOL_ID||member.data().status!=="active"||
      !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher"))

@@ -167,7 +167,7 @@ async function prerequisiteState(db,row,source){
   db.doc(prefix+"people/"+row.personId).get(),
   db.doc(prefix+"enrollments/"+rowKey(row.personId,row.offeringId)).get()
  ]);
- if(!school.exists||!["draft","active"].includes(school.data().state))
+ if(!school.exists||!["draft","pilot","active"].includes(school.data().state))
   return "school_missing_or_unavailable";
  if(!task.exists||task.data().schoolId!==SCHOOL_ID||task.data().offeringId!==row.offeringId||
     task.data().submissionSource!==source)

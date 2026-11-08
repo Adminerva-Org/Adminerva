@@ -86,7 +86,7 @@ function same(data,approved,type,key){
 }
 async function inspect(db,approved){
  const rows=[],school=await db.doc("platform_schools/"+SCHOOL_ID).get();
- if(!school.exists||!["draft","active"].includes(school.data().state))
+ if(!school.exists||!["draft","pilot","active"].includes(school.data().state))
   rows.push({state:"school_missing_or_unavailable",targetPath:"platform_schools/"+SCHOOL_ID});
  for(const row of approved.enrollments){
   if(row.enrollmentId!==rowKey(row.personId,row.offeringId))

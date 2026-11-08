@@ -120,7 +120,7 @@ async function inspectRow(db,approved,row){
   db.doc(prefix+"enrollments/"+enrollmentId).get(),
   db.doc(prefix+"course_offerings/"+row.offeringId).get()
  ]);
- if(!school.exists||!["draft","active"].includes(school.data().state))
+ if(!school.exists||!["draft","pilot","active"].includes(school.data().state))
   return {configId:row.configId,targetPath:row.targetPath,state:"school_missing_or_unavailable"};
  if(!person.exists||person.data().schoolId!==SCHOOL_ID||person.data().kind!=="student"||
     person.data().status!=="active"||person.data().authUid!==row.studentUid)
@@ -157,7 +157,7 @@ async function createConfig(db,approved,row){
    if(same(current.data(),approved,row))return "already_applied";
    throw Error("Student repository target changed after preflight.");
   }
-  if(!school.exists||!["draft","active"].includes(school.data().state))
+  if(!school.exists||!["draft","pilot","active"].includes(school.data().state))
    throw Error("MCS school is unavailable.");
   if(!person.exists||person.data().kind!=="student"||person.data().status!=="active"||
      person.data().authUid!==row.studentUid||

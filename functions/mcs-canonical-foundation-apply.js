@@ -169,10 +169,14 @@ function sameMigration(data,planSha256,type,key){
  return data?.schoolId===SCHOOL_ID&&data?.migration?.planSha256===planSha256&&
   data?.migration?.type===type&&data?.migration?.key===key;
 }
+function adoptableFirstAdminGrant(data,school,uid){
+ return school?.exists&&school.data().firstAdminUid===uid&&data?.schoolId===SCHOOL_ID&&
+  data?.status==="active"&&Array.isArray(data.roles)&&data.roles.includes("school_admin")&&!data?.migration;
+}
 async function inspectTargets(db,approved){
  const rows=[];
  const school=await db.doc("platform_schools/"+SCHOOL_ID).get();
- if(!school.exists||!["draft","active"].includes(school.data().state))
+ if(!school.exists||!["draft","pilot","active"].includes(school.data().state))
   rows.push({state:"school_missing_or_unavailable",targetPath:"platform_schools/"+SCHOOL_ID});
  const personStates=new Map();
  for(const person of approved.people){
@@ -185,12 +189,16 @@ async function inspectTargets(db,approved){
   const memberRef=db.doc(member.targetPath),indexRef=db.doc("platform_users/"+member.uid+"/memberships/"+SCHOOL_ID);
   const [doc,index]=await Promise.all([memberRef.get(),indexRef.get()]);
   const personState=personStates.get(member.uid)||"target_conflict";
-  const membershipState=!doc.exists?"ready":sameMigration(doc.data(),approved.planSha256,"membership",member.uid)?"already_applied":"target_conflict";
-  const indexState=!index.exists?"ready":sameMigration(index.data(),approved.planSha256,"membership_index",member.uid)?"already_applied":"target_conflict";
+  const membershipState=!doc.exists?"ready":sameMigration(doc.data(),approved.planSha256,"membership",member.uid)?"already_applied":
+    adoptableFirstAdminGrant(doc.data(),school,member.uid)?"adopt_first_admin_grant":"target_conflict";
+  const indexState=!index.exists?"ready":sameMigration(index.data(),approved.planSha256,"membership_index",member.uid)?"already_applied":
+    adoptableFirstAdminGrant(index.data(),school,member.uid)?"adopt_first_admin_grant":"target_conflict";
   rows.push({kind:"membership",key:member.uid,targetPath:memberRef.path,state:membershipState});
   rows.push({kind:"membership_index",key:member.uid,targetPath:indexRef.path,state:indexState});
-  const unitStates=[personState,membershipState,indexState];
-  if(unitStates.every(state=>["ready","already_applied"].includes(state))&&new Set(unitStates).size>1)
+  const unitStates=[personState,membershipState,indexState],
+   compatible=new Set(["ready","already_applied","adopt_first_admin_grant"]);
+  if(unitStates.every(state=>compatible.has(state))&&unitStates.includes("already_applied")&&
+     unitStates.some(state=>state!=="already_applied"))
    rows.push({kind:"identity_unit",key:member.uid,targetPath:memberRef.path,state:"identity_partial_state"});
  }
  for(const [collection,kind,key] of [["academic_programs","program","programs"],["academic_years","year","years"],
@@ -215,31 +223,37 @@ async function createPersonAndMembership(db,approved,member){
  const person=approved.people.find(row=>row.uid===member.uid);
  return db.runTransaction(async tx=>{
   const personRef=db.doc(person.targetPath),memberRef=db.doc(member.targetPath),
-   indexRef=db.doc("platform_users/"+member.uid+"/memberships/"+SCHOOL_ID);
-  const [p,m,i]=await Promise.all([tx.get(personRef),tx.get(memberRef),tx.get(indexRef)]);
+   indexRef=db.doc("platform_users/"+member.uid+"/memberships/"+SCHOOL_ID),
+   schoolRef=db.doc("platform_schools/"+SCHOOL_ID);
+  const [p,m,i,school]=await Promise.all([tx.get(personRef),tx.get(memberRef),tx.get(indexRef),tx.get(schoolRef)]);
   const states=[
    !p.exists?"ready":sameMigration(p.data(),approved.planSha256,"person",person.personId)?"same":"conflict",
-   !m.exists?"ready":sameMigration(m.data(),approved.planSha256,"membership",member.uid)?"same":"conflict",
-   !i.exists?"ready":sameMigration(i.data(),approved.planSha256,"membership_index",member.uid)?"same":"conflict"
+   !m.exists?"ready":sameMigration(m.data(),approved.planSha256,"membership",member.uid)?"same":
+    adoptableFirstAdminGrant(m.data(),school,member.uid)?"adopt":"conflict",
+   !i.exists?"ready":sameMigration(i.data(),approved.planSha256,"membership_index",member.uid)?"same":
+    adoptableFirstAdminGrant(i.data(),school,member.uid)?"adopt":"conflict"
   ];
   if(states.includes("conflict"))throw Error("Canonical identity target changed after preflight.");
   if(states.every(state=>state==="same"))return "already_applied";
-  if(states.some(state=>state==="same"))throw Error("Canonical identity unit is only partially applied; reconcile before retrying.");
-  const now=FieldValue.serverTimestamp();
+  if(states.includes("same")&&states.some(state=>state!=="same"))
+   throw Error("Canonical identity unit is only partially applied; reconcile before retrying.");
+  const now=FieldValue.serverTimestamp(),
+   preservedRoles=[...new Set([...(Array.isArray(m.data()?.roles)?m.data().roles:[]),...member.roles])].sort(),
+   revision=Math.max(Number(m.data()?.revision)||0,Number(i.data()?.revision)||0)+1;
   tx.create(personRef,{schoolId:SCHOOL_ID,displayName:person.displayName,
    searchKey:person.displayName.toLocaleLowerCase("en")+"#"+person.personId,
    kind:person.kind,status:person.status,authUid:member.uid,revision:1,
    migration:migrationMeta(approved.planSha256,"person",person.personId),
    createdByUid:"migration",createdAt:now,updatedAt:now});
-  tx.create(memberRef,{schoolId:SCHOOL_ID,personId:person.personId,displayName:person.displayName,
-   status:member.status,roles:member.roles,revision:1,
+  tx.set(memberRef,{schoolId:SCHOOL_ID,personId:person.personId,displayName:person.displayName,
+   status:member.status,roles:preservedRoles,revision,
    migration:migrationMeta(approved.planSha256,"membership",member.uid),
-   updatedByUid:"migration",updatedAt:now});
-  tx.create(indexRef,{schoolId:SCHOOL_ID,status:member.status,roles:member.roles,revision:1,
-   migration:migrationMeta(approved.planSha256,"membership_index",member.uid),updatedAt:now});
+   updatedByUid:"migration",updatedAt:now},{merge:false});
+  tx.set(indexRef,{schoolId:SCHOOL_ID,status:member.status,roles:preservedRoles,revision,
+   migration:migrationMeta(approved.planSha256,"membership_index",member.uid),updatedAt:now},{merge:false});
   tx.create(db.collection("schools/"+SCHOOL_ID+"/directory_audit").doc(),{
    schoolId:SCHOOL_ID,actorUid:"migration",personId:person.personId,targetUid:member.uid,
-   action:"mcs_canonical_identity_migrated",roles:member.roles,
+   action:"mcs_canonical_identity_migrated",roles:preservedRoles,
    planSha256:approved.planSha256,createdAt:now});
   return "created";
  });

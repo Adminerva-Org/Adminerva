@@ -195,7 +195,7 @@ async function inspectSchedule(db,approved,row){
 }
 async function inspect(db,approved){
  const school=await db.doc("platform_schools/"+SCHOOL_ID).get(),rows=[];
- if(!school.exists||!["draft","active"].includes(school.data().state))
+ if(!school.exists||!["draft","pilot","active"].includes(school.data().state))
   rows.push({state:"school_missing_or_unavailable",targetPath:"platform_schools/"+SCHOOL_ID});
  for(const folder of approved.referenceFolders){
   const member=await db.doc("schools/"+SCHOOL_ID+"/memberships/"+folder.ownerUid).get();

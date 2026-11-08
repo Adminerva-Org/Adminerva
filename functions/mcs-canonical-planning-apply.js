@@ -113,7 +113,7 @@ function validateResource(row){
 }
 async function inspect(db,approved){
  const rows=[],school=await db.doc("platform_schools/"+SCHOOL_ID).get();
- if(!school.exists||!["draft","active"].includes(school.data().state))
+ if(!school.exists||!["draft","pilot","active"].includes(school.data().state))
   rows.push({state:"school_missing_or_unavailable",targetPath:"platform_schools/"+SCHOOL_ID});
  for(const row of approved.resources){
   try{validateResource(row);}
@@ -145,7 +145,7 @@ async function createResource(db,approved,row){
    if(same(current.data(),approved,row))return "already_applied";
    throw Error("Planning target changed after preflight.");
   }
-  if(!school.exists||!["draft","active"].includes(school.data().state))
+  if(!school.exists||!["draft","pilot","active"].includes(school.data().state))
    throw Error("MCS school is unavailable.");
   if(!member.exists||member.data().schoolId!==SCHOOL_ID||
      !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher"))

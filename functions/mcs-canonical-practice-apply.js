@@ -305,7 +305,7 @@ async function inspectStudent(db,approved,student){
 }
 async function inspect(db,approved){
  const school=await db.doc("platform_schools/"+SCHOOL_ID).get(),students=[];
- if(!school.exists||!["draft","active"].includes(school.data().state))
+ if(!school.exists||!["draft","pilot","active"].includes(school.data().state))
   return {schoolState:"school_missing_or_unavailable",students:[]};
  for(const student of approved.students)students.push(await inspectStudent(db,approved,student));
  return {schoolState:"ok",students};
