@@ -54,7 +54,7 @@ async function identityCandidates({db,resolveUserByEmail,resolveUserByGithubUser
   if(!user&&githubUsername&&typeof resolveUserByGithubUsername==="function"){
    try{
     const candidate=await resolveUserByGithubUsername(githubUsername);
-    if(candidate&&candidate.emailVerified&&!candidate.disabled){user=candidate;identitySource="github_provider_uid";}
+    if(candidate&&!candidate.disabled){user=candidate;identitySource="github_provider_uid";}
    }catch(error){
     if(error?.code!=="auth/user-not-found")throw error;
    }
