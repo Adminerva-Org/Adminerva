@@ -35,6 +35,6 @@ jobs:
         shell: bash
         run: |
           cd functions
-          node ../scripts/mcs-v4-draft-bootstrap.cjs
+          NODE_PATH="$PWD/node_modules" node ../scripts/mcs-v4-draft-bootstrap.cjs
       - if: always()
         run: rm -f "$RUNNER_TEMP/firebase-service-account.json"
