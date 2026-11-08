@@ -63,7 +63,7 @@ function createPeopleDirectoryService({db}) {
     const adminRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+ctx.uid);
     async function requireCurrentAdmin(tx) {
       const school=await tx.get(schoolRef),member=await tx.get(adminRef);
-      if(!school.exists||school.data().state!=="active"||!member.exists||
+      if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
          member.data().status!=="active"||member.data().schoolId!==ctx.schoolId||
          !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
         throw new TenantAccessError("permission-denied","School administration access has changed.");
@@ -661,7 +661,7 @@ function createInvitationAcceptanceService({db}) {
     let acceptedRole=null;
     await db.runTransaction(async tx=>{
       const school=await tx.get(schoolRef),invitation=await tx.get(inviteRef);
-      if(!school.exists||school.data().state!=="active"||!invitation.exists)
+      if(!school.exists||!["active","pilot"].includes(school.data().state)||!invitation.exists)
         throw new TenantAccessError("permission-denied","This school invitation is unavailable.");
       const invited=invitation.data();
       if(invited.schoolId!==schoolId||invited.email!==email||

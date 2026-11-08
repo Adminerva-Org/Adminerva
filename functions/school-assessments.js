@@ -50,7 +50,7 @@ function createSchoolAssessmentService({db}){
      tx.get(schoolRef),tx.get(membershipRef),tx.get(offeringRef),tx.get(grantRef),
      tx.get(blueprintRef),tx.get(taskRef)
     ]);
-    if(!school.exists||school.data().state!=="active"||!membership.exists||
+    if(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
        membership.data().status!=="active"||membership.data().schoolId!==ctx.schoolId||
        !Array.isArray(membership.data().roles)||!membership.data().roles.includes("teacher"))
       deny("permission-denied","Your school teaching access is no longer active.");
@@ -143,7 +143,7 @@ function createSchoolAssessmentService({db}){
     const [school,membership,task]=await Promise.all([
      tx.get(schoolRef),tx.get(membershipRef),tx.get(taskRef)
     ]);
-    if(!school.exists||school.data().state!=="active"||!membership.exists||
+    if(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
        membership.data().schoolId!==ctx.schoolId||membership.data().status!=="active"||
        !Array.isArray(membership.data().roles)||!membership.data().roles.includes("teacher"))
       deny("permission-denied","Your school teaching access changed.");

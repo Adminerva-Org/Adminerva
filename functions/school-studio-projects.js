@@ -82,7 +82,7 @@ function createSchoolStudioProjectService({db}){
   const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
   async function authorizeTransaction(tx) {
    const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(membershipRef)]);
-   if(!school.exists||school.data().state!=="active"||!member.exists||
+   if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
       member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
       !Array.isArray(member.data().roles)||!member.data().roles.includes("student"))
     deny("permission-denied","Your school student membership is no longer active.");

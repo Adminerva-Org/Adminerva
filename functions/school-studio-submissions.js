@@ -22,7 +22,7 @@ function createSchoolStudioSubmissionService({db}){
   const submissions=db.collection(prefix+"studio_submissions");
   async function verifySchool(tx,role){
    const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(membershipRef)]);
-   if(!school.exists||school.data().state!=="active"||!member.exists||
+   if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
       member.data().status!=="active"||member.data().schoolId!==ctx.schoolId||
       !Array.isArray(member.data().roles)||!member.data().roles.includes(role))
     deny("permission-denied","School membership changed. Refresh access before continuing.");

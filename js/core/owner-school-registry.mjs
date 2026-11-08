@@ -25,7 +25,9 @@ function choose(id){
   if(!selected)return;
   byId("owner-current").textContent=selected.displayName;
   byId("owner-current-status").textContent=selected.schoolId+" · "+selected.state+" · revision "+selected.revision;
-  byId("owner-activate").hidden=selected.state!=="draft";
+  byId("owner-start-pilot").hidden=selected.state!=="draft";
+  byId("owner-end-pilot").hidden=selected.state!=="pilot";
+  byId("owner-activate").hidden=!["draft","pilot"].includes(selected.state);
   byId("owner-suspend").hidden=selected.state!=="active";
   byId("owner-grant").hidden=selected.state==="archived";
   byId("owner-cutover").hidden=selected.compatibilityMode==="v4_only";
@@ -223,6 +225,25 @@ byId("owner-admin-restore").addEventListener("submit",event=>{
   void submit(f,"restore_school_admin",{schoolId:selected.schoolId,
     targetUid:String(d.get("targetUid")||"").trim(),
     reason:String(d.get("reason")||"").trim()});
+});
+byId("owner-start-pilot").addEventListener("submit",event=>{
+  event.preventDefault();if(!selected)return;
+  const f=event.currentTarget,d=new FormData(f),acknowledgements={
+    limitedScopeReviewed:d.get("limitedScopeReviewed")==="on",
+    legacyCompatibilityRequired:d.get("legacyCompatibilityRequired")==="on",
+    productionNotAuthorized:d.get("productionNotAuthorized")==="on"
+  };
+  if(!Object.values(acknowledgements).every(Boolean)){say("Complete all controlled-pilot acknowledgements.");return;}
+  if(!confirm("Start limited V4 pilot access for "+selected.displayName+" while keeping legacy compatibility?"))return;
+  void submit(f,"start_pilot",{schoolId:selected.schoolId,
+    scopeReference:String(d.get("scopeReference")||"").trim(),
+    reason:String(d.get("reason")||"").trim(),acknowledgements});
+});
+byId("owner-end-pilot").addEventListener("submit",event=>{
+  event.preventDefault();if(!selected)return;
+  const f=event.currentTarget,d=new FormData(f);
+  if(!confirm("Return "+selected.displayName+" to draft access? Canonical pilot data will be preserved."))return;
+  void submit(f,"end_pilot",{schoolId:selected.schoolId,reason:String(d.get("reason")||"").trim()});
 });
 byId("owner-activate").addEventListener("submit",event=>{
   event.preventDefault();if(!selected)return;

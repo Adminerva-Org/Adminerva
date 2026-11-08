@@ -100,7 +100,7 @@ function createSchoolGradebookService({db}){
    const [school,member,grant,currentTask,submission]=await Promise.all([
     tx.get(schoolRef),tx.get(memberRef),tx.get(grantRef),tx.get(taskRef),tx.get(submissionRef)
    ]);
-   if(!school.exists||school.data().state!=="active"||!member.exists||
+   if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
       member.data().status!=="active"||member.data().schoolId!==ctx.schoolId||
       !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher")||
       !grant.exists||grant.data().status!=="active"||

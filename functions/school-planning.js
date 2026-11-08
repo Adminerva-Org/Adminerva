@@ -81,7 +81,7 @@ function createSchoolPlanningService({db}){
   const memberRef=db.doc(prefix+"memberships/"+ctx.uid);
   async function currentTeacher(tx){
    const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(memberRef)]);
-   if(!school.exists||school.data().state!=="active"||!member.exists||
+   if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
       member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
       !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher"))
     deny("permission-denied","Your teaching access changed. Refresh before continuing.");

@@ -45,7 +45,7 @@ function createSchoolStudentProfileService({db}){
 
   async function actor(){
    const [school,member]=await Promise.all([schoolRef.get(),memberRef.get()]);
-   if(!school.exists||school.data().state!=="active"||!member.exists||
+   if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
       member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
       !Array.isArray(member.data().roles)||!member.data().roles.includes("student"))
     deny("permission-denied","Your school student access changed. Refresh before continuing.");
@@ -128,7 +128,7 @@ function createSchoolStudentProfileService({db}){
      tx.get(enrollment.ref),tx.get(db.doc(prefix+"course_offerings/"+offeringId)),
      tx.get(configRef)
     ]);
-    if(!school.exists||school.data().state!=="active"||!member.exists||
+    if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
        member.data().status!=="active"||!member.data().roles?.includes("student")||
        member.data().personId!==a.personId||!person.exists||person.data().status!=="active"||
        person.data().authUid!==ctx.uid||!currentEnrollment.exists||

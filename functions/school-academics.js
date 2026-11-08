@@ -43,7 +43,7 @@ function createSchoolAcademicsService({db}) {
   function requireAdmin(){if(!admin)deny("permission-denied","School administration is required.");}
   async function checkWriteAuthority(tx){
    const [school,membership]=await Promise.all([tx.get(schoolRef),tx.get(memberRef)]);
-   if(!school.exists||school.data().state!=="active"||!membership.exists||
+   if(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
     membership.data().schoolId!==ctx.schoolId||membership.data().status!=="active"||
     !Array.isArray(membership.data().roles)||!membership.data().roles.includes("school_admin"))
     deny("permission-denied","Your school administration permission has changed.");

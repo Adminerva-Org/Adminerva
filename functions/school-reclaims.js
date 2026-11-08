@@ -29,7 +29,7 @@ function createSchoolReclaimService({db}){
   const schoolRef=db.doc("platform_schools/"+ctx.schoolId),memberRef=db.doc(prefix+"memberships/"+ctx.uid);
   async function verifyRole(tx,role){
    const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(memberRef)]);
-   if(!school.exists||school.data().state!=="active"||!member.exists||
+   if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
       member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
       !Array.isArray(member.data().roles)||!member.data().roles.includes(role))
     deny("permission-denied","Your school permission changed. Refresh before continuing.");

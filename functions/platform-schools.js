@@ -91,7 +91,12 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       return {schools:snap.docs.map(doc=>({
         schoolId:doc.id,displayName:doc.data().displayName,state:doc.data().state,
         dataLocation:doc.data().dataLocation,revision:doc.data().revision,
-        compatibilityMode:doc.data().compatibilityMode||"legacy_allowed"
+        compatibilityMode:doc.data().compatibilityMode||"legacy_allowed",
+        productionAuthorized:doc.data().productionAuthorized===true,
+        pilot:doc.data().pilot?{
+          status:doc.data().pilot.status||null,
+          scopeReference:doc.data().pilot.scopeReference||null
+        }:null
       }))};
     }
     if(action==="list_governance_roles"){
@@ -131,7 +136,7 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         assignmentRef=db.doc("platform_schools/"+schoolId+"/governance_roles/"+roleId);
       await db.runTransaction(async tx=>{
         const [school,role]=await Promise.all([tx.get(schoolRef),tx.get(roleRef)]);
-        if(!school.exists||!["draft","active","suspended"].includes(school.data().state))
+        if(!school.exists||!["draft","pilot","active","suspended"].includes(school.data().state))
           fail("failed-precondition","The school must exist and must not be archived.");
         if(!role.exists||role.data().status!=="active")
           fail("failed-precondition","Choose an active platform governance role.");
@@ -200,7 +205,7 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       const reason=phrase(input.reason,12,500,"Decision review reason");
       await db.runTransaction(async tx=>{
         const school=await tx.get(schoolRef);
-        if(!school.exists||!["draft","active","suspended"].includes(school.data().state))
+        if(!school.exists||!["draft","pilot","active","suspended"].includes(school.data().state))
           fail("failed-precondition","The school must exist and must not be archived.");
         const firstAdminUid=school.data().firstAdminUid;
         if(!firstAdminUid)fail("failed-precondition","Designate the first verified school administrator first.");
@@ -231,7 +236,7 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       await db.runTransaction(async tx=>{
         if((await tx.get(schoolRef)).exists)fail("already-exists","The school already exists.");
         tx.create(schoolRef,{
-          displayName,state:"draft",revision:1,compatibilityMode:"v4_only",
+          displayName,state:"draft",revision:1,compatibilityMode:"v4_only",productionAuthorized:false,
           dataLocation:{type:"shared_firestore_namespace",database:"(default)",path:"schools/"+schoolId},
           firstAdminUid:null,aiEnabled:false,storageEnabled:false,
           readiness:{},createdByUid:uid,createdAt:FieldValue.serverTimestamp(),
@@ -251,7 +256,7 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       const indexRef=db.doc("platform_users/"+targetUid+"/memberships/"+schoolId);
       await db.runTransaction(async tx=>{
         const school=await tx.get(schoolRef),member=await tx.get(memberRef);
-        if(!school.exists||!["draft","active","suspended"].includes(school.data().state))
+        if(!school.exists||!["draft","pilot","active","suspended"].includes(school.data().state))
           fail("failed-precondition","The school must exist and must not be archived.");
         if(member.exists && member.data().status==="suspended")
           fail("failed-precondition","Use reviewed membership recovery for a suspended account.");
@@ -280,7 +285,7 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       const restoring=action==="restore_school_admin";
       await db.runTransaction(async tx=>{
         const school=await tx.get(schoolRef),member=await tx.get(memberRef);
-        if(!school.exists||!["draft","active","suspended"].includes(school.data().state))
+        if(!school.exists||!["draft","pilot","active","suspended"].includes(school.data().state))
           fail("failed-precondition","The school must exist and must not be archived.");
         if(!member.exists||member.data().schoolId!==schoolId||
            !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
@@ -310,6 +315,47 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       });
       return {schoolId,adminUid:targetUid,status:restoring?"active":"suspended"};
     }
+    if(action==="start_pilot") {
+      const scopeReference=phrase(input.scopeReference,8,240,"Pilot scope reference"),
+        reason=phrase(input.reason,12,500,"Pilot reason"),ack=input.acknowledgements||{};
+      for(const key of ["limitedScopeReviewed","legacyCompatibilityRequired","productionNotAuthorized"])
+        if(ack[key]!==true)fail("failed-precondition","Confirm the limited scope, legacy compatibility and non-production pilot status.");
+      await db.runTransaction(async tx=>{
+        const school=await tx.get(schoolRef);
+        if(!school.exists||school.data().state!=="draft")
+          fail("failed-precondition","Only a draft school can enter controlled pilot mode.");
+        const adminUid=school.data().firstAdminUid;
+        if(!adminUid)fail("failed-precondition","Designate the first verified school administrator before pilot access.");
+        const member=await tx.get(db.doc("schools/"+schoolId+"/memberships/"+adminUid));
+        if(!member.exists||member.data().schoolId!==schoolId||member.data().status!=="active"||
+           !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
+          fail("failed-precondition","The designated pilot administrator is not active.");
+        const now=FieldValue.serverTimestamp();
+        tx.update(schoolRef,{state:"pilot",compatibilityMode:"legacy_allowed",productionAuthorized:false,
+          pilot:{status:"active",scopeReference,productionAuthorized:false,
+            institutionalApprovalStatus:"pending",startedByUid:uid,startedAt:now},
+          revision:(school.data().revision||0)+1,updatedAt:now});
+        tx.create(auditRef,{schoolId,actorUid:uid,action:"school_controlled_pilot_started",
+          scopeReference,reason,createdAt:now});
+      });
+      return {schoolId,state:"pilot",compatibilityMode:"legacy_allowed",productionAuthorized:false};
+    }
+    if(action==="end_pilot") {
+      const reason=phrase(input.reason,12,500,"Pilot close reason");
+      await db.runTransaction(async tx=>{
+        const school=await tx.get(schoolRef);
+        if(!school.exists||school.data().state!=="pilot")
+          fail("failed-precondition","Only a controlled pilot can be returned to draft.");
+        const now=FieldValue.serverTimestamp(),pilot=school.data().pilot||{};
+        tx.update(schoolRef,{state:"draft",compatibilityMode:"legacy_allowed",productionAuthorized:false,
+          pilot:{...pilot,status:"ended",productionAuthorized:false,endedByUid:uid,endedAt:now},
+          revision:(school.data().revision||0)+1,updatedAt:now});
+        tx.create(auditRef,{schoolId,actorUid:uid,action:"school_controlled_pilot_ended",
+          reason,createdAt:now});
+      });
+      return {schoolId,state:"draft",compatibilityMode:"legacy_allowed",productionAuthorized:false};
+    }
+
     if(action==="activate") {
       const attestation=input.attestation||{};
       if(requiredAttestations.some(key=>attestation[key]!==true))
@@ -317,16 +363,19 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       const reason=phrase(input.reason,12,500,"Activation reason");
       await db.runTransaction(async tx=>{
         const school=await tx.get(schoolRef);
-        if(!school.exists||school.data().state!=="draft")
-          fail("failed-precondition","Only a draft institution can be activated.");
+        if(!school.exists||!["draft","pilot"].includes(school.data().state))
+          fail("failed-precondition","Only a draft or controlled-pilot institution can be activated.");
         const adminUid=school.data().firstAdminUid;
         if(!adminUid)fail("failed-precondition","Designate the first verified school administrator.");
         const member=await tx.get(db.doc("schools/"+schoolId+"/memberships/"+adminUid));
         if(!member.exists||member.data().status!=="active"||
            !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
           fail("failed-precondition","The first administrator's grant is not active.");
-        tx.update(schoolRef,{state:"active",readiness:attestation,
-          revision:(school.data().revision||0)+1,updatedAt:FieldValue.serverTimestamp()});
+        const now=FieldValue.serverTimestamp(),pilot=school.data().pilot||null;
+        tx.update(schoolRef,{state:"active",readiness:attestation,productionAuthorized:true,
+          ...(pilot?{pilot:{...pilot,status:"promoted",productionAuthorized:true,
+            promotedByUid:uid,promotedAt:now}}:{}),
+          revision:(school.data().revision||0)+1,updatedAt:now});
         tx.create(auditRef,{schoolId,actorUid:uid,action:"school_activated",reason,
           attestationKeys:requiredAttestations,createdAt:FieldValue.serverTimestamp()});
       });

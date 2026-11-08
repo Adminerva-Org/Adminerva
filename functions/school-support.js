@@ -51,7 +51,7 @@ function createSchoolSupportService({db,bucket}){
 
   async function currentAuthority(tx){
     const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(memberRef)]);
-    if(!school.exists||school.data().state!=="active"||!member.exists||
+    if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
        member.data().schoolId!==ctx.schoolId||member.data().status!=="active")
       deny("permission-denied","Your school access changed. Refresh before continuing.");
     const roles=Array.isArray(member.data().roles)?member.data().roles:[];

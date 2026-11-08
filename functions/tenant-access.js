@@ -31,11 +31,12 @@ async function getSchoolContext({db,request,schoolId,roles=[]}) {
   const data=school.exists?school.data():null;
   const grant=member.exists?member.data():null;
   const memberRoles=activeRoles(grant);
-  if(data?.state!=="active" || grant?.schoolId!==id || memberRoles.length===0)
+  if(!["active","pilot"].includes(data?.state) || grant?.schoolId!==id || memberRoles.length===0)
     throw new TenantAccessError("permission-denied","Your access to this school is not active.");
   if(roles.length && !roles.some(role=>memberRoles.includes(role)))
     throw new TenantAccessError("permission-denied","This action is not granted for your school role.");
-  return Object.freeze({uid,schoolId:id,roles:memberRoles,membershipRevision:grant.revision||0});
+  return Object.freeze({uid,schoolId:id,roles:memberRoles,membershipRevision:grant.revision||0,
+    schoolState:data.state,productionAuthorized:data.productionAuthorized===true});
 }
 async function platformAuthority({db,request}) {
   const uid=verifiedUid(request);
@@ -54,7 +55,8 @@ async function listVerifiedSchools({db,request}) {
       return {
         schoolId:ctx.schoolId,
         name:typeof label==="string"&&label.trim()?label.trim().slice(0,120):ctx.schoolId,
-        roles:ctx.roles,
+        roles:ctx.roles,schoolState:ctx.schoolState,
+        productionAuthorized:ctx.productionAuthorized,
         compatibilityMode:school.data()?.compatibilityMode||"legacy_allowed"
       };
     }catch(error) {

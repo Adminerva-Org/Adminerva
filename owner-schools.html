@@ -147,6 +147,22 @@
       <button type="submit" class="own-button">Restore school administrator</button>
     </form>
    </details>
+   <form id="owner-start-pilot" hidden>
+    <h3 style="font-weight:750;margin:1.5rem 0 .5rem">Start controlled pilot</h3>
+    <p class="own-muted">Pilot mode enables verified V4 school workflows for a reviewed limited cohort. It keeps legacy compatibility enabled and does not claim institutional production approval.</p>
+    <label>Pilot scope reference<input class="own-field" name="scopeReference" minlength="8" maxlength="240" required value="Adminerva 4.0 MCS SHS ICT pilot"></label>
+    <label class="own-confirm"><input name="limitedScopeReviewed" type="checkbox" required> The limited pilot cohort and academic scope have been reviewed.</label>
+    <label class="own-confirm"><input name="legacyCompatibilityRequired" type="checkbox" required> Legacy 3.x compatibility must remain available during the pilot.</label>
+    <label class="own-confirm"><input name="productionNotAuthorized" type="checkbox" required> This pilot is not institutional production authorization.</label>
+    <label>Pilot reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+    <button type="submit" class="own-button">Start controlled pilot</button>
+   </form>
+   <form id="owner-end-pilot" hidden>
+    <h3 style="font-weight:750;margin:1.5rem 0 .5rem">Close controlled pilot</h3>
+    <p class="own-muted">Returns the institution to draft access while preserving canonical pilot data and legacy compatibility.</p>
+    <label>Close reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
+    <button type="submit" class="own-button warn">Return pilot to draft</button>
+   </form>
    <form id="owner-activate" hidden>
     <h3 style="font-weight:750;margin:1.5rem 0 .5rem">Activate institution</h3>
     <p class="own-muted">All confirmations require external verification, not just checking the boxes.</p>
