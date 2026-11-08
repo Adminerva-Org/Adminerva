@@ -208,7 +208,27 @@ async function main(){
    unresolvedSelectedRows:unresolvedStudents.length,
    mappedBySection,unresolvedBySection
  }));
- if(unresolvedStudents.length)fail("student_identity_unresolved");
+ if(unresolvedStudents.length){
+   const reasons={missing_or_invalid_email:0,auth_user_not_found:0,email_not_verified:0,auth_user_disabled:0,other_auth_lookup_error:0};
+   const bySection=Object.fromEntries(activeSections.map(section=>[section.sectionId,{missing_or_invalid_email:0,auth_user_not_found:0,email_not_verified:0,auth_user_disabled:0,other_auth_lookup_error:0}]));
+   for(const row of unresolvedStudents){
+     const section=selectedSectionById.get(row.id);
+     const email=typeof row.data?.email==="string"?row.data.email.trim().toLowerCase():"";
+     let reason="missing_or_invalid_email";
+     if(/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){
+       try{
+         const user=await auth.getUserByEmail(email);
+         reason=user.disabled?"auth_user_disabled":user.emailVerified===true?"other_auth_lookup_error":"email_not_verified";
+       }catch(error){
+         reason=error?.code==="auth/user-not-found"?"auth_user_not_found":"other_auth_lookup_error";
+       }
+     }
+     reasons[reason]++;
+     if(section)bySection[section.sectionId][reason]++;
+   }
+   console.log("MCS_SHS_UNRESOLVED_IDENTITY_REASONS "+JSON.stringify({reasons,bySection}));
+   fail("student_identity_unresolved");
+ }
  const duplicateCurrentAccounts=(identity.candidates||[]).filter(candidate=>
    (candidate.legacyStudentIds||[]).filter(row=>selectedSectionById.has(row.studentId)).length>1);
  const duplicateEquivalent=duplicateCurrentAccounts.filter(candidate=>{
