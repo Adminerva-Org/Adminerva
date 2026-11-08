@@ -92,7 +92,7 @@ function createSchoolRosterSourceService({db,fetchImpl=fetch}){
     const memberRef=db.doc(prefix+"memberships/"+ctx.uid);
     async function authority(tx){
       const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(memberRef)]);
-      if(!school.exists||school.data().state!=="active"||!member.exists||
+      if(!school.exists||!["draft","pilot","active"].includes(school.data().state)||!member.exists||
          member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
          !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
         deny("permission-denied","School administration access changed.");
