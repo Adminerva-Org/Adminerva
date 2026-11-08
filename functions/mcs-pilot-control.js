@@ -11,7 +11,7 @@ const {verifiedUid,TenantAccessError}=require("./tenant-access.js");
 
 const SCHOOL_ID="mcs-manila";
 const PILOT_SECTIONS=[
-  {sectionId:"shs-g11-techpro-ict-st-isidore-of-seville",name:"St. Isidore of Seville",expected:44},
+  {sectionId:"shs-g11-techpro-ict-st-isidore-of-seville",name:"St. Isidore of Seville",expected:45},
   {sectionId:"shs-g11-techpro-ict-st-carlo-acutis",name:"St. Carlo Acutis",expected:34},
   {sectionId:"shs-g12-tvl-ict-st-philip-the-apostle",name:"St. Philip the Apostle",expected:45},
   {sectionId:"shs-g12-tvl-ict-st-anselm-of-canterbury",name:"St. Anselm of Canterbury",expected:44}
@@ -26,7 +26,6 @@ function email(value){
 }
 function hash(value){return createHash("sha256").update(String(value)).digest("hex");}
 const PILOT_ROSTER_EXTRA_FINGERPRINTS=new Set([
-  "cf7772b07257f28cd40d7a4312caee77f51bf4679e819c720965ca08f3a450dd",
   "30d7957afbc810af9073fbc9d3f7fda52f9eeaa1f785010de6f05e4e34c70473"
 ]);
 function foldedName(value){
@@ -142,8 +141,8 @@ async function pilotSnapshot({db,auth,ctx,includeSectionRecords=true}){
     offerings:offeringCount.data().count,enrollments:enrollmentCount.data().count,
     teacherAssignments:assignmentCount.data().count
   };
-  canonical.ready=canonical.people===168&&canonical.memberships===168&&canonical.offerings===8&&
-    canonical.enrollments===334&&canonical.teacherAssignments===8;
+  canonical.ready=canonical.people===(EXPECTED_TOTAL+1)&&canonical.memberships===(EXPECTED_TOTAL+1)&&canonical.offerings===8&&
+    canonical.enrollments===(EXPECTED_TOTAL*2)&&canonical.teacherAssignments===8;
   const blockers=[];
   if(unresolved.length)blockers.push({code:"identity_unresolved",label:unresolved.length+" student identit"+(unresolved.length===1?"y":"ies")+" need review."});
   if(countMismatch.length)blockers.push({code:"roster_count_mismatch",label:"Pilot roster counts do not yet match the protected four-section roster."});
