@@ -157,8 +157,39 @@ async function main(){
  if(expectedTotal!==167)fail("pilot_reference_total_changed");
 
  // Protected identity reconciliation. The report is kept only in memory.
+ // Legacy GitHub sign-in records may have a blank student.email even though
+ // Firebase Auth still has the account. Resolve those through the immutable
+ // GitHub provider UID rather than guessing from display names or emails.
+ const authByGithubProviderUid=new Map();
+ let githubPageToken;
+ do{
+   const page=await auth.listUsers(1000,githubPageToken);
+   for(const user of page.users)
+     for(const provider of user.providerData||[])
+       if(provider.providerId==="github.com"&&provider.uid)
+         authByGithubProviderUid.set(String(provider.uid),user);
+   githubPageToken=page.pageToken;
+ }while(githubPageToken);
+ const githubUserCache=new Map();
+ const resolveUserByGithubUsername=async username=>{
+   const key=norm(username);
+   if(!key)return null;
+   if(githubUserCache.has(key))return githubUserCache.get(key);
+   const response=await fetch("https://api.github.com/users/"+encodeURIComponent(key),{
+     headers:{"Accept":"application/vnd.github+json","User-Agent":"Adminerva-MCS-pilot-migration"}
+   });
+   if(response.status===404){githubUserCache.set(key,null);return null;}
+   if(!response.ok)fail("github_identity_lookup_failed");
+   const profile=await response.json();
+   const user=authByGithubProviderUid.get(String(profile.id))||null;
+   githubUserCache.set(key,user);
+   return user;
+ };
  const identity=await identityCandidates({
-   db,resolveUserByEmail:email=>auth.getUserByEmail(email),schoolId:SCHOOL_ID
+   db,
+   resolveUserByEmail:email=>auth.getUserByEmail(email),
+   resolveUserByGithubUsername,
+   schoolId:SCHOOL_ID
  });
 
  const studentSnap=await db.collection("students").get();
