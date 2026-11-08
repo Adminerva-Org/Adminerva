@@ -49,6 +49,13 @@ function fail(code){const error=new Error(code);error.pilotCode=code;throw error
 function sha(value){return createHash("sha256").update(value).digest("hex");}
 function rawJson(value){return Buffer.from(JSON.stringify(value,null,2)+"\n","utf8");}
 function norm(value){return typeof value==="string"?value.trim().toLowerCase():"";}
+function legacyDisplayName(data){
+ const direct=String(data?.displayName||data?.name||data?.fullName||data?.studentName||"").trim().replace(/\s+/g," ");
+ if(direct)return direct;
+ const first=String(data?.firstName||data?.firstname||data?.first_name||"").trim().replace(/\s+/g," ");
+ const last=String(data?.lastName||data?.lastname||data?.last_name||"").trim().replace(/\s+/g," ");
+ return [first,last].filter(Boolean).join(" ").trim();
+}
 function activeStatus(value){
  return !["archived","suspended","inactive","disabled","deleted"].includes(norm(value||"active"));
 }
