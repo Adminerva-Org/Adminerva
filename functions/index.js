@@ -76,6 +76,8 @@ exports.schoolReclaims=onCall(callOptions,safeCallable(createSchoolReclaimServic
 exports.acceptSchoolInvitation=onCall(callOptions,safeCallable(createInvitationAcceptanceService({db})));
 const {createPlatformSchoolService}=require("./platform-schools.js");
 exports.platformSchools=onCall(callOptions,safeCallable(createPlatformSchoolService({db})));
+const {createMcsPilotControlService}=require("./mcs-pilot-control.js");
+exports.mcsPilotControl=onCall(callOptions,safeCallable(createMcsPilotControlService({db,auth:getAuth()})));
 const {createSchoolSupportService}=require("./school-support.js");
 const storageBucket=()=>getStorage().bucket();
 exports.schoolSupport=onCall(callOptions,safeCallable(createSchoolSupportService({db,bucket:storageBucket})));
