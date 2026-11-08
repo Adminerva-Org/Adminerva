@@ -558,6 +558,10 @@ async function main(){
 
 main().catch(error=>{
  const code=error?.pilotCode||"unexpected_operator_error";
- console.error("::error::PILOT_EXCEPTION:"+code);
+ const safeMessage=String(error?.message||"")
+   .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,"[redacted-email]")
+   .replace(/\b[A-Za-z0-9_-]{28,}\b/g,"[redacted-id]")
+   .slice(0,400);
+ console.error("::error::PILOT_EXCEPTION:"+code+(safeMessage?": "+safeMessage:""));
  process.exitCode=2;
 });
