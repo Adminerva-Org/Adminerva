@@ -330,19 +330,23 @@ async function main(){
  // may not carry a human display name even though their Firebase identity does.
  // Use the verified Auth display name only in this in-memory migration source;
  // never rewrite the legacy student record.
- let authDisplayNamesUsed=0;
+ let authDisplayNamesUsed=0,placeholderLegacyNamesReplaced=0;
+ const placeholderName=/^(Student|Staff)\s+[A-Za-z0-9_-]+$/i;
  for(const row of selected){
-   if(legacyDisplayName(row.data))continue;
+   const currentName=legacyDisplayName(row.data);
+   if(currentName&&!placeholderName.test(currentName))continue;
    const uid=identityByStudent.get(row.id);
    if(!uid)fail("student_identity_missing_for_display_name");
    const user=await auth.getUser(uid);
    const authName=String(user?.displayName||"").trim().replace(/\s+/g," ");
-   if(authName.length<2)fail("student_display_name_requires_manual_review");
+   if(authName.length<2||placeholderName.test(authName))fail("student_display_name_requires_manual_review");
    row.data={...row.data,displayName:authName};
    authDisplayNamesUsed++;
+   if(currentName)placeholderLegacyNamesReplaced++;
  }
  console.log("MCS_SHS_DISPLAY_NAME_ENRICHMENT "+JSON.stringify({
    authDisplayNamesUsed,
+   placeholderLegacyNamesReplaced,
    legacyStudentDocumentsChanged:0
  }));
 
