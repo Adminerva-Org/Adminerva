@@ -10,7 +10,15 @@ const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
 const CATALOG=new Set(["academic_years","academic_programs","terms","subjects","sections"]);
 const PERIOD_TYPES=new Set(["term","semester","quarter","trimester","custom"]);
+const DEFAULT_ACADEMIC_YEAR_START_MONTH=7;
+const DEFAULT_ACADEMIC_YEAR_END_MONTH=5;
 function deny(code,message){throw new TenantAccessError(code,message)}
+function academicMonth(value,fallback,label){
+ const resolved=value===undefined||value===null||value===""?fallback:Number(value);
+ if(!Number.isInteger(resolved)||resolved<1||resolved>12)
+  deny("invalid-argument",label+" must be a month number from 1 to 12.");
+ return resolved;
+}
 function checkId(value,label="Identifier",max=80){
  if(typeof value!=="string"||value.length>max||!new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,"+(max-1)+"}$").test(value))deny("invalid-argument",label+" must contain 1–80 letters, digits, underscores or hyphens.");
  return value;
@@ -126,7 +134,11 @@ function createSchoolAcademicsService({db}) {
    const parentYear=input.yearId?checkId(input.yearId,"Academic year ID"):null,
     parentProgram=input.programId?checkId(input.programId,"Academic program ID"):null,
     periodType=kind==="terms"?String(input.periodType||"term").trim().toLowerCase():null,
-    sequence=kind==="terms"?Number(input.sequence):null;
+    sequence=kind==="terms"?Number(input.sequence):null,
+    startMonth=kind==="academic_years"?
+      academicMonth(input.startMonth,DEFAULT_ACADEMIC_YEAR_START_MONTH,"Academic-year start month"):null,
+    endMonth=kind==="academic_years"?
+      academicMonth(input.endMonth,DEFAULT_ACADEMIC_YEAR_END_MONTH,"Academic-year end month"):null;
    if(kind==="terms"&&!PERIOD_TYPES.has(periodType))
     deny("invalid-argument","Academic period type must be term, semester, quarter, trimester or custom.");
    if(kind==="terms"&&(!Number.isInteger(sequence)||sequence<1||sequence>12))
@@ -151,6 +163,8 @@ function createSchoolAcademicsService({db}) {
       yearId:kind==="terms"?parentYear:null,
       programId:["terms","sections"].includes(kind)?parentProgram:null,
       periodType:kind==="terms"?periodType:null,sequence:kind==="terms"?sequence:null,
+      startMonth:kind==="academic_years"?startMonth:null,
+      endMonth:kind==="academic_years"?endMonth:null,
       revision:1,createdByUid:uid,createdAt:now,updatedAt:now});
     tx.create(auditRef,audit("academic_catalog_created",{kind,recordId:itemId}));
    });
@@ -164,6 +178,10 @@ function createSchoolAcademicsService({db}) {
    return {items:snap.docs.map(doc=>({id:doc.id,name:doc.data().name,
     yearId:doc.data().yearId,programId:doc.data().programId,
     periodType:doc.data().periodType,sequence:doc.data().sequence,
+    startMonth:kind==="academic_years"?
+      academicMonth(doc.data().startMonth,DEFAULT_ACADEMIC_YEAR_START_MONTH,"Academic-year start month"):null,
+    endMonth:kind==="academic_years"?
+      academicMonth(doc.data().endMonth,DEFAULT_ACADEMIC_YEAR_END_MONTH,"Academic-year end month"):null,
     status:doc.data().status})),truncated:snap.size===200};
   }
   if(input.action==="create_offering"){

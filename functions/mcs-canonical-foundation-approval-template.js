@@ -44,9 +44,10 @@ function createTemplate(plan,planRaw){
   })),
   academic:{
    programs:[],
-   years:(plan.academicObservations?.years||[]).map(item=>({
-    legacyLabel:item.legacyLabel,targetId:item.suggestedId,targetName:item.legacyLabel,approved:false
-   })),
+    years:(plan.academicObservations?.years||[]).map(item=>({
+     legacyLabel:item.legacyLabel,targetId:item.suggestedId,targetName:item.legacyLabel,
+     startMonth:7,endMonth:5,approved:false
+    })),
    sections:(plan.academicObservations?.sections||[]).map(item=>({
     legacyLabel:item.legacyLabel,targetId:item.suggestedId,targetName:item.legacyLabel,
     programId:"",approved:false

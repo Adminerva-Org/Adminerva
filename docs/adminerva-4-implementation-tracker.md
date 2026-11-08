@@ -40,6 +40,15 @@ Do not repeat the mixed-schools question. Retain source document identifiers, ex
 
 **Remaining:** the planned 4.0 engineering workstreams are implemented on this branch. Production still requires the real MCS administrator/calendar/policy decisions, protected migration and continuity execution, a successful recorded cutover package, backend-first activation, the final compatibility switch and frontend release. Compatibility-only rollback code remains until the observed rollback window is complete. No production Firestore copy, role grant or deployment has been executed; do not present the new callables as deployed features.
 
+## MCS teacher-led pilot scope refinement — November 8, 2026
+
+- Initial canonical academic configuration is limited to **Senior High School ICT**: Grade 11 TechPro (ICT) sections St. Isidore of Seville, St. Carlo Acutis and St. Sebastian; Grade 12 TVL (ICT, old curriculum) sections St. Philip the Apostle and St. Anselm of Canterbury.
+- Basic Education is intentionally deferred from the initial pilot. Deferred records remain preserved and must not be treated as inactive merely because they are outside the first pilot scope.
+- Academic years now support editable start/end month defaults. MCS uses **July → May** by default; exact dates remain an institutional calendar decision.
+- The provisional teaching escalation chain is Teacher → Strand/Level Leader → Subject Area Coordinator → Senior High Coordinator → appropriate administration/office. It is recorded for future governance/workflow modeling only and does not grant RBAC authority.
+- Institutional authority, privacy, retention, backup/recovery and complete organizational references remain unavailable to the teacher-led pilot and are explicitly **pending**, not fabricated.
+- Because MCS compatibility is currently school-wide, the limited Senior High pilot should remain `legacy_allowed`. Do not perform the final MCS-wide `v4_only` switch until the remaining active legacy population is reviewed or the authorized administration approves the full cutover scope.
+
 ## Role, navigation and People & Access integration — October 31, 2026
 
 - `tenantSchools` now returns independently verified `platformAdmin` authority from `platform_admins/{uid}`; platform ownership is no longer inferred from an email, school role or browser state.

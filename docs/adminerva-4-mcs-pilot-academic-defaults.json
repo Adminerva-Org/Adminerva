@@ -1,0 +1,86 @@
+{
+  "schema": "adminerva-v4-mcs-pilot-academic-defaults-v1",
+  "schoolId": "mcs-manila",
+  "status": "provisional_teacher_supplied",
+  "rolloutMode": "limited_senior_high_pilot",
+  "compatibilityModeDuringPilot": "legacy_allowed",
+  "academicYearDefaults": {
+    "startMonth": 7,
+    "endMonth": 5,
+    "exactDates": "institutionally_configurable"
+  },
+  "programs": [
+    {
+      "programId": "senior-high",
+      "name": "Senior High School",
+      "periodStructure": {
+        "periodType": "semester",
+        "count": 2
+      }
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "shs-g11-techpro-ict-st-isidore-of-seville",
+      "programId": "senior-high",
+      "level": "Grade 11",
+      "track": "TechPro (ICT)",
+      "name": "Grade 11 TechPro (ICT) — St. Isidore of Seville"
+    },
+    {
+      "sectionId": "shs-g11-techpro-ict-st-carlo-acutis",
+      "programId": "senior-high",
+      "level": "Grade 11",
+      "track": "TechPro (ICT)",
+      "name": "Grade 11 TechPro (ICT) — St. Carlo Acutis"
+    },
+    {
+      "sectionId": "shs-g11-techpro-ict-st-sebastian",
+      "programId": "senior-high",
+      "level": "Grade 11",
+      "track": "TechPro (ICT)",
+      "name": "Grade 11 TechPro (ICT) — St. Sebastian"
+    },
+    {
+      "sectionId": "shs-g12-tvl-ict-st-philip-the-apostle",
+      "programId": "senior-high",
+      "level": "Grade 12",
+      "track": "TVL (ICT)",
+      "curriculum": "old",
+      "name": "Grade 12 TVL (ICT) — St. Philip the Apostle"
+    },
+    {
+      "sectionId": "shs-g12-tvl-ict-st-anselm-of-canterbury",
+      "programId": "senior-high",
+      "level": "Grade 12",
+      "track": "TVL (ICT)",
+      "curriculum": "old",
+      "name": "Grade 12 TVL (ICT) — St. Anselm of Canterbury"
+    }
+  ],
+  "deferredScope": {
+    "basicEducation": true,
+    "interpretation": "not_configured_yet_not_inactive"
+  },
+  "provisionalEscalationChain": [
+    "teacher",
+    "strand_or_level_leader",
+    "subject_area_coordinator",
+    "senior_high_coordinator",
+    "appropriate_admin_or_office"
+  ],
+  "institutionalReferences": {
+    "institutionalAuthority": "pending",
+    "academicCalendar": "pending",
+    "privacyPolicy": "pending",
+    "retentionPolicy": "pending",
+    "backupRecoveryPolicy": "pending",
+    "organizationChart": "pending"
+  },
+  "guardrails": [
+    "This file is non-secret planning input and does not authorize production writes.",
+    "Do not mark institutional readiness attestations true from this file.",
+    "Do not switch MCS to v4_only solely from this limited pilot scope.",
+    "Preserve deferred legacy records until an authorized institutional review decides their migration scope."
+  ]
+}

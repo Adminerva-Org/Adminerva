@@ -58,6 +58,13 @@ function approvedCatalog(approval){
    const targetId=id(row.targetId,kind+" target",80),name=String(row.targetName||"").trim();
    if(!name||name.length>140)throw Error("Approved "+kind+" mapping needs a target name.");
    let value={targetId,name,legacyLabel:String(row.legacyLabel||"").trim()};
+    if(key==="years"){
+     const startMonth=Number(row.startMonth??7),endMonth=Number(row.endMonth??5);
+     if(!Number.isInteger(startMonth)||startMonth<1||startMonth>12||
+        !Number.isInteger(endMonth)||endMonth<1||endMonth>12)
+      throw Error("Approved academic-year start/end months must be between 1 and 12.");
+     value={...value,startMonth,endMonth};
+    }
    if(key==="sections")value={...value,programId:id(row.programId,"Section academic program",80)};
    if(key==="terms"){
     const periodType=String(row.periodType||"").trim().toLowerCase(),sequence=Number(row.sequence);
@@ -247,6 +254,7 @@ async function createCatalog(db,approved,collection,kind,row){
   }
   const now=FieldValue.serverTimestamp();
   tx.create(ref,{schoolId:SCHOOL_ID,name:row.name,status:"active",revision:1,
+    ...(kind==="year"?{startMonth:row.startMonth,endMonth:row.endMonth}:{}),
    ...(kind==="section"?{programId:row.programId}:{}),
    ...(kind==="term"?{yearId:row.yearId,programId:row.programId,
      periodType:row.periodType,sequence:row.sequence}:{}),

@@ -211,6 +211,23 @@
             </select></label>
             <label>Stable ID<input class="pa-field" name="recordId" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,79}" maxlength="80" placeholder="e.g. basic-ed or 2026-2027" required></label>
             <label>Display name<input class="pa-field" name="name" maxlength="140" required></label>
+            <label id="pa-year-start-month" hidden>Default school-year start month
+              <select class="pa-field" name="startMonth">
+                <option value="1">January</option><option value="2">February</option><option value="3">March</option>
+                <option value="4">April</option><option value="5">May</option><option value="6">June</option>
+                <option value="7" selected>July</option><option value="8">August</option><option value="9">September</option>
+                <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+              </select>
+            </label>
+            <label id="pa-year-end-month" hidden>Default school-year end month
+              <select class="pa-field" name="endMonth">
+                <option value="1">January</option><option value="2">February</option><option value="3">March</option>
+                <option value="4">April</option><option value="5" selected>May</option><option value="6">June</option>
+                <option value="7">July</option><option value="8">August</option><option value="9">September</option>
+                <option value="10">October</option><option value="11">November</option><option value="12">December</option>
+              </select>
+            </label>
+            <p id="pa-year-month-help" class="pa-muted" hidden>July–May is the default only. School administrators may change these months for a specific academic year when the institutional calendar changes.</p>
             <label id="pa-catalog-program" hidden>Academic program / division<select class="pa-field" name="programId" data-catalog="academic_programs"></select></label>
             <label id="pa-term-year" hidden>Academic year<select class="pa-field" name="yearId" data-catalog="academic_years"></select></label>
             <label id="pa-period-type" hidden>Period type<select class="pa-field" name="periodType">
