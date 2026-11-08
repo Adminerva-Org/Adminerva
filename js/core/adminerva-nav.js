@@ -32,10 +32,18 @@ document.addEventListener("DOMContentLoaded", () => {
   const activePage = root.getAttribute("data-page") || "planner";
   const isStudent = userRole === "student" || (!userRole && activeModule.startsWith("student"));
   const isSuperAdmin = userRole === "superadmin";
-  currentRole = isStudent ? "student" : isSuperAdmin ? "superadmin" : "teacher";
-  const homeRoute = isStudent ? "student-home.html" : "teacher-home.html";
-  const homeLabel = isStudent ? "Student Home" : "Staff Home";
-  const roleLabel = isStudent ? "Student" : isSuperAdmin ? "Administrator" : "Teacher";
+  const isSchoolAdmin = userRole === "schooladmin" || root.dataset.schoolAdmin === "true";
+  const isPlatformOwner = userRole === "platformowner" || root.dataset.platformAdmin === "true";
+  currentRole = isStudent ? "student" : isSuperAdmin ? "superadmin" :
+    isPlatformOwner && !isSchoolAdmin ? "platformowner" : isSchoolAdmin ? "schooladmin" : "teacher";
+  const homeRoute = isStudent ? "student-home.html" :
+    currentRole === "platformowner" ? "owner-schools.html" :
+    currentRole === "schooladmin" ? "school-admin.html" : "teacher-home.html";
+  const homeLabel = isStudent ? "Student Home" : currentRole === "platformowner" ? "Platform Home" :
+    currentRole === "schooladmin" ? "School Admin Home" : "Staff Home";
+  const roleLabel = isStudent ? "Student" : isSuperAdmin ? "Administrator" :
+    currentRole === "platformowner" ? "Platform administrator" :
+    currentRole === "schooladmin" ? "School administrator" : "Teacher";
 
   // Destinations and page labels share one source, including bookmarked tools.
   const studentGroups = {
@@ -74,14 +82,31 @@ document.addEventListener("DOMContentLoaded", () => {
       ["schedule", "Teacher schedule", "schedule.html"],
       ["library", "Reference library", "library.html"]
     ] },
-    { name: "School setup", area: "admin", items: isSuperAdmin ? [
-      ["overview", "Administration overview", "school-admin.html"],
-      ["analytics", "Administration analytics", "admin-analytics.html"],
-      ["directory", "User directory", "users.html"],
-      ["sections", "Sections", "manage-sections.html"],
-      ["teachers", "Teacher assignments", "teacher-accounts.html"],
-      ["programs", "Tracks & pathways", "manage-programs.html"],
-      ["subjects", "Subjects", "manage-subjects.html"]
+    { name: "School setup", area: "admin", items: (isSuperAdmin || isSchoolAdmin || isPlatformOwner) ? [
+      ...(isPlatformOwner && !isSchoolAdmin && !isSuperAdmin ? [
+        ["owner-schools", "Platform schools & pilot control", "owner-schools.html"]
+      ] : []),
+      ...((isSuperAdmin || isSchoolAdmin) ? [
+        ["overview", "Administration overview", "school-admin.html"],
+        ["people-v4", "People & access · 4.0", "people-access.html"]
+      ] : []),
+      ...(isSuperAdmin ? [
+        ["analytics", "Administration analytics", "admin-analytics.html"],
+        ["directory", "User directory · legacy", "users.html"],
+        ["sections", "Sections · legacy", "manage-sections.html"],
+        ["teachers", "Teacher assignments · legacy", "teacher-accounts.html"],
+        ["programs", "Tracks & pathways · legacy", "manage-programs.html"],
+        ["subjects", "Subjects · legacy", "manage-subjects.html"]
+      ] : []),
+      ...(isSchoolAdmin && !isSuperAdmin ? [
+        ["school-analytics", "School analytics · 4.0", "school-analytics.html"],
+        ["data-controls", "Data controls · 4.0", "school-data-controls.html"],
+        ["cutover-readiness", "Cutover readiness · 4.0", "school-cutover-readiness.html"],
+        ["onboarding-readiness", "Onboarding readiness · 4.0", "school-onboarding-readiness.html"]
+      ] : []),
+      ...((isSuperAdmin || isPlatformOwner) ? [
+        ["owner-schools", "Controlled pilot · 4.0", "owner-schools.html"]
+      ] : [])
     ] : [] },
     { name: "Account", area: "settings", items: [
       ["settings", "Account & integrations", "settings.html"],
@@ -124,7 +149,8 @@ document.addEventListener("DOMContentLoaded", () => {
     [homeLabel, homeRoute, "Your teaching workspace"],
     ["Repository Management", "assessment-studio.html", "Assessments, submissions, grading and repositories"],
     ["Lesson Planning", "lesson-planner.html", "Lessons, slides, schedule and references"],
-    ...(isSuperAdmin ? [["School administration", "school-admin.html", "Students, staff, catalogs, reports and operations"]] : []),
+    ...((isSuperAdmin || isSchoolAdmin) ? [["School administration", "school-admin.html", "Students, staff, V4 identities, catalogs and pilot operations"]] : []),
+    ...((isPlatformOwner && !isSuperAdmin) ? [["Platform pilot control", "owner-schools.html", "Institutions, readiness and controlled pilot state"]] : []),
     ["Reports & support", "issues.html", "Follow reports and get help"]
   ];
   root.innerHTML = `
@@ -275,8 +301,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // This event changes presentation; it does not authorize any data operation.
   document.addEventListener("adminerva:role-ready", event => {
     const role = event.detail?.role;
-    if (!["student", "teacher", "superadmin"].includes(role)) return;
-    if (role !== currentRole) renderNavigation(role);
+    if (!["student", "teacher", "superadmin", "schooladmin", "platformowner"].includes(role)) return;
+    // V4 school/platform flags are written to the nav dataset by the verified
+    // auth guard immediately before this event. Always rebuild once so newly
+    // granted pilot controls are visible without requiring a reload.
+    renderNavigation(role);
   });
   document.addEventListener("click", event => {
     for (const details of disclosures) if (details.open && !details.contains(event.target)) details.open = false;
