@@ -33,6 +33,7 @@ async function main(){
    const dup=(field)=>[...new Map(s.filter(r=>r[field]).map(r=>[r[field],[]])).keys()].map(key=>({key,ids:s.filter(r=>r[field]===key).map(r=>r.id)})).filter(x=>x.ids.length>1);
    summary[section]={
      included:s.length,
+     nameHashes:s.map(r=>({nameHash:require("node:crypto").createHash("sha256").update(r.name).digest("hex"),emailHash:r.d.email?require("node:crypto").createHash("sha256").update(norm(r.d.email)).digest("hex"):null})).sort((a,b)=>a.nameHash.localeCompare(b.nameHash)),
      duplicateNameGroups:dup("name").length,
      duplicateGithubGroups:dup("github").length,
      duplicateUidGroups:dup("uid").length,
