@@ -25,6 +25,13 @@ function email(value){
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)?normalized:null;
 }
 function hash(value){return createHash("sha256").update(String(value)).digest("hex");}
+const PILOT_ROSTER_EXTRA_FINGERPRINTS=new Set([
+  "cf7772b07257f28cd40d7a4312caee77f51bf4679e819c720965ca08f3a450dd",
+  "30d7957afbc810af9073fbc9d3f7fda52f9eeaa1f785010de6f05e4e34c70473"
+]);
+function foldedName(value){
+  return text(value,160).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+}
 function displayName(data,fallback="Legacy student"){
   const direct=text(data?.displayName||data?.name||data?.fullName||data?.studentName,140);
   if(direct)return direct;
@@ -99,11 +106,14 @@ async function pilotSnapshot({db,auth,ctx,includeSectionRecords=true}){
     if(linkedUid&&!excluded){
       const list=uidRows.get(linkedUid)||[];list.push(row.legacyStudentId);uidRows.set(linkedUid,list);
     }
+    const studentDisplayName=displayName(row.data,"Legacy student "+row.legacyStudentId.slice(0,8));
     records.push({
       legacyStudentId:row.legacyStudentId,
-      displayName:displayName(row.data,"Legacy student "+row.legacyStudentId.slice(0,8)),
+      displayName:studentDisplayName,
       sectionId:row.section.sectionId,sectionName:row.section.name,
-      excluded,linkedUid,linkSource:reviewed?"reviewed":verifiedLegacyUser?"legacy_email":"unresolved"
+      excluded,linkedUid,linkSource:reviewed?"reviewed":verifiedLegacyUser?"legacy_email":"unresolved",
+      rosterReviewHint:PILOT_ROSTER_EXTRA_FINGERPRINTS.has(hash(foldedName(studentDisplayName)))?
+        "protected_roster_no_name_match":null
     });
   }
   const duplicateLinks=[...uidRows.entries()].filter(([,ids])=>ids.length>1)
@@ -152,7 +162,8 @@ async function pilotSnapshot({db,auth,ctx,includeSectionRecords=true}){
     sectionRecords:includeSectionRecords?records.filter(row=>mismatchSectionIds.has(row.sectionId)).map(row=>({
       legacyStudentId:row.legacyStudentId,displayName:row.displayName,
       sectionId:row.sectionId,sectionName:row.sectionName,
-      excluded:row.excluded,linked:Boolean(row.linkedUid),linkSource:row.linkSource
+      excluded:row.excluded,linked:Boolean(row.linkedUid),linkSource:row.linkSource,
+      rosterReviewHint:row.rosterReviewHint
     })):[]
   };
 }
