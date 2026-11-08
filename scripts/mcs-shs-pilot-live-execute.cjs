@@ -227,6 +227,40 @@ async function main(){
      if(section)bySection[section.sectionId][reason]++;
    }
    console.log("MCS_SHS_UNRESOLVED_IDENTITY_REASONS "+JSON.stringify({reasons,bySection}));
+   const fallbacks={verified_uid_field:0,verified_document_id_uid:0,verified_alternate_email:0,no_direct_fallback:0};
+   const fallbackBySection=Object.fromEntries(activeSections.map(section=>[section.sectionId,{verified_uid_field:0,verified_document_id_uid:0,verified_alternate_email:0,no_direct_fallback:0}]));
+   for(const row of unresolvedStudents){
+     const section=selectedSectionById.get(row.id);
+     let method=null;
+     const uidValues=[row.data?.uid,row.data?.authUid,row.data?.userId,row.data?.firebaseUid,row.data?.accountUid]
+       .filter(value=>typeof value==="string"&&value.trim());
+     for(const uid of uidValues){
+       try{
+         const user=await auth.getUser(uid.trim());
+         if(user&&!user.disabled&&user.emailVerified===true){method="verified_uid_field";break;}
+       }catch{}
+     }
+     if(!method){
+       try{
+         const user=await auth.getUser(String(row.id));
+         if(user&&!user.disabled&&user.emailVerified===true)method="verified_document_id_uid";
+       }catch{}
+     }
+     if(!method){
+       const alternateEmails=[row.data?.accountEmail,row.data?.userEmail,row.data?.schoolEmail,row.data?.emailAddress]
+         .filter(value=>typeof value==="string"&&/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value.trim()));
+       for(const email of alternateEmails){
+         try{
+           const user=await auth.getUserByEmail(email.trim().toLowerCase());
+           if(user&&!user.disabled&&user.emailVerified===true){method="verified_alternate_email";break;}
+         }catch{}
+       }
+     }
+     method=method||"no_direct_fallback";
+     fallbacks[method]++;
+     if(section)fallbackBySection[section.sectionId][method]++;
+   }
+   console.log("MCS_SHS_DIRECT_IDENTITY_FALLBACKS "+JSON.stringify({fallbacks,bySection:fallbackBySection}));
    fail("student_identity_unresolved");
  }
  const duplicateCurrentAccounts=(identity.candidates||[]).filter(candidate=>
