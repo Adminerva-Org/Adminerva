@@ -1,4 +1,4 @@
-name: MCS V4 UI access diagnostic
+name: MCS V4 draft school bootstrap
 
 on:
   push:
@@ -31,37 +31,10 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
           chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
-      - name: Inspect V4 control visibility prerequisites
+      - name: Bootstrap reviewed MCS V4 draft school access
         shell: bash
         run: |
           cd functions
-          node <<'NODE'
-          const {initializeApp,applicationDefault}=require("firebase-admin/app");
-          const {getFirestore}=require("firebase-admin/firestore");
-          const {createHash}=require("node:crypto");
-          initializeApp({credential:applicationDefault()});
-          const db=getFirestore();
-          const targetHash="c1af15b90b3408eb96ad8ffa0ca6d470005036aefbe754a98bf8db7784681879";
-          const hash=v=>createHash("sha256").update(String(v)).digest("hex");
-          (async()=>{
-            const school=await db.doc("platform_schools/mcs-manila").get();
-            const platform=await db.collection("platform_admins").limit(100).get();
-            const targetPlatform=platform.docs.find(d=>hash(d.id)===targetHash);
-            const memberships=await db.collection("schools/mcs-manila/memberships").limit(100).get().catch(()=>({docs:[]}));
-            const targetMembership=memberships.docs.find(d=>hash(d.id)===targetHash);
-            const index=await db.collection("platform_users").limit(100).get().catch(()=>({docs:[]}));
-            const targetIndexRoot=index.docs.find(d=>hash(d.id)===targetHash);
-            console.log("MCS_V4_UI_ACCESS "+JSON.stringify({
-              schoolExists:school.exists,
-              schoolState:school.exists?(school.data().state||null):null,
-              compatibilityMode:school.exists?(school.data().compatibilityMode||null):null,
-              targetIsActivePlatformAdmin:Boolean(targetPlatform&&targetPlatform.data().status==="active"&&targetPlatform.data().role==="platform_admin"),
-              targetMcsMembershipExists:Boolean(targetMembership),
-              targetMcsMembershipStatus:targetMembership?.data()?.status||null,
-              targetMcsRoles:Array.isArray(targetMembership?.data()?.roles)?targetMembership.data().roles:[],
-              targetPlatformIndexRootExists:Boolean(targetIndexRoot)
-            }));
-          })().catch(error=>{console.error("MCS_V4_UI_ACCESS_ERROR",error.message);process.exitCode=1;});
-          NODE
+          node ../scripts/mcs-v4-draft-bootstrap.cjs
       - if: always()
         run: rm -f "$RUNNER_TEMP/firebase-service-account.json"
