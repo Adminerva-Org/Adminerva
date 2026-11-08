@@ -1,6 +1,6 @@
 /** Primary teacher evidence review, evaluation drafts and deliberate grade publication. */
 import { auth, db } from "../core/firebase-core.js?v=1.3.0";
-import {schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
+import {schoolAIStatus} from "../core/school-ai.mjs?v=1.3.1";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.1";
 import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
 import {renderFeedbackMarkdown} from "./review-ui.mjs?v=1.3.0";
