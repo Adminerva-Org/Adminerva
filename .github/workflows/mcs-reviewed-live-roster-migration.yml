@@ -1,5 +1,5 @@
 name: MCS reviewed live roster canonical migration
-# validator-detail-pass-1
+# school-id-export-pass-1
 
 on:
   push:
