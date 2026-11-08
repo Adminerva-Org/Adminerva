@@ -44,6 +44,7 @@ const ACTIVE_SECTION_IDS=[
 ];
 const PENDING_SECTION_IDS=["shs-g11-techpro-ict-st-sebastian"];
 const OPERATOR_ACTOR="migration";
+const FIRST_ADMIN_UID_SHA="c1af15b90b3408eb96ad8ffa0ca6d470005036aefbe754a98bf8db7784681879";
 
 function fail(code){const error=new Error(code);error.pilotCode=code;throw error;}
 function sha(value){return createHash("sha256").update(value).digest("hex");}
@@ -366,6 +367,7 @@ async function main(){
  });
  if(fullCoverage.length!==1)fail("pilot_teacher_not_unique_full_scope");
  const teacherUid=fullCoverage[0].uid;
+ if(sha(teacherUid)!==FIRST_ADMIN_UID_SHA)fail("pilot_teacher_not_reviewed_first_admin");
  if([...identityByStudent.values()].includes(teacherUid))fail("pilot_teacher_student_identity_conflict");
 
  const teacherAuth=await auth.getUser(teacherUid);
@@ -505,7 +507,9 @@ async function main(){
  const activePlatformAdmins=platformAdmins.docs.filter(doc=>{
    const data=doc.data();return data.status==="active"&&data.role==="platform_admin";
  });
- if(activePlatformAdmins.length<1)fail("platform_admin_missing");
+ // Platform-admin governance is separate from this school-scoped pilot.
+ // Do not grant or require platform-admin authority for the reviewed MCS
+ // school-admin migration.
  const teacherIsPlatformAdmin=activePlatformAdmins.some(doc=>doc.id===teacherUid);
 
  console.log("MCS_SHS_TARGET_DRYRUN "+JSON.stringify({
