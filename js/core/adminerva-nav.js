@@ -119,12 +119,6 @@ document.addEventListener("DOMContentLoaded", () => {
         ["programs", "Tracks & pathways · legacy", "manage-programs.html"],
         ["subjects", "Subjects · legacy", "manage-subjects.html"]
       ] : []),
-      ...(isSchoolAdmin && !isSuperAdmin ? [
-        ["school-analytics", "School analytics · 4.0", "school-analytics.html"],
-        ["data-controls", "Data controls · 4.0", "school-data-controls.html"],
-        ["cutover-readiness", "Cutover readiness · 4.0", "school-cutover-readiness.html"],
-        ["onboarding-readiness", "Onboarding readiness · 4.0", "school-onboarding-readiness.html"]
-      ] : []),
       ...((isSuperAdmin || isPlatformOwner) ? [
         ["owner-schools", "Controlled pilot · 4.0", "owner-schools.html"]
       ] : [])
