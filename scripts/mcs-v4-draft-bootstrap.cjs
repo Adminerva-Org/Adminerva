@@ -10,14 +10,19 @@ const {createHash}=require("node:crypto");
 
 const SCHOOL_ID="mcs-manila";
 const EXPECTED_UID_HASH="c1af15b90b3408eb96ad8ffa0ca6d470005036aefbe754a98bf8db7784681879";
-const FIRST_ADMIN_EMAIL="babaynike2013@gmail.com";
 const digest=value=>createHash("sha256").update(String(value)).digest("hex");
 
 async function main(){
   if(!getApps().length)initializeApp({credential:applicationDefault()});
-  const db=getFirestore(),auth=getAuth(),user=await auth.getUserByEmail(FIRST_ADMIN_EMAIL);
-  if(digest(user.uid)!==EXPECTED_UID_HASH||user.disabled||user.emailVerified!==true)
-    throw Error("Reviewed first-school-admin identity no longer matches the verified account.");
+  const db=getFirestore(),auth=getAuth();
+  let pageToken,user=null;
+  do{
+    const page=await auth.listUsers(1000,pageToken);
+    user=page.users.find(candidate=>digest(candidate.uid)===EXPECTED_UID_HASH)||null;
+    pageToken=page.pageToken;
+  }while(!user&&pageToken);
+  if(!user||user.disabled||user.emailVerified!==true)
+    throw Error("Reviewed first-school-admin UID is not an active verified Firebase account.");
 
   const uid=user.uid,schoolRef=db.doc("platform_schools/"+SCHOOL_ID),
     memberRef=db.doc("schools/"+SCHOOL_ID+"/memberships/"+uid),
