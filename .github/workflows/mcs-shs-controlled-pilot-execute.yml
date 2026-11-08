@@ -6,6 +6,11 @@ on:
       - feat/adminerva-4-verified-tenant-foundation
     paths:
       - ".github/workflows/mcs-shs-controlled-pilot-execute.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/mcs-shs-controlled-pilot-execute.yml"
 
 permissions:
   contents: read
