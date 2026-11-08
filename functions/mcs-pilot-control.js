@@ -120,10 +120,25 @@ async function pilotSnapshot({db,auth,ctx,includeSectionRecords=true}){
     issue:"No verified Firebase account is linked to this legacy student record."
   }));
   const countMismatch=counts.filter(row=>row.included!==row.expected);
+  const [peopleCount,membershipCount,offeringCount,enrollmentCount,assignmentCount]=await Promise.all([
+    db.collection("schools/"+SCHOOL_ID+"/people").count().get(),
+    db.collection("schools/"+SCHOOL_ID+"/memberships").count().get(),
+    db.collection("schools/"+SCHOOL_ID+"/course_offerings").count().get(),
+    db.collection("schools/"+SCHOOL_ID+"/enrollments").count().get(),
+    db.collection("schools/"+SCHOOL_ID+"/staff_assignments").count().get()
+  ]);
+  const canonical={
+    people:peopleCount.data().count,memberships:membershipCount.data().count,
+    offerings:offeringCount.data().count,enrollments:enrollmentCount.data().count,
+    teacherAssignments:assignmentCount.data().count
+  };
+  canonical.ready=canonical.people===168&&canonical.memberships===168&&canonical.offerings===8&&
+    canonical.enrollments===334&&canonical.teacherAssignments===8;
   const blockers=[];
   if(unresolved.length)blockers.push({code:"identity_unresolved",label:unresolved.length+" student identit"+(unresolved.length===1?"y":"ies")+" need review."});
   if(countMismatch.length)blockers.push({code:"roster_count_mismatch",label:"Pilot roster counts do not yet match the protected four-section roster."});
   if(duplicateLinks.length)blockers.push({code:"duplicate_identity",label:duplicateLinks.length+" account link conflict(s) need review."});
+  if(!canonical.ready)blockers.push({code:"canonical_migration_pending",label:"Reviewed V4 pilot migration has not been applied yet."});
   const readyToStart=blockers.length===0&&included.length===EXPECTED_TOTAL;
   const mismatchSectionIds=new Set(countMismatch.map(row=>row.sectionId));
   return {
@@ -132,7 +147,7 @@ async function pilotSnapshot({db,auth,ctx,includeSectionRecords=true}){
     productionAuthorized:ctx.school.productionAuthorized===true,
     expectedTotal:EXPECTED_TOTAL,observedTotal:records.length,includedTotal:included.length,
     excludedTotal:records.length-included.length,
-    counts,unresolved,duplicateLinks,blockers,readyToStart,
+    counts,unresolved,duplicateLinks,canonical,blockers,readyToStart,
     deferredHistory:true,
     sectionRecords:includeSectionRecords?records.filter(row=>mismatchSectionIds.has(row.sectionId)).map(row=>({
       legacyStudentId:row.legacyStudentId,displayName:row.displayName,
