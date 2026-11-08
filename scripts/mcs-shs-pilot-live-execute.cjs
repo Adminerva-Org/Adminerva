@@ -171,7 +171,18 @@ async function main(){
    selected.push(row);selectedSectionById.set(doc.id,section);counts[section.sectionId]++;sourceTimes.push(updateMillis(doc));
  }
  const countMismatches=activeSections.filter(section=>counts[section.sectionId]!==Number(expected[section.sectionId]||0));
- if(selected.length!==expectedTotal||countMismatches.length)fail("pilot_roster_count_mismatch");
+ if(selected.length!==expectedTotal||countMismatches.length){
+   console.log("MCS_SHS_ROSTER_MISMATCH "+JSON.stringify({
+     expectedTotal,observedTotal:selected.length,
+     sections:activeSections.map(section=>({
+       sectionId:section.sectionId,
+       expected:Number(expected[section.sectionId]||0),
+       observed:counts[section.sectionId]||0,
+       delta:(counts[section.sectionId]||0)-Number(expected[section.sectionId]||0)
+     }))
+   }));
+   fail("pilot_roster_count_mismatch");
+ }
 
  const identityByStudent=new Map();
  for(const candidate of identity.candidates||[]){
