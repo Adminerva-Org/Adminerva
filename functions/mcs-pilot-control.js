@@ -163,15 +163,18 @@ function createMcsPilotControlService({db,auth=getAuth()}){
       catch(error){if(error?.code==="auth/user-not-found")fail("not-found","No Firebase account uses that email.");throw error;}
       if(user.disabled||!user.emailVerified)fail("failed-precondition","The selected Firebase account must be active and email-verified.");
       const why=reason(input.reason,"Identity review reason");
-      const snapshot=await pilotSnapshot({db,auth,ctx,includeSectionRecords:false});
-      const allStudents=await db.collection("students").get();
-      const reviews=await db.collection("schools/"+SCHOOL_ID+"/pilot_identity_reviews").limit(300).get();
-      const approvedById=new Map(reviews.docs.filter(d=>d.data()?.status==="approved").map(d=>[d.id,d.data()]));
+      const [allStudents,reviews,exclusions]=await Promise.all([
+        db.collection("students").get(),
+        db.collection("schools/"+SCHOOL_ID+"/pilot_identity_reviews").limit(300).get(),
+        db.collection("schools/"+SCHOOL_ID+"/pilot_roster_exclusions").limit(100).get()
+      ]);
+      const approvedById=new Map(reviews.docs.filter(d=>d.data()?.status==="approved").map(d=>[d.id,d.data()])),
+        excludedIds=new Set(exclusions.docs.filter(d=>d.data()?.status==="excluded").map(d=>d.id));
       const sourceEmails=[];
       const scoped=[];
       for(const doc of allStudents.docs){
         const section=sectionFor(doc.data());
-        if(!section||!active(doc.data())||doc.id===input.legacyStudentId)continue;
+        if(!section||!active(doc.data())||doc.id===input.legacyStudentId||excludedIds.has(doc.id))continue;
         const e=email(doc.data().email);if(e)sourceEmails.push(e);
         scoped.push({id:doc.id,data:doc.data(),legacyEmail:e});
       }
