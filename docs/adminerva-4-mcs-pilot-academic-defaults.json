@@ -243,5 +243,33 @@
       "sectionId": "shs-g12-tvl-ict-st-anselm-of-canterbury",
       "subjectId": "computer-programming-4"
     }
-  ]
+  ],
+  "rosterReference": {
+    "status": "protected_drive_snapshot_available",
+    "capturedDate": "2026-11-08",
+    "sourcePurpose": "teacher-collected pre-pilot roster cross-check; not authoritative live enrollment",
+    "populatedResponses": 168,
+    "uniqueAccountEmails": 168,
+    "duplicateAccountEmails": 0,
+    "pilotSectionCounts": {
+      "shs-g11-techpro-ict-st-isidore-of-seville": 44,
+      "shs-g11-techpro-ict-st-carlo-acutis": 34,
+      "shs-g11-techpro-ict-st-sebastian": 0,
+      "shs-g12-tvl-ict-st-philip-the-apostle": 45,
+      "shs-g12-tvl-ict-st-anselm-of-canterbury": 44
+    },
+    "rowsOutsidePilotSections": 1,
+    "sectionFieldNormalization": {
+      "note": "Some form responses include a club selection in the same multi-select field as the section.",
+      "additionalSelectionRows": {
+        "shs-g11-techpro-ict-st-isidore-of-seville": 11,
+        "shs-g11-techpro-ict-st-carlo-acutis": 8,
+        "shs-g12-tvl-ict-st-philip-the-apostle": 4,
+        "shs-g12-tvl-ict-st-anselm-of-canterbury": 1
+      },
+      "rule": "Match the canonical section token independently from club/activity selections; do not require exact full-cell equality."
+    },
+    "stSebastian": "pending_teacher_or_authorized_roster_source",
+    "privacy": "Names and email addresses remain only in the protected roster source/copy and are intentionally excluded from this public repository."
+  }
 }

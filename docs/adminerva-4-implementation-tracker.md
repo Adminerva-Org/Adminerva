@@ -50,6 +50,9 @@ Do not repeat the mixed-schools question. Retain source document identifiers, ex
 - The provisional teaching escalation chain is Teacher → Strand/Level Leader → Subject Area Coordinator → Senior High Coordinator → appropriate administration/office. It is recorded for future governance/workflow modeling only and does not grant RBAC authority.
 - Institutional authority, privacy, retention, backup/recovery and complete organizational references remain unavailable to the teacher-led pilot and are explicitly **pending**, not fabricated.
 - Because MCS compatibility is currently school-wide, the limited Senior High pilot should remain `legacy_allowed`. Do not perform the final MCS-wide `v4_only` switch until the remaining active legacy population is reviewed or the authorized administration approves the full cutover scope.
+- A protected teacher-collected roster snapshot is available for migration cross-checking: **168 populated responses / 168 unique account emails / 0 duplicate email submissions**. Pilot coverage is St. Isidore of Seville 44, St. Carlo Acutis 34, St. Philip the Apostle 45, St. Anselm of Canterbury 44, and St. Sebastian 0 (pending). One row is outside the pilot section set.
+- The roster form used a multi-select section/activity field. Twenty-four pilot rows include a club/activity selection alongside the section, so migration/import review must recognize the canonical section token rather than require exact full-field equality.
+- Student names and account emails from that roster are retained only in the protected Drive reference and are deliberately excluded from this public repository.
 
 ## Role, navigation and People & Access integration — October 31, 2026
 
