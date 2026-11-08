@@ -108,6 +108,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ] : []),
       ...((isSuperAdmin || isSchoolAdmin) ? [
         ["overview", "Administration overview", "school-admin.html"],
+        ["pilot-v4", "Controlled pilot · 4.0", "school-pilot.html"],
         ["people-v4", "People & access · 4.0", "people-access.html"]
       ] : []),
       ...(isSuperAdmin ? [
