@@ -1,0 +1,9 @@
+{
+  "schema": "adminerva-v4-mcs-shs-pilot-trigger-v1",
+  "schoolId": "mcs-manila",
+  "scope": "four-populated-shs-ict-sections",
+  "productionAuthorized": false,
+  "startPilot": false,
+  "v4Only": false,
+  "historicalMigration": false
+}
