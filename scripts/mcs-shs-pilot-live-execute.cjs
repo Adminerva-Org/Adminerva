@@ -385,6 +385,17 @@ async function main(){
    const source={displayName,status:"active",uid:teacherUid};
    teacherRow={id:"verified-pilot-teacher",path:projectedTeacherPath("verified-pilot-teacher"),data:source,digest:canonicalDigest(source)};
  }
+ const teacherCurrentName=legacyDisplayName(teacherRow.data);
+ const teacherPlaceholder=/^(Student|Staff)\s+[A-Za-z0-9_-]+$/i;
+ if(!teacherCurrentName||teacherPlaceholder.test(teacherCurrentName)){
+   const verifiedTeacherName=String(teacherAuth.displayName||"").trim().replace(/\s+/g," ");
+   if(verifiedTeacherName.length<2||teacherPlaceholder.test(verifiedTeacherName))
+     fail("pilot_teacher_display_name_missing");
+   teacherRow.data={...teacherRow.data,displayName:verifiedTeacherName};
+   console.log("MCS_SHS_TEACHER_NAME_ENRICHMENT "+JSON.stringify({
+     authDisplayNameUsed:true,legacyTeacherDocumentChanged:0
+   }));
+ }
  for(const staffId of fullCoverage[0].legacyStaffRecordIds||[]){
    try{const doc=await db.doc("staff_access/"+staffId).get();if(doc.exists)sourceTimes.push(updateMillis(doc));}catch{}
  }
