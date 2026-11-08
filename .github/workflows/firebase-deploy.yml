@@ -1,14 +1,9 @@
-name: Firebase backend deployment
+name: MCS SHS scoped pilot operator
 
 on:
-  workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - "functions/**"
-      - "firestore.rules"
-      - "firestore.indexes.json"
-      - "firebase.json"
       - "ops/mcs-shs-pilot-trigger.json"
 
 permissions:
@@ -20,9 +15,8 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || vars.FIREBASE_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -30,7 +24,7 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: functions/package-lock.json
-      - name: Install backend dependencies
+      - name: Install protected operator dependencies
         run: npm ci --prefix functions
       - name: Prepare Firebase service account
         env:
@@ -39,120 +33,17 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${FIREBASE_SERVICE_ACCOUNT:-}" ]; then
-            echo "::error::Configure repository secret FIREBASE_SERVICE_ACCOUNT_REPOREVIEW_E7CA4 before deploying."
+            echo "::error::Firebase operator credential is not configured."
             exit 1
           fi
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+          chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
-      - name: Deploy Functions and Firestore indexes
-        if: ${{ !contains(github.event.head_commit.message || '', '[mcs-shs-pilot-operator]') }}
-        run: npx -y firebase-tools@14 deploy --project reporeview-e7ca4 --only firestore:rules,firestore:indexes,functions --non-interactive
-
-      - name: Run protected MCS migration inventory dry-run
-        if: ${{ !contains(github.event.head_commit.message || '', '[mcs-shs-pilot-operator]') }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          node functions/mcs-migration-dryrun.js --output="$RUNNER_TEMP/mcs-dryrun.json"
-
-      - name: Reconcile verified MCS identities without granting access
-        if: ${{ !contains(github.event.head_commit.message || '', '[mcs-shs-pilot-operator]') }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          umask 077
-          node functions/mcs-identity-candidates.js --output="$RUNNER_TEMP/mcs-identity.json"
-
-      - name: Verify four populated MCS SHS pilot sections
-        if: ${{ !contains(github.event.head_commit.message || '', '[mcs-shs-pilot-operator]') }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          node <<'NODE'
-          const {initializeApp,applicationDefault}=require("firebase-admin/app");
-          const {getFirestore}=require("firebase-admin/firestore");
-          const fs=require("node:fs");
-          const defaults=require("./docs/adminerva-4-mcs-pilot-academic-defaults.json");
-          const {matchSection}=require("./functions/mcs-shs-pilot-foundation-plan.js");
-          initializeApp({credential:applicationDefault()});
-          const db=getFirestore();
-          const identity=JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP+"/mcs-identity.json","utf8"));
-          const activeIds=new Set(defaults.operationalPilot.activeSectionIds);
-          const activeSections=defaults.sections.filter(row=>activeIds.has(row.sectionId));
-          const expected=defaults.rosterReference.pilotSectionCounts;
-          const selectedIds=new Set();
-          const counts=Object.fromEntries(activeSections.map(row=>[row.sectionId,0]));
-          const students=await db.collection("students").get();
-          for(const doc of students.docs){
-            const section=matchSection({id:doc.id,data:doc.data()},activeSections);
-            if(!section)continue;
-            selectedIds.add(doc.id);
-            counts[section.sectionId]++;
-          }
-          const mapped=new Map();
-          for(const candidate of identity.candidates||[]){
-            for(const row of candidate.legacyStudentIds||[]){
-              if(!selectedIds.has(row.studentId))continue;
-              if(mapped.has(row.studentId)&&mapped.get(row.studentId)!==candidate.uid)
-                throw new Error("PILOT_EXCEPTION:student_identity_collision");
-              mapped.set(row.studentId,candidate.uid);
-            }
-          }
-          const duplicateCurrentAccounts=(identity.candidates||[]).filter(candidate=>
-            (candidate.legacyStudentIds||[]).filter(row=>selectedIds.has(row.studentId)).length>1).length;
-          const norm=v=>typeof v==="string"?v.trim().toLowerCase():"";
-          const teacherCandidates=(identity.candidates||[]).filter(candidate=>
-            (candidate.legacyStaffScopes||[]).some(scope=>scope.role==="teacher"&&scope.status==="active"&&
-              (scope.sections||[]).some(label=>activeSections.some(s=>[s.name,...(s.legacyLabels||[])].some(v=>norm(v)===norm(label))))));
-          const fullCoverage=teacherCandidates.filter(candidate=>{
-            const seen=new Set();
-            for(const scope of candidate.legacyStaffScopes||[]){
-              if(scope.role!=="teacher"||scope.status!=="active")continue;
-              for(const label of scope.sections||[]){
-                const section=activeSections.find(s=>[s.name,...(s.legacyLabels||[])].some(v=>norm(v)===norm(label)));
-                if(section)seen.add(section.sectionId);
-              }
-            }
-            return activeSections.every(section=>seen.has(section.sectionId));
-          });
-          const school=await db.doc("platform_schools/mcs-manila").get();
-          const expectedTotal=activeSections.reduce((n,s)=>n+Number(expected[s.sectionId]||0),0);
-          const summary={
-            expectedPilotStudents:expectedTotal,
-            observedPilotStudents:selectedIds.size,
-            sectionCounts:counts,
-            countMismatches:activeSections.filter(s=>counts[s.sectionId]!==Number(expected[s.sectionId])).map(s=>s.sectionId),
-            selectedIdentityUnresolved:[...selectedIds].filter(id=>!mapped.has(id)).length,
-            duplicateCurrentAccounts,
-            activeTeacherCandidates:teacherCandidates.length,
-            fullCoverageTeacherCandidates:fullCoverage.length,
-            currentSchoolState:school.exists?(school.data().state||null):"missing",
-            currentCompatibilityMode:school.exists?(school.data().compatibilityMode||"legacy_allowed"):"missing",
-            productionAuthorized:school.exists&&school.data().productionAuthorized===true
-          };
-          console.log("MCS_SHS_PILOT_RECONCILIATION "+JSON.stringify(summary));
-          const blockers=[];
-          if(selectedIds.size!==expectedTotal||summary.countMismatches.length)blockers.push("roster_count_mismatch");
-          if(summary.selectedIdentityUnresolved)blockers.push("student_identity_unresolved");
-          if(summary.duplicateCurrentAccounts)blockers.push("duplicate_current_identity");
-          if(fullCoverage.length!==1)blockers.push("pilot_teacher_not_unique");
-          if(summary.productionAuthorized)blockers.push("school_already_production_authorized");
-          if(school.exists&&school.data().state!=="draft")blockers.push("school_not_draft");
-          if(school.exists&&(school.data().compatibilityMode||"legacy_allowed")==="v4_only")blockers.push("school_in_v4_only");
-          if(blockers.length){
-            console.error("::error::PILOT_EXCEPTION:"+blockers.join(","));
-            process.exitCode=2;
-          }
-          NODE
-
       - name: Execute protected four-section MCS SHS migration
-        if: ${{ contains(github.event.head_commit.message || '', '[mcs-shs-pilot-operator]') }}
         env:
           NODE_PATH: ${{ github.workspace }}/functions/node_modules
         run: node scripts/mcs-shs-pilot-live-execute.cjs
-
-      - name: Remove protected MCS working files
+      - name: Remove protected credential file
         if: always()
         shell: bash
-        run: rm -f "$RUNNER_TEMP/mcs-dryrun.json" "$RUNNER_TEMP/mcs-identity.json" "$RUNNER_TEMP/firebase-service-account.json"
+        run: rm -f "$RUNNER_TEMP/firebase-service-account.json"
