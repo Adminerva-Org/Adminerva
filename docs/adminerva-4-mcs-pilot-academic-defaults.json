@@ -25,21 +25,30 @@
       "programId": "senior-high",
       "level": "Grade 11",
       "track": "TechPro (ICT)",
-      "name": "Grade 11 TechPro (ICT) — St. Isidore of Seville"
+      "name": "Grade 11 TechPro (ICT) — St. Isidore of Seville",
+      "legacyLabels": [
+        "St. Isidore of Seville"
+      ]
     },
     {
       "sectionId": "shs-g11-techpro-ict-st-carlo-acutis",
       "programId": "senior-high",
       "level": "Grade 11",
       "track": "TechPro (ICT)",
-      "name": "Grade 11 TechPro (ICT) — St. Carlo Acutis"
+      "name": "Grade 11 TechPro (ICT) — St. Carlo Acutis",
+      "legacyLabels": [
+        "St. Carlo Acutis"
+      ]
     },
     {
       "sectionId": "shs-g11-techpro-ict-st-sebastian",
       "programId": "senior-high",
       "level": "Grade 11",
       "track": "TechPro (ICT)",
-      "name": "Grade 11 TechPro (ICT) — St. Sebastian"
+      "name": "Grade 11 TechPro (ICT) — St. Sebastian",
+      "legacyLabels": [
+        "St. Sebastian"
+      ]
     },
     {
       "sectionId": "shs-g12-tvl-ict-st-philip-the-apostle",
@@ -47,7 +56,10 @@
       "level": "Grade 12",
       "track": "TVL (ICT)",
       "curriculum": "old",
-      "name": "Grade 12 TVL (ICT) — St. Philip the Apostle"
+      "name": "Grade 12 TVL (ICT) — St. Philip the Apostle",
+      "legacyLabels": [
+        "St. Philip the Apostle"
+      ]
     },
     {
       "sectionId": "shs-g12-tvl-ict-st-anselm-of-canterbury",
@@ -55,7 +67,10 @@
       "level": "Grade 12",
       "track": "TVL (ICT)",
       "curriculum": "old",
-      "name": "Grade 12 TVL (ICT) — St. Anselm of Canterbury"
+      "name": "Grade 12 TVL (ICT) — St. Anselm of Canterbury",
+      "legacyLabels": [
+        "St. Anselm of Canterbury"
+      ]
     }
   ],
   "deferredScope": {
@@ -271,5 +286,31 @@
     },
     "stSebastian": "pending_teacher_or_authorized_roster_source",
     "privacy": "Names and email addresses remain only in the protected roster source/copy and are intentionally excluded from this public repository."
+  },
+  "operationalPilot": {
+    "activeSectionIds": [
+      "shs-g11-techpro-ict-st-isidore-of-seville",
+      "shs-g11-techpro-ict-st-carlo-acutis",
+      "shs-g12-tvl-ict-st-philip-the-apostle",
+      "shs-g12-tvl-ict-st-anselm-of-canterbury"
+    ],
+    "pendingSectionIds": [
+      "shs-g11-techpro-ict-st-sebastian"
+    ],
+    "migrationScope": [
+      "verified identity linkage",
+      "school people and memberships",
+      "Senior High academic catalog and semester offerings",
+      "student enrollments for active pilot sections",
+      "pilot teacher course assignments"
+    ],
+    "deferredMigration": [
+      "historical assessments",
+      "historical evidence and grades",
+      "teacher planning history",
+      "Practice history",
+      "Basic Education",
+      "St. Sebastian students until a reviewed roster/source is available"
+    ]
   }
 }

@@ -1,6 +1,8 @@
 # Adminerva 4.0 — MCS controlled cutover runbook
 
-This runbook is for the Manila Cathedral School pilot only. It does not authorize a production migration by itself.
+This runbook is for the Manila Cathedral School **school-wide production cutover**. It does not authorize a production migration by itself.
+
+The earlier teacher-led Senior High ICT rollout uses `docs/adminerva-4-mcs-shs-controlled-pilot-runbook.md` and the non-production `pilot` school state. A controlled pilot does **not** satisfy these cutover preconditions, cannot switch MCS to `v4_only`, and must be formally promoted to `active` with institutional attestations before this runbook can be completed.
 
 ## Preconditions
 

@@ -40,6 +40,16 @@ Do not repeat the mixed-schools question. Retain source document identifiers, ex
 
 **Remaining:** the planned 4.0 engineering workstreams are implemented on this branch. Production still requires the real MCS administrator/calendar/policy decisions, protected migration and continuity execution, a successful recorded cutover package, backend-first activation, the final compatibility switch and frontend release. Compatibility-only rollback code remains until the observed rollback window is complete. No production Firestore copy, role grant or deployment has been executed; do not present the new callables as deployed features.
 
+## Controlled SHS pilot state and subset migration — November 8, 2026
+
+- A distinct `pilot` school state now separates teacher-led technical use from institutional production activation. Verified pilot members may use school-scoped V4 workflows while `productionAuthorized=false` and MCS remains `legacy_allowed`.
+- Platform Owner can start `draft → pilot` only after a reviewed first School Admin exists and explicit limited-scope/non-production acknowledgements are recorded. `pilot → draft` disables V4 member access without deleting canonical data.
+- Full `active` promotion still requires the existing institutional authority, provenance, calendar and privacy attestations. Pilot state cannot enable `v4_only` and deliberately fails production cutover readiness.
+- The MCS foundation apply path now safely adopts the designated pre-existing first-admin membership, preserving School Admin while adding the reviewed Teacher role rather than treating that membership as a migration conflict.
+- New protected pilot tooling creates a private operator file, filters canonical foundation planning to the four populated SHS ICT sections plus the designated teacher, cross-checks only aggregate roster counts, and generates an unapproved prefilled academic review for the two semesters/four programming subjects/eight active offerings.
+- Initial pilot migration stops after foundation + academic access. Historical assessments, evidence/grades, planning, Practice, Basic Education and St. Sebastian students remain deferred.
+- Operational procedure: `docs/adminerva-4-mcs-shs-controlled-pilot-runbook.md`.
+
 ## MCS teacher-led pilot scope refinement — November 8, 2026
 
 - Initial canonical academic configuration is limited to **Senior High School ICT**: Grade 11 TechPro (ICT) sections St. Isidore of Seville, St. Carlo Acutis and St. Sebastian; Grade 12 TVL (ICT, old curriculum) sections St. Philip the Apostle and St. Anselm of Canterbury.
