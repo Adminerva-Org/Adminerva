@@ -32,14 +32,18 @@
 <div id="adminerva-nav" data-module="admin" data-page="people-v4"></div>
 <main class="pa-shell">
   <header class="pa-header">
-    <div><a href="teacher-home.html" class="pa-muted">Adminerva</a><h1 style="font-weight:800;font-size:clamp(1.5rem,4vw,2rem);margin:.15rem 0">People &amp; Access</h1>
-    <p class="pa-muted">School-scoped directory preview · 4.0 pilot</p></div>
+    <div><a href="school-admin.html" class="pa-muted">School administration</a><h1 style="font-weight:800;font-size:clamp(1.5rem,4vw,2rem);margin:.15rem 0">People &amp; Access</h1>
+    <p class="pa-muted">Verified-school identities, access and academic relationships · Adminerva 4.0 pilot</p>
+    <p class="pa-muted" style="margin-top:.35rem"><a href="users.html">Legacy user directory</a> · <a href="owner-schools.html">Controlled pilot status</a></p></div>
     <div id="school-picker-host" class="av-school-picker" hidden></div>
   </header>
   <p id="school-status" role="status" aria-live="polite">Checking school access…</p>
+  <aside style="margin:.75rem 0 1rem;padding:.85rem 1rem;border:1px solid #a5f3fc;border-radius:12px;background:#ecfeff;color:#164e63">
+    <strong>Safe pilot boundary:</strong> V4 identity reconciliation does not rewrite legacy assessments, grades, evidence or submissions. Legacy grading stays available while compatibility is <code>legacy_allowed</code>.
+  </aside>
   <section id="pa-workspace" hidden aria-label="School people administration">
     <div class="pa-tabs" role="tablist" aria-label="Directory sections">
-      <button type="button" data-tab="overview" aria-selected="true" role="tab">Overview</button>
+      <button type="button" data-tab="overview" aria-selected="true" role="tab">Pilot overview &amp; reconciliation</button>
       <button type="button" data-tab="people" aria-selected="false" role="tab">People</button>
       <button type="button" data-tab="import" aria-selected="false" role="tab">Import</button>
       <button type="button" data-tab="invites" aria-selected="false" role="tab">Access invitations</button>
