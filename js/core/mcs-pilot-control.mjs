@@ -25,7 +25,8 @@ function renderSummary(data){
     chip("School state",data.schoolState),
     chip("Compatibility",String(data.compatibilityMode||"legacy_allowed").replaceAll("_"," "),"safe"),
     chip("Pilot roster",data.includedTotal+" / "+data.expectedTotal,data.includedTotal===data.expectedTotal?"safe":"warn"),
-    chip("Identity reviews",data.unresolved.length,data.unresolved.length?"warn":"safe")
+    chip("Identity reviews",data.unresolved.length,data.unresolved.length?"warn":"safe"),
+    chip("V4 migration",data.canonical?.ready?"Ready":"Pending",data.canonical?.ready?"safe":"warn")
   );
   byId("pilot-history-boundary").textContent=data.deferredHistory?
     "Historical assessments, grades, evidence, planning and Practice remain deferred and unchanged.":
@@ -50,7 +51,9 @@ function renderBlockers(data){
     note.textContent=blocker.code==="identity_unresolved"?
       "Review only the student records shown under Identity exceptions below.":
       blocker.code==="roster_count_mismatch"?
-      "Review the two over-count sections and exclude only records that are not part of the protected current roster.":
+      "Review the over-count sections and exclude only records that are not part of the protected current roster.":
+      blocker.code==="canonical_migration_pending"?
+      "No manual migration action is required from you. Adminerva will apply the reviewed V4 foundation after the identity and roster exceptions are cleared.":
       "One verified account appears linked to more than one current pilot record.";
     text.append(strong,note);row.append(mark,text);host.append(row);
   }
