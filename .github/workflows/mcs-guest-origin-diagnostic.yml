@@ -1,4 +1,4 @@
-name: MCS guest-origin roster diagnostic
+name: MCS Carlo private diagnostic
 
 on:
   push:
@@ -34,6 +34,6 @@ jobs:
         shell: bash
         run: |
           cd functions
-          NODE_PATH="$PWD/node_modules" node ../scripts/mcs-guest-origin-diagnostic.cjs
+          NODE_PATH="$PWD/node_modules" node ../scripts/mcs-carlo-private-diagnostic.cjs
       - if: always()
         run: rm -f "$RUNNER_TEMP/firebase-service-account.json"
