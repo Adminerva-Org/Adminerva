@@ -171,7 +171,8 @@ async function main(){
    selected.push(row);selectedSectionById.set(doc.id,section);counts[section.sectionId]++;sourceTimes.push(updateMillis(doc));
  }
  const countMismatches=activeSections.filter(section=>counts[section.sectionId]!==Number(expected[section.sectionId]||0));
- if(selected.length!==expectedTotal||countMismatches.length){
+ const rosterMismatch=selected.length!==expectedTotal||countMismatches.length>0;
+ if(rosterMismatch){
    console.log("MCS_SHS_ROSTER_MISMATCH "+JSON.stringify({
      expectedTotal,observedTotal:selected.length,
      sections:activeSections.map(section=>({
@@ -181,7 +182,6 @@ async function main(){
        delta:(counts[section.sectionId]||0)-Number(expected[section.sectionId]||0)
      }))
    }));
-   fail("pilot_roster_count_mismatch");
  }
 
  const identityByStudent=new Map();
@@ -197,6 +197,27 @@ async function main(){
  if(unresolvedStudents.length)fail("student_identity_unresolved");
  const duplicateCurrentAccounts=(identity.candidates||[]).filter(candidate=>
    (candidate.legacyStudentIds||[]).filter(row=>selectedSectionById.has(row.studentId)).length>1);
+ const duplicateEquivalent=duplicateCurrentAccounts.filter(candidate=>{
+   const rows=(candidate.legacyStudentIds||[]).filter(row=>selectedSectionById.has(row.studentId));
+   if(rows.length<2)return false;
+   const signatures=new Set(rows.map(row=>{
+     const section=selectedSectionById.get(row.studentId);
+     return JSON.stringify({
+       sectionId:section?.sectionId||null,
+       year:String(row.year||"").trim(),
+       status:norm(row.status||"active")
+     });
+   }));
+   return signatures.size===1;
+ }).length;
+ console.log("MCS_SHS_IDENTITY_DIAGNOSTIC "+JSON.stringify({
+   selectedRows:selected.length,
+   uniqueVerifiedStudentAccounts:new Set(identityByStudent.values()).size,
+   unresolvedSelectedRows:unresolvedStudents.length,
+   duplicateVerifiedAccounts:duplicateCurrentAccounts.length,
+   equivalentDuplicateGroups:duplicateEquivalent
+ }));
+ if(rosterMismatch)fail("pilot_roster_count_mismatch");
  if(duplicateCurrentAccounts.length)fail("duplicate_current_identity");
 
  const teacherCandidates=(identity.candidates||[]).filter(candidate=>
