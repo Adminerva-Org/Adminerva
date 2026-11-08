@@ -1,4 +1,5 @@
 name: MCS V4 draft school bootstrap
+# execution-trigger: reviewed-uid-fingerprint
 
 on:
   push:
