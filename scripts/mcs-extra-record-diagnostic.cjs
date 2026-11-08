@@ -8,6 +8,7 @@ const validEmail=v=>{const e=norm(v);return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)
 const active=d=>!["archived","suspended","inactive","disabled","deleted"].includes(norm(d.status||"active"));
 const sectionOf=d=>{const parts=norm(d.section||d.sectionName||d.classSection).split(",").map(norm);return TARGET.find(s=>parts.includes(norm(s)))||null};
 const nameOf=d=>norm(d.displayName||d.name||d.fullName||d.studentName||[d.firstName||d.firstname||d.first_name,d.lastName||d.lastname||d.last_name].filter(Boolean).join(" "));
+const fold=v=>norm(v).normalize("NFD").replace(/[\u0300-\u036f]/g,"");
 async function main(){
  if(!getApps().length)initializeApp({credential:applicationDefault()});
  const db=getFirestore(),auth=getAuth();
@@ -33,7 +34,7 @@ async function main(){
    const dup=(field)=>[...new Map(s.filter(r=>r[field]).map(r=>[r[field],[]])).keys()].map(key=>({key,ids:s.filter(r=>r[field]===key).map(r=>r.id)})).filter(x=>x.ids.length>1);
    summary[section]={
      included:s.length,
-     nameHashes:s.map(r=>({nameHash:require("node:crypto").createHash("sha256").update(r.name).digest("hex"),emailHash:r.d.email?require("node:crypto").createHash("sha256").update(norm(r.d.email)).digest("hex"):null})).sort((a,b)=>a.nameHash.localeCompare(b.nameHash)),
+     nameHashes:s.map(r=>({nameHash:require("node:crypto").createHash("sha256").update(r.name).digest("hex"),foldedNameHash:require("node:crypto").createHash("sha256").update(fold(r.name)).digest("hex"),emailHash:r.d.email?require("node:crypto").createHash("sha256").update(norm(r.d.email)).digest("hex"):null})).sort((a,b)=>a.nameHash.localeCompare(b.nameHash)),
      duplicateNameGroups:dup("name").length,
      duplicateGithubGroups:dup("github").length,
      duplicateUidGroups:dup("uid").length,
