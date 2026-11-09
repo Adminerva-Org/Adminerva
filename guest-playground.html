@@ -26,7 +26,7 @@
   <div class="studio-project-bar">
     <button id="backToProjectsBtn" type="button" class="studio-back">← Projects</button>
     <div class="studio-project-identity"><div class="studio-project-title-row"><strong id="activeProjectTitle">Code project</strong><span id="activeProjectStorageBadge" class="studio-storage-badge">Local only</span></div><span id="activeProjectMeta">Java project</span></div>
-    <div class="studio-project-actions"><div class="studio-command-bar" aria-label="Project commands"><label class="sr-only" for="languageSelect">Programming language</label><select id="languageSelect"><option value="java">Java</option><option value="python">Python</option><option value="web">HTML / CSS / JS</option><option value="csharp">C#</option><option value="cpp">C++</option><option value="dart">Dart</option></select>
+    <div class="studio-project-actions" id="studioMobileActions" aria-label="Studio project tools"><div class="studio-command-bar" aria-label="Project commands"><label class="sr-only" for="languageSelect">Programming language</label><select id="languageSelect"><option value="java">Java</option><option value="python">Python</option><option value="web">HTML / CSS / JS</option><option value="csharp">C#</option><option value="cpp">C++</option><option value="dart">Dart</option></select>
       <label id="javaRunModeLabel" for="javaRunMode" class="hidden">Run as</label><select id="javaRunMode" class="hidden" title="Choose how Java should run"><option value="console">Console application</option><option value="desktop">Desktop GUI (Swing) · Beta</option></select>
       <button id="saveProjectBtn" type="button" class="pg-save" title="Save project · Ctrl+S">Save</button><button id="formatBtn" type="button">Format</button>
       <details><summary>Project ▾</summary><div class="pg-menu"><button id="loadProjectBtn" type="button">Reload legacy device draft</button><button id="undoRestoreBtn" type="button">Undo last restore</button><button id="importZipBtn" type="button">Import ZIP into editor</button><button id="exportZipBtn" type="button">Export ZIP</button><button id="resetBtn" type="button">Reset files</button></div></details>
@@ -41,11 +41,14 @@
     <button type="button" data-studio-view="evidence">Evidence</button>
     <button type="button" data-studio-view="monitor">Monitor</button>
   </nav>
+  <div class="studio-mobile-toolbar" aria-label="Mobile Studio controls"><button id="studioMobileFiles" type="button" aria-controls="projectExplorer" aria-expanded="false">☰ Files</button><div class="studio-mobile-pane-switch" role="group" aria-label="Workspace pane"><button id="studioMobileEditor" type="button" aria-pressed="true">Editor</button><button id="studioMobileTerminal" type="button" aria-pressed="false">Terminal</button></div><button id="studioMobileRun" type="button" class="studio-mobile-run">▶ Run</button><button id="studioMobileMore" type="button" aria-controls="studioMobileActions" aria-expanded="false">⋯ More</button></div>
+  <div id="studioMobileBackdrop" class="studio-mobile-backdrop hidden" aria-hidden="true"></div>
+
 
   <section id="studioPanelCode" class="flex-1 flex flex-col min-h-0">
     
 
-    <div id="projectWorkspace"><aside class="pg-explorer" aria-label="Project files"><div class="pg-explorer-header"><span>Explorer</span><span class="pg-explorer-help" tabindex="0" aria-label="Explorer help">ⓘ<span class="pg-explorer-tooltip" role="tooltip">Right-click a file or folder for actions. Drag onto folders to move files. Drop on the edge line to reorder. Ctrl+S saves. Ctrl+Enter runs.</span></span></div><div id="projectTree" class="pg-tree"></div><p id="projectFileCount" class="pg-folder-count"></p></aside>
+    <div id="projectWorkspace"><aside id="projectExplorer" class="pg-explorer" aria-label="Project files"><div class="pg-explorer-header"><span>Explorer</span><span class="pg-explorer-help" tabindex="0" aria-label="Explorer help">ⓘ<span class="pg-explorer-tooltip" role="tooltip">Right-click a file or folder for actions. Drag onto folders to move files. Drop on the edge line to reorder. Ctrl+S saves. Ctrl+Enter runs.</span></span></div><div id="projectTree" class="pg-tree"></div><p id="projectFileCount" class="pg-folder-count"></p></aside>
       <div id="explorerContextMenu" class="pg-context-menu hidden" role="menu" aria-label="Explorer actions">
         <button type="button" data-explorer-action="open" role="menuitem">Open</button>
         <button type="button" data-explorer-action="new-file" role="menuitem">New file</button>
@@ -129,4 +132,4 @@
     <div class="studio-modal-actions"><span></span><button id="projectSettingsSave" type="button" class="primary-small">Save settings</button></div>
   </div>
 </div>
-<script type="module" src="js/student/playground.js?v=3.0.1"></script><a href="guest-settings.html" class="fixed bottom-3 left-3 z-[90] rounded-full border border-slate-300 bg-white/95 px-3 py-2 text-xs font-bold text-slate-700 shadow">⚙ Guest settings</a><script type="module" src="js/settings/guest-preferences.mjs?v=1.4.0"></script></body></html>
+<script type="module" src="js/student/playground.js?v=3.0.2"></script><a href="guest-settings.html" class="fixed bottom-3 left-3 z-[90] rounded-full border border-slate-300 bg-white/95 px-3 py-2 text-xs font-bold text-slate-700 shadow">⚙ Guest settings</a><script type="module" src="js/settings/guest-preferences.mjs?v=1.4.0"></script></body></html>
