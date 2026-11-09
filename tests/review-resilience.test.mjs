@@ -94,10 +94,13 @@ test("teacher approval treats unavailable reclaim context as advisory while admi
 test("gradebook never renders failed reclaim or review reads as zero",()=>{
   const source=readFileSync("js/repo-review/gradebook-class-review.mjs","utf8");
   assert.match(source,/label\.textContent="\(unavailable\)"/);
-  assert.match(source,/review data incomplete — refresh evidence/);
+  assert.match(source,/core grading data unavailable — refresh evidence/);
+  assert.match(source,/supplemental review data unavailable/);
+  assert.match(source,/Core grading data could not load/);
+  assert.match(source,/Evidence and grading actions remain disabled/);
   assert.match(source,/Approve evidence \(\?\)/);
   assert.match(source,/Run system evaluation \(\?\)/);
-  assert.match(source,/Affected counts are shown as unavailable\/incomplete/);
+  assert.match(source,/Core evidence and grade data loaded\. Supplemental review data is unavailable/);
 });
 test("student reclaim workflow is assessment-scoped, live and server-confirmed",()=>{
   const source=readFileSync("js/student/assessment-evidence.mjs","utf8");
