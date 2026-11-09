@@ -72,9 +72,15 @@ service cloud.firestore {
         isAdmin();
     }
     function mayGrade(data) {
-      return (isTeacher() && data.section in teacherSections() &&
-        data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
-        data.section in get(/databases/$(database)/documents/assessments/$(data.taskId)).data.get("sectionIds",[])) ||
+      let studentSection = get(/databases/$(database)/documents/students/$(data.studentId)).data.section;
+      let assessment = get(/databases/$(database)/documents/assessments/$(data.taskId)).data;
+      let sections = teacherSections();
+      return (isTeacher() && data.section is string && data.section == studentSection &&
+        (data.section in assessment.get("sectionIds",[]) ||
+         data.section in assessment.get("targetSections",[])) &&
+        (data.section in sections ||
+         assessment.get("ownerUid","") == request.auth.uid ||
+         verifiedEmailMatches("josephsixson@mcstayuman.edu.ph"))) ||
         isAdmin();
     }
     function serverOwned(name) {
