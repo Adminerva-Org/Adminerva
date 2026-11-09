@@ -1452,9 +1452,13 @@ function initializeMobileStudio(){
     if(activeDrawer===side){closeDrawer();return;}
     closeDrawer();
     activeDrawer=side;
+    // The V4 explorer is a collapsible details element. Open its content
+    // before exposing the mobile drawer, while preserving desktop collapsing.
+    if(side==='files'&&'open' in explorer)explorer.open=true;
     (side==='files'?explorer:actions).classList.add('studio-drawer-open');
     backdrop.classList.remove('hidden');
     (side==='files'?filesButton:moreButton)?.setAttribute('aria-expanded','true');
+    document.getElementById(side==='files'?'studioMobileCloseFiles':'studioMobileCloseMore')?.focus();
   };
   const setPane=pane=>{
     const value=pane==='terminal'?'terminal':'editor';
@@ -1466,7 +1470,7 @@ function initializeMobileStudio(){
   };
   filesButton?.addEventListener('click',()=>showDrawer('files'));
   moreButton?.addEventListener('click',()=>showDrawer('actions'));
-  document.getElementById('studioMobileCloseFiles')?.addEventListener('click',closeDrawer);
+  document.getElementById('studioMobileCloseFiles')?.addEventListener('click',event=>{event.preventDefault();closeDrawer();filesButton?.focus();});
   document.getElementById('studioMobileCloseMore')?.addEventListener('click',closeDrawer);
   editorButton?.addEventListener('click',()=>setPane('editor'));
   terminalButton?.addEventListener('click',()=>setPane('terminal'));
@@ -1558,7 +1562,7 @@ function bindUIEvents() {
   window.addEventListener("blur",hideExplorerContextMenu);
   window.addEventListener("resize",hideExplorerContextMenu);
   document.addEventListener("scroll",hideExplorerContextMenu,true);
-  const studioExplorer=document.getElementById("studioExplorer");
+  const studioExplorer=document.getElementById("projectExplorer");
   if(studioExplorer){
     try{studioExplorer.open=localStorage.getItem("Adminerva_Studio_Explorer_Open_v1")!=="0";}catch{}
     studioExplorer.addEventListener("toggle",()=>{
