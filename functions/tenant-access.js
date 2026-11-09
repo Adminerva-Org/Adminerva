@@ -23,7 +23,7 @@ function activeRoles(membership) {
   if(membership?.status!=="active" || !Array.isArray(membership.roles)) return [];
   return [...new Set(membership.roles.filter(role=>VALID_ROLES.has(role)))];
 }
-async function getSchoolContext({db,request,schoolId,roles=[]}) {
+async function getSchoolContext({db,request,schoolId,roles=[],allowDraftAdmin=false}) {
   const uid=verifiedUid(request), id=checkedSchoolId(schoolId);
   const schoolRef=db.doc("platform_schools/"+id);
   const memberRef=db.doc("schools/"+id+"/memberships/"+uid);
@@ -31,7 +31,9 @@ async function getSchoolContext({db,request,schoolId,roles=[]}) {
   const data=school.exists?school.data():null;
   const grant=member.exists?member.data():null;
   const memberRoles=activeRoles(grant);
-  if(!["active","pilot"].includes(data?.state) || grant?.schoolId!==id || memberRoles.length===0)
+  const stateAllowed=["active","pilot"].includes(data?.state) ||
+    (allowDraftAdmin===true&&data?.state==="draft"&&memberRoles.includes("school_admin"));
+  if(!stateAllowed || grant?.schoolId!==id || memberRoles.length===0)
     throw new TenantAccessError("permission-denied","Your access to this school is not active.");
   if(roles.length && !roles.some(role=>memberRoles.includes(role)))
     throw new TenantAccessError("permission-denied","This action is not granted for your school role.");
@@ -49,7 +51,7 @@ async function listVerifiedSchools({db,request}) {
   const snapshot=await db.collection("platform_users").doc(uid).collection("memberships").limit(50).get();
   const options=await Promise.all(snapshot.docs.map(async entry=>{
     try {
-      const ctx=await getSchoolContext({db,request,schoolId:entry.id});
+      const ctx=await getSchoolContext({db,request,schoolId:entry.id,allowDraftAdmin:true});
       const school=await db.doc("platform_schools/"+ctx.schoolId).get();
       const label=school.data()?.displayName;
       return {

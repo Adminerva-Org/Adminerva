@@ -57,7 +57,7 @@ function normalizedImport(rows){
 function createPeopleDirectoryService({db}) {
   return async request=>{
     const input=request.data||{};
-    const ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["school_admin"]});
+    const ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["school_admin"],allowDraftAdmin:true});
     const base=db.collection("schools/"+ctx.schoolId+"/people");
     const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
     const adminRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+ctx.uid);

@@ -25,6 +25,18 @@ function choose(id){
   if(!selected)return;
   byId("owner-current").textContent=selected.displayName;
   byId("owner-current-status").textContent=selected.schoolId+" · "+selected.state+" · revision "+selected.revision;
+  const pilotSummary=byId("owner-pilot-summary"),pilotJump=byId("owner-pilot-jump");
+  if(pilotSummary){
+    if(selected.state==="draft")pilotSummary.textContent="Draft · The controlled pilot has not started. Review People & Access and migration exceptions, then use Start controlled pilot below.";
+    else if(selected.state==="pilot")pilotSummary.textContent="Pilot active · Legacy compatibility remains available and this is not production authorization.";
+    else if(selected.state==="active")pilotSummary.textContent="Institution active · Controlled-pilot startup is no longer the current transition.";
+    else pilotSummary.textContent=selected.state+" · Review the institution state before changing pilot access.";
+  }
+  if(pilotJump){
+    pilotJump.textContent=selected.state==="draft"?"Review & start controlled pilot":
+      selected.state==="pilot"?"Review / close controlled pilot":"Review institution controls";
+    pilotJump.hidden=selected.state==="archived";
+  }
   byId("owner-start-pilot").hidden=selected.state!=="draft";
   byId("owner-end-pilot").hidden=selected.state!=="pilot";
   byId("owner-activate").hidden=!["draft","pilot"].includes(selected.state);
@@ -184,6 +196,14 @@ async function submit(form,action,fields){
   }catch(error){say(error?.message||"The change was not recorded. No local permission was granted.");}
   finally{busy=false;buttons.forEach(button=>button.disabled=false);}
 }
+byId("owner-pilot-jump")?.addEventListener("click",()=>{
+  if(!selected)return;
+  const target=selected.state==="draft"?byId("owner-start-pilot"):
+    selected.state==="pilot"?byId("owner-end-pilot"):byId("owner-actions");
+  target?.scrollIntoView({behavior:"smooth",block:"center"});
+  const focusable=target?.querySelector("input,button,select,textarea");
+  setTimeout(()=>focusable?.focus?.(),250);
+});
 byId("owner-create").addEventListener("submit",event=>{
   event.preventDefault();const f=event.currentTarget,d=new FormData(f);
   void submit(f,"create_draft",{schoolId:String(d.get("schoolId")||"").trim(),

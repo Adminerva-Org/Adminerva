@@ -192,4 +192,4 @@ function main(){
 if(require.main===module)try{main();}catch(error){
  console.error("MCS canonical academic-access planning failed:",error.code||error.message);process.exitCode=1;
 }
-module.exports={SCHEMA,pathTail,approvedLabelMap,identityByUid,buildAcademicAccessPlan};
+module.exports={SCHEMA,SCHOOL_ID,pathTail,approvedLabelMap,identityByUid,buildAcademicAccessPlan};
