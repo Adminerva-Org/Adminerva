@@ -3,8 +3,8 @@ import { auth, db } from "../core/firebase-core.js?v=1.3.0";
 import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
-import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.2";
-import {legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.2";
+import {approveEvaluationDraftAndPublish,publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.3";
+import {approvableEvaluationDraft,legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.3";
 import {renderFeedbackMarkdown,reviewNotice} from "./review-ui.mjs?v=1.3.0";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {
@@ -266,13 +266,22 @@ function openDetails(student, task, entry) {
   el("gbEditMax").value = String(grade.maxScore || task.maxScore || 20);
   el("gbEditFeedback").value = cleanGradeFeedback(grade.feedback);
   renderFeedbackMarkdown(el("gbFeedbackPreview"),grade.feedback);
-  for(const id of ["gbEditScore","gbEditFeedback","gbEditReason","gbMarkReviewed","gbDetailSave"])el(id).disabled=grade.published===true||task.schemaVersion===2;
+  const evaluatedDraft=task.schemaVersion===2&&approvableEvaluationDraft(grade);
+  for(const id of ["gbEditScore","gbEditFeedback","gbEditReason","gbDetailSave"])el(id).disabled=grade.published===true||task.schemaVersion===2;
+  el("gbMarkReviewed").disabled=grade.published===true||(task.schemaVersion===2&&!evaluatedDraft);
   el("gbDetailReviewLink").classList.toggle("hidden",task.schemaVersion!==2);
   el("gbDetailReviewLink").href="repofetch.html?"+new URLSearchParams({student:student.id,assessment:task.id,section:student.section||""});
+  el("gbDetailReviewLink").textContent=task.schemaVersion===2?"Review / adjust manually":"Open Review & Grade";
   el("gbEditReason").value = "";
   el("gbMarkReviewed").checked = !grade.reviewRequired;
+  const reviewLabel=el("gbMarkReviewed")?.parentElement?.querySelector("span");
+  if(reviewLabel)reviewLabel.textContent=evaluatedDraft
+    ?"I reviewed this system/external evaluation and accept its score and feedback unchanged."
+    :"I reviewed the attributed commits, matched files, and relevant deadline limitations for this draft.";
   el("gbDetailStatus").textContent = grade.published ? "Published grade protected. Unpublish before revising." :
+    evaluatedDraft&&grade.reviewRequired ? "System/external evaluation ready. Approve it unchanged for immediate publication, or open Review / adjust manually." :
     grade.reviewRequired ? "Private: flagged for teacher review before publishing." : "Private: ready for publication.";
+  el("gbDetailPublish").textContent=evaluatedDraft&&grade.reviewRequired?"Approve & publish":"Publish";
   el("gbDetailPublish").classList.toggle("hidden", grade.published === true);
   el("gbDetailUnpublish").classList.toggle("hidden", grade.published !== true);
   renderEvidence(student, task, grade);
@@ -333,6 +342,19 @@ async function togglePublish(makePublished) {
   if (!state.active) return;
   const active = state.active;
   if(detailsDirty)return reviewNotice("Save or discard your edits before changing publication.",true);
+  const evaluatedDraft=active.task.schemaVersion===2&&approvableEvaluationDraft(active.entry.data);
+  if(makePublished&&evaluatedDraft&&active.entry.data.reviewRequired){
+    if(!el("gbMarkReviewed").checked)
+      return alert("Check the approval confirmation if you accept this system/external evaluation unchanged. Otherwise choose Review / adjust manually.");
+    if(!confirm("Approve this evaluated score and feedback unchanged and publish it to the student now?"))return;
+    try{
+      el("gbDetailPublish").disabled=true;
+      await approveEvaluationDraftAndPublish(active.entry);
+      closeDetails();await loadQuarter();
+    }catch(error){alert("Unable to approve and publish this evaluation: "+error.message);}
+    finally{el("gbDetailPublish").disabled=false;}
+    return;
+  }
   if (makePublished && active.entry.data.reviewRequired && !legacyReadyDraft(active.entry.data) && !el("gbMarkReviewed").checked) {
     return alert("Review the evidence and check the teacher-review confirmation before publishing.");
   }
