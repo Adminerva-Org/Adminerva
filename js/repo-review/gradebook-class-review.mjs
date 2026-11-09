@@ -206,7 +206,15 @@ function render(){
   const reopenCandidates=isV2?bulkReopenCandidates(context.students,evidenceMap,context.grades):[];
   const evaluateCandidates=isV2?context.students.filter(student=>{
     const e=evidenceMap.get(student.id),g=context.grades?.[student.id];
-    return e?.status==="approved"&&Array.isArray(e.verifiedContributionCommits)&&e.verifiedContributionCommits.length>0&&!g&&!draftMap.has(student.id);
+    const verified=e?.status==="approved"&&Array.isArray(e.verifiedContributionCommits)&&e.verifiedContributionCommits.length>0;
+    if(!verified)return false;
+    // A private suggestion without a grade must not deadlock the class-level
+    // system evaluator. It will be replaced/refreshed by evaluateOne().
+    if(!g)return true;
+    // If approved evidence changed after an unpublished system draft was made,
+    // treat it as pending system evaluation again. evaluateOne({rerun:true})
+    // archives the prior draft before replacing it.
+    return eligibleToRerun(e,g)&&!currentGradeForEvidence(g,e);
   }):[];
   const reviewDataComplete=!isV2||(evidenceReadable&&gradesReadable&&receiptsReadable&&draftsReadable);
   el("gbClassReviewSummary").textContent=reviewDataComplete
@@ -234,7 +242,10 @@ function render(){
   const evaluationReady=!isV2||(evidenceReadable&&gradesReadable&&draftsReadable);
   el("gbBulkEvaluate").textContent=isV2?(evaluationReady?"Run system evaluation ("+evaluateCandidates.length+")":"Run system evaluation (?)"):"System evaluation · V2 evidence only";
   el("gbBulkEvaluate").disabled=busy||!evaluationReady||!evaluateCandidates.length;
-  const reruns=isV2&&evaluationReady?context.students.filter(student=>eligibleToRerun(evidenceMap.get(student.id),context.grades?.[student.id])):[];
+  const reruns=isV2&&evaluationReady?context.students.filter(student=>{
+    const e=evidenceMap.get(student.id),g=context.grades?.[student.id];
+    return eligibleToRerun(e,g)&&currentGradeForEvidence(g,e);
+  }):[];
   if(el("gbBulkRerun")){
     el("gbBulkRerun").textContent=isV2?(evaluationReady?"Re-evaluate drafts ("+reruns.length+")":"Re-evaluate drafts (?)"):"Re-evaluate drafts (0)";
     el("gbBulkRerun").disabled=busy||!evaluationReady||!reruns.length;
@@ -671,13 +682,47 @@ async function evaluateOne(student,evidence,assessment,connection,{rerun=false}=
 }
 async function bulkEvaluate({rerun=false}={}){
   if(busy||!context)return;
-  const candidates=context.students.map(s=>({student:s,evidence:evidenceMap.get(s.id)})).filter(({student,evidence})=>{
-    const grade=context.grades?.[student.id];return rerun?eligibleToRerun(evidence,grade):
-      evidence?.status==="approved"&&evidence.verifiedContributionCommits?.length&&!grade&&!draftMap.has(student.id);
-  });
-  if(!candidates.length)return;
-  if(!confirm(rerun?"Re-evaluate "+candidates.length+" unreviewed, unpublished system draft(s)? Previous scores and feedback will be archived. Teacher-edited and published grades will not change.":
-    "Generate unpublished grade drafts for "+candidates.length+" eligible learner(s)? Evaluations with material uncertainty will be flagged for teacher review; clean drafts can be bulk published."))return;
+  const active=context;
+  el("gbBulkStatus").textContent="Refreshing approved evidence and unpublished grading state…";
+  await load(active);
+  if(context!==active||!evidenceReadable||!gradesReadable||!draftsReadable){
+    el("gbBulkStatus").textContent="System evaluation could not start because current evidence or unpublished grading state could not be verified. Refresh evidence and retry.";
+    return;
+  }
+  const candidates=context.students.map(s=>{
+    const evidence=evidenceMap.get(s.id),grade=context.grades?.[s.id];
+    const verified=evidence?.status==="approved"&&Array.isArray(evidence.verifiedContributionCommits)&&evidence.verifiedContributionCommits.length>0;
+    if(!verified)return null;
+    if(rerun){
+      return eligibleToRerun(evidence,grade)&&currentGradeForEvidence(grade,evidence)
+        ?{student:s,evidence,replaceExisting:true}:null;
+    }
+    if(!grade)return {student:s,evidence,replaceExisting:false};
+    return eligibleToRerun(evidence,grade)&&!currentGradeForEvidence(grade,evidence)
+      ?{student:s,evidence,replaceExisting:true}:null;
+  }).filter(Boolean);
+  if(!candidates.length){
+    const approved=context.students.filter(s=>evidenceMap.get(s.id)?.status==="approved").length;
+    const withoutVerified=context.students.filter(s=>{
+      const e=evidenceMap.get(s.id);
+      return e?.status==="approved"&&(!Array.isArray(e.verifiedContributionCommits)||!e.verifiedContributionCommits.length);
+    }).length;
+    const protectedGrades=context.students.filter(s=>{
+      const e=evidenceMap.get(s.id),g=context.grades?.[s.id];
+      return e?.status==="approved"&&e.verifiedContributionCommits?.length>0&&g&&
+        !(eligibleToRerun(e,g)&&(rerun?currentGradeForEvidence(g,e):!currentGradeForEvidence(g,e)));
+    }).length;
+    el("gbBulkStatus").textContent="No learners are eligible for "+(rerun?"draft re-evaluation":"a new system evaluation")+
+      ". "+approved+" approved · "+withoutVerified+" approved without verified individual commits · "+
+      protectedGrades+" already graded/protected.";
+    return;
+  }
+  const stale=candidates.filter(item=>item.replaceExisting).length;
+  if(!confirm(rerun
+    ?"Re-evaluate "+candidates.length+" current, unreviewed, unpublished system draft(s)? Previous scores and feedback will be archived. Teacher-edited and published grades will not change."
+    :"Run system evaluation for "+candidates.length+" eligible learner(s)?"+
+      (stale?" "+stale+" stale unpublished system draft(s) tied to older approved evidence will be archived and regenerated.":"")+
+      " Existing teacher-edited and published grades will not change."))return;
   showBulkExceptions([]);
   analytics(rerun?"system_reevaluation_started":"system_evaluation_started",{feature:"gradebook",count_bucket:candidates.length});
   busy=true;busyEvaluation=true;cancelEvaluation=false;render();let assessment,connection;const failures=[];let completed=0;
@@ -686,12 +731,19 @@ async function bulkEvaluate({rerun=false}={}){
     connection=await schoolAIStatus();
     for(const item of candidates){
       if(cancelEvaluation)break;
-      try{el("gbBulkStatus").textContent=(rerun?"Re-evaluating ":"Evaluating ")+item.student.name+" · "+completed+"/"+candidates.length+" complete…";await evaluateOne(item.student,item.evidence,assessment,connection,{rerun});completed++;}
-      catch(error){failures.push(item.student.name+": "+error.message);}
+      try{
+        const replacing=rerun||item.replaceExisting;
+        el("gbBulkStatus").textContent=(replacing?"Re-evaluating ":"Evaluating ")+item.student.name+" · "+completed+"/"+candidates.length+" complete…";
+        await evaluateOne(item.student,item.evidence,assessment,connection,{rerun:replacing});
+        completed++;
+      }catch(error){failures.push(item.student.name+": "+error.message);}
     }
   }catch(error){failures.push(error.message);}
   const stopped=cancelEvaluation;busy=false;busyEvaluation=false;await load(context);showBulkExceptions(failures);
-  analytics(rerun?"system_reevaluation_completed":"system_evaluation_completed",{feature:"gradebook",status:stopped?"stopped":failures.length?"partial":"success",count_bucket:completed});el("gbBulkStatus").textContent=(stopped?"Evaluation stopped: ":"Evaluation complete: ")+completed+" unpublished draft(s) "+(rerun?"replaced":"saved")+" · "+failures.length+" processing exception(s). Publish ready drafts in Gradebook; only flagged evaluations need individual review."+(failures.length?" "+failures.slice(0,2).join(" | "):"");
+  analytics(rerun?"system_reevaluation_completed":"system_evaluation_completed",{feature:"gradebook",status:stopped?"stopped":failures.length?"partial":"success",count_bucket:completed});
+  el("gbBulkStatus").textContent=(stopped?"Evaluation stopped: ":"Evaluation complete: ")+completed+
+    " unpublished draft(s) saved/updated · "+failures.length+" processing exception(s). Publish ready drafts in Gradebook; only flagged evaluations need individual review."+
+    (failures.length?" "+failures.slice(0,2).join(" | "):"");
 }
 window.addEventListener("adminerva:gradebook-grid-loaded",event=>void load(event.detail));
 if(window.__adminervaGradebookGridContext)void load(window.__adminervaGradebookGridContext);
