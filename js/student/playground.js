@@ -1473,6 +1473,14 @@ function initializeMobileStudio(){
       setPane('editor');
     }
   };
+  const syncCodeToolbar=()=>{
+    // Design, Database, Evidence and Monitor keep their own full work areas.
+    // Mobile editing controls belong to Code only.
+    toolbar.style.display=panel.classList.contains('hidden')?'none':'';
+    if(panel.classList.contains('hidden'))closeDrawer();
+  };
+  new MutationObserver(syncCodeToolbar).observe(panel,{attributes:true,attributeFilter:['class']});
+  syncCodeToolbar();
   window.addEventListener('resize',resize);
 
   // Android's back navigation consumes gestures that originate at the literal
