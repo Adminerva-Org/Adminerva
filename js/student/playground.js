@@ -72,6 +72,41 @@ let workspaceFolders=[],projectOrder=[],selectedProjectPath="",selectedProjectFo
 let executionController=null,executionSequence=0;
 let loadedOwnerUid=null;
 let projectStudio=null;
+const STUDIO_EDITOR_FONT_KEY="Adminerva_Studio_Editor_Font_Size_v1";
+const STUDIO_EDITOR_BASE_FONT=14;
+const STUDIO_EDITOR_FONT_MIN=12;
+const STUDIO_EDITOR_FONT_MAX=26;
+function readStudioEditorFontSize(){
+  try{
+    const size=Number(localStorage.getItem(STUDIO_EDITOR_FONT_KEY));
+    return Number.isFinite(size)&&size>=STUDIO_EDITOR_FONT_MIN&&size<=STUDIO_EDITOR_FONT_MAX?size:STUDIO_EDITOR_BASE_FONT;
+  }catch{return STUDIO_EDITOR_BASE_FONT;}
+}
+function setStudioEditorFontSize(size){
+  if(!editorInstance)return;
+  const next=Math.max(STUDIO_EDITOR_FONT_MIN,Math.min(STUDIO_EDITOR_FONT_MAX,Math.round(size)));
+  editorInstance.updateOptions({fontSize:next});
+  try{localStorage.setItem(STUDIO_EDITOR_FONT_KEY,String(next));}catch{}
+  syncStudioEditorZoomLabel();
+}
+function syncStudioEditorZoomLabel(){
+  const size=editorInstance?.getOption(monaco.editor.EditorOption.fontSize)||STUDIO_EDITOR_BASE_FONT;
+  const label=document.getElementById('studioZoomLabel');
+  if(label)label.textContent=Math.round(size/STUDIO_EDITOR_BASE_FONT*100)+'%';
+  const zoomOut=document.getElementById('studioZoomOut'),zoomIn=document.getElementById('studioZoomIn');
+  if(zoomOut)zoomOut.disabled=size<=STUDIO_EDITOR_FONT_MIN;
+  if(zoomIn)zoomIn.disabled=size>=STUDIO_EDITOR_FONT_MAX;
+}
+function moveStudioEditorCursor(command){
+  if(!editorInstance||!editorInstance.getModel())return;
+  const commands={left:'cursorLeft',right:'cursorRight',up:'cursorUp',down:'cursorDown'};
+  editorInstance.focus();
+  if(commands[command])editorInstance.trigger('studio-mobile',commands[command],null);
+  else if(command==='tab')editorInstance.trigger('studio-mobile','type',{text:'\t'});
+  else if(command==='undo'||command==='redo')editorInstance.trigger('studio-mobile',command,null);
+  editorInstance.revealPositionInCenterIfOutsideViewport(editorInstance.getPosition());
+}
+
 const JAVA_RUN_MODE_KEY="Adminerva_Java_Run_Mode_v1";
 let javaRunMode=(()=>{try{return localStorage.getItem(JAVA_RUN_MODE_KEY)==="desktop"?"desktop":"console";}catch{return "console";}})();
 let desktopRunSequence=0;
@@ -157,7 +192,7 @@ async function initializePlayground() {
       {
         theme: "adminervaDark",
         automaticLayout: true,
-        fontSize: 14,
+        fontSize: readStudioEditorFontSize(),
         fontFamily: "Fira Code, monospace",
         minimap: { enabled: false },
         padding: { top: 16 },
@@ -169,6 +204,7 @@ async function initializePlayground() {
 
     bindUIEvents();
     initializeMobileStudio();
+    syncStudioEditorZoomLabel();
     initResizer();
     setupWebConsoleHook();
     setupJavaDesktopHook();
@@ -440,7 +476,7 @@ function renderTabs() {
       : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 border-t-2 border-transparent";
 
     const tab=document.createElement("div");tab.className="px-4 py-2 cursor-pointer flex items-center gap-2 text-xs font-bold transition relative group tab-element "+tabClass;
-    tab.draggable=true;tab.dataset.index=index;tab.dataset.filename=filename;tab.setAttribute("role","tab");tab.setAttribute("aria-selected",String(isActive));tab.tabIndex=isActive?0:-1;
+    tab.draggable=!window.matchMedia('(max-width:767px)').matches;tab.dataset.index=index;tab.dataset.filename=filename;tab.setAttribute("role","tab");tab.setAttribute("aria-selected",String(isActive));tab.tabIndex=isActive?0:-1;
     const label=document.createElement("span");label.textContent=filename.split("/").at(-1);label.title=filename;tab.append(label);
     tab.addEventListener("dblclick",()=>window.renameFile(filename));
     tab.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();switchTab(filename);}});
@@ -457,6 +493,15 @@ function renderTabs() {
 
   attachTabEvents();
   renderFileTree();
+  if(window.matchMedia('(max-width:767px)').matches){
+    requestAnimationFrame(()=>{
+      const tab=container.querySelector('.tab-element[aria-selected="true"]');
+      if(!tab||!container.clientWidth)return;
+      const tabRect=tab.getBoundingClientRect(),hostRect=container.getBoundingClientRect();
+      if(tabRect.left<hostRect.left)container.scrollLeft+=tabRect.left-hostRect.left;
+      else if(tabRect.right>hostRect.right)container.scrollLeft+=tabRect.right-hostRect.right;
+    });
+  }
 }
 
 function currentFolderPaths(){
@@ -1375,18 +1420,24 @@ function initializeMobileStudio(){
   const editorButton=document.getElementById('studioMobileEditor');
   const terminalButton=document.getElementById('studioMobileTerminal');
   const mobileRun=document.getElementById('studioMobileRun');
-  if(!panel||!explorer||!actions||!backdrop)return;
+  const toolbar=document.querySelector('.studio-mobile-toolbar');
+  const projectBar=document.querySelector('.studio-project-bar');
+  if(!panel||!explorer||!actions||!backdrop||!toolbar)return;
   const compact=()=>window.matchMedia('(max-width:767px)').matches;
   let activeDrawer=null;
   const closeDrawer=()=>{
-    explorer.classList.remove('studio-drawer-open');actions.classList.remove('studio-drawer-open');
-    backdrop.classList.add('hidden');activeDrawer=null;
-    filesButton?.setAttribute('aria-expanded','false');moreButton?.setAttribute('aria-expanded','false');
+    explorer.classList.remove('studio-drawer-open');
+    actions.classList.remove('studio-drawer-open');
+    backdrop.classList.add('hidden');
+    activeDrawer=null;
+    filesButton?.setAttribute('aria-expanded','false');
+    moreButton?.setAttribute('aria-expanded','false');
   };
   const showDrawer=side=>{
     if(!compact())return;
     if(activeDrawer===side){closeDrawer();return;}
-    closeDrawer();activeDrawer=side;
+    closeDrawer();
+    activeDrawer=side;
     (side==='files'?explorer:actions).classList.add('studio-drawer-open');
     backdrop.classList.remove('hidden');
     (side==='files'?filesButton:moreButton)?.setAttribute('aria-expanded','true');
@@ -1401,33 +1452,81 @@ function initializeMobileStudio(){
   };
   filesButton?.addEventListener('click',()=>showDrawer('files'));
   moreButton?.addEventListener('click',()=>showDrawer('actions'));
+  document.getElementById('studioMobileCloseFiles')?.addEventListener('click',closeDrawer);
+  document.getElementById('studioMobileCloseMore')?.addEventListener('click',closeDrawer);
   editorButton?.addEventListener('click',()=>setPane('editor'));
   terminalButton?.addEventListener('click',()=>setPane('terminal'));
   mobileRun?.addEventListener('click',()=>{setPane('terminal');document.getElementById('runBtn')?.click();});
   backdrop.addEventListener('click',closeDrawer);
   document.addEventListener('keydown',event=>{if(event.key==='Escape')closeDrawer();});
-  explorer.addEventListener('click',event=>{if(compact()&&event.target.closest('.pg-file,[role="treeitem"],.pg-tree button'))setTimeout(()=>{closeDrawer();setPane('editor');},0);});
-  const resize=()=>{if(!compact()){closeDrawer();panel.removeAttribute('data-mobile-pane');requestAnimationFrame(()=>editorInstance?.layout());}else if(!panel.dataset.mobilePane){setPane('editor');}};
+  explorer.addEventListener('click',event=>{
+    if(compact()&&event.target.closest('.pg-file,[role="treeitem"],.pg-tree button')){
+      setTimeout(()=>{closeDrawer();setPane('editor');},0);
+    }
+  });
+  const resize=()=>{
+    if(!compact()){
+      closeDrawer();
+      panel.removeAttribute('data-mobile-pane');
+      requestAnimationFrame(()=>editorInstance?.layout());
+    }else if(!panel.dataset.mobilePane){
+      setPane('editor');
+    }
+  };
   window.addEventListener('resize',resize);
-  let startX=0,startY=0,tracking=false;
-  document.addEventListener('touchstart',event=>{
-    if(!compact()||event.touches.length!==1)return;
-    const t=event.touches[0];
-    const edge=t.clientX<=26||t.clientX>=window.innerWidth-26;
-    if(!activeDrawer&&!edge)return;
-    startX=t.clientX;startY=t.clientY;tracking=true;
-  },{passive:true});
-  document.addEventListener('touchend',event=>{
-    if(!tracking||!compact())return;tracking=false;
-    const t=event.changedTouches[0],dx=t.clientX-startX,dy=t.clientY-startY;
-    if(Math.abs(dx)<70||Math.abs(dx)<Math.abs(dy)*1.4)return;
-    if(activeDrawer){if((activeDrawer==='files'&&dx<0)||(activeDrawer==='actions'&&dx>0))closeDrawer();}
-    else if(startX<=26&&dx>0)showDrawer('files');
-    else if(startX>=window.innerWidth-26&&dx<0)showDrawer('actions');
-  },{passive:true});
+
+  // Android's back navigation consumes gestures that originate at the literal
+  // viewport edge. Interpret horizontal swipes *within the Studio chrome*
+  // instead. Never intercept Monaco, code selection, or horizontally scrolling tabs.
+  let start=null;
+  const swipeStart=event=>{
+    if(!compact()||event.pointerType!=='touch'||!event.isPrimary)return;
+    start={id:event.pointerId,x:event.clientX,y:event.clientY};
+  };
+  const swipeEnd=(event,origin)=>{
+    if(!start||!compact()||start.id!==event.pointerId)return;
+    const dx=event.clientX-start.x,dy=event.clientY-start.y;
+    start=null;
+    if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.4)return;
+    if(activeDrawer){
+      if((activeDrawer==='files'&&dx<0)||(activeDrawer==='actions'&&dx>0))closeDrawer();
+    }else if(origin==='chrome'){
+      showDrawer(dx>0?'files':'actions');
+    }
+  };
+  for(const surface of [toolbar,projectBar]){
+    if(!surface)continue;
+    surface.addEventListener('pointerdown',swipeStart,{passive:true});
+    surface.addEventListener('pointerup',event=>swipeEnd(event,'chrome'),{passive:true});
+    surface.addEventListener('pointercancel',()=>{start=null;},{passive:true});
+  }
+  for(const surface of [explorer,actions]){
+    surface.addEventListener('pointerdown',swipeStart,{passive:true});
+    surface.addEventListener('pointerup',event=>swipeEnd(event,'drawer'),{passive:true});
+    surface.addEventListener('pointercancel',()=>{start=null;},{passive:true});
+  }
+
+  // Zoom and keyboard alternatives remain available without any gesture.
+  document.getElementById('studioZoomOut')?.addEventListener('click',()=>{
+    setStudioEditorFontSize(editorInstance.getOption(monaco.editor.EditorOption.fontSize)-2);
+  });
+  document.getElementById('studioZoomIn')?.addEventListener('click',()=>{
+    setStudioEditorFontSize(editorInstance.getOption(monaco.editor.EditorOption.fontSize)+2);
+  });
+  const assistButton=document.getElementById('studioEditAssistToggle');
+  const assistBar=document.getElementById('studioEditAssistBar');
+  assistButton?.addEventListener('click',()=>{
+    const opening=assistBar.classList.contains('hidden');
+    assistBar.classList.toggle('hidden',!opening);
+    assistButton.setAttribute('aria-expanded',String(opening));
+    requestAnimationFrame(()=>editorInstance?.layout());
+  });
+  assistBar?.addEventListener('click',event=>{
+    const command=event.target.closest('[data-studio-editor-key]')?.dataset.studioEditorKey;
+    if(command)moveStudioEditorCursor(command);
+  });
   resize();
 }
-
 function bindUIEvents() {
   document.getElementById("explorerContextMenu")?.addEventListener("click",event=>{
     const button=event.target.closest("[data-explorer-action]");if(button)handleExplorerContextAction(button.dataset.explorerAction);
