@@ -71,9 +71,16 @@ function add(parent,tag,text,className=""){
   const node=document.createElement(tag);node.textContent=String(text??"");
   if(className)node.className=className;parent.append(node);return node;
 }
+function evidenceRepository(active=context){
+  if(saved&&active&&saved.studentId===active.profile?.id&&saved.assessmentId===active.task?.id){
+    try{return parseRepository(saved.repository);}catch{}
+  }
+  return parseRepository(active?.profile?.repoUrl);
+}
 async function github(path){
   const headers={Accept:"application/vnd.github+json"};
-  const token=String(context?.profile?.githubToken||"").trim();
+  let token=String(context?.profile?.githubToken||"").trim();
+  if(!token){try{token=String(localStorage.getItem("Adminerva_github_token")||"").trim();}catch{}}
   if(token)headers.Authorization="Bearer "+token;
   const response=await fetch("https://api.github.com"+path,{headers});
   if(!response.ok){
@@ -222,9 +229,11 @@ function openReclaimForm(commit){
 async function preview(commit){
   const node=el("evidencePreview");
   const details=el("evidencePreviewDetails");details.classList.remove("hidden");details.open=true;
+  details.querySelector("summary").textContent="Changed files / "+String(commit?.sha||"").slice(0,12);
   node.textContent="Fetching commit details…";
+  requestAnimationFrame(()=>details.scrollIntoView({behavior:"smooth",block:"nearest"}));
   try{
-    const repo=parseRepository(context.profile.repoUrl);
+    const repo=evidenceRepository();
     const detail=await github(repositoryPath(repo)+"/commits/"+encodeURIComponent(commit.sha));
     const chunks=[
       "Commit: "+commit.sha,"Message: "+(detail.commit?.message||""),
@@ -241,7 +250,11 @@ async function preview(commit){
     const link=repo.url+"/commit/"+commit.sha;
     node.textContent=chunks.join("\n")+"\n\nFull commit: "+link+
       "\nThis diff is for review, not proof of individual authorship.";
-  }catch(error){node.textContent="Unable to preview: "+error.message;}
+    requestAnimationFrame(()=>details.scrollIntoView({behavior:"smooth",block:"nearest"}));
+  }catch(error){
+    node.textContent="Unable to preview: "+error.message;
+    requestAnimationFrame(()=>details.scrollIntoView({behavior:"smooth",block:"nearest"}));
+  }
 }
 async function loadClaims(studentId,repository,assessmentId){
   const results=await getDocs(query(collection(db,"commit_reclaims"),where("studentId","==",studentId)));
@@ -341,7 +354,7 @@ async function load(){
   const summary=el("evidenceSelectionSummary");if(summary)summary.textContent="No evidence commits selected yet.";
   status("Loading your linked repository's commits…");
   try{
-    const active=contextForStudent(),repo=parseRepository(active.profile.repoUrl);
+    const active=contextForStudent();
     context=active;
     const docId=active.profile.id+"_"+active.task.id;
     try{
@@ -352,6 +365,12 @@ async function load(){
         checkpoint=saved.checkpointSha||"";
       }
     }catch(error){if(error?.code!=="permission-denied")throw error;}
+    const repo=evidenceRepository(active);
+    let rosterRepo=null;try{rosterRepo=parseRepository(active.profile.repoUrl);}catch{}
+    const sourceWarning=rosterRepo&&repo.url.toLowerCase()!==rosterRepo.url.toLowerCase()
+      ?" This reopened submission remains tied to its original repository "+repo.owner+"/"+repo.repo+
+        "; Adminerva will preview and resubmit against that saved source instead of silently moving the evidence."
+      :"";
     watchEvidence(doc(db,"assessment_evidence",docId),seq);
     const [claimResult,commitResult]=await Promise.allSettled([
       loadClaims(active.profile.id,active.profile.repoUrl,active.task.id),
@@ -384,11 +403,11 @@ async function load(){
     const loadMessage=hasOlderCommits
       ?"Showing "+commits.length+" recent commits. Your latest project revision is suggested as the checkpoint; select only your own relevant commits as evidence. Use Load older commits to find historical evidence."
       :"Select your own relevant commits, then use the latest suitable project revision as the checkpoint. The checkpoint may belong to a teammate. Reclaims remain pending staff review.";
-    status(loadMessage+claimWarning);
-    if(saved?.status==="approved")status("Checkpoint approved. Ask your instructor to reopen it before resubmitting or withdrawing. Your current evidence and grade remain protected.");
-    else if(saved?.status==="reopened")status("Your instructor reopened this evidence"+(saved.reopenReason?": "+saved.reopenReason:"")+". Update your selection and resubmit for fresh approval. Previous evidence remains in the audit history.");
-    else if(saved?.status==="withdrawn")status("Evidence withdrawn. You may revise and resubmit; the previous submission remains in the audit history.");
-    else if(saved?.status==="submitted")status("Evidence submitted. Before approval you may revise and resubmit, or withdraw. Resubmission records a new server time and preserves prior evidence.");
+    status(loadMessage+claimWarning+sourceWarning);
+    if(saved?.status==="approved")status("Checkpoint approved. Ask your instructor to reopen it before resubmitting or withdrawing. Your current evidence and grade remain protected."+sourceWarning);
+    else if(saved?.status==="reopened")status("Your instructor reopened this evidence"+(saved.reopenReason?": "+saved.reopenReason:"")+". Update your selection and resubmit for fresh approval. Previous evidence remains in the audit history."+sourceWarning);
+    else if(saved?.status==="withdrawn")status("Evidence withdrawn. You may revise and resubmit; the previous submission remains in the audit history."+sourceWarning);
+    else if(saved?.status==="submitted")status("Evidence submitted. Before approval you may revise and resubmit, or withdraw. Resubmission records a new server time and preserves prior evidence."+sourceWarning);
     else if(saved?.status==="needs_review")status("Your teacher proposed historical evidence, not a student submission. Ask them to reopen it for student changes if you need to choose your own evidence commits and checkpoint before approval.");
     if(evidenceSyncing)status("Checking current evidence status with the server. Editing resumes when connected.");
   }catch(error){if(seq===loadSequence)status("Unable to load evidence: "+error.message);}
@@ -398,7 +417,7 @@ async function loadOlderCommits(){
   const seq=loadSequence,active=context;
   historyLoading=true;refreshHistoryControl();
   try{
-    const repo=parseRepository(active.profile.repoUrl);
+    const repo=evidenceRepository(active);
     const page=historyPage+1;
     const batch=await github(commitPagePath(repositoryPath(repo),page));
     if(seq!==loadSequence||context!==active)return;
@@ -421,7 +440,7 @@ async function submit(){
     if(!guidance.ready){status(guidance.message);return;}
     const {selectedCommits,checkpointSha}=normalizeSelection([...selected],checkpoint);
     evidenceBusy=true;render();status("Checking that the project checkpoint contains all selected evidence…");
-    const repo=parseRepository(active.profile.repoUrl);
+    const repo=evidenceRepository(active);
     const compatible=await resolveSubmissionCheckpoint({
       selectedCommits,checkpointSha,latestCheckpointSha:historyHeadSha,
       fetchPage:(sha,page)=>github(repositoryPath(repo)+"/commits?sha="+encodeURIComponent(sha)+"&per_page=100&page="+page)

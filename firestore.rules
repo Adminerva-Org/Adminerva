@@ -654,6 +654,26 @@ service cloud.firestore {
         data.status in ["submitted","withdrawn"];
     }
 
+    // Existing evidence keeps its audited repository/section identity even if
+    // the roster link changes later. Students may revise only the fields
+    // explicitly permitted by the update rule below.
+    function ownExistingV2Evidence(data,before) {
+      return signedIn() &&
+        data.studentId is string && ownsStudentProfile(data.studentId) &&
+        data.assessmentId is string &&
+        exists(/databases/$(database)/documents/assessments/$(data.assessmentId)) &&
+        get(/databases/$(database)/documents/assessments/$(data.assessmentId)).data.get("schemaVersion",1) == 2 &&
+        data.studentId == before.studentId &&
+        data.assessmentId == before.assessmentId &&
+        data.section == before.section &&
+        data.repository == before.repository &&
+        data.repository is string && data.repository.size() <= 300 &&
+        validEvidenceCommits(data.selectedCommits) &&
+        data.checkpointSha is string &&
+        data.checkpointSha.matches("^[a-fA-F0-9]{40}$") &&
+        data.status in ["submitted","withdrawn"];
+    }
+
     function evidenceAudit(evidenceId) {
       let version = request.resource.data.revision;
       let audit = getAfter(/databases/$(database)/documents/assessment_evidence/$(evidenceId)/revisions/$(string(version))).data;
@@ -773,7 +793,7 @@ service cloud.firestore {
         evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId &&
         request.resource.data.submittedAt == request.time &&
         request.resource.data.updatedAt == request.time;
-      allow update: if ownV2Evidence(request.resource.data) &&
+      allow update: if ownExistingV2Evidence(request.resource.data,resource.data) &&
         (resource.data.status == "reopened" ||
           (resource.data.status in ["submitted","withdrawn"] &&
             (resource.data.get("source","") != "teacher_discovered" || resource.data.get("reopenedBy",null) is string))) &&
