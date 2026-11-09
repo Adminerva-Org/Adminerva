@@ -3,7 +3,7 @@ import { auth, db } from "../core/firebase-core.js?v=1.3.0";
 import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
-import {approveEvaluationDraftAndPublish,publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=1.3.3";
+import {approveEvaluationDraftAndPublish,publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=3.0.2";
 import {approvableEvaluationDraft,legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.3";
 import {renderFeedbackMarkdown,reviewNotice} from "./review-ui.mjs?v=1.3.0";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
