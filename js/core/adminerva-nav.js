@@ -38,7 +38,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const hasVerifiedSchoolRole=root.dataset.schoolAdmin==="true"||
     root.dataset.schoolTeacher==="true"||root.dataset.schoolStudent==="true";
   const supportRoute=!isSuperAdmin&&hasVerifiedSchoolRole?"school-support.html":"issues.html";
-  const gradebookRoute=root.dataset.schoolTeacher==="true"?"school-gradebook.html":"gradebook.html";
+  const hasSchoolTeacher=root.dataset.schoolTeacher==="true";
+  const hasSchoolStudent=root.dataset.schoolStudent==="true";
+  // The controlled pilot must not replace the current Gradebook before school-wide cutover.
+  const gradebookRoute="gradebook.html";
   const v4OnlyTeacher=root.dataset.v4OnlyTeacher==="true";
   const v4OnlyStudent=root.dataset.v4OnlyStudent==="true";
   const studentProjectRoute=v4OnlyStudent?"school-student-projects.html":"student-dashboard.html";
@@ -55,6 +58,11 @@ document.addEventListener("DOMContentLoaded", () => {
     student: { name: "Project Hub", items: [
       [v4OnlyStudent?"school-student-projects":"dashboard", "Projects", studentProjectRoute],
       [v4OnlyStudent?"school-student-assessments":"assessments", "Assignments", studentAssessmentRoute],
+      ...(hasSchoolStudent&&!v4OnlyStudent ? [
+        ["school-student-projects","Projects · 4.0 pilot","school-student-projects.html"],
+        ["school-student-assessments","Assignments · 4.0 pilot","school-student-assessments.html"],
+        ["school-student-settings","Settings · 4.0 pilot","school-student-settings.html"]
+      ] : []),
       [v4OnlyStudent?"school-student-settings":"settings", "Account settings", studentSettingsRoute]
     ] },
     "student-practice": { name: "Practice Lab", items: [
@@ -71,7 +79,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ["library-v4","Assessment library","teacher-assessment-library.html"],
         ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
       ] : [
-        ["library-v4","Assessment library","teacher-assessment-library.html"],
+        ...(hasSchoolTeacher ? [["library-v4","Assessment library · 4.0 pilot","teacher-assessment-library.html"]] : []),
         ["studio", "Legacy assessment studio", "assessment-studio.html"],
         ["submissions", "Submission inbox", "submissions.html"],
         ["studio-submissions", "Studio project submissions", "studio-submissions.html"],
@@ -82,12 +90,15 @@ document.addEventListener("DOMContentLoaded", () => {
         ["gradebook-v4", "Gradebook", "school-gradebook.html"]
       ] : [
         ["repofetch", "Review & grade", "repofetch.html"],
-        [root.dataset.schoolTeacher==="true"?"gradebook-v4":"gradebook", "Gradebook", gradebookRoute],
+        ["gradebook", "Gradebook · current classes", gradebookRoute],
+        ...(hasSchoolTeacher ? [["gradebook-v4", "Gradebook · 4.0 pilot", "school-gradebook.html"]] : []),
         ["repobank", "Repository investigation", "repobank.html"]
       ]) : [] },
     { name: "Insights", area: "educator", items: canTeach ? [
-      ["class-analytics-v4", "Class analytics", "school-teacher-analytics.html"],
-      ["practice-v4", "Practice progress", "school-practice-analytics.html"],
+      ...(hasSchoolTeacher ? [
+        ["class-analytics-v4", "Class analytics · 4.0 pilot", "school-teacher-analytics.html"],
+        ["practice-v4", "Practice progress · 4.0 pilot", "school-practice-analytics.html"]
+      ] : []),
       ...(!v4OnlyTeacher ? [
         ["dashboard", "Legacy analytics", "teacher-analytics.html"],
         ["followup", "Learning follow-up", "learning-follow-up.html"]
@@ -122,14 +133,17 @@ document.addEventListener("DOMContentLoaded", () => {
     ] : isSchoolAdmin ? [
       ...(hasPlatformAuthority?[["owner-schools","Institution registry","owner-schools.html"]]:[]),
       ["overview","School overview","school-admin.html"],
+      ["pilot-status","Controlled pilot status","school-pilot.html"],
       ["people-v4","People & Access","people-access.html"],
       ["school-analytics","School operations","school-analytics.html"],
       ["setup-readiness","Setup readiness","school-onboarding-readiness.html"],
       ["data-files","Data & files","school-data-controls.html"],
       ["school-reference-library","Shared reference library","school-reference-library.html"],
       ["cutover-readiness","4.0 cutover readiness","school-cutover-readiness.html"],
-      ["class-analytics-v4","Class analytics","school-teacher-analytics.html"],
-      ["practice-v4","Practice progress","school-practice-analytics.html"],
+      ...(hasSchoolTeacher ? [
+        ["class-analytics-v4","Class analytics","school-teacher-analytics.html"],
+        ["practice-v4","Practice progress","school-practice-analytics.html"]
+      ] : []),
       ["reclaims-v4","Commit attribution requests","reclaim-inbox.html"]
     ] : hasPlatformAuthority ? [
       ["owner-schools","Institution registry","owner-schools.html"]
