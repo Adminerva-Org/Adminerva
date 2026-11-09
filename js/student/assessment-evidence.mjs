@@ -373,7 +373,7 @@ async function load(){
       :"";
     watchEvidence(doc(db,"assessment_evidence",docId),seq);
     const [claimResult,commitResult]=await Promise.allSettled([
-      loadClaims(active.profile.id,repo.url,active.task.id),
+      loadClaims(active.profile.id,active.profile.repoUrl,active.task.id),
       github(commitPagePath(repositoryPath(repo),1))
     ]);
     if(commitResult.status!=="fulfilled")throw commitResult.reason;
@@ -381,7 +381,7 @@ async function load(){
     let claimWarning="";
     if(claimResult.status==="fulfilled"){
       claimsReadable=true;claims=claimResult.value;
-      watchClaims(active.profile.id,repo.url,active.task.id,seq);
+      watchClaims(active.profile.id,active.profile.repoUrl,active.task.id,seq);
     }else{
       claimsReadable=false;claims=new Map();
       claimWarning=" Attribution-request status could not be loaded ("+claimResult.reason?.message+"). Reclaim actions are disabled until refresh succeeds.";
