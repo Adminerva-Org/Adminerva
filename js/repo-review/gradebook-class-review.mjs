@@ -12,10 +12,14 @@ import {schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
 import {legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.2";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
 import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.1";
+import {cleanGradeFeedback} from "../core/feedback-format.mjs?v=1.3.1";
+import {buildExternalEvaluationPayload,externalEvaluationResponseShape} from "./services/external-evaluation.mjs?v=1.2.0";
+import {partitionBulkExternalEntries,buildBulkExternalEvaluationPackage,parseBulkExternalEvaluationResponse} from "./services/bulk-external-evaluation.mjs?v=1.0.0";
 
 const el=id=>document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
 let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,gradesReadable=false,receiptsReadable=false,draftsReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map(),claimMap=new Map(),claimsReadable=false,canDecideClaims=false,loadSequence=0;
+const bulkExternal={sessionId:"",preparedFor:"",section:"",taskId:"",assessment:null,criteria:[],privateAssessment:{},batches:[],index:0,busy:false,failures:[]};
 const draftRef=(studentId,taskId)=>doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId);
 function showBulkExceptions(failures){
   const box=el("gbBulkExceptionDetails"),list=el("gbBulkExceptionList");
@@ -244,6 +248,14 @@ function render(){
   const evaluationReady=!isV2||(evidenceReadable&&gradesReadable);
   el("gbBulkEvaluate").textContent=isV2?(evaluationReady?"Run system evaluation ("+evaluateCandidates.length+")":"Run system evaluation (?)"):"System evaluation · V2 evidence only";
   el("gbBulkEvaluate").disabled=busy||!evaluationReady||!evaluateCandidates.length;
+  const externalCandidates=isV2&&evaluationReady?context.students.filter(student=>{
+    const e=evidenceMap.get(student.id),g=context.grades?.[student.id];
+    return e?.status==="approved"&&Array.isArray(e.verifiedContributionCommits)&&e.verifiedContributionCommits.length>0&&!g;
+  }):[];
+  if(el("gbBulkExternal")){
+    el("gbBulkExternal").textContent=isV2?(evaluationReady?"Bulk external evaluation ("+externalCandidates.length+")":"Bulk external evaluation (?)"):"Bulk external evaluation (0)";
+    el("gbBulkExternal").disabled=busy||bulkExternal.busy||!evaluationReady||!externalCandidates.length;
+  }
   const reruns=isV2&&evaluationReady?context.students.filter(student=>{
     const e=evidenceMap.get(student.id),g=context.grades?.[student.id];
     return eligibleToRerun(e,g)&&currentGradeForEvidence(g,e);
@@ -723,6 +735,219 @@ async function evaluateOne(student,evidence,assessment,connection,{rerun=false}=
     await deleteDoc(suggestionRef);
   }
 }
+function bulkExternalCandidateList(){
+  if(!context||Number(context.schemaVersion)!==2||!evidenceReadable||!gradesReadable)return [];
+  return context.students.filter(student=>{
+    const evidence=evidenceMap.get(student.id),grade=context.grades?.[student.id];
+    return evidence?.status==="approved"&&Array.isArray(evidence.verifiedContributionCommits)&&
+      evidence.verifiedContributionCommits.length>0&&!grade;
+  });
+}
+function showBulkExternalExceptions(items=[]){
+  const box=el("gbBulkExternalExceptions"),list=el("gbBulkExternalExceptionList");
+  if(!box||!list)return;
+  list.replaceChildren();box.classList.toggle("hidden",!items.length);
+  for(const item of items){
+    const row=document.createElement("p");row.textContent=item;
+    row.className="border-b border-amber-100 pb-1 last:border-0";list.append(row);
+  }
+}
+function currentBulkExternalBatch(){return bulkExternal.batches[bulkExternal.index]||null;}
+function saveBulkExternalTextarea(){
+  const batch=currentBulkExternalBatch(),field=el("gbBulkExternalResult");
+  if(batch&&field)batch.responseText=field.value;
+}
+function renderBulkExternalModal(){
+  const batch=currentBulkExternalBatch(),total=bulkExternal.batches.length;
+  if(!batch){
+    el("gbBulkExternalProgress").textContent=bulkExternal.busy?"Preparing anonymous evidence batches…":"No external evaluation batch is prepared.";
+    el("gbBulkExternalPackage").value="";
+    el("gbBulkExternalResult").value="";
+    el("gbBulkExternalCopy").disabled=true;el("gbBulkExternalImport").disabled=true;
+    el("gbBulkExternalPrev").disabled=true;el("gbBulkExternalNext").disabled=true;
+    showBulkExternalExceptions(bulkExternal.failures);return;
+  }
+  const imported=batch.importedIds?.size||0;
+  const kb=Math.max(1,Math.round(new Blob([batch.packageText]).size/1024));
+  el("gbBulkExternalProgress").textContent="Batch "+(bulkExternal.index+1)+" of "+total+" · "+batch.entries.length+
+    " anonymous learner"+(batch.entries.length===1?"":"s")+" · about "+kb+" KB · "+imported+" imported";
+  el("gbBulkExternalPackage").value=batch.packageText;
+  el("gbBulkExternalResult").value=batch.responseText||"";
+  el("gbBulkExternalCopy").disabled=bulkExternal.busy;
+  el("gbBulkExternalImport").disabled=bulkExternal.busy||!batch.entries.length;
+  el("gbBulkExternalPrev").disabled=bulkExternal.busy||bulkExternal.index<=0;
+  el("gbBulkExternalNext").disabled=bulkExternal.busy||bulkExternal.index>=total-1;
+  showBulkExternalExceptions([...(bulkExternal.failures||[]),...(batch.issues||[])]);
+}
+function closeBulkExternalEvaluation(){saveBulkExternalTextarea();el("gbBulkExternalModal")?.classList.add("hidden");}
+async function copyBulkExternalBatch(){
+  const batch=currentBulkExternalBatch();if(!batch||bulkExternal.busy)return;
+  try{
+    await navigator.clipboard.writeText(batch.packageText);
+    el("gbBulkExternalStatus").textContent="Current anonymous batch copied. Paste it into ChatGPT or another evaluator, then paste the returned bulk JSON below.";
+  }catch{
+    const area=el("gbBulkExternalPackage");area.focus();area.select();
+    const copied=Boolean(document.execCommand?.("copy"));
+    el("gbBulkExternalStatus").textContent=copied?"Current anonymous batch copied.":"Clipboard access was blocked. Select the package text and copy it manually.";
+  }
+}
+function moveBulkExternalBatch(delta){
+  if(bulkExternal.busy)return;saveBulkExternalTextarea();
+  bulkExternal.index=Math.max(0,Math.min(bulkExternal.batches.length-1,bulkExternal.index+delta));
+  renderBulkExternalModal();
+  el("gbBulkExternalStatus").textContent="Paste the JSON response for this batch, then validate and import it.";
+}
+async function prepareBulkExternalEvaluation(){
+  if(busy||bulkExternal.busy||!context||Number(context.schemaVersion)!==2)return;
+  const active=context;
+  el("gbBulkExternalModal").classList.remove("hidden");
+  el("gbBulkExternalStatus").textContent="Refreshing approved evidence and grade state before preparing external packages…";
+  busy=true;bulkExternal.busy=true;render();renderBulkExternalModal();
+  const failures=[];let prepared=[];
+  try{
+    await load(active);
+    if(context!==active||!evidenceReadable||!gradesReadable)throw Error("Current approved evidence or grade state could not be verified.");
+    const candidates=bulkExternalCandidateList();
+    if(!candidates.length)throw Error("No approved, verified, ungraded learners are currently eligible for bulk external evaluation.");
+    const assessmentSnap=await getDoc(doc(db,"assessments",active.taskId));
+    if(!assessmentSnap.exists())throw Error("Assessment not found.");
+    const assessment={id:assessmentSnap.id,...assessmentSnap.data()};
+    const criteria=parseWeightedRubric(assessment.evalCriteria,assessment.maxScore);
+    const privateAssessment=await getDoc(doc(db,"assessment_private",active.taskId))
+      .then(snapshot=>snapshot.exists()?snapshot.data():{}).catch(()=>({}));
+    const token=localStorage.getItem("Adminerva_github_token");
+    for(let index=0;index<candidates.length;index++){
+      const student=candidates[index],evidence=evidenceMap.get(student.id);
+      el("gbBulkExternalStatus").textContent="Preparing verified evidence "+(index+1)+"/"+candidates.length+"…";
+      try{
+        const latest=await getDocFromServer(doc(db,"assessment_evidence",student.id+"_"+active.taskId));
+        if(!latest.exists())throw Error("approved evidence is missing");
+        const current=latest.data();
+        if(current.status!=="approved"||!current.verifiedContributionCommits?.length||
+          current.approvedCheckpointSha!==evidence.approvedCheckpointSha||
+          evidenceRevision(current)!==evidenceRevision(evidence))
+          throw Error("approved evidence changed; refresh and retry");
+        const grade=await getDocFromServer(doc(db,"student_grades",student.id+"_"+active.taskId));
+        if(grade.exists())throw Error("an unpublished or published grade already exists");
+        const source=await loadPinnedV2Source({
+          repository:current.repository,checkpointSha:current.approvedCheckpointSha,
+          selectedCommits:current.selectedCommits,assessment,
+          verifiedContributionCommits:current.verifiedContributionCommits,
+          token,fetchImpl:globalThis.fetch
+        });
+        const payload=buildExternalEvaluationPayload({
+          assessment,criteria,evidence:source,privateAssessment,
+          contributionScope:current.contributionScope,maxScore:assessment.maxScore
+        });
+        prepared.push({
+          entryId:"candidate-"+String(prepared.length+1).padStart(3,"0"),
+          student,evidence:current,source,payload
+        });
+      }catch(error){failures.push((student.name||student.id)+": "+error.message);}
+    }
+    if(!prepared.length)throw Error("No learner package could be prepared. "+(failures[0]||""));
+    const sessionId="ext-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8);
+    const responseShape=externalEvaluationResponseShape(criteria);
+    const batches=partitionBulkExternalEntries(prepared,{sessionId,targetBytes:240000,maxEntries:8}).map(batch=>({
+      ...batch,
+      packageText:buildBulkExternalEvaluationPackage({batchId:batch.batchId,entries:batch.entries,responseShape}),
+      responseText:"",issues:[],importedIds:new Set()
+    }));
+    Object.assign(bulkExternal,{
+      sessionId,preparedFor:active.section+"|"+active.taskId,section:active.section,taskId:active.taskId,
+      assessment,criteria,privateAssessment,batches,index:0,failures
+    });
+    analytics("bulk_external_evaluation_prepared",{feature:"gradebook",count_bucket:prepared.length,batches:batches.length});
+    el("gbBulkExternalSubtitle").textContent=active.section+" · "+(assessment.title||active.taskId);
+    el("gbBulkExternalStatus").textContent="Prepared "+prepared.length+" anonymous learner package(s) in "+batches.length+
+      " size-aware batch"+(batches.length===1?"":"es")+". Copy Batch 1, evaluate externally, then paste its JSON response.";
+  }catch(error){
+    bulkExternal.batches=[];bulkExternal.failures=[...failures,error.message];
+    el("gbBulkExternalStatus").textContent="Bulk external preparation failed: "+error.message;
+  }finally{
+    bulkExternal.busy=false;busy=false;render();renderBulkExternalModal();
+  }
+}
+function sameExternalEvidence(current,prepared){
+  return current?.status==="approved"&&current.approvedCheckpointSha===prepared.approvedCheckpointSha&&
+    evidenceRevision(current)===evidenceRevision(prepared)&&
+    JSON.stringify(current.selectedCommits||[])===JSON.stringify(prepared.selectedCommits||[])&&
+    JSON.stringify(current.verifiedContributionCommits||[])===JSON.stringify(prepared.verifiedContributionCommits||[]);
+}
+async function importBulkExternalBatch(){
+  const batch=currentBulkExternalBatch();
+  if(!batch||bulkExternal.busy||busy)return;
+  saveBulkExternalTextarea();
+  const raw=batch.responseText||"";
+  let parsed;
+  try{
+    parsed=parseBulkExternalEvaluationResponse(raw,{batchId:batch.batchId,entryIds:batch.entries.map(entry=>entry.entryId)});
+  }catch(error){
+    batch.issues=[error.message];showBulkExternalExceptions([...(bulkExternal.failures||[]),...batch.issues]);
+    el("gbBulkExternalStatus").textContent="Bulk import rejected: "+error.message;return;
+  }
+  const failures=[...parsed.issues];let imported=0;
+  busy=true;bulkExternal.busy=true;render();renderBulkExternalModal();
+  try{
+    if(!context||context.section!==bulkExternal.section||context.taskId!==bulkExternal.taskId)
+      throw Error("The Gradebook section or assessment changed. Reopen the prepared bulk evaluation from its original assessment.");
+    const assessment=bulkExternal.assessment,criteria=bulkExternal.criteria;
+    for(let index=0;index<batch.entries.length;index++){
+      const entry=batch.entries[index],result=parsed.results.get(entry.entryId);
+      if(!result)continue;
+      if(batch.importedIds.has(entry.entryId))continue;
+      el("gbBulkExternalStatus").textContent="Validating external result "+(index+1)+"/"+batch.entries.length+"…";
+      try{
+        const draft=parseSuggestedRubric(result,criteria,assessment.maxScore,entry.source);
+        draft.feedback=cleanGradeFeedback(draft.feedback);
+        if(entry.source.truncatedDiffs?.length)
+          draft.limitations=[draft.limitations,entry.source.truncatedDiffs.length+" relevant commit diff(s) were bounded; omitted changes require teacher review before assigning credit."].filter(Boolean).join(" ").slice(0,1400);
+        if(entry.source.missingPrimaryPaths?.length)
+          draft.limitations=[draft.limitations,"Some primary files in the verified commits were renamed or removed before the approved checkpoint ("+
+            entry.source.missingPrimaryPaths.slice(0,6).join(", ")+"). Retained commit changes require teacher confirmation."].filter(Boolean).join(" ").slice(0,1400);
+        const needsReview=draft.pendingPoints>0||draft.criteria.some(item=>item.confidence!=="high"||item.status!=="supported")||Boolean(draft.limitations);
+        const gradeRef=doc(db,"student_grades",entry.student.id+"_"+bulkExternal.taskId);
+        const evidenceRef=doc(db,"assessment_evidence",gradeRef.id);
+        const gradePayload={
+          studentId:entry.student.id,taskId:bulkExternal.taskId,section:bulkExternal.section,
+          score:draft.score,maxScore:Number(assessment.maxScore),feedback:draft.feedback,
+          published:false,reviewRequired:needsReview,manuallyAdjusted:false,
+          reviewPriority:needsReview?"needs_review":"ready_to_publish",
+          reviewReasons:[...new Set([
+            ...draft.criteria.filter(item=>item.pendingPoints>0||item.confidence!=="high"||item.status!=="supported")
+              .map(item=>item.name+": "+item.reviewAction),
+            ...(draft.limitations?[draft.limitations]:[])
+          ])].slice(0,30),
+          gradeSource:"external_evaluation_draft",gradingMode:"individual",sourceSelectionMode:"verified_evidence",
+          gradedSha:entry.evidence.approvedCheckpointSha,evidenceRevision:evidenceRevision(entry.evidence),
+          evaluationDraft:{...draft,generatedBy:"External evaluation imported through Adminerva bulk",teacherReviewed:false},
+          createdAt:serverTimestamp(),gradedAt:serverTimestamp()
+        };
+        await runTransaction(db,async tx=>{
+          const [currentEvidence,currentGrade]=await Promise.all([tx.get(evidenceRef),tx.get(gradeRef)]);
+          if(!currentEvidence.exists()||!sameExternalEvidence(currentEvidence.data(),entry.evidence))
+            throw Error("approved evidence changed after this package was prepared");
+          if(currentGrade.exists())throw Error("a grade now exists and is protected from bulk external overwrite");
+          tx.set(gradeRef,gradePayload);
+        });
+        try{await deleteDoc(draftRef(entry.student.id,bulkExternal.taskId));}catch{}
+        batch.importedIds.add(entry.entryId);imported++;
+      }catch(error){failures.push((entry.student.name||entry.student.id)+": "+error.message);}
+    }
+    batch.issues=failures;
+    analytics("bulk_external_evaluation_imported",{feature:"gradebook",status:failures.length?"partial":"success",count_bucket:imported});
+    el("gbBulkExternalStatus").textContent="Batch import complete: "+imported+" unpublished external evaluation draft"+
+      (imported===1?"":"s")+" created · "+failures.length+" exception(s). "+
+      "Clean drafts are ready for explicit publication; flagged drafts remain private for Review & Grade.";
+  }catch(error){
+    failures.push(error.message);batch.issues=failures;
+    el("gbBulkExternalStatus").textContent="Bulk import stopped: "+error.message;
+  }finally{
+    bulkExternal.busy=false;busy=false;
+    if(context&&context.section===bulkExternal.section&&context.taskId===bulkExternal.taskId)await load(context);
+    render();renderBulkExternalModal();
+  }
+}
 async function bulkEvaluate({rerun=false}={}){
   if(busy||!context)return;
   const active=context;
@@ -797,5 +1022,13 @@ el("gbBulkReopen")?.addEventListener("click",()=>void window.withLoading("Reopen
 el("gbRefreshEvidence")?.addEventListener("click",()=>void window.withLoading("Refreshing class evidence…",refreshEvidence,{button:el("gbRefreshEvidence")}));
 window.addEventListener("focus",()=>{if(context&&!busy&&!document.getElementById("gbLegacyView")?.classList.contains("hidden"))void refreshEvidence();});
 el("gbBulkEvaluate")?.addEventListener("click",()=>void window.withLoading("Evaluating verified learner evidence…",()=>bulkEvaluate(),{button:el("gbBulkEvaluate")}));
+el("gbBulkExternal")?.addEventListener("click",()=>void prepareBulkExternalEvaluation());
+el("gbBulkExternalCopy")?.addEventListener("click",()=>void copyBulkExternalBatch());
+el("gbBulkExternalImport")?.addEventListener("click",()=>void importBulkExternalBatch());
+el("gbBulkExternalPrev")?.addEventListener("click",()=>moveBulkExternalBatch(-1));
+el("gbBulkExternalNext")?.addEventListener("click",()=>moveBulkExternalBatch(1));
+el("gbBulkExternalClose")?.addEventListener("click",closeBulkExternalEvaluation);
+el("gbBulkExternalDone")?.addEventListener("click",closeBulkExternalEvaluation);
+el("gbBulkExternalModal")?.addEventListener("click",event=>{if(event.target===el("gbBulkExternalModal")&&!bulkExternal.busy)closeBulkExternalEvaluation();});
 el("gbBulkRerun")?.addEventListener("click",()=>void window.withLoading("Re-evaluating learner evidence…",()=>bulkEvaluate({rerun:true}),{button:el("gbBulkRerun")}));
 el("gbCancelEvaluation")?.addEventListener("click",()=>{cancelEvaluation=true;el("gbBulkStatus").textContent="Stopping after the current learner. Completed drafts are preserved.";});
