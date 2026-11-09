@@ -1,4 +1,4 @@
-name: Encrypted orphaned grade recovery
+name: Encrypted St Isidore Practical Examination audit
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
       - ops/recover-deleted-assessment-grades-20261109
     paths:
       - ".github/workflows/encrypted-orphaned-grade-recovery.yml"
+      - "scripts/recover-orphaned-grades.cjs"
 
 permissions:
   contents: read
@@ -31,20 +32,20 @@ jobs:
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
           chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
-      - name: Recover deleted-assessment grades to encrypted artifact
+      - name: Build encrypted St Isidore Practical Examination audit
         env:
-          RECOVERY_OUTPUT: ${{ runner.temp }}/orphaned-grades.enc.json
+          RECOVERY_OUTPUT: ${{ runner.temp }}/st-isidore-practical.enc.json
         shell: bash
         run: |
           set -euo pipefail
           NODE_PATH="$GITHUB_WORKSPACE/functions/node_modules" node scripts/recover-orphaned-grades.cjs
-      - name: Upload encrypted recovery result
+      - name: Upload encrypted audit
         uses: actions/upload-artifact@v4
         with:
-          name: orphaned-grades-encrypted
-          path: ${{ runner.temp }}/orphaned-grades.enc.json
+          name: st-isidore-practical-encrypted
+          path: ${{ runner.temp }}/st-isidore-practical.enc.json
           if-no-files-found: error
           retention-days: 1
       - if: always()
         shell: bash
-        run: rm -f "$RUNNER_TEMP/firebase-service-account.json" "$RUNNER_TEMP/orphaned-grades.enc.json"
+        run: rm -f "$RUNNER_TEMP/firebase-service-account.json" "$RUNNER_TEMP/st-isidore-practical.enc.json"
