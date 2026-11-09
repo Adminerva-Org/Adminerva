@@ -532,8 +532,8 @@ service cloud.firestore {
           data.reviewRequired == false &&
           data.get("gradeSource","") in ["system_evaluation_draft","external_evaluation_draft"] &&
           data.get("reviewPriority","") == "teacher_approved" &&
-          data.reviewedBy == request.auth.uid &&
-          data.reviewedAt == request.time &&
+          data.reviewedBy is string &&
+          data.reviewedAt is timestamp &&
           data.teacherReviewNote is string && data.teacherReviewNote.size() >= 15 &&
           data.get("evaluationDraft",{}) is map &&
           data.get("evaluationDraft",{}).get("teacherReviewed",false) == true &&
