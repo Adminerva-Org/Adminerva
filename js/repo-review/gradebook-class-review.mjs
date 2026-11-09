@@ -216,10 +216,12 @@ function render(){
     // archives the prior draft before replacing it.
     return eligibleToRerun(e,g)&&!currentGradeForEvidence(g,e);
   }):[];
-  const reviewDataComplete=!isV2||(evidenceReadable&&gradesReadable&&receiptsReadable&&draftsReadable);
-  el("gbClassReviewSummary").textContent=reviewDataComplete
-    ?context.students.length+" learners · "+ready+" ready to publish · "+flagged+" need review · "+published+" published"+(submitted?" · "+submitted+" awaiting evidence review":"")+(exceptions?" · "+exceptions+" exceptions":"")
-    :context.students.length+" learners · review data incomplete — refresh evidence";
+  const coreReviewDataComplete=!isV2||(evidenceReadable&&gradesReadable);
+  const reviewDataComplete=coreReviewDataComplete&&receiptsReadable&&draftsReadable;
+  el("gbClassReviewSummary").textContent=coreReviewDataComplete
+    ?context.students.length+" learners · "+ready+" ready to publish · "+flagged+" need review · "+published+" published"+(submitted?" · "+submitted+" awaiting evidence review":"")+(exceptions?" · "+exceptions+" exceptions":"")+
+      (!reviewDataComplete?" · supplemental review data unavailable":"")
+    :context.students.length+" learners · core grading data unavailable — refresh evidence";
   if(el("gbForceGather")){
     const gatherReady=!isV2||(evidenceReadable&&gradesReadable);
     el("gbForceGather").textContent=isV2?(gatherReady?"Force gather evidence ("+gatherCandidates.length+")":"Force gather evidence (?)"):"Force gather · V2 evidence only";
@@ -239,7 +241,7 @@ function render(){
   const approvalReady=!isV2||(evidenceReadable&&gradesReadable);
   el("gbBulkApprove").textContent=isV2?(approvalReady?"Approve evidence ("+approveCandidates.length+")":"Approve evidence (?)"):"Approval · V2 evidence only";
   el("gbBulkApprove").disabled=busy||!approvalReady||!approveCandidates.length;
-  const evaluationReady=!isV2||(evidenceReadable&&gradesReadable&&draftsReadable);
+  const evaluationReady=!isV2||(evidenceReadable&&gradesReadable);
   el("gbBulkEvaluate").textContent=isV2?(evaluationReady?"Run system evaluation ("+evaluateCandidates.length+")":"Run system evaluation (?)"):"System evaluation · V2 evidence only";
   el("gbBulkEvaluate").disabled=busy||!evaluationReady||!evaluateCandidates.length;
   const reruns=isV2&&evaluationReady?context.students.filter(student=>{
@@ -260,61 +262,102 @@ async function load(detail){
   context=detail;evidenceReadable=false;gradesReadable=false;receiptsReadable=false;draftsReadable=false;evidenceMap=new Map();draftMap=new Map();receiptMap=new Map();claimMap=new Map();claimsReadable=false;
   render();
   const isV2=Number(detail.schemaVersion)===2;
-  // An unavailable optional collection must never erase the evidence roster or
-  // turn unknown submission status into an apparent "not submitted" result.
-  const sources=await Promise.allSettled([
+  const warnings=[],coreWarnings=[];
+
+  // Critical Gradebook state is keyed deterministically by student + assessment.
+  // Prefer exact document reads over collection queries so Firestore can enforce
+  // per-record teaching scope without requiring list-query proof across a class.
+  if(isV2){
+    const readExact=async collectionName=>{
+      const results=[];
+      for(let offset=0;offset<detail.students.length;offset+=12){
+        const batch=detail.students.slice(offset,offset+12);
+        results.push(...await Promise.allSettled(batch.map(student=>
+          getDocFromServer(doc(db,collectionName,student.id+"_"+detail.taskId)))));
+      }
+      return results;
+    };
+    const [evidenceResults,gradeResults]=await Promise.all([
+      readExact("assessment_evidence"),readExact("student_grades")
+    ]);
+    if(sequence!==loadSequence)return;
+
+    const evidenceFailures=evidenceResults.filter(result=>result.status==="rejected");
+    evidenceReadable=evidenceFailures.length===0;
+    if(evidenceReadable){
+      evidenceResults.forEach(result=>{
+        const snapshot=result.value;
+        if(snapshot.exists()){
+          const data={id:snapshot.id,...snapshot.data()};
+          evidenceMap.set(data.studentId,data);
+        }
+      });
+    }else coreWarnings.push("evidence: "+(evidenceFailures[0]?.reason?.message||"read failed"));
+
+    const gradeFailures=gradeResults.filter(result=>result.status==="rejected");
+    gradesReadable=gradeFailures.length===0;
+    if(gradesReadable){
+      const grades={};
+      gradeResults.forEach(result=>{
+        const snapshot=result.value;
+        if(snapshot.exists()){
+          const data=snapshot.data();
+          grades[data.studentId]=data;
+        }
+      });
+      context.grades=grades;
+    }else coreWarnings.push("gradebook drafts: "+(gradeFailures[0]?.reason?.message||"read failed"));
+  }else{
+    evidenceReadable=true;gradesReadable=true;draftsReadable=true;
+  }
+
+  // Supplemental review feeds improve context but must not deadlock grading.
+  const supplemental=await Promise.allSettled([
     getDocs(query(collection(db,"student_submissions"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
     ...(isV2?[
-      getDocsFromServer(query(collection(db,"assessment_evidence"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
       getDocs(collection(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items")),
       getDocsFromServer(query(collection(db,"commit_reclaims"),where("section","==",detail.section),where("assessmentId","==",detail.taskId)))
     ]:[])
   ]);
   if(sequence!==loadSequence)return;
-  const warnings=[];
-  try{canDecideClaims=(await resolveStaffRole(auth.currentUser))==="admin";}catch{canDecideClaims=false;}
-  if(sequence!==loadSequence)return;
-  if(isV2){
-    try{const grades=await getDocsFromServer(query(collection(db,"student_grades"),where("taskId","==",detail.taskId),where("section","==",detail.section)));
-      gradesReadable=true;
-      context.grades=Object.fromEntries(grades.docs.filter(record=>detail.students.some(student=>student.id===record.data().studentId))
-        .map(record=>[record.data().studentId,record.data()]));
-    }catch(error){gradesReadable=false;warnings.push("gradebook drafts: "+error.message);}
-  }
-  if(sequence!==loadSequence)return;
-  receiptsReadable=sources[0].status==="fulfilled";
-  if(receiptsReadable)for(const record of sources[0].value.docs){
+
+  receiptsReadable=supplemental[0].status==="fulfilled";
+  if(receiptsReadable)for(const record of supplemental[0].value.docs){
     const data={id:record.id,...record.data()},prior=receiptMap.get(data.studentId);
     const stamp=value=>value?.toMillis?.()||Date.parse(value||"")||0;
     if(!prior||stamp(data.submittedAt)>stamp(prior.submittedAt))receiptMap.set(data.studentId,data);
-  }else warnings.push("submission receipts: "+sources[0].reason?.message);
+  }else warnings.push("submission receipts: "+supplemental[0].reason?.message);
+
   if(isV2){
-    evidenceReadable=sources[1].status==="fulfilled";
-    if(evidenceReadable){
-      evidenceMap=new Map(sources[1].value.docs.map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
-    }else warnings.push("evidence: "+sources[1].reason?.message);
-    draftsReadable=sources[2].status==="fulfilled";
+    draftsReadable=supplemental[1].status==="fulfilled";
     if(draftsReadable){
-      draftMap=new Map(sources[2].value.docs.filter(record=>{
+      draftMap=new Map(supplemental[1].value.docs.filter(record=>{
         const draft=record.data(),evidence=evidenceMap.get(draft.studentId);
         return draft.taskId===detail.taskId&&draft.section===detail.section&&draft.status==="private_suggestion"&&
           evidence?.status==="approved"&&draft.evidenceRevision===evidenceRevision(evidence)&&draft.checkpointSha===evidence.approvedCheckpointSha;
       }).map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
-    }else warnings.push("evaluation drafts: "+sources[2].reason?.message);
-    if(sources[3].status==="fulfilled"){
+    }else warnings.push("evaluation drafts: "+supplemental[1].reason?.message);
+
+    if(supplemental[2].status==="fulfilled"){
       claimsReadable=true;
-      claimMap=new Map(sources[3].value.docs
+      claimMap=new Map(supplemental[2].value.docs
         .filter(record=>record.data().assessmentId===detail.taskId)
         .map(record=>[record.id,{id:record.id,...record.data()}]));
     }else{
       claimsReadable=false;
-      warnings.push("reclaim requests: "+sources[3].reason?.message);
+      warnings.push("reclaim requests: "+supplemental[2].reason?.message);
     }
   }
-  // Failed reads remain unknown, never implicit zeros.
-  if(!isV2){evidenceReadable=true;gradesReadable=true;draftsReadable=true;}
+
+  try{canDecideClaims=(await resolveStaffRole(auth.currentUser))==="admin";}catch{canDecideClaims=false;}
+  if(sequence!==loadSequence)return;
   render();
-  if(warnings.length)el("gbBulkStatus").textContent="Some review data could not load ("+warnings.join(" | ")+"). Affected counts are shown as unavailable/incomplete, and dependent bulk actions stay disabled until refresh succeeds.";
+
+  if(coreWarnings.length){
+    el("gbBulkStatus").textContent="Core grading data could not load ("+coreWarnings.join(" | ")+"). Evidence and grading actions remain disabled until those exact records can be read.";
+  }else if(warnings.length){
+    el("gbBulkStatus").textContent="Core evidence and grade data loaded. Supplemental review data is unavailable ("+warnings.join(" | ")+"). Force gather, approval, and system evaluation remain available when their learner counts are eligible.";
+  }
 }
 const linkedLogin=student=>String(student?.githubUsername||"").trim().replace(/^@/,"").toLowerCase();
 const dateMillis=value=>{
@@ -685,8 +728,8 @@ async function bulkEvaluate({rerun=false}={}){
   const active=context;
   el("gbBulkStatus").textContent="Refreshing approved evidence and unpublished grading state…";
   await load(active);
-  if(context!==active||!evidenceReadable||!gradesReadable||!draftsReadable){
-    el("gbBulkStatus").textContent="System evaluation could not start because current evidence or unpublished grading state could not be verified. Refresh evidence and retry.";
+  if(context!==active||!evidenceReadable||!gradesReadable){
+    el("gbBulkStatus").textContent="System evaluation could not start because current approved evidence or grade state could not be verified. Refresh evidence and retry.";
     return;
   }
   const candidates=context.students.map(s=>{
