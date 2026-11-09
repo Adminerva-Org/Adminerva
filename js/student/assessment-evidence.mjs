@@ -404,10 +404,10 @@ async function load(){
       ?"Showing "+commits.length+" recent commits. Your latest project revision is suggested as the checkpoint; select only your own relevant commits as evidence. Use Load older commits to find historical evidence."
       :"Select your own relevant commits, then use the latest suitable project revision as the checkpoint. The checkpoint may belong to a teammate. Reclaims remain pending staff review.";
     status(loadMessage+claimWarning+sourceWarning);
-    if(saved?.status==="approved")status("Checkpoint approved. Ask your instructor to reopen it before resubmitting or withdrawing. Your current evidence and grade remain protected.");
-    else if(saved?.status==="reopened")status("Your instructor reopened this evidence"+(saved.reopenReason?": "+saved.reopenReason:"")+". Update your selection and resubmit for fresh approval. Previous evidence remains in the audit history.");
-    else if(saved?.status==="withdrawn")status("Evidence withdrawn. You may revise and resubmit; the previous submission remains in the audit history.");
-    else if(saved?.status==="submitted")status("Evidence submitted. Before approval you may revise and resubmit, or withdraw. Resubmission records a new server time and preserves prior evidence.");
+    if(saved?.status==="approved")status("Checkpoint approved. Ask your instructor to reopen it before resubmitting or withdrawing. Your current evidence and grade remain protected."+sourceWarning);
+    else if(saved?.status==="reopened")status("Your instructor reopened this evidence"+(saved.reopenReason?": "+saved.reopenReason:"")+". Update your selection and resubmit for fresh approval. Previous evidence remains in the audit history."+sourceWarning);
+    else if(saved?.status==="withdrawn")status("Evidence withdrawn. You may revise and resubmit; the previous submission remains in the audit history."+sourceWarning);
+    else if(saved?.status==="submitted")status("Evidence submitted. Before approval you may revise and resubmit, or withdraw. Resubmission records a new server time and preserves prior evidence."+sourceWarning);
     else if(saved?.status==="needs_review")status("Your teacher proposed historical evidence, not a student submission. Ask them to reopen it for student changes if you need to choose your own evidence commits and checkpoint before approval.");
     if(evidenceSyncing)status("Checking current evidence status with the server. Editing resumes when connected.");
   }catch(error){if(seq===loadSequence)status("Unable to load evidence: "+error.message);}
