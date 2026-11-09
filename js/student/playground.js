@@ -168,6 +168,7 @@ async function initializePlayground() {
     document.getElementById("editorLoading")?.classList.add("hidden");
 
     bindUIEvents();
+    initializeMobileStudio();
     initResizer();
     setupWebConsoleHook();
     setupJavaDesktopHook();
@@ -1364,6 +1365,69 @@ function notePracticeExecution(){
     }
   }catch(error){console.warn("Could not record practice run:",error)}
 }
+function initializeMobileStudio(){
+  const panel=document.getElementById('studioPanelCode');
+  const explorer=document.getElementById('projectExplorer');
+  const actions=document.getElementById('studioMobileActions');
+  const backdrop=document.getElementById('studioMobileBackdrop');
+  const filesButton=document.getElementById('studioMobileFiles');
+  const moreButton=document.getElementById('studioMobileMore');
+  const editorButton=document.getElementById('studioMobileEditor');
+  const terminalButton=document.getElementById('studioMobileTerminal');
+  const mobileRun=document.getElementById('studioMobileRun');
+  if(!panel||!explorer||!actions||!backdrop)return;
+  const compact=()=>window.matchMedia('(max-width:767px)').matches;
+  let activeDrawer=null;
+  const closeDrawer=()=>{
+    explorer.classList.remove('studio-drawer-open');actions.classList.remove('studio-drawer-open');
+    backdrop.classList.add('hidden');activeDrawer=null;
+    filesButton?.setAttribute('aria-expanded','false');moreButton?.setAttribute('aria-expanded','false');
+  };
+  const showDrawer=side=>{
+    if(!compact())return;
+    if(activeDrawer===side){closeDrawer();return;}
+    closeDrawer();activeDrawer=side;
+    (side==='files'?explorer:actions).classList.add('studio-drawer-open');
+    backdrop.classList.remove('hidden');
+    (side==='files'?filesButton:moreButton)?.setAttribute('aria-expanded','true');
+  };
+  const setPane=pane=>{
+    const value=pane==='terminal'?'terminal':'editor';
+    panel.dataset.mobilePane=value;
+    editorButton?.setAttribute('aria-pressed',String(value==='editor'));
+    terminalButton?.setAttribute('aria-pressed',String(value==='terminal'));
+    closeDrawer();
+    if(value==='editor')requestAnimationFrame(()=>editorInstance?.layout());
+  };
+  filesButton?.addEventListener('click',()=>showDrawer('files'));
+  moreButton?.addEventListener('click',()=>showDrawer('actions'));
+  editorButton?.addEventListener('click',()=>setPane('editor'));
+  terminalButton?.addEventListener('click',()=>setPane('terminal'));
+  mobileRun?.addEventListener('click',()=>{setPane('terminal');document.getElementById('runBtn')?.click();});
+  backdrop.addEventListener('click',closeDrawer);
+  document.addEventListener('keydown',event=>{if(event.key==='Escape')closeDrawer();});
+  explorer.addEventListener('click',event=>{if(compact()&&event.target.closest('.pg-file,[role="treeitem"],.pg-tree button'))setTimeout(()=>{closeDrawer();setPane('editor');},0);});
+  const resize=()=>{if(!compact()){closeDrawer();panel.removeAttribute('data-mobile-pane');requestAnimationFrame(()=>editorInstance?.layout());}else if(!panel.dataset.mobilePane){setPane('editor');}};
+  window.addEventListener('resize',resize);
+  let startX=0,startY=0,tracking=false;
+  document.addEventListener('touchstart',event=>{
+    if(!compact()||event.touches.length!==1)return;
+    const t=event.touches[0];
+    const edge=t.clientX<=26||t.clientX>=window.innerWidth-26;
+    if(!activeDrawer&&!edge)return;
+    startX=t.clientX;startY=t.clientY;tracking=true;
+  },{passive:true});
+  document.addEventListener('touchend',event=>{
+    if(!tracking||!compact())return;tracking=false;
+    const t=event.changedTouches[0],dx=t.clientX-startX,dy=t.clientY-startY;
+    if(Math.abs(dx)<70||Math.abs(dx)<Math.abs(dy)*1.4)return;
+    if(activeDrawer){if((activeDrawer==='files'&&dx<0)||(activeDrawer==='actions'&&dx>0))closeDrawer();}
+    else if(startX<=26&&dx>0)showDrawer('files');
+    else if(startX>=window.innerWidth-26&&dx<0)showDrawer('actions');
+  },{passive:true});
+  resize();
+}
+
 function bindUIEvents() {
   document.getElementById("explorerContextMenu")?.addEventListener("click",event=>{
     const button=event.target.closest("[data-explorer-action]");if(button)handleExplorerContextAction(button.dataset.explorerAction);
