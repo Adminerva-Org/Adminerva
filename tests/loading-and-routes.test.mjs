@@ -9,7 +9,7 @@ test("a legacy hide or completed job cannot dismiss another active operation", (
     const node = {style:{}, classList:{toggle(){}}, attributes:new Map(), append(){}, setAttribute(key,value){this.attributes.set(key,value);}, removeAttribute(key){this.attributes.delete(key);}};
     Object.defineProperty(node,"id",{set(value){elements.set(value,node);}});return node;
   }
-  const document = {createElement:element, documentElement:{append(){}}, getElementById:id=>elements.get(id), addEventListener(){}};
+  const document = {createElement:element, documentElement:{append(){}}, getElementById:id=>elements.get(id), querySelectorAll:()=>[], addEventListener(){}};
   const window = {addEventListener:(type,callback)=>events.set(type,callback)};
   vm.runInNewContext(readFileSync("js/core/adminerva-loader.js","utf8"),{document,window});
   const status = elements.get("subtleLoader"), region = element();
