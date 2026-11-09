@@ -1,4 +1,13 @@
 /** Account-scoped recovery metadata; interrupted publication always needs a new confirmation. */
+export function approvableEvaluationDraft(data={}){
+  return data.published===false &&
+    data.manuallyAdjusted===false &&
+    ["system_evaluation_draft","external_evaluation_draft"].includes(String(data.gradeSource||"")) &&
+    data.evaluationDraft && typeof data.evaluationDraft==="object" &&
+    data.evaluationDraft.teacherReviewed!==true &&
+    typeof data.score==="number" && Number.isFinite(data.score) &&
+    typeof data.feedback==="string" && data.feedback.trim().length>=20;
+}
 export function legacyReadyDraft(data={}) {
   const reasons=Array.isArray(data.reviewReasons)?data.reviewReasons.filter(Boolean):[];
   return data.published===false &&

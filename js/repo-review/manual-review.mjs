@@ -1,6 +1,6 @@
 /** Primary teacher evidence review, evaluation drafts and deliberate grade publication. */
 import { auth, db } from "../core/firebase-core.js?v=1.3.0";
-import {schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
+import {schoolAIStatus} from "../core/school-ai.mjs?v=1.3.1";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.1";
 import {assertGradeVersion,nextGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
 import {renderFeedbackMarkdown} from "./review-ui.mjs?v=1.3.0";
@@ -484,7 +484,7 @@ function applyEvidenceState(record,{initial=false}={}){
   if(changed){state.aiAbort?.abort();state.aiBusy=false;state.externalEvidence=null;state.externalPackage="";el("externalEvaluationImport").disabled=true;
     el("manualReviewUseScore").disabled=true;el("manualReviewUseFeedback").disabled=true;el("manualReviewConfirm").checked=false;}
   let approved=record?.status==="approved"&&validSha(record.approvedCheckpointSha)&&record.approvedCheckpointSha===record.checkpointSha;
-  try{approved=approved&&record.studentId===active.studentId&&record.assessmentId===active.taskId&&parseRepository(record.repository).url===parseRepository(active.base).url;}catch{approved=false;}
+  try{approved=approved&&record.studentId===active.studentId&&record.assessmentId===active.taskId&&parseRepository(record.repository).url.toLowerCase()===parseRepository(active.base).url.toLowerCase();}catch{approved=false;}
   const verified=approved&&evaluationResponsibilityReady(active.assessment,record);
   const protectedGrade=Boolean(active.previous?.published);
   const next={...active,evidence:record,checkpointSha:approved?record.approvedCheckpointSha:null,selectedEvidenceCommits:record?.selectedCommits||[],
@@ -579,9 +579,26 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
       if(session!==state.token)return;
       el("integratedEvidenceStatus").textContent=evidence.exists()?"Evidence: "+evidence.data().status+". Review selected changes and verify each student's responsibilities below.":"No submission yet. Expand evidence to discover historical commits in this page.";
       el("integratedEvidenceDetails").open=true;
-      if(evidence.exists()&&parseRepository(evidence.data().repository).url!==parseRepository(base).url)
-        throw Error("Approved evidence belongs to a different repository. Review the student's linked repository.");
       approvedEvidence=evidence.exists()?evidence.data():null;
+      if(approvedEvidence){
+        if(approvedEvidence.studentId!==studentId||approvedEvidence.assessmentId!==taskId)
+          throw Error("Saved evidence does not belong to the selected learner and assessment.");
+        // The submitted evidence is pinned to its original repository. A roster/group
+        // link may have changed since submission; never point approved SHAs at that link.
+        const submittedRepo=parseRepository(approvedEvidence.repository);
+        const selectedRepo=parseRepository(base);
+        let rosterRepo=null;
+        try{rosterRepo=parseRepository(student.repoUrl);}catch{}
+        if(submittedRepo.url.toLowerCase()!==selectedRepo.url.toLowerCase())
+          flag("The selected group points to "+selectedRepo.owner+"/"+selectedRepo.repo+
+            ", but this learner submitted evidence from "+submittedRepo.owner+"/"+submittedRepo.repo+
+            ". Reviewing the original submitted repository; no evidence was reassigned.");
+        if(rosterRepo&&submittedRepo.url.toLowerCase()!==rosterRepo.url.toLowerCase())
+          flag("The learner's current roster link is "+rosterRepo.owner+"/"+rosterRepo.repo+
+            ". Verify the original submission repository "+submittedRepo.owner+"/"+submittedRepo.repo+
+            " before assigning credit. The roster and approved evidence remain unchanged.");
+        owner=submittedRepo.owner;repo=submittedRepo.repo;base=submittedRepo.url;
+      }
       checkpointSha=approvedEvidence?.status==="approved"?approvedEvidence.approvedCheckpointSha:null;
       selectedEvidenceCommits=approvedEvidence?.selectedCommits||[];
     }
@@ -665,7 +682,7 @@ async function open({studentId, taskId, owner, repo, diagnostic=""}={}) {
       link(advanced,"Repository context ↗","repobank.html?"+contextParams);
       link(advanced,"Standalone contribution tools ↗","contribution-inspector.html?"+params);
       link(advanced,"Standalone group tools ↗","group-inspector.html?"+params);
-      state.panels=mountReviewPanels({root:el("integratedEvidence"),student:{...student,id:studentId},assessment:{...assessment,id:taskId},evidence:approvedEvidence,requests:state.requests,signal:state.abort.signal,
+      state.panels=mountReviewPanels({root:el("integratedEvidence"),student:{...student,id:studentId,repoUrl:approvedEvidence?.repository||base},assessment:{...assessment,id:taskId},evidence:approvedEvidence,requests:state.requests,signal:state.abort.signal,
         onEvidenceChange:record=>{if(session!==state.token)return;applyEvidenceState(record);state.panels?.updateEvidence(record);window.dispatchEvent(new CustomEvent("adminerva:manual-grade-saved"));}});
     }
     if(assessment.schemaVersion!==2)void sourceLinks(session,base,owner,repo,login,checkpointSha);
@@ -703,6 +720,8 @@ async function save(event) {
         const evidence=evidenceSnap.exists()?evidenceSnap.data():null;
         if(!evidence||evidence.status!=="approved"||evidence.approvedCheckpointSha!==active.checkpointSha||
           evidence.checkpointSha!==active.checkpointSha||
+          evidence.studentId!==active.studentId||evidence.assessmentId!==active.taskId||
+          parseRepository(evidence.repository).url.toLowerCase()!==parseRepository(active.base).url.toLowerCase()||
           JSON.stringify(evidence.selectedCommits)!==JSON.stringify(active.selectedEvidenceCommits))
           throw Error("The approved evidence changed. Reload and re-check the checkpoint before saving.");
         if(evidenceRevision(evidence)!==evidenceRevision(active.evidence))

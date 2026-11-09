@@ -1,4 +1,4 @@
-import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
+import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.1";
 /** Explicitly requested assisted slide generation and safe draft acceptance. */
 window.generateAI_SlideDeck = async function () {
   if (!window.selectedPlanData || !window.selectedSessionData) {

@@ -1,9 +1,9 @@
 import {feedbackSummary,inlineTask,reviewNotice} from "./review-ui.mjs?v=1.3.0";
 import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=1.3.0";
-import {publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=3.0.0";
-import {legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.2";
+import {approveEvaluationDraftAndPublish,publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=3.0.2";
+import {approvableEvaluationDraft,legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.3";
 import {assertGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
-import {writePublicationRevision} from "./grade-publication.mjs?v=1.3.2";
+import {writePublicationRevision} from "./grade-publication.mjs?v=3.0.2";
 /** Teacher grade administration, protected revisions and explicit publication. */
 import { db,auth } from "../core/firebase-core.js?v=1.3.0";
 import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
@@ -205,10 +205,21 @@ async function loadGrid() {
           const reviewLink="repofetch.html?"+new URLSearchParams({section,assessment:taskId,student:student.id,view:"grade"});
           const reason=(grade.reviewReasons||[]).filter(Boolean).slice(0,3).join(" • ")||
             "This evaluation needs teacher attention before it can be published.";
-          pubToggle='<div class="av-compact-status"><span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Needs review</span>'+
-            '<span class="av-inline-flag"><button type="button" class="av-flag-button" data-av-popover aria-expanded="false" aria-label="Teacher review required">!</button>'+
-            '<span class="av-flag-popover" role="tooltip"><strong>Teacher review required</strong>'+escapeHTML(reason)+
-            '<br><a href="'+escapeHTML(reviewLink)+'">Review evaluation →</a></span></span></div>';
+          if(schemaVersion===2&&approvableEvaluationDraft(grade)){
+            pubToggle='<div class="flex flex-col items-start gap-1.5">'+
+              '<div class="flex items-center gap-1"><span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Evaluate & decide</span>'+
+              '<span class="av-inline-flag"><button type="button" class="av-flag-button" data-av-popover aria-expanded="false" aria-label="Evaluation review details">!</button>'+
+              '<span class="av-flag-popover" role="tooltip"><strong>System/external evaluation</strong>'+escapeHTML(reason)+'</span></span></div>'+
+              '<div class="flex flex-wrap gap-1">'+
+              '<button type="button" onclick="window.approveGridEvaluation(\''+student.id+'\',\''+taskId+'\',this)" class="rounded-md bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 text-[10px] font-extrabold">Approve & publish</button>'+
+              '<a href="'+escapeHTML(reviewLink)+'" class="rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 px-2.5 py-1.5 text-[10px] font-extrabold">Review / adjust</a>'+
+              '</div></div>';
+          }else{
+            pubToggle='<div class="av-compact-status"><span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Needs review</span>'+
+              '<span class="av-inline-flag"><button type="button" class="av-flag-button" data-av-popover aria-expanded="false" aria-label="Teacher review required">!</button>'+
+              '<span class="av-flag-popover" role="tooltip"><strong>Teacher review required</strong>'+escapeHTML(reason)+
+              '<br><a href="'+escapeHTML(reviewLink)+'">Review evaluation →</a></span></span></div>';
+          }
         }else pubToggle = `
                     <label class="relative inline-flex items-center cursor-pointer">
                         <input type="checkbox" class="sr-only peer" ${isPub ? "checked" : ""} onchange="window.matrixTogglePub('${student.id}', '${taskId}', this)">
@@ -300,6 +311,24 @@ async function loadGrid() {
     tbody.innerHTML = `<tr><td colspan="5" class="px-6 py-12 text-center text-red-500 font-bold border border-red-200 bg-red-50">Failed to load matrix. Check permissions.</td></tr>`;
   } finally { end(); }
 }
+
+window.approveGridEvaluation = async function(studentId,taskId,button){
+  if(button?.disabled)return;
+  if(!confirm("Approve this system/external evaluation unchanged and publish its score and feedback to the student now?"))return;
+  if(button)button.disabled=true;
+  const end=window.beginLoading?.("Approving and publishing evaluated grade…")||(()=>{});
+  try{
+    const ref=doc(db,"student_grades",studentId+"_"+taskId);
+    const snapshot=await getDoc(ref);
+    if(!snapshot.exists())throw Error("Grade no longer exists. Refresh the Gradebook.");
+    if(!approvableEvaluationDraft(snapshot.data()))throw Error("This evaluation is no longer eligible for one-step approval.");
+    await approveEvaluationDraftAndPublish({ref,data:snapshot.data()});
+    reviewNotice("Evaluation approved unchanged and published.");
+    await loadGrid();
+  }catch(error){
+    alert("Unable to approve and publish this evaluation: "+error.message);
+  }finally{if(button)button.disabled=false;end();}
+};
 
 window.matrixTogglePub = async function (studentId, taskId, checkbox) {
   const gradeRef = doc(db, "student_grades", `${studentId}_${taskId}`);

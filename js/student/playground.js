@@ -72,6 +72,41 @@ let workspaceFolders=[],projectOrder=[],selectedProjectPath="",selectedProjectFo
 let executionController=null,executionSequence=0;
 let loadedOwnerUid=null;
 let projectStudio=null;
+const STUDIO_EDITOR_FONT_KEY="Adminerva_Studio_Editor_Font_Size_v1";
+const STUDIO_EDITOR_BASE_FONT=14;
+const STUDIO_EDITOR_FONT_MIN=12;
+const STUDIO_EDITOR_FONT_MAX=26;
+function readStudioEditorFontSize(){
+  try{
+    const size=Number(localStorage.getItem(STUDIO_EDITOR_FONT_KEY));
+    return Number.isFinite(size)&&size>=STUDIO_EDITOR_FONT_MIN&&size<=STUDIO_EDITOR_FONT_MAX?size:STUDIO_EDITOR_BASE_FONT;
+  }catch{return STUDIO_EDITOR_BASE_FONT;}
+}
+function setStudioEditorFontSize(size){
+  if(!editorInstance)return;
+  const next=Math.max(STUDIO_EDITOR_FONT_MIN,Math.min(STUDIO_EDITOR_FONT_MAX,Math.round(size)));
+  editorInstance.updateOptions({fontSize:next});
+  try{localStorage.setItem(STUDIO_EDITOR_FONT_KEY,String(next));}catch{}
+  syncStudioEditorZoomLabel();
+}
+function syncStudioEditorZoomLabel(){
+  const size=editorInstance?.getOption(monaco.editor.EditorOption.fontSize)||STUDIO_EDITOR_BASE_FONT;
+  const label=document.getElementById('studioZoomLabel');
+  if(label)label.textContent=Math.round(size/STUDIO_EDITOR_BASE_FONT*100)+'%';
+  const zoomOut=document.getElementById('studioZoomOut'),zoomIn=document.getElementById('studioZoomIn');
+  if(zoomOut)zoomOut.disabled=size<=STUDIO_EDITOR_FONT_MIN;
+  if(zoomIn)zoomIn.disabled=size>=STUDIO_EDITOR_FONT_MAX;
+}
+function moveStudioEditorCursor(command){
+  if(!editorInstance||!editorInstance.getModel())return;
+  const commands={left:'cursorLeft',right:'cursorRight',up:'cursorUp',down:'cursorDown'};
+  editorInstance.focus();
+  if(commands[command])editorInstance.trigger('studio-mobile',commands[command],null);
+  else if(command==='tab')editorInstance.trigger('studio-mobile','type',{text:'\t'});
+  else if(command==='undo'||command==='redo')editorInstance.trigger('studio-mobile',command,null);
+  editorInstance.revealPositionInCenterIfOutsideViewport(editorInstance.getPosition());
+}
+
 const JAVA_RUN_MODE_KEY="Adminerva_Java_Run_Mode_v1";
 let javaRunMode=(()=>{try{return localStorage.getItem(JAVA_RUN_MODE_KEY)==="desktop"?"desktop":"console";}catch{return "console";}})();
 let desktopRunSequence=0;
@@ -157,7 +192,7 @@ async function initializePlayground() {
       {
         theme: "adminervaDark",
         automaticLayout: true,
-        fontSize: 14,
+        fontSize: readStudioEditorFontSize(),
         fontFamily: "Fira Code, monospace",
         minimap: { enabled: false },
         padding: { top: 16 },
@@ -168,6 +203,8 @@ async function initializePlayground() {
     document.getElementById("editorLoading")?.classList.add("hidden");
 
     bindUIEvents();
+    initializeMobileStudio();
+    syncStudioEditorZoomLabel();
     initResizer();
     setupWebConsoleHook();
     setupJavaDesktopHook();
@@ -453,7 +490,7 @@ function renderTabs() {
       : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 border-t-2 border-transparent";
 
     const tab=document.createElement("div");tab.className="px-4 py-2 cursor-pointer flex items-center gap-2 text-xs font-bold transition relative group tab-element "+tabClass;
-    tab.draggable=true;tab.dataset.index=index;tab.dataset.filename=filename;tab.setAttribute("role","tab");tab.setAttribute("aria-selected",String(isActive));tab.tabIndex=isActive?0:-1;
+    tab.draggable=!window.matchMedia('(max-width:767px)').matches;tab.dataset.index=index;tab.dataset.filename=filename;tab.setAttribute("role","tab");tab.setAttribute("aria-selected",String(isActive));tab.tabIndex=isActive?0:-1;
     const label=document.createElement("span");label.textContent=filename.split("/").at(-1);label.title=filename;tab.append(label);
     tab.addEventListener("dblclick",()=>window.renameFile(filename));
     tab.addEventListener("keydown",event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();switchTab(filename);}});
@@ -470,6 +507,15 @@ function renderTabs() {
 
   attachTabEvents();
   renderFileTree();
+  if(window.matchMedia('(max-width:767px)').matches){
+    requestAnimationFrame(()=>{
+      const tab=container.querySelector('.tab-element[aria-selected="true"]');
+      if(!tab||!container.clientWidth)return;
+      const tabRect=tab.getBoundingClientRect(),hostRect=container.getBoundingClientRect();
+      if(tabRect.left<hostRect.left)container.scrollLeft+=tabRect.left-hostRect.left;
+      else if(tabRect.right>hostRect.right)container.scrollLeft+=tabRect.right-hostRect.right;
+    });
+  }
 }
 
 function currentFolderPaths(){
@@ -1144,15 +1190,38 @@ function activateOutputTab(name){
   }
 }
 
+function consoleInputExhausted(errorText){
+  const text=String(errorText||'');
+  if(currentLang==='java')return /java\.util\.NoSuchElementException/.test(text)&&/java\.util\.Scanner/.test(text);
+  if(currentLang==='python')return /EOFError:\s*EOF when reading a line/i.test(text);
+  return false;
+}
+
+function sendConsoleInputLine(){
+  if(executionController)return;
+  const lineInput=document.getElementById('stdinLineInput'),history=document.getElementById('stdinInput');
+  if(!lineInput||!history)return;
+  const separator=history.value&&!history.value.endsWith('\n')?'\n':'';
+  history.value+=separator+lineInput.value+'\n';
+  lineInput.value='';
+  void executeCode();
+}
+
+function clearConsoleInput(){
+  const history=document.getElementById('stdinInput'),lineInput=document.getElementById('stdinLineInput');
+  if(history)history.value='';
+  if(lineInput){lineInput.value='';lineInput.focus();}
+}
+
 async function executeCode() {
   if(executionController)return;
-  const runBtn=document.getElementById('runBtn'),overlay=document.getElementById('executionOverlay'),consoleOut=document.getElementById('consoleOutput'),label=document.getElementById('executionStage');
+  const runBtn=document.getElementById('runBtn'),overlay=document.getElementById('executionOverlay'),consoleOut=document.getElementById('consoleOutput'),label=document.getElementById('executionStage'),sendInputBtn=document.getElementById('sendStdinBtn');
   const sequence=++executionSequence,controller=new AbortController(),entry=compilerEntry(),runLanguage=currentLang,desktopMode=isJavaDesktopMode();executionController=controller;
   const end=window.beginLoading?.(desktopMode?'Compiling Java desktop app…':'Running your code…')||(()=>{});
   const start=Date.now();let stage=desktopMode?'Preparing desktop package':'Preparing project';
   const update=()=>{if(label)label.textContent=stage+' · '+Math.floor((Date.now()-start)/1000)+'s';};
   const clock=setInterval(update,500),timeout=setTimeout(()=>{stage='Compiler timed out';controller.abort();},45000);
-  runBtn.disabled=true;overlay?.classList.remove('hidden');update();
+  runBtn.disabled=true;if(sendInputBtn)sendInputBtn.disabled=true;overlay?.classList.remove('hidden');update();
   try{
     persistWorkspace();Object.values(workspaceFiles).forEach(file=>monaco.editor.setModelMarkers(file.model,'judge0',[]));
     if(currentLang==='web'){
@@ -1192,6 +1261,15 @@ async function executeCode() {
       notePracticeExecution();
       return;
     }
+    const waitingForInput=Boolean(error)&&consoleInputExhausted(error);
+    if(waitingForInput){
+      const supplied=(document.getElementById('stdinInput')?.value||'').split(/\r?\n/).filter((_,index,items)=>index<items.length-1||items[index]!=='' ).length;
+      consoleOut.textContent=(result.stdout||'')+'\n\n[Adminerva terminal] Input needed. Type the next value above and press Enter or Send input.'+(supplied?'\n'+supplied+' input line'+(supplied===1?' has':'s have')+' been supplied so far.':'');
+      try{projectStudio?.recordRun({mode:"console",status:"waiting for input",time:result.time||null,memory:result.memory||null});}catch(e){console.warn("Run history not saved:",e);}
+      requestAnimationFrame(()=>document.getElementById('stdinLineInput')?.focus());
+      notePracticeExecution();
+      return;
+    }
     consoleOut.textContent=(error?error+'\n':'')+(result.stdout||(!error?'Program exited with no output.':''))+'\n\n'+(result.status.description||'Finished')+(result.time?' · execution '+result.time+'s':'');
     if(error&&currentLang===runLanguage)applyVisualDiagnostics(error,entry);
     if(error&&currentLang==='java'&&/HeadlessException|No X11 DISPLAY|headless/i.test(error))consoleOut.textContent+='\n\nThis program appears to open a desktop window. Change Run as to “Desktop GUI (Swing) · Beta” and run it again.';
@@ -1202,7 +1280,7 @@ async function executeCode() {
     if(sequence!==executionSequence)return;
     try{projectStudio?.recordRun({mode:desktopMode?"desktop":"console",status:controller.signal.aborted?"cancelled":"error"});}catch(e){console.warn("Run history not saved:",e);}
     consoleOut.textContent=controller.signal.aborted?(stage==='Compiler timed out'?'The compiler did not finish within 45 seconds. Your code is saved. Retry, or export the project to run locally.':'Run cancelled. Your code is unchanged. The remote service may finish the already submitted job.'):'Execution unavailable: '+error.message+'\nYour code is saved on this device when browser storage is available.';
-  }finally{clearTimeout(timeout);clearInterval(clock);executionController=null;runBtn.disabled=false;overlay?.classList.add('hidden');end();}
+  }finally{clearTimeout(timeout);clearInterval(clock);executionController=null;runBtn.disabled=false;if(sendInputBtn)sendInputBtn.disabled=false;overlay?.classList.add('hidden');end();}
 }
 
 function applyVisualDiagnostics(errorText, defaultFile) {
@@ -1346,6 +1424,131 @@ function notePracticeExecution(){
     }
   }catch(error){console.warn("Could not record practice run:",error)}
 }
+function initializeMobileStudio(){
+  const panel=document.getElementById('studioPanelCode');
+  const explorer=document.getElementById('projectExplorer');
+  const actions=document.getElementById('studioMobileActions');
+  const backdrop=document.getElementById('studioMobileBackdrop');
+  const filesButton=document.getElementById('studioMobileFiles');
+  const moreButton=document.getElementById('studioMobileMore');
+  const editorButton=document.getElementById('studioMobileEditor');
+  const terminalButton=document.getElementById('studioMobileTerminal');
+  const mobileRun=document.getElementById('studioMobileRun');
+  const toolbar=document.querySelector('.studio-mobile-toolbar');
+  const projectBar=document.querySelector('.studio-project-bar');
+  if(!panel||!explorer||!actions||!backdrop||!toolbar)return;
+  const compact=()=>window.matchMedia('(max-width:767px)').matches;
+  let activeDrawer=null;
+  const closeDrawer=()=>{
+    explorer.classList.remove('studio-drawer-open');
+    actions.classList.remove('studio-drawer-open');
+    backdrop.classList.add('hidden');
+    activeDrawer=null;
+    filesButton?.setAttribute('aria-expanded','false');
+    moreButton?.setAttribute('aria-expanded','false');
+  };
+  const showDrawer=side=>{
+    if(!compact())return;
+    if(activeDrawer===side){closeDrawer();return;}
+    closeDrawer();
+    activeDrawer=side;
+    (side==='files'?explorer:actions).classList.add('studio-drawer-open');
+    backdrop.classList.remove('hidden');
+    (side==='files'?filesButton:moreButton)?.setAttribute('aria-expanded','true');
+  };
+  const setPane=pane=>{
+    const value=pane==='terminal'?'terminal':'editor';
+    panel.dataset.mobilePane=value;
+    editorButton?.setAttribute('aria-pressed',String(value==='editor'));
+    terminalButton?.setAttribute('aria-pressed',String(value==='terminal'));
+    closeDrawer();
+    if(value==='editor')requestAnimationFrame(()=>editorInstance?.layout());
+  };
+  filesButton?.addEventListener('click',()=>showDrawer('files'));
+  moreButton?.addEventListener('click',()=>showDrawer('actions'));
+  document.getElementById('studioMobileCloseFiles')?.addEventListener('click',closeDrawer);
+  document.getElementById('studioMobileCloseMore')?.addEventListener('click',closeDrawer);
+  editorButton?.addEventListener('click',()=>setPane('editor'));
+  terminalButton?.addEventListener('click',()=>setPane('terminal'));
+  mobileRun?.addEventListener('click',()=>{setPane('terminal');document.getElementById('runBtn')?.click();});
+  backdrop.addEventListener('click',closeDrawer);
+  document.addEventListener('keydown',event=>{if(event.key==='Escape')closeDrawer();});
+  explorer.addEventListener('click',event=>{
+    if(compact()&&event.target.closest('.pg-file,[role="treeitem"],.pg-tree button')){
+      setTimeout(()=>{closeDrawer();setPane('editor');},0);
+    }
+  });
+  const resize=()=>{
+    if(!compact()){
+      closeDrawer();
+      panel.removeAttribute('data-mobile-pane');
+      requestAnimationFrame(()=>editorInstance?.layout());
+    }else if(!panel.dataset.mobilePane){
+      setPane('editor');
+    }
+  };
+  const syncCodeToolbar=()=>{
+    // Design, Database, Evidence and Monitor keep their own full work areas.
+    // Mobile editing controls belong to Code only.
+    toolbar.style.display=panel.classList.contains('hidden')?'none':'';
+    if(panel.classList.contains('hidden'))closeDrawer();
+  };
+  new MutationObserver(syncCodeToolbar).observe(panel,{attributes:true,attributeFilter:['class']});
+  syncCodeToolbar();
+  window.addEventListener('resize',resize);
+
+  // Android's back navigation consumes gestures that originate at the literal
+  // viewport edge. Interpret horizontal swipes *within the Studio chrome*
+  // instead. Never intercept Monaco, code selection, or horizontally scrolling tabs.
+  let start=null;
+  const swipeStart=event=>{
+    if(!compact()||event.pointerType!=='touch'||!event.isPrimary)return;
+    start={id:event.pointerId,x:event.clientX,y:event.clientY};
+  };
+  const swipeEnd=(event,origin)=>{
+    if(!start||!compact()||start.id!==event.pointerId)return;
+    const dx=event.clientX-start.x,dy=event.clientY-start.y;
+    start=null;
+    if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.4)return;
+    if(activeDrawer){
+      if((activeDrawer==='files'&&dx<0)||(activeDrawer==='actions'&&dx>0))closeDrawer();
+    }else if(origin==='chrome'){
+      showDrawer(dx>0?'files':'actions');
+    }
+  };
+  for(const surface of [toolbar,projectBar]){
+    if(!surface)continue;
+    surface.addEventListener('pointerdown',swipeStart,{passive:true});
+    surface.addEventListener('pointerup',event=>swipeEnd(event,'chrome'),{passive:true});
+    surface.addEventListener('pointercancel',()=>{start=null;},{passive:true});
+  }
+  for(const surface of [explorer,actions]){
+    surface.addEventListener('pointerdown',swipeStart,{passive:true});
+    surface.addEventListener('pointerup',event=>swipeEnd(event,'drawer'),{passive:true});
+    surface.addEventListener('pointercancel',()=>{start=null;},{passive:true});
+  }
+
+  // Zoom and keyboard alternatives remain available without any gesture.
+  document.getElementById('studioZoomOut')?.addEventListener('click',()=>{
+    setStudioEditorFontSize(editorInstance.getOption(monaco.editor.EditorOption.fontSize)-2);
+  });
+  document.getElementById('studioZoomIn')?.addEventListener('click',()=>{
+    setStudioEditorFontSize(editorInstance.getOption(monaco.editor.EditorOption.fontSize)+2);
+  });
+  const assistButton=document.getElementById('studioEditAssistToggle');
+  const assistBar=document.getElementById('studioEditAssistBar');
+  assistButton?.addEventListener('click',()=>{
+    const opening=assistBar.classList.contains('hidden');
+    assistBar.classList.toggle('hidden',!opening);
+    assistButton.setAttribute('aria-expanded',String(opening));
+    requestAnimationFrame(()=>editorInstance?.layout());
+  });
+  assistBar?.addEventListener('click',event=>{
+    const command=event.target.closest('[data-studio-editor-key]')?.dataset.studioEditorKey;
+    if(command)moveStudioEditorCursor(command);
+  });
+  resize();
+}
 function bindUIEvents() {
   document.getElementById("explorerContextMenu")?.addEventListener("click",event=>{
     const button=event.target.closest("[data-explorer-action]");if(button)handleExplorerContextAction(button.dataset.explorerAction);
@@ -1372,6 +1575,9 @@ function bindUIEvents() {
   });
   document.getElementById('cancelRunBtn')?.addEventListener('click',()=>executionController?.abort());
   document.getElementById('stopDesktopBtn')?.addEventListener('click',()=>stopJavaDesktop());
+  document.getElementById('sendStdinBtn')?.addEventListener('click',sendConsoleInputLine);
+  document.getElementById('clearStdinBtn')?.addEventListener('click',clearConsoleInput);
+  document.getElementById('stdinLineInput')?.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing){event.preventDefault();sendConsoleInputLine();}});
   document.getElementById('javaRunMode')?.addEventListener('change',event=>{
     javaRunMode=event.target.value==='desktop'?'desktop':'console';
     try{localStorage.setItem(JAVA_RUN_MODE_KEY,javaRunMode);}catch{}

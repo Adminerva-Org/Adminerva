@@ -12,10 +12,14 @@ import {schoolAIStatus} from "../core/school-ai.mjs?v=1.3.0";
 import {legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.2";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
 import {decideReclaim} from "./services/reclaim-decision.mjs?v=1.3.1";
+import {cleanGradeFeedback} from "../core/feedback-format.mjs?v=1.3.1";
+import {buildExternalEvaluationPayload,externalEvaluationResponseShape} from "./services/external-evaluation.mjs?v=1.2.0";
+import {partitionBulkExternalEntries,buildBulkExternalEvaluationPackage,parseBulkExternalEvaluationResponse} from "./services/bulk-external-evaluation.mjs?v=1.0.0";
 
 const el=id=>document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
 let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,gradesReadable=false,receiptsReadable=false,draftsReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map(),claimMap=new Map(),claimsReadable=false,canDecideClaims=false,loadSequence=0;
+const bulkExternal={sessionId:"",preparedFor:"",section:"",taskId:"",assessment:null,criteria:[],privateAssessment:{},batches:[],index:0,busy:false,failures:[]};
 const draftRef=(studentId,taskId)=>doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId);
 function showBulkExceptions(failures){
   const box=el("gbBulkExceptionDetails"),list=el("gbBulkExceptionList");
@@ -206,12 +210,22 @@ function render(){
   const reopenCandidates=isV2?bulkReopenCandidates(context.students,evidenceMap,context.grades):[];
   const evaluateCandidates=isV2?context.students.filter(student=>{
     const e=evidenceMap.get(student.id),g=context.grades?.[student.id];
-    return e?.status==="approved"&&Array.isArray(e.verifiedContributionCommits)&&e.verifiedContributionCommits.length>0&&!g&&!draftMap.has(student.id);
+    const verified=e?.status==="approved"&&Array.isArray(e.verifiedContributionCommits)&&e.verifiedContributionCommits.length>0;
+    if(!verified)return false;
+    // A private suggestion without a grade must not deadlock the class-level
+    // system evaluator. It will be replaced/refreshed by evaluateOne().
+    if(!g)return true;
+    // If approved evidence changed after an unpublished system draft was made,
+    // treat it as pending system evaluation again. evaluateOne({rerun:true})
+    // archives the prior draft before replacing it.
+    return eligibleToRerun(e,g)&&!currentGradeForEvidence(g,e);
   }):[];
-  const reviewDataComplete=!isV2||(evidenceReadable&&gradesReadable&&receiptsReadable&&draftsReadable);
-  el("gbClassReviewSummary").textContent=reviewDataComplete
-    ?context.students.length+" learners · "+ready+" ready to publish · "+flagged+" need review · "+published+" published"+(submitted?" · "+submitted+" awaiting evidence review":"")+(exceptions?" · "+exceptions+" exceptions":"")
-    :context.students.length+" learners · review data incomplete — refresh evidence";
+  const coreReviewDataComplete=!isV2||(evidenceReadable&&gradesReadable);
+  const reviewDataComplete=coreReviewDataComplete&&receiptsReadable&&draftsReadable;
+  el("gbClassReviewSummary").textContent=coreReviewDataComplete
+    ?context.students.length+" learners · "+ready+" ready to publish · "+flagged+" need review · "+published+" published"+(submitted?" · "+submitted+" awaiting evidence review":"")+(exceptions?" · "+exceptions+" exceptions":"")+
+      (!reviewDataComplete?" · supplemental review data unavailable":"")
+    :context.students.length+" learners · core grading data unavailable — refresh evidence";
   if(el("gbForceGather")){
     const gatherReady=!isV2||(evidenceReadable&&gradesReadable);
     el("gbForceGather").textContent=isV2?(gatherReady?"Force gather evidence ("+gatherCandidates.length+")":"Force gather evidence (?)"):"Force gather · V2 evidence only";
@@ -231,10 +245,21 @@ function render(){
   const approvalReady=!isV2||(evidenceReadable&&gradesReadable);
   el("gbBulkApprove").textContent=isV2?(approvalReady?"Approve evidence ("+approveCandidates.length+")":"Approve evidence (?)"):"Approval · V2 evidence only";
   el("gbBulkApprove").disabled=busy||!approvalReady||!approveCandidates.length;
-  const evaluationReady=!isV2||(evidenceReadable&&gradesReadable&&draftsReadable);
+  const evaluationReady=!isV2||(evidenceReadable&&gradesReadable);
   el("gbBulkEvaluate").textContent=isV2?(evaluationReady?"Run system evaluation ("+evaluateCandidates.length+")":"Run system evaluation (?)"):"System evaluation · V2 evidence only";
   el("gbBulkEvaluate").disabled=busy||!evaluationReady||!evaluateCandidates.length;
-  const reruns=isV2&&evaluationReady?context.students.filter(student=>eligibleToRerun(evidenceMap.get(student.id),context.grades?.[student.id])):[];
+  const externalCandidates=isV2&&evaluationReady?context.students.filter(student=>{
+    const e=evidenceMap.get(student.id),g=context.grades?.[student.id];
+    return e?.status==="approved"&&Array.isArray(e.verifiedContributionCommits)&&e.verifiedContributionCommits.length>0&&!g;
+  }):[];
+  if(el("gbBulkExternal")){
+    el("gbBulkExternal").textContent=isV2?(evaluationReady?"Bulk external evaluation ("+externalCandidates.length+")":"Bulk external evaluation (?)"):"Bulk external evaluation (0)";
+    el("gbBulkExternal").disabled=busy||bulkExternal.busy||!evaluationReady||!externalCandidates.length;
+  }
+  const reruns=isV2&&evaluationReady?context.students.filter(student=>{
+    const e=evidenceMap.get(student.id),g=context.grades?.[student.id];
+    return eligibleToRerun(e,g)&&currentGradeForEvidence(g,e);
+  }):[];
   if(el("gbBulkRerun")){
     el("gbBulkRerun").textContent=isV2?(evaluationReady?"Re-evaluate drafts ("+reruns.length+")":"Re-evaluate drafts (?)"):"Re-evaluate drafts (0)";
     el("gbBulkRerun").disabled=busy||!evaluationReady||!reruns.length;
@@ -249,61 +274,102 @@ async function load(detail){
   context=detail;evidenceReadable=false;gradesReadable=false;receiptsReadable=false;draftsReadable=false;evidenceMap=new Map();draftMap=new Map();receiptMap=new Map();claimMap=new Map();claimsReadable=false;
   render();
   const isV2=Number(detail.schemaVersion)===2;
-  // An unavailable optional collection must never erase the evidence roster or
-  // turn unknown submission status into an apparent "not submitted" result.
-  const sources=await Promise.allSettled([
+  const warnings=[],coreWarnings=[];
+
+  // Critical Gradebook state is keyed deterministically by student + assessment.
+  // Prefer exact document reads over collection queries so Firestore can enforce
+  // per-record teaching scope without requiring list-query proof across a class.
+  if(isV2){
+    const readExact=async collectionName=>{
+      const results=[];
+      for(let offset=0;offset<detail.students.length;offset+=12){
+        const batch=detail.students.slice(offset,offset+12);
+        results.push(...await Promise.allSettled(batch.map(student=>
+          getDocFromServer(doc(db,collectionName,student.id+"_"+detail.taskId)))));
+      }
+      return results;
+    };
+    const [evidenceResults,gradeResults]=await Promise.all([
+      readExact("assessment_evidence"),readExact("student_grades")
+    ]);
+    if(sequence!==loadSequence)return;
+
+    const evidenceFailures=evidenceResults.filter(result=>result.status==="rejected");
+    evidenceReadable=evidenceFailures.length===0;
+    if(evidenceReadable){
+      evidenceResults.forEach(result=>{
+        const snapshot=result.value;
+        if(snapshot.exists()){
+          const data={id:snapshot.id,...snapshot.data()};
+          evidenceMap.set(data.studentId,data);
+        }
+      });
+    }else coreWarnings.push("evidence: "+(evidenceFailures[0]?.reason?.message||"read failed"));
+
+    const gradeFailures=gradeResults.filter(result=>result.status==="rejected");
+    gradesReadable=gradeFailures.length===0;
+    if(gradesReadable){
+      const grades={};
+      gradeResults.forEach(result=>{
+        const snapshot=result.value;
+        if(snapshot.exists()){
+          const data=snapshot.data();
+          grades[data.studentId]=data;
+        }
+      });
+      context.grades=grades;
+    }else coreWarnings.push("gradebook drafts: "+(gradeFailures[0]?.reason?.message||"read failed"));
+  }else{
+    evidenceReadable=true;gradesReadable=true;draftsReadable=true;
+  }
+
+  // Supplemental review feeds improve context but must not deadlock grading.
+  const supplemental=await Promise.allSettled([
     getDocs(query(collection(db,"student_submissions"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
     ...(isV2?[
-      getDocsFromServer(query(collection(db,"assessment_evidence"),where("assessmentId","==",detail.taskId),where("section","==",detail.section))),
       getDocs(collection(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items")),
       getDocsFromServer(query(collection(db,"commit_reclaims"),where("section","==",detail.section),where("assessmentId","==",detail.taskId)))
     ]:[])
   ]);
   if(sequence!==loadSequence)return;
-  const warnings=[];
-  try{canDecideClaims=(await resolveStaffRole(auth.currentUser))==="admin";}catch{canDecideClaims=false;}
-  if(sequence!==loadSequence)return;
-  if(isV2){
-    try{const grades=await getDocsFromServer(query(collection(db,"student_grades"),where("taskId","==",detail.taskId),where("section","==",detail.section)));
-      gradesReadable=true;
-      context.grades=Object.fromEntries(grades.docs.filter(record=>detail.students.some(student=>student.id===record.data().studentId))
-        .map(record=>[record.data().studentId,record.data()]));
-    }catch(error){gradesReadable=false;warnings.push("gradebook drafts: "+error.message);}
-  }
-  if(sequence!==loadSequence)return;
-  receiptsReadable=sources[0].status==="fulfilled";
-  if(receiptsReadable)for(const record of sources[0].value.docs){
+
+  receiptsReadable=supplemental[0].status==="fulfilled";
+  if(receiptsReadable)for(const record of supplemental[0].value.docs){
     const data={id:record.id,...record.data()},prior=receiptMap.get(data.studentId);
     const stamp=value=>value?.toMillis?.()||Date.parse(value||"")||0;
     if(!prior||stamp(data.submittedAt)>stamp(prior.submittedAt))receiptMap.set(data.studentId,data);
-  }else warnings.push("submission receipts: "+sources[0].reason?.message);
+  }else warnings.push("submission receipts: "+supplemental[0].reason?.message);
+
   if(isV2){
-    evidenceReadable=sources[1].status==="fulfilled";
-    if(evidenceReadable){
-      evidenceMap=new Map(sources[1].value.docs.map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
-    }else warnings.push("evidence: "+sources[1].reason?.message);
-    draftsReadable=sources[2].status==="fulfilled";
+    draftsReadable=supplemental[1].status==="fulfilled";
     if(draftsReadable){
-      draftMap=new Map(sources[2].value.docs.filter(record=>{
+      draftMap=new Map(supplemental[1].value.docs.filter(record=>{
         const draft=record.data(),evidence=evidenceMap.get(draft.studentId);
         return draft.taskId===detail.taskId&&draft.section===detail.section&&draft.status==="private_suggestion"&&
           evidence?.status==="approved"&&draft.evidenceRevision===evidenceRevision(evidence)&&draft.checkpointSha===evidence.approvedCheckpointSha;
       }).map(record=>[record.data().studentId,{id:record.id,...record.data()}]));
-    }else warnings.push("evaluation drafts: "+sources[2].reason?.message);
-    if(sources[3].status==="fulfilled"){
+    }else warnings.push("evaluation drafts: "+supplemental[1].reason?.message);
+
+    if(supplemental[2].status==="fulfilled"){
       claimsReadable=true;
-      claimMap=new Map(sources[3].value.docs
+      claimMap=new Map(supplemental[2].value.docs
         .filter(record=>record.data().assessmentId===detail.taskId)
         .map(record=>[record.id,{id:record.id,...record.data()}]));
     }else{
       claimsReadable=false;
-      warnings.push("reclaim requests: "+sources[3].reason?.message);
+      warnings.push("reclaim requests: "+supplemental[2].reason?.message);
     }
   }
-  // Failed reads remain unknown, never implicit zeros.
-  if(!isV2){evidenceReadable=true;gradesReadable=true;draftsReadable=true;}
+
+  try{canDecideClaims=(await resolveStaffRole(auth.currentUser))==="admin";}catch{canDecideClaims=false;}
+  if(sequence!==loadSequence)return;
   render();
-  if(warnings.length)el("gbBulkStatus").textContent="Some review data could not load ("+warnings.join(" | ")+"). Affected counts are shown as unavailable/incomplete, and dependent bulk actions stay disabled until refresh succeeds.";
+
+  if(coreWarnings.length){
+    el("gbBulkStatus").textContent="Core grading data could not load ("+coreWarnings.join(" | ")+"). Evidence and grading actions remain disabled until those exact records can be read.";
+  }else if(warnings.length){
+    el("gbBulkStatus").textContent="Core evidence and grade data loaded. Supplemental review data is unavailable ("+warnings.join(" | ")+"). Force gather, approval, and system evaluation remain available when their learner counts are eligible.";
+  }
 }
 const linkedLogin=student=>String(student?.githubUsername||"").trim().replace(/^@/,"").toLowerCase();
 const dateMillis=value=>{
@@ -669,15 +735,262 @@ async function evaluateOne(student,evidence,assessment,connection,{rerun=false}=
     await deleteDoc(suggestionRef);
   }
 }
+function bulkExternalCandidateList(){
+  if(!context||Number(context.schemaVersion)!==2||!evidenceReadable||!gradesReadable)return [];
+  return context.students.filter(student=>{
+    const evidence=evidenceMap.get(student.id),grade=context.grades?.[student.id];
+    return evidence?.status==="approved"&&Array.isArray(evidence.verifiedContributionCommits)&&
+      evidence.verifiedContributionCommits.length>0&&!grade;
+  });
+}
+function showBulkExternalExceptions(items=[]){
+  const box=el("gbBulkExternalExceptions"),list=el("gbBulkExternalExceptionList");
+  if(!box||!list)return;
+  list.replaceChildren();box.classList.toggle("hidden",!items.length);
+  for(const item of items){
+    const row=document.createElement("p");row.textContent=item;
+    row.className="border-b border-amber-100 pb-1 last:border-0";list.append(row);
+  }
+}
+function currentBulkExternalBatch(){return bulkExternal.batches[bulkExternal.index]||null;}
+function saveBulkExternalTextarea(){
+  const batch=currentBulkExternalBatch(),field=el("gbBulkExternalResult");
+  if(batch&&field)batch.responseText=field.value;
+}
+function renderBulkExternalModal(){
+  const batch=currentBulkExternalBatch(),total=bulkExternal.batches.length;
+  if(!batch){
+    el("gbBulkExternalProgress").textContent=bulkExternal.busy?"Preparing anonymous evidence batches…":"No external evaluation batch is prepared.";
+    el("gbBulkExternalPackage").value="";
+    el("gbBulkExternalResult").value="";
+    el("gbBulkExternalCopy").disabled=true;el("gbBulkExternalImport").disabled=true;
+    el("gbBulkExternalPrev").disabled=true;el("gbBulkExternalNext").disabled=true;
+    showBulkExternalExceptions(bulkExternal.failures);return;
+  }
+  const imported=batch.importedIds?.size||0;
+  const kb=Math.max(1,Math.round(new Blob([batch.packageText]).size/1024));
+  el("gbBulkExternalProgress").textContent="Batch "+(bulkExternal.index+1)+" of "+total+" · "+batch.entries.length+
+    " anonymous learner"+(batch.entries.length===1?"":"s")+" · about "+kb+" KB · "+imported+" imported";
+  el("gbBulkExternalPackage").value=batch.packageText;
+  el("gbBulkExternalResult").value=batch.responseText||"";
+  el("gbBulkExternalCopy").disabled=bulkExternal.busy;
+  el("gbBulkExternalImport").disabled=bulkExternal.busy||!batch.entries.length;
+  el("gbBulkExternalPrev").disabled=bulkExternal.busy||bulkExternal.index<=0;
+  el("gbBulkExternalNext").disabled=bulkExternal.busy||bulkExternal.index>=total-1;
+  showBulkExternalExceptions([...(bulkExternal.failures||[]),...(batch.issues||[])]);
+}
+function closeBulkExternalEvaluation(){saveBulkExternalTextarea();el("gbBulkExternalModal")?.classList.add("hidden");}
+async function copyBulkExternalBatch(){
+  const batch=currentBulkExternalBatch();if(!batch||bulkExternal.busy)return;
+  try{
+    await navigator.clipboard.writeText(batch.packageText);
+    el("gbBulkExternalStatus").textContent="Current anonymous batch copied. Paste it into ChatGPT or another evaluator, then paste the returned bulk JSON below.";
+  }catch{
+    const area=el("gbBulkExternalPackage");area.focus();area.select();
+    const copied=Boolean(document.execCommand?.("copy"));
+    el("gbBulkExternalStatus").textContent=copied?"Current anonymous batch copied.":"Clipboard access was blocked. Select the package text and copy it manually.";
+  }
+}
+function moveBulkExternalBatch(delta){
+  if(bulkExternal.busy)return;saveBulkExternalTextarea();
+  bulkExternal.index=Math.max(0,Math.min(bulkExternal.batches.length-1,bulkExternal.index+delta));
+  renderBulkExternalModal();
+  el("gbBulkExternalStatus").textContent="Paste the JSON response for this batch, then validate and import it.";
+}
+async function prepareBulkExternalEvaluation(){
+  if(busy||bulkExternal.busy||!context||Number(context.schemaVersion)!==2)return;
+  const active=context;
+  el("gbBulkExternalModal").classList.remove("hidden");
+  el("gbBulkExternalStatus").textContent="Refreshing approved evidence and grade state before preparing external packages…";
+  busy=true;bulkExternal.busy=true;render();renderBulkExternalModal();
+  const failures=[];let prepared=[];
+  try{
+    await load(active);
+    if(context!==active||!evidenceReadable||!gradesReadable)throw Error("Current approved evidence or grade state could not be verified.");
+    const candidates=bulkExternalCandidateList();
+    if(!candidates.length)throw Error("No approved, verified, ungraded learners are currently eligible for bulk external evaluation.");
+    const assessmentSnap=await getDoc(doc(db,"assessments",active.taskId));
+    if(!assessmentSnap.exists())throw Error("Assessment not found.");
+    const assessment={id:assessmentSnap.id,...assessmentSnap.data()};
+    const criteria=parseWeightedRubric(assessment.evalCriteria,assessment.maxScore);
+    const privateAssessment=await getDoc(doc(db,"assessment_private",active.taskId))
+      .then(snapshot=>snapshot.exists()?snapshot.data():{}).catch(()=>({}));
+    const token=localStorage.getItem("Adminerva_github_token");
+    for(let index=0;index<candidates.length;index++){
+      const student=candidates[index],evidence=evidenceMap.get(student.id);
+      el("gbBulkExternalStatus").textContent="Preparing verified evidence "+(index+1)+"/"+candidates.length+"…";
+      try{
+        const latest=await getDocFromServer(doc(db,"assessment_evidence",student.id+"_"+active.taskId));
+        if(!latest.exists())throw Error("approved evidence is missing");
+        const current=latest.data();
+        if(current.status!=="approved"||!current.verifiedContributionCommits?.length||
+          current.approvedCheckpointSha!==evidence.approvedCheckpointSha||
+          evidenceRevision(current)!==evidenceRevision(evidence))
+          throw Error("approved evidence changed; refresh and retry");
+        const grade=await getDocFromServer(doc(db,"student_grades",student.id+"_"+active.taskId));
+        if(grade.exists())throw Error("an unpublished or published grade already exists");
+        const source=await loadPinnedV2Source({
+          repository:current.repository,checkpointSha:current.approvedCheckpointSha,
+          selectedCommits:current.selectedCommits,assessment,
+          verifiedContributionCommits:current.verifiedContributionCommits,
+          token,fetchImpl:globalThis.fetch
+        });
+        const payload=buildExternalEvaluationPayload({
+          assessment,criteria,evidence:source,privateAssessment,
+          contributionScope:current.contributionScope,maxScore:assessment.maxScore
+        });
+        prepared.push({
+          entryId:"candidate-"+String(prepared.length+1).padStart(3,"0"),
+          student,evidence:current,source,payload
+        });
+      }catch(error){failures.push((student.name||student.id)+": "+error.message);}
+    }
+    if(!prepared.length)throw Error("No learner package could be prepared. "+(failures[0]||""));
+    const sessionId="ext-"+Date.now().toString(36)+"-"+Math.random().toString(36).slice(2,8);
+    const responseShape=externalEvaluationResponseShape(criteria);
+    const batches=partitionBulkExternalEntries(prepared,{sessionId,targetBytes:240000,maxEntries:8}).map(batch=>({
+      ...batch,
+      packageText:buildBulkExternalEvaluationPackage({batchId:batch.batchId,entries:batch.entries,responseShape}),
+      responseText:"",issues:[],importedIds:new Set()
+    }));
+    Object.assign(bulkExternal,{
+      sessionId,preparedFor:active.section+"|"+active.taskId,section:active.section,taskId:active.taskId,
+      assessment,criteria,privateAssessment,batches,index:0,failures
+    });
+    analytics("bulk_external_evaluation_prepared",{feature:"gradebook",count_bucket:prepared.length,batches:batches.length});
+    el("gbBulkExternalSubtitle").textContent=active.section+" · "+(assessment.title||active.taskId);
+    el("gbBulkExternalStatus").textContent="Prepared "+prepared.length+" anonymous learner package(s) in "+batches.length+
+      " size-aware batch"+(batches.length===1?"":"es")+". Copy Batch 1, evaluate externally, then paste its JSON response.";
+  }catch(error){
+    bulkExternal.batches=[];bulkExternal.failures=[...failures,error.message];
+    el("gbBulkExternalStatus").textContent="Bulk external preparation failed: "+error.message;
+  }finally{
+    bulkExternal.busy=false;busy=false;render();renderBulkExternalModal();
+  }
+}
+function sameExternalEvidence(current,prepared){
+  return current?.status==="approved"&&current.approvedCheckpointSha===prepared.approvedCheckpointSha&&
+    evidenceRevision(current)===evidenceRevision(prepared)&&
+    JSON.stringify(current.selectedCommits||[])===JSON.stringify(prepared.selectedCommits||[])&&
+    JSON.stringify(current.verifiedContributionCommits||[])===JSON.stringify(prepared.verifiedContributionCommits||[]);
+}
+async function importBulkExternalBatch(){
+  const batch=currentBulkExternalBatch();
+  if(!batch||bulkExternal.busy||busy)return;
+  saveBulkExternalTextarea();
+  const raw=batch.responseText||"";
+  let parsed;
+  try{
+    parsed=parseBulkExternalEvaluationResponse(raw,{batchId:batch.batchId,entryIds:batch.entries.map(entry=>entry.entryId)});
+  }catch(error){
+    batch.issues=[error.message];showBulkExternalExceptions([...(bulkExternal.failures||[]),...batch.issues]);
+    el("gbBulkExternalStatus").textContent="Bulk import rejected: "+error.message;return;
+  }
+  const failures=[...parsed.issues];let imported=0;
+  busy=true;bulkExternal.busy=true;render();renderBulkExternalModal();
+  try{
+    if(!context||context.section!==bulkExternal.section||context.taskId!==bulkExternal.taskId)
+      throw Error("The Gradebook section or assessment changed. Reopen the prepared bulk evaluation from its original assessment.");
+    const assessment=bulkExternal.assessment,criteria=bulkExternal.criteria;
+    for(let index=0;index<batch.entries.length;index++){
+      const entry=batch.entries[index],result=parsed.results.get(entry.entryId);
+      if(!result)continue;
+      if(batch.importedIds.has(entry.entryId))continue;
+      el("gbBulkExternalStatus").textContent="Validating external result "+(index+1)+"/"+batch.entries.length+"…";
+      try{
+        const draft=parseSuggestedRubric(result,criteria,assessment.maxScore,entry.source);
+        draft.feedback=cleanGradeFeedback(draft.feedback);
+        if(entry.source.truncatedDiffs?.length)
+          draft.limitations=[draft.limitations,entry.source.truncatedDiffs.length+" relevant commit diff(s) were bounded; omitted changes require teacher review before assigning credit."].filter(Boolean).join(" ").slice(0,1400);
+        if(entry.source.missingPrimaryPaths?.length)
+          draft.limitations=[draft.limitations,"Some primary files in the verified commits were renamed or removed before the approved checkpoint ("+
+            entry.source.missingPrimaryPaths.slice(0,6).join(", ")+"). Retained commit changes require teacher confirmation."].filter(Boolean).join(" ").slice(0,1400);
+        const needsReview=draft.pendingPoints>0||draft.criteria.some(item=>item.confidence!=="high"||item.status!=="supported")||Boolean(draft.limitations);
+        const gradeRef=doc(db,"student_grades",entry.student.id+"_"+bulkExternal.taskId);
+        const evidenceRef=doc(db,"assessment_evidence",gradeRef.id);
+        const gradePayload={
+          studentId:entry.student.id,taskId:bulkExternal.taskId,section:bulkExternal.section,
+          score:draft.score,maxScore:Number(assessment.maxScore),feedback:draft.feedback,
+          published:false,reviewRequired:needsReview,manuallyAdjusted:false,
+          reviewPriority:needsReview?"needs_review":"ready_to_publish",
+          reviewReasons:[...new Set([
+            ...draft.criteria.filter(item=>item.pendingPoints>0||item.confidence!=="high"||item.status!=="supported")
+              .map(item=>item.name+": "+item.reviewAction),
+            ...(draft.limitations?[draft.limitations]:[])
+          ])].slice(0,30),
+          gradeSource:"external_evaluation_draft",gradingMode:"individual",sourceSelectionMode:"verified_evidence",
+          gradedSha:entry.evidence.approvedCheckpointSha,evidenceRevision:evidenceRevision(entry.evidence),
+          evaluationDraft:{...draft,generatedBy:"External evaluation imported through Adminerva bulk",teacherReviewed:false},
+          createdAt:serverTimestamp(),gradedAt:serverTimestamp()
+        };
+        await runTransaction(db,async tx=>{
+          const [currentEvidence,currentGrade]=await Promise.all([tx.get(evidenceRef),tx.get(gradeRef)]);
+          if(!currentEvidence.exists()||!sameExternalEvidence(currentEvidence.data(),entry.evidence))
+            throw Error("approved evidence changed after this package was prepared");
+          if(currentGrade.exists())throw Error("a grade now exists and is protected from bulk external overwrite");
+          tx.set(gradeRef,gradePayload);
+        });
+        try{await deleteDoc(draftRef(entry.student.id,bulkExternal.taskId));}catch{}
+        batch.importedIds.add(entry.entryId);imported++;
+      }catch(error){failures.push((entry.student.name||entry.student.id)+": "+error.message);}
+    }
+    batch.issues=failures;
+    analytics("bulk_external_evaluation_imported",{feature:"gradebook",status:failures.length?"partial":"success",count_bucket:imported});
+    el("gbBulkExternalStatus").textContent="Batch import complete: "+imported+" unpublished external evaluation draft"+
+      (imported===1?"":"s")+" created · "+failures.length+" exception(s). "+
+      "Clean drafts are ready for explicit publication; flagged drafts remain private for Review & Grade.";
+  }catch(error){
+    failures.push(error.message);batch.issues=failures;
+    el("gbBulkExternalStatus").textContent="Bulk import stopped: "+error.message;
+  }finally{
+    bulkExternal.busy=false;busy=false;
+    if(context&&context.section===bulkExternal.section&&context.taskId===bulkExternal.taskId)await load(context);
+    render();renderBulkExternalModal();
+  }
+}
 async function bulkEvaluate({rerun=false}={}){
   if(busy||!context)return;
-  const candidates=context.students.map(s=>({student:s,evidence:evidenceMap.get(s.id)})).filter(({student,evidence})=>{
-    const grade=context.grades?.[student.id];return rerun?eligibleToRerun(evidence,grade):
-      evidence?.status==="approved"&&evidence.verifiedContributionCommits?.length&&!grade&&!draftMap.has(student.id);
-  });
-  if(!candidates.length)return;
-  if(!confirm(rerun?"Re-evaluate "+candidates.length+" unreviewed, unpublished system draft(s)? Previous scores and feedback will be archived. Teacher-edited and published grades will not change.":
-    "Generate unpublished grade drafts for "+candidates.length+" eligible learner(s)? Evaluations with material uncertainty will be flagged for teacher review; clean drafts can be bulk published."))return;
+  const active=context;
+  el("gbBulkStatus").textContent="Refreshing approved evidence and unpublished grading state…";
+  await load(active);
+  if(context!==active||!evidenceReadable||!gradesReadable){
+    el("gbBulkStatus").textContent="System evaluation could not start because current approved evidence or grade state could not be verified. Refresh evidence and retry.";
+    return;
+  }
+  const candidates=context.students.map(s=>{
+    const evidence=evidenceMap.get(s.id),grade=context.grades?.[s.id];
+    const verified=evidence?.status==="approved"&&Array.isArray(evidence.verifiedContributionCommits)&&evidence.verifiedContributionCommits.length>0;
+    if(!verified)return null;
+    if(rerun){
+      return eligibleToRerun(evidence,grade)&&currentGradeForEvidence(grade,evidence)
+        ?{student:s,evidence,replaceExisting:true}:null;
+    }
+    if(!grade)return {student:s,evidence,replaceExisting:false};
+    return eligibleToRerun(evidence,grade)&&!currentGradeForEvidence(grade,evidence)
+      ?{student:s,evidence,replaceExisting:true}:null;
+  }).filter(Boolean);
+  if(!candidates.length){
+    const approved=context.students.filter(s=>evidenceMap.get(s.id)?.status==="approved").length;
+    const withoutVerified=context.students.filter(s=>{
+      const e=evidenceMap.get(s.id);
+      return e?.status==="approved"&&(!Array.isArray(e.verifiedContributionCommits)||!e.verifiedContributionCommits.length);
+    }).length;
+    const protectedGrades=context.students.filter(s=>{
+      const e=evidenceMap.get(s.id),g=context.grades?.[s.id];
+      return e?.status==="approved"&&e.verifiedContributionCommits?.length>0&&g&&
+        !(eligibleToRerun(e,g)&&(rerun?currentGradeForEvidence(g,e):!currentGradeForEvidence(g,e)));
+    }).length;
+    el("gbBulkStatus").textContent="No learners are eligible for "+(rerun?"draft re-evaluation":"a new system evaluation")+
+      ". "+approved+" approved · "+withoutVerified+" approved without verified individual commits · "+
+      protectedGrades+" already graded/protected.";
+    return;
+  }
+  const stale=candidates.filter(item=>item.replaceExisting).length;
+  if(!confirm(rerun
+    ?"Re-evaluate "+candidates.length+" current, unreviewed, unpublished system draft(s)? Previous scores and feedback will be archived. Teacher-edited and published grades will not change."
+    :"Run system evaluation for "+candidates.length+" eligible learner(s)?"+
+      (stale?" "+stale+" stale unpublished system draft(s) tied to older approved evidence will be archived and regenerated.":"")+
+      " Existing teacher-edited and published grades will not change."))return;
   showBulkExceptions([]);
   analytics(rerun?"system_reevaluation_started":"system_evaluation_started",{feature:"gradebook",count_bucket:candidates.length});
   busy=true;busyEvaluation=true;cancelEvaluation=false;render();let assessment,connection;const failures=[];let completed=0;
@@ -686,12 +999,19 @@ async function bulkEvaluate({rerun=false}={}){
     connection=await schoolAIStatus();
     for(const item of candidates){
       if(cancelEvaluation)break;
-      try{el("gbBulkStatus").textContent=(rerun?"Re-evaluating ":"Evaluating ")+item.student.name+" · "+completed+"/"+candidates.length+" complete…";await evaluateOne(item.student,item.evidence,assessment,connection,{rerun});completed++;}
-      catch(error){failures.push(item.student.name+": "+error.message);}
+      try{
+        const replacing=rerun||item.replaceExisting;
+        el("gbBulkStatus").textContent=(replacing?"Re-evaluating ":"Evaluating ")+item.student.name+" · "+completed+"/"+candidates.length+" complete…";
+        await evaluateOne(item.student,item.evidence,assessment,connection,{rerun:replacing});
+        completed++;
+      }catch(error){failures.push(item.student.name+": "+error.message);}
     }
   }catch(error){failures.push(error.message);}
   const stopped=cancelEvaluation;busy=false;busyEvaluation=false;await load(context);showBulkExceptions(failures);
-  analytics(rerun?"system_reevaluation_completed":"system_evaluation_completed",{feature:"gradebook",status:stopped?"stopped":failures.length?"partial":"success",count_bucket:completed});el("gbBulkStatus").textContent=(stopped?"Evaluation stopped: ":"Evaluation complete: ")+completed+" unpublished draft(s) "+(rerun?"replaced":"saved")+" · "+failures.length+" processing exception(s). Publish ready drafts in Gradebook; only flagged evaluations need individual review."+(failures.length?" "+failures.slice(0,2).join(" | "):"");
+  analytics(rerun?"system_reevaluation_completed":"system_evaluation_completed",{feature:"gradebook",status:stopped?"stopped":failures.length?"partial":"success",count_bucket:completed});
+  el("gbBulkStatus").textContent=(stopped?"Evaluation stopped: ":"Evaluation complete: ")+completed+
+    " unpublished draft(s) saved/updated · "+failures.length+" processing exception(s). Publish ready drafts in Gradebook; only flagged evaluations need individual review."+
+    (failures.length?" "+failures.slice(0,2).join(" | "):"");
 }
 window.addEventListener("adminerva:gradebook-grid-loaded",event=>void load(event.detail));
 if(window.__adminervaGradebookGridContext)void load(window.__adminervaGradebookGridContext);
@@ -702,5 +1022,13 @@ el("gbBulkReopen")?.addEventListener("click",()=>void window.withLoading("Reopen
 el("gbRefreshEvidence")?.addEventListener("click",()=>void window.withLoading("Refreshing class evidence…",refreshEvidence,{button:el("gbRefreshEvidence")}));
 window.addEventListener("focus",()=>{if(context&&!busy&&!document.getElementById("gbLegacyView")?.classList.contains("hidden"))void refreshEvidence();});
 el("gbBulkEvaluate")?.addEventListener("click",()=>void window.withLoading("Evaluating verified learner evidence…",()=>bulkEvaluate(),{button:el("gbBulkEvaluate")}));
+el("gbBulkExternal")?.addEventListener("click",()=>void prepareBulkExternalEvaluation());
+el("gbBulkExternalCopy")?.addEventListener("click",()=>void copyBulkExternalBatch());
+el("gbBulkExternalImport")?.addEventListener("click",()=>void importBulkExternalBatch());
+el("gbBulkExternalPrev")?.addEventListener("click",()=>moveBulkExternalBatch(-1));
+el("gbBulkExternalNext")?.addEventListener("click",()=>moveBulkExternalBatch(1));
+el("gbBulkExternalClose")?.addEventListener("click",closeBulkExternalEvaluation);
+el("gbBulkExternalDone")?.addEventListener("click",closeBulkExternalEvaluation);
+el("gbBulkExternalModal")?.addEventListener("click",event=>{if(event.target===el("gbBulkExternalModal")&&!bulkExternal.busy)closeBulkExternalEvaluation();});
 el("gbBulkRerun")?.addEventListener("click",()=>void window.withLoading("Re-evaluating learner evidence…",()=>bulkEvaluate({rerun:true}),{button:el("gbBulkRerun")}));
 el("gbCancelEvaluation")?.addEventListener("click",()=>{cancelEvaluation=true;el("gbBulkStatus").textContent="Stopping after the current learner. Completed drafts are preserved.";});
