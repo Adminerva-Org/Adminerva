@@ -14,6 +14,14 @@ let historyPage=0,hasOlderCommits=false,historyLoading=false,historyHeadSha="",c
 let evidenceBusy=false;
 let stopEvidence=null,stopClaims=null,selectionDirty=false,evidenceSyncing=true,claimsReadable=false;
 const status=text=>{el("evidenceStatus").textContent=text;};
+function submissionStatus(text,tone="info"){
+  status(text);
+  const node=el("evidenceSubmissionStatus");
+  if(!node)return;
+  node.textContent=text;
+  node.className="mt-2 text-xs font-semibold break-words "+
+    (tone==="success"?"text-emerald-800":tone==="error"?"text-rose-800":"text-slate-700");
+}
 function stopLiveEvidence(){stopEvidence?.();stopEvidence=null;}
 function stopLiveClaims(){stopClaims?.();stopClaims=null;}
 function currentClaims(records,repository,assessmentId){
@@ -351,6 +359,7 @@ async function load(){
   selectionDirty=false;evidenceSyncing=true;
   historyPage=0;hasOlderCommits=false;historyLoading=false;historyHeadSha="";refreshHistoryControl();
   el("evidenceCommitList").replaceChildren();el("evidencePreview").textContent="";
+  if(el("evidenceSubmissionStatus"))el("evidenceSubmissionStatus").textContent="";
   const summary=el("evidenceSelectionSummary");if(summary)summary.textContent="No evidence commits selected yet.";
   status("Loading your linked repository's commits…");
   try{
@@ -437,9 +446,9 @@ async function submit(){
   const active=context,sequence=loadSequence;
   try{
     const guidance=evidenceSelectionGuidance([...selected],checkpoint);
-    if(!guidance.ready){status(guidance.message);return;}
+    if(!guidance.ready){submissionStatus(guidance.message,"error");return;}
     const {selectedCommits,checkpointSha}=normalizeSelection([...selected],checkpoint);
-    evidenceBusy=true;render();status("Checking that the project checkpoint contains all selected evidence…");
+    evidenceBusy=true;render();submissionStatus("Checking that the project checkpoint contains all selected evidence…");
     const repo=evidenceRepository(active);
     const compatible=await resolveSubmissionCheckpoint({
       selectedCommits,checkpointSha,latestCheckpointSha:historyHeadSha,
@@ -453,17 +462,12 @@ async function submit(){
     if(compatible.advanced){
       checkpoint=submissionCheckpointSha;
       selectionDirty=true;render();
-      status("New commits require a newer project checkpoint. The latest repository revision "+
-        submissionCheckpointSha.slice(0,12)+" was verified to contain all selected commits. Confirm to resubmit.");
+      submissionStatus("Adminerva verified a newer project checkpoint "+submissionCheckpointSha.slice(0,12)+
+        " that contains all selected commits. Using it automatically for this resubmission.");
     }
-    if(!confirm((compatible.advanced
-      ?"Your previous checkpoint did not contain all selected commits. Adminerva verified a newer project checkpoint: "+submissionCheckpointSha.slice(0,12)+".\n\n"
-      :"")+"Submit "+selectedCommits.length+" evidence commit"+(selectedCommits.length===1?"":"s")+
-      " using project checkpoint "+submissionCheckpointSha.slice(0,12)+
-      "? The checkpoint may be a teammate's later project commit; it is project context, not individual credit."))return;
     if(sequence!==loadSequence||context!==active)return;
     const wasReopened=saved?.status==="reopened";
-    status(wasReopened?"Resubmitting reopened evidence…":"Submitting selected evidence…");
+    submissionStatus(wasReopened?"Resubmitting reopened evidence…":"Submitting selected evidence…");
     const ref=doc(db,"assessment_evidence",active.profile.id+"_"+active.task.id);
     const common={selectedCommits,checkpointSha:submissionCheckpointSha,updatedAt:serverTimestamp()};
     if(saved){
@@ -476,15 +480,21 @@ async function submit(){
         submittedAt:serverTimestamp()
       });
     }
-    const result=(await getDoc(ref)).data();
+    const confirmed=await getDoc(ref);
+    if(!confirmed.exists())throw Error("The evidence record was not found after saving.");
+    const result=confirmed.data();
+    const confirmedSelection=normalizeSelection(result.selectedCommits||[],result.checkpointSha);
+    if(result.status!=="submitted"||confirmedSelection.checkpointSha!==submissionCheckpointSha||
+      JSON.stringify(confirmedSelection.selectedCommits)!==JSON.stringify(selectedCommits))
+      throw Error("The server did not confirm the resubmitted evidence. Refresh the assessment before trying again.");
     if(context!==active)return;
     saved=result;selectionDirty=false;
     render();
-    status(wasReopened?"Resubmission saved. Status: Submitted — awaiting fresh teacher approval. Your previously reopened evidence is no longer awaiting student changes.":"Evidence submitted for teacher verification. Status: Submitted — awaiting teacher approval. This is not an approved contribution or grade.");
+    submissionStatus(wasReopened?"Resubmission saved. Status: Submitted — awaiting fresh teacher approval. Your previously reopened evidence is no longer awaiting student changes.":"Evidence submitted for teacher verification. Status: Submitted — awaiting teacher approval. This is not an approved contribution or grade.","success");
     window.dispatchEvent(new CustomEvent("adminerva:submission-recorded",{
       detail:{assessmentId:active.task.id,studentId:active.profile.id,revisionSha:submissionCheckpointSha,evidenceStatus:"submitted"}
     }));
-  }catch(error){if(context===active)status("Evidence submission failed: "+error.message);}
+  }catch(error){if(context===active)submissionStatus("Evidence submission failed: "+error.message,"error");}
   finally{if(context===active){evidenceBusy=false;render();}}
 }
 async function withdrawEvidence(){
