@@ -515,7 +515,7 @@ service cloud.firestore {
           data.teacherReviewNote.size() > 0;
         let systemReady = data.manuallyAdjusted == false &&
           data.reviewRequired == false &&
-          data.get("gradeSource","") == "system_evaluation_draft" &&
+          data.get("gradeSource","") in ["system_evaluation_draft","external_evaluation_draft"] &&
           data.get("reviewPriority","") == "ready_to_publish" &&
           data.get("reviewReasons",[]) is list &&
           data.get("reviewReasons",[]).size() == 0 &&
@@ -532,7 +532,7 @@ service cloud.firestore {
       }
       function validSystemDraft(data) {
         let evidence=getAfter(/databases/$(database)/documents/assessment_evidence/$(gradeId)).data;
-        return data.get("gradeSource","") == "system_evaluation_draft" &&
+        return data.get("gradeSource","") in ["system_evaluation_draft","external_evaluation_draft"] &&
           data.published == false && data.reviewRequired == true &&
           data.manuallyAdjusted == false && data.studentId == evidence.studentId &&
           data.taskId == evidence.assessmentId && evidence.status == "approved" &&
