@@ -1,9 +1,9 @@
 import {feedbackSummary,inlineTask,reviewNotice} from "./review-ui.mjs?v=1.3.0";
 import {openFeedbackDrawer} from "./feedback-drawer.mjs?v=1.3.0";
-import {approveEvaluationDraftAndPublish,publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=3.0.1";
+import {approveEvaluationDraftAndPublish,publicationCandidates,publishGradeEntries,publicationRecovery} from "./grade-publication.mjs?v=3.0.2";
 import {approvableEvaluationDraft,legacyReadyDraft} from "./services/publication-queue.mjs?v=1.3.3";
 import {assertGradeVersion} from "./services/grade-version.mjs?v=1.3.0";
-import {writePublicationRevision} from "./grade-publication.mjs?v=3.0.1";
+import {writePublicationRevision} from "./grade-publication.mjs?v=3.0.2";
 /** Teacher grade administration, protected revisions and explicit publication. */
 import { db,auth } from "../core/firebase-core.js?v=1.3.0";
 import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
