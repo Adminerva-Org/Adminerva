@@ -59,6 +59,8 @@ function renderBlockers(data){
   }
 }
 function renderCounts(data){
+  byId("pilot-roster-target").textContent="The protected roster target is "+data.expectedTotal+" approved students across four Senior High ICT sections.";
+
   const host=byId("pilot-section-counts");host.replaceChildren();
   for(const section of data.counts){
     const card=document.createElement("article");card.className="pilot-section-card";
