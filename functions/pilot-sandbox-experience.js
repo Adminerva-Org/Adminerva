@@ -263,6 +263,28 @@ async function clonePreview({db,auth,ctx,input}){
     source:{sourceKind:type,originalOwnedBy:ownerUid}});
   return {recordId:next.id};
 }
+async function cloneSchedule({db,auth,ctx,input}){
+  const ownerUid=uid(input.ownerUid||ctx.uid),sourceId=id(input.sourceId);
+  // Resolve the source from the already-authorized, sanitized preview model.
+  // Never fetch arbitrary school documents directly from user input.
+  const view=await readPreview({db,auth,ctx,input:{ownerUid}});
+  const source=(view.preview.schedules||[]).find(row=>row.sourceId===sourceId&&
+    row.source===String(input.source||""));
+  if(!source)deny("permission-denied","The timetable is not available in your authorized preview.");
+  const records=db.collection("schools/"+ctx.schoolId+"/pilot_sandboxes/"+ctx.uid+"/records");
+  if((await records.limit(100).get()).size>=100)
+    deny("resource-exhausted","Your private sandbox holds 100 records.");
+  const rows=safeRows(source.rows||[]);
+  const payload={schoolYear:scalar(source.schoolYear,20)||"2026-2027",
+    period:"Practice timetable",rows};
+  const now=new Date().toISOString(),ref=records.doc("schedule-"+randomUUID());
+  await ref.create({schoolId:ctx.schoolId,ownerUid:ctx.uid,kind:"schedule",
+    title:"Private copy · "+scalar(source.label,110),
+    details:"Authorized timetable preview copied into a separate practice record.",
+    payload,version:1,createdAt:now,updatedAt:now,
+    source:{kind:source.source,originalOwnedBy:ownerUid}});
+  return {recordId:ref.id,rows:rows.length};
+}
 async function updateLearner({db,ctx,input}){
   const records=db.collection("schools/"+ctx.schoolId+"/pilot_sandboxes/"+ctx.uid+"/records");
   const ref=records.doc(id(input.recordId));
@@ -401,6 +423,7 @@ async function runPilotExperience({db,auth,ctx,input}){
   if(action==="seed_demo")return seedDemo({db,ctx});
   if(action==="create_demo_assessment")return createAssessment({db,ctx,input});
   if(action==="clone_preview")return clonePreview({db,auth,ctx,input});
+  if(action==="clone_preview_schedule")return cloneSchedule({db,auth,ctx,input});
   if(["sim_submit","sim_grade_draft","sim_grade_publish","sim_reopen"].includes(action))
     return updateLearner({db,ctx,input});
   deny("invalid-argument","Unknown pilot experience operation.");
