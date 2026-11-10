@@ -70,3 +70,22 @@ St. Sebastian can be added later without restarting the school-wide migration. A
 ## Promotion to production
 
 Promotion from `pilot` to `active` is a separate institutional event. It still requires the real authority/calendar/privacy/retention/backup references and activation attestations. A later school-wide migration and successful cutover package are required before `v4_only`.
+
+
+## Operator handoff — November 10, 2026
+
+**GitHub workflow safeguard:** [PR #141](https://github.com/Adminerva-Org/Adminerva/pull/141) removed the workflow-file-push trigger that previously applied an Admin SDK migration with repository credentials. The replacement workflow `.github/workflows/mcs-reviewed-live-roster-migration.yml` is **manual and read-only**, and has no Firebase credential access or apply operation. Running this preflight does not activate the school pilot or create records. Review the protected migration plan/approval and perform any authorized write operations through the separately restricted operator process; do not invoke `scripts/mcs-shs-pilot-live-execute.cjs` as a shortcut for reviewed approvals.
+
+**Pilot UI and readiness:** [PR #142](https://github.com/Adminerva-Org/Adminerva/pull/142) corrected the stale 167-student page text. The canonical review baseline is **169 approved students** across St. Isidore (45), St. Carlo (35), St. Philip (45) and St. Anselm (44). The pilot overview now derives its count label from the verified response. A `school_admin` must also retain `teacher` to initiate this teacher-led pilot; `productionAuthorized` must remain false, `compatibilityMode` must remain `legacy_allowed`, and changing reviewed roster decisions invalidates an in-progress start. The UI disables duplicate actions and ignores stale page refreshes.
+
+**Important limitation:** Count equality and a green source-level check do **not** prove that all identities, memberships, course enrollments, teaching assignments, and backup snapshots are correctly matched. Before requesting a start, an authorized operator must inspect the protected foundation and academic-access plan/approval receipts and confirm the correct student-to-class and teacher-to-course relationships. Do not enter student names, account identifiers, credentials, or private receipt contents into a public PR.
+
+**Pending live actions:**
+- Approve a controlled deployment of the compatible V4 callables/rules and opt-in pilot surfaces while retaining legacy 3.x Gradebook.
+- Enter the actual academic-year ID and exact start/end dates in the restricted pilot operator file; July–May are defaults, **not** official dates.
+- Verify the first MCS administrator's active, school-scoped `school_admin` **and** `teacher` membership.
+- Obtain a current private snapshot/mirror, verified Auth identity candidates, and protected 169-student roster review; preserve both legitimate roster additions and any historical or deferred records.
+- Complete the approved preflight and non-destructive target checks before each protected apply stage; record receipts. Do not auto-approve identity, catalog or access mappings from expected counts alone.
+- Once canonical data, receipts and deployment are ready, start `draft → pilot` by the designated authorized school administrator and perform only the focused live teacher/student, cross-school denial and rollback checks.
+
+**Current declaration:** Source changes and local/isolated checks have been completed; no live school migration, Firebase backend deployment, membership grant, pilot start, production cutover, or public V4 release is claimed.
