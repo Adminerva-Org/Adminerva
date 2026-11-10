@@ -49,12 +49,13 @@ async function main(){
     for(const user of batch.users)if(user.email)
       authMatches.set(String(user.email).trim().toLowerCase(),user);
   }
-  const uids=[],unresolved=[];
+  const uids=[],linkedRows=[],unresolved=[];
   for(const row of included){
     const candidate=row.email?authMatches.get(row.email):null;
     const verified=candidate&&candidate.emailVerified&&!candidate.disabled?candidate.uid:null;
     const uid=row.reviewed?.authUid||verified;
-    if(uid)uids.push(uid);else unresolved.push(row.id);
+    if(uid){uids.push(uid);linkedRows.push({uid,sectionId:row.section.sectionId});}
+    else unresolved.push(row.id);
   }
   const [membersSnapshot,peopleSnapshot]=await Promise.all([
     db.collection("schools/"+SCHOOL_ID+"/memberships").get(),
@@ -79,6 +80,60 @@ async function main(){
     " extraAdmins="+extras.schoolAdmin+" extraStudents="+extras.student+
     " wrongSchool="+extras.wrongSchool+" extraWithPerson="+extras.hasCanonicalPerson+
     " missingPilotStudentMemberships="+missingPilotMemberships);
+  const [offeringsSnap,enrollmentsSnap,assignmentsSnap]=await Promise.all([
+    db.collection("schools/"+SCHOOL_ID+"/course_offerings").get(),
+    db.collection("schools/"+SCHOOL_ID+"/enrollments").get(),
+    db.collection("schools/"+SCHOOL_ID+"/staff_assignments").get()
+  ]);
+  const personByUid=new Map();
+  for(const person of peopleSnapshot.docs){
+    const uid=person.data()?.authUid;
+    if(uid)personByUid.set(uid,[...(personByUid.get(uid)||[]),person]);
+  }
+  const offerings=offeringsSnap.docs.map(doc=>({id:doc.id,...doc.data()}));
+  const offeringsBySection=new Map();
+  for(const section of PILOT_SECTIONS)
+    offeringsBySection.set(section.sectionId,offerings.filter(row=>
+      row.sectionId===section.sectionId&&row.schoolId===SCHOOL_ID&&row.status==="active"));
+  const enrollmentDocs=enrollmentsSnap.docs.map(doc=>doc.data());
+  const assignments=assignmentsSnap.docs.map(doc=>doc.data());
+  const academicLinks={
+    missingStudentPeople:0,wrongStudentPeople:0,
+    invalidOfferings:0,incorrectStudentEnrollmentSets:0,invalidTeacherAssignments:0
+  };
+  for(const section of PILOT_SECTIONS){
+    const selected=offeringsBySection.get(section.sectionId)||[];
+    if(selected.length!==2||new Set(selected.map(o=>o.termId)).size!==2)
+      academicLinks.invalidOfferings++;
+  }
+  for(const row of linkedRows){
+    const matches=personByUid.get(row.uid)||[];
+    if(matches.length!==1){academicLinks.missingStudentPeople++;continue;}
+    const person=matches[0],data=person.data();
+    if(data.kind!=="student"||data.status!=="active"||data.schoolId!==SCHOOL_ID){
+      academicLinks.wrongStudentPeople++;continue;
+    }
+    const expected=new Set((offeringsBySection.get(row.sectionId)||[]).map(o=>o.id));
+    const assigned=enrollmentDocs.filter(e=>e.personId===person.id&&e.status==="active");
+    const actual=new Set(assigned.map(e=>e.offeringId));
+    if(expected.size!==2||assigned.length!==2||actual.size!==2||
+       [...expected].some(id=>!actual.has(id))||
+       assigned.some(e=>e.sectionId!==row.sectionId||e.schoolId!==SCHOOL_ID))
+      academicLinks.incorrectStudentEnrollmentSets++;
+  }
+  const wantedOfferings=new Set(offerings.map(o=>o.id));
+  if(assignments.length!==8||
+    assignments.some(a=>a.teacherUid!==school?.firstAdminUid||
+      a.status!=="active"||a.schoolId!==SCHOOL_ID||!wantedOfferings.has(a.offeringId))||
+    new Set(assignments.map(a=>a.offeringId)).size!==8)
+    academicLinks.invalidTeacherAssignments++;
+  const academicLinkageReady=Object.values(academicLinks).every(value=>value===0)&&linkedRows.length===EXPECTED_TOTAL;
+  console.log("MCS_PILOT_ACADEMIC_LINKAGE complete="+academicLinkageReady+
+    " missingStudentPeople="+academicLinks.missingStudentPeople+
+    " wrongStudentPeople="+academicLinks.wrongStudentPeople+
+    " invalidOfferings="+academicLinks.invalidOfferings+
+    " incorrectStudentEnrollmentSets="+academicLinks.incorrectStudentEnrollmentSets+
+    " invalidTeacherAssignments="+academicLinks.invalidTeacherAssignments);
   const canonical={
     people:peopleCount.data().count,memberships:membersCount.data().count,
     offerings:offeringsCount.data().count,enrollments:enrollmentsCount.data().count,
@@ -100,6 +155,7 @@ async function main(){
   if(unresolved.length)blockers.push("verified_identity_links_pending");
   if(new Set(uids).size!==uids.length)blockers.push("duplicate_auth_links");
   if(!canonicalCountMatch)blockers.push("canonical_people_and_academics_pending");
+  if(!academicLinkageReady)blockers.push("pilot_academic_relationship_review_pending");
   const report={
     readOnly:true,productionAuthorized:school?.productionAuthorized===true,
     schoolState:school?.state||"missing",compatibilityMode:school?.compatibilityMode||"missing",
@@ -108,7 +164,7 @@ async function main(){
     excludedLegacyRows:records.length-included.length,
     emailVerifiedOrReviewedLinked:uids.length,unresolvedStudentLinks:unresolved.length,
     duplicateAuthLinks:uids.length-new Set(uids).size,
-    sections,canonical,canonicalCountMatch,blockers,
+    sections,canonical,canonicalCountMatch,academicLinks,academicLinkageReady,blockers,
     status:!blockers.length?"ready_for_protected_operator_review":"blocked",
     limitations:"Aggregated counts do not prove approved source provenance, enrollment/teacher relationship correctness, protected backup or live pilot acceptance."
   };
