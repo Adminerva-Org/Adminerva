@@ -297,7 +297,7 @@ LAST WEEK'S CURRICULUM STATE:\n${safeTextState}`;
     : "No reference excerpts were selected.";
 
   const prompt = `
-You are an expert curriculum developer generating a lesson plan for Adminerva. Return ONLY the required JSON object.
+You are an expert curriculum developer generating a lesson plan for Adminerva. Complete the plan from the supplied package without asking follow-up questions. Return ONLY the required JSON object.
 
 DATA USE CONTRACT — follow this precedence:
 1. TEACHER INSTRUCTIONS control operational choices such as catch-up, laboratory work, assessment emphasis, suspensions, or special activities. Do not let them silently replace curriculum content unless they explicitly request a content change.
@@ -333,10 +333,11 @@ ${gradeSpecificRules}
    - evaluation: align to the lesson competencies and the teacher's instructions. Use a referenced Let's Practice/checking activity when the teacher explicitly asks for it. Do not default to Quipper.
    - values_integration: use the same appropriate formation/core-value source and format '[Core Value Keyword] - [Specific application to this lesson topic]'.
    - remarks:
-     * copy ONLY the meeting lines assigned to this session from LESSON MEETING CONTEXT;
-     * include all affected sections assigned to this session;
-     * preserve section, full date, and time;
-     * do not mention unrelated timetable events;
+     * use ONLY meeting lines whose SESSION label matches this session;
+     * for each matching meeting, write '[Section] | [Full Date] | [Time Slot]';
+     * include every affected section assigned to this session and separate multiple meetings with semicolons;
+     * do not copy the SESSION label, duration, subject name, or unrelated timetable events into remarks;
+     * if a matching meeting has an AFFECTING EVENT, append that event only to the affected meeting/session;
      * append teacher-specified suspensions/holidays/special notes only when applicable to that session;
      * if no lesson meeting context exists, do not invent section names, dates, or times.
 6. SESSION FLEX:
