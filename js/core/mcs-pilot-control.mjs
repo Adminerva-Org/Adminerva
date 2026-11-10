@@ -3,7 +3,7 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"mcsPilotControl");
 const byId=id=>document.getElementById(id);
-let state=null,busy=false,pendingException=null;
+let state=null,busy=false,pendingException=null,refreshEpoch=0;
 
 function escapeText(value){return String(value??"");}
 function say(message,tone="neutral"){
@@ -175,7 +175,7 @@ function renderStart(data){
   const isDraft=data.schoolState==="draft";
   form.hidden=!isDraft;
   byId("pilot-active-note").hidden=data.schoolState!=="pilot";
-  button.disabled=!data.readyToStart;
+  button.disabled=busy||!data.readyToStart;
   if(!isDraft)return;
   note.textContent=data.readyToStart?
     "All current pre-pilot gates are clear. Starting keeps legacy compatibility enabled and does not authorize production cutover.":
@@ -186,18 +186,44 @@ function render(data){
   renderIdentities(data);renderMismatchRecords(data);renderStart(data);
   byId("pilot-workspace").hidden=false;
 }
-async function refresh(){
+async function refresh({internal=false}={}){
+  if(busy&&!internal)return false;
+  const sequence=++refreshEpoch;
   say("Loading MCS controlled-pilot status…");
-  try{render(await call("overview"));say("Controlled-pilot status loaded.","ok");}
-  catch(error){byId("pilot-workspace").hidden=true;say(error?.message||"Pilot status is unavailable.","error");}
+  try{
+    const next=await call("overview");
+    if(sequence!==refreshEpoch||!auth.currentUser)return false;
+    render(next);say("Controlled-pilot status loaded.","ok");return true;
+  }catch(error){
+    if(sequence!==refreshEpoch)return false;
+    byId("pilot-workspace").hidden=true;
+    say(error?.message||"Pilot status is unavailable. Choose Refresh status to retry.","error");
+    return false;
+  }
 }
 async function mutate(action,details,success){
-  if(busy)return;busy=true;document.body.dataset.busy="true";say("Saving reviewed pilot decision…");
-  try{await call(action,details);await refresh();say(success,"ok");}
-  catch(error){say(error?.message||"The pilot decision was not saved.","error");}
-  finally{busy=false;delete document.body.dataset.busy;}
+  if(busy)return;
+  busy=true;++refreshEpoch;
+  document.body.dataset.busy="true";
+  byId("pilot-workspace").setAttribute("aria-busy","true");
+  byId("pilot-refresh").disabled=true;
+  byId("pilot-start-button").disabled=true;
+  say("Saving reviewed pilot decision…");
+  try{
+    await call(action,details);
+    const updated=await refresh({internal:true});
+    if(updated)say(success,"ok");
+    else say("Decision submitted, but the updated pilot status could not be confirmed. Refresh status before taking another action.","error");
+  }catch(error){say(error?.message||"The pilot decision was not saved.","error");}
+  finally{
+    busy=false;delete document.body.dataset.busy;
+    byId("pilot-workspace").removeAttribute("aria-busy");
+    byId("pilot-refresh").disabled=false;
+    if(state)renderStart(state);
+  }
 }
 byId("pilot-refresh").addEventListener("click",()=>void refresh());
+auth.onAuthStateChanged(()=>{++refreshEpoch;state=null;byId("pilot-workspace").hidden=true;});
 byId("pilot-exception-cancel").addEventListener("click",()=>{pendingException=null;byId("pilot-exception-dialog").close();});
 byId("pilot-exception-form").addEventListener("submit",event=>{
   event.preventDefault();if(!pendingException||busy)return;
