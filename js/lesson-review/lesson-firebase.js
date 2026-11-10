@@ -9,7 +9,7 @@ import {ADMIN_EMAIL,TEACHER_EMAIL} from "../core/staff-role.mjs?v=1.3.0";
 import {legacyLessonRecovery} from "../core/legacy-lesson-recovery.mjs?v=1.3.2";
 import {personalPlanId,requireCurrentVersion} from "./workspace-model.mjs?v=1.3.0";
 import {scheduleScope,localScheduleText,normalizeSchoolYear,parseScheduleRows} from "./schedule-scope.mjs?v=1.3.0";
-import {filterScheduleRowsForLesson,isLegacySharedScope,isLegacyScheduleRetired,scheduleRowsToLessonText} from "./legacy-schedule-compat.mjs?v=1.4.19";
+import {filterScheduleRowsForLesson,isLegacySharedScope,isLegacyScheduleRetired,buildLessonMeetingContext} from "./legacy-schedule-compat.mjs?v=1.4.20";
 import {
   collection,
   getDocs,
@@ -41,10 +41,15 @@ window.fetchScheduleForLesson = async function (schoolYear, academicTerm, grade=
   if(isLegacySharedScope(scope)&&isLegacyScheduleRetired()){
     throw Error("The 2026–2027 legacy timetable is archived. Create a timetable for the new school year before generating new lesson plans.");
   }
-  const filteredText=rows=>scheduleRowsToLessonText(
-    filterScheduleRowsForLesson(rows,{grade,subject}),
-    {dateRange,grade}
-  );
+  const filteredText=rows=>{
+    const context=buildLessonMeetingContext(
+      filterScheduleRowsForLesson(rows,{grade,subject}),
+      {dateRange,grade}
+    );
+    window.currentLessonMeetings=context.meetings;
+    window.currentSessionMeetingMap=context.bySession;
+    return context.text;
+  };
   const local = () => {
     const rows=parseScheduleRows(lessonStorage.getItem(scope.jsonKey));
     if(rows.length)return filteredText(rows);
@@ -52,7 +57,11 @@ window.fetchScheduleForLesson = async function (schoolYear, academicTerm, grade=
     // safely scoped for lesson generation. Only expose it for an unfiltered
     // schedule read; lesson generation should treat missing JSON rows as no
     // usable timetable context.
-    if(grade||subject)return "";
+    if(grade||subject){
+      window.currentLessonMeetings=[];
+      window.currentSessionMeetingMap={};
+      return "";
+    }
     return localScheduleText(lessonStorage, schoolYear, academicTerm);
   };
   // A failed cloud save must not silently replace recent edits on this device.
@@ -273,6 +282,7 @@ window.saveLessonPlan = async function () {
         .getElementById("lpCustomInstructions")
         .value.trim(),
       schedule: await window.fetchScheduleForLesson(schoolYear, academicTerm, grade, subject, dateRange),
+      schedule_meetings: Array.isArray(window.currentLessonMeetings) ? window.currentLessonMeetings : [],
       reference_folders: Array.from(
         document.querySelectorAll(".folder-checkbox:checked"),
       ).map((cb) => cb.value),
