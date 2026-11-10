@@ -27,6 +27,7 @@
   <div id="pilotWorkspace" hidden class="space-y-5">
     <div class="flex flex-wrap gap-2" role="tablist" aria-label="Pilot workspace sections">
       <button type="button" data-pilot-tab="preview" role="tab" aria-selected="true" class="rounded-lg bg-indigo-900 text-white px-4 py-2.5 text-sm font-bold">Shared preview</button>
+      <button type="button" data-pilot-tab="simulation" role="tab" aria-selected="false" class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold">Practice workflows</button>
       <button type="button" data-pilot-tab="sandbox" role="tab" aria-selected="false" class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold">My private sandbox</button>
       <button type="button" data-pilot-tab="tour" role="tab" aria-selected="false" class="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold">Administration tour</button>
     </div>
@@ -57,6 +58,74 @@
         <p id="pilotGrantStatus" class="text-sm text-slate-600" role="status"></p>
         <div id="pilotGrantedList" class="space-y-2"></div>
       </article>
+    </section>
+    <section id="pilot-simulation" role="tabpanel" hidden class="space-y-4">
+      <div class="rounded-2xl bg-white border border-slate-200 p-5 sm:p-6">
+        <div class="flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
+          <div>
+            <h2 class="text-xl font-extrabold">Functional classroom simulation</h2>
+            <p class="text-sm text-slate-600 mt-1">Practice assessment creation, submission review, grading drafts, publication, and reopening with fictional learners only. Nothing is sent to actual students.</p>
+          </div>
+          <button id="pilotSeedDemo" type="button" class="shrink-0 rounded-lg bg-indigo-900 text-white font-bold text-sm px-4 py-3">Set up example classroom</button>
+        </div>
+        <p id="pilotSimulationStatus" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite"></p>
+      </div>
+      <div class="grid lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)] gap-4">
+        <article class="rounded-2xl bg-white border border-slate-200 p-5 space-y-4">
+          <div class="flex flex-col md:flex-row md:items-end justify-between gap-3">
+            <div><h3 class="font-extrabold text-lg">Simulated assessment &amp; gradebook</h3><p class="text-sm text-slate-600">All learner identities and scores below are test fixtures.</p></div>
+            <label class="text-sm font-bold w-full md:w-72">Select practice assessment
+              <select id="pilotDemoAssessment" class="block mt-1 rounded-lg border border-slate-300 p-3 w-full bg-white"><option value="">Select a sample…</option></select>
+            </label>
+          </div>
+          <div id="pilotDemoSummary" class="rounded-xl bg-slate-50 border border-slate-200 p-4 text-sm text-slate-600">Create an example classroom to begin.</div>
+          <div class="overflow-x-auto"><table class="min-w-full text-sm text-left">
+            <thead class="bg-slate-100 text-slate-700"><tr><th class="p-3">Fictional learner</th><th class="p-3">Submission</th><th class="p-3">Score</th><th class="p-3">Action</th></tr></thead>
+            <tbody id="pilotDemoLearners"><tr><td colspan="4" class="p-5 text-center text-slate-500">No sample assessment selected.</td></tr></tbody>
+          </table></div>
+        </article>
+        <article class="rounded-2xl bg-white border border-slate-200 p-5 space-y-4">
+          <div><h3 class="font-extrabold text-lg">Create a practice assessment</h3><p class="text-sm text-slate-600 mt-1">Define a rubric for the private, fictional classroom.</p></div>
+          <form id="pilotDemoCreateForm" class="space-y-3">
+            <label class="block text-sm font-bold">Title
+              <input name="title" maxlength="140" required placeholder="Example: Python practical" class="mt-1 block w-full rounded-lg border border-slate-300 p-3 font-normal">
+            </label>
+            <label class="block text-sm font-bold">Practice section
+              <input name="section" maxlength="100" required value="Demo ICT – Section A" class="mt-1 block w-full rounded-lg border border-slate-300 p-3 font-normal">
+            </label>
+            <label class="block text-sm font-bold">Instructions
+              <textarea name="instructions" maxlength="1800" rows="3" class="mt-1 block w-full rounded-lg border border-slate-300 p-3 font-normal"></textarea>
+            </label>
+            <label class="block text-sm font-bold">Rubric criteria (one per line; name : points)
+              <textarea name="rubric" maxlength="1000" rows="4" required class="mt-1 block w-full rounded-lg border border-slate-300 p-3 font-mono text-sm">Completeness: 30
+Correctness: 40
+Code quality: 30</textarea>
+            </label>
+            <button type="submit" class="w-full rounded-lg bg-indigo-900 text-white px-4 py-3 font-bold">Create private assessment</button>
+          </form>
+        </article>
+      </div>
+      <section class="rounded-2xl bg-white border border-slate-200 p-5 space-y-3">
+        <h3 class="font-extrabold text-lg">Other practice modules</h3>
+        <div id="pilotDemoModules" class="grid md:grid-cols-2 gap-3"><p class="text-sm text-slate-500">Create an example classroom to populate your schedules, lessons, and administration scenarios.</p></div>
+      </section>
+      <dialog id="pilotGradeDialog" class="w-[min(94vw,510px)] rounded-2xl border border-slate-200 p-0 shadow-2xl backdrop:bg-slate-950/60" aria-labelledby="pilotGradeTitle">
+        <form id="pilotGradeForm" class="p-5 space-y-4">
+          <div class="flex items-start justify-between gap-3">
+            <div><p class="text-xs uppercase font-bold text-indigo-800">Private grading simulation</p><h3 id="pilotGradeTitle" class="text-xl font-extrabold">Grade fictional work</h3></div>
+            <button type="button" id="pilotGradeClose" class="rounded-lg border border-slate-300 px-3 py-2 text-sm">Close</button>
+          </div>
+          <p id="pilotGradeInstructions" class="text-sm text-slate-600"></p>
+          <label class="block text-sm font-bold">Score
+            <input name="score" type="number" min="0" step="0.01" required class="block mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal">
+          </label>
+          <label class="block text-sm font-bold">Feedback
+            <textarea name="feedback" minlength="10" maxlength="1200" required rows="4" class="block mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal" placeholder="Provide descriptive practice feedback."></textarea>
+          </label>
+          <p id="pilotGradeStatus" class="text-sm text-slate-600" role="status"></p>
+          <div class="flex flex-wrap gap-2"><button type="submit" class="rounded-lg bg-indigo-800 text-white px-4 py-3 font-bold">Save private grade draft</button><button type="button" id="pilotGradeCancel" class="rounded-lg border border-slate-300 px-4 py-3 font-bold">Cancel</button></div>
+        </form>
+      </dialog>
     </section>
     <section id="pilot-sandbox" role="tabpanel" hidden class="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
       <article class="bg-white border border-slate-200 rounded-2xl p-5 space-y-4">
@@ -106,4 +175,5 @@
 <script src="js/core/adminerva-nav.js?v=4.0.3"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.6"></script>
 <script type="module" src="js/core/pilot-sandbox.mjs?v=4.0.0"></script>
+<script type="module" src="js/core/pilot-experience.mjs?v=4.0.0"></script>
 </body></html>
