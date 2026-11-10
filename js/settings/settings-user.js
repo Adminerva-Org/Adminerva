@@ -547,106 +547,80 @@ window.viewAsStudent = function (studentEmail) {
 // ==========================================
 // BACKGROUND GITHUB VERIFICATION (NO RATE LIMIT SPAM)
 // ==========================================
-async function verifyRepoStatusCache(stu, token) {
-  if (!token) {
-    stu.ghStatusClass = "bg-green-100 text-green-700";
-    stu.ghStatusText = "Linked (No Token)";
-    stu.verified = true;
-    updateDOMStatus(stu);
+function githubRepoKey(value) {
+  try {
+    const url=new URL(String(value||"").trim().replace(/\.git$/i,""));
+    if(url.protocol!=="https:"||url.hostname.toLowerCase()!=="github.com")return null;
+    const parts=url.pathname.replace(/\/$/,"").split("/").filter(Boolean);
+    if(parts.length!==2||parts.some(part=>! /^[A-Za-z0-9_.-]+$/.test(part)))return null;
+    return parts.join("/").toLowerCase();
+  }catch{return null;}
+}
+async function checkRepositoryOnce(stu, token) {
+  const key=githubRepoKey(stu.repoUrl);
+  if(!key)return {text:"Invalid GitHub URL",style:"bg-rose-100 text-rose-800"};
+  if(repoVerificationCache.has(key))return repoVerificationCache.get(key);
+  // The read-only GitHub request only checks link access and detects redirects.
+  const headers={Accept:"application/vnd.github+json"};
+  if(token)headers.Authorization="Bearer "+token;
+  let value;
+  try{
+    const response=await fetch("https://api.github.com/repos/"+key,{headers});
+    if(response.ok){
+      const repo=await response.json();
+      const canonical=String(repo.full_name||"").toLowerCase();
+      value=canonical&&canonical!==key
+        ?{text:"Renamed · review URL",style:"bg-amber-100 text-amber-800"}
+        :{text:"Repository accessible",style:"bg-emerald-100 text-emerald-800"};
+    }else if(response.status===404){
+      value={text:"Not found / private",style:"bg-rose-100 text-rose-800"};
+    }else if(response.status===401||response.status===403||response.status===429){
+      value={text:"GitHub access / rate limit",style:"bg-amber-100 text-amber-800"};
+    }else{
+      value={text:"GitHub HTTP "+response.status,style:"bg-rose-100 text-rose-800"};
+    }
+  }catch{
+    value={text:"Network unavailable",style:"bg-amber-100 text-amber-800"};
+  }
+  repoVerificationCache.set(key,value);
+  return value;
+}
+window.verifyVisibleRepositories=async function(){
+  if(repositoryVerificationBusy)return;
+  const button=document.getElementById("verifyVisibleRepos");
+  const label=document.getElementById("directory-repository-status");
+  const students=visibleDirectoryStudents.filter(stu=>stu.isLinked&&
+    !["archived","suspended"].includes(String(stu.status||"active")));
+  if(!students.length){
+    if(label)label.textContent="No active linked GitHub repositories on this page.";
     return;
   }
-  try {
-    // 🔒 Security Patch: Native URL parsing to sanitize URL substrings
-    let owner, repo;
-    try {
-      const parsedUrl = new URL(stu.repoUrl);
-      const urlParts = parsedUrl.pathname
-        .replace(/\/$/, "")
-        .replace(".git", "")
-        .split("/");
-      repo = urlParts.pop();
-      owner = urlParts.pop();
-    } catch (e) {
-      stu.ghStatusClass = "bg-red-100 text-red-700";
-      stu.ghStatusText = "Invalid URL";
-      stu.verified = true;
-      updateDOMStatus(stu);
-      return;
+  const requestedVersion=directoryLoadVersion,token=String(localStorage.getItem("Adminerva_github_token")||"");
+  repositoryVerificationBusy=true;
+  if(button){button.disabled=true;button.setAttribute("aria-busy","true");}
+  if(label)label.textContent="Checking "+students.length+" visible linked student record(s), up to three requests at once…";
+  let cursor=0,checked=0;
+  const worker=async()=>{
+    for(;;){
+      const index=cursor++;
+      if(index>=students.length||requestedVersion!==directoryLoadVersion)return;
+      const student=students[index];
+      const value=await checkRepositoryOnce(student,token);
+      if(requestedVersion!==directoryLoadVersion)return;
+      student.ghStatusText=value.text;student.ghStatusClass=value.style;student.verified=true;
+      updateDOMStatus(student);
+      checked++;
+      if(label)label.textContent="Checked "+checked+" of "+students.length+" visible linked student records. No student data was modified.";
     }
-
-    // ==========================================
-    // 🔄 AUTO-UPDATE RENAME LOGIC (DIRECTORY)
-    // ==========================================
-    try {
-      const repoInfoRes = await fetch(
-        `https://api.github.com/repos/${owner}/${repo}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
-
-      if (repoInfoRes.ok) {
-        const repoInfo = await repoInfoRes.json();
-        const actualUrl = repoInfo.html_url + ".git";
-
-        if (
-          stu.repoUrl.toLowerCase() !== actualUrl.toLowerCase() &&
-          stu.repoUrl.toLowerCase() !== repoInfo.html_url.toLowerCase()
-        ) {
-          console.log(
-            `Auto-fixing renamed repository in directory: ${stu.repoUrl} -> ${actualUrl}`,
-          );
-
-          // 1. Permanently fix it in the database
-          await setDoc(
-            doc(db, "students", stu.id),
-            { repoUrl: actualUrl },
-            { merge: true },
-          );
-
-          // 2. Update local variables so the status check below uses the new name
-          stu.repoUrl = actualUrl;
-          owner = repoInfo.owner.login;
-          repo = repoInfo.name;
-        }
-      }
-    } catch (autoUpdateError) {
-      console.warn("Directory rename check failed", autoUpdateError);
-    }
-    // ==========================================
-
-    const res = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/commits?per_page=1`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-        },
-      },
-    );
-
-    stu.verified = true;
-
-    if (res.ok) {
-      stu.ghStatusClass = "bg-emerald-100 text-emerald-700";
-      stu.ghStatusText = "Active Repo";
-    } else if (res.status === 409) {
-      stu.ghStatusClass = "bg-amber-100 text-amber-700";
-      stu.ghStatusText = "Linked, Empty";
-    } else if (res.status === 404) {
-      stu.ghStatusClass = "bg-red-100 text-red-700";
-      stu.ghStatusText = "Not Found / Private";
-    } else {
-      stu.ghStatusClass = "bg-red-100 text-red-700";
-      stu.ghStatusText = "API Error";
-    }
-    updateDOMStatus(stu);
-  } catch (e) {
-    stu.verified = true;
-    stu.ghStatusClass = "bg-red-100 text-red-700";
-    stu.ghStatusText = "Network Error";
-    updateDOMStatus(stu);
+  };
+  try{
+    await Promise.all(Array.from({length:Math.min(3,students.length)},worker));
+    if(label)label.textContent="Verification complete for "+checked+" visible linked student records. Repository links were not modified.";
+  }finally{
+    repositoryVerificationBusy=false;
+    if(button){button.disabled=false;button.removeAttribute("aria-busy");}
   }
-}
-
+};
 // Only updates the DOM if the element is currently visible on screen
 function updateDOMStatus(stu) {
   const pill = document.getElementById(stu.pillId);
