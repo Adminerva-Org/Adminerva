@@ -120,7 +120,7 @@ function syncPeriodInputs() {
 }
 
 function updateEditControls() {
-  document.body.dataset.avScheduleEditing=String(isEditing);
+  if(document.body?.dataset)document.body.dataset.avScheduleEditing=String(isEditing);
   const button = document.getElementById("editSaveBtn");
   const badge = document.getElementById("modeBadge");
   if (button) {
