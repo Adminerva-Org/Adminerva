@@ -296,7 +296,15 @@ if (syncSheetBtn) {
 // ==========================================
 // DIRECTORY READ, CACHE, & UI UPDATES
 // ==========================================
+let directoryLoadVersion=0,repositoryVerificationBusy=false,visibleDirectoryStudents=[];
+const repoVerificationCache=new Map();
 window.loadDirectory = async function () {
+  const directoryVersion=++directoryLoadVersion;
+  if(repositoryVerificationBusy){
+    document.getElementById("directory-repository-status")?.replaceChildren(
+      document.createTextNode("A visible-page repository check is still running. Reload after it finishes."));
+    return;
+  }
   const tbody = document.getElementById("userTableBody");
   if (!tbody) return;
 
@@ -324,7 +332,7 @@ window.loadDirectory = async function () {
         id: documentSnapshot.id,
         isLinked: isLinked,
         pillId: `status_${documentSnapshot.id.replace(/[^a-zA-Z0-9]/g, "")}`,
-        ghStatusText: isLinked ? "Verifying..." : "Missing Info",
+        ghStatusText: isLinked ? "Linked · not checked" : "Missing Info",
         ghStatusClass: isLinked
           ? "bg-blue-100 text-blue-700"
           : "bg-slate-200 text-slate-600",
@@ -349,13 +357,12 @@ window.loadDirectory = async function () {
     const summary=document.getElementById("directory-summary");
     if(summary){summary.textContent=allStudents.length+" student roster records across "+uniqueSections.size+" sections. Use these exact section names in teacher assignments.";summary.dataset.tone="info";}
 
-    // Asynchronously verify GitHub status for linked accounts
-    const ghToken = localStorage.getItem("Adminerva_github_token");
-    allStudents.forEach((stu) => {
-      if (stu.isLinked && !stu.verified && !["suspended","archived"].includes(String(stu.status||"active"))) {
-        verifyRepoStatusCache(stu, ghToken);
-      }
-    });
+    // Repository verification is user-initiated, limited to the current page.
+    // Viewing the directory no longer contacts GitHub or silently modifies
+    // a renamed repository URL in a student profile.
+    const repoHint=document.getElementById("directory-repository-status");
+    if(repoHint)repoHint.textContent="GitHub links are not checked automatically. Verify the visible page only when needed.";
+    if(directoryVersion!==directoryLoadVersion)return;
   } catch (error) {
     console.error(error);
     tbody.innerHTML = `<tr><td colspan="4" class="px-6 py-8 text-center text-red-500 font-bold">Error loading directory: ${escapeHTML(error.message)}</td></tr>`;
@@ -409,6 +416,7 @@ function applyFiltersAndRender() {
     startIndex,
     startIndex + itemsPerPage,
   );
+  visibleDirectoryStudents=paginatedData;
 
   // 4. Render HTML
   const tbody = document.getElementById("userTableBody");
