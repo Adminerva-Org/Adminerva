@@ -71,7 +71,6 @@
 .av-teacher-refresh #slideBlockList>div{border-radius:10px}
 .av-teacher-refresh #master-toolbar-container{border-radius:12px;max-width:100%}
 .av-teacher-refresh #slide-canvas{box-shadow:0 8px 30px rgba(18,39,72,.12)}
-.av-teacher-refresh :is(#weeklyOverviewContainer,#outputContainer){contain:layout style}
 .av-teacher-refresh .av-teacher-section-title{font-size:.75rem;font-weight:800;letter-spacing:.085em;text-transform:uppercase;color:#547094}
 .av-teacher-refresh .av-teacher-scope-note{border-left:3px solid #84acd8;background:#f4f8fe;border-radius:0 10px 10px 0;padding:.55rem .8rem;font-size:.79rem;color:#4c6280}
 @media (max-width:780px){
