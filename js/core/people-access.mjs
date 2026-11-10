@@ -32,14 +32,28 @@ function setTab(name,{remember=true}={}) {
   for(const button of document.querySelectorAll("[data-tab]")){
     const active=button.dataset.tab===target;
     button.setAttribute("aria-selected",String(active));
+    button.setAttribute("aria-controls","pa-"+button.dataset.tab);
+    button.tabIndex=active?0:-1;
     get("pa-"+button.dataset.tab).hidden=!active;
   }
   if(remember&&location.hash!=="#"+target)
     history.replaceState(null,"","#"+target);
   if(schoolReady)void loadSelectedTab(target);
 }
-document.querySelectorAll("[data-tab]").forEach(button=>
-  button.addEventListener("click",()=>setTab(button.dataset.tab)));
+const directoryTabs=[...document.querySelectorAll(".pa-tabs [data-tab]")];
+directoryTabs.forEach(button=>{
+  button.addEventListener("click",()=>setTab(button.dataset.tab));
+  button.addEventListener("keydown",event=>{
+    const index=directoryTabs.indexOf(button);
+    const next=event.key==="ArrowRight"?(index+1)%directoryTabs.length:
+      event.key==="ArrowLeft"?(index+directoryTabs.length-1)%directoryTabs.length:
+      event.key==="Home"?0:event.key==="End"?directoryTabs.length-1:-1;
+    if(next<0)return;
+    event.preventDefault();
+    setTab(directoryTabs[next].dataset.tab);
+    directoryTabs[next].focus();
+  });
+});
 window.addEventListener("hashchange",()=>setTab(location.hash.slice(1),{remember:false}));
 setTab(location.hash.slice(1),{remember:false});
 const picker=createTenantSchoolPicker({
