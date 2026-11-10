@@ -50,11 +50,27 @@ function switchTab(tab){
   for(const button of document.querySelectorAll("[data-pilot-tab]")){
     const active=button.dataset.pilotTab===tab;
     button.setAttribute("aria-selected",String(active));
+    button.setAttribute("aria-controls","pilot-"+button.dataset.pilotTab);
+    button.tabIndex=active?0:-1;
     button.className="rounded-lg px-4 py-2.5 text-sm font-bold "+(active?"bg-indigo-900 text-white":"border border-slate-300 bg-white");
   }
   for(const name of ["preview","simulation","sandbox","tour"])get("pilot-"+name).hidden=name!==tab;
 }
-document.querySelectorAll("[data-pilot-tab]").forEach(button=>button.addEventListener("click",()=>switchTab(button.dataset.pilotTab)));
+const pilotTabs=[...document.querySelectorAll("[data-pilot-tab]")];
+pilotTabs.forEach(button=>{
+  button.addEventListener("click",()=>switchTab(button.dataset.pilotTab));
+  button.addEventListener("keydown",event=>{
+    const index=pilotTabs.indexOf(button);
+    const next=event.key==="ArrowRight"?(index+1)%pilotTabs.length:
+      event.key==="ArrowLeft"?(index+pilotTabs.length-1)%pilotTabs.length:
+      event.key==="Home"?0:event.key==="End"?pilotTabs.length-1:-1;
+    if(next<0)return;
+    event.preventDefault();
+    switchTab(pilotTabs[next].dataset.pilotTab);
+    pilotTabs[next].focus();
+  });
+});
+switchTab("preview");
 function renderRecords(){
   const list=get("pilotRecordList");
   list.replaceChildren();
