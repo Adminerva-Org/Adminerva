@@ -27,6 +27,7 @@ let cachedCommitsData = [];
 let currentSectionAssessments = [];
 let myPublishedGrades = {}; // ✨ Global grade dictionary
 let dashboardLoadSequence = 0;
+function projectActivityStatus(message){const node=document.getElementById("projectActivityStatus");if(node)node.textContent=message;}
 
 function escapeHTML(str) {
   if (!str) return "";
@@ -243,6 +244,8 @@ async function loadDashboardProfile(studentData) {
   subtitle.innerHTML = `<strong>${escapeHTML(studentData.section)}:</strong> Tracking <span class="font-mono text-xs text-slate-800">${escapeHTML(studentData.githubUsername)}</span> on <a href="${escapeHTML(studentData.repoUrl)}" target="_blank" class="text-blue-500 hover:underline font-mono text-xs">${escapeHTML(studentData.repoUrl)}</a>`;
   const defaultFilter = document.getElementById("timeFilter")?.value || "7d";
   const cacheRef = doc(db, "student_dashboard_cache", studentData.docId);
+  let cacheIsFresh=false;
+  projectActivityStatus("Loading saved GitHub activity…");
 
   try {
     const cacheSnap = await getDoc(cacheRef);
@@ -251,6 +254,11 @@ async function loadDashboardProfile(studentData) {
       cachedCommitsData = cacheSnap.data().commits || [];
       renderCommits(cachedCommitsData, defaultFilter);
       renderChart(cachedCommitsData, defaultFilter);
+      const fetchedAt=Date.parse(cacheSnap.data().lastSynced||"");
+      cacheIsFresh=Number.isFinite(fetchedAt)&&Date.now()-fetchedAt<120000&&Date.now()>=fetchedAt;
+      projectActivityStatus(cacheIsFresh
+        ?"Showing recently saved GitHub activity. Select Refresh for a new check."
+        :"Showing saved activity while checking for newer repository changes…");
     }
   } catch (error) {
     console.warn("Database read bypassed. Continuing to UI load.");
@@ -258,9 +266,11 @@ async function loadDashboardProfile(studentData) {
 
   if (!studentData.githubToken) {
     overlay.classList.remove("hidden");
+    projectActivityStatus("Saved activity is available. Connect GitHub to synchronize new commits.");
     return;
   }
-  syncGitHubData(
+  if(cacheIsFresh)return;
+  void syncGitHubData(
     studentData.repoUrl,
     studentData.githubUsername,
     studentData.githubToken,
