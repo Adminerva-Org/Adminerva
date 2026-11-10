@@ -35,6 +35,6 @@ jobs:
         run: |
           node --test tests/tenant-authority.test.mjs tests/tenant-selector.test.mjs tests/review-resilience.test.mjs
           node --test js/core/adminerva-nav.test.mjs tests/student-workspace-ux.test.mjs tests/loading-and-routes.test.mjs
-          node --test tests/mcs-pilot-mapping.test.mjs tests/school-cutover-policy.test.mjs tests/mcs-canonical-evidence-grade.test.mjs
+          node --test tests/mcs-pilot-mapping.test.mjs tests/mcs-pilot-control-readiness.test.mjs tests/school-cutover-policy.test.mjs tests/mcs-canonical-evidence-grade.test.mjs
       - name: Check grading UI and Studio control bindings
         run: node --test tests/v4-main-integration.test.mjs
