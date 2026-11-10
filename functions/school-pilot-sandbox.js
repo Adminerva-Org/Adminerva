@@ -9,6 +9,7 @@
  */
 const {getAuth}=require("firebase-admin/auth");
 const {createHash}=require("node:crypto");
+const {runPilotExperience}=require("./pilot-sandbox-experience.js");
 const {FieldValue}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 
@@ -42,7 +43,8 @@ function normalEmail(value){
 function item(doc){
   const d=doc.data()||{};
   return {id:doc.id,kind:d.kind,title:d.title,details:d.details||"",
-    createdAt:d.createdAt||null,updatedAt:d.updatedAt||null};
+    createdAt:d.createdAt||null,updatedAt:d.updatedAt||null,
+    version:d.version||1,payload:d.payload||null};
 }
 function activeMember(data){return data?.status==="active"&&Array.isArray(data.roles)&&data.roles.includes("teacher");}
 function grantSummary(doc){
@@ -59,6 +61,9 @@ function createSchoolPilotSandboxService({db}){
     const records=db.collection(prefix+"pilot_sandboxes/"+ctx.uid+"/records");
     const grants=db.collection(prefix+"pilot_preview_grants");
     const time=new Date().toISOString();
+    if(["preview_dashboard","seed_demo","create_demo_assessment","clone_preview",
+      "sim_submit","sim_grade_draft","sim_grade_publish","sim_reopen"].includes(action))
+      return runPilotExperience({db,auth:getAuth(),ctx,input});
 
     if(action==="overview"){
       const [mine,shared,personal]=await Promise.all([
@@ -67,7 +72,7 @@ function createSchoolPilotSandboxService({db}){
         records.orderBy("updatedAt","desc").limit(RECORD_LIMIT+1).get()
       ]);
       return {schoolId:ctx.schoolId,records:personal.docs.map(item),
-        grantedByMe:mine.docs.map(grantSummary).filter(g=>g.active),
+        grantedByMe:mine.docs.map(grantSummary).filter(g=>g.active&&Date.parse(g.expiresAt)>Date.now()),
         sharedWithMe:shared.docs.map(grantSummary).filter(g=>g.active&&Date.parse(g.expiresAt)>Date.now()),
         recordLimit:RECORD_LIMIT};
     }
@@ -102,7 +107,7 @@ function createSchoolPilotSandboxService({db}){
     if(action==="grant_preview"){
       const email=normalEmail(input.viewerEmail);
       const viewer=await getAuth().getUserByEmail(email).catch(()=>null);
-      if(!viewer?.emailVerified||viewer.uid===ctx.uid)
+      if(!viewer?.emailVerified||viewer.disabled===true||viewer.uid===ctx.uid)
         deny("failed-precondition","The recipient must have a separate verified school account.");
       uidValue(viewer.uid);
       const member=await db.doc(prefix+"memberships/"+viewer.uid).get();
