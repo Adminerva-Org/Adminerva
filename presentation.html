@@ -7,7 +7,10 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-    <title>Adminerva - Slide Editor</title>
+    <title>Slide Editor | Adminerva</title>
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://cdn.quilljs.com" crossorigin>
     <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/libs/jszip.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -66,11 +69,12 @@
     />
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
     <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8" />
+    <link rel="stylesheet" href="css/teacher-ux.css?v=4.0.0" />
 </head>
-  <body class="bg-gray-50 font-sans min-h-screen flex flex-col text-gray-800">
+  <body class="av-teacher-refresh bg-gray-50 font-sans min-h-screen flex flex-col text-gray-800">
     <!-- GLOBAL NAVIGATION INJECTION -->
     <div id="adminerva-nav" data-module="lesson" data-page="presentation"></div>
-    <script src="js/core/adminerva-nav.js?v=1.4.17"></script>
+    <script defer src="js/core/adminerva-nav.js?v=1.4.17"></script>
 
     <!-- Main Workspace -->
     <div
