@@ -43,7 +43,7 @@ function rubricOf(value){
 function initialLearners(){
   return syntheticNames.map((name,index)=>({
     key:"demo-"+String(index+1),name,status:index===0?"submitted":"assigned",
-    evidence:index===0?"Sample project evidence submitted for review.":"",
+    evidence:index===0?"// Fictional Java console submission\\npublic class Main {\\n  public static void main(String[] args) {\\n    System.out.println(\\"Hello, Adminerva!\\");\\n  }\\n}":"",
     draft:null,published:null,revision:1
   }));
 }
