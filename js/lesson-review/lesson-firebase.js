@@ -43,7 +43,7 @@ window.fetchScheduleForLesson = async function (schoolYear, academicTerm, grade=
   }
   const filteredText=rows=>scheduleRowsToLessonText(
     filterScheduleRowsForLesson(rows,{grade,subject}),
-    {dateRange}
+    {dateRange,grade}
   );
   const local = () => {
     const rows=parseScheduleRows(lessonStorage.getItem(scope.jsonKey));
