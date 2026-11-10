@@ -117,7 +117,7 @@ async function lock(operation){
   if(working)return;
   working=true;
   for(const el of get("pilot-simulation").querySelectorAll("button"))el.disabled=true;
-  try{await operation();}finally{
+  try{return await operation();}finally{
     working=false;
     for(const el of get("pilot-simulation").querySelectorAll("button"))el.disabled=false;
     renderAssessment();
@@ -125,7 +125,7 @@ async function lock(operation){
 }
 async function simulation(action,record,student,details={}){
   if(!record||!student||working)return;
-  await lock(async()=>{
+  return await lock(async()=>{
     status("Updating the private "+human(student.status).toLowerCase()+" workflow…");
     try{
       const response=await perform(action,{recordId:record.id,learnerKey:student.key,
