@@ -1,4 +1,4 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.3.0";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=4.0.0";
 import {exportLessonToGoogleDocs,buildGoogleDocsSource} from "./google-docs-export.mjs?v=1.4.23";
 /** School-format lesson document construction and export. */
 import {

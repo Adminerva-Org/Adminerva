@@ -1,6 +1,6 @@
 import {auth} from "./firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {sessionDestination} from "./session-destination.mjs?v=1.3.0";
+import {sessionDestination} from "./session-destination.mjs?v=4.0.2";
 const main=document.querySelector("main"),navigation=document.getElementById("adminerva-nav");
 let mounted=false;
 function mount(){
@@ -8,6 +8,23 @@ function mount(){
   if(!main||!role||!user||mounted)return;mounted=true;
   if(role==="superadmin"){const title=document.getElementById("staffTitle");if(title)title.textContent="Your school workspace, organized.";}
   const hero=main.querySelector(".av-home-hero");hero?.classList.add("av-home-entrance");
+  const hasSchoolRole=navigation?.dataset.schoolAdmin==="true"||
+    navigation?.dataset.schoolTeacher==="true"||navigation?.dataset.schoolStudent==="true";
+  if(hasSchoolRole)for(const link of main.querySelectorAll('a[href="issues.html"]')){
+    link.href="school-support.html";
+  }
+  const v4OnlyStudent=navigation?.dataset.v4OnlyStudent==="true";
+  if(v4OnlyStudent){
+    const routes={
+      "student-dashboard.html":"school-student-projects.html",
+      "student-assessments.html":"school-student-assessments.html",
+      "student-settings.html":"school-student-settings.html"
+    };
+    for(const link of main.querySelectorAll("a[href]")){
+      const href=link.getAttribute("href");
+      if(routes[href])link.setAttribute("href",routes[href]);
+    }
+  }
   // Students have a filterable tool gallery; teachers use the shared Ctrl/Cmd+K
   // finder rather than a search form that has no matching cards.
   const cards=[...main.querySelectorAll("a.av-home-task")];
@@ -26,18 +43,33 @@ function mount(){
   }
   let candidate;try{candidate=sessionStorage.getItem("Adminerva_last_workspace_"+user.uid);}catch{}
   if(candidate){
-    const destination=sessionDestination(candidate,{role:role==="superadmin"?"admin":role==="teacher"?"teacher":null,students:role==="student"?[{}]:[]});
+    const destination=sessionDestination(candidate,{
+      role:role==="superadmin"?"admin":role==="teacher"?"teacher":null,
+      platformAdmin:navigation?.dataset.platformAdmin==="true",
+      schoolAdmin:navigation?.dataset.schoolAdmin==="true",
+      schoolTeacher:navigation?.dataset.schoolTeacher==="true",
+      schoolStudent:navigation?.dataset.schoolStudent==="true",
+      v4OnlyTeacher:navigation?.dataset.v4OnlyTeacher==="true",
+      v4OnlyStudent:navigation?.dataset.v4OnlyStudent==="true",
+      students:role==="student"?[{}]:[]
+    });
     if(!destination.endsWith("-home.html")){
       const resume=document.createElement("section");resume.className="av-home-resume";
       const text=document.createElement("div"),title=document.createElement("strong"),detail=document.createElement("p"),link=document.createElement("a");
       const page=destination.split(/[?#]/)[0];
       const names={
         "student-playground.html":"Adminerva Studio","student-assessments.html":"Assignments","student-dashboard.html":"Project Hub",
+        "school-student-assessments.html":"Assignments","school-student-projects.html":"Project Hub",
+        "school-student-settings.html":"Student Settings",
         "student-practice.html":"Practice Lab","student-xml-lab.html":"XML Layout Lab",
         "lesson-planner.html":"Lesson Planner","repofetch.html":"Review & Grade",
         "gradebook.html":"Gradebook","assessment-studio.html":"Assessment Studio",
         "submissions.html":"Review Inbox","teacher-analytics.html":"Teaching Analytics",
-        "presentation.html":"Presentation Workspace","schedule.html":"Schedule"
+        "presentation.html":"Presentation Workspace","schedule.html":"Schedule",
+        "teacher-assessment-library.html":"Assessment Library","school-gradebook.html":"Gradebook",
+        "teacher-reference-library.html":"My References","school-reference-library.html":"School References",
+        "school-teacher-analytics.html":"Class Analytics","school-practice-analytics.html":"Practice Progress",
+        "school-support.html":"School Support"
       };
       const name=names[page]||"your last workspace";
       title.textContent="Continue: "+name;

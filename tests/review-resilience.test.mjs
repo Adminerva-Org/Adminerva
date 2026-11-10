@@ -115,8 +115,16 @@ test("account registry, own teacher directory and student membership start in pa
   const started=[],finish=[],user={uid:"parallel",email:"new.teacher@example.edu",emailVerified:true};
   const pending=kind=>{started.push(kind);return new Promise(resolve=>finish.push(()=>resolve(kind==="staff_access"?{exists:()=>true,data:()=>({email:user.email,status:"active",role:"teacher"})}:{docs:[],empty:true})));};
   let remembered;
-  const context={auth:{authStateReady:()=>new Promise(()=>{}),currentUser:user},db:{},ADMIN_EMAIL:"admin@example.edu",doc:(_db,kind)=>kind,collection:(_db,kind)=>kind,query:kind=>kind,where:()=>{},getDocFromServer:kind=>pending(kind),getDocsFromServer:kind=>pending(kind),rememberStaff:(_user,profile)=>{remembered=profile;},staffRole:()=>remembered?.status==="active"?"teacher":null};
+  const context={app:{},auth:{authStateReady:()=>new Promise(()=>{}),currentUser:user},db:{},ADMIN_EMAIL:"admin@example.edu",
+    getFunctions:()=>({}),httpsCallable:()=>async()=>({data:{schools:[],platformAdmin:false,legacyCompatibilityAllowed:true}}),
+    doc:(_db,kind)=>kind,collection:(_db,kind)=>kind,query:kind=>kind,where:()=>{},
+    getDocFromServer:kind=>pending(kind),getDocsFromServer:kind=>pending(kind),
+    rememberStaff:(_user,profile)=>{remembered=profile;},staffRole:()=>remembered?.status==="active"?"teacher":null};
   const source=readFileSync("js/core/staff-session.mjs","utf8").replace(/^import[^;]+;\s*/gm,"").replace(/\bexport\s+/g,"");
   runInNewContext(source+"\nglobalThis.resolve=resolveAccountAccess;",context);
-  const result=context.resolve(user);assert.deepEqual(started,["staff_access","teachers","students"]);finish.forEach(resolve=>resolve());assert.equal((await result).role,"teacher");
+  const result=context.resolve(user);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(started,["staff_access","teachers","students"]);
+  finish.forEach(resolve=>resolve());
+  assert.equal((await result).role,"teacher");
 });

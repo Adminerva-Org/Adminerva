@@ -445,9 +445,9 @@
             </div>
             <p id="manualReviewAIStatus" role="status" class="text-xs text-indigo-900">Approve checkpoint evidence to enable suggestions.</p>
             <div id="manualReviewFallback" class="hidden rounded border border-amber-200 bg-amber-50 p-3" role="status"><p class="text-sm">No replacement score was saved. Continue with your own score and feedback, or retry the evaluation.</p><div class="flex flex-wrap gap-3 mt-2"><button type="button" id="manualReviewRetry" class="border rounded px-3 py-2">Retry evaluation</button></div></div>
-            <button id="manualReviewReviewEvidence" type="button" class="hidden border border-emerald-400 bg-emerald-50 text-emerald-950 rounded px-3 py-2 text-xs font-bold">Review &amp; approve updated evidence</button>
+            <button id="manualReviewReviewEvidence" type="button" class="hidden border border-emerald-400 bg-emerald-50 text-emerald-950 rounded px-3 py-2.5 text-xs font-bold">Review &amp; approve updated evidence</button>
             <button id="manualReviewVerifyContributions" type="button" class="hidden border border-indigo-300 rounded px-3 py-2 text-xs font-bold">Verify contributing commits</button>
-            <button id="manualReviewAddUnmatchedCommit" type="button" class="hidden border border-amber-400 bg-amber-50 text-amber-950 rounded px-3 py-2 text-xs font-bold">Add / attribute unmatched commit</button>
+            <button id="manualReviewAddUnmatchedCommit" type="button" class="hidden border border-amber-400 bg-amber-50 text-amber-950 rounded px-3 py-2.5 text-xs font-bold">Add / attribute unmatched commit</button>
             <p id="manualReviewCheckerSetup" class="text-xs border rounded p-3">Evaluation uses the school’s configured evaluation connection. <a href="settings.html" class="underline font-semibold">View connection settings</a>. Your score and feedback stay under your control.</p>
           </section>
           <form id="manualReviewForm" class="space-y-4" style="scroll-margin-top:64px">
@@ -482,7 +482,7 @@
 Score-affecting issues: ...
 
 Recommended improvements: ..."
-                class="w-full border border-slate-300 rounded-lg px-3 py-3 leading-relaxed"></textarea>
+                class="w-full border border-slate-300 rounded-lg px-3 py-2.5"></textarea>
             </div>
             <div>
               <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewReason">Additional private note (optional)</label>
@@ -517,6 +517,13 @@ Recommended improvements: ..."
             <p class="mt-1 text-xs text-slate-600">Copy verified evidence to an external evaluator, then paste the returned JSON here. Your prepared package and pasted result are retained if you close and reopen this dialog without changing the approved evidence. Nothing is saved or published until you review and save it.</p>
           </div>
           <button id="externalEvaluationClose" type="button" class="rounded-lg px-3 py-2 font-bold text-slate-600" aria-label="Close external evaluation">✕</button>
+        </div>
+        <div id="externalEvaluationProcessing" hidden style="display:none" class="hidden shrink-0 border-b border-cyan-200 bg-cyan-50 px-4 sm:px-5 py-3 flex items-center gap-3" role="status" aria-live="polite" aria-atomic="true">
+          <span class="av-loader-mark" aria-hidden="true"><img class="av-loader-emblem" src="assets/adminerva-emblem.png" alt=""><span class="av-loader-orbit"></span></span>
+          <span class="min-w-0">
+            <strong class="block text-sm font-bold text-slate-900">Adminerva is processing</strong>
+            <span id="externalEvaluationProcessingText" class="block text-xs text-slate-700">Preparing verified evidence…</span>
+          </span>
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
           <section class="rounded-xl border border-slate-200 p-4 space-y-3">
@@ -555,7 +562,7 @@ Recommended improvements: ..."
     </div>
 
     <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
-    <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
+    <script type="module" src="js/core/auth-guard.js?v=4.0.4"></script>
     <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.2"></script>
     <script type="module" src="js/repo-review/repofetch.js?v=3.0.0"></script>
     <script type="module" src="js/repo-review/auto-checker.js?v=1.3.0"></script>

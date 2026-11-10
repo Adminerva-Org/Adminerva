@@ -1,4 +1,4 @@
-import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
+import {resolveAccountAccess} from "./staff-session.mjs?v=4.0.2";
 /** Role-separated report feed, triage and optional admin-only diagnostic trails. */
 import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {
@@ -18,7 +18,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import { filterReports, ownsReport } from "./report-filters.mjs?v=1.3.0";
-import {staffRole,staffSections} from "./staff-role.mjs?v=1.3.0";
+import {staffSections} from "./staff-role.mjs?v=1.3.0";
 
 let allIssues = [];
 let currentOpenIssueId = null;
@@ -85,7 +85,16 @@ onAuthStateChanged(auth, async user => {
   stopIssueListeners.forEach(stop => stop()); stopIssueListeners = [];
   if (user) {
     currentUserEmail = (user.email||"").toLowerCase();
-    const role=await resolveStaffRole(user);
+    const access=await resolveAccountAccess(user);
+    if(auth.currentUser?.uid!==user.uid)return;
+    if(access.legacyCompatibilityAllowed===false||access.v4Cutover===true){
+      stopIssueListeners.forEach(stop=>stop());stopIssueListeners=[];
+      const hasSchoolRole=Boolean(access.schoolAdmin||access.schoolTeacher||access.schoolStudent);
+      if(hasSchoolRole){location.replace("school-support.html");return;}
+      if(access.platformAdmin){location.replace("owner-schools.html");return;}
+      allIssues=[];renderIssues();return;
+    }
+    const role=access.legacyRole;
     isSuperAdmin = role === "admin";
     isTeacher = role === "teacher";
     document.getElementById("filterAudience")?.querySelector('option[value="admin"]')?.toggleAttribute("hidden", !isSuperAdmin);

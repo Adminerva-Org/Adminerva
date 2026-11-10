@@ -22,6 +22,17 @@ test("semester and school-year timetables never share document or cache keys",()
   assert.throws(()=>normalizeSchoolYear("2026-2026"),/valid school year/);
 });
 
+test("canonical academic periods get independent schedule/cache scopes without pretending to be semesters",()=>{
+  const basicTerm=scheduleScope("2026-2027","basic-ed-term-3");
+  const shsSemester=scheduleScope("2026-2027","shs-semester-2");
+  assert.equal(basicTerm.semester,null);
+  assert.equal(basicTerm.periodId,"basic-ed-term-3");
+  assert.equal(shsSemester.periodId,"shs-semester-2");
+  assert.notEqual(basicTerm.id,shsSemester.id);
+  assert.notEqual(basicTerm.jsonKey,shsSemester.jsonKey);
+  assert.equal(basicTerm.allowLegacy,false);
+});
+
 test("legacy timetable is never substituted for second semester",()=>{
   const values=new Map([["Adminerva_schedule","OLD FIRST SEMESTER"]]);
   const storage={getItem:key=>values.has(key)?values.get(key):null};

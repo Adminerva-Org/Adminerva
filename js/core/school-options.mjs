@@ -1,7 +1,7 @@
 /** Shared school choices. Catalog entries never grant roster or account access. */
 import {auth,db} from "./firebase-core.js?v=1.3.0";
 import {collection,getDocs} from "./teaching-firestore.mjs?v=1.3.0";
-import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
+import {resolveLegacyStaffRole as resolveStaffRole} from "./staff-session.mjs?v=4.0.2";
 import {staffSections} from "./staff-role.mjs?v=1.3.0";
 const names=values=>[...new Set(values.filter(value=>typeof value==="string"&&value.trim()))].sort((a,b)=>a.localeCompare(b));
 export async function loadSchoolOptions({schoolYear="",gradeLevel=""}={}){

@@ -1,4 +1,4 @@
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.3.0";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=4.0.0";
 import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.1";
 function connectionPreferences(){return activateConnectionOwner(workspaceUid());}
