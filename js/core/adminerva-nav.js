@@ -6,6 +6,14 @@ if(!document.getElementById("adminerva-analytics-script")){
   analytics.defer=true;
   document.head.append(analytics);
 }
+// HTML navigation prefetch is strictly intent-triggered and never reads school data.
+if(!document.getElementById("adminerva-navigation-prefetch")){
+  const prefetch=document.createElement("script");
+  prefetch.id="adminerva-navigation-prefetch";
+  prefetch.src="js/core/navigation-prefetch.js?v=4.0.0";
+  prefetch.defer=true;
+  document.head.append(prefetch);
+}
 document.addEventListener("DOMContentLoaded", () => {
   try{
     document.documentElement.dataset.adminervaDensity=localStorage.getItem("Adminerva_interface_density")||"comfortable";
