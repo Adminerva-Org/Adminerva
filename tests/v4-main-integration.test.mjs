@@ -84,3 +84,15 @@ test("school admin pilot entry is restricted to verified school actions",()=>{
   assert.match(page,/href="school-pilot.html"/);
   assert.match(read("js/core/school-admin.mjs"),/if\(access.schoolAdmin\)await loadSchoolAdmin/);
 });
+
+test("bulk external evaluation dialog restores keyboard focus and stays open while working",()=>{
+  const page=read("gradebook.html"),logic=read("js/repo-review/gradebook-class-review.mjs");
+  assert.match(page,/id="gbBulkExternalModal" tabindex="-1"/);
+  assert.match(logic,/bulkExternalFocusReturn=document.activeElement/);
+  assert.match(logic,/dialog.classList.contains\("hidden"\)/);
+  assert.match(logic,/event.key==="Escape"/);
+  assert.match(logic,/event.key!=="Tab"/);
+  assert.match(logic,/if\(bulkExternal.busy\)return;/);
+  assert.match(logic,/modal\?\.setAttribute\("aria-busy"/);
+  assert.match(page,/id="gbBulkExternalClose"[^>]+min-w-\[44px\]/);
+});
