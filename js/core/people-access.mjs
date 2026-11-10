@@ -11,6 +11,22 @@ let after=null,loadingPeople=false,pendingWrite=false;
 let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false;
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
+let schoolReady=false;
+function activeTab(){return document.querySelector("[data-tab][aria-selected='true']")?.dataset.tab||"overview";}
+async function loadSelectedTab(name){
+  if(!schoolReady||workspace.hidden)return;
+  const task=name==="overview"?loadOverview:
+    name==="people"?()=>loadPeople(false):
+    name==="import"?()=>Promise.all([loadAcademics(),loadRosterSourceStatus()]):
+    name==="invites"?loadInvitePeople:
+    name==="classes"?loadAcademics:
+    name==="access"?loadMemberships:null;
+  if(!task)return;
+  const active=document.querySelector("[data-tab='"+name+"']");
+  active?.setAttribute("aria-busy","true");
+  try{await task();}catch(error){say(error.message||"This section is temporarily unavailable.");}
+  finally{active?.removeAttribute("aria-busy");}
+}
 function setTab(name,{remember=true}={}) {
   const target=tabNames.has(name)?name:"overview";
   for(const button of document.querySelectorAll("[data-tab]")){
@@ -20,6 +36,7 @@ function setTab(name,{remember=true}={}) {
   }
   if(remember&&location.hash!=="#"+target)
     history.replaceState(null,"","#"+target);
+  if(schoolReady)void loadSelectedTab(target);
 }
 document.querySelectorAll("[data-tab]").forEach(button=>
   button.addEventListener("click",()=>setTab(button.dataset.tab)));
@@ -29,6 +46,7 @@ const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
+    schoolReady=false;
     workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolPrograms=[];schoolTerms=[];schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
     get("pa-reconcile-results")?.replaceChildren();for(const id of ["pa-reconcile-integrity","pa-reconcile-attention","pa-reconcile-review","pa-reconcile-total"]){if(get(id))get(id).textContent="—";}if(get("pa-reconcile-status"))get("pa-reconcile-status").textContent="Loading school relationship checks…";
     get("pa-more").hidden=true;
@@ -38,8 +56,10 @@ const picker=createTenantSchoolPicker({
       workspace.hidden=true;say("This school has not granted you directory administration access.");
       return;
     }
-    workspace.hidden=false;
-    void Promise.all([loadOverview(),loadPeople(false),loadAcademics(),loadMemberships(),loadInvitePeople(),loadRosterSourceStatus()]).catch(error=>say(error.message||"Directory access unavailable."));
+    workspace.hidden=false;schoolReady=true;
+    // Load only the active section. Large school directories should not fetch
+    // six unrelated panels when the administrator only needs the overview.
+    void loadSelectedTab(activeTab());
   }
 });
 async function performRosterSource(action,details={}){
