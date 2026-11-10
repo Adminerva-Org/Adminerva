@@ -1,16 +1,9 @@
-name: MCS SHS controlled pilot execution
+name: MCS SHS pilot inventory (manual, read-only)
 
+# Never deploy Firebase or mutate school records from an automatically triggered
+# PR/push workflow. Deployment requires its own explicitly reviewed operation.
 on:
-  push:
-    branches:
-      - feat/adminerva-4-verified-tenant-foundation
-    paths:
-      - ".github/workflows/mcs-shs-controlled-pilot-execute.yml"
-  pull_request:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/mcs-shs-controlled-pilot-execute.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -20,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy-and-reconcile:
+  inventory-and-reconcile:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -46,10 +39,7 @@ jobs:
           chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
           echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
 
-      - name: Deploy backward-compatible V4 backend and Firestore policy
-        run: npx -y firebase-tools@14 deploy --project reporeview-e7ca4 --only firestore:rules,firestore:indexes,functions --non-interactive
-
-      - name: Run protected migration inventory dry-run
+      - name: Run protected migration inventory dry-run (no writes)
         shell: bash
         run: |
           set -euo pipefail
