@@ -56,6 +56,29 @@ async function main(){
     const uid=row.reviewed?.authUid||verified;
     if(uid)uids.push(uid);else unresolved.push(row.id);
   }
+  const [membersSnapshot,peopleSnapshot]=await Promise.all([
+    db.collection("schools/"+SCHOOL_ID+"/memberships").get(),
+    db.collection("schools/"+SCHOOL_ID+"/people").get()
+  ]);
+  const candidateUids=new Set(uids);
+  const extra=membersSnapshot.docs.filter(d=>!candidateUids.has(d.id)&&d.id!==school?.firstAdminUid);
+  const extras={
+    count:extra.length,
+    active:extra.filter(d=>d.data()?.status==="active").length,
+    teacherOnly:extra.filter(d=>d.data()?.roles?.includes("teacher")&&!d.data()?.roles?.includes("student")).length,
+    schoolAdmin:extra.filter(d=>d.data()?.roles?.includes("school_admin")).length,
+    student:extra.filter(d=>d.data()?.roles?.includes("student")).length,
+    wrongSchool:extra.filter(d=>d.data()?.schoolId!==SCHOOL_ID).length,
+    hasCanonicalPerson:extra.filter(d=>peopleSnapshot.docs.some(p=>p.data()?.authUid===d.id)).length
+  };
+  const missingPilotMemberships=uids.filter(uid=>!membersSnapshot.docs.some(m=>
+    m.id===uid&&m.data()?.schoolId===SCHOOL_ID&&m.data()?.status==="active"&&
+    m.data()?.roles?.includes("student"))).length;
+  console.log("MCS_PILOT_MEMBERSHIP_SHAPE extras="+extras.count+
+    " activeExtras="+extras.active+" extraTeachers="+extras.teacherOnly+
+    " extraAdmins="+extras.schoolAdmin+" extraStudents="+extras.student+
+    " wrongSchool="+extras.wrongSchool+" extraWithPerson="+extras.hasCanonicalPerson+
+    " missingPilotStudentMemberships="+missingPilotMemberships);
   const canonical={
     people:peopleCount.data().count,memberships:membersCount.data().count,
     offerings:offeringsCount.data().count,enrollments:enrollmentsCount.data().count,
