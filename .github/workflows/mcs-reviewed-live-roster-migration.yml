@@ -1,44 +1,40 @@
-name: MCS reviewed live roster canonical migration
-# school-admin-scope-pass-1
-
+name: MCS controlled pilot preflight (no production writes)
+#
+# The earlier workflow applied a live migration automatically when this YAML was
+# pushed to main. That is not an approval boundary. Do not give a GitHub Actions
+# test job Firebase Admin credentials or auto-approve real student mappings.
+# The protected subset migration is a separate reviewed operator procedure:
+# docs/adminerva-4-mcs-shs-controlled-pilot-runbook.md
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/mcs-reviewed-live-roster-migration.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: mcs-reviewed-live-roster-migration
-  cancel-in-progress: false
-
 jobs:
-  migrate:
+  preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: functions/package-lock.json
-      - run: npm ci --prefix functions
-      - name: Prepare Firebase service account
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_REPOREVIEW_E7CA4 }}
-        shell: bash
+      - name: Validate non-secret four-section pilot configuration
         run: |
-          set -euo pipefail
-          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
-          chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
-          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
-      - name: Apply reviewed 169-student canonical V4 pilot migration
-        shell: bash
-        run: |
-          cd functions
-          NODE_PATH="$PWD/node_modules" node ../scripts/mcs-shs-pilot-live-execute.cjs
-      - if: always()
-        run: rm -f "$RUNNER_TEMP/firebase-service-account.json"
+          node --test tests/mcs-pilot-mapping.test.mjs
+          node --input-type=module -e '
+            import {readFileSync} from "node:fs";
+            import assert from "node:assert/strict";
+            const cfg=JSON.parse(readFileSync("docs/adminerva-4-mcs-pilot-academic-defaults.json","utf8"));
+            const expected=cfg.operationalPilot?.currentApprovedSectionCounts||cfg.rosterReference?.pilotSectionCounts;
+            assert.equal(cfg.schoolId,"mcs-manila");
+            assert.equal(cfg.compatibilityModeDuringPilot,"legacy_allowed");
+            assert.equal(Object.values(expected||{}).reduce((a,b)=>a+Number(b),0),169);
+            const trigger=JSON.parse(readFileSync("ops/mcs-shs-pilot-trigger.json","utf8"));
+            assert.equal(trigger.productionAuthorized,false);
+            assert.equal(trigger.startPilot,false);
+            assert.equal(trigger.v4Only,false);
+            assert.equal(trigger.historicalMigration,false);
+            console.log("Pilot configuration preflight passed; no Firebase connection or data writes.");
+          '
