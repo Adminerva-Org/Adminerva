@@ -321,7 +321,7 @@ ${gradeSpecificRules}
    - topic: a specific sub-topic supported by the current references and sequence.
    - competencies: 1 to 2 clear learning competencies, preferring reference wording when available.
    - objectives: exactly 3 to 4 detailed behavioral objectives based on Bloom's Taxonomy. Do not label Bloom domains.
-   - preliminary MUST start with 'Opening Prayer\\nAttendance Checking\\nTECHNOTES'.
+   - preliminary: set to an empty string. Adminerva applies the teacher's saved preliminary-activity defaults after generation/import.
    - motivation: start with an '-ing' student-action verb and directly identify the teaching strategy. Do not use a detached 'Strategy:' header.
    - learning_activities:
      * heavily bulleted using dashes;
@@ -331,6 +331,7 @@ ${gradeSpecificRules}
      * no minute allocations or timestamps.
    - formation_standard: use the most relevant Formation Standard/core-value reference when provided. Format exactly '[Core Value Keyword] - [General Definition]'.
    - evaluation: align to the lesson competencies and the teacher's instructions. Use a referenced Let's Practice/checking activity when the teacher explicitly asks for it. Do not default to Quipper.
+   - closing: set to an empty string. Adminerva applies the teacher's saved closing-activity defaults after generation/import.
    - values_integration: use the same appropriate formation/core-value source and format '[Core Value Keyword] - [Specific application to this lesson topic]'.
    - remarks:
      * use ONLY meeting lines whose SESSION label matches this session;
