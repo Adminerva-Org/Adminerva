@@ -16,6 +16,7 @@ const el=id=>document.getElementById(id);
 const make=(tag,style,text)=>{const n=document.createElement(tag);
   if(style)n.className=style;if(text!=null)n.textContent=String(text);return n;};
 let unsubscribe=[],snapshots={legacy:[],v2:[]},documents=[],students=new Map(),assessments=new Map(),gradeState=new Map(),gradeLookupToken=0,subjectFocus=[];
+let inboxGeneration=0;
 function hyperlink(parent,label,href){
   const a=make("a","text-xs sm:text-sm font-bold text-blue-700 hover:underline break-all",label);
   a.href=href;a.target=href.startsWith("http")?"_blank":"_self";
@@ -152,29 +153,62 @@ function refresh(){
   void refreshGradeStatus();
 }
 onAuthStateChanged(auth,async user=>{
-  const end = window.beginLoading?.("Loading review inbox…", el("submissionFeed")) || (() => {});
-  for(const stop of unsubscribe)stop();unsubscribe=[];snapshots={legacy:[],v2:[]};gradeState.clear();gradeLookupToken++;
-  if(!await resolveStaffRole(user)){
-    el("submissionStatus").textContent="Authorized teacher sign-in required.";
-    el("submissionFeed").replaceChildren();end();return;
-  }
+  const generation=++inboxGeneration;
+  const current=()=>generation===inboxGeneration&&Boolean(user)&&auth.currentUser?.uid===user.uid;
+  const feed=el("submissionFeed"),status=el("submissionStatus");
+  for(const stop of unsubscribe)stop();
+  unsubscribe=[];snapshots={legacy:[],v2:[]};documents=[];
+  gradeState.clear();gradeLookupToken++;
+  feed.replaceChildren();
+  feed.setAttribute("aria-busy","true");
+  feed.append(make("p","rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600",
+    "Loading authorized submission receipts and selected evidence…"));
+  status.textContent="Checking your assigned review inbox…";
+  let subscriptionsStarted=false;
   try{
+    if(!user||!await resolveStaffRole(user)){
+      if(current()||!user){
+        status.textContent="Authorized teacher sign-in required.";
+        feed.replaceChildren();
+      }
+      return;
+    }
     const [roster,taskDocs]=await Promise.all([
       getDocs(collection(db,"students")),getDocs(collection(db,"assessments"))
     ]);
-    if(auth.currentUser?.uid!==user.uid)return;
+    if(!current())return;
     students=new Map(roster.docs.map(d=>[d.id,d.data()]));
-    assessments=new Map(taskDocs.docs.map(d=>[d.id,d.data()]));subjectFocus=await resolveStaffSubjects(user);
+    assessments=new Map(taskDocs.docs.map(d=>[d.id,d.data()]));
+    subjectFocus=await resolveStaffSubjects(user);
+    if(!current())return;
+    const loaded=new Set();
+    const completed=key=>{
+      loaded.add(key);
+      if(loaded.size===2&&current())feed.setAttribute("aria-busy","false");
+    };
     const request=(key,source,dateField)=>{
-      const loaded = window.beginLoading?.("Loading submitted evidence…",el("submissionFeed")) || (() => {});
       const stop=onSnapshot(query(collection(db,source),orderBy(dateField,"desc"),limit(200)),
-        snap=>{snapshots[key]=snap.docs.map(d=>({id:d.id,...d.data()}));refresh();loaded();},
-        error=>{loaded();el("submissionStatus").textContent=source+" unavailable: "+error.message;});
-      unsubscribe.push(()=>{loaded();stop();});
+        snap=>{
+          if(!current())return;
+          snapshots[key]=snap.docs.map(d=>({id:d.id,...d.data()}));
+          refresh();completed(key);
+        },
+        error=>{
+          if(!current())return;
+          completed(key);
+          status.textContent=source+" unavailable: "+error.message+
+            ". Other loaded records remain visible; refresh to retry.";
+        });
+      unsubscribe.push(stop);
     };
     request("legacy","student_submissions","submittedAt");
     request("v2","assessment_evidence","updatedAt");
-  }catch(error){el("submissionStatus").textContent="Could not load review inbox: "+error.message;}finally{end();}
+    subscriptionsStarted=true;
+  }catch(error){
+    if(current())status.textContent="Could not load review inbox: "+error.message;
+  }finally{
+    if(current()&&!subscriptionsStarted)feed.setAttribute("aria-busy","false");
+  }
 });
 el("submissionSearch").addEventListener("input",render);
 for(const id of ["submissionSection","submissionState","submissionAssessment"])el(id).addEventListener("change",render);

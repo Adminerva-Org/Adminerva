@@ -7,23 +7,26 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-    <title>Adminerva - Curriculum Planner</title>
+    <title>Curriculum Planner | Adminerva</title>
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://accounts.google.com" crossorigin>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="stylesheet" href="css/lesson-print.css?v=1.4.23" />
     <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8" />
+    <link rel="stylesheet" href="css/teacher-ux.css?v=4.0.0" />
 </head>
-  <body class="bg-gray-100 font-sans min-h-screen flex flex-col">
+  <body class="av-teacher-refresh bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="lesson" data-page="planner"></div>
-    <script src="js/core/adminerva-nav.js?v=1.4.17"></script>
+    <script defer src="js/core/adminerva-nav.js?v=4.0.1"></script>
 
     <!-- Main Workspace -->
     <main class="w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1">
-    <div class="w-full p-0 flex-1 flex flex-col gap-6">
+    <div class="w-full p-0 flex-1 flex flex-col gap-4">
       <!-- TOP SECTION: Configuration Banner -->
-      <div class="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+      <div class="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-200">
         <div
-          class="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-6 border-b pb-4 gap-4"
+          class="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-4 border-b pb-3 gap-3"
         >
           <div>
             <h2 class="text-2xl font-bold text-gray-800">Curriculum Planner</h2>

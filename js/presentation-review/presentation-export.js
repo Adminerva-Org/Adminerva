@@ -1,4 +1,27 @@
 /** Editable slides, lesson provenance and safe slide export: presentation export. */
+let pptxLibrariesPromise=null;
+function loadExportScript(url,ready){
+  if(ready())return Promise.resolve();
+  return new Promise((resolve,reject)=>{
+    const script=document.createElement("script");
+    script.src=url;script.async=true;
+    script.onload=()=>ready()?resolve():reject(new Error("A PowerPoint export library did not initialize."));
+    script.onerror=()=>reject(new Error("Could not load PowerPoint export support. Check your connection."));
+    document.head.append(script);
+  });
+}
+async function preparePptxLibraries(){
+  if(typeof window.PptxGenJS==="function")return;
+  if(!pptxLibrariesPromise){
+    pptxLibrariesPromise=(async()=>{
+      await loadExportScript("https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/libs/jszip.min.js",
+        ()=>typeof window.JSZip==="function");
+      await loadExportScript("https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.min.js",
+        ()=>typeof window.PptxGenJS==="function");
+    })().catch(error=>{pptxLibrariesPromise=null;throw error;});
+  }
+  await pptxLibrariesPromise;
+}
 window.exportToPPTX = async function () {
   if (
     !window.currentPresentationDeck ||
@@ -19,6 +42,7 @@ window.exportToPPTX = async function () {
   }
 
   try {
+    await preparePptxLibraries();
     let pptx=new PptxGenJS();
     pptx.layout="LAYOUT_16x9";
     const visible=window.currentPresentationDeck.filter(item=>!item.hidden);

@@ -1,0 +1,40 @@
+/* Student assignments and evidence: reduce reading burden and preserve clear action affordances. */
+.av-student-assessments #adminerva-nav:empty{min-height:63px;background:#10253d}
+.av-student-assessments main{max-width:1180px}
+.av-student-assessments #assignmentsNotice{line-height:1.5}
+.av-student-assessments #assignmentsFeed>button{min-height:90px}
+.av-student-assessments #assignmentsFeed>button:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+.av-student-assessments #assignmentsFeed>button:hover{box-shadow:0 10px 20px #173e6310}
+.av-student-assessments .av-assignments-count{padding:0 .2rem;font-weight:600}
+.av-student-assessments #searchAssInput{min-height:44px}
+.av-student-assessments #filterStatus,.av-student-assessments #sortDate{min-height:44px;max-width:100%}
+.av-student-assessments #assessmentModal [role="status"]{line-height:1.5}
+.av-student-assessments #assessmentModal>div{min-height:0}
+.av-student-assessments #assessmentModal :is(button,select,input,textarea):focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.av-student-assessments #assessmentModalClose:focus-visible{outline-color:#fff}
+.av-student-assessments #evidencePanel{isolation:isolate}
+.av-student-assessments #evidenceSelectionSteps [data-evidence-step]{transition:border-color .15s ease,background-color .15s ease}
+.av-student-assessments #evidenceSelectionSteps [data-complete="true"]{border-color:#86ccad;background:#e9f9f0;color:#14532d}
+.av-student-assessments #evidenceSelectionSteps [data-complete="true"] strong{color:#166534}
+.av-student-assessments .av-evidence-commit-list{scrollbar-gutter:stable;overscroll-behavior:contain;min-height:130px;padding-bottom:.25rem}
+.av-student-assessments .av-evidence-commit-list[aria-busy="true"]{background:linear-gradient(160deg,#f8fafc,#fff);cursor:progress}
+.av-student-assessments .av-evidence-commit-list>div:focus-within{border-color:#7ba8ea;box-shadow:0 0 0 1px #afc8f5}
+.av-student-assessments .av-evidence-commit-list button[aria-pressed="true"]{box-shadow:0 0 0 1px #b1d2ee inset}
+.av-student-assessments #evidencePreviewDetails{scroll-margin-top:1rem}
+.av-student-assessments #evidencePreview{tab-size:2;line-height:1.55}
+.av-student-assessments #evidenceReclaimEditor{scroll-margin-top:1rem}
+.av-student-assessments #evidenceSelectionSummary{max-width:72ch}
+.av-student-assessments #evidenceSubmissionStatus:empty{display:none}
+@media(max-width:640px){
+ .av-student-assessments main{padding-inline:12px;padding-top:1rem}
+ .av-student-assessments #assessmentModal{padding:0}
+ .av-student-assessments #assessmentModal>div{width:100%;height:100dvh;max-height:none;border-radius:0}
+ .av-student-assessments #evidencePanel>div{padding-inline:12px}
+ .av-student-assessments .av-evidence-commit-list{max-height:43vh}
+ .av-student-assessments #evidenceSubmit{width:100%;flex:1 1 100%}
+ .av-student-assessments #evidenceSelectionSteps{flex-wrap:nowrap;overflow-x:auto}
+ .av-student-assessments #evidenceSelectionSteps span{white-space:nowrap;flex:none}
+}
+@media(prefers-reduced-motion:reduce){
+ .av-student-assessments #evidenceSelectionSteps [data-evidence-step]{transition:none}
+}

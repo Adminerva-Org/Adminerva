@@ -6,6 +6,8 @@ import {academicGradeEligible,queryGroups} from "./academic-model.mjs?v=1.3.0";
 import {createReviewRequests} from "../repo-review/services/review-requests.mjs?v=1.3.0";
 import {
   collection,
+  doc,
+  getDoc,
   getDocs,
   query,
   where,
@@ -263,20 +265,30 @@ window.loadDashboardData = async function () {
 
     renderStudentRadar(rankedStudents);
 
-    // 4. Group Repo Analytics (Equity & Ghost)
-    const cacheSnap = await getDocs(collection(db, "group_repo_cache")).catch(()=>null);
-    if (request !== dashboardRequest) return;
-    const repoCacheMap = {};
-    cacheSnap?.forEach((d) => (repoCacheMap[d.id] = d.data()));
-
+    // 4. Read only section-specific repository summaries.
+    // A school-wide group_repo_cache scan grows with every class and is
+    // unnecessary for a teacher inspecting one assigned section.
     const groups = {};
-    sectionStudents.forEach((s) => {
-      const rid = getRepoId(s.repoUrl);
-      if (rid) {
-        if (!groups[rid]) groups[rid] = [];
-        groups[rid].push(s);
-      }
+    sectionStudents.forEach((student) => {
+      const key=getRepoId(student.repoUrl);
+      if(!key)return;
+      if(!groups[key])groups[key]=[];
+      groups[key].push(student);
     });
+    const repoCacheMap={},groupKeys=Object.keys(groups).slice(0,60);
+    let unreadableCache=0;
+    for(let i=0;i<groupKeys.length;i+=8){
+      const batch=await Promise.allSettled(groupKeys.slice(i,i+8).map(key=>
+        getDoc(doc(db,"group_repo_cache",key))));
+      if(request!==dashboardRequest)return;
+      batch.forEach((result,index)=>{
+        const key=groupKeys[i+index];
+        if(result.status==="fulfilled"&&result.value.exists())
+          repoCacheMap[key]=result.value.data();
+        else unreadableCache++;
+      });
+    }
+    const cacheUnavailable=unreadableCache>0||Object.keys(groups).length>60;
 
     const equityAlerts = [];
     const ghostAlerts = [];
@@ -288,9 +300,9 @@ window.loadDashboardData = async function () {
 
       // Check Ghost / Dormancy
       if (
-        !cacheData ||
+        cacheData && (
         !cacheData.latestSha ||
-        cacheData.lastUpdated < weekAgo
+        cacheData.lastUpdated < weekAgo)
       ) {
         ghostAlerts.push({ repoId: rid, members: groupMembers });
       }
@@ -330,7 +342,14 @@ window.loadDashboardData = async function () {
     renderPenalties(penaltyCounts, filteredGrades.length);
     renderTaskAverages(taskAverages);
     renderRadarAlerts(ghostAlerts, equityAlerts);
-    if(!cacheSnap)for(const id of ["ghostList","equityList"])document.getElementById(id).textContent="Repository cache unavailable. Academic results are separate. Refresh to retry.";
+    if(cacheUnavailable){
+      for(const id of ["ghostList","equityList"]){
+        const note=document.createElement("p");
+        note.className="text-xs text-amber-800 mt-2";
+        note.textContent="Some repository summaries were unavailable. Missing cache data is not evidence that a student or group was inactive.";
+        document.getElementById(id).append(note);
+      }
+    }
 
     if (sectionStudents.length > 0) {
       await renderVelocityChart(sectionStudents, request);

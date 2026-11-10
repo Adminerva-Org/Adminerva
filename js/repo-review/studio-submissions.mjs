@@ -17,9 +17,13 @@ function render(){
  root.replaceChildren();
  const visible=records.filter(data=>node("studioReviewFilter").value==="all"||
    data.status===node("studioReviewFilter").value);
+ const count=node("studioReviewCount");
+ if(count)count.textContent=visible.length+" of "+records.length+" submissions shown · "+
+   records.filter(item=>item.status==="submitted").length+" awaiting review · "+
+   records.filter(item=>item.status==="revision_requested").length+" awaiting revision";
  if(!visible.length){add(root,"p","No matching Studio submissions.","text-sm text-slate-500 p-3");return;}
  for(const item of visible){
-   const box=add(root,"button","","border p-3 rounded-lg text-left hover:border-teal-500 focus-visible:outline-teal-600");
+   const box=add(root,"button","","av-studio-submission-card border p-3 rounded-lg text-left hover:border-teal-500 focus-visible:outline-teal-600");
    box.type="button";
    box.setAttribute("aria-current",String(item.id===selectedId));
    add(box,"strong",item.projectTitle||"Studio project","block text-sm text-slate-900");
@@ -30,7 +34,10 @@ function render(){
 }
 async function load(){
  if(loading)return;loading=true;node("studioReviewRefresh").disabled=true;
- const user=auth.currentUser,stamp=++session,ending=window.beginLoading?.("Loading Studio assessment submissions…")||(()=>{});
+ root.setAttribute("aria-busy","true");
+ const user=auth.currentUser,stamp=++session;inspectionSequence++;
+ setStatus("Loading the submissions you are authorized to review…");
+ const ending=()=>{root.setAttribute("aria-busy","false");};
  try{
    if(!user?.uid)throw Error("Sign in with your teacher or administrator account.");
    const kind=await resolveStaffRole(user);
@@ -63,11 +70,11 @@ async function load(){
    }
  }catch(error){
    if(stamp===session){records=[];render();setStatus("Studio inbox could not load: "+error.message);}
- }finally{if(stamp===session)loading=false;node("studioReviewRefresh").disabled=false;ending();}
+ }finally{if(stamp===session){loading=false;node("studioReviewRefresh").disabled=false;ending();}}
 }
 async function inspect(item){
  if(busy)return;
- selectedId=item.id;render();detail.replaceChildren();add(detail,"p","Loading exact saved revision…");
+ selectedId=item.id;render();detail.replaceChildren();detail.setAttribute("aria-busy","true");add(detail,"p","Loading exact saved revision…");
  const stamp=++inspectionSequence,uid=auth.currentUser?.uid;
  try{
    const [version,task,student,grade]=await Promise.all([
@@ -185,11 +192,22 @@ async function inspect(item){
    gradeBtn.addEventListener("click",()=>void save("reviewed"));
  }catch(error){
    if(stamp===inspectionSequence){detail.replaceChildren();add(detail,"p","Cannot inspect this submission: "+error.message,"text-rose-700 text-sm");}
- }
+ }finally{if(stamp===inspectionSequence)detail.setAttribute("aria-busy","false");}
 }
 node("studioReviewRefresh").addEventListener("click",()=>void load());
-node("studioReviewFilter").addEventListener("change",render);
+node("studioReviewFilter").addEventListener("change",()=>{
+ const filter=node("studioReviewFilter").value;
+ if(selectedId&&!records.some(item=>item.id===selectedId&&(filter==="all"||item.status===filter))){
+   selectedId=null;inspectionSequence++;detail.textContent="Choose a submission matching the selected status.";
+   detail.setAttribute("aria-busy","false");
+ }
+ render();
+});
 onAuthStateChanged(auth,user=>{
- if(!user){session++;inspectionSequence++;records=[];selectedId=null;root.replaceChildren();detail.textContent="Sign in to review.";return;}
+ session++;inspectionSequence++;loading=false;busy=false;
+ node("studioReviewRefresh").disabled=false;
+ root.setAttribute("aria-busy","false");
+ detail.setAttribute("aria-busy","false");
+ if(!user){records=[];selectedId=null;root.replaceChildren();detail.textContent="Sign in to review.";return;}
  void load();
 });

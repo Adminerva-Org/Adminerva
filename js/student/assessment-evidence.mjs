@@ -107,8 +107,26 @@ function contextForStudent(){
     throw Error("Select an assessment under your own signed-in student profile.");
   return data;
 }
+function renderAndRestoreCommitFocus(action,sha){
+  const list=el("evidenceCommitList"),offset=list.scrollTop;
+  render();
+  list.scrollTop=offset;
+  const target=[...list.querySelectorAll("[data-commit-action]")].find(button=>
+    button.dataset.commitAction===action&&button.dataset.commitSha===sha);
+  target?.focus({preventScroll:true});
+}
 function render(){
   const list=el("evidenceCommitList");list.replaceChildren();
+  const guidance=evidenceSelectionGuidance([...selected],checkpoint);
+  const checkpointNode=el("evidenceCheckpointState");
+  if(checkpointNode)checkpointNode.textContent=checkpoint?"Checkpoint "+checkpoint.slice(0,12):"No checkpoint chosen";
+  for(const step of document.querySelectorAll("[data-evidence-step]")){
+    const name=step.dataset.evidenceStep;
+    const done=name==="selection"?selected.size>0:name==="checkpoint"?Boolean(checkpoint):
+      saved?.status==="submitted"||saved?.status==="approved";
+    step.dataset.complete=String(done);
+    step.setAttribute("aria-label",(done?"Completed: ":"Not completed: ")+step.textContent.trim());
+  }
   el("evidenceSelectedCount").textContent=selected.size+" selected";
   for(const button of document.querySelectorAll("[data-evidence-filter]")){
     const active=button.dataset.evidenceFilter===commitFilter;
@@ -122,15 +140,14 @@ function render(){
   el("evidenceEditability").textContent=evidenceSyncing?"Checking current server status…":evidenceBusy?"Saving evidence…":editable?
     "Editing enabled · "+(saved?.status==="reopened"?"Instructor reopened this evidence. Change the boxes and resubmit.":"Choose your commits and checkpoint, then submit."):
     saved?.status==="approved"?"Approved · Ask your instructor to reopen before changing selections.":"Instructor release required for this historical proposal.";
-  el("evidenceSubmit").disabled=!editable||evidenceBusy;
+  el("evidenceSubmit").disabled=!editable||evidenceBusy||!guidance.ready;
   el("evidenceSubmit").textContent=evidenceBusy?"Saving evidence…":saved?"Resubmit selected evidence":"Submit selected evidence";
   el("evidenceWithdraw").disabled=!editable||!saved||saved.status==="withdrawn"||evidenceBusy||
     (saved.status==="reopened"&&!saved.selectedCommits?.length);
   if(el("evidenceClear"))el("evidenceClear").disabled=!editable||evidenceBusy;
-  const guidance=evidenceSelectionGuidance([...selected],checkpoint);
   const summary=el("evidenceSelectionSummary");
   if(summary)summary.textContent=guidance.message;
-  if(!commits.length){add(list,"p","No commits returned. The repository may be empty or inaccessible.");return;}
+  if(!commits.length){add(list,"p",historyPage===0?"Loading available commits…":"No commits returned. The repository may be empty or inaccessible.","text-sm text-slate-600 rounded-lg border border-dashed p-4");return;}
   const linked=String(context?.profile?.githubUsername||"").trim().replace(/^@/,"").toLowerCase();
   const visible=commits.filter(commit=>{
     const sha=String(commit.sha||"").toLowerCase();
@@ -165,16 +182,18 @@ function render(){
       "min-h-10 rounded-lg border px-3 py-2 text-xs font-bold transition "+
       (evidenceSelected?"border-indigo-600 bg-indigo-600 text-white":"border-slate-300 bg-white text-slate-800 hover:border-indigo-400 hover:bg-indigo-50"));
     include.type="button";include.disabled=!editable||evidenceBusy;
+    include.dataset.commitAction="evidence";include.dataset.commitSha=sha;
     include.setAttribute("aria-pressed",String(evidenceSelected));
     include.setAttribute("aria-label",(evidenceSelected?"Remove ":"Select ")+sha.slice(0,12)+(evidenceSelected?" from":" as")+" evidence");
-    include.addEventListener("click",()=>{selectionDirty=true;if(selected.has(sha))selected.delete(sha);else selected.add(sha);render();});
+    include.addEventListener("click",()=>{selectionDirty=true;if(selected.has(sha))selected.delete(sha);else selected.add(sha);renderAndRestoreCommitFocus("evidence",sha);});
     const checkpointButton=add(actions,"button",checkpointSelected?"✓ Project checkpoint":"Use as checkpoint",
       "min-h-10 rounded-lg border px-3 py-2 text-xs font-bold transition "+
       (checkpointSelected?"border-emerald-700 bg-emerald-700 text-white":"border-emerald-300 bg-white text-emerald-900 hover:bg-emerald-50"));
     checkpointButton.type="button";checkpointButton.disabled=!editable||evidenceBusy;
+    checkpointButton.dataset.commitAction="checkpoint";checkpointButton.dataset.commitSha=sha;
     checkpointButton.setAttribute("aria-pressed",String(checkpointSelected));
     checkpointButton.setAttribute("aria-label","Set commit "+sha.slice(0,12)+" as project checkpoint");
-    checkpointButton.addEventListener("click",()=>{selectionDirty=true;checkpoint=sha;render();});
+    checkpointButton.addEventListener("click",()=>{selectionDirty=true;checkpoint=sha;renderAndRestoreCommitFocus("checkpoint",sha);});
     if(commit.unavailable)add(row,"p","Saved commit unavailable from GitHub. You can remove it, or ask your teacher to inspect the repository.","text-xs text-amber-800");
     add(row,"p",author.name+" · "+(author.login?"@"+author.login:"Git login unavailable")+
       " · "+(author.date?new Date(author.date).toLocaleString():"Unknown date"),
@@ -358,7 +377,7 @@ async function load(){
   evidenceBusy=false;
   selectionDirty=false;evidenceSyncing=true;
   historyPage=0;hasOlderCommits=false;historyLoading=false;historyHeadSha="";refreshHistoryControl();
-  el("evidenceCommitList").replaceChildren();el("evidencePreview").textContent="";
+  el("evidenceCommitList").replaceChildren();el("evidenceCommitList").setAttribute("aria-busy","true");el("evidencePreview").textContent="";
   if(el("evidenceSubmissionStatus"))el("evidenceSubmissionStatus").textContent="";
   const summary=el("evidenceSelectionSummary");if(summary)summary.textContent="No evidence commits selected yet.";
   status("Loading your linked repository's commits…");
@@ -420,6 +439,7 @@ async function load(){
     else if(saved?.status==="needs_review")status("Your teacher proposed historical evidence, not a student submission. Ask them to reopen it for student changes if you need to choose your own evidence commits and checkpoint before approval.");
     if(evidenceSyncing)status("Checking current evidence status with the server. Editing resumes when connected.");
   }catch(error){if(seq===loadSequence)status("Unable to load evidence: "+error.message);}
+  finally{if(seq===loadSequence)el("evidenceCommitList").setAttribute("aria-busy","false");}
 }
 async function loadOlderCommits(){
   if(historyLoading||!hasOlderCommits||!context)return;
