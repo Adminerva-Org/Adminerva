@@ -89,7 +89,25 @@ function mergeInstructionMap(localMap,aiMap){
 }
 
 function instructionMapText(map){
-  return JSON.stringify(map||{},null,2);
+  if(!map||typeof map!=="object")return "{}";
+  const {
+    raw_instruction,
+    subject,
+    grade,
+    scope,
+    local_signals,
+    ...promptMap
+  }=map;
+  return JSON.stringify(promptMap,null,2);
+}
+
+function instructionReferenceHints(map){
+  return [
+    ...(map?.content_reference_hints||[]),
+    ...(map?.assessment_requirements||[]),
+    ...(map?.continuity_requirements||[]),
+    ...(map?.directives||[]),
+  ].join(" ");
 }
 
 function scheduleRemarksForSession(sessionName){
@@ -100,7 +118,7 @@ function scheduleRemarksForSession(sessionName){
       meeting.date||meeting.day||"",
       meeting.time||""
     ].filter(Boolean).join(" | ");
-    return meeting.event ? core+" | "+meeting.event : core;
+    return meeting.event ? core+" | Event: "+meeting.event : core;
   }).filter(Boolean).join("; ");
 }
 
@@ -306,7 +324,7 @@ window.initiateGenerationFlow = async function (options = {}) {
         scope,
         instructions:[
           customInstructionsText,
-          instructionMapText(window.cachedInstructionMap)
+          instructionReferenceHints(window.cachedInstructionMap)
         ].filter(Boolean).join(" "),
         budget:REFERENCE_CONTEXT_BUDGET
       });
