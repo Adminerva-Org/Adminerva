@@ -608,7 +608,7 @@ function applyExternalLessonPlan(planData) {
     }
     Object.keys(session).forEach((key) => {
       if (typeof session[key] === "string") {
-        session[key] = session[key].replace(/\\\\n/g, "\n");
+        session[key] = session[key].replace(/\\n/g, "\n");
       }
     });
     return session;
@@ -618,7 +618,7 @@ function applyExternalLessonPlan(planData) {
   Object.keys(window.currentWeeklyOverview).forEach((key) => {
     if (typeof window.currentWeeklyOverview[key] === "string") {
       window.currentWeeklyOverview[key] =
-        window.currentWeeklyOverview[key].replace(/\\\\n/g, "\n");
+        window.currentWeeklyOverview[key].replace(/\\n/g, "\n");
     }
   });
 
