@@ -53,13 +53,13 @@ function sections(text,limit=1050){
   }
   return chunks;
 }
-function relevance(chunk,terms,index){
-  const hay=chunk.toLowerCase();
+function relevance(chunk,terms,index,metadata=""){
+  const hay=(metadata+" "+chunk).toLowerCase();
   let score=0;
   for(const word of terms){
     if(hay.includes(word))score+=1+Math.min(hay.split(word).length-2,3)*0.2;
   }
-  if(/\b(content standard|performance standard|competenc|learning outcome|objectives|activities|assessment)\b/i.test(chunk))score+=0.3;
+  if(/\b(content standard|performance standard|competenc|learning outcome|objectives|activities|assessment|lesson|unit|formation|values)\b/i.test(chunk+" "+metadata))score+=0.3;
   return score-index*0.003;
 }
 export function buildReferenceContext(records,{scope="",instructions="",budget=REFERENCE_CONTEXT_BUDGET}={}){
@@ -68,17 +68,20 @@ export function buildReferenceContext(records,{scope="",instructions="",budget=R
   const docs=(Array.isArray(records)?records:[]).map((record,index)=>{
     const text=extractReferenceText(record);
     const title=String(record?.title||record?.name||record?.filename||"Untitled reference").replace(/[\r\n]/g," ").slice(0,150);
-    const parts=sections(text).map((value,part)=>({value,part,score:relevance(value,terms,part)}));
-    return {index,title,textLength:text.length,parts};
+    const folder=String(record?.sourceFolder||"").replace(/[\r\n]/g," ").trim().slice(0,120);
+    const metadata=[folder,title].filter(Boolean).join(" ");
+    const parts=sections(text).map((value,part)=>({value,part,score:relevance(value,terms,part,metadata)}));
+    return {index,title,folder,textLength:text.length,parts};
   });
   const readable=docs.filter(d=>d.parts.length);
-  const all=readable.flatMap(d=>d.parts.map(chunk=>({...chunk,document:d.index,title:d.title})));
+  const all=readable.flatMap(d=>d.parts.map(chunk=>({...chunk,document:d.index,title:d.title,folder:d.folder})));
   const selected=[],chosen=new Set();
   let used=0;
   const add=chunk=>{
     const id=chunk.document+":"+chunk.part;
     if(chosen.has(id))return false;
-    const header="\n\n--- REFERENCE: "+chunk.title+" (section "+(chunk.part+1)+") ---\n";
+    const sourceLabel=chunk.folder?"FOLDER: "+chunk.folder+" | DOCUMENT: "+chunk.title:"DOCUMENT: "+chunk.title;
+    const header="\n\n--- REFERENCE "+sourceLabel+" (section "+(chunk.part+1)+") ---\n";
     const cost=header.length+chunk.value.length;
     if(used+cost>max)return false;
     selected.push({...chunk,header});chosen.add(id);used+=cost;
