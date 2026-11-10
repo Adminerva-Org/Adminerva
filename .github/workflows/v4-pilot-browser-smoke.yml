@@ -1,0 +1,33 @@
+name: V4 pilot browser readiness smoke
+on:
+  push:
+    branches:
+      - test/v4-pilot-browser-smoke-20261110
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pilot-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated browser dependencies
+        run: npm install --no-save --no-audit --no-fund playwright@1.62.1
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run fictional pilot desktop/mobile readiness smoke
+        env:
+          ADMINERVA_TEST_OUTPUT: ${{ runner.temp }}/v4-pilot-browser
+        run: node --test tests/browser/v4-pilot-ux.smoke.mjs
+      - name: Preserve desktop and mobile visual diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v4-pilot-readiness-screenshots
+          path: ${{ runner.temp }}/v4-pilot-browser
+          if-no-files-found: ignore
+          retention-days: 7
