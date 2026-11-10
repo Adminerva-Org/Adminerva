@@ -35,7 +35,7 @@ class Element {
 function mount(module = 'educator', page = 'dashboard', role = 'teacher', storageThrows = false, integrations = {}) {
   const desktop = new Element(), mobile = new Element(), moduleSwitch = new Element('details');
   moduleSwitch.append(new Element('summary'), new Element());
-  const root = new Element(); root.append(moduleSwitch, desktop, mobile);
+  const root = new Element(); root.dataset = {...integrations.schoolRoles}; root.append(moduleSwitch, desktop, mobile);
   const attrs = { 'data-module': module, 'data-page': page };
   root.getAttribute = key => attrs[key];
   const originalQuery = root.querySelector.bind(root);
@@ -90,9 +90,14 @@ test('home is a direct link and switching workspaces is an explicit disclosure',
 test('educator groups expose the integrated assessment, review and insights destinations', () => {
   const { desktop } = mount('repo', 'gradebook');
   assert.deepEqual(groupNames(desktop), ['Assessment ▾', 'Review & grade ▾', 'Insights ▾']);
-  assert.deepEqual(links(desktop.children[0]).map(link => link.href), ['teacher-assessment-library.html', 'assessment-studio.html', 'submissions.html', 'studio-submissions.html', 'reclaim-inbox.html']);
+  // Legacy teachers cannot open pilot-only school resources without membership.
+  assert.deepEqual(links(desktop.children[0]).map(link => link.href), ['assessment-studio.html', 'submissions.html', 'studio-submissions.html', 'reclaim-inbox.html']);
   assert.deepEqual(links(desktop.children[1]).map(link => link.href), ['repofetch.html', 'gradebook.html', 'repobank.html']);
-  assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['school-teacher-analytics.html', 'school-practice-analytics.html', 'teacher-analytics.html', 'learning-follow-up.html']);
+  assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['teacher-analytics.html', 'learning-follow-up.html']);
+  const verified = mount('repo','gradebook','teacher',false,{schoolRoles:{schoolTeacher:'true'}});
+  assert.deepEqual(links(verified.desktop.children[0]).map(link=>link.href), ['teacher-assessment-library.html','assessment-studio.html','submissions.html','studio-submissions.html','reclaim-inbox.html']);
+  assert.deepEqual(links(verified.desktop.children[1]).map(link=>link.href), ['repofetch.html','gradebook.html','school-gradebook.html','repobank.html']);
+  assert.deepEqual(links(verified.desktop.children[2]).map(link=>link.href), ['school-teacher-analytics.html','school-practice-analytics.html','teacher-analytics.html','learning-follow-up.html']);
   assert.ok(!links(desktop).some(link => ['activity-grader.html', 'grading.html', 'lesson-planner.html', 'users.html'].includes(link.href)));
 });
 
@@ -100,7 +105,7 @@ test('selected task is announced once per desktop/mobile surface and page labels
   for (const [module, page, route, label] of [
     ['repo', 'submissions', 'submissions.html', 'Submission inbox'],
     ['repo', 'repofetch', 'repofetch.html', 'Review &amp; grade'],
-    ['repo', 'gradebook', 'gradebook.html', 'Gradebook'],
+    ['repo', 'gradebook', 'gradebook.html', 'Gradebook · current classes'],
     ['student-practice', 'xml', 'student-xml-lab.html', 'XML Lab']
   ]) {
     const { desktop, mobile, root } = mount(module, page, module.startsWith('student') ? 'student' : 'teacher');
