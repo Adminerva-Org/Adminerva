@@ -1,0 +1,37 @@
+/* Auth-safe first paint: page chrome appears before Firebase admission resolves.
+   Never renders student, teacher, grade or other private data. */
+html:has(body#pageBody.hidden){background:#f4f7fc;min-height:100%;color:#153252}
+html:has(body#pageBody.hidden)::before{content:"";position:fixed;inset:0 0 auto 0;height:68px;background:linear-gradient(90deg,#0d2137,#132c4e);z-index:2;box-shadow:0 4px 18px rgba(10,30,55,.15);pointer-events:none}
+html:has(body#pageBody.hidden)::after{
+ content:"";position:fixed;z-index:2;pointer-events:none;
+ top:calc(100px + env(safe-area-inset-top,0px));left:max(1rem,calc((100vw - 1320px)/2));right:max(1rem,calc((100vw - 1320px)/2));
+ height:min(66vh,520px);border:1px solid #e2eaf5;border-radius:20px;
+ background:
+ linear-gradient(#dbe6f3,#dbe6f3) 3% 35px/27% 17px no-repeat,
+ linear-gradient(#e7edf7,#e7edf7) 3% 68px/64% 12px no-repeat,
+ linear-gradient(#e7edf7,#e7edf7) 3% 94px/48% 12px no-repeat,
+ linear-gradient(#d8e4f3,#d8e4f3) 3% 140px/92% 1px no-repeat,
+ linear-gradient(#e7edf7,#e7edf7) 3% 178px/28% 102px no-repeat,
+ linear-gradient(#e7edf7,#e7edf7) 36% 178px/28% 102px no-repeat,
+ linear-gradient(#e7edf7,#e7edf7) 69% 178px/28% 102px no-repeat,
+ linear-gradient(#e7edf7,#e7edf7) 3% 314px/92% 12px no-repeat,
+ linear-gradient(#e7edf7,#e7edf7) 3% 344px/84% 12px no-repeat,
+ #fff;
+ box-shadow:0 10px 34px rgba(23,54,91,.045);
+}
+body#pageBody.hidden{display:none!important}
+@media(max-width:740px){
+ html:has(body#pageBody.hidden)::before{height:60px}
+ html:has(body#pageBody.hidden)::after{
+  top:84px;left:12px;right:12px;height:min(70vh,500px);
+  background:
+   linear-gradient(#dbe6f3,#dbe6f3) 5% 24px/55% 18px no-repeat,
+   linear-gradient(#e7edf7,#e7edf7) 5% 58px/88% 12px no-repeat,
+   linear-gradient(#e7edf7,#e7edf7) 5% 87px/65% 12px no-repeat,
+   linear-gradient(#d8e4f3,#d8e4f3) 5% 125px/90% 1px no-repeat,
+   linear-gradient(#e7edf7,#e7edf7) 5% 150px/90% 90px no-repeat,
+   linear-gradient(#e7edf7,#e7edf7) 5% 252px/90% 90px no-repeat,
+   linear-gradient(#e7edf7,#e7edf7) 5% 356px/68% 14px no-repeat,
+   #fff;
+ }
+}
