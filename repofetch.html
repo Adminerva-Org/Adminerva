@@ -445,7 +445,9 @@
             </div>
             <p id="manualReviewAIStatus" role="status" class="text-xs text-indigo-900">Approve checkpoint evidence to enable suggestions.</p>
             <div id="manualReviewFallback" class="hidden rounded border border-amber-200 bg-amber-50 p-3" role="status"><p class="text-sm">No replacement score was saved. Continue with your own score and feedback, or retry the evaluation.</p><div class="flex flex-wrap gap-3 mt-2"><button type="button" id="manualReviewRetry" class="border rounded px-3 py-2">Retry evaluation</button></div></div>
+            <button id="manualReviewReviewEvidence" type="button" class="hidden border border-emerald-400 bg-emerald-50 text-emerald-950 rounded px-3 py-2.5 text-xs font-bold">Review &amp; approve updated evidence</button>
             <button id="manualReviewVerifyContributions" type="button" class="hidden border border-indigo-300 rounded px-3 py-2 text-xs font-bold">Verify contributing commits</button>
+            <button id="manualReviewAddUnmatchedCommit" type="button" class="hidden border border-amber-400 bg-amber-50 text-amber-950 rounded px-3 py-2.5 text-xs font-bold">Add / attribute unmatched commit</button>
             <p id="manualReviewCheckerSetup" class="text-xs border rounded p-3">Evaluation uses the school’s configured evaluation connection. <a href="settings.html" class="underline font-semibold">View connection settings</a>. Your score and feedback stay under your control.</p>
           </section>
           <form id="manualReviewForm" class="space-y-4" style="scroll-margin-top:64px">
@@ -467,15 +469,19 @@
               </div>
             </div>
             <div>
-              <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewFiles">Files considered (one repository path per line, optional)</label>
+              <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewFiles">Files considered (one repository-relative path per line, optional)</label>
               <textarea id="manualReviewFiles" rows="3"
                 placeholder="app/src/test/java/.../MiniPeta2/StudentCode.java"
                 class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm font-mono"></textarea>
             </div>
             <div>
               <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewFeedback">Feedback to student</label>
-              <textarea id="manualReviewFeedback" rows="4" maxlength="6000" required
-                placeholder="Describe demonstrated work, errors, and any consideration given."
+              <textarea id="manualReviewFeedback" rows="9" maxlength="6000" required
+                placeholder="Verified accomplishments: ...
+
+Score-affecting issues: ...
+
+Recommended improvements: ..."
                 class="w-full border border-slate-300 rounded-lg px-3 py-2.5"></textarea>
             </div>
             <div>
