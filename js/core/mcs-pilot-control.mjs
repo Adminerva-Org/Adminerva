@@ -3,7 +3,7 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"mcsPilotControl");
 const byId=id=>document.getElementById(id);
-let state=null,busy=false,pendingException=null;
+let state=null,busy=false,pendingException=null,refreshEpoch=0;
 
 function escapeText(value){return String(value??"");}
 function say(message,tone="neutral"){
@@ -26,7 +26,9 @@ function renderSummary(data){
     chip("Compatibility",String(data.compatibilityMode||"legacy_allowed").replaceAll("_"," "),"safe"),
     chip("Pilot roster",data.includedTotal+" / "+data.expectedTotal,data.includedTotal===data.expectedTotal?"safe":"warn"),
     chip("Identity reviews",data.unresolved.length,data.unresolved.length?"warn":"safe"),
-    chip("V4 migration",data.canonical?.ready?"Ready":"Pending",data.canonical?.ready?"safe":"warn")
+    chip("V4 migration",data.canonical?.ready?"Ready":"Pending",data.canonical?.ready?"safe":"warn"),
+    chip("Additional school staff",String(data.canonical?.extraStaffMemberships??0),
+      data.canonical?.invalidExtraMemberships?"warn":"safe")
   );
   byId("pilot-history-boundary").textContent=data.deferredHistory?
     "Historical assessments, grades, evidence, planning and Practice remain deferred and unchanged.":
@@ -53,12 +55,22 @@ function renderBlockers(data){
       blocker.code==="roster_count_mismatch"?
       "Review the over-count sections and exclude only records that are not part of the protected current roster.":
       blocker.code==="canonical_migration_pending"?
-      "No manual migration action is required from you. Adminerva will apply the reviewed V4 foundation after the identity and roster exceptions are cleared.":
-      "One verified account appears linked to more than one current pilot record.";
+      "The pilot needs the reviewed student membership and academic relationships. Additional authorized school staff do not count as pilot students.":
+      blocker.code==="pilot_teacher_role_missing"?
+      "The designated teacher must retain an active school-admin and teacher grant together.":
+      blocker.code==="pilot_compatibility_invalid"?
+      "The controlled pilot requires legacy_allowed so existing grades and assessments remain available.":
+      blocker.code==="pilot_production_state_invalid"?
+      "Only the designated owner can resolve production authorization. This teacher-led pilot cannot approve cutover.":
+      blocker.code==="duplicate_identity"?
+      "One verified account appears linked to more than one current pilot record.":
+      "Review the current school's verified access configuration before continuing.";
     text.append(strong,note);row.append(mark,text);host.append(row);
   }
 }
 function renderCounts(data){
+  byId("pilot-roster-target").textContent="The protected roster target is "+data.expectedTotal+" approved students across four Senior High ICT sections.";
+
   const host=byId("pilot-section-counts");host.replaceChildren();
   for(const section of data.counts){
     const card=document.createElement("article");card.className="pilot-section-card";
@@ -173,7 +185,9 @@ function renderStart(data){
   const isDraft=data.schoolState==="draft";
   form.hidden=!isDraft;
   byId("pilot-active-note").hidden=data.schoolState!=="pilot";
-  button.disabled=!data.readyToStart;
+  byId("pilot-test-launchpad").hidden=data.schoolState!=="pilot"||
+    data.compatibilityMode!=="legacy_allowed"||data.productionAuthorized===true;
+  button.disabled=busy||!data.readyToStart;
   if(!isDraft)return;
   note.textContent=data.readyToStart?
     "All current pre-pilot gates are clear. Starting keeps legacy compatibility enabled and does not authorize production cutover.":
@@ -184,18 +198,52 @@ function render(data){
   renderIdentities(data);renderMismatchRecords(data);renderStart(data);
   byId("pilot-workspace").hidden=false;
 }
-async function refresh(){
+async function refresh({internal=false}={}){
+  if(busy&&!internal)return false;
+  const sequence=++refreshEpoch;
   say("Loading MCS controlled-pilot status…");
-  try{render(await call("overview"));say("Controlled-pilot status loaded.","ok");}
-  catch(error){byId("pilot-workspace").hidden=true;say(error?.message||"Pilot status is unavailable.","error");}
+  try{
+    const next=await call("overview");
+    if(sequence!==refreshEpoch||!auth.currentUser)return false;
+    render(next);say("Controlled-pilot status loaded.","ok");return true;
+  }catch(error){
+    if(sequence!==refreshEpoch)return false;
+    byId("pilot-workspace").hidden=true;
+    say(error?.message||"Pilot status is unavailable. Choose Refresh status to retry.","error");
+    return false;
+  }
 }
 async function mutate(action,details,success){
-  if(busy)return;busy=true;document.body.dataset.busy="true";say("Saving reviewed pilot decision…");
-  try{await call(action,details);await refresh();say(success,"ok");}
-  catch(error){say(error?.message||"The pilot decision was not saved.","error");}
-  finally{busy=false;delete document.body.dataset.busy;}
+  if(busy)return;
+  busy=true;++refreshEpoch;
+  document.body.dataset.busy="true";
+  byId("pilot-workspace").setAttribute("aria-busy","true");
+  byId("pilot-refresh").disabled=true;
+  byId("pilot-start-button").disabled=true;
+  say("Saving reviewed pilot decision…");
+  try{
+    await call(action,details);
+    const updated=await refresh({internal:true});
+    if(updated)say(success,"ok");
+    else say("Decision submitted, but the updated pilot status could not be confirmed. Refresh status before taking another action.","error");
+  }catch(error){say(error?.message||"The pilot decision was not saved.","error");}
+  finally{
+    busy=false;delete document.body.dataset.busy;
+    byId("pilot-workspace").removeAttribute("aria-busy");
+    byId("pilot-refresh").disabled=false;
+    if(state)renderStart(state);
+  }
 }
 byId("pilot-refresh").addEventListener("click",()=>void refresh());
+let activeUid=auth.currentUser?.uid||null;
+auth.onAuthStateChanged(user=>{
+  const nextUid=user?.uid||null;
+  if(nextUid===activeUid)return;
+  activeUid=nextUid;++refreshEpoch;state=null;
+  byId("pilot-workspace").hidden=true;
+  if(user)void refresh();
+  else say("Sign in with the verified MCS school-administrator account.","error");
+});
 byId("pilot-exception-cancel").addEventListener("click",()=>{pendingException=null;byId("pilot-exception-dialog").close();});
 byId("pilot-exception-form").addEventListener("submit",event=>{
   event.preventDefault();if(!pendingException||busy)return;
