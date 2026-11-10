@@ -85,6 +85,21 @@ onAuthStateChanged(auth, async (user) => {
     });
   }
 
+  const refreshActivityBtn=document.getElementById("refreshProjectActivity");
+  if(refreshActivityBtn&&!refreshActivityBtn.dataset.bound){
+    refreshActivityBtn.dataset.bound="true";
+    refreshActivityBtn.addEventListener("click",()=>{
+      const profile=currentStudentProfile;
+      if(!profile?.githubToken||!profile.repoUrl||!profile.githubUsername){
+        projectActivityStatus("Connect GitHub and configure a repository before refreshing activity.");
+        return;
+      }
+      if(refreshActivityBtn.disabled)return;
+      void syncGitHubData(profile.repoUrl,profile.githubUsername,profile.githubToken,
+        doc(db,"student_dashboard_cache",profile.docId),profile.docId,
+        dashboardLoadSequence,auth.currentUser?.uid);
+    });
+  }
   const connectGithubBtn = document.getElementById("connectGithubBtn");
   if (connectGithubBtn) {
     if (impersonateEmail) {
@@ -285,10 +300,15 @@ function studentDataSection(profileId){return userProfiles.find(item=>item.docId
 function studentDataGithub(profileId){return userProfiles.find(item=>item.docId===profileId)?.githubUsername||"";}
 async function syncGitHubData(repoUrl, username, token, cacheRef, profileId, loadSequence, accountUid) {
   const isCurrent=()=>loadSequence===dashboardLoadSequence&&currentStudentProfile?.docId===profileId&&auth.currentUser?.uid===accountUid;
+  const refreshButton=document.getElementById("refreshProjectActivity");
+  if(refreshButton)refreshButton.disabled=true;
+  if(isCurrent())projectActivityStatus("Checking GitHub for newer commits…");
   try {
-    const urlParts = repoUrl.replace(/\/$/, "").replace(".git", "").split("/");
-    let repo = urlParts.pop();
-    let owner = urlParts.pop();
+    const parsed=new URL(String(repoUrl||"").replace(/\.git$/i,""));
+    if(parsed.protocol!=="https:"||parsed.hostname!=="github.com")throw Error("Use an https://github.com repository URL.");
+    const urlParts=parsed.pathname.split("/").filter(Boolean);
+    if(urlParts.length!==2)throw Error("Select a GitHub repository, not a profile or subfolder.");
+    let [owner,repo]=urlParts;
 
     try {
       const repoInfoRes = await fetch(
@@ -341,9 +361,15 @@ async function syncGitHubData(repoUrl, username, token, cacheRef, profileId, loa
       const filter = document.getElementById("timeFilter")?.value || "7d";
       renderCommits(cachedCommitsData, filter);
       renderChart(cachedCommitsData, filter);
+      projectActivityStatus("GitHub activity synchronized. The chart and commit list reflect the latest fetched data.");
+    }else if(isCurrent()){
+      projectActivityStatus("No updated commits were returned. Saved activity remains available.");
     }
   } catch (err) {
     console.warn("Background sync failed, using cached data.", err);
+    if(isCurrent())projectActivityStatus("Could not refresh GitHub activity: "+err.message+". Saved activity remains available.");
+  } finally {
+    if(isCurrent()&&refreshButton)refreshButton.disabled=false;
   }
 }
 
