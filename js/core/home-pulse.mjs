@@ -102,11 +102,25 @@ if(home&&nav){
       }
     }
   };
-  summary.querySelector('button').addEventListener('click',()=>{void load(true);});
-  document.addEventListener('adminerva:role-ready',()=>{void load();});
+  // A home snapshot is optional. Let the dashboard/navigation become usable
+  // before requesting up to two large evidence windows on teacher accounts.
+  let idleSummaryTimer=null;
+  function scheduleLoad(force=false){
+    if(idleSummaryTimer){clearTimeout(idleSummaryTimer);idleSummaryTimer=null;}
+    if(force){void load(true);return;}
+    if(document.hidden)return;
+    idleSummaryTimer=setTimeout(()=>{
+      idleSummaryTimer=null;
+      if(document.hidden)return;
+      void load();
+    },role==='teacher'?650:120);
+  }
+  summary.querySelector('button').addEventListener('click',()=>scheduleLoad(true));
+  document.addEventListener('adminerva:role-ready',()=>scheduleLoad());
   onAuthStateChanged(auth,user=>{
     if(!user||readyUid&&readyUid!==user.uid){generation++;loading=false;readyUid='';summary.hidden=true;}
-    void load();
+    scheduleLoad();
   });
-  void load();
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleLoad();});
+  scheduleLoad();
 }
