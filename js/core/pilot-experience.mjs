@@ -48,6 +48,22 @@ function renderAssessment(){
       student.draft?.score!==undefined?student.draft.score+" / "+maximum+" · Private":"Not graded");
     const control=make("td","p-3");
     const actions=make("div","flex flex-wrap gap-2");
+    if(student.evidence){
+      const inspect=button("Inspect example evidence","secondary");
+      inspect.addEventListener("click",()=>{
+        const existing=tr.querySelector("[data-pilot-evidence]");
+        if(existing){existing.remove();inspect.textContent="Inspect example evidence";return;}
+        const row=make("tr","bg-slate-50");
+        row.dataset.pilotEvidence="true";
+        const content=make("td","p-4");
+        content.colSpan=4;
+        content.append(make("strong","block text-xs text-slate-700 mb-2","Fictional submission · source preview"));
+        content.append(make("pre","rounded-lg bg-slate-950 text-slate-100 p-4 text-xs overflow-auto whitespace-pre-wrap break-words",student.evidence));
+        row.append(content);tr.after(row);inspect.textContent="Hide example evidence";
+        inspect.addEventListener("blur",()=>{}, {once:true});
+      });
+      actions.append(inspect);
+    }
     if(["assigned","reopened"].includes(student.status)){
       const submit=button(student.status==="reopened"?"Resubmit demo work":"Submit demo work","primary");
       submit.addEventListener("click",()=>void simulation("sim_submit",record,student,{evidence:"Demo source code submitted through the private simulation."}));
