@@ -49,14 +49,14 @@
   </aside>
   <section id="pa-workspace" hidden aria-label="School people administration">
     <div class="pa-tabs" role="tablist" aria-label="Directory sections">
-      <button type="button" data-tab="overview" aria-controls="pa-overview" aria-selected="true" role="tab" tabindex="0">Overview</button>
-      <button type="button" data-tab="people" aria-controls="pa-people" aria-selected="false" role="tab" tabindex="-1">Students &amp; staff</button>
-      <button type="button" data-tab="import" aria-controls="pa-import" aria-selected="false" role="tab" tabindex="-1">Roster import</button>
-      <button type="button" data-tab="invites" aria-controls="pa-invites" aria-selected="false" role="tab" tabindex="-1">Invitations</button>
-      <button type="button" data-tab="classes" aria-controls="pa-classes" aria-selected="false" role="tab" tabindex="-1">Classes</button>
-      <button type="button" data-tab="access" aria-controls="pa-access" aria-selected="false" role="tab" tabindex="-1">Roles &amp; access</button>
+      <button id="pa-tab-overview" type="button" data-tab="overview" aria-controls="pa-overview" aria-selected="true" role="tab" tabindex="0">Overview</button>
+      <button id="pa-tab-people" type="button" data-tab="people" aria-controls="pa-people" aria-selected="false" role="tab" tabindex="-1">Students &amp; staff</button>
+      <button id="pa-tab-import" type="button" data-tab="import" aria-controls="pa-import" aria-selected="false" role="tab" tabindex="-1">Roster import</button>
+      <button id="pa-tab-invites" type="button" data-tab="invites" aria-controls="pa-invites" aria-selected="false" role="tab" tabindex="-1">Invitations</button>
+      <button id="pa-tab-classes" type="button" data-tab="classes" aria-controls="pa-classes" aria-selected="false" role="tab" tabindex="-1">Classes</button>
+      <button id="pa-tab-access" type="button" data-tab="access" aria-controls="pa-access" aria-selected="false" role="tab" tabindex="-1">Roles &amp; access</button>
     </div>
-    <section id="pa-overview" class="pa-card" role="tabpanel">
+    <section id="pa-overview" class="pa-card" role="tabpanel" aria-labelledby="pa-tab-overview" tabindex="0">
       <h2 style="font-size:1.2rem;font-weight:750;margin-bottom:1rem">School overview</h2>
       <div class="pa-cards">
         <div class="pa-card"><span class="pa-muted">People</span><span class="pa-count" id="pa-people-count">—</span></div>
@@ -83,7 +83,7 @@
         <p id="pa-reconcile-status" class="pa-muted" role="status" aria-live="polite">Loading school relationship checks…</p>
       </section>
     </section>
-    <section id="pa-people" role="tabpanel" hidden>
+    <section id="pa-people" role="tabpanel" aria-labelledby="pa-tab-people" tabindex="0" hidden>
       <div class="pa-layout">
         <div class="pa-card"><h2 style="font-weight:750;font-size:1.2rem">People</h2><p class="pa-muted">School-specific identity records, separate from accounts and enrollment.</p>
           <form id="pa-person-search" style="display:grid;grid-template-columns:minmax(0,1fr) repeat(2,minmax(120px,.45fr));gap:.5rem;align-items:end;margin:.75rem 0 1rem">
@@ -135,7 +135,7 @@
         </form>
       </dialog>
     </section>
-    <section id="pa-import" role="tabpanel" hidden>
+    <section id="pa-import" role="tabpanel" aria-labelledby="pa-tab-import" tabindex="0" hidden>
       <div class="pa-layout">
         <section class="pa-card">
           <h2 style="font-size:1.2rem;font-weight:750">Preview roster CSV</h2>
@@ -176,7 +176,7 @@
         </section>
       </div>
     </section>
-    <section id="pa-invites" role="tabpanel" hidden>
+    <section id="pa-invites" role="tabpanel" aria-labelledby="pa-tab-invites" tabindex="0" hidden>
       <form id="pa-create-invite" class="pa-card" style="max-width:600px">
         <h2 style="font-weight:750;font-size:1.2rem;margin-bottom:.75rem">Create pending invitation</h2>
         <label>Verified account email<input name="email" type="email" autocomplete="off" maxlength="254" required class="pa-field"></label>
@@ -187,7 +187,7 @@
         <div id="pa-invitation-result" role="status" aria-live="polite"></div>
       </form>
     </section>
-    <section id="pa-access" role="tabpanel" hidden>
+    <section id="pa-access" role="tabpanel" aria-labelledby="pa-tab-access" tabindex="0" hidden>
       <div class="pa-card">
         <h2 style="font-size:1.2rem;font-weight:750">Verified school memberships</h2>
         <p class="pa-muted">Suspending a membership blocks future v4 school operations but preserves the person's history, evidence and existing grades. School administrators cannot suspend other school administrators here.</p>
@@ -207,7 +207,7 @@
         </form>
       </dialog>
     </section>
-    <section id="pa-classes" role="tabpanel" hidden>
+    <section id="pa-classes" role="tabpanel" aria-labelledby="pa-tab-classes" tabindex="0" hidden>
       <p class="pa-muted">School-specific teaching assignments. Enrolling a person does not alter earlier grades or term history.</p>
       <div class="pa-academic-grid">
         <details class="pa-card">
