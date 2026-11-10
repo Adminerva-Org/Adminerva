@@ -65,3 +65,22 @@ test("canonical AI cannot silently use a personal key during a verified pilot",(
   assert.match(rules,/function legacyMcsAllowed\(/);
   assert.match(rules,/match \/schools\/\{schoolId\}/);
 });
+
+test("manual grading includes actionable evidence and attribution recovery",()=>{
+  const page=read("repofetch.html"),logic=read("js/repo-review/manual-review.mjs");
+  for(const id of ["manualReviewReviewEvidence","manualReviewAddUnmatchedCommit",
+                   "manualReviewVerifyContributions","manualReviewFiles",
+                   "manualReviewFeedback"]){
+    assert.equal(ids(page).filter(item=>item===id).length,1,id+" should exist exactly once");
+    assert.ok(logic.includes(id),id+" must have a handling path");
+  }
+  assert.match(page,/Verified accomplishments:/);
+  assert.match(page,/Score-affecting issues:/);
+  assert.match(page,/Recommended improvements:/);
+});
+test("school admin pilot entry is restricted to verified school actions",()=>{
+  const page=read("school-admin.html");
+  assert.match(page,/<nav id="adminSchoolActions" class="hidden/);
+  assert.match(page,/href="school-pilot.html"/);
+  assert.match(read("js/core/school-admin.mjs"),/if\(access.schoolAdmin\)await loadSchoolAdmin/);
+});
