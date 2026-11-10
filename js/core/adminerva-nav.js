@@ -14,6 +14,13 @@ if(!document.getElementById("adminerva-navigation-prefetch")){
   prefetch.defer=true;
   document.head.append(prefetch);
 }
+if(!document.getElementById("adminerva-loading-polish")){
+  const loaderPolish=document.createElement("script");
+  loaderPolish.id="adminerva-loading-polish";
+  loaderPolish.src="js/core/loading-polish.js?v=4.0.0";
+  loaderPolish.defer=true;
+  document.head.append(loaderPolish);
+}
 document.addEventListener("DOMContentLoaded", () => {
   try{
     document.documentElement.dataset.adminervaDensity=localStorage.getItem("Adminerva_interface_density")||"comfortable";
