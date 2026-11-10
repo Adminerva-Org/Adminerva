@@ -76,10 +76,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const staffGroups = [
     { name: "Assessment", area: "educator", items: v4OnlyTeacher ? [
       ["library-v4", "Assessment library · 4.0", "teacher-assessment-library.html"],
+      ["pilot-sandbox", "Pilot sandbox · private", "pilot-sandbox.html"],
       ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
     ] : [
       ["studio", "Assessment studio", "assessment-studio.html"],
-      ...(hasSchoolTeacher ? [["library-v4", "Assessment library · 4.0 pilot", "teacher-assessment-library.html"]] : []),
+      ...(hasSchoolTeacher ? [["library-v4", "Assessment library · 4.0 pilot", "teacher-assessment-library.html"], ["pilot-sandbox", "Pilot sandbox · private", "pilot-sandbox.html"]] : []),
       ["submissions", "Submission inbox", "submissions.html"],
       ["studio-submissions", "Studio project submissions", "studio-submissions.html"],
       ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
