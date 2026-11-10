@@ -174,6 +174,8 @@ async function loadDashboardProfile(studentData) {
   const subtitle = document.getElementById("repoSubtitle");
   const container = document.getElementById("commitListContainer");
   const overlay = document.getElementById("githubAuthOverlay");
+  const refreshButton=document.getElementById("refreshProjectActivity");
+  if(refreshButton)refreshButton.disabled=false;
   const gradeContainer = document.getElementById("latestGradeContainer");
 
   verifyStudentSetup(studentData);
