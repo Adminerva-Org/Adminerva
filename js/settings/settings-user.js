@@ -313,6 +313,7 @@ window.loadDirectory = async function () {
   const end=window.beginLoading?.("Loading student roster…",tbody)||(()=>{});
   try {
     const snap = await getDocs(collection(db, "students"));
+    if(directoryVersion!==directoryLoadVersion)return;
     allStudents = [];
     let uniqueSections = new Set();
 
