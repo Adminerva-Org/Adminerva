@@ -106,8 +106,8 @@ test("lesson planner resolves schedules by academic term, not global legacy cach
   const generator=readFileSync("js/lesson-review/ai-engine.js","utf8");
   const page=readFileSync("schedule.html","utf8");
   assert.match(firebase,/window\.fetchScheduleForLesson/);
-  assert.match(firebase,/schedule: await window\.fetchScheduleForLesson\(schoolYear, academicTerm, grade, subject\)/);
-  assert.match(generator,/await window\.fetchScheduleForLesson\(schoolYear, academicTerm, targetGrade, subject\)/);
+  assert.match(firebase,/schedule:\s*await window\.fetchScheduleForLesson\(schoolYear,\s*academicTerm,\s*grade,\s*subject,\s*dateRange\)/);
+  assert.match(generator,/await window\.fetchScheduleForLesson\(\s*schoolYear,\s*academicTerm,\s*targetGrade,\s*subject,\s*dateRange,?\s*\)/);
   for (const id of ["scheduleSchoolYear","scheduleSemester","scheduleScopeStatus"])
     assert.ok(page.includes('id="'+id+'"'),"Missing semester selector "+id);
 });
