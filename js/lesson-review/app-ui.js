@@ -15,6 +15,7 @@ window.cachedSchedule = "";
 window.cachedScope = "";
 window.cachedCustomInstructions = "";
 window.cachedPreviousPlan = null;
+window.cachedInstructionMap = null;
 window.currentLessonMeetings = [];
 window.currentSessionMeetingMap = {};
 function groupLessonMeetings(meetings=[]){
@@ -57,6 +58,7 @@ function persistLessonDraft(){
       lessonSettings:window.currentLessonSettings||null,referenceFolders:window.currentLessonReferenceFolders||[],
       loadedPersonalPlan:window.loadedPersonalPlan||null,legacySourcePlanId:window.legacySourcePlanId||null,
       loadedPersonalIdentity:window.loadedPersonalIdentity||null,
+      instructionMap:window.cachedInstructionMap||null,
       lessonMeetings:window.currentLessonMeetings||[],form:lessonDraftForm()
     }));
     lessonDraftStatus("Draft protected","warning","Unsaved edits are recoverable on this device.");
@@ -424,6 +426,7 @@ window.loadSpecificPlan = function (planData) {
       ? planData.weekly_overview
       : { topic: "", content_standard: "", performance_standard: "", materials: "" };
   window.currentPlan = planData.sessions;
+  window.cachedInstructionMap=planData.instruction_map||null;
   window.setCurrentLessonMeetings(
     Array.isArray(planData.schedule_meetings) ? planData.schedule_meetings : []
   );
@@ -556,6 +559,7 @@ workspaceOnReady(()=>{
   window.currentLessonReferenceFolders=Array.isArray(draft.referenceFolders)?draft.referenceFolders:[];
   window.loadedPersonalPlan=draft.loadedPersonalPlan||null;window.legacySourcePlanId=draft.legacySourcePlanId||null;
   window.loadedPersonalIdentity=draft.loadedPersonalIdentity||null;
+  window.cachedInstructionMap=draft.instructionMap||null;
   window.setCurrentLessonMeetings(draft.lessonMeetings||[]);
   lessonDraftDirty=true;
   window.renderOverview?.();window.renderOutput?.();
