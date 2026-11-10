@@ -114,7 +114,7 @@
 @media(min-width:1024px){
  .av-teacher-refresh .av-slide-editor-shell{align-items:flex-start}
  .av-teacher-refresh .av-slide-nav-panel{flex:0 0 clamp(245px,20vw,320px);width:clamp(245px,20vw,320px);height:min(78vh,800px);max-height:min(78vh,800px);position:sticky;top:84px}
- .av-teacher-refresh .av-slide-workarea{flex:1 1 auto;width:auto;max-width:calc(100% - 265px);overflow:visible}
+ .av-teacher-refresh .av-slide-workarea{flex:1 1 0;width:0;max-width:none;min-width:0;overflow:visible}
 }
 @media(max-width:1023px){
  .av-teacher-refresh .av-schedule-viewport{max-height:70vh}
