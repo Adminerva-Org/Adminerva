@@ -1,0 +1,40 @@
+name: V4 integration targeted checks
+on:
+  push:
+    branches:
+      - sync/v4-main-safe-20261109
+  pull_request:
+    branches:
+      - feat/adminerva-4-verified-tenant-foundation
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  integration:
+    name: Core grading, Studio, routing and authority
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Ensure local release imports and routes resolve
+        run: node scripts/check-release-source.mjs
+      - name: Check edited source syntax
+        run: |
+          node --check js/core/school-ai.mjs
+          node --check js/core/adminerva-nav.js
+          node --check js/student/playground.js
+          node --check js/repo-review/gradebook-class-review.mjs
+          node --check functions/index.js
+          node --check functions/mcs-pilot-control.js
+      - name: Install backend test dependencies
+        run: npm ci --prefix functions --no-audit --no-fund
+      - name: Exercise verified school, grading and Studio contracts
+        run: |
+          node --test tests/tenant-authority.test.mjs tests/tenant-selector.test.mjs tests/review-resilience.test.mjs
+          node --test js/core/adminerva-nav.test.mjs tests/student-workspace-ux.test.mjs tests/loading-and-routes.test.mjs
+          node --test tests/mcs-pilot-mapping.test.mjs tests/school-cutover-policy.test.mjs tests/mcs-canonical-evidence-grade.test.mjs
+      - name: Check grading UI and Studio control bindings
+        run: node --test tests/v4-main-integration.test.mjs
