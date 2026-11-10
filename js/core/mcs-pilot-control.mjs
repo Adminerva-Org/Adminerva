@@ -26,7 +26,9 @@ function renderSummary(data){
     chip("Compatibility",String(data.compatibilityMode||"legacy_allowed").replaceAll("_"," "),"safe"),
     chip("Pilot roster",data.includedTotal+" / "+data.expectedTotal,data.includedTotal===data.expectedTotal?"safe":"warn"),
     chip("Identity reviews",data.unresolved.length,data.unresolved.length?"warn":"safe"),
-    chip("V4 migration",data.canonical?.ready?"Ready":"Pending",data.canonical?.ready?"safe":"warn")
+    chip("V4 migration",data.canonical?.ready?"Ready":"Pending",data.canonical?.ready?"safe":"warn"),
+    chip("Additional school staff",String(data.canonical?.extraStaffMemberships??0),
+      data.canonical?.invalidExtraMemberships?"warn":"safe")
   );
   byId("pilot-history-boundary").textContent=data.deferredHistory?
     "Historical assessments, grades, evidence, planning and Practice remain deferred and unchanged.":
@@ -53,8 +55,16 @@ function renderBlockers(data){
       blocker.code==="roster_count_mismatch"?
       "Review the over-count sections and exclude only records that are not part of the protected current roster.":
       blocker.code==="canonical_migration_pending"?
-      "No manual migration action is required from you. Adminerva will apply the reviewed V4 foundation after the identity and roster exceptions are cleared.":
-      "One verified account appears linked to more than one current pilot record.";
+      "The pilot needs the reviewed student membership and academic relationships. Additional authorized school staff do not count as pilot students.":
+      blocker.code==="pilot_teacher_role_missing"?
+      "The designated teacher must retain an active school-admin and teacher grant together.":
+      blocker.code==="pilot_compatibility_invalid"?
+      "The controlled pilot requires legacy_allowed so existing grades and assessments remain available.":
+      blocker.code==="pilot_production_state_invalid"?
+      "Only the designated owner can resolve production authorization. This teacher-led pilot cannot approve cutover.":
+      blocker.code==="duplicate_identity"?
+      "One verified account appears linked to more than one current pilot record.":
+      "Review the current school's verified access configuration before continuing.";
     text.append(strong,note);row.append(mark,text);host.append(row);
   }
 }
