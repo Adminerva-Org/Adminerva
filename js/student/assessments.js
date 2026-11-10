@@ -21,6 +21,7 @@ let myEvidence = {};
 let submissionLookupSucceeded = false;
 let myStudioSubmissions={},studioSubmissionsReadable=false;
 let profileGeneration=0,assessmentGeneration=0,assignmentOwnerUid="";
+let assessmentModalOpener=null;
 const assignmentField=id=>document.getElementById(id);
 function assignmentsNotice(message,tone="info",retry=false){
   assignmentField("assignmentsNoticeText").textContent=message;assignmentField("assignmentsNotice").dataset.tone=tone;
@@ -267,6 +268,13 @@ function renderAssessments() {
   });
 
   container.innerHTML = "";
+  const count=assignmentField("assignmentsCount");
+  if(count){
+    const action=allAssessments.filter(needsStudentAction).length;
+    const graded=allAssessments.filter(item=>assignmentStatusFor(item).kind==="graded").length;
+    count.textContent=filtered.length+" of "+allAssessments.length+" assignments shown · "+
+      action+" need your action · "+graded+" graded";
+  }
   if (filtered.length === 0) {
     assignmentsFeedState(allAssessments.length?"No assignments match these filters":"No assignments posted yet",allAssessments.length?"Try All Assignments or clear your search to see more tasks.":"Your teacher has not posted assignments for "+currentSection+" yet. You can explore Practice Lab while you wait.");
     return;
@@ -304,7 +312,7 @@ function renderAssessments() {
       status.kind==="graded"?"View feedback":
       status.kind==="submitted"||status.kind==="reviewed"?"View submission":"Open assignment";
     const card = `
-      <button type="button" class="w-full text-left bg-white p-4 rounded-xl border ${ass.isUrgent && !myGrade ? "border-rose-300" : "border-slate-200"} hover:border-indigo-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition flex flex-col sm:flex-row sm:items-center gap-3" onclick="viewAssessmentDetails('${ass.id}')">
+      <button type="button" class="w-full text-left bg-white p-4 rounded-xl border ${ass.isUrgent && !myGrade ? "border-rose-300" : "border-slate-200"} hover:border-indigo-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition flex flex-col sm:flex-row sm:items-center gap-3" data-assessment-id="${escapeHTML(ass.id)}">
         <div class="flex-grow min-w-0">
           <div class="flex flex-wrap items-center gap-2 mb-1.5">
             <span class="${typeColor} text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">${escapeHTML(ass.type)}</span>
@@ -358,6 +366,7 @@ window.__adminervaSubmissionContext = () => ({
   section: currentSection
 });
 window.viewAssessmentDetails = function (id) {
+  assessmentModalOpener=document.activeElement;
   window.__adminervaViewedAssessmentId = id;
   const ass = allAssessments.find((a) => a.id === id);
   if (!ass) return;
@@ -407,5 +416,32 @@ window.viewAssessmentDetails = function (id) {
     document.getElementById("studioOpenProject").href="student-playground.html?assessment="+encodeURIComponent(id);
   }
   document.getElementById("assessmentModal").classList.remove("hidden");
+  document.getElementById("assessmentModalClose")?.focus({preventScroll:true});
   window.dispatchEvent(new CustomEvent("adminerva:assessment-opened",{detail:{assessmentId:id}}));
 };
+
+window.closeAssessmentDetails=function(){
+  const modal=assignmentField("assessmentModal");
+  if(modal.classList.contains("hidden"))return;
+  modal.classList.add("hidden");
+  if(assessmentModalOpener?.isConnected)assessmentModalOpener.focus({preventScroll:true});
+  else assignmentField("searchAssInput")?.focus({preventScroll:true});
+  assessmentModalOpener=null;
+};
+const assignmentFeed=assignmentField("assignmentsFeed");
+assignmentFeed?.addEventListener("click",event=>{
+  const trigger=event.target.closest?.("button[data-assessment-id]");
+  if(trigger)window.viewAssessmentDetails(trigger.dataset.assessmentId);
+});
+assignmentField("assessmentModal")?.addEventListener("keydown",event=>{
+  const modal=assignmentField("assessmentModal");
+  if(modal.classList.contains("hidden"))return;
+  if(event.key==="Escape"){event.preventDefault();window.closeAssessmentDetails();return;}
+  if(event.key!=="Tab")return;
+  const focusables=[...modal.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])')]
+    .filter(el=>!el.closest(".hidden,[hidden]")&&el.getClientRects().length);
+  if(!focusables.length){event.preventDefault();modal.focus();return;}
+  const first=focusables[0],last=focusables.at(-1);
+  if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+  else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+});
