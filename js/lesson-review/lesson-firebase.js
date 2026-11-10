@@ -281,6 +281,7 @@ window.saveLessonPlan = async function () {
       custom_instructions: document
         .getElementById("lpCustomInstructions")
         .value.trim(),
+      instruction_map: window.cachedInstructionMap || null,
       schedule: await window.fetchScheduleForLesson(schoolYear, academicTerm, grade, subject, dateRange),
       schedule_meetings: Array.isArray(window.currentLessonMeetings) ? window.currentLessonMeetings : [],
       reference_folders: Array.from(
