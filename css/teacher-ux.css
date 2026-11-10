@@ -94,3 +94,30 @@
  .av-teacher-refresh .av-home-quick-grid a{transition:none}
  .av-teacher-refresh .av-home-quick-grid a:hover{transform:none}
 }
+/* Schedule: stay oriented in a wide week grid; omit edit-only delete column while reading. */
+.av-teacher-refresh .av-schedule-viewport{max-height:min(75vh,840px);overflow:auto;scrollbar-gutter:stable}
+.av-teacher-refresh .av-schedule-viewport thead th{position:sticky;top:0;z-index:4;background:#f1f5f9;box-shadow:0 1px 0 #d8e2ef}
+.av-teacher-refresh .av-schedule-viewport :is(thead th:first-child,tbody td:first-child){position:sticky;left:0;z-index:3;background:#f8fafc;box-shadow:1px 0 0 #d9e2ed}
+.av-teacher-refresh .av-schedule-viewport thead th:first-child{z-index:5;background:#f1f5f9}
+.av-teacher-refresh[data-av-schedule-editing="false"] .av-schedule-viewport :is(thead th:last-child,tbody td:last-child:not(:first-child)){display:none}
+.av-teacher-refresh .av-schedule-viewport tbody tr:hover td:first-child{background:#eef4fb}
+.av-teacher-refresh #scheduleScopeStatus{line-height:1.4}
+.av-teacher-refresh .av-schedule-viewport :is(button,select,input):focus-visible{outline:2px solid #2563eb;outline-offset:1px}
+/* Slide editor: a compact navigator and canvas that preserve actual editing space. */
+.av-teacher-refresh .av-slide-nav-panel{min-width:0}
+.av-teacher-refresh .av-slide-workarea{min-width:0}
+.av-teacher-refresh .av-slide-actionbar :is(button,select){min-height:40px}
+.av-teacher-refresh .av-slide-actionbar{align-items:flex-end}
+.av-teacher-refresh #slideLayoutSelector{min-width:190px}
+.av-teacher-refresh #master-toolbar-container{margin-bottom:.8rem}
+.av-teacher-refresh #slideBlockList{min-height:78px}
+@media(min-width:1024px){
+ .av-teacher-refresh .av-slide-editor-shell{align-items:flex-start}
+ .av-teacher-refresh .av-slide-nav-panel{flex:0 0 clamp(245px,20vw,320px);width:clamp(245px,20vw,320px);height:min(78vh,800px);max-height:min(78vh,800px);position:sticky;top:84px}
+ .av-teacher-refresh .av-slide-workarea{flex:1 1 auto;width:auto;max-width:calc(100% - 265px);overflow:visible}
+}
+@media(max-width:1023px){
+ .av-teacher-refresh .av-schedule-viewport{max-height:70vh}
+ .av-teacher-refresh .av-slide-nav-panel{max-height:180px}
+ .av-teacher-refresh .av-slide-workarea{max-width:100%}
+}
