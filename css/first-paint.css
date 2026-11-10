@@ -35,3 +35,5 @@ body#pageBody.hidden{display:none!important}
    #fff;
  }
 }
+/* Do not layer the global page-opening toast on top of the structural skeleton. */
+html:has(body#pageBody.hidden) #subtleLoader{display:none!important}
