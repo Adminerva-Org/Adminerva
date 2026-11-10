@@ -92,6 +92,26 @@ function instructionMapText(map){
   return JSON.stringify(map||{},null,2);
 }
 
+function scheduleRemarksForSession(sessionName){
+  const meetings=window.currentSessionMeetingMap?.[sessionName]||[];
+  return meetings.map(meeting=>{
+    const core=[
+      meeting.section||"",
+      meeting.date||meeting.day||"",
+      meeting.time||""
+    ].filter(Boolean).join(" | ");
+    return meeting.event ? core+" | "+meeting.event : core;
+  }).filter(Boolean).join("; ");
+}
+
+function applyDeterministicSessionRemarks(session){
+  if(!session||!session.session_name)return session;
+  const mapped=scheduleRemarksForSession(session.session_name);
+  const aiNote=String(session.remarks||"").trim();
+  session.remarks=[mapped,aiNote].filter(Boolean).join("\n");
+  return session;
+}
+
 async function refineInstructionMap(baseMap,{engineMode,gemKey,model}={}){
   if(!baseMap?.raw_instruction)return baseMap;
   const prompt=`
@@ -459,13 +479,10 @@ ${gradeSpecificRules}
    - closing: set to an empty string. Adminerva applies the teacher's saved closing-activity defaults after generation/import.
    - values_integration: use the same appropriate formation/core-value source and format '[Core Value Keyword] - [Specific application to this lesson topic]'.
    - remarks:
-     * use ONLY meeting lines whose SESSION label matches this session;
-     * for each matching meeting, write '[Section] | [Full Date] | [Time Slot]';
-     * include every affected section assigned to this session and separate multiple meetings with semicolons;
-     * do not copy the SESSION label, duration, subject name, or unrelated timetable events into remarks;
-     * if a matching meeting has an AFFECTING EVENT, append that event only to the affected meeting/session;
-     * append teacher-specified suspensions/holidays/special notes only when applicable to that session;
-     * if no lesson meeting context exists, do not invent section names, dates, or times.
+     * DO NOT write section/date/time schedule lines. Adminerva attaches those deterministically after generation.
+     * write only additional teacher-instruction notes that belong to this session, such as a suspension, field trip, holiday, catch-up note, or other special intervention;
+     * use the ADMINERVA INSTRUCTION MAP to apply such notes only to the affected day/date/session;
+     * leave remarks as an empty string when there is no additional non-schedule note.
 6. SESSION FLEX:
    - offline/asynchronous;
    - provide ONLY bulleted learning_activities;
@@ -706,7 +723,7 @@ ${window.cachedCompiledText || "No selected reference text. Use fallback profess
           session[key] = session[key].replace(/\\n/g, "\n");
         }
       }
-      return session;
+      return applyDeterministicSessionRemarks(session);
     });
 
     window.currentWeeklyOverview = planData.weekly_overview || {};
@@ -795,7 +812,7 @@ function applyExternalLessonPlan(planData) {
         session[key] = session[key].replace(/\\n/g, "\n");
       }
     });
-    return session;
+    return applyDeterministicSessionRemarks(session);
   });
 
   window.currentWeeklyOverview = { ...(planData.weekly_overview || {}) };
@@ -904,6 +921,8 @@ window.importExternalLessonResponse = function () {
 
 window.generateBlankPlan = function () {
   window.currentLessonSettings=null;
+  window.setCurrentLessonMeetings?.([]);
+  window.cachedInstructionMap=null;
   window.currentPlanSubject = selectedSubject();
   window.currentPlanTeacher = lessonStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
   window.currentTargetGrade =
