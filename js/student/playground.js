@@ -153,6 +153,24 @@ document.addEventListener("keydown",event=>{
     (event.shiftKey&&key==="insert")||(event.ctrlKey&&key==="insert"))event.preventDefault();
 },true);
 
+// Load ZIP support only for import, export, or multi-file compilation.
+// Opening the Studio project selector no longer downloads an unused ZIP runtime.
+let studioZipPromise=null;
+async function ensureStudioZip(){
+  if(typeof window.JSZip==="function")return window.JSZip;
+  if(!studioZipPromise){
+    studioZipPromise=new Promise((resolve,reject)=>{
+      const script=document.createElement("script");
+      script.src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+      script.async=true;
+      script.onload=()=>typeof window.JSZip==="function"?resolve(window.JSZip):
+        reject(new Error("ZIP support did not initialize."));
+      script.onerror=()=>reject(new Error("Could not load ZIP support. Check your connection and try again."));
+      document.head.append(script);
+    }).catch(error=>{studioZipPromise=null;throw error;});
+  }
+  return studioZipPromise;
+}
 // ==========================================
 // 2. INITIALIZATION
 // ==========================================
@@ -902,7 +920,8 @@ async function exportZIP() {
   if (!btn) return;
   btn.textContent = "Packing...";
   try {
-    const zip = new JSZip();
+    const ZIP=await ensureStudioZip();
+    const zip = new ZIP();
     workspaceFolders.forEach(folder=>zip.folder(folder));
     for (const [name, file] of Object.entries(workspaceFiles)) {
       zip.file(name, file.model.getValue());
@@ -1073,7 +1092,8 @@ async function executionPayload(options={}){
   if(!desktopBundle&&fileOrder.length===1&&!entry.includes('/'))return {language_id:languageConfig[currentLang].judge0Id,source_code:workspaceFiles[entry].model.getValue(),stdin,cpu_time_limit:5,wall_time_limit:10};
   if(workspaceFiles.compile||workspaceFiles.run)throw Error('The compiler reserves root files named compile and run. Rename those files before running this project.');
   const quote=text=>"'"+text.replace(/'/g,"'\"'\"'")+"'";
-  const files=currentState().files,zip=new JSZip();
+  const ZIP=await ensureStudioZip();
+  const files=currentState().files,zip=new ZIP();
   for(const [path,content] of Object.entries(files))zip.file(path,content);
   let compile='',run='';
   if(currentLang==='java'){
@@ -1561,7 +1581,8 @@ function bindUIEvents() {
     const upload=event.target.files[0];event.target.value='';if(!upload)return;
     try{
       if(upload.size>3000000)throw Error('Import a ZIP smaller than 3 MB.');
-      const zip=await JSZip.loadAsync(upload),files={},folders=[];let size=0,bundle=null;
+      const ZIP=await ensureStudioZip();
+      const zip=await ZIP.loadAsync(upload),files={},folders=[];let size=0,bundle=null;
       const limits=projectStudio?.getLimits?.()||{maxFiles:100,maxProjectBytes:700000};
       const manifestEntry=zip.file("adminerva-project.json");
       if(manifestEntry){
