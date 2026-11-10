@@ -253,6 +253,26 @@ function renderPreview(detail){
       item.append(heading);
       if(schedule.rows?.length)item.append(scheduledCells(schedule));
       else item.append(make("p","mt-2 text-sm text-slate-500","No timetable grid available in this source."));
+      const copy=button("Create my private timetable copy","primary");
+      copy.classList.add("mt-3");
+      copy.addEventListener("click",async()=>{
+        if(working)return;
+        await lock(async()=>{
+          status("Creating an independent timetable based on the authorized preview…");
+          try{
+            const response=await perform("clone_preview_schedule",{
+              ownerUid:detail.ownerUid,source:schedule.source,sourceId:schedule.sourceId
+            });
+            await loadOverview();
+            switchTab("simulation");
+            status("Private timetable created with "+response.rows+" row(s). Your shared source is unchanged.");
+          }catch(error){
+            status("Could not copy the preview timetable: "+(error.message||"Try again."));
+            switchTab("simulation");
+          }
+        });
+      });
+      item.append(copy);
       card.append(item);
     }
     previewPanel.append(card);
