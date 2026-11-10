@@ -8,6 +8,7 @@
  * Firestore browser rules already deny direct writes to schools/**.
  */
 const {getAuth}=require("firebase-admin/auth");
+const {createHash}=require("node:crypto");
 const {FieldValue}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 
@@ -29,7 +30,9 @@ function recordId(value){
     deny("invalid-argument","Invalid sandbox record.");
   return value;
 }
-function grantId(ownerUid,viewerUid){return uidValue(ownerUid)+"_"+uidValue(viewerUid);}
+function grantId(ownerUid,viewerUid){
+  return createHash("sha256").update(uidValue(ownerUid)+"|"+uidValue(viewerUid)).digest("hex");
+}
 function normalEmail(value){
   const email=cleanText(value,254,"Recipient email").toLowerCase();
   if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
@@ -142,7 +145,7 @@ function createSchoolPilotSandboxService({db}){
         const data=grant.data();
         if(!grant.exists||data?.schoolId!==ctx.schoolId||data?.active!==true||
            data?.viewerUid!==ctx.uid||data?.ownerUid!==ownerUid||
-           !data.expiresAt||Date.parse(data.expiresAt)<=Date.now()||
+           !data.expiresAt||!Number.isFinite(Date.parse(data.expiresAt))||Date.parse(data.expiresAt)<=Date.now()||
            !activeMember(ownerMembership.data())||ownerMembership.data()?.schoolId!==ctx.schoolId)
           deny("permission-denied","Preview access is missing, expired, or revoked.");
       }
