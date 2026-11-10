@@ -1,9 +1,7 @@
 name: MCS SHS live pilot readiness (aggregate read-only)
-# Run once on this reviewed integration branch; afterward, operator dispatch only.
+# Source-only record of the completed one-time read-only live audit.
+# Any additional production read must be separately initiated by an operator.
 on:
-  push:
-    branches:
-      - ops/v4-pilot-readiness-report-20261110
   workflow_dispatch:
 permissions:
   contents: read
