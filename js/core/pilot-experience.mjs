@@ -105,8 +105,13 @@ function renderModules(){
       for(const section of record.payload.sections||[])list.append(make("li","",section.name+" · "+section.learners+" fictional learners"));
       card.append(list);
     }
+    if(["schedule","lesson"].includes(record.kind)){
+      const edit=button(record.kind==="schedule"?"Edit private timetable":"Edit private lesson","secondary");
+      edit.addEventListener("click",()=>openModule(record));card.append(edit);
+    }
     root.append(card);
   }
+  renderAdminTour();
 }
 async function lock(operation){
   if(working)return;
@@ -296,3 +301,117 @@ function renderPreview(detail){
   }
 }
 document.addEventListener("adminerva:pilot-preview",event=>renderPreview(event.detail||{}));
+
+
+const moduleDialog=get("pilotModuleDialog"),moduleForm=get("pilotModuleForm");
+let moduleId="";
+function scheduleLines(rows){
+  const out=[];
+  for(const row of rows||[]){
+    if(row.type!=="class")continue;
+    for(const day of ["mon","tue","wed","thu","fri"]){
+      const c=row[day]||{};
+      if(c.sec&&c.sub)out.push([row.startTime,row.endTime,day,c.sub,c.sec].join(","));
+    }
+  }
+  return out.join("\n");
+}
+function parseScheduleLines(value){
+  const input=String(value||"").split(/\r?\n/).map(row=>row.trim()).filter(Boolean);
+  if(input.length>150)throw Error("Use a maximum of 150 timetable cells.");
+  const groups=new Map(),days=["mon","tue","wed","thu","fri"];
+  for(const [index,line] of input.entries()){
+    const parts=line.split(",").map(x=>x.trim());
+    if(parts.length!==5||!days.includes(parts[2]))
+      throw Error("Timetable line "+(index+1)+": use start,end,day,subject,section.");
+    const [startTime,endTime,day,sub,sec]=parts;
+    if(!sub||!sec)throw Error("Timetable line "+(index+1)+" requires a subject and section.");
+    const key=startTime+"|"+endTime;
+    if(!groups.has(key))groups.set(key,{type:"class",startTime,endTime});
+    const row=groups.get(key);
+    if(row[day])throw Error("Duplicate timetable cell on line "+(index+1)+".");
+    row[day]={sub,sec,evt:""};
+  }
+  return [...groups.values()].sort((a,b)=>a.startTime.localeCompare(b.startTime));
+}
+function openModule(record){
+  moduleId=record.id;
+  const payload=record.payload||{},schedule=record.kind==="schedule";
+  get("pilotModuleTitle").textContent=schedule?"Edit private practice timetable":"Edit private lesson plan";
+  get("pilotModuleScheduleFields").hidden=!schedule;
+  get("pilotModuleLessonFields").hidden=schedule;
+  moduleForm.elements.schoolYear.value=payload.schoolYear||"2026-2027";
+  moduleForm.elements.period.value=payload.period||"Semester 1";
+  moduleForm.elements.scheduleLines.value=scheduleLines(payload.rows);
+  moduleForm.elements.objective.value=payload.objective||"";
+  moduleForm.elements.activities.value=(payload.activities||[]).join("\n");
+  moduleForm.elements.duration.value=String(payload.durationMinutes||60);
+  get("pilotModuleStatus").textContent="";
+  moduleDialog.showModal();
+}
+function closeModule(){moduleDialog.close();moduleId="";}
+get("pilotModuleClose").addEventListener("click",closeModule);
+get("pilotModuleCancel").addEventListener("click",closeModule);
+moduleForm.addEventListener("submit",async event=>{
+  event.preventDefault();if(working)return;
+  const record=uniqueRecord(moduleId);
+  if(!record){get("pilotModuleStatus").textContent="Reload this example before editing.";return;}
+  let details={recordId:record.id,expectedVersion:record.version},action;
+  if(record.kind==="schedule"){
+    try{details.rows=parseScheduleLines(moduleForm.elements.scheduleLines.value);}
+    catch(error){get("pilotModuleStatus").textContent=error.message;return;}
+    details.schoolYear=moduleForm.elements.schoolYear.value;
+    details.period=moduleForm.elements.period.value;
+    action="save_demo_schedule";
+  }else{
+    action="save_demo_lesson";
+    details.objective=moduleForm.elements.objective.value;
+    details.activities=moduleForm.elements.activities.value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    details.durationMinutes=Number(moduleForm.elements.duration.value);
+  }
+  get("pilotModuleStatus").textContent="Saving this private module…";
+  try{
+    await lock(async()=>{await perform(action,details);await loadOverview();});
+    closeModule();status("Practice module saved to your private sandbox.");
+  }catch(error){get("pilotModuleStatus").textContent="Save rejected: "+(error.message||"Refresh and try again.");}
+});
+function renderAdminTour(){
+  const root=get("pilotAdminSummary");root.replaceChildren();
+  const record=records.find(row=>row.kind==="admin_demo"&&row.payload);
+  if(!record){
+    root.append(make("p","text-sm text-slate-500","Set up the example classroom in Practice workflows to simulate school administration."));
+    return;
+  }
+  const data=record.payload,first=make("article","rounded-xl bg-slate-50 border border-slate-200 p-4");
+  first.append(make("strong","block text-sm","Demo academic structure"));
+  first.append(make("p","text-xs text-slate-500 mt-1",data.school+" · "+data.term));
+  const sections=make("ul","text-sm mt-3 space-y-1");
+  for(const section of data.sections||[])sections.append(make("li","",section.name+" · "+section.learners+" fictional learners"));
+  first.append(sections);
+  const second=make("article","rounded-xl bg-slate-50 border border-slate-200 p-4");
+  second.append(make("strong","block text-sm","Demo staff assignments"));
+  for(const staff of data.staff||[])second.append(make("p","text-sm mt-2",staff.name+" · "+staff.role));
+  root.append(first,second);
+}
+get("pilotAdminForm").addEventListener("submit",async event=>{
+  event.preventDefault();if(working)return;
+  const record=records.find(row=>row.kind==="admin_demo"&&row.payload);
+  if(!record){
+    get("pilotAdminStatus").textContent="Set up the example classroom first.";return;
+  }
+  const form=event.currentTarget;
+  get("pilotAdminStatus").textContent="Saving fictional school configuration…";
+  try{
+    await lock(async()=>{
+      await perform("sim_admin",{
+        recordId:record.id,expectedVersion:record.version,
+        command:form.elements.command.value,name:form.elements.name.value
+      });
+      await loadOverview();
+    });
+    form.elements.name.value="";
+    get("pilotAdminStatus").textContent="Private school administration example updated. No real school records were changed.";
+  }catch(error){
+    get("pilotAdminStatus").textContent="Demo change rejected: "+(error.message||"Try again.");
+  }
+});
