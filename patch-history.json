@@ -175,7 +175,7 @@
           "audience": [
             "admin"
           ],
-          "text": "People and teacher-account views emphasize access and assignment tasks. Legacy repository verification runs only on request for visible roster entries, and directory browsing does not silently change student repository links."
+          "text": "Existing teacher-account and legacy student roster views emphasize routine assignments. Repository verification runs only on request for visible roster entries, and directory browsing does not silently change student repository links."
         },
         {
           "type": "Updated",

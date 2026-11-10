@@ -20,7 +20,7 @@ Published November 11, 2026 (Asia/Manila). This is the **cumulative public maint
 - **Adminerva Studio:** Improved mobile drawers, code-editor precision controls, responsive toolbars, terminal input and reliable ZIP/project operations.
 
 ## For administrators
-- **People and access:** Clearer staff assignments, responsive directory navigation and more efficient panel loading.
+- **Existing staff and roster pages:** Clearer teacher assignments, responsive legacy student directory navigation and less intrusive repository checks.
 - **GitHub verification:** Repository availability checks are deliberate and limited to visible entries. Merely viewing the roster no longer rewrites a learner's stored GitHub repository URL.
 - **Reporting and class analytics:** Improved scoped repository summary requests and warnings when records are unavailable, without misrepresenting missing cache data as student inactivity.
 
