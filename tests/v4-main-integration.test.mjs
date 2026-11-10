@@ -96,3 +96,14 @@ test("bulk external evaluation dialog restores keyboard focus and stays open whi
   assert.match(logic,/modal\?\.setAttribute\("aria-busy"/);
   assert.match(page,/id="gbBulkExternalClose"[^>]+min-w-\[44px\]/);
 });
+
+test("post-activation pilot launchpad is hidden until school state and compatibility allow it",()=>{
+  const page=read("school-pilot.html"),controller=read("js/core/mcs-pilot-control.mjs");
+  assert.match(page,/<section id="pilot-test-launchpad"[^>]* hidden/);
+  for(const route of ["people-access.html#classes","teacher-assessment-library.html",
+    "school-student-assessments.html","school-gradebook.html"])
+    assert.ok(page.includes('href="'+route+'"'),route+" must be reachable from the launchpad");
+  assert.match(controller,/byId\("pilot-test-launchpad"\)\.hidden=data\.schoolState!=="pilot"/);
+  assert.match(controller,/data\.compatibilityMode!=="legacy_allowed"/);
+  assert.match(controller,/data\.productionAuthorized===true/);
+});
