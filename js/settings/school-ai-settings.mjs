@@ -1,5 +1,5 @@
 import {auth} from "../core/firebase-core.js?v=1.3.0";
-import {schoolAIStatus,configureSchoolAI,activeSchoolForAI} from "../core/school-ai.mjs?v=4.0.0";
+import {schoolAIStatus,configureSchoolAI,activeSchoolForAI} from "../core/school-ai.mjs?v=4.0.5";
 
 const root=document.getElementById("panel-security");
 if(root){

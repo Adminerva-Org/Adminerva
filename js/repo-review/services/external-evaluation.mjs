@@ -25,7 +25,24 @@ function compactPatch(patch={}){
     patch:String(patch.patch||"")
   };
 }
-export function buildExternalEvaluationPackage({assessment={},criteria=[],evidence={},contributionScope="",maxScore,privateAssessment={}}={}){
+export function externalEvaluationResponseShape(criteria=[]){
+  return {
+    criteria:criteria.map(item=>({
+      status:"supported | partial | needs_teacher_review",
+      score:"number or null",
+      pendingPoints:"number",
+      confidence:"high | moderate | teacher_confirmation",
+      evidence:[{sha:"EXACT_EXPORTED_SHA",path:"EXACT_EXPORTED_PATH"}],
+      rationale:"Briefly justify supported points and confirmed rubric deficiencies for "+item.name+".",
+      reviewAction:"Only the smallest teacher check needed for unresolved points; otherwise empty string."
+    })),
+    feedback:"Verified accomplishments: ... Score-affecting issues: ... Recommended improvements: ...",
+    projectObservations:"Optional shared-project context only, without awarding individual credit.",
+    limitations:"Only remaining evidence, visual or runtime checks; do not repeat feedback."
+  };
+}
+
+export function buildExternalEvaluationPayload({assessment={},criteria=[],evidence={},contributionScope="",maxScore,privateAssessment={}}={}){
   if(!Array.isArray(criteria)||!criteria.length)throw Error("Assessment rubric is unavailable.");
   const substantive=(evidence.patches||[])
     .filter(item=>item?.substantive===true&&!item?.mergeContext&&cleanSha(item.sha)&&text(item.path,300))
@@ -38,7 +55,7 @@ export function buildExternalEvaluationPackage({assessment={},criteria=[],eviden
       .map(item=>({type:text(item.type,80),value:text(item.value,1600)}))
     :[];
   const androidUi=isAndroidUiAssessment(assessment);
-  const payload={
+  return {
     format:"adminerva-external-evaluation-v1",
     privacy:"Learner name and account identifiers intentionally omitted. Review teacher-only instructions and source evidence before sharing externally.",
     assessment:{
@@ -69,7 +86,7 @@ export function buildExternalEvaluationPackage({assessment={},criteria=[],eviden
       technicalClaims:"Distinguish directly identifiable code defects from suspected runtime or visual problems. Do not assert compilation, navigation, runtime behavior, or exact native Android rendering without execution evidence. Binary images may contain useful labels or artwork not visible in the text export.",
       recommendationsVsDeductions:"Only deduct for actual rubric requirements. Present general best practices (for example strings.xml extraction, naming style or additional accessibility refinements) as recommendations unless the assessment rubric explicitly requires them. Placeholder content and nonfunctional buttons are allowed when the task says backend behavior is out of scope.",
       feedbackStyle:"Keep student-facing feedback concise and technical, in this order: Verified accomplishments: ... Score-affecting issues: ... Recommended improvements: ... Cite the relevant filenames and specific components or attributes when supported. Do not put uncertainty or missing proof in score-affecting issues; use reviewAction and limitations.",
-      teacherReview:"Keep reviewAction focused on one or two concrete missing checks. Grades and student feedback remain drafts until the teacher explicitly reviews and saves them."
+      teacherReview:"Keep reviewAction focused on one or two concrete missing checks. Grades and student feedback remain drafts until the teacher explicitly publishes them."
     },
     rubricCriteria:criteria.map(item=>({name:item.name,maxScore:item.maxScore})),
     verifiedContribution:{
@@ -85,20 +102,12 @@ export function buildExternalEvaluationPackage({assessment={},criteria=[],eviden
       excludedMergeCommits:Array.isArray(evidence.excludedMergeCommits)?evidence.excludedMergeCommits.slice(0,100):[]
     }
   };
-  const responseShape={
-    criteria:criteria.map(item=>({
-      status:"supported | partial | needs_teacher_review",
-      score:"number or null",
-      pendingPoints:"number",
-      confidence:"high | moderate | teacher_confirmation",
-      evidence:[{sha:"EXACT_EXPORTED_SHA",path:"EXACT_EXPORTED_PATH"}],
-      rationale:"Briefly justify supported points and confirmed rubric deficiencies for "+item.name+".",
-      reviewAction:"Only the smallest teacher check needed for unresolved points; otherwise empty string."
-    })),
-    feedback:"Verified accomplishments: ... Score-affecting issues: ... Recommended improvements: ...",
-    projectObservations:"Optional shared-project context only, without awarding individual credit.",
-    limitations:"Only remaining evidence, visual or runtime checks; do not repeat feedback."
-  };
+}
+
+export function buildExternalEvaluationPackage(options={}){
+  const criteria=Array.isArray(options.criteria)?options.criteria:[];
+  const payload=buildExternalEvaluationPayload(options);
+  const responseShape=externalEvaluationResponseShape(criteria);
   return [
     "ADMINERVA EXTERNAL EVALUATION PACKAGE",
     "",

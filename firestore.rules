@@ -72,9 +72,15 @@ service cloud.firestore {
         isAdmin();
     }
     function mayGrade(data) {
-      return (isTeacher() && data.section in teacherSections() &&
-        data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
-        data.section in get(/databases/$(database)/documents/assessments/$(data.taskId)).data.get("sectionIds",[])) ||
+      let studentSection = get(/databases/$(database)/documents/students/$(data.studentId)).data.section;
+      let assessment = get(/databases/$(database)/documents/assessments/$(data.taskId)).data;
+      let sections = teacherSections();
+      return (isTeacher() && data.section is string && data.section == studentSection &&
+        (data.section in assessment.get("sectionIds",[]) ||
+         data.section in assessment.get("targetSections",[])) &&
+        (data.section in sections ||
+         assessment.get("ownerUid","") == request.auth.uid ||
+         verifiedEmailMatches("josephsixson@mcstayuman.edu.ph"))) ||
         isAdmin();
     }
     function serverOwned(name) {
@@ -515,12 +521,22 @@ service cloud.firestore {
           data.teacherReviewNote.size() > 0;
         let systemReady = data.manuallyAdjusted == false &&
           data.reviewRequired == false &&
-          data.get("gradeSource","") == "system_evaluation_draft" &&
+          data.get("gradeSource","") in ["system_evaluation_draft","external_evaluation_draft"] &&
           data.get("reviewPriority","") == "ready_to_publish" &&
           data.get("reviewReasons",[]) is list &&
           data.get("reviewReasons",[]).size() == 0 &&
           data.get("evaluationDraft",{}) is map &&
           data.get("evaluationDraft",{}).get("teacherReviewed",true) == false &&
+          data.feedback is string && data.feedback.size() >= 20;
+        let teacherApprovedEvaluation = data.manuallyAdjusted == false &&
+          data.reviewRequired == false &&
+          data.get("gradeSource","") in ["system_evaluation_draft","external_evaluation_draft"] &&
+          data.get("reviewPriority","") == "teacher_approved" &&
+          data.reviewedBy is string &&
+          data.reviewedAt is timestamp &&
+          data.teacherReviewNote is string && data.teacherReviewNote.size() >= 15 &&
+          data.get("evaluationDraft",{}) is map &&
+          data.get("evaluationDraft",{}).get("teacherReviewed",false) == true &&
           data.feedback is string && data.feedback.size() >= 20;
         return evidence.status == "approved" && data.studentId == evidence.studentId &&
           data.taskId == evidence.assessmentId && data.gradedSha == evidence.approvedCheckpointSha &&
@@ -528,11 +544,11 @@ service cloud.firestore {
           data.score is number && data.maxScore is number &&
           data.maxScore == get(/databases/$(database)/documents/assessments/$(data.taskId)).data.maxScore &&
           data.score >= 0 && data.score <= data.maxScore &&
-          (teacherReviewed || systemReady);
+          (teacherReviewed || systemReady || teacherApprovedEvaluation);
       }
       function validSystemDraft(data) {
         let evidence=getAfter(/databases/$(database)/documents/assessment_evidence/$(gradeId)).data;
-        return data.get("gradeSource","") == "system_evaluation_draft" &&
+        return data.get("gradeSource","") in ["system_evaluation_draft","external_evaluation_draft"] &&
           data.published == false && data.reviewRequired == true &&
           data.manuallyAdjusted == false && data.studentId == evidence.studentId &&
           data.taskId == evidence.assessmentId && evidence.status == "approved" &&
@@ -581,6 +597,18 @@ service cloud.firestore {
            currentEvidence(request.resource.data) &&
            request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(["published","reviewRequired","reviewPriority"])) ||
+          (resource.data.published == false && validSystemDraft(resource.data) &&
+           request.resource.data.published == true &&
+           request.resource.data.reviewRequired == false &&
+           request.resource.data.get("reviewPriority","") == "teacher_approved" &&
+           request.resource.data.reviewedBy == request.auth.uid &&
+           request.resource.data.reviewedAt == request.time &&
+           request.resource.data.teacherReviewNote is string &&
+           request.resource.data.teacherReviewNote.size() >= 15 &&
+           request.resource.data.get("evaluationDraft",{}).get("teacherReviewed",false) == true &&
+           currentEvidence(request.resource.data) &&
+           request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(["published","reviewRequired","reviewPriority","reviewedBy","reviewedAt","teacherReviewNote","evaluationDraft"])) ||
           (resource.data.published == false && (currentEvidence(request.resource.data) || validSystemDraft(request.resource.data)) &&
            (request.resource.data.published == false ||
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(["published"]))))));
@@ -647,6 +675,26 @@ service cloud.firestore {
         get(/databases/$(database)/documents/assessments/$(data.assessmentId)).data.get("schemaVersion",1) == 2 &&
         data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
         data.repository == get(/databases/$(database)/documents/students/$(data.studentId)).data.repoUrl &&
+        data.repository is string && data.repository.size() <= 300 &&
+        validEvidenceCommits(data.selectedCommits) &&
+        data.checkpointSha is string &&
+        data.checkpointSha.matches("^[a-fA-F0-9]{40}$") &&
+        data.status in ["submitted","withdrawn"];
+    }
+
+    // Existing evidence keeps its audited repository/section identity even if
+    // the roster link changes later. Students may revise only the fields
+    // explicitly permitted by the update rule below.
+    function ownExistingV2Evidence(data,before) {
+      return signedIn() &&
+        data.studentId is string && ownsStudentProfile(data.studentId) &&
+        data.assessmentId is string &&
+        exists(/databases/$(database)/documents/assessments/$(data.assessmentId)) &&
+        get(/databases/$(database)/documents/assessments/$(data.assessmentId)).data.get("schemaVersion",1) == 2 &&
+        data.studentId == before.studentId &&
+        data.assessmentId == before.assessmentId &&
+        data.section == before.section &&
+        data.repository == before.repository &&
         data.repository is string && data.repository.size() <= 300 &&
         validEvidenceCommits(data.selectedCommits) &&
         data.checkpointSha is string &&
@@ -773,7 +821,7 @@ service cloud.firestore {
         evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId &&
         request.resource.data.submittedAt == request.time &&
         request.resource.data.updatedAt == request.time;
-      allow update: if ownV2Evidence(request.resource.data) &&
+      allow update: if ownExistingV2Evidence(request.resource.data,resource.data) &&
         (resource.data.status == "reopened" ||
           (resource.data.status in ["submitted","withdrawn"] &&
             (resource.data.get("source","") != "teacher_discovered" || resource.data.get("reopenedBy",null) is string))) &&

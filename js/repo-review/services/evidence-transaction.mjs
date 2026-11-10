@@ -4,7 +4,7 @@ import {doc,runTransaction,serverTimestamp} from "../../core/teaching-firestore.
 import {assertSameEvidence,evidenceRevision,gradeMatchesEvidence} from "./evidence-lifecycle.mjs?v=1.3.0";
 import {legacyReadyDraft} from "./publication-queue.mjs?v=1.3.2";
 
-export async function verifyGradePublication(transaction,gradeRef,grade){
+export async function verifyGradePublication(transaction,gradeRef,grade,{allowTeacherApproval=false}={}){
   if(!grade.taskId)return false;
   const assessment=await transaction.get(doc(db,"assessments",grade.taskId));
   if(assessment.data()?.schemaVersion===3){
@@ -21,7 +21,7 @@ export async function verifyGradePublication(transaction,gradeRef,grade){
   if(assessment.data()?.schemaVersion!==2)return false;
   const evidence=await transaction.get(doc(db,"assessment_evidence",gradeRef.id));
   if(!evidence.exists()||!gradeMatchesEvidence(grade,evidence.data())||
-    (grade.reviewRequired && !legacyReadyDraft(grade)))
+    (grade.reviewRequired && !legacyReadyDraft(grade) && !allowTeacherApproval))
     throw Error("Evidence changed or needs review. Open Review & Grade before publishing.");
   return true;
 }

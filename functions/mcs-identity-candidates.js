@@ -29,7 +29,7 @@ async function readAll(db,collectionName,max=20000){
  if(rows.length===max)throw Error("Mapping stopped at document cap; create a larger reviewed inventory before proceeding.");
  return rows;
 }
-async function identityCandidates({db,resolveUserByEmail,schoolId="mcs-manila"}){
+async function identityCandidates({db,resolveUserByEmail,resolveUserByGithubUsername=null,schoolId="mcs-manila"}){
  if(schoolId!=="mcs-manila")throw Error("The owner confirmation is specific to the MCS pilot.");
  const [students,staff]=await Promise.all([
   readAll(db,"students"),readAll(db,"staff_access")
@@ -49,16 +49,29 @@ async function identityCandidates({db,resolveUserByEmail,schoolId="mcs-manila"})
  const notes=[];
  for(const row of students){
   const email=normalizeEmail(row.data.email);
-  const user=email?resolved.get(email):null;
-  if(!email||!user){notes.push({source:"students/"+row.id,issue:!email?"missing_or_invalid_email":"no_verified_active_auth_link"});continue;}
-  const emailHash=fingerprint(normalizeEmail(user.email)||email);
+  let user=email?resolved.get(email):null,identitySource=email&&user?"verified_email":null;
+  const githubUsername=typeof row.data.githubUsername==="string"?row.data.githubUsername.trim():"";
+  if(!user&&githubUsername&&typeof resolveUserByGithubUsername==="function"){
+   try{
+    const candidate=await resolveUserByGithubUsername(githubUsername);
+    if(candidate&&!candidate.disabled){user=candidate;identitySource="github_provider_uid";}
+   }catch(error){
+    if(error?.code!=="auth/user-not-found")throw error;
+   }
+  }
+  if(!user){notes.push({source:"students/"+row.id,issue:!email?"missing_or_invalid_email":"no_verified_active_auth_link"});continue;}
+  const resolvedEmail=normalizeEmail(user.email);
+  if(!resolvedEmail){notes.push({source:"students/"+row.id,issue:"verified_auth_email_missing"});continue;}
+  const emailHash=fingerprint(resolvedEmail);
   const current=records.get(user.uid)||{
    uid:user.uid,schoolId,emailHash,legacyStudentIds:[],legacyStaffRecordIds:[],legacyStaffScopes:[],rolesToReview:[],
-   requiresManualSchoolApproval:true
+   requiresManualSchoolApproval:true,
+   identitySources:[]
   };
   if(current.emailHash&&current.emailHash!==emailHash)
    throw Error("One verified Auth UID resolved from multiple legacy email identities; review identity mapping manually.");
   current.emailHash=emailHash;
+  if(identitySource&&!current.identitySources.includes(identitySource))current.identitySources.push(identitySource);
   current.legacyStudentIds.push({
    studentId:row.id,year:typeof row.data.schoolYear==="string"?row.data.schoolYear:null,
    section:typeof row.data.section==="string"?row.data.section:null,

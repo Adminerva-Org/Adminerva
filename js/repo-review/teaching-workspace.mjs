@@ -1,6 +1,6 @@
 /** Inline panels share one selected assessment, group and learner. No page applications are embedded. */
 import {createReviewRequests} from "./services/review-requests.mjs?v=1.3.0";
-import {validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
+import {parseRepository,validSha} from "./services/assessment-evidence.mjs?v=1.3.0";
 const make=(tag,text,classes="")=>{const element=document.createElement(tag);element.textContent=text; element.className=classes;return element;};
 export function mountTeachingWorkspace(root){
  let context=null,student=null,view="grade",activity=null,activityKey="",reviewKey="",requests=null,abort=null,revision=0;
@@ -10,6 +10,17 @@ export function mountTeachingWorkspace(root){
  const member=root.querySelector("[data-review-member]"),status=root.querySelector("[data-workspace-status]");
  const name=learner=>learner.name||learner.id;
  const updateStatus=text=>{status.textContent=text;};
+ // Prefer the learner's saved submission source for assessment-specific review.
+ // The group/roster link is discovery context, not the provenance of approved SHAs.
+ function repositoryFor(learner=student){
+  if(!learner)return context?.repository||null;
+  const evidence=context?.evidence?.get(learner.id);
+  if(evidence?.studentId===learner.id&&evidence?.assessmentId===context?.assessment?.id){
+   try{return parseRepository(evidence.repository);}catch{}
+  }
+  try{return parseRepository(learner.repoUrl);}catch{}
+  return context?.repository||null;
+ }
  const evidenceBadge=root.querySelector("[data-review-evidence-status]");
  function updateEvidenceBadge(){
   if(!evidenceBadge)return;
@@ -46,10 +57,10 @@ export function mountTeachingWorkspace(root){
  }
  function reviewState(learner){
   const evidence=context.evidence.get(learner.id),grade=context.grades.get(learner.id),activityGrade=context.activities.get(learner.id);
-  if(activityGrade?.published||grade?.published)return {label:"Published",tone:"success",action:"View reviewed result",next:context.repository?"grade":"activity"};
+  if(activityGrade?.published||grade?.published)return {label:"Published",tone:"success",action:"View reviewed result",next:repositoryFor(learner)?"grade":"activity"};
   if(activityGrade)return {label:"Private grade draft",tone:"attention",action:"Continue activity grade",next:"activity"};
   if(grade)return {label:"Private grade draft",tone:"attention",action:"Continue review & grade",next:"grade"};
-  if(!context.repository)return {label:"No repository",tone:"attention",action:"Record observed activity",next:"activity"};
+  if(!repositoryFor(learner))return {label:"No repository",tone:"attention",action:"Record observed activity",next:"activity"};
   if(evidence?.status==="approved")return {label:"Evidence approved",tone:"success",action:"Grade approved evidence",next:"grade"};
   if(evidence?.status==="submitted"||evidence?.status==="needs_review")return {label:"Needs review",tone:"attention",action:"Review submission",next:"grade"};
   if(evidence?.status==="reopened")return {label:"Returned for changes",tone:"attention",action:"Review current status",next:"grade"};
@@ -83,7 +94,8 @@ export function mountTeachingWorkspace(root){
   root.querySelector("[data-review-individual]").textContent="Individual review: "+name(student)+". Scores remain separate for each learner.";
  }
  async function openReview(){
-  if(!context?.repository){updateStatus("This target has no linked repository. Use Observed activity to record a teacher-observed task.");return;}
+  const repo=repositoryFor();
+  if(!repo){updateStatus("This learner has no linked repository. Use Observed activity to record a teacher-observed task.");return;}
   const key=context.assessment.id+":"+student.id;
   if(reviewKey===key&&!manual.classList.contains("hidden"))return;
   if(typeof window.openManualGradeReview!=="function"){
@@ -96,14 +108,15 @@ export function mountTeachingWorkspace(root){
   reviewKey=key;
   const end=window.beginLoading?.("Opening "+name(student)+"’s review…")||(()=>{});
   try{
-    const result=await window.openManualGradeReview({studentId:student.id,taskId:context.assessment.id,owner:context.repository.owner,repo:context.repository.repo});
+    const result=await window.openManualGradeReview({studentId:student.id,taskId:context.assessment.id,owner:repo.owner,repo:repo.repo});
     if(result===false)reviewKey="";
   }finally{end();}
  }
  async function repository(){
   const box=panels.repository,generation=revision;box.replaceChildren();
-  if(!context?.repository){box.append(make("p","No repository is linked to this target. Observed activity is available."));return;}
-  const repo=context.repository,evidence=context.evidence.get(student.id),checkpoint=validSha(evidence?.checkpointSha)?evidence.checkpointSha:null;
+  const repo=repositoryFor();
+  if(!repo){box.append(make("p","No repository is linked to this learner. Observed activity is available."));return;}
+  const evidence=context.evidence.get(student.id),checkpoint=validSha(evidence?.checkpointSha)?evidence.checkpointSha:null;
   box.append(make("h3",repo.owner+"/"+repo.repo,"font-bold text-lg"),make("p",checkpoint?"Files at selected checkpoint "+checkpoint.slice(0,12):"Repository discovery view · current default branch. This is not verified student evidence.","text-sm text-slate-600"));
   const browser=make("div","","mt-4"),output=make("div","","mt-4");box.append(browser,output);
   const api="/repos/"+encodeURIComponent(repo.owner)+"/"+encodeURIComponent(repo.repo);
@@ -133,11 +146,12 @@ export function mountTeachingWorkspace(root){
  }
  async function contributions(){
   const box=panels.contributions,generation=revision;box.replaceChildren();
-  if(!context?.repository){box.append(make("p","No repository is linked. Record observed work in Observed activity."));return;}
+  const repo=repositoryFor();
+  if(!repo){box.append(make("p","No repository is linked. Record observed work in Observed activity."));return;}
   const evidence=context.evidence.get(student.id),commits=evidence?.selectedCommits||[];
   box.append(make("h3","Selected contribution diffs · "+name(student),"font-bold text-lg"),make("p","Detected Git identities and change counts are investigation aids. They do not establish individual authorship. Verify contributions in Evidence before evaluation.","text-sm text-slate-600"));
   if(!commits.length){box.append(make("p","No commits are selected for this learner. Open Evidence to review a submission or discover historical evidence.","av-status-message"));return;}
-  const api="/repos/"+encodeURIComponent(context.repository.owner)+"/"+encodeURIComponent(context.repository.repo);
+  const api="/repos/"+encodeURIComponent(repo.owner)+"/"+encodeURIComponent(repo.repo);
   for(const sha of commits.slice(0,10)){
    if(!validSha(sha))continue;
    const details=make("details","","border rounded-lg p-3 mt-3");details.append(make("summary",sha.slice(0,12)+(evidence?.verifiedContributionCommits?.includes(sha)?" · Teacher verified":" · Requires verification"),"font-semibold"));box.append(details);
@@ -150,7 +164,7 @@ export function mountTeachingWorkspace(root){
  }
  async function show(next){
   if(!context)return;
-  if((next==="evidence"||next==="grade")&&!context.repository)next="activity";
+  if((next==="evidence"||next==="grade")&&!repositoryFor())next="activity";
   view=next;
   if(next==="evidence")next="grade";
   const review=next==="grade";
