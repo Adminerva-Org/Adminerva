@@ -164,6 +164,7 @@ onAuthStateChanged(auth,async user=>{
   feed.append(make("p","rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600",
     "Loading authorized submission receipts and selected evidence…"));
   status.textContent="Checking your assigned review inbox…";
+  let subscriptionsStarted=false;
   try{
     if(!user||!await resolveStaffRole(user)){
       if(current()||!user){
@@ -202,10 +203,11 @@ onAuthStateChanged(auth,async user=>{
     };
     request("legacy","student_submissions","submittedAt");
     request("v2","assessment_evidence","updatedAt");
+    subscriptionsStarted=true;
   }catch(error){
     if(current())status.textContent="Could not load review inbox: "+error.message;
   }finally{
-    if(current())feed.setAttribute("aria-busy","false");
+    if(current()&&!subscriptionsStarted)feed.setAttribute("aria-busy","false");
   }
 });
 el("submissionSearch").addEventListener("input",render);
