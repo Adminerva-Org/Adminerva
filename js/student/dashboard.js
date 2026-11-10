@@ -303,17 +303,11 @@ async function syncGitHubData(repoUrl, username, token, cacheRef, profileId, loa
           repoUrl.toLowerCase() !== actualUrl.toLowerCase() &&
           repoUrl.toLowerCase() !== repoInfo.html_url.toLowerCase()
         ) {
-          await setDoc(
-            doc(db, "students", profileId),
-            { repoUrl: actualUrl },
-            { merge: true },
-          );
-          owner = repoInfo.owner.login;
-          repo = repoInfo.name;
-          const profile=userProfiles.find(item=>item.docId===profileId);if(profile)profile.repoUrl=actualUrl;
-          const subtitle = document.getElementById("repoSubtitle");
-          if (subtitle&&isCurrent())
-            subtitle.innerHTML = `<strong>${escapeHTML(studentDataSection(profileId))}:</strong> Tracking <span class="font-mono text-xs text-slate-800">${escapeHTML(studentDataGithub(profileId))}</span> on <a href="${escapeHTML(actualUrl)}" target="_blank" class="text-blue-500 hover:underline font-mono text-xs">${escapeHTML(actualUrl)}</a>`;
+          // Follow GitHub's canonical repository for this read-only sync,
+          // but never silently rewrite a student's school roster record.
+          owner=repoInfo.owner.login;
+          repo=repoInfo.name;
+          if(isCurrent())projectActivityStatus("Repository redirect detected. Activity is being read from the current GitHub address; update your saved URL through the normal account workflow.");
         }
       }
     } catch (autoUpdateError) {}
