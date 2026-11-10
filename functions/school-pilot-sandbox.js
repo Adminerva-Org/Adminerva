@@ -87,14 +87,23 @@ function createSchoolPilotSandboxService({db}){
       const givenId=input.recordId?recordId(input.recordId):null;
       let ref=givenId?records.doc(givenId):records.doc();
       if(givenId){
-        const existing=await ref.get();
-        if(!existing.exists||existing.data()?.ownerUid!==ctx.uid||existing.data()?.schoolId!==ctx.schoolId)
-          deny("permission-denied","This sandbox record does not belong to you.");
-        await ref.update({kind,title,details,updatedAt:time});
+        await db.runTransaction(async tx=>{
+          const existing=await tx.get(ref);
+          if(!existing.exists||existing.data()?.ownerUid!==ctx.uid||existing.data()?.schoolId!==ctx.schoolId)
+            deny("permission-denied","This sandbox record does not belong to you.");
+          const previous=existing.data();
+          const version=Number.isInteger(previous.version)?previous.version:1;
+          if(!Number.isInteger(input.expectedVersion)||input.expectedVersion!==version)
+            deny("failed-precondition","This private record changed in another session. Refresh before saving.");
+          if(previous.payload&&previous.kind!==kind)
+            deny("failed-precondition","Functional sandbox records cannot change their type.");
+          tx.update(ref,{kind,title,details,version:version+1,updatedAt:time});
+        });
       }else{
         const count=await records.limit(RECORD_LIMIT).get();
         if(count.size>=RECORD_LIMIT)deny("resource-exhausted","Your private sandbox has reached the record limit.");
-        await ref.create({schoolId:ctx.schoolId,ownerUid:ctx.uid,kind,title,details,createdAt:time,updatedAt:time});
+        await ref.create({schoolId:ctx.schoolId,ownerUid:ctx.uid,kind,title,details,
+          version:1,createdAt:time,updatedAt:time});
       }
       return {record:item(await ref.get())};
     }
