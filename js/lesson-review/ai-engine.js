@@ -373,7 +373,7 @@ LESSON MEETING CONTEXT:
 ${window.cachedSchedule}
 
 SELECTED REFERENCE EXCERPTS:
-${window.cachedCompiledText || "No selected reference text. Use fallback professional knowledge only for fields that cannot otherwise be completed."}`
+${window.cachedCompiledText || "No selected reference text. Use fallback professional knowledge only for fields that cannot otherwise be completed."}`;
   window.lastLessonGenerationPrompt = prompt;
   window.lastLessonGenerationSubject = subject;
 
