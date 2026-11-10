@@ -185,6 +185,8 @@ function renderStart(data){
   const isDraft=data.schoolState==="draft";
   form.hidden=!isDraft;
   byId("pilot-active-note").hidden=data.schoolState!=="pilot";
+  byId("pilot-test-launchpad").hidden=data.schoolState!=="pilot"||
+    data.compatibilityMode!=="legacy_allowed"||data.productionAuthorized===true;
   button.disabled=busy||!data.readyToStart;
   if(!isDraft)return;
   note.textContent=data.readyToStart?
