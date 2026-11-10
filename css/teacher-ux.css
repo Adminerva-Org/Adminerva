@@ -12,10 +12,10 @@
 .av-review-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.85rem;padding-bottom:.85rem}
 .av-review-heading h1{font-size:clamp(1.4rem,2.2vw,1.85rem);line-height:1.2;letter-spacing:-.025em;color:#122442}
 .av-review-heading p{line-height:1.45;max-width:68ch}
-.av-review-actions{display:flex;gap:.55rem;flex-wrap:wrap;align-items:center}
-.av-review-actions a{min-height:42px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #ccd8e8;background:#fff;border-radius:10px;padding:.6rem .85rem;font-size:.82rem;font-weight:750;color:#24446f;text-decoration:none}
-.av-review-actions a:first-child{background:#eaf5f3;border-color:#9fd8cd;color:#075e54}
-.av-review-actions a:hover{border-color:#8dacd4;background:#f2f7fd}
+.av-review-links{display:flex;gap:.55rem;flex-wrap:wrap;align-items:center}
+.av-review-links a{min-height:42px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #ccd8e8;background:#fff;border-radius:10px;padding:.6rem .85rem;font-size:.82rem;font-weight:750;color:#24446f;text-decoration:none}
+.av-review-links a:first-child{background:#eaf5f3;border-color:#9fd8cd;color:#075e54}
+.av-review-links a:hover{border-color:#8dacd4;background:#f2f7fd}
 .av-review-steps{display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;padding:.7rem 0 1rem;border-top:1px solid #edf2f8;color:#5e718d}
 .av-review-steps span{display:inline-flex;align-items:center;gap:.45rem;font-size:.77rem;font-weight:650}
 .av-review-steps b{display:inline-grid;place-items:center;width:1.3rem;height:1.3rem;border-radius:50%;background:#e9f0fb;color:#285caa;font-size:.7rem}
@@ -75,8 +75,8 @@
 .av-teacher-refresh .av-teacher-scope-note{border-left:3px solid #84acd8;background:#f4f8fe;border-radius:0 10px 10px 0;padding:.55rem .8rem;font-size:.79rem;color:#4c6280}
 @media (max-width:780px){
  .av-review-heading{align-items:flex-start}
- .av-review-actions{width:100%}
- .av-review-actions a{flex:1 1 150px}
+ .av-review-links{width:100%}
+ .av-review-links a{flex:1 1 150px}
  .av-review-steps{gap:.35rem .7rem}
  .av-review-steps span+span:before{display:none}
  .av-teacher-refresh .av-review-main{padding:.8rem;border-radius:12px}
