@@ -132,9 +132,11 @@ async function simulation(action,record,student,details={}){
         expectedVersion:record.version,...details});
       await loadOverview();
       status("Demo "+student.name+": "+human(response.status)+". No official records or student notifications changed.");
+      return true;
     }catch(error){
       status("Simulation not saved: "+(error.message||"Reload this private assessment and try again."));
       await loadOverview();
+      return false;
     }
   });
 }
@@ -159,8 +161,9 @@ get("pilotGradeForm").addEventListener("submit",async event=>{
   const form=event.currentTarget,score=Number(form.elements.score.value),feedback=form.elements.feedback.value;
   get("pilotGradeStatus").textContent="Saving private rubric draft…";
   try{
-    await simulation("sim_grade_draft",assessment,student,{score,feedback});
-    closeGrade();
+    const saved=await simulation("sim_grade_draft",assessment,student,{score,feedback});
+    if(saved)closeGrade();
+    else get("pilotGradeStatus").textContent="Draft not saved. Check the status above and try again.";
   }catch(error){get("pilotGradeStatus").textContent=error.message||"Could not save private draft.";}
 });
 get("pilotSeedDemo").addEventListener("click",async()=>lock(async()=>{
