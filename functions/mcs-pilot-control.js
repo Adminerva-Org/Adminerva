@@ -75,6 +75,26 @@ async function authUsersByEmail(auth,emails){
   }
   return result;
 }
+function validatePilotMemberships({included,documents,firstAdminUid}){
+  const byUid=new Map(documents.map(doc=>[doc.id,doc.data()]));
+  const requiredStudents=new Set(included.map(row=>row.linkedUid).filter(Boolean));
+  const valid=(data,role)=>data?.schoolId===SCHOOL_ID&&data.status==="active"&&
+    Array.isArray(data.roles)&&data.roles.includes(role);
+  const admin=firstAdminUid?byUid.get(firstAdminUid):null;
+  const firstAdminReady=valid(admin,"school_admin")&&valid(admin,"teacher");
+  const studentMembershipsReady=included.length===EXPECTED_TOTAL&&requiredStudents.size===EXPECTED_TOTAL&&
+    [...requiredStudents].every(uid=>valid(byUid.get(uid),"student"));
+  const extras=documents.filter(doc=>!requiredStudents.has(doc.id)&&doc.id!==firstAdminUid);
+  const invalidExtras=extras.filter(doc=>{
+    const data=doc.data(),roles=data?.roles;
+    return data?.schoolId!==SCHOOL_ID||data.status!=="active"||
+      !Array.isArray(roles)||roles.includes("student")||
+      !roles.some(role=>role==="teacher"||role==="school_admin");
+  });
+  return {firstAdminReady,studentMembershipsReady,
+    extraStaffMemberships:extras.length,invalidExtras:invalidExtras.length,
+    ready:firstAdminReady&&studentMembershipsReady&&!invalidExtras.length};
+}
 async function pilotSnapshot({db,auth,ctx,includeSectionRecords=true}){
   const [students,reviewDocs,exclusionDocs]=await Promise.all([
     db.collection("students").get(),
@@ -127,19 +147,26 @@ async function pilotSnapshot({db,auth,ctx,includeSectionRecords=true}){
     issue:"No verified Firebase account is linked to this legacy student record."
   }));
   const countMismatch=counts.filter(row=>row.included!==row.expected);
-  const [peopleCount,membershipCount,offeringCount,enrollmentCount,assignmentCount]=await Promise.all([
+  const [peopleCount,membershipsSnap,offeringCount,enrollmentCount,assignmentCount]=await Promise.all([
     db.collection("schools/"+SCHOOL_ID+"/people").count().get(),
-    db.collection("schools/"+SCHOOL_ID+"/memberships").count().get(),
+    db.collection("schools/"+SCHOOL_ID+"/memberships").get(),
     db.collection("schools/"+SCHOOL_ID+"/course_offerings").count().get(),
     db.collection("schools/"+SCHOOL_ID+"/enrollments").count().get(),
     db.collection("schools/"+SCHOOL_ID+"/staff_assignments").count().get()
   ]);
+  const memberAudit=validatePilotMemberships({
+    included,documents:membershipsSnap.docs,firstAdminUid:ctx.school.firstAdminUid
+  });
   const canonical={
-    people:peopleCount.data().count,memberships:membershipCount.data().count,
+    people:peopleCount.data().count,memberships:membershipsSnap.size,
     offerings:offeringCount.data().count,enrollments:enrollmentCount.data().count,
-    teacherAssignments:assignmentCount.data().count
+    teacherAssignments:assignmentCount.data().count,
+    firstAdminDualRoleReady:memberAudit.firstAdminReady,
+    studentMembershipsReady:memberAudit.studentMembershipsReady,
+    extraStaffMemberships:memberAudit.extraStaffMemberships,
+    invalidExtraMemberships:memberAudit.invalidExtras
   };
-  canonical.ready=canonical.people===(EXPECTED_TOTAL+1)&&canonical.memberships===(EXPECTED_TOTAL+1)&&canonical.offerings===8&&
+  canonical.ready=canonical.people===(EXPECTED_TOTAL+1)&&memberAudit.ready&&canonical.offerings===8&&
     canonical.enrollments===(EXPECTED_TOTAL*2)&&canonical.teacherAssignments===8;
   const blockers=[];
   if(unresolved.length)blockers.push({code:"identity_unresolved",label:unresolved.length+" student identit"+(unresolved.length===1?"y":"ies")+" need review."});
@@ -316,4 +343,4 @@ function createMcsPilotControlService({db,auth=getAuth()}){
     fail("invalid-argument","Unknown MCS controlled-pilot operation.");
   };
 }
-module.exports={SCHOOL_ID,PILOT_SECTIONS,EXPECTED_TOTAL,createMcsPilotControlService,displayName,sectionFor};
+module.exports={SCHOOL_ID,PILOT_SECTIONS,EXPECTED_TOTAL,createMcsPilotControlService,validatePilotMemberships,displayName,sectionFor};
