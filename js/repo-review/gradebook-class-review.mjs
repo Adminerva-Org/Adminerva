@@ -19,6 +19,7 @@ import {partitionBulkExternalEntries,buildBulkExternalEvaluationPackage,parseBul
 const el=id=>document.getElementById(id);
 const analytics=(event,params={})=>window.AdminervaAnalytics?.track(event,params);
 let context=null,busy=false,busyEvaluation=false,cancelEvaluation=false,evidenceReadable=false,gradesReadable=false,receiptsReadable=false,draftsReadable=false,evidenceMap=new Map(),draftMap=new Map(),receiptMap=new Map(),claimMap=new Map(),claimsReadable=false,canDecideClaims=false,loadSequence=0;
+let bulkExternalFocusReturn=null;
 const bulkExternal={sessionId:"",preparedFor:"",section:"",taskId:"",assessment:null,criteria:[],privateAssessment:{},batches:[],index:0,busy:false,failures:[]};
 const draftRef=(studentId,taskId)=>doc(db,"teacher_evaluation_drafts",auth.currentUser.uid,"items",studentId+"_"+taskId);
 function showBulkExceptions(failures){
@@ -759,6 +760,11 @@ function saveBulkExternalTextarea(){
 }
 function renderBulkExternalModal(){
   const batch=currentBulkExternalBatch(),total=bulkExternal.batches.length;
+  const modal=el("gbBulkExternalModal");
+  modal?.setAttribute("aria-busy",String(bulkExternal.busy));
+  for(const name of ["gbBulkExternalClose","gbBulkExternalDone"]){
+    const button=el(name);if(button)button.disabled=bulkExternal.busy;
+  }
   if(!batch){
     el("gbBulkExternalProgress").textContent=bulkExternal.busy?"Preparing anonymous evidence batches…":"No external evaluation batch is prepared.";
     el("gbBulkExternalPackage").value="";
@@ -779,7 +785,14 @@ function renderBulkExternalModal(){
   el("gbBulkExternalNext").disabled=bulkExternal.busy||bulkExternal.index>=total-1;
   showBulkExternalExceptions([...(bulkExternal.failures||[]),...(batch.issues||[])]);
 }
-function closeBulkExternalEvaluation(){saveBulkExternalTextarea();el("gbBulkExternalModal")?.classList.add("hidden");}
+function closeBulkExternalEvaluation(){
+  if(bulkExternal.busy)return;
+  saveBulkExternalTextarea();
+  el("gbBulkExternalModal")?.classList.add("hidden");
+  const target=bulkExternalFocusReturn?.isConnected?bulkExternalFocusReturn:el("gbBulkExternal");
+  bulkExternalFocusReturn=null;
+  target?.focus?.();
+}
 async function copyBulkExternalBatch(){
   const batch=currentBulkExternalBatch();if(!batch||bulkExternal.busy)return;
   try{
@@ -800,7 +813,10 @@ function moveBulkExternalBatch(delta){
 async function prepareBulkExternalEvaluation(){
   if(busy||bulkExternal.busy||!context||Number(context.schemaVersion)!==2)return;
   const active=context;
-  el("gbBulkExternalModal").classList.remove("hidden");
+  const modal=el("gbBulkExternalModal");
+  bulkExternalFocusReturn=document.activeElement;
+  modal.classList.remove("hidden");
+  modal.focus();
   el("gbBulkExternalStatus").textContent="Refreshing approved evidence and grade state before preparing external packages…";
   busy=true;bulkExternal.busy=true;render();renderBulkExternalModal();
   const failures=[];let prepared=[];
@@ -1029,6 +1045,25 @@ el("gbBulkExternalPrev")?.addEventListener("click",()=>moveBulkExternalBatch(-1)
 el("gbBulkExternalNext")?.addEventListener("click",()=>moveBulkExternalBatch(1));
 el("gbBulkExternalClose")?.addEventListener("click",closeBulkExternalEvaluation);
 el("gbBulkExternalDone")?.addEventListener("click",closeBulkExternalEvaluation);
+el("gbBulkExternalModal")?.addEventListener("keydown",event=>{
+  const dialog=el("gbBulkExternalModal");
+  if(!dialog||dialog.classList.contains("hidden"))return;
+  if(event.key==="Escape"){
+    event.preventDefault();
+    if(!bulkExternal.busy)closeBulkExternalEvaluation();
+    return;
+  }
+  if(event.key!=="Tab")return;
+  const controls=[...dialog.querySelectorAll('button:not([disabled]),textarea:not([disabled])')]
+    .filter(node=>!node.closest("[hidden]")&&node.getClientRects().length>0);
+  if(!controls.length){event.preventDefault();dialog.focus();return;}
+  const first=controls[0],last=controls.at(-1);
+  if(event.shiftKey&&(document.activeElement===first||document.activeElement===dialog)){
+    event.preventDefault();last.focus();
+  }else if(!event.shiftKey&&(document.activeElement===last||document.activeElement===dialog)){
+    event.preventDefault();first.focus();
+  }
+});
 el("gbBulkExternalModal")?.addEventListener("click",event=>{if(event.target===el("gbBulkExternalModal")&&!bulkExternal.busy)closeBulkExternalEvaluation();});
 el("gbBulkRerun")?.addEventListener("click",()=>void window.withLoading("Re-evaluating learner evidence…",()=>bulkEvaluate({rerun:true}),{button:el("gbBulkRerun")}));
 el("gbCancelEvaluation")?.addEventListener("click",()=>{cancelEvaluation=true;el("gbBulkStatus").textContent="Stopping after the current learner. Completed drafts are preserved.";});
