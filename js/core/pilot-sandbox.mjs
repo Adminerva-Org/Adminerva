@@ -14,7 +14,7 @@ function node(tag,className,text){
   return element;
 }
 function resetEditor(){
-  form.reset();form.elements.recordId.value="";
+  form.reset();form.elements.recordId.value="";form.elements.kind.disabled=false;
   get("pilotEditorTitle").textContent="Create an example";
   get("pilotDeleteRecord").hidden=true;
   say("pilotEditorStatus","");
@@ -73,6 +73,7 @@ function renderRecords(){
 }
 function editRecord(record){
   form.elements.recordId.value=record.id;form.elements.kind.value=record.kind;
+  form.elements.kind.disabled=Boolean(record.payload);
   form.elements.title.value=record.title;form.elements.details.value=record.details||"";
   get("pilotEditorTitle").textContent="Edit private example";
   get("pilotDeleteRecord").hidden=false;
