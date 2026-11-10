@@ -140,7 +140,7 @@ function lessonDateLabels(dateRange){
   return labels;
 }
 
-export function scheduleRowsToLessonText(rows,{dateRange=""}={}){
+export function scheduleRowsToLessonText(rows,{dateRange="",grade=""}={}){
   const dates=lessonDateLabels(dateRange);
   const entries=[];
   for(const row of Array.isArray(rows)?rows:[]){
@@ -149,27 +149,70 @@ export function scheduleRowsToLessonText(rows,{dateRange=""}={}){
     const endMinutes=Number(row.endTime.slice(0,2))*60+Number(row.endTime.slice(3,5));
     const duration=Number.isFinite(startMinutes)&&Number.isFinite(endMinutes)&&endMinutes>startMinutes
       ?endMinutes-startMinutes:null;
-    for(const [key,day] of LESSON_DAYS){
+    for(const [key,day,dayOrder] of LESSON_DAYS){
       const cell=row[key]||{};
       if(!cell.sec||!cell.sub)continue;
-      const parts=[
-        day,
-        dates[key]||"",
-        `${formatTime(row.startTime)} - ${formatTime(row.endTime)}`,
-        cell.sec,
-        cell.sub,
-        duration?`${duration} minutes`:""
-      ].filter(Boolean);
-      if(cell.evt)parts.push("AFFECTING EVENT: "+cell.evt);
-      entries.push("- "+parts.join(" | "));
+      entries.push({
+        day,key,dayOrder,
+        date:dates[key]||"",
+        start:row.startTime,
+        startMinutes:Number.isFinite(startMinutes)?startMinutes:9999,
+        time:`${formatTime(row.startTime)} - ${formatTime(row.endTime)}`,
+        section:cell.sec,
+        subject:cell.sub,
+        duration,
+        event:cell.evt||"",
+      });
     }
   }
   if(!entries.length)return "";
+
+  const byClass=new Map();
+  for(const entry of entries){
+    const key=entry.section+"\u0000"+entry.subject;
+    if(!byClass.has(key))byClass.set(key,[]);
+    byClass.get(key).push(entry);
+  }
+
+  const gradeName=normalize(grade);
+  const regularNames=gradeName==="Grade 11"
+    ?["Session 1","Session 2","Session 3"]
+    :gradeName==="Grade 12"
+      ?["Session 1","Session 2","Session 3"]
+      :["Session 1","Session 2"];
+
+  for(const meetings of byClass.values()){
+    meetings.sort((a,b)=>a.dayOrder-b.dayOrder||a.startMinutes-b.startMinutes);
+    let regularIndex=0;
+    for(const meeting of meetings){
+      if(gradeName==="Grade 11"&&meeting.duration===180){
+        meeting.session="Session 4-6";
+      }else{
+        meeting.session=regularNames[Math.min(regularIndex,regularNames.length-1)];
+        regularIndex++;
+      }
+    }
+  }
+
+  entries.sort((a,b)=>a.dayOrder-b.dayOrder||a.startMinutes-b.startMinutes||a.section.localeCompare(b.section));
+  const lines=entries.map(entry=>{
+    const parts=[
+      "SESSION: "+entry.session,
+      entry.day,
+      entry.date,
+      entry.time,
+      entry.section,
+      entry.duration?`${entry.duration} minutes`:""
+    ].filter(Boolean);
+    if(entry.event)parts.push("AFFECTING EVENT: "+entry.event);
+    return "- "+parts.join(" | ");
+  });
+
   return [
-    "LESSON MEETING CONTEXT (already filtered by Adminerva for this grade and subject):",
-    ...entries,
+    "LESSON MEETING CONTEXT (already filtered and session-mapped by Adminerva):",
+    ...lines,
     "",
-    "Use only these meetings for session-to-schedule mapping. Do not infer other timetable periods."
+    "Use these meeting lines only for the remarks of their assigned session. Do not infer, add, or scan other timetable periods."
   ].join("\n");
 }
 
