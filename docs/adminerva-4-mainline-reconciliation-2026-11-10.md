@@ -35,6 +35,13 @@ The isolated V4 integration targeted GitHub Actions workflow passed for the PR #
 
 **Not claimed:** pixel-level or full interactive browser acceptance; connected real Firebase teacher/student pilot use; live cross-school denial; actual migration/backup recovery; production deployment. No such proof is represented by these green checks.
 
+## Follow-up acceptance, 2026-11-10
+
+- [PR #140](https://github.com/Adminerva-Org/Adminerva/pull/140) merged the Gradebook bulk external-evaluation dialog focus management, Escape/Tab keyboard handling, 44px mobile close target, and loading/import busy-state safeguards into the V4 development branch. A targeted integration run passed.
+- [Isolated Firestore rules emulator run #42830294582](https://github.com/Adminerva-Org/Adminerva/actions/runs/42830294582) passed for the reconciled V4 security rules. This is a *local isolated emulator* check of legacy-grade permissions and related rules; it does **not** prove authorization of live MCS school members or production access.
+- Mainline synchronization [PR #133](https://github.com/Adminerva-Org/Adminerva/pull/133) was completed with `main` recorded as a parent of the V4 development history. Comparison confirmed V4 was zero commits behind that reviewed `main` snapshot. The parent V4 implementation PR #113 remains a draft rather than a production release.
+- No live responsive-browser session, MCS migration, Firebase deployment, identity grant, v4-only routing activation, grade modification, or publication occurred.
+
 ## Next controlled MCS SHS pilot
 
 The **first cohort** remains the four reviewed Senior High ICT sections: St. Isidore of Seville (45), St. Carlo Acutis (35), St. Philip the Apostle (45), and St. Anselm of Canterbury (44), currently 169 approved students in the reviewed pilot roster baseline. St. Sebastian and Basic Education are deferred, not deleted or marked inactive.
