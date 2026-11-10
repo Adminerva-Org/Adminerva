@@ -110,7 +110,7 @@
         <div class="av-button-row mb-4"><p id="scheduleCatalogStatus" role="status" class="av-form-hint">Loading school section and subject choices…</p><button type="button" class="av-secondary-button" onclick="refreshScheduleSchoolChoices()">Refresh school choices</button></div>
         <!-- Flexible Schedule Table (Swipeable on Mobile) -->
         <div
-          class="flex-1 overflow-x-auto border border-gray-200 rounded w-full touch-pan-x"
+          class="av-schedule-viewport flex-1 overflow-x-auto border border-gray-200 rounded-xl w-full touch-pan-x"
         >
           <table class="min-w-[800px] w-full bg-white">
             <thead class="bg-gray-100 border-b-2 border-gray-200">
@@ -151,7 +151,7 @@
               </tr>
             </thead>
             <tbody id="scheduleTableBody">
-              <!-- Dynamic Rows -->
+              <tr><td colspan="7" class="p-8 text-center text-slate-500" role="status">Loading your selected timetable…</td></tr>
             </tbody>
           </table>
         </div>
