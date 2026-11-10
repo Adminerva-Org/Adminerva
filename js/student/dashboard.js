@@ -335,9 +335,11 @@ async function syncGitHubData(repoUrl, username, token, cacheRef, profileId, loa
     } catch (autoUpdateError) {}
 
     let allCommits = [];
+    // Dashboard filters cover at most 90 days; avoid downloading older history.
+    const since=new Date(Date.now()-93*86400000).toISOString();
     for (let page = 1; page <= 4; page++) {
       const response = await fetch(
-        `https://api.github.com/repos/${owner}/${repo}/commits?author=${encodeURIComponent(username)}&per_page=100&page=${page}`,
+        `https://api.github.com/repos/${owner}/${repo}/commits?author=${encodeURIComponent(username)}&since=${encodeURIComponent(since)}&per_page=100&page=${page}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -345,7 +347,11 @@ async function syncGitHubData(repoUrl, username, token, cacheRef, profileId, loa
           },
         },
       );
-      if (!response.ok) break;
+      if(!response.ok){
+        if(response.status===409)break; // The linked repository is empty.
+        throw Error("GitHub HTTP "+response.status+(response.status===401||response.status===403
+          ?". Reconnect GitHub and check repository permissions or API limits.":"."));
+      }
       const commits = await response.json();
       allCommits = allCommits.concat(commits);
       if (commits.length < 100) break;
