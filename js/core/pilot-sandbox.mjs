@@ -52,7 +52,7 @@ function switchTab(tab){
     button.setAttribute("aria-selected",String(active));
     button.className="rounded-lg px-4 py-2.5 text-sm font-bold "+(active?"bg-indigo-900 text-white":"border border-slate-300 bg-white");
   }
-  for(const name of ["preview","sandbox","tour"])get("pilot-"+name).hidden=name!==tab;
+  for(const name of ["preview","simulation","sandbox","tour"])get("pilot-"+name).hidden=name!==tab;
 }
 document.querySelectorAll("[data-pilot-tab]").forEach(button=>button.addEventListener("click",()=>switchTab(button.dataset.pilotTab)));
 function renderRecords(){
@@ -110,6 +110,7 @@ async function loadOverview(){
     grants=result.grantedByMe||[];
     shared=result.sharedWithMe||[];
     renderRecords();renderGrants();
+    document.dispatchEvent(new CustomEvent("adminerva:pilot-overview",{detail:{records:records.slice(),schoolId:school}}));
     status.textContent="Verified school ready · your sandbox contains "+records.length+" private test record"+(records.length===1?"":"s")+".";
   }catch(error){
     status.textContent="Pilot sandbox could not load: "+(error.message||"Try refreshing the page.");
@@ -159,8 +160,9 @@ get("pilotLoadPreview").addEventListener("click",async()=>{
   setBusy(true);say("pilotPreviewStatus","Loading authorized teacher resource summaries…");
   get("pilotPreviewResults").replaceChildren();
   try{
-    const result=await perform("preview",{ownerUid});
+    const result=await perform("preview_dashboard",{ownerUid});
     for(const [kind,items] of Object.entries(result.preview||{})){
+      if(!["schedules","assessmentBlueprints","assessments","planning"].includes(kind))continue;
       const card=node("article","rounded-xl border border-slate-200 bg-slate-50 p-4");
       const title=node("h3","font-extrabold text-slate-900",{
         schedules:"Schedules",assessmentBlueprints:"Assessment blueprints",
@@ -177,8 +179,10 @@ get("pilotLoadPreview").addEventListener("click",async()=>{
       if(!items.length)list.append(node("li","text-sm text-slate-500","No V4 resources to preview here."));
       card.append(list);get("pilotPreviewResults").append(card);
     }
+    document.dispatchEvent(new CustomEvent("adminerva:pilot-preview",{detail:result}));
     say("pilotPreviewStatus","Read-only preview loaded. Your account cannot edit these teacher-owned records.");
   }catch(error){say("pilotPreviewStatus","Preview unavailable: "+(error.message||"Ask the owner to grant access."));}
   finally{setBusy(false);}
 });
 auth.authStateReady().then(()=>picker.load()).catch(error=>{status.textContent=error.message||"Could not verify school access.";});
+export {perform,loadOverview,switchTab};
