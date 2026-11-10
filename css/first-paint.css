@@ -37,3 +37,6 @@ body#pageBody.hidden{display:none!important}
 }
 /* Do not layer the global page-opening toast on top of the structural skeleton. */
 html:has(body#pageBody.hidden) #subtleLoader{display:none!important}
+
+/* Avoid jumping content when the verified navigation mounts. */
+#adminerva-nav:empty{min-height:63px;background:#10253d}
