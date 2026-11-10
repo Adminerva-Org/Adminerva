@@ -120,3 +120,6 @@
  .av-teacher-refresh .av-slide-nav-panel{max-height:180px}
  .av-teacher-refresh .av-slide-workarea{max-width:100%}
 }
+
+/* Reserve navigation height while role-aware links initialize. */
+.av-teacher-refresh #adminerva-nav:empty{min-height:63px;background:#10253d}
