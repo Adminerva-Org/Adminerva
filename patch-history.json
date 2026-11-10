@@ -1,6 +1,194 @@
 {
   "releases": [
     {
+      "version": "3.1.0",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-11-11",
+      "publishedAt": "2026-11-11T01:15:36+08:00",
+      "title": "Classroom reliability, clearer review and faster workspaces",
+      "summary": "A cumulative maintenance and usability update improves evidence review, grade publication controls, student resubmission, Studio editing, lesson planning and faster teacher, student and administration pages.",
+      "changes": [
+        {
+          "type": "Fixed",
+          "area": "Review & Grade permissions",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Restored authorized teacher access to approved evidence, verified repository contributions and Gradebook review data. Supplemental attribution or reclaim checks no longer prevent legitimate assessment review when their optional context is unavailable."
+        },
+        {
+          "type": "Fixed",
+          "area": "Evidence resubmission",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "Reopened evidence can be resubmitted using an updated verified commit selection. Student commit previews and the returned-submission workflow now handle interrupted or stale selection states more reliably.",
+          "impact": {
+            "student": "Reconnect GitHub when requested, select your updated commits and resubmit after your teacher reopens the work.",
+            "teacher": "Review the updated selection and checkpoint before evaluating; reopening does not automatically change a grade."
+          }
+        },
+        {
+          "type": "Fixed",
+          "area": "Individual contributions",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Improved matching of original repository commits, linked GitHub identities, and teacher-discovered contributions. Attribution requests remain separately reviewed rather than granting automatic credit."
+        },
+        {
+          "type": "Fixed",
+          "area": "Unpublished grade saving",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Removed the former 40-file-path restriction that blocked saving larger unpublished review records. Protected published grades and audit history remain unchanged."
+        },
+        {
+          "type": "Fixed",
+          "area": "System evaluation",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Restored bulk system evaluation for eligible approved evidence and improved handling of missing permissions and partial review data. A failed learner review does not silently mark unreviewed work as evaluated."
+        },
+        {
+          "type": "New",
+          "area": "Bulk external evaluation",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Teachers can prepare structured external evaluation packages for eligible submissions and import validated criterion-level results through the existing Gradebook review process. Teacher confirmation remains required before publication."
+        },
+        {
+          "type": "Updated",
+          "area": "Gradebook publication",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Teachers can explicitly approve an evaluated draft and publish an eligible result from Gradebook without repeating a completed evaluation. Unapproved drafts remain private and student grades appear only after deliberate publication.",
+          "impact": {
+            "student": "A completed evaluation is not automatically visible as your grade; your teacher must approve and publish it.",
+            "teacher": "Verify rubric evidence and comments before approving and publishing an evaluated draft."
+          }
+        },
+        {
+          "type": "Fixed",
+          "area": "Feedback readability",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Structured rubric accomplishments, score-affecting issues and recommended improvements display more consistently instead of appearing as an unformatted block."
+        },
+        {
+          "type": "Updated",
+          "area": "Commit selection controls",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "Larger selection buttons replace hard-to-target checkboxes in repository evidence review. Commit selection retains keyboard focus, shows selected counts and clarifies the project checkpoint."
+        },
+        {
+          "type": "Updated",
+          "area": "Teacher review workflow",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Review & Grade, Gradebook, Studio submissions and class insights use clearer task context, more compact responsive layouts and inline progress states for gathering, evaluation and publication."
+        },
+        {
+          "type": "Updated",
+          "area": "Page loading and navigation",
+          "audience": [
+            "all"
+          ],
+          "text": "Pages reserve useful structure while account access is checked, avoid overlapping opening animations and use limited intent-based page prefetching. Optional home summaries and hidden legacy queries no longer delay primary navigation."
+        },
+        {
+          "type": "Updated",
+          "area": "Student assignments",
+          "audience": [
+            "student",
+            "admin"
+          ],
+          "text": "My Assignments has clearer progress summaries, an accessible details dialog, keyboard-friendly evidence selection, checkpoint guidance and improved small-screen layouts."
+        },
+        {
+          "type": "Updated",
+          "area": "Project Hub",
+          "audience": [
+            "student",
+            "admin"
+          ],
+          "text": "Recent saved GitHub activity appears quickly, with an explicit refresh action and clearer network-error messages. Viewing renamed repositories no longer silently rewrites school roster URLs."
+        },
+        {
+          "type": "Updated",
+          "area": "Adminerva Studio",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "Improved mobile code-editor controls, touch drawers, cursor/zoom actions and interactive console input. Project import and export retain their required editor-library loading order."
+        },
+        {
+          "type": "Updated",
+          "area": "Lesson Planner and slides",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "More compact lesson setup and slide editing, corrected History and Archive toolbar overlap, clearer timetable navigation and PowerPoint export support loaded only when needed."
+        },
+        {
+          "type": "New",
+          "area": "Optional external lesson generation",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "The Lesson Planner provides an optional package for continuing lesson generation with a separately chosen external AI tool, then importing structured output. Teachers decide what information they share externally.",
+          "impact": {
+            "teacher": "Review generated lessons before saving. Avoid sending student-identifying or confidential school data to an external service without school authorization."
+          }
+        },
+        {
+          "type": "Updated",
+          "area": "School directories",
+          "audience": [
+            "admin"
+          ],
+          "text": "People and teacher-account views emphasize access and assignment tasks. Legacy repository verification runs only on request for visible roster entries, and directory browsing does not silently change student repository links."
+        },
+        {
+          "type": "Updated",
+          "area": "Class analytics",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Teacher analytics reads only bounded, section-relevant repository summaries; missing activity caches are not reported as proof that learners did no work."
+        }
+      ]
+    },
+    {
       "version": "3.0.0",
       "status": "published",
       "public": true,
