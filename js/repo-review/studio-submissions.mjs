@@ -70,7 +70,7 @@ async function load(){
    }
  }catch(error){
    if(stamp===session){records=[];render();setStatus("Studio inbox could not load: "+error.message);}
- }finally{if(stamp===session)loading=false;node("studioReviewRefresh").disabled=false;ending();}
+ }finally{if(stamp===session){loading=false;node("studioReviewRefresh").disabled=false;ending();}}
 }
 async function inspect(item){
  if(busy)return;
@@ -204,6 +204,10 @@ node("studioReviewFilter").addEventListener("change",()=>{
  render();
 });
 onAuthStateChanged(auth,user=>{
- if(!user){session++;inspectionSequence++;records=[];selectedId=null;root.replaceChildren();detail.textContent="Sign in to review.";return;}
+ session++;inspectionSequence++;loading=false;busy=false;
+ node("studioReviewRefresh").disabled=false;
+ root.setAttribute("aria-busy","false");
+ detail.setAttribute("aria-busy","false");
+ if(!user){records=[];selectedId=null;root.replaceChildren();detail.textContent="Sign in to review.";return;}
  void load();
 });
