@@ -140,7 +140,7 @@ function lessonDateLabels(dateRange){
   return labels;
 }
 
-export function scheduleRowsToLessonText(rows,{dateRange="",grade=""}={}){
+export function buildLessonMeetingContext(rows,{dateRange="",grade=""}={}){
   const dates=lessonDateLabels(dateRange);
   const entries=[];
   for(const row of Array.isArray(rows)?rows:[]){
@@ -165,8 +165,11 @@ export function scheduleRowsToLessonText(rows,{dateRange="",grade=""}={}){
       });
     }
   }
-  if(!entries.length)return "";
+  if(!entries.length)return {text:"",meetings:[],bySession:{}};
 
+  // Session numbering is independent for each section. The Grade 11 3-hour
+  // laboratory block is always Session 4-6 regardless of where it falls
+  // chronologically; it never consumes Session 1, 2 or 3 numbering.
   const byClass=new Map();
   for(const entry of entries){
     const key=entry.section+"\u0000"+entry.subject;
@@ -187,10 +190,10 @@ export function scheduleRowsToLessonText(rows,{dateRange="",grade=""}={}){
     for(const meeting of meetings){
       if(gradeName==="Grade 11"&&meeting.duration===180){
         meeting.session="Session 4-6";
-      }else{
-        meeting.session=regularNames[Math.min(regularIndex,regularNames.length-1)];
-        regularIndex++;
+        continue;
       }
+      meeting.session=regularNames[regularIndex]||regularNames[regularNames.length-1];
+      regularIndex++;
     }
   }
 
@@ -208,12 +211,35 @@ export function scheduleRowsToLessonText(rows,{dateRange="",grade=""}={}){
     return "- "+parts.join(" | ");
   });
 
-  return [
-    "LESSON MEETING CONTEXT (already filtered and session-mapped by Adminerva):",
-    ...lines,
-    "",
-    "Use these meeting lines only for the remarks of their assigned session. Do not infer, add, or scan other timetable periods."
-  ].join("\n");
+  const bySession={};
+  for(const entry of entries){
+    if(!bySession[entry.session])bySession[entry.session]=[];
+    bySession[entry.session].push({
+      section:entry.section,
+      day:entry.day,
+      date:entry.date,
+      time:entry.time,
+      duration:entry.duration,
+      event:entry.event,
+    });
+  }
+
+  return {
+    text:[
+      "LESSON MEETING CONTEXT (already filtered and session-mapped by Adminerva):",
+      ...lines,
+      "",
+      "Use these meeting lines only for the remarks of their assigned session. Do not infer, add, or scan other timetable periods."
+    ].join("\n"),
+    meetings:entries.map(({section,subject,day,date,time,duration,event,session})=>({
+      section,subject,day,date,time,duration,event,session
+    })),
+    bySession
+  };
+}
+
+export function scheduleRowsToLessonText(rows,options={}){
+  return buildLessonMeetingContext(rows,options).text;
 }
 
 export function scheduleRowsToText(rows){
