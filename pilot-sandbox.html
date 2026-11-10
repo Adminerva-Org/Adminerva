@@ -109,6 +109,27 @@ Code quality: 30</textarea>
         <h3 class="font-extrabold text-lg">Other practice modules</h3>
         <div id="pilotDemoModules" class="grid md:grid-cols-2 gap-3"><p class="text-sm text-slate-500">Create an example classroom to populate your schedules, lessons, and administration scenarios.</p></div>
       </section>
+      <dialog id="pilotModuleDialog" class="w-[min(95vw,720px)] rounded-2xl border border-slate-200 p-0 shadow-2xl backdrop:bg-slate-950/60" aria-labelledby="pilotModuleTitle">
+        <form id="pilotModuleForm" class="p-5 space-y-4">
+          <div class="flex items-start justify-between gap-3"><div><p class="text-xs uppercase font-bold text-indigo-800">Private module practice</p><h3 id="pilotModuleTitle" class="text-xl font-extrabold">Edit private example</h3></div><button type="button" id="pilotModuleClose" class="rounded-lg border border-slate-300 px-3 py-2 text-sm">Close</button></div>
+          <p class="text-sm text-slate-600">Changes stay in the fictional classroom associated with your account. No school timetable or lesson plans are modified.</p>
+          <div id="pilotModuleScheduleFields" class="space-y-3">
+            <label class="block text-sm font-bold">School year<input name="schoolYear" maxlength="20" class="block mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal"></label>
+            <label class="block text-sm font-bold">Period<input name="period" maxlength="80" class="block mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal"></label>
+            <label class="block text-sm font-bold">Timetable lines (one class per line)
+              <textarea name="scheduleLines" rows="8" class="block w-full mt-1 rounded-lg border border-slate-300 p-3 font-mono text-sm" placeholder="08:00,09:00,mon,Computer Programming,Demo ICT A"></textarea>
+            </label>
+            <p class="text-xs text-slate-500">Format: start time, end time, day (mon–fri), subject, fictional section. Separate multiple days using different lines with the same time block. Example: 08:00,09:00,mon,Java,Demo ICT A</p>
+          </div>
+          <div id="pilotModuleLessonFields" class="space-y-3" hidden>
+            <label class="block text-sm font-bold">Lesson objective<textarea name="objective" rows="3" maxlength="600" class="block mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal"></textarea></label>
+            <label class="block text-sm font-bold">Learning activities, one per line<textarea name="activities" rows="7" class="block mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal"></textarea></label>
+            <label class="block text-sm font-bold">Duration in minutes<input name="duration" type="number" min="10" max="240" class="block mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal"></label>
+          </div>
+          <p id="pilotModuleStatus" class="text-sm text-slate-600" role="status"></p>
+          <div class="flex flex-wrap gap-2"><button type="submit" class="rounded-lg bg-indigo-800 text-white px-4 py-3 font-bold">Save private module</button><button type="button" id="pilotModuleCancel" class="rounded-lg border border-slate-300 px-4 py-3">Cancel</button></div>
+        </form>
+      </dialog>
       <dialog id="pilotGradeDialog" class="w-[min(94vw,510px)] rounded-2xl border border-slate-200 p-0 shadow-2xl backdrop:bg-slate-950/60" aria-labelledby="pilotGradeTitle">
         <form id="pilotGradeForm" class="p-5 space-y-4">
           <div class="flex items-start justify-between gap-3">
@@ -167,6 +188,25 @@ Code quality: 30</textarea>
         <article class="rounded-xl bg-slate-50 border border-slate-200 p-4"><strong>Academic structure</strong><p class="text-sm text-slate-600 mt-1">Manage school years, terms, programs, classes, and offerings.</p><p class="text-xs mt-3 font-bold text-indigo-800">Preview only</p></article>
         <article class="rounded-xl bg-slate-50 border border-slate-200 p-4"><strong>Assessments & grading</strong><p class="text-sm text-slate-600 mt-1">Understand evidence review, grading drafts, publication, and corrections.</p><p class="text-xs mt-3 font-bold text-indigo-800">Preview only</p></article>
         <article class="rounded-xl bg-slate-50 border border-slate-200 p-4"><strong>Reporting</strong><p class="text-sm text-slate-600 mt-1">Inspect school-level trends and support workflows at a conceptual level.</p><p class="text-xs mt-3 font-bold text-indigo-800">Preview only</p></article>
+      </div>
+      <div class="mt-5 border-t border-slate-200 pt-5 space-y-3">
+        <h3 class="font-extrabold text-lg">Try school administration privately</h3>
+        <p class="text-sm text-slate-600">Work with fictional staff and class records only. Invitations, student rosters and assignments in the real MCS database stay untouched.</p>
+        <div id="pilotAdminSummary" class="grid md:grid-cols-2 gap-3"></div>
+        <form id="pilotAdminForm" class="flex flex-col sm:flex-row gap-2 sm:items-end">
+          <label class="text-sm font-bold flex-1">Practice action
+            <select name="command" class="block mt-1 w-full rounded-lg border border-slate-300 bg-white p-3">
+              <option value="add_section">Create sample section</option>
+              <option value="add_staff">Add fictional teacher</option>
+              <option value="set_term">Change demo academic period</option>
+            </select>
+          </label>
+          <label class="text-sm font-bold flex-[2]">Example name
+            <input name="name" required maxlength="100" class="block mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal" placeholder="Demo ICT – Section C">
+          </label>
+          <button type="submit" class="rounded-lg bg-indigo-900 text-white font-bold px-4 py-3">Apply to demo</button>
+        </form>
+        <p id="pilotAdminStatus" class="text-sm text-slate-600" role="status"></p>
       </div>
     </section>
   </div>
