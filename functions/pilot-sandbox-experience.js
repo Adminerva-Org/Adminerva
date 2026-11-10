@@ -32,7 +32,7 @@ function rubricOf(value){
     deny("invalid-argument","Choose 1–12 valid rubric criteria.");
   const rows=value.map((row,index)=>{
     const name=scalar(row?.name,100),points=Number(row?.points);
-    if(!name||!Number.isFinite(points)||points<=0||points>200||Math.round(points*100)!==points*100)
+    if(!name||!Number.isFinite(points)||points<=0||points>200||Math.abs(Math.round(points*100)/100-points)>0.000001)
       deny("invalid-argument","Criterion "+(index+1)+" needs a name and a valid point maximum.");
     return {name,points};
   });
@@ -132,7 +132,7 @@ async function readPreview({db,auth,ctx,input}){
   await authorizePreview({db,ctx,ownerUid});
   const buckets=[
     ["schedules","teacher_schedules","v4"],["assessmentBlueprints","assessment_blueprints","v4"],
-    ["assessments","assessments","v4"],["planning","teaching_resources","v4"]
+    ["assessments","assessments","v4_assessment"],["planning","teaching_resources","v4"]
   ];
   const snapshots=await Promise.all(buckets.map(async ([key,path,source])=>{
     const snap=await db.collection(prefix+path).where("ownerUid","==",ownerUid).limit(40).get();
@@ -281,7 +281,7 @@ async function updateLearner({db,ctx,input}){
         deny("failed-precondition","Submit the fictional learner's work before grading.");
       const max=d.payload.rubric.reduce((sum,row)=>sum+Number(row.points),0);
       const score=Number(input.score);
-      if(!Number.isFinite(score)||score<0||score>max||Math.round(score*100)!==score*100)
+      if(!Number.isFinite(score)||score<0||score>max||Math.abs(Math.round(score*100)/100-score)>0.000001)
         deny("invalid-argument","Grade must be between 0 and the rubric maximum.");
       if(reason.length<10)deny("invalid-argument","Provide at least 10 characters of practice feedback.");
       learner.draft={score,maxScore:max,feedback:reason};
@@ -305,8 +305,88 @@ async function updateLearner({db,ctx,input}){
   });
   return outcome;
 }
+
+function clock(value){
+  const s=String(value||"");
+  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(s))
+    deny("invalid-argument","Use 24-hour HH:MM times.");
+  return Number(s.slice(0,2))*60+Number(s.slice(3,5));
+}
+function sanitizedSchedule(input){
+  const rows=input.rows;
+  if(!Array.isArray(rows)||rows.length>35)deny("invalid-argument","A practice timetable can contain up to 35 rows.");
+  const entries=safeRows(rows),occupied=[];
+  for(const [index,row] of entries.entries()){
+    const start=clock(row.startTime),end=clock(row.endTime);
+    if(start>=end)deny("invalid-argument","Schedule row "+(index+1)+" must end after it starts.");
+    occupied.push({start,end});
+    if(row.type==="constant"&&!row.eventName)
+      deny("invalid-argument","Constant schedule events require a name.");
+    if(row.type==="class"&&!["mon","tue","wed","thu","fri"].some(day=>
+      row[day]?.sec&&row[day]?.sub))
+      deny("invalid-argument","Class schedule rows must have at least one day with subject and section.");
+  }
+  occupied.sort((a,b)=>a.start-b.start);
+  for(let i=1;i<occupied.length;i++)if(occupied[i].start<occupied[i-1].end)
+    deny("invalid-argument","Your practice schedule contains overlapping time blocks.");
+  return {schoolYear:scalar(input.schoolYear,20)||"2026-2027",
+    period:scalar(input.period,80)||"Semester 1",rows:entries};
+}
+async function updateModule({db,ctx,input}){
+  const kind=({save_demo_schedule:"schedule",save_demo_lesson:"lesson",sim_admin:"admin_demo"})[String(input.action)];
+  if(!kind)deny("invalid-argument","Unknown private module.");
+  const ref=db.doc("schools/"+ctx.schoolId+"/pilot_sandboxes/"+ctx.uid+"/records/"+id(input.recordId));
+  let result;
+  await db.runTransaction(async tx=>{
+    const doc=await tx.get(ref),data=doc.data();
+    if(!doc.exists||data?.schoolId!==ctx.schoolId||data?.ownerUid!==ctx.uid||data?.kind!==kind)
+      deny("not-found","This private module is not available.");
+    const version=data.version||1;
+    if(version!==input.expectedVersion)deny("failed-precondition","This example changed. Refresh before editing.");
+    let payload;
+    if(kind==="schedule"){
+      payload=sanitizedSchedule(input);
+    }else if(kind==="lesson"){
+      const activities=input.activities;
+      if(!Array.isArray(activities)||activities.length>12)
+        deny("invalid-argument","Choose up to 12 lesson activities.");
+      const objective=scalar(input.objective,600);
+      if(!objective)deny("invalid-argument","Lesson objective is required.");
+      payload={objective,activities:activities.map(x=>scalar(x,180)).filter(Boolean),
+        durationMinutes:Number(input.durationMinutes)||60};
+      if(payload.durationMinutes<10||payload.durationMinutes>240)
+        deny("invalid-argument","Lesson duration must be 10–240 minutes.");
+    }else{
+      const previous=data.payload||{},command=String(input.command);
+      payload={school:scalar(previous.school,120)||"Demo Campus",
+        term:scalar(previous.term,80)||"Semester 1",
+        sections:Array.isArray(previous.sections)?previous.sections.slice(0,20):[],
+        staff:Array.isArray(previous.staff)?previous.staff.slice(0,20):[]};
+      if(command==="add_section"){
+        const name=scalar(input.name,100);
+        if(!name||payload.sections.length>=20||payload.sections.some(row=>row.name===name))
+          deny("invalid-argument","Choose a unique fictional section name (maximum 20).");
+        payload.sections.push({name,learners:5});
+      }else if(command==="add_staff"){
+        const name=scalar(input.name,100);
+        if(!name||payload.staff.length>=20||payload.staff.some(row=>row.name===name))
+          deny("invalid-argument","Choose a unique fictional staff label (maximum 20).");
+        payload.staff.push({name,role:"Teacher"});
+      }else if(command==="set_term"){
+        payload.term=scalar(input.name,80);
+        if(!payload.term)deny("invalid-argument","Enter a fictional academic term.");
+      }else deny("invalid-argument","Unknown administration demo operation.");
+    }
+    tx.update(ref,{payload,updatedAt:new Date().toISOString(),version:version+1});
+    result={recordId:ref.id,kind,version:version+1};
+  });
+  return result;
+}
+
 async function runPilotExperience({db,auth,ctx,input}){
   const action=String(input.action);
+  if(["save_demo_schedule","save_demo_lesson","sim_admin"].includes(action))
+    return updateModule({db,ctx,input});
   if(action==="preview_dashboard")return readPreview({db,auth,ctx,input});
   if(action==="seed_demo")return seedDemo({db,ctx});
   if(action==="create_demo_assessment")return createAssessment({db,ctx,input});
