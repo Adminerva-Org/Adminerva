@@ -223,7 +223,15 @@ async function mutate(action,details,success){
   }
 }
 byId("pilot-refresh").addEventListener("click",()=>void refresh());
-auth.onAuthStateChanged(()=>{++refreshEpoch;state=null;byId("pilot-workspace").hidden=true;});
+let activeUid=auth.currentUser?.uid||null;
+auth.onAuthStateChanged(user=>{
+  const nextUid=user?.uid||null;
+  if(nextUid===activeUid)return;
+  activeUid=nextUid;++refreshEpoch;state=null;
+  byId("pilot-workspace").hidden=true;
+  if(user)void refresh();
+  else say("Sign in with the verified MCS school-administrator account.","error");
+});
 byId("pilot-exception-cancel").addEventListener("click",()=>{pendingException=null;byId("pilot-exception-dialog").close();});
 byId("pilot-exception-form").addEventListener("submit",event=>{
   event.preventDefault();if(!pendingException||busy)return;
