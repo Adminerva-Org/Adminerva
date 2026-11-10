@@ -62,7 +62,8 @@ function createSchoolPilotSandboxService({db}){
     const grants=db.collection(prefix+"pilot_preview_grants");
     const time=new Date().toISOString();
     if(["preview_dashboard","seed_demo","create_demo_assessment","clone_preview",
-      "sim_submit","sim_grade_draft","sim_grade_publish","sim_reopen"].includes(action))
+      "sim_submit","sim_grade_draft","sim_grade_publish","sim_reopen",
+      "save_demo_schedule","save_demo_lesson","sim_admin"].includes(action))
       return runPilotExperience({db,auth:getAuth(),ctx,input});
 
     if(action==="overview"){
