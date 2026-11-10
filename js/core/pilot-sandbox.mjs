@@ -120,9 +120,10 @@ form.addEventListener("submit",async event=>{
   event.preventDefault();if(busy)return;
   const inputs=form.elements,kind=inputs.kind.value,title=inputs.title.value,details=inputs.details.value;
   const recordId=inputs.recordId.value||undefined;
+  const expectedVersion=recordId?records.find(row=>row.id===recordId)?.version:undefined;
   setBusy(true);say("pilotEditorStatus","Saving your private example…");
   try{
-    await perform("save_record",{recordId,kind,title,details});
+    await perform("save_record",{recordId,expectedVersion,kind,title,details});
     resetEditor();await loadOverview();say("pilotEditorStatus","Example saved to your account's private sandbox.");
   }catch(error){say("pilotEditorStatus","Save failed: "+(error.message||"Try again."));}
   finally{setBusy(false);}
