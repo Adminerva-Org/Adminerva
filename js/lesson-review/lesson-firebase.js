@@ -154,7 +154,7 @@ window.loadLibraryFolders = async function () {
         "beforeend",
         `
                 <label class="flex items-center gap-2 cursor-pointer group">
-                    <input type="checkbox" value="${safeId}" ${selectedIds.has(folder.id)?"checked":""} class="folder-checkbox w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 bg-white">
+                    <input type="checkbox" value="${safeId}" data-folder-name="${safeName}" ${selectedIds.has(folder.id)?"checked":""} class="folder-checkbox w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 bg-white">
                     <span class="text-sm font-bold text-blue-900 group-hover:text-blue-700 transition">📁 ${safeName} <span class="text-[10px] text-gray-500 font-normal">(${docCount} docs)</span></span>
                 </label>
             `,
