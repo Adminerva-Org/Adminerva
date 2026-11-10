@@ -122,8 +122,8 @@ async function authorizePreview({db,ctx,ownerUid}){
     deny("permission-denied","Your teacher preview grant has expired or is unavailable.");
 }
 function sanitizedGradeAggregate(grades){
-  const size=grades.length,final=grades.filter(row=>row.published===true).length;
-  const reviewed=grades.filter(row=>row.reviewRequired===false).length;
+  const size=grades.length,final=grades.filter(row=>row.published===true||row.status==="published").length;
+  const reviewed=grades.filter(row=>row.reviewRequired===false||row.status==="draft"||row.status==="published").length;
   return {total:size,published:final,unpublished:size-final,reviewed};
 }
 function safeTitle(value){return scalar(value,140)}
@@ -145,6 +145,11 @@ async function readPreview({db,auth,ctx,input}){
     .filter(doc=>doc.data()?.ownerUid===ownerUid)
     .map(doc=>safeLegacySchedule(doc.data(),doc.id));
   const legacy={schedules:personal,assessments:[],gradebook:[],sectionNames:[]};
+  const v4Tasks=model.assessments.slice(0,15);
+  const v4Gradebook=await Promise.all(v4Tasks.map(async task=>{
+    const grades=await db.collection(prefix+"student_grades").where("taskId","==",task.sourceId).limit(100).get();
+    return {assessmentTitle:task.label,...sanitizedGradeAggregate(grades.docs.map(doc=>doc.data()||{})),source:"v4"};
+  }));
   if(ctx.schoolId==="mcs-manila"){
     // Scope legacy preview to the consenting teacher's owned assessments.
     // No fallback to school-wide sections and no unowned assessment enumeration.
@@ -190,7 +195,7 @@ async function readPreview({db,auth,ctx,input}){
     assessmentBlueprints:model.assessmentBlueprints,
     assessments:[...model.assessments,...legacy.assessments].slice(0,70),
     planning:model.planning,
-    gradebook:legacy.gradebook,sectionNames:legacy.sectionNames
+    gradebook:[...v4Gradebook,...legacy.gradebook].slice(0,30),sectionNames:legacy.sectionNames
   };
   return {readOnly:true,ownerUid,preview:all,
     scope:"teacher_owned_authorized_read_only",grades:"aggregates_only",legacyIncluded:ctx.schoolId==="mcs-manila"};
@@ -231,6 +236,11 @@ async function clonePreview({db,auth,ctx,input}){
   await authorizePreview({db,ctx,ownerUid});
   if(type==="legacy"&&ctx.schoolId!=="mcs-manila")
     deny("permission-denied","Legacy preview is limited to the MCS school.");
+  if(type==="legacy"){
+    const school=await db.doc("platform_schools/mcs-manila").get();
+    if(school.data()?.compatibilityMode==="v4_only")
+      deny("failed-precondition","The legacy teacher preview is retired after school cutover.");
+  }
   const ref=type==="legacy"?db.doc("assessments/"+sourceId):
     db.doc("schools/"+ctx.schoolId+"/"+path+"/"+sourceId);
   const original=await ref.get(),data=original.data();
