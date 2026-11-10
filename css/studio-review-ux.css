@@ -1,0 +1,24 @@
+/* Teacher Studio submissions: first-party review of frozen revisions. */
+.av-studio-review main{max-width:1430px}
+.av-studio-review #adminerva-nav:empty{min-height:62px;background:#10253d}
+.av-studio-review .av-studio-review-grid{align-items:start}
+.av-studio-review .av-studio-review-aside{min-width:0;overflow:hidden;scrollbar-gutter:stable}
+.av-studio-review #studioReviewFilter{min-height:44px;border-color:#cbd5e1}
+.av-studio-review #studioReviewList{min-height:92px;max-height:min(73vh,900px);overflow-y:auto;scrollbar-gutter:stable}
+.av-studio-review .av-studio-submission-card{background:#fff;border-color:#dce5f2;display:grid;gap:.3rem;min-height:72px}
+.av-studio-review .av-studio-submission-card[aria-current="true"]{border-color:#3c8bba;background:#f0f9ff;box-shadow:0 0 0 1px #98c8df inset}
+.av-studio-review .av-studio-submission-card:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.av-studio-review .av-studio-review-detail{min-width:0;overflow-wrap:anywhere}
+.av-studio-review .av-studio-review-detail pre{font-size:.78rem;line-height:1.58;tab-size:2}
+.av-studio-review #studioReviewStatus{max-width:90ch;line-height:1.5}
+.av-studio-review [aria-busy="true"]{cursor:progress}
+.av-studio-review #studioReviewDetail button{min-height:43px}
+.av-studio-review #studioReviewDetail :is(input,textarea,select){min-height:43px;max-width:100%}
+.av-studio-review #studioReviewDetail :is(input,textarea,select,button):focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+@media(min-width:1024px){
+ .av-studio-review .av-studio-review-aside{position:sticky;top:82px;max-height:calc(100dvh - 98px);overflow-y:auto}
+}
+@media(max-width:1023px){
+ .av-studio-review #studioReviewList{max-height:280px}
+ .av-studio-review .av-studio-review-detail{padding:1rem}
+}
