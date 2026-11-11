@@ -192,7 +192,7 @@ service cloud.firestore {
     }
     match /teacher_materials/{ownerUid}/{kind}/{recordId} {
       allow read: if isAdmin() || (isTeacher() && request.auth.uid == ownerUid);
-      allow create, update: if isTeacher() && request.auth.uid == ownerUid && kind in ["repobank","group_repo_cache","github_stats_cache","system","templates","reference_folders"] && request.resource.data.keys().size() <= 300;
+      allow create, update: if isTeacher() && request.auth.uid == ownerUid && kind in ["repobank","group_repo_cache","github_stats_cache","system","templates","reference_folders"] && request.resource.data.keys().size() <= 50;
       allow delete: if isTeacher() && request.auth.uid == ownerUid;
       match /documents/{documentId} {
         allow read: if isAdmin() || (isTeacher() && request.auth.uid == ownerUid);
