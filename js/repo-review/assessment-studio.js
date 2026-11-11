@@ -25,6 +25,7 @@ import {
 import {Timestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 let targetPaths = [];
 let allSections = [];
+let sectionStudentCounts=new Map();
 let objectiveRules = [];
 let assessments = [];
 let currentAssessmentId = null;
@@ -442,6 +443,19 @@ function variantGenerationNeed(baseCount=personalizedVariantPool.length){
   const target=Math.max(10,Math.min(50,Number(document.getElementById("assessVariantCount").value)||40));
   return {target,missing:Math.max(0,target-baseCount)};
 }
+function renderPersonalizationCoverage(item){
+  const node=document.getElementById("personalizationCoverage");
+  if(!node)return;
+  const sections=[...new Set((item?.deployments||[]).map(entry=>entry.section).filter(Boolean))],
+    learners=sections.reduce((sum,section)=>sum+(sectionStudentCounts.get(section)||0),0),
+    revisionBuffer=learners?Math.max(5,Math.ceil(learners*.2)):0,
+    recommended=learners?Math.min(50,Math.max(10,learners+revisionBuffer)):10;
+  node.textContent=sections.length
+    ? "Deployed to "+sections.length+" section"+(sections.length===1?"":"s")+" · approximately "+learners+
+      " learner"+(learners===1?"":"s")+" · suggested pool target: "+recommended+
+      " (includes revision headroom)."
+    : "Not deployed yet. After you assign sections, Adminerva can estimate a pool size from the enrolled learners.";
+}
 function escapeHTML(str) {
   if (!str) return "";
   return String(str).replace(
@@ -508,11 +522,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 async function fetchSectionsFromStudents() {
   try {
     const snap = await getDocs(collection(db, "students"));
-    let uniqueSections = new Set();
-    snap.forEach((d) => {
-      if (d.data().section) uniqueSections.add(d.data().section);
+    const uniqueSections=new Set(),counts=new Map();
+    snap.forEach((record) => {
+      const section=record.data().section;
+      if(section){
+        uniqueSections.add(section);
+        counts.set(section,(counts.get(section)||0)+1);
+      }
     });
-    allSections = [...uniqueSections].sort();
+    allSections=[...uniqueSections].sort();
+    sectionStudentCounts=counts;
   } catch (e) {
     console.error("Error fetching sections: ", e);
   }
@@ -729,6 +748,7 @@ window.openEditModal = function () {
   document.getElementById("externalPersonalizationResponse").value="";
   document.getElementById("externalPersonalizationStatus").textContent="";
   updatePersonalizationTabAvailability();
+  renderPersonalizationCoverage(item);
   setBlueprintContentLocked(deployedStudio);
   window.showBlueprintEditorTab(deployedStudio&&item.personalizedTask?.enabled===true?"personalization":"blueprint");
   document.getElementById("viewModal").classList.add("hidden");
