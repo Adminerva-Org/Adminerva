@@ -1,11 +1,11 @@
 import {ADMINERVA_RUNTIME_ORIGIN} from './runtime-config.mjs?v=1';
-import {AdminervaRuntimeClient} from './studio-runtime-client.mjs?v=2';
+import {AdminervaRuntimeClient} from './studio-runtime-client.mjs?v=3';
 import {analyzeJavaWorkspace,clearJavaDiagnostics} from './studio-diagnostics.mjs?v=1';
 
 /** Adds local Java problems and, once deployed, the optional server-backed queue. */
-export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFiles,getEntry,save,switchFile}){
+export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFiles,getEntry,getProjectId,save,switchFile,showRecoveredSnapshot,leaveRecoveredSnapshot}){
   const enabled=Boolean(ADMINERVA_RUNTIME_ORIGIN)&&!guest;
-  let session=null,locked=false,diagnostics=null,timer=null,generation=0;
+  let session=null,locked=false,diagnostics=null,timer=null,generation=0,recoveredPreview=false;
   const el=id=>document.getElementById(id);
   const display=el('studioProblemsList');
   const banner=el('studioQueueBanner');
@@ -27,6 +27,8 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
     for(const control of document.querySelectorAll('#explorerContextMenu [data-explorer-action]'))
       control.disabled=locked&&control.dataset.explorerAction!=='open';
     for(const control of document.querySelectorAll('[data-studio-editor-key="undo"],[data-studio-editor-key="redo"],[data-studio-editor-key="tab"]'))
+      control.disabled=locked;
+    for(const control of document.querySelectorAll('[data-studio-view]:not([data-studio-view="code"])'))
       control.disabled=locked;
     el('editorPane')?.setAttribute('data-review-locked',String(locked));
   }
@@ -132,6 +134,10 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
     const badge=el('studioTerminalStatus');
     if(badge){badge.textContent=state==='finished'?'Finished':state==='cancelled'?'Cancelled':'Error';badge.dataset.state=state;}
     scheduleDiagnostics();
+    if(recoveredPreview){
+      recoveredPreview=false;
+      try{leaveRecoveredSnapshot?.();}catch(error){console.warn('Could not leave runtime review:',error);}
+    }
   }
   function runtimeEvent(message){
     if(message.type==='status'){
@@ -170,7 +176,7 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
     try{
       const files=getFiles(false),entry=getEntry();
       if(!entry||!files[entry])throw Error('Choose a valid Java entry file.');
-      save();
+      if(save()===false)throw Error('Project could not be saved. Please resolve the save error before queuing.');
       if(output)output.textContent='Submitting a frozen Java project snapshot…\n';
       lock(true);
       banner?.classList.remove('hidden');
@@ -186,11 +192,41 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
         getToken:async()=>auth.currentUser?.getIdToken(),onEvent:runtimeEvent
       });
       session=client;
-      await client.enqueue({files,entry});
+      await client.enqueue({files,entry,projectId:getProjectId?.()||null});
       if(el('studioCancelQueueBtn'))el('studioCancelQueueBtn').disabled=false;
     }catch(error){
       if(output)output.textContent+='\nCannot join queue: '+error.message;
       finish('failed');
+    }
+  }
+  async function recover(){
+    if(!enabled||guest||session||!auth.currentUser)return false;
+    const client=new AdminervaRuntimeClient({
+      origin:ADMINERVA_RUNTIME_ORIGIN,
+      getToken:async()=>auth.currentUser?.getIdToken(),onEvent:runtimeEvent
+    });
+    session=client;
+    try{
+      const state=await client.resume(async frozen=>{
+        if(!frozen.files||!frozen.entry)throw Error('Execution snapshot is unavailable.');
+        await showRecoveredSnapshot?.(frozen);
+        recoveredPreview=true;
+        lock(true);
+        banner?.classList.remove('hidden');
+        if(status)status.textContent='Restoring queued Java execution…';
+        if(position)position.textContent='Reconnecting to the existing execution slot.';
+        if(input)input.disabled=true;
+        if(sendButton)sendButton.disabled=true;
+        el('stdinHistoryDisclosure')?.classList.add('hidden');
+      });
+      if(!state){session=null;client.dispose();return false;}
+      return true;
+    }catch(error){
+      client.dispose();
+      session=null;
+      if(recoveredPreview)finish('failed');
+      console.warn('Could not restore the existing runtime session:',error.message);
+      return false;
     }
   }
   function readiness(){
@@ -235,6 +271,7 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
     hasSession:()=>Boolean(session),
     locked:()=>locked,
     scheduleDiagnostics,
+    recover,
     requestRun:()=>{if(!session)readiness();},
     sendLine:()=>{
       if(!session||!input)return false;
