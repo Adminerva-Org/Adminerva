@@ -187,8 +187,14 @@ async function startSession(session){
   session.state='running';session.lastActivity=Date.now();active.add(session.id);
   status(session);notifyQueue();
   try{
-    session.folder=await makeFiles(session.files);
-    if(session.state!=='running')return;
+    const folder=await makeFiles(session.files);
+    if(session.state!=='running'){
+      // Cancellation may arrive while files are being copied; clean up even if
+      // finish() already ran before the directory was assigned.
+      await rm(folder,{recursive:true,force:true}).catch(()=>{});
+      return;
+    }
+    session.folder=folder;
     session.containerName='adminerva-java-'+session.id.replace(/-/g,'').slice(0,28);
     const args=['run','--rm','--interactive','--name',session.containerName,
       '--network','none','--cpus','0.5','--memory','256m','--memory-swap','256m',
