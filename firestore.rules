@@ -1082,8 +1082,17 @@ service cloud.firestore {
             data.get("practicalExam",false) is bool &&
             data.get("personalizedTask",{}).get("enabled",false) is bool &&
             (data.get("personalizedTask",{}).get("enabled",false) == false ||
-              (data.get("personalizedTask",{}).get("generator","") in ["java_logic_written_work_v1","java_oop_fundamentals_v1"] &&
-               data.get("personalizedTask",{}).get("regeneration","") == "new_attempt"))
+              (data.get("personalizedTask",{}).get("mode","") == "ai_blueprint_pool_v1" &&
+               data.get("personalizedTask",{}).get("regeneration","") == "new_attempt" &&
+               data.get("personalizedTask",{}).get("uniqueWithinAssessment",false) == true &&
+               data.get("personalizedTask",{}).get("poolFingerprint","") is string &&
+               data.get("personalizedTask",{}).get("poolFingerprint","").size() <= 64 &&
+               data.get("personalizedTask",{}).get("poolSize",0) is int &&
+               data.get("personalizedTask",{}).get("poolSize",0) >= 0 &&
+               data.get("personalizedTask",{}).get("poolSize",0) <= 50 &&
+               data.get("personalizedTask",{}).get("poolTarget",0) is int &&
+               data.get("personalizedTask",{}).get("poolTarget",0) >= 10 &&
+               data.get("personalizedTask",{}).get("poolTarget",0) <= 50))
           )) &&
           data.get("targetSections",[]) is list && data.get("targetSections",[]).hasOnly(data.sectionIds) &&
           (data.deployments.size() <= 0 || data.deployments[0].section in data.sectionIds) &&
