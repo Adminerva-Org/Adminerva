@@ -256,3 +256,42 @@ The feature changes:
 
 Do not deploy only the static frontend. The callable and Firestore rules are
 part of the same feature boundary.
+
+
+## Current submission boundary and future response modes
+
+For the first release, personalized assessments submit through **Adminerva Studio only**.
+
+The current learner submission contract is:
+
+1. Open the personalized assignment from My Assessments.
+2. Receive one server-reserved variant for the current attempt.
+3. Work in a named Adminerva Studio project.
+4. Submit one immutable Studio project snapshot tied to the assigned variant ID.
+5. Once submitted, the personalized attempt is frozen. A second personalized submission is not accepted until the teacher explicitly requests a revision.
+6. A teacher-requested revision advances the revision number and receives a different unused personalized variant.
+7. Teacher review and the resulting grade retain the Studio revision, snapshot hash and personalized variant ID as provenance.
+
+The Personalization UI also shows a disabled **Essay / written response — Future**
+response type. This is intentionally non-selectable. A later expansion can reuse
+the same blueprint-driven variant generation and assignment lifecycle for
+personalized essays or other written responses while implementing a separate
+submission/evidence model.
+
+## Student assignment presentation
+
+The student Assignments page is submission-mode aware rather than repository
+specific.
+
+- Repository assessments identify themselves as **Repository evidence** and use
+  commits/checkpoint terminology.
+- Standard Studio assessments identify themselves as **Adminerva Studio** and
+  use project snapshot/revision terminology.
+- Personalized Studio assessments identify themselves as **Personalized
+  Studio**, surface preparation/ready/revision states, and use frozen
+  task/attempt terminology.
+- A future written-response mode is reserved in the presentation model but is
+  not currently deployable.
+
+This keeps repository controls and language out of Studio tasks and allows later
+submission modes to be added without redesigning the assignment card model.
