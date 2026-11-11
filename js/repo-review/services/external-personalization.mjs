@@ -28,7 +28,7 @@ function cleanVariant(item,index){
 }
 
 export function buildExternalPersonalizationPackage({
-  assessment={},guidance="",count=20,existingSummaries=[]
+  assessment={},guidance="",count=20,existingSummaries=[],batchIndex=1,totalBatches=1
 }={}){
   const desired=Number(count);
   if(!Number.isInteger(desired)||desired<1||desired>45)
@@ -59,6 +59,7 @@ export function buildExternalPersonalizationPackage({
     },
     personalization:{
       requestedVariants:desired,
+      batch:{index:Number(batchIndex)||1,total:Number(totalBatches)||1},
       teacherVariationGuidance:text(guidance,3000),
       existingSummaries:(Array.isArray(existingSummaries)?existingSummaries:[])
         .map(value=>text(value,300)).filter(Boolean).slice(-40)
