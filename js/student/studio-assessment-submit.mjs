@@ -115,14 +115,18 @@ if(button){
         if(!gate.allowed)throw Error(gate.reason);
         if(current.schemaVersion!==3||current.submissionSource!=="studio")
           throw Error("This assessment no longer accepts Studio submissions.");
-        // Only Firestore rules may inspect the protected unpublished/published grade.
-        if(head.exists()&&!["submitted","revision_requested"].includes(head.data().status))
+        const personalized=current.personalizedTask?.enabled===true;
+        // Personalized attempts are immutable after submission. A second
+        // personalized snapshot requires an explicit teacher revision request,
+        // which also advances the learner to a new frozen variant.
+        if(head.exists()&&personalized&&head.data().status!=="revision_requested")
+          throw Error("Your personalized attempt is already submitted. Your instructor must request a revision before you can submit a new attempt.");
+        if(head.exists()&&!personalized&&!["submitted","revision_requested"].includes(head.data().status))
           throw Error("Your previous submission is under review. Ask your instructor to request a revision first.");
         if(head.exists()&&head.data().snapshotHash===hash)
           throw Error("This exact project revision was already submitted. Make changes before submitting again.");
         const revision=head.exists()?head.data().revision+1:1;
         if(revision>30)throw Error("The revision limit was reached. Ask your instructor for assistance.");
-        const personalized=current.personalizedTask?.enabled===true;
         const assigned=window.adminervaStudioAssessmentVariant;
         if(personalized&&(!assigned||assigned.assessmentId!==assessment.id||
           assigned.studentId!==student.id||assigned.attempt!==revision||!assigned.variantId))
