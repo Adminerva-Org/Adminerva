@@ -54,6 +54,11 @@ if(button){
       notice("To start a practical exam, open the assignment in My Assessments, then choose Open Adminerva Studio. Exam restrictions must begin before you work.");
       return;
     }
+    if(task?.personalizedTask?.enabled===true&&assessmentParam!==task.id){
+      confirmButton.disabled=true;
+      notice("This assessment has a personalized task. Open it from My Assessments so Adminerva can issue your unique version before you submit.");
+      return;
+    }
     if(task)window.adminervaSetStudioExamPolicy?.({assessmentId:task.id,practicalExam:task.practicalExam===true});
     confirmButton.disabled=!task||!studioSubmissionAllowed(task,chosen.student.section).allowed;
   }
@@ -78,6 +83,11 @@ if(button){
     if(!chosen||!uid)return notice("Choose an available assessment first.");
     if(chosen.assessment.practicalExam&&assessmentParam!==chosen.assessment.id)
       return notice("Open this practical exam from My Assessments before working on it.");
+    if(chosen.assessment.personalizedTask?.enabled===true&&assessmentParam!==chosen.assessment.id)
+      return notice("Open this personalized task from My Assessments before submitting.");
+    if(chosen.assessment.personalizedTask?.enabled===true&&
+      window.adminervaStudioAssessmentVariant?.assessmentId!==chosen.assessment.id)
+      return notice("Your personalized task is still loading. Wait for the task panel before submitting.");
     const eligibility=studioSubmissionAllowed(chosen.assessment,chosen.student.section);
     if(!eligibility.allowed)return notice(eligibility.reason);
     let captured,snapshot,hash;
