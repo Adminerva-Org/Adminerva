@@ -11,7 +11,8 @@ const {getAuth}=require("firebase-admin/auth");
 const {createHash}=require("node:crypto");
 const {runPilotExperience}=require("./pilot-sandbox-experience.js");
 const {FieldValue}=require("firebase-admin/firestore");
-const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
+const {TenantAccessError}=require("./tenant-access.js");
+const {pilotTeacherContext,approvedPilotTeacher}=require("./pilot-sandbox-access.js");
 
 function deny(code,message){throw new TenantAccessError(code,message);}
 const KINDS=new Set(["schedule","assessment","grade","lesson","admin_demo"]);
@@ -55,12 +56,14 @@ function grantSummary(doc){
 function createSchoolPilotSandboxService({db}){
   return async request=>{
     const input=request.data||{};
-    const ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["teacher"]});
+    const ctx=await pilotTeacherContext({db,auth:getAuth(),request,schoolId:input.schoolId});
     const action=String(input.action||"overview");
     const prefix="schools/"+ctx.schoolId+"/";
     const records=db.collection(prefix+"pilot_sandboxes/"+ctx.uid+"/records");
     const grants=db.collection(prefix+"pilot_preview_grants");
     const time=new Date().toISOString();
+    if(action==="bootstrap")return {schoolId:ctx.schoolId,role:"teacher",accessMode:ctx.pilotAccess,
+      privateSandbox:true,previewRequiresConsent:true};
     if(["preview_dashboard","seed_demo","create_demo_assessment","clone_preview",
       "clone_preview_schedule","sim_submit","sim_grade_draft","sim_grade_publish","sim_reopen",
       "save_demo_schedule","save_demo_lesson","sim_admin"].includes(action))
@@ -120,9 +123,8 @@ function createSchoolPilotSandboxService({db}){
       if(!viewer?.emailVerified||viewer.disabled===true||viewer.uid===ctx.uid)
         deny("failed-precondition","The recipient must have a separate verified school account.");
       uidValue(viewer.uid);
-      const member=await db.doc(prefix+"memberships/"+viewer.uid).get();
-      if(!activeMember(member.data())||member.data()?.schoolId!==ctx.schoolId)
-        deny("permission-denied","The recipient must be an active teacher in this school.");
+      if(!await approvedPilotTeacher({db,auth:getAuth(),schoolId:ctx.schoolId,uid:viewer.uid,userRecord:viewer}))
+        deny("permission-denied","The recipient needs verified, active MCS teacher access.");
       const expiry=new Date(Date.now()+30*86400000).toISOString();
       const ownerLabel=cleanText(input.ownerLabel||"Shared teacher preview",100,"Workspace label");
       const ref=grants.doc(grantId(ctx.uid,viewer.uid));
@@ -149,42 +151,6 @@ function createSchoolPilotSandboxService({db}){
         actorUid:ctx.uid,createdAt:FieldValue.serverTimestamp()});
       await batch.commit();
       return {revoked:true};
-    }
-    if(action==="preview"){
-      const ownerUid=uidValue(input.ownerUid);
-      if(ownerUid!==ctx.uid){
-        const [grant,ownerMembership]=await Promise.all([
-          grants.doc(grantId(ownerUid,ctx.uid)).get(),
-          db.doc(prefix+"memberships/"+ownerUid).get()
-        ]);
-        const data=grant.data();
-        if(!grant.exists||data?.schoolId!==ctx.schoolId||data?.active!==true||
-           data?.viewerUid!==ctx.uid||data?.ownerUid!==ownerUid||
-           !data.expiresAt||!Number.isFinite(Date.parse(data.expiresAt))||Date.parse(data.expiresAt)<=Date.now()||
-           !activeMember(ownerMembership.data())||ownerMembership.data()?.schoolId!==ctx.schoolId)
-          deny("permission-denied","Preview access is missing, expired, or revoked.");
-      }
-      // Metadata only: no student identities, grades, unpublished feedback,
-      // evidence details, private connection tokens or raw planning content.
-      const sources=[
-        ["schedules","teacher_schedules"],
-        ["assessmentBlueprints","assessment_blueprints"],
-        ["assessments","assessments"],
-        ["planning","teaching_resources"]
-      ];
-      const snapshots=await Promise.all(sources.map(async ([key,collection])=>
-        [key,await db.collection(prefix+collection).where("ownerUid","==",ownerUid).limit(30).get()]));
-      const preview={};
-      for(const [key,snapshot] of snapshots)preview[key]=snapshot.docs.map(doc=>{
-        const d=doc.data()||{};
-        return {
-          label:String(d.title||d.name||(key==="schedules"?"Teacher timetable":"Untitled")).slice(0,140),
-          type:key,status:String(d.status||"").slice(0,30),
-          schoolYear:String(d.schoolYear||"").slice(0,24),
-          visibility:String(d.visibility||"").slice(0,28)
-        };
-      });
-      return {readOnly:true,ownerUid,preview,scope:"teacher_owned_metadata_only"};
     }
     deny("invalid-argument","Unknown pilot sandbox operation.");
   };
