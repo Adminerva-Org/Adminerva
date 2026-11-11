@@ -156,21 +156,23 @@ const amountParams=["amount","increase","addedValue","increment","extraPoints","
 function buildJavaOopVariant(entropy){
   requireEntropy(entropy);
   const context=pick(oopContexts,entropy,0),
-    className=pick(context.classNames,entropy,1),
-    textField=pick(context.textFields,entropy,2),
-    numberField=pick(context.numberFields,entropy,3),
-    methodName=pick(context.methods,entropy,4),
-    objectRoot=pick(context.objectRoots,entropy,5),
-    amountParam=pick(amountParams,entropy,6),
-    firstLabel=pick(context.labels,entropy,7),
-    secondLabel=context.labels[(context.labels.indexOf(firstLabel)+1+byte(entropy,8)%(context.labels.length-1))%context.labels.length],
-    firstStart=between(entropy,9,4,18),
-    secondStart=between(entropy,10,5,20),
-    firstChange=between(entropy,11,2,7),
-    secondChange=between(entropy,12,1,6),
-    firstObject=["primary","first","main","active"][byte(entropy,13)%4]+objectRoot[0].toUpperCase()+objectRoot.slice(1),
-    secondObject=["backup","second","extra","other"][byte(entropy,14)%4]+objectRoot[0].toUpperCase()+objectRoot.slice(1),
-    displayMethod=["displayInfo","showDetails","printSummary"][byte(entropy,15)%3],
+    styleIndex=byte(entropy,1)%context.classNames.length,
+    behaviorIndex=byte(entropy,2)%context.numberFields.length,
+    className=context.classNames[styleIndex],
+    textField=context.textFields[styleIndex],
+    objectRoot=context.objectRoots[styleIndex],
+    numberField=context.numberFields[behaviorIndex],
+    methodName=context.methods[behaviorIndex],
+    amountParam=pick(amountParams,entropy,3),
+    firstLabel=pick(context.labels,entropy,4),
+    secondLabel=context.labels[(context.labels.indexOf(firstLabel)+1+byte(entropy,5)%(context.labels.length-1))%context.labels.length],
+    firstStart=between(entropy,6,4,18),
+    secondStart=between(entropy,7,5,20),
+    firstChange=between(entropy,8,2,7),
+    secondChange=between(entropy,9,1,6),
+    firstObject=["primary","first","main","active"][byte(entropy,10)%4]+objectRoot[0].toUpperCase()+objectRoot.slice(1),
+    secondObject=["backup","second","extra","other"][byte(entropy,11)%4]+objectRoot[0].toUpperCase()+objectRoot.slice(1),
+    displayMethod=["displayInfo","showDetails","printSummary"][byte(entropy,12)%3],
     firstFinal=firstStart+firstChange,secondFinal=secondStart+secondChange,
     outputPrefix=className+" -> ";
   const firstOutput=outputPrefix+textField+": "+firstLabel+" | "+numberField+": "+firstFinal;
@@ -373,5 +375,6 @@ module.exports={
   buildJavaOopVariant,
   buildVariant,
   JAVA_LOGIC_GENERATOR_ID,
-  JAVA_OOP_GENERATOR_ID
+  JAVA_OOP_GENERATOR_ID,
+  GENERATOR_ID:JAVA_LOGIC_GENERATOR_ID
 };
