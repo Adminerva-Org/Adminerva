@@ -858,7 +858,7 @@ window.openEditModal = async function () {
   document.getElementById("assessSubmissionSource").value=item.assessmentFormat==="studio_code"||item.schemaVersion===3?"studio":"repository";
   document.getElementById("assessSubmissionSource").disabled=true;
   document.getElementById("assessMode").value=item.assessmentMode||(item.personalizedTask?.enabled===true?"personalized":"default");
-  document.getElementById("assessMode").disabled=true;
+  document.getElementById("assessMode").disabled=deployedStudio;
   document.getElementById("assessPracticalExam").checked=item.practicalExam===true;
   document.getElementById("assessVariantGuidance").value=item.personalization?.guidance||"";
   const variantCountInput=document.getElementById("assessVariantCount");
