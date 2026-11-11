@@ -6,6 +6,7 @@
  */
 const {randomUUID,createHash}=require("node:crypto");
 const {TenantAccessError}=require("./tenant-access.js");
+const {approvedPilotTeacher}=require("./pilot-sandbox-access.js");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 const uid=value=>{
@@ -110,15 +111,12 @@ async function authorizePreview({db,ctx,ownerUid}){
   uid(ownerUid);
   if(ctx.uid===ownerUid)return;
   const prefix="schools/"+ctx.schoolId+"/";
-  const [grant,ownerMember]=await Promise.all([
-    db.doc(prefix+"pilot_preview_grants/"+grantId(ownerUid,ctx.uid)).get(),
-    db.doc(prefix+"memberships/"+ownerUid).get()
-  ]);
+  const grant=await db.doc(prefix+"pilot_preview_grants/"+grantId(ownerUid,ctx.uid)).get();
   const g=grant.data();
   if(!grant.exists||g?.schoolId!==ctx.schoolId||g.ownerUid!==ownerUid||
      g.viewerUid!==ctx.uid||g.active!==true||!g.expiresAt||
      !Number.isFinite(Date.parse(g.expiresAt))||Date.parse(g.expiresAt)<=Date.now()||
-     !teacher(ownerMember.data(),ctx.schoolId))
+     !await approvedPilotTeacher({db,auth,schoolId:ctx.schoolId,uid:ownerUid}))
     deny("permission-denied","Your teacher preview grant has expired or is unavailable.");
 }
 function sanitizedGradeAggregate(grades){
@@ -140,8 +138,12 @@ async function readPreview({db,auth,ctx,input}){
       .map(d=>shapePreviewSummary(key,d,source))];
   }));
   const model=Object.fromEntries(snapshots);
-  const scheduleCollection=await db.collection("staff_workspaces/"+ownerUid+"/schedules").limit(16).get();
-  const personal=scheduleCollection.docs
+  const schoolSnapshot=ctx.schoolId==="mcs-manila"
+    ?await db.doc("platform_schools/mcs-manila").get():null;
+  const legacyAllowed=ctx.schoolId==="mcs-manila"&&schoolSnapshot?.data()?.compatibilityMode!=="v4_only";
+  const scheduleCollection=legacyAllowed
+    ?await db.collection("staff_workspaces/"+ownerUid+"/schedules").limit(16).get():null;
+  const personal=(scheduleCollection?.docs||[])
     .filter(doc=>doc.data()?.ownerUid===ownerUid)
     .map(doc=>safeLegacySchedule(doc.data(),doc.id));
   const legacy={schedules:personal,assessments:[],gradebook:[],sectionNames:[]};
@@ -150,15 +152,14 @@ async function readPreview({db,auth,ctx,input}){
     const grades=await db.collection(prefix+"student_grades").where("taskId","==",task.sourceId).limit(100).get();
     return {assessmentTitle:task.label,...sanitizedGradeAggregate(grades.docs.map(doc=>doc.data()||{})),source:"v4"};
   }));
-  if(ctx.schoolId==="mcs-manila"){
+  if(legacyAllowed){
     // Scope legacy preview to the consenting teacher's owned assessments.
     // No fallback to school-wide sections and no unowned assessment enumeration.
-    const [school,legacyTasks,userInfo]=await Promise.all([
-      db.doc("platform_schools/mcs-manila").get(),
+    const [legacyTasks,userInfo]=await Promise.all([
       db.collection("assessments").where("ownerUid","==",ownerUid).limit(35).get(),
       auth.getUser(ownerUid)
     ]);
-    if(school.data()?.compatibilityMode!=="v4_only"){
+    {
       const ownerEmail=String(userInfo.email||"").toLowerCase();
       const staff=await db.doc("staff_access/"+ownerEmail).get();
       legacy.sectionNames=Array.isArray(staff.data()?.sections)?
@@ -198,7 +199,7 @@ async function readPreview({db,auth,ctx,input}){
     gradebook:[...v4Gradebook,...legacy.gradebook].slice(0,30),sectionNames:legacy.sectionNames
   };
   return {readOnly:true,ownerUid,preview:all,
-    scope:"teacher_owned_authorized_read_only",grades:"aggregates_only",legacyIncluded:ctx.schoolId==="mcs-manila"};
+    scope:"teacher_owned_authorized_read_only",grades:"aggregates_only",legacyIncluded:legacyAllowed};
 }
 async function seedDemo({db,ctx}){
   const records=db.collection("schools/"+ctx.schoolId+"/pilot_sandboxes/"+ctx.uid+"/records");
