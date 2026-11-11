@@ -15,12 +15,19 @@ export function schoolYearPlanId({grade,subject,term,week,schoolYear}){
   if(!year)throw Error("School year must be set before saving a lesson.");
   return safeSegment([grade,subject,"SY"+year,quarterCode(term),week].join("_"));
 }
-export function expectedSessions(grade){
-  return grade==="Grade 11"?["Session 1","Session 2","Session 3","Session 4-6","Session Flex"]:
-    grade==="Grade 12"?["Session 1","Session 2","Session 3","Session Flex"]:
-      ["Session 1","Session 2","Session Flex"];
+export function expectedSessions(grade,sessionNames=[]){
+  const supplied=[...new Set((Array.isArray(sessionNames)?sessionNames:[])
+    .map(value=>String(value||"").trim())
+    .filter(value=>value&&value!=="Session Flex"))];
+  if(supplied.length)return [...supplied,"Session Flex"];
+  // Timetable data is the authority. These are fallback shapes only when no
+  // matching timetable can be resolved; never infer a multi-period block from
+  // grade level alone.
+  return grade==="Grade 11"||grade==="Grade 12"
+    ?["Session 1","Session 2","Session 3","Session Flex"]
+    :["Session 1","Session 2","Session Flex"];
 }
-export function validateGeneratedLesson(plan,grade){
+export function validateGeneratedLesson(plan,grade,sessionNames=[]){
   const problems=[];
   if(!plan||typeof plan!=="object")return ["AI returned no structured plan."];
   const overview=plan.weekly_overview;
@@ -28,7 +35,7 @@ export function validateGeneratedLesson(plan,grade){
     if(typeof overview?.[field]!=="string"||!overview[field].trim())problems.push("Missing weekly overview: "+field);
   }
   if(!Array.isArray(plan.sessions))return [...problems,"Missing lesson sessions."];
-  const required=expectedSessions(grade);
+  const required=expectedSessions(grade,sessionNames);
   if(plan.sessions.length!==required.length)problems.push("Expected "+required.length+" sessions, received "+plan.sessions.length+".");
   for(let i=0;i<required.length;i++){
     const session=plan.sessions[i];
