@@ -1,4 +1,4 @@
-import {perform,loadOverview,switchTab} from "./pilot-sandbox.mjs?v=4.0.0";
+import {perform,loadOverview,switchTab} from "./pilot-sandbox.mjs?v=4.0.2";
 
 const get=id=>document.getElementById(id);
 const make=(tag,cls,value)=>{
