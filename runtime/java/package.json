@@ -1,0 +1,17 @@
+{
+  "name": "adminerva-java-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Queue-backed interactive Java runner for Adminerva Studio",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.5.0",
+    "ws": "^8.18.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
