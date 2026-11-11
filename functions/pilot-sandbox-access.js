@@ -26,7 +26,7 @@ async function approvedPilotTeacher({db,auth,schoolId,uid,userRecord}){
   }
   if(schoolId!==MCS)return false;
   const school=await db.doc("platform_schools/"+MCS).get();
-  if(!school.exists||!["active","pilot"].includes(school.data()?.state)||
+  if(!school.exists||!["active","pilot","draft"].includes(school.data()?.state)||
      school.data()?.compatibilityMode==="v4_only")return false;
   if(email===ORIGINAL_MCS_TEACHER)return true;
   const [staff,request]=await Promise.all([
@@ -53,8 +53,8 @@ async function pilotTeacherContext({db,auth,request,schoolId}){
   if(!email||email!==String(request.auth.token?.email||"").toLowerCase())
     fail("permission-denied","Refresh your verified school sign-in.");
   const school=await db.doc("platform_schools/"+MCS).get();
-  if(!school.exists||!["active","pilot"].includes(school.data()?.state))
-    fail("failed-precondition","MCS must be in controlled pilot or active state.");
+  if(!school.exists||!["active","pilot","draft"].includes(school.data()?.state))
+    fail("failed-precondition","MCS must have an existing school record for the private teacher pilot.");
   try{
     const canonical=await getSchoolContext({db,request,schoolId:MCS,roles:["teacher"]});
     return {...canonical,pilotAccess:"canonical"};
