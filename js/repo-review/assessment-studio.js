@@ -234,12 +234,21 @@ function renderAssessmentGrid() {
   });
 }
 
+const personalizedRecipeHelp={
+  java_oop_fundamentals_v1:"OOP variants change the scenario, class and field identifiers, method names, object names and values while keeping the required class, encapsulation, constructor, method and object competencies comparable.",
+  java_logic_written_work_v1:"Logic variants change identifiers, numeric values, expressions, thresholds and output labels while keeping the required variables, expressions, conditional logic and output competencies comparable."
+};
+function updateVariantRecipeHelp(){
+  const select=document.getElementById("assessVariantRecipe"),help=document.getElementById("variantRecipeHelp");
+  if(help)help.textContent=personalizedRecipeHelp[select?.value]||"Each learner receives a server-generated task for the current attempt.";
+}
 function updatePersonalizedTaskOption(){
   const studio=document.getElementById("assessSubmissionSource").value==="studio";
   const enabled=studio&&document.getElementById("assessPersonalizedTask").checked;
   document.getElementById("assessPersonalizedTask").disabled=!studio;
   document.getElementById("personalizedTaskOption").classList.toggle("opacity-60",!studio);
   document.getElementById("personalizedTaskSettings").classList.toggle("hidden",!enabled);
+  updateVariantRecipeHelp();
 }
 function updatePracticalExamOption(){
   const studio=document.getElementById("assessSubmissionSource").value==="studio";
@@ -248,6 +257,7 @@ function updatePracticalExamOption(){
   updatePersonalizedTaskOption();
 }
 document.getElementById("assessPersonalizedTask").addEventListener("change",updatePersonalizedTaskOption);
+document.getElementById("assessVariantRecipe").addEventListener("change",updateVariantRecipeHelp);
 document.getElementById("assessSubmissionSource").addEventListener("change",()=>{
   updatePracticalExamOption();
   if(!currentAssessmentId&&document.getElementById("assessSubmissionSource").value==="studio"&&
@@ -273,7 +283,7 @@ window.openCreateModal = function () {
   document.getElementById("assessSubmissionSource").disabled=false;
   document.getElementById("assessPracticalExam").checked=false;
   document.getElementById("assessPersonalizedTask").checked=false;
-  document.getElementById("assessVariantRecipe").value="java_logic_written_work_v1";
+  document.getElementById("assessVariantRecipe").value="java_oop_fundamentals_v1";
   updatePracticalExamOption();
   document.getElementById("assessV2").checked = true;
   document.getElementById("assessV2").disabled = false;
@@ -316,7 +326,7 @@ window.openEditModal = function () {
   document.getElementById("assessSubmissionSource").disabled=true;
   document.getElementById("assessPracticalExam").checked=item.practicalExam===true;
   document.getElementById("assessPersonalizedTask").checked=item.personalizedTask?.enabled===true;
-  document.getElementById("assessVariantRecipe").value=item.personalizedTask?.generator||"java_logic_written_work_v1";
+  document.getElementById("assessVariantRecipe").value=item.personalizedTask?.generator||"java_oop_fundamentals_v1";
   updatePracticalExamOption();
   document.getElementById("assessV2").checked = item.schemaVersion === 2;
   document.getElementById("assessV2").disabled = true; // Never silently convert a legacy record.
@@ -483,7 +493,10 @@ window.openViewModal = function (id) {
   document.getElementById("viewTargetPath").textContent =
     item.schemaVersion===3
       ? (item.personalizedTask?.enabled
-        ? "Work area: Adminerva Studio · Personalized task generated per attempt"
+        ? "Work area: Adminerva Studio · Personalized "+(
+            item.personalizedTask?.generator==="java_oop_fundamentals_v1"?"Java OOP":
+            item.personalizedTask?.generator==="java_logic_written_work_v1"?"Java Logic":"task"
+          )+" variant per attempt"
         : "Work area: Adminerva Studio project snapshot")
       : paths.length > 0
         ? `Targets: ${paths.join(" OR ")}`
