@@ -1084,6 +1084,8 @@ service cloud.firestore {
           prior.get("mode","") == "ai_blueprint_pool_v1" &&
           next.get("enabled",false) == true &&
           next.get("mode","") == prior.get("mode","") &&
+          prior.get("responseType","studio_project") == "studio_project" &&
+          next.get("responseType","") == "studio_project" &&
           next.get("regeneration","") == prior.get("regeneration","") &&
           next.get("uniqueWithinAssessment",false) == prior.get("uniqueWithinAssessment",false) &&
           next.get("poolFingerprint","") is string &&
@@ -1110,6 +1112,7 @@ service cloud.firestore {
             data.get("personalizedTask",{}).get("enabled",false) is bool &&
             (data.get("personalizedTask",{}).get("enabled",false) == false ||
               (data.get("personalizedTask",{}).get("mode","") == "ai_blueprint_pool_v1" &&
+               data.get("personalizedTask",{}).get("responseType","") == "studio_project" &&
                data.get("personalizedTask",{}).get("regeneration","") == "new_attempt" &&
                data.get("personalizedTask",{}).get("uniqueWithinAssessment",false) == true &&
                data.get("personalizedTask",{}).get("poolFingerprint","") is string &&
