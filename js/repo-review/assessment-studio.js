@@ -89,6 +89,13 @@ function markPersonalizationPossiblyStale(){
   const status=document.getElementById("personalizedVariantStatus");
   if(status)status.textContent="Task details changed. The existing variant pool may be stale; regenerate it before deployment.";
 }
+async function loadPersonalizationVariants(assessmentId,metadata={}){
+  const ids=Array.isArray(metadata.variantIds)?metadata.variantIds:[];
+  if(!assessmentId||!ids.length)return [];
+  const snap=await getDocs(collection(db,"assessment_private",assessmentId,"variants"));
+  const byId=new Map(snap.docs.map(record=>[record.id,{variantId:record.id,...record.data()}]));
+  return ids.map(id=>byId.get(id)).filter(item=>item&&item.fingerprint===metadata.fingerprint);
+}
 function renderPersonalizedVariantPool(){
   const status=document.getElementById("personalizedVariantStatus"),
     wrap=document.getElementById("personalizedVariantPreviewWrap"),
