@@ -9,7 +9,7 @@ This directory contains a standalone, open-source, authenticated Java runner. **
 - One queued/active request per Firebase UID.
 - Every queue request contains an immutable snapshot of the project's Java source.
 - A queued student may read, switch, search, zoom, and scroll code, but cannot modify it until the execution finishes or the request is cancelled.
-- Java runs in an isolated Docker container: no network, capped memory, CPU, PIDs and lifetime, dropped capabilities, and read-only source mount.
+- Java runs in an isolated rootless Docker container: no network, capped memory, CPU, PIDs and lifetime, dropped capabilities, read-only frozen source mount, and an ephemeral writable working directory.
 - Sessions occupy slots while waiting for Java `System.in` input.
 
 ## Requirements
