@@ -35,7 +35,7 @@ let savingBlueprint=false,savingDeployment=false,rubricSource="balanced",lastGen
 let blueprintContentLocked=false;
 let personalizedVariantPool=[],personalizedVariantFingerprint="",personalizedVariantGeneratedAt="",generatingVariants=false,personalizationDirty=false;
 const PERSONALIZATION_MODE="ai_blueprint_pool_v1";
-const MAX_PERSONALIZED_POOL=300;
+const MAX_PERSONALIZED_POOL=600;
 const MAX_EXTERNAL_VARIANT_BATCH=45;
 const rubricTemplates=new Map();
 const defaultPersona="Assist the teacher by checking supported evidence against the published task and rubric. Distinguish verified individual contributions from shared project work. Do not infer authorship or misconduct. Leave unsupported, visual and runtime criteria for teacher review. Suggested scores stay unpublished until teacher approval.";
