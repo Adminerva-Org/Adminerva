@@ -68,8 +68,7 @@ function personalizationSource(){
     subject:document.getElementById("assessSubject").value.trim(),
     taskContext:document.getElementById("taskContext").value.trim()||preparedTaskContext(),
     evalCriteria:document.getElementById("evalCriteria").value.trim(),
-    guidance:document.getElementById("assessVariantGuidance")?.value.trim()||"",
-    poolTarget:Number(document.getElementById("assessVariantCount")?.value||0)
+    guidance:document.getElementById("assessVariantGuidance")?.value.trim()||""
   });
 }
 async function sha256Text(text){
