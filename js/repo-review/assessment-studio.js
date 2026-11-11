@@ -323,7 +323,8 @@ window.savePersonalizationPool=async function(){
     return blueprintStatus("This saved blueprint is not an enabled personalized Studio assessment.");
   const fingerprint=await currentPersonalizationFingerprint(),
     target=Number(document.getElementById("assessVariantCount").value),
-    guidance=document.getElementById("assessVariantGuidance").value.trim();
+    guidance=document.getElementById("assessVariantGuidance").value.trim(),
+    wasReady=Boolean(item.personalizedTask?.poolFingerprint&&Number(item.personalizedTask?.poolSize||0)>0);
   if(personalizedVariantFingerprint!==fingerprint||!personalizedVariantPool.length)
     return blueprintStatus("Generate or import a current private variant pool before saving personalization.");
   if(!Number.isInteger(target)||target<10||target>50)
@@ -363,7 +364,9 @@ window.savePersonalizationPool=async function(){
     renderPersonalizedVariantPool();
     blueprintStatus(ready
       ?"Private personalization pool is ready. Students will be assigned variants automatically when they open the task."
-      :"Saved "+personalizedVariantPool.length+" of "+target+" private variants. Students remain preparation-pending until the target is reached and saved.");
+      :wasReady
+        ?"Saved "+personalizedVariantPool.length+" private variants while expanding toward "+target+". Existing learner access remains active; continue adding variants for the larger capacity."
+        :"Saved "+personalizedVariantPool.length+" of "+target+" private variants. Students remain preparation-pending until the target is reached and saved.");
   }catch(error){
     blueprintStatus("Personalization pool was not saved: "+error.message);
   }finally{
