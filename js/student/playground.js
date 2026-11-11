@@ -6,7 +6,7 @@ import {projectPath,parentFolders,bundleWebProject} from "./playground-project.m
 import {createProjectStudio} from "./project-studio.mjs?v=3.0.0";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.0.0";
-import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=2";
+import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=3";
 import {
   collection,
   addDoc,
@@ -277,7 +277,28 @@ async function initializePlayground() {
       getFiles:models=>models
         ?Object.fromEntries(Object.entries(workspaceFiles).map(([name,file])=>[name,file.model]))
         :currentState().files,
-      getEntry:()=>compilerEntry(),save:()=>persistWorkspace(),switchFile:filename=>switchTab(filename)
+      getEntry:()=>compilerEntry(),
+      getProjectId:()=>projectStudio?.getActiveProject?.()?.id||null,
+      save:()=>persistWorkspace(),switchFile:filename=>switchTab(filename),
+      showRecoveredSnapshot:frozen=>{
+        // This is an ephemeral review of server-frozen source. Never write it into
+        // a locally stored project or silently overwrite a different device's work.
+        projectStudio?.showHome?.();
+        createWorkspace('java',frozen.files,Object.keys(frozen.files),frozen.entry);
+        document.getElementById('projectHome')?.classList.add('hidden');
+        document.getElementById('studioShell')?.classList.remove('hidden');
+        const title=document.getElementById('activeProjectTitle');
+        const meta=document.getElementById('activeProjectMeta');
+        if(title)title.textContent='Recovered Java execution';
+        if(meta)meta.textContent='Server-frozen, read-only project snapshot';
+      },
+      leaveRecoveredSnapshot:()=>{
+        projectStudio?.showHome?.();
+        const title=document.getElementById('activeProjectTitle');
+        const meta=document.getElementById('activeProjectMeta');
+        if(title)title.textContent='Code project';
+        if(meta)meta.textContent='Java project';
+      }
     });
     syncStudioEditorZoomLabel();
     initResizer();
@@ -350,6 +371,9 @@ async function initializePlayground() {
       const requestedProject=urlParams.get("codeProject");
       if(requestedProject)projectStudio.openProjectById(requestedProject);
       else projectStudio.showHome();
+      // Restore the existing server-side queue/run after a browser refresh.
+      // The runtime remains disabled until a trusted HTTPS server is configured.
+      void studioRuntimeIntegration?.recover();
     }
     } finally { end(); }
   }, () => { end(); document.getElementById("editorLoading").textContent = "Editor could not load. Check your connection and reload; saved drafts are unchanged."; });
