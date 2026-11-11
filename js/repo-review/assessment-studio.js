@@ -723,6 +723,14 @@ document.getElementById("assessVariantCount").addEventListener("input",()=>{
     ?"Current private pool: "+personalizedVariantPool.length+". Add "+need.missing+" more to reach the "+need.target+" target."
     :"Current private pool meets the "+need.target+" target with "+personalizedVariantPool.length+" variants.";
 });
+async function autosavePersonalizationSafety(){
+  if(!personalizationDirty||savingBlueprint||!currentAssessmentId)return;
+  await persistPersonalizationPool({activate:false,silent:true});
+}
+window.addEventListener("blur",()=>{void autosavePersonalizationSafety();});
+document.addEventListener("visibilitychange",()=>{
+  if(document.visibilityState==="hidden")void autosavePersonalizationSafety();
+});
 document.getElementById("assessSubmissionSource").addEventListener("change",()=>{
   updatePracticalExamOption();
   if(!currentAssessmentId&&document.getElementById("assessSubmissionSource").value==="studio"&&
