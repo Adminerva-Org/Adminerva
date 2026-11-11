@@ -25,6 +25,8 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
     for(const id of restricted){const control=el(id);if(control)control.disabled=locked;}
     for(const control of document.querySelectorAll('#explorerContextMenu [data-explorer-action]'))
       control.disabled=locked&&control.dataset.explorerAction!=='open';
+    for(const control of document.querySelectorAll('[data-studio-editor-key="undo"],[data-studio-editor-key="redo"],[data-studio-editor-key="tab"]'))
+      control.disabled=locked;
     el('editorPane')?.setAttribute('data-review-locked',String(locked));
   }
 
@@ -122,6 +124,7 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
   function finish(state){
     session?.dispose();session=null;lock(false);
     banner?.classList.add('hidden');
+    el('stdinHistoryDisclosure')?.classList.remove('hidden');
     if(input)input.disabled=false;
     if(sendButton)sendButton.disabled=false;
     const badge=el('studioTerminalStatus');
@@ -168,6 +171,7 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
       save();
       if(output)output.textContent='Submitting a frozen Java project snapshot…\n';
       lock(true);
+      el('stdinHistoryDisclosure')?.classList.add('hidden');
       const client=new AdminervaRuntimeClient({
         origin:ADMINERVA_RUNTIME_ORIGIN,
         getToken:async()=>auth.currentUser?.getIdToken(),onEvent:runtimeEvent
