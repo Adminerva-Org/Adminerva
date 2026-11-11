@@ -75,7 +75,7 @@ function snapshotValidation(input){
   const files={};
   for(const [filename,source] of entries){
     const segments=filename.split('/');
-    if(!filename.endsWith('.java')||segments.some(seg=>!seg||seg==='.'||seg==='..'||!/^[A-Za-z0-9_$.-]+$/.test(seg))||
+    if(segments.some(seg=>!seg||seg==='.'||seg==='..'||!/^[A-Za-z0-9_$.-]+$/.test(seg))||
        filename.startsWith('/')||filename.includes('\\')||filename.length>180||typeof source!=='string')
       throw Object.assign(Error('Only safe relative Java source paths are supported.'),{httpCode:400});
     size+=Buffer.byteLength(source,'utf8');
@@ -83,7 +83,9 @@ function snapshotValidation(input){
     files[filename]=source;
   }
   const entry=String(input.entry||'');
-  if(!Object.hasOwn(files,entry))throw Object.assign(Error('Select an existing Java entry file.'),{httpCode:400});
+  if(!Object.keys(files).some(name=>name.endsWith('.java')))
+    throw Object.assign(Error('At least one Java source file is required.'),{httpCode:400});
+  if(!Object.hasOwn(files,entry)||!entry.endsWith('.java'))throw Object.assign(Error('Select an existing Java entry file.'),{httpCode:400});
   const pkg=files[entry].match(/^\s*package\s+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*;/m)?.[1];
   const base=path.posix.basename(entry,'.java');
   if(!/^[A-Za-z_$][\w$]*$/.test(base))throw Object.assign(Error('Invalid Java entry name.'),{httpCode:400});
