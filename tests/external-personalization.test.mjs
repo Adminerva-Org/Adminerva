@@ -9,6 +9,8 @@ import {
 const assessment={
   title:"Generic personalized programming task",
   type:"Mini PETA",
+  assessmentFormat:"studio_code",
+  assessmentMode:"personalized",
   subject:"Programming",
   maxScore:10,
   taskContext:"Create a programming solution using the required concepts and constraints in this assessment.",
@@ -22,6 +24,9 @@ test("external personalization package exports only blueprint context",()=>{
   assert.match(value,/ADMINERVA EXTERNAL PERSONALIZATION PACKAGE/);
   assert.match(value,/requestedVariants/);
   assert.match(value,/Generic personalized programming task/);
+  assert.match(value,/"assessmentFormat": "studio_code"/);
+  assert.match(value,/"assessmentMode": "personalized"/);
+  assert.match(value,/"category": "Mini PETA"/);
   assert.doesNotMatch(value,/studentId|learner name|email address/i);
 });
 
