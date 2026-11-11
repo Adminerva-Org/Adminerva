@@ -176,29 +176,39 @@ async function generateVariantBatch({count,title,taskContext,evalCriteria,guidan
 }
 window.generatePersonalizedVariantPool=async function(){
   if(generatingVariants)return;
+  if(!currentAssessmentId)
+    return blueprintStatus("Save the personalized blueprint first, then prepare its variant pool.");
   if(document.getElementById("assessSubmissionSource").value!=="studio"||
      !document.getElementById("assessPersonalizedTask").checked)
-    return blueprintStatus("Choose Adminerva Studio and enable personalized task variants first.");
+    return blueprintStatus("This blueprint is not configured as a personalized Studio assessment.");
   const title=document.getElementById("assessTitle").value.trim(),
     taskContext=document.getElementById("taskContext").value.trim()||preparedTaskContext(),
     evalCriteria=document.getElementById("evalCriteria").value.trim(),
     guidance=document.getElementById("assessVariantGuidance").value.trim(),
-    count=Number(document.getElementById("assessVariantCount").value);
+    target=Number(document.getElementById("assessVariantCount").value);
   if(!title)return blueprintStatus("Enter the assessment title before generating variants.");
   if(!evalCriteria)return blueprintStatus("Prepare the published rubric before generating variants.");
-  if(!Number.isInteger(count)||count<10||count>50)return blueprintStatus("Choose a variant pool size from 10 to 50.");
+  if(!Number.isInteger(target)||target<10||target>50)return blueprintStatus("Choose a variant pool size from 10 to 50.");
   const fingerprint=await currentPersonalizationFingerprint(),
+    preserve=personalizedVariantFingerprint===fingerprint?personalizedVariantPool:[],
+    need=variantGenerationNeed(preserve.length),
     button=document.getElementById("assessmentGenerateVariants");
+  if(!need.missing){
+    personalizedVariantPool=preserve;
+    personalizedVariantFingerprint=fingerprint;
+    renderPersonalizedVariantPool();
+    return blueprintStatus("The private pool already meets the "+need.target+"-variant target.");
+  }
   generatingVariants=true;button.disabled=true;blueprintStatus("");
-  personalizedVariantPool=[];personalizedVariantFingerprint="";personalizedVariantGeneratedAt="";
-  renderPersonalizedVariantPool();
+  const unique=new Map(preserve.map(item=>[item.variantId,item])),
+    summaries=preserve.map(item=>item.summary||item.prompt.slice(0,180));
+  document.getElementById("personalizedVariantStatus").textContent=
+    "Generating "+need.missing+" additional variant"+(need.missing===1?"":"s")+" with School AI…";
   const loader=window.beginLoading?.("Generating equivalent assessment variants…")||(()=>{});
   try{
-    const unique=new Map(),summaries=[];let calls=0;
-    while(unique.size<count&&calls<6){
-      const batchCount=Math.min(10,count-unique.size);
-      document.getElementById("personalizedVariantStatus").textContent=
-        "Generating variants… "+unique.size+" of "+count+" prepared.";
+    let calls=0;
+    while(unique.size<need.target&&calls<8){
+      const batchCount=Math.min(10,need.target-unique.size);
       const batch=await generateVariantBatch({count:batchCount,title,taskContext,evalCriteria,guidance,previousSummaries:summaries});
       calls++;
       for(const item of batch){
@@ -206,27 +216,150 @@ window.generatePersonalizedVariantPool=async function(){
         if(unique.has(id))continue;
         unique.set(id,{variantId:id,prompt:item.prompt,evaluationNotes:item.evaluationNotes,summary:item.summary});
         summaries.push(item.summary||item.prompt.slice(0,180));
-        if(unique.size>=count)break;
+        if(unique.size>=need.target)break;
       }
+      document.getElementById("personalizedVariantStatus").textContent=
+        "Generating variants… "+unique.size+" of "+need.target+" prepared.";
     }
-    if(unique.size<count)
-      throw Error("Adminerva generated only "+unique.size+" distinct valid variants. Retry, reduce the pool size, or make the variation guidance more specific.");
+    if(unique.size<need.target)
+      throw Error("Adminerva prepared "+unique.size+" distinct variants, below the "+need.target+" target. Retry or make the variation guidance more specific.");
     if(await currentPersonalizationFingerprint()!==fingerprint)
-      throw Error("The task instructions or rubric changed while variants were generating. Generate the pool again from the current blueprint.");
-    const generated=[...unique.values()].slice(0,count);
-    const poolBytes=new TextEncoder().encode(JSON.stringify(generated)).length;
+      throw Error("The blueprint changed while variants were generating. Generate again from the current task and rubric.");
+    const generated=[...unique.values()].slice(0,need.target),
+      poolBytes=new TextEncoder().encode(JSON.stringify(generated)).length;
     if(poolBytes>700000)
-      throw Error("The generated variant pool is too large to store safely. Reduce the pool size or make each task prompt more concise.");
+      throw Error("The private pool is too large to store safely. Reduce the target or use more concise task prompts.");
     personalizedVariantPool=generated;
     personalizedVariantFingerprint=fingerprint;
     personalizedVariantGeneratedAt=new Date().toISOString();
     renderPersonalizedVariantPool();
-    blueprintStatus("Personalized variant pool ready. Review the sample prompts, then save the blueprint.");
+    blueprintStatus("School AI prepared the private pool. Save the pool before students begin.");
   }catch(error){
-    personalizedVariantPool=[];personalizedVariantFingerprint="";personalizedVariantGeneratedAt="";
+    personalizedVariantPool=preserve;
+    personalizedVariantFingerprint=preserve.length?fingerprint:"";
     renderPersonalizedVariantPool();blueprintStatus("Variant generation failed: "+error.message);
   }finally{generatingVariants=false;button.disabled=false;loader();}
 };
+
+window.copyExternalPersonalizationPackage=async function(){
+  if(!currentAssessmentId)return blueprintStatus("Save the personalized blueprint before exporting a generation package.");
+  const fingerprint=await currentPersonalizationFingerprint(),
+    preserve=personalizedVariantFingerprint===fingerprint?personalizedVariantPool:[],
+    need=variantGenerationNeed(preserve.length);
+  if(!need.missing){
+    document.getElementById("externalPersonalizationStatus").textContent=
+      "The current pool already meets the target. Increase the target if you want additional unused variants.";
+    return;
+  }
+  try{
+    const item=assessments.find(value=>value.id===currentAssessmentId)||{};
+    const packageText=buildExternalPersonalizationPackage({
+      assessment:{
+        ...item,
+        title:document.getElementById("assessTitle").value.trim(),
+        type:document.getElementById("assessType").value,
+        subject:document.getElementById("assessSubject").value.trim(),
+        maxScore:Number(document.getElementById("maxScore").value),
+        taskContext:document.getElementById("taskContext").value.trim()||preparedTaskContext(),
+        evalCriteria:document.getElementById("evalCriteria").value.trim()
+      },
+      guidance:document.getElementById("assessVariantGuidance").value.trim(),
+      count:need.missing,
+      existingSummaries:preserve.map(value=>value.summary||value.prompt.slice(0,180))
+    });
+    await navigator.clipboard.writeText(packageText);
+    document.getElementById("externalPersonalizationStatus").textContent=
+      "Copied an external package requesting "+need.missing+" additional variant"+
+      (need.missing===1?"":"s")+". Paste it into the external AI, then import its JSON response below.";
+  }catch(error){
+    document.getElementById("externalPersonalizationStatus").textContent="Package not copied: "+error.message;
+  }
+};
+
+window.importExternalPersonalizationResponse=async function(){
+  if(!currentAssessmentId)return blueprintStatus("Save the personalized blueprint before importing variants.");
+  const raw=document.getElementById("externalPersonalizationResponse").value,
+    fingerprint=await currentPersonalizationFingerprint(),
+    preserve=personalizedVariantFingerprint===fingerprint?personalizedVariantPool:[],
+    need=variantGenerationNeed(preserve.length);
+  if(!need.missing){
+    document.getElementById("externalPersonalizationStatus").textContent=
+      "The private pool already meets the target. Increase the target before importing additional variants.";
+    return;
+  }
+  try{
+    const incoming=await parseExternalPersonalizationResponse(raw,{
+      expectedCount:need.missing,hashPrompt:sha256Text
+    });
+    const merged=mergeVariantPools(preserve,incoming);
+    if(merged.length>50)throw Error("The combined private pool cannot exceed 50 variants.");
+    const poolBytes=new TextEncoder().encode(JSON.stringify(merged)).length;
+    if(poolBytes>700000)throw Error("The combined private pool is too large to store safely.");
+    personalizedVariantPool=merged;
+    personalizedVariantFingerprint=fingerprint;
+    personalizedVariantGeneratedAt=new Date().toISOString();
+    renderPersonalizedVariantPool();
+    document.getElementById("externalPersonalizationStatus").textContent=
+      "Imported "+incoming.length+" external variant"+(incoming.length===1?"":"s")+
+      ". Review the samples, then save the private pool.";
+    blueprintStatus("External variants imported. Save the private variant pool before students begin.");
+  }catch(error){
+    document.getElementById("externalPersonalizationStatus").textContent="Import failed: "+error.message;
+  }
+};
+
+window.savePersonalizationPool=async function(){
+  if(savingBlueprint||!currentAssessmentId)return;
+  const item=assessments.find(value=>value.id===currentAssessmentId);
+  if(!item||item.schemaVersion!==3||item.personalizedTask?.enabled!==true)
+    return blueprintStatus("This saved blueprint is not an enabled personalized Studio assessment.");
+  const fingerprint=await currentPersonalizationFingerprint(),
+    target=Number(document.getElementById("assessVariantCount").value),
+    guidance=document.getElementById("assessVariantGuidance").value.trim();
+  if(personalizedVariantFingerprint!==fingerprint||!personalizedVariantPool.length)
+    return blueprintStatus("Generate or import a current private variant pool before saving personalization.");
+  if(!Number.isInteger(target)||target<10||target>50)
+    return blueprintStatus("Choose a variant target from 10 to 50.");
+  const poolBytes=new TextEncoder().encode(JSON.stringify(personalizedVariantPool)).length;
+  if(poolBytes>700000)return blueprintStatus("The private variant pool is too large to save safely.");
+  savingBlueprint=true;
+  document.getElementById("savePersonalizationPool").disabled=true;
+  const loader=window.beginLoading?.("Saving private personalization pool…")||(()=>{});
+  try{
+    const batch=writeBatch(db);
+    batch.update(doc(db,"assessments",currentAssessmentId),{
+      personalizedTask:{
+        enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",
+        uniqueWithinAssessment:true,poolFingerprint:fingerprint,
+        poolSize:personalizedVariantPool.length,poolTarget:target
+      }
+    });
+    batch.set(doc(db,"assessment_private",currentAssessmentId),{
+      ownerUid:item.ownerUid,sectionIds:item.sectionIds||[],
+      personalization:{
+        mode:PERSONALIZATION_MODE,guidance,fingerprint,
+        variants:personalizedVariantPool,generatedAt:personalizedVariantGeneratedAt||new Date().toISOString()
+      },updatedAt:serverTimestamp()
+    },{merge:true});
+    await batch.commit();
+    await loadAssessments();
+    const refreshed=assessments.find(value=>value.id===currentAssessmentId);
+    if(refreshed){
+      personalizedVariantPool=Array.isArray(refreshed.personalization?.variants)?refreshed.personalization.variants.map(value=>({...value})):[];
+      personalizedVariantFingerprint=refreshed.personalization?.fingerprint||"";
+      personalizedVariantGeneratedAt=refreshed.personalization?.generatedAt||"";
+    }
+    renderPersonalizedVariantPool();
+    blueprintStatus("Private personalization pool saved. Students will be assigned variants automatically when they open the task.");
+  }catch(error){
+    blueprintStatus("Personalization pool was not saved: "+error.message);
+  }finally{
+    savingBlueprint=false;
+    document.getElementById("savePersonalizationPool").disabled=false;
+    loader();
+  }
+};
+
 window.applyAssessmentRubric=function(){
   const score=Number(document.getElementById("maxScore").value),selected=document.getElementById("assessmentRubricTemplate").value;
   if(!Number.isFinite(score)||score<1||score>1000){blueprintStatus("Enter a maximum score between 1 and 1,000 before preparing a rubric.");document.getElementById("maxScore").focus();return;}
@@ -297,18 +430,15 @@ function updatePersonalizationTabAvailability(){
   if(!visible&&document.getElementById("blueprintEditorTab").classList.contains("hidden"))
     window.showBlueprintEditorTab("blueprint");
 }
-function mergeVariantPool(incoming,{replaceIfStale=true}={}){
+function mergeVariantPools(base,incoming){
   const map=new Map();
-  const sameFingerprint=personalizedVariantFingerprint&&
-    personalizedVariantFingerprint===window.__adminervaCurrentPersonalizationFingerprint;
-  const base=sameFingerprint||!replaceIfStale?personalizedVariantPool:[];
-  for(const variant of base)map.set(variant.variantId,variant);
-  for(const variant of incoming)map.set(variant.variantId,variant);
+  for(const variant of base||[])map.set(variant.variantId,variant);
+  for(const variant of incoming||[])map.set(variant.variantId,variant);
   return [...map.values()];
 }
-function variantGenerationNeed(){
+function variantGenerationNeed(baseCount=personalizedVariantPool.length){
   const target=Math.max(10,Math.min(50,Number(document.getElementById("assessVariantCount").value)||40));
-  return {target,missing:Math.max(0,target-personalizedVariantPool.length)};
+  return {target,missing:Math.max(0,target-baseCount)};
 }
 function escapeHTML(str) {
   if (!str) return "";
