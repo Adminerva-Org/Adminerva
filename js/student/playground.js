@@ -6,6 +6,7 @@ import {projectPath,parentFolders,bundleWebProject} from "./playground-project.m
 import {createProjectStudio} from "./project-studio.mjs?v=3.0.0";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.0.0";
+import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=1";
 import {
   collection,
   addDoc,
@@ -72,6 +73,7 @@ let workspaceFolders=[],projectOrder=[],selectedProjectPath="",selectedProjectFo
 let executionController=null,executionSequence=0;
 let loadedOwnerUid=null;
 let projectStudio=null;
+let studioRuntimeIntegration=null;
 const STUDIO_EDITOR_FONT_KEY="Adminerva_Studio_Editor_Font_Size_v1";
 const STUDIO_EDITOR_BASE_FONT=14;
 const STUDIO_EDITOR_FONT_MIN=12;
@@ -269,6 +271,14 @@ async function initializePlayground() {
     initializeMobileStudio();
     initializeStudioEditorTouchGestures();
     initializeStudioPreferences();
+    studioRuntimeIntegration=installStudioRuntime({
+      monaco,editor:editorInstance,auth,guest:guestMode,
+      getLanguage:()=>currentLang,
+      getFiles:models=>models
+        ?Object.fromEntries(Object.entries(workspaceFiles).map(([name,file])=>[name,file.model]))
+        :currentState().files,
+      getEntry:()=>compilerEntry(),save:()=>persistWorkspace(),switchFile:filename=>switchTab(filename)
+    });
     syncStudioEditorZoomLabel();
     initResizer();
     setupWebConsoleHook();
@@ -558,6 +568,7 @@ function renderTabs() {
 
   attachTabEvents();
   renderFileTree();
+  studioRuntimeIntegration?.scheduleDiagnostics();
   if(window.matchMedia('(max-width:767px)').matches){
     requestAnimationFrame(()=>{
       const tab=container.querySelector('.tab-element[aria-selected="true"]');
@@ -1266,6 +1277,10 @@ function consoleInputExhausted(errorText){
 }
 
 function sendConsoleInputLine(){
+  if(studioRuntimeIntegration?.hasSession()){
+    studioRuntimeIntegration.sendLine();
+    return;
+  }
   if(executionController)return;
   const lineInput=document.getElementById('stdinLineInput'),history=document.getElementById('stdinInput');
   if(!lineInput||!history)return;
@@ -1286,6 +1301,10 @@ function clearConsoleInput(){
 }
 
 async function executeCode(options={}) {
+  if(studioRuntimeIntegration?.enabled&&currentLang==='java'&&!isJavaDesktopMode()){
+    studioRuntimeIntegration.requestRun();
+    return;
+  }
   if(executionController)return;
   const continuation=options?.terminalContinuation===true;
   const runBtn=document.getElementById('runBtn'),overlay=document.getElementById('executionOverlay'),consoleOut=document.getElementById('consoleOutput'),label=document.getElementById('executionStage'),sendInputBtn=document.getElementById('sendStdinBtn');
