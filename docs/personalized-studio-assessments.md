@@ -43,10 +43,15 @@ difficulty, required effort or rubric.
     - **School AI** — direct generation using the configured Adminerva AI
       connection; or
     - **External AI package** — copy a privacy-preserving generation package to
-      ChatGPT or another external AI and import its JSON response.
-12. Review sample variants and save the private pool.
-13. Learners can then open Studio. Variant assignment is automatic; students do
-    not click a generation control.
+      ChatGPT or another external AI and import its JSON response. External
+      packages request at most 10 variants per batch; the next package asks only
+      for the remaining capacity.
+12. Review sample variants. Partial external batches may be saved privately
+    between sessions. An initial partial pool does not unlock students until the
+    target is reached.
+13. Save the ready private pool.
+14. Learners can then open the assessment. Variant assignment is automatic;
+    students do not click a generation control.
 
 If the title, instructions, rubric, maximum score, subject or variation
 guidance changes before deployment, the personalization fingerprint changes and
@@ -98,20 +103,24 @@ Students do not receive the whole pool or the private evaluation notes.
 
 ## Attempt and uniqueness contract
 
-1. A learner opens a deployed personalized Studio assessment.
-2. The server resolves the learner from the verified account and assigned class.
+1. A learner opens the personalized assessment from My Assessments.
+2. If the work window is open and the private pool is ready, the server resolves
+   the learner from the verified account and assigned class.
 3. The server reads the teacher-approved private pool.
 4. If the current attempt has no assigned variant, the server chooses one unused
-   variant and records it for that learner and attempt.
-5. Reloading, closing and reopening Studio returns the same variant.
-6. Submission freezes the Studio project and stores the assigned `variantId`
+   variant, records it for that learner and attempt, and returns that exact
+   learner prompt to the assignment details view.
+5. The Studio button unlocks only after that frozen assignment succeeds.
+6. Reloading the assignment details, closing it or reopening Studio returns the
+   same variant.
+7. Submission freezes the Studio project and stores the assigned `variantId`
    on both the submission head and immutable submitted version.
-7. Firestore rejects a personalized submission when its variant ID does not
+8. Firestore rejects a personalized submission when its variant ID does not
    match the server-issued variant for that learner/revision.
-8. Teacher review retrieves the exact prompt and private evaluation notes and
+9. Teacher review retrieves the exact prompt and private evaluation notes and
    verifies the submitted variant ID.
-9. A teacher-requested revision advances the submission revision. The next
-   attempt receives another unused variant from the same approved pool.
+10. A teacher-requested revision advances the submission revision. The next
+    attempt receives another unused variant from the same approved pool.
 
 Simply refreshing Studio or closing/reopening the overall assessment does not
 reroll an unfinished learner task. This prevents learners from repeatedly
@@ -126,11 +135,17 @@ cover the expected learner count plus reasonable revision headroom.
 If all variants are assigned, the server fails closed rather than silently
 reusing another learner's task.
 
-A deployed personalized blueprint keeps its task instructions, rubric and
-variation guidance locked. The teacher may still raise the pool target and add
-unused variants from School AI or an external package. Existing learner
-variants remain frozen because increasing capacity does not change the blueprint
-fingerprint.
+A deployed personalized blueprint keeps its task instructions and rubric
+locked. Variation guidance remains editable only until the first valid pool is
+established; after that it also locks. The teacher may still raise the pool
+target and add unused variants from School AI or an external package. Existing
+learner variants remain frozen because increasing capacity does not change the
+blueprint fingerprint.
+
+For the first pool, partial externally generated batches can be saved privately
+without publishing readiness, so students remain preparation-pending. For an
+already-live pool expansion, each saved partial expansion immediately adds that
+new capacity while the original learner access remains active.
 
 ## Mini PETA 3 example — Java OOP
 
