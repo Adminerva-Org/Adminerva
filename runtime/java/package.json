@@ -8,8 +8,8 @@
     "start": "node server.mjs"
   },
   "dependencies": {
-    "firebase-admin": "^13.5.0",
-    "ws": "^8.18.3"
+    "ws": "^8.18.3",
+    "jose": "^6.1.2"
   },
   "engines": {
     "node": ">=22"
