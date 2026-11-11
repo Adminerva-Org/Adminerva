@@ -1084,8 +1084,8 @@ service cloud.firestore {
           prior.get("mode","") == "ai_blueprint_pool_v1" &&
           next.get("enabled",false) == true &&
           next.get("mode","") == prior.get("mode","") &&
-          prior.get("responseType","studio_project") == "studio_project" &&
-          next.get("responseType","") == "studio_project" &&
+          after.get("assessmentFormat","studio_code") == "studio_code" &&
+          after.get("assessmentMode","personalized") == "personalized" &&
           next.get("regeneration","") == prior.get("regeneration","") &&
           next.get("uniqueWithinAssessment",false) == prior.get("uniqueWithinAssessment",false) &&
           next.get("poolFingerprint","") is string &&
@@ -1108,21 +1108,28 @@ service cloud.firestore {
         return data.get("ownerUid","") is string && data.get("sectionIds",[]) is list && data.sectionIds.size() <= 20 &&
           data.get("deployments",[]) is list && data.deployments.size() <= 20 &&
           (data.get("schemaVersion",1) != 3 || (
+            data.get("submissionSource","") == "studio" &&
+            data.get("assessmentFormat","studio_code") == "studio_code" &&
+            data.get("assessmentMode","default") in ["default","personalized"] &&
             data.get("practicalExam",false) is bool &&
             data.get("personalizedTask",{}).get("enabled",false) is bool &&
-            (data.get("personalizedTask",{}).get("enabled",false) == false ||
-              (data.get("personalizedTask",{}).get("mode","") == "ai_blueprint_pool_v1" &&
-               data.get("personalizedTask",{}).get("responseType","") == "studio_project" &&
-               data.get("personalizedTask",{}).get("regeneration","") == "new_attempt" &&
-               data.get("personalizedTask",{}).get("uniqueWithinAssessment",false) == true &&
-               data.get("personalizedTask",{}).get("poolFingerprint","") is string &&
-               data.get("personalizedTask",{}).get("poolFingerprint","").size() <= 64 &&
-               data.get("personalizedTask",{}).get("poolSize",0) is int &&
-               data.get("personalizedTask",{}).get("poolSize",0) >= 0 &&
-               data.get("personalizedTask",{}).get("poolSize",0) <= 600 &&
-               data.get("personalizedTask",{}).get("poolTarget",0) is int &&
-               data.get("personalizedTask",{}).get("poolTarget",0) >= 10 &&
-               data.get("personalizedTask",{}).get("poolTarget",0) <= 600))
+            (
+              (data.get("assessmentMode","default") == "default" &&
+                data.get("personalizedTask",{}).get("enabled",false) == false) ||
+              (data.get("assessmentMode","default") == "personalized" &&
+                data.get("personalizedTask",{}).get("enabled",false) == true &&
+                data.get("personalizedTask",{}).get("mode","") == "ai_blueprint_pool_v1" &&
+                data.get("personalizedTask",{}).get("regeneration","") == "new_attempt" &&
+                data.get("personalizedTask",{}).get("uniqueWithinAssessment",false) == true &&
+                data.get("personalizedTask",{}).get("poolFingerprint","") is string &&
+                data.get("personalizedTask",{}).get("poolFingerprint","").size() <= 64 &&
+                data.get("personalizedTask",{}).get("poolSize",0) is int &&
+                data.get("personalizedTask",{}).get("poolSize",0) >= 0 &&
+                data.get("personalizedTask",{}).get("poolSize",0) <= 600 &&
+                data.get("personalizedTask",{}).get("poolTarget",0) is int &&
+                data.get("personalizedTask",{}).get("poolTarget",0) >= 10 &&
+                data.get("personalizedTask",{}).get("poolTarget",0) <= 600)
+            )
           )) &&
           data.get("targetSections",[]) is list && data.get("targetSections",[]).hasOnly(data.sectionIds) &&
           (data.deployments.size() <= 0 || data.deployments[0].section in data.sectionIds) &&
