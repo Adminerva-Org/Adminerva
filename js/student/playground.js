@@ -1241,6 +1241,23 @@ function activateOutputTab(name){
   }
 }
 
+function updateStudioTerminalStatus(state='ready',label=null){
+  const status=document.getElementById('studioTerminalStatus');
+  if(status){
+    const names={ready:'Ready',running:'Running…',waiting:'Input needed',finished:'Finished',error:'Error',cancelled:'Cancelled'};
+    status.textContent=label||names[state]||state;
+    status.dataset.state=state;
+  }
+}
+function updateStudioTerminalPrompt(stdout=''){
+  const prompt=document.getElementById('studioTerminalPrompt');
+  if(!prompt)return;
+  const lines=String(stdout).trimEnd().split(/\r?\n/);
+  const lastLine=lines.at(-1)?.trim()||'Input';
+  prompt.textContent=lastLine.length>44?'…'+lastLine.slice(-41):lastLine;
+  prompt.title=lastLine;
+}
+
 function consoleInputExhausted(errorText){
   const text=String(errorText||'');
   if(currentLang==='java')return /java\.util\.NoSuchElementException/.test(text)&&/java\.util\.Scanner/.test(text);
@@ -1255,30 +1272,39 @@ function sendConsoleInputLine(){
   const separator=history.value&&!history.value.endsWith('\n')?'\n':'';
   history.value+=separator+lineInput.value+'\n';
   lineInput.value='';
-  void executeCode();
+  void executeCode({terminalContinuation:true});
 }
 
 function clearConsoleInput(){
   const history=document.getElementById('stdinInput'),lineInput=document.getElementById('stdinLineInput');
   if(history)history.value='';
   if(lineInput){lineInput.value='';lineInput.focus();}
+  updateStudioTerminalStatus('ready');
+  updateStudioTerminalPrompt('');
+  const cout=document.getElementById('consoleOutput');
+  if(cout)cout.textContent='Input history cleared. Run the program to begin a new session.';
 }
 
-async function executeCode() {
+async function executeCode(options={}) {
   if(executionController)return;
+  const continuation=options?.terminalContinuation===true;
   const runBtn=document.getElementById('runBtn'),overlay=document.getElementById('executionOverlay'),consoleOut=document.getElementById('consoleOutput'),label=document.getElementById('executionStage'),sendInputBtn=document.getElementById('sendStdinBtn');
   const sequence=++executionSequence,controller=new AbortController(),entry=compilerEntry(),runLanguage=currentLang,desktopMode=isJavaDesktopMode();executionController=controller;
-  const end=window.beginLoading?.(desktopMode?'Compiling Java desktop app…':'Running your code…')||(()=>{});
+  const end=continuation?(()=>{}):(window.beginLoading?.(desktopMode?'Compiling Java desktop app…':'Running your code…')||(()=>{}));
   const start=Date.now();let stage=desktopMode?'Preparing desktop package':'Preparing project';
   const update=()=>{if(label)label.textContent=stage+' · '+Math.floor((Date.now()-start)/1000)+'s';};
   const clock=setInterval(update,500),timeout=setTimeout(()=>{stage='Compiler timed out';controller.abort();},45000);
-  runBtn.disabled=true;if(sendInputBtn)sendInputBtn.disabled=true;overlay?.classList.remove('hidden');update();
+  runBtn.disabled=true;if(sendInputBtn)sendInputBtn.disabled=true;
+  updateStudioTerminalStatus('running');
+  if(!continuation)overlay?.classList.remove('hidden');
+  update();
   try{
     persistWorkspace();Object.values(workspaceFiles).forEach(file=>monaco.editor.setModelMarkers(file.model,'judge0',[]));
     if(currentLang==='web'){
-      consoleOut.textContent='Local preview · no compiler queue\n\n';executeWebPreview();notePracticeExecution();return;
+      consoleOut.textContent='Local preview · no compiler queue\n\n';updateStudioTerminalStatus('finished','Preview');executeWebPreview();notePracticeExecution();return;
     }
-    consoleOut.textContent='';const payload=await executionPayload({desktopBundle:desktopMode});
+    if(!continuation)consoleOut.textContent='';
+    const payload=await executionPayload({desktopBundle:desktopMode});
     const request=async(url,options={})=>{
       const response=await fetch(url,{...options,signal:controller.signal});
       if(!response.ok)throw Error(response.status===429?'Compiler is busy. Please retry shortly.':response.status===401||response.status===403?'The compiler service is not accepting public requests. Export your project or try again later.':'Compiler service returned status '+response.status+'.');
@@ -1300,10 +1326,12 @@ async function executeCode() {
       if(error||result.status.id>3){
         consoleOut.textContent=(error||String(result.message||result.status.description||'Desktop build failed.'))+'\n\n'+(result.status.description||'Build failed');
         if(error&&currentLang===runLanguage)applyVisualDiagnostics(error,entry);
+        updateStudioTerminalStatus('error');
         return;
       }
       const jarBase64=String(result.stdout||'').replace(/\s+/g,'');
       if(!jarBase64.startsWith('UEsDB'))throw Error('The compiler did not return a valid Java desktop package. Retry the run or use Console mode.');
+      updateStudioTerminalStatus('finished','Built');
       consoleOut.textContent='Desktop build succeeded. The Swing/AWT application is launching in the Desktop app tab.\nIf your program only prints text and does not open a window, use Console mode instead.';
       document.getElementById('desktopTab')?.click();
       stage='Launching desktop runtime';update();
@@ -1315,13 +1343,19 @@ async function executeCode() {
     const waitingForInput=Boolean(error)&&consoleInputExhausted(error);
     if(waitingForInput){
       const supplied=(document.getElementById('stdinInput')?.value||'').split(/\r?\n/).filter((_,index,items)=>index<items.length-1||items[index]!=='' ).length;
-      consoleOut.textContent=(result.stdout||'')+'\n\n[Adminerva terminal] Input needed. Type the next value above and press Enter or Send input.'+(supplied?'\n'+supplied+' input line'+(supplied===1?' has':'s have')+' been supplied so far.':'');
+      consoleOut.textContent=(result.stdout||'')+(supplied?'\n\n[Input history: '+supplied+' line'+(supplied===1?'':'s')+']':'');
+      updateStudioTerminalPrompt(result.stdout||'');
+      updateStudioTerminalStatus('waiting');
+      consoleOut.scrollTop=consoleOut.scrollHeight;
       try{projectStudio?.recordRun({mode:"console",status:"waiting for input",time:result.time||null,memory:result.memory||null});}catch(e){console.warn("Run history not saved:",e);}
       requestAnimationFrame(()=>document.getElementById('stdinLineInput')?.focus());
       notePracticeExecution();
       return;
     }
     consoleOut.textContent=(error?error+'\n':'')+(result.stdout||(!error?'Program exited with no output.':''))+'\n\n'+(result.status.description||'Finished')+(result.time?' · execution '+result.time+'s':'');
+    consoleOut.scrollTop=consoleOut.scrollHeight;
+    updateStudioTerminalPrompt('');
+    updateStudioTerminalStatus(error||result.status.id>3?'error':'finished');
     if(error&&currentLang===runLanguage)applyVisualDiagnostics(error,entry);
     if(error&&currentLang==='java'&&/HeadlessException|No X11 DISPLAY|headless/i.test(error))consoleOut.textContent+='\n\nThis program appears to open a desktop window. Change Run as to “Desktop GUI (Swing) · Beta” and run it again.';
     if(result.status.id>3&&!error)consoleOut.textContent+='\n'+String(result.message||'Review the execution status above.');
@@ -1330,6 +1364,7 @@ async function executeCode() {
   }catch(error){
     if(sequence!==executionSequence)return;
     try{projectStudio?.recordRun({mode:desktopMode?"desktop":"console",status:controller.signal.aborted?"cancelled":"error"});}catch(e){console.warn("Run history not saved:",e);}
+    updateStudioTerminalStatus(controller.signal.aborted?'cancelled':'error');
     consoleOut.textContent=controller.signal.aborted?(stage==='Compiler timed out'?'The compiler did not finish within 45 seconds. Your code is saved. Retry, or export the project to run locally.':'Run cancelled. Your code is unchanged. The remote service may finish the already submitted job.'):'Execution unavailable: '+error.message+'\nYour code is saved on this device when browser storage is available.';
   }finally{clearTimeout(timeout);clearInterval(clock);executionController=null;runBtn.disabled=false;if(sendInputBtn)sendInputBtn.disabled=false;overlay?.classList.add('hidden');end();}
 }
