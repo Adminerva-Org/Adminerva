@@ -234,11 +234,20 @@ function renderAssessmentGrid() {
   });
 }
 
+function updatePersonalizedTaskOption(){
+  const studio=document.getElementById("assessSubmissionSource").value==="studio";
+  const enabled=studio&&document.getElementById("assessPersonalizedTask").checked;
+  document.getElementById("assessPersonalizedTask").disabled=!studio;
+  document.getElementById("personalizedTaskOption").classList.toggle("opacity-60",!studio);
+  document.getElementById("personalizedTaskSettings").classList.toggle("hidden",!enabled);
+}
 function updatePracticalExamOption(){
   const studio=document.getElementById("assessSubmissionSource").value==="studio";
   document.getElementById("assessPracticalExam").disabled=!studio;
   document.getElementById("practicalExamOption").classList.toggle("opacity-60",!studio);
+  updatePersonalizedTaskOption();
 }
+document.getElementById("assessPersonalizedTask").addEventListener("change",updatePersonalizedTaskOption);
 document.getElementById("assessSubmissionSource").addEventListener("change",()=>{
   updatePracticalExamOption();
   if(!currentAssessmentId&&document.getElementById("assessSubmissionSource").value==="studio"&&
@@ -263,6 +272,8 @@ window.openCreateModal = function () {
   document.getElementById("assessSubmissionSource").value="repository";
   document.getElementById("assessSubmissionSource").disabled=false;
   document.getElementById("assessPracticalExam").checked=false;
+  document.getElementById("assessPersonalizedTask").checked=false;
+  document.getElementById("assessVariantRecipe").value="java_logic_written_work_v1";
   updatePracticalExamOption();
   document.getElementById("assessV2").checked = true;
   document.getElementById("assessV2").disabled = false;
@@ -304,6 +315,8 @@ window.openEditModal = function () {
   document.getElementById("assessSubmissionSource").value=item.schemaVersion===3?"studio":"repository";
   document.getElementById("assessSubmissionSource").disabled=true;
   document.getElementById("assessPracticalExam").checked=item.practicalExam===true;
+  document.getElementById("assessPersonalizedTask").checked=item.personalizedTask?.enabled===true;
+  document.getElementById("assessVariantRecipe").value=item.personalizedTask?.generator||"java_logic_written_work_v1";
   updatePracticalExamOption();
   document.getElementById("assessV2").checked = item.schemaVersion === 2;
   document.getElementById("assessV2").disabled = true; // Never silently convert a legacy record.
@@ -350,11 +363,15 @@ window.saveAssessment = async function () {
   const studio=prior ? prior.schemaVersion===3 : document.getElementById("assessSubmissionSource").value==="studio";
   const v2=prior ? prior.schemaVersion===2 : (!studio&&document.getElementById("assessV2").checked);
   const practicalExam=studio&&document.getElementById("assessPracticalExam").checked;
+  const personalizedTask=studio&&document.getElementById("assessPersonalizedTask").checked
+    ? {enabled:true,generator:document.getElementById("assessVariantRecipe").value,
+       regeneration:"new_attempt",uniqueWithinAssessment:true}
+    : {enabled:false};
   const payload = {
     ownerUid:prior?.ownerUid||actor.uid,
     sectionIds:prior?.sectionIds||[...new Set((prior?.deployments||[]).map(deployment=>deployment.section))],
     ...(v2?{schemaVersion:2,evidenceMode:"commit_selection",checkpointMode:"individual"}:{}),
-    ...(studio?{schemaVersion:3,submissionSource:"studio",evidenceMode:"studio_snapshot",practicalExam}:{}),
+    ...(studio?{schemaVersion:3,submissionSource:"studio",evidenceMode:"studio_snapshot",practicalExam,personalizedTask}:{}),
     title: title,
     type: document.getElementById("assessType").value,
     maxScore: score,
@@ -464,9 +481,13 @@ window.openViewModal = function (id) {
   // Format array for viewing
   const paths = item.targetPaths || (item.targetPath ? [item.targetPath] : []);
   document.getElementById("viewTargetPath").textContent =
-    paths.length > 0
-      ? `Targets: ${paths.join(" OR ")}`
-      : "Target: Entire Repository";
+    item.schemaVersion===3
+      ? (item.personalizedTask?.enabled
+        ? "Work area: Adminerva Studio · Personalized task generated per attempt"
+        : "Work area: Adminerva Studio project snapshot")
+      : paths.length > 0
+        ? `Targets: ${paths.join(" OR ")}`
+        : "Target: Entire Repository";
   document.getElementById("viewTaskContext").textContent =
     item.taskContext || "No context provided.";
   document.getElementById("viewEvalCriteria").textContent =
