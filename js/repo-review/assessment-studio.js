@@ -747,7 +747,7 @@ window.openCreateModal = function () {
   document.getElementById("createModal").classList.remove("hidden");
   document.getElementById("assessTitle").focus();
 };
-window.openEditModal = function () {
+window.openEditModal = async function () {
   const item = assessments.find((a) => a.id === currentAssessmentId);
   if (!item) return;
   const deployedStudio=item.schemaVersion===3&&(item.deployments||[]).length>0;
@@ -770,9 +770,10 @@ window.openEditModal = function () {
   document.getElementById("assessPersonalizedTask").checked=item.personalizedTask?.enabled===true;
   document.getElementById("assessVariantGuidance").value=item.personalization?.guidance||"";
   document.getElementById("assessVariantCount").value=String(item.personalizedTask?.poolTarget||item.personalization?.variantIds?.length||45);
-  personalizedVariantPool=Array.isArray(item.personalization?.variants)?item.personalization.variants.map(value=>({...value})):[];
   personalizedVariantFingerprint=typeof item.personalization?.fingerprint==="string"?item.personalization.fingerprint:"";
   personalizedVariantGeneratedAt=typeof item.personalization?.generatedAt==="string"?item.personalization.generatedAt:"";
+  personalizedVariantPool=await loadPersonalizationVariants(item.id,item.personalization||{});
+  personalizationDirty=false;
   updatePracticalExamOption();renderPersonalizedVariantPool();
   document.getElementById("assessV2").checked = item.schemaVersion === 2;
   document.getElementById("assessV2").disabled = true; // Never silently convert a legacy record.
@@ -874,9 +875,9 @@ window.saveAssessment = async function () {
       personalization:personalizedEnabled?{
         mode:PERSONALIZATION_MODE,guidance:variationGuidance,
         fingerprint:poolFresh?currentFingerprint:"",
-        variants:poolFresh?personalizedVariantPool:[],
+        variantIds:poolFresh?personalizedVariantPool.map(item=>item.variantId):[],
         generatedAt:poolFresh?personalizedVariantGeneratedAt:""
-      }:{mode:PERSONALIZATION_MODE,guidance:"",fingerprint:"",variants:[],generatedAt:""},
+      }:{mode:PERSONALIZATION_MODE,guidance:"",fingerprint:"",variantIds:[],generatedAt:""},
       updatedAt:serverTimestamp()
     };
     if(auth.currentUser?.uid!==actor.uid)throw Error("Account changed. Reload before saving this assessment.");
