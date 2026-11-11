@@ -21,7 +21,8 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
     locked=Boolean(value);
     editor.updateOptions({readOnly:locked,readOnlyMessage:{value:'Project is queued or running. Cancel or stop to edit.'}});
     const restricted=['formatBtn','importZipBtn','resetBtn','loadProjectBtn','cloudLoadProjectBtn',
-      'undoRestoreBtn','legacyImportBtn','projectSettingsBtn','languageSelect','runBtn'];
+      'undoRestoreBtn','legacyImportBtn','projectSettingsBtn','languageSelect','runBtn',
+      'backToProjectsBtn','studioMobileBackToProjects'];
     for(const id of restricted){const control=el(id);if(control)control.disabled=locked;}
     for(const control of document.querySelectorAll('#explorerContextMenu [data-explorer-action]'))
       control.disabled=locked&&control.dataset.explorerAction!=='open';
