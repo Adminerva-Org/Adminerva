@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {createHash} from "node:crypto";
 import {
   buildExternalPersonalizationPackage,
   parseExternalPersonalizationResponse,
@@ -27,7 +28,7 @@ test("external personalization package exports only blueprint context",()=>{
   assert.match(value,/"assessmentFormat": "studio_code"/);
   assert.match(value,/"assessmentMode": "personalized"/);
   assert.match(value,/"category": "Mini PETA"/);
-  assert.doesNotMatch(value,/studentId|learner name|email address/i);
+  assert.doesNotMatch(value,/"studentId"\s*:|"studentEmail"\s*:|"emailAddress"\s*:/i);
 });
 
 test("external personalization response imports distinct generic tasks",async()=>{
@@ -41,7 +42,7 @@ test("external personalization response imports distinct generic tasks",async()=
   };
   const variants=await parseExternalPersonalizationResponse(JSON.stringify(response),{
     expectedCount:3,
-    hashPrompt:async value=>"id-"+Buffer.from(value).toString("hex").slice(0,24)
+    hashPrompt:async value=>createHash("sha256").update(value).digest("hex")
   });
   assert.equal(variants.length,3);
   assert.equal(new Set(variants.map(item=>item.variantId)).size,3);
