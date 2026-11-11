@@ -1,5 +1,5 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: assessment studio. */
-import { db,auth } from "../core/firebase-core.js?v=1.3.0";
+import { app,db,auth } from "../core/firebase-core.js?v=1.3.0";
 import {validateDeploymentDates} from "./assessment-dates.mjs?v=1.3.0";
 import {loadSchoolOptions,fillSchoolDatalist} from "../core/school-options.mjs?v=1.3.0";
 import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
@@ -23,6 +23,7 @@ import {
   writeBatch,
 } from "../core/teaching-firestore.mjs?v=1.3.0";
 import {Timestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 let targetPaths = [];
 let allSections = [];
 let sectionStudentCounts=new Map();
@@ -38,6 +39,7 @@ let personalizedPersistedIds=new Set();
 const PERSONALIZATION_MODE="ai_blueprint_pool_v1";
 const MAX_PERSONALIZED_POOL=600;
 const MAX_EXTERNAL_VARIANT_BATCH=45;
+const studioVariantService=httpsCallable(getFunctions(app,"asia-southeast1"),"studioAssessmentVariant");
 const rubricTemplates=new Map();
 const defaultPersona="Assist the teacher by checking supported evidence against the published task and rubric. Distinguish verified individual contributions from shared project work. Do not infer authorship or misconduct. Leave unsupported, visual and runtime criteria for teacher review. Suggested scores stay unpublished until teacher approval.";
 const balancedCriteria=[{name:"Task requirements",weight:40,description:"Requested features and outputs are demonstrated."},{name:"Correctness",weight:30,description:"The submitted work behaves or reasons correctly for the task."},{name:"Clarity and organization",weight:20,description:"The work is understandable, organized and appropriate for the task."},{name:"Explanation and supporting evidence",weight:10,description:"The student explains the approach and links relevant evidence of their own contribution."}];
@@ -559,6 +561,25 @@ function externalPersonalizationBatchSize(item,target){
   const sectionCount=Math.max(1,personalizationSections(item).length);
   return Math.max(1,Math.min(MAX_EXTERNAL_VARIANT_BATCH,Math.ceil(target/sectionCount)));
 }
+async function renderPersonalizationUsage(item){
+  const node=document.getElementById("personalizationUsageStatus");
+  if(!node)return;
+  if(!item?.personalizedTask?.poolFingerprint||Number(item.personalizedTask?.poolSize||0)<1){
+    node.textContent="No active personalized pool yet.";
+    return;
+  }
+  node.textContent="Loading active pool usage…";
+  try{
+    const response=await studioVariantService({action:"stats",assessmentId:item.id}),
+      data=response.data||{};
+    node.textContent="Active pool: "+Number(data.poolSize||0)+
+      " · Assigned: "+Number(data.assigned||0)+
+      " · Available: "+Number(data.available||0)+
+      " · Unique learners: "+Number(data.uniqueLearners||0)+".";
+  }catch(error){
+    node.textContent="Pool usage is temporarily unavailable.";
+  }
+}
 function renderPersonalizationCoverage(item){
   const node=document.getElementById("personalizationCoverage");
   if(!node)return;
@@ -909,6 +930,7 @@ window.openEditModal = async function () {
   document.getElementById("externalPersonalizationStatus").textContent="";
   updatePersonalizationTabAvailability();
   renderPersonalizationCoverage(item);
+  void renderPersonalizationUsage(item);
   setBlueprintContentLocked(deployedStudio,{
     lockGuidance:deployedStudio&&Boolean(item.personalizedTask?.poolFingerprint)
   });
