@@ -204,6 +204,7 @@ async function initializePlayground() {
 
     bindUIEvents();
     initializeMobileStudio();
+    initializeStudioEditorTouchGestures();
     syncStudioEditorZoomLabel();
     initResizer();
     setupWebConsoleHook();
@@ -1410,6 +1411,84 @@ function notePracticeExecution(){
     }
   }catch(error){console.warn("Could not record practice run:",error)}
 }
+/**
+ * Two-finger gestures for Monaco on phones/tablets.
+ * A single finger is left entirely to Monaco for caret placement, selections,
+ * and its built-in scrolling. Two fingers control viewport pan and font zoom.
+ */
+function initializeStudioEditorTouchGestures(){
+  const surface=document.getElementById('editorContainer');
+  if(!surface||!editorInstance)return;
+  const supportsTouch=()=>window.matchMedia('(pointer:coarse)').matches||navigator.maxTouchPoints>0;
+  const clampFont=value=>Math.max(STUDIO_EDITOR_FONT_MIN,Math.min(STUDIO_EDITOR_FONT_MAX,value));
+  const fingers=event=>Array.from(event.touches).filter(t=>surface.contains(t.target));
+  const centerOf=points=>({
+    x:(points[0].clientX+points[1].clientX)/2,
+    y:(points[0].clientY+points[1].clientY)/2
+  });
+  const distanceOf=points=>Math.hypot(
+    points[0].clientX-points[1].clientX,
+    points[0].clientY-points[1].clientY
+  );
+  let gesture=null;
+  const begin=event=>{
+    if(!supportsTouch())return;
+    const points=fingers(event);
+    if(points.length!==2||event.touches.length!==2||!editorInstance.getModel())return;
+    const distance=distanceOf(points);
+    if(distance<12)return;
+    gesture={
+      center:centerOf(points),
+      distance,
+      font:editorInstance.getOption(monaco.editor.EditorOption.fontSize)
+    };
+  };
+  surface.addEventListener('touchstart',event=>{
+    if(event.touches.length===2){
+      begin(event);
+      if(gesture){event.preventDefault();event.stopPropagation();}
+    }else if(event.touches.length!==2)gesture=null;
+  },{capture:true,passive:false});
+  surface.addEventListener('touchmove',event=>{
+    if(!gesture)return;
+    const points=fingers(event);
+    if(points.length!==2||event.touches.length!==2){
+      gesture=null;
+      return;
+    }
+    // Prevent browser page zoom/scroll only during a two-finger editor gesture.
+    event.preventDefault();
+    event.stopPropagation();
+    const currentCenter=centerOf(points);
+    const currentDistance=Math.max(12,distanceOf(points));
+    const previous=gesture;
+    const dx=currentCenter.x-previous.center.x;
+    const dy=currentCenter.y-previous.center.y;
+    const oldFont=editorInstance.getOption(monaco.editor.EditorOption.fontSize);
+    const desiredFont=clampFont(previous.font*(currentDistance/previous.distance));
+    const nextFont=Math.round(desiredFont);
+    const previousLeft=editorInstance.getScrollLeft();
+    const previousTop=editorInstance.getScrollTop();
+    if(nextFont!==oldFont)setStudioEditorFontSize(nextFont);
+    const appliedScale=nextFont/oldFont;
+    const bounds=surface.getBoundingClientRect();
+    const anchorX=currentCenter.x-bounds.left;
+    const anchorY=currentCenter.y-bounds.top;
+    // Fingers moving left show columns farther right; moving up shows later lines.
+    // Keep the touched content approximately under the pinch midpoint.
+    editorInstance.setScrollLeft(Math.max(0,(previousLeft+anchorX)*appliedScale-anchorX-dx));
+    editorInstance.setScrollTop(Math.max(0,(previousTop+anchorY)*appliedScale-anchorY-dy));
+    gesture={center:currentCenter,distance:currentDistance,font:desiredFont};
+  },{capture:true,passive:false});
+  const end=event=>{
+    if(event.touches.length!==2)gesture=null;
+    else if(gesture)begin(event);
+  };
+  surface.addEventListener('touchend',end,{capture:true,passive:true});
+  surface.addEventListener('touchcancel',()=>{gesture=null;},{capture:true,passive:true});
+  window.addEventListener('blur',()=>{gesture=null;});
+}
+
 function initializeMobileStudio(){
   const panel=document.getElementById('studioPanelCode');
   const explorer=document.getElementById('projectExplorer');
