@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Adminerva Studio · CheerpJ interactive terminal experiment</title>
+  <script src="https://cjrtnc.leaningtech.com/5.0/loader.js" defer></script>
+  <style>
+    :root{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#e7eefb;background:#080f1d}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh}
+    button,textarea,input{font:inherit}
+    button{cursor:pointer;background:#253653;border:1px solid #435677;border-radius:9px;color:#eef5ff;padding:9px 14px}
+    button:hover:not(:disabled){background:#304565}
+    button:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid #70bafa;outline-offset:2px}
+    button:disabled,input:disabled{opacity:.48;cursor:not-allowed}
+    .primary{background:#2174c4;border-color:#3e9bf2;font-weight:700}
+    .primary:hover:not(:disabled){background:#2587e7}
+    .danger{background:#50303b;border-color:#8c4f65}
+    header{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:18px clamp(14px,3vw,32px);border-bottom:1px solid #283750;background:#0e1a2d}
+    .eyebrow{font-size:11px;color:#80b8ed;font-weight:800;letter-spacing:.15em;text-transform:uppercase}
+    h1{margin:5px 0 3px;font-size:clamp(20px,3vw,28px);line-height:1.15}
+    .hint{margin:3px 0;color:#aebed2;font-size:13px;line-height:1.5}
+    .badge{font-size:12px;border:1px solid #725936;color:#ffcc8a;padding:6px 9px;border-radius:40px;white-space:nowrap}
+    main{max-width:1440px;margin:auto;padding:20px clamp(12px,2vw,26px)}
+    .notice{font-size:13px;line-height:1.55;padding:12px 15px;border-radius:12px;border:1px solid #3c5f7b;background:#112a42;margin-bottom:18px}
+    .workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(310px,0.93fr);gap:16px;align-items:stretch}
+    .panel{border:1px solid #2e405c;background:#101b2e;border-radius:14px;min-width:0;overflow:hidden}
+    .panel-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:12px 15px;border-bottom:1px solid #2e405c}
+    h2{font-size:14px;margin:0;font-weight:700}
+    .tools{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+    .tools button{font-size:12px;padding:6px 10px}
+    .editor{display:block;background:#0b1526;color:#e2e9f5;border:none;resize:vertical;border-radius:0;width:100%;min-height:430px;padding:18px;font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;tab-size:4;white-space:pre;overflow:auto}
+    .status{font-size:12px;color:#b4c8dc;display:flex;align-items:center;min-height:40px;padding:9px 14px;line-height:1.5;border-top:1px solid #2e405c}
+    .status[data-kind="error"]{color:#ffadad}
+    .status[data-kind="success"]{color:#b8efc7}
+    .console-wrap{min-height:430px;max-height:64vh;overflow:auto;background:#030b16;padding:18px}
+    #console{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.55 ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;color:#def1e7;min-height:100px}
+    #terminalHelp{color:#91aeca;font-size:12px;line-height:1.5;margin:0 0 12px}
+    .stdin-form{padding:12px;display:flex;gap:8px;align-items:center;border-top:1px solid #2e405c;background:#0c1829}
+    .stdin-form label{font:13px ui-monospace,monospace;color:#85c5b1;white-space:nowrap}
+    .stdin-form input{background:#081526;border:1px solid #385575;color:#eff5ff;border-radius:8px;padding:11px;min-width:0;flex:1;font:14px ui-monospace,monospace}
+    .bottom{display:flex;gap:10px;padding:13px 15px;align-items:center;flex-wrap:wrap;border-top:1px solid #2e405c}
+    .small{color:#a9bad0;font-size:12px;line-height:1.5}
+    footer{padding:18px 0;color:#9caec5;font-size:12px;line-height:1.6}
+    a{color:#84c9ff}
+    #cjHiddenDisplay{position:absolute;width:2px;height:2px;left:-2000px;top:0;overflow:hidden;pointer-events:none}
+    @media(max-width:850px){.workspace{grid-template-columns:1fr}.editor{min-height:320px}.console-wrap{min-height:280px;max-height:50vh}}
+    @media(max-width:420px){header{align-items:flex-start;flex-direction:column}.stdin-form{flex-wrap:wrap}.stdin-form input{flex-basis:68%}.stdin-form button{flex:1}}
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="eyebrow">Adminerva Studio / experimental runtime</div>
+    <h1>Java interactive terminal · browser prototype</h1>
+    <p class="hint">CheerpJ 5 · Java 17 · Compile and run locally in this browser tab</p>
+  </div>
+  <span class="badge">Instructor evaluation only</span>
+</header>
+<main>
+  <div class="notice" role="note">
+    <strong>Isolated experiment—not connected to student projects or grades.</strong>
+    This page does not upload Java source to Adminerva. It loads CheerpJ from its provider's CDN and runs code in your browser.
+    Use only non-sensitive examples while evaluating. The first launch may download substantial Java runtime files.
+  </div>
+  <div class="workspace">
+    <section class="panel" aria-label="Java code editor">
+      <div class="panel-heading">
+        <h2>Main.java</h2>
+        <div class="tools">
+          <button type="button" data-example="scanner">Scanner test</button>
+          <button type="button" data-example="hello">Hello World</button>
+          <button type="button" data-example="error">Compiler error</button>
+        </div>
+      </div>
+      <label for="source" class="small" style="display:block;padding:10px 15px 0">Edit one Java source file. Use an un-packaged public class named Main.</label>
+      <textarea id="source" class="editor" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Main.java code"></textarea>
+      <div class="bottom">
+        <button id="runBtn" type="button" class="primary">▶ Compile &amp; Run</button>
+        <button id="stopBtn" type="button" class="danger" disabled>■ Stop / Reset runtime</button>
+      </div>
+      <div id="status" class="status" role="status" aria-live="polite">Ready to initialize CheerpJ.</div>
+    </section>
+    <section class="panel" aria-label="Interactive Java terminal">
+      <div class="panel-heading">
+        <h2>Terminal</h2>
+        <div class="tools"><button id="clearBtn" type="button">Clear output</button></div>
+      </div>
+      <div id="consoleWrap" class="console-wrap" role="region" aria-label="Java program output" tabindex="0">
+        <p id="terminalHelp">Compile the sample, then respond to its Scanner prompts below. Press Enter to send each line while the program is running.</p>
+        <pre id="console" aria-live="off"></pre>
+      </div>
+      <form id="stdinForm" class="stdin-form" autocomplete="off">
+        <label for="stdin">stdin &gt;</label>
+        <input id="stdin" type="text" maxlength="2000" placeholder="Run a program to enable input" aria-label="Input for running Java program" disabled>
+        <button id="sendBtn" type="submit" disabled>Send ↵</button>
+      </form>
+      <div class="status" id="terminalStatus" role="status" aria-live="polite">Waiting for a program.</div>
+    </section>
+  </div>
+  <footer>
+    <strong>Evaluation scope:</strong> one Main.java file, standard output, compiler errors and live line-based input.
+    This is not a POSIX shell, server-backed queue or secure grading environment.
+    Stop resets the browser page because CheerpJ does not expose a documented process-cancellation API for this prototype.
+    <a href="https://cheerpj.com/docs/licensing" target="_blank" rel="noopener noreferrer">CheerpJ licensing</a>.
+  </footer>
+</main>
+<div id="cjHiddenDisplay" aria-hidden="true"></div>
+<script>
+(function () {
+  "use strict";
+  const examples = {
+    scanner: [
+      "import java.util.Scanner;",
+      "public class Main {",
+      "    public static void main(String[] args) {",
+      "        Scanner input = new Scanner(System.in);",
+      "        System.out.print(\"Enter your name: \");",
+      "        String name = input.nextLine();",
+      "        System.out.print(\"Enter your age: \");",
+      "        int age = input.nextInt();",
+      "        System.out.println(\"Hello, \" + name + \"! Next year you will be \" + (age + 1) + \".\");",
+      "    }",
+      "}"
+    ].join("\n"),
+    hello: [
+      "public class Main {",
+      "    public static void main(String[] args) {",
+      "        System.out.println(\"Hello from Adminerva's browser Java prototype!\");",
+      "    }",
+      "}"
+    ].join("\n"),
+    error: [
+      "public class Main {",
+      "    public static void main(String[] args) {",
+      "        System.out.println(\"Missing semicolon\")",
+      "    }",
+      "}"
+    ].join("\n")
+  };
+  const source = document.getElementById("source");
+  const output = document.getElementById("console");
+  const consoleWrap = document.getElementById("consoleWrap");
+  const status = document.getElementById("status");
+  const terminalStatus = document.getElementById("terminalStatus");
+  const runBtn = document.getElementById("runBtn");
+  const stopBtn = document.getElementById("stopBtn");
+  const stdinForm = document.getElementById("stdinForm");
+  const stdin = document.getElementById("stdin");
+  const sendBtn = document.getElementById("sendBtn");
+  let initPromise = null;
+  let inWriter = null;
+  let runActive = false;
+  const encoder = new TextEncoder();
+  try { source.value = sessionStorage.getItem("adminerva-cheerpj-lab-source") || examples.scanner; }
+  catch (_) { source.value = examples.scanner; }
+  function setStatus(message, kind) {
+    status.textContent = message;
+    status.dataset.kind = kind || "";
+  }
+  function setInputEnabled(available) {
+    stdin.disabled = !available;
+    sendBtn.disabled = !available;
+    stdin.placeholder = available ? "Type one line of input…" : "Run a program to enable input";
+    if (available) stdin.focus();
+  }
+  source.addEventListener("input", function () {
+    try { sessionStorage.setItem("adminerva-cheerpj-lab-source", source.value); } catch (_) {}
+  });
+  for (const btn of document.querySelectorAll("[data-example]")) {
+    btn.addEventListener("click", function () {
+      if (runActive) return;
+      source.value = examples[btn.dataset.example];
+      source.dispatchEvent(new Event("input"));
+      source.focus();
+    });
+  }
+  document.getElementById("clearBtn").addEventListener("click", function () {
+    output.textContent = "";
+  });
+  const observer = new MutationObserver(function () {
+    consoleWrap.scrollTop = consoleWrap.scrollHeight;
+  });
+  observer.observe(output, {childList:true,subtree:true,characterData:true});
+  function printOwn(text) {
+    output.appendChild(document.createTextNode(text + "\n"));
+  }
+  function withRunning(isRunning) {
+    runActive = isRunning;
+    runBtn.disabled = isRunning;
+    source.readOnly = isRunning;
+    stopBtn.disabled = !isRunning;
+    for (const btn of document.querySelectorAll("[data-example]")) btn.disabled = isRunning;
+  }
+  async function initialize() {
+    if (!initPromise) {
+      initPromise = (async function () {
+        if (typeof window.cheerpjInit !== "function") {
+          throw new Error("CheerpJ loader has not loaded. Check Internet access, then reload.");
+        }
+        await window.cheerpjInit({version:17,status:"none"});
+        window.cheerpjCreateDisplay(-1, -1, document.getElementById("cjHiddenDisplay"));
+        return await window.cheerpjRunLibrary("");
+      })().catch(function (error) {
+        initPromise = null;
+        throw error;
+      });
+    }
+    return initPromise;
+  }
+  async function connectStdin(library) {
+    const System = await library.java.lang.System;
+    const PipedInputStream = await library.java.io.PipedInputStream;
+    const PipedOutputStream = await library.java.io.PipedOutputStream;
+    const reader = await new PipedInputStream();
+    const writer = await new PipedOutputStream(reader);
+    await System.setIn(reader);
+    return writer;
+  }
+  async function compileAndRun() {
+    if (runActive) return;
+    if (source.value.length > 50000) {
+      setStatus("This small experiment limits Main.java to 50,000 characters.", "error");
+      return;
+    }
+    withRunning(true);
+    setInputEnabled(false);
+    output.textContent = "";
+    document.getElementById("terminalHelp").hidden = true;
+    terminalStatus.textContent = "Starting browser-based Java…";
+    setStatus("Loading the CheerpJ 5 Java 17 runtime. The first run can take longer…");
+    try {
+      const library = await initialize();
+      window.cheerpOSAddStringFile("/str/Main.java", encoder.encode(source.value));
+      setStatus("Compiling Main.java using javac in your browser…");
+      terminalStatus.textContent = "Compiling…";
+      const compileCode = await window.cheerpjRunMain(
+        "com.sun.tools.javac.Main",
+        "/files/",
+        "-encoding", "UTF-8", "-d", "/files/", "/str/Main.java"
+      );
+      if (compileCode !== 0) {
+        setStatus("Compilation failed (exit " + compileCode + "). Review terminal diagnostics.", "error");
+        terminalStatus.textContent = "Compilation failed.";
+        return;
+      }
+      inWriter = await connectStdin(library);
+      setInputEnabled(true);
+      setStatus("Compiled successfully. Java is running locally in this browser.", "success");
+      terminalStatus.textContent = "Running · Interactive stdin enabled";
+      const exitCode = await window.cheerpjRunMain("Main", "/files/");
+      setStatus("Program finished with exit code " + exitCode + ".", exitCode === 0 ? "success" : "error");
+      terminalStatus.textContent = "Program finished.";
+    } catch (error) {
+      const message = error && error.message ? error.message : String(error);
+      printOwn("[CheerpJ prototype] " + message);
+      setStatus("Unable to complete this run: " + message, "error");
+      terminalStatus.textContent = "Run failed. See output.";
+    } finally {
+      setInputEnabled(false);
+      if (inWriter) {
+        try { await inWriter.close(); } catch (_) {}
+        inWriter = null;
+      }
+      withRunning(false);
+    }
+  }
+  stdinForm.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    if (!runActive || !inWriter) return;
+    const line = stdin.value;
+    stdin.value = "";
+    setInputEnabled(false);
+    try {
+      printOwn("> " + line);
+      const bytes = Int8Array.from(encoder.encode(line + "\n"));
+      await inWriter.write(bytes);
+      await inWriter.flush();
+    } catch (error) {
+      setStatus("Could not write to System.in: " + (error.message || String(error)), "error");
+    } finally {
+      if (runActive && inWriter) setInputEnabled(true);
+    }
+  });
+  stopBtn.addEventListener("click", function () {
+    try { sessionStorage.setItem("adminerva-cheerpj-lab-source", source.value); } catch (_) {}
+    location.reload();
+  });
+  runBtn.addEventListener("click", compileAndRun);
+  source.addEventListener("keydown", function (event) {
+    if (event.ctrlKey && event.key === "Enter") { event.preventDefault(); compileAndRun(); }
+  });
+})();
+</script>
+</body>
+</html>
