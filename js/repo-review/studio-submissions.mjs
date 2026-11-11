@@ -194,6 +194,7 @@ async function inspect(item){
            const after={
              ...(before||{}),studentId:item.studentId,taskId:item.assessmentId,section:item.section,
              gradeSource:"studio_teacher_review",studioRevision:item.revision,studioSnapshotHash:item.snapshotHash,
+             studioVariantId:String(item.variantId||""),
              score:points,maxScore:max,feedback:text,reviewRequired:false,published:false,
              reviewedBy:uid,teacherReviewNote:reason,manuallyAdjusted:true,
              reviewPriority:"ready_to_publish",gradedAt:new Date().toISOString(),
