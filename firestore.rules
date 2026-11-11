@@ -674,6 +674,7 @@ service cloud.firestore {
         data.assessmentId is string &&
         exists(/databases/$(database)/documents/assessments/$(data.assessmentId)) &&
         get(/databases/$(database)/documents/assessments/$(data.assessmentId)).data.get("schemaVersion",1) == 2 &&
+        get(/databases/$(database)/documents/assessments/$(data.assessmentId)).data.get("published",true) == true &&
         data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
         data.repository == get(/databases/$(database)/documents/students/$(data.studentId)).data.repoUrl &&
         data.repository is string && data.repository.size() <= 300 &&
@@ -692,6 +693,7 @@ service cloud.firestore {
         data.assessmentId is string &&
         exists(/databases/$(database)/documents/assessments/$(data.assessmentId)) &&
         get(/databases/$(database)/documents/assessments/$(data.assessmentId)).data.get("schemaVersion",1) == 2 &&
+        get(/databases/$(database)/documents/assessments/$(data.assessmentId)).data.get("published",true) == true &&
         data.studentId == before.studentId &&
         data.assessmentId == before.assessmentId &&
         data.section == before.section &&
@@ -1107,6 +1109,7 @@ service cloud.firestore {
       function validAssessment(data) {
         return data.get("ownerUid","") is string && data.get("sectionIds",[]) is list && data.sectionIds.size() <= 20 &&
           data.get("deployments",[]) is list && data.deployments.size() <= 20 &&
+          data.get("published",true) is bool &&
           (data.get("schemaVersion",1) != 3 || (
             data.get("submissionSource","") == "studio" &&
             data.get("assessmentFormat","studio_code") == "studio_code" &&
@@ -1163,6 +1166,7 @@ service cloud.firestore {
         request.resource.data.get("schemaVersion",1) == resource.data.get("schemaVersion",1) &&
         (resource.data.get("schemaVersion",1) != 3 || resource.data.get("deployments",[]).size() == 0 ||
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(["deployments","sectionIds","studioWindows"]) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(["published"]) ||
           (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["personalizedTask"]) &&
             validPersonalizationRefresh(resource.data,request.resource.data)));
       allow delete: if isInstructor() && resource.data.get("schemaVersion",1) != 2 &&
@@ -1292,6 +1296,7 @@ service cloud.firestore {
       let windows=task.get("studioWindows",{});
       return task.get("schemaVersion",1) == 3 &&
         task.get("submissionSource","") == "studio" &&
+        task.get("published",true) == true &&
         section in task.get("sectionIds",[]) &&
         section in windows &&
         request.time >= windows[section].opensAt &&
