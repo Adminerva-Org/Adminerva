@@ -547,9 +547,18 @@ window.saveAssessment = async function () {
   const studio=prior ? prior.schemaVersion===3 : document.getElementById("assessSubmissionSource").value==="studio";
   const v2=prior ? prior.schemaVersion===2 : (!studio&&document.getElementById("assessV2").checked);
   const practicalExam=studio&&document.getElementById("assessPracticalExam").checked;
-  const personalizedTask=studio&&document.getElementById("assessPersonalizedTask").checked
-    ? {enabled:true,generator:document.getElementById("assessVariantRecipe").value,
-       regeneration:"new_attempt",uniqueWithinAssessment:true}
+  const personalizedEnabled=studio&&document.getElementById("assessPersonalizedTask").checked;
+  const variationGuidance=personalizedEnabled?document.getElementById("assessVariantGuidance").value.trim():"";
+  const poolTarget=personalizedEnabled?Number(document.getElementById("assessVariantCount").value):0;
+  if(personalizedEnabled&&(!Number.isInteger(poolTarget)||poolTarget<10||poolTarget>50)){
+    blueprintStatus("Choose a personalized variant pool size from 10 to 50.");return;
+  }
+  const currentFingerprint=personalizedEnabled?await currentPersonalizationFingerprint():"";
+  const poolFresh=personalizedEnabled&&personalizedVariantPool.length>0&&
+    personalizedVariantFingerprint===currentFingerprint;
+  const personalizedTask=personalizedEnabled
+    ? {enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",uniqueWithinAssessment:true,
+       poolFingerprint:poolFresh?currentFingerprint:"",poolSize:poolFresh?personalizedVariantPool.length:0,poolTarget}
     : {enabled:false};
   const payload = {
     ownerUid:prior?.ownerUid||actor.uid,
@@ -579,7 +588,14 @@ window.saveAssessment = async function () {
     const teacherOnly={
       ownerUid:payload.ownerUid,sectionIds:payload.sectionIds,subject:payload.subject,
       systemPersona:document.getElementById("systemPersona").value.trim()||defaultPersona,
-      rules:objectiveRules,updatedAt:serverTimestamp()
+      rules:objectiveRules,
+      personalization:personalizedEnabled?{
+        mode:PERSONALIZATION_MODE,guidance:variationGuidance,
+        fingerprint:poolFresh?currentFingerprint:"",
+        variants:poolFresh?personalizedVariantPool:[],
+        generatedAt:poolFresh?personalizedVariantGeneratedAt:""
+      }:{mode:PERSONALIZATION_MODE,guidance:"",fingerprint:"",variants:[],generatedAt:""},
+      updatedAt:serverTimestamp()
     };
     if(auth.currentUser?.uid!==actor.uid)throw Error("Account changed. Reload before saving this assessment.");
     if(v2||studio){
@@ -605,6 +621,8 @@ window.saveAssessment = async function () {
         ...payload,systemPersona:teacherOnly.systemPersona,rules:objectiveRules
       });
     }
+    if(personalizedEnabled&&!poolFresh)
+      blueprintStatus("Blueprint saved, but personalized variants must be generated before deployment.");
     window.closeModals();
     await loadAssessments();
   } catch (e) {
