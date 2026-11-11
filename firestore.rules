@@ -674,7 +674,6 @@ service cloud.firestore {
         data.assessmentId is string &&
         exists(/databases/$(database)/documents/assessments/$(data.assessmentId)) &&
         get(/databases/$(database)/documents/assessments/$(data.assessmentId)).data.get("schemaVersion",1) == 2 &&
-        get(/databases/$(database)/documents/assessments/$(data.assessmentId)).data.get("published",true) == true &&
         data.section == get(/databases/$(database)/documents/students/$(data.studentId)).data.section &&
         data.repository == get(/databases/$(database)/documents/students/$(data.studentId)).data.repoUrl &&
         data.repository is string && data.repository.size() <= 300 &&
@@ -693,7 +692,6 @@ service cloud.firestore {
         data.assessmentId is string &&
         exists(/databases/$(database)/documents/assessments/$(data.assessmentId)) &&
         get(/databases/$(database)/documents/assessments/$(data.assessmentId)).data.get("schemaVersion",1) == 2 &&
-        get(/databases/$(database)/documents/assessments/$(data.assessmentId)).data.get("published",true) == true &&
         data.studentId == before.studentId &&
         data.assessmentId == before.assessmentId &&
         data.section == before.section &&
