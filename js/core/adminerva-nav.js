@@ -6,6 +6,21 @@ if(!document.getElementById("adminerva-analytics-script")){
   analytics.defer=true;
   document.head.append(analytics);
 }
+// HTML navigation prefetch is strictly intent-triggered and never reads school data.
+if(!document.getElementById("adminerva-navigation-prefetch")){
+  const prefetch=document.createElement("script");
+  prefetch.id="adminerva-navigation-prefetch";
+  prefetch.src="js/core/navigation-prefetch.js?v=4.0.0";
+  prefetch.defer=true;
+  document.head.append(prefetch);
+}
+if(!document.getElementById("adminerva-loading-polish")){
+  const loaderPolish=document.createElement("script");
+  loaderPolish.id="adminerva-loading-polish";
+  loaderPolish.src="js/core/loading-polish.js?v=4.0.0";
+  loaderPolish.defer=true;
+  document.head.append(loaderPolish);
+}
 document.addEventListener("DOMContentLoaded", () => {
   try{
     document.documentElement.dataset.adminervaDensity=localStorage.getItem("Adminerva_interface_density")||"comfortable";
@@ -76,11 +91,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const staffGroups = [
     { name: "Assessment", area: "educator", items: v4OnlyTeacher ? [
       ["library-v4", "Assessment library · 4.0", "teacher-assessment-library.html"],
-      ["pilot-sandbox", "Pilot sandbox · private", "pilot-sandbox.html"],
       ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
     ] : [
       ["studio", "Assessment studio", "assessment-studio.html"],
-      ...(hasSchoolTeacher ? [["library-v4", "Assessment library · 4.0 pilot", "teacher-assessment-library.html"], ["pilot-sandbox", "Pilot sandbox · private", "pilot-sandbox.html"]] : []),
+      ...(hasSchoolTeacher ? [["library-v4", "Assessment library · 4.0 pilot", "teacher-assessment-library.html"]] : []),
       ["submissions", "Submission inbox", "submissions.html"],
       ["studio-submissions", "Studio project submissions", "studio-submissions.html"],
       ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
@@ -101,6 +115,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["planner", "Lesson planner", "lesson-planner.html"],
       ["presentation", "Slide editor", "presentation.html"],
       ["schedule", "Teacher schedule", "schedule.html"],
+      ["pilot-sandbox", "Private pilot sandbox", "pilot-sandbox.html"],
       ["library", "Reference library", "library.html"]
     ] },
     { name: "School setup", area: "admin", items: (isSuperAdmin || isSchoolAdmin || isPlatformOwner) ? [

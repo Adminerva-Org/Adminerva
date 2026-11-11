@@ -7,23 +7,26 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-    <title>Adminerva - Curriculum Planner</title>
+    <title>Curriculum Planner | Adminerva</title>
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://accounts.google.com" crossorigin>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <link rel="stylesheet" href="css/lesson-print.css?v=1.4.23" />
     <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8" />
+    <link rel="stylesheet" href="css/teacher-ux.css?v=4.0.0" />
 </head>
-  <body class="bg-gray-100 font-sans min-h-screen flex flex-col">
+  <body class="av-teacher-refresh bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="lesson" data-page="planner"></div>
-    <script src="js/core/adminerva-nav.js?v=1.4.17"></script>
+    <script defer src="js/core/adminerva-nav.js?v=4.0.1"></script>
 
     <!-- Main Workspace -->
     <main class="w-full max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1">
-    <div class="w-full p-0 flex-1 flex flex-col gap-6">
+    <div class="w-full p-0 flex-1 flex flex-col gap-4">
       <!-- TOP SECTION: Configuration Banner -->
-      <div class="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+      <div class="bg-white p-4 sm:p-5 rounded-xl shadow-sm border border-gray-200">
         <div
-          class="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-6 border-b pb-4 gap-4"
+          class="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-4 border-b pb-3 gap-3"
         >
           <div>
             <h2 class="text-2xl font-bold text-gray-800">Curriculum Planner</h2>
@@ -169,7 +172,15 @@
           </div>
         </div>
 
-        <div class="flex justify-end mt-6">
+        <div class="flex flex-col sm:flex-row justify-end gap-3 mt-6">
+          <button
+            type="button"
+            onclick="initiateGenerationFlow({ externalOnly: true })"
+            class="w-full sm:w-auto border border-blue-300 bg-white text-blue-800 font-bold py-3 px-5 rounded hover:bg-blue-50 shadow-sm transition flex justify-center items-center gap-2 text-sm"
+            title="Build the same Adminerva generation package for ChatGPT, Gemini, Claude, or another external AI service"
+          >
+            ↗ Use External AI
+          </button>
           <button
             onclick="initiateGenerationFlow()"
             class="w-full sm:w-auto bg-blue-600 text-white font-bold py-3 px-8 rounded hover:bg-blue-700 shadow-md transition flex justify-center items-center gap-2 text-sm"
@@ -177,6 +188,9 @@
             ✨ Generate Curriculum
           </button>
         </div>
+        <p class="mt-2 text-right text-[11px] text-slate-500">
+          External AI uses the same lesson scope, selected reference excerpts, timetable context, and required Adminerva JSON format.
+        </p>
       </div>
 
       <!-- BOTTOM SECTION: Full Width Output & Editor -->
@@ -496,6 +510,82 @@
       </div>
     </div>
 
+
+    <!-- EXTERNAL AI GENERATION FALLBACK -->
+    <div
+      id="externalAiModal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="externalAiTitle"
+      class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[140] items-center justify-center p-2 sm:p-4"
+    >
+      <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[94dvh] overflow-hidden flex flex-col">
+        <header class="px-4 sm:px-6 py-4 border-b bg-slate-900 text-white flex items-start justify-between gap-4">
+          <div>
+            <h3 id="externalAiTitle" class="font-bold text-lg">Continue with External AI</h3>
+            <p class="text-xs text-slate-300 mt-1">
+              Use the exact Adminerva generation package, then import the returned JSON.
+            </p>
+          </div>
+          <button type="button" onclick="closeExternalAiModal()" aria-label="Close external AI dialog" class="text-slate-300 hover:text-white text-2xl leading-none">&times;</button>
+        </header>
+
+        <div class="p-4 sm:p-6 overflow-y-auto space-y-5 bg-slate-50">
+          <section class="rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <h4 class="font-bold text-sm text-blue-950">Why this option is available</h4>
+            <p id="externalAiReason" class="text-sm text-blue-900 mt-1"></p>
+          </section>
+
+          <section class="rounded-lg border border-amber-200 bg-amber-50 p-4">
+            <h4 class="font-bold text-sm text-amber-950">Before sending to another service</h4>
+            <p class="text-xs text-amber-900 mt-1 leading-relaxed">
+              The package can contain selected excerpts from your reference library, teacher timetable context, custom instructions, and prior lesson context. Review the prompt and follow your school's data-privacy rules before sharing it with a third-party AI provider.
+            </p>
+          </section>
+
+          <section>
+            <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-2 mb-2">
+              <div>
+                <h4 class="font-bold text-sm text-slate-800">1. Copy the complete Adminerva prompt</h4>
+                <p class="text-xs text-slate-500">Do not remove the JSON structure or formatting rules.</p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" onclick="copyExternalLessonPrompt()" class="px-3 py-2 rounded bg-blue-700 text-white text-xs font-bold hover:bg-blue-800">Copy prompt</button>
+                <button type="button" onclick="downloadExternalLessonPrompt()" class="px-3 py-2 rounded border border-slate-300 bg-white text-slate-700 text-xs font-bold hover:bg-slate-100">Save prompt file</button>
+              </div>
+            </div>
+            <textarea id="externalAiPrompt" readonly rows="12" class="w-full p-3 rounded-lg border border-slate-300 bg-white font-mono text-xs leading-relaxed"></textarea>
+          </section>
+
+          <section class="rounded-lg border border-slate-200 bg-white p-4">
+            <h4 class="font-bold text-sm text-slate-800">2. Use an external AI service</h4>
+            <p class="text-xs text-slate-500 mt-1 mb-3">
+              Paste the complete prompt into the service. Ask it to return only the requested JSON object.
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <a href="https://chatgpt.com/" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50">Open ChatGPT ↗</a>
+              <a href="https://gemini.google.com/" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50">Open Gemini ↗</a>
+              <a href="https://claude.ai/" target="_blank" rel="noopener noreferrer" class="px-3 py-2 rounded border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50">Open Claude ↗</a>
+            </div>
+          </section>
+
+          <section>
+            <h4 class="font-bold text-sm text-slate-800">3. Paste the generated JSON back into Adminerva</h4>
+            <p class="text-xs text-slate-500 mt-1 mb-2">
+              Adminerva validates the response before loading it into the lesson editor.
+            </p>
+            <textarea id="externalAiResponse" rows="12" class="w-full p-3 rounded-lg border border-slate-300 bg-white font-mono text-xs leading-relaxed" placeholder='Paste the external AI response here. JSON code fences are accepted.'></textarea>
+            <p id="externalAiImportStatus" role="status" aria-live="polite" class="text-xs min-h-5 mt-2"></p>
+          </section>
+        </div>
+
+        <footer class="px-4 sm:px-6 py-4 border-t bg-white flex flex-col-reverse sm:flex-row justify-end gap-2">
+          <button type="button" onclick="closeExternalAiModal()" class="px-4 py-2.5 rounded bg-slate-100 text-slate-700 font-bold text-sm hover:bg-slate-200">Cancel</button>
+          <button type="button" onclick="importExternalLessonResponse()" class="px-5 py-2.5 rounded bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700">Import into Adminerva</button>
+        </footer>
+      </div>
+    </div>
+
     <!-- AI CLARIFICATION MODAL -->
     <div
       id="aiClarificationModal"
@@ -781,12 +871,12 @@
     </script>
 
     <script src="https://cdn.jsdelivr.net/npm/html-docx-js/dist/html-docx.min.js"></script>
-    <script type="module" src="js/lesson-review/app-ui.js?v=1.3.6"></script>
+    <script type="module" src="js/lesson-review/app-ui.js?v=1.3.8"></script>
     <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
     <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
-    <script type="module" src="js/lesson-review/lesson-firebase.js?v=1.4.19"></script>
+    <script type="module" src="js/lesson-review/lesson-firebase.js?v=1.4.23"></script>
     <script type="module" src="js/lesson-review/planner-school-options.mjs?v=1.4.18"></script>
-    <script type="module" src="js/lesson-review/ai-engine.js?v=1.4.18"></script>
+    <script type="module" src="js/lesson-review/ai-engine.js?v=1.4.27"></script>
     <script type="module" src="js/lesson-review/document-exporter.js?v=1.4.24"></script>
     <!-- 🚀 NEW: Importing the existing settings logic so we don't duplicate code -->
     <script type="module" src="js/settings/settings-lesson.js?v=1.3.0"></script>

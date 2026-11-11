@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
- <title>Teacher Assessment Library · Adminerva 4.0</title>
+ <title>Teacher Assessment Library · Adminerva 4.0</title><link rel="preconnect" href="https://www.gstatic.com" crossorigin><link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
  
   <script src="https://cdn.tailwindcss.com"></script>
-<link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8">
+<link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8"><link rel="stylesheet" href="css/teacher-ux.css?v=4.0.0">
  <style>
   .tl-main{max-width:1100px;margin:auto;padding:1rem}
   .tl-head{display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem}
@@ -29,7 +29,7 @@
   @media(max-width:700px){.tl-grid{grid-template-columns:minmax(0,1fr)}.tl-main{padding:.75rem}.tl-dialog{height:calc(100dvh - 1rem);max-height:none;max-width:100vw;border-radius:14px 14px 0 0;margin:auto 0 0}}
  </style>
 </head>
-<body id="pageBody" class="hidden" style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
+<body id="pageBody" class="av-teacher-refresh hidden" style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
 <div id="adminerva-nav" data-module="educator" data-page="library-v4"></div>
 <main class="tl-main">
  <header class="tl-head"><div><a href="teacher-home.html">Adminerva teacher workspace</a><h1 style="font-size:clamp(1.6rem,4vw,2.1rem);font-weight:800">Assessment Library</h1>
@@ -135,7 +135,7 @@
  </form>
 </dialog>
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
-<script src="js/core/adminerva-nav.js?v=4.0.3"></script>
+<script defer src="js/core/adminerva-nav.js?v=4.0.1"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.6"></script>
 <script type="module" src="js/repo-review/teacher-assessment-library.mjs?v=4.0.0"></script>
 </body>

@@ -1,5 +1,5 @@
 {
-  "version": "3.0.0",
-  "releasedAt": "2026-10-30",
-  "notes": "Adminerva Studio integrates frozen project submissions with teacher-reviewed assessment grading and the existing Gradebook. Includes practical exam copy/paste deterrents, Studio data-integrity fixes, mobile workflows, expanded public Wiki and role-specific release-impact disclosures."
+  "version": "3.1.0",
+  "releasedAt": "2026-11-11",
+  "notes": "Maintenance and UI/UX update: more reliable approved-evidence review, reopened resubmissions, bulk external evaluation, explicit teacher grade publication, larger review saves, improved Studio and lesson tools, responsive workspaces and faster loading. No separate platform pilot features are announced."
 }

@@ -1,0 +1,125 @@
+/* Teacher-first page refinement. Scoped to avoid changing student/admin workflows unexpectedly. */
+:root{--av-ink:#15243d;--av-muted:#53637b;--av-line:#dce5f1;--av-canvas:#f5f8fc;--av-focus:#2563eb}
+:where(.av-teacher-refresh){background:var(--av-canvas);color:var(--av-ink)}
+:where(.av-teacher-refresh) :is(button,a,select,input,textarea):focus-visible{outline:3px solid rgba(37,99,235,.7);outline-offset:2px}
+:where(.av-teacher-refresh) button:disabled{cursor:not-allowed}
+:where(.av-teacher-refresh) :is(select,input,textarea){min-height:42px}
+:where(.av-teacher-refresh) :is(select,input,textarea):not([type="checkbox"]):not([type="radio"]){max-width:100%}
+:where(.av-teacher-refresh) :is(.av-panel,.av-home-task){border-color:var(--av-line)}
+:where(.av-teacher-refresh) :is(.av-panel,.av-home-task):focus-within{border-color:#9db7e9}
+.av-teacher-refresh .av-review-shell{width:min(100%,1560px);margin-inline:auto;padding:clamp(.65rem,1.5vw,1.35rem)}
+.av-teacher-refresh .av-review-main{border:1px solid #e0e8f2;border-radius:18px;background:#fff;box-shadow:0 8px 30px rgba(30,57,97,.045);padding:clamp(1rem,2vw,1.65rem)}
+.av-review-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.85rem;padding-bottom:.85rem}
+.av-review-heading h1{font-size:clamp(1.4rem,2.2vw,1.85rem);line-height:1.2;letter-spacing:-.025em;color:#122442}
+.av-review-heading p{line-height:1.45;max-width:68ch}
+.av-review-links{display:flex;gap:.55rem;flex-wrap:wrap;align-items:center}
+.av-review-links a{min-height:42px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #ccd8e8;background:#fff;border-radius:10px;padding:.6rem .85rem;font-size:.82rem;font-weight:750;color:#24446f;text-decoration:none}
+.av-review-links a:first-child{background:#eaf5f3;border-color:#9fd8cd;color:#075e54}
+.av-review-links a:hover{border-color:#8dacd4;background:#f2f7fd}
+.av-review-steps{display:flex;gap:.45rem;align-items:center;flex-wrap:wrap;padding:.7rem 0 1rem;border-top:1px solid #edf2f8;color:#5e718d}
+.av-review-steps span{display:inline-flex;align-items:center;gap:.45rem;font-size:.77rem;font-weight:650}
+.av-review-steps b{display:inline-grid;place-items:center;width:1.3rem;height:1.3rem;border-radius:50%;background:#e9f0fb;color:#285caa;font-size:.7rem}
+.av-review-steps span+span:before{content:"/";color:#bdcbdc;margin-right:.2rem}
+.av-teacher-refresh #v2GradingWorkspace{margin-bottom:1rem;padding:clamp(.85rem,1.5vw,1.25rem);border-color:var(--av-line);border-radius:14px;background:linear-gradient(145deg,#f8fbff,#fff 45%);box-shadow:none}
+.av-teacher-refresh #v2GradingWorkspace :is(h2,p){margin-block:0}
+.av-teacher-refresh #v2GradingWorkspace h2{font-size:1.12rem;line-height:1.3}
+.av-teacher-refresh #v2GradingWorkspace>div:first-child{align-items:center}
+.av-teacher-refresh #v2GradingWorkspace select{font-size:.88rem;min-height:44px;border-radius:10px;border-color:#cdd9ea;padding:.6rem .72rem;background-color:#fff}
+.av-teacher-refresh #v2GradingWorkspace select:hover{border-color:#8cabe0}
+.av-teacher-refresh #v2GradingWorkspace label{min-width:0}
+.av-teacher-refresh #v2QueueStatus{border-top:1px solid #ecf1f8;padding-top:.65rem;line-height:1.5;font-size:.78rem}
+.av-teacher-refresh #v2QueueStatus[data-tone="error"]{color:#9f1239}
+.av-teacher-refresh #v2RefreshQueue{min-height:42px;min-width:86px}
+.av-teacher-refresh #v2GradingWorkspace[aria-busy="true"] #v2QueueStatus:before{content:"";display:inline-block;width:.7rem;height:.7rem;border:2px solid #a5bce0;border-top-color:#315bb0;border-radius:50%;margin-right:.5rem;animation:avUiSpin .85s linear infinite;vertical-align:middle}
+.av-teacher-refresh #teachingWorkspace{margin:.55rem 0 1rem}
+.av-teacher-refresh .av-teaching-context{padding:clamp(.85rem,1.5vw,1.15rem);border-radius:14px 14px 0 0;background:#eff5ff}
+.av-teacher-refresh .av-teaching-context h2{font-size:clamp(1rem,1.6vw,1.22rem);line-height:1.35;overflow-wrap:anywhere}
+.av-teacher-refresh .av-teaching-context label{max-width:440px}
+.av-teacher-refresh .av-teaching-context select{min-height:43px;border:1px solid #cbd6e9;border-radius:10px;background:#fff}
+.av-teacher-refresh .av-teaching-tabs{padding:.5rem .65rem;gap:.45rem;border-color:#d5dfed}
+.av-teacher-refresh .av-teaching-tabs button{min-height:42px}
+.av-teacher-refresh [data-workspace-status]:empty{display:none}
+.av-teacher-refresh [data-workspace-status]{margin:.65rem 0;line-height:1.45}
+.av-teacher-refresh .av-workspace-source{max-height:min(65vh,650px)}
+.av-teacher-refresh .av-review-page-loading{display:grid;gap:.55rem}
+.av-teacher-refresh .av-review-page-loading>span{height:11px;border-radius:8px;background:linear-gradient(90deg,#e7edf6 12%,#f7f9fd 44%,#e7edf6 76%);background-size:220% 100%;animation:avUiShimmer 1.7s ease-in-out infinite}
+.av-teacher-refresh .av-review-page-loading>span:nth-child(2){width:75%}
+.av-teacher-refresh .av-review-page-loading>span:nth-child(3){width:55%}
+.av-teacher-refresh .av-review-page-loading[hidden]{display:none}
+.av-teacher-refresh .av-review-footnote{margin:.5rem 0 0;color:var(--av-muted);font-size:.78rem;line-height:1.5}
+@keyframes avUiShimmer{to{background-position-x:-220%}}
+@keyframes avUiSpin{to{transform:rotate(360deg)}}
+/* Dashboard: prioritize next actions with crisp, predictable card dimensions. */
+.av-teacher-refresh .av-home{max-width:1320px;margin-inline:auto;padding-top:clamp(1rem,2.5vw,1.8rem)}
+.av-teacher-refresh .av-home-hero{border-radius:22px;padding:clamp(1.2rem,3vw,2.6rem);margin-bottom:1.5rem}
+.av-teacher-refresh .av-home-hero h1{line-height:1.12;text-wrap:balance}
+.av-teacher-refresh .av-home-heading{align-items:baseline;gap:.5rem;flex-wrap:wrap}
+.av-teacher-refresh .av-setup-steps{gap:.75rem}
+.av-teacher-refresh .av-setup-steps a{min-height:100%;border-radius:14px}
+.av-teacher-refresh .av-home-quick-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:.7rem;margin-top:.85rem}
+.av-teacher-refresh .av-home-quick-grid a{display:flex;flex-direction:column;gap:.3rem;border:1px solid #dce6f2;border-radius:13px;background:linear-gradient(160deg,#fff,#f8fbff);padding:1rem 1.05rem;color:#17365d;text-decoration:none;min-height:106px;transition:transform .16s ease,border-color .16s ease,box-shadow .16s ease}
+.av-teacher-refresh .av-home-quick-grid a:hover{transform:translateY(-2px);border-color:#aac1e3;box-shadow:0 10px 24px #1b35610b}
+.av-teacher-refresh .av-home-quick-grid strong{font-size:.91rem}
+.av-teacher-refresh .av-home-quick-grid span{color:#566b84;font-size:.79rem;line-height:1.4}
+.av-teacher-refresh .av-home-resume{margin-block:1rem}
+.av-teacher-refresh .av-home-pulse{margin-block:1rem}
+/* Large teaching tools: steadier focus/spacing and more compact top controls. */
+.av-teacher-refresh :is(#lpDateRange,#lpSchoolYear,#lpGradeLevel,#lpSubject,#scheduleSchoolYear,#scheduleSemester){border-radius:9px}
+.av-teacher-refresh :is(#scheduleTableBody,#slideBlockList){scrollbar-gutter:stable}
+.av-teacher-refresh #scheduleTableBody td{padding-block:.55rem}
+.av-teacher-refresh #scheduleTableBody :is(input,select){min-height:38px}
+.av-teacher-refresh #slideBlockList>div{border-radius:10px}
+.av-teacher-refresh #master-toolbar-container{border-radius:12px;max-width:100%}
+.av-teacher-refresh #slide-canvas{box-shadow:0 8px 30px rgba(18,39,72,.12)}
+.av-teacher-refresh .av-teacher-section-title{font-size:.75rem;font-weight:800;letter-spacing:.085em;text-transform:uppercase;color:#547094}
+.av-teacher-refresh .av-teacher-scope-note{border-left:3px solid #84acd8;background:#f4f8fe;border-radius:0 10px 10px 0;padding:.55rem .8rem;font-size:.79rem;color:#4c6280}
+@media (max-width:780px){
+ .av-review-heading{align-items:flex-start}
+ .av-review-links{width:100%}
+ .av-review-links a{flex:1 1 150px}
+ .av-review-steps{gap:.35rem .7rem}
+ .av-review-steps span+span:before{display:none}
+ .av-teacher-refresh .av-review-main{padding:.8rem;border-radius:12px}
+ .av-teacher-refresh #v2GradingWorkspace{padding:.85rem}
+ .av-teacher-refresh #v2GradingWorkspace>div:first-child{align-items:flex-start}
+ .av-teacher-refresh #teachingWorkspace{margin:.5rem 0}
+ .av-teacher-refresh .av-teaching-tabs{overflow-x:auto;flex-wrap:nowrap}
+ .av-teacher-refresh .av-teaching-tabs button{white-space:nowrap}
+ .av-teacher-refresh .av-home-hero{padding:1.2rem}
+}
+@media (prefers-reduced-motion:reduce){
+ .av-teacher-refresh .av-review-page-loading>span,
+ .av-teacher-refresh #v2GradingWorkspace[aria-busy="true"] #v2QueueStatus:before{animation:none}
+ .av-teacher-refresh .av-home-quick-grid a{transition:none}
+ .av-teacher-refresh .av-home-quick-grid a:hover{transform:none}
+}
+/* Schedule: stay oriented in a wide week grid; omit edit-only delete column while reading. */
+.av-teacher-refresh .av-schedule-viewport{max-height:min(75vh,840px);overflow:auto;scrollbar-gutter:stable}
+.av-teacher-refresh .av-schedule-viewport thead th{position:sticky;top:0;z-index:4;background:#f1f5f9;box-shadow:0 1px 0 #d8e2ef}
+.av-teacher-refresh .av-schedule-viewport :is(thead th:first-child,tbody td:first-child){position:sticky;left:0;z-index:3;background:#f8fafc;box-shadow:1px 0 0 #d9e2ed}
+.av-teacher-refresh .av-schedule-viewport thead th:first-child{z-index:5;background:#f1f5f9}
+.av-teacher-refresh[data-av-schedule-editing="false"] .av-schedule-viewport :is(thead th:last-child,tbody td:last-child:not(:first-child)){display:none}
+.av-teacher-refresh .av-schedule-viewport tbody tr:hover td:first-child{background:#eef4fb}
+.av-teacher-refresh #scheduleScopeStatus{line-height:1.4}
+.av-teacher-refresh .av-schedule-viewport :is(button,select,input):focus-visible{outline:2px solid #2563eb;outline-offset:1px}
+/* Slide editor: a compact navigator and canvas that preserve actual editing space. */
+.av-teacher-refresh .av-slide-nav-panel{min-width:0}
+.av-teacher-refresh .av-slide-workarea{min-width:0}
+.av-teacher-refresh .av-slide-actionbar :is(button,select){min-height:40px}
+.av-teacher-refresh .av-slide-actionbar{align-items:flex-end}
+.av-teacher-refresh #slideLayoutSelector{min-width:190px}
+.av-teacher-refresh #master-toolbar-container{margin-bottom:.8rem}
+.av-teacher-refresh #slideBlockList{min-height:78px}
+@media(min-width:1024px){
+ .av-teacher-refresh .av-slide-editor-shell{align-items:flex-start}
+ .av-teacher-refresh .av-slide-nav-panel{flex:0 0 clamp(245px,20vw,320px);width:clamp(245px,20vw,320px);height:min(78vh,800px);max-height:min(78vh,800px);position:sticky;top:84px}
+ .av-teacher-refresh .av-slide-workarea{flex:1 1 0;width:0;max-width:none;min-width:0;overflow:visible}
+}
+@media(max-width:1023px){
+ .av-teacher-refresh .av-schedule-viewport{max-height:70vh}
+ .av-teacher-refresh .av-slide-nav-panel{max-height:180px}
+ .av-teacher-refresh .av-slide-workarea{max-width:100%}
+}
+
+/* Reserve navigation height while role-aware links initialize. */
+.av-teacher-refresh #adminerva-nav:empty{min-height:63px;background:#10253d}

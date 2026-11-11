@@ -15,6 +15,29 @@ window.cachedSchedule = "";
 window.cachedScope = "";
 window.cachedCustomInstructions = "";
 window.cachedPreviousPlan = null;
+window.cachedInstructionMap = null;
+window.currentLessonMeetings = [];
+window.currentSessionMeetingMap = {};
+window.currentRequiredSessions = [];
+function groupLessonMeetings(meetings=[]){
+  const map={};
+  for(const meeting of Array.isArray(meetings)?meetings:[]){
+    const session=String(meeting?.session||"").trim();
+    if(!session)continue;
+    if(!map[session])map[session]=[];
+    map[session].push({...meeting});
+  }
+  return map;
+}
+window.setCurrentLessonMeetings=function(meetings=[],sessionNames=[]){
+  window.currentLessonMeetings=Array.isArray(meetings)?meetings.map(item=>({...item})):[];
+  window.currentSessionMeetingMap=groupLessonMeetings(window.currentLessonMeetings);
+  if(Array.isArray(sessionNames)&&sessionNames.length){
+    window.currentRequiredSessions=[...new Set(sessionNames.map(value=>String(value||"").trim()).filter(Boolean))];
+  }else{
+    window.currentRequiredSessions=[...new Set(window.currentLessonMeetings.map(item=>String(item.session||"").trim()).filter(Boolean))];
+  }
+};
 const LESSON_DRAFT_KEY="Adminerva_lesson_editor_draft_v1";
 let lessonDraftDirty=false,lessonDraftTimer=null;
 function lessonDraftStatus(label,tone="info",detail=""){
@@ -40,7 +63,10 @@ function persistLessonDraft(){
       targetGrade:window.currentTargetGrade,planSubject:window.currentPlanSubject,planTeacher:window.currentPlanTeacher,
       lessonSettings:window.currentLessonSettings||null,referenceFolders:window.currentLessonReferenceFolders||[],
       loadedPersonalPlan:window.loadedPersonalPlan||null,legacySourcePlanId:window.legacySourcePlanId||null,
-      loadedPersonalIdentity:window.loadedPersonalIdentity||null,form:lessonDraftForm()
+      loadedPersonalIdentity:window.loadedPersonalIdentity||null,
+      instructionMap:window.cachedInstructionMap||null,
+      lessonMeetings:window.currentLessonMeetings||[],
+      requiredSessions:window.currentRequiredSessions||[],form:lessonDraftForm()
     }));
     lessonDraftStatus("Draft protected","warning","Unsaved edits are recoverable on this device.");
   }catch(error){console.warn("Lesson draft could not be cached:",error);}
@@ -281,9 +307,22 @@ window.renderOutput = function () {
 
   window.currentPlan.forEach((session, index) => {
     const isFlex = String(session.session_name||"").toLowerCase().includes("flex");
+    const sessionMeetings=window.currentSessionMeetingMap?.[session.session_name]||[];
+    const scheduleSummary=!isFlex&&sessionMeetings.length
+      ? `<div class="mb-4 rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2">
+          <div class="text-[10px] font-extrabold uppercase tracking-wider text-blue-700 mb-1">Adminerva schedule mapping</div>
+          <div class="flex flex-wrap gap-2">${sessionMeetings.map(meeting=>{
+            const event=meeting.event?` · ${escapeLessonText(meeting.event)}`:"";
+            return `<span class="inline-flex items-center rounded-full border border-blue-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+              ${escapeLessonText(meeting.section)} · ${escapeLessonText(meeting.day)}${meeting.date?", "+escapeLessonText(meeting.date):""} · ${escapeLessonText(meeting.time)}${event}
+            </span>`;
+          }).join("")}</div>
+        </div>`
+      :"";
 
     let html = `<div class="bg-white p-5 rounded border border-gray-200 shadow-sm mb-6">
-            <h3 class="text-lg font-bold ${isFlex ? "text-amber-600" : "text-blue-800"} mb-4 border-b pb-2">${escapeLessonText(session.session_name)} ${isFlex ? "(Asynchronous)" : ""}</h3>
+            <h3 class="text-lg font-bold ${isFlex ? "text-amber-600" : "text-blue-800"} mb-3 border-b pb-2">${escapeLessonText(session.session_name)} ${isFlex ? "(Asynchronous)" : ""}</h3>
+            ${scheduleSummary}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">`;
 
     if (!isFlex) {
@@ -394,6 +433,15 @@ window.loadSpecificPlan = function (planData) {
       ? planData.weekly_overview
       : { topic: "", content_standard: "", performance_standard: "", materials: "" };
   window.currentPlan = planData.sessions;
+  window.cachedInstructionMap=planData.instruction_map||null;
+  const savedSessionStructure=Array.isArray(planData.session_structure)&&planData.session_structure.length
+    ? planData.session_structure
+    : planData.sessions.map(session=>String(session?.session_name||"").trim())
+        .filter(name=>name&&name!=="Session Flex");
+  window.setCurrentLessonMeetings(
+    Array.isArray(planData.schedule_meetings) ? planData.schedule_meetings : [],
+    savedSessionStructure
+  );
   // Preserve the original subject and teacher for an edited saved lesson.
   // Defaults may have changed since this plan was first created.
   window.currentPlanSubject = planData.subject_title ||
@@ -522,7 +570,10 @@ workspaceOnReady(()=>{
   window.currentPlanTeacher=draft.planTeacher||"";window.currentLessonSettings=draft.lessonSettings||window.currentLessonSettings;
   window.currentLessonReferenceFolders=Array.isArray(draft.referenceFolders)?draft.referenceFolders:[];
   window.loadedPersonalPlan=draft.loadedPersonalPlan||null;window.legacySourcePlanId=draft.legacySourcePlanId||null;
-  window.loadedPersonalIdentity=draft.loadedPersonalIdentity||null;lessonDraftDirty=true;
+  window.loadedPersonalIdentity=draft.loadedPersonalIdentity||null;
+  window.cachedInstructionMap=draft.instructionMap||null;
+  window.setCurrentLessonMeetings(draft.lessonMeetings||[],draft.requiredSessions||[]);
+  lessonDraftDirty=true;
   window.renderOverview?.();window.renderOutput?.();
   lessonDraftStatus("Recovered","warning","Recovered unsaved lesson draft. Save when ready.");
 });

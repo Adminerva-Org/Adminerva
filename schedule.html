@@ -7,18 +7,21 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-    <title>LessonReview - Teacher's Schedule</title>
+    <title>Teacher Schedule | Adminerva</title>
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <script src="https://cdn.tailwindcss.com"></script>
     <link
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"
     />
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
     <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8" />
+    <link rel="stylesheet" href="css/teacher-ux.css?v=4.0.0" />
 </head>
-  <body class="bg-gray-50 font-sans min-h-screen flex flex-col">
+  <body class="av-teacher-refresh bg-gray-50 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="lesson" data-page="schedule"></div>
-    <script src="js/core/adminerva-nav.js?v=1.4.17"></script>
+    <script defer src="js/core/adminerva-nav.js?v=4.0.1"></script>
 
     <!-- Main Workspace -->
     <div
@@ -107,7 +110,7 @@
         <div class="av-button-row mb-4"><p id="scheduleCatalogStatus" role="status" class="av-form-hint">Loading school section and subject choices…</p><button type="button" class="av-secondary-button" onclick="refreshScheduleSchoolChoices()">Refresh school choices</button></div>
         <!-- Flexible Schedule Table (Swipeable on Mobile) -->
         <div
-          class="flex-1 overflow-x-auto border border-gray-200 rounded w-full touch-pan-x"
+          class="av-schedule-viewport flex-1 overflow-x-auto border border-gray-200 rounded-xl w-full touch-pan-x"
         >
           <table class="min-w-[800px] w-full bg-white">
             <thead class="bg-gray-100 border-b-2 border-gray-200">
@@ -148,7 +151,7 @@
               </tr>
             </thead>
             <tbody id="scheduleTableBody">
-              <!-- Dynamic Rows -->
+              <tr><td colspan="7" class="p-8 text-center text-slate-500" role="status">Loading your selected timetable…</td></tr>
             </tbody>
           </table>
         </div>
@@ -240,7 +243,7 @@
 
     
 
-    <script type="module" src="js/lesson-review/schedule.js?v=1.4.18"></script>
+    <script type="module" src="js/lesson-review/schedule.js?v=4.0.1"></script>
     <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
     <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
   </body>

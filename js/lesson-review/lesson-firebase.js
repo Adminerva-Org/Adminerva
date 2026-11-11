@@ -9,7 +9,7 @@ import {ADMIN_EMAIL,TEACHER_EMAIL} from "../core/staff-role.mjs?v=1.3.0";
 import {legacyLessonRecovery} from "../core/legacy-lesson-recovery.mjs?v=1.3.2";
 import {personalPlanId,requireCurrentVersion} from "./workspace-model.mjs?v=1.3.0";
 import {scheduleScope,localScheduleText,normalizeSchoolYear,parseScheduleRows} from "./schedule-scope.mjs?v=1.3.0";
-import {filterScheduleRowsForLesson,isLegacySharedScope,isLegacyScheduleRetired,scheduleRowsToText} from "./legacy-schedule-compat.mjs?v=1.4.18";
+import {filterScheduleRowsForLesson,isLegacySharedScope,isLegacyScheduleRetired,buildLessonMeetingContext} from "./legacy-schedule-compat.mjs?v=1.4.23";
 import {
   collection,
   getDocs,
@@ -36,15 +36,34 @@ function escapeHTML(str) {
 }
 
 // Resolve only the timetable rows relevant to this lesson.
-window.fetchScheduleForLesson = async function (schoolYear, academicTerm, grade="", subject="") {
+window.fetchScheduleForLesson = async function (schoolYear, academicTerm, grade="", subject="", dateRange="") {
   const scope = scheduleScope(schoolYear, academicTerm);
   if(isLegacySharedScope(scope)&&isLegacyScheduleRetired()){
     throw Error("The 2026–2027 legacy timetable is archived. Create a timetable for the new school year before generating new lesson plans.");
   }
-  const filteredText=rows=>scheduleRowsToText(filterScheduleRowsForLesson(rows,{grade,subject}));
+  const filteredText=rows=>{
+    const context=buildLessonMeetingContext(
+      filterScheduleRowsForLesson(rows,{grade,subject}),
+      {dateRange,grade}
+    );
+    window.currentLessonMeetings=context.meetings;
+    window.currentSessionMeetingMap=context.bySession;
+    window.currentRequiredSessions=[...(context.sessionNames||[])];
+    return context.text;
+  };
   const local = () => {
     const rows=parseScheduleRows(lessonStorage.getItem(scope.jsonKey));
     if(rows.length)return filteredText(rows);
+    // Raw legacy schedule text contains unrelated events/classes and cannot be
+    // safely scoped for lesson generation. Only expose it for an unfiltered
+    // schedule read; lesson generation should treat missing JSON rows as no
+    // usable timetable context.
+    if(grade||subject){
+      window.currentLessonMeetings=[];
+      window.currentSessionMeetingMap={};
+      window.currentRequiredSessions=[];
+      return "";
+    }
     return localScheduleText(lessonStorage, schoolYear, academicTerm);
   };
   // A failed cloud save must not silently replace recent edits on this device.
@@ -146,7 +165,7 @@ window.loadLibraryFolders = async function () {
         "beforeend",
         `
                 <label class="flex items-center gap-2 cursor-pointer group">
-                    <input type="checkbox" value="${safeId}" ${selectedIds.has(folder.id)?"checked":""} class="folder-checkbox w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 bg-white">
+                    <input type="checkbox" value="${safeId}" data-folder-name="${safeName}" ${selectedIds.has(folder.id)?"checked":""} class="folder-checkbox w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 bg-white">
                     <span class="text-sm font-bold text-blue-900 group-hover:text-blue-700 transition">📁 ${safeName} <span class="text-[10px] text-gray-500 font-normal">(${docCount} docs)</span></span>
                 </label>
             `,
@@ -264,7 +283,13 @@ window.saveLessonPlan = async function () {
       custom_instructions: document
         .getElementById("lpCustomInstructions")
         .value.trim(),
-      schedule: await window.fetchScheduleForLesson(schoolYear, academicTerm, grade, subject),
+      instruction_map: window.cachedInstructionMap || null,
+      schedule: await window.fetchScheduleForLesson(schoolYear, academicTerm, grade, subject, dateRange),
+      schedule_meetings: Array.isArray(window.currentLessonMeetings) ? window.currentLessonMeetings : [],
+      session_structure: Array.isArray(window.currentPlan)
+        ? window.currentPlan.map(session=>String(session?.session_name||"").trim())
+            .filter(name=>name&&name!=="Session Flex")
+        : [],
       reference_folders: Array.from(
         document.querySelectorAll(".folder-checkbox:checked"),
       ).map((cb) => cb.value),

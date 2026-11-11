@@ -9,7 +9,27 @@ const el=id=>document.getElementById(id),parameters=new URLSearchParams(location
 let requestedPanel=parameters.get("view")||"";
 const workspace=mountTeachingWorkspace(el("teachingWorkspace"));
 let roster=[],assessments=[],targets=[],activeTask=null,loadId=0,actorUid="",records={evidence:new Map(),grades:new Map(),activities:new Map(),receipts:[]},sourceWarnings=[];
-function status(text){el("v2QueueStatus").textContent=text;}
+function status(text){
+ const node=el("v2QueueStatus");node.textContent=text;
+ node.dataset.tone=/could not load|not available|unavailable|required|retry/i.test(text)?"error":"info";
+}
+let activeQueueLoads=0;
+function queueBusy(){
+ activeQueueLoads++;
+ const sync=()=>{
+  const busy=activeQueueLoads>0;
+  el("v2GradingWorkspace")?.setAttribute("aria-busy",String(busy));
+  if(el("v2QueueSkeleton"))el("v2QueueSkeleton").hidden=!busy;
+  el("v2RefreshQueue").disabled=busy;
+  for(const id of ["v2SectionSelect","v2AssessmentSelect","reviewTargetSelect"]){
+   const element=el(id);
+   if(element)element.disabled=busy;
+  }
+ };
+ sync();
+ let ended=false;
+ return ()=>{if(ended)return;ended=true;activeQueueLoads=Math.max(0,activeQueueLoads-1);sync();};
+}
 function options(select,items,placeholder){select.replaceChildren(new Option(placeholder,""),...items.map(item=>new Option(item.label,item.value)));}
 function repoFor(student){try{return parseRepository(student.repoUrl);}catch{return null;}}
 function matchesSection(task,section){return task.deployments?.some(item=>item.section===section)||task.sectionIds?.includes(section)||task.targetSections?.includes(section)||task.section===section;}
@@ -33,7 +53,7 @@ async function readActivityGrades(task){
 }
 async function initialize(user){
  const generation=++loadId;actorUid=user?.uid||"";
- const end=window.beginLoading?.("Opening your class review…")||(()=>{});
+ const end=queueBusy();
  try{
   if(!user||!await resolveStaffRole(user)){status("An authorized staff account is required to open the teaching workspace.");return;}
   status("Loading your assigned classes and assessments…");
@@ -59,8 +79,8 @@ async function renderQueue({preserve=true}={}){
  const generation=++loadId,assessmentId=el("v2AssessmentSelect").value,section=el("v2SectionSelect").value,previous=preserve?el("reviewTargetSelect").value:"";
  activeTask=assessments.find(task=>task.id===assessmentId);
  if(!activeTask||!section){options(el("reviewTargetSelect"),[],"Choose an assessment first");workspace.clear();status("Choose a class and an assessment. All assessment versions are supported.");return;}
- el("v2RefreshQueue").disabled=true;status("Loading saved evidence, receipts and grades…");
- const end=window.beginLoading?.("Loading grading evidence and scores…")||(()=>{});
+ status("Loading saved evidence, receipts and grades…");
+ const end=queueBusy();
  try{
   const sources=await Promise.allSettled([
    getDocsFromServer(query(collection(db,"assessment_evidence"),where("assessmentId","==",assessmentId))),
@@ -78,7 +98,7 @@ async function renderQueue({preserve=true}={}){
   activateTarget();
   status(targets.length+" repository/group target"+(targets.length===1?"":"s")+" · "+roster.filter(student=>student.section===section).length+" learners"+(sourceWarnings.length?". Server status unavailable for "+sourceWarnings.join(", ")+". Do not assume reopened or missing evidence is current. Refresh when connected.":". Evidence status checked with the server. Select a learner to review."));
  }catch(error){if(generation===loadId)status("Review queue could not load. Retry with Refresh. "+error.message);}
- finally{el("v2RefreshQueue").disabled=false;end();}
+ finally{end();}
 }
 function activateTarget(){
  const target=targets.find(item=>item.id===el("reviewTargetSelect").value);if(!target){workspace.clear();return;}

@@ -1,0 +1,66 @@
+name: Deploy reviewed MCS V4 pilot control (manual)
+run-name: MCS V4 pilot callable deployment by ${{ github.actor }}
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_limited_scope:
+        description: 'I reviewed the four-section, 169-student controlled pilot scope'
+        required: true
+        default: false
+        type: boolean
+      confirm_legacy_compatible:
+        description: 'Retain legacy_allowed and existing 3.x grading'
+        required: true
+        default: false
+        type: boolean
+      confirm_backend_only:
+        description: 'Deploy callable only; do not migrate records, grant roles or start pilot'
+        required: true
+        default: false
+        type: boolean
+permissions:
+  contents: read
+concurrency:
+  group: firebase-production
+  cancel-in-progress: false
+jobs:
+  deploy-pilot-control:
+    if: ${{ inputs.confirm_limited_scope && inputs.confirm_legacy_compatible && inputs.confirm_backend_only }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out fixed, reviewed V4 source
+        uses: actions/checkout@v4
+        with:
+          ref: d6f8e046b8cd6aff7705afc9843a081fdfb48e71
+          persist-credentials: false
+      - name: Verify immutable source revision
+        run: test "$(git rev-parse HEAD)" = "d6f8e046b8cd6aff7705afc9843a081fdfb48e71"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install backend dependencies
+        run: npm ci --prefix functions --no-audit --no-fund
+      - name: Validate pilot callable and membership readiness only
+        run: |
+          node --check functions/mcs-pilot-control.js
+          node --test tests/mcs-pilot-control-readiness.test.mjs
+          node scripts/check-release-source.mjs --backend
+      - name: Prepare protected Firebase deployment identity
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_REPOREVIEW_E7CA4 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+          chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+      - name: Deploy only the existing MCS pilot status/control callable
+        run: npx -y firebase-tools@14 deploy --project reporeview-e7ca4 --only functions:mcsPilotControl --non-interactive
+      - name: Remove temporary deployment credential
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/firebase-service-account.json"
