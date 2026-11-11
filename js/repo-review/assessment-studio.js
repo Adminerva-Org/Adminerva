@@ -281,6 +281,8 @@ window.copyExternalPersonalizationPackage=async function(){
         ...item,
         title:document.getElementById("assessTitle").value.trim(),
         type:document.getElementById("assessType").value,
+        assessmentFormat:document.getElementById("assessSubmissionSource").value==="studio"?"studio_code":"github_repository",
+        assessmentMode:document.getElementById("assessMode").value,
         subject:document.getElementById("assessSubject").value.trim(),
         maxScore:Number(document.getElementById("maxScore").value),
         taskContext:document.getElementById("taskContext").value.trim()||preparedTaskContext(),
