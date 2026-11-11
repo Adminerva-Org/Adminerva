@@ -417,12 +417,16 @@ function setBlueprintContentLocked(locked){
     "assessTitle","maxScore","assessType","assessQuarter","assessSubject","assessSubmissionSource",
     "assessPracticalExam","assessPersonalizedTask","taskContext","assessmentRubricTemplate",
     "assessmentApplyRubric","evalCriteria","assessV2","newTargetPath","assessExpectedExts",
-    "assessInvestigationFallback","systemPersona","newRuleType","newRuleValue"
+    "assessInvestigationFallback","systemPersona","newRuleType","newRuleValue","assessVariantGuidance"
   ];
   for(const id of ids){const node=document.getElementById(id);if(node)node.disabled=blueprintContentLocked;}
+  if(currentAssessmentId){
+    document.getElementById("assessSubmissionSource").disabled=true;
+    document.getElementById("assessV2").disabled=true;
+  }
   document.getElementById("saveAssessmentBtn").classList.toggle("hidden",blueprintContentLocked);
   if(blueprintContentLocked)
-    blueprintStatus("Published task details are locked after deployment. Personalization variants may still be expanded without changing the rubric or student instructions.");
+    blueprintStatus("Published task details and variation guidance are locked after deployment. You may increase the pool target and add unused variants without changing existing learner tasks.");
 }
 function updatePersonalizationTabAvailability(){
   const item=currentAssessmentId?assessments.find(value=>value.id===currentAssessmentId):null,
@@ -636,7 +640,13 @@ function updatePracticalExamOption(){
 }
 document.getElementById("assessPersonalizedTask").addEventListener("change",updatePersonalizedTaskOption);
 document.getElementById("assessVariantGuidance").addEventListener("input",markPersonalizationPossiblyStale);
-document.getElementById("assessVariantCount").addEventListener("input",markPersonalizationPossiblyStale);
+document.getElementById("assessVariantCount").addEventListener("input",()=>{
+  if(!personalizedVariantPool.length)return renderPersonalizedVariantPool();
+  const need=variantGenerationNeed();
+  document.getElementById("personalizedVariantStatus").textContent=need.missing
+    ?"Current private pool: "+personalizedVariantPool.length+". Add "+need.missing+" more to reach the "+need.target+" target."
+    :"Current private pool meets the "+need.target+" target with "+personalizedVariantPool.length+" variants.";
+});
 document.getElementById("assessSubmissionSource").addEventListener("change",()=>{
   updatePracticalExamOption();
   if(!currentAssessmentId&&document.getElementById("assessSubmissionSource").value==="studio"&&
