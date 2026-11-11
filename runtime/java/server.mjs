@@ -109,7 +109,7 @@ function emitOutput(session,type,buffer){
   send(session,{type,data});
 }
 async function finish(session,code,state='finished'){
-  if(session.state==='finished'||session.state==='cancelled'||session.state==='failed')return;
+  if(['finished','cancelled','failed','expired'].includes(session.state))return;
   session.state=state;session.finishedAt=Date.now();
   const wasActive=active.delete(session.id);
   const index=queue.indexOf(session.id);if(index>=0)queue.splice(index,1);
@@ -146,6 +146,7 @@ async function startSession(session){
       '--env','MAIN_CLASS='+session.mainClass,IMAGE];
     const child=spawn('docker',args,{stdio:['pipe','pipe','pipe']});
     session.child=child;
+    child.stdin.on('error',()=>{}); // Broken pipe is normal if Java exits before a final input arrives.
     child.stdout.on('data',chunk=>emitOutput(session,'stdout',chunk));
     child.stderr.on('data',chunk=>emitOutput(session,'stderr',chunk));
     child.on('error',error=>{send(session,{type:'stderr',data:'Runtime launcher error: '+error.message});void finish(session,1,'failed');});
