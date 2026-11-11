@@ -879,3 +879,176 @@ body[data-playground-access="student"] #adminerva-nav .av-nav-tools :is(button,a
     overscroll-behavior:contain;
   }
 }
+
+
+/* 3.0.5 Studio workspace hierarchy: global header / Menus / Tools / workspace / footer */
+body[data-playground-access] .studio-desktop-row-title{
+  align-self:center; flex:none; margin:0 6px 0 2px;
+  color:#37647b;font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;
+}
+body[data-playground-access] .studio-menus-bar-trigger,
+body[data-playground-access] .studio-tools-toggle{display:none}
+body[data-playground-access] .studio-tabs{display:flex;align-items:center;gap:6px;flex:none;white-space:nowrap;overflow:visible}
+body[data-playground-access] .studio-tools-panel{display:flex;align-items:center;gap:3px;min-width:0}
+body[data-playground-access] .studio-tools-panel>button[data-studio-view]{
+  border-radius:7px; padding:6px 10px; min-height:32px;
+}
+body[data-playground-access] .studio-tools-panel #saveProjectBtn,
+body[data-playground-access] .studio-tools-panel #runBtn{
+  min-height:31px; padding:5px 12px; font-size:10px;font-weight:850;
+  border-radius:7px;border:1px solid #bed9e3;background:#e9f6fa;color:#1b586b;
+}
+body[data-playground-access] .studio-tools-panel #runBtn{
+  background:#008f79;border-color:#008f79;color:white;
+}
+body[data-playground-access] #outputPane{display:flex;flex-direction:column;min-height:0}
+body[data-playground-access] #consoleOutput{
+  order:1;flex:1;min-height:0;overflow:auto;white-space:pre-wrap;
+  overflow-wrap:anywhere;padding:10px 12px;
+}
+body[data-playground-access] #stdinContainer{
+  order:2;flex:none;max-height:min(42vh,260px);overflow:auto;
+  padding:7px 9px!important;background:#111e2e;border-top:1px solid #36516a;
+}
+body[data-playground-access] #webPreviewContainer,
+body[data-playground-access] #javaDesktopPreviewContainer{order:1}
+body[data-playground-access] .studio-terminal-status{
+  display:inline-flex;align-items:center;gap:4px;white-space:nowrap;
+  padding:3px 7px;border-radius:999px;border:1px solid #39516a;
+  background:#243b52;color:#c1dcf2;font:800 9px/1.3 system-ui,sans-serif;
+}
+body[data-playground-access] .studio-terminal-status[data-state="waiting"]{
+  background:#123c3b;border-color:#167b6b;color:#87f0d4;
+}
+body[data-playground-access] .studio-terminal-status[data-state="running"]{
+  background:#243d54;border-color:#2b84a6;color:#bcebf9;
+}
+body[data-playground-access] .studio-terminal-status[data-state="error"]{
+  background:#482332;border-color:#b45e7c;color:#ffc5d4;
+}
+body[data-playground-access] .studio-terminal-input-row{
+  display:flex;align-items:center;gap:6px;min-width:0;
+}
+body[data-playground-access] .studio-terminal-prompt{
+  flex:0 1 120px;max-width:32%;min-width:25px;min-height:34px;
+  display:flex;align-items:center;gap:4px;margin:0!important;
+  color:#73e3d8;font:700 11px ui-monospace,monospace;
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+}
+body[data-playground-access] .studio-terminal-prompt span{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+body[data-playground-access] #stdinLineInput{
+  flex:1;min-width:0;width:100%;min-height:36px;
+  padding:7px 9px;border-radius:7px;border:1px solid #456077;
+  background:#0a1726;color:#f1f9ff;font:12px ui-monospace,monospace;
+}
+body[data-playground-access] #sendStdinBtn,
+body[data-playground-access] #clearStdinBtn{
+  min-height:34px;flex:none;padding:6px 9px;
+  background:#124e55;border:1px solid #187a7b;border-radius:7px;
+  font-size:10px;font-weight:850;color:#d1fff8;
+}
+body[data-playground-access] #sendStdinBtn:disabled{opacity:.45}
+body[data-playground-access] .studio-terminal-history{margin-top:4px}
+body[data-playground-access] .studio-terminal-history summary{
+  padding:4px 0;cursor:pointer;font-size:10px;font-weight:800;color:#9cb9cf;
+}
+body[data-playground-access] .studio-terminal-history textarea{
+  width:100%;min-height:56px;max-height:110px;padding:7px 8px!important;
+  color:#eef7ff;background:#0b1726;border:1px solid #344f68;
+  border-radius:7px;font:11px/1.35 ui-monospace,monospace;
+}
+body[data-playground-access] .studio-terminal-history-help{
+  display:flex;align-items:center;gap:8px;justify-content:space-between;margin-top:5px;
+}
+body[data-playground-access] .studio-terminal-history-help p{
+  flex:1;min-width:0;font-size:10px;line-height:1.4;color:#a3bdd0;
+}
+body[data-playground-access] .studio-preferences-dialog{
+  border:1px solid #bfd4e0;border-radius:15px;background:#fff;color:#193d54;
+  box-shadow:0 20px 70px #001c3366;width:min(92vw,500px);max-height:min(90dvh,750px);
+  margin:auto;padding:0;overflow-y:auto;
+}
+body[data-playground-access] .studio-preferences-dialog::backdrop{background:#020d1fc9}
+body[data-playground-access] .studio-preferences-head{
+  display:flex;gap:12px;align-items:flex-start;justify-content:space-between;
+  border-bottom:1px solid #dce7ed;padding:17px 18px;background:#f4f9fb;
+}
+body[data-playground-access] .studio-preferences-head h2{font-size:17px;font-weight:900}
+body[data-playground-access] .studio-preferences-head p{font-size:11px;color:#648096;margin-top:3px}
+body[data-playground-access] .studio-preferences-head button{font-size:12px;font-weight:850;padding:7px;border-radius:7px;border:1px solid #cfdee8}
+body[data-playground-access] .studio-preferences-options{padding:12px 16px;display:grid;gap:7px}
+body[data-playground-access] .studio-preferences-options label{
+  display:flex;gap:12px;align-items:flex-start;background:#f9fbfc;
+  border:1px solid #e1eaf0;border-radius:10px;padding:12px;cursor:pointer;
+}
+body[data-playground-access] .studio-preferences-options input{margin-top:3px;accent-color:#078f82;width:18px;height:18px}
+body[data-playground-access] .studio-preferences-options span{display:grid;gap:4px}
+body[data-playground-access] .studio-preferences-options strong{font-size:12px;font-weight:850}
+body[data-playground-access] .studio-preferences-options small{font-size:11px;line-height:1.45;color:#61788a}
+body[data-playground-access] .studio-preferences-footer{
+  display:flex;gap:14px;align-items:center;justify-content:space-between;padding:12px 18px;
+  border-top:1px solid #e0e9ee;
+}
+body[data-playground-access] .studio-preferences-footer p{font-size:10px;line-height:1.4;color:#678195}
+body[data-playground-access] .studio-preferences-footer button{
+  border:0;background:#008f79;color:white;border-radius:8px;padding:9px 16px;font-size:12px;font-weight:850;
+}
+body[data-playground-access] .av-site-footer{
+  min-height:32px;max-height:37px;gap:6px 12px;padding:4px 9px;
+  font-size:10px;overflow:hidden;
+}
+body[data-playground-access] .av-site-footer nav{gap:7px;white-space:nowrap;overflow-x:auto;scrollbar-width:none}
+body[data-playground-access] .av-footer-brand{font-size:10px}
+@media(max-width:767px){
+  body[data-playground-access] .studio-desktop-row-title{display:none}
+  body[data-playground-access] #backToProjectsBtn{display:none}
+  body[data-playground-access] .studio-project-bar{
+    min-height:48px;max-height:48px;gap:9px;padding:6px 9px;overflow:visible;
+  }
+  body[data-playground-access] .studio-menus-bar-trigger{
+    display:inline-flex;align-items:center;justify-content:center;
+    flex:none;min-height:36px;padding:5px 10px;border:1px solid #bbd4df;
+    border-radius:8px;background:#e8f5f7;color:#1e5366;font-size:11px;font-weight:850;
+  }
+  body[data-playground-access] .studio-project-identity{flex:1;min-width:0;overflow:hidden}
+  body[data-playground-access] .studio-project-title-row{flex-direction:row;align-items:center;gap:6px}
+  body[data-playground-access] .studio-project-title-row .studio-storage-badge{display:none}
+  body[data-playground-access] .studio-project-identity strong{
+    display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  body[data-playground-access] .studio-tabs{
+    display:flex;flex-wrap:wrap;min-height:42px;max-height:none;
+    padding:4px 8px;gap:5px;overflow:visible;border-bottom:1px solid #c8dce6;background:#f5fafb;
+  }
+  body[data-playground-access] .studio-tools-toggle{
+    display:inline-flex;align-items:center;justify-content:center;flex:none;
+    padding:6px 10px;min-height:34px;border:1px solid #bcd7e1;border-radius:7px;
+    background:#e8f5f8;color:#1a5367;font-weight:850;font-size:11px;
+  }
+  body[data-playground-access] #studioToolsPanel{display:none}
+  body[data-playground-access] #studioToolsPanel.studio-tools-open{
+    display:flex;order:3;flex:1 0 100%;width:100%;align-items:center;
+    overflow-x:auto;overflow-y:hidden;white-space:nowrap;gap:5px;padding:4px 0;
+    scrollbar-width:thin;
+  }
+  body[data-playground-access] #studioToolsPanel>button{flex:none;min-height:37px;font-size:11px}
+  body[data-playground-access] .studio-mobile-toolbar{
+    min-height:44px;padding:5px 8px;gap:6px;
+  }
+  body[data-playground-access] .studio-mobile-toolbar button{
+    min-height:35px;font-size:11px;padding:5px 8px;
+  }
+  body[data-playground-access] #stdinContainer{max-height:38dvh}
+  body[data-playground-access] .studio-terminal-prompt{max-width:18%;flex-basis:22px}
+  body[data-playground-access] .studio-terminal-prompt span{display:none}
+  body[data-playground-access] #stdinLineInput{font-size:16px}
+  body[data-playground-access] .studio-mobile-drawer-heading{margin:0 0 10px}
+  body[data-playground-access] .studio-project-actions{padding-top:24px}
+}
+@media(max-width:395px){
+  body[data-playground-access] .studio-mobile-toolbar{gap:4px;padding:5px}
+  body[data-playground-access] .studio-mobile-toolbar button{padding:5px 6px;font-size:10px}
+  body[data-playground-access] .studio-project-identity>span{font-size:9px}
+}
