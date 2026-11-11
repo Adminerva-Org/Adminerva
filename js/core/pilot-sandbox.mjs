@@ -1,6 +1,6 @@
 import {app,auth} from "./firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {createTenantSchoolPicker} from "./tenant-school-picker.mjs?v=4.0.0";
+import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 
 const get=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolPilotSandbox");
@@ -27,25 +27,45 @@ function clear(){
   get("pilotSource").replaceChildren(new Option("My own teaching resources",""));
   resetEditor();
 }
-const picker=createTenantSchoolPicker({
-  host:get("pilotSchoolPicker"),status,
-  onBeforeChange:async()=>{if(busy)throw Error("Complete your current sandbox operation before switching schools.");clear();},
-  onReady:scope=>{
-    allowed=Boolean(scope.current?.roles.includes("teacher"));
-    if(!allowed){workspace.hidden=true;status.textContent="Active verified-school teacher membership is required to open the pilot sandbox.";return;}
-    workspace.hidden=false;
-    void loadOverview();
-  }
-});
+const pilotSchool="mcs-manila";
+let sessionRevision=0,activeUid=null;
+const pickerHost=get("pilotSchoolPicker");
+pickerHost.textContent="MCS · private teacher pilot";
 async function perform(action,details={}){
-  if(!allowed||!picker.scope.current)throw Error("Choose an authorized school and teacher workspace.");
-  const lease=picker.scope.lease();
-  const result=(await api({schoolId:lease.schoolId,action,...details})).data;
-  picker.scope.assertLease(lease);
+  const user=auth.currentUser,revision=sessionRevision;
+  if(!allowed||!user||user.uid!==activeUid)
+    throw Error("Sign in with your approved MCS teacher account.");
+  const result=(await api({schoolId:pilotSchool,action,...details})).data;
+  if(revision!==sessionRevision||auth.currentUser?.uid!==user.uid)
+    throw Error("Your account changed. Reload the private pilot workspace.");
   return result;
 }
+function currentSchool(){return allowed?pilotSchool:null;}
+async function startPilot(user){
+  const revision=++sessionRevision;
+  clear();activeUid=user?.uid||null;
+  if(!user){
+    status.textContent="Sign in with your approved MCS teacher account.";
+    return;
+  }
+  status.textContent="Checking your MCS teacher approval…";
+  try{
+    const result=(await api({schoolId:pilotSchool,action:"bootstrap"})).data;
+    if(revision!==sessionRevision||auth.currentUser?.uid!==user.uid)return;
+    allowed=result.schoolId===pilotSchool&&result.role==="teacher";
+    workspace.hidden=!allowed;
+    pickerHost.textContent="Manila Cathedral School · "+(
+      result.accessMode==="verified_legacy_teacher"?"approved legacy teacher":"verified school teacher");
+    if(!allowed)throw Error("Teacher approval could not be verified.");
+    await loadOverview();
+  }catch(error){
+    if(revision!==sessionRevision)return;
+    workspace.hidden=true;
+    status.textContent="Pilot unavailable: "+(error.message||"Verify your teacher access and try again.");
+  }
+}
 function setBusy(value){busy=value;for(const button of workspace.querySelectorAll("button"))button.disabled=value;}
-function currentSchool(){return picker.scope.current?.schoolId||null;}
+
 function switchTab(tab){
   for(const button of document.querySelectorAll("[data-pilot-tab]")){
     const active=button.dataset.pilotTab===tab;
@@ -202,5 +222,5 @@ get("pilotLoadPreview").addEventListener("click",async()=>{
   }catch(error){say("pilotPreviewStatus","Preview unavailable: "+(error.message||"Ask the owner to grant access."));}
   finally{setBusy(false);}
 });
-auth.authStateReady().then(()=>picker.load()).catch(error=>{status.textContent=error.message||"Could not verify school access.";});
+onAuthStateChanged(auth,user=>{void startPilot(user);});
 export {perform,loadOverview,switchTab};
