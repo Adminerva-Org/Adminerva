@@ -1,0 +1,350 @@
+# Personalized Assessment Mode
+
+Status: implementation candidate in PR #153. The frontend, Firestore rules and
+`studioAssessmentVariant` callable are one release boundary.
+
+## Purpose
+
+Personalized is an **assessment mode**, not an assessment format or submission
+type. Adminerva separates three concerns:
+
+- **Assessment category** — grading/classification such as Mini PETA, Written
+  Work, Practical Exam or Formative.
+- **Assessment format** — how the learner answers or submits, such as Adminerva
+  Studio Code, GitHub Repository, Essay / Written Response, Multiple Choice,
+  Matching Type or Analogy.
+- **Mode** — how the task is assigned, such as Default, Personalized, and later
+  Group or By Pair.
+
+The first release enables **Personalized** only for **Adminerva Studio Code**.
+Other formats are visible as future expansion points where appropriate.
+
+The teacher creates the normal assessment blueprint first: title, category,
+format, student instructions, maximum score and published rubric. When
+**Mode = Personalized**, Adminerva treats that blueprint as the authoritative
+source for a private pool of equivalent learner tasks. The pool may be prepared
+with School AI or through the external personalization package engine.
+
+For the current Adminerva Studio Code format, the content can be Java OOP,
+arrays, loops, debugging, Python, SQL, HTML/CSS/JavaScript or another
+programming task as long as the teacher describes the intended scope clearly
+enough for equivalent variants to be generated. Later, the same Personalized
+mode can be attached to other compatible formats such as Essay / Written
+Response without redefining personalization itself.
+
+Personalization changes the concrete problem. It must not change the competency,
+difficulty, required effort or rubric.
+
+## Authoring workflow
+
+1. Create the assessment normally in Assessment Studio.
+2. Choose the **assessment category** such as Mini PETA.
+3. Choose **Assessment format = Adminerva Studio Code**.
+4. Choose **Mode = Personalized**.
+5. Write the authoritative student instructions. This is where the teacher
+   defines the topic and scope.
+6. Prepare the published rubric.
+7. Save the personalized blueprint.
+8. Reopen it. The **Personalization** editor tab appears only for a saved
+   personalized Studio blueprint.
+9. The assessment may be deployed before the private pool is ready. Until a
+   valid pool exists, learners can see the assignment but Studio remains marked
+   as preparation pending.
+10. In the Personalization tab, optionally write **Variation guidance**
+   describing what may change and what must remain fixed.
+11. Choose a private pool target from 10 to 600. Adminerva shows an estimate
+    based on the deployed sections and learner count when available.
+12. Prepare variants with either:
+    - **School AI** — direct generation using the configured Adminerva AI
+      connection; or
+    - **External AI package** — copy a privacy-preserving generation package to
+      ChatGPT or another external AI and import its JSON response. External
+      packages are section-aware and request at most 45 variants per batch. The
+      planned batch size is `ceil(target pool / deployed section count)`, capped
+      at 45; the next package asks only for the remaining capacity.
+13. Review sample variants. Partial external batches may be saved privately
+    between sessions. An initial partial pool does not unlock students until the
+    target is reached.
+14. Save the ready private pool.
+15. Learners can then open the assessment. Variant assignment is automatic;
+    students do not click a generation control.
+
+If the title, instructions, rubric, maximum score, subject or variation
+guidance changes before deployment, the personalization fingerprint changes and
+the pool must be regenerated. The pool target itself is capacity, not task
+meaning, so it may be increased later without invalidating already-assigned
+variants.
+
+## Generic generation contract
+
+For each generation batch, whether sent through School AI or the external
+package, Adminerva supplies:
+
+- assessment title;
+- authoritative student instructions;
+- published rubric;
+- optional teacher variation guidance;
+- a generation nonce and recent variant summaries to reduce repetition.
+
+The generator is instructed to preserve:
+
+- assessment format and mode;
+- learning objectives and required concepts or skills;
+- platform/language where the format requires one;
+- task scope;
+- difficulty and expected effort;
+- compatibility with the same published rubric.
+
+The generator may vary only details that can change without changing the
+assessed competency. For code tasks this can include scenario, identifiers,
+literal values, small datasets, example inputs and required output details.
+Future formats may define their own safe variation surface.
+
+The generator must not introduce concepts, tools, frameworks, APIs, libraries,
+source requirements or restrictions that contradict or exceed the teacher's
+blueprint.
+
+Each generated record contains:
+
+- `prompt`: the learner-visible task;
+- `evaluationNotes`: private variant-specific notes for teacher/evaluator
+  review;
+- `summary`: a short generation-time description used to reduce duplication.
+
+The private pool metadata is stored in
+`assessment_private/{assessmentId}`, while each generated variant is stored in
+the teacher-private subcollection
+`assessment_private/{assessmentId}/variants/{variantId}`. Students do not
+receive the whole pool or the private evaluation notes.
+
+## Attempt and uniqueness contract
+
+1. A learner opens the personalized assessment from My Assessments.
+2. If the work window is open and the private pool is ready, the server resolves
+   the learner from the verified account and assigned class.
+3. The server reads the teacher-approved private pool.
+4. If the current attempt has no assigned variant, the server chooses one unused
+   variant, records it for that learner and attempt, and returns that exact
+   learner prompt to the assignment details view.
+5. The Studio button unlocks only after that frozen assignment succeeds.
+6. Reloading the assignment details, closing it or reopening Studio returns the
+   same variant.
+7. Submission freezes the Studio project and stores the assigned `variantId`
+   on both the submission head and immutable submitted version.
+8. Firestore rejects a personalized submission when its variant ID does not
+   match the server-issued variant for that learner/revision.
+9. Teacher review retrieves the exact prompt and private evaluation notes and
+   verifies the submitted variant ID.
+10. A teacher-requested revision advances the submission revision. The next
+    attempt receives another unused variant from the same approved pool.
+
+Simply refreshing Studio or closing/reopening the overall assessment does not
+reroll an unfinished learner task. This prevents learners from repeatedly
+requesting a more favorable task.
+
+## Pool limits, batching and replenishment
+
+The first implementation supports a target pool of 10–600 prepared variants.
+Variant prompts are stored as separate teacher-private documents below
+`assessment_private/{assessmentId}/variants/{variantId}`; the private assessment
+record stores only personalization metadata and active variant IDs. This avoids
+putting a multi-section pool into one Firestore document.
+
+For deployed sections, Adminerva recommends:
+
+`enrolled learners + (5 × deployed section count)`
+
+as a starting target. The teacher may lower or raise that target before the
+pool is activated. The 600-variant ceiling is intended to support teachers who
+deploy one personalized assessment across many sections. For example, eight
+sections with about 45 learners each represent roughly 360 learners, leaving
+substantial capacity for revision attempts and late roster changes.
+
+External packages use a stable adaptive batch size based on the target and
+deployed-section count, capped at 45. For example, 160 learners
+across four sections produce a recommended target of 180 and four 45-variant
+external packages. A manually chosen target of 164 produces four 41-variant
+packages.
+
+If all variants are assigned, the server fails closed rather than silently
+reusing another learner's task.
+
+A deployed personalized blueprint keeps its task instructions and rubric
+locked. Variation guidance remains editable only until the first valid pool is
+established; after that it also locks. The teacher may still raise the pool
+target and add unused variants from School AI or an external package. Existing
+learner variants remain frozen because increasing capacity does not change the
+blueprint fingerprint.
+
+Imported external batches are autosaved immediately as private drafts. Browser
+blur/visibility change is only a fallback autosave. Draft autosave does not
+publish the new capacity to learners. After the target is ready, the teacher
+uses **Activate / update pool** once to publish the prepared active IDs. During
+a live expansion, the old active pool remains available until the expanded pool
+is explicitly activated.
+
+## Mini PETA 3 example — Java OOP
+
+Mini PETA 3 is an example use of the generic feature, not a hard-coded recipe.
+
+Recommended blueprint:
+
+| Field | Value |
+| --- | --- |
+| Title | Mini PETA 3 – Personalized OOP Programming Task |
+| Assessment category | Mini PETA |
+| Assessment format | Adminerva Studio Code |
+| Mode | Personalized |
+| Maximum score | 10 |
+| Pool size | Enrolled learners plus revision headroom; Adminerva recommends 5 extra per deployed section |
+| Suggested open date | November 16, 2026 |
+| Deadline | November 20, 2026, 11:59 PM Asia/Manila |
+| Practical exam restrictions | Off for normal take-home work |
+
+Example authoritative student context:
+
+> Create a Java console application that demonstrates introductory
+> object-oriented programming. Your assigned task must require a class with
+> meaningful fields, a constructor, methods that work with object state, object
+> instantiation in the main program, and visible output showing the objects in
+> use. Keep fields appropriately encapsulated. Inheritance, interfaces,
+> databases, GUI programming and external APIs are not required for this Mini
+> PETA.
+
+Example variation guidance:
+
+> Keep the same introductory OOP competencies and comparable difficulty for
+> every learner. Vary the real-world scenario, class name, field names, method
+> names, object names, literal values and required output details. Require at
+> least two object instances. Do not introduce inheritance, polymorphism,
+> interfaces, databases, files, Android UI or external libraries.
+
+The teacher remains responsible for the common 10-point rubric. For example,
+the rubric can assess class/object design, constructor/initialization, methods
+and object state, program behavior/output, and code quality. Adminerva does not
+hard-code those criteria into the personalization engine.
+
+## Teacher review
+
+Teacher review shows, together:
+
+- the common assessment instructions;
+- the common published rubric;
+- the exact learner-specific prompt;
+- private variant evaluation notes;
+- the frozen submitted Studio files;
+- the variant ID and submission revision.
+
+The common rubric remains authoritative. Variant evaluation notes may clarify
+the exact values, identifiers or expected behavior for that learner but may not
+create new grading criteria.
+
+## Security and reliability
+
+- Students never choose a task, random seed or generation method.
+- Students never click a generation action. Opening the ready assignment
+  automatically assigns one unused variant and freezes it to the attempt.
+- Students cannot call the general teacher AI generation endpoint through this
+  feature.
+- School AI is optional. The external package path can prepare the full pool
+  without consuming the school AI allowance.
+- Generation happens before learner assignment, so an AI/provider outage does
+  not interrupt a learner once the pool is ready.
+- The full variant pool and evaluation notes are teacher-private.
+- Exact variants are assigned server-side.
+- Variant IDs are bound to submitted snapshots.
+- If a deployed assessment has no valid pool yet, Studio remains preparation
+  pending instead of starting an incomplete attempt.
+
+## Release boundary
+
+The feature changes:
+
+- Assessment Studio authoring;
+- teacher-side School AI generation and external-package generation of private variant pools;
+- server-side per-attempt variant allocation;
+- student Studio task display;
+- Studio submission variant binding;
+- Firestore validation;
+- teacher Studio review;
+- focused topic-agnostic variant tests.
+
+Do not deploy only the static frontend. The callable and Firestore rules are
+part of the same feature boundary.
+
+
+## Current format/mode compatibility
+
+The current Assessment Studio UI exposes the new taxonomy even where a format
+or mode is not implemented yet.
+
+| Assessment format | Default | Personalized | Group | By Pair |
+| --- | --- | --- | --- | --- |
+| Adminerva Studio Code | Available | Available | Future | Future |
+| GitHub Repository | Available | Future / disabled | Future | Future |
+| Essay / Written Response | Future | Future | Future | Future |
+| Multiple Choice | Future | Future where appropriate | Future | Future |
+| Matching Type | Future | Future where appropriate | Future | Future |
+| Analogy | Future | Future where appropriate | Future | Future |
+
+For the first release, **Personalized + Adminerva Studio Code** uses the current
+Studio submission contract:
+
+1. Open the personalized assignment from My Assessments.
+2. Receive one server-reserved variant for the current attempt.
+3. Work in a named Adminerva Studio project.
+4. Submit one immutable Studio project snapshot tied to the assigned variant ID.
+5. Once submitted, the personalized attempt is frozen. Another submission
+   requires an explicit teacher revision request.
+6. A teacher-requested revision receives a different unused personalized
+   variant.
+7. Teacher review and the resulting grade retain the Studio revision, snapshot
+   hash and personalized variant ID as provenance.
+
+A future **Essay / Written Response** format can use either Default or
+Personalized mode without changing the personalization engine; it will need its
+own answer editor, submission/evidence record and review workflow. Personalized
+GitHub tasks remain disabled for now.
+
+## Student assignment presentation
+
+The student Assignments page is **format- and mode-aware**, rather than
+repository-specific.
+
+- GitHub Repository + Default uses commits/checkpoint terminology.
+- Adminerva Studio Code + Default uses Studio project snapshot/revision
+  terminology.
+- Adminerva Studio Code + Personalized surfaces preparation, frozen variant,
+  attempt and revision states.
+- Future formats can provide their own card labels, actions and detail panels
+  without changing the common assignment list architecture.
+
+This keeps the learner UI aligned with the actual assessment they were assigned.
+
+
+## Format-adaptive blueprint editor
+
+Assessment Studio now adapts the blueprint controls to the selected assessment
+format instead of exposing repository controls everywhere.
+
+For **GitHub Repository**, the editor shows repository evidence settings:
+
+- individual checkpoint evidence;
+- repository target paths;
+- expected repository file types;
+- investigation fallback for attributed work outside expected paths.
+
+For **Adminerva Studio Code**, those repository controls are hidden and saved as
+empty/inactive configuration. Studio instead explains its first-party submission
+model: a learner-owned workspace, whole-project immutable snapshot and
+teacher-requested revision flow. GitHub connection, commit selection, target
+paths and contribution reconstruction are not required.
+
+Private checker instructions and optional code/string checks remain in a
+separate **Advanced evaluation guidance** section because they can apply to both
+GitHub and Studio code assessments.
+
+Studio workspace ownership provides stronger submission provenance than GitHub
+commit attribution, but it is not proof that every line was independently
+authored. Academic-integrity review and practical-exam restrictions remain
+separate concerns.
