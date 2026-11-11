@@ -62,6 +62,63 @@ function relevance(chunk,terms,index,metadata=""){
   if(/\b(content standard|performance standard|competenc|learning outcome|objectives|activities|assessment|lesson|unit|formation|values)\b/i.test(chunk+" "+metadata))score+=0.3;
   return score-index*0.003;
 }
+
+export const REFERENCE_BATCH_CHAR_LIMIT = 18000;
+
+/**
+ * Build source-labelled batches for native AI analysis. Unlike the bounded
+ * excerpt selector below, this walks every readable character in every selected
+ * reference. The original library records are never modified.
+ */
+export function buildReferenceAnalysisBatches(records,{maxChars=REFERENCE_BATCH_CHAR_LIMIT}={}){
+  const limit=Math.max(6000,Math.floor(Number(maxChars)||REFERENCE_BATCH_CHAR_LIMIT));
+  const units=[];
+  for(const [documentIndex,record] of (Array.isArray(records)?records:[]).entries()){
+    const text=extractReferenceText(record);
+    if(!text)continue;
+    const title=String(record?.title||record?.name||record?.filename||"Untitled reference")
+      .replace(/[\r\n]/g," ").slice(0,150);
+    const folder=String(record?.sourceFolder||"").replace(/[\r\n]/g," ").trim().slice(0,120);
+    const parts=sections(text,2400);
+    parts.forEach((value,partIndex)=>{
+      const source=[
+        folder?"FOLDER: "+folder:"",
+        "DOCUMENT: "+title,
+        "SECTION: "+(partIndex+1)
+      ].filter(Boolean).join(" | ");
+      units.push({documentIndex,partIndex,title,folder,source,value});
+    });
+  }
+
+  const batches=[];
+  let current=[],used=0;
+  const flush=()=>{
+    if(!current.length)return;
+    batches.push({
+      index:batches.length,
+      characters:used,
+      units:current,
+      text:current.map(unit=>"--- "+unit.source+" ---\n"+unit.value).join("\n\n")
+    });
+    current=[];used=0;
+  };
+
+  for(const unit of units){
+    const rendered="--- "+unit.source+" ---\n"+unit.value;
+    if(current.length && used+rendered.length+2>limit)flush();
+    current.push(unit);
+    used+=rendered.length+2;
+  }
+  flush();
+
+  return {
+    batches,
+    totalCharacters:units.reduce((sum,unit)=>sum+unit.value.length,0),
+    sectionCount:units.length,
+    documentCount:new Set(units.map(unit=>unit.documentIndex)).size,
+    maxChars:limit
+  };
+}
 export function buildReferenceContext(records,{scope="",instructions="",budget=REFERENCE_CONTEXT_BUDGET}={}){
   const max=Math.max(0,Math.floor(Number(budget)||0));
   const terms=keywords(scope+" "+instructions);
