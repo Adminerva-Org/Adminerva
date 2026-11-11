@@ -652,7 +652,9 @@ LAST WEEK'S CURRICULUM STATE:\n${safeTextState}`;
   const referencePackageSummary=referenceSummary
     ? `${referenceSummary.selectedSectionCount} exact excerpt(s) from ${referenceSummary.includedDocuments} of ${referenceSummary.documentCount} reference document(s)${referenceSummary.partial?"; exact excerpts are intentionally bounded":""}.`+
       (batchAnalysis?.totalBatches
-        ? ` Native System AI analyzed ${batchAnalysis.completedBatches} of ${batchAnalysis.totalBatches} full-reference batch(es), covering ${batchAnalysis.totalCharacters.toLocaleString()} readable source characters before final generation.`
+        ? (batchAnalysis.completedBatches===batchAnalysis.totalBatches
+            ? ` Native System AI analyzed all ${batchAnalysis.totalBatches} full-reference batch(es), covering ${batchAnalysis.totalCharacters.toLocaleString()} readable source characters before final generation.`
+            : ` Native System AI analyzed ${batchAnalysis.completedBatches} of ${batchAnalysis.totalBatches} full-reference batch(es); exact excerpts remain the fallback for incomplete batch coverage.`)
         : "")
     : "No reference excerpts were selected.";
 
