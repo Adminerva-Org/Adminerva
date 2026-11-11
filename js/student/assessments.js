@@ -403,21 +403,39 @@ window.viewAssessmentDetails = function (id) {
   }
 
   const isStudio=ass.schemaVersion===3&&ass.submissionSource==="studio";
-  if(isStudio&&ass.personalizedTask?.enabled===true)
+  const personalized=isStudio&&ass.personalizedTask?.enabled===true,
+    personalizedReady=!personalized||(
+      Number(ass.personalizedTask?.poolSize||0)>0&&
+      typeof ass.personalizedTask?.poolFingerprint==="string"&&
+      ass.personalizedTask.poolFingerprint.length>0
+    );
+  if(personalized)
     document.getElementById("modalAssContext").textContent=
       (ass.taskContext||"Complete the assigned Studio task.")+
-      "\n\nYour individual version will be generated when you open this assessment in Adminerva Studio. The same version stays attached to your current attempt; a teacher-requested revision receives a new version.";
+      "\n\nAdminerva assigns your individual version automatically when you open this assessment. You do not generate or choose a task. The assigned version is frozen to your current attempt; a teacher-requested revision receives another prepared version.";
   document.getElementById("studioAssessmentPanel")?.classList.toggle("hidden",!isStudio);
   document.getElementById("studioExamAdvice")?.classList.toggle("hidden",!isStudio||ass.practicalExam!==true);
   if(isStudio)document.getElementById("modalAssPath").textContent="Work area: your named Adminerva Studio project (code, diagrams and database).";
   document.getElementById("legacySubmitPanel")?.classList.toggle("hidden",isStudio||ass.schemaVersion===2);
   if(isStudio){
-    const head=myStudioSubmissions[id];
-    document.getElementById("studioAssignmentStatus").textContent=head?
-      "Revision "+head.revision+" · "+String(head.status||"submitted").replaceAll("_"," ")+
-      (head.reviewNote?" · Teacher note: "+head.reviewNote:""):
-      "No Studio project has been submitted yet.";
-    document.getElementById("studioOpenProject").href="student-playground.html?assessment="+encodeURIComponent(id);
+    const head=myStudioSubmissions[id],open=document.getElementById("studioOpenProject");
+    document.getElementById("studioAssignmentStatus").textContent=!personalizedReady
+      ?"Your teacher is preparing the personalized task pool. You can review the instructions now; Studio will unlock when the variants are ready."
+      :head
+        ?"Revision "+head.revision+" · "+String(head.status||"submitted").replaceAll("_"," ")+
+          (head.reviewNote?" · Teacher note: "+head.reviewNote:"")
+        :"No Studio project has been submitted yet.";
+    if(personalizedReady){
+      open.href="student-playground.html?assessment="+encodeURIComponent(id);
+      open.removeAttribute("aria-disabled");
+      open.classList.remove("opacity-50","pointer-events-none");
+      open.textContent="Open Adminerva Studio →";
+    }else{
+      open.removeAttribute("href");
+      open.setAttribute("aria-disabled","true");
+      open.classList.add("opacity-50","pointer-events-none");
+      open.textContent="Personalized task preparation pending";
+    }
   }
   document.getElementById("assessmentModal").classList.remove("hidden");
   document.getElementById("assessmentModalClose")?.focus({preventScroll:true});
