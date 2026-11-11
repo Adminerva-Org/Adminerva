@@ -27,7 +27,7 @@ const sessions=new Map(),queue=[],active=new Set(),byUser=new Map();
 const wsServer=new WebSocketServer({noServer:true,handleProtocols:protocols=>protocols.has('adminerva-runtime')?'adminerva-runtime':false});
 function serial(session){
   return {id:session.id,state:session.state,position:session.state==='queued'?queue.indexOf(session.id)+1:0,
-    activeCount:active.size,activeLimit:MAX_ACTIVE,waitingCount:queue.length,createdAt:session.createdAt,
+    activeCount:active.size,activeLimit:MAX_ACTIVE,waitingCount:queue.length,createdAt:session.createdAt,projectId:session.projectId||null,
     ...(session.finishedAt?{finishedAt:session.finishedAt}:{})};
 }
 function send(session,payload){
@@ -95,7 +95,8 @@ function snapshotValidation(input){
   const base=path.posix.basename(entry,'.java');
   if(!/^[A-Za-z_$][\w$]*$/.test(base))throw Object.assign(Error('Invalid Java entry name.'),{httpCode:400});
   const mainClass=(pkg?pkg+'.':'')+base;
-  return {files,entry,mainClass};
+  const projectId=typeof input.projectId==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(input.projectId)?input.projectId:null;
+  return {files,entry,mainClass,projectId};
 }
 async function makeFiles(files){
   const base=await mkdtemp(path.join(tmpdir(),'adminerva-java-'));
@@ -225,7 +226,9 @@ const server=http.createServer(async(req,res)=>{
       if(!session||!['queued','running'].includes(session.state)){
         json(res,200,{active:false});return;
       }
-      json(res,200,{active:true,...serial(session),streamToken:session.streamToken});
+      json(res,200,{active:true,...serial(session),streamToken:session.streamToken,
+        // The authenticated owner may review the exact frozen snapshot after a refresh.
+        files:session.files,entry:session.entry});
       return;
     }
     const match=/^\/v1\/executions\/([a-f0-9-]{36})$/.exec(req.url||'');
