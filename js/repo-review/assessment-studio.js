@@ -90,11 +90,12 @@ function markPersonalizationPossiblyStale(){
   if(status)status.textContent="Task details changed. The existing variant pool may be stale; regenerate it before deployment.";
 }
 async function loadPersonalizationVariants(assessmentId,metadata={}){
-  const ids=Array.isArray(metadata.variantIds)?metadata.variantIds:[];
-  if(!assessmentId||!ids.length)return [];
+  const fingerprint=String(metadata.fingerprint||"");
+  if(!assessmentId||!fingerprint)return [];
   const snap=await getDocs(collection(db,"assessment_private",assessmentId,"variants"));
-  const byId=new Map(snap.docs.map(record=>[record.id,{variantId:record.id,...record.data()}]));
-  return ids.map(id=>byId.get(id)).filter(item=>item&&item.fingerprint===metadata.fingerprint);
+  return snap.docs.map(record=>({variantId:record.id,...record.data()}))
+    .filter(item=>item.fingerprint===fingerprint)
+    .sort((a,b)=>String(a.variantId).localeCompare(String(b.variantId)));
 }
 function renderPersonalizedVariantPool(){
   const status=document.getElementById("personalizedVariantStatus"),
@@ -325,28 +326,54 @@ window.importExternalPersonalizationResponse=async function(){
   }
 };
 
-window.savePersonalizationPool=async function(){
-  if(savingBlueprint||!currentAssessmentId)return;
+async function persistPersonalizationPool({activate=false,silent=false}={}){
+  if(savingBlueprint||!currentAssessmentId)return false;
   const item=assessments.find(value=>value.id===currentAssessmentId);
-  if(!item||item.schemaVersion!==3||item.personalizedTask?.enabled!==true)
-    return blueprintStatus("This saved blueprint is not an enabled personalized Studio assessment.");
+  if(!item||item.schemaVersion!==3||item.personalizedTask?.enabled!==true){
+    if(!silent)blueprintStatus("This saved blueprint is not an enabled personalized Studio assessment.");
+    return false;
+  }
   const fingerprint=await currentPersonalizationFingerprint(),
     target=Number(document.getElementById("assessVariantCount").value),
     guidance=document.getElementById("assessVariantGuidance").value.trim(),
     wasReady=Boolean(item.personalizedTask?.poolFingerprint&&Number(item.personalizedTask?.poolSize||0)>0);
-  if(personalizedVariantFingerprint!==fingerprint||!personalizedVariantPool.length)
-    return blueprintStatus("Generate or import a current private variant pool before saving personalization.");
-  if(!Number.isInteger(target)||target<10||target>MAX_PERSONALIZED_POOL)
-    return blueprintStatus("Choose a variant target from 10 to "+MAX_PERSONALIZED_POOL+".");
+  if(personalizedVariantFingerprint!==fingerprint||!personalizedVariantPool.length){
+    if(!silent)blueprintStatus("Generate or import a current private variant pool before saving personalization.");
+    return false;
+  }
+  if(!Number.isInteger(target)||target<10||target>MAX_PERSONALIZED_POOL){
+    if(!silent)blueprintStatus("Choose a variant target from 10 to "+MAX_PERSONALIZED_POOL+".");
+    return false;
+  }
   const ready=personalizedVariantPool.length>=target;
-  const poolBytes=new TextEncoder().encode(JSON.stringify(personalizedVariantPool)).length;
-  if(poolBytes>700000)return blueprintStatus("The private variant pool is too large to save safely.");
+  if(activate&&!ready&&!wasReady){
+    if(!silent)blueprintStatus("The initial private pool has "+personalizedVariantPool.length+" of "+target+" variants. Finish the remaining batches before activation.");
+    return false;
+  }
   savingBlueprint=true;
   document.getElementById("savePersonalizationPool").disabled=true;
-  const loader=window.beginLoading?.("Saving private personalization pool…")||(()=>{});
+  const loader=silent?(()=>{}):(window.beginLoading?.(activate?"Activating personalized variant pool…":"Autosaving private variants…")||(()=>{}));
   try{
-    const batch=writeBatch(db);
-    if(ready||wasReady){
+    const batch=writeBatch(db),now=serverTimestamp();
+    for(const variant of personalizedVariantPool){
+      batch.set(doc(db,"assessment_private",currentAssessmentId,"variants",variant.variantId),{
+        variantId:variant.variantId,fingerprint,
+        prompt:variant.prompt,evaluationNotes:variant.evaluationNotes||"",
+        summary:variant.summary||"",updatedAt:now
+      },{merge:true});
+    }
+    const activeIds=activate
+      ?personalizedVariantPool.map(value=>value.variantId)
+      :(Array.isArray(item.personalization?.variantIds)?item.personalization.variantIds:[]);
+    batch.set(doc(db,"assessment_private",currentAssessmentId),{
+      ownerUid:item.ownerUid,sectionIds:item.sectionIds||[],
+      personalization:{
+        mode:PERSONALIZATION_MODE,guidance,fingerprint,
+        variantIds:activeIds,draftCount:personalizedVariantPool.length,
+        generatedAt:personalizedVariantGeneratedAt||new Date().toISOString()
+      },updatedAt:now
+    },{merge:true});
+    if(activate){
       batch.update(doc(db,"assessments",currentAssessmentId),{
         personalizedTask:{
           enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",
@@ -355,35 +382,35 @@ window.savePersonalizationPool=async function(){
         }
       });
     }
-    batch.set(doc(db,"assessment_private",currentAssessmentId),{
-      ownerUid:item.ownerUid,sectionIds:item.sectionIds||[],
-      personalization:{
-        mode:PERSONALIZATION_MODE,guidance,fingerprint,
-        variants:personalizedVariantPool,generatedAt:personalizedVariantGeneratedAt||new Date().toISOString()
-      },updatedAt:serverTimestamp()
-    },{merge:true});
     await batch.commit();
+    personalizationDirty=false;
     await loadAssessments();
     const refreshed=assessments.find(value=>value.id===currentAssessmentId);
     if(refreshed){
-      personalizedVariantPool=Array.isArray(refreshed.personalization?.variants)?refreshed.personalization.variants.map(value=>({...value})):[];
-      personalizedVariantFingerprint=refreshed.personalization?.fingerprint||"";
-      personalizedVariantGeneratedAt=refreshed.personalization?.generatedAt||"";
+      personalizedVariantFingerprint=refreshed.personalization?.fingerprint||fingerprint;
+      personalizedVariantGeneratedAt=refreshed.personalization?.generatedAt||personalizedVariantGeneratedAt;
+      personalizedVariantPool=await loadPersonalizationVariants(currentAssessmentId,refreshed.personalization||{fingerprint});
     }
     renderPersonalizedVariantPool();
-    blueprintStatus(ready
-      ?"Private personalization pool is ready. Students will be assigned variants automatically when they open the task."
-      :wasReady
-        ?"Saved "+personalizedVariantPool.length+" private variants while expanding toward "+target+". Existing learner access remains active; continue adding variants for the larger capacity."
-        :"Saved "+personalizedVariantPool.length+" of "+target+" private variants. Students remain preparation-pending until the target is reached and saved.");
+    if(!silent){
+      if(activate)blueprintStatus(
+        "Personalized pool activated with "+personalizedVariantPool.length+" variants. Learners are assigned automatically when they open the task."
+      );
+      else blueprintStatus(
+        "Private variants autosaved as a draft. Activate the pool after the target is ready."
+      );
+    }
+    return true;
   }catch(error){
-    blueprintStatus("Personalization pool was not saved: "+error.message);
+    if(!silent)blueprintStatus("Personalization pool was not saved: "+error.message);
+    return false;
   }finally{
     savingBlueprint=false;
     document.getElementById("savePersonalizationPool").disabled=false;
     loader();
   }
-};
+}
+window.savePersonalizationPool=async function(){return persistPersonalizationPool({activate:true,silent:false});};
 
 window.applyAssessmentRubric=function(){
   const score=Number(document.getElementById("maxScore").value),selected=document.getElementById("assessmentRubricTemplate").value;
