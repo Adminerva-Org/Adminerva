@@ -5,44 +5,49 @@ import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 const {
   validPool,
-  PERSONALIZATION_MODE
+  validVariant,
+  PERSONALIZATION_MODE,
+  MAX_POOL_SIZE
 }=require("../functions/studio-assessment-variants.js");
 
-function assessment(fingerprint="abc123"){
+const ids=[
+  "0123456789abcdef01234567",
+  "89abcdef0123456701234567"
+];
+function assessment(fingerprint="abc123",poolSize=ids.length){
   return {
     personalizedTask:{
       enabled:true,
       mode:PERSONALIZATION_MODE,
-      poolFingerprint:fingerprint
+      poolFingerprint:fingerprint,
+      poolSize
     }
   };
 }
-function privatePool(fingerprint="abc123"){
+function privatePool(fingerprint="abc123",variantIds=ids){
   return {
     personalization:{
       mode:PERSONALIZATION_MODE,
       fingerprint,
-      variants:[
-        {
-          variantId:"0123456789abcdef01234567",
-          prompt:"Create a programming solution using the exact individualized requirements supplied in this variant.",
-          evaluationNotes:"Check the exact variant-specific requirements against the common published rubric."
-        },
-        {
-          variantId:"89abcdef0123456701234567",
-          prompt:"Implement the same assessed programming competencies using this different individualized problem statement.",
-          evaluationNotes:"Use the same rubric and verify the variant-specific details before awarding credit."
-        }
-      ]
+      variantIds
     }
   };
 }
+function variant(variantId=ids[0],fingerprint="abc123"){
+  return {
+    variantId,
+    fingerprint,
+    prompt:"Create a programming solution using the exact individualized requirements supplied in this variant.",
+    evaluationNotes:"Check the exact variant-specific requirements against the common published rubric."
+  };
+}
 
-test("generic personalized pool accepts topic-agnostic variants",()=>{
+test("generic personalized pool accepts scalable topic-agnostic variant ids",()=>{
   const pool=validPool(privatePool(),assessment());
-  assert.equal(pool.length,2);
-  assert.match(pool[0].prompt,/programming solution/);
+  assert.deepEqual(pool.variantIds,ids);
+  assert.equal(pool.fingerprint,"abc123");
   assert.equal(PERSONALIZATION_MODE,"ai_blueprint_pool_v1");
+  assert.equal(MAX_POOL_SIZE,300);
 });
 
 test("generic personalized pool rejects a stale blueprint fingerprint",()=>{
@@ -53,18 +58,27 @@ test("generic personalized pool rejects a stale blueprint fingerprint",()=>{
 });
 
 test("generic personalized pool rejects duplicate variant identities",()=>{
-  const value=privatePool();
-  value.personalization.variants[1].variantId=value.personalization.variants[0].variantId;
-  assert.throws(()=>validPool(value,assessment()),/duplicate variant IDs/);
+  assert.throws(
+    ()=>validPool(privatePool("abc123",[ids[0],ids[0]]),assessment("abc123",2)),
+    /duplicate variant IDs/
+  );
 });
 
-test("generic personalized pool validates prompts without assuming a programming topic",()=>{
-  const value=privatePool();
-  value.personalization.variants[0].prompt="short";
-  assert.throws(()=>validPool(value,assessment()),/incomplete/);
+test("generic personalized pool metadata must match the public active pool size",()=>{
+  assert.throws(
+    ()=>validPool(privatePool(),assessment("abc123",1)),
+    /metadata is incomplete/
+  );
+});
 
-  const sql=privatePool();
-  sql.personalization.variants[0].prompt=
-    "Using the supplied table requirements, write the requested SQL queries with the individualized table and column names for this variant.";
-  assert.equal(validPool(sql,assessment()).length,2);
+test("private variant document validates prompt and fingerprint independently",()=>{
+  assert.equal(validVariant(variant(),{variantId:ids[0],fingerprint:"abc123"}).variantId,ids[0]);
+  assert.throws(
+    ()=>validVariant({...variant(),prompt:"short"},{variantId:ids[0],fingerprint:"abc123"}),
+    /record is invalid/
+  );
+  assert.throws(
+    ()=>validVariant(variant(ids[0],"old"),{variantId:ids[0],fingerprint:"abc123"}),
+    /record is invalid/
+  );
 });
