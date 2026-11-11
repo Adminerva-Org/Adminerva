@@ -44,10 +44,11 @@ function createStudioAssessmentVariantService({db,Timestamp}){
     if(!record.exists)deny("not-found","This assessment is unavailable.");
     const data=record.data();
     if(data.schemaVersion!==3||data.submissionSource!=="studio"||
+       data.assessmentFormat!=="studio_code"||
+       data.assessmentMode!=="personalized"||
        data.personalizedTask?.enabled!==true||
-       data.personalizedTask?.mode!==PERSONALIZATION_MODE||
-       data.personalizedTask?.responseType!=="studio_project")
-      deny("failed-precondition","This assessment does not use personalized Studio tasks.");
+       data.personalizedTask?.mode!==PERSONALIZATION_MODE)
+      deny("failed-precondition","This assessment is not a personalized Adminerva Studio Code task.");
     const privateRecord=await db.doc("assessment_private/"+assessmentId).get();
     if(!privateRecord.exists)deny("failed-precondition","This assessment's private personalization configuration is unavailable.");
     const pool=validPool(privateRecord.data(),data);
