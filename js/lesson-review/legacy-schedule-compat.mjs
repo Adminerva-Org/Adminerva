@@ -189,13 +189,15 @@ export function buildLessonMeetingContext(rows,{dateRange="",grade=""}={}){
       .filter(candidate=>candidate!==meeting&&Number.isFinite(candidate.duration)&&candidate.duration>0)
       .map(candidate=>candidate.duration);
     const typical=median(otherDurations);
-    // A three-period block may be 135, 150, 165 or 180 minutes depending on
-    // the school's period length. When regular meetings exist, compare the
-    // block to them; when it is the only meeting, require a clearly extended
-    // duration before treating it as a combined laboratory session.
+    // Schools use different bell lengths. Compare against this section's
+    // own regular meetings instead of assuming 45- or 60-minute periods.
+    // The 120-minute floor prevents an ordinary slightly-long class from being
+    // mistaken for a three-period block when its peers are unusually short.
     if(Number.isFinite(typical)&&typical>0){
-      return meeting.duration>=135 && meeting.duration>=typical*2.25;
+      return meeting.duration>=Math.max(120,typical*2.25);
     }
+    // With no peer meeting to compare against, remain conservative rather than
+    // guessing that every two-hour class is a combined laboratory block.
     return meeting.duration>=150;
   };
 
