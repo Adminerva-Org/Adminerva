@@ -197,11 +197,12 @@ async function startSession(session){
     session.folder=folder;
     session.containerName='adminerva-java-'+session.id.replace(/-/g,'').slice(0,28);
     const args=['run','--rm','--interactive','--name',session.containerName,
-      '--network','none','--cpus','0.5','--memory','256m','--memory-swap','256m',
+      '--network','none','--cpus','0.5','--memory','512m','--memory-swap','512m',
       '--pids-limit','64','--ulimit','nofile=64:64',
-      '--read-only','--tmpfs','/tmp:rw,nosuid,nodev,size=100m',
+      '--read-only','--tmpfs','/tmp:rw,nosuid,nodev,size=128m,mode=1777',
+      '--tmpfs','/workspace:rw,nosuid,nodev,size=64m,mode=1777',
       '--cap-drop','ALL','--security-opt','no-new-privileges',
-      '--mount','type=bind,source='+session.folder+',target=/workspace,readonly',
+      '--mount','type=bind,source='+session.folder+',target=/source,readonly',
       '--env','MAIN_CLASS='+session.mainClass,IMAGE];
     const child=spawn('docker',args,{stdio:['pipe','pipe','pipe']});
     session.child=child;
