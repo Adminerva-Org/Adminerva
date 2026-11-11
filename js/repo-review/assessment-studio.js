@@ -842,8 +842,11 @@ function renderAssessmentGrid() {
     const card = `
             <div class="bg-white border rounded-xl shadow-sm hover:shadow-md transition cursor-pointer flex flex-col overflow-hidden" onclick="window.openViewModal('${item.id}')">
                 <div class="bg-slate-800 p-4 border-b border-slate-700">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="${getTypeStyle(item.type)} text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider">${escapeHTML(item.type)}</span>
+                    <div class="flex justify-between items-start mb-2 gap-2">
+                        <div class="flex flex-wrap gap-1">
+                          <span class="${getTypeStyle(item.type)} text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider">${escapeHTML(item.type)}</span>
+                          <span class="${assessmentPublished(item)?"bg-emerald-500/20 text-emerald-200 border-emerald-400/30":"bg-amber-500/20 text-amber-200 border-amber-400/30"} text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider">${assessmentPublished(item)?"Published":"Unpublished"}</span>
+                        </div>
                         <span class="text-slate-400 hover:text-white transition">⋮</span>
                     </div>
                     <h3 class="font-bold text-white text-lg truncate" title="${escapeHTML(item.title)}">${escapeHTML(item.title)}</h3>\n                    ${item.subject ? `<p class="text-xs text-cyan-200 mt-1 truncate">${escapeHTML(item.subject)}</p>` : ""}
