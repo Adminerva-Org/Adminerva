@@ -416,7 +416,7 @@ async function persistPersonalizationPool({activate=false,silent=false}={}){
     if(activate){
       finalBatch.update(doc(db,"assessments",currentAssessmentId),{
         personalizedTask:{
-          enabled:true,mode:PERSONALIZATION_MODE,responseType:"studio_project",regeneration:"new_attempt",
+          enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",
           uniqueWithinAssessment:true,poolFingerprint:fingerprint,
           poolSize:personalizedVariantPool.length,poolTarget:target
         }
