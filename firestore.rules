@@ -1091,15 +1091,15 @@ service cloud.firestore {
             next.get("poolFingerprint","") == prior.get("poolFingerprint","")) &&
           next.get("poolSize",0) is int &&
           next.get("poolSize",0) >= prior.get("poolSize",0) &&
-          next.get("poolSize",0) <= 300 &&
+          next.get("poolSize",0) <= 600 &&
           next.get("poolTarget",0) is int &&
           next.get("poolTarget",0) >= prior.get("poolTarget",0) &&
-          next.get("poolTarget",0) <= 300 &&
+          next.get("poolTarget",0) <= 600 &&
           privateNext.get("mode","") == "ai_blueprint_pool_v1" &&
           privateNext.get("fingerprint","") == next.get("poolFingerprint","") &&
           privateNext.get("variantIds",[]) is list &&
           privateNext.get("variantIds",[]).size() == next.get("poolSize",0) &&
-          privateNext.get("variantIds",[]).size() <= 300;
+          privateNext.get("variantIds",[]).size() <= 600;
       }
       function validAssessment(data) {
         return data.get("ownerUid","") is string && data.get("sectionIds",[]) is list && data.sectionIds.size() <= 20 &&
@@ -1115,10 +1115,10 @@ service cloud.firestore {
                data.get("personalizedTask",{}).get("poolFingerprint","").size() <= 64 &&
                data.get("personalizedTask",{}).get("poolSize",0) is int &&
                data.get("personalizedTask",{}).get("poolSize",0) >= 0 &&
-               data.get("personalizedTask",{}).get("poolSize",0) <= 300 &&
+               data.get("personalizedTask",{}).get("poolSize",0) <= 600 &&
                data.get("personalizedTask",{}).get("poolTarget",0) is int &&
                data.get("personalizedTask",{}).get("poolTarget",0) >= 10 &&
-               data.get("personalizedTask",{}).get("poolTarget",0) <= 300))
+               data.get("personalizedTask",{}).get("poolTarget",0) <= 600))
           )) &&
           data.get("targetSections",[]) is list && data.get("targetSections",[]).hasOnly(data.sectionIds) &&
           (data.deployments.size() <= 0 || data.deployments[0].section in data.sectionIds) &&
