@@ -1648,6 +1648,10 @@ function initializeMobileStudio(){
   moreButton?.addEventListener('click',()=>showDrawer('actions'));
   document.getElementById('studioMobileCloseFiles')?.addEventListener('click',closeDrawer);
   document.getElementById('studioMobileCloseMore')?.addEventListener('click',closeDrawer);
+  document.getElementById('studioMobileBackToProjects')?.addEventListener('click',()=>{
+    closeDrawer();
+    document.getElementById('backToProjectsBtn')?.click();
+  });
   editorButton?.addEventListener('click',()=>setPane('editor'));
   terminalButton?.addEventListener('click',()=>setPane('terminal'));
   mobileRun?.addEventListener('click',()=>{
