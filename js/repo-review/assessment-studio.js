@@ -293,6 +293,8 @@ window.importExternalPersonalizationResponse=async function(){
       expectedCount:need.missing,hashPrompt:sha256Text
     });
     const merged=mergeVariantPools(preserve,incoming);
+    if(merged.length<need.target)
+      throw Error("Some imported variants duplicate tasks already in the private pool. Ask the external AI for "+(need.target-merged.length)+" additional distinct variant"+(need.target-merged.length===1?"":"s")+".");
     if(merged.length>50)throw Error("The combined private pool cannot exceed 50 variants.");
     const poolBytes=new TextEncoder().encode(JSON.stringify(merged)).length;
     if(poolBytes>700000)throw Error("The combined private pool is too large to store safely.");
@@ -321,6 +323,8 @@ window.savePersonalizationPool=async function(){
     return blueprintStatus("Generate or import a current private variant pool before saving personalization.");
   if(!Number.isInteger(target)||target<10||target>50)
     return blueprintStatus("Choose a variant target from 10 to 50.");
+  if(personalizedVariantPool.length<target)
+    return blueprintStatus("The private pool has "+personalizedVariantPool.length+" variants. Add "+(target-personalizedVariantPool.length)+" more before saving the "+target+"-variant target.");
   const poolBytes=new TextEncoder().encode(JSON.stringify(personalizedVariantPool)).length;
   if(poolBytes>700000)return blueprintStatus("The private variant pool is too large to save safely.");
   savingBlueprint=true;
