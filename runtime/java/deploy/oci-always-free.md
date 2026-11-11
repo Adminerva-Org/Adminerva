@@ -119,11 +119,11 @@ If the student refreshes, the service can recover the active queue request and s
 | `MAX_SESSION_SECONDS` | 900 | Fifteen-minute hard limit |
 | `DISCONNECT_GRACE_SECONDS` | 120 | Grace period to reconnect |
 | Maximum Java project | 250 KB | Runtime source/text files |
-| Per-container memory | 256 MB | Node service still needs memory |
+| Per-container memory | 512 MB | Node service still needs memory |
 | Per-container CPU | 0.5 CPU | Can contend on a 2-OCPU VM |
 | Output limit | 1 MB | Prevent unlimited terminal streams |
 
-Even eight isolated Java processes may create significant compilation contention on a small free VM. The actual safe number must be measured on that VM. Reduce `MAX_ACTIVE_SESSIONS` if student wait times, memory pressure, or CPU utilization become excessive. **A queue of 200 does not mean 200 simultaneously running JVMs.**
+The runner permits temporary file and CSV writes inside a capped in-memory workspace; these files disappear after execution and do not overwrite the saved project. Databases and external network access are not provided by this first console runtime.\n\nEven eight isolated Java processes may create significant compilation contention on a small free VM. The actual safe number must be measured on that VM. Reduce `MAX_ACTIVE_SESSIONS` if student wait times, memory pressure, or CPU utilization become excessive. **A queue of 200 does not mean 200 simultaneously running JVMs.**
 
 When the VM is reclaimed, rebooted, or the Node service restarts, its in-memory queue is lost; students may need to request execution again. A durable scheduler can be added after the pilot.
 
