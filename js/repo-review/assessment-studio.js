@@ -117,7 +117,7 @@ function cleanGeneratedVariant(item){
   const prompt=item.prompt.trim(),
     evaluationNotes=typeof item.evaluationNotes==="string"?item.evaluationNotes.trim():"",
     summary=typeof item.summary==="string"?item.summary.trim().slice(0,300):"";
-  if(prompt.length<80||prompt.length>12000||evaluationNotes.length>8000)return null;
+  if(prompt.length<80||prompt.length>12000||evaluationNotes.length<10||evaluationNotes.length>8000||!summary)return null;
   return {prompt,evaluationNotes,summary};
 }
 async function generateVariantBatch({count,title,taskContext,evalCriteria,guidance,previousSummaries}){
