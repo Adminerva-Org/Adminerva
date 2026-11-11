@@ -470,7 +470,7 @@ window.viewAssessmentDetails = function (id) {
         ?"Revision "+head.revision+" · "+String(head.status||"submitted").replaceAll("_"," ")+
           (head.reviewNote?" · Teacher note: "+head.reviewNote:"")
         :"No Studio project has been submitted yet.";
-    if(personalizedReady){
+    if(personalizedReady&&!personalized){
       open.href="student-playground.html?assessment="+encodeURIComponent(id);
       open.removeAttribute("aria-disabled");
       open.classList.remove("opacity-50","pointer-events-none");
@@ -479,7 +479,7 @@ window.viewAssessmentDetails = function (id) {
       open.removeAttribute("href");
       open.setAttribute("aria-disabled","true");
       open.classList.add("opacity-50","pointer-events-none");
-      open.textContent="Personalized task preparation pending";
+      open.textContent=personalizedReady?"Assigning personalized task…":"Personalized task preparation pending";
     }
   }
   document.getElementById("assessmentModal").classList.remove("hidden");
