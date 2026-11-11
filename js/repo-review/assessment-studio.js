@@ -34,6 +34,7 @@ let fpInstance = null;
 let savingBlueprint=false,savingDeployment=false,rubricSource="balanced",lastGeneratedRubric="",subjectFocus=[];
 let blueprintContentLocked=false;
 let personalizedVariantPool=[],personalizedVariantFingerprint="",personalizedVariantGeneratedAt="",generatingVariants=false,personalizationDirty=false;
+let personalizedPersistedIds=new Set();
 const PERSONALIZATION_MODE="ai_blueprint_pool_v1";
 const MAX_PERSONALIZED_POOL=600;
 const MAX_EXTERNAL_VARIANT_BATCH=45;
@@ -366,27 +367,52 @@ async function persistPersonalizationPool({activate=false,silent=false}={}){
   document.getElementById("savePersonalizationPool").disabled=true;
   const loader=silent?(()=>{}):(window.beginLoading?.(activate?"Activating personalized variant pool…":"Autosaving private variants…")||(()=>{}));
   try{
-    const batch=writeBatch(db),now=serverTimestamp();
-    for(const variant of personalizedVariantPool){
-      batch.set(doc(db,"assessment_private",currentAssessmentId,"variants",variant.variantId),{
-        variantId:variant.variantId,fingerprint,
-        prompt:variant.prompt,evaluationNotes:variant.evaluationNotes||"",
-        summary:variant.summary||"",updatedAt:now
+    const activeIds=Array.isArray(item.personalization?.variantIds)?item.personalization.variantIds:[],
+      parentRef=doc(db,"assessment_private",currentAssessmentId),
+      generatedAt=personalizedVariantGeneratedAt||new Date().toISOString();
+
+    // Prime the private parent first so child variant rules can validate the
+    // current blueprint fingerprint. Keep the existing active IDs until the
+    // explicit activation step publishes the prepared capacity.
+    {
+      const prime=writeBatch(db);
+      prime.set(parentRef,{
+        ownerUid:item.ownerUid,sectionIds:item.sectionIds||[],
+        personalization:{
+          mode:PERSONALIZATION_MODE,guidance,fingerprint,
+          variantIds:activeIds,draftCount:personalizedVariantPool.length,generatedAt
+        },updatedAt:serverTimestamp()
       },{merge:true});
+      await prime.commit();
     }
-    const activeIds=activate
-      ?personalizedVariantPool.map(value=>value.variantId)
-      :(Array.isArray(item.personalization?.variantIds)?item.personalization.variantIds:[]);
-    batch.set(doc(db,"assessment_private",currentAssessmentId),{
+
+    const variantsToWrite=personalizedVariantPool.filter(variant=>
+      !personalizedPersistedIds.has(variant.variantId)||variant.fingerprint!==fingerprint
+    );
+    const chunkSize=400;
+    for(let offset=0;offset<variantsToWrite.length;offset+=chunkSize){
+      const batch=writeBatch(db);
+      for(const variant of variantsToWrite.slice(offset,offset+chunkSize)){
+        batch.set(doc(db,"assessment_private",currentAssessmentId,"variants",variant.variantId),{
+          variantId:variant.variantId,fingerprint,
+          prompt:variant.prompt,evaluationNotes:variant.evaluationNotes||"",
+          summary:variant.summary||"",updatedAt:serverTimestamp()
+        },{merge:true});
+      }
+      await batch.commit();
+    }
+
+    const finalBatch=writeBatch(db),
+      publishIds=activate?personalizedVariantPool.map(value=>value.variantId):activeIds;
+    finalBatch.set(parentRef,{
       ownerUid:item.ownerUid,sectionIds:item.sectionIds||[],
       personalization:{
         mode:PERSONALIZATION_MODE,guidance,fingerprint,
-        variantIds:activeIds,draftCount:personalizedVariantPool.length,
-        generatedAt:personalizedVariantGeneratedAt||new Date().toISOString()
-      },updatedAt:now
+        variantIds:publishIds,draftCount:personalizedVariantPool.length,generatedAt
+      },updatedAt:serverTimestamp()
     },{merge:true});
     if(activate){
-      batch.update(doc(db,"assessments",currentAssessmentId),{
+      finalBatch.update(doc(db,"assessments",currentAssessmentId),{
         personalizedTask:{
           enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",
           uniqueWithinAssessment:true,poolFingerprint:fingerprint,
@@ -394,7 +420,9 @@ async function persistPersonalizationPool({activate=false,silent=false}={}){
         }
       });
     }
-    await batch.commit();
+    await finalBatch.commit();
+
+    personalizedPersistedIds=new Set(personalizedVariantPool.map(value=>value.variantId));
     personalizationDirty=false;
     await loadAssessments();
     const refreshed=assessments.find(value=>value.id===currentAssessmentId);
@@ -402,6 +430,7 @@ async function persistPersonalizationPool({activate=false,silent=false}={}){
       personalizedVariantFingerprint=refreshed.personalization?.fingerprint||fingerprint;
       personalizedVariantGeneratedAt=refreshed.personalization?.generatedAt||personalizedVariantGeneratedAt;
       personalizedVariantPool=await loadPersonalizationVariants(currentAssessmentId,refreshed.personalization||{fingerprint});
+      personalizedPersistedIds=new Set(personalizedVariantPool.map(value=>value.variantId));
     }
     renderPersonalizedVariantPool();
     if(!silent){
@@ -771,7 +800,7 @@ window.openCreateModal = function () {
   document.getElementById("assessVariantGuidance").value="";
   document.getElementById("assessVariantCount").value="45";
   document.getElementById("assessVariantCount").min="10";
-  personalizedVariantPool=[];personalizedVariantFingerprint="";personalizedVariantGeneratedAt="";
+  personalizedVariantPool=[];personalizedVariantFingerprint="";personalizedVariantGeneratedAt="";personalizedPersistedIds=new Set();
   updatePracticalExamOption();renderPersonalizedVariantPool();
   document.getElementById("assessV2").checked = true;
   document.getElementById("assessV2").disabled = false;
@@ -823,6 +852,7 @@ window.openEditModal = async function () {
   personalizedVariantFingerprint=typeof item.personalization?.fingerprint==="string"?item.personalization.fingerprint:"";
   personalizedVariantGeneratedAt=typeof item.personalization?.generatedAt==="string"?item.personalization.generatedAt:"";
   personalizedVariantPool=await loadPersonalizationVariants(item.id,item.personalization||{});
+  personalizedPersistedIds=new Set(personalizedVariantPool.map(value=>value.variantId));
   personalizationDirty=false;
   updatePracticalExamOption();renderPersonalizedVariantPool();
   document.getElementById("assessV2").checked = item.schemaVersion === 2;
