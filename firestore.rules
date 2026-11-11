@@ -84,7 +84,7 @@ service cloud.firestore {
         isAdmin();
     }
     function serverOwned(name) {
-      return name in ["academic_access_preparations","teaching_roster","student_access","practice_sessions","practice_browser_sessions","practice_attempts","practice_awards","practice_verified_progress","practice_class_progress","practice_security_events","system_private","school_ai_results","school_ai_usage","practice_public_rankings","practice_season_scores","practice_season_progress","practice_season_awards","practice_season_attempts","practice_class_season_rankings"];
+      return name in ["academic_access_preparations","teaching_roster","student_access","practice_sessions","practice_browser_sessions","practice_attempts","practice_awards","practice_verified_progress","practice_class_progress","practice_security_events","system_private","school_ai_results","school_ai_usage","practice_public_rankings","practice_season_scores","practice_season_progress","practice_season_awards","practice_season_attempts","practice_class_season_rankings","studio_assessment_variants","studio_assessment_variant_registry"];
     }
     function monitoringCollection(name) {
       return name in ["activity_preferences", "activity_events", "issue_diagnostics", "analytics_rosters", "analytics_views", "monitoring_control", "monitoring_status"];
@@ -1310,6 +1310,12 @@ service cloud.firestore {
         (!exists(/databases/$(database)/documents/student_grades/$(data.studentId + "_" + data.assessmentId)) ||
           get(/databases/$(database)/documents/student_grades/$(data.studentId + "_" + data.assessmentId)).data.get("published",false) == false);
     }
+    function studioStudentRevisionAllowed(before,after) {
+      let task=get(/databases/$(database)/documents/assessments/$(after.assessmentId)).data;
+      return before.status == "revision_requested" ||
+        (task.get("personalizedTask",{}).get("enabled",false) == false &&
+          before.status == "submitted");
+    }
     function studioHeadValid(evidenceId,data) {
       let version=getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)/versions/$(string(data.revision))).data;
       return data.keys().hasOnly(["source","studentId","assessmentId","ownerUid","section","revision",
@@ -1343,7 +1349,7 @@ service cloud.firestore {
         resource.data.assessmentId == request.resource.data.assessmentId &&
         resource.data.ownerUid == request.resource.data.ownerUid &&
         resource.data.section == request.resource.data.section &&
-        resource.data.status in ["submitted","revision_requested"] &&
+        studioStudentRevisionAllowed(resource.data,request.resource.data) &&
         request.resource.data.revision == resource.data.revision + 1
       ) || (
         mayTeachEvidence(resource.data.studentId,resource.data.assessmentId) &&
