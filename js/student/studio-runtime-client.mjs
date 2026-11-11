@@ -65,10 +65,9 @@ export class AdminervaRuntimeClient {
   }
   async cancel(){
     if(!this.id)return;
-    this.cancelled=true;
     const id=this.id;
-    try{await this.request('/v1/executions/'+encodeURIComponent(id),{method:'DELETE'});}
-    finally{this.dispose();}
+    await this.request('/v1/executions/'+encodeURIComponent(id),{method:'DELETE'});
+    this.dispose();
   }
   dispose(terminal=true){
     this.cancelled=true;
