@@ -132,41 +132,51 @@ function createStudioAssessmentVariantService({db,Timestamp}){
     if(!windowOpen(assessment,student.section,now))
       deny("failed-precondition","This personalized task cannot start outside the Studio submission window.");
 
-    const registryRef=db.doc("studio_assessment_variant_registry/"+assessmentId);
-    let result;
-    await db.runTransaction(async tx=>{
-      const [latestHead,current,registry]=await Promise.all([
-        tx.get(headRef),tx.get(variantRef),tx.get(registryRef)
-      ]);
-      let currentAttempt=1;
-      if(latestHead.exists){
-        const data=latestHead.data(),revision=Number(data.revision)||1;
-        currentAttempt=data.status==="revision_requested"?revision+1:revision;
+    let result=null,lastCollision=null;
+    const start=chooseIndex(pool.variantIds.length);
+    for(let offset=0;offset<pool.variantIds.length&&!result;offset++){
+      const variantId=pool.variantIds[(start+offset)%pool.variantIds.length],
+        reservationRef=db.doc("studio_assessment_variant_registry/"+assessmentId+"/keys/"+variantId),
+        poolRef=db.doc("assessment_private/"+assessmentId+"/variants/"+variantId);
+      try{
+        await db.runTransaction(async tx=>{
+          const [latestHead,current,reservation,poolRecord]=await Promise.all([
+            tx.get(headRef),tx.get(variantRef),tx.get(reservationRef),tx.get(poolRef)
+          ]);
+          let currentAttempt=1;
+          if(latestHead.exists){
+            const data=latestHead.data(),revision=Number(data.revision)||1;
+            currentAttempt=data.status==="revision_requested"?revision+1:revision;
+          }
+          if(currentAttempt!==attempt)
+            deny("failed-precondition","Submission status changed. Reload the assignment before starting a new task.");
+          if(current.exists){result=current.data();return;}
+          if(reservation.exists){
+            const collision=Error("VARIANT_RESERVED");
+            collision.variantReserved=true;throw collision;
+          }
+          const chosen=validVariant(poolRecord.exists?poolRecord.data():null,{variantId,fingerprint:pool.fingerprint}),
+            createdAt=Timestamp.fromMillis(now);
+          result={
+            assessmentId,studentId:student.id,ownerUid:actor.uid,section:student.section,attempt,
+            variantId,prompt:chosen.prompt,evaluationNotes:chosen.evaluationNotes||"",
+            poolFingerprint:pool.fingerprint,createdAt
+          };
+          tx.create(variantRef,result);
+          tx.create(reservationRef,{
+            assessmentId,variantId,studentId:student.id,attempt,
+            poolFingerprint:pool.fingerprint,createdAt
+          });
+        });
+      }catch(error){
+        if(error?.variantReserved||String(error?.message||"").includes("VARIANT_RESERVED")){
+          lastCollision=error;continue;
+        }
+        throw error;
       }
-      if(currentAttempt!==attempt)
-        deny("failed-precondition","Submission status changed. Reload the assignment before starting a new task.");
-      if(current.exists){result=current.data();return;}
-
-      const used=new Set(Array.isArray(registry.data()?.usedVariantIds)?registry.data().usedVariantIds:[]);
-      const available=pool.variantIds.filter(id=>!used.has(id));
-      if(!available.length)
-        deny("resource-exhausted","All personalized task variants are already assigned. Ask your teacher to add more variants.");
-      const variantId=available[chooseIndex(available.length)],
-        poolRef=db.doc("assessment_private/"+assessmentId+"/variants/"+variantId),
-        poolRecord=await tx.get(poolRef),
-        chosen=validVariant(poolRecord.exists?poolRecord.data():null,{variantId,fingerprint:pool.fingerprint}),
-        createdAt=Timestamp.fromMillis(now);
-      result={
-        assessmentId,studentId:student.id,ownerUid:actor.uid,section:student.section,attempt,
-        variantId,prompt:chosen.prompt,evaluationNotes:chosen.evaluationNotes||"",
-        poolFingerprint:pool.fingerprint,createdAt
-      };
-      tx.create(variantRef,result);
-      tx.set(registryRef,{
-        assessmentId,poolFingerprint:pool.fingerprint,
-        usedVariantIds:[...used,variantId],updatedAt:createdAt
-      },{merge:false});
-    });
+    }
+    if(!result)
+      deny("resource-exhausted","All personalized task variants are already assigned. Ask your teacher to add more variants.");
     return {assessmentId,studentId:student.id,attempt,variantId:result.variantId,prompt:result.prompt,
       createdAt:millis(result.createdAt),readOnly:false};
   };
