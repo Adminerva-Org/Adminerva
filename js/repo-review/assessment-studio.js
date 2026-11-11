@@ -1120,13 +1120,11 @@ window.saveDeployment = async function () {
 
   const item = assessments.find((a) => a.id === currentAssessmentId);
   if(!item)return alert("Assessment unavailable. Refresh the page and try again.");
-  if(item.personalizedTask?.enabled===true){
-    const privatePool=Array.isArray(item.personalization?.variants)?item.personalization.variants:[],
-      publicFingerprint=String(item.personalizedTask?.poolFingerprint||""),
-      privateFingerprint=String(item.personalization?.fingerprint||"");
-    if(!publicFingerprint||publicFingerprint!==privateFingerprint||!privatePool.length||
-       Number(item.personalizedTask?.poolSize||0)!==privatePool.length)
-      return alert("Generate and save a current personalized variant pool before deploying this assessment.");
+  if(item.personalizedTask?.enabled===true&&Number(item.personalizedTask?.poolSize||0)<1){
+    const proceed=confirm(
+      "This personalized assessment has no saved variant pool yet. You may deploy it now and prepare variants from the Personalization tab, but students cannot open the Studio task until a pool is saved. Continue deployment?"
+    );
+    if(!proceed)return;
   }
   let deployments = [...(item.deployments || [])];
   if(!deployId){
