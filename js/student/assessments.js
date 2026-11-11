@@ -33,7 +33,8 @@ async function loadPersonalizedAssignment(assessment){
     open=assignmentField("studioOpenProject"),
     generation=++personalizedAssignmentGeneration;
   panel.classList.add("hidden");meta.textContent="";prompt.textContent="";status.textContent="";
-  if(assessment?.personalizedTask?.enabled!==true)return;
+  const personalized=assessment?.assessmentMode==="personalized"||assessment?.personalizedTask?.enabled===true;
+  if(!personalized)return;
   panel.classList.remove("hidden");
   if(Number(assessment.personalizedTask?.poolSize||0)<1||!assessment.personalizedTask?.poolFingerprint){
     status.textContent="Your teacher is still preparing the personalized task pool. No task has been assigned to you yet.";
@@ -269,8 +270,11 @@ async function fetchAssessments() {
 }
 
 function assessmentPresentation(ass){
-  const studio=ass?.schemaVersion===3&&ass?.submissionSource==="studio";
-  const personalized=studio&&ass?.personalizedTask?.enabled===true;
+  const format=ass?.assessmentFormat||
+    (ass?.schemaVersion===3&&ass?.submissionSource==="studio"?"studio_code":"github_repository"),
+    mode=ass?.assessmentMode||(ass?.personalizedTask?.enabled===true?"personalized":"default"),
+    studio=format==="studio_code",
+    personalized=studio&&mode==="personalized";
   if(personalized)return {
     mode:"personalized_studio",
     label:"Personalized Studio",
@@ -295,7 +299,7 @@ function assessmentPresentation(ass){
     reviewedAction:"View reviewed submission",
     gradedAction:"View grade & feedback"
   };
-  if(ass?.submissionSource==="essay")return {
+  if(format==="essay_response"||format==="essay")return {
     mode:"essay",
     label:"Written response",
     chip:"bg-amber-100 text-amber-800 border-amber-200",
@@ -324,7 +328,7 @@ function assignmentStatusFor(ass){
   if(ass.schemaVersion===3&&ass.submissionSource==="studio"){
     if(myGrades[ass.id])return {kind:"graded",text:"Graded"};
     const head=myStudioSubmissions[ass.id],
-      personalized=ass.personalizedTask?.enabled===true,
+      personalized=ass.assessmentMode==="personalized"||ass.personalizedTask?.enabled===true,
       poolReady=!personalized||(Number(ass.personalizedTask?.poolSize||0)>0&&Boolean(ass.personalizedTask?.poolFingerprint));
     if(!head&&!studioSubmissionsReadable)return {kind:"unknown",text:"Studio status unavailable — retry"};
     if(head?.status==="revision_requested")return {kind:"revision",text:personalized?"New personalized revision ready":"Revision requested"};
@@ -514,7 +518,7 @@ window.viewAssessmentDetails = function (id) {
     document.getElementById("modalAssPath").textContent="Submission: "+presentation.path;
   }
   const isStudio=ass.schemaVersion===3&&ass.submissionSource==="studio";
-  const personalized=isStudio&&ass.personalizedTask?.enabled===true,
+  const personalized=isStudio&&(ass.assessmentMode==="personalized"||ass.personalizedTask?.enabled===true),
     personalizedReady=!personalized||(
       Number(ass.personalizedTask?.poolSize||0)>0&&
       typeof ass.personalizedTask?.poolFingerprint==="string"&&
