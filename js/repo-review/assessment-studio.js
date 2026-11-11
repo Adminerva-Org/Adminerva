@@ -742,22 +742,30 @@ function renderAssessmentGrid() {
 function updateAssessmentFormatMode(){
   const format=document.getElementById("assessSubmissionSource").value,
     studio=format==="studio",
+    repository=format==="repository",
     mode=document.getElementById("assessMode"),
     personalizedOption=[...mode.options].find(option=>option.value==="personalized");
   if(personalizedOption)personalizedOption.disabled=!studio;
   if(!studio&&mode.value==="personalized")mode.value="default";
   const personalized=studio&&mode.value==="personalized";
+
   document.getElementById("personalizedTaskSettings").classList.toggle("hidden",!personalized);
+  document.getElementById("studioFormatOptions").classList.toggle("hidden",!studio);
+  document.getElementById("repositoryEvidenceOptions").classList.toggle("hidden",!repository);
+  if(!repository)document.getElementById("repositoryEvidenceOptions").open=false;
+
   document.getElementById("assessPracticalExam").disabled=!studio;
   document.getElementById("practicalExamOption").classList.toggle("opacity-60",!studio);
+  document.getElementById("assessV2").disabled=!repository||Boolean(currentAssessmentId);
+
   const help=document.getElementById("assessmentFormatModeHelp");
   if(help){
     help.textContent=personalized
-      ?"Personalized mode is active. Each learner receives one frozen task variant for the current attempt; teacher-requested revisions receive another unused variant."
+      ?"Adminerva Studio Code · Personalized: each learner receives one frozen task variant for the current attempt; teacher-requested revisions receive another unused variant."
       :studio
-        ?"Adminerva Studio Code can use Default or Personalized mode."
-        :format==="repository"
-          ?"GitHub Repository currently uses Default mode. Personalized GitHub tasks are reserved for a later expansion."
+        ?"Adminerva Studio Code · Default: learners work in their own Studio project and submit an immutable project snapshot. GitHub evidence settings are not used."
+        :repository
+          ?"GitHub Repository · Default: learner contribution is verified through repository evidence, commits and checkpoint data. Personalized GitHub tasks are reserved for a later expansion."
           :"This assessment format is reserved for a future release.";
   }
   updatePersonalizationTabAvailability();
@@ -828,7 +836,9 @@ window.openCreateModal = function () {
   const equipped="template:"+(localStorage.getItem("Adminerva_active_template_id")||"");
   document.getElementById("assessmentRubricTemplate").value=rubricTemplates.has(equipped)?equipped:"balanced";
   window.applyAssessmentRubric();updateContextPreview();blueprintStatus("");
-  document.getElementById("blueprintAdvanced").open=false;document.getElementById("blueprintInstructions").open=false;
+  document.getElementById("blueprintAdvanced").open=false;
+  document.getElementById("repositoryEvidenceOptions").open=false;
+  document.getElementById("blueprintInstructions").open=false;
 
   objectiveRules = [];
   targetPaths = []; // Clear array
@@ -954,10 +964,10 @@ window.saveAssessment = async function () {
     maxScore: score,
     quarter: document.getElementById("assessQuarter").value,
     subject,
-    targetPaths: targetPaths, // Legacy path arrays are preserved.
-    expectedExtensions: [...new Set(document.getElementById("assessExpectedExts").value
+    targetPaths: studio?[]:targetPaths,
+    expectedExtensions: studio?[]:[...new Set(document.getElementById("assessExpectedExts").value
       .split(",").map(e => e.trim().toLowerCase().replace(/^\./, "")).filter(e => /^[a-z0-9]{1,12}$/.test(e)))],
-    investigationFallback: document.getElementById("assessInvestigationFallback").checked,
+    investigationFallback: studio?false:document.getElementById("assessInvestigationFallback").checked,
     gradingMode: currentAssessmentId
       ? (assessments.find(a => a.id === currentAssessmentId)?.gradingMode || "individual")
       : "individual",
