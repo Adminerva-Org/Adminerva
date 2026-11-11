@@ -35,10 +35,11 @@ export class AdminervaRuntimeClient {
     this.openStream();
     return response;
   }
-  async resume(){
+  async resume(beforeOpen){
     if(this.id)return null;
     const state=await this.request('/v1/executions/current');
     if(!state.active)return null;
+    if(typeof beforeOpen==='function')await beforeOpen(state);
     this.cancelled=false;
     this.id=state.id;
     this.streamToken=state.streamToken;
