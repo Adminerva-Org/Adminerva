@@ -1078,7 +1078,13 @@ service cloud.firestore {
       function validAssessment(data) {
         return data.get("ownerUid","") is string && data.get("sectionIds",[]) is list && data.sectionIds.size() <= 20 &&
           data.get("deployments",[]) is list && data.deployments.size() <= 20 &&
-          (data.get("schemaVersion",1) != 3 || data.get("practicalExam",false) is bool) &&
+          (data.get("schemaVersion",1) != 3 || (
+            data.get("practicalExam",false) is bool &&
+            data.get("personalizedTask",{}).get("enabled",false) is bool &&
+            (data.get("personalizedTask",{}).get("enabled",false) == false ||
+              (data.get("personalizedTask",{}).get("generator","") == "java_logic_written_work_v1" &&
+               data.get("personalizedTask",{}).get("regeneration","") == "new_attempt"))
+          )) &&
           data.get("targetSections",[]) is list && data.get("targetSections",[]).hasOnly(data.sectionIds) &&
           (data.deployments.size() <= 0 || data.deployments[0].section in data.sectionIds) &&
           (data.deployments.size() <= 1 || data.deployments[1].section in data.sectionIds) &&
@@ -1221,6 +1227,16 @@ service cloud.firestore {
         request.time >= windows[section].opensAt &&
         request.time <= windows[section].closesAt;
     }
+    function studioVariantReady(data) {
+      let task=get(/databases/$(database)/documents/assessments/$(data.assessmentId)).data;
+      let variantPath=/databases/$(database)/documents/studio_assessment_variants/$(data.studentId + "_" + data.assessmentId)/attempts/$(string(data.revision));
+      return task.get("personalizedTask",{}).get("enabled",false) == false ||
+        (exists(variantPath) &&
+          get(variantPath).data.ownerUid == request.auth.uid &&
+          get(variantPath).data.studentId == data.studentId &&
+          get(variantPath).data.assessmentId == data.assessmentId &&
+          get(variantPath).data.attempt == data.revision);
+    }
     function studioEvidenceStudent(data) {
       return signedIn() && data.studentId is string &&
         ownsStudentProfile(data.studentId) &&
@@ -1229,6 +1245,7 @@ service cloud.firestore {
         data.assessmentId is string &&
         exists(/databases/$(database)/documents/assessments/$(data.assessmentId)) &&
         studioTaskReady(data.assessmentId,data.section) &&
+        studioVariantReady(data) &&
         (!exists(/databases/$(database)/documents/student_grades/$(data.studentId + "_" + data.assessmentId)) ||
           get(/databases/$(database)/documents/student_grades/$(data.studentId + "_" + data.assessmentId)).data.get("published",false) == false);
     }
