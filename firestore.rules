@@ -506,6 +506,7 @@ service cloud.firestore {
           data.get("gradeSource","") == "studio_teacher_review" &&
           data.get("studioRevision",0) == source.revision &&
           data.get("studioSnapshotHash","") == source.snapshotHash &&
+          data.get("studioVariantId","") == source.get("variantId","") &&
           data.get("reviewRequired",true) == false &&
           data.get("published",false) is bool &&
           data.get("feedback","") is string && data.feedback.size() >= 20 &&
@@ -1365,6 +1366,7 @@ service cloud.firestore {
           (getAfter(/databases/$(database)/documents/student_grades/$(evidenceId)).data.get("gradeSource","") == "studio_teacher_review" &&
             getAfter(/databases/$(database)/documents/student_grades/$(evidenceId)).data.get("studioRevision",0) == resource.data.revision &&
             getAfter(/databases/$(database)/documents/student_grades/$(evidenceId)).data.get("studioSnapshotHash","") == resource.data.snapshotHash &&
+            getAfter(/databases/$(database)/documents/student_grades/$(evidenceId)).data.get("studioVariantId","") == resource.data.get("variantId","") &&
             getAfter(/databases/$(database)/documents/student_grades/$(evidenceId)).data.get("published",true) == false)) &&
         request.resource.data.reviewedBy == request.auth.uid &&
         request.resource.data.reviewNote is string &&
