@@ -10,7 +10,7 @@ async function lessonCloudFetch(_url,options){
 /** Explicitly requested lesson assistance with source and edit guards. */
 import {expectedSessions,validateGeneratedLesson} from "./lesson-plan-helpers.mjs?v=1.3.1";
 import {buildReferenceContext,REFERENCE_CONTEXT_BUDGET} from "./reference-context.mjs?v=1.3.1";
-import {isLegacyScheduleYear,isLegacyScheduleRetired} from "./legacy-schedule-compat.mjs?v=1.4.22";
+import {isLegacyScheduleYear,isLegacyScheduleRetired} from "./legacy-schedule-compat.mjs?v=1.4.23";
 
 const uniqueValues=values=>[...new Set((values||[]).map(value=>String(value||"").trim()).filter(Boolean))];
 function localInstructionMap(text,{subject="",grade="",scope="",clarification=""}={}){
