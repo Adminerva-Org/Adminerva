@@ -425,7 +425,9 @@ function setBlueprintContentLocked(locked){
 }
 function updatePersonalizationTabAvailability(){
   const item=currentAssessmentId?assessments.find(value=>value.id===currentAssessmentId):null,
-    visible=Boolean(currentAssessmentId&&item?.schemaVersion===3&&item?.personalizedTask?.enabled===true);
+    enabled=document.getElementById("assessPersonalizedTask")?.checked===true,
+    studio=document.getElementById("assessSubmissionSource")?.value==="studio",
+    visible=Boolean(currentAssessmentId&&item?.schemaVersion===3&&studio&&enabled);
   document.getElementById("blueprintPersonalizationTabButton").classList.toggle("hidden",!visible);
   if(!visible&&document.getElementById("blueprintEditorTab").classList.contains("hidden"))
     window.showBlueprintEditorTab("blueprint");
@@ -604,6 +606,7 @@ function updatePersonalizedTaskOption(){
   document.getElementById("assessPersonalizedTask").disabled=!studio;
   document.getElementById("personalizedTaskOption").classList.toggle("opacity-60",!studio);
   document.getElementById("personalizedTaskSettings").classList.toggle("hidden",!enabled);
+  updatePersonalizationTabAvailability();
   if(enabled)renderPersonalizedVariantPool();
 }
 function updatePracticalExamOption(){
@@ -627,6 +630,11 @@ document.getElementById("assessType").addEventListener("change",event=>{
 });
 window.openCreateModal = function () {
   currentAssessmentId = null;
+  setBlueprintContentLocked(false);
+  document.getElementById("blueprintPersonalizationTabButton").classList.add("hidden");
+  window.showBlueprintEditorTab("blueprint");
+  document.getElementById("externalPersonalizationResponse").value="";
+  document.getElementById("externalPersonalizationStatus").textContent="";
   document.getElementById("createModalTitle").textContent =
     "Create Assessment Blueprint";
   document.getElementById("saveAssessmentBtn").textContent = "Save Blueprint";
@@ -669,12 +677,14 @@ window.openCreateModal = function () {
 window.openEditModal = function () {
   const item = assessments.find((a) => a.id === currentAssessmentId);
   if (!item) return;
-  if(item.schemaVersion===3&&(item.deployments||[]).length){
-    alert("This Studio rubric is protected after deployment. Create a new blueprint for changed requirements; edit the deployment schedule separately.");
+  const deployedStudio=item.schemaVersion===3&&(item.deployments||[]).length>0;
+  if(deployedStudio&&item.personalizedTask?.enabled!==true){
+    alert("This deployed Studio blueprint is protected. Edit its deployment schedule separately or create a new blueprint for changed requirements.");
     return;
   }
 
-  document.getElementById("createModalTitle").textContent = "Edit Blueprint";
+  document.getElementById("createModalTitle").textContent =
+    deployedStudio?"Personalized Assessment":"Edit Blueprint";
   document.getElementById("saveAssessmentBtn").textContent = "Update Blueprint";
 
   document.getElementById("assessTitle").value = item.title || "";
@@ -716,6 +726,11 @@ window.openEditModal = function () {
   renderRules();
   renderTargets(); // Render UI
 
+  document.getElementById("externalPersonalizationResponse").value="";
+  document.getElementById("externalPersonalizationStatus").textContent="";
+  updatePersonalizationTabAvailability();
+  setBlueprintContentLocked(deployedStudio);
+  window.showBlueprintEditorTab(deployedStudio&&item.personalizedTask?.enabled===true?"personalization":"blueprint");
   document.getElementById("viewModal").classList.add("hidden");
   document.getElementById("createModal").classList.remove("hidden");
 };
@@ -723,6 +738,7 @@ window.openEditModal = function () {
 // 5. UPDATE saveAssessment to save the array instead of a string
 window.saveAssessment = async function () {
   if(savingBlueprint)return;
+  if(blueprintContentLocked)return blueprintStatus("Published task details are locked. Use Save private variant pool on the Personalization tab.");
   const title = document.getElementById("assessTitle").value.trim();
   if (!title){blueprintStatus("Enter an assessment title.");document.getElementById("assessTitle").focus();return;}
   const score=Number(document.getElementById("maxScore").value),criteria=document.getElementById("evalCriteria").value.trim(),actor=auth.currentUser;
