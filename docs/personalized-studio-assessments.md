@@ -37,7 +37,7 @@ difficulty, required effort or rubric.
    as preparation pending.
 9. In the Personalization tab, optionally write **Variation guidance**
    describing what may change and what must remain fixed.
-10. Choose a private pool target from 10 to 300. Adminerva shows an estimate
+10. Choose a private pool target from 10 to 600. Adminerva shows an estimate
     based on the deployed sections and learner count when available.
 11. Prepare variants with either:
     - **School AI** — direct generation using the configured Adminerva AI
@@ -129,7 +129,7 @@ requesting a more favorable task.
 
 ## Pool limits, batching and replenishment
 
-The first implementation supports a target pool of 10–300 prepared variants.
+The first implementation supports a target pool of 10–600 prepared variants.
 Variant prompts are stored as separate teacher-private documents below
 `assessment_private/{assessmentId}/variants/{variantId}`; the private assessment
 record stores only personalization metadata and active variant IDs. This avoids
@@ -140,8 +140,13 @@ For deployed sections, Adminerva recommends:
 `enrolled learners + (5 × deployed section count)`
 
 as a starting target. The teacher may lower or raise that target before the
-pool is activated. External packages use a stable adaptive batch size based on
-the target and deployed-section count, capped at 45. For example, 160 learners
+pool is activated. The 600-variant ceiling is intended to support teachers who
+deploy one personalized assessment across many sections. For example, eight
+sections with about 45 learners each represent roughly 360 learners, leaving
+substantial capacity for revision attempts and late roster changes.
+
+External packages use a stable adaptive batch size based on the target and
+deployed-section count, capped at 45. For example, 160 learners
 across four sections produce a recommended target of 180 and four 45-variant
 external packages. A manually chosen target of 164 produces four 41-variant
 packages.
