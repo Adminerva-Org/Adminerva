@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Pilot Sandbox · Adminerva</title>
+  <title>Private MCS Teacher Sandbox | Adminerva</title>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8">
   <style>[hidden]{display:none!important} dialog::backdrop{background:rgb(15 23 42/.58)}</style>
@@ -20,10 +22,10 @@
   </div>
   <section class="rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
     <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-      <div><h2 class="font-extrabold text-lg">School access</h2><p class="text-sm text-slate-600">Choose your verified school. Your pilot data stays separate between schools.</p></div>
+      <div><h2 class="font-extrabold text-lg">School access</h2><p class="text-sm text-slate-600">Approved MCS teachers can practise here without a separate V4 membership. No real student or grading permissions are added.</p></div>
       <div id="pilotSchoolPicker" class="w-full sm:w-auto"></div>
     </div>
-    <p id="pilotStatus" class="mt-3 text-sm text-slate-600" role="status" aria-live="polite">Checking school membership…</p>
+    <p id="pilotStatus" class="mt-3 text-sm text-slate-600" role="status" aria-live="polite">Verifying your MCS teacher account…</p>
   </section>
   <div id="pilotWorkspace" hidden class="space-y-5">
     <div class="flex flex-wrap gap-2" role="tablist" aria-label="Pilot workspace sections">
@@ -46,7 +48,7 @@
       </article>
       <article class="bg-white border border-slate-200 rounded-2xl p-5 space-y-3">
         <h2 class="text-lg font-extrabold">Share my teacher preview</h2>
-        <p class="text-sm text-slate-600">Grant an active teacher in this verified school an expiring, metadata-only view. Permissions automatically expire in 30 days and can be revoked sooner.</p>
+        <p class="text-sm text-slate-600">Grant another verified, approved MCS teacher a metadata-only view of your shared materials. Access expires after 30 days and can be revoked at any time. No live grade editing rights are granted.</p>
         <form id="pilotGrantForm" class="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 items-end">
           <label class="text-sm font-bold">Recipient's verified school email
             <input name="email" type="email" required autocomplete="off" placeholder="teacher@school.edu.ph" class="block mt-1 w-full rounded-lg border border-slate-300 p-3 font-normal">
@@ -213,8 +215,8 @@ Code quality: 30</textarea>
   </div>
 </main>
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
-<script src="js/core/adminerva-nav.js?v=4.0.3"></script>
+<script defer src="js/core/adminerva-nav.js?v=4.0.3"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.6"></script>
-<script type="module" src="js/core/pilot-sandbox.mjs?v=4.0.0"></script>
-<script type="module" src="js/core/pilot-experience.mjs?v=4.0.0"></script>
+<script type="module" src="js/core/pilot-sandbox.mjs?v=4.0.2"></script>
+<script type="module" src="js/core/pilot-experience.mjs?v=4.0.2"></script>
 </body></html>
