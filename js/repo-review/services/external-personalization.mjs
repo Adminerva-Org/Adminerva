@@ -31,8 +31,8 @@ export function buildExternalPersonalizationPackage({
   assessment={},guidance="",count=20,existingSummaries=[]
 }={}){
   const desired=Number(count);
-  if(!Number.isInteger(desired)||desired<10||desired>50)
-    throw Error("External personalization supports 10 to 50 variants per pool.");
+  if(!Number.isInteger(desired)||desired<1||desired>50)
+    throw Error("External personalization supports batches of 1 to 50 variants.");
   const title=text(assessment.title,300),
     taskInstructions=text(assessment.taskContext||assessment.instructions||assessment.description,15000),
     rubric=text(assessment.evalCriteria||assessment.rubric,15000);
@@ -99,8 +99,8 @@ export async function parseExternalPersonalizationResponse(raw,{
   if(!Array.isArray(parsed.variants))
     throw Error("The response must contain a variants array.");
   const count=Number(expectedCount);
-  if(!Number.isInteger(count)||count<10||count>50)
-    throw Error("The expected variant count is invalid.");
+  if(!Number.isInteger(count)||count<1||count>50)
+    throw Error("The expected external variant count is invalid.");
   if(parsed.variants.length!==count)
     throw Error("Expected exactly "+count+" variants but received "+parsed.variants.length+".");
   if(typeof hashPrompt!=="function")throw Error("Variant hashing is unavailable.");
