@@ -165,11 +165,11 @@ export function buildLessonMeetingContext(rows,{dateRange="",grade=""}={}){
       });
     }
   }
-  if(!entries.length)return {text:"",meetings:[],bySession:{}};
+  if(!entries.length)return {text:"",meetings:[],bySession:{},sessionNames:[]};
 
-  // Session numbering is independent for each section. The Grade 11 3-hour
-  // laboratory block is always Session 4-6 regardless of where it falls
-  // chronologically; it never consumes Session 1, 2 or 3 numbering.
+  // Session numbering is independent for every section and follows the
+  // teacher's actual timetable. A multi-period laboratory block is detected
+  // from the duration pattern, never from grade level or weekday.
   const byClass=new Map();
   for(const entry of entries){
     const key=entry.section+"\u0000"+entry.subject;
@@ -177,23 +177,45 @@ export function buildLessonMeetingContext(rows,{dateRange="",grade=""}={}){
     byClass.get(key).push(entry);
   }
 
-  const gradeName=normalize(grade);
-  const regularNames=gradeName==="Grade 11"
-    ?["Session 1","Session 2","Session 3"]
-    :gradeName==="Grade 12"
-      ?["Session 1","Session 2","Session 3"]
-      :["Session 1","Session 2"];
+  const median=values=>{
+    const sorted=(values||[]).filter(Number.isFinite).sort((a,b)=>a-b);
+    if(!sorted.length)return null;
+    const middle=Math.floor(sorted.length/2);
+    return sorted.length%2?sorted[middle]:(sorted[middle-1]+sorted[middle])/2;
+  };
+  const isMultiPeriodBlock=(meeting,meetings)=>{
+    if(!Number.isFinite(meeting.duration)||meeting.duration<=0)return false;
+    const otherDurations=meetings
+      .filter(candidate=>candidate!==meeting&&Number.isFinite(candidate.duration)&&candidate.duration>0)
+      .map(candidate=>candidate.duration);
+    const typical=median(otherDurations);
+    // A three-period block may be 135, 150, 165 or 180 minutes depending on
+    // the school's period length. When regular meetings exist, compare the
+    // block to them; when it is the only meeting, require a clearly extended
+    // duration before treating it as a combined laboratory session.
+    if(Number.isFinite(typical)&&typical>0){
+      return meeting.duration>=135 && meeting.duration>=typical*2.25;
+    }
+    return meeting.duration>=150;
+  };
 
   for(const meetings of byClass.values()){
     meetings.sort((a,b)=>a.dayOrder-b.dayOrder||a.startMinutes-b.startMinutes);
+    const multiPeriodCandidates=meetings.filter(meeting=>isMultiPeriodBlock(meeting,meetings));
+    // If malformed timetable data contains several long blocks, keep the
+    // longest as the combined laboratory session and number the rest normally.
+    const multiPeriod=multiPeriodCandidates
+      .sort((a,b)=>(b.duration||0)-(a.duration||0)||a.dayOrder-b.dayOrder||a.startMinutes-b.startMinutes)[0]||null;
     let regularIndex=0;
     for(const meeting of meetings){
-      if(gradeName==="Grade 11"&&meeting.duration===180){
+      if(meeting===multiPeriod){
         meeting.session="Session 4-6";
+        meeting.sessionType="multi-period";
         continue;
       }
-      meeting.session=regularNames[regularIndex]||regularNames[regularNames.length-1];
       regularIndex++;
+      meeting.session="Session "+regularIndex;
+      meeting.sessionType="regular";
     }
   }
 
@@ -224,17 +246,25 @@ export function buildLessonMeetingContext(rows,{dateRange="",grade=""}={}){
     });
   }
 
+  const sessionNames=[...new Set(entries.map(entry=>entry.session).filter(Boolean))]
+    .sort((a,b)=>{
+      const rank=name=>name==="Session 4-6"?4.5:(Number((name.match(/Session (\d+)/)||[])[1])||999);
+      return rank(a)-rank(b);
+    });
+
   return {
     text:[
       "LESSON MEETING CONTEXT (already filtered and session-mapped by Adminerva):",
       ...lines,
       "",
+      "Session mapping comes from each section's actual timetable. Multi-period blocks are detected from duration patterns and may occur on any weekday.",
       "Use these meeting lines only for the remarks of their assigned session. Do not infer, add, or scan other timetable periods."
     ].join("\n"),
-    meetings:entries.map(({section,subject,day,date,time,duration,event,session})=>({
-      section,subject,day,date,time,duration,event,session
+    meetings:entries.map(({section,subject,day,date,time,duration,event,session,sessionType})=>({
+      section,subject,day,date,time,duration,event,session,sessionType
     })),
-    bySession
+    bySession,
+    sessionNames
   };
 }
 
