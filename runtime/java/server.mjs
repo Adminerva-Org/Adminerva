@@ -8,9 +8,15 @@ import {mkdtemp,mkdir,writeFile,chmod,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {WebSocketServer,WebSocket} from 'ws';
-import {initializeApp,applicationDefault} from 'firebase-admin/app';
-import {getAuth} from 'firebase-admin/auth';
+import {createRemoteJWKSet,jwtVerify} from 'jose';
 
+const firebaseProjectId=process.env.FIREBASE_PROJECT_ID?.trim();
+if(!firebaseProjectId||!/^[a-z0-9][a-z0-9-]{3,60}$/.test(firebaseProjectId))
+  throw Error('FIREBASE_PROJECT_ID is required to verify Firebase authentication.');
+const signingKeys=createRemoteJWKSet(
+  new URL('https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com'),
+  {cooldownDuration:30000,timeoutDuration:10000}
+);
 const origin=process.env.ALLOWED_ORIGIN?.trim();
 if(!origin||!/^https:\/\//.test(origin))throw Error('ALLOWED_ORIGIN must be the exact HTTPS Studio origin.');
 const positive=(key,defaultValue,max)=>Math.max(1,Math.min(max,Number.parseInt(process.env[key]||'',10)||defaultValue));
@@ -38,7 +44,6 @@ function verifyRuntimeHost(){
     throw Error('Rootless Docker needs systemd/cgroup v2 for CPU, memory and process limits. Current driver: '+driver);
 }
 verifyRuntimeHost();
-initializeApp({credential:applicationDefault()});
 const sessions=new Map(),queue=[],active=new Set(),byUser=new Map();
 const wsServer=new WebSocketServer({noServer:true,handleProtocols:protocols=>protocols.has('adminerva-runtime')?'adminerva-runtime':false});
 function serial(session){
@@ -74,9 +79,21 @@ function cors(req,res){
 async function verify(req){
   const token=/^Bearer\s+(.+)$/i.exec(req.headers.authorization||'')?.[1];
   if(!token)throw Object.assign(Error('Authentication required.'),{httpCode:401});
-  const decoded=await getAuth().verifyIdToken(token,true);
-  if(!decoded.uid)throw Object.assign(Error('Invalid identity.'),{httpCode:401});
-  return decoded.uid;
+  try{
+    const {payload}=await jwtVerify(token,signingKeys,{
+      issuer:'https://securetoken.google.com/'+firebaseProjectId,
+      audience:firebaseProjectId,
+      algorithms:['RS256']
+    });
+    const now=Math.floor(Date.now()/1000);
+    if(typeof payload.sub!=='string'||payload.sub.length<1||payload.sub.length>128||
+       !Number.isInteger(payload.iat)||payload.iat>now||
+       !Number.isInteger(payload.auth_time)||payload.auth_time>now)
+      throw Error('Invalid Firebase token claims.');
+    return payload.sub;
+  }catch(error){
+    throw Object.assign(Error('Session authentication expired or invalid. Sign in again.'),{httpCode:401});
+  }
 }
 async function readBody(req){
   let content='',size=0;
