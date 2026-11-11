@@ -2,7 +2,7 @@
  * Not hosted by GitHub Pages. Requires a dedicated Linux server and rootless Docker.
  */
 import http from 'node:http';
-import {spawn} from 'node:child_process';
+import {spawn,execFileSync} from 'node:child_process';
 import {randomBytes,randomUUID} from 'node:crypto';
 import {mkdtemp,mkdir,writeFile,chmod,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -22,6 +22,22 @@ const GRACE_MS=positive('DISCONNECT_GRACE_SECONDS',120,600)*1000;
 const IMAGE=process.env.DOCKER_IMAGE||'adminerva/java17-runner:pilot';
 const PORT=positive('PORT',8787,65535);
 const BYTES_LIMIT=250000,FILE_LIMIT=60,OUTPUT_LIMIT=1024*1024,WS_BUFFER_LIMIT=512*1024;
+function verifyRuntimeHost(){
+  if(typeof process.getuid==='function'&&process.getuid()===0)
+    throw Error('The Java runtime API must run as an unprivileged Linux user.');
+  let security,driver;
+  try{
+    security=execFileSync('docker',['info','--format','{{json .SecurityOptions}}'],{encoding:'utf8',timeout:5000});
+    driver=execFileSync('docker',['info','--format','{{.CgroupDriver}}'],{encoding:'utf8',timeout:5000}).trim();
+  }catch(error){
+    throw Error('Docker rootless daemon is unavailable. Configure rootless Docker before starting the Java service.');
+  }
+  if(!security.includes('rootless'))
+    throw Error('Refusing to execute untrusted student Java on a rootful Docker daemon.');
+  if(driver!=='systemd')
+    throw Error('Rootless Docker needs systemd/cgroup v2 for CPU, memory and process limits. Current driver: '+driver);
+}
+verifyRuntimeHost();
 initializeApp({credential:applicationDefault()});
 const sessions=new Map(),queue=[],active=new Set(),byUser=new Map();
 const wsServer=new WebSocketServer({noServer:true,handleProtocols:protocols=>protocols.has('adminerva-runtime')?'adminerva-runtime':false});
