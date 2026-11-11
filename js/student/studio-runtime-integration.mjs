@@ -1,5 +1,5 @@
 import {ADMINERVA_RUNTIME_ORIGIN} from './runtime-config.mjs?v=1';
-import {AdminervaRuntimeClient} from './studio-runtime-client.mjs?v=1';
+import {AdminervaRuntimeClient} from './studio-runtime-client.mjs?v=2';
 import {analyzeJavaWorkspace,clearJavaDiagnostics} from './studio-diagnostics.mjs?v=1';
 
 /** Adds local Java problems and, once deployed, the optional server-backed queue. */
@@ -123,6 +123,7 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
 
   function finish(state){
     session?.dispose();session=null;lock(false);
+    if(el('studioCancelQueueBtn'))el('studioCancelQueueBtn').disabled=false;
     banner?.classList.add('hidden');
     el('stdinHistoryDisclosure')?.classList.remove('hidden');
     if(input)input.disabled=false;
@@ -171,6 +172,13 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
       save();
       if(output)output.textContent='Submitting a frozen Java project snapshot…\n';
       lock(true);
+      banner?.classList.remove('hidden');
+      if(status)status.textContent='Submitting project…';
+      if(position)position.textContent='Connecting to the runtime queue.';
+      if(input)input.disabled=true;
+      if(sendButton)sendButton.disabled=true;
+      const cancelButton=el('studioCancelQueueBtn');
+      if(cancelButton)cancelButton.disabled=true;
       el('stdinHistoryDisclosure')?.classList.add('hidden');
       const client=new AdminervaRuntimeClient({
         origin:ADMINERVA_RUNTIME_ORIGIN,
@@ -178,6 +186,7 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
       });
       session=client;
       await client.enqueue({files,entry});
+      if(el('studioCancelQueueBtn'))el('studioCancelQueueBtn').disabled=false;
     }catch(error){
       if(output)output.textContent+='\nCannot join queue: '+error.message;
       finish('failed');
