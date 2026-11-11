@@ -18,6 +18,7 @@ window.cachedPreviousPlan = null;
 window.cachedInstructionMap = null;
 window.currentLessonMeetings = [];
 window.currentSessionMeetingMap = {};
+window.currentRequiredSessions = [];
 function groupLessonMeetings(meetings=[]){
   const map={};
   for(const meeting of Array.isArray(meetings)?meetings:[]){
@@ -28,9 +29,14 @@ function groupLessonMeetings(meetings=[]){
   }
   return map;
 }
-window.setCurrentLessonMeetings=function(meetings=[]){
+window.setCurrentLessonMeetings=function(meetings=[],sessionNames=[]){
   window.currentLessonMeetings=Array.isArray(meetings)?meetings.map(item=>({...item})):[];
   window.currentSessionMeetingMap=groupLessonMeetings(window.currentLessonMeetings);
+  if(Array.isArray(sessionNames)&&sessionNames.length){
+    window.currentRequiredSessions=[...new Set(sessionNames.map(value=>String(value||"").trim()).filter(Boolean))];
+  }else{
+    window.currentRequiredSessions=[...new Set(window.currentLessonMeetings.map(item=>String(item.session||"").trim()).filter(Boolean))];
+  }
 };
 const LESSON_DRAFT_KEY="Adminerva_lesson_editor_draft_v1";
 let lessonDraftDirty=false,lessonDraftTimer=null;
@@ -59,7 +65,8 @@ function persistLessonDraft(){
       loadedPersonalPlan:window.loadedPersonalPlan||null,legacySourcePlanId:window.legacySourcePlanId||null,
       loadedPersonalIdentity:window.loadedPersonalIdentity||null,
       instructionMap:window.cachedInstructionMap||null,
-      lessonMeetings:window.currentLessonMeetings||[],form:lessonDraftForm()
+      lessonMeetings:window.currentLessonMeetings||[],
+      requiredSessions:window.currentRequiredSessions||[],form:lessonDraftForm()
     }));
     lessonDraftStatus("Draft protected","warning","Unsaved edits are recoverable on this device.");
   }catch(error){console.warn("Lesson draft could not be cached:",error);}
@@ -428,7 +435,8 @@ window.loadSpecificPlan = function (planData) {
   window.currentPlan = planData.sessions;
   window.cachedInstructionMap=planData.instruction_map||null;
   window.setCurrentLessonMeetings(
-    Array.isArray(planData.schedule_meetings) ? planData.schedule_meetings : []
+    Array.isArray(planData.schedule_meetings) ? planData.schedule_meetings : [],
+    Array.isArray(planData.session_structure) ? planData.session_structure : []
   );
   // Preserve the original subject and teacher for an edited saved lesson.
   // Defaults may have changed since this plan was first created.
@@ -560,7 +568,7 @@ workspaceOnReady(()=>{
   window.loadedPersonalPlan=draft.loadedPersonalPlan||null;window.legacySourcePlanId=draft.legacySourcePlanId||null;
   window.loadedPersonalIdentity=draft.loadedPersonalIdentity||null;
   window.cachedInstructionMap=draft.instructionMap||null;
-  window.setCurrentLessonMeetings(draft.lessonMeetings||[]);
+  window.setCurrentLessonMeetings(draft.lessonMeetings||[],draft.requiredSessions||[]);
   lessonDraftDirty=true;
   window.renderOverview?.();window.renderOutput?.();
   lessonDraftStatus("Recovered","warning","Recovered unsaved lesson draft. Save when ready.");
