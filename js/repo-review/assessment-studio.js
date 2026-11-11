@@ -924,7 +924,10 @@ window.saveAssessment = async function () {
   const studio=prior ? prior.schemaVersion===3 : document.getElementById("assessSubmissionSource").value==="studio";
   const v2=prior ? prior.schemaVersion===2 : (!studio&&document.getElementById("assessV2").checked);
   const practicalExam=studio&&document.getElementById("assessPracticalExam").checked;
-  const assessmentMode=prior?.assessmentMode||(document.getElementById("assessMode").value||"default");
+  const priorDeployed=Boolean((prior?.deployments||[]).length);
+  const assessmentMode=priorDeployed
+    ? (prior?.assessmentMode||(prior?.personalizedTask?.enabled===true?"personalized":"default"))
+    : (document.getElementById("assessMode").value||"default");
   const personalizedEnabled=studio&&assessmentMode==="personalized";
   const variationGuidance=personalizedEnabled?document.getElementById("assessVariantGuidance").value.trim():"";
   const poolTarget=personalizedEnabled?Number(document.getElementById("assessVariantCount").value):0;
