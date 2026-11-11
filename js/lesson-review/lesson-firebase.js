@@ -9,7 +9,7 @@ import {ADMIN_EMAIL,TEACHER_EMAIL} from "../core/staff-role.mjs?v=1.3.0";
 import {legacyLessonRecovery} from "../core/legacy-lesson-recovery.mjs?v=1.3.2";
 import {personalPlanId,requireCurrentVersion} from "./workspace-model.mjs?v=1.3.0";
 import {scheduleScope,localScheduleText,normalizeSchoolYear,parseScheduleRows} from "./schedule-scope.mjs?v=1.3.0";
-import {filterScheduleRowsForLesson,isLegacySharedScope,isLegacyScheduleRetired,buildLessonMeetingContext} from "./legacy-schedule-compat.mjs?v=1.4.22";
+import {filterScheduleRowsForLesson,isLegacySharedScope,isLegacyScheduleRetired,buildLessonMeetingContext} from "./legacy-schedule-compat.mjs?v=1.4.23";
 import {
   collection,
   getDocs,
