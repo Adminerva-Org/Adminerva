@@ -224,6 +224,7 @@ async function fetchAssessments() {
     for(const docSnap of [...sectionSnap.docs,...legacySnap.docs])assignedDocs.set(docSnap.id,docSnap);
     assignedDocs.forEach((docSnap) => {
       const data = docSnap.data();
+      if(data.published===false)return;
       let isAssignedToStudent = false;
       let activeDeadline = null;
       let noDeadline = false;
