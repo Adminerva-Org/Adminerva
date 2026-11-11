@@ -25,9 +25,12 @@ format, student instructions, maximum score and published rubric. When
 source for a private pool of equivalent learner tasks. The pool may be prepared
 with School AI or through the external personalization package engine.
 
-The content can therefore be Java OOP, arrays, loops, debugging, Python, SQL,
-HTML/CSS/JavaScript or another programming task as long as the teacher describes
-the intended scope clearly enough for equivalent variants to be generated.
+For the current Adminerva Studio Code format, the content can be Java OOP,
+arrays, loops, debugging, Python, SQL, HTML/CSS/JavaScript or another
+programming task as long as the teacher describes the intended scope clearly
+enough for equivalent variants to be generated. Later, the same Personalized
+mode can be attached to other compatible formats such as Essay / Written
+Response without redefining personalization itself.
 
 Personalization changes the concrete problem. It must not change the competency,
 difficulty, required effort or rubric.
@@ -85,23 +88,20 @@ package, Adminerva supplies:
 
 The generator is instructed to preserve:
 
-- programming language and platform;
-- learning objectives and required concepts;
+- assessment format and mode;
+- learning objectives and required concepts or skills;
+- platform/language where the format requires one;
 - task scope;
 - difficulty and expected effort;
 - compatibility with the same published rubric.
 
 The generator may vary only details that can change without changing the
-assessed competency, such as:
+assessed competency. For code tasks this can include scenario, identifiers,
+literal values, small datasets, example inputs and required output details.
+Future formats may define their own safe variation surface.
 
-- scenario or problem framing;
-- class, function, method or variable identifiers;
-- literal values;
-- small datasets or example inputs;
-- required output details.
-
-The generator must not introduce concepts, frameworks, APIs, databases,
-libraries or file requirements that contradict or exceed the teacher's
+The generator must not introduce concepts, tools, frameworks, APIs, libraries,
+source requirements or restrictions that contradict or exceed the teacher's
 blueprint.
 
 Each generated record contains:
@@ -111,8 +111,11 @@ Each generated record contains:
   review;
 - `summary`: a short generation-time description used to reduce duplication.
 
-The private pool is saved only in `assessment_private/{assessmentId}`.
-Students do not receive the whole pool or the private evaluation notes.
+The private pool metadata is stored in
+`assessment_private/{assessmentId}`, while each generated variant is stored in
+the teacher-private subcollection
+`assessment_private/{assessmentId}/variants/{variantId}`. Students do not
+receive the whole pool or the private evaluation notes.
 
 ## Attempt and uniqueness contract
 
