@@ -8,7 +8,7 @@ import {generateSchoolContent} from "../core/school-ai.mjs?v=4.0.0";
 import {
   buildExternalPersonalizationPackage,
   parseExternalPersonalizationResponse
-} from "./services/external-personalization.mjs?v=1.0.1";
+} from "./services/external-personalization.mjs?v=1.1.0";
 import {
   collection,
   getDocs,
@@ -86,10 +86,12 @@ async function externalPackageReadiness(){
     batchCount=Math.min(plannedBatch,need.missing),
     totalBatches=Math.ceil(need.target/plannedBatch),
     batchIndex=Math.min(totalBatches,Math.floor(preserve.length/plannedBatch)+1);
+  const registryCount=scenarioRegistryFromPool(preserve).length;
   return {
     ready:true,badge:"Ready",tone:"success",
-    message:"Ready to copy · Batch "+batchIndex+" of "+totalBatches+" · "+batchCount+" variant"+(batchCount===1?"":"s")+".",
-    fingerprint,preserve,need,item,plannedBatch,batchCount,totalBatches,batchIndex
+    message:"Ready to copy · Batch "+batchIndex+" of "+totalBatches+" · "+batchCount+" variant"+(batchCount===1?"":"s")+
+      " · "+registryCount+" prior scenario"+(registryCount===1?"":"s")+" included.",
+    fingerprint,preserve,need,item,plannedBatch,batchCount,totalBatches,batchIndex,registryCount
   };
 }
 async function renderExternalPackageReadiness(){
@@ -287,7 +289,7 @@ function renderPersonalizedVariantPool(){
   for(const [index,variant] of personalizedVariantPool.slice(0,4).entries()){
     const card=document.createElement("article");card.className="rounded-lg border border-indigo-100 bg-slate-50 p-3";
     const heading=document.createElement("strong");heading.className="text-xs text-indigo-950";
-    heading.textContent="Sample variant "+(index+1)+" · "+variant.variantId;
+    heading.textContent="Sample variant "+(index+1)+" · "+(variant.scenarioTitle||variant.variantId);
     const body=document.createElement("pre");body.className="whitespace-pre-wrap font-sans text-xs leading-5 text-slate-700 mt-2 max-h-48 overflow-auto";
     body.textContent=variant.prompt;card.append(heading,body);preview.append(card);
   }
@@ -298,13 +300,33 @@ function providerText(result){
   return (result?.candidates||[]).flatMap(candidate=>candidate.content?.parts||[])
     .map(part=>typeof part.text==="string"?part.text:"").join("").trim();
 }
+function normalizeScenarioKey(value){
+  return String(value||"").normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
+    .toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"")
+    .replace(/_+/g,"_").slice(0,80);
+}
+function scenarioRegistryFromPool(pool=personalizedVariantPool){
+  const registry=[],seen=new Set();
+  for(const variant of pool||[]){
+    const summary=String(variant?.summary||"").trim().slice(0,220);
+    if(!summary)continue;
+    const scenarioTitle=String(variant?.scenarioTitle||summary).trim().slice(0,120),
+      scenarioKey=normalizeScenarioKey(variant?.scenarioKey||scenarioTitle||summary);
+    if(!scenarioKey||seen.has(scenarioKey))continue;
+    seen.add(scenarioKey);registry.push({scenarioKey,scenarioTitle,summary});
+  }
+  return registry;
+}
 function cleanGeneratedVariant(item){
   if(!item||typeof item.prompt!=="string")return null;
   const prompt=item.prompt.trim(),
     evaluationNotes=typeof item.evaluationNotes==="string"?item.evaluationNotes.trim():"",
-    summary=typeof item.summary==="string"?item.summary.trim().slice(0,300):"";
-  if(prompt.length<80||prompt.length>12000||evaluationNotes.length<10||evaluationNotes.length>8000||!summary)return null;
-  return {prompt,evaluationNotes,summary};
+    summary=typeof item.summary==="string"?item.summary.trim().slice(0,300):"",
+    scenarioTitle=typeof item.scenarioTitle==="string"?item.scenarioTitle.trim().slice(0,120):"",
+    scenarioKey=normalizeScenarioKey(item.scenarioKey||scenarioTitle);
+  if(prompt.length<80||prompt.length>12000||evaluationNotes.length<10||evaluationNotes.length>8000||
+     !summary||!scenarioTitle||scenarioKey.length<3)return null;
+  return {scenarioKey,scenarioTitle,prompt,evaluationNotes,summary};
 }
 async function generateVariantBatch({count,title,taskContext,evalCriteria,guidance,previousSummaries}){
   const requestText=[
@@ -328,7 +350,9 @@ async function generateVariantBatch({count,title,taskContext,evalCriteria,guidan
     "- Do not provide a complete solution or finished source code unless the authoritative blueprint explicitly requires starter code.",
     "- The student prompt must not mention AI, hidden evaluation notes, other students, or other variants.",
     "- evaluationNotes are private teacher/evaluator notes. State exact variant-specific requirements or expected behavior concisely; do not change the rubric.",
-    previousSummaries?.length?"- Avoid repeating these already generated variants: "+previousSummaries.slice(-30).join(" | "):"",
+    "- Give every variant a stable lowercase snake_case scenarioKey and a concise scenarioTitle.",
+    "- Do not reuse the same scenario/domain, obvious synonyms, or substantially overlapping main entities and operations.",
+    previousSummaries?.length?"- Avoid repeating these already generated scenarios: "+previousSummaries.join(" | "):"",
     "- Generation nonce: "+crypto.randomUUID()
   ].filter(Boolean).join("\n");
   const payload={
@@ -343,11 +367,13 @@ async function generateVariantBatch({count,title,taskContext,evalCriteria,guidan
             items:{
               type:"OBJECT",
               properties:{
+                scenarioKey:{type:"STRING"},
+                scenarioTitle:{type:"STRING"},
                 prompt:{type:"STRING"},
                 evaluationNotes:{type:"STRING"},
                 summary:{type:"STRING"}
               },
-              required:["prompt","evaluationNotes","summary"]
+              required:["scenarioKey","scenarioTitle","prompt","evaluationNotes","summary"]
             }
           }
         },
@@ -388,7 +414,10 @@ window.generatePersonalizedVariantPool=async function(){
   }
   generatingVariants=true;button.disabled=true;blueprintStatus("");
   const unique=new Map(preserve.map(item=>[item.variantId,item])),
-    summaries=preserve.map(item=>item.summary||item.prompt.slice(0,180));
+    scenarioKeys=new Set(scenarioRegistryFromPool(preserve).map(item=>item.scenarioKey)),
+    scenarioTitles=new Set(scenarioRegistryFromPool(preserve).map(item=>item.scenarioTitle.toLowerCase())),
+    summaries=scenarioRegistryFromPool(preserve)
+      .map(item=>item.scenarioKey+" · "+item.scenarioTitle+" · "+item.summary);
   document.getElementById("personalizedVariantStatus").textContent=
     "Generating "+need.missing+" additional variant"+(need.missing===1?"":"s")+" with School AI…";
   const loader=window.beginLoading?.("Generating equivalent assessment variants…")||(()=>{});
@@ -399,10 +428,16 @@ window.generatePersonalizedVariantPool=async function(){
       const batch=await generateVariantBatch({count:batchCount,title,taskContext,evalCriteria,guidance,previousSummaries:summaries});
       calls++;
       for(const item of batch){
-        const id=(await sha256Text(item.prompt)).slice(0,24);
-        if(unique.has(id))continue;
-        unique.set(id,{variantId:id,prompt:item.prompt,evaluationNotes:item.evaluationNotes,summary:item.summary});
-        summaries.push(item.summary||item.prompt.slice(0,180));
+        const id=(await sha256Text(item.prompt)).slice(0,24),
+          scenarioKey=normalizeScenarioKey(item.scenarioKey||item.scenarioTitle),
+          scenarioTitle=String(item.scenarioTitle||"").trim().toLowerCase();
+        if(unique.has(id)||!scenarioKey||scenarioKeys.has(scenarioKey)||scenarioTitles.has(scenarioTitle))continue;
+        unique.set(id,{
+          variantId:id,scenarioKey,scenarioTitle:item.scenarioTitle,
+          prompt:item.prompt,evaluationNotes:item.evaluationNotes,summary:item.summary
+        });
+        scenarioKeys.add(scenarioKey);scenarioTitles.add(scenarioTitle);
+        summaries.push(scenarioKey+" · "+item.scenarioTitle+" · "+item.summary);
         if(unique.size>=need.target)break;
       }
       document.getElementById("personalizedVariantStatus").textContent=
@@ -454,7 +489,7 @@ window.copyExternalPersonalizationPackage=async function(){
       },
       guidance:document.getElementById("assessVariantGuidance").value.trim(),
       count:state.batchCount,batchIndex:state.batchIndex,totalBatches:state.totalBatches,
-      existingSummaries:state.preserve.map(value=>value.summary||value.prompt.slice(0,180))
+      existingScenarios:scenarioRegistryFromPool(state.preserve)
     });
     await navigator.clipboard.writeText(packageText);
     const message="External AI package copied · Batch "+state.batchIndex+" of "+state.totalBatches+
@@ -487,11 +522,12 @@ window.importExternalPersonalizationResponse=async function(){
     const item=assessments.find(value=>value.id===currentAssessmentId)||{},
       expectedBatch=Math.min(externalPersonalizationBatchSize(item,need.target),need.missing);
     const incoming=await parseExternalPersonalizationResponse(raw,{
-      expectedCount:expectedBatch,hashPrompt:sha256Text
+      expectedCount:expectedBatch,hashPrompt:sha256Text,
+      existingScenarios:scenarioRegistryFromPool(preserve)
     });
     const merged=mergeVariantPools(preserve,incoming);
     if(merged.length<preserve.length+incoming.length)
-      throw Error("The imported batch repeats a task already in the private pool. Ask the external AI for a replacement distinct variant.");
+      throw Error("The imported batch repeats a task already in the private pool. Copy a fresh external package so the AI receives the updated scenario registry.");
     if(merged.length>MAX_PERSONALIZED_POOL)throw Error("The combined private pool cannot exceed "+MAX_PERSONALIZED_POOL+" variants.");
     personalizedVariantPool=merged;
     personalizedVariantFingerprint=fingerprint;
@@ -580,6 +616,8 @@ async function persistPersonalizationPool({activate=false,silent=false}={}){
       for(const variant of variantsToWrite.slice(offset,offset+chunkSize)){
         batch.set(doc(db,"assessment_private",currentAssessmentId,"variants",variant.variantId),{
           variantId:variant.variantId,fingerprint,
+          scenarioKey:normalizeScenarioKey(variant.scenarioKey||variant.scenarioTitle||variant.summary),
+          scenarioTitle:String(variant.scenarioTitle||variant.summary||"").trim().slice(0,120),
           prompt:variant.prompt,evaluationNotes:variant.evaluationNotes||"",
           summary:variant.summary||"",updatedAt:serverTimestamp()
         },{merge:true});

@@ -1186,11 +1186,13 @@ service cloud.firestore {
         }
         function validVariant(data) {
           let parent=getAfter(/databases/$(database)/documents/assessment_private/$(assessmentId)).data;
-          return data.keys().hasOnly(["variantId","fingerprint","prompt","evaluationNotes","summary","updatedAt"]) &&
+          return data.keys().hasOnly(["variantId","fingerprint","scenarioKey","scenarioTitle","prompt","evaluationNotes","summary","updatedAt"]) &&
             data.variantId == variantId &&
             variantId.matches("^[a-f0-9]{16,64}$") &&
             data.fingerprint is string && data.fingerprint.size() > 0 && data.fingerprint.size() <= 64 &&
             data.fingerprint == parent.get("personalization",{}).get("fingerprint","") &&
+            data.get("scenarioKey","") is string && data.get("scenarioKey","").size() <= 80 &&
+            data.get("scenarioTitle","") is string && data.get("scenarioTitle","").size() <= 120 &&
             data.prompt is string && data.prompt.size() >= 20 && data.prompt.size() <= 12000 &&
             data.evaluationNotes is string && data.evaluationNotes.size() >= 10 && data.evaluationNotes.size() <= 8000 &&
             data.summary is string && data.summary.size() <= 300 &&
