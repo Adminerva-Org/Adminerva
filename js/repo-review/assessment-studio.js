@@ -217,8 +217,8 @@ window.generatePersonalizedVariantPool=async function(){
     "Generating "+need.missing+" additional variant"+(need.missing===1?"":"s")+" with School AI…";
   const loader=window.beginLoading?.("Generating equivalent assessment variants…")||(()=>{});
   try{
-    let calls=0;
-    while(unique.size<need.target&&calls<8){
+    let calls=0,maxCalls=Math.ceil(need.missing/10)+6;
+    while(unique.size<need.target&&calls<maxCalls){
       const batchCount=Math.min(10,need.target-unique.size);
       const batch=await generateVariantBatch({count:batchCount,title,taskContext,evalCriteria,guidance,previousSummaries:summaries});
       calls++;
@@ -236,15 +236,16 @@ window.generatePersonalizedVariantPool=async function(){
       throw Error("Adminerva prepared "+unique.size+" distinct variants, below the "+need.target+" target. Retry or make the variation guidance more specific.");
     if(await currentPersonalizationFingerprint()!==fingerprint)
       throw Error("The blueprint changed while variants were generating. Generate again from the current task and rubric.");
-    const generated=[...unique.values()].slice(0,need.target),
-      poolBytes=new TextEncoder().encode(JSON.stringify(generated)).length;
-    if(poolBytes>700000)
-      throw Error("The private pool is too large to store safely. Reduce the target or use more concise task prompts.");
+    const generated=[...unique.values()].slice(0,need.target);
     personalizedVariantPool=generated;
     personalizedVariantFingerprint=fingerprint;
     personalizedVariantGeneratedAt=new Date().toISOString();
+    personalizationDirty=true;
     renderPersonalizedVariantPool();
-    blueprintStatus("School AI prepared the private pool. Save the pool before students begin.");
+    const saved=await persistPersonalizationPool({activate:false,silent:true});
+    blueprintStatus(saved
+      ?"School AI prepared and autosaved the private pool. Review it, then activate the pool."
+      :"School AI prepared the pool in this browser, but private autosave failed. Keep the page open and retry when connectivity returns.");
   }catch(error){
     personalizedVariantPool=preserve;
     personalizedVariantFingerprint=preserve.length?fingerprint:"";
@@ -310,8 +311,6 @@ window.importExternalPersonalizationResponse=async function(){
     if(merged.length<preserve.length+incoming.length)
       throw Error("The imported batch repeats a task already in the private pool. Ask the external AI for a replacement distinct variant.");
     if(merged.length>MAX_PERSONALIZED_POOL)throw Error("The combined private pool cannot exceed "+MAX_PERSONALIZED_POOL+" variants.");
-    const poolBytes=new TextEncoder().encode(JSON.stringify(merged)).length;
-    if(poolBytes>700000)throw Error("The combined private pool is too large to store safely.");
     personalizedVariantPool=merged;
     personalizedVariantFingerprint=fingerprint;
     personalizedVariantGeneratedAt=new Date().toISOString();
