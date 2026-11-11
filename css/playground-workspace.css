@@ -1052,3 +1052,18 @@ body[data-playground-access] .av-footer-brand{font-size:10px}
   body[data-playground-access] .studio-mobile-toolbar button{padding:5px 6px;font-size:10px}
   body[data-playground-access] .studio-project-identity>span{font-size:9px}
 }
+
+/* Mobile Menus keeps the Projects route available, and gestures are not intercepted by browser scroll. */
+.studio-mobile-project-back{display:none}
+@media(max-width:767px){
+ body[data-playground-access] .studio-mobile-project-back{
+   display:flex;justify-content:flex-start;align-items:center;
+   width:100%;min-height:42px;padding:8px 10px;
+   background:#edf7fa;color:#1d5266;border:1px solid #c8e0eb;
+   border-radius:8px;font-size:12px;font-weight:850;
+ }
+ body[data-playground-access] .studio-project-bar{touch-action:pan-y}
+ body[data-playground-access] .studio-menus-bar-trigger,
+ body[data-playground-access] .studio-tools-toggle{touch-action:pan-y}
+ body[data-playground-access] #studioToolsPanel.studio-tools-open{touch-action:pan-x}
+}
