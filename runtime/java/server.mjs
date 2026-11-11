@@ -219,8 +219,10 @@ server.on('upgrade',(req,socket,head)=>{
   wsServer.handleUpgrade(req,socket,head,ws=>{
     session.sockets.add(ws);
     if(session.disconnectTimer){clearTimeout(session.disconnectTimer);session.disconnectTimer=null;}
-    ws.send(JSON.stringify({type:'status',...serial(session)}));
+    // Replay buffered output first for a late connection to an already finished run.
+    // Otherwise a terminal status may close the browser stream before its output arrives.
     if(session.output)ws.send(JSON.stringify({type:'stdout',data:session.output}));
+    ws.send(JSON.stringify({type:'status',...serial(session)}));
     ws.on('message',raw=>{
       if(!session||session.state!=='running'||raw.length>16384)return;
       let data;try{data=JSON.parse(String(raw));}catch{return;}
