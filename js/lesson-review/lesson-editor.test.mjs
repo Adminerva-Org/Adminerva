@@ -49,7 +49,7 @@ test("older saved lessons can render without a weekly overview",()=>{
  }
  const statuses=[];
  const context={
-   window:{currentPlan:[],currentWeeklyOverview:null,renderOverview(){},renderOutput(){},closeLoadPlanModal(){}},
+   window:{currentPlan:[],currentWeeklyOverview:null,renderOverview(){},renderOutput(){},closeLoadPlanModal(){},setCurrentLessonMeetings(){}},
    document:{
      getElementById:id=>fields.get(id)||null,
      querySelectorAll:()=>[],
