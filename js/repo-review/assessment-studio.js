@@ -86,10 +86,12 @@ async function externalPackageReadiness(){
     batchCount=Math.min(plannedBatch,need.missing),
     totalBatches=Math.ceil(need.target/plannedBatch),
     batchIndex=Math.min(totalBatches,Math.floor(preserve.length/plannedBatch)+1);
+  const registryCount=scenarioRegistryFromPool(preserve).length;
   return {
     ready:true,badge:"Ready",tone:"success",
-    message:"Ready to copy · Batch "+batchIndex+" of "+totalBatches+" · "+batchCount+" variant"+(batchCount===1?"":"s")+".",
-    fingerprint,preserve,need,item,plannedBatch,batchCount,totalBatches,batchIndex
+    message:"Ready to copy · Batch "+batchIndex+" of "+totalBatches+" · "+batchCount+" variant"+(batchCount===1?"":"s")+
+      " · "+registryCount+" prior scenario"+(registryCount===1?"":"s")+" included.",
+    fingerprint,preserve,need,item,plannedBatch,batchCount,totalBatches,batchIndex,registryCount
   };
 }
 async function renderExternalPackageReadiness(){
