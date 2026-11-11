@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - 'functions/index.js'
       - 'functions/school-pilot-sandbox.js'
       - 'functions/pilot-sandbox-experience.js'
       - 'functions/pilot-sandbox-access.js'
