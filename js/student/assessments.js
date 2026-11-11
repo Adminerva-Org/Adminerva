@@ -268,6 +268,58 @@ async function fetchAssessments() {
   } finally { end();if(isCurrent())setAssignmentControls(false); }
 }
 
+function assessmentPresentation(ass){
+  const studio=ass?.schemaVersion===3&&ass?.submissionSource==="studio";
+  const personalized=studio&&ass?.personalizedTask?.enabled===true;
+  if(personalized)return {
+    mode:"personalized_studio",
+    label:"Personalized Studio",
+    chip:"bg-violet-100 text-violet-800 border-violet-200",
+    path:"Personalized task · Adminerva Studio project snapshot",
+    summary:"Your individual task is assigned when you open the assessment and stays frozen to the current attempt.",
+    defaultAction:"Open personalized task",
+    revisionAction:"Open revision task",
+    submittedAction:"View frozen submission",
+    reviewedAction:"View reviewed submission",
+    gradedAction:"View grade & feedback"
+  };
+  if(studio)return {
+    mode:"studio",
+    label:"Adminerva Studio",
+    chip:"bg-teal-100 text-teal-800 border-teal-200",
+    path:"Adminerva Studio project snapshot",
+    summary:"Work in a named Studio project and submit an immutable snapshot for teacher review.",
+    defaultAction:"Open Studio task",
+    revisionAction:"Continue revision",
+    submittedAction:"View Studio submission",
+    reviewedAction:"View reviewed submission",
+    gradedAction:"View grade & feedback"
+  };
+  if(ass?.submissionSource==="essay")return {
+    mode:"essay",
+    label:"Written response",
+    chip:"bg-amber-100 text-amber-800 border-amber-200",
+    path:"Essay / written response",
+    summary:"Written-response assessment.",
+    defaultAction:"Open response",
+    revisionAction:"Revise response",
+    submittedAction:"View response",
+    reviewedAction:"View reviewed response",
+    gradedAction:"View grade & feedback"
+  };
+  return {
+    mode:"repository",
+    label:"Repository evidence",
+    chip:"bg-indigo-100 text-indigo-800 border-indigo-200",
+    path:"GitHub repository evidence",
+    summary:"Submit repository evidence, contribution commits and the required project checkpoint.",
+    defaultAction:"Open repository task",
+    revisionAction:"Revise evidence",
+    submittedAction:"View submission",
+    reviewedAction:"View reviewed evidence",
+    gradedAction:"View grade & feedback"
+  };
+}
 function assignmentStatusFor(ass){
   if(ass.schemaVersion===3&&ass.submissionSource==="studio"){
     if(myGrades[ass.id])return {kind:"graded",text:"Graded"};
@@ -353,19 +405,23 @@ function renderAssessments() {
       ? `<span class="text-[10px] text-slate-400 font-medium ml-auto">Due: ${ass.dueDate.toLocaleDateString()}</span>`
       : `<span class="text-[10px] text-slate-400 font-medium ml-auto">Posted: ${ass.postedDate.toLocaleDateString()}</span>`;
 
-    const action=status.kind==="revision"?"Revise evidence":
-      status.kind==="graded"?"View feedback":
-      status.kind==="submitted"||status.kind==="reviewed"?"View submission":"Open assignment";
+    const presentation=assessmentPresentation(ass);
+    const action=status.kind==="revision"?presentation.revisionAction:
+      status.kind==="graded"?presentation.gradedAction:
+      status.kind==="submitted"?presentation.submittedAction:
+      status.kind==="reviewed"?presentation.reviewedAction:presentation.defaultAction;
     const card = `
       <button type="button" class="w-full text-left bg-white p-4 rounded-xl border ${ass.isUrgent && !myGrade ? "border-rose-300" : "border-slate-200"} hover:border-indigo-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition flex flex-col sm:flex-row sm:items-center gap-3" data-assessment-id="${escapeHTML(ass.id)}">
         <div class="flex-grow min-w-0">
           <div class="flex flex-wrap items-center gap-2 mb-1.5">
             <span class="${typeColor} text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">${escapeHTML(ass.type)}</span>
+            <span class="${presentation.chip} text-[10px] font-bold border px-2 py-0.5 rounded uppercase tracking-wide">${escapeHTML(presentation.label)}</span>
             ${urgencyBadge}
             ${deadlineString}
           </div>
           <h3 class="text-base font-bold text-slate-900 leading-snug">${escapeHTML(ass.title)}</h3>
-          <p class="text-xs text-slate-600 mt-1 line-clamp-1">${escapeHTML(ass.taskContext || "Open to see task instructions and evidence details.")}</p>
+          <p class="text-xs text-slate-600 mt-1 line-clamp-1">${escapeHTML(ass.taskContext || presentation.summary)}</p>
+          <p class="text-[11px] text-slate-500 mt-1">${escapeHTML(presentation.summary)}</p>
         </div>
         <span class="shrink-0 inline-flex items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-800 px-3 py-2 text-xs font-bold sm:ml-auto">${escapeHTML(action)} →</span>
       </button>
@@ -447,6 +503,8 @@ window.viewAssessmentDetails = function (id) {
     scoreArea.classList.add("hidden");
   }
 
+  const presentation=assessmentPresentation(ass);
+  document.getElementById("modalAssPath").textContent="Submission: "+presentation.path;
   const isStudio=ass.schemaVersion===3&&ass.submissionSource==="studio";
   const personalized=isStudio&&ass.personalizedTask?.enabled===true,
     personalizedReady=!personalized||(
@@ -460,7 +518,7 @@ window.viewAssessmentDetails = function (id) {
       "\n\nAdminerva assigns your individual version automatically when you open this assessment. You do not generate or choose a task. The assigned version is frozen to your current attempt; a teacher-requested revision receives another prepared version.";
   document.getElementById("studioAssessmentPanel")?.classList.toggle("hidden",!isStudio);
   document.getElementById("studioExamAdvice")?.classList.toggle("hidden",!isStudio||ass.practicalExam!==true);
-  if(isStudio)document.getElementById("modalAssPath").textContent="Work area: your named Adminerva Studio project (code, diagrams and database).";
+
   document.getElementById("legacySubmitPanel")?.classList.toggle("hidden",isStudio||ass.schemaVersion===2);
   if(isStudio){
     const head=myStudioSubmissions[id],open=document.getElementById("studioOpenProject");
