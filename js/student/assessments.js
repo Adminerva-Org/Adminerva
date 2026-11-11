@@ -22,8 +22,11 @@ let myEvidence = {};
 let submissionLookupSucceeded = false;
 let myStudioSubmissions={},studioSubmissionsReadable=false;
 let profileGeneration=0,assessmentGeneration=0,assignmentOwnerUid="";
-let assessmentModalOpener=null,personalizedAssignmentGeneration=0;
-const studioVariantCall=httpsCallable(getFunctions(app,"asia-southeast1"),"studioAssessmentVariant");
+let assessmentModalOpener=null,personalizedAssignmentGeneration=0,studioVariantCallable=null;
+const callStudioVariant=input=>{
+  if(!studioVariantCallable)studioVariantCallable=httpsCallable(getFunctions(app,"asia-southeast1"),"studioAssessmentVariant");
+  return studioVariantCallable(input);
+};
 const assignmentField=id=>document.getElementById(id);
 async function loadPersonalizedAssignment(assessment){
   const panel=assignmentField("personalizedAssignmentPanel"),
@@ -42,7 +45,7 @@ async function loadPersonalizedAssignment(assessment){
   }
   status.textContent="Assigning your version…";
   try{
-    const response=await studioVariantCall({assessmentId:assessment.id});
+    const response=await callStudioVariant({assessmentId:assessment.id});
     if(generation!==personalizedAssignmentGeneration||window.__adminervaViewedAssessmentId!==assessment.id)return;
     const variant=response.data;
     window.adminervaStudioAssessmentVariant=variant;
