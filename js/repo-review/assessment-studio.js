@@ -29,6 +29,21 @@ let savingBlueprint=false,savingDeployment=false,rubricSource="balanced",lastGen
 const rubricTemplates=new Map();
 const defaultPersona="Assist the teacher by checking supported evidence against the published task and rubric. Distinguish verified individual contributions from shared project work. Do not infer authorship or misconduct. Leave unsupported, visual and runtime criteria for teacher review. Suggested scores stay unpublished until teacher approval.";
 const balancedCriteria=[{name:"Task requirements",weight:40,description:"Requested features and outputs are demonstrated."},{name:"Correctness",weight:30,description:"The submitted work behaves or reasons correctly for the task."},{name:"Clarity and organization",weight:20,description:"The work is understandable, organized and appropriate for the task."},{name:"Explanation and supporting evidence",weight:10,description:"The student explains the approach and links relevant evidence of their own contribution."}];
+const personalizedRubrics={
+  java_oop_fundamentals_v1:[
+    {name:"Class and encapsulation",weight:20,description:"Creates the assigned class and required private instance fields."},
+    {name:"Constructor and initialization",weight:20,description:"Uses the assigned constructor and initializes object state correctly with this."},
+    {name:"Instance behavior",weight:20,description:"Implements the assigned instance method so it updates the correct object field."},
+    {name:"Objects and required output",weight:20,description:"Creates the assigned objects, applies the required updates and produces the specified output from object state."},
+    {name:"Code quality",weight:20,description:"Keeps both Java files readable, organized and properly structured for the task."}
+  ],
+  java_logic_written_work_v1:[
+    {name:"Variables and assigned values",weight:25,description:"Uses the required variable names, types and starting values."},
+    {name:"Required expression",weight:25,description:"Implements the assigned calculation correctly without hard-coding the final result."},
+    {name:"Conditional logic",weight:25,description:"Uses the required decision condition and correct branches."},
+    {name:"Output and code quality",weight:25,description:"Produces the required result using readable and properly organized Java code."}
+  ]
+};
 const blueprintStatus=message=>{document.getElementById("blueprintStatus").textContent=message;};
 function preparedTaskContext(){
   const title=document.getElementById("assessTitle").value.trim(),subject=document.getElementById("assessSubject").value.trim();
@@ -48,6 +63,24 @@ function refreshRubricChoices(){
   for(const assessment of assessments)if(typeof assessment.evalCriteria==="string"&&assessment.evalCriteria.trim())select.add(new Option("Reuse assessment · "+assessment.title,"assessment:"+assessment.id));
   if([...select.options].some(option=>option.value===current))select.value=current;
 }
+window.applyPersonalizedRecipeRubric=function(){
+  const score=Number(document.getElementById("maxScore").value);
+  const recipe=document.getElementById("assessVariantRecipe").value;
+  const criteria=personalizedRubrics[recipe];
+  if(!Number.isFinite(score)||score<1||score>1000){
+    blueprintStatus("Enter a maximum score between 1 and 1,000 before preparing the recipe rubric.");
+    document.getElementById("maxScore").focus();return;
+  }
+  if(!criteria){blueprintStatus("This personalized recipe has no prepared rubric yet.");return;}
+  try{
+    const text=pointsRubric(criteria,score);
+    document.getElementById("evalCriteria").value=text;
+    rubricSource="personalized:"+recipe;lastGeneratedRubric=text;
+    document.getElementById("assessmentRubricStatus").textContent=
+      "Prepared the "+score+"-point rubric for the selected personalized recipe. Review it before saving.";
+    blueprintStatus("");
+  }catch(error){blueprintStatus(error.message);}
+};
 window.applyAssessmentRubric=function(){
   const score=Number(document.getElementById("maxScore").value),selected=document.getElementById("assessmentRubricTemplate").value;
   if(!Number.isFinite(score)||score<1||score>1000){blueprintStatus("Enter a maximum score between 1 and 1,000 before preparing a rubric.");document.getElementById("maxScore").focus();return;}
@@ -71,7 +104,8 @@ async function loadBlueprintChoices(){
 }
 for(const id of ["assessTitle","assessSubject","assessType","taskContext"])document.getElementById(id).addEventListener("input",updateContextPreview);
 document.getElementById("maxScore").addEventListener("input",()=>{
-  if(document.getElementById("evalCriteria").value===lastGeneratedRubric&&!rubricSource.startsWith("assessment:")&&rubricSource!=="manual")window.applyAssessmentRubric();
+  if(document.getElementById("evalCriteria").value===lastGeneratedRubric&&rubricSource.startsWith("personalized:"))window.applyPersonalizedRecipeRubric();
+  else if(document.getElementById("evalCriteria").value===lastGeneratedRubric&&!rubricSource.startsWith("assessment:")&&rubricSource!=="manual")window.applyAssessmentRubric();
   else document.getElementById("assessmentRubricStatus").textContent="Maximum score changed. Review the rubric’s point totals; your written criteria were preserved.";
 });
 document.getElementById("evalCriteria").addEventListener("input",()=>{document.getElementById("assessmentRubricStatus").textContent="Custom criteria. Check the point totals against the maximum score before saving.";});
