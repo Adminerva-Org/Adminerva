@@ -264,7 +264,8 @@ window.copyExternalPersonalizationPackage=async function(){
   }
   try{
     const item=assessments.find(value=>value.id===currentAssessmentId)||{},
-      batchCount=Math.min(10,need.missing);
+      plannedBatch=externalPersonalizationBatchSize(item,need.target),
+      batchCount=Math.min(plannedBatch,need.missing);
     const packageText=buildExternalPersonalizationPackage({
       assessment:{
         ...item,
@@ -300,7 +301,8 @@ window.importExternalPersonalizationResponse=async function(){
     return;
   }
   try{
-    const expectedBatch=Math.min(10,need.missing);
+    const item=assessments.find(value=>value.id===currentAssessmentId)||{},
+      expectedBatch=Math.min(externalPersonalizationBatchSize(item,need.target),need.missing);
     const incoming=await parseExternalPersonalizationResponse(raw,{
       expectedCount:expectedBatch,hashPrompt:sha256Text
     });
@@ -313,14 +315,18 @@ window.importExternalPersonalizationResponse=async function(){
     personalizedVariantPool=merged;
     personalizedVariantFingerprint=fingerprint;
     personalizedVariantGeneratedAt=new Date().toISOString();
+    personalizationDirty=true;
     renderPersonalizedVariantPool();
     const remaining=Math.max(0,need.target-merged.length);
     document.getElementById("externalPersonalizationStatus").textContent=
       "Imported "+incoming.length+" external variant"+(incoming.length===1?"":"s")+
       (remaining?" · "+remaining+" more needed to reach the target. Copy the next external package when ready.":" · target reached.") ;
-    blueprintStatus(remaining
-      ?"External batch imported. Continue with the next batch until the target is reached."
-      :"External variants imported. Review the samples, then save the private variant pool.");
+    const saved=await persistPersonalizationPool({activate:false,silent:true});
+    blueprintStatus(saved
+      ?(remaining
+        ?"External batch imported and autosaved. Continue with the next package; "+remaining+" variants remain."
+        :"Final external batch imported and autosaved. Review the samples, then activate the pool.")
+      :"External batch imported in this browser, but autosave failed. Keep this page open and use Activate / update pool after checking connectivity.");
   }catch(error){
     document.getElementById("externalPersonalizationStatus").textContent="Import failed: "+error.message;
   }
