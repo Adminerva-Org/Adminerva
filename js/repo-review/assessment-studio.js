@@ -342,7 +342,7 @@ async function loadAssessments() {
     snap.forEach(item => {
       const assessment={
         id:item.id,...item.data(),
-        ...(item.data().schemaVersion===2 ? (privateById.get(item.id)||{}) : {})
+        ...([2,3].includes(item.data().schemaVersion) ? (privateById.get(item.id)||{}) : {})
       };
       if(!subjectFocus.length||!assessment.subject||subjectFocus.includes(assessment.subject))assessments.push(assessment);
     });
@@ -410,21 +410,13 @@ function renderAssessmentGrid() {
   });
 }
 
-const personalizedRecipeHelp={
-  java_oop_fundamentals_v1:"OOP variants change the scenario, class and field identifiers, method names, object names and values while keeping the required class, encapsulation, constructor, method and object competencies comparable.",
-  java_logic_written_work_v1:"Logic variants change identifiers, numeric values, expressions, thresholds and output labels while keeping the required variables, expressions, conditional logic and output competencies comparable."
-};
-function updateVariantRecipeHelp(){
-  const select=document.getElementById("assessVariantRecipe"),help=document.getElementById("variantRecipeHelp");
-  if(help)help.textContent=personalizedRecipeHelp[select?.value]||"Each learner receives a server-generated task for the current attempt.";
-}
 function updatePersonalizedTaskOption(){
   const studio=document.getElementById("assessSubmissionSource").value==="studio";
   const enabled=studio&&document.getElementById("assessPersonalizedTask").checked;
   document.getElementById("assessPersonalizedTask").disabled=!studio;
   document.getElementById("personalizedTaskOption").classList.toggle("opacity-60",!studio);
   document.getElementById("personalizedTaskSettings").classList.toggle("hidden",!enabled);
-  updateVariantRecipeHelp();
+  if(enabled)renderPersonalizedVariantPool();
 }
 function updatePracticalExamOption(){
   const studio=document.getElementById("assessSubmissionSource").value==="studio";
@@ -433,11 +425,7 @@ function updatePracticalExamOption(){
   updatePersonalizedTaskOption();
 }
 document.getElementById("assessPersonalizedTask").addEventListener("change",updatePersonalizedTaskOption);
-document.getElementById("assessVariantRecipe").addEventListener("change",()=>{
-  updateVariantRecipeHelp();
-  if(rubricSource.startsWith("personalized:")&&document.getElementById("evalCriteria").value===lastGeneratedRubric)
-    window.applyPersonalizedRecipeRubric();
-});
+document.getElementById("assessVariantGuidance").addEventListener("input",markPersonalizationPossiblyStale);
 document.getElementById("assessSubmissionSource").addEventListener("change",()=>{
   updatePracticalExamOption();
   if(!currentAssessmentId&&document.getElementById("assessSubmissionSource").value==="studio"&&
@@ -463,8 +451,10 @@ window.openCreateModal = function () {
   document.getElementById("assessSubmissionSource").disabled=false;
   document.getElementById("assessPracticalExam").checked=false;
   document.getElementById("assessPersonalizedTask").checked=false;
-  document.getElementById("assessVariantRecipe").value="java_oop_fundamentals_v1";
-  updatePracticalExamOption();
+  document.getElementById("assessVariantGuidance").value="";
+  document.getElementById("assessVariantCount").value="40";
+  personalizedVariantPool=[];personalizedVariantFingerprint="";personalizedVariantGeneratedAt="";
+  updatePracticalExamOption();renderPersonalizedVariantPool();
   document.getElementById("assessV2").checked = true;
   document.getElementById("assessV2").disabled = false;
   document.getElementById("assessExpectedExts").value = "";
@@ -506,8 +496,12 @@ window.openEditModal = function () {
   document.getElementById("assessSubmissionSource").disabled=true;
   document.getElementById("assessPracticalExam").checked=item.practicalExam===true;
   document.getElementById("assessPersonalizedTask").checked=item.personalizedTask?.enabled===true;
-  document.getElementById("assessVariantRecipe").value=item.personalizedTask?.generator||"java_oop_fundamentals_v1";
-  updatePracticalExamOption();
+  document.getElementById("assessVariantGuidance").value=item.personalization?.guidance||"";
+  document.getElementById("assessVariantCount").value=String(item.personalizedTask?.poolTarget||item.personalization?.variants?.length||40);
+  personalizedVariantPool=Array.isArray(item.personalization?.variants)?item.personalization.variants.map(value=>({...value})):[];
+  personalizedVariantFingerprint=typeof item.personalization?.fingerprint==="string"?item.personalization.fingerprint:"";
+  personalizedVariantGeneratedAt=typeof item.personalization?.generatedAt==="string"?item.personalization.generatedAt:"";
+  updatePracticalExamOption();renderPersonalizedVariantPool();
   document.getElementById("assessV2").checked = item.schemaVersion === 2;
   document.getElementById("assessV2").disabled = true; // Never silently convert a legacy record.
   document.getElementById("assessExpectedExts").value =
@@ -673,10 +667,7 @@ window.openViewModal = function (id) {
   document.getElementById("viewTargetPath").textContent =
     item.schemaVersion===3
       ? (item.personalizedTask?.enabled
-        ? "Work area: Adminerva Studio · Personalized "+(
-            item.personalizedTask?.generator==="java_oop_fundamentals_v1"?"Java OOP":
-            item.personalizedTask?.generator==="java_logic_written_work_v1"?"Java Logic":"task"
-          )+" variant per attempt"
+        ? "Work area: Adminerva Studio · Personalized task variant per attempt · "+Number(item.personalizedTask?.poolSize||0)+" ready"
         : "Work area: Adminerva Studio project snapshot")
       : paths.length > 0
         ? `Targets: ${paths.join(" OR ")}`
