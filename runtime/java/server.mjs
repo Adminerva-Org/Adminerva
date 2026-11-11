@@ -21,7 +21,7 @@ const HARD_MS=positive('MAX_SESSION_SECONDS',900,7200)*1000;
 const GRACE_MS=positive('DISCONNECT_GRACE_SECONDS',120,600)*1000;
 const IMAGE=process.env.DOCKER_IMAGE||'adminerva/java17-runner:pilot';
 const PORT=positive('PORT',8787,65535);
-const BYTES_LIMIT=250000,FILE_LIMIT=60;
+const BYTES_LIMIT=250000,FILE_LIMIT=60,OUTPUT_LIMIT=1024*1024,WS_BUFFER_LIMIT=512*1024;
 initializeApp({credential:applicationDefault()});
 const sessions=new Map(),queue=[],active=new Set(),byUser=new Map();
 const wsServer=new WebSocketServer({noServer:true,handleProtocols:protocols=>protocols.has('adminerva-runtime')?'adminerva-runtime':false});
@@ -31,7 +31,12 @@ function serial(session){
     ...(session.finishedAt?{finishedAt:session.finishedAt}:{})};
 }
 function send(session,payload){
-  for(const ws of session.sockets)if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(payload));
+  const message=JSON.stringify(payload);
+  for(const ws of session.sockets){
+    if(ws.readyState!==WebSocket.OPEN)continue;
+    if(ws.bufferedAmount>WS_BUFFER_LIMIT){ws.close(1008,'Slow terminal consumer');continue;}
+    ws.send(message);
+  }
 }
 function status(session){send(session,{type:'status',...serial(session)});}
 function notifyQueue(){for(const s of sessions.values())if(s.state==='queued'||s.state==='running')status(s);}
@@ -105,6 +110,16 @@ async function makeFiles(files){
   return base;
 }
 function emitOutput(session,type,buffer){
+  if(session.state!=='running')return;
+  const bytes=Buffer.byteLength(buffer);
+  session.outputBytes=(session.outputBytes||0)+bytes;
+  if(session.outputBytes>OUTPUT_LIMIT){
+    const note='\n[Adminerva runtime] Output limit reached. This execution was stopped.\n';
+    session.output=(session.output+note).slice(-131072);
+    send(session,{type:'stderr',data:note});
+    void finish(session,null,'failed');
+    return;
+  }
   const data=Buffer.from(buffer).toString('utf8');
   session.lastActivity=Date.now();
   session.output=(session.output+data).slice(-131072);
@@ -119,14 +134,16 @@ async function finish(session,code,state='finished'){
   if(session.idleTimer)clearInterval(session.idleTimer);
   if(session.hardTimer)clearTimeout(session.hardTimer);
   if(session.disconnectTimer)clearTimeout(session.disconnectTimer);
+  if(session.admissionTimer)clearTimeout(session.admissionTimer);
   if(session.child&&!session.child.killed&&code===null)session.child.kill('SIGTERM');
   if(session.containerName){
     const remover=spawn('docker',['rm','-f',session.containerName],{stdio:'ignore'});
     remover.on('error',()=>{});
   }
   if(session.folder)await rm(session.folder,{recursive:true,force:true}).catch(()=>{});
-  status(session);
+  // The exit event must be delivered first: clients close the socket on a final state.
   send(session,{type:'exit',code,state});
+  status(session);
   notifyQueue();
   if(wasActive)setImmediate(pump);
   const housekeeping=setTimeout(()=>sessions.delete(session.id),300000);
@@ -180,19 +197,35 @@ const server=http.createServer(async(req,res)=>{
   try{
     const uid=await verify(req);
     if(req.url==='/v1/executions'&&req.method==='POST'){
+      const parsed=snapshotValidation(await readBody(req));
+      // Check after body ingestion to serialize admission for concurrent requests
+      // from the same authenticated UID (e.g. two browser tabs).
       const existing=byUser.get(uid);
       if(existing&&['queued','running'].includes(sessions.get(existing)?.state))
         throw Object.assign(Error('You already have a queued or active Java session.'),{httpCode:409});
-      const parsed=snapshotValidation(await readBody(req));
       // Busy queue reservations are separate from active worker slots.
       if(active.size>=MAX_ACTIVE&&queue.length>=MAX_PENDING)
         throw Object.assign(Error('Execution queue is full. Retry later.'),{httpCode:429});
       const id=randomUUID();
       const session={id,uid,...parsed,createdAt:Date.now(),lastActivity:Date.now(),
-        state:'queued',streamToken:randomBytes(32).toString('hex'),sockets:new Set(),output:''};
+        state:'queued',streamToken:randomBytes(32).toString('hex'),sockets:new Set(),output:'',outputBytes:0};
       sessions.set(id,session);byUser.set(uid,id);queue.push(id);
+      // A tab that closes before its WebSocket connects must not hold a queue spot.
+      session.admissionTimer=setTimeout(()=>{
+        if(session.sockets.size===0&&['queued','running'].includes(session.state))
+          void stopSession(session);
+      },GRACE_MS);
+      session.admissionTimer.unref?.();
       pump();
       json(res,201,{...serial(session),streamToken:session.streamToken});
+      return;
+    }
+    if(req.url==='/v1/executions/current'&&req.method==='GET'){
+      const existing=byUser.get(uid),session=existing&&sessions.get(existing);
+      if(!session||!['queued','running'].includes(session.state)){
+        json(res,200,{active:false});return;
+      }
+      json(res,200,{active:true,...serial(session),streamToken:session.streamToken});
       return;
     }
     const match=/^\/v1\/executions\/([a-f0-9-]{36})$/.exec(req.url||'');
@@ -219,6 +252,7 @@ server.on('upgrade',(req,socket,head)=>{
   wsServer.handleUpgrade(req,socket,head,ws=>{
     session.sockets.add(ws);
     if(session.disconnectTimer){clearTimeout(session.disconnectTimer);session.disconnectTimer=null;}
+    if(session.admissionTimer){clearTimeout(session.admissionTimer);session.admissionTimer=null;}
     // Replay buffered output first for a late connection to an already finished run.
     // Otherwise a terminal status may close the browser stream before its output arrives.
     if(session.output)ws.send(JSON.stringify({type:'stdout',data:session.output}));
@@ -236,6 +270,7 @@ server.on('upgrade',(req,socket,head)=>{
       session.sockets.delete(ws);
       if(!session.sockets.size&&['queued','running'].includes(session.state)){
         session.disconnectTimer=setTimeout(()=>{void stopSession(session);},GRACE_MS);
+        session.disconnectTimer.unref?.();
       }
     });
   });
