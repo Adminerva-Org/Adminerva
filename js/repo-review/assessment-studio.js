@@ -266,7 +266,9 @@ window.copyExternalPersonalizationPackage=async function(){
   try{
     const item=assessments.find(value=>value.id===currentAssessmentId)||{},
       plannedBatch=externalPersonalizationBatchSize(item,need.target),
-      batchCount=Math.min(plannedBatch,need.missing);
+      batchCount=Math.min(plannedBatch,need.missing),
+      totalBatches=Math.ceil(need.target/plannedBatch),
+      batchIndex=Math.min(totalBatches,Math.floor(preserve.length/plannedBatch)+1);
     const packageText=buildExternalPersonalizationPackage({
       assessment:{
         ...item,
@@ -278,13 +280,13 @@ window.copyExternalPersonalizationPackage=async function(){
         evalCriteria:document.getElementById("evalCriteria").value.trim()
       },
       guidance:document.getElementById("assessVariantGuidance").value.trim(),
-      count:batchCount,
+      count:batchCount,batchIndex,totalBatches,
       existingSummaries:preserve.map(value=>value.summary||value.prompt.slice(0,180))
     });
     await navigator.clipboard.writeText(packageText);
     document.getElementById("externalPersonalizationStatus").textContent=
-      "Copied an external batch requesting "+batchCount+" of "+need.missing+" remaining variant"+
-      (need.missing===1?"":"s")+". Paste it into the external AI, then import its JSON response below.";
+      "Copied external batch "+batchIndex+" of "+totalBatches+" requesting "+batchCount+
+      " variant"+(batchCount===1?"":"s")+" ("+need.missing+" remain before this batch). Paste it into the external AI, then import its JSON response below.";
   }catch(error){
     document.getElementById("externalPersonalizationStatus").textContent="Package not copied: "+error.message;
   }
