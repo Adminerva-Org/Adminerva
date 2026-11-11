@@ -403,6 +403,10 @@ window.viewAssessmentDetails = function (id) {
   }
 
   const isStudio=ass.schemaVersion===3&&ass.submissionSource==="studio";
+  if(isStudio&&ass.personalizedTask?.enabled===true)
+    document.getElementById("modalAssContext").textContent=
+      (ass.taskContext||"Complete the assigned Studio task.")+
+      "\n\nYour individual version will be generated when you open this assessment in Adminerva Studio. The same version stays attached to your current attempt; a teacher-requested revision receives a new version.";
   document.getElementById("studioAssessmentPanel")?.classList.toggle("hidden",!isStudio);
   document.getElementById("studioExamAdvice")?.classList.toggle("hidden",!isStudio||ass.practicalExam!==true);
   if(isStudio)document.getElementById("modalAssPath").textContent="Work area: your named Adminerva Studio project (code, diagrams and database).";
