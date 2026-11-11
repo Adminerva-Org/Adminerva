@@ -291,7 +291,11 @@ function updatePracticalExamOption(){
   updatePersonalizedTaskOption();
 }
 document.getElementById("assessPersonalizedTask").addEventListener("change",updatePersonalizedTaskOption);
-document.getElementById("assessVariantRecipe").addEventListener("change",updateVariantRecipeHelp);
+document.getElementById("assessVariantRecipe").addEventListener("change",()=>{
+  updateVariantRecipeHelp();
+  if(rubricSource.startsWith("personalized:")&&document.getElementById("evalCriteria").value===lastGeneratedRubric)
+    window.applyPersonalizedRecipeRubric();
+});
 document.getElementById("assessSubmissionSource").addEventListener("change",()=>{
   updatePracticalExamOption();
   if(!currentAssessmentId&&document.getElementById("assessSubmissionSource").value==="studio"&&
