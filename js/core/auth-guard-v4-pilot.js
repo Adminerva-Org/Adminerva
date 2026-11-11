@@ -148,7 +148,7 @@ async function checkAccess(user){
      !(access.schoolTeacher||access.schoolAdmin||admittedRole==="admin")){
     replacePage(roleHome(actualRole));return;
   }
-  if(/\/(pilot-sandbox)\.html$/.test(currentPath)&&!access.schoolTeacher){replacePage(roleHome(actualRole));return;}
+  if(/\/(pilot-sandbox)\.html$/.test(currentPath)&&!(access.schoolTeacher||access.legacyRole==="teacher"||admittedRole==="teacher")){replacePage(roleHome(actualRole));return;}
   if(/\/(school-gradebook)\.html$/.test(currentPath)&&!access.schoolTeacher){
     replacePage(roleHome(actualRole));return;
   }
