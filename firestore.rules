@@ -192,7 +192,7 @@ service cloud.firestore {
     }
     match /teacher_materials/{ownerUid}/{kind}/{recordId} {
       allow read: if isAdmin() || (isTeacher() && request.auth.uid == ownerUid);
-      allow create, update: if isTeacher() && request.auth.uid == ownerUid && kind in ["repobank","group_repo_cache","github_stats_cache","system","templates","reference_folders"] && request.resource.data.keys().size() <= 50;
+      allow create, update: if isTeacher() && request.auth.uid == ownerUid && kind in ["repobank","group_repo_cache","github_stats_cache","system","templates","reference_folders"] && request.resource.data.keys().size() <= 300;
       allow delete: if isTeacher() && request.auth.uid == ownerUid;
       match /documents/{documentId} {
         allow read: if isAdmin() || (isTeacher() && request.auth.uid == ownerUid);
@@ -628,7 +628,7 @@ service cloud.firestore {
         let before = exists(path) ? get(path).data : null;
         let after = getAfter(path).data;
         return data.keys().hasOnly(["gradeId","studentId","taskId","editorUid","reason","before","after","createdAt"]) &&
-          data.gradeId is string && data.gradeId.size() <= 500 && data.gradeId.matches("^[^/]+$") &&
+          data.gradeId is string && data.gradeId.size() <= 3000 && data.gradeId.matches("^[^/]+$") &&
           data.studentId == after.studentId && data.taskId == after.taskId &&
           data.editorUid == request.auth.uid && data.createdAt == request.time &&
           data.reason is string && data.reason.size() >= 10 && data.reason.size() <= 3100 &&
@@ -1091,14 +1091,15 @@ service cloud.firestore {
             next.get("poolFingerprint","") == prior.get("poolFingerprint","")) &&
           next.get("poolSize",0) is int &&
           next.get("poolSize",0) >= prior.get("poolSize",0) &&
-          next.get("poolSize",0) <= 50 &&
+          next.get("poolSize",0) <= 300 &&
           next.get("poolTarget",0) is int &&
           next.get("poolTarget",0) >= prior.get("poolTarget",0) &&
-          next.get("poolTarget",0) <= 50 &&
+          next.get("poolTarget",0) <= 300 &&
           privateNext.get("mode","") == "ai_blueprint_pool_v1" &&
           privateNext.get("fingerprint","") == next.get("poolFingerprint","") &&
-          privateNext.get("variants",[]) is list &&
-          privateNext.get("variants",[]).size() == next.get("poolSize",0);
+          privateNext.get("variantIds",[]) is list &&
+          privateNext.get("variantIds",[]).size() == next.get("poolSize",0) &&
+          privateNext.get("variantIds",[]).size() <= 300;
       }
       function validAssessment(data) {
         return data.get("ownerUid","") is string && data.get("sectionIds",[]) is list && data.sectionIds.size() <= 20 &&
@@ -1114,10 +1115,10 @@ service cloud.firestore {
                data.get("personalizedTask",{}).get("poolFingerprint","").size() <= 64 &&
                data.get("personalizedTask",{}).get("poolSize",0) is int &&
                data.get("personalizedTask",{}).get("poolSize",0) >= 0 &&
-               data.get("personalizedTask",{}).get("poolSize",0) <= 50 &&
+               data.get("personalizedTask",{}).get("poolSize",0) <= 300 &&
                data.get("personalizedTask",{}).get("poolTarget",0) is int &&
                data.get("personalizedTask",{}).get("poolTarget",0) >= 10 &&
-               data.get("personalizedTask",{}).get("poolTarget",0) <= 50))
+               data.get("personalizedTask",{}).get("poolTarget",0) <= 300))
           )) &&
           data.get("targetSections",[]) is list && data.get("targetSections",[]).hasOnly(data.sectionIds) &&
           (data.deployments.size() <= 0 || data.deployments[0].section in data.sectionIds) &&
@@ -1164,6 +1165,28 @@ service cloud.firestore {
         getAfter(/databases/$(database)/documents/assessments/$(assessmentId)).data.ownerUid == request.auth.uid &&
         request.resource.data.ownerUid == request.auth.uid && request.resource.data.sectionIds == getAfter(/databases/$(database)/documents/assessments/$(assessmentId)).data.sectionIds);
       allow delete: if isAdmin();
+
+      match /variants/{variantId} {
+        function mayOwnPersonalization() {
+          return isAdmin() || (isTeacher() &&
+            get(/databases/$(database)/documents/assessments/$(assessmentId)).data.ownerUid == request.auth.uid);
+        }
+        function validVariant(data) {
+          let parent=getAfter(/databases/$(database)/documents/assessment_private/$(assessmentId)).data;
+          return data.keys().hasOnly(["variantId","fingerprint","prompt","evaluationNotes","summary","updatedAt"]) &&
+            data.variantId == variantId &&
+            variantId.matches("^[a-f0-9]{16,64}$") &&
+            data.fingerprint is string && data.fingerprint.size() > 0 && data.fingerprint.size() <= 64 &&
+            data.fingerprint == parent.get("personalization",{}).get("fingerprint","") &&
+            data.prompt is string && data.prompt.size() >= 20 && data.prompt.size() <= 12000 &&
+            data.evaluationNotes is string && data.evaluationNotes.size() >= 10 && data.evaluationNotes.size() <= 8000 &&
+            data.summary is string && data.summary.size() <= 300 &&
+            data.updatedAt == request.time;
+        }
+        allow get, list: if mayOwnPersonalization();
+        allow create, update: if mayOwnPersonalization() && validVariant(request.resource.data);
+        allow delete: if mayOwnPersonalization();
+      }
     }
     match /grades/{gradeId} {
       allow read: if mayTeachSection(resource.data.section);
@@ -1451,7 +1474,7 @@ service cloud.firestore {
         (mayReadIssue(resource.data) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(["upvotes"]) &&
         request.resource.data.upvotes is list &&
-        request.resource.data.upvotes.size() <= 500 &&
+        request.resource.data.upvotes.size() <= 3000 &&
         (
           (
             !(request.auth.uid in resource.data.upvotes) &&
@@ -1532,7 +1555,7 @@ service cloud.firestore {
           data.ownerUid == request.auth.uid && data.token is string && data.token.size() > 20 &&
           data.token.size() <= 4096 && data.enabled is bool &&
           data.platform is string && data.platform.size() <= 80 &&
-          data.userAgent is string && data.userAgent.size() <= 500 &&
+          data.userAgent is string && data.userAgent.size() <= 3000 &&
           data.updatedAt == request.time;
       }
       allow read: if signedIn() && resource.data.ownerUid == request.auth.uid;
@@ -1645,7 +1668,7 @@ service cloud.firestore {
           ]) &&
           request.resource.data.ownerUid == uid &&
           request.resource.data.sourceKey is string &&
-          request.resource.data.sourceKey.size() <= 500 &&
+          request.resource.data.sourceKey.size() <= 3000 &&
           request.resource.data.title is string &&
           request.resource.data.title.size() <= 240 &&
           request.resource.data.body is string &&
