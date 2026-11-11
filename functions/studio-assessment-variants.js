@@ -78,6 +78,19 @@ function createStudioAssessmentVariantService({db,Timestamp}){
     return Boolean(entry)&&now>=millis(entry.opensAt)&&now<=millis(entry.closesAt);
   }
 
+  async function authorizeAssessmentTeacher(actor,assessment){
+    const email=String(actor.token?.email||"").toLowerCase().trim();
+    if(!actor.uid||actor.token?.email_verified!==true||!email)
+      deny("unauthenticated","Use a verified staff account.");
+    if(assessment.ownerUid===actor.uid)return;
+    const access=await db.doc("staff_access/"+email).get(),
+      data=access.exists?access.data():null;
+    if(data?.status==="active"&&data.role==="admin")return;
+    if(data?.status==="active"&&data.role==="teacher"&&Array.isArray(data.sections)&&
+       Array.isArray(assessment.sectionIds)&&assessment.sectionIds.some(section=>data.sections.includes(section)))return;
+    deny("permission-denied","You are not authorized to inspect this personalized assessment.");
+  }
+
   async function authorizeTeacher(actor,assessment,student){
     const email=String(actor.token?.email||"").toLowerCase().trim();
     if(!actor.uid||actor.token?.email_verified!==true||!email)
@@ -94,6 +107,26 @@ function createStudioAssessmentVariantService({db,Timestamp}){
     const actor=request.auth||{},input=request.data||{},
       assessmentId=cleanId(input.assessmentId,"Assessment"),
       {data:assessment,pool}=await assessmentRecord(assessmentId);
+
+    if(input.action==="stats"){
+      await authorizeAssessmentTeacher(actor,assessment);
+      const reservations=await db.collection("studio_assessment_variant_registry/"+assessmentId+"/keys").get(),
+        active=new Set(pool.variantIds),learners=new Set(),perSection={};
+      let assigned=0;
+      reservations.forEach(record=>{
+        const data=record.data();
+        if(data.poolFingerprint!==pool.fingerprint||!active.has(data.variantId))return;
+        assigned++;
+        if(data.studentId)learners.add(data.studentId);
+        const section=String(data.section||"").trim();
+        if(section)perSection[section]=(perSection[section]||0)+1;
+      });
+      return {
+        assessmentId,poolSize:pool.variantIds.length,assigned,
+        available:Math.max(0,pool.variantIds.length-assigned),
+        uniqueLearners:learners.size,perSection
+      };
+    }
 
     if(input.action==="inspect"){
       const studentId=cleanId(input.studentId,"Student"),attempt=Number(input.attempt);
