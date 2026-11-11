@@ -1,16 +1,27 @@
-# Personalized Adminerva Studio Assessments
+# Personalized Assessment Mode
 
 Status: implementation candidate in PR #153. The frontend, Firestore rules and
 `studioAssessmentVariant` callable are one release boundary.
 
 ## Purpose
 
-Personalized Studio assessments are a generic assessment capability. They are
-not tied to OOP, Java, or any single programming topic.
+Personalized is an **assessment mode**, not an assessment format or submission
+type. Adminerva separates three concerns:
 
-The teacher creates the normal assessment blueprint first: title, student
-instructions, maximum score and published rubric. When **Personalized task
-variants** is enabled, Adminerva treats that blueprint as the authoritative
+- **Assessment category** — grading/classification such as Mini PETA, Written
+  Work, Practical Exam or Formative.
+- **Assessment format** — how the learner answers or submits, such as Adminerva
+  Studio Code, GitHub Repository, Essay / Written Response, Multiple Choice,
+  Matching Type or Analogy.
+- **Mode** — how the task is assigned, such as Default, Personalized, and later
+  Group or By Pair.
+
+The first release enables **Personalized** only for **Adminerva Studio Code**.
+Other formats are visible as future expansion points where appropriate.
+
+The teacher creates the normal assessment blueprint first: title, category,
+format, student instructions, maximum score and published rubric. When
+**Mode = Personalized**, Adminerva treats that blueprint as the authoritative
 source for a private pool of equivalent learner tasks. The pool may be prepared
 with School AI or through the external personalization package engine.
 
@@ -24,22 +35,23 @@ difficulty, required effort or rubric.
 ## Authoring workflow
 
 1. Create the assessment normally in Assessment Studio.
-2. Choose **Adminerva Studio project snapshot** as the submission workspace.
-3. Enable **Personalized task variants**.
-4. Write the authoritative student instructions. This is where the teacher
+2. Choose the **assessment category** such as Mini PETA.
+3. Choose **Assessment format = Adminerva Studio Code**.
+4. Choose **Mode = Personalized**.
+5. Write the authoritative student instructions. This is where the teacher
    defines the topic and scope.
-5. Prepare the published rubric.
-6. Save the personalized blueprint.
-7. Reopen it. The **Personalization** editor tab appears only for a saved
+6. Prepare the published rubric.
+7. Save the personalized blueprint.
+8. Reopen it. The **Personalization** editor tab appears only for a saved
    personalized Studio blueprint.
-8. The assessment may be deployed before the private pool is ready. Until a
+9. The assessment may be deployed before the private pool is ready. Until a
    valid pool exists, learners can see the assignment but Studio remains marked
    as preparation pending.
-9. In the Personalization tab, optionally write **Variation guidance**
+10. In the Personalization tab, optionally write **Variation guidance**
    describing what may change and what must remain fixed.
-10. Choose a private pool target from 10 to 600. Adminerva shows an estimate
+11. Choose a private pool target from 10 to 600. Adminerva shows an estimate
     based on the deployed sections and learner count when available.
-11. Prepare variants with either:
+12. Prepare variants with either:
     - **School AI** — direct generation using the configured Adminerva AI
       connection; or
     - **External AI package** — copy a privacy-preserving generation package to
@@ -47,11 +59,11 @@ difficulty, required effort or rubric.
       packages are section-aware and request at most 45 variants per batch. The
       planned batch size is `ceil(target pool / deployed section count)`, capped
       at 45; the next package asks only for the remaining capacity.
-12. Review sample variants. Partial external batches may be saved privately
+13. Review sample variants. Partial external batches may be saved privately
     between sessions. An initial partial pool does not unlock students until the
     target is reached.
-13. Save the ready private pool.
-14. Learners can then open the assessment. Variant assignment is automatic;
+14. Save the ready private pool.
+15. Learners can then open the assessment. Variant assignment is automatic;
     students do not click a generation control.
 
 If the title, instructions, rubric, maximum score, subject or variation
@@ -177,10 +189,10 @@ Recommended blueprint:
 | Field | Value |
 | --- | --- |
 | Title | Mini PETA 3 – Personalized OOP Programming Task |
-| Type | Mini PETA |
+| Assessment category | Mini PETA |
+| Assessment format | Adminerva Studio Code |
+| Mode | Personalized |
 | Maximum score | 10 |
-| Submission workspace | Adminerva Studio project snapshot |
-| Personalized task variants | On |
 | Pool size | Enrolled learners plus revision headroom; Adminerva recommends 5 extra per deployed section |
 | Suggested open date | November 16, 2026 |
 | Deadline | November 20, 2026, 11:59 PM Asia/Manila |
@@ -258,40 +270,50 @@ Do not deploy only the static frontend. The callable and Firestore rules are
 part of the same feature boundary.
 
 
-## Current submission boundary and future response modes
+## Current format/mode compatibility
 
-For the first release, personalized assessments submit through **Adminerva Studio only**.
+The current Assessment Studio UI exposes the new taxonomy even where a format
+or mode is not implemented yet.
 
-The current learner submission contract is:
+| Assessment format | Default | Personalized | Group | By Pair |
+| --- | --- | --- | --- | --- |
+| Adminerva Studio Code | Available | Available | Future | Future |
+| GitHub Repository | Available | Future / disabled | Future | Future |
+| Essay / Written Response | Future | Future | Future | Future |
+| Multiple Choice | Future | Future where appropriate | Future | Future |
+| Matching Type | Future | Future where appropriate | Future | Future |
+| Analogy | Future | Future where appropriate | Future | Future |
+
+For the first release, **Personalized + Adminerva Studio Code** uses the current
+Studio submission contract:
 
 1. Open the personalized assignment from My Assessments.
 2. Receive one server-reserved variant for the current attempt.
 3. Work in a named Adminerva Studio project.
 4. Submit one immutable Studio project snapshot tied to the assigned variant ID.
-5. Once submitted, the personalized attempt is frozen. A second personalized submission is not accepted until the teacher explicitly requests a revision.
-6. A teacher-requested revision advances the revision number and receives a different unused personalized variant.
-7. Teacher review and the resulting grade retain the Studio revision, snapshot hash and personalized variant ID as provenance.
+5. Once submitted, the personalized attempt is frozen. Another submission
+   requires an explicit teacher revision request.
+6. A teacher-requested revision receives a different unused personalized
+   variant.
+7. Teacher review and the resulting grade retain the Studio revision, snapshot
+   hash and personalized variant ID as provenance.
 
-The Personalization UI also shows a disabled **Essay / written response — Future**
-response type. This is intentionally non-selectable. A later expansion can reuse
-the same blueprint-driven variant generation and assignment lifecycle for
-personalized essays or other written responses while implementing a separate
-submission/evidence model.
+A future **Essay / Written Response** format can use either Default or
+Personalized mode without changing the personalization engine; it will need its
+own answer editor, submission/evidence record and review workflow. Personalized
+GitHub tasks remain disabled for now.
 
 ## Student assignment presentation
 
-The student Assignments page is submission-mode aware rather than repository
-specific.
+The student Assignments page is **format- and mode-aware**, rather than
+repository-specific.
 
-- Repository assessments identify themselves as **Repository evidence** and use
-  commits/checkpoint terminology.
-- Standard Studio assessments identify themselves as **Adminerva Studio** and
-  use project snapshot/revision terminology.
-- Personalized Studio assessments identify themselves as **Personalized
-  Studio**, surface preparation/ready/revision states, and use frozen
-  task/attempt terminology.
-- A future written-response mode is reserved in the presentation model but is
-  not currently deployable.
+- GitHub Repository + Default uses commits/checkpoint terminology.
+- Adminerva Studio Code + Default uses Studio project snapshot/revision
+  terminology.
+- Adminerva Studio Code + Personalized surfaces preparation, frozen variant,
+  attempt and revision states.
+- Future formats can provide their own card labels, actions and detail panels
+  without changing the common assignment list architecture.
 
-This keeps repository controls and language out of Studio tasks and allows later
-submission modes to be added without redesigning the assignment card model.
+This keeps the learner UI aligned with the actual assessment they were assigned.
