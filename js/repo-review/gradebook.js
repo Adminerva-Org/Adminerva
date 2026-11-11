@@ -103,7 +103,7 @@ async function loadFilters() {
     subjectFocus=await resolveStaffSubjects(auth.currentUser);
     assSnap.forEach((d) => {
       const assessment={ id: d.id, ...d.data() };
-      if(!subjectFocus.length||!assessment.subject||subjectFocus.includes(assessment.subject))allAssessments.push(assessment);
+      if(assessment.ownerUid===auth.currentUser?.uid||!subjectFocus.length||!assessment.subject||subjectFocus.includes(assessment.subject))allAssessments.push(assessment);
     });
   } catch (e) {
     console.error("Gradebook Load Error", e);
@@ -134,8 +134,14 @@ async function loadGrid() {
       query(collection(db, "student_grades"), where("taskId", "==", taskId)),
     );
     if(serial!==gridSerial)return;
-    const schemaVersion=allAssessments.find(task=>task.id===taskId)?.schemaVersion;
-    const taskMaximum=allAssessments.find(task=>task.id===taskId)?.maxScore;
+    const selectedAssessment=allAssessments.find(task=>task.id===taskId)||{};
+    const schemaVersion=selectedAssessment.schemaVersion;
+    const taskMaximum=selectedAssessment.maxScore;
+    const assessmentFormat=selectedAssessment.assessmentFormat||
+      (schemaVersion===3?"studio_code":"github_repository");
+    const assessmentMode=selectedAssessment.assessmentMode||
+      (selectedAssessment.personalizedTask?.enabled===true?"personalized":"default");
+    const studioAssessment=assessmentFormat==="studio_code";
     gridEntries=gradesSnap.docs.filter(record=>allStudents.some(student=>student.id===record.data().studentId&&student.section===section)).map(record=>({ref:record.ref,data:record.data(),schemaVersion,maxScore:taskMaximum}));syncPublishButton();
     const gradeMap = {};
     gradesSnap.forEach((d) => (gradeMap[d.data().studentId] = d.data()));
@@ -162,29 +168,36 @@ async function loadGrid() {
     classStudents.forEach((student) => {
       const grade = gradeMap[student.id];
 
-      let repoStatus = `<span class="text-[10px] bg-rose-50 text-rose-600 font-bold px-2 py-1 rounded border border-rose-200">No Repo Linked</span>`;
-      if (student.repoUrl && student.repoUrl !== "unassigned") {
-        const cleanRepoUrl = student.repoUrl
-          .trim()
-          .replace(/\/$/, "")
-          .replace(/\.git$/, "");
-        const cleanUsername = (student.githubUsername || "")
-          .replace(/^@/, "")
-          .trim();
+      let submissionStatus,studentMeta;
+      if(studioAssessment){
+        const params=new URLSearchParams({assessment:taskId,section,student:student.id});
+        submissionStatus='<a class="text-teal-800 underline font-bold text-xs" href="studio-submissions.html?'+params.toString()+'">'+
+          (assessmentMode==="personalized"?"Personalized Studio attempt →":"Adminerva Studio project →")+'</a>';
+        studentMeta=assessmentMode==="personalized"?"Personalized Studio":"Adminerva Studio";
+      }else{
+        submissionStatus=`<span class="text-[10px] bg-rose-50 text-rose-600 font-bold px-2 py-1 rounded border border-rose-200">No Repo Linked</span>`;
+        studentMeta="@"+String(student.githubUsername||"unlinked");
+        if (student.repoUrl && student.repoUrl !== "unassigned") {
+          const cleanRepoUrl = student.repoUrl
+            .trim()
+            .replace(/\/$/, "")
+            .replace(/\.git$/, "");
+          const cleanUsername = (student.githubUsername || "")
+            .replace(/^@/, "")
+            .trim();
 
-        const commitUrl = `${cleanRepoUrl}/commits?author=${cleanUsername}`;
-        repoStatus = `
-          <div class="flex flex-col gap-1 w-32">
-            <a href="${escapeHTML(commitUrl)}" target="_blank" class="text-blue-500 hover:text-blue-700 hover:underline text-center text-xs font-mono bg-blue-50 px-2 py-1 rounded border border-blue-100 transition">View Commits</a>
-            <div id="stats-${student.id}" class="text-[10px] text-slate-500 font-medium mt-1">
-               <span>Loading stats...</span>
+          const commitUrl = `${cleanRepoUrl}/commits?author=${cleanUsername}`;
+          submissionStatus = `
+            <div class="flex flex-col gap-1 w-32">
+              <a href="${escapeHTML(commitUrl)}" target="_blank" class="text-blue-500 hover:text-blue-700 hover:underline text-center text-xs font-mono bg-blue-50 px-2 py-1 rounded border border-blue-100 transition">View Commits</a>
+              <div id="stats-${student.id}" class="text-[10px] text-slate-500 font-medium mt-1">
+                 <span>Loading stats...</span>
+              </div>
             </div>
-          </div>
-        `;
-        pendingStats.push(student);
+          `;
+          pendingStats.push(student);
+        }
       }
-
-      if(schemaVersion===3)repoStatus='<a class="text-teal-800 underline font-bold text-xs" href="studio-submissions.html">Adminerva Studio project →</a>';
       let scoreBadge = `<span class="bg-slate-100 text-slate-500 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-slate-200">Needs Grading</span>`;
       let pubToggle = `<span class="text-slate-300 text-xs italic font-medium">Awaiting Score</span>`;
 
@@ -235,10 +248,10 @@ async function loadGrid() {
                 <tr class="hover:bg-indigo-50/50 transition" data-student-id="${student.id}">
                     <td data-label="Student" class="px-5 py-4">
                         <div class="font-extrabold text-slate-800 text-base">${escapeHTML(student.name)}</div>
-                        <div class="text-[10px] text-slate-400 font-mono mt-0.5">@${escapeHTML(student.githubUsername || "unlinked")}</div>
+                        <div class="text-[10px] text-slate-400 mt-0.5 ${studioAssessment?"":"font-mono"}">${escapeHTML(studentMeta)}</div>
                     </td>
                     <td data-label="Review" class="px-5 py-4"><div data-review-state="${student.id}" class="min-w-40 text-xs text-slate-500">Checking…</div></td>
-                    <td data-label="Repository" class="px-5 py-4">${repoStatus}</td>
+                    <td data-label="Submission" class="px-5 py-4">${submissionStatus}</td>
                     <td data-label="Score" class="px-5 py-4">${scoreBadge}</td>
                     <td data-label="Visibility" class="px-5 py-4">${pubToggle}</td>
                 </tr>
@@ -247,7 +260,8 @@ async function loadGrid() {
     });
 
     const gradebookGridDetail={
-      section,taskId,schemaVersion,students:classStudents.map(student=>({id:student.id,name:student.name,section:student.section,repoUrl:student.repoUrl,githubUsername:student.githubUsername,email:student.email})),
+      section,taskId,schemaVersion,assessmentFormat,assessmentMode,
+      students:classStudents.map(student=>({id:student.id,name:student.name,section:student.section,repoUrl:student.repoUrl,githubUsername:student.githubUsername,email:student.email})),
       grades:Object.fromEntries(classStudents.filter(student=>gradeMap[student.id]).map(student=>[student.id,gradeMap[student.id]]))
     };
     window.__adminervaGradebookGridContext=gradebookGridDetail;
@@ -496,7 +510,7 @@ function updateAssessmentsForSection() {
   applicableAssessments.forEach((d) => {
     assSelect.insertAdjacentHTML(
       "beforeend",
-      `<option value="${d.id}">${d.subject?escapeHTML(d.subject)+" · ":""}${escapeHTML(d.title)} (${escapeHTML(d.type)})</option>`,
+      `<option value="${d.id}">${d.subject?escapeHTML(d.subject)+" · ":""}${escapeHTML(d.title)} (${escapeHTML(d.type)} · ${(d.assessmentFormat==="studio_code"||d.schemaVersion===3)?"Studio":"GitHub"}${(d.assessmentMode==="personalized"||d.personalizedTask?.enabled===true)?" · Personalized":""})</option>`,
     );
   });
 }
