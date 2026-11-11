@@ -62,7 +62,12 @@ function assessmentPublishReadiness(item){
       target=Number(item.personalizedTask?.poolTarget||0),
       fingerprint=String(item.personalizedTask?.poolFingerprint||"");
     if(!fingerprint||size<1)problems.push("Activate the personalized variant pool first.");
-    else if(target>0&&size<target)problems.push("Complete the personalized pool target before publishing ("+size+" of "+target+" ready).");
+    else{
+      if(target>0&&size<target)problems.push("Complete the personalized pool target before publishing ("+size+" of "+target+" ready).");
+      const coverage=recommendedPersonalizationTarget(item);
+      if(coverage.learners>0&&size<coverage.learners)
+        problems.push("The active pool has "+size+" variants for approximately "+coverage.learners+" enrolled learners in the deployed sections. Add at least one unique variant per learner before publishing.");
+    }
   }
   return problems;
 }
