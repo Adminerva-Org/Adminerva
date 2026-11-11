@@ -97,7 +97,9 @@ async function inspect(item){
        const response=await variantCall({action:"inspect",assessmentId:item.assessmentId,
          studentId:item.studentId,attempt:item.revision});
        assignedVariant=response.data;
-     }catch(error){variantError=String(error?.message||"Personalized task unavailable.");}
+       if(item.variantId&&assignedVariant.variantId!==item.variantId)
+         throw Error("Submitted variant ID does not match the recorded personalized task.");
+     }catch(error){assignedVariant=null;variantError=String(error?.message||"Personalized task unavailable.");}
    }
    if(stamp!==inspectionSequence||auth.currentUser?.uid!==uid)return;
    detail.replaceChildren();
@@ -172,9 +174,10 @@ async function inspect(item){
          ]);
          if(auth.currentUser?.uid!==uid)throw Error("Staff account changed. Review cancelled.");
          if(!latest.exists()||latest.data().revision!==item.revision||
+           latest.data().variantId!==(item.variantId||"")||
            (type==="reviewed"&&latest.data().status!=="submitted")||
            (type==="revision_requested"&&!["submitted","reviewed"].includes(latest.data().status)))
-           throw Error("The submitted revision changed. Refresh the inbox to review the latest work.");
+           throw Error("The submitted revision or personalized task changed. Refresh the inbox to review the latest work.");
          if(!taskDoc.exists()||taskDoc.data().schemaVersion!==3||taskDoc.data().maxScore!==max)
            throw Error("The assessment changed. Refresh before grading.");
          if(priorGrade.exists()&&priorGrade.data().published===true)
