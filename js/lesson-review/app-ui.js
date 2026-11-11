@@ -434,9 +434,13 @@ window.loadSpecificPlan = function (planData) {
       : { topic: "", content_standard: "", performance_standard: "", materials: "" };
   window.currentPlan = planData.sessions;
   window.cachedInstructionMap=planData.instruction_map||null;
+  const savedSessionStructure=Array.isArray(planData.session_structure)&&planData.session_structure.length
+    ? planData.session_structure
+    : planData.sessions.map(session=>String(session?.session_name||"").trim())
+        .filter(name=>name&&name!=="Session Flex");
   window.setCurrentLessonMeetings(
     Array.isArray(planData.schedule_meetings) ? planData.schedule_meetings : [],
-    Array.isArray(planData.session_structure) ? planData.session_structure : []
+    savedSessionStructure
   );
   // Preserve the original subject and teacher for an edited saved lesson.
   // Defaults may have changed since this plan was first created.
