@@ -1335,12 +1335,13 @@ service cloud.firestore {
         data.revision is int && data.revision > 0 && data.revision <= 30 &&
         data.projectId is string && data.projectId.size() > 0 && data.projectId.size() <= 150 &&
         data.projectTitle is string && data.projectTitle.size() > 0 && data.projectTitle.size() <= 120 &&
-        data.variantId is string && data.variantId.size() <= 64 &&
+        data.get("variantId","") is string && data.get("variantId","").size() <= 64 &&
         data.snapshotHash is string && data.snapshotHash.matches("^[a-f0-9]{64}$") &&
         data.status == "submitted" && data.reviewNote == "" && data.reviewedBy == "" &&
         !("reviewedAt" in data) &&
         data.submittedAt == request.time && version.revision == data.revision &&
-        version.snapshotHash == data.snapshotHash && version.variantId == data.variantId &&
+        version.snapshotHash == data.snapshotHash &&
+        version.get("variantId","") == data.get("variantId","") &&
         version.ownerUid == data.ownerUid &&
         version.studentId == data.studentId && version.assessmentId == data.assessmentId &&
         version.submittedAt == data.submittedAt;
@@ -1394,7 +1395,8 @@ service cloud.firestore {
           request.resource.data.source == "studio" &&
           request.resource.data.revision is int &&
           revisionId == string(request.resource.data.revision) &&
-          request.resource.data.variantId is string && request.resource.data.variantId.size() <= 64 &&
+          request.resource.data.get("variantId","") is string &&
+          request.resource.data.get("variantId","").size() <= 64 &&
           request.resource.data.snapshotHash is string &&
           request.resource.data.snapshotHash.matches("^[a-f0-9]{64}$") &&
           request.resource.data.snapshotJson is string &&
@@ -1404,7 +1406,8 @@ service cloud.firestore {
           studioEvidenceStudent(request.resource.data) &&
           getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.revision == request.resource.data.revision &&
           getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.snapshotHash == request.resource.data.snapshotHash &&
-          getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.variantId == request.resource.data.variantId &&
+          getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.get("variantId","") ==
+            request.resource.data.get("variantId","") &&
           getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.submittedAt == request.time &&
           evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId;
         allow update,delete: if false;
