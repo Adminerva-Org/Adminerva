@@ -194,7 +194,11 @@
     <div id="createModal" class="hidden fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-[120] p-3 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="createModalTitle">
       <div class="bg-white rounded-xl shadow-2xl max-w-4xl w-full flex flex-col overflow-hidden max-h-[92dvh]">
         <header class="p-5 border-b bg-slate-800 flex justify-between items-start gap-3"><div><h2 id="createModalTitle" class="text-xl font-bold text-white">Create assessment</h2><p class="text-sm text-slate-300 mt-1">Name the task, check its points and rubric, then save. Add extra detail only when needed.</p></div><button type="button" onclick="closeModals()" aria-label="Close assessment editor" class="text-slate-300 hover:text-white text-2xl px-2">&times;</button></header>
-        <div class="p-4 sm:p-6 overflow-y-auto flex-1 bg-gray-50 space-y-5">
+        <nav id="blueprintEditorTabs" class="border-b bg-white px-4 sm:px-6 flex gap-2" aria-label="Assessment editor sections">
+          <button id="blueprintTabButton" type="button" onclick="showBlueprintEditorTab('blueprint')" class="px-3 py-3 text-sm font-bold border-b-2 border-indigo-600 text-indigo-700">Blueprint</button>
+          <button id="blueprintPersonalizationTabButton" type="button" onclick="showBlueprintEditorTab('personalization')" class="hidden px-3 py-3 text-sm font-bold border-b-2 border-transparent text-slate-600 hover:text-indigo-700">Personalization</button>
+        </nav>
+        <div id="blueprintEditorTab" class="p-4 sm:p-6 overflow-y-auto flex-1 bg-gray-50 space-y-5">
           <section class="bg-white border rounded-xl p-4 sm:p-5 space-y-4" aria-labelledby="blueprintBasicsTitle"><h3 id="blueprintBasicsTitle" class="font-bold text-slate-900">1. Task details</h3>
             <label for="assessTitle" class="block text-sm font-bold text-slate-700">Assessment title *<input type="text" id="assessTitle" maxlength="200" required class="mt-1 w-full p-3 border rounded-lg text-base sm:text-sm" placeholder="e.g. Array-based student record manager"></label>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3"><label for="assessType" class="text-sm font-semibold">Task type<select id="assessType" class="mt-1 w-full p-3 border rounded-lg bg-white"><option value="Mini PETA">Mini PETA</option><option value="Practical Exam">Practical exam</option><option value="Written Work">Written work</option><option value="Formative">Formative</option></select></label><label for="maxScore" class="text-sm font-semibold">Maximum score *<input type="number" id="maxScore" value="20" min="1" max="1000" step="any" required class="mt-1 w-full p-3 border rounded-lg"></label><label for="assessQuarter" class="text-sm font-semibold">Grading quarter<select id="assessQuarter" class="mt-1 w-full p-3 border rounded-lg bg-white"><option value="">Unassigned / legacy</option><option value="Q1">Quarter 1</option><option value="Q2">Quarter 2</option><option value="Q3">Quarter 3</option><option value="Q4">Quarter 4</option></select></label></div>
@@ -222,25 +226,9 @@
     <input id="assessPersonalizedTask" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
     <span><strong>Personalized task variants</strong><span class="block text-xs text-slate-700 mt-1">Studio only. Each learner receives a server-generated task for the current attempt. A teacher-requested revision receives a new task instead of reusing the prior variant.</span></span>
   </label>
-  <div id="personalizedTaskSettings" class="hidden mt-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-3">
-    <div>
-      <strong class="text-sm text-indigo-950">Generate equivalent variants from this blueprint</strong>
-      <p class="text-xs text-indigo-900 mt-1">Adminerva uses the task instructions and published rubric as the source of truth. It may change concrete details, but must preserve the same competencies, difficulty and scoring expectations.</p>
-    </div>
-    <label for="assessVariantGuidance" class="block text-sm font-semibold text-indigo-950">Variation guidance <span class="font-normal text-indigo-700">Optional</span>
-      <textarea id="assessVariantGuidance" rows="3" maxlength="3000" class="w-full mt-1 p-3 border border-indigo-200 rounded-lg bg-white text-sm" placeholder="Example: Change the scenario, class/variable names and numeric values. Keep the same OOP concepts and do not introduce inheritance."></textarea>
-    </label>
-    <div class="grid grid-cols-1 sm:grid-cols-[10rem_1fr] gap-3 items-end">
-      <label for="assessVariantCount" class="block text-sm font-semibold text-indigo-950">Variant pool size
-        <input id="assessVariantCount" type="number" min="10" max="50" step="1" value="40" class="w-full mt-1 p-3 border border-indigo-200 rounded-lg bg-white">
-      </label>
-      <button id="assessmentGenerateVariants" type="button" onclick="generatePersonalizedVariantPool()" class="av-secondary-button">Generate / refresh variants with AI</button>
-    </div>
-    <p id="personalizedVariantStatus" class="text-xs text-indigo-900" role="status">No variant pool generated yet.</p>
-    <details id="personalizedVariantPreviewWrap" class="hidden bg-white border border-indigo-200 rounded-lg p-3">
-      <summary class="font-semibold text-sm cursor-pointer text-indigo-950">Preview generated variants</summary>
-      <div id="personalizedVariantPreview" class="mt-3 grid gap-3"></div>
-    </details>
+  <div id="personalizedTaskSettings" class="hidden mt-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+    <strong class="text-sm text-indigo-950">Personalization enabled</strong>
+    <p id="personalizedTaskSetupHint" class="text-xs text-indigo-900 mt-1">Save this blueprint first. Reopen it to prepare and review the private variant pool from the Personalization tab.</p>
   </div>
 </section>
 <details id="blueprintAdvanced" class="bg-white border rounded-xl p-4 sm:p-5"><summary class="font-semibold cursor-pointer py-1">Advanced evidence filters &amp; checker instructions <span class="block text-xs font-normal text-slate-500 mt-1">Optional. The default uses individual evidence review without path or keyword restrictions.</span></summary>
@@ -252,6 +240,55 @@
             <div><label for="newRuleValue" class="block text-sm font-bold mb-2">Optional keyword checks</label><div id="rulesContainer" class="space-y-2 mb-3"></div><div class="flex flex-wrap sm:flex-nowrap gap-2"><select id="newRuleType" aria-label="Keyword check type" class="p-2 border rounded-lg bg-white"><option value="Banned">Banned string</option><option value="Required">Required string</option></select><input id="newRuleValue" type="text" onkeypress="if(event.key==='Enter'){event.preventDefault();window.addObjectiveRule();}" class="flex-1 min-w-0 p-2 border rounded-lg font-mono text-sm" placeholder="Exact string or wildcard *"><button type="button" onclick="addObjectiveRule()" class="av-secondary-button">Add check</button></div><p class="text-xs text-slate-500 mt-2">Checks support review; they do not establish authorship or automatically publish a grade.</p></div>
             </div>
           </details>
+        </div>
+        <div id="blueprintPersonalizationTab" class="hidden p-4 sm:p-6 overflow-y-auto flex-1 bg-gray-50 space-y-5">
+          <section class="bg-white border rounded-xl p-4 sm:p-5 space-y-4">
+            <div>
+              <h3 class="font-bold text-slate-900">Personalized variants</h3>
+              <p class="text-sm text-slate-600 mt-1">Variants are prepared privately. Students never generate tasks themselves: opening the assignment automatically assigns one unused variant and freezes it to that attempt.</p>
+            </div>
+            <label for="assessVariantGuidance" class="block text-sm font-semibold text-slate-800">Variation guidance <span class="font-normal text-slate-500">Optional</span>
+              <textarea id="assessVariantGuidance" rows="4" maxlength="3000" class="w-full mt-1 p-3 border rounded-lg bg-white text-sm" placeholder="Describe what may vary and what must remain fixed. Example: vary the scenario, identifiers and values, but keep the same OOP concepts and do not introduce inheritance."></textarea>
+            </label>
+            <label for="assessVariantCount" class="block text-sm font-semibold text-slate-800 max-w-xs">Target private pool size
+              <input id="assessVariantCount" type="number" min="10" max="50" step="1" value="40" class="w-full mt-1 p-3 border rounded-lg bg-white">
+              <span class="block text-xs font-normal text-slate-500 mt-1">Allow enough unique tasks for the assigned sections plus possible teacher-requested revisions.</span>
+            </label>
+            <p id="personalizedVariantStatus" class="text-xs text-indigo-900 rounded-lg bg-indigo-50 border border-indigo-100 p-3" role="status">No variant pool generated yet.</p>
+            <details id="personalizedVariantPreviewWrap" class="hidden bg-white border border-indigo-200 rounded-lg p-3">
+              <summary class="font-semibold text-sm cursor-pointer text-indigo-950">Preview generated variants</summary>
+              <div id="personalizedVariantPreview" class="mt-3 grid gap-3"></div>
+            </details>
+          </section>
+
+          <section class="bg-white border rounded-xl p-4 sm:p-5 space-y-4">
+            <div>
+              <h3 class="font-bold text-slate-900">Prepare variants</h3>
+              <p class="text-sm text-slate-600 mt-1">Choose either method. Both produce the same private pool format and the same automatic student assignment behavior.</p>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <article class="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
+                <h4 class="font-bold text-cyan-950">School AI</h4>
+                <p class="text-xs text-cyan-900 mt-1">Generate the pool directly with the school's configured AI connection. Useful for fast preparation.</p>
+                <button id="assessmentGenerateVariants" type="button" onclick="generatePersonalizedVariantPool()" class="av-secondary-button mt-3">Generate with School AI</button>
+              </article>
+              <article class="rounded-xl border border-violet-200 bg-violet-50 p-4">
+                <h4 class="font-bold text-violet-950">External AI package</h4>
+                <p class="text-xs text-violet-900 mt-1">Copy a privacy-preserving blueprint package to ChatGPT or another external evaluator/generator, then import its JSON response. This does not use the school AI allowance.</p>
+                <div class="flex flex-wrap gap-2 mt-3">
+                  <button type="button" onclick="copyExternalPersonalizationPackage()" class="av-secondary-button">Copy external package</button>
+                </div>
+              </article>
+            </div>
+            <label for="externalPersonalizationResponse" class="block text-sm font-semibold text-slate-800">External response JSON
+              <textarea id="externalPersonalizationResponse" rows="8" class="w-full mt-1 p-3 border rounded-lg font-mono text-xs" placeholder="Paste the external AI JSON response here."></textarea>
+            </label>
+            <div class="flex flex-wrap gap-2">
+              <button id="importExternalPersonalization" type="button" onclick="importExternalPersonalizationResponse()" class="av-secondary-button">Import external variants</button>
+              <button id="savePersonalizationPool" type="button" onclick="savePersonalizationPool()" class="av-primary-button">Save private variant pool</button>
+            </div>
+            <p id="externalPersonalizationStatus" class="text-xs text-slate-600" role="status"></p>
+          </section>
         </div>
         <footer class="p-4 border-t bg-white"><p id="blueprintStatus" class="av-status-message mb-3" role="status"></p><div class="flex justify-end gap-3"><button type="button" onclick="closeModals()" class="av-secondary-button">Cancel</button><button type="button" onclick="saveAssessment()" id="saveAssessmentBtn" class="av-primary-button">Save assessment</button></div></footer>
       </div>
