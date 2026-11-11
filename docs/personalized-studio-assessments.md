@@ -10,8 +10,9 @@ not tied to OOP, Java, or any single programming topic.
 
 The teacher creates the normal assessment blueprint first: title, student
 instructions, maximum score and published rubric. When **Personalized task
-variants** is enabled, Adminerva AI uses that blueprint as the authoritative
-source and prepares a private pool of equivalent learner tasks.
+variants** is enabled, Adminerva treats that blueprint as the authoritative
+source for a private pool of equivalent learner tasks. The pool may be prepared
+with School AI or through the external personalization package engine.
 
 The content can therefore be Java OOP, arrays, loops, debugging, Python, SQL,
 HTML/CSS/JavaScript or another programming task as long as the teacher describes
@@ -28,21 +29,35 @@ difficulty, required effort or rubric.
 4. Write the authoritative student instructions. This is where the teacher
    defines the topic and scope.
 5. Prepare the published rubric.
-6. Optionally write **Variation guidance** describing what may change and what
-   must remain fixed.
-7. Choose a private variant pool size from 10 to 50.
-8. Select **Generate / refresh variants with AI**.
-9. Review the sample variants shown in Assessment Studio.
-10. Save the blueprint.
-11. Deploy only after the saved variant pool matches the current blueprint.
+6. Save the personalized blueprint.
+7. Reopen it. The **Personalization** editor tab appears only for a saved
+   personalized Studio blueprint.
+8. The assessment may be deployed before the private pool is ready. Until a
+   valid pool exists, learners can see the assignment but Studio remains marked
+   as preparation pending.
+9. In the Personalization tab, optionally write **Variation guidance**
+   describing what may change and what must remain fixed.
+10. Choose a private pool target from 10 to 50. Adminerva shows an estimate
+    based on the deployed sections and learner count when available.
+11. Prepare variants with either:
+    - **School AI** — direct generation using the configured Adminerva AI
+      connection; or
+    - **External AI package** — copy a privacy-preserving generation package to
+      ChatGPT or another external AI and import its JSON response.
+12. Review sample variants and save the private pool.
+13. Learners can then open Studio. Variant assignment is automatic; students do
+    not click a generation control.
 
-If the title, instructions, rubric, maximum score, subject, variation guidance
-or requested pool size changes, the personalization fingerprint changes.
-Deployment is blocked until a current pool is generated and saved.
+If the title, instructions, rubric, maximum score, subject or variation
+guidance changes before deployment, the personalization fingerprint changes and
+the pool must be regenerated. The pool target itself is capacity, not task
+meaning, so it may be increased later without invalidating already-assigned
+variants.
 
 ## Generic generation contract
 
-For each AI generation batch, Adminerva supplies:
+For each generation batch, whether sent through School AI or the external
+package, Adminerva supplies:
 
 - assessment title;
 - authoritative student instructions;
@@ -102,18 +117,20 @@ Simply refreshing Studio or closing/reopening the overall assessment does not
 reroll an unfinished learner task. This prevents learners from repeatedly
 requesting a more favorable task.
 
-## Pool limits
+## Pool limits and replenishment
 
-The first implementation supports 10–50 prepared variants and bounds the
-serialized private pool before saving it. The pool should normally cover the
-expected learner count plus reasonable revision headroom.
+The first implementation supports a saved pool of 10–50 prepared variants and
+bounds the serialized private pool before saving it. The pool should normally
+cover the expected learner count plus reasonable revision headroom.
 
-If all variants are assigned, the server fails closed and tells the learner to
-ask the teacher for additional assessment support rather than silently reusing
-another learner's task.
+If all variants are assigned, the server fails closed rather than silently
+reusing another learner's task.
 
-A future enhancement can support pool replenishment after deployment without
-changing the public blueprint or rubric.
+A deployed personalized blueprint keeps its task instructions, rubric and
+variation guidance locked. The teacher may still raise the pool target and add
+unused variants from School AI or an external package. Existing learner
+variants remain frozen because increasing capacity does not change the blueprint
+fingerprint.
 
 ## Mini PETA 3 example — Java OOP
 
@@ -173,23 +190,27 @@ create new grading criteria.
 
 ## Security and reliability
 
-- Students never choose the random assignment or AI seed.
+- Students never choose a task, random seed or generation method.
+- Students never click a generation action. Opening the ready assignment
+  automatically assigns one unused variant and freezes it to the attempt.
 - Students cannot call the general teacher AI generation endpoint through this
   feature.
-- AI generation happens during teacher authoring, not when a learner opens the
-  assessment.
-- An AI/provider outage therefore does not block students after deployment.
-- The full variant pool is teacher-private.
+- School AI is optional. The external package path can prepare the full pool
+  without consuming the school AI allowance.
+- Generation happens before learner assignment, so an AI/provider outage does
+  not interrupt a learner once the pool is ready.
+- The full variant pool and evaluation notes are teacher-private.
 - Exact variants are assigned server-side.
 - Variant IDs are bound to submitted snapshots.
-- A stale variant pool cannot be deployed.
+- If a deployed assessment has no valid pool yet, Studio remains preparation
+  pending instead of starting an incomplete attempt.
 
 ## Release boundary
 
 The feature changes:
 
 - Assessment Studio authoring;
-- teacher-side AI generation of private variant pools;
+- teacher-side School AI generation and external-package generation of private variant pools;
 - server-side per-attempt variant allocation;
 - student Studio task display;
 - Studio submission variant binding;
