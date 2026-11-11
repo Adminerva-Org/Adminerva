@@ -253,7 +253,8 @@ window.copyExternalPersonalizationPackage=async function(){
     return;
   }
   try{
-    const item=assessments.find(value=>value.id===currentAssessmentId)||{};
+    const item=assessments.find(value=>value.id===currentAssessmentId)||{},
+      batchCount=Math.min(10,need.missing);
     const packageText=buildExternalPersonalizationPackage({
       assessment:{
         ...item,
@@ -265,12 +266,12 @@ window.copyExternalPersonalizationPackage=async function(){
         evalCriteria:document.getElementById("evalCriteria").value.trim()
       },
       guidance:document.getElementById("assessVariantGuidance").value.trim(),
-      count:need.missing,
+      count:batchCount,
       existingSummaries:preserve.map(value=>value.summary||value.prompt.slice(0,180))
     });
     await navigator.clipboard.writeText(packageText);
     document.getElementById("externalPersonalizationStatus").textContent=
-      "Copied an external package requesting "+need.missing+" additional variant"+
+      "Copied an external batch requesting "+batchCount+" of "+need.missing+" remaining variant"+
       (need.missing===1?"":"s")+". Paste it into the external AI, then import its JSON response below.";
   }catch(error){
     document.getElementById("externalPersonalizationStatus").textContent="Package not copied: "+error.message;
@@ -289,12 +290,13 @@ window.importExternalPersonalizationResponse=async function(){
     return;
   }
   try{
+    const expectedBatch=Math.min(10,need.missing);
     const incoming=await parseExternalPersonalizationResponse(raw,{
-      expectedCount:need.missing,hashPrompt:sha256Text
+      expectedCount:expectedBatch,hashPrompt:sha256Text
     });
     const merged=mergeVariantPools(preserve,incoming);
-    if(merged.length<need.target)
-      throw Error("Some imported variants duplicate tasks already in the private pool. Ask the external AI for "+(need.target-merged.length)+" additional distinct variant"+(need.target-merged.length===1?"":"s")+".");
+    if(merged.length<preserve.length+incoming.length)
+      throw Error("The imported batch repeats a task already in the private pool. Ask the external AI for a replacement distinct variant.");
     if(merged.length>50)throw Error("The combined private pool cannot exceed 50 variants.");
     const poolBytes=new TextEncoder().encode(JSON.stringify(merged)).length;
     if(poolBytes>700000)throw Error("The combined private pool is too large to store safely.");
@@ -302,10 +304,13 @@ window.importExternalPersonalizationResponse=async function(){
     personalizedVariantFingerprint=fingerprint;
     personalizedVariantGeneratedAt=new Date().toISOString();
     renderPersonalizedVariantPool();
+    const remaining=Math.max(0,need.target-merged.length);
     document.getElementById("externalPersonalizationStatus").textContent=
       "Imported "+incoming.length+" external variant"+(incoming.length===1?"":"s")+
-      ". Review the samples, then save the private pool.";
-    blueprintStatus("External variants imported. Save the private variant pool before students begin.");
+      (remaining?" · "+remaining+" more needed to reach the target. Copy the next external package when ready.":" · target reached.") ;
+    blueprintStatus(remaining
+      ?"External batch imported. Continue with the next batch until the target is reached."
+      :"External variants imported. Review the samples, then save the private variant pool.");
   }catch(error){
     document.getElementById("externalPersonalizationStatus").textContent="Import failed: "+error.message;
   }
