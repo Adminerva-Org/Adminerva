@@ -67,7 +67,8 @@ test("lesson save validates school year without throwing out of save handler",()
 
 test("no-schedule generation cannot silently invent teaching times",()=>{
   const source=readFileSync("js/lesson-review/ai-engine.js","utf8");
-  assert.ok(source.includes("No teacher timetable was found"));
+  assert.ok(source.includes("No matching "));
+  assert.ok(source.includes("timetable meetings were found"));
   assert.ok(source.includes("do NOT invent class sections") ||
             source.includes("do NOT invent sections"));
   assert.ok(source.includes("Do not invent section names or meeting times."));
@@ -81,7 +82,7 @@ test("loading another subject never changes the saved lesson identity",()=>{
   const end=ui.indexOf('document.getElementById("lpSchoolYear").value',start);
   assert.ok(start>=0 && end>start);
   const context={
-    window:{currentPlan:[],currentPlanSubject:"",currentPlanTeacher:""},
+    window:{currentPlan:[],currentPlanSubject:"",currentPlanTeacher:"",setCurrentLessonMeetings(){}},
     lessonStorage:{getItem:key=>key==="Adminerva_defaultSubject"?"New Semester Subject":"Current Teacher"},
     document:{getElementById:()=>({value:"Grade 11"})},
     alert(){},savedLessonSettings
