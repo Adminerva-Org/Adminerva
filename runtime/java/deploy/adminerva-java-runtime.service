@@ -1,0 +1,21 @@
+[Unit]
+Description=Adminerva isolated Java interactive execution service
+Documentation=https://github.com/Adminerva-Org/Adminerva/tree/main/runtime/java
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Adminerva/runtime/java
+EnvironmentFile=%h/.config/adminerva-runtime/runtime.env
+Environment=DOCKER_HOST=unix://%t/docker.sock
+ExecStart=/usr/bin/node server.mjs
+Restart=on-failure
+RestartSec=6
+NoNewPrivileges=true
+LimitNOFILE=4096
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target
