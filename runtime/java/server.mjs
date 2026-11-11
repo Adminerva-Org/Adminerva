@@ -205,7 +205,9 @@ async function startSession(session){
       '--env','MAIN_CLASS='+session.mainClass,IMAGE];
     const child=spawn('docker',args,{stdio:['pipe','pipe','pipe']});
     session.child=child;
-    child.stdin.on('error',()=>{}); // Broken pipe is normal if Java exits before a final input arrives.
+    child.stdin.on('error',()=>{});
+    for(const chunk of session.pendingInput||[])child.stdin.write(chunk);
+    session.pendingInput=[]; // Broken pipe is normal if Java exits before a final input arrives.
     child.stdout.on('data',chunk=>emitOutput(session,'stdout',chunk));
     child.stderr.on('data',chunk=>emitOutput(session,'stderr',chunk));
     child.on('error',error=>{send(session,{type:'stderr',data:'Runtime launcher error: '+error.message});void finish(session,1,'failed');});
@@ -249,6 +251,7 @@ const server=http.createServer(async(req,res)=>{
       const id=randomUUID();
       const session={id,uid,...parsed,createdAt:Date.now(),lastActivity:Date.now(),
         state:'queued',streamToken:randomBytes(32).toString('hex'),sockets:new Set(),output:'',outputBytes:0};
+      session.pendingInput=[];
       sessions.set(id,session);byUser.set(uid,id);queue.push(id);
       // A tab that closes before its WebSocket connects must not hold a queue spot.
       session.admissionTimer=setTimeout(()=>{
@@ -297,7 +300,8 @@ server.on('upgrade',(req,socket,head)=>{
     if(session.admissionTimer){clearTimeout(session.admissionTimer);session.admissionTimer=null;}
     // Replay buffered output first for a late connection to an already finished run.
     // Otherwise a terminal status may close the browser stream before its output arrives.
-    if(session.output)ws.send(JSON.stringify({type:'stdout',data:session.output}));
+    // Replace, rather than append, client output on refresh/reconnection.
+    ws.send(JSON.stringify({type:'snapshot',data:session.output}));
     ws.send(JSON.stringify({type:'status',...serial(session)}));
     ws.on('message',raw=>{
       if(!session||session.state!=='running'||raw.length>16384)return;
@@ -305,7 +309,12 @@ server.on('upgrade',(req,socket,head)=>{
       if(data.type==='stop'){void stopSession(session);return;}
       if(data.type==='stdin'&&typeof data.data==='string'&&data.data.length<=4096){
         session.lastActivity=Date.now();
-        session.child?.stdin?.write(data.data);
+        const echo=data.data;
+        session.output=(session.output+echo).slice(-131072);
+        send(session,{type:'echo',data:echo});
+        if(session.child?.stdin?.writable)session.child.stdin.write(data.data);
+        else if((session.pendingInput||[]).join('').length+data.data.length<=4096)
+          session.pendingInput.push(data.data);
       }
     });
     ws.on('close',()=>{
