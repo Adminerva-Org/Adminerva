@@ -414,7 +414,7 @@ async function persistPersonalizationPool({activate=false,silent=false}={}){
     if(activate){
       finalBatch.update(doc(db,"assessments",currentAssessmentId),{
         personalizedTask:{
-          enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",
+          enabled:true,mode:PERSONALIZATION_MODE,responseType:"studio_project",regeneration:"new_attempt",
           uniqueWithinAssessment:true,poolFingerprint:fingerprint,
           poolSize:personalizedVariantPool.length,poolTarget:target
         }
@@ -920,7 +920,7 @@ window.saveAssessment = async function () {
     personalizedVariantFingerprint===currentFingerprint;
   const poolReady=poolFresh&&personalizedVariantPool.length>=poolTarget;
   const personalizedTask=personalizedEnabled
-    ? {enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",uniqueWithinAssessment:true,
+    ? {enabled:true,mode:PERSONALIZATION_MODE,responseType:"studio_project",regeneration:"new_attempt",uniqueWithinAssessment:true,
        poolFingerprint:poolReady?currentFingerprint:"",poolSize:poolReady?personalizedVariantPool.length:0,poolTarget}
     : {enabled:false};
   const payload = {
