@@ -156,20 +156,62 @@ export function buildLessonMeetingContext(rows,{dateRange="",grade=""}={}){
         day,key,dayOrder,
         date:dates[key]||"",
         start:row.startTime,
+        end:row.endTime,
         startMinutes:Number.isFinite(startMinutes)?startMinutes:9999,
+        endMinutes:Number.isFinite(endMinutes)?endMinutes:9999,
         time:`${formatTime(row.startTime)} - ${formatTime(row.endTime)}`,
         section:cell.sec,
         subject:cell.sub,
         duration,
+        periodCount:1,
         event:cell.evt||"",
       });
     }
   }
   if(!entries.length)return {text:"",meetings:[],bySession:{},sessionNames:[]};
 
+  // Timetables commonly store one class period per row. Collapse consecutive
+  // rows for the same section + subject + day into one actual class meeting
+  // before assigning lesson-session numbers. This lets a 3-period laboratory
+  // appear as one meeting even when the source timetable stores 3 separate
+  // 40/45/50/60-minute rows.
+  const groupedByDayClass=new Map();
+  for(const entry of entries){
+    const key=[entry.section,entry.subject,entry.key].join("\u0000");
+    if(!groupedByDayClass.has(key))groupedByDayClass.set(key,[]);
+    groupedByDayClass.get(key).push(entry);
+  }
+  const collapsedEntries=[];
+  for(const group of groupedByDayClass.values()){
+    group.sort((a,b)=>a.startMinutes-b.startMinutes);
+    let current=null;
+    for(const entry of group){
+      if(!current){
+        current={...entry};
+        continue;
+      }
+      const gap=entry.startMinutes-current.endMinutes;
+      if(Number.isFinite(gap)&&gap>=0&&gap<=5){
+        current.end=entry.end;
+        current.endMinutes=entry.endMinutes;
+        current.duration=current.endMinutes-current.startMinutes;
+        current.time=`${formatTime(current.start)} - ${formatTime(current.end)}`;
+        current.periodCount=(current.periodCount||1)+(entry.periodCount||1);
+        current.event=[current.event,entry.event].filter(Boolean)
+          .filter((value,index,array)=>array.indexOf(value)===index).join("; ");
+      }else{
+        collapsedEntries.push(current);
+        current={...entry};
+      }
+    }
+    if(current)collapsedEntries.push(current);
+  }
+  entries.length=0;
+  entries.push(...collapsedEntries);
+
   // Session numbering is independent for every section and follows the
   // teacher's actual timetable. A multi-period laboratory block is detected
-  // from the duration pattern, never from grade level or weekday.
+  // from the collapsed period pattern/duration, never from grade level or weekday.
   const byClass=new Map();
   for(const entry of entries){
     const key=entry.section+"\u0000"+entry.subject;
@@ -185,19 +227,17 @@ export function buildLessonMeetingContext(rows,{dateRange="",grade=""}={}){
   };
   const isMultiPeriodBlock=(meeting,meetings)=>{
     if(!Number.isFinite(meeting.duration)||meeting.duration<=0)return false;
+    // Three or more contiguous timetable rows are direct structural evidence
+    // of a combined multi-period class, regardless of the school's period length.
+    if(Number(meeting.periodCount||1)>=3)return true;
     const otherDurations=meetings
       .filter(candidate=>candidate!==meeting&&Number.isFinite(candidate.duration)&&candidate.duration>0)
-      .map(candidate=>candidate.duration);
-    const typical=median(otherDurations);
-    // Schools use different bell lengths. Compare against this section's
-    // own regular meetings instead of assuming 45- or 60-minute periods.
-    // The 120-minute floor prevents an ordinary slightly-long class from being
-    // mistaken for a three-period block when its peers are unusually short.
-    if(Number.isFinite(typical)&&typical>0){
-      return meeting.duration>=Math.max(120,typical*2.25);
+      .map(candidate=>candidate.duration/Math.max(1,Number(candidate.periodCount||1)));
+    const typicalPeriod=median(otherDurations);
+    if(Number.isFinite(typicalPeriod)&&typicalPeriod>0){
+      return meeting.duration>=Math.max(120,typicalPeriod*2.25);
     }
-    // With no peer meeting to compare against, remain conservative rather than
-    // guessing that every two-hour class is a combined laboratory block.
+    // Without peer periods or a 3-row sequence, remain conservative.
     return meeting.duration>=150;
   };
 
@@ -229,7 +269,8 @@ export function buildLessonMeetingContext(rows,{dateRange="",grade=""}={}){
       entry.date,
       entry.time,
       entry.section,
-      entry.duration?`${entry.duration} minutes`:""
+      entry.duration?`${entry.duration} minutes`:"",
+      entry.periodCount>1?`${entry.periodCount} consecutive periods`:""
     ].filter(Boolean);
     if(entry.event)parts.push("AFFECTING EVENT: "+entry.event);
     return "- "+parts.join(" | ");
@@ -244,7 +285,9 @@ export function buildLessonMeetingContext(rows,{dateRange="",grade=""}={}){
       date:entry.date,
       time:entry.time,
       duration:entry.duration,
+      periodCount:entry.periodCount,
       event:entry.event,
+      sessionType:entry.sessionType,
     });
   }
 
@@ -262,8 +305,8 @@ export function buildLessonMeetingContext(rows,{dateRange="",grade=""}={}){
       "Session mapping comes from each section's actual timetable. Multi-period blocks are detected from duration patterns and may occur on any weekday.",
       "Use these meeting lines only for the remarks of their assigned session. Do not infer, add, or scan other timetable periods."
     ].join("\n"),
-    meetings:entries.map(({section,subject,day,date,time,duration,event,session,sessionType})=>({
-      section,subject,day,date,time,duration,event,session,sessionType
+    meetings:entries.map(({section,subject,day,date,time,duration,periodCount,event,session,sessionType})=>({
+      section,subject,day,date,time,duration,periodCount,event,session,sessionType
     })),
     bySession,
     sessionNames
