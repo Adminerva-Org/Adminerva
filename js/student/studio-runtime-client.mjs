@@ -25,15 +25,27 @@ export class AdminervaRuntimeClient {
     if(!res.ok)throw Error(data.error||'Runtime service returned '+res.status);
     return data;
   }
-  async enqueue({files,entry}){
+  async enqueue({files,entry,projectId=null}){
     if(this.id)throw Error('A runtime request is already active.');
     this.cancelled=false;
-    const response=await this.request('/v1/executions',{method:'POST',body:{files,entry}});
+    const response=await this.request('/v1/executions',{method:'POST',body:{files,entry,projectId}});
     this.id=response.id;this.streamToken=response.streamToken;
     this.state=response.state||'queued';
     this.emit({type:'status',...response});
     this.openStream();
     return response;
+  }
+  async resume(){
+    if(this.id)return null;
+    const state=await this.request('/v1/executions/current');
+    if(!state.active)return null;
+    this.cancelled=false;
+    this.id=state.id;
+    this.streamToken=state.streamToken;
+    this.state=state.state;
+    this.emit({type:'status',...state});
+    this.openStream();
+    return state;
   }
   openStream(){
     if(!this.id||!this.streamToken||this.cancelled)return;
