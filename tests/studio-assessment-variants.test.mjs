@@ -47,7 +47,7 @@ test("generic personalized pool accepts scalable topic-agnostic variant ids",()=
   assert.deepEqual(pool.variantIds,ids);
   assert.equal(pool.fingerprint,"abc123");
   assert.equal(PERSONALIZATION_MODE,"ai_blueprint_pool_v1");
-  assert.equal(MAX_POOL_SIZE,300);
+  assert.equal(MAX_POOL_SIZE,600);
 });
 
 test("generic personalized pool rejects a stale blueprint fingerprint",()=>{
