@@ -8,9 +8,9 @@ async function lessonCloudFetch(_url,options){
   return {ok:true,status:200,json:async()=>result};
 }
 /** Explicitly requested lesson assistance with source and edit guards. */
-import {validateGeneratedLesson} from "./lesson-plan-helpers.mjs?v=1.3.0";
+import {expectedSessions,validateGeneratedLesson} from "./lesson-plan-helpers.mjs?v=1.3.1";
 import {buildReferenceContext,REFERENCE_CONTEXT_BUDGET} from "./reference-context.mjs?v=1.3.1";
-import {isLegacyScheduleYear,isLegacyScheduleRetired} from "./legacy-schedule-compat.mjs?v=1.4.20";
+import {isLegacyScheduleYear,isLegacyScheduleRetired} from "./legacy-schedule-compat.mjs?v=1.4.21";
 
 const uniqueValues=values=>[...new Set((values||[]).map(value=>String(value||"").trim()).filter(Boolean))];
 function localInstructionMap(text,{subject="",grade="",scope="",clarification=""}={}){
@@ -378,6 +378,23 @@ window.initiateGenerationFlow = async function (options = {}) {
       "No matching lesson meetings were available. Leave timetable-specific remarks empty unless the teacher instructions explicitly provide a suspension, holiday, or schedule note.";
   }
 
+  // Timetable-derived sessions are authoritative. Explicit session references
+  // in the teacher instruction may add a needed session (for example Session
+  // 4-6 during a manually described laboratory week) but grade level alone
+  // never creates a combined block.
+  const mergedSessionNames=[
+    ...(window.currentRequiredSessions||[]),
+    ...(window.cachedInstructionMap?.affected_sessions||[])
+  ].filter(name=>/^Session\s+(?:\d+|4-6)$/i.test(String(name||"").trim()));
+  const sessionRank=name=>{
+    const normalized=String(name||"").trim();
+    if(/^Session\s+4-6$/i.test(normalized))return 4.5;
+    return Number((normalized.match(/Session\s+(\d+)/i)||[])[1])||999;
+  };
+  window.currentRequiredSessions=[...new Set(mergedSessionNames.map(name=>
+    String(name).replace(/^session/i,"Session").replace(/4\s*-\s*6/,"4-6").trim()
+  ))].sort((a,b)=>sessionRank(a)-sessionRank(b));
+
   if (options.externalOnly) {
     await window.executeFinalGeneration(userClarification, { externalOnly: true });
     return;
@@ -418,19 +435,19 @@ window.executeFinalGeneration = async function (userClarification, options = {})
     document.getElementById("lpSchoolYear").value || "2026-2027";
   const subject = selectedSubject();
 
-  let gradeSpecificRules = "";
-
-  switch (window.currentTargetGrade) {
-    case "Grade 11":
-      gradeSpecificRules = `3. SESSIONS: Create exactly 5 sessions named: Session 1, Session 2, Session 3, Session 4-6, and Session Flex.\n4. SESSION 4-6 RULE (3-Hour Laboratory): Design this as a hands-on laboratory or performance task. Adminerva has already mapped any exact 180-minute affected class meeting to Session 4-6.`;
-      break;
-    case "Grade 12":
-      gradeSpecificRules = `3. SESSIONS: Compress topics into exactly 4 sessions named: Session 1, Session 2, Session 3, and Session Flex.`;
-      break;
-    default:
-      gradeSpecificRules = `3. SESSIONS: Compress topics into exactly 3 sessions named: Session 1, Session 2, and Session Flex.`;
-      break;
-  }
+  const requiredSessions=expectedSessions(
+    window.currentTargetGrade,
+    window.currentRequiredSessions||[]
+  );
+  const contentSessions=requiredSessions.filter(name=>name!=="Session Flex");
+  const hasCombinedBlock=contentSessions.includes("Session 4-6");
+  const gradeSpecificRules =
+    "3. SESSIONS: Create exactly "+requiredSessions.length+
+    " sessions in this exact order and with these exact names: "+
+    requiredSessions.join(", ")+".\n"+
+    (hasCombinedBlock
+      ? "4. COMBINED MULTI-PERIOD SESSION: Session 4-6 exists because Adminerva detected or was explicitly told about a multi-period block for at least one matching section. Its weekday may differ by section. Design it as the combined laboratory/hands-on/performance session when the references and teacher instructions support that use."
+      : "4. SESSION STRUCTURE: No combined multi-period Session 4-6 is required for this lesson. Do not create one unless it appears in the exact session list above.");
 
   let lookbackContext = "";
   if (
@@ -713,7 +730,7 @@ ${window.cachedCompiledText || "No selected reference text. Use fallback profess
 
     // Reject structurally invalid newly generated lessons rather than silently
     // accepting missing school-required sessions, standards or objectives.
-    const problems=validateGeneratedLesson(planData,window.currentTargetGrade);
+    const problems=validateGeneratedLesson(planData,window.currentTargetGrade,window.currentRequiredSessions||[]);
     if(problems.length)throw Error("Generated lesson requires correction: "+problems.slice(0,6).join("; "));
     // 🚀 THE FIX: Standardized to the new Adminerva namespace
     const defaultPrelim =
@@ -799,7 +816,7 @@ function parseExternalLessonResponse(rawText) {
 }
 
 function applyExternalLessonPlan(planData) {
-  const problems = validateGeneratedLesson(planData, window.currentTargetGrade);
+  const problems = validateGeneratedLesson(planData, window.currentTargetGrade, window.currentRequiredSessions||[]);
   if (problems.length) {
     throw new Error("The external response does not match the Adminerva lesson format: " + problems.slice(0, 6).join("; "));
   }
@@ -960,20 +977,10 @@ window.generateBlankPlan = function () {
     lessonStorage.getItem("Adminerva_defaultClosing") ||
     "Summary of the Lesson\nClosing Prayer";
 
-  let sessionNames = [];
-  if (window.currentTargetGrade === "Grade 11") {
-    sessionNames = [
-      "Session 1",
-      "Session 2",
-      "Session 3",
-      "Session 4-6",
-      "Session Flex",
-    ];
-  } else if (window.currentTargetGrade === "Grade 12") {
-    sessionNames = ["Session 1", "Session 2", "Session 3", "Session Flex"];
-  } else {
-    sessionNames = ["Session 1", "Session 2", "Session Flex"];
-  }
+  const sessionNames = expectedSessions(
+    window.currentTargetGrade,
+    window.currentRequiredSessions||[]
+  );
 
   window.currentPlan = sessionNames.map((name) => {
     const isFlex = name.toLowerCase().includes("flex");
