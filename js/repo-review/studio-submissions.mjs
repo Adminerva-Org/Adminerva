@@ -111,6 +111,11 @@ async function inspect(item){
    if(assignedVariant){
      add(detail,"h3","Learner's personalized task · Attempt "+assignedVariant.attempt+" · Variant "+assignedVariant.variantId,"font-bold mt-4 text-violet-950");
      add(detail,"pre",assignedVariant.prompt,"whitespace-pre-wrap text-xs bg-violet-50 text-violet-950 rounded-lg border border-violet-200 p-3 mt-2 max-h-72 overflow-auto");
+     if(assignedVariant.evaluationNotes){
+       const notes=add(detail,"details","","mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3");
+       add(notes,"summary","Private variant evaluation notes","font-semibold text-xs cursor-pointer text-slate-800");
+       add(notes,"pre",assignedVariant.evaluationNotes,"whitespace-pre-wrap text-xs text-slate-700 mt-2 max-h-48 overflow-auto");
+     }
    }else if(assessment.personalizedTask?.enabled===true){
      add(detail,"p","Personalized task record could not be loaded: "+variantError,"text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3");
    }
