@@ -72,7 +72,9 @@ function refreshRubricChoices(){
 function personalizationSource(){
   return JSON.stringify({
     title:document.getElementById("assessTitle").value.trim(),
-    type:document.getElementById("assessType").value,
+    category:document.getElementById("assessType").value,
+    assessmentFormat:document.getElementById("assessSubmissionSource").value,
+    assessmentMode:document.getElementById("assessMode").value,
     maxScore:Number(document.getElementById("maxScore").value),
     subject:document.getElementById("assessSubject").value.trim(),
     taskContext:document.getElementById("taskContext").value.trim()||preparedTaskContext(),
@@ -195,8 +197,8 @@ window.generatePersonalizedVariantPool=async function(){
   if(!currentAssessmentId)
     return blueprintStatus("Save the personalized blueprint first, then prepare its variant pool.");
   if(document.getElementById("assessSubmissionSource").value!=="studio"||
-     !document.getElementById("assessPersonalizedTask").checked)
-    return blueprintStatus("This blueprint is not configured as a personalized Studio assessment.");
+     document.getElementById("assessMode").value!=="personalized")
+    return blueprintStatus("This blueprint is not configured as a personalized Adminerva Studio assessment.");
   const title=document.getElementById("assessTitle").value.trim(),
     taskContext=document.getElementById("taskContext").value.trim()||preparedTaskContext(),
     evalCriteria=document.getElementById("evalCriteria").value.trim(),
@@ -507,7 +509,7 @@ function setBlueprintContentLocked(locked,{lockGuidance=Boolean(locked)}={}){
   blueprintContentLocked=Boolean(locked);
   const ids=[
     "assessTitle","maxScore","assessType","assessQuarter","assessSubject","assessSubmissionSource",
-    "assessPracticalExam","assessPersonalizedTask","taskContext","assessmentRubricTemplate",
+    "assessPracticalExam","assessMode","taskContext","assessmentRubricTemplate",
     "assessmentApplyRubric","evalCriteria","assessV2","newTargetPath","assessExpectedExts",
     "assessInvestigationFallback","systemPersona","newRuleType","newRuleValue"
   ];
@@ -525,7 +527,7 @@ function setBlueprintContentLocked(locked,{lockGuidance=Boolean(locked)}={}){
 }
 function updatePersonalizationTabAvailability(){
   const item=currentAssessmentId?assessments.find(value=>value.id===currentAssessmentId):null,
-    enabled=document.getElementById("assessPersonalizedTask")?.checked===true,
+    enabled=document.getElementById("assessMode")?.value==="personalized",
     studio=document.getElementById("assessSubmissionSource")?.value==="studio",
     visible=Boolean(currentAssessmentId&&item?.schemaVersion===3&&studio&&enabled);
   document.getElementById("blueprintPersonalizationTabButton").classList.toggle("hidden",!visible);
@@ -735,22 +737,31 @@ function renderAssessmentGrid() {
   });
 }
 
-function updatePersonalizedTaskOption(){
-  const studio=document.getElementById("assessSubmissionSource").value==="studio";
-  const enabled=studio&&document.getElementById("assessPersonalizedTask").checked;
-  document.getElementById("assessPersonalizedTask").disabled=!studio;
-  document.getElementById("personalizedTaskOption").classList.toggle("opacity-60",!studio);
-  document.getElementById("personalizedTaskSettings").classList.toggle("hidden",!enabled);
-  updatePersonalizationTabAvailability();
-  if(enabled)renderPersonalizedVariantPool();
-}
-function updatePracticalExamOption(){
-  const studio=document.getElementById("assessSubmissionSource").value==="studio";
+function updateAssessmentFormatMode(){
+  const format=document.getElementById("assessSubmissionSource").value,
+    studio=format==="studio",
+    mode=document.getElementById("assessMode"),
+    personalizedOption=[...mode.options].find(option=>option.value==="personalized");
+  if(personalizedOption)personalizedOption.disabled=!studio;
+  if(!studio&&mode.value==="personalized")mode.value="default";
+  const personalized=studio&&mode.value==="personalized";
+  document.getElementById("personalizedTaskSettings").classList.toggle("hidden",!personalized);
   document.getElementById("assessPracticalExam").disabled=!studio;
   document.getElementById("practicalExamOption").classList.toggle("opacity-60",!studio);
-  updatePersonalizedTaskOption();
+  const help=document.getElementById("assessmentFormatModeHelp");
+  if(help){
+    help.textContent=personalized
+      ?"Personalized mode is active. Each learner receives one frozen task variant for the current attempt; teacher-requested revisions receive another unused variant."
+      :studio
+        ?"Adminerva Studio Code can use Default or Personalized mode."
+        :format==="repository"
+          ?"GitHub Repository currently uses Default mode. Personalized GitHub tasks are reserved for a later expansion."
+          :"This assessment format is reserved for a future release.";
+  }
+  updatePersonalizationTabAvailability();
+  if(personalized)renderPersonalizedVariantPool();
 }
-document.getElementById("assessPersonalizedTask").addEventListener("change",updatePersonalizedTaskOption);
+document.getElementById("assessMode").addEventListener("change",updateAssessmentFormatMode);
 document.getElementById("assessVariantGuidance").addEventListener("input",markPersonalizationPossiblyStale);
 document.getElementById("assessVariantCount").addEventListener("input",()=>{
   if(!personalizedVariantPool.length)return renderPersonalizedVariantPool();
@@ -768,7 +779,7 @@ document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="hidden")void autosavePersonalizationSafety();
 });
 document.getElementById("assessSubmissionSource").addEventListener("change",()=>{
-  updatePracticalExamOption();
+  updateAssessmentFormatMode();
   if(!currentAssessmentId&&document.getElementById("assessSubmissionSource").value==="studio"&&
     document.getElementById("assessType").value==="Practical Exam")
     document.getElementById("assessPracticalExam").checked=true;
@@ -795,13 +806,14 @@ window.openCreateModal = function () {
   document.getElementById("assessSubject").value=subjectFocus.length===1?subjectFocus[0]:"";
   document.getElementById("assessSubmissionSource").value="repository";
   document.getElementById("assessSubmissionSource").disabled=false;
+  document.getElementById("assessMode").value="default";
+  document.getElementById("assessMode").disabled=false;
   document.getElementById("assessPracticalExam").checked=false;
-  document.getElementById("assessPersonalizedTask").checked=false;
   document.getElementById("assessVariantGuidance").value="";
   document.getElementById("assessVariantCount").value="45";
   document.getElementById("assessVariantCount").min="10";
   personalizedVariantPool=[];personalizedVariantFingerprint="";personalizedVariantGeneratedAt="";personalizedPersistedIds=new Set();
-  updatePracticalExamOption();renderPersonalizedVariantPool();
+  updateAssessmentFormatMode();renderPersonalizedVariantPool();
   document.getElementById("assessV2").checked = true;
   document.getElementById("assessV2").disabled = false;
   document.getElementById("assessExpectedExts").value = "";
@@ -841,10 +853,11 @@ window.openEditModal = async function () {
   document.getElementById("maxScore").value = item.maxScore || 20;
   document.getElementById("assessType").value = item.type || "Mini PETA";
   document.getElementById("assessQuarter").value = item.quarter || "";
-  document.getElementById("assessSubmissionSource").value=item.schemaVersion===3?"studio":"repository";
+  document.getElementById("assessSubmissionSource").value=item.assessmentFormat==="studio_code"||item.schemaVersion===3?"studio":"repository";
   document.getElementById("assessSubmissionSource").disabled=true;
+  document.getElementById("assessMode").value=item.assessmentMode||(item.personalizedTask?.enabled===true?"personalized":"default");
+  document.getElementById("assessMode").disabled=true;
   document.getElementById("assessPracticalExam").checked=item.practicalExam===true;
-  document.getElementById("assessPersonalizedTask").checked=item.personalizedTask?.enabled===true;
   document.getElementById("assessVariantGuidance").value=item.personalization?.guidance||"";
   const variantCountInput=document.getElementById("assessVariantCount");
   variantCountInput.value=String(item.personalizedTask?.poolTarget||item.personalization?.variantIds?.length||45);
@@ -854,7 +867,7 @@ window.openEditModal = async function () {
   personalizedVariantPool=await loadPersonalizationVariants(item.id,item.personalization||{});
   personalizedPersistedIds=new Set(personalizedVariantPool.map(value=>value.variantId));
   personalizationDirty=false;
-  updatePracticalExamOption();renderPersonalizedVariantPool();
+  updateAssessmentFormatMode();renderPersonalizedVariantPool();
   document.getElementById("assessV2").checked = item.schemaVersion === 2;
   document.getElementById("assessV2").disabled = true; // Never silently convert a legacy record.
   document.getElementById("assessExpectedExts").value =
@@ -909,7 +922,8 @@ window.saveAssessment = async function () {
   const studio=prior ? prior.schemaVersion===3 : document.getElementById("assessSubmissionSource").value==="studio";
   const v2=prior ? prior.schemaVersion===2 : (!studio&&document.getElementById("assessV2").checked);
   const practicalExam=studio&&document.getElementById("assessPracticalExam").checked;
-  const personalizedEnabled=studio&&document.getElementById("assessPersonalizedTask").checked;
+  const assessmentMode=prior?.assessmentMode||(document.getElementById("assessMode").value||"default");
+  const personalizedEnabled=studio&&assessmentMode==="personalized";
   const variationGuidance=personalizedEnabled?document.getElementById("assessVariantGuidance").value.trim():"";
   const poolTarget=personalizedEnabled?Number(document.getElementById("assessVariantCount").value):0;
   if(personalizedEnabled&&(!Number.isInteger(poolTarget)||poolTarget<10||poolTarget>MAX_PERSONALIZED_POOL)){
@@ -920,7 +934,7 @@ window.saveAssessment = async function () {
     personalizedVariantFingerprint===currentFingerprint;
   const poolReady=poolFresh&&personalizedVariantPool.length>=poolTarget;
   const personalizedTask=personalizedEnabled
-    ? {enabled:true,mode:PERSONALIZATION_MODE,responseType:"studio_project",regeneration:"new_attempt",uniqueWithinAssessment:true,
+    ? {enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",uniqueWithinAssessment:true,
        poolFingerprint:poolReady?currentFingerprint:"",poolSize:poolReady?personalizedVariantPool.length:0,poolTarget}
     : {enabled:false};
   const payload = {
@@ -930,6 +944,8 @@ window.saveAssessment = async function () {
     ...(studio?{schemaVersion:3,submissionSource:"studio",evidenceMode:"studio_snapshot",practicalExam,personalizedTask}:{}),
     title: title,
     type: document.getElementById("assessType").value,
+    assessmentFormat:studio?"studio_code":"github_repository",
+    assessmentMode:personalizedEnabled?"personalized":"default",
     maxScore: score,
     quarter: document.getElementById("assessQuarter").value,
     subject,
