@@ -107,8 +107,12 @@ function renderPersonalizedVariantPool(){
     status.textContent="No variant pool generated yet.";
     wrap.classList.add("hidden");return;
   }
+  const item=currentAssessmentId?assessments.find(value=>value.id===currentAssessmentId):null,
+    active=Array.isArray(item?.personalization?.variantIds)?item.personalization.variantIds.length:0,
+    target=Number(document.getElementById("assessVariantCount")?.value||0);
   status.textContent=personalizedVariantPool.length+" private variant"+
-    (personalizedVariantPool.length===1?"":"s")+" ready. Regenerate after changing the task instructions, rubric or variation guidance.";
+    (personalizedVariantPool.length===1?"":"s")+" saved · "+active+" currently active for learner assignment"+
+    (target?" · target "+target:"")+". Draft imports autosave; use Activate / update pool to publish the prepared capacity.";
   for(const [index,variant] of personalizedVariantPool.slice(0,4).entries()){
     const card=document.createElement("article");card.className="rounded-lg border border-indigo-100 bg-slate-50 p-3";
     const heading=document.createElement("strong");heading.className="text-xs text-indigo-950";
@@ -323,6 +327,7 @@ window.importExternalPersonalizationResponse=async function(){
       "Imported "+incoming.length+" external variant"+(incoming.length===1?"":"s")+
       (remaining?" · "+remaining+" more needed to reach the target. Copy the next external package when ready.":" · target reached.") ;
     const saved=await persistPersonalizationPool({activate:false,silent:true});
+    if(saved)document.getElementById("externalPersonalizationResponse").value="";
     blueprintStatus(saved
       ?(remaining
         ?"External batch imported and autosaved. Continue with the next package; "+remaining+" variants remain."
