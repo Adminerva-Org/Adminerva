@@ -1,10 +1,12 @@
-import {auth,db} from "../core/firebase-core.js?v=1.3.0";
+import {app,auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {collection,doc,getDoc,getDocs,query,where,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
 import {studioDigest,verifyStudioSnapshot} from "../student/studio-assessment-model.mjs?v=1.0.0";
 
 const node=id=>document.getElementById(id);
+const variantCall=httpsCallable(getFunctions(app,"asia-southeast1"),"studioAssessmentVariant");
 const root=node("studioReviewList"),detail=node("studioReviewDetail"),status=node("studioReviewStatus");
 const add=(p,tag,text,classes="")=>{const n=document.createElement(tag);n.textContent=String(text??"");n.className=classes;p.append(n);return n;};
 let records=[],role="",session=0,inspectionSequence=0,busy=false,selectedId=null,loading=false,activeUid=null;
@@ -89,12 +91,27 @@ async function inspect(item){
    const actual=await studioDigest(saved.snapshotJson);
    if(actual!==saved.snapshotHash||saved.snapshotHash!==item.snapshotHash)
      throw Error("The snapshot checksum no longer matches. Do not grade this revision.");
+   let assignedVariant=null,variantError="";
+   if(assessment.personalizedTask?.enabled===true){
+     try{
+       const response=await variantCall({action:"inspect",assessmentId:item.assessmentId,
+         studentId:item.studentId,attempt:item.revision});
+       assignedVariant=response.data;
+     }catch(error){variantError=String(error?.message||"Personalized task unavailable.");}
+   }
+   if(stamp!==inspectionSequence||auth.currentUser?.uid!==uid)return;
    detail.replaceChildren();
    add(detail,"h2",(student?.data()?.name||item.studentId)+" · "+(item.projectTitle||"Studio project"),"text-xl font-extrabold text-slate-900");
    add(detail,"p",(assessment.title||"Assessment")+" · Revision "+item.revision+" · "+formatDate(item.submittedAt),"text-sm text-slate-600 mt-1");
    add(detail,"p","Snapshot SHA-256: "+actual,"font-mono text-[10px] break-all text-teal-800 mt-2");
    add(detail,"h3","Task and published rubric","font-bold mt-5");
    add(detail,"pre",String(assessment.taskContext||"")+'\n\n'+String(assessment.evalCriteria||""),"whitespace-pre-wrap text-xs bg-slate-50 rounded-lg border p-3 mt-2 max-h-60 overflow-auto");
+   if(assignedVariant){
+     add(detail,"h3","Learner's personalized task · Attempt "+assignedVariant.attempt+" · Variant "+assignedVariant.variantId,"font-bold mt-4 text-violet-950");
+     add(detail,"pre",assignedVariant.prompt,"whitespace-pre-wrap text-xs bg-violet-50 text-violet-950 rounded-lg border border-violet-200 p-3 mt-2 max-h-72 overflow-auto");
+   }else if(assessment.personalizedTask?.enabled===true){
+     add(detail,"p","Personalized task record could not be loaded: "+variantError,"text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3");
+   }
    const files=add(detail,"section","","mt-4");
    add(files,"h3","Frozen project files ("+Object.keys(snapshot.files).length+")","font-bold");
    const selector=add(files,"select","","w-full border p-2 rounded-lg mt-2 mb-2 text-sm");
