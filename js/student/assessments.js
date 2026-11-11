@@ -1,6 +1,6 @@
 import {loadPublishedGrades} from "./published-grades.mjs?v=1.3.0";
 /** Student submissions, practice progress and isolated code workspaces: assessments. */
-import { db, auth } from "../core/firebase-core.js?v=1.3.0";
+import { app, db, auth } from "../core/firebase-core.js?v=1.3.0";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {asDate,assessmentStatus,assessmentTargetDetails} from "./assessment-state.mjs?v=1.3.0";
 import {ensureStudentAccessProjection} from "./student-access.mjs?v=1.3.6";
@@ -11,6 +11,7 @@ import {
   where,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 
 let allAssessments = [];
 let userProfiles = [];
@@ -21,8 +22,52 @@ let myEvidence = {};
 let submissionLookupSucceeded = false;
 let myStudioSubmissions={},studioSubmissionsReadable=false;
 let profileGeneration=0,assessmentGeneration=0,assignmentOwnerUid="";
-let assessmentModalOpener=null;
+let assessmentModalOpener=null,personalizedAssignmentGeneration=0;
+const studioVariantCall=httpsCallable(getFunctions(app,"asia-southeast1"),"studioAssessmentVariant");
 const assignmentField=id=>document.getElementById(id);
+async function loadPersonalizedAssignment(assessment){
+  const panel=assignmentField("personalizedAssignmentPanel"),
+    meta=assignmentField("personalizedAssignmentMeta"),
+    prompt=assignmentField("personalizedAssignmentPrompt"),
+    status=assignmentField("personalizedAssignmentStatus"),
+    open=assignmentField("studioOpenProject"),
+    generation=++personalizedAssignmentGeneration;
+  panel.classList.add("hidden");meta.textContent="";prompt.textContent="";status.textContent="";
+  if(assessment?.personalizedTask?.enabled!==true)return;
+  panel.classList.remove("hidden");
+  if(Number(assessment.personalizedTask?.poolSize||0)<1||!assessment.personalizedTask?.poolFingerprint){
+    status.textContent="Your teacher is still preparing the personalized task pool. No task has been assigned to you yet.";
+    return;
+  }
+  status.textContent="Assigning your version…";
+  try{
+    const response=await studioVariantCall({assessmentId:assessment.id});
+    if(generation!==personalizedAssignmentGeneration||window.__adminervaViewedAssessmentId!==assessment.id)return;
+    const variant=response.data;
+    window.adminervaStudioAssessmentVariant=variant;
+    meta.textContent="Attempt "+variant.attempt+" · Variant "+variant.variantId;
+    prompt.textContent=variant.prompt||"";
+    status.textContent=variant.readOnly
+      ?"This is the version attached to your submitted attempt."
+      :"This version is now frozen to your current attempt. Reloading or reopening keeps the same task.";
+    if(open){
+      open.href="student-playground.html?assessment="+encodeURIComponent(assessment.id);
+      open.removeAttribute("aria-disabled");
+      open.classList.remove("opacity-50","pointer-events-none");
+      open.textContent="Open Adminerva Studio →";
+    }
+  }catch(error){
+    if(generation!==personalizedAssignmentGeneration||window.__adminervaViewedAssessmentId!==assessment.id)return;
+    const message=String(error?.message||"Your personalized task is unavailable.");
+    status.textContent=message.includes("outside the Studio submission window")
+      ?"Your personalized task will be assigned automatically when the assessment work window opens."
+      :"Your personalized task could not be assigned: "+message;
+    if(open){
+      open.removeAttribute("href");open.setAttribute("aria-disabled","true");
+      open.classList.add("opacity-50","pointer-events-none");
+    }
+  }
+}
 function assignmentsNotice(message,tone="info",retry=false){
   assignmentField("assignmentsNoticeText").textContent=message;assignmentField("assignmentsNotice").dataset.tone=tone;
   assignmentField("assignmentsNotice").classList.toggle("hidden",!message);assignmentField("assignmentsRetry").classList.toggle("hidden",!retry);
@@ -439,10 +484,16 @@ window.viewAssessmentDetails = function (id) {
   }
   document.getElementById("assessmentModal").classList.remove("hidden");
   document.getElementById("assessmentModalClose")?.focus({preventScroll:true});
+  if(personalized&&personalizedReady)void loadPersonalizedAssignment(ass);
+  else{
+    personalizedAssignmentGeneration++;
+    document.getElementById("personalizedAssignmentPanel")?.classList.add("hidden");
+  }
   window.dispatchEvent(new CustomEvent("adminerva:assessment-opened",{detail:{assessmentId:id}}));
 };
 
 window.closeAssessmentDetails=function(){
+  personalizedAssignmentGeneration++;
   const modal=assignmentField("assessmentModal");
   if(modal.classList.contains("hidden"))return;
   modal.classList.add("hidden");
