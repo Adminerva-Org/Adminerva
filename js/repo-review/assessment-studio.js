@@ -328,8 +328,7 @@ window.savePersonalizationPool=async function(){
     return blueprintStatus("Generate or import a current private variant pool before saving personalization.");
   if(!Number.isInteger(target)||target<10||target>50)
     return blueprintStatus("Choose a variant target from 10 to 50.");
-  if(personalizedVariantPool.length<target)
-    return blueprintStatus("The private pool has "+personalizedVariantPool.length+" variants. Add "+(target-personalizedVariantPool.length)+" more before saving the "+target+"-variant target.");
+  const ready=personalizedVariantPool.length>=target;
   const poolBytes=new TextEncoder().encode(JSON.stringify(personalizedVariantPool)).length;
   if(poolBytes>700000)return blueprintStatus("The private variant pool is too large to save safely.");
   savingBlueprint=true;
@@ -337,13 +336,15 @@ window.savePersonalizationPool=async function(){
   const loader=window.beginLoading?.("Saving private personalization pool…")||(()=>{});
   try{
     const batch=writeBatch(db);
-    batch.update(doc(db,"assessments",currentAssessmentId),{
-      personalizedTask:{
-        enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",
-        uniqueWithinAssessment:true,poolFingerprint:fingerprint,
-        poolSize:personalizedVariantPool.length,poolTarget:target
-      }
-    });
+    if(ready){
+      batch.update(doc(db,"assessments",currentAssessmentId),{
+        personalizedTask:{
+          enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",
+          uniqueWithinAssessment:true,poolFingerprint:fingerprint,
+          poolSize:personalizedVariantPool.length,poolTarget:target
+        }
+      });
+    }
     batch.set(doc(db,"assessment_private",currentAssessmentId),{
       ownerUid:item.ownerUid,sectionIds:item.sectionIds||[],
       personalization:{
@@ -360,7 +361,9 @@ window.savePersonalizationPool=async function(){
       personalizedVariantGeneratedAt=refreshed.personalization?.generatedAt||"";
     }
     renderPersonalizedVariantPool();
-    blueprintStatus("Private personalization pool saved. Students will be assigned variants automatically when they open the task.");
+    blueprintStatus(ready
+      ?"Private personalization pool is ready. Students will be assigned variants automatically when they open the task."
+      :"Saved "+personalizedVariantPool.length+" of "+target+" private variants. Students remain preparation-pending until the target is reached and saved.");
   }catch(error){
     blueprintStatus("Personalization pool was not saved: "+error.message);
   }finally{
@@ -805,9 +808,10 @@ window.saveAssessment = async function () {
   const currentFingerprint=personalizedEnabled?await currentPersonalizationFingerprint():"";
   const poolFresh=personalizedEnabled&&personalizedVariantPool.length>0&&
     personalizedVariantFingerprint===currentFingerprint;
+  const poolReady=poolFresh&&personalizedVariantPool.length>=poolTarget;
   const personalizedTask=personalizedEnabled
     ? {enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",uniqueWithinAssessment:true,
-       poolFingerprint:poolFresh?currentFingerprint:"",poolSize:poolFresh?personalizedVariantPool.length:0,poolTarget}
+       poolFingerprint:poolReady?currentFingerprint:"",poolSize:poolReady?personalizedVariantPool.length:0,poolTarget}
     : {enabled:false};
   const payload = {
     ownerUid:prior?.ownerUid||actor.uid,
