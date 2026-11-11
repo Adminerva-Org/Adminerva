@@ -871,3 +871,11 @@ body[data-playground-access="student"] #adminerva-nav .av-nav-tools :is(button,a
   body[data-playground-access] .studio-editor-controls #studioEditAssistToggle{min-width:48px}
   body[data-playground-access] .studio-editor-controls output{min-width:30px}
 }
+
+/* 3.0.4 Mobile Monaco: keep native one-finger editing; reserve pinch for code zoom. */
+@media (pointer:coarse) {
+  body[data-playground-access] #editorContainer {
+    touch-action:pan-x pan-y;
+    overscroll-behavior:contain;
+  }
+}
