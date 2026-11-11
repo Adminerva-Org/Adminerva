@@ -157,7 +157,14 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
       if(badge){badge.textContent=running?'Java live':'Queue #'+(message.position||'?');badge.dataset.state=running?'running':'waiting';}
       return;
     }
-    if(message.type==='stdout'||message.type==='stderr'){
+    if(message.type==='snapshot'){
+      if(output){
+        output.textContent=message.data||'';
+        output.scrollTop=output.scrollHeight;
+      }
+      return;
+    }
+    if(message.type==='stdout'||message.type==='stderr'||message.type==='echo'){
       if(output){
         output.textContent=(output.textContent+(message.data||'')).slice(-150000);
         output.scrollTop=output.scrollHeight;
@@ -277,7 +284,7 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
       if(!session||!input)return false;
       const text=input.value;
       if(!session.sendInput(text+'\n'))return false;
-      if(output){output.textContent=(output.textContent+text+'\n').slice(-150000);output.scrollTop=output.scrollHeight;}
+      // The backend echoes and retains input, so reconnects show exactly one transcript.
       input.value='';
       return true;
     }
