@@ -337,7 +337,7 @@ window.savePersonalizationPool=async function(){
   const loader=window.beginLoading?.("Saving private personalization pool…")||(()=>{});
   try{
     const batch=writeBatch(db);
-    if(ready){
+    if(ready||wasReady){
       batch.update(doc(db,"assessments",currentAssessmentId),{
         personalizedTask:{
           enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",
