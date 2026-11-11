@@ -1,0 +1,57 @@
+name: Deploy isolated MCS co-teacher sandbox callable
+run-name: MCS private pilot callable — ${{ github.sha }}
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/index.js'
+      - 'functions/school-pilot-sandbox.js'
+      - 'functions/pilot-sandbox-experience.js'
+      - 'functions/pilot-sandbox-access.js'
+      - '.github/workflows/deploy-mcs-pilot-sandbox.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: firebase-production
+  cancel-in-progress: false
+jobs:
+  deploy-private-pilot-callable:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out current reviewed source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install pinned backend dependencies
+        run: npm ci --prefix functions --no-audit --no-fund
+      - name: Check only sandbox callable sources and isolated access boundaries
+        run: |
+          node --check functions/pilot-sandbox-access.js
+          node --check functions/pilot-sandbox-experience.js
+          node --check functions/school-pilot-sandbox.js
+          node --test tests/pilot-sandbox-access.test.mjs
+          node scripts/check-release-source.mjs --backend
+      - name: Create short-lived Firebase deployment credentials
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_REPOREVIEW_E7CA4 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+          chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+      - name: Deploy only schoolPilotSandbox (no other callable or data migration)
+        run: npx -y firebase-tools@14 deploy --project reporeview-e7ca4 --only functions:schoolPilotSandbox --non-interactive
+      - name: Remove temporary credential
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/firebase-service-account.json"
