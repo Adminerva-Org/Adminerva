@@ -41,7 +41,7 @@ export function buildExternalPersonalizationPackage({
   const responseShape={
     format:EXTERNAL_PERSONALIZATION_RESPONSE_FORMAT,
     variants:Array.from({length:Math.min(desired,2)},(_,index)=>({
-      prompt:"Complete learner-visible programming task variant "+(index+1)+".",
+      prompt:"Complete learner-visible assessment task variant "+(index+1)+".",
       evaluationNotes:"Private exact requirements or expected behavior for this variant. Do not add grading criteria.",
       summary:"Short description of what concretely differs in this variant."
     }))
@@ -51,7 +51,9 @@ export function buildExternalPersonalizationPackage({
     privacy:"No learner names, student IDs, emails, submissions or grades are included. This package contains only the teacher-authored assessment blueprint.",
     assessment:{
       title,
-      type:text(assessment.type,100),
+      category:text(assessment.type||assessment.category,100),
+      assessmentFormat:text(assessment.assessmentFormat,100),
+      assessmentMode:text(assessment.assessmentMode||"personalized",100),
       subject:text(assessment.subject,200),
       maxScore:Number(assessment.maxScore),
       taskInstructions,
@@ -69,13 +71,13 @@ export function buildExternalPersonalizationPackage({
     "ADMINERVA EXTERNAL PERSONALIZATION PACKAGE",
     "",
     "TASK",
-    "Generate equivalent individualized programming task variants from the teacher-authored blueprint below.",
+    "Generate equivalent individualized assessment task variants from the teacher-authored blueprint below.",
     "",
     "REQUIRED RULES",
     "1. Treat the published task instructions and rubric as authoritative.",
-    "2. Preserve the programming language/platform, required concepts, scope, difficulty, expected effort and rubric applicability.",
-    "3. Vary only concrete problem details that can change without changing the competency: scenario, identifiers, literal values, small datasets, example inputs, required output details or equivalent framing.",
-    "4. Do not introduce concepts, frameworks, APIs, libraries, databases, file requirements or restrictions that are absent from or contradict the blueprint.",
+    "2. Preserve the assessment format, required concepts/skills, platform where applicable, scope, difficulty, expected effort and rubric applicability.",
+    "3. Vary only concrete details that can change without changing the competency. For coding tasks this may include scenario, identifiers, literal values, small datasets, example inputs, required output details or equivalent framing.",
+    "4. Do not introduce concepts, frameworks, tools, libraries, source requirements or restrictions that are absent from or contradict the blueprint.",
     "5. Every variant must be self-contained and gradeable with the SAME published rubric.",
     "6. Do not provide a full solution or finished source code unless starter/solution code is explicitly required by the blueprint.",
     "7. Learner prompts must not mention AI, hidden notes, other learners or other variants.",
