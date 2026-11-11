@@ -55,6 +55,6 @@ test("sandbox never admits unverified accounts or non-pilot schools",async()=>{
   await assert.rejects(()=>pilotTeacherContext({...f,schoolId:"mcs-manila"}),{code:"permission-denied"});
   const other=fixture();
   await assert.rejects(()=>pilotTeacherContext({...other,schoolId:"other-school"}),{code:"invalid-argument"});
-  const blocked=fixture({schoolState:"draft"});
+  const blocked=fixture({schoolState:"suspended"});
   await assert.rejects(()=>pilotTeacherContext({...blocked,schoolId:"mcs-manila"}),{code:"failed-precondition"});
 });
