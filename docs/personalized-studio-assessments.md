@@ -320,3 +320,31 @@ repository-specific.
   without changing the common assignment list architecture.
 
 This keeps the learner UI aligned with the actual assessment they were assigned.
+
+
+## Format-adaptive blueprint editor
+
+Assessment Studio now adapts the blueprint controls to the selected assessment
+format instead of exposing repository controls everywhere.
+
+For **GitHub Repository**, the editor shows repository evidence settings:
+
+- individual checkpoint evidence;
+- repository target paths;
+- expected repository file types;
+- investigation fallback for attributed work outside expected paths.
+
+For **Adminerva Studio Code**, those repository controls are hidden and saved as
+empty/inactive configuration. Studio instead explains its first-party submission
+model: a learner-owned workspace, whole-project immutable snapshot and
+teacher-requested revision flow. GitHub connection, commit selection, target
+paths and contribution reconstruction are not required.
+
+Private checker instructions and optional code/string checks remain in a
+separate **Advanced evaluation guidance** section because they can apply to both
+GitHub and Studio code assessments.
+
+Studio workspace ownership provides stronger submission provenance than GitHub
+commit attribution, but it is not proof that every line was independently
+authored. Academic-integrity review and practical-exam restrictions remain
+separate concerns.
