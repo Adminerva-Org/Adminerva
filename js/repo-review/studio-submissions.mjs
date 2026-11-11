@@ -179,7 +179,7 @@ async function inspect(item){
          ]);
          if(auth.currentUser?.uid!==uid)throw Error("Staff account changed. Review cancelled.");
          if(!latest.exists()||latest.data().revision!==item.revision||
-           latest.data().variantId!==(item.variantId||"")||
+           String(latest.data().variantId||"")!==String(item.variantId||"")||
            (type==="reviewed"&&latest.data().status!=="submitted")||
            (type==="revision_requested"&&!["submitted","reviewed"].includes(latest.data().status)))
            throw Error("The submitted revision or personalized task changed. Refresh the inbox to review the latest work.");
