@@ -45,6 +45,32 @@ const rubricTemplates=new Map();
 const defaultPersona="Assist the teacher by checking supported evidence against the published task and rubric. Distinguish verified individual contributions from shared project work. Do not infer authorship or misconduct. Leave unsupported, visual and runtime criteria for teacher review. Suggested scores stay unpublished until teacher approval.";
 const balancedCriteria=[{name:"Task requirements",weight:40,description:"Requested features and outputs are demonstrated."},{name:"Correctness",weight:30,description:"The submitted work behaves or reasons correctly for the task."},{name:"Clarity and organization",weight:20,description:"The work is understandable, organized and appropriate for the task."},{name:"Explanation and supporting evidence",weight:10,description:"The student explains the approach and links relevant evidence of their own contribution."}];
 const blueprintStatus=message=>{const node=document.getElementById("blueprintStatus");if(node)node.textContent=message;};
+function assessmentPublished(item){
+  if(!item)return false;
+  if(typeof item.published==="boolean")return item.published;
+  // Backward compatibility: existing deployed assessments predate publication state
+  // and remain visible until the teacher explicitly unpublishes them.
+  return Boolean((item.deployments||[]).length);
+}
+function assessmentPublishReadiness(item){
+  const problems=[];
+  if(!(item?.deployments||[]).length)problems.push("Deploy the assessment to at least one section first.");
+  if(!String(item?.taskContext||"").trim())problems.push("Student instructions are missing.");
+  if(!String(item?.evalCriteria||"").trim())problems.push("The published rubric is missing.");
+  if(item?.personalizedTask?.enabled===true){
+    const size=Number(item.personalizedTask?.poolSize||0),
+      target=Number(item.personalizedTask?.poolTarget||0),
+      fingerprint=String(item.personalizedTask?.poolFingerprint||"");
+    if(!fingerprint||size<1)problems.push("Activate the personalized variant pool first.");
+    else{
+      if(target>0&&size<target)problems.push("Complete the personalized pool target before publishing ("+size+" of "+target+" ready).");
+      const coverage=recommendedPersonalizationTarget(item);
+      if(coverage.learners>0&&size<coverage.learners)
+        problems.push("The active pool has "+size+" variants for approximately "+coverage.learners+" enrolled learners in the deployed sections. Add at least one unique variant per learner before publishing.");
+    }
+  }
+  return problems;
+}
 const CUSTOM_SUBJECT_VALUE="__custom__";
 function selectedAssessmentSubject(){
   const select=document.getElementById("assessSubject"),
@@ -821,8 +847,11 @@ function renderAssessmentGrid() {
     const card = `
             <div class="bg-white border rounded-xl shadow-sm hover:shadow-md transition cursor-pointer flex flex-col overflow-hidden" onclick="window.openViewModal('${item.id}')">
                 <div class="bg-slate-800 p-4 border-b border-slate-700">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="${getTypeStyle(item.type)} text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider">${escapeHTML(item.type)}</span>
+                    <div class="flex justify-between items-start mb-2 gap-2">
+                        <div class="flex flex-wrap gap-1">
+                          <span class="${getTypeStyle(item.type)} text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider">${escapeHTML(item.type)}</span>
+                          <span class="${assessmentPublished(item)?"bg-emerald-500/20 text-emerald-200 border-emerald-400/30":"bg-amber-500/20 text-amber-200 border-amber-400/30"} text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider">${assessmentPublished(item)?"Published":"Unpublished"}</span>
+                        </div>
                         <span class="text-slate-400 hover:text-white transition">⋮</span>
                     </div>
                     <h3 class="font-bold text-white text-lg truncate" title="${escapeHTML(item.title)}">${escapeHTML(item.title)}</h3>\n                    ${item.subject ? `<p class="text-xs text-cyan-200 mt-1 truncate">${escapeHTML(item.subject)}</p>` : ""}
@@ -1068,6 +1097,9 @@ window.saveAssessment = async function () {
     type: document.getElementById("assessType").value,
     assessmentFormat:studio?"studio_code":"github_repository",
     assessmentMode:personalizedEnabled?"personalized":"default",
+    published: prior
+      ? (typeof prior.published==="boolean"?prior.published:Boolean((prior.deployments||[]).length))
+      : false,
     maxScore: score,
     quarter: document.getElementById("assessQuarter").value,
     subject,
@@ -1198,6 +1230,25 @@ window.openViewModal = function (id) {
   document.getElementById("viewSystemPersona").textContent =
     item.systemPersona || "No persona set.";
 
+  const isPublished=assessmentPublished(item),
+    publication=document.getElementById("viewPublicationStatus"),
+    publishBtn=document.getElementById("viewPublishBtn"),
+    readiness=assessmentPublishReadiness(item);
+  if(publication){
+    publication.className="mb-5 rounded-xl border p-4 text-sm "+
+      (isPublished?"border-emerald-200 bg-emerald-50 text-emerald-900":"border-amber-200 bg-amber-50 text-amber-900");
+    publication.innerHTML=isPublished
+      ?"<strong>Published to students.</strong> Learners in deployed sections can see this assessment. Opening and submission still follow the configured schedule."
+      :"<strong>Unpublished.</strong> Deployment and personalization can be prepared privately. Students will not see this assessment until you publish it."+
+        (readiness.length?"<span class=\"block mt-1 text-xs\">Before publishing: "+escapeHTML(readiness[0])+"</span>":"");
+  }
+  if(publishBtn){
+    publishBtn.innerHTML=isPublished?"<span>🙈</span> Unpublish":"<span>📣</span> Publish";
+    publishBtn.className=isPublished
+      ?"bg-amber-600 text-white px-5 py-2 rounded text-sm font-bold hover:bg-amber-700 transition shadow flex items-center gap-2"
+      :"bg-emerald-600 text-white px-5 py-2 rounded text-sm font-bold hover:bg-emerald-700 transition shadow flex items-center gap-2";
+  }
+
   const badge = document.getElementById("viewTypeBadge");
   badge.textContent = item.type || "Unknown";
   badge.className = `text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider inline-block ${getTypeStyle(item.type)}`;
@@ -1227,6 +1278,33 @@ window.closeModals = function () {
   document.getElementById("createModal").classList.add("hidden");
   document.getElementById("viewModal").classList.add("hidden");
   document.getElementById("deployModal").classList.add("hidden");
+};
+
+window.toggleAssessmentPublication=async function(){
+  if(!currentAssessmentId)return;
+  const item=assessments.find(value=>value.id===currentAssessmentId);
+  if(!item)return;
+  const published=assessmentPublished(item);
+  if(!published){
+    const problems=assessmentPublishReadiness(item);
+    if(problems.length)return alert("This assessment is not ready to publish:\n\n• "+problems.join("\n• "));
+    if(!confirm("Publish this assessment now? Students in the deployed sections will be able to see it. Studio access and submission will still follow the configured schedule."))return;
+  }else{
+    if(!confirm("Unpublish this assessment? It will disappear from students' My Assessments and new Studio task access/submissions will be blocked. Existing personalized variants, submissions, grades, deployments and schedules will be preserved."))return;
+  }
+  const button=document.getElementById("viewPublishBtn");
+  if(button)button.disabled=true;
+  window.showSubtleLoader(published?"Unpublishing assessment...":"Publishing assessment...");
+  try{
+    await updateDoc(doc(db,"assessments",currentAssessmentId),{published:!published});
+    await loadAssessments();
+    window.openViewModal(currentAssessmentId);
+  }catch(error){
+    alert((published?"Unpublish":"Publish")+" failed: "+error.message);
+  }finally{
+    if(button)button.disabled=false;
+    window.hideSubtleLoader();
+  }
 };
 
 // ==========================================
@@ -1416,12 +1494,6 @@ window.saveDeployment = async function () {
 
   const item = assessments.find((a) => a.id === currentAssessmentId);
   if(!item)return alert("Assessment unavailable. Refresh the page and try again.");
-  if(item.personalizedTask?.enabled===true&&Number(item.personalizedTask?.poolSize||0)<1){
-    const proceed=confirm(
-      "This personalized assessment has no saved variant pool yet. You may deploy it now and prepare variants from the Personalization tab, but students cannot open the Studio task until a pool is saved. Continue deployment?"
-    );
-    if(!proceed)return;
-  }
   let deployments = [...(item.deployments || [])];
   if(!deployId){
     const duplicates=deploySelectedSections.filter(section=>deployments.some(entry=>entry.section===section));
@@ -1458,6 +1530,9 @@ window.saveDeployment = async function () {
     document.getElementById("deployModal").classList.add("hidden");
     await loadAssessments();
     window.openViewModal(currentAssessmentId);
+    const refreshed=assessments.find(value=>value.id===currentAssessmentId);
+    if(refreshed&&!assessmentPublished(refreshed))
+      alert("Deployment saved privately. Students will not see this assessment until you publish it.");
   } catch (e) {
     alert("Failed to deploy: " + e.message);
   } finally {

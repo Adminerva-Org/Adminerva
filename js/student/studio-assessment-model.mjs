@@ -13,6 +13,8 @@ export function studioEvidenceId(studentId,assessmentId){
 export function studioSubmissionAllowed(assessment,section,now=Date.now()){
   if(assessment?.schemaVersion!==3||assessment?.submissionSource!=="studio")
     return {allowed:false,reason:"This task is not configured for Adminerva Studio submissions."};
+  if(assessment?.published===false)
+    return {allowed:false,reason:"This assessment is currently unpublished by your teacher."};
   const assignment=(assessment.deployments||[]).find(item=>item.section===section);
   if(!assignment)return {allowed:false,reason:"This assessment is not deployed to your class."};
   const open=assignment.postDate?Date.parse(assignment.postDate):0;

@@ -128,6 +128,9 @@ function createStudioAssessmentVariantService({db,Timestamp}){
       };
     }
 
+    if(input.action!=="stats"&&input.action!=="inspect"&&assessment.published===false)
+      deny("failed-precondition","This assessment is currently unpublished by your teacher.");
+
     if(input.action==="inspect"){
       const studentId=cleanId(input.studentId,"Student"),attempt=Number(input.attempt);
       if(!Number.isInteger(attempt)||attempt<1||attempt>30)deny("invalid-argument","Attempt number is invalid.");
