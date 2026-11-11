@@ -1075,6 +1075,31 @@ service cloud.firestore {
     }
 
     match /assessments/{assessmentId} {
+      function validPersonalizationRefresh(before,after) {
+        let prior=before.get("personalizedTask",{});
+        let next=after.get("personalizedTask",{});
+        let privateNext=getAfter(/databases/$(database)/documents/assessment_private/$(assessmentId)).data.get("personalization",{});
+        return prior.get("enabled",false) == true &&
+          prior.get("mode","") == "ai_blueprint_pool_v1" &&
+          next.get("enabled",false) == true &&
+          next.get("mode","") == prior.get("mode","") &&
+          next.get("regeneration","") == prior.get("regeneration","") &&
+          next.get("uniqueWithinAssessment",false) == prior.get("uniqueWithinAssessment",false) &&
+          next.get("poolFingerprint","") is string &&
+          next.get("poolFingerprint","").size() > 0 &&
+          (prior.get("poolFingerprint","") == "" ||
+            next.get("poolFingerprint","") == prior.get("poolFingerprint","")) &&
+          next.get("poolSize",0) is int &&
+          next.get("poolSize",0) >= prior.get("poolSize",0) &&
+          next.get("poolSize",0) <= 50 &&
+          next.get("poolTarget",0) is int &&
+          next.get("poolTarget",0) >= prior.get("poolTarget",0) &&
+          next.get("poolTarget",0) <= 50 &&
+          privateNext.get("mode","") == "ai_blueprint_pool_v1" &&
+          privateNext.get("fingerprint","") == next.get("poolFingerprint","") &&
+          privateNext.get("variants",[]) is list &&
+          privateNext.get("variants",[]).size() == next.get("poolSize",0);
+      }
       function validAssessment(data) {
         return data.get("ownerUid","") is string && data.get("sectionIds",[]) is list && data.sectionIds.size() <= 20 &&
           data.get("deployments",[]) is list && data.deployments.size() <= 20 &&
@@ -1125,7 +1150,9 @@ service cloud.firestore {
         (isAdmin() || (resource.data.get("ownerUid","") == request.auth.uid && request.resource.data.ownerUid == resource.data.ownerUid)) &&
         request.resource.data.get("schemaVersion",1) == resource.data.get("schemaVersion",1) &&
         (resource.data.get("schemaVersion",1) != 3 || resource.data.get("deployments",[]).size() == 0 ||
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(["deployments","sectionIds","studioWindows"]));
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(["deployments","sectionIds","studioWindows"]) ||
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(["personalizedTask"]) &&
+            validPersonalizationRefresh(resource.data,request.resource.data)));
       allow delete: if isInstructor() && resource.data.get("schemaVersion",1) != 2 &&
         (isAdmin() || resource.data.get("ownerUid","") == request.auth.uid);
     }
