@@ -2,7 +2,7 @@
 const {randomBytes}=require("node:crypto");
 
 const PERSONALIZATION_MODE="ai_blueprint_pool_v1";
-const MAX_POOL_SIZE=300;
+const MAX_POOL_SIZE=600;
 const deny=(code,message)=>{const error=Error(message);error.code=code;throw error;};
 const cleanId=(value,label)=>{
   const text=String(value||"");
