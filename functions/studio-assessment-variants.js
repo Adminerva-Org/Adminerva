@@ -23,7 +23,7 @@ function validPool(privateData,assessment){
   const clean=variants.filter(item=>item&&typeof item.variantId==="string"&&
     /^[a-f0-9]{16,64}$/.test(item.variantId)&&typeof item.prompt==="string"&&
     item.prompt.trim().length>=20&&item.prompt.length<=12000&&
-    typeof item.evaluationNotes==="string"&&item.evaluationNotes.length<=8000);
+    typeof item.evaluationNotes==="string"&&item.evaluationNotes.trim().length>=10&&item.evaluationNotes.length<=8000);
   if(clean.length!==variants.length||clean.length<1)
     deny("failed-precondition","The personalized task pool is incomplete. Ask your teacher to regenerate it.");
   if(new Set(clean.map(item=>item.variantId)).size!==clean.length)
