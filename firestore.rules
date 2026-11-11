@@ -1082,7 +1082,7 @@ service cloud.firestore {
             data.get("practicalExam",false) is bool &&
             data.get("personalizedTask",{}).get("enabled",false) is bool &&
             (data.get("personalizedTask",{}).get("enabled",false) == false ||
-              (data.get("personalizedTask",{}).get("generator","") == "java_logic_written_work_v1" &&
+              (data.get("personalizedTask",{}).get("generator","") in ["java_logic_written_work_v1","java_oop_fundamentals_v1"] &&
                data.get("personalizedTask",{}).get("regeneration","") == "new_attempt"))
           )) &&
           data.get("targetSections",[]) is list && data.get("targetSections",[]).hasOnly(data.sectionIds) &&
@@ -1235,7 +1235,9 @@ service cloud.firestore {
           get(variantPath).data.ownerUid == request.auth.uid &&
           get(variantPath).data.studentId == data.studentId &&
           get(variantPath).data.assessmentId == data.assessmentId &&
-          get(variantPath).data.attempt == data.revision);
+          get(variantPath).data.attempt == data.revision &&
+          data.get("variantId","") is string &&
+          data.get("variantId","") == get(variantPath).data.variantId);
     }
     function studioEvidenceStudent(data) {
       return signedIn() && data.studentId is string &&
@@ -1252,16 +1254,18 @@ service cloud.firestore {
     function studioHeadValid(evidenceId,data) {
       let version=getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)/versions/$(string(data.revision))).data;
       return data.keys().hasOnly(["source","studentId","assessmentId","ownerUid","section","revision",
-        "projectId","projectTitle","snapshotHash","status","reviewNote","reviewedBy","submittedAt","reviewedAt"]) &&
+        "projectId","projectTitle","variantId","snapshotHash","status","reviewNote","reviewedBy","submittedAt","reviewedAt"]) &&
         data.source == "studio" && evidenceId == data.studentId + "_" + data.assessmentId &&
         data.revision is int && data.revision > 0 && data.revision <= 30 &&
         data.projectId is string && data.projectId.size() > 0 && data.projectId.size() <= 150 &&
         data.projectTitle is string && data.projectTitle.size() > 0 && data.projectTitle.size() <= 120 &&
+        data.variantId is string && data.variantId.size() <= 64 &&
         data.snapshotHash is string && data.snapshotHash.matches("^[a-f0-9]{64}$") &&
         data.status == "submitted" && data.reviewNote == "" && data.reviewedBy == "" &&
         !("reviewedAt" in data) &&
         data.submittedAt == request.time && version.revision == data.revision &&
-        version.snapshotHash == data.snapshotHash && version.ownerUid == data.ownerUid &&
+        version.snapshotHash == data.snapshotHash && version.variantId == data.variantId &&
+        version.ownerUid == data.ownerUid &&
         version.studentId == data.studentId && version.assessmentId == data.assessmentId &&
         version.submittedAt == data.submittedAt;
     }
@@ -1309,10 +1313,11 @@ service cloud.firestore {
           (mayTeachSection(get(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.section) ||
             (signedIn() && ownsStudentProfile(get(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.studentId)));
         allow create: if request.resource.data.keys().hasOnly(["source","studentId","assessmentId","ownerUid",
-            "section","revision","projectId","snapshotHash","snapshotJson","submittedAt"]) &&
+            "section","revision","projectId","variantId","snapshotHash","snapshotJson","submittedAt"]) &&
           request.resource.data.source == "studio" &&
           request.resource.data.revision is int &&
           revisionId == string(request.resource.data.revision) &&
+          request.resource.data.variantId is string && request.resource.data.variantId.size() <= 64 &&
           request.resource.data.snapshotHash is string &&
           request.resource.data.snapshotHash.matches("^[a-f0-9]{64}$") &&
           request.resource.data.snapshotJson is string &&
@@ -1322,6 +1327,7 @@ service cloud.firestore {
           studioEvidenceStudent(request.resource.data) &&
           getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.revision == request.resource.data.revision &&
           getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.snapshotHash == request.resource.data.snapshotHash &&
+          getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.variantId == request.resource.data.variantId &&
           getAfter(/databases/$(database)/documents/studio_submissions/$(evidenceId)).data.submittedAt == request.time &&
           evidenceId == request.resource.data.studentId + "_" + request.resource.data.assessmentId;
         allow update,delete: if false;
