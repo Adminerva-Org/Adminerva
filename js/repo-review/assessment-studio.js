@@ -33,8 +33,10 @@ let deploySelectedSections = [];
 let fpInstance = null;
 let savingBlueprint=false,savingDeployment=false,rubricSource="balanced",lastGeneratedRubric="",subjectFocus=[];
 let blueprintContentLocked=false;
-let personalizedVariantPool=[],personalizedVariantFingerprint="",personalizedVariantGeneratedAt="",generatingVariants=false;
+let personalizedVariantPool=[],personalizedVariantFingerprint="",personalizedVariantGeneratedAt="",generatingVariants=false,personalizationDirty=false;
 const PERSONALIZATION_MODE="ai_blueprint_pool_v1";
+const MAX_PERSONALIZED_POOL=300;
+const MAX_EXTERNAL_VARIANT_BATCH=45;
 const rubricTemplates=new Map();
 const defaultPersona="Assist the teacher by checking supported evidence against the published task and rubric. Distinguish verified individual contributions from shared project work. Do not infer authorship or misconduct. Leave unsupported, visual and runtime criteria for teacher review. Suggested scores stay unpublished until teacher approval.";
 const balancedCriteria=[{name:"Task requirements",weight:40,description:"Requested features and outputs are demonstrated."},{name:"Correctness",weight:30,description:"The submitted work behaves or reasons correctly for the task."},{name:"Clarity and organization",weight:20,description:"The work is understandable, organized and appropriate for the task."},{name:"Explanation and supporting evidence",weight:10,description:"The student explains the approach and links relevant evidence of their own contribution."}];
@@ -189,7 +191,7 @@ window.generatePersonalizedVariantPool=async function(){
     target=Number(document.getElementById("assessVariantCount").value);
   if(!title)return blueprintStatus("Enter the assessment title before generating variants.");
   if(!evalCriteria)return blueprintStatus("Prepare the published rubric before generating variants.");
-  if(!Number.isInteger(target)||target<10||target>50)return blueprintStatus("Choose a variant pool size from 10 to 50.");
+  if(!Number.isInteger(target)||target<10||target>MAX_PERSONALIZED_POOL)return blueprintStatus("Choose a variant pool size from 10 to "+MAX_PERSONALIZED_POOL+".");
   const fingerprint=await currentPersonalizationFingerprint(),
     preserve=personalizedVariantFingerprint===fingerprint?personalizedVariantPool:[],
     need=variantGenerationNeed(preserve.length),
@@ -297,7 +299,7 @@ window.importExternalPersonalizationResponse=async function(){
     const merged=mergeVariantPools(preserve,incoming);
     if(merged.length<preserve.length+incoming.length)
       throw Error("The imported batch repeats a task already in the private pool. Ask the external AI for a replacement distinct variant.");
-    if(merged.length>50)throw Error("The combined private pool cannot exceed 50 variants.");
+    if(merged.length>MAX_PERSONALIZED_POOL)throw Error("The combined private pool cannot exceed "+MAX_PERSONALIZED_POOL+" variants.");
     const poolBytes=new TextEncoder().encode(JSON.stringify(merged)).length;
     if(poolBytes>700000)throw Error("The combined private pool is too large to store safely.");
     personalizedVariantPool=merged;
@@ -327,8 +329,8 @@ window.savePersonalizationPool=async function(){
     wasReady=Boolean(item.personalizedTask?.poolFingerprint&&Number(item.personalizedTask?.poolSize||0)>0);
   if(personalizedVariantFingerprint!==fingerprint||!personalizedVariantPool.length)
     return blueprintStatus("Generate or import a current private variant pool before saving personalization.");
-  if(!Number.isInteger(target)||target<10||target>50)
-    return blueprintStatus("Choose a variant target from 10 to 50.");
+  if(!Number.isInteger(target)||target<10||target>MAX_PERSONALIZED_POOL)
+    return blueprintStatus("Choose a variant target from 10 to "+MAX_PERSONALIZED_POOL+".");
   const ready=personalizedVariantPool.length>=target;
   const poolBytes=new TextEncoder().encode(JSON.stringify(personalizedVariantPool)).length;
   if(poolBytes>700000)return blueprintStatus("The private variant pool is too large to save safely.");
@@ -462,21 +464,38 @@ function mergeVariantPools(base,incoming){
   return [...map.values()];
 }
 function variantGenerationNeed(baseCount=personalizedVariantPool.length){
-  const target=Math.max(10,Math.min(50,Number(document.getElementById("assessVariantCount").value)||40));
+  const target=Math.max(10,Math.min(MAX_PERSONALIZED_POOL,Number(document.getElementById("assessVariantCount").value)||45));
   return {target,missing:Math.max(0,target-baseCount)};
+}
+function personalizationSections(item){
+  return [...new Set((item?.deployments||[]).map(entry=>entry.section).filter(Boolean))];
+}
+function recommendedPersonalizationTarget(item){
+  const sections=personalizationSections(item),
+    learners=sections.reduce((sum,section)=>sum+(sectionStudentCounts.get(section)||0),0),
+    recommended=learners?Math.min(MAX_PERSONALIZED_POOL,Math.max(10,learners+(sections.length*5))):45;
+  return {sections,learners,recommended};
+}
+function externalPersonalizationBatchSize(item,target){
+  const sectionCount=Math.max(1,personalizationSections(item).length);
+  return Math.max(1,Math.min(MAX_EXTERNAL_VARIANT_BATCH,Math.ceil(target/sectionCount)));
 }
 function renderPersonalizationCoverage(item){
   const node=document.getElementById("personalizationCoverage");
   if(!node)return;
-  const sections=[...new Set((item?.deployments||[]).map(entry=>entry.section).filter(Boolean))],
-    learners=sections.reduce((sum,section)=>sum+(sectionStudentCounts.get(section)||0),0),
-    revisionBuffer=learners?Math.max(5,Math.ceil(learners*.2)):0,
-    recommended=learners?Math.min(50,Math.max(10,learners+revisionBuffer)):10;
+  const {sections,learners,recommended}=recommendedPersonalizationTarget(item),
+    input=document.getElementById("assessVariantCount");
+  if(sections.length&&!item?.personalizedTask?.poolFingerprint&&Number(input.value)<recommended)
+    input.value=String(recommended);
+  const target=Math.max(10,Math.min(MAX_PERSONALIZED_POOL,Number(input.value)||recommended)),
+    batchSize=externalPersonalizationBatchSize(item,target),
+    batches=Math.ceil(target/batchSize);
   node.textContent=sections.length
     ? "Deployed to "+sections.length+" section"+(sections.length===1?"":"s")+" · approximately "+learners+
       " learner"+(learners===1?"":"s")+" · suggested pool target: "+recommended+
-      " (includes revision headroom)."
-    : "Not deployed yet. After you assign sections, Adminerva can estimate a pool size from the enrolled learners.";
+      " (5 revision variants per section). External plan at the current target: about "+batches+
+      " batch"+(batches===1?"":"es")+" of up to "+batchSize+" variants."
+    : "Not deployed yet. External batches default to the current target and are capped at "+MAX_EXTERNAL_VARIANT_BATCH+" variants each.";
 }
 function escapeHTML(str) {
   if (!str) return "";
@@ -696,7 +715,7 @@ window.openCreateModal = function () {
   document.getElementById("assessPracticalExam").checked=false;
   document.getElementById("assessPersonalizedTask").checked=false;
   document.getElementById("assessVariantGuidance").value="";
-  document.getElementById("assessVariantCount").value="40";
+  document.getElementById("assessVariantCount").value="45";
   personalizedVariantPool=[];personalizedVariantFingerprint="";personalizedVariantGeneratedAt="";
   updatePracticalExamOption();renderPersonalizedVariantPool();
   document.getElementById("assessV2").checked = true;
@@ -743,7 +762,7 @@ window.openEditModal = function () {
   document.getElementById("assessPracticalExam").checked=item.practicalExam===true;
   document.getElementById("assessPersonalizedTask").checked=item.personalizedTask?.enabled===true;
   document.getElementById("assessVariantGuidance").value=item.personalization?.guidance||"";
-  document.getElementById("assessVariantCount").value=String(item.personalizedTask?.poolTarget||item.personalization?.variants?.length||40);
+  document.getElementById("assessVariantCount").value=String(item.personalizedTask?.poolTarget||item.personalization?.variantIds?.length||45);
   personalizedVariantPool=Array.isArray(item.personalization?.variants)?item.personalization.variants.map(value=>({...value})):[];
   personalizedVariantFingerprint=typeof item.personalization?.fingerprint==="string"?item.personalization.fingerprint:"";
   personalizedVariantGeneratedAt=typeof item.personalization?.generatedAt==="string"?item.personalization.generatedAt:"";
@@ -805,8 +824,8 @@ window.saveAssessment = async function () {
   const personalizedEnabled=studio&&document.getElementById("assessPersonalizedTask").checked;
   const variationGuidance=personalizedEnabled?document.getElementById("assessVariantGuidance").value.trim():"";
   const poolTarget=personalizedEnabled?Number(document.getElementById("assessVariantCount").value):0;
-  if(personalizedEnabled&&(!Number.isInteger(poolTarget)||poolTarget<10||poolTarget>50)){
-    blueprintStatus("Choose a personalized variant pool size from 10 to 50.");return;
+  if(personalizedEnabled&&(!Number.isInteger(poolTarget)||poolTarget<10||poolTarget>MAX_PERSONALIZED_POOL)){
+    blueprintStatus("Choose a personalized variant pool size from 10 to "+MAX_PERSONALIZED_POOL+".");return;
   }
   const currentFingerprint=personalizedEnabled?await currentPersonalizationFingerprint():"";
   const poolFresh=personalizedEnabled&&personalizedVariantPool.length>0&&
