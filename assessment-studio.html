@@ -202,56 +202,56 @@
           <section class="bg-white border rounded-xl p-4 sm:p-5 space-y-4" aria-labelledby="blueprintBasicsTitle"><h3 id="blueprintBasicsTitle" class="font-bold text-slate-900">1. Task details</h3>
             <label for="assessTitle" class="block text-sm font-bold text-slate-700">Assessment title *<input type="text" id="assessTitle" maxlength="200" required class="mt-1 w-full p-3 border rounded-lg text-base sm:text-sm" placeholder="e.g. Array-based student record manager"></label>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-3"><label for="assessType" class="text-sm font-semibold">Assessment category<select id="assessType" class="mt-1 w-full p-3 border rounded-lg bg-white"><option value="Mini PETA">Mini PETA</option><option value="Practical Exam">Practical exam</option><option value="Written Work">Written work</option><option value="Formative">Formative</option></select></label><label for="maxScore" class="text-sm font-semibold">Maximum score *<input type="number" id="maxScore" value="20" min="1" max="1000" step="any" required class="mt-1 w-full p-3 border rounded-lg"></label><label for="assessQuarter" class="text-sm font-semibold">Grading quarter<select id="assessQuarter" class="mt-1 w-full p-3 border rounded-lg bg-white"><option value="">Unassigned / legacy</option><option value="Q1">Quarter 1</option><option value="Q2">Quarter 2</option><option value="Q3">Quarter 3</option><option value="Q4">Quarter 4</option></select></label></div>
-            <label for="assessSubject" class="block text-sm font-semibold">Subject <span class="font-normal text-slate-500">Optional context</span><input id="assessSubject" list="assessmentSubjectChoices" class="mt-1 w-full p-3 border rounded-lg" placeholder="Choose a school subject if useful"><datalist id="assessmentSubjectChoices"></datalist></label>
-            <div class="rounded-lg bg-slate-50 border p-3"><p class="text-xs font-bold text-slate-600 uppercase">Student instructions</p><p id="assessmentContextPreview" class="text-sm text-slate-700 mt-2 whitespace-pre-wrap"></p><p class="text-xs text-slate-500 mt-2">A short instruction is prepared from the task title. Add specific requirements below when needed.</p></div>
-            <details id="blueprintInstructions" class="border-t pt-3"><summary class="font-semibold text-sm cursor-pointer py-2">Additional student instructions · optional</summary><label for="taskContext" class="block text-sm mt-2">Replace the prepared instructions<textarea id="taskContext" rows="4" maxlength="15000" class="w-full p-3 mt-1 border rounded-lg" placeholder="Leave blank to use the prepared instructions. Add expected output, constraints or class-specific requirements if needed."></textarea></label></details>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+              <label for="assessSubject" class="block text-sm font-semibold">Subject <span class="font-normal text-slate-500">Optional</span>
+                <select id="assessSubject" class="mt-1 w-full p-3 border rounded-lg bg-white">
+                  <option value="">No specific subject / General</option>
+                  <option value="__custom__">Custom / Other subject…</option>
+                </select>
+                <span id="assessmentSubjectHint" class="block text-xs font-normal text-slate-500 mt-1">Subjects from your teaching schedule are shown first.</span>
+              </label>
+              <label id="assessSubjectCustomWrap" for="assessSubjectCustom" class="hidden text-sm font-semibold">Custom subject / context
+                <input id="assessSubjectCustom" maxlength="120" class="mt-1 w-full p-3 border rounded-lg bg-white" placeholder="e.g. General formative assessment">
+                <span class="block text-xs font-normal text-slate-500 mt-1">Use this for cross-subject, formative, or other assessments that do not belong to one scheduled subject.</span>
+              </label>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label for="assessSubmissionSource" class="block text-sm font-semibold">Assessment format
+                <select id="assessSubmissionSource" class="w-full mt-1 p-3 rounded-lg border bg-white text-sm">
+                  <option value="repository">GitHub Repository</option>
+                  <option value="studio">Adminerva Studio Code</option>
+                  <option value="essay" disabled>Essay / Written Response — future</option>
+                  <option value="multiple_choice" disabled>Multiple Choice — future</option>
+                  <option value="matching" disabled>Matching Type — future</option>
+                  <option value="analogy" disabled>Analogy — future</option>
+                </select>
+              </label>
+              <label for="assessMode" class="block text-sm font-semibold">Mode
+                <select id="assessMode" class="w-full mt-1 p-3 rounded-lg border bg-white text-sm">
+                  <option value="default">Default</option>
+                  <option value="personalized">Personalized</option>
+                  <option value="group" disabled>Group — future</option>
+                  <option value="pair" disabled>By Pair — future</option>
+                </select>
+              </label>
+            </div>
+            <p id="assessmentFormatModeHelp" class="text-xs text-slate-600">Choose how learners produce the work, then how the task is assigned.</p>
+            <label id="practicalExamOption" class="flex items-start gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+              <input id="assessPracticalExam" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
+              <span><strong>Practical exam — restrict copying and pasting code</strong><span class="block text-xs text-slate-700 mt-1">Studio only: ordinary clipboard actions, code imports and AI helper are blocked during the exam. Browser restrictions can be bypassed; supervision and review are still needed.</span></span>
+            </label>
+            <div id="personalizedTaskSettings" class="hidden p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+              <strong class="text-sm text-indigo-950">Personalized mode</strong>
+              <p id="personalizedTaskSetupHint" class="text-xs text-indigo-900 mt-1">Each learner receives a server-assigned task variant for the current attempt. Save the blueprint first, then reopen it to prepare the private variant pool from the Personalization tab.</p>
+            </div>
+            <details id="blueprintInstructions" class="border-t pt-3"><summary class="font-semibold text-sm cursor-pointer py-2">Edit student instructions</summary><label for="taskContext" class="block text-sm mt-2">Student-facing task instructions<textarea id="taskContext" rows="4" maxlength="15000" class="w-full p-3 mt-1 border rounded-lg" placeholder="Leave blank to use the prepared instructions. Add expected output, constraints, steps, or class-specific requirements."></textarea></label></details>
+            <div class="rounded-lg bg-slate-50 border p-3"><div class="flex items-center justify-between gap-3"><p class="text-xs font-bold text-slate-600 uppercase">Student instructions · preview</p><span class="text-[10px] font-bold uppercase tracking-wide text-slate-400">Read only</span></div><p id="assessmentContextPreview" class="text-sm text-slate-700 mt-2 whitespace-pre-wrap"></p><p class="text-xs text-slate-500 mt-2">This is what learners will see as the task instruction. Use Edit student instructions above to change it.</p></div>
           </section>
           <section class="bg-white border rounded-xl p-4 sm:p-5 space-y-3" aria-labelledby="blueprintRubricTitle"><h3 id="blueprintRubricTitle" class="font-bold text-slate-900">2. Check the rubric *</h3><p class="text-sm text-slate-600">Start with the prepared rubric, reuse a saved template, or write your own. Students see the saved criteria.</p>
             <div class="flex flex-col sm:flex-row gap-2 sm:items-end"><label for="assessmentRubricTemplate" class="flex-1 text-sm font-semibold">Reuse rubric<select id="assessmentRubricTemplate" class="w-full p-3 mt-1 border rounded-lg bg-white"><option value="balanced">Balanced task rubric</option></select></label><button id="assessmentApplyRubric" type="button" onclick="applyAssessmentRubric()" class="av-secondary-button">Use selected rubric</button></div>
             <label for="evalCriteria" class="block text-sm font-semibold">Published evaluation criteria<textarea id="evalCriteria" rows="7" maxlength="15000" required class="w-full p-3 mt-1 border rounded-lg font-normal text-sm"></textarea></label><p id="assessmentRubricStatus" class="text-xs text-slate-600" role="status"></p>
             <p class="text-xs text-slate-500">Suggested scores stay as drafts. The teacher must verify the evidence and review scores before publishing.</p>
           </section>
-          <section class="bg-teal-50 border border-teal-200 rounded-xl p-4 space-y-4">
-  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-    <label for="assessSubmissionSource" class="block text-sm font-bold text-teal-950">Assessment format
-      <select id="assessSubmissionSource" class="w-full mt-2 p-3 rounded-lg border border-teal-300 bg-white text-sm">
-        <option value="repository">GitHub Repository</option>
-        <option value="studio">Adminerva Studio Code</option>
-        <option value="essay" disabled>Essay / Written Response — future</option>
-        <option value="multiple_choice" disabled>Multiple Choice — future</option>
-        <option value="matching" disabled>Matching Type — future</option>
-        <option value="analogy" disabled>Analogy — future</option>
-      </select>
-    </label>
-    <label for="assessMode" class="block text-sm font-bold text-teal-950">Mode
-      <select id="assessMode" class="w-full mt-2 p-3 rounded-lg border border-teal-300 bg-white text-sm">
-        <option value="default">Default</option>
-        <option value="personalized">Personalized</option>
-        <option value="group" disabled>Group — future</option>
-        <option value="pair" disabled>By Pair — future</option>
-      </select>
-    </label>
-  </div>
-  <p id="assessmentFormatModeHelp" class="text-xs text-teal-900">Choose how learners produce the work, then choose how the task is assigned. Personalized mode is currently available for Adminerva Studio Code only.</p>
-  <label id="practicalExamOption" class="flex items-start gap-3 p-3 bg-white border border-amber-200 rounded-lg text-sm">
-    <input id="assessPracticalExam" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
-    <span><strong>Practical exam — restrict copying and pasting code</strong><span class="block text-xs text-slate-700 mt-1">Studio only: ordinary clipboard actions, code imports and AI helper are blocked during the exam. Browser restrictions can be bypassed; supervision and review are still needed.</span></span>
-  </label>
-  <div id="personalizedTaskSettings" class="hidden p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
-    <strong class="text-sm text-indigo-950">Personalized mode</strong>
-    <p id="personalizedTaskSetupHint" class="text-xs text-indigo-900 mt-1">Each learner receives a server-assigned task variant for the current attempt. Save the blueprint first, then reopen it to prepare the private variant pool from the Personalization tab.</p>
-  </div>
-</section>
-<section id="studioFormatOptions" class="hidden bg-cyan-50 border border-cyan-200 rounded-xl p-4 sm:p-5">
-            <h3 class="font-bold text-cyan-950">Adminerva Studio submission</h3>
-            <p class="text-sm text-cyan-900 mt-1">Studio work is first-party learner workspace evidence. No GitHub connection, commit selection, repository target paths, or contribution investigation is required.</p>
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3 text-xs">
-              <div class="rounded-lg border border-cyan-100 bg-white p-3"><strong class="block text-cyan-950">Whole project snapshot</strong><span class="text-slate-600">Code, supported design data and database state are frozen together at submission.</span></div>
-              <div class="rounded-lg border border-cyan-100 bg-white p-3"><strong class="block text-cyan-950">Learner-owned workspace</strong><span class="text-slate-600">The submitted Studio project belongs to the signed-in learner; repository authorship reconstruction is unnecessary.</span></div>
-              <div class="rounded-lg border border-cyan-100 bg-white p-3"><strong class="block text-cyan-950">Immutable revision</strong><span class="text-slate-600">After submission, a new snapshot requires a teacher-requested revision.</span></div>
-            </div>
-          </section>
-
           <details id="repositoryEvidenceOptions" class="bg-white border rounded-xl p-4 sm:p-5"><summary class="font-semibold cursor-pointer py-1">GitHub evidence settings <span class="block text-xs font-normal text-slate-500 mt-1">Repository-only controls for commit evidence, target paths and contribution investigation.</span></summary>
             <div class="mt-4 space-y-5">
               <label class="flex gap-3 items-start text-sm"><input id="assessV2" type="checkbox" checked class="mt-1 h-4 w-4"><span><strong>Individual checkpoint evidence (Version 2)</strong><span class="block text-xs text-slate-500 mt-1">Collect selected commits and an individual checkpoint for contribution review.</span></span></label>
@@ -457,6 +457,6 @@
     <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
     <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
     <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.2"></script>
-    <script type="module" src="js/repo-review/assessment-studio.js?v=3.0.9"></script>
+    <script type="module" src="js/repo-review/assessment-studio.js?v=3.0.10"></script>
   </body>
 </html>

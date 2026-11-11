@@ -1,8 +1,9 @@
 /** Assessment authoring, repository evidence, individual review and protected grading: assessment studio. */
 import { app,db,auth } from "../core/firebase-core.js?v=1.3.0";
 import {validateDeploymentDates} from "./assessment-dates.mjs?v=1.3.0";
-import {loadSchoolOptions,fillSchoolDatalist} from "../core/school-options.mjs?v=1.3.0";
 import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
+import {ownedDoc,requireStaffWorkspace,lessonStorage} from "../lesson-review/workspace-session.mjs?v=1.3.0";
+import {scheduleScope,parseScheduleRows} from "../lesson-review/schedule-scope.mjs?v=1.3.0";
 import {generateSchoolContent} from "../core/school-ai.mjs?v=4.0.0";
 import {
   buildExternalPersonalizationPackage,
@@ -32,7 +33,7 @@ let assessments = [];
 let currentAssessmentId = null;
 let deploySelectedSections = [];
 let fpInstance = null;
-let savingBlueprint=false,savingDeployment=false,rubricSource="balanced",lastGeneratedRubric="",subjectFocus=[];
+let savingBlueprint=false,savingDeployment=false,rubricSource="balanced",lastGeneratedRubric="",subjectFocus=[],assessmentSubjectChoices=[];
 let blueprintContentLocked=false;
 let personalizedVariantPool=[],personalizedVariantFingerprint="",personalizedVariantGeneratedAt="",generatingVariants=false,personalizationDirty=false;
 let personalizedPersistedIds=new Set();
@@ -44,9 +45,86 @@ const rubricTemplates=new Map();
 const defaultPersona="Assist the teacher by checking supported evidence against the published task and rubric. Distinguish verified individual contributions from shared project work. Do not infer authorship or misconduct. Leave unsupported, visual and runtime criteria for teacher review. Suggested scores stay unpublished until teacher approval.";
 const balancedCriteria=[{name:"Task requirements",weight:40,description:"Requested features and outputs are demonstrated."},{name:"Correctness",weight:30,description:"The submitted work behaves or reasons correctly for the task."},{name:"Clarity and organization",weight:20,description:"The work is understandable, organized and appropriate for the task."},{name:"Explanation and supporting evidence",weight:10,description:"The student explains the approach and links relevant evidence of their own contribution."}];
 const blueprintStatus=message=>{const node=document.getElementById("blueprintStatus");if(node)node.textContent=message;};
+const CUSTOM_SUBJECT_VALUE="__custom__";
+function selectedAssessmentSubject(){
+  const select=document.getElementById("assessSubject"),
+    custom=document.getElementById("assessSubjectCustom");
+  return select?.value===CUSTOM_SUBJECT_VALUE?String(custom?.value||"").trim():String(select?.value||"").trim();
+}
+function syncAssessmentSubjectCustom(){
+  const custom=document.getElementById("assessSubjectCustom"),
+    wrap=document.getElementById("assessSubjectCustomWrap"),
+    enabled=document.getElementById("assessSubject")?.value===CUSTOM_SUBJECT_VALUE;
+  if(wrap)wrap.classList.toggle("hidden",!enabled);
+  if(custom)custom.disabled=!enabled||blueprintContentLocked;
+}
+function setAssessmentSubjectValue(value=""){
+  const subject=String(value||"").trim(),
+    select=document.getElementById("assessSubject"),
+    custom=document.getElementById("assessSubjectCustom");
+  if(!select||!custom)return;
+  if(!subject){select.value="";custom.value="";}
+  else if([...select.options].some(option=>option.value===subject)){select.value=subject;custom.value="";}
+  else {select.value=CUSTOM_SUBJECT_VALUE;custom.value=subject;}
+  syncAssessmentSubjectCustom();
+}
+function scheduleSubjectsFromRows(rows){
+  const values=new Set(),days=["mon","tue","wed","thu","fri"];
+  for(const row of rows||[]){
+    if(row?.type!=="class")continue;
+    for(const day of days){
+      const subject=String(row?.[day]?.sub||"").trim();
+      if(subject)values.add(subject);
+    }
+  }
+  return [...values];
+}
+async function resolveAssessmentSubjectChoices(user){
+  const assigned=await resolveStaffSubjects(user),scheduled=new Set();
+  try{
+    await requireStaffWorkspace();
+    const year=lessonStorage.getItem("Adminerva_schedule_selected_year")||"2026-2027",
+      semester=lessonStorage.getItem("Adminerva_schedule_selected_semester")||"S1",
+      scope=scheduleScope(year,semester);
+    let rows=parseScheduleRows(lessonStorage.getItem(scope.jsonKey));
+    if(!rows.length){
+      const snapshot=await getDoc(ownedDoc(db,"schedules",scope.id));
+      if(snapshot.exists())rows=parseScheduleRows(snapshot.data().json_data);
+    }
+    if(!rows.length&&scope.allowLegacy){
+      for(const legacyId of [scope.id,"master_schedule"]){
+        try{
+          const snapshot=await getDoc(doc(db,"app_config",legacyId));
+          if(snapshot.exists()){rows=parseScheduleRows(snapshot.data().json_data);if(rows.length)break;}
+        }catch{/* Assigned-subject fallback remains available. */}
+      }
+    }
+    scheduleSubjectsFromRows(rows).forEach(subject=>scheduled.add(subject));
+  }catch{/* Timetable may be unavailable; assigned subjects remain the fallback. */}
+  const choices=[...scheduled,...assigned.filter(subject=>!scheduled.has(subject))];
+  return {assigned,scheduled:[...scheduled],choices:[...new Set(choices)]};
+}
+function renderAssessmentSubjectChoices({choices=[],scheduled=[]}={}){
+  assessmentSubjectChoices=[...choices];
+  const select=document.getElementById("assessSubject"),current=selectedAssessmentSubject();
+  if(!select)return;
+  select.replaceChildren(new Option("No specific subject / General",""));
+  for(const subject of choices)select.add(new Option(subject,subject));
+  select.add(new Option("Custom / Other subject…",CUSTOM_SUBJECT_VALUE));
+  const hint=document.getElementById("assessmentSubjectHint");
+  if(hint)hint.textContent=scheduled.length
+    ?"Subjects currently used in your timetable are listed first. Choose Custom / Other for cross-subject, formative, or unscheduled work."
+    :"No saved timetable subjects were found. Your assigned teaching subjects are listed; Custom / Other is also available.";
+  setAssessmentSubjectValue(current);
+}
 function preparedTaskContext(){
-  const title=document.getElementById("assessTitle").value.trim(),subject=document.getElementById("assessSubject").value.trim();
-  return "Complete "+(title||"the assessment task")+(subject?" for "+subject:"")+". Submit the requested work and a brief explanation of your approach. Link relevant evidence of your own contribution. Your teacher will review the published rubric and submitted evidence.";
+  const title=document.getElementById("assessTitle").value.trim(),
+    subject=selectedAssessmentSubject(),
+    format=document.getElementById("assessSubmissionSource")?.value||"repository",
+    label=(title||"the assessment task")+(subject?" for "+subject:"");
+  if(format==="studio")
+    return "Complete "+label+" in Adminerva Studio. Follow the published requirements and submit your finished Studio project through the assessment before the deadline.";
+  return "Complete "+label+" using the assigned GitHub repository. Follow the published requirements and submit the requested repository evidence before the deadline.";
 }
 function updateContextPreview(){
   const node=document.getElementById("assessmentContextPreview");
@@ -78,7 +156,7 @@ function personalizationSource(){
     assessmentFormat:document.getElementById("assessSubmissionSource").value,
     assessmentMode:document.getElementById("assessMode").value,
     maxScore:Number(document.getElementById("maxScore").value),
-    subject:document.getElementById("assessSubject").value.trim(),
+    subject:selectedAssessmentSubject(),
     taskContext:document.getElementById("taskContext").value.trim()||preparedTaskContext(),
     evalCriteria:document.getElementById("evalCriteria").value.trim(),
     guidance:document.getElementById("assessVariantGuidance")?.value.trim()||""
@@ -285,7 +363,7 @@ window.copyExternalPersonalizationPackage=async function(){
         type:document.getElementById("assessType").value,
         assessmentFormat:document.getElementById("assessSubmissionSource").value==="studio"?"studio_code":"github_repository",
         assessmentMode:document.getElementById("assessMode").value,
-        subject:document.getElementById("assessSubject").value.trim(),
+        subject:selectedAssessmentSubject(),
         maxScore:Number(document.getElementById("maxScore").value),
         taskContext:document.getElementById("taskContext").value.trim()||preparedTaskContext(),
         evalCriteria:document.getElementById("evalCriteria").value.trim()
@@ -472,15 +550,19 @@ window.applyAssessmentRubric=function(){
   }catch(error){blueprintStatus(error.message);}
 };
 async function loadBlueprintChoices(){
-  const results=await Promise.allSettled([getDocs(collection(db,"templates")),loadSchoolOptions()]);
-  if(results[0].status==="fulfilled")for(const record of results[0].value.docs){const data=record.data();if(Array.isArray(data.criteria)&&data.criteria.length)rubricTemplates.set("template:"+record.id,{name:data.name||"Saved rubric",criteria:data.criteria});}
-  if(results[1].status==="fulfilled"){
-    const subjects=subjectFocus.length?results[1].value.subjects.filter(subject=>subjectFocus.includes(subject)):results[1].value.subjects;
-    fillSchoolDatalist("assessmentSubjectChoices",subjects);
-  }
+  try{
+    const snapshot=await getDocs(collection(db,"templates"));
+    for(const record of snapshot.docs){const data=record.data();if(Array.isArray(data.criteria)&&data.criteria.length)rubricTemplates.set("template:"+record.id,{name:data.name||"Saved rubric",criteria:data.criteria});}
+  }catch{/* The built-in rubric remains available when saved templates cannot load. */}
   refreshRubricChoices();
 }
-for(const id of ["assessTitle","assessSubject","assessType","taskContext"])document.getElementById(id).addEventListener("input",()=>{
+for(const id of ["assessTitle","assessType","taskContext"])document.getElementById(id).addEventListener("input",()=>{
+  updateContextPreview();markPersonalizationPossiblyStale();
+});
+document.getElementById("assessSubject").addEventListener("change",()=>{
+  syncAssessmentSubjectCustom();updateContextPreview();markPersonalizationPossiblyStale();
+});
+document.getElementById("assessSubjectCustom").addEventListener("input",()=>{
   updateContextPreview();markPersonalizationPossiblyStale();
 });
 document.getElementById("maxScore").addEventListener("input",()=>{
@@ -512,7 +594,7 @@ window.showBlueprintEditorTab=function(tab){
 function setBlueprintContentLocked(locked,{lockGuidance=Boolean(locked)}={}){
   blueprintContentLocked=Boolean(locked);
   const ids=[
-    "assessTitle","maxScore","assessType","assessQuarter","assessSubject","assessSubmissionSource",
+    "assessTitle","maxScore","assessType","assessQuarter","assessSubject","assessSubjectCustom","assessSubmissionSource",
     "assessPracticalExam","assessMode","taskContext","assessmentRubricTemplate",
     "assessmentApplyRubric","evalCriteria","assessV2","newTargetPath","assessExpectedExts",
     "assessInvestigationFallback","systemPersona","newRuleType","newRuleValue"
@@ -523,6 +605,7 @@ function setBlueprintContentLocked(locked,{lockGuidance=Boolean(locked)}={}){
     document.getElementById("assessSubmissionSource").disabled=true;
     document.getElementById("assessV2").disabled=true;
   }
+  syncAssessmentSubjectCustom();
   document.getElementById("saveAssessmentBtn").classList.toggle("hidden",blueprintContentLocked);
   if(blueprintContentLocked)
     blueprintStatus(lockGuidance
@@ -653,7 +736,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   window.showSubtleLoader("Loading Assessment Studio...");
-  subjectFocus=await resolveStaffSubjects(auth.currentUser);
+  const subjectContext=await resolveAssessmentSubjectChoices(auth.currentUser);
+  subjectFocus=subjectContext.assigned;
+  renderAssessmentSubjectChoices(subjectContext);
   await fetchSectionsFromStudents();
   await loadAssessments();
   void loadBlueprintChoices();
@@ -694,7 +779,7 @@ async function loadAssessments() {
         id:item.id,...item.data(),
         ...([2,3].includes(item.data().schemaVersion) ? (privateById.get(item.id)||{}) : {})
       };
-      if(!subjectFocus.length||!assessment.subject||subjectFocus.includes(assessment.subject))assessments.push(assessment);
+      if(!subjectFocus.length||assessment.ownerUid===auth.currentUser?.uid||!assessment.subject||subjectFocus.includes(assessment.subject))assessments.push(assessment);
     });
     renderAssessmentGrid();
     refreshRubricChoices();
@@ -771,7 +856,6 @@ function updateAssessmentFormatMode(){
   const personalized=studio&&mode.value==="personalized";
 
   document.getElementById("personalizedTaskSettings").classList.toggle("hidden",!personalized);
-  document.getElementById("studioFormatOptions").classList.toggle("hidden",!studio);
   document.getElementById("repositoryEvidenceOptions").classList.toggle("hidden",!repository);
   if(!repository)document.getElementById("repositoryEvidenceOptions").open=false;
 
@@ -790,6 +874,7 @@ function updateAssessmentFormatMode(){
           :"This assessment format is reserved for a future release.";
   }
   updatePersonalizationTabAvailability();
+  updateContextPreview();
   if(personalized)renderPersonalizedVariantPool();
 }
 document.getElementById("assessMode").addEventListener("change",updateAssessmentFormatMode);
@@ -834,7 +919,7 @@ window.openCreateModal = function () {
   document.getElementById("maxScore").value = "20";
   document.getElementById("assessType").value = "Mini PETA";
   document.getElementById("assessQuarter").value=assessments.find(item=>["Q1","Q2","Q3","Q4"].includes(item.quarter))?.quarter||"Q1";
-  document.getElementById("assessSubject").value=subjectFocus.length===1?subjectFocus[0]:"";
+  setAssessmentSubjectValue(assessmentSubjectChoices.length===1?assessmentSubjectChoices[0]:"");
   document.getElementById("assessSubmissionSource").value="repository";
   document.getElementById("assessSubmissionSource").disabled=false;
   document.getElementById("assessMode").value="default";
@@ -910,7 +995,7 @@ window.openEditModal = async function () {
   document.getElementById("systemPersona").value = item.systemPersona || "";
   document.getElementById("taskContext").value = item.taskContext || "";
   document.getElementById("evalCriteria").value = item.evalCriteria || "";
-  document.getElementById("assessSubject").value=item.subject||"";rubricSource="manual";lastGeneratedRubric="";
+  setAssessmentSubjectValue(item.subject||"");rubricSource="manual";lastGeneratedRubric="";
   refreshRubricChoices();document.getElementById("assessmentRubricTemplate").value="balanced";
   if(!document.getElementById("evalCriteria").value.trim())window.applyAssessmentRubric();
   if(!document.getElementById("systemPersona").value.trim())document.getElementById("systemPersona").value=defaultPersona;
@@ -946,9 +1031,9 @@ window.saveAssessment = async function () {
   const title = document.getElementById("assessTitle").value.trim();
   if (!title){blueprintStatus("Enter an assessment title.");document.getElementById("assessTitle").focus();return;}
   const score=Number(document.getElementById("maxScore").value),criteria=document.getElementById("evalCriteria").value.trim(),actor=auth.currentUser;
-  const subject=document.getElementById("assessSubject").value.trim();
+  const subject=selectedAssessmentSubject();
   if(!actor?.uid){blueprintStatus("Sign in to your staff account before saving.");return;}
-  if(subjectFocus.length&&(!subject||!subjectFocus.includes(subject))){blueprintStatus("Choose one of your assigned subjects before saving this assessment.");document.getElementById("assessSubject").focus();return;}
+  if(subject.length>120){blueprintStatus("Subject or custom context must be 120 characters or fewer.");document.getElementById("assessSubjectCustom").focus();return;}
   if(!Number.isFinite(score)||score<1||score>1000){blueprintStatus("Maximum score must be between 1 and 1,000.");document.getElementById("maxScore").focus();return;}
   if(!criteria){blueprintStatus("Use a prepared rubric or enter your evaluation criteria before saving.");document.getElementById("evalCriteria").focus();return;}
 
