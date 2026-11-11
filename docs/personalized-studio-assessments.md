@@ -37,15 +37,16 @@ difficulty, required effort or rubric.
    as preparation pending.
 9. In the Personalization tab, optionally write **Variation guidance**
    describing what may change and what must remain fixed.
-10. Choose a private pool target from 10 to 50. Adminerva shows an estimate
+10. Choose a private pool target from 10 to 300. Adminerva shows an estimate
     based on the deployed sections and learner count when available.
 11. Prepare variants with either:
     - **School AI** — direct generation using the configured Adminerva AI
       connection; or
     - **External AI package** — copy a privacy-preserving generation package to
       ChatGPT or another external AI and import its JSON response. External
-      packages request at most 10 variants per batch; the next package asks only
-      for the remaining capacity.
+      packages are section-aware and request at most 45 variants per batch. The
+      planned batch size is `ceil(target pool / deployed section count)`, capped
+      at 45; the next package asks only for the remaining capacity.
 12. Review sample variants. Partial external batches may be saved privately
     between sessions. An initial partial pool does not unlock students until the
     target is reached.
@@ -126,11 +127,24 @@ Simply refreshing Studio or closing/reopening the overall assessment does not
 reroll an unfinished learner task. This prevents learners from repeatedly
 requesting a more favorable task.
 
-## Pool limits and replenishment
+## Pool limits, batching and replenishment
 
-The first implementation supports a saved pool of 10–50 prepared variants and
-bounds the serialized private pool before saving it. The pool should normally
-cover the expected learner count plus reasonable revision headroom.
+The first implementation supports a target pool of 10–300 prepared variants.
+Variant prompts are stored as separate teacher-private documents below
+`assessment_private/{assessmentId}/variants/{variantId}`; the private assessment
+record stores only personalization metadata and active variant IDs. This avoids
+putting a multi-section pool into one Firestore document.
+
+For deployed sections, Adminerva recommends:
+
+`enrolled learners + (5 × deployed section count)`
+
+as a starting target. The teacher may lower or raise that target before the
+pool is activated. External packages use a stable adaptive batch size based on
+the target and deployed-section count, capped at 45. For example, 160 learners
+across four sections produce a recommended target of 180 and four 45-variant
+external packages. A manually chosen target of 164 produces four 41-variant
+packages.
 
 If all variants are assigned, the server fails closed rather than silently
 reusing another learner's task.
@@ -142,10 +156,12 @@ target and add unused variants from School AI or an external package. Existing
 learner variants remain frozen because increasing capacity does not change the
 blueprint fingerprint.
 
-For the first pool, partial externally generated batches can be saved privately
-without publishing readiness, so students remain preparation-pending. For an
-already-live pool expansion, each saved partial expansion immediately adds that
-new capacity while the original learner access remains active.
+Imported external batches are autosaved immediately as private drafts. Browser
+blur/visibility change is only a fallback autosave. Draft autosave does not
+publish the new capacity to learners. After the target is ready, the teacher
+uses **Activate / update pool** once to publish the prepared active IDs. During
+a live expansion, the old active pool remains available until the expanded pool
+is explicitly activated.
 
 ## Mini PETA 3 example — Java OOP
 
@@ -160,7 +176,7 @@ Recommended blueprint:
 | Maximum score | 10 |
 | Submission workspace | Adminerva Studio project snapshot |
 | Personalized task variants | On |
-| Pool size | 40 or enough for the class plus revision headroom |
+| Pool size | Enrolled learners plus revision headroom; Adminerva recommends 5 extra per deployed section |
 | Suggested open date | November 16, 2026 |
 | Deadline | November 20, 2026, 11:59 PM Asia/Manila |
 | Practical exam restrictions | Off for normal take-home work |
