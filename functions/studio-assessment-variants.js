@@ -132,7 +132,7 @@ function createStudioAssessmentVariantService({db,Timestamp}){
     if(!windowOpen(assessment,student.section,now))
       deny("failed-precondition","This personalized task cannot start outside the Studio submission window.");
 
-    let result=null,lastCollision=null;
+    let result=null;
     const start=chooseIndex(pool.variantIds.length);
     for(let offset=0;offset<pool.variantIds.length&&!result;offset++){
       const variantId=pool.variantIds[(start+offset)%pool.variantIds.length],
@@ -170,7 +170,7 @@ function createStudioAssessmentVariantService({db,Timestamp}){
         });
       }catch(error){
         if(error?.variantReserved||String(error?.message||"").includes("VARIANT_RESERVED")){
-          lastCollision=error;continue;
+          continue;
         }
         throw error;
       }
