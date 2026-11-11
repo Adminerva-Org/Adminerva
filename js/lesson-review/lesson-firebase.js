@@ -286,7 +286,10 @@ window.saveLessonPlan = async function () {
       instruction_map: window.cachedInstructionMap || null,
       schedule: await window.fetchScheduleForLesson(schoolYear, academicTerm, grade, subject, dateRange),
       schedule_meetings: Array.isArray(window.currentLessonMeetings) ? window.currentLessonMeetings : [],
-      session_structure: Array.isArray(window.currentRequiredSessions) ? window.currentRequiredSessions : [],
+      session_structure: Array.isArray(window.currentPlan)
+        ? window.currentPlan.map(session=>String(session?.session_name||"").trim())
+            .filter(name=>name&&name!=="Session Flex")
+        : [],
       reference_folders: Array.from(
         document.querySelectorAll(".folder-checkbox:checked"),
       ).map((cb) => cb.value),
