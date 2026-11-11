@@ -415,22 +415,25 @@ window.showBlueprintEditorTab=function(tab){
   personalButton.classList.toggle("border-transparent",!personal);
   personalButton.classList.toggle("text-slate-600",!personal);
 };
-function setBlueprintContentLocked(locked){
+function setBlueprintContentLocked(locked,{lockGuidance=Boolean(locked)}={}){
   blueprintContentLocked=Boolean(locked);
   const ids=[
     "assessTitle","maxScore","assessType","assessQuarter","assessSubject","assessSubmissionSource",
     "assessPracticalExam","assessPersonalizedTask","taskContext","assessmentRubricTemplate",
     "assessmentApplyRubric","evalCriteria","assessV2","newTargetPath","assessExpectedExts",
-    "assessInvestigationFallback","systemPersona","newRuleType","newRuleValue","assessVariantGuidance"
+    "assessInvestigationFallback","systemPersona","newRuleType","newRuleValue"
   ];
   for(const id of ids){const node=document.getElementById(id);if(node)node.disabled=blueprintContentLocked;}
+  document.getElementById("assessVariantGuidance").disabled=Boolean(lockGuidance);
   if(currentAssessmentId){
     document.getElementById("assessSubmissionSource").disabled=true;
     document.getElementById("assessV2").disabled=true;
   }
   document.getElementById("saveAssessmentBtn").classList.toggle("hidden",blueprintContentLocked);
   if(blueprintContentLocked)
-    blueprintStatus("Published task details and variation guidance are locked after deployment. You may increase the pool target and add unused variants without changing existing learner tasks.");
+    blueprintStatus(lockGuidance
+      ?"Published task details and variation guidance are locked. You may increase the pool target and add unused variants without changing existing learner tasks."
+      :"Published task details are locked after deployment. Set the variation guidance and prepare the first private pool; the guidance will lock when that pool is saved.");
 }
 function updatePersonalizationTabAvailability(){
   const item=currentAssessmentId?assessments.find(value=>value.id===currentAssessmentId):null,
@@ -763,7 +766,9 @@ window.openEditModal = function () {
   document.getElementById("externalPersonalizationStatus").textContent="";
   updatePersonalizationTabAvailability();
   renderPersonalizationCoverage(item);
-  setBlueprintContentLocked(deployedStudio);
+  setBlueprintContentLocked(deployedStudio,{
+    lockGuidance:deployedStudio&&Boolean(item.personalizedTask?.poolFingerprint)
+  });
   window.showBlueprintEditorTab(deployedStudio&&item.personalizedTask?.enabled===true?"personalization":"blueprint");
   document.getElementById("viewModal").classList.add("hidden");
   document.getElementById("createModal").classList.remove("hidden");
