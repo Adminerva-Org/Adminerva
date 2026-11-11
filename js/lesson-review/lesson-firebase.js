@@ -9,7 +9,7 @@ import {ADMIN_EMAIL,TEACHER_EMAIL} from "../core/staff-role.mjs?v=1.3.0";
 import {legacyLessonRecovery} from "../core/legacy-lesson-recovery.mjs?v=1.3.2";
 import {personalPlanId,requireCurrentVersion} from "./workspace-model.mjs?v=1.3.0";
 import {scheduleScope,localScheduleText,normalizeSchoolYear,parseScheduleRows} from "./schedule-scope.mjs?v=1.3.0";
-import {filterScheduleRowsForLesson,isLegacySharedScope,isLegacyScheduleRetired,buildLessonMeetingContext} from "./legacy-schedule-compat.mjs?v=1.4.20";
+import {filterScheduleRowsForLesson,isLegacySharedScope,isLegacyScheduleRetired,buildLessonMeetingContext} from "./legacy-schedule-compat.mjs?v=1.4.21";
 import {
   collection,
   getDocs,
@@ -48,6 +48,7 @@ window.fetchScheduleForLesson = async function (schoolYear, academicTerm, grade=
     );
     window.currentLessonMeetings=context.meetings;
     window.currentSessionMeetingMap=context.bySession;
+    window.currentRequiredSessions=[...(context.sessionNames||[])];
     return context.text;
   };
   const local = () => {
@@ -60,6 +61,7 @@ window.fetchScheduleForLesson = async function (schoolYear, academicTerm, grade=
     if(grade||subject){
       window.currentLessonMeetings=[];
       window.currentSessionMeetingMap={};
+      window.currentRequiredSessions=[];
       return "";
     }
     return localScheduleText(lessonStorage, schoolYear, academicTerm);
@@ -284,6 +286,7 @@ window.saveLessonPlan = async function () {
       instruction_map: window.cachedInstructionMap || null,
       schedule: await window.fetchScheduleForLesson(schoolYear, academicTerm, grade, subject, dateRange),
       schedule_meetings: Array.isArray(window.currentLessonMeetings) ? window.currentLessonMeetings : [],
+      session_structure: Array.isArray(window.currentRequiredSessions) ? window.currentRequiredSessions : [],
       reference_folders: Array.from(
         document.querySelectorAll(".folder-checkbox:checked"),
       ).map((cb) => cb.value),
