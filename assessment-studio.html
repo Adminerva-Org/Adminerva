@@ -222,15 +222,25 @@
     <input id="assessPersonalizedTask" type="checkbox" class="mt-1 h-4 w-4 shrink-0">
     <span><strong>Personalized task variants</strong><span class="block text-xs text-slate-700 mt-1">Studio only. Each learner receives a server-generated task for the current attempt. A teacher-requested revision receives a new task instead of reusing the prior variant.</span></span>
   </label>
-  <div id="personalizedTaskSettings" class="hidden mt-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
-    <label for="assessVariantRecipe" class="block text-sm font-semibold text-indigo-950">Variant recipe
-      <select id="assessVariantRecipe" class="w-full mt-1 p-3 border border-indigo-200 rounded-lg bg-white">
-        <option value="java_oop_fundamentals_v1">Java OOP Fundamentals · class, constructor, methods and objects</option>
-        <option value="java_logic_written_work_v1">Java Logic · values, expressions and decisions</option>
-      </select>
+  <div id="personalizedTaskSettings" class="hidden mt-3 p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-3">
+    <div>
+      <strong class="text-sm text-indigo-950">Generate equivalent variants from this blueprint</strong>
+      <p class="text-xs text-indigo-900 mt-1">Adminerva uses the task instructions and published rubric as the source of truth. It may change concrete details, but must preserve the same competencies, difficulty and scoring expectations.</p>
+    </div>
+    <label for="assessVariantGuidance" class="block text-sm font-semibold text-indigo-950">Variation guidance <span class="font-normal text-indigo-700">Optional</span>
+      <textarea id="assessVariantGuidance" rows="3" maxlength="3000" class="w-full mt-1 p-3 border border-indigo-200 rounded-lg bg-white text-sm" placeholder="Example: Change the scenario, class/variable names and numeric values. Keep the same OOP concepts and do not introduce inheritance."></textarea>
     </label>
-    <p id="variantRecipeHelp" class="text-xs text-indigo-900 mt-2">OOP variants change the scenario, class and field identifiers, method names, object names and values while keeping the required OOP structure and difficulty comparable.</p>
-    <button id="assessmentApplyVariantRubric" type="button" onclick="applyPersonalizedRecipeRubric()" class="av-secondary-button mt-3">Use recipe rubric</button>
+    <div class="grid grid-cols-1 sm:grid-cols-[10rem_1fr] gap-3 items-end">
+      <label for="assessVariantCount" class="block text-sm font-semibold text-indigo-950">Variant pool size
+        <input id="assessVariantCount" type="number" min="10" max="80" step="1" value="40" class="w-full mt-1 p-3 border border-indigo-200 rounded-lg bg-white">
+      </label>
+      <button id="assessmentGenerateVariants" type="button" onclick="generatePersonalizedVariantPool()" class="av-secondary-button">Generate / refresh variants with AI</button>
+    </div>
+    <p id="personalizedVariantStatus" class="text-xs text-indigo-900" role="status">No variant pool generated yet.</p>
+    <details id="personalizedVariantPreviewWrap" class="hidden bg-white border border-indigo-200 rounded-lg p-3">
+      <summary class="font-semibold text-sm cursor-pointer text-indigo-950">Preview generated variants</summary>
+      <div id="personalizedVariantPreview" class="mt-3 grid gap-3"></div>
+    </details>
   </div>
 </section>
 <details id="blueprintAdvanced" class="bg-white border rounded-xl p-4 sm:p-5"><summary class="font-semibold cursor-pointer py-1">Advanced evidence filters &amp; checker instructions <span class="block text-xs font-normal text-slate-500 mt-1">Optional. The default uses individual evidence review without path or keyword restrictions.</span></summary>
