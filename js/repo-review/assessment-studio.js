@@ -208,7 +208,11 @@ window.generatePersonalizedVariantPool=async function(){
       throw Error("Adminerva generated only "+unique.size+" distinct valid variants. Retry, reduce the pool size, or make the variation guidance more specific.");
     if(await currentPersonalizationFingerprint()!==fingerprint)
       throw Error("The task instructions or rubric changed while variants were generating. Generate the pool again from the current blueprint.");
-    personalizedVariantPool=[...unique.values()].slice(0,count);
+    const generated=[...unique.values()].slice(0,count);
+    const poolBytes=new TextEncoder().encode(JSON.stringify(generated)).length;
+    if(poolBytes>700000)
+      throw Error("The generated variant pool is too large to store safely. Reduce the pool size or make each task prompt more concise.");
+    personalizedVariantPool=generated;
     personalizedVariantFingerprint=fingerprint;
     personalizedVariantGeneratedAt=new Date().toISOString();
     renderPersonalizedVariantPool();
@@ -915,6 +919,14 @@ window.saveDeployment = async function () {
 
   const item = assessments.find((a) => a.id === currentAssessmentId);
   if(!item)return alert("Assessment unavailable. Refresh the page and try again.");
+  if(item.personalizedTask?.enabled===true){
+    const privatePool=Array.isArray(item.personalization?.variants)?item.personalization.variants:[],
+      publicFingerprint=String(item.personalizedTask?.poolFingerprint||""),
+      privateFingerprint=String(item.personalization?.fingerprint||"");
+    if(!publicFingerprint||publicFingerprint!==privateFingerprint||!privatePool.length||
+       Number(item.personalizedTask?.poolSize||0)!==privatePool.length)
+      return alert("Generate and save a current personalized variant pool before deploying this assessment.");
+  }
   let deployments = [...(item.deployments || [])];
   if(!deployId){
     const duplicates=deploySelectedSections.filter(section=>deployments.some(entry=>entry.section===section));
