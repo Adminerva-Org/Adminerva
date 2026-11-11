@@ -45,6 +45,68 @@ const rubricTemplates=new Map();
 const defaultPersona="Assist the teacher by checking supported evidence against the published task and rubric. Distinguish verified individual contributions from shared project work. Do not infer authorship or misconduct. Leave unsupported, visual and runtime criteria for teacher review. Suggested scores stay unpublished until teacher approval.";
 const balancedCriteria=[{name:"Task requirements",weight:40,description:"Requested features and outputs are demonstrated."},{name:"Correctness",weight:30,description:"The submitted work behaves or reasons correctly for the task."},{name:"Clarity and organization",weight:20,description:"The work is understandable, organized and appropriate for the task."},{name:"Explanation and supporting evidence",weight:10,description:"The student explains the approach and links relevant evidence of their own contribution."}];
 const blueprintStatus=message=>{const node=document.getElementById("blueprintStatus");if(node)node.textContent=message;};
+let assessmentToastTimer=0;
+function showAssessmentToast(message,{tone="info",duration=3200}={}){
+  const region=document.getElementById("assessmentToastRegion");
+  if(!region)return;
+  clearTimeout(assessmentToastTimer);
+  region.replaceChildren();
+  const palette={
+    success:"border-emerald-200 bg-emerald-50 text-emerald-950",
+    warning:"border-amber-200 bg-amber-50 text-amber-950",
+    error:"border-rose-200 bg-rose-50 text-rose-950",
+    info:"border-sky-200 bg-sky-50 text-sky-950"
+  };
+  const toast=document.createElement("div");
+  toast.className="pointer-events-auto rounded-xl border px-4 py-3 text-sm font-semibold shadow-lg transition duration-200 opacity-0 translate-y-[-4px] "+(palette[tone]||palette.info);
+  toast.textContent=message;
+  region.append(toast);
+  requestAnimationFrame(()=>toast.classList.remove("opacity-0","translate-y-[-4px]"));
+  assessmentToastTimer=setTimeout(()=>{
+    toast.classList.add("opacity-0","translate-y-[-4px]");
+    setTimeout(()=>toast.remove(),220);
+  },duration);
+}
+async function externalPackageReadiness(){
+  if(!currentAssessmentId)return {ready:false,badge:"Not ready",tone:"warning",message:"Save the personalized blueprint first."};
+  const item=assessments.find(value=>value.id===currentAssessmentId);
+  if(!item||item.schemaVersion!==3||item.personalizedTask?.enabled!==true)
+    return {ready:false,badge:"Not ready",tone:"warning",message:"External packages are available for saved Personalized Studio assessments."};
+  const target=Number(document.getElementById("assessVariantCount")?.value);
+  if(!Number.isInteger(target)||target<10||target>MAX_PERSONALIZED_POOL)
+    return {ready:false,badge:"Check target",tone:"warning",message:"Choose a valid private pool target before copying a package."};
+  if(!String(document.getElementById("evalCriteria")?.value||"").trim())
+    return {ready:false,badge:"Not ready",tone:"warning",message:"Prepare the published rubric before copying an external package."};
+  const fingerprint=await currentPersonalizationFingerprint(),
+    preserve=personalizedVariantFingerprint===fingerprint?personalizedVariantPool:[],
+    need=variantGenerationNeed(preserve.length);
+  if(!need.missing)
+    return {ready:false,badge:"Target met",tone:"success",message:"The current private pool already meets the target. Increase the target to prepare more variants."};
+  const plannedBatch=externalPersonalizationBatchSize(item,need.target),
+    batchCount=Math.min(plannedBatch,need.missing),
+    totalBatches=Math.ceil(need.target/plannedBatch),
+    batchIndex=Math.min(totalBatches,Math.floor(preserve.length/plannedBatch)+1);
+  return {
+    ready:true,badge:"Ready",tone:"success",
+    message:"Ready to copy · Batch "+batchIndex+" of "+totalBatches+" · "+batchCount+" variant"+(batchCount===1?"":"s")+".",
+    fingerprint,preserve,need,item,plannedBatch,batchCount,totalBatches,batchIndex
+  };
+}
+async function renderExternalPackageReadiness(){
+  const node=document.getElementById("externalPackageReadiness"),
+    badge=document.getElementById("externalPackageReadinessBadge");
+  if(!node||!badge)return;
+  const state=await externalPackageReadiness();
+  node.textContent=state.message;
+  badge.textContent=state.badge;
+  const styles={
+    success:"border-emerald-200 bg-emerald-50 text-emerald-700",
+    warning:"border-amber-200 bg-amber-50 text-amber-700",
+    error:"border-rose-200 bg-rose-50 text-rose-700",
+    info:"border-sky-200 bg-sky-50 text-sky-700"
+  };
+  badge.className="shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold uppercase "+(styles[state.tone]||styles.info);
+}
 function assessmentPublished(item){
   if(!item)return false;
   if(typeof item.published==="boolean")return item.published;
@@ -214,7 +276,7 @@ function renderPersonalizedVariantPool(){
   preview.replaceChildren();
   if(!personalizedVariantPool.length){
     status.textContent="No variant pool generated yet.";
-    wrap.classList.add("hidden");return;
+    wrap.classList.add("hidden");void renderExternalPackageReadiness();return;
   }
   const item=currentAssessmentId?assessments.find(value=>value.id===currentAssessmentId):null,
     active=Array.isArray(item?.personalization?.variantIds)?item.personalization.variantIds.length:0,
@@ -230,6 +292,7 @@ function renderPersonalizedVariantPool(){
     body.textContent=variant.prompt;card.append(heading,body);preview.append(card);
   }
   wrap.classList.remove("hidden");
+  void renderExternalPackageReadiness();
 }
 function providerText(result){
   return (result?.candidates||[]).flatMap(candidate=>candidate.content?.parts||[])
@@ -367,24 +430,19 @@ window.generatePersonalizedVariantPool=async function(){
 };
 
 window.copyExternalPersonalizationPackage=async function(){
-  if(!currentAssessmentId)return blueprintStatus("Save the personalized blueprint before exporting a generation package.");
-  const fingerprint=await currentPersonalizationFingerprint(),
-    preserve=personalizedVariantFingerprint===fingerprint?personalizedVariantPool:[],
-    need=variantGenerationNeed(preserve.length);
-  if(!need.missing){
-    document.getElementById("externalPersonalizationStatus").textContent=
-      "The current pool already meets the target. Increase the target if you want additional unused variants.";
+  const state=await externalPackageReadiness();
+  if(!state.ready){
+    document.getElementById("externalPersonalizationStatus").textContent=state.message;
+    showAssessmentToast(state.message,{tone:state.tone||"warning"});
+    void renderExternalPackageReadiness();
     return;
   }
+  const button=document.getElementById("copyExternalPersonalizationPackageBtn");
+  if(button)button.disabled=true;
   try{
-    const item=assessments.find(value=>value.id===currentAssessmentId)||{},
-      plannedBatch=externalPersonalizationBatchSize(item,need.target),
-      batchCount=Math.min(plannedBatch,need.missing),
-      totalBatches=Math.ceil(need.target/plannedBatch),
-      batchIndex=Math.min(totalBatches,Math.floor(preserve.length/plannedBatch)+1);
     const packageText=buildExternalPersonalizationPackage({
       assessment:{
-        ...item,
+        ...state.item,
         title:document.getElementById("assessTitle").value.trim(),
         type:document.getElementById("assessType").value,
         assessmentFormat:document.getElementById("assessSubmissionSource").value==="studio"?"studio_code":"github_repository",
@@ -395,15 +453,22 @@ window.copyExternalPersonalizationPackage=async function(){
         evalCriteria:document.getElementById("evalCriteria").value.trim()
       },
       guidance:document.getElementById("assessVariantGuidance").value.trim(),
-      count:batchCount,batchIndex,totalBatches,
-      existingSummaries:preserve.map(value=>value.summary||value.prompt.slice(0,180))
+      count:state.batchCount,batchIndex:state.batchIndex,totalBatches:state.totalBatches,
+      existingSummaries:state.preserve.map(value=>value.summary||value.prompt.slice(0,180))
     });
     await navigator.clipboard.writeText(packageText);
+    const message="External AI package copied · Batch "+state.batchIndex+" of "+state.totalBatches+
+      " · "+state.batchCount+" variant"+(state.batchCount===1?"":"s")+".";
     document.getElementById("externalPersonalizationStatus").textContent=
-      "Copied external batch "+batchIndex+" of "+totalBatches+" requesting "+batchCount+
-      " variant"+(batchCount===1?"":"s")+" ("+need.missing+" remain before this batch). Paste it into the external AI, then import its JSON response below.";
+      message+" Paste it into the external AI, then import its JSON response below.";
+    showAssessmentToast(message,{tone:"success"});
   }catch(error){
-    document.getElementById("externalPersonalizationStatus").textContent="Package not copied: "+error.message;
+    const message="Package not copied: "+error.message;
+    document.getElementById("externalPersonalizationStatus").textContent=message;
+    showAssessmentToast(message,{tone:"error",duration:4200});
+  }finally{
+    if(button)button.disabled=false;
+    void renderExternalPackageReadiness();
   }
 };
 
@@ -439,13 +504,23 @@ window.importExternalPersonalizationResponse=async function(){
       (remaining?" · "+remaining+" more needed to reach the target. Copy the next external package when ready.":" · target reached.") ;
     const saved=await persistPersonalizationPool({activate:false,silent:true});
     if(saved)document.getElementById("externalPersonalizationResponse").value="";
+    const importMessage=saved
+      ?(remaining
+        ?"External batch imported and autosaved · "+remaining+" variants remain."
+        :"Final external batch imported and autosaved · target reached.")
+      :"External batch imported, but autosave failed.";
     blueprintStatus(saved
       ?(remaining
         ?"External batch imported and autosaved. Continue with the next package; "+remaining+" variants remain."
         :"Final external batch imported and autosaved. Review the samples, then activate the pool.")
       :"External batch imported in this browser, but autosave failed. Keep this page open and use Activate / update pool after checking connectivity.");
+    showAssessmentToast(importMessage,{tone:saved?"success":"warning",duration:3800});
+    void renderExternalPackageReadiness();
   }catch(error){
-    document.getElementById("externalPersonalizationStatus").textContent="Import failed: "+error.message;
+    const message="Import failed: "+error.message;
+    document.getElementById("externalPersonalizationStatus").textContent=message;
+    showAssessmentToast(message,{tone:"error",duration:4200});
+    void renderExternalPackageReadiness();
   }
 };
 
@@ -907,13 +982,14 @@ function updateAssessmentFormatMode(){
   if(personalized)renderPersonalizedVariantPool();
 }
 document.getElementById("assessMode").addEventListener("change",updateAssessmentFormatMode);
-document.getElementById("assessVariantGuidance").addEventListener("input",markPersonalizationPossiblyStale);
+document.getElementById("assessVariantGuidance").addEventListener("input",()=>{markPersonalizationPossiblyStale();void renderExternalPackageReadiness();});
 document.getElementById("assessVariantCount").addEventListener("input",()=>{
-  if(!personalizedVariantPool.length)return renderPersonalizedVariantPool();
+  if(!personalizedVariantPool.length){renderPersonalizedVariantPool();void renderExternalPackageReadiness();return;}
   const need=variantGenerationNeed();
   document.getElementById("personalizedVariantStatus").textContent=need.missing
     ?"Current private pool: "+personalizedVariantPool.length+". Add "+need.missing+" more to reach the "+need.target+" target."
     :"Current private pool meets the "+need.target+" target with "+personalizedVariantPool.length+" variants.";
+  void renderExternalPackageReadiness();
 });
 async function autosavePersonalizationSafety(){
   if(!personalizationDirty||savingBlueprint||!currentAssessmentId)return;
@@ -958,7 +1034,7 @@ window.openCreateModal = function () {
   document.getElementById("assessVariantCount").value="45";
   document.getElementById("assessVariantCount").min="10";
   personalizedVariantPool=[];personalizedVariantFingerprint="";personalizedVariantGeneratedAt="";personalizedPersistedIds=new Set();
-  updateAssessmentFormatMode();renderPersonalizedVariantPool();
+  updateAssessmentFormatMode();renderPersonalizedVariantPool();void renderExternalPackageReadiness();
   document.getElementById("assessV2").checked = true;
   document.getElementById("assessV2").disabled = false;
   document.getElementById("assessExpectedExts").value = "";
@@ -1045,6 +1121,7 @@ window.openEditModal = async function () {
   updatePersonalizationTabAvailability();
   renderPersonalizationCoverage(item);
   void renderPersonalizationUsage(item);
+  void renderExternalPackageReadiness();
   setBlueprintContentLocked(deployedStudio,{
     lockGuidance:deployedStudio&&Boolean(item.personalizedTask?.poolFingerprint)
   });
