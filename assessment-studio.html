@@ -247,6 +247,20 @@
               <h3 class="font-bold text-slate-900">Personalized variants</h3>
               <p class="text-sm text-slate-600 mt-1">Variants are prepared privately. Students never generate tasks themselves: opening the assignment automatically assigns one unused variant and freezes it to that attempt.</p>
             </div>
+            <fieldset class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <legend class="px-1 text-sm font-bold text-slate-800">Personalized response type</legend>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-1">
+                <label class="flex items-start gap-3 rounded-lg border border-teal-200 bg-white p-3">
+                  <input type="radio" name="personalizedResponseType" value="studio" checked disabled class="mt-1 h-4 w-4">
+                  <span><strong class="text-sm text-teal-950">Adminerva Studio project</strong><span class="block text-xs text-slate-600 mt-1">Available now. Learners submit a frozen Studio project snapshot tied to their assigned variant and revision.</span></span>
+                </label>
+                <label class="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-100 p-3 opacity-70 cursor-not-allowed" aria-disabled="true">
+                  <input type="radio" name="personalizedResponseType" value="essay" disabled class="mt-1 h-4 w-4">
+                  <span><strong class="text-sm text-slate-700">Essay / written response</strong><span class="inline-block ml-2 rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-600">Future</span><span class="block text-xs text-slate-500 mt-1">Planned expansion for personalized essay prompts and written-response submissions. Not selectable in this release.</span></span>
+                </label>
+              </div>
+              <p class="text-xs text-slate-500 mt-2">Personalized assessments are Studio-only for now. The response type is shown here so future submission modes can be added without changing the personalization workflow.</p>
+            </fieldset>
             <label for="assessVariantGuidance" class="block text-sm font-semibold text-slate-800">Variation guidance <span class="font-normal text-slate-500">Optional</span>
               <textarea id="assessVariantGuidance" rows="4" maxlength="3000" class="w-full mt-1 p-3 border rounded-lg bg-white text-sm" placeholder="Describe what may vary and what must remain fixed. Example: vary the scenario, identifiers and values, but keep the same OOP concepts and do not introduce inheritance."></textarea>
             </label>
