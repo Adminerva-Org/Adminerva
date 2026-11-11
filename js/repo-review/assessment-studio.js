@@ -770,6 +770,7 @@ window.openCreateModal = function () {
   document.getElementById("assessPersonalizedTask").checked=false;
   document.getElementById("assessVariantGuidance").value="";
   document.getElementById("assessVariantCount").value="45";
+  document.getElementById("assessVariantCount").min="10";
   personalizedVariantPool=[];personalizedVariantFingerprint="";personalizedVariantGeneratedAt="";
   updatePracticalExamOption();renderPersonalizedVariantPool();
   document.getElementById("assessV2").checked = true;
@@ -816,7 +817,9 @@ window.openEditModal = async function () {
   document.getElementById("assessPracticalExam").checked=item.practicalExam===true;
   document.getElementById("assessPersonalizedTask").checked=item.personalizedTask?.enabled===true;
   document.getElementById("assessVariantGuidance").value=item.personalization?.guidance||"";
-  document.getElementById("assessVariantCount").value=String(item.personalizedTask?.poolTarget||item.personalization?.variantIds?.length||45);
+  const variantCountInput=document.getElementById("assessVariantCount");
+  variantCountInput.value=String(item.personalizedTask?.poolTarget||item.personalization?.variantIds?.length||45);
+  variantCountInput.min=String(item.personalizedTask?.poolFingerprint?Math.max(10,Number(item.personalizedTask?.poolTarget||10)):10);
   personalizedVariantFingerprint=typeof item.personalization?.fingerprint==="string"?item.personalization.fingerprint:"";
   personalizedVariantGeneratedAt=typeof item.personalization?.generatedAt==="string"?item.personalization.generatedAt:"";
   personalizedVariantPool=await loadPersonalizationVariants(item.id,item.personalization||{});
