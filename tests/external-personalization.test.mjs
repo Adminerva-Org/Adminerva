@@ -59,3 +59,16 @@ test("external personalization response rejects duplicate prompts",async()=>{
     /duplicate learner prompts/
   );
 });
+
+
+test("external personalization supports section-sized batches up to forty-five",()=>{
+  const value=buildExternalPersonalizationPackage({
+    assessment,guidance:"Keep variants concise and equivalent.",count:45,batchIndex:1,totalBatches:4
+  });
+  assert.match(value,/"requestedVariants": 45/);
+  assert.match(value,/"total": 4/);
+  assert.throws(
+    ()=>buildExternalPersonalizationPackage({assessment,count:46}),
+    /1 to 45 variants/
+  );
+});
