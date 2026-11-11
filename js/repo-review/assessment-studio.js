@@ -7,7 +7,7 @@ import {generateSchoolContent} from "../core/school-ai.mjs?v=4.0.0";
 import {
   buildExternalPersonalizationPackage,
   parseExternalPersonalizationResponse
-} from "./services/external-personalization.mjs?v=1.0.0";
+} from "./services/external-personalization.mjs?v=1.0.1";
 import {
   collection,
   getDocs,
