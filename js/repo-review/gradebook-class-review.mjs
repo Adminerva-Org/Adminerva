@@ -182,8 +182,16 @@ function statusFor(student){
 }
 function render(){
   if(!context)return;
-  const tools=el("gbClassReviewTools"),isV2=Number(context.schemaVersion)===2;
+  const tools=el("gbClassReviewTools"),isV2=Number(context.schemaVersion)===2,
+    isStudio=Number(context.schemaVersion)===3||context.assessmentFormat==="studio_code";
   if(tools){tools.dataset.ready="true";tools.classList.toggle("hidden",document.getElementById("gbLegacyView")?.classList.contains("hidden")!==false);}
+  el("gbRepositoryReviewActions")?.classList.toggle("hidden",!isV2);
+  el("gbReclaimQueue")?.classList.toggle("hidden",!isV2);
+  el("gbStudioReviewActions")?.classList.toggle("hidden",!isStudio);
+  if(isStudio&&el("gbStudioReviewLink")){
+    const params=new URLSearchParams({assessment:context.taskId,section:context.section});
+    el("gbStudioReviewLink").href="studio-submissions.html?"+params.toString();
+  }
   let submitted=0,approved=0,drafts=0,ready=0,flagged=0,published=0,exceptions=0;
   for(const student of context.students){
     const state=statusFor(student),box=document.querySelector('[data-review-state="'+CSS.escape(student.id)+'"]');
@@ -222,10 +230,12 @@ function render(){
   }):[];
   const coreReviewDataComplete=!isV2||(evidenceReadable&&gradesReadable);
   const reviewDataComplete=coreReviewDataComplete&&receiptsReadable&&draftsReadable;
-  el("gbClassReviewSummary").textContent=coreReviewDataComplete
-    ?context.students.length+" learners · "+ready+" ready to publish · "+flagged+" need review · "+published+" published"+(submitted?" · "+submitted+" awaiting evidence review":"")+(exceptions?" · "+exceptions+" exceptions":"")+
-      (!reviewDataComplete?" · supplemental review data unavailable":"")
-    :context.students.length+" learners · core grading data unavailable — refresh evidence";
+  el("gbClassReviewSummary").textContent=isStudio
+    ?context.students.length+" learners · "+ready+" Studio grade draft"+(ready===1?"":"s")+" ready to publish · "+published+" published · open Studio submissions to review project snapshots and revisions"
+    :coreReviewDataComplete
+      ?context.students.length+" learners · "+ready+" ready to publish · "+flagged+" need review · "+published+" published"+(submitted?" · "+submitted+" awaiting evidence review":"")+(exceptions?" · "+exceptions+" exceptions":"")+
+        (!reviewDataComplete?" · supplemental review data unavailable":"")
+      :context.students.length+" learners · core grading data unavailable — refresh evidence";
   if(el("gbForceGather")){
     const gatherReady=!isV2||(evidenceReadable&&gradesReadable);
     el("gbForceGather").textContent=isV2?(gatherReady?"Force gather evidence ("+gatherCandidates.length+")":"Force gather evidence (?)"):"Force gather · V2 evidence only";
