@@ -486,9 +486,6 @@ window.viewAssessmentDetails = function (id) {
     `${typeColor} text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider mb-2 inline-block`;
   document.getElementById("modalAssType").textContent = ass.type;
   document.getElementById("modalAssTitle").textContent = ass.title;
-  const fileScope=assessmentTargetDetails(ass);
-  document.getElementById("modalAssPath").textContent =
-    `Target Paths: ${fileScope.paths}${fileScope.expectedTypes ? " · Expected file types: " + fileScope.expectedTypes : ""}`;
   document.getElementById("modalAssContext").textContent =
     ass.taskContext || "No instructions provided.";
   document.getElementById("modalAssRubric").textContent =
@@ -508,7 +505,14 @@ window.viewAssessmentDetails = function (id) {
   }
 
   const presentation=assessmentPresentation(ass);
-  document.getElementById("modalAssPath").textContent="Submission: "+presentation.path;
+  if(presentation.mode==="repository"){
+    const fileScope=assessmentTargetDetails(ass);
+    document.getElementById("modalAssPath").textContent=
+      "Submission: "+presentation.path+" · Target paths: "+fileScope.paths+
+      (fileScope.expectedTypes?" · Expected file types: "+fileScope.expectedTypes:"");
+  }else{
+    document.getElementById("modalAssPath").textContent="Submission: "+presentation.path;
+  }
   const isStudio=ass.schemaVersion===3&&ass.submissionSource==="studio";
   const personalized=isStudio&&ass.personalizedTask?.enabled===true,
     personalizedReady=!personalized||(
