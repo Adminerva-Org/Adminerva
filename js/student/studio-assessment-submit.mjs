@@ -122,17 +122,23 @@ if(button){
           throw Error("This exact project revision was already submitted. Make changes before submitting again.");
         const revision=head.exists()?head.data().revision+1:1;
         if(revision>30)throw Error("The revision limit was reached. Ask your instructor for assistance.");
+        const personalized=current.personalizedTask?.enabled===true;
+        const assigned=window.adminervaStudioAssessmentVariant;
+        if(personalized&&(!assigned||assigned.assessmentId!==assessment.id||
+          assigned.studentId!==student.id||assigned.attempt!==revision||!assigned.variantId))
+          throw Error("Your personalized task does not match this submission attempt. Reopen the assessment before submitting.");
+        const variantId=personalized?String(assigned.variantId):"";
         const versionRef=doc(db,"studio_submissions",evidenceId,"versions",String(revision));
         const submittedAt=serverTimestamp();
         tx.set(versionRef,{
           source:"studio",studentId:student.id,assessmentId:assessment.id,
           ownerUid:uid,section:student.section,revision,projectId:captured.project.id,
-          snapshotHash:hash,snapshotJson:snapshot.json,submittedAt
+          variantId,snapshotHash:hash,snapshotJson:snapshot.json,submittedAt
         });
         tx.set(headRef,{
           source:"studio",studentId:student.id,assessmentId:assessment.id,
           ownerUid:uid,section:student.section,revision,projectId:captured.project.id,
-          projectTitle:captured.project.title.slice(0,120),snapshotHash:hash,
+          projectTitle:captured.project.title.slice(0,120),variantId,snapshotHash:hash,
           status:"submitted",reviewNote:"",reviewedBy:"",submittedAt
         });
         return revision;
