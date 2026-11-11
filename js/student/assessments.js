@@ -323,13 +323,16 @@ function assessmentPresentation(ass){
 function assignmentStatusFor(ass){
   if(ass.schemaVersion===3&&ass.submissionSource==="studio"){
     if(myGrades[ass.id])return {kind:"graded",text:"Graded"};
-    const head=myStudioSubmissions[ass.id];
+    const head=myStudioSubmissions[ass.id],
+      personalized=ass.personalizedTask?.enabled===true,
+      poolReady=!personalized||(Number(ass.personalizedTask?.poolSize||0)>0&&Boolean(ass.personalizedTask?.poolFingerprint));
     if(!head&&!studioSubmissionsReadable)return {kind:"unknown",text:"Studio status unavailable — retry"};
-    if(head?.status==="revision_requested")return {kind:"revision",text:"Revision requested"};
+    if(head?.status==="revision_requested")return {kind:"revision",text:personalized?"New personalized revision ready":"Revision requested"};
     if(head?.status==="reviewed")return {kind:"reviewed",text:"Teacher reviewed"};
     if(head?.status==="submitted")return {kind:"submitted",text:"Studio revision "+head.revision+" submitted"};
     if(ass.dueDate&&Date.now()>ass.dueDate.getTime())return {kind:"pastdue",text:"Past due"};
-    return {kind:"notSubmitted",text:"Studio project required"};
+    if(personalized&&!poolReady)return {kind:"preparing",text:"Personalized task being prepared"};
+    return {kind:"notSubmitted",text:personalized?"Personalized task ready":"Studio project required"};
   }
   return assessmentStatus({grade:myGrades[ass.id],submitted:Boolean(mySubmitted[ass.id]),evidenceStatus:myEvidence[ass.id]?.status||null,deadline:ass.noDeadline?null:ass.dueDate,knownSubmissions:submissionLookupSucceeded});
 }
@@ -395,6 +398,7 @@ function renderAssessments() {
       evidence:"text-indigo-800 bg-indigo-50 border-indigo-200",
       pastdue:"text-rose-700 bg-rose-50 border-rose-200",
       notSubmitted:"text-slate-700 bg-slate-100 border-slate-200",
+      preparing:"text-violet-700 bg-violet-50 border-violet-200",
       unknown:"text-amber-700 bg-amber-50 border-amber-200"
     };
     const urgencyBadge=`<span class="text-[10px] font-bold border rounded-full px-2 py-1 ${colors[status.kind]}">${escapeHTML(status.text)}${status.kind==="graded"?" · "+escapeHTML(myGrade.score):""}</span>`;
