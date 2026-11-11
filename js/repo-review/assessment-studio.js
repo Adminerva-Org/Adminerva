@@ -5,6 +5,10 @@ import {loadSchoolOptions,fillSchoolDatalist} from "../core/school-options.mjs?v
 import {resolveStaffSubjects} from "../core/staff-session.mjs?v=1.3.10";
 import {generateSchoolContent} from "../core/school-ai.mjs?v=4.0.0";
 import {
+  buildExternalPersonalizationPackage,
+  parseExternalPersonalizationResponse
+} from "./services/external-personalization.mjs?v=1.0.0";
+import {
   collection,
   getDocs,
   addDoc,
@@ -27,6 +31,7 @@ let currentAssessmentId = null;
 let deploySelectedSections = [];
 let fpInstance = null;
 let savingBlueprint=false,savingDeployment=false,rubricSource="balanced",lastGeneratedRubric="",subjectFocus=[];
+let blueprintContentLocked=false;
 let personalizedVariantPool=[],personalizedVariantFingerprint="",personalizedVariantGeneratedAt="",generatingVariants=false;
 const PERSONALIZATION_MODE="ai_blueprint_pool_v1";
 const rubricTemplates=new Map();
@@ -256,6 +261,55 @@ document.getElementById("evalCriteria").addEventListener("input",()=>{
   markPersonalizationPossiblyStale();
 });
 
+window.showBlueprintEditorTab=function(tab){
+  const personal=tab==="personalization",
+    personalButton=document.getElementById("blueprintPersonalizationTabButton"),
+    blueprintButton=document.getElementById("blueprintTabButton");
+  if(personal&&personalButton.classList.contains("hidden"))return;
+  document.getElementById("blueprintEditorTab").classList.toggle("hidden",personal);
+  document.getElementById("blueprintPersonalizationTab").classList.toggle("hidden",!personal);
+  blueprintButton.classList.toggle("border-indigo-600",!personal);
+  blueprintButton.classList.toggle("text-indigo-700",!personal);
+  blueprintButton.classList.toggle("border-transparent",personal);
+  blueprintButton.classList.toggle("text-slate-600",personal);
+  personalButton.classList.toggle("border-indigo-600",personal);
+  personalButton.classList.toggle("text-indigo-700",personal);
+  personalButton.classList.toggle("border-transparent",!personal);
+  personalButton.classList.toggle("text-slate-600",!personal);
+};
+function setBlueprintContentLocked(locked){
+  blueprintContentLocked=Boolean(locked);
+  const ids=[
+    "assessTitle","maxScore","assessType","assessQuarter","assessSubject","assessSubmissionSource",
+    "assessPracticalExam","assessPersonalizedTask","taskContext","assessmentRubricTemplate",
+    "assessmentApplyRubric","evalCriteria","assessV2","newTargetPath","assessExpectedExts",
+    "assessInvestigationFallback","systemPersona","newRuleType","newRuleValue"
+  ];
+  for(const id of ids){const node=document.getElementById(id);if(node)node.disabled=blueprintContentLocked;}
+  document.getElementById("saveAssessmentBtn").classList.toggle("hidden",blueprintContentLocked);
+  if(blueprintContentLocked)
+    blueprintStatus("Published task details are locked after deployment. Personalization variants may still be expanded without changing the rubric or student instructions.");
+}
+function updatePersonalizationTabAvailability(){
+  const item=currentAssessmentId?assessments.find(value=>value.id===currentAssessmentId):null,
+    visible=Boolean(currentAssessmentId&&item?.schemaVersion===3&&item?.personalizedTask?.enabled===true);
+  document.getElementById("blueprintPersonalizationTabButton").classList.toggle("hidden",!visible);
+  if(!visible&&document.getElementById("blueprintEditorTab").classList.contains("hidden"))
+    window.showBlueprintEditorTab("blueprint");
+}
+function mergeVariantPool(incoming,{replaceIfStale=true}={}){
+  const map=new Map();
+  const sameFingerprint=personalizedVariantFingerprint&&
+    personalizedVariantFingerprint===window.__adminervaCurrentPersonalizationFingerprint;
+  const base=sameFingerprint||!replaceIfStale?personalizedVariantPool:[];
+  for(const variant of base)map.set(variant.variantId,variant);
+  for(const variant of incoming)map.set(variant.variantId,variant);
+  return [...map.values()];
+}
+function variantGenerationNeed(){
+  const target=Math.max(10,Math.min(50,Number(document.getElementById("assessVariantCount").value)||40));
+  return {target,missing:Math.max(0,target-personalizedVariantPool.length)};
+}
 function escapeHTML(str) {
   if (!str) return "";
   return String(str).replace(
