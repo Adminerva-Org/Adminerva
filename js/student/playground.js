@@ -107,6 +107,69 @@ function moveStudioEditorCursor(command){
   editorInstance.revealPositionInCenterIfOutsideViewport(editorInstance.getPosition());
 }
 
+const STUDIO_PREFS_KEY='Adminerva_Studio_Preferences_v1';
+function loadStudioPreferences(){
+  const defaults={cursorFollow:true,wordWrap:false,autoTerminal:true};
+  try{
+    const stored=JSON.parse(localStorage.getItem(STUDIO_PREFS_KEY)||'{}');
+    for(const key of Object.keys(defaults))if(typeof stored?.[key]==='boolean')defaults[key]=stored[key];
+  }catch{}
+  return defaults;
+}
+const studioPreferences=loadStudioPreferences();
+function applyStudioPreferences(){
+  editorInstance?.updateOptions({
+    wordWrap:studioPreferences.wordWrap?'on':'off',
+    cursorSurroundingLines:studioPreferences.cursorFollow?3:0
+  });
+}
+function revealStudioCursor(){
+  if(!editorInstance||!studioPreferences.cursorFollow)return;
+  if(document.getElementById('editorPane')?.offsetParent===null)return;
+  const position=editorInstance.getPosition();
+  if(position)editorInstance.revealPositionInCenterIfOutsideViewport(position);
+}
+function initializeStudioPreferences(){
+  applyStudioPreferences();
+  editorInstance?.onDidChangeCursorPosition(event=>{
+    if(!studioPreferences.cursorFollow||event.source==='mouse')return;
+    requestAnimationFrame(revealStudioCursor);
+  });
+  editorInstance?.onDidChangeModelContent(()=>{
+    if(studioPreferences.cursorFollow)requestAnimationFrame(revealStudioCursor);
+  });
+  let lastHeight=window.visualViewport?.height;
+  window.visualViewport?.addEventListener('resize',()=>{
+    const height=window.visualViewport?.height;
+    if(height===lastHeight)return;
+    lastHeight=height;
+    if(!window.matchMedia('(max-width:767px)').matches)return;
+    requestAnimationFrame(()=>{
+      editorInstance?.layout();
+      revealStudioCursor();
+    });
+  });
+  const dialog=document.getElementById('studioPreferencesDialog');
+  if(!dialog)return;
+  const fields={cursorFollow:'studioPrefCursorFollow',wordWrap:'studioPrefWordWrap',autoTerminal:'studioPrefAutoTerminal'};
+  for(const [key,id] of Object.entries(fields)){
+    const checkbox=document.getElementById(id);
+    if(!checkbox)continue;
+    checkbox.checked=studioPreferences[key];
+    checkbox.addEventListener('change',()=>{
+      studioPreferences[key]=checkbox.checked;
+      try{localStorage.setItem(STUDIO_PREFS_KEY,JSON.stringify(studioPreferences));}catch{}
+      applyStudioPreferences();
+      if(key==='cursorFollow')revealStudioCursor();
+    });
+  }
+  const open=()=>{if(!dialog.open)dialog.showModal();};
+  const close=()=>{if(dialog.open)dialog.close();};
+  document.getElementById('studioPreferencesBtn')?.addEventListener('click',open);
+  document.getElementById('studioPreferencesClose')?.addEventListener('click',close);
+  document.getElementById('studioPreferencesDone')?.addEventListener('click',close);
+}
+
 const JAVA_RUN_MODE_KEY="Adminerva_Java_Run_Mode_v1";
 let javaRunMode=(()=>{try{return localStorage.getItem(JAVA_RUN_MODE_KEY)==="desktop"?"desktop":"console";}catch{return "console";}})();
 let desktopRunSequence=0;
@@ -205,6 +268,7 @@ async function initializePlayground() {
     bindUIEvents();
     initializeMobileStudio();
     initializeStudioEditorTouchGestures();
+    initializeStudioPreferences();
     syncStudioEditorZoomLabel();
     initResizer();
     setupWebConsoleHook();
@@ -1501,7 +1565,23 @@ function initializeMobileStudio(){
   const mobileRun=document.getElementById('studioMobileRun');
   const toolbar=document.querySelector('.studio-mobile-toolbar');
   const projectBar=document.querySelector('.studio-project-bar');
+  const toolsBar=document.querySelector('.studio-tabs');
+  const toolsPanel=document.getElementById('studioToolsPanel');
+  const toolsToggle=document.getElementById('studioMobileToolsToggle');
   if(!panel||!explorer||!actions||!backdrop||!toolbar)return;
+  // Keep the original control IDs and event handlers; only their location changes.
+  for(const id of ['saveProjectBtn','runBtn']){
+    const button=document.getElementById(id);
+    if(button&&toolsPanel)toolsPanel.appendChild(button);
+  }
+  const setToolsOpen=open=>{
+    toolsPanel?.classList.toggle('studio-tools-open',Boolean(open));
+    toolsToggle?.setAttribute('aria-expanded',String(Boolean(open)));
+  };
+  toolsToggle?.addEventListener('click',()=>setToolsOpen(!toolsPanel?.classList.contains('studio-tools-open')));
+  toolsPanel?.addEventListener('click',event=>{
+    if(event.target.closest('[data-studio-view]')&&compact())setToolsOpen(false);
+  });
   const compact=()=>window.matchMedia('(max-width:767px)').matches;
   let activeDrawer=null;
   const closeDrawer=()=>{
@@ -1535,7 +1615,10 @@ function initializeMobileStudio(){
   document.getElementById('studioMobileCloseMore')?.addEventListener('click',closeDrawer);
   editorButton?.addEventListener('click',()=>setPane('editor'));
   terminalButton?.addEventListener('click',()=>setPane('terminal'));
-  mobileRun?.addEventListener('click',()=>{setPane('terminal');document.getElementById('runBtn')?.click();});
+  mobileRun?.addEventListener('click',()=>{
+    if(studioPreferences.autoTerminal)setPane('terminal');
+    document.getElementById('runBtn')?.click();
+  });
   backdrop.addEventListener('click',closeDrawer);
   document.addEventListener('keydown',event=>{if(event.key==='Escape')closeDrawer();});
   explorer.addEventListener('click',event=>{
@@ -1546,6 +1629,7 @@ function initializeMobileStudio(){
   const resize=()=>{
     if(!compact()){
       closeDrawer();
+      setToolsOpen(false);
       panel.removeAttribute('data-mobile-pane');
       requestAnimationFrame(()=>editorInstance?.layout());
     }else if(!panel.dataset.mobilePane){
@@ -1577,14 +1661,19 @@ function initializeMobileStudio(){
     if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.4)return;
     if(activeDrawer){
       if((activeDrawer==='files'&&dx<0)||(activeDrawer==='actions'&&dx>0))closeDrawer();
+    }else if(origin==='menus'){
+      if(dx>0)showDrawer('actions');
+    }else if(origin==='tools'){
+      if(dx>0)setToolsOpen(true);
+      else setToolsOpen(false);
     }else if(origin==='chrome'){
       showDrawer(dx>0?'files':'actions');
     }
   };
-  for(const surface of [toolbar,projectBar]){
+  for(const [surface,origin] of [[toolbar,'chrome'],[projectBar,'menus'],[toolsBar,'tools']]){
     if(!surface)continue;
     surface.addEventListener('pointerdown',swipeStart,{passive:true});
-    surface.addEventListener('pointerup',event=>swipeEnd(event,'chrome'),{passive:true});
+    surface.addEventListener('pointerup',event=>swipeEnd(event,origin),{passive:true});
     surface.addEventListener('pointercancel',()=>{start=null;},{passive:true});
   }
   for(const surface of [explorer,actions]){
