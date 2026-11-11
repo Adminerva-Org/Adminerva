@@ -68,7 +68,8 @@ function personalizationSource(){
     subject:document.getElementById("assessSubject").value.trim(),
     taskContext:document.getElementById("taskContext").value.trim()||preparedTaskContext(),
     evalCriteria:document.getElementById("evalCriteria").value.trim(),
-    guidance:document.getElementById("assessVariantGuidance")?.value.trim()||""
+    guidance:document.getElementById("assessVariantGuidance")?.value.trim()||"",
+    poolTarget:Number(document.getElementById("assessVariantCount")?.value||0)
   });
 }
 async function sha256Text(text){
@@ -430,6 +431,7 @@ function updatePracticalExamOption(){
 }
 document.getElementById("assessPersonalizedTask").addEventListener("change",updatePersonalizedTaskOption);
 document.getElementById("assessVariantGuidance").addEventListener("input",markPersonalizationPossiblyStale);
+document.getElementById("assessVariantCount").addEventListener("input",markPersonalizationPossiblyStale);
 document.getElementById("assessSubmissionSource").addEventListener("change",()=>{
   updatePracticalExamOption();
   if(!currentAssessmentId&&document.getElementById("assessSubmissionSource").value==="studio"&&
