@@ -2,6 +2,7 @@
 const {randomBytes}=require("node:crypto");
 
 const PERSONALIZATION_MODE="ai_blueprint_pool_v1";
+const MAX_POOL_SIZE=300;
 const deny=(code,message)=>{const error=Error(message);error.code=code;throw error;};
 const cleanId=(value,label)=>{
   const text=String(value||"");
@@ -16,19 +17,25 @@ function validPool(privateData,assessment){
   const personalization=privateData?.personalization;
   if(!personalization||personalization.mode!==PERSONALIZATION_MODE)
     deny("failed-precondition","This personalized assessment has no generated task pool.");
-  if(typeof personalization.fingerprint!=="string"||!personalization.fingerprint||
-     personalization.fingerprint!==assessment.personalizedTask?.poolFingerprint)
+  const fingerprint=String(personalization.fingerprint||""),
+    publicFingerprint=String(assessment.personalizedTask?.poolFingerprint||""),
+    variantIds=Array.isArray(personalization.variantIds)?personalization.variantIds:[];
+  if(!fingerprint||fingerprint!==publicFingerprint)
     deny("failed-precondition","The personalized task pool is stale. Ask your teacher to regenerate it.");
-  const variants=Array.isArray(personalization.variants)?personalization.variants:[];
-  const clean=variants.filter(item=>item&&typeof item.variantId==="string"&&
-    /^[a-f0-9]{16,64}$/.test(item.variantId)&&typeof item.prompt==="string"&&
-    item.prompt.trim().length>=20&&item.prompt.length<=12000&&
-    typeof item.evaluationNotes==="string"&&item.evaluationNotes.trim().length>=10&&item.evaluationNotes.length<=8000);
-  if(clean.length!==variants.length||clean.length<1)
-    deny("failed-precondition","The personalized task pool is incomplete. Ask your teacher to regenerate it.");
-  if(new Set(clean.map(item=>item.variantId)).size!==clean.length)
-    deny("failed-precondition","The personalized task pool contains duplicate variant IDs.");
-  return clean;
+  if(variantIds.length<1||variantIds.length>MAX_POOL_SIZE||
+     variantIds.length!==Number(assessment.personalizedTask?.poolSize||0))
+    deny("failed-precondition","The personalized task pool metadata is incomplete.");
+  const clean=variantIds.filter(value=>typeof value==="string"&&/^[a-f0-9]{16,64}$/.test(value));
+  if(clean.length!==variantIds.length||new Set(clean).size!==clean.length)
+    deny("failed-precondition","The personalized task pool contains invalid or duplicate variant IDs.");
+  return {fingerprint,variantIds:clean};
+}
+function validVariant(data,{variantId,fingerprint}){
+  if(!data||data.variantId!==variantId||data.fingerprint!==fingerprint||
+     typeof data.prompt!=="string"||data.prompt.trim().length<20||data.prompt.length>12000||
+     typeof data.evaluationNotes!=="string"||data.evaluationNotes.trim().length<10||data.evaluationNotes.length>8000)
+    deny("failed-precondition","The selected personalized task record is invalid.");
+  return data;
 }
 
 function createStudioAssessmentVariantService({db,Timestamp}){
@@ -141,19 +148,23 @@ function createStudioAssessmentVariantService({db,Timestamp}){
       if(current.exists){result=current.data();return;}
 
       const used=new Set(Array.isArray(registry.data()?.usedVariantIds)?registry.data().usedVariantIds:[]);
-      const available=pool.filter(item=>!used.has(item.variantId));
+      const available=pool.variantIds.filter(id=>!used.has(id));
       if(!available.length)
         deny("resource-exhausted","All personalized task variants are already assigned. Ask your teacher to add more variants.");
-      const chosen=available[chooseIndex(available.length)],createdAt=Timestamp.fromMillis(now);
+      const variantId=available[chooseIndex(available.length)],
+        poolRef=db.doc("assessment_private/"+assessmentId+"/variants/"+variantId),
+        poolRecord=await tx.get(poolRef),
+        chosen=validVariant(poolRecord.exists?poolRecord.data():null,{variantId,fingerprint:pool.fingerprint}),
+        createdAt=Timestamp.fromMillis(now);
       result={
         assessmentId,studentId:student.id,ownerUid:actor.uid,section:student.section,attempt,
-        variantId:chosen.variantId,prompt:chosen.prompt,evaluationNotes:chosen.evaluationNotes||"",
-        poolFingerprint:assessment.personalizedTask.poolFingerprint,createdAt
+        variantId,prompt:chosen.prompt,evaluationNotes:chosen.evaluationNotes||"",
+        poolFingerprint:pool.fingerprint,createdAt
       };
       tx.create(variantRef,result);
       tx.set(registryRef,{
-        assessmentId,poolFingerprint:assessment.personalizedTask.poolFingerprint,
-        usedVariantIds:[...used,chosen.variantId],updatedAt:createdAt
+        assessmentId,poolFingerprint:pool.fingerprint,
+        usedVariantIds:[...used,variantId],updatedAt:createdAt
       },{merge:false});
     });
     return {assessmentId,studentId:student.id,attempt,variantId:result.variantId,prompt:result.prompt,
@@ -161,4 +172,4 @@ function createStudioAssessmentVariantService({db,Timestamp}){
   };
 }
 
-module.exports={createStudioAssessmentVariantService,PERSONALIZATION_MODE,validPool};
+module.exports={createStudioAssessmentVariantService,PERSONALIZATION_MODE,MAX_POOL_SIZE,validPool,validVariant};
