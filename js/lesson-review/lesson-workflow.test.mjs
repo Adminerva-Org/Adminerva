@@ -67,10 +67,10 @@ test("lesson save validates school year without throwing out of save handler",()
 
 test("no-schedule generation cannot silently invent teaching times",()=>{
   const source=readFileSync("js/lesson-review/ai-engine.js","utf8");
-  assert.ok(source.includes("No teacher timetable was found"));
-  assert.ok(source.includes("do NOT invent class sections") ||
-            source.includes("do NOT invent sections"));
-  assert.ok(source.includes("Do not invent section names or meeting times."));
+  assert.ok(source.includes("No matching "));
+  assert.ok(source.includes("timetable meetings were found"));
+  assert.ok(source.includes("Do not invent a date, session, topic, section, or requirement."));
+  assert.ok(source.includes("Do not infer other classes, breaks, assemblies"));
 });
 
 test("loading another subject never changes the saved lesson identity",()=>{
@@ -81,7 +81,7 @@ test("loading another subject never changes the saved lesson identity",()=>{
   const end=ui.indexOf('document.getElementById("lpSchoolYear").value',start);
   assert.ok(start>=0 && end>start);
   const context={
-    window:{currentPlan:[],currentPlanSubject:"",currentPlanTeacher:""},
+    window:{currentPlan:[],currentPlanSubject:"",currentPlanTeacher:"",setCurrentLessonMeetings(){}},
     lessonStorage:{getItem:key=>key==="Adminerva_defaultSubject"?"New Semester Subject":"Current Teacher"},
     document:{getElementById:()=>({value:"Grade 11"})},
     alert(){},savedLessonSettings
@@ -104,6 +104,7 @@ test("loading another subject never changes the saved lesson identity",()=>{
   assert.ok(selectedSubject && blankStart>0);
   const subject={value:"Selected Subject"};
   const blankContext={window:{renderOverview(){},renderOutput(){}},
+    expectedSessions:()=>["Session 1","Session 2","Session 3","Session Flex"],
     document:{getElementById:id=>id==="lpSubject"?subject:id==="lpGradeLevel"?{value:"Grade 11"}:null},
     lessonStorage:{getItem:key=>key==="Adminerva_defaultSubject"?"Default Subject":null}};
   vm.runInNewContext(selectedSubject+"\n"+generation.slice(blankStart),blankContext);

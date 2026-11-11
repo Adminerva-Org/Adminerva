@@ -115,6 +115,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["planner", "Lesson planner", "lesson-planner.html"],
       ["presentation", "Slide editor", "presentation.html"],
       ["schedule", "Teacher schedule", "schedule.html"],
+      ["pilot-sandbox", "Private pilot sandbox", "pilot-sandbox.html"],
       ["library", "Reference library", "library.html"]
     ] },
     { name: "School setup", area: "admin", items: (isSuperAdmin || isSchoolAdmin || isPlatformOwner) ? [

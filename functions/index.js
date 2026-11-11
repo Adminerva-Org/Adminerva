@@ -103,6 +103,8 @@ exports.schoolFileRetentionCleanup=onSchedule({
 },schoolFileRetention);
 const {createSchoolPlanningService}=require("./school-planning.js");
 exports.schoolPlanning=onCall(callOptions,safeCallable(createSchoolPlanningService({db})));
+const {createSchoolPilotSandboxService}=require("./school-pilot-sandbox.js");
+exports.schoolPilotSandbox=onCall(callOptions,safeCallable(createSchoolPilotSandboxService({db})));
 const {createSchoolScheduleService}=require("./school-schedules.js");
 exports.schoolSchedules=onCall(callOptions,safeCallable(createSchoolScheduleService({db})));
 const {createSchoolReferenceService}=require("./school-references.js");
