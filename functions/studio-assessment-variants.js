@@ -45,7 +45,8 @@ function createStudioAssessmentVariantService({db,Timestamp}){
     const data=record.data();
     if(data.schemaVersion!==3||data.submissionSource!=="studio"||
        data.personalizedTask?.enabled!==true||
-       data.personalizedTask?.mode!==PERSONALIZATION_MODE)
+       data.personalizedTask?.mode!==PERSONALIZATION_MODE||
+       data.personalizedTask?.responseType!=="studio_project")
       deny("failed-precondition","This assessment does not use personalized Studio tasks.");
     const privateRecord=await db.doc("assessment_private/"+assessmentId).get();
     if(!privateRecord.exists)deny("failed-precondition","This assessment's private personalization configuration is unavailable.");
