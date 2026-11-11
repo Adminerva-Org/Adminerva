@@ -412,7 +412,10 @@ window.generatePersonalizedVariantPool=async function(){
   }
   generatingVariants=true;button.disabled=true;blueprintStatus("");
   const unique=new Map(preserve.map(item=>[item.variantId,item])),
-    summaries=preserve.map(item=>item.summary||item.prompt.slice(0,180));
+    scenarioKeys=new Set(scenarioRegistryFromPool(preserve).map(item=>item.scenarioKey)),
+    scenarioTitles=new Set(scenarioRegistryFromPool(preserve).map(item=>item.scenarioTitle.toLowerCase())),
+    summaries=scenarioRegistryFromPool(preserve)
+      .map(item=>item.scenarioKey+" · "+item.scenarioTitle+" · "+item.summary);
   document.getElementById("personalizedVariantStatus").textContent=
     "Generating "+need.missing+" additional variant"+(need.missing===1?"":"s")+" with School AI…";
   const loader=window.beginLoading?.("Generating equivalent assessment variants…")||(()=>{});
@@ -423,10 +426,16 @@ window.generatePersonalizedVariantPool=async function(){
       const batch=await generateVariantBatch({count:batchCount,title,taskContext,evalCriteria,guidance,previousSummaries:summaries});
       calls++;
       for(const item of batch){
-        const id=(await sha256Text(item.prompt)).slice(0,24);
-        if(unique.has(id))continue;
-        unique.set(id,{variantId:id,prompt:item.prompt,evaluationNotes:item.evaluationNotes,summary:item.summary});
-        summaries.push(item.summary||item.prompt.slice(0,180));
+        const id=(await sha256Text(item.prompt)).slice(0,24),
+          scenarioKey=normalizeScenarioKey(item.scenarioKey||item.scenarioTitle),
+          scenarioTitle=String(item.scenarioTitle||"").trim().toLowerCase();
+        if(unique.has(id)||!scenarioKey||scenarioKeys.has(scenarioKey)||scenarioTitles.has(scenarioTitle))continue;
+        unique.set(id,{
+          variantId:id,scenarioKey,scenarioTitle:item.scenarioTitle,
+          prompt:item.prompt,evaluationNotes:item.evaluationNotes,summary:item.summary
+        });
+        scenarioKeys.add(scenarioKey);scenarioTitles.add(scenarioTitle);
+        summaries.push(scenarioKey+" · "+item.scenarioTitle+" · "+item.summary);
         if(unique.size>=need.target)break;
       }
       document.getElementById("personalizedVariantStatus").textContent=
