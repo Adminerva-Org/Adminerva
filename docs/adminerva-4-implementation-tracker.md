@@ -573,3 +573,8 @@ The output file is created with owner-only file permissions and cannot overwrite
 - Changed-school events now invalidate old home pulse requests, hide the prior snapshot and reload from the newly verified school; no school ID is trusted from browser state.
 - No Class Record, CheerpJ, assessment rubric, grade, evidence or production Firebase code changed. No deployment or pilot activation.
 - Still pending: incorporation of the newer independent mainline Class Record and CheerpJ artifacts at a controlled reconciliation boundary, further shared LMS/Firebase compatibility review, and protected MCS pilot activation.
+
+
+### Primary-guard parity follow-up — November 12, 2026
+
+The foundation uses both `auth-guard-v4-pilot.js` and the canonical `auth-guard.js`. Both now consistently recognize the controlled pilot, grading-scheme, teacher Class Record and student grade routes. The **primary guard** retains its established `staff-session.mjs` and `session-destination.mjs` imports and legacy-compatible home routing; it is not replaced wholesale by the pilot guard. It also retains the separately verified school-teacher and school-student visibility conditions. Canonical recent-workspace routing treats Class Record as school-teacher only and school grades as a student route. No underlying grading module or database permission rule was changed.
