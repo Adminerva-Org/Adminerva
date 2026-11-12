@@ -23,3 +23,15 @@ body:has(.pa-shell) #adminerva-nav:empty{min-height:63px;background:#10253d}
  .pa-shell .pa-row{align-items:stretch}
  .pa-shell .pa-cards{gap:.5rem}
 }
+
+/* One verified-school directory, with accessible shortcuts for common work. */
+.pa-shell .pa-quicklinks{display:flex;flex-wrap:wrap;gap:.5rem;margin:.25rem 0 1rem}
+.pa-shell .pa-quicklinks :is(a,button){display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:.6rem .9rem;border:1px solid #b7cede;border-radius:.65rem;background:#fff;color:#164e63;font:inherit;font-size:.875rem;font-weight:700;text-decoration:none;cursor:pointer}
+.pa-shell .pa-quicklinks :is(a,button):hover{background:#ecfeff;border-color:#0891b2}
+.pa-shell .pa-quicklinks :is(a,button):focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+.pa-shell .pa-person-context{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.5rem;margin:.2rem 0 .85rem}
+.pa-shell .pa-person-context .pa-muted{margin:0}
+.pa-shell #pa-person-reset{min-height:40px;padding:.35rem .65rem;border:1px solid #cbd5e1;border-radius:.5rem;background:#fff;color:#1d4ed8;font-size:.82rem;font-weight:700;cursor:pointer}
+.pa-shell #pa-person-reset:hover{background:#eff6ff}
+.pa-shell #pa-person-reset:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+@media(max-width:480px){.pa-shell .pa-quicklinks :is(a,button){flex:1 1 calc(50% - .5rem)}}
