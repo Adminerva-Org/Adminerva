@@ -1428,3 +1428,13 @@ body[data-playground-access] .studio-assignment-dock a:focus-visible{
     font-size:13px;line-height:1.7
   }
 }
+
+
+body[data-playground-access] .studio-assignment-loading{display:none}
+@media(max-width:767px){
+  body[data-playground-access] .studio-assignment-dock .studio-assignment-loading:not(.hidden){
+    display:block;padding:13px 14px;margin:12px 0 0;
+    border:1px solid #d4e4ed;border-radius:10px;
+    background:#eef7fb;color:#30546a;font-size:12px;line-height:1.6
+  }
+}
