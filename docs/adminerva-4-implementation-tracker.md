@@ -634,3 +634,13 @@ Imported the exact files from pinned production `139a0fa3cf22998fe2646227a7d8a28
 - Separate Cloudflare Worker/R2/Queues foundation is staged through #176 with flags disabled; this CheerpJ Pages pilot must remain an independent HTTPS origin and cannot become a same-origin Firebase-authenticated execution engine.
 
 **Remaining gate:** confirm signed-in V4 student canonical project/assessment behavior together with controlled browser-Java pilot on an eligible educator account before any public activation. No production merge or V4 pilot activation follows from this source change.
+
+
+## Concise and delivery-aware lesson generation parity — November 12, 2026
+
+- Carried mainline's Q2-style concise lesson generation into V4 while preserving the V4 `workspace-session.mjs?v=4.0.0` import and verified-school planning integration. Expected 50-minute regular sessions receive around 4–6 focused, actionable learning activities rather than an exhaustive extraction of every reference paragraph.
+- Each generated session now has an explicit `delivery_mode` (in person, asynchronous, mixed), with delivery-aware preliminary/closing defaults. Offline sessions do not inherit in-class minute allocations in document export; teacher can edit delivery mode in the session UI.
+- A cancelled or suspended session **retains its originally intended lesson objectives and academic content** as deferred work, and the next suitable regular sessions prioritize pending carry-over. The cancellation itself is not turned into an unrelated asynchronous lesson unless the teacher independently specifies one.
+- Preserved the reference-batch analyzer, the existing teacher instruction map, canonical school schedule picker, Google/Cloud Firestore planning parity and V4 reference-library connector. `lesson-firebase.js`, `schedule.js`, and school academic backends are unchanged in this batch.
+- Carried the shared lesson-generation documentation and refreshed only the generator, editor, exporter script URLs and explanation in the V4 planner page. Existing V4 auth/nav URLs remain intact.
+- This is **development source parity**, not automatic regeneration of Q3 documents or a live change to existing lesson plans. Users can regenerate Q3 through their usual verified school workflow once the V4 pilot is activated.
