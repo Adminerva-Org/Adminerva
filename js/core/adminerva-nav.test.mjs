@@ -35,8 +35,7 @@ class Element {
 function mount(module = 'educator', page = 'dashboard', role = 'teacher', storageThrows = false, integrations = {}) {
   const desktop = new Element(), mobile = new Element(), moduleSwitch = new Element('details');
   moduleSwitch.append(new Element('summary'), new Element());
-  const root = new Element(); root.append(moduleSwitch, desktop, mobile);
-  Object.assign(root.dataset, integrations.dataset || {});
+  const root = new Element(); root.dataset = {...integrations.schoolRoles}; root.append(moduleSwitch, desktop, mobile);
   const attrs = { 'data-module': module, 'data-page': page };
   root.getAttribute = key => attrs[key];
   const originalQuery = root.querySelector.bind(root);
@@ -63,24 +62,18 @@ const groupNames = element => element.children.map(group => group.children[0].te
 
 test('navigation installs analytics, the manifest and brand icons once before rendering', () => {
   const view = mount();
-  assert.equal(view.document.head.children.length, 6);
+  assert.equal(view.document.head.children.length, 4);
   const analytics = view.document.getElementById('adminerva-analytics-script');
   assert.equal(analytics.tagName, 'script');
   assert.match(analytics.src, /^js\/core\/adminerva-analytics\.js\?v=/);
   assert.equal(analytics.defer, true);
-  const prefetch=view.document.getElementById('adminerva-navigation-prefetch');
-  const loadingPolish=view.document.getElementById('adminerva-loading-polish');
-  assert.match(prefetch.src,/^js\/core\/navigation-prefetch\.js\?v=/);
-  assert.match(loadingPolish.src,/^js\/core\/loading-polish\.js\?v=/);
-  assert.equal(prefetch.defer,true);
-  assert.equal(loadingPolish.defer,true);
   assert.equal(view.document.querySelector('link[rel="manifest"]').href, 'manifest.webmanifest');
   assert.equal(view.document.querySelector('link[rel="apple-touch-icon"]').href, 'assets/adminerva-touch-icon-180.png');
   assert.equal(view.document.querySelector('link[rel="apple-touch-icon"]').sizes, '180x180');
   assert.equal(view.document.querySelector('link[rel="icon"]').href, 'assets/adminerva-favicon-32.png');
   assert.equal(view.document.querySelector('link[rel="icon"]').sizes, '32x32');
   view.roleReady('superadmin');
-  assert.equal(view.document.head.children.length, 6);
+  assert.equal(view.document.head.children.length, 4);
 });
 
 test('home is a direct link and switching workspaces is an explicit disclosure', () => {
@@ -94,33 +87,41 @@ test('home is a direct link and switching workspaces is an explicit disclosure',
   }
 });
 
-test('educator groups expose the integrated assessment, review and insights destinations', () => {
+test('educator navigation groups assessment and grading work without losing specialist destinations', () => {
   const { desktop } = mount('repo', 'gradebook');
-  assert.deepEqual(groupNames(desktop), ['Assessment ▾', 'Review & grade ▾', 'Insights ▾']);
-  assert.deepEqual(links(desktop.children[0]).map(link => link.href), ['assessment-studio.html', 'submissions.html', 'reclaim-inbox.html']);
-  assert.deepEqual(links(desktop.children[1]).map(link => link.href), ['repofetch.html', 'gradebook.html', 'repobank.html']);
-  assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['teacher-analytics.html', 'learning-follow-up.html']);
+  assert.deepEqual(groupNames(desktop), ['Repository Management ▾', 'Insights ▾']);
+  // Legacy teachers cannot open pilot-only school resources without membership.
+  assert.deepEqual(links(desktop.children[0]).map(link => link.href), [
+    'assessment-studio.html','submissions.html','studio-submissions.html','repofetch.html',
+    'gradebook.html','reclaim-inbox.html','repobank.html'
+  ]);
+  assert.deepEqual(links(desktop.children[1]).map(link => link.href), ['teacher-analytics.html', 'learning-follow-up.html']);
+  const verified = mount('repo','gradebook','teacher',false,{schoolRoles:{schoolTeacher:'true'}});
+  assert.deepEqual(links(verified.desktop.children[0]).map(link=>link.href), [
+    'assessment-studio.html','submissions.html','studio-submissions.html',
+    'repofetch.html','gradebook.html','reclaim-inbox.html','repobank.html'
+  ]);
+  const school = mount('class-record','class-record','teacher',false,{schoolRoles:{schoolTeacher:'true'}});
+  assert.deepEqual(groupNames(school.desktop), ['Class Record & Adminerva Assessments ▾']);
+  assert.deepEqual(links(school.desktop.children[0]).map(link=>link.href), [
+    'teacher-assessment-library.html','school-gradebook.html','class-record.html'
+  ]);
+  const administratorTeacher=mount('class-record','class-record','schooladmin',false,{
+    schoolRoles:{schoolTeacher:'true',schoolAdmin:'true'}
+  });
+  assert.match(administratorTeacher.root.innerHTML,/School administrator · Teacher/);
+  assert.ok(links(administratorTeacher.desktop).some(link=>link.href==='class-record.html'));
+  assert.deepEqual(links(verified.desktop.children[1]).map(link=>link.href), [
+    'school-teacher-analytics.html','school-practice-analytics.html','teacher-analytics.html','learning-follow-up.html'
+  ]);
   assert.ok(!links(desktop).some(link => ['activity-grader.html', 'grading.html', 'lesson-planner.html', 'users.html'].includes(link.href)));
-});
-
-test('Adminerva Studio grading is separated from Repository Management for verified school teachers', () => {
-  const schoolTeacher = mount('class-record', 'studio-submissions', 'teacher', false, {
-    dataset: { schoolTeacher: 'true' }
-  });
-  assert.deepEqual(groupNames(schoolTeacher.desktop), ['Class record & Adminerva assessments ▾']);
-  assert.deepEqual(links(schoolTeacher.desktop).map(link => link.href), ['class-record.html', 'studio-submissions.html']);
-
-  const v4Only = mount('class-record', 'class-record', 'teacher', false, {
-    dataset: { schoolTeacher: 'true', v4OnlyTeacher: 'true' }
-  });
-  assert.deepEqual(links(v4Only.desktop).map(link => link.href), ['class-record.html']);
 });
 
 test('selected task is announced once per desktop/mobile surface and page labels match routes', () => {
   for (const [module, page, route, label] of [
     ['repo', 'submissions', 'submissions.html', 'Submission inbox'],
     ['repo', 'repofetch', 'repofetch.html', 'Review &amp; grade'],
-    ['repo', 'gradebook', 'gradebook.html', 'Gradebook'],
+    ['repo', 'gradebook', 'gradebook.html', 'Gradebook · current classes'],
     ['student-practice', 'xml', 'student-xml-lab.html', 'XML Lab']
   ]) {
     const { desktop, mobile, root } = mount(module, page, module.startsWith('student') ? 'student' : 'teacher');
@@ -134,18 +135,18 @@ test('the current mobile group starts expanded without expanding the complete me
   const { mobile } = mount('repo', 'submissions');
   assert.equal(mobile.children[0].open, false);
   const groups = mobile.children[0].children[1].children;
-  assert.deepEqual(groups.map(group => group.open), [true, false, false]);
+  assert.deepEqual(groups.map(group => group.open), [true, false]);
 });
 
-test('planning has its own destinations and no unrelated analytics shortcut', () => {
+test('teaching has its own destinations and no unrelated analytics shortcut', () => {
   const { desktop } = mount('lesson', 'planner');
-  assert.deepEqual(groupNames(desktop), ['Planning ▾']);
+  assert.deepEqual(groupNames(desktop), ['Teaching ▾']);
   assert.deepEqual(links(desktop).map(link => link.href), ['lesson-planner.html', 'presentation.html', 'schedule.html', 'pilot-sandbox.html', 'library.html']);
 });
 
 test('only administrators receive school management destinations', () => {
   const admin = mount('admin', 'directory', 'superadmin');
-  assert.deepEqual(groupNames(admin.desktop), ['School setup ▾', 'Account ▾']);
+  assert.deepEqual(groupNames(admin.desktop), ['School administration ▾', 'Account ▾']);
   assert.ok(links(admin.desktop).some(link => link.href === 'manage-sections.html'));
   assert.ok(links(admin.desktop).some(link => link.href === 'teacher-accounts.html'));
   for (const role of ['teacher', 'student']) {
@@ -199,12 +200,12 @@ test('all rendered links, including legacy grading and XML, resolve to existing 
 
 test('opening a peer closes the previous disclosure and outside clicks close menus', () => {
   const { desktop, moduleSwitch, clickOutside } = mount();
-  const [teaching, evidence] = desktop.children;
-  teaching.open = true; teaching.dispatch('toggle');
-  evidence.open = true; evidence.dispatch('toggle');
-  assert.equal(teaching.open, false);
+  const [assessGrade, insights] = desktop.children;
+  assessGrade.open = true; assessGrade.dispatch('toggle');
+  insights.open = true; insights.dispatch('toggle');
+  assert.equal(assessGrade.open, false);
   moduleSwitch.open = true; moduleSwitch.dispatch('toggle');
-  assert.equal(evidence.open, false);
+  assert.equal(insights.open, false);
   clickOutside(); assert.equal(moduleSwitch.open, false);
 });
 
@@ -236,7 +237,7 @@ test('verified role refresh replaces stale navigation without multiplying global
   const listenerCounts = () => Object.fromEntries(Object.entries(view.documentEvents).map(([type, callbacks]) => [type, callbacks.length]));
   const before = listenerCounts();
   view.roleReady('superadmin');
-  assert.deepEqual(groupNames(view.desktop), ['School setup ▾', 'Account ▾']);
+  assert.deepEqual(groupNames(view.desktop), ['School administration ▾', 'Account ▾']);
   assert.ok(links(view.desktop).some(link => link.href === 'users.html'));
   assert.match(view.root.innerHTML, /href="school-admin.html"/);
   view.roleReady('superadmin');
@@ -275,7 +276,12 @@ async function checkGuard({ role = 'admin', path = '/users.html', students = [],
     writeConnectionPreferences: (uid, preferences) => { cacheCalls.push('hydrate:' + uid); connectionWrites.push({ uid, preferences }); },
     resolveAccountAccess: async () => {
       cacheCalls.push('resolve'); if (switchDuringLookup) auth.currentUser = { uid: 'another-account' };
-      return { role, students, teachers: teacherPreferences ? [{ data: () => teacherPreferences }] : [], needsTeacherApproval: false };
+      return {
+        role, legacyRole: role==="teacher"?"teacher":role==="admin"?"admin":null,
+        legacyCompatibilityAllowed:true, students,
+        teachers: teacherPreferences ? [{ data: () => teacherPreferences }] : [],
+        needsTeacherApproval: false
+      };
     },
     window, location: window.location, URL, document, console, roleHome, rememberWorkspace() {}, CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) }

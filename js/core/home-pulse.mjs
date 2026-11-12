@@ -1,10 +1,22 @@
 /** Optional, verified account-specific home insights. No new backend endpoints. */
-import {auth,db} from './firebase-core.js?v=1.3.0';
+import {app,auth,db} from './firebase-core.js?v=1.3.0';
+import {getFunctions,httpsCallable} from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js';
 import {onAuthStateChanged} from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
 import {collection,getDocs,orderBy,query,limit} from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
 
 const home=document.querySelector('main[data-home-experience="student"],main[data-home-experience="teacher"]');
 const nav=document.querySelector('#adminerva-nav');
+const functions=getFunctions(app,"asia-southeast1");
+const tenantSchools=httpsCallable(functions,"tenantSchools");
+const schoolPracticeHub=httpsCallable(functions,"schoolPracticeHub");
+const schoolTeacherAnalytics=httpsCallable(functions,"schoolTeacherAnalytics");
+const schoolAssessments=httpsCallable(functions,"schoolAssessments");
+async function v4SchoolId(user){
+  let preferred=null;
+  try{preferred=sessionStorage.getItem("Adminerva_last_verified_school_"+user.uid)||null;}catch{}
+  const result=(await tenantSchools({preferredSchoolId:preferred})).data;
+  return result.selection?.schoolId||null;
+}
 if(home&&nav){
   const role=home.dataset.homeExperience;
   const hero=home.querySelector('.av-home-hero');
@@ -32,7 +44,8 @@ if(home&&nav){
     const user=auth.currentUser;
     const actualRole=nav.dataset.verifiedRole;
     const correct=role==='student'?actualRole==='student':
-      actualRole==='teacher'||actualRole==='superadmin';
+      actualRole==='teacher'||actualRole==='superadmin'||
+      (actualRole==='schooladmin'&&nav.dataset.schoolTeacher==="true");
     if(!user?.uid||!correct||loading||(!force&&readyUid===user.uid))return;
     readyUid=user.uid;loading=true;
     const token=++generation;
@@ -48,7 +61,40 @@ if(home&&nav){
     update(0,role==='student'?'Missions completed':'Awaiting inspection','—','Reading verified records…');
     update(1,role==='student'?'Completed courses':'Approved evidence','—','Reading verified records…');
     try{
-      if(role==='student'){
+      // A V4-only member cannot read legacy global collections even while
+      // the school is still in pilot-compatible legacy_allowed mode.
+      const verifiedOnly=nav.dataset.v4Cutover==="true"||
+        nav.dataset.v4OnlyTeacher==="true"||nav.dataset.v4OnlyStudent==="true";
+      if(verifiedOnly){
+        const schoolId=await v4SchoolId(user);
+        if(auth.currentUser?.uid!==user.uid||token!==generation)return;
+        if(!schoolId){
+          update(0,role==='student'?'Practice Points':'Active classes','—','Choose a verified school from the account menu.');
+          update(1,role==='student'?'Missions completed':'Responsible deployments','—','A school must be selected before loading this summary.');
+          summary.querySelector('.av-pulse-status').textContent='Choose a school from the account menu to load the verified summary.';
+          return;
+        }
+        if(role==='student'){
+          const result=(await schoolPracticeHub({schoolId})).data;
+          if(auth.currentUser?.uid!==user.uid||token!==generation)return;
+          update(0,'Practice Points',String(result.points||0),'Current school Practice season points. These do not change assessment grades.');
+          update(1,'Missions completed',String(result.completedCount||0),'Server-checked current-season Practice missions.');
+          const maximum=300;
+          track.style.setProperty('--av-progress',Math.min(100,Math.round((Number(result.completedCount||0)/maximum)*100))+'%');
+          summary.querySelector('.av-pulse-status').textContent='Verified school Practice summary loaded.';
+        }else{
+          const [scope,tasks]=await Promise.all([
+            schoolTeacherAnalytics({schoolId,action:"scope"}),
+            schoolAssessments({schoolId,action:"list_teacher"})
+          ]);
+          if(auth.currentUser?.uid!==user.uid||token!==generation)return;
+          const offerings=scope.data?.offerings||[],deployments=tasks.data?.assessments||[],
+            actionable=deployments.filter(item=>!["archived","cancelled"].includes(item.lifecycle||"active"));
+          update(0,'Active classes',String(offerings.length),'Current canonical teaching assignments.');
+          update(1,'Responsible deployments',String(actionable.length),'Active or closed assessment deployments assigned to you for review.');
+          summary.querySelector('.av-pulse-status').textContent='Verified school teaching summary loaded.';
+        }
+      }else if(role==='student'){
         const [{COURSES},snapshot]=await Promise.all([
           import('../student/practice-courses.mjs?v=1.3.0'),
           getDocs(collection(db,'practice_verified_progress',user.uid,'courses'))
@@ -71,7 +117,8 @@ if(home&&nav){
         track.style.setProperty('--av-progress',(total?Math.min(100,Math.round(done*100/total)):0)+'%');
         summary.querySelector('.av-pulse-status').textContent='Verified account progress loaded. Continue in Practice Lab.';
       }else{
-        // Same bounded and authorized inbox sources used by submissions.mjs.
+        // Legacy-compatible teacher pulse. V4-only staff use canonical callables above.
+
         const [v2,legacy]=await Promise.all([
           getDocs(query(collection(db,'assessment_evidence'),orderBy('updatedAt','desc'),limit(100))),
           getDocs(query(collection(db,'student_submissions'),orderBy('submittedAt','desc'),limit(100)))
@@ -102,8 +149,8 @@ if(home&&nav){
       }
     }
   };
-  // A home snapshot is optional. Let the dashboard/navigation become usable
-  // before requesting up to two large evidence windows on teacher accounts.
+  // Match mainline's intent-first loading: render the home workspace before
+  // fetching potentially heavy evidence summaries. The explicit refresh stays immediate.
   let idleSummaryTimer=null;
   function scheduleLoad(force=false){
     if(idleSummaryTimer){clearTimeout(idleSummaryTimer);idleSummaryTimer=null;}
@@ -111,14 +158,23 @@ if(home&&nav){
     if(document.hidden)return;
     idleSummaryTimer=setTimeout(()=>{
       idleSummaryTimer=null;
-      if(document.hidden)return;
-      void load();
+      if(!document.hidden)void load();
     },role==='teacher'?650:120);
   }
   summary.querySelector('button').addEventListener('click',()=>scheduleLoad(true));
   document.addEventListener('adminerva:role-ready',()=>scheduleLoad());
+  document.addEventListener('adminerva:school-ready',()=>{
+    if(nav.dataset.v4Cutover==="true"||
+       nav.dataset.v4OnlyTeacher==="true"||nav.dataset.v4OnlyStudent==="true"){
+      // Invalidate old requests and clear summaries before loading another school.
+      generation++;loading=false;readyUid='';summary.hidden=true;
+      scheduleLoad(true);
+    }
+  });
   onAuthStateChanged(auth,user=>{
-    if(!user||readyUid&&readyUid!==user.uid){generation++;loading=false;readyUid='';summary.hidden=true;}
+    if(!user||readyUid&&readyUid!==user.uid){
+      generation++;loading=false;readyUid='';summary.hidden=true;
+    }
     scheduleLoad();
   });
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleLoad();});
