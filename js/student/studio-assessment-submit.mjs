@@ -4,7 +4,7 @@ import {collection,doc,getDocs,query,where,runTransaction,serverTimestamp} from 
 import {snapshotStudioProject,studioDigest,studioEvidenceId,studioSubmissionAllowed} from "./studio-assessment-model.mjs?v=1.0.0";
 import {
   currentV4StudioSchool,getV4StudioSubmissionStatus,listV4StudioAssignments,submitV4StudioProject
-} from "./v4-studio-service.mjs?v=4.0.1";
+} from "./v4-studio-service.mjs?v=4.1.0";
 
 const button=document.getElementById("studioSubmitAssessment");
 if(button){
@@ -107,9 +107,22 @@ if(button){
     const chosen=choices.get(choose.value);
     if(!chosen){confirmButton.disabled=true;return;}
     if(chosen.mode==="v4"){
+      const task=chosen.task;
+      if(task.personalizedTask?.enabled===true&&assessmentParam!==task.taskId){
+        confirmButton.disabled=true;
+        notice("Open this personalized assessment from My Assignments first so Adminerva can issue your unique task.");
+        return;
+      }
+      if(task.personalizedTask?.enabled===true&&
+         (window.adminervaStudioAssessmentVariant?.assessmentId!==task.taskId||
+          window.adminervaStudioAssessmentVariant?.canonicalV4!==true)){
+        confirmButton.disabled=true;
+        notice("Your personalized school task is still loading. Wait for the task panel before submitting.");
+        return;
+      }
       confirmButton.disabled=!v4Allowed(chosen);
       if(chosen.status?.status==="reopened"&&Number(chosen.status.revisionDueAt)>Date.now())
-        notice("Revision requested by your teacher. This submission will create a new immutable project version before the extension deadline.");
+        notice("Revision requested by your teacher. This submission will create a new immutable project version with its newly issued personalized task.");
       return;
     }
     const task=chosen.assessment;
