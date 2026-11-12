@@ -1235,3 +1235,153 @@ body[data-playground-access] .studio-browser-java-notice.hidden{display:none!imp
 @media(max-width:767px){
   body[data-playground-access] .studio-browser-java-notice{padding:8px 10px;font-size:10px}
 }
+
+
+/* Studio mobile workspace: Menus + Tools share one row; instructions live in a task sheet. */
+body[data-playground-access] .studio-assignment-dock{display:contents}
+body[data-playground-access] .studio-assignment-dock-heading,
+body[data-playground-access] .studio-assignment-dock-foot,
+body[data-playground-access] .studio-mobile-task{display:none}
+body[data-playground-access] .studio-submit-details{
+  padding:10px 12px;border:1px solid #d7e7ee;border-radius:10px;
+  background:#f4f9fc;color:#28516a;font-size:12px;line-height:1.5;
+  overflow-wrap:anywhere
+}
+body[data-playground-access] #studioSubmitDialog{
+  max-height:min(92dvh,720px);overflow-y:auto;overscroll-behavior:contain
+}
+@media(max-width:767px){
+  body[data-playground-access] .studio-project-bar{
+    min-height:46px;max-height:46px;gap:5px;padding:5px 7px;
+    display:flex;flex-wrap:nowrap;overflow:visible;
+  }
+  body[data-playground-access] .studio-menus-bar-trigger,
+  body[data-playground-access] .studio-tools-toggle,
+  body[data-playground-access] .studio-mobile-task:not(.hidden){
+    display:inline-flex;align-items:center;justify-content:center;
+    flex:none;min-height:35px;padding:5px 8px;
+    border-radius:8px;border:1px solid #bcd6e1;
+    background:#e8f5f8;color:#195267;
+    font-weight:850;font-size:11px;line-height:1.1;white-space:nowrap;
+    touch-action:manipulation
+  }
+  body[data-playground-access] .studio-mobile-task:not(.hidden){
+    border-color:#b9d8d0;background:#e5f6ef;color:#116855
+  }
+  body[data-playground-access] .studio-menus-bar-trigger[aria-expanded="true"],
+  body[data-playground-access] .studio-tools-toggle[aria-expanded="true"],
+  body[data-playground-access] .studio-mobile-task[aria-expanded="true"]{
+    background:#0d736a;color:white;border-color:#0d736a
+  }
+  body[data-playground-access] .studio-project-identity{
+    flex:1 1 0;min-width:0;overflow:hidden;padding-left:3px
+  }
+  body[data-playground-access] .studio-project-title-row{
+    display:block;max-width:100%;white-space:nowrap;overflow:hidden
+  }
+  body[data-playground-access] .studio-project-title-row strong{
+    font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis
+  }
+  body[data-playground-access] .studio-project-identity>span{display:none}
+  /* No second navigation row unless the user opens Tools. */
+  body[data-playground-access] .studio-tabs{
+    display:none;min-height:0;max-height:none;padding:0;
+    border:0;background:#f5fafb;overflow:visible
+  }
+  body[data-playground-access] .studio-tabs.studio-tabs-expanded{
+    display:flex;align-items:center;min-height:42px;
+    padding:3px 7px;border-bottom:1px solid #c8dce6
+  }
+  body[data-playground-access] #studioToolsPanel.studio-tools-open{
+    display:flex;order:0;flex:1 1 auto;min-width:0;width:100%;
+    overflow-x:auto;overscroll-behavior-x:contain;
+    padding:2px 0;gap:6px
+  }
+  body[data-playground-access] #studioToolsPanel>button{
+    min-height:36px;flex:none;touch-action:manipulation
+  }
+  /* A task sheet avoids pushing the Monaco editor below a full assignment. */
+  body[data-playground-access] .studio-assignment-dock{
+    display:none;position:fixed;z-index:311;
+    top:max(7dvh,env(safe-area-inset-top));left:0;right:0;bottom:0;
+    padding:0 12px max(22px,env(safe-area-inset-bottom));
+    overflow-y:auto;overscroll-behavior:contain;
+    background:#f6f9fc;border-radius:16px 16px 0 0;
+    box-shadow:0 -12px 48px #02081777;color:#1b394f
+  }
+  body[data-playground-access] .studio-assignment-dock.studio-assignment-open{display:block}
+  body[data-playground-access] .studio-assignment-dock-heading{
+    position:sticky;top:0;z-index:1;
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    padding:12px 0;background:#f6f9fc;border-bottom:1px solid #dbe6ee
+  }
+  body[data-playground-access] .studio-assignment-dock-heading>div:first-child{
+    display:flex;flex-direction:column;min-width:0;gap:1px
+  }
+  body[data-playground-access] .studio-assignment-kicker{
+    color:#59778c;font-size:9px;letter-spacing:.1em;font-weight:850
+  }
+  body[data-playground-access] .studio-assignment-dock-heading strong{
+    color:#163950;font-size:15px;line-height:1.3
+  }
+  body[data-playground-access] .studio-assignment-dock-actions{
+    display:flex;gap:6px;flex:none;align-items:center
+  }
+  body[data-playground-access] .studio-assignment-dock-actions button{
+    min-height:39px;border:1px solid #c5d8e3;border-radius:8px;
+    padding:7px 10px;background:white;color:#214d65;font-weight:800;font-size:11px
+  }
+  body[data-playground-access] #studioTaskSubmitShortcut{
+    background:#0c8679;border-color:#0c8679;color:white
+  }
+  body[data-playground-access] .studio-assignment-dock > #assignedProjectBanner,
+  body[data-playground-access] .studio-assignment-dock > #studioPersonalizedTask{
+    margin-top:10px;padding:13px;border-radius:12px;
+    border:1px solid #d8dceb;background:white;color:#253951;
+    box-shadow:0 3px 12px #1a35420e
+  }
+  body[data-playground-access] .studio-assignment-dock #studioPersonalizedTask summary{
+    font-size:13px;line-height:1.5
+  }
+  body[data-playground-access] .studio-assignment-dock #studioPersonalizedTaskPrompt{
+    max-height:none;overflow:visible;
+    white-space:pre-wrap;overflow-wrap:anywhere;
+    font-size:13px;line-height:1.7;color:#2d3b52;
+    user-select:text;-webkit-user-select:text
+  }
+  body[data-playground-access] .studio-assignment-dock #assignedProjectBrief{
+    max-height:none;overflow:visible;white-space:pre-wrap;overflow-wrap:anywhere;
+    font-size:13px;line-height:1.6
+  }
+  body[data-playground-access] .studio-assignment-dock-foot{
+    display:flex;align-items:flex-start;justify-content:space-between;
+    gap:12px;padding:13px 2px;color:#526b81;font-size:11px;line-height:1.5
+  }
+  body[data-playground-access] .studio-assignment-dock-foot a{
+    color:#0b6a7e;font-weight:850;text-decoration:underline;white-space:nowrap
+  }
+  body[data-playground-access] #studioExamBanner{
+    padding:5px 8px;gap:6px;font-size:11px;line-height:1.35
+  }
+  body[data-playground-access] #studioExamNotice{min-width:0;flex:1}
+  body[data-playground-access] #studioSubmitDialog{
+    width:min(96vw,540px);padding:14px;max-height:calc(100dvh - 24px);
+    margin:auto;border-radius:12px
+  }
+  body[data-playground-access] #studioSubmitDialog :is(select,button){
+    min-height:42px
+  }
+}
+@media(max-width:365px){
+  body[data-playground-access] .studio-project-bar{gap:4px;padding-inline:5px}
+  body[data-playground-access] .studio-menus-bar-trigger,
+  body[data-playground-access] .studio-tools-toggle,
+  body[data-playground-access] .studio-mobile-task:not(.hidden){
+    padding-inline:6px;font-size:10px
+  }
+  body[data-playground-access] .studio-project-title-row strong{font-size:10px}
+  body[data-playground-access] .studio-assignment-dock-actions{gap:4px}
+  body[data-playground-access] .studio-assignment-dock-actions button{
+    padding:6px 7px;font-size:10px
+  }
+}
