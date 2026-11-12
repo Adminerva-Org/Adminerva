@@ -43,7 +43,7 @@ function inputPlacement(stdout, offset, value) {
   // only into the terminal *display*. The actual program receives raw stdin.
   const suffix=stdout.slice(at);
   const alreadyEchoed=input&&suffix.trimStart().startsWith(input)&&
-    (!suffix.trimStart()[input.length]||/\s/.test(suffix.trimStart()[input.length]));
+    /^(?:\r?\n|$)/.test(suffix.trimStart().slice(input.length));
   if(alreadyEchoed)return null;
   const needsNewline=!newlineAlready&&!suffix.startsWith('\n')&&!suffix.startsWith('\r\n');
   return {at,text:separator+input+(needsNewline?'\n':'')};
