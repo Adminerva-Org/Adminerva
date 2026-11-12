@@ -3,6 +3,7 @@ import {app,auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {doc,getDoc} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
+import {getV4StudioPersonalizedTask} from "./v4-studio-service.mjs?v=4.1.0";
 
 const assessmentId=new URL(location.href).searchParams.get("assessment");
 const panel=document.getElementById("studioPersonalizedTask");
@@ -17,15 +18,41 @@ function hide(){
 }
 function showStatus(text){if(status)status.textContent=text;}
 
+function showVariant(variant){
+  panel?.classList.remove("hidden");
+  window.adminervaStudioAssessmentVariant=variant;
+  if(meta)meta.textContent=" · Attempt "+variant.attempt+" · Variant "+variant.variantId;
+  if(prompt)prompt.textContent=variant.prompt||"";
+  showStatus(variant.readOnly
+    ?"This is the task attached to your submitted revision. It is shown for reference and will not be regenerated."
+    :"This version is yours for the current attempt. Reloading the page keeps the same task.");
+  window.dispatchEvent(new CustomEvent("adminerva:studio-variant-ready",{detail:variant}));
+}
 async function load(user){
   const stamp=++generation;
   hide();
   if(!assessmentId||!user?.uid)return;
+  let canonicalError=null;
+  try{
+    const schoolVariant=await getV4StudioPersonalizedTask(assessmentId);
+    if(stamp!==generation||auth.currentUser?.uid!==user.uid)return;
+    if(schoolVariant){
+      if(schoolVariant.personalized===false)return;
+      panel?.classList.remove("hidden");
+      if(meta)meta.textContent=" · preparing your verified-school version…";
+      showStatus("Your task stays fixed for this attempt. A teacher-requested new revision receives a different variant.");
+      showVariant(schoolVariant);return;
+    }
+  }catch(error){canonicalError=error;}
   try{
     const task=await getDoc(doc(db,"assessments",assessmentId));
     if(stamp!==generation||auth.currentUser?.uid!==user.uid)return;
-    if(!task.exists()||task.data().schemaVersion!==3||
-      task.data().submissionSource!=="studio"||task.data().personalizedTask?.enabled!==true)return;
+    if(!task.exists()){
+      if(canonicalError)throw canonicalError;
+      return;
+    }
+    if(task.data().schemaVersion!==3||task.data().submissionSource!=="studio"||
+       task.data().personalizedTask?.enabled!==true)return;
     panel?.classList.remove("hidden");
     if(meta)meta.textContent=" · preparing your assigned version…";
     if(prompt)prompt.textContent="";
@@ -33,20 +60,13 @@ async function load(user){
     const call=httpsCallable(getFunctions(app,"asia-southeast1"),"studioAssessmentVariant");
     const response=await call({assessmentId});
     if(stamp!==generation||auth.currentUser?.uid!==user.uid)return;
-    const variant=response.data;
-    window.adminervaStudioAssessmentVariant=variant;
-    if(meta)meta.textContent=" · Attempt "+variant.attempt+" · Variant "+variant.variantId;
-    if(prompt)prompt.textContent=variant.prompt||"";
-    showStatus(variant.readOnly
-      ?"This is the task attached to your submitted revision. It is shown for reference and will not be regenerated."
-      :"This version is yours for the current attempt. Reloading the page keeps the same task.");
-    window.dispatchEvent(new CustomEvent("adminerva:studio-variant-ready",{detail:variant}));
+    showVariant(response.data);
   }catch(error){
     if(stamp!==generation)return;
     panel?.classList.remove("hidden");
     if(meta)meta.textContent=" · unavailable";
     if(prompt)prompt.textContent="";
-    showStatus("Personalized task could not load: "+String(error?.message||"Unknown error")+
+    showStatus("Personalized task could not load: "+String(error?.message||canonicalError?.message||"Unknown error")+
       ". Do not begin a substitute task; return to My Assessments and retry.");
   }
 }
