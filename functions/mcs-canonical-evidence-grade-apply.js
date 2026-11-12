@@ -19,7 +19,7 @@ const {digestProject,validateFiles,validateArtifacts}=require("./school-studio-p
 const {rowKey}=require("./school-academics.js");
 
 const WRITE_ACK="YES_I_APPROVE_MCS_CANONICAL_EVIDENCE_GRADES";
-const RECEIPT_SCHEMA="adminerva-v4-mcs-canonical-evidence-grade-receipt-v1";
+const RECEIPT_SCHEMA="adminerva-v4-mcs-canonical-evidence-grade-receipt-v2";
 const MAX_EXTENSION_MS=30*24*60*60*1000;
 const sha=value=>createHash("sha256").update(value).digest("hex");
 
@@ -98,8 +98,9 @@ function validateApproval(plan,raw,approval,{now=Date.now()}={}){
  if(typeof approval.approvedBy!=="string"||approval.approvedBy.trim().length<3||
     typeof approval.approvedAt!=="string"||!Number.isFinite(Date.parse(approval.approvedAt)))
   throw Error("Approval must identify the reviewer and timestamp.");
- for(const key of ["githubFrozenSetsReviewed","studioSnapshotsReviewed","studentTaskEnrollmentReviewed",
-   "publicationStatesReviewed","reclaimHistoryReviewed","historicalScalarGradesReviewed","evidenceAndGradeRevisionsReviewed",
+ for(const key of ["githubFrozenSetsReviewed","studioSnapshotsReviewed","personalizedAttemptsReviewed",
+   "studentTaskEnrollmentReviewed","publicationStatesReviewed","reclaimHistoryReviewed",
+   "historicalScalarGradesReviewed","evidenceAndGradeRevisionsReviewed",
    "revisionExtensionsReviewed","noMigrationNotifications","backupsAndRollbackReviewed"])
   if(approval.acknowledgements?.[key]!==true)
    throw Error("Missing approval acknowledgement: "+key);
@@ -223,6 +224,13 @@ function validateStudio(row){
  }
  if(row.versions.at(-1).contentDigest!==row.contentDigest)
   throw Error("Studio submission head differs from its latest immutable version.");
+ const variantIds=row.versions.map(version=>String(version.variantId||"")).filter(Boolean);
+ if(variantIds.length){
+  if(variantIds.length!==row.versions.length||new Set(variantIds).size!==variantIds.length||
+     row.variantId!==variantIds.at(-1)||
+     row.versions.some(version=>typeof version.variantPrompt!=="string"||version.variantPrompt.trim().length<20))
+   throw Error("Personalized Studio version provenance is incomplete or duplicated.");
+ }else if(row.variantId)throw Error("Studio submission head has an unexpected personalized variant.");
 }
 function validateReclaim(row){
  if(row.claimId!==reclaimId(row))throw Error("Reclaim runtime ID mismatch.");
@@ -385,6 +393,14 @@ async function createStudio(db,approved,row){
   if(!task.exists||task.data().schoolId!==SCHOOL_ID||task.data().offeringId!==row.offeringId||
      task.data().submissionSource!=="studio")
    throw Error("Studio task changed after approval.");
+  const personalized=task.data().personalizedTask?.enabled===true,
+    allowedVariants=personalized?task.data().personalizedTask.variantIds||[]:[];
+  if(personalized){
+   if(row.versions.some(version=>!allowedVariants.includes(version.variantId))||
+      row.variantId!==row.versions.at(-1).variantId)
+    throw Error("Studio personalized attempt no longer matches the migrated task pool.");
+  }else if(row.versions.some(version=>version.variantId)||row.variantId)
+   throw Error("Non-personalized Studio task contains personalized attempt provenance.");
   if(!member.exists||!member.data().roles?.includes("student")||
      !person.exists||person.data().authUid!==row.studentUid||
      !enrollment.exists||!["active","ended"].includes(enrollment.data().status))
@@ -396,16 +412,35 @@ async function createStudio(db,approved,row){
     studentUid:row.studentUid,personId:row.personId,
     projectId:version.projectId||row.projectId,projectRevision:version.projectRevision||0,
     files:version.files,artifacts:version.artifacts||{},contentDigest:version.contentDigest,
-    sourceLanguage:version.sourceLanguage||"text",submittedAt:timestamp(version.submittedAt),
+    sourceLanguage:version.sourceLanguage||"text",variantId:version.variantId||"",
+    variantPrompt:version.variantPrompt||"",submittedAt:timestamp(version.submittedAt),
     version:version.version,
     migration:{...meta(approved,"studio_submission_version",row.submissionId+"_"+version.version),
-     legacySnapshotHash:version.migration?.legacySnapshotHash||null}
+     legacySnapshotHash:version.migration?.legacySnapshotHash||null,
+     personalizedAssignmentSourcePath:version.migration?.personalizedAssignmentSourcePath||null}
    });
+   if(personalized){
+    const assignmentRef=db.doc(prefix+"studio_variant_assignments/"+row.submissionId+
+      "/attempts/"+version.version),
+      registryRef=db.doc(prefix+"studio_variant_registry/"+row.taskId+"/keys/"+version.variantId),
+      createdAt=timestamp(version.submittedAt)||importedAt;
+    tx.create(assignmentRef,{schoolId:SCHOOL_ID,taskId:row.taskId,offeringId:row.offeringId,
+      studentUid:row.studentUid,personId:row.personId,attempt:version.version,
+      variantId:version.variantId,prompt:version.variantPrompt,
+      poolFingerprint:task.data().personalizedTask.poolFingerprint,createdAt,
+      migration:{...meta(approved,"studio_variant_assignment",row.submissionId+"_"+version.version),
+       sourcePath:version.migration?.personalizedAssignmentSourcePath||null}});
+    tx.create(registryRef,{schoolId:SCHOOL_ID,taskId:row.taskId,variantId:version.variantId,
+      studentUid:row.studentUid,personId:row.personId,attempt:version.version,
+      poolFingerprint:task.data().personalizedTask.poolFingerprint,createdAt,
+      migration:meta(approved,"studio_variant_registry",row.taskId+"_"+version.variantId)});
+   }
   }
   tx.create(ref,{schoolId:SCHOOL_ID,taskId:row.taskId,offeringId:row.offeringId,
    studentUid:row.studentUid,personId:row.personId,
    projectId:row.projectId,projectRevision:row.projectRevision||0,
-   contentDigest:row.contentDigest,status:row.status,currentVersion:row.currentVersion,
+   variantId:row.variantId||"",contentDigest:row.contentDigest,
+   status:row.status,currentVersion:row.currentVersion,
    revisionRequestMessage:row.status==="reopened"?(row.revisionRequestMessage||"Historical revision request migrated."):null,
    revisionDueAt:row.status==="reopened"?extension:null,
    reviewedByUid:row.status==="reviewed"?(row.reviewedByUid||null):null,
