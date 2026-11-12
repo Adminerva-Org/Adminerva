@@ -435,13 +435,20 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       })).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
     }
     async function offeringLabels(offering){
-      const [section,subject]=await Promise.all([
+      const [program,year,term,section,subject]=await Promise.all([
+        db.doc(prefix+"academic_programs/"+checkId(offering.programId,"Academic program ID",80)).get(),
+        db.doc(prefix+"academic_years/"+checkId(offering.yearId,"Academic year ID",80)).get(),
+        db.doc(prefix+"terms/"+checkId(offering.termId,"Academic period ID",80)).get(),
         db.doc(prefix+"sections/"+checkId(offering.sectionId,"Section ID",80)).get(),
         db.doc(prefix+"subjects/"+checkId(offering.subjectId,"Subject ID",80)).get()
       ]);
+      const name=doc=>doc.exists&&doc.data().schoolId===ctx.schoolId?
+        String(doc.data().name||"").trim():"";
       return {
-        sectionName:section.exists&&section.data().schoolId===ctx.schoolId?String(section.data().name||"").trim():"",
-        subjectName:subject.exists&&subject.data().schoolId===ctx.schoolId?String(subject.data().name||"").trim():""
+        programName:name(program),yearName:name(year),termName:name(term),
+        periodType:term.exists&&term.data().schoolId===ctx.schoolId?
+          String(term.data().periodType||"term").trim().toLowerCase():"term",
+        sectionName:name(section),subjectName:name(subject)
       };
     }
     async function legacyBridgeAllowed(){
@@ -653,6 +660,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         sourceDigest:String(finalizationDoc.data().sourceDigest||""),
         finalizedAt:millis(finalizationDoc.data().finalizedAt),
         finalizedByUid:finalizationDoc.data().finalizedByUid||null,
+        offeringSnapshot:finalizationDoc.data().offeringSnapshot||null,
         stale:String(finalizationDoc.data().sourceDigest||"")!==snapshot.sourceDigest
       }:null;
       return {
@@ -667,6 +675,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       return {
         offering:{offeringId,programId:data.offering.programId,yearId:data.offering.yearId,
           termId:data.offering.termId,subjectId:data.offering.subjectId,sectionId:data.offering.sectionId,
+          programName:data.labels.programName,yearName:data.labels.yearName,
+          termName:data.labels.termName,periodType:data.labels.periodType,
           sectionName:data.labels.sectionName,subjectName:data.labels.subjectName},
         roster:data.roster.map(({authUid,...row})=>row),
         assessments:data.assessments,columns:data.columns,settings:data.settings,
@@ -711,6 +721,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         appliedSchemeId:data.appliedSchemeId||null,
         appliedSchemeRevision:Number(data.appliedSchemeRevision)||null,
         appliedSchemeName:String(data.appliedSchemeName||""),
+        offeringSnapshot:data.offeringSnapshot||null,
         finalizedAt:millis(data.finalizedAt),finalizedByUid:data.finalizedByUid||null
       })).sort((a,b)=>b.revision-a.revision);
       return {offeringId,revisions};
@@ -761,6 +772,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         appliedSchemeId:header.appliedSchemeId||null,
         appliedSchemeRevision:Number(header.appliedSchemeRevision)||null,
         appliedSchemeName:String(header.appliedSchemeName||""),
+        offeringSnapshot:header.offeringSnapshot||null,
         columns:Array.isArray(header.columns)?header.columns:[],
         grades
       };
@@ -806,6 +818,11 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           appliedSchemeId:data.settings.appliedSchemeId||null,
           appliedSchemeRevision:data.settings.appliedSchemeRevision||null,
           appliedSchemeName:data.settings.appliedSchemeName||"",
+          offeringSnapshot:{
+            programName:data.labels.programName,yearName:data.labels.yearName,
+            termName:data.labels.termName,periodType:data.labels.periodType,
+            subjectName:data.labels.subjectName,sectionName:data.labels.sectionName
+          },
           columns:activeColumns,studentCount:data.snapshot.grades.length,
           personIds:data.snapshot.grades.map(grade=>grade.personId),
           finalizedByUid:ctx.uid,finalizedAt:now,updatedAt:now

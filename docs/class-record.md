@@ -152,6 +152,8 @@ Finalization writes:
 
 Each student snapshot includes the category breakdown, Initial Grade, Period Grade, source digest and finalization revision.
 
+The frozen finalization header also snapshots the human-readable academic context — program/division, school year, academic period name/type, subject and section — so an old finalization remains intelligible even if catalog labels are renamed later.
+
 A changed live record is not allowed to rewrite an old frozen revision. The teacher creates a new finalization revision.
 
 Finalization is currently teacher-side academic recordkeeping. It is **not automatically student-facing publication or report-card release**.

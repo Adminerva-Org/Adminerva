@@ -824,11 +824,38 @@ function formatFinalizedAt(value){
   if(!Number.isFinite(millis)||millis<=0)return "time unavailable";
   try{return new Date(millis).toLocaleString();}catch{return "time unavailable";}
 }
+function periodTypeLabel(value){
+  const text=String(value||"term").trim().toLowerCase();
+  return text.charAt(0).toUpperCase()+text.slice(1);
+}
+function currentOfferingSnapshot(){
+  const planned=selectedOffering()||{},live=currentOffering||{};
+  return {
+    programName:live.programName||planned.programName||"",
+    yearName:live.yearName||planned.yearName||"",
+    termName:live.termName||planned.termName||"",
+    periodType:live.periodType||selectedPeriodType(),
+    subjectName:live.subjectName||planned.subjectName||"",
+    sectionName:live.sectionName||planned.sectionName||""
+  };
+}
+function offeringExportMetadata(snapshot,stateLabel){
+  const value=snapshot||currentOfferingSnapshot();
+  const period=[value.termName,periodTypeLabel(value.periodType)].filter(Boolean).join(" · ");
+  return [
+    ["Adminerva Class Record",stateLabel],
+    ["Program / division",value.programName||""],
+    ["School year",value.yearName||""],
+    ["Academic period",period],
+    ["Subject",value.subjectName||""],
+    ["Section",value.sectionName||""]
+  ];
+}
 function finalizationExportRows(revision){
   const categories=(revision.grades?.[0]?.categoryScores||revision.categoryWeights||[])
     .map(row=>String(row.category||"")).filter(Boolean);
   const metadata=[
-    ["Adminerva Class Record finalization",""],
+    ...offeringExportMetadata(revision.offeringSnapshot,"Frozen finalization"),
     ["Revision",revision.revision],
     ["Finalized at",formatFinalizedAt(revision.finalizedAt)],
     ["Grading formula",revision.gradeComputation==="deped_60_100"?"DepEd-style 60–100 transmutation":"Weighted grade 0–100"],
@@ -874,7 +901,7 @@ async function downloadFinalizationRevisionXlsx(revision){
   const rows=finalizationExportRows(revision);
   const blob=classRecordWorkbook(rows,{
     sheetName:"Finalized rev "+revision.revision,
-    headerRowIndex:6
+    headerRowIndex:Math.max(0,rows.findIndex(row=>row[0]==="Student"))
   });
   downloadBlob(blob,exportBaseName()+"-finalized-rev-"+revision.revision+".xlsx");
 }
@@ -905,9 +932,12 @@ function renderFinalizationHistory(revisions){
     const card=make("article","cr-list-card flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3");
     const info=make("div");
     info.append(make("strong","text-sm text-slate-900","Revision "+revision.revision));
+    const snapshot=revision.offeringSnapshot||{};
+    const context=[snapshot.subjectName,snapshot.sectionName,snapshot.termName].filter(Boolean).join(" · ");
     info.append(make("p","cr-muted mt-1",
       formatFinalizedAt(revision.finalizedAt)+" · "+revision.studentCount+" student"+
       (revision.studentCount===1?"":"s")+" · sheet rev "+revision.sheetRevision));
+    if(context)info.append(make("p","text-xs text-slate-500 mt-1",context));
     if(revision.appliedSchemeName)
       info.append(make("p","text-xs text-slate-500 mt-1",
         revision.appliedSchemeName+" · scheme rev "+revision.appliedSchemeRevision));
@@ -1038,12 +1068,20 @@ function csvEscape(value){
 }
 function liveExportRows(){
   const categories=usedCategories(),visibleColumns=activeColumns();
-  const rows=[[
+  const state=finalization?
+    (finalization.stale?"Live record changed after finalized revision "+finalization.revision:
+      "Live record matches finalized revision "+finalization.revision):
+    "Live working record · not finalized";
+  const rows=[
+    ...offeringExportMetadata(currentOfferingSnapshot(),state),
+    []
+  ];
+  rows.push([
     "Student",
     ...visibleColumns.map(column=>column.label+" ("+numberText(column.maxPoints)+")"),
     ...categories.map(category=>category+" %"),
     "Initial Grade","Period Grade"
-  ]];
+  ]);
   for(const student of roster){
     const metrics=metricsFor(student.personId,{fromInput:false});
     rows.push([
@@ -1076,7 +1114,11 @@ async function exportXlsx(){
   const finish=window.beginLoading?.("Preparing Excel Class Record…")||(()=>{});
   try{
     const {classRecordWorkbook}=await import("./xlsx-export.mjs?v=1.0.0");
-    const blob=classRecordWorkbook(liveExportRows(),{sheetName:"Class Record"});
+    const rows=liveExportRows();
+    const blob=classRecordWorkbook(rows,{
+      sheetName:"Class Record",
+      headerRowIndex:Math.max(0,rows.findIndex(row=>row[0]==="Student"))
+    });
     downloadBlob(blob,exportBaseName(80)+".xlsx");
     say("Class Record Excel workbook exported.");
   }catch(error){
