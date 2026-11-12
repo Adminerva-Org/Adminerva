@@ -10,6 +10,14 @@ const meta=document.getElementById("studioPersonalizedTaskMeta");
 const prompt=document.getElementById("studioPersonalizedTaskPrompt");
 const status=document.getElementById("studioPersonalizedTaskStatus");
 let generation=0;
+function reportContext(context){
+  if(!assessmentId)return;
+  const detail={assessmentId,...context};
+  window.adminervaStudioAssessmentContext=detail;
+  window.dispatchEvent(new CustomEvent("adminerva:studio-assessment-context",{detail}));
+}
+// An assignment-linked Studio session begins in a conservative loading state.
+if(assessmentId)reportContext({status:"loading",personalized:false,readOnly:false});
 
 function hide(){
   panel?.classList.add("hidden");
@@ -20,12 +28,21 @@ function showStatus(text){if(status)status.textContent=text;}
 async function load(user){
   const stamp=++generation;
   hide();
-  if(!assessmentId||!user?.uid)return;
+  if(!assessmentId)return;
+  reportContext({status:user?.uid?"loading":"unavailable",personalized:false,readOnly:false});
+  if(!user?.uid)return;
   try{
     const task=await getDoc(doc(db,"assessments",assessmentId));
     if(stamp!==generation||auth.currentUser?.uid!==user.uid)return;
     if(!task.exists()||task.data().schemaVersion!==3||
-      task.data().submissionSource!=="studio"||task.data().personalizedTask?.enabled!==true)return;
+      task.data().submissionSource!=="studio"){
+      reportContext({status:"unavailable",personalized:false,readOnly:false});
+      return;
+    }
+    if(task.data().personalizedTask?.enabled!==true){
+      reportContext({status:"not-personalized",personalized:false,readOnly:false});
+      return;
+    }
     panel?.classList.remove("hidden");
     if(meta)meta.textContent=" · preparing your assigned version…";
     if(prompt)prompt.textContent="";
@@ -35,6 +52,10 @@ async function load(user){
     if(stamp!==generation||auth.currentUser?.uid!==user.uid)return;
     const variant=response.data;
     window.adminervaStudioAssessmentVariant=variant;
+    reportContext({
+      status:"ready",personalized:true,variantId:variant.variantId,
+      attempt:variant.attempt,readOnly:variant.readOnly===true
+    });
     if(meta)meta.textContent=" · Attempt "+variant.attempt+" · Variant "+variant.variantId;
     if(prompt)prompt.textContent=variant.prompt||"";
     showStatus(variant.readOnly
@@ -43,6 +64,7 @@ async function load(user){
     window.dispatchEvent(new CustomEvent("adminerva:studio-variant-ready",{detail:variant}));
   }catch(error){
     if(stamp!==generation)return;
+    reportContext({status:"unavailable",personalized:true,readOnly:false});
     panel?.classList.remove("hidden");
     if(meta)meta.textContent=" · unavailable";
     if(prompt)prompt.textContent="";
