@@ -107,8 +107,11 @@ A scheme contains:
 - name and optional description;
 - category weights totaling exactly 100%;
 - period-grade computation mode;
+- optional applicability to a specific academic program/division, subject, and/or period type;
 - active/archived state;
 - revision number.
+
+An empty applicability scope means **school-wide**. Teachers only see active presets that match the selected offering. The server validates the same program, subject and period-type scope before accepting a newly applied preset, so stale browser state cannot apply an incompatible scheme.
 
 When a teacher applies a scheme, Adminerva copies the current scheme into the Class Record as a **versioned snapshot**:
 

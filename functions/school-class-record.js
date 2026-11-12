@@ -20,6 +20,7 @@ const MAX_CLASS_SIZE=100;
 const MAX_SCORE=10000;
 const MAX_CATEGORIES=20;
 const MAX_SCORE_CELLS=MAX_COLUMNS*MAX_CLASS_SIZE;
+const PERIOD_TYPES=new Set(["term","semester","quarter","trimester","custom"]);
 const LEGACY_BRIDGE_SCHOOL="mcs-manila";
 const SCHOOL_SOURCE="school";
 const LEGACY_PERSONALIZED_SOURCE="legacy_personalized";
@@ -94,6 +95,25 @@ function cleanSettings(raw={}){
       deny("invalid-argument","Applied grading scheme name is invalid.");
   }
   return {categoryWeights,gradeComputation,appliedSchemeId,appliedSchemeRevision,appliedSchemeName};
+}
+function cleanSchemeApplicability(raw={}){
+  const input=raw&&typeof raw==="object"&&!Array.isArray(raw)?raw:{};
+  const programId=input.programId?checkId(String(input.programId),"Grading scheme program ID",80):null;
+  const subjectId=input.subjectId?checkId(String(input.subjectId),"Grading scheme subject ID",80):null;
+  const incoming=Array.isArray(input.periodTypes)?input.periodTypes:[];
+  if(incoming.length>PERIOD_TYPES.size)
+    deny("invalid-argument","A grading scheme has too many academic period types.");
+  const periodTypes=[...new Set(incoming.map(value=>String(value||"").trim().toLowerCase()).filter(Boolean))];
+  if(periodTypes.some(value=>!PERIOD_TYPES.has(value)))
+    deny("invalid-argument","Grading scheme period type must be term, semester, quarter, trimester or custom.");
+  return {programId,subjectId,periodTypes};
+}
+function schemeMatchesOffering(applicability,offering,periodType){
+  const scope=cleanSchemeApplicability(applicability);
+  if(scope.programId&&scope.programId!==offering.programId)return false;
+  if(scope.subjectId&&scope.subjectId!==offering.subjectId)return false;
+  if(scope.periodTypes.length&&!scope.periodTypes.includes(String(periodType||"term").toLowerCase()))return false;
+  return true;
 }
 function settingsCoreKey(settings){
   return JSON.stringify({
@@ -311,6 +331,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           description:String(item.description||""),status:item.status||"active",
           revision:Number(item.revision)||1,
           settings:cleanSettings(item.settings||{}),
+          applicability:cleanSchemeApplicability(item.applicability||{}),
           updatedAt:millis(item.updatedAt)
         })).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}))};
     }
@@ -322,6 +343,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       if(!Number.isInteger(expectedRevision)||expectedRevision<0)
         deny("invalid-argument","Grading scheme revision is invalid.");
       const auditRef=db.collection(prefix+"grading_scheme_audit").doc();
+      const requestedApplicability=input.action==="save_scheme"?
+        cleanSchemeApplicability(input.applicability||{}):null;
       let result;
       await db.runTransaction(async tx=>{
         await verifySchoolAdmin(tx);
@@ -343,15 +366,27 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
             categoryWeights:schemeSettings.categoryWeights,
             gradeComputation:schemeSettings.gradeComputation
           };
+          const [program,subject]=await Promise.all([
+            requestedApplicability.programId?
+              tx.get(db.doc(prefix+"academic_programs/"+requestedApplicability.programId)):Promise.resolve(null),
+            requestedApplicability.subjectId?
+              tx.get(db.doc(prefix+"subjects/"+requestedApplicability.subjectId)):Promise.resolve(null)
+          ]);
+          if(program&&(!program.exists||program.data().schoolId!==ctx.schoolId||program.data().status!=="active"))
+            deny("failed-precondition","The grading scheme program/division is unavailable or inactive.");
+          if(subject&&(!subject.exists||subject.data().schoolId!==ctx.schoolId||subject.data().status!=="active"))
+            deny("failed-precondition","The grading scheme subject is unavailable or inactive.");
           const revision=priorRevision+1;
           const values={schoolId:ctx.schoolId,name,description,status:"active",
-            settings:storedSettings,revision,updatedByUid:ctx.uid,updatedAt:now};
+            settings:storedSettings,applicability:requestedApplicability,
+            revision,updatedByUid:ctx.uid,updatedAt:now};
           if(prior)tx.update(schemeRef,values);
           else tx.create(schemeRef,{...values,createdByUid:ctx.uid,createdAt:now});
           tx.create(auditRef,{schoolId:ctx.schoolId,schemeId,actorUid:ctx.uid,
             action:prior?"grading_scheme_updated":"grading_scheme_created",
             revision,createdAt:now});
-          result={schemeId,name,description,status:"active",settings:storedSettings,revision};
+          result={schemeId,name,description,status:"active",settings:storedSettings,
+            applicability:requestedApplicability,revision};
         }else{
           if(!prior)deny("not-found","Grading scheme does not exist.");
           const status=input.action==="archive_scheme"?"archived":"active";
@@ -822,10 +857,17 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         settingsCoreKey(settings)!==settingsCoreKey(previousSettings)
       );
       if(schemeChanged){
-        const scheme=await db.doc(prefix+"grading_schemes/"+settings.appliedSchemeId).get();
+        const [scheme,term]=await Promise.all([
+          db.doc(prefix+"grading_schemes/"+settings.appliedSchemeId).get(),
+          db.doc(prefix+"terms/"+checkId(offering.termId,"Academic period ID",80)).get()
+        ]);
         if(!scheme.exists||scheme.data().schoolId!==ctx.schoolId||scheme.data().status!=="active"||
            Number(scheme.data().revision)!==settings.appliedSchemeRevision)
           deny("failed-precondition","The selected school grading scheme changed. Reload grading setup and apply the current revision.");
+        if(!term.exists||term.data().schoolId!==ctx.schoolId)
+          deny("failed-precondition","The course offering academic period is unavailable.");
+        if(!schemeMatchesOffering(scheme.data().applicability||{},offering,term.data().periodType||"term"))
+          deny("failed-precondition","This grading scheme does not apply to the selected program, subject or academic period type.");
         const schemeSettings=cleanSettings(scheme.data().settings||{});
         if(settingsCoreKey(schemeSettings)!==settingsCoreKey(settings))
           deny("failed-precondition","The applied grading scheme snapshot does not match the current school preset.");

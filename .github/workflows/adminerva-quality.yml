@@ -49,6 +49,7 @@ jobs:
           node --check js/repo-review/studio-submissions.mjs
           node --check js/class-record/class-record.mjs
           node --check js/class-record/xlsx-export.mjs
+          node --check js/core/school-grading-schemes.mjs
           node --check js/repo-review/grade-publication.mjs
           node --check js/repo-review/review-ui.mjs
           node --check js/repo-review/feedback-drawer.mjs

@@ -71,6 +71,33 @@
       <textarea name="description" class="gs-input mt-1" rows="2" maxlength="300" placeholder="Optional note about where this scheme applies."></textarea>
     </label>
 
+    <section class="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3">
+      <strong class="text-sm text-slate-900">Applicability</strong>
+      <p class="text-xs text-slate-600 mt-1">Leave a field as “All” for a school-wide scope. Teachers only see matching presets for their selected offering.</p>
+      <div class="grid sm:grid-cols-3 gap-2 mt-3">
+        <label class="text-sm font-bold">Program / division
+          <select id="gs-program" name="programId" class="gs-input mt-1">
+            <option value="">All programs</option>
+          </select>
+        </label>
+        <label class="text-sm font-bold">Subject
+          <select id="gs-subject" name="subjectId" class="gs-input mt-1">
+            <option value="">All subjects</option>
+          </select>
+        </label>
+        <label class="text-sm font-bold">Academic period type
+          <select id="gs-period-type" name="periodType" class="gs-input mt-1">
+            <option value="">All period types</option>
+            <option value="term">Term</option>
+            <option value="semester">Semester</option>
+            <option value="quarter">Quarter</option>
+            <option value="trimester">Trimester</option>
+            <option value="custom">Custom</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
     <section class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
       <div class="flex justify-between items-center gap-2">
         <div><strong class="text-sm">Category weights</strong><p class="text-xs text-slate-600 mt-1">Weights must total exactly 100%.</p></div>
@@ -99,6 +126,6 @@
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script defer src="js/core/adminerva-nav.js?v=4.0.7"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.8"></script>
-<script type="module" src="js/core/school-grading-schemes.mjs?v=1.0.0"></script>
+<script type="module" src="js/core/school-grading-schemes.mjs?v=1.1.0"></script>
 </body>
 </html>

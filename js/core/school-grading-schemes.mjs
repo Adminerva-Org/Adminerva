@@ -3,10 +3,12 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {createTenantSchoolPicker} from "./tenant-school-picker.mjs?v=4.0.0";
 
 const el=id=>document.getElementById(id);
-const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolClassRecord");
+const functions=getFunctions(app,"asia-southeast1");
+const api=httpsCallable(functions,"schoolClassRecord");
+const academicsApi=httpsCallable(functions,"schoolAcademics");
 const list=el("gs-list"),status=el("gs-status"),dialog=el("gs-dialog"),form=el("gs-form"),
   weights=el("gs-weights"),total=el("gs-total"),showArchived=el("gs-show-archived");
-let picker=null,schemes=[],editing=null,busy=false;
+let picker=null,schemes=[],programs=[],subjects=[],editing=null,busy=false;
 
 function scoped(action,details={}){
   if(!picker?.scope.current)return Promise.reject(new Error("Choose a verified school first."));
@@ -15,6 +17,35 @@ function scoped(action,details={}){
     picker.scope.assertLease(lease);
     return response.data;
   });
+}
+function academicScoped(action,details={}){
+  if(!picker?.scope.current)return Promise.reject(new Error("Choose a verified school first."));
+  const lease=picker.scope.lease();
+  return academicsApi({schoolId:lease.schoolId,action,...details}).then(response=>{
+    picker.scope.assertLease(lease);
+    return response.data;
+  });
+}
+function scopeName(items,id,fallback){
+  return items.find(item=>item.id===id)?.name||fallback;
+}
+function applicabilityLabel(scheme){
+  const scope=scheme.applicability||{},parts=[];
+  if(scope.programId)parts.push(scopeName(programs,scope.programId,"Selected program"));
+  if(scope.subjectId)parts.push(scopeName(subjects,scope.subjectId,"Selected subject"));
+  if(scope.periodTypes?.length)parts.push(scope.periodTypes.map(value=>
+    value.charAt(0).toUpperCase()+value.slice(1)).join("/"));
+  return parts.length?parts.join(" · "):"School-wide";
+}
+function fillScopeOptions(){
+  const program=el("gs-program"),subject=el("gs-subject");
+  const selectedProgram=program.value,selectedSubject=subject.value;
+  program.replaceChildren(new Option("All programs",""));
+  subject.replaceChildren(new Option("All subjects",""));
+  for(const item of programs)program.add(new Option(item.name,item.id));
+  for(const item of subjects)subject.add(new Option(item.name,item.id));
+  program.value=programs.some(item=>item.id===selectedProgram)?selectedProgram:"";
+  subject.value=subjects.some(item=>item.id===selectedSubject)?selectedSubject:"";
 }
 function button(text,classes="gs-btn"){
   const node=document.createElement("button");node.type="button";node.className=classes;node.textContent=text;return node;
@@ -48,6 +79,8 @@ function render(){
     const meta=document.createElement("p");meta.className="text-xs text-slate-500 mt-1";
     meta.textContent="Revision "+scheme.revision+" · "+(scheme.status==="active"?"Active":"Archived")+" · "+computationLabel(scheme.settings?.gradeComputation);
     info.append(meta);
+    const scope=document.createElement("p");scope.className="text-xs font-semibold text-blue-700 mt-1";
+    scope.textContent=applicabilityLabel(scheme);info.append(scope);
     if(scheme.description){const p=document.createElement("p");p.className="text-sm text-slate-600 mt-2";p.textContent=scheme.description;info.append(p);}
     top.append(info);card.append(top);
     const chips=document.createElement("div");chips.className="flex flex-wrap gap-1.5 mt-3";
@@ -87,6 +120,10 @@ function openEditor(scheme=null){
   el("gs-dialog-heading").textContent=scheme?"Edit grading scheme":"New grading scheme";
   form.elements.name.value=scheme?.name||"";
   form.elements.description.value=scheme?.description||"";
+  fillScopeOptions();
+  form.elements.programId.value=scheme?.applicability?.programId||"";
+  form.elements.subjectId.value=scheme?.applicability?.subjectId||"";
+  form.elements.periodType.value=scheme?.applicability?.periodTypes?.[0]||"";
   form.elements.gradeComputation.value=scheme?.settings?.gradeComputation||"raw_weighted";
   const rows=scheme?.settings?.categoryWeights||[];
   if(rows.length)rows.forEach(row=>addWeightRow(row.category,String(row.weight)));
@@ -98,11 +135,22 @@ function closeEditor(){if(dialog.open)dialog.close();editing=null;}
 async function load(){
   setBusy(true,"Loading school grading schemes…");
   try{
-    const result=await scoped("list_schemes",{includeArchived:true});
-    schemes=result.schemes||[];render();
+    const [schemeResult,programResult,subjectResult]=await Promise.all([
+      scoped("list_schemes",{includeArchived:true}),
+      academicScoped("list_catalog",{kind:"academic_programs"}),
+      academicScoped("list_catalog",{kind:"subjects"})
+    ]);
+    schemes=schemeResult.schemes||[];
+    programs=(programResult.items||[]).filter(item=>item.status==="active")
+      .sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
+    subjects=(subjectResult.items||[]).filter(item=>item.status==="active")
+      .sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
+    fillScopeOptions();render();
     status.textContent=schemes.length+" grading scheme"+(schemes.length===1?"":"s")+" loaded.";
-  }catch(error){schemes=[];render();status.textContent=error?.message||"Grading schemes could not be loaded.";}
-  finally{setBusy(false);}
+  }catch(error){
+    schemes=[];programs=[];subjects=[];render();
+    status.textContent=error?.message||"Grading schemes could not be loaded.";
+  }finally{setBusy(false);}
 }
 async function changeStatus(scheme,action){
   if(busy)return;
@@ -142,6 +190,11 @@ form.addEventListener("submit",event=>{
     schemeId,expectedRevision:editing?.revision||0,
     name:form.elements.name.value.trim(),
     description:form.elements.description.value.trim(),
+    applicability:{
+      programId:form.elements.programId.value||null,
+      subjectId:form.elements.subjectId.value||null,
+      periodTypes:form.elements.periodType.value?[form.elements.periodType.value]:[]
+    },
     settings:{categoryWeights,gradeComputation:form.elements.gradeComputation.value}
   };
   setBusy(true,"Saving grading scheme…");el("gs-form-status").textContent="Saving…";
@@ -154,7 +207,7 @@ form.addEventListener("submit",event=>{
 picker=createTenantSchoolPicker({
   host:el("gs-school-switcher"),
   status,
-  onBeforeChange:async()=>{schemes=[];editing=null;render();},
+  onBeforeChange:async()=>{schemes=[];programs=[];subjects=[];editing=null;render();},
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){
       status.textContent="School administrator access is required to manage grading schemes.";return;

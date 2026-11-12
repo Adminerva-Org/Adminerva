@@ -50,6 +50,7 @@ const collaboratorsNode=el("cr-collaborators");
 
 let picker=null;
 let offerings=[];
+let periodRecords=[];
 let currentOfferingId="";
 let currentOffering=null;
 let roster=[];
@@ -95,6 +96,30 @@ function scoped(api,action,details={}){
     picker.scope.assertLease(lease);
     return response.data;
   });
+}
+function selectedOffering(){
+  return offerings.find(item=>item.offeringId===currentOfferingId)||currentOffering||null;
+}
+function selectedPeriodType(){
+  const offering=selectedOffering();
+  const period=periodRecords.find(item=>item.termId===offering?.termId);
+  return String(period?.periodType||"term").toLowerCase();
+}
+function schemeMatchesCurrentOffering(scheme){
+  const offering=selectedOffering(),scope=scheme?.applicability||{};
+  if(!offering)return false;
+  if(scope.programId&&scope.programId!==offering.programId)return false;
+  if(scope.subjectId&&scope.subjectId!==offering.subjectId)return false;
+  if(Array.isArray(scope.periodTypes)&&scope.periodTypes.length&&
+     !scope.periodTypes.includes(selectedPeriodType()))return false;
+  return true;
+}
+function schemeScopeSummary(scheme){
+  const scope=scheme?.applicability||{},parts=[];
+  if(scope.programId)parts.push("program-scoped");
+  if(scope.subjectId)parts.push("subject-scoped");
+  if(scope.periodTypes?.length)parts.push(scope.periodTypes.join("/"));
+  return parts.length?parts.join(" · "):"school-wide";
 }
 function sourceName(source){
   return source===PERSONALIZED_SOURCE?"Personalized Studio":"School assessment";
@@ -591,14 +616,21 @@ function renderWeightSetup(){
   const host=el("cr-weight-list");host.replaceChildren();
   const categories=usedCategories(),saved=weightMap();
   schemeSelect.replaceChildren(new Option("Custom class setup",""));
-  for(const scheme of gradingSchemes.filter(item=>item.status==="active"))
-    schemeSelect.add(new Option(scheme.name+" · rev "+scheme.revision,scheme.schemeId));
+  const visibleSchemes=gradingSchemes.filter(item=>item.status==="active"&&
+    (schemeMatchesCurrentOffering(item)||item.schemeId===settings.appliedSchemeId));
+  for(const scheme of visibleSchemes){
+    const matches=schemeMatchesCurrentOffering(scheme);
+    schemeSelect.add(new Option(
+      scheme.name+" · rev "+scheme.revision+" · "+(matches?schemeScopeSummary(scheme):"snapshot only"),
+      scheme.schemeId
+    ));
+  }
   pendingSchemeSnapshot=settings.appliedSchemeId?{
     schemeId:settings.appliedSchemeId,
     revision:Number(settings.appliedSchemeRevision)||0,
     name:settings.appliedSchemeName||"School grading scheme"
   }:null;
-  schemeSelect.value=gradingSchemes.some(item=>item.schemeId===settings.appliedSchemeId)?
+  schemeSelect.value=visibleSchemes.some(item=>item.schemeId===settings.appliedSchemeId)?
     settings.appliedSchemeId:"";
   const currentPreset=settings.appliedSchemeId?gradingSchemes.find(item=>item.schemeId===settings.appliedSchemeId):null;
   if(settings.appliedSchemeId){
@@ -628,6 +660,10 @@ function renderWeightSetup(){
 function applySelectedScheme(){
   const scheme=gradingSchemes.find(item=>item.schemeId===schemeSelect.value&&item.status==="active");
   if(!scheme){schemeNote.textContent="Choose an active school grading scheme first.";return;}
+  if(!schemeMatchesCurrentOffering(scheme)){
+    schemeNote.textContent="This preset no longer applies to this offering. The existing class snapshot remains valid, but this revision cannot be reapplied here.";
+    return;
+  }
   const schemeRows=scheme.settings?.categoryWeights||[];
   const weights=new Map(schemeRows.map(row=>[
     String(row.category||"").toLocaleLowerCase("en"),Number(row.weight)||0
@@ -1098,6 +1134,7 @@ async function loadOfferings(){
   setBusy(true,"Loading your assigned classes…");
   try{
     const result=await scoped(academicsApi,"planning_options");
+    periodRecords=result.periodRecords||[];
     offerings=(result.offerings||[]).slice().sort((a,b)=>{
       const left=(a.subjectName||"")+" "+(a.sectionName||"");
       const right=(b.subjectName||"")+" "+(b.sectionName||"");
@@ -1246,7 +1283,7 @@ picker=createTenantSchoolPicker({
   status,
   onBeforeChange:async()=>{
     if(dirtyColumns.size)throw new Error("Save or discard manual score changes before switching schools.");
-    currentOfferingId="";currentOffering=null;offerings=[];roster=[];assessments=[];collaborators=[];columns=[];gradingSchemes=[];
+    currentOfferingId="";currentOffering=null;offerings=[];periodRecords=[];roster=[];assessments=[];collaborators=[];columns=[];gradingSchemes=[];
     finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
     pendingSchemeSnapshot=null;
     settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
