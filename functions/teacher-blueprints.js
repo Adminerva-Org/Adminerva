@@ -173,8 +173,8 @@ function createTeacherBlueprintService({db}) {
           }
           const payload={schoolId:ctx.schoolId,ownerUid:ctx.uid,blueprintId:id,
             blueprintRevision:expectedRevision,fingerprint,variantIds:ids,scenarioRegistry:registry,
-            count:ids.length,target:config.variantTarget,updatedAt:FieldValue.serverTimestamp()};
-          if(pool.exists)tx.update(poolRef,payload);else tx.create(poolRef,{...payload,ready:false,createdAt:FieldValue.serverTimestamp()});
+            count:ids.length,target:config.variantTarget,ready:false,updatedAt:FieldValue.serverTimestamp()};
+          if(pool.exists)tx.update(poolRef,payload);else tx.create(poolRef,{...payload,createdAt:FieldValue.serverTimestamp()});
         });
         const updated=await poolRef.get();
         return {resourceId:id,fingerprint,count:updated.data().variantIds.length,
