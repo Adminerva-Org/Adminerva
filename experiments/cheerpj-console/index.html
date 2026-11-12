@@ -108,7 +108,8 @@
   </footer>
 </main>
 <div id="cjHiddenDisplay" aria-hidden="true"></div>
-<script>
+<script type="module">
+import { createConsoleBridge } from './console-bridge.mjs';
 (function () {
   "use strict";
   const examples = {
@@ -151,7 +152,7 @@
   const stdin = document.getElementById("stdin");
   const sendBtn = document.getElementById("sendBtn");
   let initPromise = null;
-  let inWriter = null;
+  let bridge = null;
   let runActive = false;
   const encoder = new TextEncoder();
   try { source.value = sessionStorage.getItem("adminerva-cheerpj-lab-source") || examples.scanner; }
@@ -202,22 +203,18 @@
         }
         await window.cheerpjInit({version:17,status:"none"});
         window.cheerpjCreateDisplay(-1, -1, document.getElementById("cjHiddenDisplay"));
-        return await window.cheerpjRunLibrary("");
+        // The provider's BrowserCode project uses ConInodeOps for real
+        // System.in/stdout. This undocumented interface is experimental.
+        bridge = createConsoleBridge(window, function (text) {
+          output.appendChild(document.createTextNode(text));
+        });
+        return bridge;
       })().catch(function (error) {
         initPromise = null;
         throw error;
       });
     }
     return initPromise;
-  }
-  async function connectStdin(library) {
-    const System = await library.java.lang.System;
-    const PipedInputStream = await library.java.io.PipedInputStream;
-    const PipedOutputStream = await library.java.io.PipedOutputStream;
-    const reader = await new PipedInputStream();
-    const writer = await new PipedOutputStream(reader);
-    await System.setIn(reader);
-    return writer;
   }
   async function compileAndRun() {
     if (runActive) return;
@@ -232,7 +229,9 @@
     terminalStatus.textContent = "Starting browser-based Java…";
     setStatus("Loading the CheerpJ 5 Java 17 runtime. The first run can take longer…");
     try {
-      const library = await initialize();
+      const terminalBridge = await initialize();
+      terminalBridge.clearQueuedInput();
+      terminalBridge.resetOutputLimit();
       window.cheerpOSAddStringFile("/str/Main.java", encoder.encode(source.value));
       setStatus("Compiling Main.java using javac in your browser…");
       terminalStatus.textContent = "Compiling…";
@@ -246,7 +245,6 @@
         terminalStatus.textContent = "Compilation failed.";
         return;
       }
-      inWriter = await connectStdin(library);
       setInputEnabled(true);
       setStatus("Compiled successfully. Java is running locally in this browser.", "success");
       terminalStatus.textContent = "Running · Interactive stdin enabled";
@@ -260,28 +258,23 @@
       terminalStatus.textContent = "Run failed. See output.";
     } finally {
       setInputEnabled(false);
-      if (inWriter) {
-        try { await inWriter.close(); } catch (_) {}
-        inWriter = null;
-      }
+      bridge?.clearQueuedInput();
       withRunning(false);
     }
   }
   stdinForm.addEventListener("submit", async function (event) {
     event.preventDefault();
-    if (!runActive || !inWriter) return;
+    if (!runActive || !bridge) return;
     const line = stdin.value;
     stdin.value = "";
     setInputEnabled(false);
     try {
       printOwn("> " + line);
-      const bytes = Int8Array.from(encoder.encode(line + "\n"));
-      await inWriter.write(bytes);
-      await inWriter.flush();
+      bridge.sendLine(line);
     } catch (error) {
-      setStatus("Could not write to System.in: " + (error.message || String(error)), "error");
+      setStatus("Could not send terminal input: " + (error.message || String(error)), "error");
     } finally {
-      if (runActive && inWriter) setInputEnabled(true);
+      if (runActive && bridge) setInputEnabled(true);
     }
   });
   stopBtn.addEventListener("click", function () {
