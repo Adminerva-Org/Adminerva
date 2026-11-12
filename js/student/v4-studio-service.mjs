@@ -11,6 +11,7 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.1
 const functions=getFunctions(app,"asia-southeast1");
 const projectsApi=httpsCallable(functions,"schoolStudioProjects");
 const submissionsApi=httpsCallable(functions,"schoolStudioSubmissions");
+const variantApi=httpsCallable(functions,"schoolStudioAssessmentVariant");
 const assessmentsApi=httpsCallable(functions,"schoolAssessments");
 const host=document.getElementById("studioSchoolSwitcher");
 const status=document.getElementById("studioSchoolStatus");
@@ -235,11 +236,31 @@ export async function listV4StudioAssignments(){
 export async function getV4StudioSubmissionStatus(taskId){
   return scopedCall(submissionsApi,"my_status",{taskId});
 }
+export async function getV4StudioPersonalizedTask(taskId){
+  const tasks=await listV4StudioAssignments();
+  const task=Array.isArray(tasks)?tasks.find(item=>item.taskId===taskId):null;
+  if(!task)return null;
+  if(task.personalizedTask?.enabled!==true)return {personalized:false,taskId};
+  const result=await scopedCall(variantApi,"assign",{taskId});
+  return result?{...result,assessmentId:taskId,canonicalV4:true}:null;
+}
 export async function submitV4StudioProject({taskId,project,state}){
+  const tasks=await listV4StudioAssignments();
+  const task=Array.isArray(tasks)?tasks.find(item=>item.taskId===taskId):null;
+  if(!task)throw Error("This verified-school assessment is unavailable.");
+  let variantId="",variantAttempt=null;
+  if(task.personalizedTask?.enabled===true){
+    const assigned=window.adminervaStudioAssessmentVariant;
+    if(!assigned||assigned.assessmentId!==taskId||assigned.canonicalV4!==true||
+       !assigned.variantId||!Number.isInteger(Number(assigned.attempt)))
+      throw Error("Your personalized task is still loading. Reopen this assignment before submitting.");
+    variantId=String(assigned.variantId);variantAttempt=Number(assigned.attempt);
+  }
   const saved=await syncV4StudioProject(project,state);
   if(!saved)throw Error("Verified school project storage is not available.");
   return scopedCall(submissionsApi,"submit",{
-    taskId,projectId:saved.projectId,projectRevision:saved.revision
+    taskId,projectId:saved.projectId,projectRevision:saved.revision,
+    variantId,variantAttempt
   });
 }
 export function v4StudioBridgeState(){
