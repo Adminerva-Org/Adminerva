@@ -98,12 +98,14 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
         if(!issue.filename)return;
         switchFile(issue.filename);
         const p={lineNumber:Math.max(1,issue.line||1),column:Math.max(1,issue.column||1)};
-        editor.setPosition(p);editor.revealPositionInCenter(p);editor.focus();
-        // The Explorer is an off-canvas drawer on phones. Reveal the selected code.
+        // The Explorer becomes an off-canvas drawer on phones.
         if(window.matchMedia('(max-width:767px)').matches){
           el('studioMobileCloseFiles')?.click();
           el('studioMobileEditor')?.click();
         }
+        requestAnimationFrame(()=>{
+          editor.setPosition(p);editor.revealPositionInCenter(p);editor.focus();
+        });
       });
       display.append(button);
     }
