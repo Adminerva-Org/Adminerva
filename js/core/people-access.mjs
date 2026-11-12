@@ -7,10 +7,27 @@ const get=id=>document.getElementById(id);
 const academicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 let schoolPrograms=[],schoolTerms=[],schoolSections=[],schoolOfferings=[];
 const status=get("school-status"),workspace=get("pa-workspace"),list=get("pa-person-list");
-let after=null,loadingPeople=false,pendingWrite=false;
+let after=null,pendingWrite=false,peopleRequest=0,inviteRequest=0,invitationSelection=null;
 let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false;
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
+const initialPeopleKind=new URL(location.href).searchParams.get("kind");
+if(["student","staff"].includes(initialPeopleKind))get("pa-person-kind").value=initialPeopleKind;
+function updatePeopleContext(){
+  const kind=get("pa-person-kind").value;
+  const status=get("pa-person-search").elements.status.value;
+  const audience=kind==="student"?"students":kind==="staff"?"teachers and staff":"school people";
+  get("pa-person-context").textContent="Showing "+audience+
+    (status!=="all"?" · "+status+" only":"")+
+    ". A person record does not itself grant school access.";
+}
+function syncPeopleKindAddress(){
+  const kind=get("pa-person-kind").value,url=new URL(location.href);
+  if(kind==="student"||kind==="staff")url.searchParams.set("kind",kind);
+  else url.searchParams.delete("kind");
+  history.replaceState(null,"",url.pathname+url.search+url.hash);
+}
+updatePeopleContext();
 let schoolReady=false;
 function activeTab(){return document.querySelector("[data-tab][aria-selected='true']")?.dataset.tab||"overview";}
 async function loadSelectedTab(name){
@@ -40,6 +57,19 @@ function setTab(name,{remember=true}={}) {
     history.replaceState(null,"","#"+target);
   if(schoolReady)void loadSelectedTab(target);
 }
+function showPeopleAudience(kind){
+  const form=get("pa-person-search");
+  form.elements.query.value="";
+  form.elements.status.value="all";
+  get("pa-person-kind").value=kind;
+  after=null;
+  syncPeopleKindAddress();
+  updatePeopleContext();
+  setTab("people");
+}
+document.querySelectorAll("[data-people-kind]").forEach(button=>
+  button.addEventListener("click",()=>showPeopleAudience(button.dataset.peopleKind)));
+get("pa-person-reset").addEventListener("click",()=>showPeopleAudience("all"));
 const directoryTabs=[...document.querySelectorAll(".pa-tabs [data-tab]")];
 directoryTabs.forEach(button=>{
   button.addEventListener("click",()=>setTab(button.dataset.tab));
@@ -61,6 +91,13 @@ const picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving before switching schools.");
     schoolReady=false;
+    ++peopleRequest;++inviteRequest;invitationSelection=null;
+    clearTimeout(peopleSearchTimer);
+    get("pa-create-invite").reset();get("pa-add-person").reset();
+    get("pa-person-search").elements.query.value="";
+    get("pa-person-search").elements.status.value="all";
+    updatePeopleContext();
+    get("pa-person-filter-note").hidden=true;
     workspace.hidden=true;list.replaceChildren();get("pa-invitation-result").replaceChildren();get("pa-class-roster").replaceChildren();get("pa-membership-list").replaceChildren();get("pa-invite-person").replaceChildren();get("pa-suspension-dialog").close?.();get("pa-person-dialog").close?.();get("pa-academic-lifecycle-dialog").close?.();accessChange=null;personChange=null;lifecycleChange=null;currentRosterOfferingId=null;after=null;importRows=[];importDigest=null;importPreview=null;importCommitted=false;schoolPrograms=[];schoolTerms=[];schoolSections=[];schoolOfferings=[];get("pa-import-results").replaceChildren();get("pa-import-summary").textContent="No file previewed.";get("pa-import-status").textContent="Choose a CSV with up to 200 people.";get("pa-import-file").value="";get("pa-import-preview").disabled=true;get("pa-import-commit").disabled=true;resetImportCourseMapping();
     get("pa-reconcile-results")?.replaceChildren();for(const id of ["pa-reconcile-integrity","pa-reconcile-attention","pa-reconcile-review","pa-reconcile-total"]){if(get(id))get(id).textContent="—";}if(get("pa-reconcile-status"))get("pa-reconcile-status").textContent="Loading school relationship checks…";
     get("pa-more").hidden=true;
@@ -112,6 +149,8 @@ async function perform(action,details={}) {
   return result.data;
 }
 async function loadInvitePeople(){
+  if(!schoolReady)return;
+  const request=++inviteRequest;
   const form=get("pa-create-invite"),role=String(form.elements.role.value||"student");
   const select=get("pa-invite-person"),previous=select.value;
   select.replaceChildren();
@@ -119,17 +158,27 @@ async function loadInvitePeople(){
   loading.textContent="Loading active unlinked "+(role==="student"?"students":"staff")+"…";select.append(loading);
   try{
     const result=await perform("list_invitable_people",{role});
+    if(request!==inviteRequest||!schoolReady||form.elements.role.value!==role)return;
     select.replaceChildren();
+    const options=result.people||[];
     const blank=document.createElement("option");blank.value="";blank.disabled=true;blank.selected=true;
-    blank.textContent=result.people?.length?"Choose an active unlinked person":"No matching unlinked person records";
+    blank.textContent=options.length?"Choose an active unlinked person":"No matching unlinked person records";
     select.append(blank);
-    for(const person of result.people||[]){
+    for(const person of options){
       const option=document.createElement("option");option.value=person.personId;option.textContent=person.displayName;
       select.append(option);
     }
-    if((result.people||[]).some(person=>person.personId===previous))select.value=previous;
-    form.querySelector('button[type="submit"]').disabled=!(result.people||[]).length;
+    const requested=invitationSelection;
+    if(requested&&requested.role===role&&requested.schoolId===picker.scope.current?.schoolId){
+      if(options.some(person=>person.personId===requested.personId)){
+        select.value=requested.personId;
+        form.elements.email.focus();
+      }else say("That person cannot receive a new invitation. Review existing access or invitations.");
+      invitationSelection=null;
+    }else if(options.some(person=>person.personId===previous))select.value=previous;
+    form.querySelector('button[type="submit"]').disabled=!options.length;
   }catch(error){
+    if(request!==inviteRequest)return;
     select.replaceChildren();
     const unavailable=document.createElement("option");unavailable.value="";unavailable.disabled=true;unavailable.selected=true;
     unavailable.textContent="Person records unavailable";select.append(unavailable);
@@ -137,8 +186,18 @@ async function loadInvitePeople(){
     throw error;
   }
 }
-get("pa-create-invite").elements.role.addEventListener("change",()=>
-  void loadInvitePeople().catch(error=>say(error.message||"Invitation person list unavailable.")));
+function prepareInviteFor(person){
+  if(!schoolReady||pendingWrite||!picker.scope.current)return;
+  const role=person.kind==="staff"?"teacher":"student";
+  const form=get("pa-create-invite");
+  form.elements.role.value=role;
+  invitationSelection={personId:person.personId,role,schoolId:picker.scope.current.schoolId};
+  setTab("invites");
+}
+get("pa-create-invite").elements.role.addEventListener("change",()=>{
+  invitationSelection=null;
+  void loadInvitePeople().catch(error=>say(error.message||"Invitation person list unavailable."));
+});
 
 
 function parseCsv(text){
