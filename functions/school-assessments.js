@@ -9,6 +9,7 @@ const {Timestamp,FieldValue}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
+const {blueprintFingerprint,personalizationContent,PERSONALIZATION_MODE}=require("./teacher-blueprints.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
 function timestamp(value,label){
  if(typeof value!=="string"||!/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(value)||
@@ -76,6 +77,28 @@ function createSchoolAssessmentService({db}){
     }
     // Only non-confidential blueprint fields; copy by value, never reference mutable
     // private answer keys or share grants in a student-visible deployment.
+    const personalization=personalizationContent(original.personalization);
+    if(personalization.enabled&&source!=="studio")
+      deny("failed-precondition","Personalized assessments currently require Adminerva Studio submission.");
+    let personalizedTask={enabled:false,mode:"standard"};
+    if(personalization.enabled){
+      const fingerprint=blueprintFingerprint(original),
+        poolRef=db.doc(prefix+"assessment_blueprint_private/"+blueprintId+"/pools/"+fingerprint),
+        pool=await tx.get(poolRef),
+        poolData=pool.exists?pool.data():{},
+        variantIds=Array.isArray(poolData.variantIds)?poolData.variantIds:[];
+      if(!pool.exists||poolData.schoolId!==ctx.schoolId||poolData.ownerUid!==ctx.uid||
+         poolData.blueprintId!==blueprintId||poolData.blueprintRevision!==original.contentRevision||
+         poolData.fingerprint!==fingerprint||poolData.ready!==true||
+         variantIds.length<personalization.variantTarget||variantIds.length>600)
+        deny("failed-precondition","Activate a complete private personalization pool before deployment.");
+      personalizedTask={
+        enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",
+        uniqueWithinAssessment:true,poolFingerprint:fingerprint,
+        poolSize:variantIds.length,poolTarget:personalization.variantTarget,
+        variantIds:[...variantIds]
+      };
+    }
     const frozen={
      title:original.title,description:original.description||"",
      instructions:original.instructions||"",
@@ -91,7 +114,7 @@ function createSchoolAssessmentService({db}){
      blueprintId,blueprintRevision:original.contentRevision,
      offeringId,yearId:offering.data().yearId,termId:offering.data().termId,
      subjectId:offering.data().subjectId,sectionId:offering.data().sectionId,
-     submissionSource:source,opensAt:start,dueAt:end,
+     submissionSource:source,personalizedTask,opensAt:start,dueAt:end,
      requestKey:key,status:"deployed",lifecycle:"active",revision:1,
      createdAt:now,updatedAt:now
     });
@@ -241,8 +264,14 @@ function createSchoolAssessmentService({db}){
       subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,
       ownerUid:doc.data().ownerUid,reviewerUid:doc.data().reviewerUid||doc.data().ownerUid,
       opensAt:doc.data().opensAt?.toMillis(),dueAt:doc.data().dueAt?.toMillis(),
-      submissionSource:doc.data().submissionSource,status:doc.data().status,
-      lifecycle:doc.data().lifecycle||"active",revision:doc.data().revision||1
+      submissionSource:doc.data().submissionSource,
+      personalizedTask:doc.data().personalizedTask?.enabled===true?{
+        enabled:true,mode:doc.data().personalizedTask.mode,
+        poolFingerprint:doc.data().personalizedTask.poolFingerprint,
+        poolSize:doc.data().personalizedTask.poolSize,
+        poolTarget:doc.data().personalizedTask.poolTarget
+      }:{enabled:false,mode:"standard"},
+      status:doc.data().status,lifecycle:doc.data().lifecycle||"active",revision:doc.data().revision||1
     })).sort((a,b)=>(b.dueAt||0)-(a.dueAt||0))};
   }
   if(input.action==="list_student"){
@@ -277,7 +306,12 @@ function createSchoolAssessmentService({db}){
      results.push({taskId:doc.id,title:task.title,description:task.description||"",
       instructions:task.instructions||"",rubric:task.rubric||[],
       rubricMax:task.rubricMax,offeringId:task.offeringId,
-      submissionSource:task.submissionSource,opensAt:open,dueAt:due,
+      submissionSource:task.submissionSource,
+      personalizedTask:task.personalizedTask?.enabled===true?{
+        enabled:true,mode:task.personalizedTask.mode,
+        poolSize:Number(task.personalizedTask.poolSize||0)
+      }:{enabled:false,mode:"standard"},
+      opensAt:open,dueAt:due,
       lifecycle,windowStatus:lifecycle==="closed"?"closed":
        now<open?"upcoming":now>due?"closed":"open"});
     }
