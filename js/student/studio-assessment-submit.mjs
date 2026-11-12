@@ -8,6 +8,7 @@ if(button){
   const dialog=document.getElementById("studioSubmitDialog");
   const choose=document.getElementById("studioSubmitChoice");
   const state=document.getElementById("studioSubmitStatus");
+  const details=document.getElementById("studioSubmitDetails");
   const confirmButton=document.getElementById("studioConfirmSubmit");
   const close=()=>dialog.close();
   let choices=new Map(),busy=false,openedUser=null;
@@ -49,18 +50,35 @@ if(button){
   const assessmentParam=new URL(location.href).searchParams.get("assessment");
   function syncExamChoice(){
     const chosen=choices.get(choose.value),task=chosen?.assessment;
-    if(task?.practicalExam&&assessmentParam!==task.id){
+    if(!task){
       confirmButton.disabled=true;
-      notice("To start a practical exam, open the assignment in My Assessments, then choose Open Adminerva Studio. Exam restrictions must begin before you work.");
+      if(details)details.textContent="Choose an assigned assessment to review its type and submission window.";
+      if(choices.size)notice("Choose the assessment to which you want to submit your saved project.");
       return;
     }
-    if(task?.personalizedTask?.enabled===true&&assessmentParam!==task.id){
+    const deployment=(task.deployments||[]).find(item=>item.section===chosen.student.section);
+    const due=deployment?.deadlineEnabled===false||!deployment?.deadline
+      ?"No deadline configured":new Date(deployment.deadline).toLocaleString();
+    const kind=task.practicalExam===true?"Practical exam":
+      task.personalizedTask?.enabled===true?"Personalized task":"Studio project";
+    if(details)details.textContent=task.title+" · "+chosen.student.section+
+      " · "+kind+" · Deadline: "+due;
+    if(task.practicalExam&&assessmentParam!==task.id){
       confirmButton.disabled=true;
-      notice("This assessment has a personalized task. Open it from My Assessments so Adminerva can issue your unique version before you submit.");
+      notice("Open this practical exam from My Assessments so the required exam restrictions apply.");
       return;
     }
-    if(task)window.adminervaSetStudioExamPolicy?.({assessmentId:task.id,practicalExam:task.practicalExam===true});
-    confirmButton.disabled=!task||!studioSubmissionAllowed(task,chosen.student.section).allowed;
+    if(task.personalizedTask?.enabled===true&&assessmentParam!==task.id){
+      confirmButton.disabled=true;
+      notice("Open this personalized task from My Assessments to receive your assigned version before submitting.");
+      return;
+    }
+    window.adminervaSetStudioExamPolicy?.({assessmentId:task.id,practicalExam:task.practicalExam===true});
+    const eligibility=studioSubmissionAllowed(task,chosen.student.section);
+    confirmButton.disabled=!eligibility.allowed;
+    notice(eligibility.allowed
+      ?"Ready to submit. The saved project files, diagrams and project database will be frozen as a revision. Future edits will not change it."
+      :eligibility.reason);
   }
   choose.addEventListener("change",syncExamChoice);
   button.addEventListener("click",async()=>{
@@ -74,9 +92,9 @@ if(button){
   });
   dialog.querySelector("[data-close-studio]")?.addEventListener("click",close);
   dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
-  if(assessmentParam)window.addEventListener("adminerva:studio-ready",()=>{
-    button.click();
-  },{once:true});
+  // Opening an assignment should show the task in Studio, not unexpectedly
+  // present a submission confirmation before the learner has started work.
+  // The learner can submit from Menus or the mobile Task sheet when ready.
   confirmButton.addEventListener("click",async()=>{
     if(busy)return;
     const chosen=choices.get(choose.value),uid=auth.currentUser?.uid;

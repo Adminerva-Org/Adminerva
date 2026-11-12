@@ -1,0 +1,30 @@
+name: Studio mobile UX
+on:
+  pull_request:
+    paths:
+      - 'student-playground.html'
+      - 'guest-playground.html'
+      - 'css/playground-workspace.css'
+      - 'js/student/playground.js'
+      - 'js/student/studio-assessment-variant.mjs'
+      - 'js/student/studio-assessment-submit.mjs'
+      - 'scripts/check-studio-mobile-ux.mjs'
+      - '.github/workflows/studio-mobile-ux.yml'
+  workflow_dispatch:
+jobs:
+  mobile-contract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check js/student/playground.js
+          node --check js/student/studio-assessment-variant.mjs
+          node --check js/student/studio-assessment-submit.mjs
+      - name: Mobile UI layout and task contracts
+        run: node scripts/check-studio-mobile-ux.mjs
