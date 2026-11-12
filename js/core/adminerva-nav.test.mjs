@@ -36,6 +36,7 @@ function mount(module = 'educator', page = 'dashboard', role = 'teacher', storag
   const desktop = new Element(), mobile = new Element(), moduleSwitch = new Element('details');
   moduleSwitch.append(new Element('summary'), new Element());
   const root = new Element(); root.append(moduleSwitch, desktop, mobile);
+  Object.assign(root.dataset, integrations.dataset || {});
   const attrs = { 'data-module': module, 'data-page': page };
   root.getAttribute = key => attrs[key];
   const originalQuery = root.querySelector.bind(root);
@@ -96,10 +97,23 @@ test('home is a direct link and switching workspaces is an explicit disclosure',
 test('educator groups expose the integrated assessment, review and insights destinations', () => {
   const { desktop } = mount('repo', 'gradebook');
   assert.deepEqual(groupNames(desktop), ['Assessment ▾', 'Review & grade ▾', 'Insights ▾']);
-  assert.deepEqual(links(desktop.children[0]).map(link => link.href), ['assessment-studio.html', 'submissions.html', 'studio-submissions.html', 'reclaim-inbox.html']);
+  assert.deepEqual(links(desktop.children[0]).map(link => link.href), ['assessment-studio.html', 'submissions.html', 'reclaim-inbox.html']);
   assert.deepEqual(links(desktop.children[1]).map(link => link.href), ['repofetch.html', 'gradebook.html', 'repobank.html']);
   assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['teacher-analytics.html', 'learning-follow-up.html']);
   assert.ok(!links(desktop).some(link => ['activity-grader.html', 'grading.html', 'lesson-planner.html', 'users.html'].includes(link.href)));
+});
+
+test('Adminerva Studio grading is separated from Repository Management for verified school teachers', () => {
+  const schoolTeacher = mount('class-record', 'studio-submissions', 'teacher', false, {
+    dataset: { schoolTeacher: 'true' }
+  });
+  assert.deepEqual(groupNames(schoolTeacher.desktop), ['Class record & Adminerva assessments ▾']);
+  assert.deepEqual(links(schoolTeacher.desktop).map(link => link.href), ['class-record.html', 'studio-submissions.html']);
+
+  const v4Only = mount('class-record', 'class-record', 'teacher', false, {
+    dataset: { schoolTeacher: 'true', v4OnlyTeacher: 'true' }
+  });
+  assert.deepEqual(links(v4Only.desktop).map(link => link.href), ['class-record.html']);
 });
 
 test('selected task is announced once per desktop/mobile surface and page labels match routes', () => {
