@@ -25,7 +25,10 @@ for(const [name,page] of [['student',student],['guest',guest]]){
     'the Tools trigger should not consume a second row');
   assert.ok(page.indexOf('id="studioAssignmentDock"')<
     page.indexOf('<div class="studio-project-bar">'));
-  assert.match(page,/css\/playground-workspace\.css\?v=3\.0\.9/);
+  assert.match(page,/css\/playground-workspace\.css\?v=3\.0\.10/);
+  assert.ok(page.includes('enterkeyhint="send"'),name+' needs the terminal keyboard Send action');
+  assert.match(page,/id="studioMobileTerminal" type="button" aria-label="Show terminal"/);
+  assert.ok(page.includes('-mobilekb1'),name+' should refresh mobile workspace script');
   assert.ok(page.includes('-mobiletask1'),name+' must refresh JS cache');
 }
 assert.match(student,/id="studioTaskOverview"/);
@@ -39,6 +42,16 @@ assert.match(style,/#studioPersonalizedTaskPrompt/);
 assert.match(main,/const taskAvailable=\(\)=>taskLink/);
 assert.match(main,/taskDock\?\.setAttribute\('aria-modal','true'\)/);
 assert.match(main,/setToolsOpen\(false\)/);
+assert.match(main,/const syncVisibleWorkspace=\(\)=>/);
+assert.match(main,/window\.visualViewport/);
+assert.match(main,/keyboardBaseline-visibleHeight>=120/);
+assert.match(main,/root\.classList\.toggle\('studio-mobile-keyboard-open',keyboardOpen\)/);
+assert.match(main,/active\?\.blur\?\.\(\)/);
+assert.match(main,/new MutationObserver\(\(\)=>\{/);
+assert.match(style,/\.studio-mobile-keyboard-open/);
+assert.match(style,/--studio-mobile-visual-height/);
+assert.match(style,/#stdinLineInput/);
+assert.match(style,/#studioMobileTerminal\[data-unread="true"\]/);
 assert.match(variant,/showOverview\(task\.data\(\)\)/);
 assert.match(variant,/overviewText\.textContent/);
 assert.match(submit,/const eligibility=studioSubmissionAllowed\(task,chosen\.student\.section\)/);
