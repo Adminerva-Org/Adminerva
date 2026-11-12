@@ -37,6 +37,8 @@ During the MCS compatibility period, Class Record maps the school person record 
 
 Future school-scoped Personalized assessment formats should publish through their own school grading workflow and then appear as the normal school assessment source.
 
+For school-scoped deployed assessments, the teacher Assessment Library exposes an **Add to Class Record** action. It deep-links to the assigned offering and preselects the deployed assessment, but it does not create a column automatically; the teacher still confirms the Class Record label and category before saving.
+
 ## Column lifecycle
 
 Each column has a stable `columnId`.

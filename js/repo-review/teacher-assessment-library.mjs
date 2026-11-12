@@ -143,6 +143,11 @@ function render(){
         const gradebook=document.createElement("a");gradebook.className="tl-action alt";
         gradebook.href="school-gradebook.html?task="+encodeURIComponent(task.taskId);
         gradebook.textContent="Review & Grade";controls.append(gradebook);
+        const classRecord=document.createElement("a");classRecord.className="tl-action alt";
+        classRecord.href="class-record.html?"+new URLSearchParams({
+          offering:task.offeringId,assessment:task.taskId,source:"school"
+        }).toString();
+        classRecord.textContent="Add to Class Record";controls.append(classRecord);
       }
       if(lifecycle==="active"){
         controls.append(actionButton("Close",()=>openLifecycle(task,"close"),true));

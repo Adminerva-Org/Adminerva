@@ -9,6 +9,13 @@ const academicsApi=httpsCallable(functions,"schoolAcademics");
 
 const SCHOOL_SOURCE="school";
 const PERSONALIZED_SOURCE="legacy_personalized";
+const initialParams=new URLSearchParams(location.search);
+const deepLinkOfferingId=String(initialParams.get("offering")||"");
+let pendingAssessmentDeepLink=initialParams.get("assessment")?{
+  taskId:String(initialParams.get("assessment")||""),
+  source:[SCHOOL_SOURCE,PERSONALIZED_SOURCE].includes(initialParams.get("source"))?
+    initialParams.get("source"):SCHOOL_SOURCE
+}:null;
 const offeringSelect=el("cr-offering");
 const status=el("cr-status");
 const panel=el("cr-record-panel");
@@ -595,6 +602,38 @@ function openColumnDialog(column=null){
   syncColumnFields();
   el("cr-column-status").textContent="";
   dialog.showModal();columnForm.elements.label.focus();
+}
+function clearAssessmentDeepLink(){
+  const url=new URL(location.href);
+  url.searchParams.delete("assessment");url.searchParams.delete("source");
+  history.replaceState(null,"",url.pathname+(url.searchParams.size?"?"+url.searchParams.toString():"")+url.hash);
+}
+function maybeOpenAssessmentDeepLink(){
+  const requested=pendingAssessmentDeepLink;
+  if(!requested||deepLinkOfferingId&&deepLinkOfferingId!==currentOfferingId)return;
+  pendingAssessmentDeepLink=null;clearAssessmentDeepLink();
+  const task=assessments.find(item=>item.taskId===requested.taskId&&item.sourceType===requested.source);
+  if(!task){
+    say("The requested assessment is not available to link from this Class Record.");
+    return;
+  }
+  const alreadyLinked=columns.some(column=>column.kind==="assessment"&&column.archived!==true&&
+    assessmentKey(column.assessmentSource||SCHOOL_SOURCE,column.taskId)===
+      assessmentKey(requested.source,requested.taskId));
+  if(alreadyLinked){
+    say(task.title+" is already linked to this Class Record.");
+    return;
+  }
+  if(task.linkable===false){
+    say(task.title+" is historical and cannot be added as a new Class Record column.");
+    return;
+  }
+  openColumnDialog();
+  columnKind.value="assessment";syncColumnFields();
+  assessmentSelect.value=assessmentKey(task.sourceType,task.taskId);
+  syncAssessmentSourceNote();
+  columnForm.elements.label.value=String(task.title||"Assessment").slice(0,80);
+  el("cr-column-status").textContent="Assessment preselected. Choose the Class Record label/category, then add the column.";
 }
 async function saveLayout(nextColumns,nextSettings=settings,success="Class Record layout saved."){
   setBusy(true,"Saving Class Record…");
@@ -1246,6 +1285,7 @@ async function loadWorkspace(){
     ]));
     dirtyColumns.clear();render();
     renderArchivedList();
+    maybeOpenAssessmentDeepLink();
     const personalizedAvailable=assessments.filter(task=>task.sourceType===PERSONALIZED_SOURCE&&task.linkable!==false).length;
     say("Class Record loaded. Linked scores are published-only"+
       (personalizedAvailable?" · "+personalizedAvailable+" Personalized Studio assessment"+(personalizedAvailable===1?"":"s")+" available for linking.":".")+
@@ -1275,7 +1315,14 @@ async function loadOfferings(){
     }
     offeringSelect.disabled=!offerings.length;
     say(offerings.length?"Choose a class to open its record.":"No active course offering is assigned to this teacher.");
-    if(offerings.length===1){
+    const requested=deepLinkOfferingId?offerings.find(item=>item.offeringId===deepLinkOfferingId):null;
+    if(requested){
+      currentOfferingId=requested.offeringId;offeringSelect.value=currentOfferingId;
+      await loadWorkspace();
+    }else if(deepLinkOfferingId){
+      pendingAssessmentDeepLink=null;clearAssessmentDeepLink();
+      say("The requested Class Record offering is not assigned to this teacher.");
+    }else if(offerings.length===1){
       currentOfferingId=offerings[0].offeringId;offeringSelect.value=currentOfferingId;
       await loadWorkspace();
     }
