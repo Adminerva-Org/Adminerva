@@ -103,7 +103,7 @@ async function execute(files,entry){
     bridge?.endRun();
     // A per-run directory avoids stale bytecode; cleanup must complete before
     // the parent destroys this iframe. Interrupted runs can leave temp files.
-    try{await removeTree(compiledDirectory)}catch(e){console.warn('CheerpJ temporary files cleanup:',e)}
+    try{await removeTree(compiledDirectory?.replace(/\/classes$/,''))}catch(e){console.warn('CheerpJ temporary files cleanup:',e)}
     if(failed)fail(failed);
     else if(completed)send('finished',completed);
   }
