@@ -57,6 +57,7 @@ const picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     ++requestGeneration;
     showSchoolTools(false);
+    document.querySelectorAll("[data-legacy-only]").forEach(node=>{node.hidden=true;});
     clearCounts();
     overviewStatus.textContent="Checking the selected school's administration scope…";
   },
@@ -64,6 +65,9 @@ const picker=createTenantSchoolPicker({
     clearCounts();
     const authorized=scope.current?.roles?.includes("school_admin")===true;
     showSchoolTools(authorized);
+    document.querySelectorAll("[data-legacy-only]").forEach(node=>{
+      node.hidden=!authorized||scope.current.compatibilityMode!=="legacy_allowed";
+    });
     if(!authorized){
       ++requestGeneration;
       overviewStatus.textContent="This school has not granted you School Administrator access.";
