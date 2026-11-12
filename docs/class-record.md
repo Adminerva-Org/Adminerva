@@ -55,6 +55,8 @@ Archiving is preferred over deletion. Archived columns retain their saved scores
 
 Historical assessment-linked columns retain their source snapshot even when the original assessment later closes, archives, or is no longer linkable. New columns can link only to a currently authorized/linkable assessment.
 
+If a linked assessment's published maximum later differs from the locked Class Record column maximum, that score is excluded from live grade calculations and server finalization is blocked. The teacher can archive the historical column and link the same assessment again as a new active column using its current maximum; archived copies do not prevent this recovery path.
+
 ## Manual score import
 
 Manual-score import accepts CSV or tab-separated text for one manual column at a time.

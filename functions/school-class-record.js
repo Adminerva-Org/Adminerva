@@ -256,7 +256,7 @@ function computePeriodSnapshot({columns,settings,roster,manualScores,publishedGr
 function cleanColumns(raw,assessmentMap,previousColumns=[]){
   if(!Array.isArray(raw)||raw.length>MAX_COLUMNS)
     deny("invalid-argument","A class record supports up to "+MAX_COLUMNS+" columns.");
-  const ids=new Set(),linkedTasks=new Set(),previousById=new Map(
+  const ids=new Set(),linkedActiveTasks=new Set(),previousById=new Map(
     (Array.isArray(previousColumns)?previousColumns:[]).map(column=>[
       column.columnId,
       column.kind==="assessment"&&!column.assessmentSource
@@ -283,9 +283,9 @@ function cleanColumns(raw,assessmentMap,previousColumns=[]){
     const assessmentSource=[SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE].includes(item?.assessmentSource)
       ?item.assessmentSource:SCHOOL_SOURCE;
     const unique=assessmentKey(assessmentSource,taskId);
-    if(linkedTasks.has(unique))
-      deny("invalid-argument","The same assessment cannot be linked to the class record twice.");
-    linkedTasks.add(unique);
+    if(!archived&&linkedActiveTasks.has(unique))
+      deny("invalid-argument","The same assessment cannot appear in more than one active Class Record column.");
+    if(!archived)linkedActiveTasks.add(unique);
     const task=assessmentMap.get(unique),previous=previousById.get(columnId);
     const sameHistoricalSource=previous&&previous.kind==="assessment"&&
       assessmentKey(previous.assessmentSource||SCHOOL_SOURCE,previous.taskId)===unique;

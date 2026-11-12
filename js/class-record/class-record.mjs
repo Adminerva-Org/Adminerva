@@ -161,6 +161,18 @@ function columnTask(column){
 function linkedGrade(column,personId){
   return publishedGrades.get(gradeKey(column.assessmentSource||SCHOOL_SOURCE,column.taskId,personId))||null;
 }
+function linkedGradeState(column,personId){
+  const grade=linkedGrade(column,personId);
+  if(!grade)return {grade:null,valid:false,reason:"missing"};
+  const awarded=Number(grade.awarded),total=Number(grade.total),maximum=Number(column.maxPoints);
+  if(!Number.isFinite(awarded)||!Number.isFinite(total)||!Number.isFinite(maximum))
+    return {grade,valid:false,reason:"invalid"};
+  if(Math.abs(total-maximum)>0.000001)
+    return {grade,valid:false,reason:"maximum_mismatch"};
+  if(awarded<0||awarded>maximum+0.000001)
+    return {grade,valid:false,reason:"score_range"};
+  return {grade,valid:true,reason:""};
+}
 function manualValue(column,personId,{fromInput=true}={}){
   if(fromInput){
     const input=tableWrap.querySelector('input[data-column-id="'+CSS.escape(column.columnId)+'"][data-person-id="'+CSS.escape(personId)+'"]');
@@ -171,8 +183,8 @@ function manualValue(column,personId,{fromInput=true}={}){
 }
 function scoreFor(column,personId,{fromInput=true}={}){
   if(column.kind==="manual")return manualValue(column,personId,{fromInput});
-  const grade=linkedGrade(column,personId);
-  return grade?Number(grade.awarded):null;
+  const state=linkedGradeState(column,personId);
+  return state.valid?Number(state.grade.awarded):null;
 }
 function metricsFor(personId,{fromInput=true}={}){
   const categories=usedCategories(),weights=weightMap();
@@ -479,12 +491,19 @@ function render(){
         input.dataset.original=input.value;input.dataset.dirty="false";
         input.addEventListener("input",updateDirtyState);td.append(input);
       }else{
-        const grade=linkedGrade(column,student.personId);
+        const state=linkedGradeState(column,student.personId),grade=state.grade;
         const personalized=(column.assessmentSource||SCHOOL_SOURCE)===PERSONALIZED_SOURCE;
-        const value=make("span","cr-linked"+(personalized?" personalized":""),grade?numberText(grade.awarded):"—");
-        if(grade){
+        const value=make("span","cr-linked"+(personalized?" personalized":"")+
+          (grade&&!state.valid?" invalid":""),grade?numberText(grade.awarded)+(state.valid?"":" ⚠"):"—");
+        if(grade&&state.valid){
           value.title="Published "+sourceName(column.assessmentSource||SCHOOL_SOURCE)+" result: "+
             numberText(grade.awarded)+" / "+numberText(grade.total);
+        }else if(grade&&state.reason==="maximum_mismatch"){
+          value.title="Published result is "+numberText(grade.awarded)+" / "+numberText(grade.total)+
+            ", but this Class Record column is locked to "+numberText(column.maxPoints)+
+            " points. Archive this old column and add the assessment again with its current maximum.";
+        }else if(grade){
+          value.title="This published result is outside the valid score range for the Class Record column and is excluded from live grade calculations.";
         }else{
           value.title=personalized
             ?"No published Personalized Studio grade yet. Review the Studio submission, save the grade draft, and publish it from Studio grading."
@@ -510,7 +529,8 @@ function render(){
 }
 function populateAssessmentOptions(selectedSource="",selectedTaskId=""){
   assessmentSelect.replaceChildren();
-  const used=new Set(columns.filter(column=>column.kind==="assessment"&&column.columnId!==editingColumnId)
+  const used=new Set(columns.filter(column=>column.kind==="assessment"&&column.archived!==true&&
+      column.columnId!==editingColumnId)
     .map(column=>assessmentKey(column.assessmentSource||SCHOOL_SOURCE,column.taskId)));
   const selectedKey=selectedTaskId?assessmentKey(selectedSource,selectedTaskId):"";
   const available=assessments.filter(task=>{
