@@ -155,6 +155,25 @@ function applyDeterministicSessionRemarks(session){
   return session;
 }
 
+const ASYNC_PRELIMINARY="Reviewing the posted lesson objectives and accessing assigned learning materials.";
+const ASYNC_CLOSING="Completing a self-check and recording questions for the next classroom discussion.";
+const MIXED_PRELIMINARY="Reviewing section-specific delivery instructions and required resources.";
+const MIXED_CLOSING="Summarizing progress and checking the next steps for the relevant section.";
+
+function applyGeneratedSessionDefaults(session,defaultPrelim,defaultClosing){
+  if(!session||!session.session_name)return session;
+  const isFlex=String(session.session_name).toLowerCase().includes("flex");
+  const mode=["in_person","asynchronous","mixed"].includes(session.delivery_mode)
+    ?session.delivery_mode:(isFlex?"asynchronous":"in_person");
+  session.delivery_mode=mode;
+  if(isFlex)return session;
+  session.preliminary=mode==="asynchronous"?ASYNC_PRELIMINARY:
+    mode==="mixed"?MIXED_PRELIMINARY:defaultPrelim;
+  session.closing=mode==="asynchronous"?ASYNC_CLOSING:
+    mode==="mixed"?MIXED_CLOSING:defaultClosing;
+  return session;
+}
+
 function parseReferenceDigestJson(raw){
   const text=String(raw||"").trim()
     .replace(/^\`\`\`json\s*/i,"")
@@ -641,9 +660,9 @@ window.executeFinalGeneration = async function (userClarification, options = {})
     lookbackContext = `
 7. CATCH-UP & CURRICULUM SHIFT RULE:
    - Review Last Week's Curriculum State below.
-   - If any session's 'Remarks' indicate it was suspended, interrupted, or handled passively, you MUST extract those specific topics and literally regenerate them as the primary learning_activities for the early sessions of THIS week.
-   - Shift the entire week's schedule forward.
-   - If you shift bumped content into a new session, you MUST append a dynamic note to that session's 'remarks' field indicating exactly which session was missed.
+   - Carry forward ONLY specifically unfinished content evidenced by prior remarks or explicit teacher instructions. Integrate it into one or two relevant activities, not every activity from last week.
+   - Do not shift the entire week automatically. Preserve the current reference sequence and mapped meetings unless the teacher expressly requests a shift.
+   - Summarize necessary catch-up briefly in affected remarks, identifying the missed session where known.
 LAST WEEK'S CURRICULUM STATE:\n${safeTextState}`;
   }
 
@@ -677,33 +696,36 @@ CRITICAL OUTPUT RULES:
 1. weekly_overview:
    - topic: concise weekly topic grounded in the selected instructional references.
    - content_standard and performance_standard: use the selected references when available. If absent, provide a professionally worded general standard without pretending it is a verbatim official standard.
-   - materials: heavily bulleted with dashes and use the exact escaped sequence '\\n' between items.
+   - materials: give 5 to 8 short, nonduplicated resources relevant to THIS week; do not repeat a whole reference-library inventory. Name platforms or assessment tools only when used. Separate dashes using escaped '\n'.
 2. sessions: generate the required daily sessions in the exact order below.
 ${gradeSpecificRules}
 5. NORMAL SESSION DETAILS:
    - topic: a specific sub-topic supported by the current references and sequence.
    - competencies: 1 to 2 clear learning competencies, preferring reference wording when available.
-   - objectives: exactly 3 to 4 detailed behavioral objectives based on Bloom's Taxonomy. Do not label Bloom domains.
-   - preliminary: set to an empty string. Adminerva applies the teacher's saved preliminary-activity defaults after generation/import.
-   - motivation: start with an '-ing' student-action verb and directly identify the teaching strategy. Do not use a detached 'Strategy:' header.
+   - objectives: exactly 3 to 4 measurable and realistic behavioral objectives, usually one sentence of 15 to 25 words each. Do not label Bloom domains.
+   - delivery_mode: exactly 'in_person', 'asynchronous', or 'mixed'. Use 'asynchronous' when ALL mapped meetings are suspended/replaced by independent work; use 'mixed' when sections or meetings differ; otherwise use 'in_person'. Never infer a suspension from a generic event name alone.
+   - preliminary: empty string. Adminerva supplies opening activities suitable for delivery_mode after generation/import.
+   - motivation: one brief student-action sentence beginning with an '-ing' verb, integrating the teaching/learning strategy rather than a separate Strategy header.
    - learning_activities:
-     * heavily bulleted using dashes;
-     * use the escaped sequence '\\n' before every dash;
-     * every bullet starts with an '-ing' verb from the student's point of view;
-     * weave the strategy into the student action;
-     * no minute allocations or timestamps.
+     * exactly 4 to 6 substantive, sequential student actions per session even if the reference materials contain many microsteps;
+     * use a dash and escaped '\n' between bullets; each bullet should normally be 12 to 25 words, never a paragraph;
+     * start each bullet with an '-ing' verb; integrate the strategy naturally and combine closely related microsteps;
+     * follow a clear review/engage, explore/model, practice/apply, consolidation sequence; do not repeat objectives verbatim;
+     * make the work realistic for one meeting; in asynchronous sessions specify manageable self-paced tasks, never live attendance or real-time teacher demonstrations;
+     * no time allocations, timestamps, repeated lesson titles, duplicated resources, or excessively granular directions.
    - formation_standard: use the most relevant Formation Standard/core-value reference when provided. Format exactly '[Core Value Keyword] - [General Definition]'.
-   - evaluation: align to the lesson competencies and the teacher's instructions. Use a referenced Let's Practice/checking activity when the teacher explicitly asks for it. Do not default to Quipper.
-   - closing: set to an empty string. Adminerva applies the teacher's saved closing-activity defaults after generation/import.
+   - evaluation: one or two concise sentences naming the observable learner output and how it checks the competencies. Follow teacher-specified checking/assessment requirements; do not default to Quipper or invent rubric points, deadlines, or tasks.
+   - closing: empty string. Adminerva supplies closing activities suitable for delivery_mode after generation/import.
    - values_integration: use the same appropriate formation/core-value source and format '[Core Value Keyword] - [Specific application to this lesson topic]'.
    - remarks:
      * DO NOT write section/date/time schedule lines. Adminerva attaches those deterministically after generation.
-     * write only additional teacher-instruction notes that belong to this session, such as a suspension, field trip, holiday, catch-up note, or other special intervention;
-     * use the ADMINERVA INSTRUCTION MAP to apply such notes only to the affected day/date/session;
-     * leave remarks as an empty string when there is no additional non-schedule note.
+     * include only essential non-schedule interventions for THIS session, applying the ADMINERVA INSTRUCTION MAP narrowly;
+     * use at most two short sentences (normally under 55 words) covering delivery changes, necessary carry-over, and assessment implications;
+     * do not narrate each activity, repeat the previous week's history, duplicate timetable metadata, or describe unrelated sessions;
+     * leave remarks empty when no additional session-specific note exists.
 6. SESSION FLEX:
-   - offline/asynchronous;
-   - provide ONLY bulleted learning_activities;
+   - delivery_mode is 'asynchronous';
+   - provide ONLY 3 to 5 concise, optional offline/self-paced learning_activities relevant to this week;
    - set all other fields to empty strings.
 7. STRICT JSON:
    - output one valid JSON object and nothing else;
@@ -713,7 +735,7 @@ ${gradeSpecificRules}
 8. EXACT JSON STRUCTURE:
    {
      "weekly_overview": { "topic": "...", "content_standard": "...", "performance_standard": "...", "materials": "..." },
-     "sessions": [ { "session_name": "...", "topic": "...", "competencies": "...", "objectives": "...", "preliminary": "...", "motivation": "...", "learning_activities": "...", "formation_standard": "...", "evaluation": "...", "closing": "...", "values_integration": "...", "remarks": "..." } ]
+     "sessions": [ { "session_name": "...", "delivery_mode": "in_person | asynchronous | mixed", "topic": "...", "competencies": "...", "objectives": "...", "preliminary": "...", "motivation": "...", "learning_activities": "...", "formation_standard": "...", "evaluation": "...", "closing": "...", "values_integration": "...", "remarks": "..." } ]
    }
 
 ${lookbackContext}
@@ -798,6 +820,7 @@ ${window.cachedCompiledText || "No selected reference text. Use fallback profess
                           type: "OBJECT",
                           properties: {
                             session_name: { type: "STRING" },
+                            delivery_mode: { type: "STRING", enum: ["in_person", "asynchronous", "mixed"] },
                             topic: { type: "STRING" },
                             competencies: { type: "STRING" },
                             objectives: { type: "STRING" },
@@ -812,6 +835,7 @@ ${window.cachedCompiledText || "No selected reference text. Use fallback profess
                           },
                           required: [
                             "session_name",
+                            "delivery_mode",
                             "topic",
                             "competencies",
                             "objectives",
@@ -930,14 +954,7 @@ ${window.cachedCompiledText || "No selected reference text. Use fallback profess
     window.currentPlanSubject = subject;
     window.currentPlanTeacher = lessonStorage.getItem("Adminerva_defaultTeacher") || "Unassigned";
     window.currentPlan = sessionsArray.map((session) => {
-      if (
-        session &&
-        session.session_name &&
-        !session.session_name.toLowerCase().includes("flex")
-      ) {
-        session.preliminary = defaultPrelim;
-        session.closing = defaultClosing;
-      }
+      applyGeneratedSessionDefaults(session,defaultPrelim,defaultClosing);
       for (let key in session) {
         if (typeof session[key] === "string") {
           session[key] = session[key].replace(/\\n/g, "\n");
@@ -1020,13 +1037,7 @@ function applyExternalLessonPlan(planData) {
 
   window.currentPlan = (planData.sessions || []).map((sourceSession) => {
     const session = { ...sourceSession };
-    if (
-      session.session_name &&
-      !String(session.session_name).toLowerCase().includes("flex")
-    ) {
-      session.preliminary = defaultPrelim;
-      session.closing = defaultClosing;
-    }
+    applyGeneratedSessionDefaults(session,defaultPrelim,defaultClosing);
     Object.keys(session).forEach((key) => {
       if (typeof session[key] === "string") {
         session[key] = session[key].replace(/\\n/g, "\n");
@@ -1171,6 +1182,7 @@ window.generateBlankPlan = function () {
     const isFlex = name.toLowerCase().includes("flex");
     return {
       session_name: name,
+      delivery_mode: isFlex ? "asynchronous" : "in_person",
       topic: "",
       competencies: "",
       objectives: "",
