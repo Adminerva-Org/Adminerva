@@ -242,7 +242,8 @@ function buildAssessmentPlan({rows,foundationPlan,foundationPlanRaw,foundationAp
     opensAt:window.opensAt,dueAt:window.dueAt,status:"deployed",published,
     lifecycle:"active",revision:1,
     legacyNoDeadline:window.legacyNoDeadline,windowSource:window.source,
-    migration:{sourcePath:row.path,deploymentIndex:index,legacySection:offering.sectionLabel}
+    migration:{sourcePath:row.path,deploymentIndex:index,legacySection:offering.sectionLabel,
+      legacyPersonalizationFingerprint:personalized.pool?.legacyFingerprint||null}
    });
    if(window.legacyNoDeadline)reviewItems.push({type:"legacy_no_deadline_preserved",
      assessmentId:row.id,taskId,section:offering.sectionLabel,
