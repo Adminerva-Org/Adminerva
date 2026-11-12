@@ -983,14 +983,16 @@ function directoryFilterActive(filters){
   return Boolean(filters.query)||filters.kind!=="all"||filters.status!=="all";
 }
 async function loadPeople(append) {
-  if(loadingPeople)return;
-  loadingPeople=true;const button=get("pa-more"),note=get("pa-person-filter-note");
+  if(!schoolReady)return;
+  const request=++peopleRequest;
+  const button=get("pa-more"),note=get("pa-person-filter-note");
   button.disabled=true;
   try {
     const filters=directoryFilters(),filtered=directoryFilterActive(filters);
     const response=filtered?
       await perform("search_people",filters):
       await perform("list_people",append&&after?{after}:undefined);
+    if(request!==peopleRequest||!schoolReady)return;
     if(!append||filtered)list.replaceChildren();
     for(const person of response.items||[]){
       const row=document.createElement("div");row.className="pa-row";row.setAttribute("role","listitem");
@@ -1002,6 +1004,14 @@ async function loadPeople(append) {
       const view=document.createElement("button");view.type="button";view.className="pa-action";view.style.background="#0f766e";view.textContent="View details";
       view.addEventListener("click",()=>void openPersonDetail(person));
       actions.append(view);
+      if(person.status==="active"&&!person.accountLinked){
+        const invite=document.createElement("button");invite.type="button";
+        invite.className="pa-action";invite.style.background="#155e75";
+        invite.textContent="Invite";
+        invite.setAttribute("aria-label","Invite "+person.displayName+" to this school");
+        invite.addEventListener("click",()=>prepareInviteFor(person));
+        actions.append(invite);
+      }
       const edit=document.createElement("button");edit.type="button";edit.className="pa-action";edit.textContent="Edit";
       edit.addEventListener("click",()=>openPersonDialog(person,"edit"));
       actions.append(edit);
@@ -1028,8 +1038,8 @@ async function loadPeople(append) {
     }else{
       after=response.nextCursor;button.hidden=!after;note.hidden=true;note.textContent="";
     }
-  }catch(error){say(error.message||"Could not load this school directory.");}
-  finally{loadingPeople=false;button.disabled=false;}
+  }catch(error){if(request===peopleRequest)say(error.message||"Could not load this school directory.");}
+  finally{if(request===peopleRequest)button.disabled=false;}
 }
 get("pa-more").addEventListener("click",()=>void loadPeople(true));
 get("pa-export-people").addEventListener("click",()=>{
@@ -1057,11 +1067,21 @@ get("pa-export-people").addEventListener("click",()=>{
   })();
 });
 
-get("pa-person-search").addEventListener("input",()=>{
+get("pa-person-search").addEventListener("input",event=>{
+  if(event.target.tagName==="SELECT")return;
   clearTimeout(peopleSearchTimer);
-  peopleSearchTimer=setTimeout(()=>{after=null;void loadPeople(false);},250);
+  peopleSearchTimer=setTimeout(()=>{after=null;void loadPeople(false);},275);
 });
-get("pa-person-search").addEventListener("change",()=>{after=null;void loadPeople(false);});
+get("pa-person-search").addEventListener("change",event=>{
+  if(event.target.tagName!=="SELECT")return;
+  clearTimeout(peopleSearchTimer);
+  syncPeopleKindAddress();updatePeopleContext();
+  after=null;void loadPeople(false);
+});
+get("pa-person-search").addEventListener("submit",event=>{
+  event.preventDefault();clearTimeout(peopleSearchTimer);
+  after=null;void loadPeople(false);
+});
 async function submitForm(form,action,details) {
   if(pendingWrite)return null;
   const button=form.querySelector('button[type="submit"]');
