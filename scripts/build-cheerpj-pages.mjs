@@ -4,9 +4,10 @@
  * Adminerva application files. No installation or build dependencies.
  */
 import {copyFile, mkdir, rm, writeFile} from 'node:fs/promises';
-import {join, resolve} from 'node:path';
+import {join, resolve, dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
-const root=resolve(import.meta.dirname,'..');
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const from=join(root,'experiments/cheerpj-console');
 const to=join(root,'dist/cheerpj-runner');
 const assets=['embedded-runner.html','embedded-runner.mjs','console-bridge.mjs','_headers'];
