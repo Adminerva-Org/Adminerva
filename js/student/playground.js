@@ -8,6 +8,7 @@ import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.0.0";
 import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=4";
 import {CheerpjStudioClient,CHEERPJ_STUDIO_RUNNER_URL,validateCheerpjRunnerUrl} from "./cheerpj-studio-client.mjs?v=2";
+import {evaluateBrowserJavaAccess,CHEERPJ_STUDIO_ROLLOUT} from "./cheerpj-studio-rollout.mjs?v=1";
 import {
   collection,
   addDoc,
@@ -74,8 +75,8 @@ let workspaceFolders=[],projectOrder=[],selectedProjectPath="",selectedProjectFo
 let executionController=null,executionSequence=0;
 let cheerpjClient=null;
 const CHEERPJ_STUDIO_ENABLED=Boolean(validateCheerpjRunnerUrl(CHEERPJ_STUDIO_RUNNER_URL));
-const JAVA_ENGINE_KEY='Adminerva_Java_Engine_v1';
-let javaEngine=(()=>{try{return CHEERPJ_STUDIO_ENABLED&&localStorage.getItem(JAVA_ENGINE_KEY)==='cheerpj'?'cheerpj':'judge0';}catch{return 'judge0';}})();
+// Do not carry a pilot selection across students, browsers, or assessments.
+let javaEngine='judge0';
 let loadedOwnerUid=null;
 let projectStudio=null;
 let studioRuntimeIntegration=null;
@@ -206,6 +207,10 @@ window.adminervaSetStudioExamPolicy=({assessmentId,practicalExam=false}={})=>{
   if(examLinkId&&assessmentId!==examLinkId)return;
   examPolicy={assessmentId,practicalExam:practicalExam===true};
   examPolicyPending=false;refreshExamControls();
+  if(editorInstance){
+    if(cheerpjClient&&!currentBrowserJavaAccess().enabled)stopLiveBrowserJava(true);
+    updateOutputView();
+  }
 };
 const inExamCodeField=target=>target instanceof Element&&Boolean(
   target.closest("#editorContainer,#designEditor,#dbSqlInput"));
@@ -1307,8 +1312,30 @@ function consoleInputExhausted(errorText){
 }
 
 
+function currentBrowserJavaAccess(){
+  return evaluateBrowserJavaAccess({
+    policy:CHEERPJ_STUDIO_ROLLOUT,
+    runnerReady:CHEERPJ_STUDIO_ENABLED,
+    uid:auth.currentUser?.uid||null,
+    guest:guestMode,
+    assessmentId:examLinkId,
+    assessmentContext:window.adminervaStudioAssessmentContext||null,
+    examPolicyPending,
+    practicalExam:examPolicy?.practicalExam===true
+  });
+}
 function isLiveBrowserJava(){
-  return CHEERPJ_STUDIO_ENABLED&&javaEngine==='cheerpj'&&currentLang==='java'&&!isJavaDesktopMode();
+  return javaEngine==='cheerpj'&&currentLang==='java'&&!isJavaDesktopMode()&&
+    currentBrowserJavaAccess().enabled;
+}
+function browserJavaNotice(){
+  const note=document.getElementById('studioBrowserJavaNotice');
+  if(!note)return;
+  const active=isLiveBrowserJava()||Boolean(cheerpjClient);
+  note.classList.toggle('hidden',!active);
+  note.textContent=!active?'':examLinkId?
+    'Browser Java runs a copy of your current Java files for practice. Terminal input/output is not graded. Submit for assessment freezes your saved project revision; teacher grading follows the published rubric.':
+    'Browser Java runs an isolated copy of your Java files. Changes made during a run apply only to the next run. Terminal input/output is not verified grading evidence.';
 }
 function browserJavaControls(active,acceptsInput=false){
   const run=document.getElementById('runBtn'),stop=document.getElementById('stopCheerpjBtn');
@@ -1344,6 +1371,12 @@ function beginLiveBrowserJava(){
   if(cheerpjClient||executionController||studioRuntimeIntegration?.locked())return;
   const output=document.getElementById('consoleOutput');
   if(!output)return;
+  const access=currentBrowserJavaAccess();
+  if(!access.enabled){
+    output.textContent='Browser Java unavailable: '+access.reason+'\nChoose Standard (batch) to keep working.';
+    updateStudioTerminalStatus('error');
+    return;
+  }
   if(!persistWorkspace()){
     output.textContent='Save the current project before running browser Java. The workspace was not saved.';
     updateStudioTerminalStatus('error');
@@ -1437,7 +1470,14 @@ function clearConsoleInput(){
 }
 
 async function executeCode(options={}) {
-  if(isLiveBrowserJava()){
+  if(javaEngine==='cheerpj'&&currentLang==='java'&&!isJavaDesktopMode()){
+    const access=currentBrowserJavaAccess();
+    if(!access.enabled){
+      const output=document.getElementById('consoleOutput');
+      if(output)output.textContent='Browser Java unavailable: '+access.reason+'\nSelect Standard (batch) to continue.';
+      updateStudioTerminalStatus('error');
+      return;
+    }
     beginLiveBrowserJava();
     return;
   }
@@ -1915,10 +1955,13 @@ function bindUIEvents() {
   document.getElementById('stopCheerpjBtn')?.addEventListener('click',()=>stopLiveBrowserJava());
   document.getElementById('javaEngineSelect')?.addEventListener('change',event=>{
     if(cheerpjClient)return;
-    javaEngine=CHEERPJ_STUDIO_ENABLED&&event.target.value==='cheerpj'?'cheerpj':'judge0';
-    try{localStorage.setItem(JAVA_ENGINE_KEY,javaEngine);}catch{}
+    javaEngine=event.target.value==='cheerpj'&&currentBrowserJavaAccess().enabled?'cheerpj':'judge0';
     updateOutputView();
     updateStudioTerminalStatus('ready',javaEngine==='cheerpj'?'Browser Java ready':'Ready');
+  });
+  window.addEventListener('adminerva:studio-assessment-context',()=>{
+    if(cheerpjClient&&!currentBrowserJavaAccess().enabled)stopLiveBrowserJava(true);
+    updateOutputView();
   });
   document.getElementById('sendStdinBtn')?.addEventListener('click',sendConsoleInputLine);
   document.getElementById('clearStdinBtn')?.addEventListener('click',clearConsoleInput);
@@ -2056,10 +2099,15 @@ function updateOutputView() {
   modeLabel?.classList.toggle('hidden',!isJava);
   if(modeSelect)modeSelect.value=javaRunMode;
   const engineSelect=document.getElementById('javaEngineSelect'),engineLabel=document.getElementById('javaEngineLabel');
-  const showEngine=CHEERPJ_STUDIO_ENABLED&&isJava&&!desktop;
+  const showEngine=isJava&&!desktop&&currentBrowserJavaAccess().enabled;
+  if(!showEngine&&javaEngine==='cheerpj'){
+    if(cheerpjClient)stopLiveBrowserJava(true);
+    javaEngine='judge0';
+  }
   engineSelect?.classList.toggle('hidden',!showEngine);
   engineLabel?.classList.toggle('hidden',!showEngine);
   if(engineSelect)engineSelect.value=javaEngine;
+  browserJavaNotice();
   document.getElementById('stdinHistoryDisclosure')?.classList.toggle('hidden',showEngine&&javaEngine==='cheerpj');
   if(!cheerpjClient){
     const liveReady=showEngine&&javaEngine==='cheerpj';
