@@ -1,5 +1,5 @@
 import {requireCurrentVersion} from "./workspace-model.mjs?v=1.3.0";
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=1.3.0";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "./workspace-session.mjs?v=4.0.0";
 /** Teacher schedule editing and scoped calendar workflow. */
 import { db } from "../core/firebase-core.js?v=1.3.0";
 import {loadSchoolOptions,fillSchoolDatalist} from "../core/school-options.mjs?v=1.3.0";
@@ -8,6 +8,7 @@ import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.0";
 import {ADMIN_EMAIL,TEACHER_EMAIL} from "../core/staff-role.mjs?v=1.3.0";
 import { scheduleScope, parseScheduleRows, parseClockMinutes } from "./schedule-scope.mjs?v=1.3.0";
 import {isLegacySharedScope,isLegacyScheduleRetired,legacyScheduleNotice,resolveSectionGrade,scheduleRowsToText} from "./legacy-schedule-compat.mjs?v=1.4.18";
+import {loadVerifiedSchoolPlanningOptions,verifiedPlanningMode} from "./school-academic-options.mjs?v=4.0.0";
 import {
   doc,
   getDoc,
@@ -27,17 +28,49 @@ let loadSerial = 0;
 let isSaving = false;
 let cloudVersion=0;
 let loadingSchedule=false;
-let schoolOptions=null;
+let schoolOptions=null,planningV4Only=false;
+function refreshCanonicalPeriods(){
+  if(!planningV4Only)return;
+  const select=document.getElementById("scheduleSemester");
+  if(!select)return;
+  const prior=activeSemester,seen=new Set(),periods=[];
+  for(const offering of schoolOptions?.offerings||[]){
+    if(offering.yearName!==activeYear||!offering.termId||seen.has(offering.termId))continue;
+    seen.add(offering.termId);
+    periods.push({id:offering.termId,label:
+      (offering.programName?offering.programName+" · ":"")+(offering.termName||offering.termId)});
+  }
+  select.replaceChildren();
+  for(const item of periods){
+    const option=document.createElement("option");option.value=item.id;option.textContent=item.label;select.append(option);
+  }
+  if(periods.some(item=>item.id===prior))select.value=prior;
+  else if(periods.length){select.value=periods[0].id;activeSemester=periods[0].id;}
+}
 async function refreshSchoolChoices(){
   const label=document.getElementById("scheduleCatalogStatus");
   try{
-    schoolOptions=await loadSchoolOptions({schoolYear:activeYear});loadConfig();
+    const v4Only=await verifiedPlanningMode();planningV4Only=v4Only;
+    schoolOptions=v4Only?await loadVerifiedSchoolPlanningOptions():await loadSchoolOptions({schoolYear:activeYear});
+    loadConfig();
     fillSchoolDatalist("scheduleSchoolYears",[activeYear,...schoolOptions.schoolYears]);
     fillSchoolDatalist("scheduleSubjectChoices",schoolOptions.subjects);
-    if(label)label.textContent=schoolOptions.sections.length+" school sections and "+schoolOptions.subjects.length+" catalog subjects available."+(schoolOptions.warnings.length?" Some school records could not load; saved timetable values are preserved.":!schoolOptions.sections.length?" Ask an administrator to assign your exact roster sections before scheduling new classes.":"");
+    refreshCanonicalPeriods();
+    if(label)label.textContent=v4Only
+      ?schoolOptions.sections.length+" assigned section choice"+(schoolOptions.sections.length===1?"":"s")+" and "+
+        schoolOptions.subjects.length+" verified-school subject choice"+(schoolOptions.subjects.length===1?"":"s")+" available."+
+        (!schoolOptions.sections.length?" Ask the school administrator to assign an active course offering.":"")
+      :schoolOptions.sections.length+" school sections and "+schoolOptions.subjects.length+" catalog subjects available."+
+        (schoolOptions.warnings.length?" Some school records could not load; saved timetable values are preserved.":!schoolOptions.sections.length?" Ask an administrator to assign your exact roster sections before scheduling new classes.":"");
   }catch{if(label)label.textContent="School choices could not load. Saved timetable values and personal options are preserved. Select Refresh school choices to retry.";}
 }
 window.refreshScheduleSchoolChoices=async()=>{if(isSaving)return;if(isEditing)draftRows=getTableDataFromDOM();await refreshSchoolChoices();renderTable();};
+
+function normalizeSchoolYearForSchedule(value){
+  const text=String(value||"").trim(),match=/^([0-9]{4})-([0-9]{4})$/.exec(text);
+  if(!match||Number(match[2])!==Number(match[1])+1)throw Error("Use a valid school year.");
+  return text;
+}
 
 function escapeHTML(str) {
   return String(str ?? "")
@@ -106,10 +139,11 @@ function cachedRows(scope) {
 }
 
 function updateScopeStatus(message) {
-  const label = document.getElementById("scheduleScopeStatus");
-  if (label) label.textContent = activeYear + " · " +
-    (activeSemester === "S2" ? "Second Semester" : "First Semester") +
-    " — " + message;
+  const label=document.getElementById("scheduleScopeStatus"),select=document.getElementById("scheduleSemester"),
+    periodLabel=planningV4Only?
+      (select?.selectedOptions?.[0]?.textContent||activeSemester):
+      (activeSemester==="S2"?"Second Semester":"First Semester");
+  if(label)label.textContent=activeYear+" · "+periodLabel+" — "+message;
 }
 
 function syncPeriodInputs() {
@@ -168,7 +202,7 @@ async function fetchScheduleFromCloud() {
     return;
   }
   if (db) {
-    window.showLoader("Loading selected semester schedule...");
+    window.showLoader("Loading selected academic-period schedule...");
     try {
       let shared=false;
       let snap=null;
@@ -219,22 +253,28 @@ window.hideLoader = function () {
 };
 
 workspaceOnReady( async () => {
-  try{const saved=await getDoc(ownedDoc(db,"preferences","schedule_options"));if(saved.exists())for(const [field,key] of [["subjects","Adminerva_subjects"],["events","Adminerva_events"]])if(typeof saved.data()[field]==="string")lessonStorage.setItem(key,saved.data()[field]);}catch{/* Personal device options remain usable offline. */}
-  loadConfig();
-  const year = lessonStorage.getItem("Adminerva_schedule_selected_year");
-  const semester = lessonStorage.getItem("Adminerva_schedule_selected_semester");
-  if (year) {
-    try { scheduleScope(year, semester || "S1"); activeYear = year; }
-    catch (error) { console.warn("Invalid saved school year:", error); }
+  const v4Only=await verifiedPlanningMode();
+  if(!v4Only){
+    try{const saved=await getDoc(ownedDoc(db,"preferences","schedule_options"));if(saved.exists())for(const [field,key] of [["subjects","Adminerva_subjects"],["events","Adminerva_events"]])if(typeof saved.data()[field]==="string")lessonStorage.setItem(key,saved.data()[field]);}catch{/* Personal device options remain usable offline. */}
   }
-  if (semester === "S1" || semester === "S2") activeSemester = semester;
-  syncPeriodInputs();
+  loadConfig();
+  planningV4Only=v4Only;
+  const year=lessonStorage.getItem("Adminerva_schedule_selected_year"),
+    savedPeriod=lessonStorage.getItem("Adminerva_schedule_selected_semester");
+  if(year){
+    try{normalizeSchoolYearForSchedule(year);activeYear=year;}
+    catch(error){console.warn("Invalid saved school year:",error);}
+  }
+  if(v4Only&&savedPeriod&&/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(savedPeriod))
+    activeSemester=savedPeriod;
+  else if(savedPeriod==="S1"||savedPeriod==="S2")activeSemester=savedPeriod;
   await refreshSchoolChoices();
+  syncPeriodInputs();
   updateLegacyScheduleNotice();
   document.getElementById("scheduleSchoolYear")?.addEventListener("change", window.changeSchedulePeriod);
   document.getElementById("scheduleSemester")?.addEventListener("change", window.changeSchedulePeriod);
   updateEditControls();
-  await initFirebase();
+  if(!v4Only)await initFirebase();
 });
 
 // Warn when the user leaves while an editable timetable may contain
@@ -257,7 +297,7 @@ window.changeSchedulePeriod = async function () {
     return;
   }
   if (requestedYear === activeYear && requestedSemester === activeSemester) return;
-  if (isEditing && !confirm("Switch schedules and discard unsaved timetable edits? Save the current semester first if needed.")) {
+  if (isEditing && !confirm("Switch schedules and discard unsaved timetable edits? Save the current academic period first if needed.")) {
     syncPeriodInputs();
     return;
   }
@@ -308,6 +348,7 @@ window.saveSettingsConfig = async function () {
   loadConfig();
   renderTable();
   try{
+    if(await verifiedPlanningMode()){window.closeSettingsModal();return;}
     const uid=await requireStaffWorkspace();
     await setDoc(ownedDoc(db,"preferences","schedule_options"),{subjects:document.getElementById("configSubjects").value,events:document.getElementById("configEvents").value});
     assertWorkspaceAccount(uid);window.closeSettingsModal();
@@ -653,6 +694,29 @@ function getTableDataFromDOM() {
   return jsonData;
 }
 
+window.adminervaScheduleBridgeState=function(){
+  const scope=currentScope();
+  const rows=isEditing?getTableDataFromDOM():cachedRows(scope);
+  return {schoolYear:scope.year,semester:scope.semester,
+    periodId:planningV4Only&&!scope.semester?scope.periodId:null,
+    rows:structuredClone(rows),editing:isEditing};
+};
+window.adminervaApplySchoolSchedule=function({
+  schoolYear,semester,periodId,rows,revision,saved=false,compatibilityMode="legacy_allowed"
+}){
+  const scope=currentScope(),samePeriod=periodId?scope.periodId===periodId:scope.semester===semester;
+  if(scope.year!==schoolYear||!samePeriod)
+    throw Error("Switch the timetable to "+schoolYear+" · "+(periodId||semester)+" before loading this school schedule.");
+  if(isEditing&&!saved&&!confirm("Discard the unsaved timetable edits in this view and load the verified-school schedule?"))
+    return false;
+  const normalized=Array.isArray(rows)?structuredClone(rows):[];
+  cacheRows(scope,normalized,scheduleRowsToText(normalized));
+  isEditing=false;draftRows=null;updateEditControls();renderTable();
+  updateScopeStatus((saved?"Saved":"Loaded")+" verified-school schedule · revision "+revision+
+    (compatibilityMode==="v4_only"?".":". Legacy personal cloud storage remains separate during migration."));
+  return true;
+};
+
 window.saveScheduleData = async function (bypassValidation = false) {
   const jsonData = getTableDataFromDOM();
 
@@ -711,7 +775,7 @@ window.saveScheduleData = async function (bypassValidation = false) {
     return true;
   }
 
-  window.showLoader("Saving selected semester to Firebase...");
+  window.showLoader("Saving selected academic period to Firebase...");
   try {
     const ownerUid=await requireStaffWorkspace();
     if(mayUseSharedLegacySchedule()){

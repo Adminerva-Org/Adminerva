@@ -1,8 +1,9 @@
 import {requireCurrentVersion} from "../lesson-review/workspace-model.mjs?v=1.3.0";
-import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "../lesson-review/workspace-session.mjs?v=1.3.0";
+import {ownedDoc,ownedCollection,lessonStorage,workspaceUid,assertWorkspaceAccount,workspaceOnReady,requireStaffWorkspace} from "../lesson-review/workspace-session.mjs?v=4.0.0";
 /** Saved deck storage, lesson linking and source-version checks. */
 import { db } from "../core/firebase-core.js?v=1.3.0";
 import {lessonStarterDeck,lessonSourceChanged} from "./lesson-to-slides.mjs?v=1.3.0";
+import {verifiedPlanningMode} from "../lesson-review/school-academic-options.mjs?v=4.0.0";
 import {
   collection,
   getDocs,
@@ -24,9 +25,9 @@ window.selectedSessionIndex = null;
 window.db = db;
 let sessionLoadSequence=0;
 
-workspaceOnReady( () => {
+workspaceOnReady(async () => {
   injectPlanSelectorUI();
-  initFirebase();
+  if(!(await verifiedPlanningMode()))initFirebase();
 });
 
 function initFirebase() {
@@ -92,6 +93,7 @@ function injectPlanSelectorUI() {
 }
 
 window.fetchSavedLessonPlans = async function () {
+  if(await verifiedPlanningMode())return;
   const select = document.getElementById("presentationPlanSelect");
   if (!window.db || !select) return;
 
