@@ -118,6 +118,17 @@ if(button){
       notice("To start a practical exam, open the assignment in My Assessments, then choose Open Adminerva Studio. Exam restrictions must begin before you work.");
       return;
     }
+    if(task?.personalizedTask?.enabled===true&&assessmentParam!==task.id){
+      confirmButton.disabled=true;
+      notice("This assessment has a personalized task. Open it from My Assessments so Adminerva can issue your unique version before you submit.");
+      return;
+    }
+    if(task?.personalizedTask?.enabled===true&&
+      window.adminervaStudioAssessmentVariant?.assessmentId!==task.id){
+      confirmButton.disabled=true;
+      notice("Your personalized task is still loading. Wait for the task panel before submitting.");
+      return;
+    }
     if(task)window.adminervaSetStudioExamPolicy?.({assessmentId:task.id,practicalExam:task.practicalExam===true});
     confirmButton.disabled=!task||!studioSubmissionAllowed(task,chosen.student.section).allowed;
   }
@@ -153,6 +164,11 @@ if(button){
     const {student,assessment}=chosen;
     if(assessment.practicalExam&&assessmentParam!==assessment.id)
       throw Error("Open this practical exam from My Assessments before working on it.");
+    if(assessment.personalizedTask?.enabled===true&&assessmentParam!==assessment.id)
+      throw Error("Open this personalized task from My Assessments before submitting.");
+    if(assessment.personalizedTask?.enabled===true&&
+      window.adminervaStudioAssessmentVariant?.assessmentId!==assessment.id)
+      throw Error("Your personalized task is still loading. Wait for the task panel before submitting.");
     const eligibility=studioSubmissionAllowed(assessment,student.section);
     if(!eligibility.allowed)throw Error(eligibility.reason);
     const snapshot=snapshotStudioProject(captured.project,captured.state);
@@ -169,20 +185,28 @@ if(button){
       if(!gate.allowed)throw Error(gate.reason);
       if(current.schemaVersion!==3||current.submissionSource!=="studio")
         throw Error("This assessment no longer accepts Studio submissions.");
-      if(head.exists()&&!["submitted","revision_requested"].includes(head.data().status))
+      const personalized=current.personalizedTask?.enabled===true;
+      if(head.exists()&&personalized&&head.data().status!=="revision_requested")
+        throw Error("Your personalized attempt is already submitted. Your instructor must request a revision before you can submit a new attempt.");
+      if(head.exists()&&!personalized&&!["submitted","revision_requested"].includes(head.data().status))
         throw Error("Your previous submission is under review. Ask your instructor to request a revision first.");
       if(head.exists()&&head.data().snapshotHash===hash)
         throw Error("This exact project revision was already submitted. Make changes before submitting again.");
       const next=head.exists()?head.data().revision+1:1;
       if(next>30)throw Error("The revision limit was reached. Ask your instructor for assistance.");
+      const assigned=window.adminervaStudioAssessmentVariant;
+      if(personalized&&(!assigned||assigned.assessmentId!==assessment.id||
+        assigned.studentId!==student.id||assigned.attempt!==next||!assigned.variantId))
+        throw Error("Your personalized task does not match this submission attempt. Reopen the assessment before submitting.");
+      const variantId=personalized?String(assigned.variantId):"";
       const versionRef=doc(db,"studio_submissions",evidenceId,"versions",String(next));
       const submittedAt=serverTimestamp();
       tx.set(versionRef,{source:"studio",studentId:student.id,assessmentId:assessment.id,
         ownerUid:uid,section:student.section,revision:next,projectId:captured.project.id,
-        snapshotHash:hash,snapshotJson:snapshot.json,submittedAt});
+        variantId,snapshotHash:hash,snapshotJson:snapshot.json,submittedAt});
       tx.set(headRef,{source:"studio",studentId:student.id,assessmentId:assessment.id,
         ownerUid:uid,section:student.section,revision:next,projectId:captured.project.id,
-        projectTitle:captured.project.title.slice(0,120),snapshotHash:hash,
+        projectTitle:captured.project.title.slice(0,120),variantId,snapshotHash:hash,
         status:"submitted",reviewNote:"",reviewedBy:"",submittedAt});
       return next;
     });
