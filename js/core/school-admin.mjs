@@ -17,6 +17,14 @@ const counters={
   staff_assignments:byId("adminAssignmentCount"),
   invitations:byId("adminInviteCount")
 };
+const protectedPanels=["adminSchoolActions","adminSchoolSummary","adminPilotTools","adminSchoolTools"]
+  .map(byId).filter(Boolean);
+function showSchoolTools(allowed){
+  for(const node of protectedPanels){
+    node.hidden=!allowed;
+    node.classList.toggle("hidden",!allowed);
+  }
+}
 let requestGeneration=0;
 function clearCounts(){
   for(const node of Object.values(counters))if(node)node.textContent="—";
@@ -48,12 +56,15 @@ const picker=createTenantSchoolPicker({
   status:schoolStatus,
   onBeforeChange:async()=>{
     ++requestGeneration;
+    showSchoolTools(false);
     clearCounts();
     overviewStatus.textContent="Checking the selected school's administration scope…";
   },
   onReady:scope=>{
     clearCounts();
-    if(!scope.current?.roles?.includes("school_admin")){
+    const authorized=scope.current?.roles?.includes("school_admin")===true;
+    showSchoolTools(authorized);
+    if(!authorized){
       ++requestGeneration;
       overviewStatus.textContent="This school has not granted you School Administrator access.";
       return;
