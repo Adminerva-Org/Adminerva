@@ -1922,11 +1922,29 @@ function initializeMobileStudio(){
   };
   const setPane=pane=>{
     const value=pane==='terminal'?'terminal':'editor';
+    const previous=panel.dataset.mobilePane;
+    if(compact()&&previous!==value){
+      // A hidden Monaco textarea or console input must not retain the mobile
+      // keyboard after switching panes.
+      const active=document.activeElement;
+      const otherPane=document.getElementById(value==='terminal'?'editorPane':'outputPane');
+      if(otherPane?.contains(active))active?.blur?.();
+    }
     panel.dataset.mobilePane=value;
     editorButton?.setAttribute('aria-pressed',String(value==='editor'));
     terminalButton?.setAttribute('aria-pressed',String(value==='terminal'));
+    if(value==='terminal'){
+      terminalButton?.removeAttribute('data-unread');
+      terminalButton?.setAttribute('aria-label','Show terminal');
+    }
     closeDrawer();
-    if(value==='editor')requestAnimationFrame(()=>editorInstance?.layout());
+    requestAnimationFrame(()=>{
+      if(value==='editor')editorInstance?.layout();
+      else {
+        const output=document.getElementById('consoleOutput');
+        if(output)output.scrollTop=output.scrollHeight;
+      }
+    });
   };
   filesButton?.addEventListener('click',()=>showDrawer('files'));
   moreButton?.addEventListener('click',()=>showDrawer('actions'));
@@ -1995,6 +2013,76 @@ function initializeMobileStudio(){
   new MutationObserver(syncCodeToolbar).observe(panel,{attributes:true,attributeFilter:['class']});
   syncCodeToolbar();
   window.addEventListener('resize',resize);
+
+  // Use the visible browser viewport while the on-screen keyboard is open.
+  // 100dvh alone is inconsistent across mobile keyboard/URL-bar combinations:
+  // it can leave the terminal input or Monaco cursor behind the keyboard.
+  const visual=window.visualViewport;
+  const studio=document.getElementById('studioShell');
+  const root=document.body;
+  let keyboardBaseline=Math.round(visual?.height||window.innerHeight);
+  let viewportFrame=0;
+  const focusedStudioField=()=>{
+    const active=document.activeElement;
+    return studio?.contains(active)&&Boolean(active?.matches?.(
+      'input, textarea, [contenteditable="true"]'
+    ));
+  };
+  const syncVisibleWorkspace=()=>{
+    if(viewportFrame)cancelAnimationFrame(viewportFrame);
+    viewportFrame=requestAnimationFrame(()=>{
+      viewportFrame=0;
+      if(!compact()){
+        root.classList.remove('studio-mobile-keyboard-open');
+        root.style.removeProperty('--studio-mobile-visual-height');
+        keyboardBaseline=Math.round(visual?.height||window.innerHeight);
+        return;
+      }
+      const visibleHeight=Math.round(visual?.height||window.innerHeight);
+      if(!focusedStudioField()||visibleHeight>=keyboardBaseline-80){
+        keyboardBaseline=Math.max(keyboardBaseline,visibleHeight);
+      }
+      const keyboardOpen=focusedStudioField()&&keyboardBaseline-visibleHeight>=120;
+      root.classList.toggle('studio-mobile-keyboard-open',keyboardOpen);
+      if(keyboardOpen){
+        root.style.setProperty('--studio-mobile-visual-height',Math.max(230,visibleHeight)+'px');
+      }else{
+        root.style.removeProperty('--studio-mobile-visual-height');
+      }
+      editorInstance?.layout();
+      if(keyboardOpen&&panel.dataset.mobilePane==='terminal'){
+        const output=document.getElementById('consoleOutput');
+        if(output)output.scrollTop=output.scrollHeight;
+      }
+    });
+  };
+  visual?.addEventListener('resize',syncVisibleWorkspace);
+  window.addEventListener('resize',syncVisibleWorkspace);
+  document.addEventListener('focusin',event=>{
+    if(studio?.contains(event.target))syncVisibleWorkspace();
+  });
+  document.addEventListener('focusout',event=>{
+    if(studio?.contains(event.target))requestAnimationFrame(syncVisibleWorkspace);
+  });
+  window.addEventListener('orientationchange',()=>{
+    keyboardBaseline=Math.round(visual?.height||window.innerHeight);
+    syncVisibleWorkspace();
+  });
+
+  // A new result may arrive while the learner is still editing. Keep the
+  // workspace on Editor, but provide an unobtrusive terminal notification.
+  const outputObserverTarget=document.getElementById('consoleOutput');
+  if(outputObserverTarget&&terminalButton){
+    new MutationObserver(()=>{
+      if(!compact()||panel.classList.contains('hidden')||
+        panel.dataset.mobilePane==='terminal')return;
+      const result=outputObserverTarget.textContent||'';
+      if(!result||result==='Your output will appear here. Select Run when ready.')return;
+      terminalButton.setAttribute('data-unread','true');
+      terminalButton.setAttribute('aria-label','Show terminal — new output');
+    }).observe(outputObserverTarget,{childList:true,characterData:true,subtree:true});
+  }
+  syncVisibleWorkspace();
 
   // Android's back navigation consumes gestures that originate at the literal
   // viewport edge. Interpret horizontal swipes *within the Studio chrome*
