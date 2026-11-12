@@ -273,6 +273,8 @@ async function checkAccess(user){
     document.querySelectorAll("[data-admin-only]").forEach(el=>el.classList.remove("hidden"));
   if(access.schoolAdmin&&activeRole==="schooladmin")
     document.querySelectorAll("[data-school-admin-only]").forEach(el=>el.classList.remove("hidden"));
+  if(access.schoolTeacher&&activeRole!=="student")
+    document.querySelectorAll("[data-school-teacher-only]").forEach(el=>el.classList.remove("hidden"));
   // 5. Security cleared: Display the UI
   dismissAccessRecovery();rememberWorkspace(user.uid);
   const pageBody = document.getElementById("pageBody");

@@ -36,7 +36,8 @@ function mount(){
         "student-practice.html":"Practice Lab","student-xml-lab.html":"XML Layout Lab",
         "lesson-planner.html":"Lesson Planner","repofetch.html":"Review & Grade",
         "gradebook.html":"Gradebook","assessment-studio.html":"Assessment Studio",
-        "submissions.html":"Review Inbox","teacher-analytics.html":"Teaching Analytics",
+        "teacher-assessment-library.html":"Assessment Library","school-gradebook.html":"School Gradebook",
+        "class-record.html":"Class Record","submissions.html":"Review Inbox","teacher-analytics.html":"Teaching Analytics",
         "presentation.html":"Presentation Workspace","schedule.html":"Schedule"
       };
       const name=names[page]||"your last workspace";

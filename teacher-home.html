@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="css/home-showcase.css?v=1.0.0">
   <link rel="stylesheet" href="css/teacher-ux.css?v=4.0.0">
   <script defer src="https://cdn.tailwindcss.com"></script>
-  <link rel="modulepreload" href="js/core/auth-guard.js?v=1.3.8">
+  <link rel="modulepreload" href="js/core/auth-guard-v4-pilot.js?v=4.0.9">
 </head>
 <body id="pageBody" class="hidden av-teacher-refresh bg-slate-50 min-h-screen text-slate-900">
 <div id="adminerva-nav" data-module="staff-home" data-page="home"></div>
@@ -48,6 +48,7 @@
     <nav class="av-home-quick-grid" aria-label="Teaching tools">
       <a href="schedule.html"><strong>Teaching schedule</strong><span>Review your weekly classes and periods.</span></a>
       <a href="presentation.html"><strong>Slide editor</strong><span>Turn lesson ideas into presentation slides.</span></a>
+      <a data-school-teacher-only class="hidden" href="class-record.html"><strong>Class Record</strong><span>Consolidate manual scores and published Adminerva assessment results, then review period grades.</span></a>
       <a href="studio-submissions.html"><strong>Studio submissions</strong><span>Inspect projects created inside Adminerva.</span></a>
       <a href="teacher-analytics.html"><strong>Class insights</strong><span>Review progress and areas for follow-up.</span></a>
       <a href="reclaim-inbox.html"><strong>Commit attribution</strong><span>Resolve contribution ownership requests.</span></a>
@@ -67,9 +68,9 @@
   </section>
 </main>
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
-<script defer src="js/core/adminerva-nav.js?v=4.0.5"></script>
-<script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
-<script type="module" src="js/core/home-workspace.mjs?v=1.3.0"></script>
+<script defer src="js/core/adminerva-nav.js?v=4.0.7"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.9"></script>
+<script type="module" src="js/core/home-workspace.mjs?v=1.3.1"></script>
 <script type="module" src="js/core/home-motion.mjs?v=1.0.0"></script>
 <script type="module" src="js/core/home-experience.mjs?v=1.0.0"></script>
 <script type="module" src="js/core/home-pulse.mjs?v=4.0.1"></script>
