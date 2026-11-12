@@ -52,8 +52,13 @@ function createSchoolAcademicsService({db}) {
     ...extra,createdAt:FieldValue.serverTimestamp()});
   if(input.action==="planning_options"){
    if(!admin&&!teacher)deny("permission-denied","Teaching access is required.");
+   const assignmentScope=String(input.assignmentScope||"");
+   if(assignmentScope&&assignmentScope!=="teacher")
+    deny("invalid-argument","Planning assignment scope is invalid.");
+   if(assignmentScope==="teacher"&&!teacher)
+    deny("permission-denied","Teacher assignment scope requires an active teacher role.");
    let allowed=null;
-   if(!admin){
+   if(!admin||assignmentScope==="teacher"){
     const grants=await db.collection("schools/"+ctx.schoolId+"/staff_assignments")
       .where("teacherUid","==",uid).limit(101).get();
     if(grants.size===101)deny("resource-exhausted","Teaching assignments require pagination before planning options can load.");
@@ -63,7 +68,7 @@ function createSchoolAcademicsService({db}) {
    const offerings=await db.collection("schools/"+ctx.schoolId+"/course_offerings").limit(201).get();
    if(offerings.size===201)deny("resource-exhausted","Course offerings require pagination before planning options can load.");
    const active=offerings.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"&&
-     (admin||allowed.has(doc.id)));
+     (allowed===null||allowed.has(doc.id)));
    const sectionIds=[...new Set(active.map(doc=>doc.data().sectionId).filter(Boolean))],
      subjectIds=[...new Set(active.map(doc=>doc.data().subjectId).filter(Boolean))],
      yearIds=[...new Set(active.map(doc=>doc.data().yearId).filter(Boolean))],
