@@ -187,7 +187,8 @@ function render(){
       heading.style.fontWeight="750";heading.textContent=task.title;
       meta.className="tl-muted";
       const handedOver=task.ownerUid&&task.reviewerUid&&task.ownerUid!==task.reviewerUid;
-      meta.textContent=task.submissionSource+" · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
+      meta.textContent=(task.published?"Published":"Private deployment")+" · "+task.submissionSource+
+        " · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
         new Date(task.dueAt).toLocaleString():"not scheduled")+
         (handedOver?" · review responsibility handed over; original blueprint ownership unchanged":"");
       text.append(heading,meta);
@@ -196,6 +197,9 @@ function render(){
         const gradebook=document.createElement("a");gradebook.className="tl-action alt";
         gradebook.href="school-gradebook.html?task="+encodeURIComponent(task.taskId);
         gradebook.textContent="Review & Grade";controls.append(gradebook);
+      }
+      if(["active","closed"].includes(lifecycle)){
+        controls.append(actionButton(task.published?"Unpublish":"Publish",()=>void setPublication(task,!task.published),!task.published));
       }
       if(lifecycle==="active"){
         controls.append(actionButton("Close",()=>openLifecycle(task,"close"),true));
@@ -349,6 +353,26 @@ el("tl-share-form").addEventListener("submit",event=>{
     "Assessment sharing updated. Recipients receive view and independent copy rights only.")
     .then(()=>{shareDialog.close();sharing=null;}).catch(()=>{});
 });
+async function setPublication(task,publish){
+  if(pendingWrite)return;
+  const action=publish?"publish":"unpublish";
+  if(!confirm(publish?
+    "Publish this prepared assessment to enrolled students? Assignment notifications will be sent now.":
+    "Unpublish this assessment? Existing submissions and grades are preserved, but the task will disappear from student assignment lists until republished."))return;
+  pendingWrite=true;
+  try{
+    say(publish?"Publishing assessment to students…":"Removing assessment from student assignment lists…");
+    const result=await performScoped(scopedAssessmentApi,action,{
+      taskId:task.taskId,expectedRevision:task.revision||1
+    });
+    await refresh();
+    say(result.alreadyCurrent?
+      "Assessment publication was already in the requested state.":
+      publish?"Assessment published. Enrolled students can now see it.":
+        "Assessment unpublished. Existing evidence and grades were preserved.");
+  }catch(error){say(error?.message||"Assessment publication could not be changed.");}
+  finally{pendingWrite=false;}
+}
 async function prepareDeployment(item){
   if(personalized(item)){
     try{
@@ -449,8 +473,8 @@ el("tl-deploy-form").addEventListener("submit",event=>{
         submissionSource:personalized(deploying)?"studio":String(fields.get("submissionSource")||""),
         opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),requestKey:key
       });
-      say(task.alreadyExisted?"This assessment was already deployed. No duplicate created.":
-        "Assessment deployed to your assigned school class. Students can view the task after its start time.");
+      say(task.alreadyExisted?"This assessment was already prepared. No duplicate created.":
+        "Assessment prepared privately for this class. Publish it when you are ready for students to see it.");
       el("tl-deploy-dialog").close();deploying=null;deployRequestKey=null;
       await refresh();
     }catch(error){say(error.message||"Deployment could not be completed. Retry the same request safely.");}
