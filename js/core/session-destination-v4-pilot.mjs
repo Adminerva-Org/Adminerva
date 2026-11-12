@@ -55,6 +55,7 @@ export function roleHome(role){
     role==="guest"?"guest-home.html":"";
 }
 function cachedRoleAllows(page,role){
+  if(page==="class-record.html")return ["teacher","schooladmin"].includes(role);
   if(page==="issues.html")return ["student","teacher","schooladmin","superadmin"].includes(role);
   if(role==="student")return studentPages.has(page);
   if(role==="teacher")return staffPages.has(page);
