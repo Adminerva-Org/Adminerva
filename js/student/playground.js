@@ -7,6 +7,7 @@ import {createProjectStudio} from "./project-studio.mjs?v=3.0.0";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.0.0";
 import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=4";
+import {CheerpjStudioClient,CHEERPJ_STUDIO_RUNNER_URL,validateCheerpjRunnerUrl} from "./cheerpj-studio-client.mjs?v=1";
 import {
   collection,
   addDoc,
@@ -71,6 +72,10 @@ let practiceTransfer = null;
 const guestMode=document.body.dataset.playgroundAccess==="guest";
 let workspaceFolders=[],projectOrder=[],selectedProjectPath="",selectedProjectFolder=false,explorerDrag=null;
 let executionController=null,executionSequence=0;
+let cheerpjClient=null;
+const CHEERPJ_STUDIO_ENABLED=Boolean(validateCheerpjRunnerUrl(CHEERPJ_STUDIO_RUNNER_URL));
+const JAVA_ENGINE_KEY='Adminerva_Java_Engine_v1';
+let javaEngine=(()=>{try{return CHEERPJ_STUDIO_ENABLED&&localStorage.getItem(JAVA_ENGINE_KEY)==='cheerpj'?'cheerpj':'judge0';}catch{return 'judge0';}})();
 let loadedOwnerUid=null;
 let projectStudio=null;
 let studioRuntimeIntegration=null;
@@ -1300,7 +1305,100 @@ function consoleInputExhausted(errorText){
   return false;
 }
 
+
+function isLiveBrowserJava(){
+  return CHEERPJ_STUDIO_ENABLED&&javaEngine==='cheerpj'&&currentLang==='java'&&!isJavaDesktopMode();
+}
+function browserJavaControls(active,acceptsInput=false){
+  const run=document.getElementById('runBtn'),stop=document.getElementById('stopCheerpjBtn');
+  const send=document.getElementById('sendStdinBtn'),input=document.getElementById('stdinLineInput');
+  const engine=document.getElementById('javaEngineSelect'),mode=document.getElementById('javaRunMode');
+  if(run)run.disabled=active;
+  if(stop)stop.classList.toggle('hidden',!active);
+  if(engine)engine.disabled=active;
+  if(mode)mode.disabled=active;
+  if(send)send.disabled=active&&!acceptsInput;
+  if(input)input.disabled=active&&!acceptsInput;
+}
+function stopLiveBrowserJava(quiet=false){
+  if(!cheerpjClient)return;
+  const client=cheerpjClient;
+  cheerpjClient=null;
+  client.stop();
+  browserJavaControls(false);
+  updateStudioTerminalStatus('cancelled','Stopped');
+  if(!quiet){
+    const output=document.getElementById('consoleOutput');
+    if(output)output.textContent+='\n[Browser Java stopped. Your project files are unchanged.]\n';
+  }
+}
+function beginLiveBrowserJava(){
+  if(cheerpjClient||executionController||studioRuntimeIntegration?.locked())return;
+  const output=document.getElementById('consoleOutput');
+  if(!output)return;
+  if(!persistWorkspace()){
+    output.textContent='Save the current project before running browser Java. The workspace was not saved.';
+    updateStudioTerminalStatus('error');
+    return;
+  }
+  const files=currentState().files,entry=compilerEntry();
+  document.getElementById('consoleTab')?.click();
+  output.textContent='Browser Java · interactive execution\nPreparing a frozen copy of this Java project…\n';
+  document.getElementById('stdinLineInput').value='';
+  document.getElementById('stdinHistoryDisclosure')?.classList.add('hidden');
+  browserJavaControls(true,false);
+  updateStudioTerminalStatus('running','Starting Java…');
+  try{
+    const client=new CheerpjStudioClient({
+      onEvent:event=>{
+        if(cheerpjClient!==client)return;
+        const terminal=document.getElementById('consoleOutput');
+        if(event.type==='status'){
+          updateStudioTerminalStatus('running',event.state==='running'?'Java live':event.message||'Preparing Java…');
+          browserJavaControls(true,event.state==='running');
+          if(event.state==='running')document.getElementById('stdinLineInput')?.focus();
+        }else if(event.type==='output'){
+          if(!terminal)return;
+          terminal.textContent=(terminal.textContent+event.text).slice(-150000);
+          terminal.scrollTop=terminal.scrollHeight;
+          updateStudioTerminalPrompt(terminal.textContent);
+        }else if(event.type==='finished'){
+          updateStudioTerminalStatus(event.compileFailed||event.code!==0?'error':'finished',
+            event.compileFailed?'Compilation failed':'Finished');
+          if(terminal)terminal.textContent+='\n[Java '+(event.compileFailed?'compilation': 'program')+
+            ' exited'+(event.code===null?'':' with status '+event.code)+']\n';
+          cheerpjClient=null;
+          browserJavaControls(false);
+          notePracticeExecution();
+        }else if(event.type==='error'){
+          updateStudioTerminalStatus('error');
+          if(terminal)terminal.textContent+='\n[Browser Java error] '+event.message+'\n';
+          cheerpjClient=null;
+          browserJavaControls(false);
+        }
+      }
+    });
+    cheerpjClient=client;
+    client.start({files,entry});
+  }catch(error){
+    output.textContent+='\nCannot start Browser Java: '+error.message+'\n';
+    cheerpjClient?.dispose();
+    cheerpjClient=null;
+    browserJavaControls(false);
+    updateStudioTerminalStatus('error');
+  }
+}
+
 function sendConsoleInputLine(){
+  if(cheerpjClient){
+    const input=document.getElementById('stdinLineInput');
+    if(!input||!cheerpjClient.sendLine(input.value))return;
+    const out=document.getElementById('consoleOutput');
+    if(out){out.textContent+='\n› '+input.value+'\n';out.scrollTop=out.scrollHeight;}
+    input.value='';
+    input.focus();
+    return;
+  }
   if(studioRuntimeIntegration?.locked()&&!studioRuntimeIntegration?.hasSession())return;
   if(studioRuntimeIntegration?.hasSession()){
     studioRuntimeIntegration.sendLine();
@@ -1326,6 +1424,10 @@ function clearConsoleInput(){
 }
 
 async function executeCode(options={}) {
+  if(isLiveBrowserJava()){
+    beginLiveBrowserJava();
+    return;
+  }
   if(studioRuntimeIntegration?.enabled&&currentLang==='java'&&!isJavaDesktopMode()){
     studioRuntimeIntegration.requestRun();
     return;
@@ -1797,6 +1899,14 @@ function bindUIEvents() {
   document.addEventListener("scroll",hideExplorerContextMenu,true);
   document.getElementById('cancelRunBtn')?.addEventListener('click',()=>executionController?.abort());
   document.getElementById('stopDesktopBtn')?.addEventListener('click',()=>stopJavaDesktop());
+  document.getElementById('stopCheerpjBtn')?.addEventListener('click',()=>stopLiveBrowserJava());
+  document.getElementById('javaEngineSelect')?.addEventListener('change',event=>{
+    if(cheerpjClient)return;
+    javaEngine=CHEERPJ_STUDIO_ENABLED&&event.target.value==='cheerpj'?'cheerpj':'judge0';
+    try{localStorage.setItem(JAVA_ENGINE_KEY,javaEngine);}catch{}
+    updateOutputView();
+    updateStudioTerminalStatus('ready',javaEngine==='cheerpj'?'Browser Java ready':'Ready');
+  });
   document.getElementById('sendStdinBtn')?.addEventListener('click',sendConsoleInputLine);
   document.getElementById('clearStdinBtn')?.addEventListener('click',clearConsoleInput);
   document.getElementById('stdinLineInput')?.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing){event.preventDefault();sendConsoleInputLine();}});
@@ -1931,6 +2041,12 @@ function updateOutputView() {
   modeSelect?.classList.toggle('hidden',!isJava);
   modeLabel?.classList.toggle('hidden',!isJava);
   if(modeSelect)modeSelect.value=javaRunMode;
+  const engineSelect=document.getElementById('javaEngineSelect'),engineLabel=document.getElementById('javaEngineLabel');
+  const showEngine=CHEERPJ_STUDIO_ENABLED&&isJava&&!desktop;
+  engineSelect?.classList.toggle('hidden',!showEngine);
+  engineLabel?.classList.toggle('hidden',!showEngine);
+  if(engineSelect)engineSelect.value=javaEngine;
+  document.getElementById('stdinHistoryDisclosure')?.classList.toggle('hidden',showEngine&&javaEngine==='cheerpj');
   if(runBtn){
     runBtn.textContent=desktop?'▶ Launch':'▶ Run';
     runBtn.title=desktop?'Compile and launch desktop app · Ctrl+Enter':'Run · Ctrl+Enter';
