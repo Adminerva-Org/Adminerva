@@ -6,7 +6,7 @@
   <title>People &amp; Access | Adminerva 4.0</title>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
-  <link rel="stylesheet" href="css/v4-people-ux.css?v=4.0.0">
+  <link rel="stylesheet" href="css/v4-people-ux.css?v=4.0.1">
   
   <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8">
@@ -38,16 +38,23 @@
 <main class="pa-shell">
   <header class="pa-header">
     <div><a href="school-admin.html" class="pa-muted">School administration</a><p class="pa-muted" style="font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#0e7490">People &amp; Access</p><h1 style="font-weight:800;font-size:clamp(1.5rem,4vw,2rem);margin:.15rem 0">School Directory · 4.0</h1>
-    <p class="pa-muted">This is the V4 copy of your school's people, memberships, classes and access relationships.</p>
-    <p class="pa-muted" style="margin-top:.35rem"><a href="users.html">Legacy user directory</a> · <a href="school-pilot.html"><strong>Controlled pilot review</strong></a></p></div>
+    <p class="pa-muted">Review verified-school people, memberships, invitations and class relationships in one place.</p>
+    <p class="pa-muted" style="margin-top:.35rem"><a href="users.html">Legacy student roster</a> · <a href="teacher-accounts.html">Legacy teacher assignments</a> · <a href="school-pilot.html"><strong>Controlled pilot review</strong></a></p></div>
     <div id="school-picker-host" class="av-school-picker" hidden></div>
   </header>
   <p id="school-status" role="status" aria-live="polite">Checking school access…</p>
   <aside style="margin:.75rem 0 1rem;padding:1rem;border:1px solid #a5f3fc;border-radius:14px;background:#ecfeff;color:#164e63">
-    <strong>What you need this page for:</strong> During the controlled pilot, use this page mainly to confirm that migrated students, teachers, classes and access look correct. Use <a href="school-pilot.html" style="font-weight:800;text-decoration:underline">Controlled Pilot</a> for the 13 student identity exceptions and roster-count review.
+    <strong>Controlled pilot:</strong> Confirm that verified people, classes and memberships are correctly related. Use <a href="school-pilot.html" style="font-weight:800;text-decoration:underline">Controlled Pilot</a> to review any remaining identity exceptions and migration counts.
     <div style="margin-top:.5rem;font-size:.86rem;color:#155e75"><strong>Safe boundary:</strong> V4 directory work does not rewrite legacy assessments, grades, evidence or submissions. Legacy grading stays available while compatibility is <code>legacy_allowed</code>.</div>
   </aside>
   <section id="pa-workspace" hidden aria-label="School people administration">
+    <nav class="pa-quicklinks" aria-label="Common directory tasks">
+      <button type="button" data-people-kind="student">Students</button>
+      <button type="button" data-people-kind="staff">Teachers &amp; staff</button>
+      <a href="#invites">Invite a person</a>
+      <a href="#classes">Class assignments</a>
+      <a href="#import">Import roster</a>
+    </nav>
     <div class="pa-tabs" role="tablist" aria-label="Directory sections">
       <button id="pa-tab-overview" type="button" data-tab="overview" aria-controls="pa-overview" aria-selected="true" role="tab" tabindex="0">Overview</button>
       <button id="pa-tab-people" type="button" data-tab="people" aria-controls="pa-people" aria-selected="false" role="tab" tabindex="-1">Students &amp; staff</button>
@@ -86,11 +93,15 @@
     <section id="pa-people" role="tabpanel" aria-labelledby="pa-tab-people" tabindex="0" hidden>
       <div class="pa-layout">
         <div class="pa-card"><h2 style="font-weight:750;font-size:1.2rem">People</h2><p class="pa-muted">School-specific identity records, separate from accounts and enrollment.</p>
-          <form id="pa-person-search" style="display:grid;grid-template-columns:minmax(0,1fr) repeat(2,minmax(120px,.45fr));gap:.5rem;align-items:end;margin:.75rem 0 1rem">
+          <form id="pa-person-search" role="search" aria-label="Find school people" style="display:grid;grid-template-columns:minmax(0,1fr) repeat(2,minmax(120px,.45fr));gap:.5rem;align-items:end;margin:.75rem 0 1rem">
             <label>Search name<input id="pa-person-query" name="query" class="pa-field" style="margin-bottom:0" maxlength="80" placeholder="Start typing a name"></label>
-            <label>Type<select name="kind" class="pa-field" style="margin-bottom:0"><option value="all">All people</option><option value="student">Students</option><option value="staff">Staff</option></select></label>
+            <label>Type<select id="pa-person-kind" name="kind" class="pa-field" style="margin-bottom:0"><option value="all">All people</option><option value="student">Students</option><option value="staff">Staff</option></select></label>
             <label>Status<select name="status" class="pa-field" style="margin-bottom:0"><option value="all">All statuses</option><option value="active">Active</option><option value="archived">Archived</option></select></label>
           </form>
+          <div class="pa-person-context">
+            <p id="pa-person-context" class="pa-muted" role="status" aria-live="polite">Showing this school's people.</p>
+            <button id="pa-person-reset" type="button">Clear filters</button>
+          </div>
           <p id="pa-person-filter-note" class="pa-muted" hidden></p>
           <div id="pa-person-list" role="list"></div>
           <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.75rem">
@@ -335,6 +346,6 @@
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script defer src="js/core/adminerva-nav.js?v=4.0.1"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.6"></script>
-<script type="module" src="js/core/people-access.mjs?v=4.0.1"></script>
+<script type="module" src="js/core/people-access.mjs?v=4.0.2"></script>
 </body>
 </html>
