@@ -55,6 +55,21 @@
     <label>Title<input name="title" class="tl-input" maxlength="140" required></label>
     <label>Description<textarea name="description" class="tl-input" maxlength="2000" rows="3"></textarea></label>
     <label>Instructions<textarea name="instructions" class="tl-input" maxlength="20000" rows="5"></textarea></label>
+    <label>Assessment mode
+      <select name="personalizationMode" id="tl-personalization-mode" class="tl-input">
+        <option value="standard">Standard · same task for the class</option>
+        <option value="personalized">Personalized · unique Studio task per learner attempt</option>
+      </select>
+    </label>
+    <div id="tl-personalization-fields" hidden class="rounded-xl border border-violet-200 bg-violet-50 p-3 mb-3">
+      <label>Private pool target
+        <input name="variantTarget" type="number" min="10" max="600" value="30" class="tl-input">
+      </label>
+      <label>Variation guidance
+        <textarea name="variationGuidance" class="tl-input" maxlength="3000" rows="3" placeholder="What concrete details may vary without changing the competency or rubric?"></textarea>
+      </label>
+      <p class="tl-muted">Personalized mode uses Adminerva Studio only. Full prompts and evaluator notes stay in your private school-scoped pool and are not shared with blueprint recipients.</p>
+    </div>
     <label>Rubric criteria (one per line, Criterion | points)
       <textarea name="rubric" class="tl-input" rows="4" maxlength="4000" placeholder="Functionality | 10&#10;Code quality | 5"></textarea>
     </label>
@@ -93,7 +108,31 @@
   <h3 style="font-weight:700">Description</h3><p id="tl-preview-description" style="white-space:pre-wrap"></p>
   <h3 style="font-weight:700;margin-top:1rem">Instructions</h3><p id="tl-preview-instructions" style="white-space:pre-wrap"></p>
   <h3 style="font-weight:700;margin-top:1rem">Rubric</h3><ul id="tl-preview-rubric"></ul>
+  <p id="tl-preview-personalization" class="tl-muted mt-3"></p>
   <button type="button" id="tl-preview-close" class="tl-action alt">Close preview</button>
+ </div>
+</dialog>
+
+<dialog id="tl-personalization-dialog" class="tl-dialog" aria-labelledby="tl-personalization-heading">
+ <div class="tl-dialog-inner">
+  <h2 id="tl-personalization-heading" style="font-size:1.3rem;font-weight:750">Private personalization pool</h2>
+  <p id="tl-personalization-title" class="tl-muted"></p>
+  <div class="rounded-xl border border-violet-200 bg-violet-50 p-3 my-3">
+    <p id="tl-personalization-status" class="text-sm text-violet-950" role="status" aria-live="polite"></p>
+    <div id="tl-personalization-samples" class="grid gap-2 mt-3"></div>
+  </div>
+  <div class="tl-actions">
+    <button id="tl-personalization-copy" type="button" class="tl-action alt">Copy next external AI package</button>
+    <button id="tl-personalization-activate" type="button" class="tl-action">Activate pool</button>
+  </div>
+  <label class="block mt-4">External response JSON
+    <textarea id="tl-personalization-response" class="tl-input font-mono text-xs" rows="9" placeholder='{"format":"adminerva-external-personalization-response-v2","variants":[...]}'></textarea>
+  </label>
+  <div class="tl-actions">
+    <button id="tl-personalization-import" type="button" class="tl-action">Import external variants</button>
+    <button id="tl-personalization-close" type="button" class="tl-action alt">Close</button>
+  </div>
+  <p class="tl-muted mt-3">Each copied package includes the existing scenario registry so later batches do not reuse earlier scenarios. Activation is blocked until the target is complete.</p>
  </div>
 </dialog>
 <dialog id="tl-deploy-dialog" class="tl-dialog" aria-labelledby="tl-deploy-heading">
@@ -137,6 +176,6 @@
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script defer src="js/core/adminerva-nav.js?v=4.0.1"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.6"></script>
-<script type="module" src="js/repo-review/teacher-assessment-library.mjs?v=4.0.0"></script>
+<script type="module" src="js/repo-review/teacher-assessment-library.mjs?v=4.1.0"></script>
 </body>
 </html>
