@@ -1843,6 +1843,21 @@ function initializeMobileStudio(){
   const toolsBar=document.querySelector('.studio-tabs');
   const toolsPanel=document.getElementById('studioToolsPanel');
   const toolsToggle=document.getElementById('studioMobileToolsToggle');
+  const taskButton=document.getElementById('studioMobileTask');
+  const taskDock=document.getElementById('studioAssignmentDock');
+  const taskClose=document.getElementById('studioTaskClose');
+  const taskAssigned=document.getElementById('assignedProjectBanner');
+  const taskPersonalized=document.getElementById('studioPersonalizedTask');
+  const taskLink=Boolean(new URLSearchParams(location.search).get('assessment'));
+  const updateTaskReturn=()=>{
+    const link=document.querySelector('[data-task-return]');
+    const nav=document.getElementById('adminerva-nav');
+    if(link)link.href=nav?.dataset.v4OnlyStudent==='true'
+      ?'school-student-assessments.html':'student-assessments.html';
+  };
+  document.addEventListener('adminerva:role-ready',updateTaskReturn);
+  document.addEventListener('adminerva:school-ready',updateTaskReturn);
+  updateTaskReturn();
   if(!panel||!explorer||!actions||!backdrop||!toolbar)return;
   // Keep the original control IDs and event handlers; only their location changes.
   for(const id of ['saveProjectBtn','runBtn']){
@@ -1851,41 +1866,104 @@ function initializeMobileStudio(){
   }
   const setToolsOpen=open=>{
     toolsPanel?.classList.toggle('studio-tools-open',Boolean(open));
+    toolsBar?.classList.toggle('studio-tabs-expanded',Boolean(open));
     toolsToggle?.setAttribute('aria-expanded',String(Boolean(open)));
   };
-  toolsToggle?.addEventListener('click',()=>setToolsOpen(!toolsPanel?.classList.contains('studio-tools-open')));
+  toolsToggle?.addEventListener('click',()=>{
+    const opening=!toolsPanel?.classList.contains('studio-tools-open');
+    if(opening)closeDrawer();
+    setToolsOpen(opening);
+  });
   toolsPanel?.addEventListener('click',event=>{
     if(event.target.closest('[data-studio-view]')&&compact())setToolsOpen(false);
   });
   const compact=()=>window.matchMedia('(max-width:767px)').matches;
   let activeDrawer=null;
+  const taskAvailable=()=>taskLink||
+    (taskAssigned&&!taskAssigned.classList.contains('hidden'))||
+    (taskPersonalized&&!taskPersonalized.classList.contains('hidden'));
+  const refreshTaskButton=()=>{
+    const available=Boolean(taskAvailable());
+    taskButton?.classList.toggle('hidden',!available);
+    if(!available&&activeDrawer==='task')closeDrawer();
+  };
   const closeDrawer=()=>{
     explorer.classList.remove('studio-drawer-open');
     actions.classList.remove('studio-drawer-open');
+    taskDock?.classList.remove('studio-assignment-open');
+    taskDock?.removeAttribute('role');
+    taskDock?.removeAttribute('aria-modal');
+    taskDock?.setAttribute('aria-hidden',String(compact()));
     backdrop.classList.add('hidden');
     activeDrawer=null;
     filesButton?.setAttribute('aria-expanded','false');
     moreButton?.setAttribute('aria-expanded','false');
+    taskButton?.setAttribute('aria-expanded','false');
   };
   const showDrawer=side=>{
-    if(!compact())return;
+    if(!compact()||(side==='task'&&!taskAvailable()))return;
     if(activeDrawer===side){closeDrawer();return;}
     closeDrawer();
+    setToolsOpen(false);
     activeDrawer=side;
-    (side==='files'?explorer:actions).classList.add('studio-drawer-open');
+    if(side==='task'){
+      taskDock?.classList.add('studio-assignment-open');
+      taskDock?.setAttribute('role','dialog');
+      taskDock?.setAttribute('aria-modal','true');
+      taskDock?.setAttribute('aria-hidden','false');
+      taskPersonalized?.setAttribute('open','');
+      taskDock?.scrollTo({top:0});
+      taskClose?.focus();
+    }else{
+      (side==='files'?explorer:actions).classList.add('studio-drawer-open');
+    }
     backdrop.classList.remove('hidden');
-    (side==='files'?filesButton:moreButton)?.setAttribute('aria-expanded','true');
+    ({files:filesButton,actions:moreButton,task:taskButton}[side])?.setAttribute('aria-expanded','true');
   };
   const setPane=pane=>{
     const value=pane==='terminal'?'terminal':'editor';
+    const previous=panel.dataset.mobilePane;
+    if(compact()&&previous!==value){
+      // A hidden Monaco textarea or console input must not retain the mobile
+      // keyboard after switching panes.
+      const active=document.activeElement;
+      const otherPane=document.getElementById(value==='terminal'?'editorPane':'outputPane');
+      if(otherPane?.contains(active))active?.blur?.();
+    }
     panel.dataset.mobilePane=value;
     editorButton?.setAttribute('aria-pressed',String(value==='editor'));
     terminalButton?.setAttribute('aria-pressed',String(value==='terminal'));
+    if(value==='terminal'){
+      terminalButton?.removeAttribute('data-unread');
+      terminalButton?.setAttribute('aria-label','Show terminal');
+    }
     closeDrawer();
-    if(value==='editor')requestAnimationFrame(()=>editorInstance?.layout());
+    requestAnimationFrame(()=>{
+      if(value==='editor')editorInstance?.layout();
+      else {
+        const output=document.getElementById('consoleOutput');
+        if(output)output.scrollTop=output.scrollHeight;
+      }
+    });
   };
   filesButton?.addEventListener('click',()=>showDrawer('files'));
   moreButton?.addEventListener('click',()=>showDrawer('actions'));
+  taskButton?.addEventListener('click',()=>showDrawer('task'));
+  taskClose?.addEventListener('click',()=>{
+    closeDrawer();
+    taskButton?.focus();
+  });
+  document.getElementById('studioTaskSubmitShortcut')?.addEventListener('click',()=>{
+    closeDrawer();
+    document.getElementById('studioSubmitAssessment')?.click();
+  });
+  for(const section of [taskAssigned,taskPersonalized]){
+    if(section)new MutationObserver(refreshTaskButton).observe(section,{
+      attributes:true,attributeFilter:['class']
+    });
+  }
+  window.addEventListener('adminerva:studio-assessment-context',refreshTaskButton);
+  window.addEventListener('adminerva:studio-variant-ready',refreshTaskButton);
   document.getElementById('studioMobileCloseFiles')?.addEventListener('click',closeDrawer);
   document.getElementById('studioMobileCloseMore')?.addEventListener('click',closeDrawer);
   document.getElementById('studioMobileBackToProjects')?.addEventListener('click',()=>{
@@ -1899,7 +1977,16 @@ function initializeMobileStudio(){
     document.getElementById('runBtn')?.click();
   });
   backdrop.addEventListener('click',closeDrawer);
-  document.addEventListener('keydown',event=>{if(event.key==='Escape')closeDrawer();});
+  document.addEventListener('keydown',event=>{
+    if(event.key==='Escape'){
+      if(activeDrawer){
+        const trigger={files:filesButton,actions:moreButton,task:taskButton}[activeDrawer];
+        closeDrawer();
+        trigger?.focus();
+      }
+      setToolsOpen(false);
+    }
+  });
   explorer.addEventListener('click',event=>{
     if(compact()&&event.target.closest('.pg-file,[role="treeitem"],.pg-tree button')){
       setTimeout(()=>{closeDrawer();setPane('editor');},0);
@@ -1914,6 +2001,8 @@ function initializeMobileStudio(){
     }else if(!panel.dataset.mobilePane){
       setPane('editor');
     }
+    if(taskDock)taskDock.setAttribute('aria-hidden',String(compact()&&activeDrawer!=='task'));
+    refreshTaskButton();
   };
   const syncCodeToolbar=()=>{
     // Design, Database, Evidence and Monitor keep their own full work areas.
@@ -1924,6 +2013,76 @@ function initializeMobileStudio(){
   new MutationObserver(syncCodeToolbar).observe(panel,{attributes:true,attributeFilter:['class']});
   syncCodeToolbar();
   window.addEventListener('resize',resize);
+
+  // Use the visible browser viewport while the on-screen keyboard is open.
+  // 100dvh alone is inconsistent across mobile keyboard/URL-bar combinations:
+  // it can leave the terminal input or Monaco cursor behind the keyboard.
+  const visual=window.visualViewport;
+  const studio=document.getElementById('studioShell');
+  const root=document.body;
+  let keyboardBaseline=Math.round(visual?.height||window.innerHeight);
+  let viewportFrame=0;
+  const focusedStudioField=()=>{
+    const active=document.activeElement;
+    return studio?.contains(active)&&Boolean(active?.matches?.(
+      'input, textarea, [contenteditable="true"]'
+    ));
+  };
+  const syncVisibleWorkspace=()=>{
+    if(viewportFrame)cancelAnimationFrame(viewportFrame);
+    viewportFrame=requestAnimationFrame(()=>{
+      viewportFrame=0;
+      if(!compact()){
+        root.classList.remove('studio-mobile-keyboard-open');
+        root.style.removeProperty('--studio-mobile-visual-height');
+        keyboardBaseline=Math.round(visual?.height||window.innerHeight);
+        return;
+      }
+      const visibleHeight=Math.round(visual?.height||window.innerHeight);
+      if(!focusedStudioField()||visibleHeight>=keyboardBaseline-80){
+        keyboardBaseline=Math.max(keyboardBaseline,visibleHeight);
+      }
+      const keyboardOpen=focusedStudioField()&&keyboardBaseline-visibleHeight>=120;
+      root.classList.toggle('studio-mobile-keyboard-open',keyboardOpen);
+      if(keyboardOpen){
+        root.style.setProperty('--studio-mobile-visual-height',Math.max(230,visibleHeight)+'px');
+      }else{
+        root.style.removeProperty('--studio-mobile-visual-height');
+      }
+      editorInstance?.layout();
+      if(keyboardOpen&&panel.dataset.mobilePane==='terminal'){
+        const output=document.getElementById('consoleOutput');
+        if(output)output.scrollTop=output.scrollHeight;
+      }
+    });
+  };
+  visual?.addEventListener('resize',syncVisibleWorkspace);
+  window.addEventListener('resize',syncVisibleWorkspace);
+  document.addEventListener('focusin',event=>{
+    if(studio?.contains(event.target))syncVisibleWorkspace();
+  });
+  document.addEventListener('focusout',event=>{
+    if(studio?.contains(event.target))requestAnimationFrame(syncVisibleWorkspace);
+  });
+  window.addEventListener('orientationchange',()=>{
+    keyboardBaseline=Math.round(visual?.height||window.innerHeight);
+    syncVisibleWorkspace();
+  });
+
+  // A new result may arrive while the learner is still editing. Keep the
+  // workspace on Editor, but provide an unobtrusive terminal notification.
+  const outputObserverTarget=document.getElementById('consoleOutput');
+  if(outputObserverTarget&&terminalButton){
+    new MutationObserver(()=>{
+      if(!compact()||panel.classList.contains('hidden')||
+        panel.dataset.mobilePane==='terminal')return;
+      const result=outputObserverTarget.textContent||'';
+      if(!result||result==='Your output will appear here. Select Run when ready.')return;
+      terminalButton.setAttribute('data-unread','true');
+      terminalButton.setAttribute('aria-label','Show terminal — new output');
+    }).observe(outputObserverTarget,{childList:true,characterData:true,subtree:true});
+  }
+  syncVisibleWorkspace();
 
   // Android's back navigation consumes gestures that originate at the literal
   // viewport edge. Interpret horizontal swipes *within the Studio chrome*
