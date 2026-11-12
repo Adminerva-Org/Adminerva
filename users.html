@@ -7,12 +7,15 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-    <title>User Management | Adminerva Educator</title>
+    <title>User Directory | Adminerva</title>
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8" />
+    <link rel="stylesheet" href="css/directory-ux.css?v=4.0.0" />
 </head>
   <body
-    class="bg-slate-50 font-sans text-slate-800 min-h-screen flex flex-col hidden"
+    class="av-directory-page bg-slate-50 font-sans text-slate-800 min-h-screen flex flex-col hidden"
     id="pageBody"
   >
     <div id="adminerva-nav" data-module="admin" data-page="directory"></div>
@@ -39,6 +42,13 @@
         Legacy roster and grading remain unchanged. Use <a class="font-bold underline text-cyan-800" href="school-pilot.html">Controlled Pilot</a> to review migration exceptions, or <a class="font-bold underline text-cyan-800" href="people-access.html#overview">People &amp; Access</a> for the canonical V4 directory.
       </div>
       <p id="directory-summary" class="av-status-message" role="status" aria-live="polite">Loading roster…</p>
+      <div class="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+        <div>
+          <strong class="block text-sm text-slate-900">Repository checks are optional</strong>
+          <p id="directory-repository-status" class="text-xs text-slate-600 mt-1" role="status" aria-live="polite">Student GitHub links are not automatically checked. Verify only the visible roster page when needed.</p>
+        </div>
+        <button type="button" id="verifyVisibleRepos" onclick="window.verifyVisibleRepositories()" class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-900 hover:bg-blue-100 shrink-0">Verify visible GitHub links</button>
+      </div>
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
         <!-- Left Column: CSV Upload -->
         <div class="lg:col-span-1 space-y-6">
@@ -166,7 +176,7 @@
             </div>
 
             <!-- Table Content (Swipeable on Mobile) -->
-            <div class="overflow-x-auto flex-1 w-full" style="touch-action:pan-x pan-y;overscroll-behavior-x:contain">
+            <div class="av-directory-table-scroller overflow-x-auto flex-1 w-full" style="touch-action:pan-x pan-y;overscroll-behavior-x:contain">
               <table
                 class="w-full text-left border-collapse min-w-[600px] sm:min-w-[700px]"
               >
@@ -236,8 +246,8 @@
       </section>
     </main>
 
-    <script src="js/core/adminerva-nav.js?v=1.4.24"></script>
-    <script type="module" src="js/settings/settings-user.js?v=4.0.0"></script>
+    <script src="js/core/adminerva-nav.js?v=4.0.7"></script>
+    <script type="module" src="js/settings/settings-user.js?v=4.0.2"></script>
     <script type="module" src="js/core/auth-guard.js?v=4.0.4"></script>
     <script type="module" src="js/core/user-admissions.mjs?v=1.3.1"></script>
     <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
