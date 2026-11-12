@@ -163,6 +163,8 @@ window.buildDocumentLayout = async function () {
   window.currentPlan.forEach((session, index) => {
     const isFlex = String(session.session_name||"").toLowerCase().includes("flex");
     const isLab = String(session.session_name||"").includes("4-6");
+    const isAsync = session.delivery_mode==="asynchronous";
+    const sessionDisplayName = session.session_name+(isAsync?" — Asynchronous":session.delivery_mode==="mixed"?" — Mixed delivery":"");
     const taxonomyScrubber =
       /\s*[\(\[]?(?:Cognitive|Psychomotor|Affective)[\)\]]?\.?/gi;
 
@@ -199,7 +201,7 @@ window.buildDocumentLayout = async function () {
     let parts = [];
     parts.push({
       time: "",
-      content: `<div style="font-weight: bold;">${escapePrintText(session.session_name)}</div>`,
+      content: `<div style="font-weight: bold;">${escapePrintText(sessionDisplayName)}</div>`,
     });
 
     if (isFlex) {
@@ -209,25 +211,25 @@ window.buildDocumentLayout = async function () {
       });
     } else {
       parts.push({
-        time: isLab ? "10 mins" : "5 mins",
+        time: isAsync ? "" : isLab ? "10 mins" : "5 mins",
         content: `<strong>Preliminary Activities:</strong><br><div style="padding-left: 8px;">${prelimText}</div>`,
       });
       parts.push({
-        time: isLab ? "10 mins" : "5 mins",
+        time: isAsync ? "" : isLab ? "10 mins" : "5 mins",
         content: `<strong>Motivation / Recall:</strong><br><div style="padding-left: 8px; white-space: pre-wrap;">${linesForPrint(session.motivation)}</div>`,
       });
       parts.push({
-        time: isLab ? "110 mins" : "26 mins",
+        time: isAsync ? "" : isLab ? "110 mins" : "26 mins",
         content: `<strong>Learning Activities:</strong><br><div style="padding-left: 8px;">${activitiesText}</div>`,
       });
       parts.push({
-        time: isLab ? "15 mins" : "10 mins",
+        time: isAsync ? "" : isLab ? "15 mins" : "10 mins",
         content: `<strong>Evaluation:</strong><br><div style="padding-left: 8px; white-space: pre-wrap;">${linesForPrint(session.evaluation)}</div>`,
       });
 
       if (session.closing) {
         parts.push({
-          time: isLab ? "5 mins" : "4 mins",
+          time: isAsync ? "" : isLab ? "5 mins" : "4 mins",
           content: `<strong>Closing Activities:</strong><br><div style="padding-left: 8px; white-space: pre-wrap;">${linesForPrint(session.closing)}</div>`,
         });
       }
