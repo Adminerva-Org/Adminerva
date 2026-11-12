@@ -1,6 +1,6 @@
 import {resolveAccountAccess} from "./staff-session-v4-pilot.mjs?v=4.0.1";
 import {activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "./connection-cache.mjs?v=1.3.0";
-import {rememberWorkspace,roleHome} from "./session-destination-v4-pilot.mjs?v=4.0.1";
+import {rememberWorkspace,roleHome} from "./session-destination-v4-pilot.mjs?v=4.1.4";
 /** Verified account admission, workspace visibility and sign-out routing. */
 import { auth } from "./firebase-core.js?v=1.3.0";
 import {

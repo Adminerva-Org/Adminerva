@@ -51,7 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
   currentRole=isStudent?"student":isSuperAdmin?"superadmin":isPlatformOwner?"platformowner":isSchoolAdmin?"schooladmin":"teacher";
   const homeRoute = isStudent ? "student-home.html" : isPlatformOwner ? "owner-schools.html" : "teacher-home.html";
   const homeLabel = isStudent ? "Student Home" : isPlatformOwner ? "Owner Console" : "Staff Home";
-  const roleLabel=isStudent?"Student":isPlatformOwner?"Platform owner":isSuperAdmin?"Legacy platform administrator":isSchoolAdmin?"School administrator":"Teacher";
+  const roleLabel=isStudent?"Student":isPlatformOwner?"Platform owner":isSuperAdmin?"Legacy platform administrator":isSchoolAdmin?(hasSchoolTeacher?"School administrator · Teacher":"School administrator"):"Teacher";
 
   // Destinations and page labels share one source, including bookmarked tools.
   const studentGroups = {
@@ -77,23 +77,22 @@ document.addEventListener("DOMContentLoaded", () => {
     ] }
   };
   const staffGroups = [
-    { name: "Assess & grade", area: "educator", items: canTeach ? (
-      v4OnlyTeacher ? [
-        ["library-v4","Assessments","teacher-assessment-library.html"],
-        ["gradebook-v4", "Gradebook", "school-gradebook.html"],
+    { name: "Repository Management", area: "educator", items: canTeach&&!v4OnlyTeacher ? [
+      ["studio","Assessment Studio","assessment-studio.html"],
+      ["submissions","Submission inbox","submissions.html"],
+      ["studio-submissions","Studio submissions","studio-submissions.html"],
+      ["repofetch","Review & grade","repofetch.html"],
+      ["gradebook","Gradebook · current classes",gradebookRoute],
+      ["reclaims","Requests & attribution","reclaim-inbox.html"],
+      ["repobank","Repository investigation","repobank.html"]
+    ] : [] },
+    { name: "Class Record & Adminerva Assessments", area: "class-record",
+      items: canTeach&&hasSchoolTeacher ? [
+        ["library-v4","School assessments","teacher-assessment-library.html"],
+        ["gradebook-v4","School Gradebook","school-gradebook.html"],
         ["class-record","Class Record","class-record.html"],
-        ["reclaims", "Requests & attribution", "reclaim-inbox.html"]
-      ] : [
-        ...(hasSchoolTeacher ? [["library-v4","Assessments · 4.0 pilot","teacher-assessment-library.html"]] : []),
-        ["studio", "Assessment Studio", "assessment-studio.html"],
-        ["submissions", "Submission inbox", "submissions.html"],
-        ["studio-submissions", "Studio submissions", "studio-submissions.html"],
-        ["repofetch", "Review & grade", "repofetch.html"],
-        ["gradebook", "Gradebook · current classes", gradebookRoute],
-        ...(hasSchoolTeacher ? [["gradebook-v4", "Gradebook · 4.0 pilot", "school-gradebook.html"],["class-record","Class Record","class-record.html"]] : []),
-        ["reclaims", "Requests & attribution", "reclaim-inbox.html"],
-        ["repobank", "Repository investigation", "repobank.html"]
-      ]) : [] },
+        ...(v4OnlyTeacher?[["reclaims","Requests & attribution","reclaim-inbox.html"]]:[])
+      ] : [] },
     { name: "Insights", area: "educator", items: canTeach ? [
       ...(hasSchoolTeacher ? [
         ["class-analytics-v4", "Class analytics · 4.0 pilot", "school-teacher-analytics.html"],
@@ -147,12 +146,12 @@ document.addEventListener("DOMContentLoaded", () => {
       ["issues", "Reports & support", supportRoute]
     ] }
   ];
-  const area = ["repo", "educator", "class-record"].includes(activeModule) ? "educator" : activeModule;
+  const area = ["repo", "educator"].includes(activeModule) ? "educator" : activeModule;
   const groups = isStudent ? [] : staffGroups.filter(group => group.items.length &&
     (group.area === area || area === "admin" && group.area === "settings"));
   const studentGroup = studentGroups[activeModule];
   const areaNames = {
-    educator: "Assess & Grade", lesson: "Teaching", admin: "School administration",
+    educator: "Repository Management", "class-record": "Class Record & Adminerva Assessments", lesson: "Teaching", admin: "School administration",
     settings: "Account settings", global: "Reports & support",
     "student-home": "Your workspace", "staff-home": "Your workspace"
   };
@@ -170,12 +169,14 @@ document.addEventListener("DOMContentLoaded", () => {
     : isStudent ? studentGroup?.items[0]?.[2]
     : area === "lesson" ? "lesson-planner.html"
     : area === "admin" ? "school-admin.html"
-    : area === "educator" ? (v4OnlyTeacher||hasSchoolTeacher?"teacher-assessment-library.html":"assessment-studio.html") : null;
+    : area === "class-record" ? "class-record.html"
+    : area === "educator" ? "assessment-studio.html" : null;
   const escapeHTML = value => String(value).replace(/[&<>"']/g, char =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
   const modules = isStudent ? [
     [homeLabel, homeRoute, "Start here and continue your work"],
     ["Project Hub", studentProjectRoute, "Projects and assignments"],
+    ...(hasSchoolStudent?[["My Grades","school-student-grades.html","Teacher-released scores and final grades"]]:[]),
     ["Practice Lab", "student-practice.html", "Courses, challenges and XML Lab"],
     ["Adminerva Studio", "student-playground.html", "Write and run code"],
     ["My reports", supportRoute, "Report a problem or follow an update"]
@@ -184,13 +185,15 @@ document.addEventListener("DOMContentLoaded", () => {
     ["Reports & support","issues.html","Follow reports and get help"]
   ] : [
     [homeLabel,homeRoute,isSchoolAdmin?"School operations and teaching workspace":"Your teaching workspace"],
-    ...(canTeach?(v4OnlyTeacher?
-      [["Assess & Grade","teacher-assessment-library.html","Assessments, submissions, grading and requests"],
-       ["Teaching","lesson-planner.html","Lessons, slides, timetable and references"],
-       ["Insights","school-teacher-analytics.html","Class results, follow-up and Practice progress"]]:
-      [["Assess & Grade",hasSchoolTeacher?"teacher-assessment-library.html":"assessment-studio.html","Assessments, submissions, grading and repositories"],
-       ["Teaching","lesson-planner.html","Lessons, slides, schedule and references"],
-       ["Insights",hasSchoolTeacher?"school-teacher-analytics.html":"teacher-analytics.html","Class results, follow-up and Practice progress"]]):[]),
+    ...(canTeach?[
+      ...(!v4OnlyTeacher?[["Repository Management","assessment-studio.html",
+        "Repository tasks, grading and submissions"]]:[]),
+      ...(hasSchoolTeacher?[["Class Record & Adminerva Assessments","class-record.html",
+        "Manual scores, school assessments and released results"]]:[]),
+      ["Teaching","lesson-planner.html","Lessons, slides, timetable and references"],
+      ["Insights",hasSchoolTeacher?"school-teacher-analytics.html":"teacher-analytics.html",
+        "Class results, follow-up and Practice progress"]
+    ]:[]),
     ...((isSuperAdmin||isSchoolAdmin||hasPlatformAuthority)?[["School administration",
       hasPlatformAuthority&&!isSchoolAdmin&&!isSuperAdmin?"owner-schools.html":"school-admin.html",
       hasPlatformAuthority&&!isSchoolAdmin&&!isSuperAdmin?"Institution registry":"People, access, classes and school operations"]]:[]),

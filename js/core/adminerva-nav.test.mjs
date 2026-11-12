@@ -89,7 +89,7 @@ test('home is a direct link and switching workspaces is an explicit disclosure',
 
 test('educator navigation groups assessment and grading work without losing specialist destinations', () => {
   const { desktop } = mount('repo', 'gradebook');
-  assert.deepEqual(groupNames(desktop), ['Assess & grade ▾', 'Insights ▾']);
+  assert.deepEqual(groupNames(desktop), ['Repository Management ▾', 'Insights ▾']);
   // Legacy teachers cannot open pilot-only school resources without membership.
   assert.deepEqual(links(desktop.children[0]).map(link => link.href), [
     'assessment-studio.html','submissions.html','studio-submissions.html','repofetch.html',
@@ -98,9 +98,19 @@ test('educator navigation groups assessment and grading work without losing spec
   assert.deepEqual(links(desktop.children[1]).map(link => link.href), ['teacher-analytics.html', 'learning-follow-up.html']);
   const verified = mount('repo','gradebook','teacher',false,{schoolRoles:{schoolTeacher:'true'}});
   assert.deepEqual(links(verified.desktop.children[0]).map(link=>link.href), [
-    'teacher-assessment-library.html','assessment-studio.html','submissions.html','studio-submissions.html',
-    'repofetch.html','gradebook.html','school-gradebook.html','reclaim-inbox.html','repobank.html'
+    'assessment-studio.html','submissions.html','studio-submissions.html',
+    'repofetch.html','gradebook.html','reclaim-inbox.html','repobank.html'
   ]);
+  const school = mount('class-record','class-record','teacher',false,{schoolRoles:{schoolTeacher:'true'}});
+  assert.deepEqual(groupNames(school.desktop), ['Class Record & Adminerva Assessments ▾']);
+  assert.deepEqual(links(school.desktop.children[0]).map(link=>link.href), [
+    'teacher-assessment-library.html','school-gradebook.html','class-record.html'
+  ]);
+  const administratorTeacher=mount('class-record','class-record','schooladmin',false,{
+    schoolRoles:{schoolTeacher:'true',schoolAdmin:'true'}
+  });
+  assert.match(administratorTeacher.root.innerHTML,/School administrator · Teacher/);
+  assert.ok(links(administratorTeacher.desktop).some(link=>link.href==='class-record.html'));
   assert.deepEqual(links(verified.desktop.children[1]).map(link=>link.href), [
     'school-teacher-analytics.html','school-practice-analytics.html','teacher-analytics.html','learning-follow-up.html'
   ]);
@@ -227,7 +237,7 @@ test('verified role refresh replaces stale navigation without multiplying global
   const listenerCounts = () => Object.fromEntries(Object.entries(view.documentEvents).map(([type, callbacks]) => [type, callbacks.length]));
   const before = listenerCounts();
   view.roleReady('superadmin');
-  assert.deepEqual(groupNames(view.desktop), ['School setup ▾', 'Account ▾']);
+  assert.deepEqual(groupNames(view.desktop), ['School administration ▾', 'Account ▾']);
   assert.ok(links(view.desktop).some(link => link.href === 'users.html'));
   assert.match(view.root.innerHTML, /href="school-admin.html"/);
   view.roleReady('superadmin');
