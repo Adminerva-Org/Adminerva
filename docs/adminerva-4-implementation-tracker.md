@@ -578,3 +578,19 @@ The output file is created with owner-only file permissions and cannot overwrite
 ### Primary-guard parity follow-up — November 12, 2026
 
 The foundation uses both `auth-guard-v4-pilot.js` and the canonical `auth-guard.js`. Both now consistently recognize the controlled pilot, grading-scheme, teacher Class Record and student grade routes. The **primary guard** retains its established `staff-session.mjs` and `session-destination.mjs` imports and legacy-compatible home routing; it is not replaced wholesale by the pilot guard. It also retains the separately verified school-teacher and school-student visibility conditions. Canonical recent-workspace routing treats Class Record as school-teacher only and school grades as a student route. No underlying grading module or database permission rule was changed.
+
+
+## Firebase assessment-service parity and Studio assessment context — November 12, 2026
+
+### Verified shared service contract (main vs V4)
+- **Byte-identical at this review boundary:** `firestore.rules`, `functions/studio-assessment-variants.js`, `functions/school-gradebook.js`, `functions/school-studio-projects.js`, `functions/people-directory.js`, `functions/school-academics.js`, and the client-side external evaluation/personalization services. These files require no duplicate merge edits.
+- **Intentional V4 extensions — do not overwrite from main:** `functions/school-assessments.js` adds private teacher-owned personalized pools, freezes assigned variants, and separates deployment from publication; `functions/school-studio-submissions.js` binds immutable submissions to the server-issued attempt/variant; `functions/school-github-evidence.js` enforces unpublished-assessment visibility; `functions/teacher-blueprints.js` retains private personalized blueprint infrastructure.
+- **Function registry conflict:** mainline `functions/index.js` exports `schoolClassRecord` and `schoolStudentClassRecord`, backed by two Class Record modules absent from V4. V4 instead already exports `schoolStudioAssessmentVariant`. The later mainline reconciliation must preserve **all three** exports and bring forward the **unchanged current** Class Record modules. Neither mainline registry nor V4 registry can simply replace the other. No Class Record modules or exports were changed in this assessment batch.
+
+### Focused compatibility implementation
+- `js/student/studio-assessment-variant.mjs` now re-emits the newer mainline Studio assessment lifecycle context (`loading`, `not-personalized`, `ready`, `unavailable`) for both the canonical verified-school variant and existing legacy fallback.
+- The active variant remains the server-issued frozen variant; canonical school lookup occurs first and retains the existing school-scoped callable. Non-personalized tasks are identified explicitly instead of leaving an indefinite loading state.
+- Sign-out, late requests and failed lookups do not leave an old personalized variant marked as ready. Assignment-context state is a **client UI hint only**, never an authorization grant or server submission bypass.
+- Studio page script cache is updated so the reconciled client loads without altering CheerpJ or the terminal integration.
+
+**Status:** isolated source integration only. No role changes, production Firebase deployment, assessment publication, grading mutation, live migration, or `v4_only` switch. Remaining gate: combine current-main Class Record endpoints and newest backend maintenance into V4 without replacing the canonical personalized pipeline; then focused signed-in acceptance and controlled MCS pilot activation.
