@@ -132,7 +132,7 @@ async function checkAccess(user){
      !(access.platformAdmin||admittedRole==="admin")){
     replacePage(roleHome(actualRole));return;
   }
-  if(/\/(school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-grading-schemes)\.html$/.test(currentPath)&&
+  if(/\/(school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-grading-schemes|school-class-records)\.html$/.test(currentPath)&&
      !(access.schoolAdmin||admittedRole==="admin")){
     replacePage(roleHome(actualRole));return;
   }
@@ -166,7 +166,7 @@ async function checkAccess(user){
     replacePage("school-support.html");return;
   }
   if(actualRole==="schooladmin"&&!access.schoolTeacher&&
-     !/\/(teacher-home|school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-grading-schemes|school-reference-library|reclaim-inbox|settings|issues|school-support|join-school|wiki)\.html$/.test(currentPath)){
+     !/\/(teacher-home|school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-grading-schemes|school-class-records|school-reference-library|reclaim-inbox|settings|issues|school-support|join-school|wiki)\.html$/.test(currentPath)){
     replacePage("school-admin.html");return;
   }
   if(actualRole==="platformowner"&&!access.schoolAdmin&&!access.schoolTeacher&&!access.schoolStudent&&
@@ -205,6 +205,7 @@ async function checkAccess(user){
     const allowed=new Set([
       "teacher-home.html","teacher-assessment-library.html","school-gradebook.html","class-record.html","pilot-sandbox.html",
       "school-support.html","people-access.html","school-admin.html","school-pilot.html","school-analytics.html","school-data-controls.html","school-cutover-readiness.html","school-onboarding-readiness.html","school-grading-schemes.html",
+      ...(access.schoolAdmin?["school-class-records.html"]:[]),
       "school-teacher-analytics.html","school-practice-analytics.html","reclaim-inbox.html",
       "lesson-planner.html","presentation.html","schedule.html","teacher-reference-library.html","school-reference-library.html",
       "settings.html","join-school.html","wiki.html",
