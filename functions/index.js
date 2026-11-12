@@ -71,6 +71,18 @@ exports.schoolStudioProjects=onCall(callOptions,safeCallable(createSchoolStudioP
 exports.schoolStudioSubmissions=onCall(callOptions,safeCallable(createSchoolStudioSubmissionService({db})));
 exports.schoolStudioAssessmentVariant=onCall(callOptions,safeCallable(createSchoolStudioAssessmentVariantService({db})));
 exports.studioAssessmentVariant=onCall(callOptions,safeCallable(createStudioAssessmentVariantService({db,Timestamp})));
+const {createSchoolClassRecordService}=require("./school-class-record.js");
+exports.schoolClassRecord=onCall(callOptions,safeCallable(createSchoolClassRecordService({
+  db,
+  resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users
+})));
+const {createSchoolStudentClassRecordService}=require("./school-student-class-record.js");
+exports.schoolStudentClassRecord=onCall(callOptions,safeCallable(createSchoolStudentClassRecordService({
+  db,
+  resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users
+})));
+const {createSchoolClassRecordAdminService}=require("./school-class-record-admin.js");
+exports.schoolClassRecordAdmin=onCall(callOptions,safeCallable(createSchoolClassRecordAdminService({db})));
 const {createSchoolGradebookService}=require("./school-gradebook.js");
 exports.schoolGradebook=onCall(callOptions,safeCallable(createSchoolGradebookService({db})));
 const {createSchoolGithubEvidenceService}=require("./school-github-evidence.js");
