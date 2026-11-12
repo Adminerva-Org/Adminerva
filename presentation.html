@@ -7,9 +7,10 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-    <title>Adminerva - Slide Editor</title>
-    <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/libs/jszip.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/gitbrent/pptxgenjs@3.12.0/dist/pptxgen.min.js"></script>
+    <title>Slide Editor | Adminerva</title>
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+    <link rel="preconnect" href="https://cdn.quilljs.com" crossorigin>
     <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- Quill.js for Rich Text & Toolbar -->
@@ -17,7 +18,7 @@
       href="https://cdn.quilljs.com/1.3.6/quill.snow.css"
       rel="stylesheet"
     />
-    <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+    <script defer src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
     <!-- Force Quill Editor to be strictly transparent -->
     <style>
       .ql-container.ql-snow {
@@ -64,21 +65,22 @@
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css"
     />
-    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
     <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8" />
+    <link rel="stylesheet" href="css/teacher-ux.css?v=4.0.0" />
 </head>
-  <body class="bg-gray-50 font-sans min-h-screen flex flex-col text-gray-800">
+  <body class="av-teacher-refresh bg-gray-50 font-sans min-h-screen flex flex-col text-gray-800">
     <!-- GLOBAL NAVIGATION INJECTION -->
     <div id="adminerva-nav" data-module="lesson" data-page="presentation"></div>
-    <script src="js/core/adminerva-nav.js?v=4.0.2"></script>
+    <script defer src="js/core/adminerva-nav.js?v=4.0.7"></script>
 
     <!-- Main Workspace -->
     <div
-      class="max-w-screen-2xl mx-auto w-full p-4 sm:p-6 mt-2 sm:mt-4 flex-1 flex flex-col lg:flex-row gap-4 sm:gap-6"
+      class="av-slide-editor-shell max-w-screen-2xl mx-auto w-full p-3 sm:p-5 mt-1 sm:mt-2 flex-1 flex flex-col lg:flex-row gap-3 sm:gap-4"
     >
       <!-- LEFT COLUMN: Pure Slide Navigator -->
       <div
-        class="w-full lg:w-1/5 bg-white p-3 rounded-lg shadow-sm border border-gray-200 flex flex-col max-h-48 lg:max-h-none h-auto lg:h-full shrink-0 lg:overflow-y-auto"
+        class="av-slide-nav-panel w-full lg:w-1/5 bg-white p-3 rounded-xl shadow-sm border border-gray-200 flex flex-col max-h-48 lg:max-h-none h-auto lg:h-full shrink-0 lg:overflow-y-auto"
       >
         <div class="border-b border-gray-200 pb-2 mb-2 text-center shrink-0">
           <h2
@@ -98,11 +100,11 @@
 
       <!-- RIGHT COLUMN: Editor Workspace & Main Menu -->
       <div
-        class="w-full lg:w-4/5 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col items-center justify-start p-4 sm:p-6 relative h-full overflow-y-auto"
+        class="av-slide-workarea w-full lg:w-4/5 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col items-center justify-start p-3 sm:p-5 relative h-full overflow-y-auto"
       >
         <!-- MAIN ACTION BAR -->
         <div
-          class="w-full max-w-5xl flex flex-col sm:flex-row justify-between items-start sm:items-end mb-4 border-b border-gray-100 pb-4 gap-4"
+          class="av-slide-actionbar w-full max-w-5xl flex flex-col sm:flex-row justify-between items-start sm:items-end mb-3 border-b border-gray-100 pb-3 gap-3"
         >
           <!-- Left Side: Layout & Add -->
           <div
@@ -629,14 +631,14 @@
     <script src="js/presentation-review/presentation-ui.js?v=1.3.0"></script>
     <script
       type="module"
-      src="js/presentation-review/presentation-firebase.js?v=4.0.1"
+      src="js/presentation-review/presentation-firebase.js?v=4.0.2"
     ></script>
     <script type="module" src="js/presentation-review/school-presentation-bridge.mjs?v=4.0.1"></script>
     <script
       type="module"
       src="js/presentation-review/presentation-ai.js?v=1.3.0"
     ></script>
-    <script src="js/presentation-review/presentation-export.js?v=1.3.0"></script>
+    <script src="js/presentation-review/presentation-export.js?v=4.0.1"></script>
     <script type="module" src="js/core/auth-guard.js?v=4.0.4"></script>
     <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
   </body>
