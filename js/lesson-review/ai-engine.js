@@ -185,7 +185,7 @@ function isPendingPlannedSession(session){
 }
 function plannedLessonCarryover(previousPlan){
   const sessions=Array.isArray(previousPlan?.sessions)?previousPlan.sessions:[];
-  return sessions.filter(isPendingPlannedSession).map(session=>{
+  const missed=sessions.filter(isPendingPlannedSession).map(session=>{
     const remarks=String(session.remarks||"");
     // Older no-class plans sometimes replaced the academic lesson with
     // administrative activities or an optional asynchronous assessment.
@@ -205,6 +205,21 @@ function plannedLessonCarryover(previousPlan){
       source_note:administrative?"Legacy cancellation/substitute activities: recover the missed academic topic from remarks and selected references, not these administrative activities.":"Preserve the originally planned instructional scope."
     };
   });
+  // Displaced new topics remain separate from already-taught catch-up lessons.
+  const displaced=sessions.flatMap(session=>{
+    const notes=String(session?.remarks||"");
+    return [...notes.matchAll(/PENDING NEXT-WEEK TOPICS:\s*([^\n]+)/gi)].map(match=>({
+      missed_session:session.session_name,
+      planned_topic:match[1].trim(),
+      planned_competencies:"",
+      planned_objectives:"",
+      planned_learning_activities:"",
+      planned_evaluation:"",
+      previous_remarks:"",
+      source_note:"This newly displaced topic was not taught; do not repeat the already-completed lesson in the source session. Recover its content from the selected references."
+    }));
+  });
+  return [...missed,...displaced];
 }
 
 function parseReferenceDigestJson(raw){
@@ -693,7 +708,7 @@ PRIORITY RULES:
 - When the queue is nonempty, place its missed academic lessons FIRST in the next eligible regular instructional sessions, before introducing new topics. Preserve the original objectives, topic and achievable learner activity when available.
 - Carry forward missed REGULAR sessions into the earliest regular session(s), ordered by their original session number. Do not silently move laboratory/performance work into a short regular meeting; give missed combined blocks priority in the next suitable laboratory block.
 - Skip cancelled or explicitly teacher-reserved meetings as destinations. Respect excluded sessions and specific teacher interventions; a field trip or laboratory assignment must not be overwritten.
-- Move displaced new material to later eligible sessions or mark it as PENDING CARRYOVER in the affected session's remarks if there is insufficient teaching time. Never imply that uncompleted instruction was delivered.
+- Move displaced new material to later eligible sessions. If no regular slot remains, record the unscheduled new topic(s) in the LAST regular session's remarks as 'PENDING NEXT-WEEK TOPICS: topic A; topic B', separately from its delivered catch-up lesson. Never repeat completed catch-up instruction merely because it carries this note.
 - When an old record has only administrative no-class activities, reconstruct the planned academic lesson using its remarks and selected reference materials rather than carrying over cancellation activities.
 `;
   }
@@ -756,14 +771,14 @@ ${gradeSpecificRules}
      * use at most two short sentences (normally under 55 words) covering delivery changes, necessary carry-over, and assessment implications;
      * do not narrate each activity, repeat the previous week's history, duplicate timetable metadata, or describe unrelated sessions;
      * for an explicitly cancelled meeting, begin the remarks with 'NOT CONDUCTED: ' followed by the reason; state that its planned academic lesson is deferred to the next suitable regular session;
-     * use 'PENDING CARRYOVER: ' when planned instruction was displaced and cannot be taught this week;
+     * when new content is displaced by priority catch-up, record 'PENDING NEXT-WEEK TOPICS: ' and the unscheduled topic names in the last regular session's remarks; do not mark an already-taught catch-up lesson uncompleted;
      * leave remarks empty when no additional session-specific note exists.
 6. CANCELLATION AND NEXT-WEEK PRIORITY:
    - A cancelled/suspended/no-class session still has the TOPIC, COMPETENCIES, OBJECTIVES, MOTIVATION, LEARNING ACTIVITIES, and EVALUATION that the teacher had intended for that session. Never replace these with 'observing a suspension', 'deferring work', or a field trip description.
    - Use remarks to record that the academic lesson was NOT CONDUCTED and why. The planned lesson must remain visible in the saved curriculum plan and must NOT be described as completed.
    - If an unrelated asynchronous submission/finalization is explicitly assigned on the cancelled day, mention that task as an additional administrative requirement in remarks without replacing the intended academic lesson; do not mark the academic lesson as delivered.
    - In the NEXT week's plan, cancelled prior academic lessons take precedence in the first available regular sessions. Retain the intended academic coverage and objectives, with only the necessary adjustments for the new teaching duration. Explicit teacher constraints and reserved laboratory/assessment meetings remain authoritative.
-   - If multiple missed lessons or shifted lessons cannot fit, carry the remainder forward explicitly; do not silently omit unfinished topics.
+   - If multiple missed lessons or shifted new lessons cannot fit, store their names under 'PENDING NEXT-WEEK TOPICS: ' in the last regular session's remarks; the next plan must resume these topics after genuinely missed lessons, without repeating completed lessons.
 7. SESSION FLEX:
    - delivery_mode is 'asynchronous';
    - provide ONLY 3 to 5 concise, optional offline/self-paced learning_activities relevant to this week;
