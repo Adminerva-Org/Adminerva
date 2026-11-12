@@ -644,3 +644,13 @@ Imported the exact files from pinned production `139a0fa3cf22998fe2646227a7d8a28
 - Preserved the reference-batch analyzer, the existing teacher instruction map, canonical school schedule picker, Google/Cloud Firestore planning parity and V4 reference-library connector. `lesson-firebase.js`, `schedule.js`, and school academic backends are unchanged in this batch.
 - Carried the shared lesson-generation documentation and refreshed only the generator, editor, exporter script URLs and explanation in the V4 planner page. Existing V4 auth/nav URLs remain intact.
 - This is **development source parity**, not automatic regeneration of Q3 documents or a live change to existing lesson plans. Users can regenerate Q3 through their usual verified school workflow once the V4 pilot is activated.
+
+
+## Mainline mobile Studio task and keyboard continuity — November 12, 2026
+
+- Reconciled current-main Studio's mobile **Menus + Tools on one top row**, with a separate compact **Task** sheet for readable published instructions and student-visible criteria. V4 retains the school-scoped `project-studio.mjs`, account/school selection guard, separate personalized variant service, and canonical frozen Studio submission workflow; neither project state nor grading service is replaced.
+- The Task sheet displays only student-visible school `list_student` assessment data (`instructions`, `rubric`, title and publication context) or published legacy Studio task data. Teacher-private checker instructions, variant pool answers and privileged grading data are never presented. Auth/school switching invalidates pending task fetches; V4-only sessions do not fall back to a legacy personalized variant.
+- Opening an assigned Studio project no longer automatically opens **Submit for assessment**. The learner explicitly opens submission from Menus or the Task sheet. The dialog identifies the relevant V4/legacy deadline, attempt window and teacher-requested reopened revisions; the server remains the source of truth for eligibility.
+- Retained mainline mobile virtual-keyboard handling for iOS/Android, with viewport-aware editor/terminal sizing, terminal unread indicator and Send-key hints. Both signed-in Student Studio and Guest Studio have matching one-row tool controls; guest pages have **no assessment submission action**.
+- Kept the existing independent instructor-only CheerpJ pilot, terminal prompt echo and v4 assessment context; neither students nor graded assessments were enabled in CheerpJ by this reconciliation.
+- Imported a focused mobile UX contract and CI workflow from current main with v4-specific asset versions. No browser acceptance, Firebase deployment, production launch, persisted grading change or MCS cutover was performed.
