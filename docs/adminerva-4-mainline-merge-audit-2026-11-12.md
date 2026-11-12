@@ -127,3 +127,22 @@
 1. The final merge candidate must retain the V4 verified-school access guard, `legacy_allowed` compatibility policy, school-scoped operations, and the currently deployed mainline Class Record work.
 2. Don't import a diff only to make GitHub report `mergeable=true`; combine both branches' behavior intentionally before recording both parents in a merge commit.
 3. No Firebase deployment, Cloudflare activation, role cutover, score migration, `v4_only` change or automatic student release is authorized by this source audit.
+
+
+## Main-first draft integration progress — November 12, 2026
+
+The original 73 divergent paths above describe the pinned **pre-integration** tree outcomes. They are retained as the fixed audit baseline; the source stages below address 15 of those paths without ever modifying current production `main`.
+
+| Stage | GitHub | Source outcome |
+|---|---|---|
+| 1 | [Draft #186](https://github.com/Adminerva-Org/Adminerva/pull/186) | 57 new V4-only paths added to current-main baseline, no existing main file changed |
+| 2 | [Merged #187](https://github.com/Adminerva-Org/Adminerva/pull/187) | 60 V4 modifications where production main matched the original ancestor |
+| 3 | [Merged #188](https://github.com/Adminerva-Org/Adminerva/pull/188) | 6 shared lesson/presentation files: concise generator, editor, exporter, school lesson storage and canonical academic schedule |
+| 4 | [Merged #189](https://github.com/Adminerva-Org/Adminerva/pull/189) | 1 shared Cloud Functions index: add V4 school variant callable without removing legacy Studio variant or Class Record exports |
+| 5 | [Merged #190](https://github.com/Adminerva-Org/Adminerva/pull/190) | 8 shared school-role navigation, auth-routing, home, and People & Access files |
+
+**Main-first diff after stage 5:** 132 paths (57 added, 75 modified, 0 deleted), 9 commits ahead of pinned `main`, 0 behind. Of the original 73 divergent shared paths, **58 remain to disposition**. This is a snapshot; recalculate if active `main` moves.
+
+**Critical distinction:** Draft #186 may appear `mergeable` to GitHub because it starts from current `main`; it is **not a finished Adminerva 4.0 release**, and some school-only routes are not yet wired to their intended entry pages. Keep draft and do not deploy before explicit scoped workflow reconciliation and private pilot acceptance.
+
+Remaining high-priority areas are (a) the shared Studio page and server-mediated submission state, (b) verified-school assessment publish/review services and school Gradebook, (c) current mainline Class Record updates belonging to the separate workstream, (d) teacher/student/school-admin entry-point wiring and navigation script versions.
