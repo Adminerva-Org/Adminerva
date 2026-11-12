@@ -1392,3 +1392,95 @@ body[data-playground-access] #studioReadinessJoin:disabled{opacity:.5;cursor:not
  body[data-playground-access] #studioCancelQueueBtn{min-height:38px;max-width:110px;white-space:normal;padding:5px 8px}
  body[data-playground-access] .studio-editor-controls #studioProblemsToggle{font-size:9px;min-width:49px;padding:3px 4px}
 }
+
+/* Studio Problems dock: keep the editor clear and expand inside Explorer, upwards. */
+body[data-playground-access] #projectExplorer .pg-tree{min-height:0}
+body[data-playground-access] .studio-problems-dock{
+  display:flex;flex-direction:column-reverse;flex:0 1 auto;min-height:39px;
+  max-height:min(68%,430px);min-width:0;
+  border-top:1px solid #33475e;background:#112235;color:#d8e9f6
+}
+body[data-playground-access] #studioProblemsToggle,
+body[data-playground-access] #studioProblemsToggle[data-has-errors="true"]{
+  display:flex;align-items:center;gap:7px;justify-content:space-between;
+  width:100%;min-width:0;min-height:39px;flex:none;
+  padding:6px 9px;border:0;border-radius:0;
+  background:#13283b;color:#d8effe;font-size:11px;text-align:left;font-weight:750
+}
+body[data-playground-access] #studioProblemsToggle:hover{background:#1b364e}
+body[data-playground-access] #studioProblemsToggle:focus-visible,
+body[data-playground-access] .studio-problems-panel button:focus-visible{
+  outline:2px solid #69c9f2;outline-offset:-2px
+}
+body[data-playground-access] .studio-problems-dock-label{flex:1;min-width:0}
+body[data-playground-access] .studio-problems-dock-counts{display:inline-flex;gap:4px}
+body[data-playground-access] .studio-problems-error-count,
+body[data-playground-access] .studio-problems-warning-count{
+  display:inline-flex;justify-content:center;align-items:center;
+  font-size:10px;font-weight:850;min-width:19px;padding:3px 5px;
+  border-radius:6px;background:#263b4e;color:#a9c5d5
+}
+body[data-playground-access] .studio-problems-error-count[data-active="true"]{
+  background:#642d43;color:#ffe1e8
+}
+body[data-playground-access] .studio-problems-warning-count[data-active="true"]{
+  background:#544329;color:#ffe5aa
+}
+body[data-playground-access] .studio-problems-chevron{
+  display:inline-block;color:#80b4ce;font-size:16px;line-height:1;
+  transition:transform .16s ease
+}
+body[data-playground-access] #studioProblemsToggle[aria-expanded="true"] .studio-problems-chevron{
+  transform:rotate(180deg)
+}
+body[data-playground-access] .studio-problems-dock .studio-problems-panel{
+  flex:0 1 auto;min-height:0;max-height:min(52vh,380px);
+  overflow:hidden;border:0;border-bottom:1px solid #334c63;background:#0e1c2d
+}
+body[data-playground-access] .studio-problems-dock .studio-problems-panel:not(.hidden){
+  display:flex;flex-direction:column
+}
+body[data-playground-access] .studio-problems-dock .studio-problems-panel-head{
+  padding:7px 9px;min-height:35px;flex:none
+}
+body[data-playground-access] .studio-problems-dock .studio-problems-panel-head strong{
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px
+}
+body[data-playground-access] .studio-problems-tabs{
+  display:flex;gap:4px;padding:5px 7px 0;flex:none;
+  border-bottom:1px solid #30475d
+}
+body[data-playground-access] .studio-problems-tabs button{
+  display:flex;align-items:center;justify-content:center;gap:5px;flex:1;min-width:0;
+  padding:8px 3px;border:0;border-bottom:2px solid transparent;
+  border-radius:6px 6px 0 0;background:transparent;
+  color:#9db9ce;font-size:10px;font-weight:750
+}
+body[data-playground-access] .studio-problems-tabs button[aria-selected="true"]{
+  color:#f2f8ff;border-bottom-color:#4bc7d4;background:#1c3347
+}
+body[data-playground-access] .studio-problems-tabs button span{font-size:9px;opacity:.85}
+body[data-playground-access] .studio-problems-dock .studio-problems-list{
+  flex:1 1 auto;min-height:0;max-height:240px;overflow-y:auto;
+  display:block;padding:5px 6px
+}
+body[data-playground-access] .studio-problems-dock .studio-problems-list button{
+  display:flex;width:100%;min-width:0;align-items:flex-start;gap:6px;
+  white-space:normal;overflow-wrap:anywhere;text-align:left;
+  padding:8px 5px;font-size:10px;line-height:1.45
+}
+body[data-playground-access] .studio-problems-dock .studio-problems-list button span:last-child{min-width:0}
+body[data-playground-access] .studio-problems-dock .studio-problems-list p{
+  margin:0;font-size:10px;line-height:1.45
+}
+body[data-playground-access] .studio-problems-dock .studio-problems-note{
+  flex:none;padding:6px 9px 8px;margin:0;border-top:1px solid #273c51;
+  font-size:9px;line-height:1.45;color:#8faabe
+}
+@media(max-width:767px){
+  body[data-playground-access] #projectExplorer .studio-problems-dock{max-height:min(65%,480px)}
+  body[data-playground-access] #projectExplorer #studioProblemsToggle{min-height:44px;font-size:12px}
+}
+@media(prefers-reduced-motion:reduce){
+  body[data-playground-access] .studio-problems-chevron{transition:none}
+}
