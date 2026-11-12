@@ -1,0 +1,39 @@
+# TEMPLATE ONLY: copy to wrangler.toml after resources have been created
+# in the authorized Cloudflare account. This file is not automatically deployed.
+name = "adminerva-edge-pilot"
+main = "src/index.mjs"
+compatibility_date = "2026-11-12"
+workers_dev = true
+
+[vars]
+# ALL intentionally OFF: rollout requires authorized Firebase relay and
+# school-admin opt-in. Never put bearer secrets or API keys under [vars].
+EDGE_API_ENABLED = "false"
+EDGE_R2_ENABLED = "false"
+EDGE_QUEUES_ENABLED = "false"
+
+# Create this PRIVATE bucket explicitly before deploying the Worker.
+[[r2_buckets]]
+binding = "ADMINERVA_REFERENCES"
+bucket_name = "adminerva-private-references"
+preview_bucket_name = "adminerva-private-references-preview"
+
+# Create queue and dead-letter queue explicitly in Cloudflare first.
+[[queues.producers]]
+binding = "ADMINERVA_JOBS"
+queue = "adminerva-jobs"
+
+[[queues.consumers]]
+queue = "adminerva-jobs"
+max_batch_size = 5
+max_batch_timeout = 10
+max_retries = 5
+dead_letter_queue = "adminerva-jobs-dlq"
+
+# Set via wrangler secret put, NEVER through repository:
+# ADMINERVA_EDGE_SECRET (>=32 characters; only server-side Firebase relay)
+# JOB_PROCESSOR_URL (HTTPS Firebase processing endpoint)
+# JOB_PROCESSOR_TOKEN (>=32 characters; Worker -> Firebase processor)
+#
+# Future bindings will add D1 for operational job status, AI Gateway and
+# analytics after the relevant feature-specific privacy approval.
