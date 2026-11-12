@@ -696,19 +696,19 @@ CRITICAL OUTPUT RULES:
 1. weekly_overview:
    - topic: concise weekly topic grounded in the selected instructional references.
    - content_standard and performance_standard: use the selected references when available. If absent, provide a professionally worded general standard without pretending it is a verbatim official standard.
-   - materials: give 5 to 8 short, nonduplicated resources relevant to THIS week; do not repeat a whole reference-library inventory. Name platforms or assessment tools only when used. Separate dashes using escaped '\n'.
+   - materials: give 5 to 8 short, nonduplicated resources relevant to THIS week; do not repeat a whole reference-library inventory. Name platforms or assessment tools only when used. Separate dashes using the literal escaped sequence '\\n'.
 2. sessions: generate the required daily sessions in the exact order below.
 ${gradeSpecificRules}
 5. NORMAL SESSION DETAILS:
    - topic: a specific sub-topic supported by the current references and sequence.
    - competencies: 1 to 2 clear learning competencies, preferring reference wording when available.
    - objectives: exactly 3 to 4 measurable and realistic behavioral objectives, usually one sentence of 15 to 25 words each. Do not label Bloom domains.
-   - delivery_mode: exactly 'in_person', 'asynchronous', or 'mixed'. Use 'asynchronous' when ALL mapped meetings are suspended/replaced by independent work; use 'mixed' when sections or meetings differ; otherwise use 'in_person'. Never infer a suspension from a generic event name alone.
+   - delivery_mode: exactly 'in_person', 'asynchronous', or 'mixed'. Use 'asynchronous' when all affected meetings are explicitly self-paced/suspended or the teacher assigns the whole session to independent work; use 'mixed' when section/meeting delivery differs; otherwise use 'in_person'. Never infer a suspension from a generic event name alone.
    - preliminary: empty string. Adminerva supplies opening activities suitable for delivery_mode after generation/import.
    - motivation: one brief student-action sentence beginning with an '-ing' verb, integrating the teaching/learning strategy rather than a separate Strategy header.
    - learning_activities:
      * exactly 4 to 6 substantive, sequential student actions per session even if the reference materials contain many microsteps;
-     * use a dash and escaped '\n' between bullets; each bullet should normally be 12 to 25 words, never a paragraph;
+     * use a dash and the literal escaped sequence '\\n' between bullets; each bullet should normally be 12 to 25 words, never a paragraph;
      * start each bullet with an '-ing' verb; integrate the strategy naturally and combine closely related microsteps;
      * follow a clear review/engage, explore/model, practice/apply, consolidation sequence; do not repeat objectives verbatim;
      * make the work realistic for one meeting; in asynchronous sessions specify manageable self-paced tasks, never live attendance or real-time teacher demonstrations;
@@ -735,7 +735,7 @@ ${gradeSpecificRules}
 8. EXACT JSON STRUCTURE:
    {
      "weekly_overview": { "topic": "...", "content_standard": "...", "performance_standard": "...", "materials": "..." },
-     "sessions": [ { "session_name": "...", "delivery_mode": "in_person | asynchronous | mixed", "topic": "...", "competencies": "...", "objectives": "...", "preliminary": "...", "motivation": "...", "learning_activities": "...", "formation_standard": "...", "evaluation": "...", "closing": "...", "values_integration": "...", "remarks": "..." } ]
+     "sessions": [ { "session_name": "...", "delivery_mode": "in_person", "topic": "...", "competencies": "...", "objectives": "...", "preliminary": "...", "motivation": "...", "learning_activities": "...", "formation_standard": "...", "evaluation": "...", "closing": "...", "values_integration": "...", "remarks": "..." } ]
    }
 
 ${lookbackContext}
