@@ -13,6 +13,8 @@ function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
 const initialPeopleKind=new URL(location.href).searchParams.get("kind");
 if(["student","staff"].includes(initialPeopleKind))get("pa-person-kind").value=initialPeopleKind;
+const initialInviteRole=new URL(location.href).searchParams.get("invite");
+if(["student","teacher"].includes(initialInviteRole))get("pa-create-invite").elements.role.value=initialInviteRole;
 function updatePeopleContext(){
   const kind=get("pa-person-kind").value;
   const status=get("pa-person-search").elements.status.value;
