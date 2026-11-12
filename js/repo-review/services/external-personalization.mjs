@@ -44,14 +44,23 @@ function cleanExistingRegistry(values=[]){
   }
   return entries;
 }
+function normalizePastedJsonTransport(raw){
+  return String(raw||"")
+    .replace(/^\uFEFF/,"")
+    .replace(/\\\r?\n/g,"\n")
+    .replace(/^(?:(?:&#x20;|&#32;|&nbsp;))+/gmi,match=>{
+      const count=(match.match(/&#x20;|&#32;|&nbsp;/gi)||[]).length;
+      return " ".repeat(Math.max(1,count));
+    });
+}
 function extractObject(raw){
-  let value=String(raw||"").trim();
+  let value=normalizePastedJsonTransport(raw).trim();
   if(!value)throw Error("Paste the external personalization JSON first.");
   value=value.replace(/^\s*\`\`\`(?:json)?\s*/i,"").replace(/\s*\`\`\`\s*$/,"").trim();
   const first=value.indexOf("{"),last=value.lastIndexOf("}");
   if(first<0||last<=first)throw Error("The pasted response does not contain a JSON object.");
   try{return JSON.parse(value.slice(first,last+1));}
-  catch{throw Error("The pasted personalization response is not valid JSON.");}
+  catch{throw Error("The pasted personalization response is not valid JSON. Paste the response into Assessment Studio → Personalization → External response JSON, then click Import external variants.");}
 }
 function cleanVariant(item,index,{legacy=false}={}){
   if(!item||typeof item!=="object"||Array.isArray(item))
@@ -148,6 +157,8 @@ export async function parseExternalPersonalizationResponse(raw,{
 }={}){
   const parsed=extractObject(raw);
   const legacy=parsed?.format===LEGACY_EXTERNAL_PERSONALIZATION_RESPONSE_FORMAT;
+  if(typeof parsed?.format==="string"&&parsed.format.includes("external-evaluation"))
+    throw Error("This is an external evaluation response, not a personalization response. Use the evaluation import workflow for grading.");
   if(!parsed||(!legacy&&parsed.format!==EXTERNAL_PERSONALIZATION_RESPONSE_FORMAT))
     throw Error("The response is not an Adminerva external personalization response.");
   if(!Array.isArray(parsed.variants))

@@ -6,6 +6,7 @@ import {
   parseExternalPersonalizationResponse,
   EXTERNAL_PERSONALIZATION_RESPONSE_FORMAT
 } from "../js/repo-review/services/external-personalization.mjs";
+import {parseExternalEvaluationResponse} from "../js/repo-review/services/external-evaluation.mjs";
 
 const assessment={
   title:"Generic personalized programming task",
@@ -152,5 +153,34 @@ test("external personalization supports section-sized batches up to forty-five",
   assert.throws(
     ()=>buildExternalPersonalizationPackage({assessment,count:46}),
     /1 to 45 variants/
+  );
+});
+
+
+test("personalization importer normalizes escaped paste transport artifacts",async()=>{
+  const response={
+    format:EXTERNAL_PERSONALIZATION_RESPONSE_FORMAT,
+    variants:[variant("network_cable_certification","Network Cable Certification",1)]
+  };
+  const escaped=JSON.stringify(response,null,1)
+    .split("\n")
+    .map((line,index)=>(index? "&#x20;"+line : line)+"\\")
+    .join("\n")
+    .replace(/\\$/,"");
+  const variants=await parseExternalPersonalizationResponse(escaped,{
+    expectedCount:1,hashPrompt
+  });
+  assert.equal(variants.length,1);
+  assert.equal(variants[0].scenarioKey,"network_cable_certification");
+});
+
+test("evaluation importer gives a specific message for personalization responses",()=>{
+  const response={
+    format:EXTERNAL_PERSONALIZATION_RESPONSE_FORMAT,
+    variants:[variant("network_cable_certification","Network Cable Certification",1)]
+  };
+  assert.throws(
+    ()=>parseExternalEvaluationResponse(JSON.stringify(response)),
+    /personalization response, not an evaluation response/
   );
 });
