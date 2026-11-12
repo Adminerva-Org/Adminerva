@@ -9,6 +9,7 @@ import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.0.0";
 import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=4";
 import {CheerpjStudioClient,CHEERPJ_STUDIO_RUNNER_URL,validateCheerpjRunnerUrl} from "./cheerpj-studio-client.mjs?v=3";
 import {evaluateBrowserJavaAccess,CHEERPJ_STUDIO_ROLLOUT} from "./cheerpj-studio-rollout.mjs?v=2";
+import {terminalHistoryLines,echoBatchInputs,echoLiveInput} from "./studio-terminal-echo.mjs?v=1";
 import {
   collection,
   addDoc,
@@ -74,6 +75,10 @@ const guestMode=document.body.dataset.playgroundAccess==="guest";
 let workspaceFolders=[],projectOrder=[],selectedProjectPath="",selectedProjectFolder=false,explorerDrag=null;
 let executionController=null,executionSequence=0;
 let cheerpjClient=null;
+// Judge0 replays use a fresh process; preserve each previous stdout prefix
+// so the terminal can position supplied values at their original prompt.
+let batchWaitingStdout='';
+let batchInputAnchors=[];
 const CHEERPJ_STUDIO_ENABLED=Boolean(validateCheerpjRunnerUrl(CHEERPJ_STUDIO_RUNNER_URL));
 // Do not carry a pilot selection across students, browsers, or assessments.
 let javaEngine='judge0';
@@ -1440,7 +1445,10 @@ function sendConsoleInputLine(){
     const input=document.getElementById('stdinLineInput');
     if(!input||!cheerpjClient.sendLine(input.value))return;
     const out=document.getElementById('consoleOutput');
-    if(out){out.textContent+='\n› '+input.value+'\n';out.scrollTop=out.scrollHeight;}
+    if(out){
+      out.textContent=echoLiveInput(out.textContent,input.value);
+      out.scrollTop=out.scrollHeight;
+    }
     input.value='';
     input.focus();
     return;
@@ -1453,6 +1461,8 @@ function sendConsoleInputLine(){
   if(executionController)return;
   const lineInput=document.getElementById('stdinLineInput'),history=document.getElementById('stdinInput');
   if(!lineInput||!history)return;
+  const index=terminalHistoryLines(history.value).length;
+  if(batchWaitingStdout)batchInputAnchors.push({index,before:batchWaitingStdout});
   const separator=history.value&&!history.value.endsWith('\n')?'\n':'';
   history.value+=separator+lineInput.value+'\n';
   lineInput.value='';
@@ -1465,6 +1475,8 @@ function clearConsoleInput(){
     return;
   }
   const history=document.getElementById('stdinInput'),lineInput=document.getElementById('stdinLineInput');
+  batchWaitingStdout='';
+  batchInputAnchors=[];
   if(history)history.value='';
   if(lineInput){lineInput.value='';lineInput.focus();}
   updateStudioTerminalStatus('ready');
@@ -1491,6 +1503,10 @@ async function executeCode(options={}) {
   }
   if(executionController)return;
   const continuation=options?.terminalContinuation===true;
+  if(!continuation){
+    batchWaitingStdout='';
+    batchInputAnchors=[];
+  }
   const runBtn=document.getElementById('runBtn'),overlay=document.getElementById('executionOverlay'),consoleOut=document.getElementById('consoleOutput'),label=document.getElementById('executionStage'),sendInputBtn=document.getElementById('sendStdinBtn');
   const sequence=++executionSequence,controller=new AbortController(),entry=compilerEntry(),runLanguage=currentLang,desktopMode=isJavaDesktopMode();executionController=controller;
   const end=continuation?(()=>{}):(window.beginLoading?.(desktopMode?'Compiling Java desktop app…':'Running your code…')||(()=>{}));
@@ -1545,8 +1561,11 @@ async function executeCode(options={}) {
     }
     const waitingForInput=Boolean(error)&&consoleInputExhausted(error);
     if(waitingForInput){
-      const supplied=(document.getElementById('stdinInput')?.value||'').split(/\r?\n/).filter((_,index,items)=>index<items.length-1||items[index]!=='' ).length;
-      consoleOut.textContent=(result.stdout||'')+(supplied?'\n\n[Input history: '+supplied+' line'+(supplied===1?'':'s')+']':'');
+      batchWaitingStdout=String(result.stdout||'');
+      const inputLines=terminalHistoryLines(document.getElementById('stdinInput')?.value||'');
+      const supplied=inputLines.length;
+      consoleOut.textContent=echoBatchInputs(batchWaitingStdout,inputLines,batchInputAnchors)+
+        (supplied?'\n\n[Input history: '+supplied+' line'+(supplied===1?'':'s')+']':'');
       updateStudioTerminalPrompt(result.stdout||'');
       updateStudioTerminalStatus('waiting');
       consoleOut.scrollTop=consoleOut.scrollHeight;
@@ -1555,7 +1574,12 @@ async function executeCode(options={}) {
       notePracticeExecution();
       return;
     }
-    consoleOut.textContent=(error?error+'\n':'')+(result.stdout||(!error?'Program exited with no output.':''))+'\n\n'+(result.status.description||'Finished')+(result.time?' · execution '+result.time+'s':'');
+    batchWaitingStdout='';
+    const inputLines=terminalHistoryLines(document.getElementById('stdinInput')?.value||'');
+    const displayedStdout=echoBatchInputs(result.stdout||'',inputLines,batchInputAnchors);
+    consoleOut.textContent=(error?error+'\n':'')+
+      (displayedStdout||(!error?'Program exited with no output.':''))+
+      '\n\n'+(result.status.description||'Finished')+(result.time?' · execution '+result.time+'s':'');
     consoleOut.scrollTop=consoleOut.scrollHeight;
     updateStudioTerminalPrompt('');
     updateStudioTerminalStatus(error||result.status.id>3?'error':'finished');
@@ -1969,6 +1993,12 @@ function bindUIEvents() {
   });
   document.getElementById('sendStdinBtn')?.addEventListener('click',sendConsoleInputLine);
   document.getElementById('clearStdinBtn')?.addEventListener('click',clearConsoleInput);
+  document.getElementById('stdinInput')?.addEventListener('input',()=>{
+    // If the student edits the batch textarea, old replay positions no longer
+    // describe its contents. Fall back to visible prompt detection.
+    batchWaitingStdout='';
+    batchInputAnchors=[];
+  });
   document.getElementById('stdinLineInput')?.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing){event.preventDefault();sendConsoleInputLine();}});
   document.getElementById('javaRunMode')?.addEventListener('change',event=>{
     javaRunMode=event.target.value==='desktop'?'desktop':'console';
