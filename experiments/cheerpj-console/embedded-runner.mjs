@@ -67,6 +67,7 @@ async function removeTree(path){
   await walk(await new File(path));
 }
 async function execute(files,entry){
+  let completed=null,failed=null;
   try{
     const entries=validateRun(files,entry);
     status('loading','Loading browser Java 17 (CheerpJ)…');
@@ -76,9 +77,7 @@ async function execute(files,entry){
     bridge=createConsoleBridge(window,chunk=>send('output',{text:chunk}));
     compiledDirectory='/files/adminerva_studio_'+session.replaceAll('-','')+'/classes';
     await makeDirectory(compiledDirectory);
-    for(const [path,source] of entries){
-      window.cheerpOSAddStringFile('/str/'+path,source);
-    }
+    for(const [path,source] of entries)window.cheerpOSAddStringFile('/str/'+path,source);
     status('compiling','Compiling '+entries.length+' Java source file'+(entries.length===1?'':'s')+'…');
     const compileCode=await window.cheerpjRunMain(
       'com.sun.tools.javac.Main','',
@@ -86,29 +85,30 @@ async function execute(files,entry){
       ...entries.map(([path])=>'/str/'+path)
     );
     if(compileCode!==0){
-      send('finished',{code:compileCode,compileFailed:true});
-      return;
+      completed={code:compileCode,compileFailed:true};
+    }else{
+      bridge.clearQueuedInput();
+      bridge.resetOutputLimit();
+      status('running','Java running — type an input line when prompted.');
+      running=true;
+      const mainClass=javaMainClass(entry,files[entry]);
+      const exitCode=await window.cheerpjRunMain(mainClass,compiledDirectory);
+      running=false;
+      completed={code:exitCode,compileFailed:false};
     }
-    bridge.clearQueuedInput();
-    bridge.resetOutputLimit();
-    status('running','Java running — type an input line when prompted.');
-    running=true;
-    const mainClass=javaMainClass(entry,files[entry]);
-    const exitCode=await window.cheerpjRunMain(mainClass,compiledDirectory);
-    running=false;
-    bridge.endRun();
-    send('finished',{code:exitCode,compileFailed:false});
   }catch(error){
     running=false;
-    fail(error);
+    failed=error;
   }finally{
     bridge?.endRun();
-    // Use a fresh per-run compilation directory to prevent stale bytecode.
-    // Cleanup is best-effort; each runner iframe is destroyed after completion.
-    // A previous abandoned run may leave files in origin-scoped IndexedDB.
+    // A per-run directory avoids stale bytecode; cleanup must complete before
+    // the parent destroys this iframe. Interrupted runs can leave temp files.
     try{await removeTree(compiledDirectory)}catch(e){console.warn('CheerpJ temporary files cleanup:',e)}
+    if(failed)fail(failed);
+    else if(completed)send('finished',completed);
   }
 }
+
 if(!validSession){
   document.body.textContent='Invalid session.';
 }else{
