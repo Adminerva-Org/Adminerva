@@ -640,6 +640,80 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       };
     }
 
+    if(input.action==="finalization_history"){
+      await verifyOffering();
+      const finalizationRef=db.doc(prefix+"class_record_finalizations/"+offeringId);
+      const current=await finalizationRef.get();
+      if(!current.exists||current.data().schoolId!==ctx.schoolId)
+        return {offeringId,revisions:[]};
+      const snap=await finalizationRef.collection("revisions").limit(31).get();
+      if(snap.size===31)
+        deny("resource-exhausted","This period has more than 30 finalization revisions. Paginated history is required.");
+      const revisions=snap.docs.map(doc=>doc.data()).filter(data=>
+        data.schoolId===ctx.schoolId&&data.offeringId===offeringId
+      ).map(data=>({
+        revision:Number(data.revision)||0,sheetRevision:Number(data.sheetRevision)||0,
+        sourceDigest:String(data.sourceDigest||""),studentCount:Number(data.studentCount)||0,
+        gradeComputation:data.gradeComputation||"raw_weighted",
+        categoryWeights:Array.isArray(data.categoryWeights)?data.categoryWeights:[],
+        appliedSchemeId:data.appliedSchemeId||null,
+        appliedSchemeRevision:Number(data.appliedSchemeRevision)||null,
+        appliedSchemeName:String(data.appliedSchemeName||""),
+        finalizedAt:millis(data.finalizedAt),finalizedByUid:data.finalizedByUid||null
+      })).sort((a,b)=>b.revision-a.revision);
+      return {offeringId,revisions};
+    }
+
+    if(input.action==="finalization_revision"){
+      await verifyOffering();
+      const revision=Number(input.revision);
+      if(!Number.isInteger(revision)||revision<1||revision>100)
+        deny("invalid-argument","Finalization revision is invalid.");
+      const finalizationRef=db.doc(prefix+"class_record_finalizations/"+offeringId);
+      const headerDoc=await finalizationRef.collection("revisions").doc(String(revision)).get();
+      if(!headerDoc.exists||headerDoc.data().schoolId!==ctx.schoolId||
+         headerDoc.data().offeringId!==offeringId)
+        deny("not-found","This finalized period revision is unavailable.");
+      const header=headerDoc.data();
+      let personIds=Array.isArray(header.personIds)?
+        header.personIds.filter(value=>typeof value==="string"&&value).slice(0,MAX_CLASS_SIZE):[];
+      let gradeDocs=[];
+      if(personIds.length){
+        gradeDocs=await Promise.all(personIds.map(personId=>
+          db.doc(prefix+"class_record_period_grades/"+hash(offeringId,personId)+
+            "/revisions/"+revision).get()));
+      }else{
+        const currentGrades=await db.collection(prefix+"class_record_period_grades")
+          .where("offeringId","==",offeringId).limit(MAX_CLASS_SIZE+1).get();
+        if(currentGrades.size>MAX_CLASS_SIZE)
+          deny("resource-exhausted","Finalized period history exceeds the bounded class size.");
+        gradeDocs=await Promise.all(currentGrades.docs.map(doc=>
+          doc.ref.collection("revisions").doc(String(revision)).get()));
+      }
+      const grades=gradeDocs.filter(doc=>doc.exists&&doc.data().schoolId===ctx.schoolId&&
+        doc.data().offeringId===offeringId&&Number(doc.data().finalizationRevision)===revision)
+        .map(doc=>({
+          personId:doc.data().personId,name:String(doc.data().studentNameSnapshot||"Student"),
+          initialGrade:Number(doc.data().initialGrade),
+          periodGrade:Number(doc.data().periodGrade),
+          categoryScores:Array.isArray(doc.data().categoryScores)?doc.data().categoryScores:[]
+        })).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
+      if(grades.length!==Number(header.studentCount||0))
+        deny("failed-precondition","The finalized revision grade set is incomplete. Preserve it for audit and contact an administrator before exporting.");
+      return {
+        offeringId,revision,
+        finalizedAt:millis(header.finalizedAt),finalizedByUid:header.finalizedByUid||null,
+        sheetRevision:Number(header.sheetRevision)||0,sourceDigest:String(header.sourceDigest||""),
+        gradeComputation:header.gradeComputation||"raw_weighted",
+        categoryWeights:Array.isArray(header.categoryWeights)?header.categoryWeights:[],
+        appliedSchemeId:header.appliedSchemeId||null,
+        appliedSchemeRevision:Number(header.appliedSchemeRevision)||null,
+        appliedSchemeName:String(header.appliedSchemeName||""),
+        columns:Array.isArray(header.columns)?header.columns:[],
+        grades
+      };
+    }
+
     if(input.action==="finalize_period"){
       const expectedSheetRevision=Number(input.expectedSheetRevision);
       const expectedFinalizationRevision=Number(input.expectedFinalizationRevision||0);
@@ -681,6 +755,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           appliedSchemeRevision:data.settings.appliedSchemeRevision||null,
           appliedSchemeName:data.settings.appliedSchemeName||"",
           columns:activeColumns,studentCount:data.snapshot.grades.length,
+          personIds:data.snapshot.grades.map(grade=>grade.personId),
           finalizedByUid:ctx.uid,finalizedAt:now,updatedAt:now
         };
         tx.set(finalizationRef,header,{merge:false});

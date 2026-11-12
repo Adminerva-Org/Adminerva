@@ -121,6 +121,7 @@
       <div>
         <strong id="cr-record-title" class="text-slate-900">Class record</strong>
         <p id="cr-record-help" class="cr-muted">Blank manual cells stay blank. Linked assessment cells cannot be edited here.</p>
+        <p id="cr-finalization-banner" class="cr-muted mt-1" hidden></p>
       </div>
       <span id="cr-unsaved" class="cr-muted"></span>
     </div>
@@ -298,6 +299,13 @@
     <div id="cr-finalize-state" class="cr-readiness mt-4">Loading finalization readiness…</div>
     <div id="cr-finalize-blockers" class="mt-3 grid gap-2"></div>
     <div id="cr-finalize-preview" class="mt-4 overflow-auto max-h-[45dvh]"></div>
+    <section class="mt-4 border-t border-slate-200 pt-4" aria-labelledby="cr-finalize-history-heading">
+      <div class="flex items-baseline justify-between gap-2">
+        <h3 id="cr-finalize-history-heading" class="font-extrabold text-slate-900">Finalization history</h3>
+        <span class="cr-muted">Frozen revisions</span>
+      </div>
+      <div id="cr-finalize-history" class="grid gap-2 mt-2"></div>
+    </section>
     <div class="cr-toolbar mt-4">
       <button id="cr-finalize-confirm" type="button" class="cr-button success" disabled>Finalize period</button>
       <button id="cr-finalize-cancel" type="button" class="cr-button">Cancel</button>
@@ -309,6 +317,6 @@
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script defer src="js/core/adminerva-nav.js?v=4.0.6"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.7"></script>
-<script type="module" src="js/class-record/class-record.mjs?v=1.4.0"></script>
+<script type="module" src="js/class-record/class-record.mjs?v=1.5.0"></script>
 </body>
 </html>

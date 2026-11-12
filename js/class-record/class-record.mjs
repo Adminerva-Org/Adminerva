@@ -42,7 +42,9 @@ const finalizeDialog=el("cr-finalize-dialog");
 const finalizeState=el("cr-finalize-state");
 const finalizeBlockers=el("cr-finalize-blockers");
 const finalizePreview=el("cr-finalize-preview");
+const finalizeHistory=el("cr-finalize-history");
 const finalizeConfirm=el("cr-finalize-confirm");
+const finalizationBanner=el("cr-finalization-banner");
 
 let picker=null;
 let offerings=[];
@@ -172,6 +174,21 @@ function metricsFor(personId,{fromInput=true}={}){
   if(initial!==null&&settings.gradeComputation==="deped_60_100")period=60+(initial*0.4);
   return {byCategory,initial,period,complete:initial!==null};
 }
+function syncFinalizationBanner(){
+  if(!finalization){
+    finalizationBanner.hidden=true;finalizationBanner.textContent="";return;
+  }
+  finalizationBanner.hidden=false;
+  if(finalization.stale){
+    finalizationBanner.className="text-xs font-semibold text-rose-700 mt-1";
+    finalizationBanner.textContent="Live working record · finalized revision "+finalization.revision+
+      " is now stale because a source score or Class Record setting changed.";
+  }else{
+    finalizationBanner.className="text-xs font-semibold text-emerald-700 mt-1";
+    finalizationBanner.textContent="Live working record · frozen period revision "+finalization.revision+
+      " remains current. Finalized "+formatFinalizedAt(finalization.finalizedAt)+".";
+  }
+}
 function updateKpis(){
   kpis.replaceChildren();
   if(!currentOfferingId)return;
@@ -193,6 +210,7 @@ function updateKpis(){
       :"Not finalized"
   ];
   for(const text of items)kpis.append(make("span","cr-kpi",text));
+  syncFinalizationBanner();
 }
 function setBusy(value,message=""){
   busy=value;
@@ -748,6 +766,78 @@ function formatFinalizedAt(value){
   if(!Number.isFinite(millis)||millis<=0)return "time unavailable";
   try{return new Date(millis).toLocaleString();}catch{return "time unavailable";}
 }
+function finalizationCsv(revision){
+  const categories=(revision.grades?.[0]?.categoryScores||revision.categoryWeights||[])
+    .map(row=>String(row.category||"")).filter(Boolean);
+  const metadata=[
+    ["Adminerva Class Record finalization",""],
+    ["Revision",revision.revision],
+    ["Finalized at",formatFinalizedAt(revision.finalizedAt)],
+    ["Grading formula",revision.gradeComputation==="deped_60_100"?"DepEd-style 60–100 transmutation":"Weighted grade 0–100"],
+    ["Grading scheme",revision.appliedSchemeName?
+      revision.appliedSchemeName+" · rev "+revision.appliedSchemeRevision:"Custom class setup"],
+    []
+  ];
+  const header=["Student"];
+  for(const category of categories)header.push(category+" Raw",category+" %",category+" Weighted");
+  header.push("Initial Grade","Period Grade");
+  const rows=[...metadata,header];
+  for(const grade of revision.grades||[]){
+    const byCategory=new Map((grade.categoryScores||[]).map(row=>[String(row.category||"").toLocaleLowerCase("en"),row]));
+    const row=[grade.name];
+    for(const category of categories){
+      const score=byCategory.get(category.toLocaleLowerCase("en"));
+      row.push(score?numberText(score.earned)+" / "+numberText(score.max):"",
+        score?numberText(score.percentage):"",
+        score?numberText(score.weightedContribution):"");
+    }
+    row.push(numberText(grade.initialGrade),numberText(grade.periodGrade));
+    rows.push(row);
+  }
+  return "\uFEFF"+rows.map(row=>row.map(csvEscape).join(",")).join("\r\n");
+}
+function downloadFinalizationRevision(revision){
+  const csv=finalizationCsv(revision),blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  const label=(offeringSelect.selectedOptions[0]?.textContent||"class-record")
+    .replace(/[^A-Za-z0-9_-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,70);
+  a.href=url;a.download=(label||"class-record")+"-finalized-rev-"+revision.revision+".csv";
+  a.hidden=true;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),0);
+}
+async function exportFinalizationRevision(revisionNumber,button){
+  if(button)button.disabled=true;
+  try{
+    const revision=await scoped(classRecordApi,"finalization_revision",{
+      offeringId:currentOfferingId,revision:revisionNumber
+    });
+    downloadFinalizationRevision(revision);
+    el("cr-finalize-status").textContent="Finalized revision "+revisionNumber+" exported.";
+  }catch(error){
+    el("cr-finalize-status").textContent=error?.message||"Finalized revision could not be exported.";
+  }finally{if(button)button.disabled=false;}
+}
+function renderFinalizationHistory(revisions){
+  finalizeHistory.replaceChildren();
+  if(!revisions?.length){
+    finalizeHistory.append(make("p","cr-muted","No frozen period revisions yet."));
+    return;
+  }
+  for(const revision of revisions){
+    const card=make("article","cr-list-card flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3");
+    const info=make("div");
+    info.append(make("strong","text-sm text-slate-900","Revision "+revision.revision));
+    info.append(make("p","cr-muted mt-1",
+      formatFinalizedAt(revision.finalizedAt)+" · "+revision.studentCount+" student"+
+      (revision.studentCount===1?"":"s")+" · sheet rev "+revision.sheetRevision));
+    if(revision.appliedSchemeName)
+      info.append(make("p","text-xs text-slate-500 mt-1",
+        revision.appliedSchemeName+" · scheme rev "+revision.appliedSchemeRevision));
+    const exportRevision=make("button","cr-button","Export frozen CSV");
+    exportRevision.type="button";
+    exportRevision.addEventListener("click",()=>void exportFinalizationRevision(revision.revision,exportRevision));
+    card.append(info,exportRevision);finalizeHistory.append(card);
+  }
+}
 function closeFinalize(){
   if(finalizeDialog.open)finalizeDialog.close();
   finalizationPreview=null;
@@ -817,13 +907,17 @@ async function openFinalize(){
   finalizationPreview=null;
   finalizeState.className="cr-readiness mt-4";
   finalizeState.textContent="Recalculating period grades from saved and published sources…";
-  finalizeBlockers.replaceChildren();finalizePreview.replaceChildren();
+  finalizeBlockers.replaceChildren();finalizePreview.replaceChildren();finalizeHistory.replaceChildren();
   finalizeConfirm.disabled=true;finalizeConfirm.textContent="Finalize period";
   el("cr-finalize-status").textContent="";
   finalizeDialog.showModal();
   try{
-    const preview=await scoped(classRecordApi,"finalization_preview",{offeringId:currentOfferingId});
+    const [preview,history]=await Promise.all([
+      scoped(classRecordApi,"finalization_preview",{offeringId:currentOfferingId}),
+      scoped(classRecordApi,"finalization_history",{offeringId:currentOfferingId})
+    ]);
     renderFinalizationPreview(preview);
+    renderFinalizationHistory(history.revisions||[]);
   }catch(error){
     finalizeState.classList.add("blocked");
     finalizeState.textContent=error?.message||"Period finalization preview could not be loaded.";
@@ -919,6 +1013,7 @@ async function loadWorkspace(){
     sheetRevision=Number(result.sheetRevision)||0;
     finalization=result.finalization||null;
     periodReadiness=result.periodReadiness||{ready:false,blockerCount:0,activeColumnCount:0};
+    syncFinalizationBanner();
     manualScores=new Map((result.manualScores||[]).map(item=>[key(item.columnId,item.personId),item.score]));
     publishedGrades=new Map((result.publishedGrades||[]).map(item=>[
       gradeKey(item.sourceType||SCHOOL_SOURCE,item.taskId,item.personId),item
