@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
-const {parseLegacyRubric,legacySubmissionSource,deploymentWindow,offeringFor}=
+const {parseLegacyRubric,legacySubmissionSource,deploymentWindow,offeringFor,personalizationPlan}=
   require("../functions/mcs-canonical-assessment-plan.js");
 
 test("generated legacy point rubrics convert only when totals match",()=>{
@@ -42,4 +42,46 @@ test("offering mapping requires exactly one approved section/subject course offe
  approved.offerings.push({offeringId:"off_b",sectionId:"sec_a",subjectId:"sub_prog",termId:"term_2",yearId:"yr_1"});
  assert.equal(offeringFor({assessment:{subject:"Programming"},deployment:{section:"ICT A"},approval,approved}).reason,
   "offering_mapping_ambiguous");
+});
+
+
+test("personalized migration requires the exact activated private pool and rewrites only the canonical fingerprint",()=>{
+ const legacyFingerprint="a".repeat(64),variantId="b".repeat(24),
+  blueprint={title:"Personalized Java task",description:"",instructions:"Build the assigned system.",
+    rubric:[{name:"Correctness",points:5},{name:"OOP",points:5}]},
+  legacy={
+    schemaVersion:3,submissionSource:"studio",
+    personalizedTask:{enabled:true,mode:"ai_blueprint_pool_v1",
+      poolFingerprint:legacyFingerprint,poolSize:1,poolTarget:10},
+    personalization:{mode:"ai_blueprint_pool_v1",fingerprint:legacyFingerprint,
+      variantIds:[variantId],guidance:"Vary the domain while keeping the same OOP skills."}
+  },
+  variantRows:[{id:variantId,path:"mirror/variant",digest:"digest",data:{
+    variantId,fingerprint:legacyFingerprint,scenarioKey:"library_system",
+    scenarioTitle:"Library System",summary:"Console library workflow",
+    prompt:"Create a Java console library system with classes, inheritance, overridden methods, and two required operations.",
+    evaluationNotes:"Apply only the published rubric and verify the required OOP behavior."
+  }}];
+ const result=personalizationPlan({legacy,variantRows,blueprint});
+ assert.equal(result.ok,false); // target is intentionally incomplete
+ assert.equal(result.reason,"personalization_target_incomplete");
+ legacy.personalizedTask.poolTarget=1; // invalid canonical minimum remains rejected
+ assert.equal(personalizationPlan({legacy,variantRows,blueprint}).reason,"personalization_target_incomplete");
+ // A complete 10-variant activated pool is accepted.
+ legacy.personalizedTask.poolTarget=10;
+ legacy.personalizedTask.poolSize=10;
+ legacy.personalization.variantIds=Array.from({length:10},(_,i)=>
+   createRequire(import.meta.url) && (i.toString(16).padStart(2,"0")+"b".repeat(22)));
+ const rows=legacy.personalization.variantIds.map((id,index)=>({id,path:"mirror/"+id,digest:"d"+index,data:{
+   variantId:id,fingerprint:legacyFingerprint,scenarioKey:"scenario_"+index,
+   scenarioTitle:"Scenario "+index,summary:"Variant "+index,
+   prompt:"Create a Java console application for scenario "+index+" with inheritance, overriding, validation, and two required operations.",
+   evaluationNotes:"Use the published rubric only and verify the required scenario behavior."
+ }}));
+ const accepted=personalizationPlan({legacy,variantRows:rows,blueprint});
+ assert.equal(accepted.ok,true);
+ assert.equal(accepted.pool.variantIds.length,10);
+ assert.equal(accepted.pool.legacyFingerprint,legacyFingerprint);
+ assert.notEqual(accepted.pool.fingerprint,legacyFingerprint);
+ assert.equal(accepted.task.poolFingerprint,accepted.pool.fingerprint);
 });
