@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
-import {CheerpjStudioClient,validateCheerpjRunnerUrl} from './cheerpj-studio-client.mjs';
+import {CheerpjStudioClient,validateCheerpjRunnerUrl,validateBrowserJavaFiles} from './cheerpj-studio-client.mjs';
 
 const site='https://adminerva-org.github.io';
 const runner='https://adminerva-java-runner.example.com/embedded-runner.html';
@@ -56,4 +56,33 @@ test('sends a separate live input line only while Java is running',()=>{
     channel:'adminerva-cheerpj-studio-v1',session:'test-session',type:'input',text:'Ada'
   },target:'https://adminerva-java-runner.example.com'});
   client.dispose();
+});
+
+
+test('rejects traversal, oversized Java source and missing entry without starting a session',()=>{
+  assert.deepEqual(validateBrowserJavaFiles({'Main.java':'class Main {}'},'Main.java'),{'Main.java':'class Main {}'});
+  assert.throws(()=>validateBrowserJavaFiles({'../Main.java':'class Main {}'},'../Main.java'),/safe \.java/);
+  assert.throws(()=>validateBrowserJavaFiles({'Main.java':'x'.repeat(250001)},'Main.java'),/250 KB/);
+  assert.throws(()=>validateBrowserJavaFiles({'Hello.java':'class Hello {}'},'Main.java'),/valid Java entry/);
+});
+
+test('heartbeats keep a waiting Java process alive; finish disposes the frame',()=>{
+  globalThis.location={origin:site};
+  globalThis.window={addEventListener(){},removeEventListener(){}};
+  const events=[];
+  let removed=false;
+  const client=new CheerpjStudioClient({runnerUrl:runner,onEvent:m=>events.push(m)});
+  const child={postMessage(){}};
+  client.frame={contentWindow:child,remove(){removed=true;}};
+  client.session='abc';
+  client.state='running';
+  const env=(type,extra={})=>({source:child,origin:'https://adminerva-java-runner.example.com',
+    data:{channel:'adminerva-cheerpj-studio-v1',session:'abc',type,...extra}});
+  client.receive(env('heartbeat'));
+  assert.ok(client.lastActivity>0);
+  assert.equal(events.length,0);
+  client.receive(env('finished',{code:0,compileFailed:false}));
+  assert.equal(removed,true);
+  assert.equal(client.session,null);
+  assert.deepEqual(events,[{type:'finished',code:0,compileFailed:false}]);
 });

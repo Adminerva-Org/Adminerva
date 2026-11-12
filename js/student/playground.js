@@ -1318,8 +1318,15 @@ function browserJavaControls(active,acceptsInput=false){
   if(stop)stop.classList.toggle('hidden',!active);
   if(engine)engine.disabled=active;
   if(mode)mode.disabled=active;
-  if(send)send.disabled=active&&!acceptsInput;
-  if(input)input.disabled=active&&!acceptsInput;
+  // In browser-live mode, sending a line without a live process must not
+  // fall through into Judge0's batch-replay input workflow.
+  const canSend=isLiveBrowserJava()?active&&acceptsInput:!active||acceptsInput;
+  if(send)send.disabled=!canSend;
+  if(input){
+    input.disabled=!canSend;
+    input.placeholder=isLiveBrowserJava()&&!active?
+      'Click Run to start live Java input':'Type a response and press Enter';
+  }
 }
 function stopLiveBrowserJava(quiet=false){
   if(!cheerpjClient)return;
@@ -1391,6 +1398,7 @@ function beginLiveBrowserJava(){
 }
 
 function sendConsoleInputLine(){
+  if(isLiveBrowserJava()&&!cheerpjClient)return;
   if(cheerpjClient){
     const input=document.getElementById('stdinLineInput');
     if(!input||!cheerpjClient.sendLine(input.value))return;
@@ -1919,6 +1927,7 @@ function bindUIEvents() {
     javaRunMode=event.target.value==='desktop'?'desktop':'console';
     try{localStorage.setItem(JAVA_RUN_MODE_KEY,javaRunMode);}catch{}
     if(javaRunMode!=='desktop')stopJavaDesktop(true);
+    if(cheerpjClient)stopLiveBrowserJava(true);
     projectStudio?.updateConfig({runMode:javaRunMode});
     updateOutputView();
   });
@@ -2052,6 +2061,15 @@ function updateOutputView() {
   engineLabel?.classList.toggle('hidden',!showEngine);
   if(engineSelect)engineSelect.value=javaEngine;
   document.getElementById('stdinHistoryDisclosure')?.classList.toggle('hidden',showEngine&&javaEngine==='cheerpj');
+  if(!cheerpjClient){
+    const liveReady=showEngine&&javaEngine==='cheerpj';
+    const send=document.getElementById('sendStdinBtn'),line=document.getElementById('stdinLineInput');
+    if(send)send.disabled=liveReady;
+    if(line){
+      line.disabled=liveReady;
+      line.placeholder=liveReady?'Click Run to start live Java input':'Type a response and press Enter';
+    }
+  }
   if(runBtn){
     runBtn.textContent=desktop?'▶ Launch':'▶ Run';
     runBtn.title=desktop?'Compile and launch desktop app · Ctrl+Enter':'Run · Ctrl+Enter';

@@ -8,6 +8,7 @@ on:
       - 'student-playground.html'
       - 'guest-playground.html'
       - 'experiments/cheerpj-console/**'
+      - 'scripts/build-cheerpj-pages.mjs'
       - '.github/workflows/cheerpj-studio-integration.yml'
   workflow_dispatch:
 jobs:
@@ -30,3 +31,14 @@ jobs:
         run: |
           node --test js/student/cheerpj-studio-client.test.mjs
           node --test experiments/cheerpj-console/console-bridge.test.mjs
+      - name: Assemble isolated static runner
+        run: |
+          node scripts/build-cheerpj-pages.mjs
+          node --input-type=module -e "
+          import {readdirSync} from 'node:fs';
+          import assert from 'node:assert/strict';
+          assert.deepEqual(
+            readdirSync('dist/cheerpj-runner').sort(),
+            ['_headers','console-bridge.mjs','embedded-runner.html','embedded-runner.mjs','index.html'].sort()
+          );
+          "
