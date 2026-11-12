@@ -84,10 +84,16 @@ function cleanSettings(raw={}){
     deny("invalid-argument","Category weights cannot total more than 100 percent.");
   return {categoryWeights,gradeComputation};
 }
-function cleanColumns(raw,assessmentMap){
+function cleanColumns(raw,assessmentMap,previousColumns=[]){
   if(!Array.isArray(raw)||raw.length>MAX_COLUMNS)
     deny("invalid-argument","A class record supports up to "+MAX_COLUMNS+" columns.");
-  const ids=new Set(),linkedTasks=new Set();
+  const ids=new Set(),linkedTasks=new Set(),previousById=new Map(
+    (Array.isArray(previousColumns)?previousColumns:[]).map(column=>[
+      column.columnId,
+      column.kind==="assessment"&&!column.assessmentSource
+        ?{...column,assessmentSource:SCHOOL_SOURCE}:column
+    ])
+  );
   return raw.map((item,index)=>{
     const columnId=checkId(String(item?.columnId||""),"Column ID",64);
     if(ids.has(columnId))deny("invalid-argument","Column IDs must be unique.");
@@ -95,13 +101,14 @@ function cleanColumns(raw,assessmentMap){
     const label=text(item?.label,"Column "+(index+1)+" label",80);
     const category=optionalText(item?.category,60);
     const kind=String(item?.kind||"");
+    const archived=item?.archived===true;
     if(!["manual","assessment"].includes(kind))
       deny("invalid-argument","Column "+label+" must be manual or assessment-linked.");
     if(kind==="manual"){
       const maxPoints=Number(item?.maxPoints);
       if(!Number.isFinite(maxPoints)||maxPoints<=0||maxPoints>MAX_SCORE)
         deny("invalid-argument","Manual column "+label+" needs a maximum score above 0 and no more than "+MAX_SCORE+".");
-      return {columnId,label,category,kind,maxPoints};
+      return {columnId,label,category,kind,maxPoints,archived};
     }
     const taskId=checkId(String(item?.taskId||""),"Assessment task ID",160);
     const assessmentSource=[SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE].includes(item?.assessmentSource)
@@ -110,13 +117,18 @@ function cleanColumns(raw,assessmentMap){
     if(linkedTasks.has(unique))
       deny("invalid-argument","The same assessment cannot be linked to the class record twice.");
     linkedTasks.add(unique);
-    const task=assessmentMap.get(unique);
-    if(!task)
-      deny("permission-denied","A linked assessment is unavailable or is no longer assigned to you.");
-    const maxPoints=Number(task.maxPoints);
+    const task=assessmentMap.get(unique),previous=previousById.get(columnId);
+    const sameHistoricalSource=previous&&previous.kind==="assessment"&&
+      assessmentKey(previous.assessmentSource||SCHOOL_SOURCE,previous.taskId)===unique;
+    if(!task&&!sameHistoricalSource)
+      deny("permission-denied","A new linked assessment must still be available to this teacher.");
+    if(task?.linkable===false&&!sameHistoricalSource)
+      deny("failed-precondition","This assessment is historical and cannot be linked as a new Class Record column.");
+    const maxPoints=Number(task?.maxPoints??previous?.maxPoints);
     if(!Number.isFinite(maxPoints)||maxPoints<=0)
       deny("failed-precondition","The linked assessment has no gradeable maximum score.");
-    return {columnId,label,category,kind,taskId,assessmentSource,maxPoints};
+    const sourceTitle=String(task?.title||previous?.sourceTitle||label).trim().slice(0,160);
+    return {columnId,label,category,kind,taskId,assessmentSource,maxPoints,sourceTitle,archived};
   });
 }
 
@@ -166,8 +178,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       return snap.docs.filter(doc=>{
         const data=doc.data();
         return data.schoolId===ctx.schoolId&&
-          (data.reviewerUid||data.ownerUid)===ctx.uid&&
-          data.status==="deployed"&&data.lifecycle!=="cancelled";
+          (data.reviewerUid||data.ownerUid)===ctx.uid;
       }).map(doc=>({
         sourceType:SCHOOL_SOURCE,
         taskId:doc.id,
@@ -178,6 +189,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         maxPoints:rubricTotal(doc.data()),
         categorySuggestion:"",
         published:true,
+        linkable:doc.data().status==="deployed"&&doc.data().lifecycle!=="cancelled",
+        historical:doc.data().status!=="deployed"||doc.data().lifecycle==="cancelled",
         gradeRoute:"school-gradebook.html?task="+encodeURIComponent(doc.id)
       })).filter(task=>task.maxPoints>0);
     }
@@ -205,6 +218,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         maxPoints:Number(task.maxScore),
         categorySuggestion:String(task.type||"").trim().slice(0,60),
         published:task.published!==false,
+        linkable:true,
+        historical:false,
         gradeRoute:"gradebook.html?"+new URLSearchParams({section:sectionName,assessment:task.id}).toString(),
         reviewRoute:"studio-submissions.html?"+new URLSearchParams({assessment:task.id,section:sectionName}).toString()
       })).filter(task=>Number.isFinite(task.maxPoints)&&task.maxPoints>0);
@@ -263,10 +278,6 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const linked=columns.filter(column=>column.kind==="assessment"&&
         (column.assessmentSource||SCHOOL_SOURCE)===LEGACY_PERSONALIZED_SOURCE);
       if(!linked.length)return [];
-      const permitted=new Set(available.filter(task=>task.sourceType===LEGACY_PERSONALIZED_SOURCE)
-        .map(task=>task.taskId));
-      if(linked.some(column=>!permitted.has(column.taskId)))
-        deny("permission-denied","A linked Personalized assessment is no longer available to this teacher.");
       const studentToPerson=await legacyStudentPersonMap(roster,sectionName);
       if(!studentToPerson.size)return [];
       const taskIds=[...new Set(linked.map(column=>column.taskId))];
@@ -312,8 +323,25 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         deny("resource-exhausted","Manual Class Record history is too large for the current view.");
 
       const columns=sheet.exists&&sheet.data().schoolId===ctx.schoolId&&Array.isArray(sheet.data().columns)
-        ?sheet.data().columns.map(column=>column.kind==="assessment"&&!column.assessmentSource
-          ?{...column,assessmentSource:SCHOOL_SOURCE}:column):[];
+        ?sheet.data().columns.map(column=>{
+          const normalized=column.kind==="assessment"&&!column.assessmentSource
+            ?{...column,assessmentSource:SCHOOL_SOURCE}:column;
+          return {...normalized,archived:normalized.archived===true};
+        }):[];
+      const knownAssessmentKeys=new Set(assessments.map(task=>assessmentKey(task.sourceType,task.taskId)));
+      for(const column of columns.filter(item=>item.kind==="assessment")){
+        const source=column.assessmentSource||SCHOOL_SOURCE,key=assessmentKey(source,column.taskId);
+        if(knownAssessmentKeys.has(key))continue;
+        assessments.push({
+          sourceType:source,taskId:column.taskId,
+          title:String(column.sourceTitle||column.label||"Historical assessment"),
+          submissionSource:source===LEGACY_PERSONALIZED_SOURCE?"studio":"unknown",
+          lifecycle:"historical",dueAt:null,maxPoints:Number(column.maxPoints)||0,
+          categorySuggestion:column.category||"",published:true,linkable:false,historical:true,
+          gradeRoute:null,reviewRoute:null
+        });
+        knownAssessmentKeys.add(key);
+      }
       const settings=cleanSettings(sheet.exists&&sheet.data().schoolId===ctx.schoolId?sheet.data().settings:{});
       const schoolTaskIds=new Set(columns.filter(column=>column.kind==="assessment"&&
         (column.assessmentSource||SCHOOL_SOURCE)===SCHOOL_SOURCE).map(column=>column.taskId));
@@ -354,7 +382,10 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const assessmentMap=new Map(assessmentRows.map(task=>[
         assessmentKey(task.sourceType,task.taskId),task
       ]));
-      const columns=cleanColumns(input.columns,assessmentMap);
+      const beforeSheet=await sheetRef.get();
+      const previousColumns=beforeSheet.exists&&beforeSheet.data().schoolId===ctx.schoolId&&
+        Array.isArray(beforeSheet.data().columns)?beforeSheet.data().columns:[];
+      const columns=cleanColumns(input.columns,assessmentMap,previousColumns);
       const settings=cleanSettings(input.settings);
       const expectedRevision=Number(input.expectedRevision);
       if(!Number.isInteger(expectedRevision)||expectedRevision<0)
@@ -391,6 +422,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         else tx.create(sheetRef,{...values,createdByUid:ctx.uid,createdAt:FieldValue.serverTimestamp()});
         tx.create(auditRef,{schoolId:ctx.schoolId,offeringId,actorUid:ctx.uid,
           action:"class_record_layout_saved",revision,columnCount:columns.length,
+          archivedColumnCount:columns.filter(column=>column.archived===true).length,
           categoryWeights:settings.categoryWeights,gradeComputation:settings.gradeComputation,
           createdAt:FieldValue.serverTimestamp()});
       });
@@ -426,6 +458,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         .find(item=>item.columnId===columnId);
       if(!column||column.kind!=="manual")
         deny("failed-precondition","Only manual Class Record columns accept direct score entry.");
+      if(column.archived===true)
+        deny("failed-precondition","Restore this archived column before changing its scores.");
       const maxPoints=Number(column.maxPoints);
       if(normalized.some(item=>item.score!==null&&item.score>maxPoints))
         deny("invalid-argument","A score exceeds the "+maxPoints+"-point maximum for "+column.label+".");

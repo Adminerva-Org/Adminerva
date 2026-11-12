@@ -56,6 +56,8 @@
     .cr-source-badge{display:inline-flex;align-items:center;border-radius:999px;padding:.15rem .45rem;font-size:.66rem;font-weight:800;margin-left:.3rem}
     .cr-source-badge.school{background:#dbeafe;color:#1d4ed8}
     .cr-source-badge.personalized{background:#ede9fe;color:#6d28d9}
+    .cr-list-card{border:1px solid #e2e8f0;border-radius:.8rem;padding:.8rem;background:#fff}
+    .cr-import-preview{min-height:190px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.78rem}
     [hidden]{display:none!important}
     @media(max-width:720px){
       .cr-shell{padding:.7rem}
@@ -94,6 +96,8 @@
         <button id="cr-add-column" class="cr-button primary" type="button" disabled>+ Add column</button>
         <button id="cr-grade-setup" class="cr-button subtle" type="button" disabled>Grading setup</button>
         <button id="cr-save-scores" class="cr-button success" type="button" disabled>Save manual scores</button>
+        <button id="cr-import-scores" class="cr-button" type="button" disabled>Import scores</button>
+        <button id="cr-archived-columns" class="cr-button" type="button" disabled>Archived (<span id="cr-archived-count">0</span>)</button>
         <button id="cr-export" class="cr-button" type="button" disabled>Export CSV</button>
         <button id="cr-refresh" class="cr-button" type="button" disabled>Refresh</button>
       </div>
@@ -213,9 +217,56 @@
   </form>
 </dialog>
 
+
+<dialog id="cr-import-dialog" class="cr-dialog wide" aria-labelledby="cr-import-heading">
+  <form id="cr-import-form" class="cr-dialog-inner">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <p class="cr-eyebrow" style="color:#1d4ed8">Manual score import</p>
+        <h2 id="cr-import-heading" class="text-xl font-extrabold mt-1">Import scores into one column</h2>
+        <p class="cr-muted mt-1">Import only stages values in the Class Record. Review the changed cells, then use Save manual scores.</p>
+      </div>
+      <button id="cr-import-close" type="button" class="cr-button">Close</button>
+    </div>
+    <label class="cr-field">Manual column
+      <select id="cr-import-column" class="cr-select mt-1" required></select>
+    </label>
+    <div class="mt-3 flex flex-wrap gap-2 items-center">
+      <label class="cr-button cursor-pointer">Choose CSV/TSV
+        <input id="cr-import-file" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values,text/plain" class="sr-only">
+      </label>
+      <button id="cr-import-template" type="button" class="cr-button">Download template</button>
+    </div>
+    <label class="cr-field">Paste CSV or tab-separated values
+      <textarea id="cr-import-text" class="cr-input cr-import-preview mt-1" placeholder="Student,Score&#10;Student Name,10"></textarea>
+    </label>
+    <p class="cr-help">The first column may contain the exact student name or canonical person ID. Blank scores are ignored so an import cannot accidentally erase existing scores.</p>
+    <div class="cr-toolbar mt-4">
+      <button class="cr-button primary" type="submit">Stage imported scores</button>
+      <button id="cr-import-cancel" class="cr-button" type="button">Cancel</button>
+    </div>
+    <p id="cr-import-status" class="cr-muted mt-3" role="status" aria-live="polite"></p>
+  </form>
+</dialog>
+
+<dialog id="cr-archived-dialog" class="cr-dialog wide" aria-labelledby="cr-archived-heading">
+  <div class="cr-dialog-inner">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <p class="cr-eyebrow" style="color:#1d4ed8">Historical columns</p>
+        <h2 id="cr-archived-heading" class="text-xl font-extrabold mt-1">Archived Class Record columns</h2>
+        <p class="cr-muted mt-1">Archiving removes a column from current grade calculations and exports without deleting its saved scores or assessment link.</p>
+      </div>
+      <button id="cr-archived-close" type="button" class="cr-button">Close</button>
+    </div>
+    <div id="cr-archived-list" class="grid gap-2 mt-4"></div>
+    <p id="cr-archived-status" class="cr-muted mt-3" role="status" aria-live="polite"></p>
+  </div>
+</dialog>
+
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script defer src="js/core/adminerva-nav.js?v=4.0.6"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.7"></script>
-<script type="module" src="js/class-record/class-record.mjs?v=1.1.0"></script>
+<script type="module" src="js/class-record/class-record.mjs?v=1.2.0"></script>
 </body>
 </html>
