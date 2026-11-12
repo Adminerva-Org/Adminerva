@@ -1,13 +1,71 @@
-import {auth,db} from "./firebase-core.js?v=1.3.0";
-import {collection,getDocs} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {resolveStaffRole} from "./staff-session.mjs?v=1.3.10";
-await auth.authStateReady();const user=auth.currentUser,role=await resolveStaffRole(user);
-if(role!=="admin")location.replace("teacher-home.html");else try{
- const [students,teachers,reports]=await Promise.all([
-  getDocs(collection(db,"students")),getDocs(collection(db,"staff_access")),getDocs(collection(db,"issues"))
- ]);
- document.getElementById("adminStudentCount").textContent=students.docs.filter(record=>!["suspended","archived"].includes(String(record.data().status||"active"))).length;
- document.getElementById("adminTeacherCount").textContent=teachers.docs.filter(record=>record.data().role==="teacher"&&record.data().status==="active").length;
- document.getElementById("adminReportCount").textContent=reports.docs.filter(record=>!["Resolved","Closed (Won't Fix)"].includes(String(record.data().status||"Open"))).length;
- document.getElementById("adminOverviewStatus").textContent="Administration summary loaded. Choose a workspace above to continue.";
-}catch(error){document.getElementById("adminOverviewStatus").textContent="Some administration counts are unavailable: "+error.message;}
+/**
+ * Verified-school administration overview.
+ * Never use legacy root students/staff_access/issues collection counts here:
+ * this page is accessible to school-specific V4 administrators.
+ */
+import {app,auth} from "./firebase-core.js?v=1.3.0";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
+import {createTenantSchoolPicker} from "./tenant-school-picker.mjs";
+
+const directory=httpsCallable(getFunctions(app,"asia-southeast1"),"peopleDirectory");
+const byId=id=>document.getElementById(id);
+const overviewStatus=byId("adminOverviewStatus");
+const schoolStatus=byId("adminSchoolStatus");
+const counters={
+  people:byId("adminPeopleCount"),
+  enrollments:byId("adminEnrollmentCount"),
+  staff_assignments:byId("adminAssignmentCount"),
+  invitations:byId("adminInviteCount")
+};
+let requestGeneration=0;
+function clearCounts(){
+  for(const node of Object.values(counters))if(node)node.textContent="—";
+}
+async function loadOverview(scope){
+  const generation=++requestGeneration;
+  const lease=scope.lease();
+  overviewStatus.textContent="Loading this school's directory totals…";
+  try{
+    const response=(await directory({schoolId:lease.schoolId,action:"overview"})).data;
+    scope.assertLease(lease);
+    if(generation!==requestGeneration||auth.currentUser?.uid!==scope.current?.uid)return;
+    for(const [key,node] of Object.entries(counters)){
+      if(!node)continue;
+      const count=Number(response?.counts?.[key]);
+      node.textContent=Number.isSafeInteger(count)&&count>=0?count.toLocaleString():"—";
+    }
+    overviewStatus.textContent="Verified-school totals loaded. Historical legacy records are not included until reconciled.";
+  }catch(error){
+    try{scope.assertLease(lease);}catch{return;}
+    if(generation!==requestGeneration)return;
+    clearCounts();
+    overviewStatus.textContent="School totals unavailable. Open People & Access to review this school's directory.";
+    console.warn("School administration overview unavailable:",error?.code||error?.message||error);
+  }
+}
+const picker=createTenantSchoolPicker({
+  host:byId("adminSchoolPicker"),
+  status:schoolStatus,
+  onBeforeChange:async()=>{
+    ++requestGeneration;
+    clearCounts();
+    overviewStatus.textContent="Checking the selected school's administration scope…";
+  },
+  onReady:scope=>{
+    clearCounts();
+    if(!scope.current?.roles?.includes("school_admin")){
+      ++requestGeneration;
+      overviewStatus.textContent="This school has not granted you School Administrator access.";
+      return;
+    }
+    void loadOverview(scope);
+  }
+});
+try{
+  await picker.load();
+  if(!auth.currentUser)overviewStatus.textContent="Sign in to view school administration.";
+}catch(error){
+  clearCounts();
+  overviewStatus.textContent="School access is unavailable. Retry when connected.";
+  console.warn("School administration picker unavailable:",error?.code||error?.message||error);
+}
