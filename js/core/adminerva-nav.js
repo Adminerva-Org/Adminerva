@@ -69,6 +69,7 @@ document.addEventListener("DOMContentLoaded", () => {
     student: { name: "Project Hub", items: v4OnlyStudent ? [
       ["school-student-projects", "Projects · 4.0", "school-student-projects.html"],
       ["school-student-assessments", "Assignments · 4.0", "school-student-assessments.html"],
+      ["school-student-grades", "My grades · 4.0", "school-student-grades.html"],
       ["school-student-settings", "Account settings · 4.0", "school-student-settings.html"]
     ] : [
       ["dashboard", "Projects", "student-dashboard.html"],
@@ -76,6 +77,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ...(hasSchoolStudent ? [
         ["school-student-projects", "Projects · 4.0 pilot", "school-student-projects.html"],
         ["school-student-assessments", "Assignments · 4.0 pilot", "school-student-assessments.html"],
+        ["school-student-grades", "My grades · 4.0 pilot", "school-student-grades.html"],
         ["school-student-settings", "Account settings · 4.0 pilot", "school-student-settings.html"]
       ] : []),
       ["settings", "Account settings", "student-settings.html"]
@@ -178,6 +180,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const modules = isStudent ? [
     [homeLabel, homeRoute, "Start here and continue your work"],
     ["Project Hub", "student-dashboard.html", "Projects and assignments"],
+    ...(hasSchoolStudent ? [["My Grades", "school-student-grades.html", "Teacher-released activity scores and Final Grades"]] : []),
     ["Practice Lab", "student-practice.html", "Courses, challenges and XML Lab"],
     ["Adminerva Studio", "student-playground.html", "Write and run code"],
     ["My reports", "issues.html", "Report a problem or follow an update"]

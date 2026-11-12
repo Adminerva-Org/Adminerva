@@ -173,7 +173,7 @@ async function checkAccess(user){
      !/\/(owner-schools|settings|issues|wiki)\.html$/.test(currentPath)){
     replacePage("owner-schools.html");return;
   }
-  if(/\/(school-student-projects|school-student-settings|school-student-assessments)\.html$/.test(currentPath)&&
+  if(/\/(school-student-projects|school-student-settings|school-student-assessments|school-student-grades)\.html$/.test(currentPath)&&
      !access.schoolStudent){
     replacePage(roleHome(actualRole));return;
   }
@@ -194,7 +194,7 @@ async function checkAccess(user){
     if(legacyStudentRoutes[page]){replacePage(legacyStudentRoutes[page]);return;}
     const allowed=new Set([
       "student-home.html","school-student-projects.html","school-student-settings.html",
-      "school-student-assessments.html","student-practice.html","student-playground.html",
+      "school-student-assessments.html","school-student-grades.html","student-practice.html","student-playground.html",
       "student-xml-lab.html","school-support.html","join-school.html","wiki.html"
     ]);
     if(!allowed.has(page)){replacePage("student-home.html");return;}
@@ -275,6 +275,8 @@ async function checkAccess(user){
     document.querySelectorAll("[data-school-admin-only]").forEach(el=>el.classList.remove("hidden"));
   if(access.schoolTeacher&&activeRole!=="student")
     document.querySelectorAll("[data-school-teacher-only]").forEach(el=>el.classList.remove("hidden"));
+  if(access.schoolStudent&&activeRole==="student")
+    document.querySelectorAll("[data-school-student-only]").forEach(el=>el.classList.remove("hidden"));
   // 5. Security cleared: Display the UI
   dismissAccessRecovery();rememberWorkspace(user.uid);
   const pageBody = document.getElementById("pageBody");

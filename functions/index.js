@@ -74,6 +74,11 @@ exports.schoolClassRecord=onCall(callOptions,safeCallable(createSchoolClassRecor
   db,
   resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users
 })));
+const {createSchoolStudentClassRecordService}=require("./school-student-class-record.js");
+exports.schoolStudentClassRecord=onCall(callOptions,safeCallable(createSchoolStudentClassRecordService({
+  db,
+  resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users
+})));
 const {createSchoolGradebookService}=require("./school-gradebook.js");
 exports.schoolGradebook=onCall(callOptions,safeCallable(createSchoolGradebookService({db})));
 const {createSchoolGithubEvidenceService}=require("./school-github-evidence.js");

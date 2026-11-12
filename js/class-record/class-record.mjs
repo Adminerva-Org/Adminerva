@@ -54,6 +54,9 @@ const finalizeBlockers=el("cr-finalize-blockers");
 const finalizePreview=el("cr-finalize-preview");
 const finalizeHistory=el("cr-finalize-history");
 const finalizeConfirm=el("cr-finalize-confirm");
+const releaseFinalButton=el("cr-release-final");
+const withdrawFinalButton=el("cr-withdraw-final");
+const finalReleaseState=el("cr-final-release-state");
 const finalizationBanner=el("cr-finalization-banner");
 const collaboratorsNode=el("cr-collaborators");
 const scoreStatusDialog=el("cr-score-status-dialog");
@@ -148,6 +151,7 @@ function schemeScopeSummary(scheme){
 function sourceName(source){
   return source===PERSONALIZED_SOURCE?"Personalized Studio":"School assessment";
 }
+function studentVisibility(column){return column?.studentVisibility==="released"?"released":"hidden"}
 function activeColumns(){return columns.filter(column=>column.archived!==true)}
 function archivedColumns(){return columns.filter(column=>column.archived===true)}
 function activeManualColumns(){return activeColumns().filter(column=>column.kind==="manual")}
@@ -289,11 +293,14 @@ function syncFinalizationBanner(){
   if(finalization.stale){
     finalizationBanner.className="text-xs font-semibold text-rose-700 mt-1";
     finalizationBanner.textContent="Live working record · finalized revision "+finalization.revision+
-      " is now stale because a source score or Class Record setting changed.";
+      " is now stale because a source score or Class Record setting changed."+
+      (finalization.releasedRevision?" Students still see released revision "+finalization.releasedRevision+".":"");
   }else{
     finalizationBanner.className="text-xs font-semibold text-emerald-700 mt-1";
     finalizationBanner.textContent="Live working record · frozen period revision "+finalization.revision+
-      " remains current. Finalized "+formatFinalizedAt(finalization.finalizedAt)+".";
+      " remains current. Finalized "+formatFinalizedAt(finalization.finalizedAt)+"."+
+      (finalization.releasedRevision?
+        " Student Final Grade release: revision "+finalization.releasedRevision+".":" Final Grade is not released to students.");
   }
 }
 function updateKpis(){
@@ -313,7 +320,8 @@ function updateKpis(){
     personalized+" personalized",
     setup.complete?"Weights ready":"Weights incomplete",
     finalization
-      ?("Finalized rev "+finalization.revision+(finalization.stale?" · changed":""))
+      ?("Finalized rev "+finalization.revision+(finalization.stale?" · changed":"")+
+        (finalization.releasedRevision?" · released "+finalization.releasedRevision:""))
       :"Not finalized"
   ];
   for(const text of items)kpis.append(make("span","cr-kpi",text));
@@ -554,6 +562,15 @@ function render(){
       right.type="button";right.title="Move column right";
       right.addEventListener("click",()=>moveColumn(column.columnId,1));actions.append(right);
     }
+    const visibility=studentVisibility(column);
+    const visibilityButton=make("button",
+      "text-xs font-bold underline "+(visibility==="released"?"text-emerald-700":"text-slate-600"),
+      visibility==="released"?"Visible":"Hidden");
+    visibilityButton.type="button";
+    visibilityButton.title=visibility==="released"?
+      "Released in students' My Grades view":"Hidden from students' My Grades view";
+    visibilityButton.addEventListener("click",()=>void toggleColumnVisibility(column));
+    actions.append(visibilityButton);
     const edit=make("button","text-xs font-bold text-blue-700 underline","Edit");
     edit.type="button";edit.addEventListener("click",()=>openColumnDialog(column));actions.append(edit);
     const archive=make("button","text-xs font-bold text-amber-700 underline","Archive");
@@ -719,6 +736,20 @@ function closeColumnDialog(){
   editingColumnId=null;
   el("cr-column-status").textContent="";
 }
+async function toggleColumnVisibility(column){
+  if(!column||column.archived===true||busy)return;
+  if(dirtyColumns.size){say("Save manual score changes before changing student visibility.");return;}
+  const nextVisibility=studentVisibility(column)==="released"?"hidden":"released";
+  if(!confirm(nextVisibility==="released"?
+    "Release "+column.label+" to students in My Grades? Only saved or published scores will appear.":
+    "Hide "+column.label+" from students' My Grades view?"))return;
+  const next=columns.map(item=>item.columnId===column.columnId?
+    {...item,studentVisibility:nextVisibility}:item);
+  try{
+    await saveLayout(next,settings,column.label+
+      (nextVisibility==="released"?" released to students.":" hidden from students."));
+  }catch(error){say(error?.message||"Student score visibility was not changed.");}
+}
 function openColumnDialog(column=null){
   if(column?.archived===true)return;
   editingColumnId=column?.columnId||null;
@@ -728,6 +759,7 @@ function openColumnDialog(column=null){
   el("cr-column-lock-note").hidden=!column;
   columnForm.elements.label.value=column?.label||"";
   columnForm.elements.category.value=column?.category||"";
+  columnForm.elements.studentVisibility.value=studentVisibility(column);
   columnKind.value=column?.kind||"manual";
   columnForm.elements.maxPoints.value=column?.kind==="manual"?String(column.maxPoints):"10";
   populateAssessmentOptions(column?.assessmentSource||SCHOOL_SOURCE,column?.kind==="assessment"?column.taskId:"");
@@ -1195,6 +1227,9 @@ function renderFinalizationHistory(revisions){
     if(revision.appliedSchemeName)
       info.append(make("p","text-xs text-slate-500 mt-1",
         revision.appliedSchemeName+" · scheme rev "+revision.appliedSchemeRevision));
+    if(revision.released)
+      info.append(make("p","text-xs font-bold text-emerald-700 mt-1",
+        "Released to students"+(revision.releasedAt?" · "+formatFinalizedAt(revision.releasedAt):"")));
     const actions=make("div","flex flex-wrap gap-2");
     const exportRevision=make("button","cr-button","CSV");
     exportRevision.type="button";
@@ -1214,8 +1249,37 @@ function closeFinalize(){
   finalizationPreview=null;
   el("cr-finalize-status").textContent="";
 }
+function syncFinalGradeReleaseControls(preview){
+  const existing=preview?.finalization||null;
+  const releasedRevision=Number(existing?.releasedRevision)||0;
+  releaseFinalButton.hidden=!existing;
+  withdrawFinalButton.hidden=!releasedRevision;
+  if(!existing){
+    finalReleaseState.textContent="Finalize a current period revision before releasing a Final Grade.";
+    return;
+  }
+  const current=preview.ready&&!existing.stale&&existing.sourceDigest===preview.sourceDigest;
+  if(releasedRevision===existing.revision){
+    finalReleaseState.textContent="Final Grade revision "+releasedRevision+
+      " is released to students"+(existing.releasedAt?" · "+formatFinalizedAt(existing.releasedAt):"")+".";
+    releaseFinalButton.textContent="Final Grade released";
+    releaseFinalButton.disabled=true;
+  }else{
+    finalReleaseState.textContent=releasedRevision
+      ?"Students currently see frozen revision "+releasedRevision+
+        ". Release revision "+existing.revision+" only after reviewing the current finalized result."
+      :"No Final Grade has been released to students.";
+    releaseFinalButton.textContent=releasedRevision?"Release revision "+existing.revision:"Release Final Grade";
+    releaseFinalButton.disabled=!current;
+  }
+  if(releasedRevision){
+    withdrawFinalButton.textContent="Withdraw revision "+releasedRevision;
+    withdrawFinalButton.disabled=false;
+  }
+}
 function renderFinalizationPreview(preview){
   finalizationPreview=preview;
+  syncFinalGradeReleaseControls(preview);
   finalizeState.className="cr-readiness mt-4";
   finalizeBlockers.replaceChildren();
   finalizePreview.replaceChildren();
@@ -1295,6 +1359,42 @@ async function openFinalize(){
   }catch(error){
     finalizeState.classList.add("blocked");
     finalizeState.textContent=error?.message||"Period finalization preview could not be loaded.";
+  }
+}
+async function releaseFinalGrade(){
+  const preview=finalizationPreview,existing=preview?.finalization;
+  if(!existing||releaseFinalButton.disabled)return;
+  if(!confirm("Release frozen Final Grade revision "+existing.revision+
+    " to students? Activity score visibility remains controlled separately."))return;
+  releaseFinalButton.disabled=true;
+  el("cr-finalize-status").textContent="Releasing the frozen Final Grade revision to students…";
+  try{
+    await scoped(classRecordApi,"release_final_grade",{
+      offeringId:currentOfferingId,expectedFinalizationRevision:existing.revision
+    });
+    closeFinalize();await loadWorkspace();await openFinalize();
+    say("Final Grade revision "+existing.revision+" released to students.");
+  }catch(error){
+    el("cr-finalize-status").textContent=error?.message||"Final Grade was not released.";
+    releaseFinalButton.disabled=false;
+  }
+}
+async function withdrawFinalGrade(){
+  const releasedRevision=Number(finalizationPreview?.finalization?.releasedRevision)||0;
+  if(!releasedRevision||withdrawFinalButton.disabled)return;
+  if(!confirm("Withdraw Final Grade revision "+releasedRevision+
+    " from My Grades? The frozen academic record will be retained."))return;
+  withdrawFinalButton.disabled=true;
+  el("cr-finalize-status").textContent="Withdrawing the student Final Grade release…";
+  try{
+    await scoped(classRecordApi,"withdraw_final_grade",{
+      offeringId:currentOfferingId,expectedReleasedRevision:releasedRevision
+    });
+    closeFinalize();await loadWorkspace();await openFinalize();
+    say("Student Final Grade release withdrawn. Frozen revision "+releasedRevision+" was retained.");
+  }catch(error){
+    el("cr-finalize-status").textContent=error?.message||"Final Grade release was not withdrawn.";
+    withdrawFinalButton.disabled=false;
   }
 }
 async function finalizePeriod(){
@@ -1414,7 +1514,8 @@ async function loadWorkspace(){
     columns=(result.columns||[]).map(column=>{
       const normalized=column.kind==="assessment"&&!column.assessmentSource
         ?{...column,assessmentSource:SCHOOL_SOURCE}:column;
-      return {...normalized,archived:normalized.archived===true};
+      return {...normalized,archived:normalized.archived===true,
+        studentVisibility:studentVisibility(normalized)};
     });
     settings=result.settings||{categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
     sheetRevision=Number(result.sheetRevision)||0;
@@ -1535,6 +1636,8 @@ el("cr-score-status-close").addEventListener("click",closeScoreStatus);
 el("cr-score-status-cancel").addEventListener("click",closeScoreStatus);
 scoreStatusForm.addEventListener("submit",event=>{event.preventDefault();void saveScoreStatus();});
 finalizeConfirm.addEventListener("click",()=>void finalizePeriod());
+releaseFinalButton.addEventListener("click",()=>void releaseFinalGrade());
+withdrawFinalButton.addEventListener("click",()=>void withdrawFinalGrade());
 importForm.addEventListener("submit",event=>{event.preventDefault();stageImportedScores();});
 
 columnForm.addEventListener("submit",event=>{
@@ -1542,14 +1645,16 @@ columnForm.addEventListener("submit",event=>{
   if(!columnForm.reportValidity())return;
   const label=columnForm.elements.label.value.trim();
   const category=columnForm.elements.category.value.trim();
+  const visibility=columnForm.elements.studentVisibility.value==="released"?"released":"hidden";
   const existing=editingColumnId?columns.find(column=>column.columnId===editingColumnId):null;
   let nextColumn;
   if(existing){
-    nextColumn={...existing,label,category};
+    nextColumn={...existing,label,category,studentVisibility:visibility};
   }else if(columnKind.value==="manual"){
     nextColumn={
       columnId:"col_"+crypto.randomUUID().replaceAll("-","").slice(0,20),
-      label,category,kind:"manual",maxPoints:Number(columnForm.elements.maxPoints.value),archived:false
+      label,category,kind:"manual",maxPoints:Number(columnForm.elements.maxPoints.value),archived:false,
+      studentVisibility:visibility
     };
   }else{
     const task=selectedAssessment();
@@ -1558,7 +1663,7 @@ columnForm.addEventListener("submit",event=>{
       columnId:"col_"+crypto.randomUUID().replaceAll("-","").slice(0,20),
       label,category,kind:"assessment",taskId:task.taskId,
       assessmentSource:task.sourceType,maxPoints:task.maxPoints,
-      sourceTitle:task.title,archived:false
+      sourceTitle:task.title,archived:false,studentVisibility:visibility
     };
   }
   const next=existing?

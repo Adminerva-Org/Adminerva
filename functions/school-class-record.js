@@ -25,6 +25,7 @@ const LEGACY_BRIDGE_SCHOOL="mcs-manila";
 const SCHOOL_SOURCE="school";
 const LEGACY_PERSONALIZED_SOURCE="legacy_personalized";
 const CELL_STATUSES=new Set(["normal","incomplete","exempt","not_applicable"]);
+const STUDENT_VISIBILITIES=new Set(["hidden","released"]);
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
@@ -136,6 +137,12 @@ function cleanCellStatus(value){
   if(!CELL_STATUSES.has(status))
     deny("invalid-argument","Score status must be normal, incomplete, exempt or not applicable.");
   return status;
+}
+function cleanStudentVisibility(value){
+  const visibility=String(value||"hidden").trim().toLowerCase();
+  if(!STUDENT_VISIBILITIES.has(visibility))
+    deny("invalid-argument","Student score visibility must be hidden or released.");
+  return visibility;
 }
 function finalizationSourceDigest({columns,settings,roster,manualScores,publishedGrades,cellStates}){
   const activeColumns=(columns||[]).filter(column=>column.archived!==true);
@@ -313,13 +320,14 @@ function cleanColumns(raw,assessmentMap,previousColumns=[]){
     const category=optionalText(item?.category,60);
     const kind=String(item?.kind||"");
     const archived=item?.archived===true;
+    const studentVisibility=cleanStudentVisibility(item?.studentVisibility);
     if(!["manual","assessment"].includes(kind))
       deny("invalid-argument","Column "+label+" must be manual or assessment-linked.");
     if(kind==="manual"){
       const maxPoints=Number(item?.maxPoints);
       if(!Number.isFinite(maxPoints)||maxPoints<=0||maxPoints>MAX_SCORE)
         deny("invalid-argument","Manual column "+label+" needs a maximum score above 0 and no more than "+MAX_SCORE+".");
-      return {columnId,label,category,kind,maxPoints,archived};
+      return {columnId,label,category,kind,maxPoints,archived,studentVisibility};
     }
     const taskId=checkId(String(item?.taskId||""),"Assessment task ID",160);
     const assessmentSource=[SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE].includes(item?.assessmentSource)
@@ -340,7 +348,7 @@ function cleanColumns(raw,assessmentMap,previousColumns=[]){
       deny("failed-precondition","The linked assessment has no gradeable maximum score.");
     const sourceTitle=String(sameHistoricalSource?
       (previous?.sourceTitle||task?.title||label):(task?.title||label)).trim().slice(0,160);
-    return {columnId,label,category,kind,taskId,assessmentSource,maxPoints,sourceTitle,archived};
+    return {columnId,label,category,kind,taskId,assessmentSource,maxPoints,sourceTitle,archived,studentVisibility};
   });
 }
 
@@ -660,7 +668,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         ?sheet.data().columns.map(column=>{
           const normalized=column.kind==="assessment"&&!column.assessmentSource
             ?{...column,assessmentSource:SCHOOL_SOURCE}:column;
-          return {...normalized,archived:normalized.archived===true};
+          return {...normalized,archived:normalized.archived===true,
+            studentVisibility:cleanStudentVisibility(normalized.studentVisibility)};
         }):[];
       const knownAssessmentKeys=new Set(assessments.map(task=>assessmentKey(task.sourceType,task.taskId)));
       for(const column of columns.filter(item=>item.kind==="assessment")){
@@ -717,6 +726,9 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         finalizedAt:millis(finalizationDoc.data().finalizedAt),
         finalizedByUid:finalizationDoc.data().finalizedByUid||null,
         offeringSnapshot:finalizationDoc.data().offeringSnapshot||null,
+        releasedRevision:Number(finalizationDoc.data().releasedRevision)||0,
+        releasedAt:millis(finalizationDoc.data().releasedAt),
+        releasedByUid:finalizationDoc.data().releasedByUid||null,
         stale:String(finalizationDoc.data().sourceDigest||"")!==snapshot.sourceDigest
       }:null;
       return {
@@ -767,6 +779,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const snap=await finalizationRef.collection("revisions").limit(31).get();
       if(snap.size===31)
         deny("resource-exhausted","This period has more than 30 finalization revisions. Paginated history is required.");
+      const releasedRevision=Number(current.data().releasedRevision)||0;
+      const releasedAt=millis(current.data().releasedAt);
       const revisions=snap.docs.map(doc=>doc.data()).filter(data=>
         data.schoolId===ctx.schoolId&&data.offeringId===offeringId
       ).map(data=>({
@@ -778,7 +792,9 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         appliedSchemeRevision:Number(data.appliedSchemeRevision)||null,
         appliedSchemeName:String(data.appliedSchemeName||""),
         offeringSnapshot:data.offeringSnapshot||null,
-        finalizedAt:millis(data.finalizedAt),finalizedByUid:data.finalizedByUid||null
+        finalizedAt:millis(data.finalizedAt),finalizedByUid:data.finalizedByUid||null,
+        released:(Number(data.revision)||0)===releasedRevision,
+        releasedAt:(Number(data.revision)||0)===releasedRevision?releasedAt:null
       })).sort((a,b)=>b.revision-a.revision);
       return {offeringId,revisions};
     }
@@ -886,7 +902,17 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           personIds:data.snapshot.grades.map(grade=>grade.personId),
           finalizedByUid:ctx.uid,finalizedAt:now,updatedAt:now
         };
-        tx.set(finalizationRef,header,{merge:false});
+        const priorReleasedRevision=currentFinalization.exists?
+          Number(currentFinalization.data().releasedRevision)||0:0;
+        const priorReleasedAt=currentFinalization.exists?currentFinalization.data().releasedAt||null:null;
+        const priorReleasedByUid=currentFinalization.exists?currentFinalization.data().releasedByUid||null:null;
+        tx.set(finalizationRef,{
+          ...header,
+          ...(priorReleasedRevision>0?{
+            releasedRevision:priorReleasedRevision,releasedAt:priorReleasedAt,
+            releasedByUid:priorReleasedByUid
+          }:{})
+        },{merge:false});
         tx.create(finalizationRef.collection("revisions").doc(String(revision)),header);
         for(const grade of data.snapshot.grades){
           const gradeRef=db.doc(prefix+"class_record_period_grades/"+hash(offeringId,grade.personId));
@@ -913,6 +939,64 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         offeringId,status:"finalized",revision,sheetRevision:expectedSheetRevision,
         sourceDigest:data.snapshot.sourceDigest,studentCount:data.snapshot.grades.length
       };
+    }
+
+    if(input.action==="release_final_grade"){
+      const expectedFinalizationRevision=Number(input.expectedFinalizationRevision);
+      if(!Number.isInteger(expectedFinalizationRevision)||expectedFinalizationRevision<1)
+        deny("invalid-argument","Choose a finalized period revision to release.");
+      const data=await buildWorkspaceData();
+      if(!data.finalization||data.finalization.revision!==expectedFinalizationRevision)
+        deny("failed-precondition","The finalized period revision changed. Reload before releasing Final Grade.");
+      if(data.finalization.stale||!data.snapshot.ready||
+         data.finalization.sourceDigest!==data.snapshot.sourceDigest)
+        deny("failed-precondition","The live Class Record changed after finalization. Finalize a current revision before releasing Final Grade.");
+      const finalizationRef=db.doc(prefix+"class_record_finalizations/"+offeringId);
+      const auditRef=db.collection(prefix+"class_record_audit").doc();
+      await db.runTransaction(async tx=>{
+        const [grant,current]=await Promise.all([tx.get(grantRef),tx.get(finalizationRef)]);
+        if(!grant.exists||grant.data().schoolId!==ctx.schoolId||
+           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")
+          deny("permission-denied","Your class assignment changed. Reload before releasing Final Grade.");
+        if(!current.exists||current.data().schoolId!==ctx.schoolId||
+           Number(current.data().revision)!==expectedFinalizationRevision||
+           String(current.data().sourceDigest||"")!==data.snapshot.sourceDigest)
+          deny("failed-precondition","The finalized period changed. Reload before releasing Final Grade.");
+        const now=FieldValue.serverTimestamp();
+        tx.update(finalizationRef,{
+          releasedRevision:expectedFinalizationRevision,releasedAt:now,
+          releasedByUid:ctx.uid,updatedAt:now
+        });
+        tx.create(auditRef,{schoolId:ctx.schoolId,offeringId,actorUid:ctx.uid,
+          action:"class_record_final_grade_released",revision:expectedFinalizationRevision,
+          sourceDigest:data.snapshot.sourceDigest,createdAt:now});
+      });
+      return {offeringId,status:"released",releasedRevision:expectedFinalizationRevision};
+    }
+
+    if(input.action==="withdraw_final_grade"){
+      const expectedReleasedRevision=Number(input.expectedReleasedRevision);
+      if(!Number.isInteger(expectedReleasedRevision)||expectedReleasedRevision<1)
+        deny("invalid-argument","Choose the released Final Grade revision to withdraw.");
+      const finalizationRef=db.doc(prefix+"class_record_finalizations/"+offeringId);
+      const auditRef=db.collection(prefix+"class_record_audit").doc();
+      await db.runTransaction(async tx=>{
+        const [grant,current]=await Promise.all([tx.get(grantRef),tx.get(finalizationRef)]);
+        if(!grant.exists||grant.data().schoolId!==ctx.schoolId||
+           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")
+          deny("permission-denied","Your class assignment changed. Reload before withdrawing Final Grade.");
+        if(!current.exists||current.data().schoolId!==ctx.schoolId||
+           Number(current.data().releasedRevision)!==expectedReleasedRevision)
+          deny("failed-precondition","The released Final Grade changed. Reload before withdrawing it.");
+        const now=FieldValue.serverTimestamp();
+        tx.update(finalizationRef,{
+          releasedRevision:0,releasedAt:null,releasedByUid:null,updatedAt:now
+        });
+        tx.create(auditRef,{schoolId:ctx.schoolId,offeringId,actorUid:ctx.uid,
+          action:"class_record_final_grade_withdrawn",revision:expectedReleasedRevision,
+          createdAt:now});
+      });
+      return {offeringId,status:"withdrawn",releasedRevision:0};
     }
 
     if(input.action==="save_layout"){

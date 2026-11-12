@@ -179,7 +179,22 @@ The frozen finalization header also snapshots the human-readable academic contex
 
 A changed live record is not allowed to rewrite an old frozen revision. The teacher creates a new finalization revision.
 
-Finalization is currently teacher-side academic recordkeeping. It is **not automatically student-facing publication or report-card release**.
+Finalization remains teacher-side academic recordkeeping and is **not automatically student-facing publication**.
+
+## Student score visibility and Final Grade release
+
+Each active Class Record column has a student visibility state:
+
+- **Hidden** — teacher-only in the consolidated Class Record.
+- **Released** — the authenticated learner can see their own saved manual result or published assessment result in **My Grades**.
+
+New and legacy columns default to **Hidden** until a teacher deliberately releases them. Releasing an assessment-linked column does not publish its source grade; the owning grading workflow must still publish that grade first.
+
+Final Grade publication is separate from activity-score visibility:
+
+`working scores → released activities → frozen finalization revision → released Final Grade`
+
+Only a current, non-stale frozen revision can be released as the student Final Grade. If a newer finalization revision is created, the previously released revision remains visible until the teacher explicitly releases the newer revision or withdraws the release. Withdrawal removes student visibility without deleting the frozen academic record.
 
 ## Shared teacher ownership and handover
 

@@ -34,6 +34,7 @@ function mount(){
       const names={
         "student-playground.html":"Adminerva Studio","student-assessments.html":"Assignments","student-dashboard.html":"Project Hub",
         "student-practice.html":"Practice Lab","student-xml-lab.html":"XML Layout Lab",
+        "school-student-grades.html":"My Grades",
         "lesson-planner.html":"Lesson Planner","repofetch.html":"Review & Grade",
         "gradebook.html":"Gradebook","assessment-studio.html":"Assessment Studio",
         "teacher-assessment-library.html":"Assessment Library","school-gradebook.html":"School Gradebook",
