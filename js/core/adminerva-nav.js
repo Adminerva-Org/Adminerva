@@ -74,24 +74,20 @@ document.addEventListener("DOMContentLoaded", () => {
     ] }
   };
   const staffGroups = [
-    { name: "Assessment", area: "educator", items: canTeach ? (
+    { name: "Assess & grade", area: "educator", items: canTeach ? (
       v4OnlyTeacher ? [
-        ["library-v4","Assessment library","teacher-assessment-library.html"],
-        ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
+        ["library-v4","Assessments","teacher-assessment-library.html"],
+        ["gradebook-v4", "Gradebook", "school-gradebook.html"],
+        ["reclaims", "Requests & attribution", "reclaim-inbox.html"]
       ] : [
-        ...(hasSchoolTeacher ? [["library-v4","Assessment library · 4.0 pilot","teacher-assessment-library.html"]] : []),
-        ["studio", "Legacy assessment studio", "assessment-studio.html"],
+        ...(hasSchoolTeacher ? [["library-v4","Assessments · 4.0 pilot","teacher-assessment-library.html"]] : []),
+        ["studio", "Assessment Studio", "assessment-studio.html"],
         ["submissions", "Submission inbox", "submissions.html"],
-        ["studio-submissions", "Studio project submissions", "studio-submissions.html"],
-        ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
-      ]) : [] },
-    { name: "Review & grade", area: "educator", items: canTeach ? (
-      v4OnlyTeacher ? [
-        ["gradebook-v4", "Gradebook", "school-gradebook.html"]
-      ] : [
+        ["studio-submissions", "Studio submissions", "studio-submissions.html"],
         ["repofetch", "Review & grade", "repofetch.html"],
         ["gradebook", "Gradebook · current classes", gradebookRoute],
         ...(hasSchoolTeacher ? [["gradebook-v4", "Gradebook · 4.0 pilot", "school-gradebook.html"]] : []),
+        ["reclaims", "Requests & attribution", "reclaim-inbox.html"],
         ["repobank", "Repository investigation", "repobank.html"]
       ]) : [] },
     { name: "Insights", area: "educator", items: canTeach ? [
@@ -104,7 +100,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ["followup", "Learning follow-up", "learning-follow-up.html"]
       ] : [])
     ] : [] },
-    { name: "Planning", area: "lesson", items: canTeach ? [
+    { name: "Teaching", area: "lesson", items: canTeach ? [
       ["planner", "Lesson planner", "lesson-planner.html"],
       ["presentation", "Slide editor", "presentation.html"],
       ["schedule", "Teacher schedule", "schedule.html"],
@@ -119,7 +115,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ] : [])
       ])
     ] : [] },
-    { name: "School setup", area: "admin", items: isSuperAdmin ? [
+    { name: "School administration", area: "admin", items: isSuperAdmin ? [
       ["owner-schools","Institution registry","owner-schools.html"],
       ["overview", "Administration overview", "school-admin.html"],
       ["analytics", "Administration analytics", "admin-analytics.html"],
@@ -133,18 +129,9 @@ document.addEventListener("DOMContentLoaded", () => {
     ] : isSchoolAdmin ? [
       ...(hasPlatformAuthority?[["owner-schools","Institution registry","owner-schools.html"]]:[]),
       ["overview","School overview","school-admin.html"],
-      ["pilot-status","Controlled pilot status","school-pilot.html"],
-      ["people-v4","People & Access","people-access.html"],
-      ["school-analytics","School operations","school-analytics.html"],
-      ["setup-readiness","Setup readiness","school-onboarding-readiness.html"],
-      ["data-files","Data & files","school-data-controls.html"],
-      ["school-reference-library","Shared reference library","school-reference-library.html"],
-      ["cutover-readiness","4.0 cutover readiness","school-cutover-readiness.html"],
-      ...(hasSchoolTeacher ? [
-        ["class-analytics-v4","Class analytics","school-teacher-analytics.html"],
-        ["practice-v4","Practice progress","school-practice-analytics.html"]
-      ] : []),
-      ["reclaims-v4","Commit attribution requests","reclaim-inbox.html"]
+      ["people-v4","People & classes","people-access.html"],
+      ["data-files","Resources & data","school-data-controls.html"],
+      ["cutover-readiness","Advanced readiness","school-cutover-readiness.html"]
     ] : hasPlatformAuthority ? [
       ["owner-schools","Institution registry","owner-schools.html"]
     ] : [] },
@@ -158,7 +145,7 @@ document.addEventListener("DOMContentLoaded", () => {
     (group.area === area || area === "admin" && group.area === "settings"));
   const studentGroup = studentGroups[activeModule];
   const areaNames = {
-    educator: "Repository Management", lesson: "Lesson Planning", admin: "School administration",
+    educator: "Assess & Grade", lesson: "Teaching", admin: "School administration",
     settings: "Account settings", global: "Reports & support",
     "student-home": "Your workspace", "staff-home": "Your workspace"
   };
@@ -176,7 +163,7 @@ document.addEventListener("DOMContentLoaded", () => {
     : isStudent ? studentGroup?.items[0]?.[2]
     : area === "lesson" ? "lesson-planner.html"
     : area === "admin" ? "school-admin.html"
-    : area === "educator" ? "assessment-studio.html" : null;
+    : area === "educator" ? (v4OnlyTeacher||hasSchoolTeacher?"teacher-assessment-library.html":"assessment-studio.html") : null;
   const escapeHTML = value => String(value).replace(/[&<>"']/g, char =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
   const modules = isStudent ? [
@@ -191,14 +178,12 @@ document.addEventListener("DOMContentLoaded", () => {
   ] : [
     [homeLabel,homeRoute,isSchoolAdmin?"School operations and teaching workspace":"Your teaching workspace"],
     ...(canTeach?(v4OnlyTeacher?
-      [["Assessment & Grade","teacher-assessment-library.html","School assessments, evidence and grading"],
-       ["Class Analytics","school-teacher-analytics.html","Published class results and your private drafts"],
-       ["Practice Progress","school-practice-analytics.html","Current-season class Practice analytics"],
-       ["Lesson Planning","lesson-planner.html","Verified-school lessons, slides, timetable and references"]]:
-      [["Repository Management","teacher-assessment-library.html","Assessments, submissions, grading and repositories"],
-       ["Class Analytics","school-teacher-analytics.html","Verified-school assessment results"],
-       ["Practice Progress","school-practice-analytics.html","Verified-school Practice analytics"],
-       ["Lesson Planning","lesson-planner.html","Lessons, slides, schedule and references"]]):[]),
+      [["Assess & Grade","teacher-assessment-library.html","Assessments, submissions, grading and requests"],
+       ["Teaching","lesson-planner.html","Lessons, slides, timetable and references"],
+       ["Insights","school-teacher-analytics.html","Class results, follow-up and Practice progress"]]:
+      [["Assess & Grade",hasSchoolTeacher?"teacher-assessment-library.html":"assessment-studio.html","Assessments, submissions, grading and repositories"],
+       ["Teaching","lesson-planner.html","Lessons, slides, schedule and references"],
+       ["Insights",hasSchoolTeacher?"school-teacher-analytics.html":"teacher-analytics.html","Class results, follow-up and Practice progress"]]):[]),
     ...((isSuperAdmin||isSchoolAdmin||hasPlatformAuthority)?[["School administration",
       hasPlatformAuthority&&!isSchoolAdmin&&!isSuperAdmin?"owner-schools.html":"school-admin.html",
       hasPlatformAuthority&&!isSchoolAdmin&&!isSuperAdmin?"Institution registry":"People, access, classes and school operations"]]:[]),
