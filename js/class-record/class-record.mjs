@@ -21,6 +21,7 @@ const archivedButton=el("cr-archived-columns");
 const archivedCount=el("cr-archived-count");
 const finalizeButton=el("cr-finalize");
 const exportButton=el("cr-export");
+const exportXlsxButton=el("cr-export-xlsx");
 const refreshButton=el("cr-refresh");
 const unsaved=el("cr-unsaved");
 const kpis=el("cr-kpis");
@@ -223,6 +224,7 @@ function setBusy(value,message=""){
   archivedButton.disabled=value||!currentOfferingId;
   finalizeButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
   exportButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
+  exportXlsxButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
   if(message)say(message);
   for(const form of [columnForm,setupForm,importForm]){
     form.querySelectorAll("button,input,select").forEach(control=>{
@@ -276,6 +278,7 @@ function updateDirtyState(){
   archivedButton.disabled=busy||!currentOfferingId;
   finalizeButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
   exportButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
+  exportXlsxButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
   unsaved.textContent=dirtyColumns.size?
     dirtyColumns.size+" manual column"+(dirtyColumns.size===1?"":"s")+" with unsaved changes":"";
   refreshSummaries();
@@ -766,7 +769,7 @@ function formatFinalizedAt(value){
   if(!Number.isFinite(millis)||millis<=0)return "time unavailable";
   try{return new Date(millis).toLocaleString();}catch{return "time unavailable";}
 }
-function finalizationCsv(revision){
+function finalizationExportRows(revision){
   const categories=(revision.grades?.[0]?.categoryScores||revision.categoryWeights||[])
     .map(row=>String(row.category||"")).filter(Boolean);
   const metadata=[
@@ -788,30 +791,51 @@ function finalizationCsv(revision){
     for(const category of categories){
       const score=byCategory.get(category.toLocaleLowerCase("en"));
       row.push(score?numberText(score.earned)+" / "+numberText(score.max):"",
-        score?numberText(score.percentage):"",
-        score?numberText(score.weightedContribution):"");
+        score?Number(score.percentage):"",
+        score?Number(score.weightedContribution):"");
     }
-    row.push(numberText(grade.initialGrade),numberText(grade.periodGrade));
+    row.push(Number(grade.initialGrade),Number(grade.periodGrade));
     rows.push(row);
   }
-  return "\uFEFF"+rows.map(row=>row.map(csvEscape).join(",")).join("\r\n");
+  return rows;
 }
-function downloadFinalizationRevision(revision){
-  const csv=finalizationCsv(revision),blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+function downloadBlob(blob,filename){
   const url=URL.createObjectURL(blob),a=document.createElement("a");
-  const label=(offeringSelect.selectedOptions[0]?.textContent||"class-record")
-    .replace(/[^A-Za-z0-9_-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,70);
-  a.href=url;a.download=(label||"class-record")+"-finalized-rev-"+revision.revision+".csv";
-  a.hidden=true;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),0);
+  a.href=url;a.download=filename;a.hidden=true;document.body.append(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),0);
 }
-async function exportFinalizationRevision(revisionNumber,button){
+function exportBaseName(max=70){
+  return (offeringSelect.selectedOptions[0]?.textContent||"class-record")
+    .replace(/[^A-Za-z0-9_-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,max)||"class-record";
+}
+function downloadFinalizationRevisionCsv(revision){
+  const rows=finalizationExportRows(revision);
+  const csv="\uFEFF"+rows.map(row=>row.map(csvEscape).join(",")).join("\r\n");
+  downloadBlob(new Blob([csv],{type:"text/csv;charset=utf-8"}),
+    exportBaseName()+"-finalized-rev-"+revision.revision+".csv");
+}
+async function downloadFinalizationRevisionXlsx(revision){
+  const {classRecordWorkbook}=await import("./xlsx-export.mjs?v=1.0.0");
+  const rows=finalizationExportRows(revision);
+  const blob=classRecordWorkbook(rows,{
+    sheetName:"Finalized rev "+revision.revision,
+    headerRowIndex:6
+  });
+  downloadBlob(blob,exportBaseName()+"-finalized-rev-"+revision.revision+".xlsx");
+}
+async function loadFinalizationRevision(revisionNumber){
+  return scoped(classRecordApi,"finalization_revision",{
+    offeringId:currentOfferingId,revision:revisionNumber
+  });
+}
+async function exportFinalizationRevision(revisionNumber,format,button){
   if(button)button.disabled=true;
   try{
-    const revision=await scoped(classRecordApi,"finalization_revision",{
-      offeringId:currentOfferingId,revision:revisionNumber
-    });
-    downloadFinalizationRevision(revision);
-    el("cr-finalize-status").textContent="Finalized revision "+revisionNumber+" exported.";
+    const revision=await loadFinalizationRevision(revisionNumber);
+    if(format==="xlsx")await downloadFinalizationRevisionXlsx(revision);
+    else downloadFinalizationRevisionCsv(revision);
+    el("cr-finalize-status").textContent="Finalized revision "+revisionNumber+
+      " exported as "+(format==="xlsx"?"Excel":"CSV")+".";
   }catch(error){
     el("cr-finalize-status").textContent=error?.message||"Finalized revision could not be exported.";
   }finally{if(button)button.disabled=false;}
@@ -832,10 +856,15 @@ function renderFinalizationHistory(revisions){
     if(revision.appliedSchemeName)
       info.append(make("p","text-xs text-slate-500 mt-1",
         revision.appliedSchemeName+" · scheme rev "+revision.appliedSchemeRevision));
-    const exportRevision=make("button","cr-button","Export frozen CSV");
+    const actions=make("div","flex flex-wrap gap-2");
+    const exportRevision=make("button","cr-button","CSV");
     exportRevision.type="button";
-    exportRevision.addEventListener("click",()=>void exportFinalizationRevision(revision.revision,exportRevision));
-    card.append(info,exportRevision);finalizeHistory.append(card);
+    exportRevision.addEventListener("click",()=>void exportFinalizationRevision(revision.revision,"csv",exportRevision));
+    const exportExcel=make("button","cr-button","Excel");
+    exportExcel.type="button";
+    exportExcel.addEventListener("click",()=>void exportFinalizationRevision(revision.revision,"xlsx",exportExcel));
+    actions.append(exportRevision,exportExcel);
+    card.append(info,actions);finalizeHistory.append(card);
   }
 }
 function closeFinalize(){
@@ -952,40 +981,55 @@ function csvEscape(value){
   const text=String(value??"");
   return /[",\r\n]/.test(text)?'"'+text.replaceAll('"','""')+'"':text;
 }
-function exportCsv(){
-  if(!currentOfferingId||dirtyColumns.size)return;
+function liveExportRows(){
   const categories=usedCategories(),visibleColumns=activeColumns();
-  const headers=[
+  const rows=[[
     "Student",
     ...visibleColumns.map(column=>column.label+" ("+numberText(column.maxPoints)+")"),
     ...categories.map(category=>category+" %"),
     "Initial Grade","Period Grade"
-  ];
-  const rows=[headers];
+  ]];
   for(const student of roster){
     const metrics=metricsFor(student.personId,{fromInput:false});
     rows.push([
       student.name,
       ...visibleColumns.map(column=>{
         const value=scoreFor(column,student.personId,{fromInput:false});
-        return value===null?"":numberText(value);
+        return value===null?"":Number(value);
       }),
       ...categories.map(category=>{
         const bucket=metrics.byCategory.get(category);
-        return bucket?.complete&&bucket.max>0?numberText(bucket.earned/bucket.max*100):"";
+        return bucket?.complete&&bucket.max>0?
+          Math.round((bucket.earned/bucket.max*100+Number.EPSILON)*10000)/10000:"";
       }),
-      metrics.complete?numberText(metrics.initial):"",
-      metrics.complete?numberText(metrics.period):""
+      metrics.complete?Number(metrics.initial):"",
+      metrics.complete?Number(metrics.period):""
     ]);
   }
+  return rows;
+}
+function exportCsv(){
+  if(!currentOfferingId||dirtyColumns.size)return;
+  const rows=liveExportRows();
   const csv="\uFEFF"+rows.map(row=>row.map(csvEscape).join(",")).join("\r\n");
-  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
-  const url=URL.createObjectURL(blob),a=document.createElement("a");
-  const label=(offeringSelect.selectedOptions[0]?.textContent||"class-record")
-    .replace(/[^A-Za-z0-9_-]+/g,"-").replace(/^-+|-+$/g,"").slice(0,80);
-  a.href=url;a.download=(label||"class-record")+".csv";a.hidden=true;
-  document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),0);
+  downloadBlob(new Blob([csv],{type:"text/csv;charset=utf-8"}),exportBaseName(80)+".csv");
   say("Class Record CSV exported.");
+}
+async function exportXlsx(){
+  if(!currentOfferingId||dirtyColumns.size)return;
+  exportXlsxButton.disabled=true;
+  const finish=window.beginLoading?.("Preparing Excel Class Record…")||(()=>{});
+  try{
+    const {classRecordWorkbook}=await import("./xlsx-export.mjs?v=1.0.0");
+    const blob=classRecordWorkbook(liveExportRows(),{sheetName:"Class Record"});
+    downloadBlob(blob,exportBaseName(80)+".xlsx");
+    say("Class Record Excel workbook exported.");
+  }catch(error){
+    say(error?.message||"Excel export could not be created.");
+  }finally{
+    exportXlsxButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
+    finish();
+  }
 }
 async function loadSchemes(){
   try{
@@ -1091,6 +1135,7 @@ refreshButton.addEventListener("click",()=>{
 });
 saveScoresButton.addEventListener("click",()=>void saveManualScores());
 exportButton.addEventListener("click",exportCsv);
+exportXlsxButton.addEventListener("click",()=>void exportXlsx());
 columnKind.addEventListener("change",syncColumnFields);
 el("cr-import-file").addEventListener("change",async event=>{
   const file=event.target.files?.[0];if(!file)return;
