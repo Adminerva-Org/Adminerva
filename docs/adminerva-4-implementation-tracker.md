@@ -548,3 +548,17 @@ The output file is created with owner-only file permissions and cannot overwrite
 - MCS migration artifacts were upgraded so newly created Personalized Assessments are not lost at cutover. The mirror inventory now captures detached `studio_assessment_variants/*/attempts/*` documents; assessment migration reviews and applies the exact activated private pool; deployed tasks preserve publication state; evidence migration preserves each variant ID/frozen prompt and reconstructs canonical attempt/uniqueness records from the reviewed legacy assignment source.
 - Assessment migration plan/approval/receipt and evidence-grade plan/approval/receipt are now v2 contracts. The final MCS cutover package requires the new v2 receipts and rejects stale pre-personalization receipts.
 - Focused migration regression cases cover activated-pool integrity and personalized Studio attempt provenance. The changed migration scripts passed source syntax checks; no broad release/deployment suite was started.
+
+
+## School Administration and People & Access integration — November 12, 2026
+
+- Reconciled the focused School Administration and People & Access improvements from PR #166 into the full V4 foundation rather than replacing its broader School Administration, school operations, private resources, advanced readiness or role-aware navigation with older mainline UI.
+- The verified-school administration dashboard now hides metrics and school-only controls until the **selected** school has an active `school_admin` membership. Switching schools immediately clears the previous totals and invalidates in-flight responses.
+- School-specific directory and support totals are fetched using server-scoped `peopleDirectory` and `schoolSupport` callables. Independently unavailable services leave their values unknown rather than displaying misleading historical/global counts.
+- The legacy flat `students`, `staff_access`, and `issues` collections remain accessible **only** in the explicitly admitted legacy MCS administrator compatibility view. This is not a V4 school-directory fallback and must retire with legacy compatibility.
+- People & Access gains school-scoped student/staff audience shortcuts, clearable filters, direct eligible-person invitation handoff, role-prefilled invitation entry, stale search/invite response suppression, and compact mobile controls. Original server-side invitation, person, membership and class lifecycle services are reused unchanged.
+- Legacy roster and teacher configuration pages deep-link into the canonical V4 directory without changing the historical roster, grades, assessments, account memberships or teacher-course grants.
+- The full V4 navigation's existing compact **Assess & grade / Teaching / Insights / School administration** hierarchy is retained instead of copying an older alternative grouping.
+- This integration is source-only and is **not** a production deployment, MCS data migration, administrator role grant, V4 pilot activation or release. Class Record and CheerpJ terminal development remain outside this workstream.
+
+**Still pending:** integrate this isolated change into the V4 development branch; reconcile the larger V4 branch with current mainline maintenance without overwriting newer independent features; complete protected MCS migration preparation, focused cross-school authorization checks and controlled pilot activation.
