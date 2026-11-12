@@ -654,3 +654,16 @@ Imported the exact files from pinned production `139a0fa3cf22998fe2646227a7d8a28
 - Retained mainline mobile virtual-keyboard handling for iOS/Android, with viewport-aware editor/terminal sizing, terminal unread indicator and Send-key hints. Both signed-in Student Studio and Guest Studio have matching one-row tool controls; guest pages have **no assessment submission action**.
 - Kept the existing independent instructor-only CheerpJ pilot, terminal prompt echo and v4 assessment context; neither students nor graded assessments were enabled in CheerpJ by this reconciliation.
 - Imported a focused mobile UX contract and CI workflow from current main with v4-specific asset versions. No browser acceptance, Firebase deployment, production launch, persisted grading change or MCS cutover was performed.
+
+
+## Teacher and student cross-workspace navigation continuity — November 12, 2026
+
+- Separated **Repository Management** (legacy repository tasks, submissions, review and gradebook) from **Class Record & Adminerva Assessments** (school-owned assessment library, school Gradebook, teacher Class Record). This follows the existing plan to keep Repository Management intact rather than extending its grading scope. Verified school Teacher membership gates the Class Record school workspace; users with only legacy teacher roles retain legacy repository workflows.
+- School Admin + Teacher accounts show a combined role label and can use both the verified school Class Record/assessment navigation and School Administration tools. School Admin without Teacher membership does not see editable Class Record; read-only school-wide oversight remains under School Administration.
+- Student workspace navigation includes **My Grades** only for verified school students; no hidden or unpublished score is revealed merely by a navigation link. Server-side Gradebook/Class Record release gates remain authoritative.
+- Updated the primary `session-destination.mjs` school-admin home fallback to match the pilot router; retained Class Record as an eligible cached **navigation hint** for teacher/admin roles, while actual editable access is still checked against current verified Teacher membership by the auth guard and the callable.
+- Removed a duplicate school grading-scheme route and aligned home-workspace resume labels for school Class Record oversight and school grading schemes.
+- Teacher assessment library and school Gradebook pages now identify their navigation module as `class-record`. The shared nav and canonical/pilot guards were refreshed together across the main teacher, student, repository, school-administration, planning, reports and settings entry points, avoiding old cached menu/role behavior when moving between workspaces.
+- Updated the focused shared navigation contract for separate workspaces and a dual School Admin/Teacher account. This is source integration only: no school roles, assessment grades, Class Record calculations, Cloudflare settings or production deploy changed.
+
+**Remaining:** final reconciliation of the larger mainline/V4 diff and protected authenticated pilot admission; do not mark the V4 foundation PR mergeable or switch school compatibility to `v4_only` solely on these changes.
