@@ -45,8 +45,12 @@ function reusableContent(input) {
     personalization:personalizationContent(input.personalization)};
 }
 function blueprintFingerprint(data){
-  const value=reusableContent(data);
-  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  const value=reusableContent(data),personalization=value.personalization||{};
+  const stable={...value,personalization:{
+    enabled:personalization.enabled===true,mode:personalization.mode||"standard",
+    variationGuidance:personalization.variationGuidance||""
+  }};
+  return createHash("sha256").update(JSON.stringify(stable)).digest("hex");
 }
 function normalizeScenarioKey(value){
   return String(value||"").normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
@@ -186,7 +190,7 @@ function createTeacherBlueprintService({db}) {
         const ids=Array.isArray(pool.data().variantIds)?pool.data().variantIds:[];
         if(ids.length<config.variantTarget)
           deny("failed-precondition","The private pool has "+ids.length+" of "+config.variantTarget+" required variants.");
-        tx.update(poolRef,{ready:true,target:config.variantTarget,
+        tx.update(poolRef,{ready:true,target:config.variantTarget,blueprintRevision:expectedRevision,
           activatedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
       });
       return {resourceId:id,fingerprint,variantTarget:config.variantTarget,ready:true};
