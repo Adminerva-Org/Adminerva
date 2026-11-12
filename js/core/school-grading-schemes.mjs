@@ -215,3 +215,6 @@ picker=createTenantSchoolPicker({
     void load();
   }
 });
+void picker.load().catch(error=>{
+  status.textContent=error?.message||"Verified school access could not be loaded.";
+});

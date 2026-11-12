@@ -1672,7 +1672,7 @@ async function loadWorkspace(){
 async function loadOfferings(){
   setBusy(true,"Loading your assigned classes…");
   try{
-    const result=await scoped(academicsApi,"planning_options");
+    const result=await scoped(academicsApi,"planning_options",{assignmentScope:"teacher"});
     periodRecords=result.periodRecords||[];
     offerings=(result.offerings||[]).slice().sort((a,b)=>{
       const left=(a.subjectName||"")+" "+(a.sectionName||"");
@@ -1859,4 +1859,7 @@ picker=createTenantSchoolPicker({
     }
     void loadSchemes().finally(()=>loadOfferings());
   }
+});
+void picker.load().catch(error=>{
+  say(error?.message||"Verified school access could not be loaded.");
 });
