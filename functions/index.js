@@ -70,7 +70,10 @@ exports.schoolStudioProjects=onCall(callOptions,safeCallable(createSchoolStudioP
 exports.schoolStudioSubmissions=onCall(callOptions,safeCallable(createSchoolStudioSubmissionService({db})));
 exports.studioAssessmentVariant=onCall(callOptions,safeCallable(createStudioAssessmentVariantService({db,Timestamp})));
 const {createSchoolClassRecordService}=require("./school-class-record.js");
-exports.schoolClassRecord=onCall(callOptions,safeCallable(createSchoolClassRecordService({db})));
+exports.schoolClassRecord=onCall(callOptions,safeCallable(createSchoolClassRecordService({
+  db,
+  resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users
+})));
 const {createSchoolGradebookService}=require("./school-gradebook.js");
 exports.schoolGradebook=onCall(callOptions,safeCallable(createSchoolGradebookService({db})));
 const {createSchoolGithubEvidenceService}=require("./school-github-evidence.js");
