@@ -681,3 +681,10 @@ Imported the exact files from pinned production `139a0fa3cf22998fe2646227a7d8a28
 ### Legacy Studio grade publication and linked Class Record clarity — November 12, 2026
 
 Reconciled the four current-main teacher-facing Studio submission messages so the UI explicitly indicates when a **published reviewed Studio grade** is available to a linked Class Record column, when unpublishing hides that linked result, and that refreshed Class Record columns reflect newly published results. Only explanatory confirmation/status strings in `js/repo-review/studio-submissions.mjs` changed. Student release remains Class Record-specific, and final-grade/publication checks continue to run in their owning services; no grade, rubric, evaluation, Firestore rules or data was changed.
+
+
+## Three-tree mainline integration audit — November 12, 2026
+
+- Pinned `main` (`c080e9dc`), V4 (`1e83b57`) and common base (`bebfd29e`) into [the merge-audit file](./adminerva-4-mainline-merge-audit-2026-11-12.md). SHA-level tree results: 350 unchanged blobs, 99 identical converged blobs, 116 V4-only changed paths, 1 main-only changed path, **73 paths changed to different content**. This is *not* an assertion of 73 Git textual conflicts; it is a precise triage list.
+- Isolated merge-prep branch carries the one main-only Learning Follow-up page, mainline quality-workflow checks and the missing `Add to Class Record` school-assessment deep link (navigation only).
+- No blanket merge of `main` into V4, no fabricated merge parent, no direct Class Record engine changes, and no MCS cutover. Continue reconciling divergent paths before constructing a main-based release candidate and exercising teacher/student/school-admin roles in the private pilot.
