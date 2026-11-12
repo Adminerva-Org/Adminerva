@@ -667,3 +667,12 @@ Imported the exact files from pinned production `139a0fa3cf22998fe2646227a7d8a28
 - Updated the focused shared navigation contract for separate workspaces and a dual School Admin/Teacher account. This is source integration only: no school roles, assessment grades, Class Record calculations, Cloudflare settings or production deploy changed.
 
 **Remaining:** final reconciliation of the larger mainline/V4 diff and protected authenticated pilot admission; do not mark the V4 foundation PR mergeable or switch school compatibility to `v4_only` solely on these changes.
+
+
+## Current-main legacy Reference Library PDF extraction parity — November 12, 2026
+
+- Reconciled the **legacy-compatible** `library.html` and `js/lesson-review/library.js` with the current-main PDF importer, retaining canonical `resolveReferenceLibrary`, `assertReferenceOwner`, `referenceFolders` and the existing `teaching-firestore` wrapper. This is separate from V4's verified-school `teacher-reference-library` and `school-reference-library` modules; no school-scoped library service or permission rules were replaced.
+- Both Adminerva AI and **External AI PDF extraction** now save the same canonical reference document format through `saveReferenceRecord`: strict original filename/title mapping, educational text preservation, per-document size limits and no silent duplicate filenames. The external workflow produces a package to send with the original PDFs, accepts exact schema-v1 JSON and rejects missing/extra or duplicate documents before writing records.
+- Added the current-main external importer dialog with stable mobile scroll and visible status/retry feedback. Retained V4's current shared navigation and canonical verified-access guard asset versions, with a new cache query for the legacy library client.
+- The PDF file itself is handed to the external AI **by the user**, not uploaded behind the scenes. No Firebase, Cloudflare, AI credentials, school records, teacher-private assessment notes or existing student data are migrated or changed.
+- This is source reconciliation only, not production deployment or V4 pilot activation. The legacy importer remains available only under the authorized legacy-compatible reference workflow.
