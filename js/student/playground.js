@@ -3,9 +3,9 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=3.0.0";
+import {createProjectStudio} from "./project-studio.mjs?v=4.0.2";
+import {currentV4StudioSchool} from "./v4-studio-service.mjs?v=4.1.0";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
-import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.0.0";
 import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=4";
 import {CheerpjStudioClient,CHEERPJ_STUDIO_RUNNER_URL,validateCheerpjRunnerUrl} from "./cheerpj-studio-client.mjs?v=3";
 import {evaluateBrowserJavaAccess,CHEERPJ_STUDIO_ROLLOUT} from "./cheerpj-studio-rollout.mjs?v=2";
@@ -373,6 +373,16 @@ async function initializePlayground() {
       await loadSnapshot(snapshotId);
     } else {
       const uid=ownerUid();
+      let studioSchool=null;
+      try{studioSchool=await currentV4StudioSchool();}catch{}
+      const v4OnlyStudent=document.getElementById("adminerva-nav")?.dataset.v4OnlyStudent==="true";
+      if(v4OnlyStudent&&!studioSchool){
+        document.getElementById("projectHome")?.classList.remove("hidden");
+        document.getElementById("studioShell")?.classList.add("hidden");
+        const list=document.getElementById("codeProjectList");
+        if(list)list.innerHTML='<div class="studio-empty-card"><strong>Choose a verified school</strong><p>Select your active school above before opening or creating an Adminerva Studio project.</p></div>';
+        return;
+      }
       const legacyAvailable=PLAYGROUND_LANGUAGES.some(lang=>Boolean(readPlaygroundDraft(localStorage,uid,lang)));
       projectStudio=createProjectStudio({
         uid,
@@ -382,13 +392,13 @@ async function initializePlayground() {
         legacyDraftAvailable:legacyAvailable,
         importLegacyDraft:importLegacyDraftAsProject,
         cloudEnabled:!guestMode,
-        guest:guestMode
+        guest:guestMode,
+        projectScope:studioSchool?.compatibilityMode==="v4_only"?"school_"+studioSchool.schoolId:""
       });
       const requestedProject=urlParams.get("codeProject");
-      if(requestedProject)projectStudio.openProjectById(requestedProject);
+      if(requestedProject)await projectStudio.openProjectById(requestedProject);
       else projectStudio.showHome();
-      // Restore the existing server-side queue/run after a browser refresh.
-      // The runtime remains disabled until a trusted HTTPS server is configured.
+      // Rejoin a queued/running server execution without replacing the school-scoped project.
       void studioRuntimeIntegration?.recover();
     }
     } finally { end(); }
@@ -434,12 +444,15 @@ function importLegacyDraftAsProject(){
   if((state.fileOrder||[]).length>limits.maxFiles)return alert("This older draft has more files than this project tier allows.");
   if(new TextEncoder().encode(JSON.stringify(state)).length>limits.maxProjectBytes)return alert("This older draft is larger than this project tier allows. Export it as a ZIP from the legacy workspace first.");
   const templateByLang={java:"java-blank",python:"python-console",web:"web"};
-  const project=createCodeProject(localStorage,uid,{title:"Imported "+chosen.toUpperCase()+" Project",templateId:templateByLang[chosen]||"java-blank",
-    config:{runMode:chosen==="web"?"web":"console",database:false}});
-  project.lang=chosen;project.state={lang:chosen,files:state.files,fileOrder:state.fileOrder,activeFilename:state.activeFilename,
-    folders:state.folders||[],projectOrder:state.projectOrder||state.fileOrder};
-  saveCodeProject(localStorage,uid,project);
-  projectStudio?.activateProject(project);
+  try{
+    projectStudio?.importLegacyState({
+      title:"Imported "+chosen.toUpperCase()+" Project",
+      templateId:templateByLang[chosen]||"java-blank",
+      config:{runMode:chosen==="web"?"web":"console",database:false},
+      state:{lang:chosen,files:state.files,fileOrder:state.fileOrder,activeFilename:state.activeFilename,
+        folders:state.folders||[],projectOrder:state.projectOrder||state.fileOrder}
+    });
+  }catch(error){alert("Older draft could not be imported: "+(error?.message||error));}
 }
 
 function createWorkspace(lang, initialFiles, initialOrder, initialActive,initialFolders=[],initialProjectOrder=[]) {
@@ -1836,6 +1849,15 @@ function initializeMobileStudio(){
   const taskAssigned=document.getElementById('assignedProjectBanner');
   const taskPersonalized=document.getElementById('studioPersonalizedTask');
   const taskLink=Boolean(new URLSearchParams(location.search).get('assessment'));
+  const updateTaskReturn=()=>{
+    const link=document.querySelector('[data-task-return]');
+    const nav=document.getElementById('adminerva-nav');
+    if(link)link.href=nav?.dataset.v4OnlyStudent==='true'
+      ?'school-student-assessments.html':'student-assessments.html';
+  };
+  document.addEventListener('adminerva:role-ready',updateTaskReturn);
+  document.addEventListener('adminerva:school-ready',updateTaskReturn);
+  updateTaskReturn();
   if(!panel||!explorer||!actions||!backdrop||!toolbar)return;
   // Keep the original control IDs and event handlers; only their location changes.
   for(const id of ['saveProjectBtn','runBtn']){
@@ -2128,6 +2150,21 @@ function bindUIEvents() {
   window.addEventListener("blur",hideExplorerContextMenu);
   window.addEventListener("resize",hideExplorerContextMenu);
   document.addEventListener("scroll",hideExplorerContextMenu,true);
+  const studioExplorer=document.getElementById("projectExplorer");
+  if(studioExplorer){
+    try{studioExplorer.open=localStorage.getItem("Adminerva_Studio_Explorer_Open_v1")!=="0";}catch{}
+    studioExplorer.addEventListener("toggle",()=>{
+      try{localStorage.setItem("Adminerva_Studio_Explorer_Open_v1",studioExplorer.open?"1":"0");}catch{}
+      hideExplorerContextMenu();
+    });
+  }
+  const toolsMenu=document.querySelector(".studio-tools-menu");
+  toolsMenu?.querySelector(".pg-menu")?.addEventListener("click",event=>{
+    if(event.target.closest("button,a[href]"))toolsMenu.removeAttribute("open");
+  });
+  document.addEventListener("click",event=>{
+    if(toolsMenu?.open&&!toolsMenu.contains(event.target))toolsMenu.removeAttribute("open");
+  });
   document.getElementById('cancelRunBtn')?.addEventListener('click',()=>executionController?.abort());
   document.getElementById('stopDesktopBtn')?.addEventListener('click',()=>stopJavaDesktop());
   document.getElementById('stopCheerpjBtn')?.addEventListener('click',()=>stopLiveBrowserJava());
