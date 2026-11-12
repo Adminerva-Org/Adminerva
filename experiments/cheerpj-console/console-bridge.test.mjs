@@ -16,7 +16,7 @@ function setup() {
 function read(ops, size) {
   return new Promise(resolve => {
     const buf = new Uint8Array(size + 5);
-    ops.readAsync({}, 0, buf, 2, size, 0, n => resolve({count:n, value:new TextDecoder().decode(buf.subarray(2, 2+n))}));
+    ops.readAsync({}, 0, buf, 2, size, 0, n => resolve({count:n, value:new TextDecoder().decode(buf.subarray(2, 2+n)), bytes:buf.slice(2, 2+n)}));
   });
 }
 
@@ -46,9 +46,10 @@ test("does not lose characters across short byte reads", async () => {
     parts.push(result);
     bytes += result.count;
   }
-  const b = parts.flatMap(x => Array.from(new TextEncoder().encode(x.value)));
-  // Decode each read as one combined stream to avoid split UTF-8 codepoints.
-  assert.equal(parts.reduce((sum,x)=>sum+x.count,0), 7);
+  const allBytes = Uint8Array.from(parts.flatMap(x => Array.from(x.bytes)));
+  // Decode across read boundaries: multi-byte characters may be split.
+  assert.equal(new TextDecoder().decode(allBytes), "é🍀\n");
+  assert.equal(allBytes.length, 7);
 });
 
 test("streams split UTF-8 output and acknowledges every write", () => {
@@ -79,7 +80,7 @@ test("finishing a run answers an abandoned pending read and clears old bytes", a
   const {bridge, ops} = setup();
   const waiting = read(ops, 10);
   bridge.endRun();
-  assert.deepEqual(await waiting, {count:0, value:""});
+  assert.equal((await waiting).count, 0);
   bridge.sendLine("fresh");
   assert.equal((await read(ops, 10)).value, "fresh\n");
 });
