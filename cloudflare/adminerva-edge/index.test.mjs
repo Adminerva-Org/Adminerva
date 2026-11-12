@@ -29,12 +29,12 @@ test('upload requires trusted school opt-in, PDF MIME and bounded size',async()=
   }};
   const headers={
     'content-type':'application/pdf',
-    'content-length':'11',
+    'content-length':'10',
     'x-adminerva-school-id':'school123',
     'x-adminerva-school-storage-opt-in':'true'
   };
   const pdf='%PDF-1.7\nx';
-  assert.equal(pdf.length,11);
+  assert.equal(pdf.length,10);
   assert.equal((await handleRequest(req('/v1/internal/references',{method:'POST',headers:{...headers,'x-adminerva-school-storage-opt-in':'false'},body:pdf}),env)).status,403);
   assert.equal((await handleRequest(req('/v1/internal/references',{method:'POST',headers:{...headers,'content-type':'text/plain'},body:pdf}),env)).status,415);
   assert.equal((await handleRequest(req('/v1/internal/references',{method:'POST',headers:{...headers,'content-length':'60000000'},body:pdf}),env)).status,413);
