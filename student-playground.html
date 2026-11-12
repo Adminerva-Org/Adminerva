@@ -26,6 +26,12 @@
   <div id="practiceSandboxBanner" class="hidden px-4 py-2 bg-cyan-50 text-cyan-950 text-sm flex flex-wrap justify-between gap-2"><div><strong>Practice experiment</strong><p id="practiceRunStatus" class="text-xs">Experiment freely. Your personal project stays separate.</p></div><a id="practiceReturnLink" href="student-practice.html" class="font-bold underline">Return to Practice Lab →</a></div>
   <section id="studioAssignmentDock" class="studio-assignment-dock" aria-label="Assignment instructions" aria-hidden="false">
     <header class="studio-assignment-dock-heading"><div><span class="studio-assignment-kicker">YOUR WORK</span><strong>Task &amp; instructions</strong></div><div class="studio-assignment-dock-actions"><button id="studioTaskSubmitShortcut" type="button">Submit project</button><button id="studioTaskClose" type="button" aria-label="Close task instructions">✕ Close</button></div></header>
+    <div id="studioTaskOverview" class="studio-task-overview hidden" aria-live="polite">
+      <strong id="studioTaskOverviewTitle">Assignment</strong>
+      <p id="studioTaskOverviewMeta"></p>
+      <p id="studioTaskOverviewText"></p>
+      <details id="studioTaskOverviewCriteria" class="hidden"><summary>Assessment criteria</summary><pre id="studioTaskOverviewRubric"></pre></details>
+    </div>
     <div id="assignedProjectBanner" class="hidden px-4 py-2 bg-indigo-50 text-indigo-950 text-sm border-b border-indigo-200"><strong id="assignedProjectTitle">Assigned project</strong><p id="assignedProjectMeta" class="text-xs mt-0.5"></p><p id="assignedProjectBrief" class="text-xs mt-1 text-indigo-800"></p></div>
   <details id="studioPersonalizedTask" class="hidden bg-violet-50 text-violet-950 border-b border-violet-200 px-4 py-2 text-sm" open>
     <summary class="font-bold cursor-pointer">Personalized assessment task <span id="studioPersonalizedTaskMeta" class="font-normal text-xs text-violet-700"></span></summary>
