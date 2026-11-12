@@ -26,13 +26,9 @@ function applyRole(detail={}){
       if(row){
         row.replaceChildren();
         for(const [href,label] of [
-          ["teacher-assessment-library.html","Assessment library"],
-          ["lesson-planner.html","Lesson planner"],
-          ["schedule.html","Teacher schedule"],
-          ["teacher-reference-library.html","My references"],
-          ["school-teacher-analytics.html","Class analytics"],
-          ["school-practice-analytics.html","Practice progress"],
-          ["reclaim-inbox.html","Commit attribution requests"],
+          ["teacher-assessment-library.html","Assess & grade"],
+          ["lesson-planner.html","Teaching"],
+          ["school-teacher-analytics.html","Insights"],
           ["school-support.html","School support"]
         ]){
           const link=document.createElement("a");link.href=href;link.className="av-secondary-link";link.textContent=label;row.append(link);
