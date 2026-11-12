@@ -321,12 +321,20 @@ window.renderOutput = function () {
       :"";
 
     let html = `<div class="bg-white p-5 rounded border border-gray-200 shadow-sm mb-6">
-            <h3 class="text-lg font-bold ${isFlex ? "text-amber-600" : "text-blue-800"} mb-3 border-b pb-2">${escapeLessonText(session.session_name)} ${isFlex ? "(Asynchronous)" : ""}</h3>
+            <h3 class="text-lg font-bold ${isFlex ? "text-amber-600" : "text-blue-800"} mb-3 border-b pb-2">${escapeLessonText(session.session_name)} ${isFlex || session.delivery_mode==="asynchronous" ? "(Asynchronous)" : session.delivery_mode==="mixed" ? "(Mixed delivery)" : ""}</h3>
             ${scheduleSummary}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">`;
 
     if (!isFlex) {
       html += `
+                <div>
+                  <label class="block text-[10px] font-extrabold text-blue-600 uppercase tracking-wider mb-1">Delivery Mode</label>
+                  <select class="session-input w-full p-2 border border-blue-200 rounded text-sm bg-blue-50" data-idx="${index}" data-key="delivery_mode" aria-label="Delivery mode for ${escapeLessonText(session.session_name)}">
+                    <option value="in_person" ${!["asynchronous","mixed"].includes(session.delivery_mode)?"selected":""}>In-person</option>
+                    <option value="asynchronous" ${session.delivery_mode==="asynchronous"?"selected":""}>Asynchronous / self-paced</option>
+                    <option value="mixed" ${session.delivery_mode==="mixed"?"selected":""}>Mixed by section or meeting</option>
+                  </select>
+                </div>
                 <div class="md:col-span-2 mb-2">
                     <label class="block text-[10px] font-extrabold text-blue-600 uppercase tracking-wider mb-1">Session Sub-Topic</label>
                     <textarea class="session-input w-full p-2 border border-blue-200 rounded text-sm bg-white font-bold text-gray-800" rows="1" data-idx="${index}" data-key="topic">${escapeLessonText(session.topic || window.currentWeeklyOverview?.topic || "")}</textarea>
@@ -390,17 +398,33 @@ window.renderOutput = function () {
     input.addEventListener("input", (e) => {
       const idx = e.target.getAttribute("data-idx");
       const key = e.target.getAttribute("data-key");
-      window.currentPlan[idx][key] = e.target.value;
+      const session=window.currentPlan[idx];
+      const previousMode=session.delivery_mode||"in_person";
+      session[key]=e.target.value;
+      if(key==="delivery_mode" && previousMode!==e.target.value){
+        const normalPrelim=lessonStorage.getItem("Adminerva_defaultPrelim")||"Opening Prayer\nAttendance Checking\nTECHNOTES";
+        const normalClosing=lessonStorage.getItem("Adminerva_defaultClosing")||"Summary of the Lesson\nClosing Prayer";
+        const prelims=[normalPrelim,"Reviewing the posted lesson objectives and accessing assigned learning materials.","Reviewing section-specific delivery instructions and required resources."];
+        const closings=[normalClosing,"Completing a self-check and recording questions for the next classroom discussion.","Summarizing progress and checking the next steps for the relevant section."];
+        const mode=e.target.value;
+        if(!session.preliminary||prelims.includes(session.preliminary))session.preliminary=mode==="asynchronous"?prelims[1]:mode==="mixed"?prelims[2]:prelims[0];
+        if(!session.closing||closings.includes(session.closing))session.closing=mode==="asynchronous"?closings[1]:mode==="mixed"?closings[2]:closings[0];
+        markLessonDraftDirty();
+        window.renderOutput();
+        return;
+      }
       markLessonDraftDirty();
-
-      e.target.style.height = "auto";
-      e.target.style.height = e.target.scrollHeight + "px";
+      if(e.target.tagName==="TEXTAREA"){
+        e.target.style.height = "auto";
+        e.target.style.height = e.target.scrollHeight + "px";
+      }
     });
   });
 
   setTimeout(() => {
     const textareas = container.querySelectorAll(".session-input");
     textareas.forEach((ta) => {
+      if(ta.tagName!=="TEXTAREA")return;
       ta.style.height = "auto";
       ta.style.height = ta.scrollHeight + "px";
     });
