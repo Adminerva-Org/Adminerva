@@ -109,6 +109,69 @@ function moveStudioEditorCursor(command){
   editorInstance.revealPositionInCenterIfOutsideViewport(editorInstance.getPosition());
 }
 
+const STUDIO_PREFS_KEY='Adminerva_Studio_Preferences_v1';
+function loadStudioPreferences(){
+  const defaults={cursorFollow:true,wordWrap:false,autoTerminal:true};
+  try{
+    const stored=JSON.parse(localStorage.getItem(STUDIO_PREFS_KEY)||'{}');
+    for(const key of Object.keys(defaults))if(typeof stored?.[key]==='boolean')defaults[key]=stored[key];
+  }catch{}
+  return defaults;
+}
+const studioPreferences=loadStudioPreferences();
+function applyStudioPreferences(){
+  editorInstance?.updateOptions({
+    wordWrap:studioPreferences.wordWrap?'on':'off',
+    cursorSurroundingLines:studioPreferences.cursorFollow?3:0
+  });
+}
+function revealStudioCursor(){
+  if(!editorInstance||!studioPreferences.cursorFollow)return;
+  if(document.getElementById('editorPane')?.offsetParent===null)return;
+  const position=editorInstance.getPosition();
+  if(position)editorInstance.revealPositionInCenterIfOutsideViewport(position);
+}
+function initializeStudioPreferences(){
+  applyStudioPreferences();
+  editorInstance?.onDidChangeCursorPosition(event=>{
+    if(!studioPreferences.cursorFollow||event.source==='mouse')return;
+    requestAnimationFrame(revealStudioCursor);
+  });
+  editorInstance?.onDidChangeModelContent(()=>{
+    if(studioPreferences.cursorFollow)requestAnimationFrame(revealStudioCursor);
+  });
+  let lastHeight=window.visualViewport?.height;
+  window.visualViewport?.addEventListener('resize',()=>{
+    const height=window.visualViewport?.height;
+    if(height===lastHeight)return;
+    lastHeight=height;
+    if(!window.matchMedia('(max-width:767px)').matches)return;
+    requestAnimationFrame(()=>{
+      editorInstance?.layout();
+      revealStudioCursor();
+    });
+  });
+  const dialog=document.getElementById('studioPreferencesDialog');
+  if(!dialog)return;
+  const fields={cursorFollow:'studioPrefCursorFollow',wordWrap:'studioPrefWordWrap',autoTerminal:'studioPrefAutoTerminal'};
+  for(const [key,id] of Object.entries(fields)){
+    const checkbox=document.getElementById(id);
+    if(!checkbox)continue;
+    checkbox.checked=studioPreferences[key];
+    checkbox.addEventListener('change',()=>{
+      studioPreferences[key]=checkbox.checked;
+      try{localStorage.setItem(STUDIO_PREFS_KEY,JSON.stringify(studioPreferences));}catch{}
+      applyStudioPreferences();
+      if(key==='cursorFollow')revealStudioCursor();
+    });
+  }
+  const open=()=>{if(!dialog.open)dialog.showModal();};
+  const close=()=>{if(dialog.open)dialog.close();};
+  document.getElementById('studioPreferencesBtn')?.addEventListener('click',open);
+  document.getElementById('studioPreferencesClose')?.addEventListener('click',close);
+  document.getElementById('studioPreferencesDone')?.addEventListener('click',close);
+}
+
 const JAVA_RUN_MODE_KEY="Adminerva_Java_Run_Mode_v1";
 let javaRunMode=(()=>{try{return localStorage.getItem(JAVA_RUN_MODE_KEY)==="desktop"?"desktop":"console";}catch{return "console";}})();
 let desktopRunSequence=0;
@@ -206,6 +269,8 @@ async function initializePlayground() {
 
     bindUIEvents();
     initializeMobileStudio();
+    initializeStudioEditorTouchGestures();
+    initializeStudioPreferences();
     studioRuntimeIntegration=installStudioRuntime({
       monaco,editor:editorInstance,auth,guest:guestMode,
       getLanguage:()=>currentLang,
@@ -1501,6 +1566,79 @@ function notePracticeExecution(){
     }
   }catch(error){console.warn("Could not record practice run:",error)}
 }
+function initializeStudioEditorTouchGestures(){
+  const surface=document.getElementById('editorContainer');
+  if(!surface||!editorInstance)return;
+  const supportsTouch=()=>window.matchMedia('(pointer:coarse)').matches||navigator.maxTouchPoints>0;
+  const clampFont=value=>Math.max(STUDIO_EDITOR_FONT_MIN,Math.min(STUDIO_EDITOR_FONT_MAX,value));
+  const fingers=event=>Array.from(event.touches).filter(t=>surface.contains(t.target));
+  const centerOf=points=>({
+    x:(points[0].clientX+points[1].clientX)/2,
+    y:(points[0].clientY+points[1].clientY)/2
+  });
+  const distanceOf=points=>Math.hypot(
+    points[0].clientX-points[1].clientX,
+    points[0].clientY-points[1].clientY
+  );
+  let gesture=null;
+  const begin=event=>{
+    if(!supportsTouch())return;
+    const points=fingers(event);
+    if(points.length!==2||event.touches.length!==2||!editorInstance.getModel())return;
+    const distance=distanceOf(points);
+    if(distance<12)return;
+    gesture={
+      center:centerOf(points),
+      distance,
+      font:editorInstance.getOption(monaco.editor.EditorOption.fontSize)
+    };
+  };
+  surface.addEventListener('touchstart',event=>{
+    if(event.touches.length===2){
+      begin(event);
+      if(gesture){event.preventDefault();event.stopPropagation();}
+    }else if(event.touches.length!==2)gesture=null;
+  },{capture:true,passive:false});
+  surface.addEventListener('touchmove',event=>{
+    if(!gesture)return;
+    const points=fingers(event);
+    if(points.length!==2||event.touches.length!==2){
+      gesture=null;
+      return;
+    }
+    // Prevent browser page zoom/scroll only during a two-finger editor gesture.
+    event.preventDefault();
+    event.stopPropagation();
+    const currentCenter=centerOf(points);
+    const currentDistance=Math.max(12,distanceOf(points));
+    const previous=gesture;
+    const dx=currentCenter.x-previous.center.x;
+    const dy=currentCenter.y-previous.center.y;
+    const oldFont=editorInstance.getOption(monaco.editor.EditorOption.fontSize);
+    const desiredFont=clampFont(previous.font*(currentDistance/previous.distance));
+    const nextFont=Math.round(desiredFont);
+    const previousLeft=editorInstance.getScrollLeft();
+    const previousTop=editorInstance.getScrollTop();
+    if(nextFont!==oldFont)setStudioEditorFontSize(nextFont);
+    const appliedScale=nextFont/oldFont;
+    const bounds=surface.getBoundingClientRect();
+    const anchorX=currentCenter.x-bounds.left;
+    const anchorY=currentCenter.y-bounds.top;
+    // Fingers moving left show columns farther right; moving up shows later lines.
+    // Keep the touched content approximately under the pinch midpoint.
+    editorInstance.setScrollLeft(Math.max(0,(previousLeft+anchorX)*appliedScale-anchorX-dx));
+    editorInstance.setScrollTop(Math.max(0,(previousTop+anchorY)*appliedScale-anchorY-dy));
+    gesture={center:currentCenter,distance:currentDistance,font:desiredFont};
+  },{capture:true,passive:false});
+  const end=event=>{
+    if(event.touches.length!==2)gesture=null;
+    else if(gesture)begin(event);
+  };
+  surface.addEventListener('touchend',end,{capture:true,passive:true});
+  surface.addEventListener('touchcancel',()=>{gesture=null;},{capture:true,passive:true});
+  window.addEventListener('blur',()=>{gesture=null;});
+}
+
 function initializeMobileStudio(){
   const panel=document.getElementById('studioPanelCode');
   const explorer=document.getElementById('projectExplorer');
@@ -1513,7 +1651,23 @@ function initializeMobileStudio(){
   const mobileRun=document.getElementById('studioMobileRun');
   const toolbar=document.querySelector('.studio-mobile-toolbar');
   const projectBar=document.querySelector('.studio-project-bar');
+  const toolsBar=document.querySelector('.studio-tabs');
+  const toolsPanel=document.getElementById('studioToolsPanel');
+  const toolsToggle=document.getElementById('studioMobileToolsToggle');
   if(!panel||!explorer||!actions||!backdrop||!toolbar)return;
+  // Keep the original control IDs and event handlers; only their location changes.
+  for(const id of ['saveProjectBtn','runBtn']){
+    const button=document.getElementById(id);
+    if(button&&toolsPanel)toolsPanel.appendChild(button);
+  }
+  const setToolsOpen=open=>{
+    toolsPanel?.classList.toggle('studio-tools-open',Boolean(open));
+    toolsToggle?.setAttribute('aria-expanded',String(Boolean(open)));
+  };
+  toolsToggle?.addEventListener('click',()=>setToolsOpen(!toolsPanel?.classList.contains('studio-tools-open')));
+  toolsPanel?.addEventListener('click',event=>{
+    if(event.target.closest('[data-studio-view]')&&compact())setToolsOpen(false);
+  });
   const compact=()=>window.matchMedia('(max-width:767px)').matches;
   let activeDrawer=null;
   const closeDrawer=()=>{
@@ -1529,13 +1683,9 @@ function initializeMobileStudio(){
     if(activeDrawer===side){closeDrawer();return;}
     closeDrawer();
     activeDrawer=side;
-    // The V4 explorer is a collapsible details element. Open its content
-    // before exposing the mobile drawer, while preserving desktop collapsing.
-    if(side==='files'&&'open' in explorer)explorer.open=true;
     (side==='files'?explorer:actions).classList.add('studio-drawer-open');
     backdrop.classList.remove('hidden');
     (side==='files'?filesButton:moreButton)?.setAttribute('aria-expanded','true');
-    document.getElementById(side==='files'?'studioMobileCloseFiles':'studioMobileCloseMore')?.focus();
   };
   const setPane=pane=>{
     const value=pane==='terminal'?'terminal':'editor';
@@ -1547,11 +1697,18 @@ function initializeMobileStudio(){
   };
   filesButton?.addEventListener('click',()=>showDrawer('files'));
   moreButton?.addEventListener('click',()=>showDrawer('actions'));
-  document.getElementById('studioMobileCloseFiles')?.addEventListener('click',event=>{event.preventDefault();closeDrawer();filesButton?.focus();});
+  document.getElementById('studioMobileCloseFiles')?.addEventListener('click',closeDrawer);
   document.getElementById('studioMobileCloseMore')?.addEventListener('click',closeDrawer);
+  document.getElementById('studioMobileBackToProjects')?.addEventListener('click',()=>{
+    closeDrawer();
+    document.getElementById('backToProjectsBtn')?.click();
+  });
   editorButton?.addEventListener('click',()=>setPane('editor'));
   terminalButton?.addEventListener('click',()=>setPane('terminal'));
-  mobileRun?.addEventListener('click',()=>{setPane('terminal');document.getElementById('runBtn')?.click();});
+  mobileRun?.addEventListener('click',()=>{
+    if(studioPreferences.autoTerminal)setPane('terminal');
+    document.getElementById('runBtn')?.click();
+  });
   backdrop.addEventListener('click',closeDrawer);
   document.addEventListener('keydown',event=>{if(event.key==='Escape')closeDrawer();});
   explorer.addEventListener('click',event=>{
@@ -1562,6 +1719,7 @@ function initializeMobileStudio(){
   const resize=()=>{
     if(!compact()){
       closeDrawer();
+      setToolsOpen(false);
       panel.removeAttribute('data-mobile-pane');
       requestAnimationFrame(()=>editorInstance?.layout());
     }else if(!panel.dataset.mobilePane){
@@ -1593,14 +1751,19 @@ function initializeMobileStudio(){
     if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.4)return;
     if(activeDrawer){
       if((activeDrawer==='files'&&dx<0)||(activeDrawer==='actions'&&dx>0))closeDrawer();
+    }else if(origin==='menus'){
+      if(dx>0)showDrawer('actions');
+    }else if(origin==='tools'){
+      if(dx>0)setToolsOpen(true);
+      else setToolsOpen(false);
     }else if(origin==='chrome'){
       showDrawer(dx>0?'files':'actions');
     }
   };
-  for(const surface of [toolbar,projectBar]){
+  for(const [surface,origin] of [[toolbar,'chrome'],[projectBar,'menus'],[toolsBar,'tools']]){
     if(!surface)continue;
     surface.addEventListener('pointerdown',swipeStart,{passive:true});
-    surface.addEventListener('pointerup',event=>swipeEnd(event,'chrome'),{passive:true});
+    surface.addEventListener('pointerup',event=>swipeEnd(event,origin),{passive:true});
     surface.addEventListener('pointercancel',()=>{start=null;},{passive:true});
   }
   for(const surface of [explorer,actions]){
