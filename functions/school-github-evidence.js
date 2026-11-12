@@ -99,6 +99,7 @@ function createSchoolGithubEvidenceService({db}){
   const evidenceRef=evidenceCollection.doc(evidenceId);
 
   if(input.action==="my_status"){
+   if(taskData.published!==true)deny("not-found","This GitHub assessment is not published to students.");
    const {personId}=await verifyStudentRead();
    const current=await evidenceRef.get();
    if(!current.exists)return {taskId,submitted:false,status:"not_submitted",version:0};
@@ -115,6 +116,7 @@ function createSchoolGithubEvidenceService({db}){
 
   if(input.action==="submit"){
    if(!ctx.roles.includes("student"))deny("permission-denied","Student evidence submission is required.");
+   if(taskData.published!==true)deny("not-found","This GitHub assessment is not published to students.");
    const repo=repository(input.repository);
    if(!Array.isArray(input.selectedCommitShas)||!input.selectedCommitShas.length||
       input.selectedCommitShas.length>100)
@@ -137,7 +139,7 @@ function createSchoolGithubEvidenceService({db}){
     ]);
     if(!currentTask.exists||currentTask.data().schoolId!==ctx.schoolId||
        currentTask.data().submissionSource!=="github"||currentTask.data().status!=="deployed"||
-       currentTask.data().offeringId!==offeringId)
+       currentTask.data().published!==true||currentTask.data().offeringId!==offeringId)
       deny("failed-precondition","The GitHub evidence assessment changed.");
     if(!person.exists||person.data().schoolId!==ctx.schoolId||person.data().authUid!==ctx.uid||
        person.data().kind!=="student"||person.data().status!=="active"||

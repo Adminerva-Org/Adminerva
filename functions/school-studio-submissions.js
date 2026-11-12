@@ -35,6 +35,8 @@ function createSchoolStudioSubmissionService({db}){
   const offeringId=task.data().offeringId;
   if(input.action==="submit"||input.action==="my_status"){
    if(!ctx.roles.includes("student"))deny("permission-denied","Student permission is required.");
+   if(task.data().published!==true)
+    deny("not-found","This Studio assessment is not published to students.");
    const membership=await membershipRef.get();
    const personId=membership.data()?.personId;
    if(typeof personId!=="string")deny("failed-precondition","Link your verified school person record before submitting.");
@@ -55,6 +57,7 @@ function createSchoolStudioSubmissionService({db}){
     return {taskId,submitted:submission.exists,
       status:submission.exists?submission.data().status:"not_submitted",
       version:submission.exists?submission.data().currentVersion:0,
+      variantId:submission.exists?submission.data().variantId||"":"" ,
       revisionRequested:submission.exists&&submission.data().status==="reopened",
       requestMessage:submission.exists&&submission.data().status==="reopened"?
        submission.data().revisionRequestMessage||"":"",
@@ -82,7 +85,7 @@ function createSchoolStudioSubmissionService({db}){
     const assessment=currentTask.data();
     if(!currentTask.exists||assessment.schoolId!==ctx.schoolId||
        assessment.submissionSource!=="studio"||assessment.status!=="deployed"||
-       assessment.offeringId!==offeringId)
+       assessment.published!==true||assessment.offeringId!==offeringId)
      deny("failed-precondition","The assigned Studio assessment is no longer available.");
     const lifecycle=assessment.lifecycle||"active",
       revisionOpen=submission.exists&&submission.data().status==="reopened";
@@ -118,18 +121,36 @@ function createSchoolStudioSubmissionService({db}){
       deny("failed-precondition","This assessment is already submitted. Your teacher must request a revision first.");
      version=prior.currentVersion+1;
     }
+    let variantId="",variantPrompt="";
+    if(assessment.personalizedTask?.enabled===true){
+      variantId=String(input.variantId||"");
+      const variantAttempt=Number(input.variantAttempt);
+      if(!/^[a-f0-9]{24}$/.test(variantId)||variantAttempt!==version)
+        deny("failed-precondition","Open this personalized task from My Assignments before submitting.");
+      const assignmentRef=db.doc(prefix+"studio_variant_assignments/"+submissionId+"/attempts/"+version),
+        assigned=await tx.get(assignmentRef),data=assigned.exists?assigned.data():null;
+      if(!assigned.exists||data.schoolId!==ctx.schoolId||data.taskId!==taskId||
+         data.studentUid!==ctx.uid||data.personId!==personId||data.attempt!==version||
+         data.variantId!==variantId||
+         data.poolFingerprint!==assessment.personalizedTask.poolFingerprint||
+         !Array.isArray(assessment.personalizedTask.variantIds)||
+         !assessment.personalizedTask.variantIds.includes(variantId)||
+         typeof data.prompt!=="string"||data.prompt.trim().length<20)
+        deny("failed-precondition","The personalized task does not match this submission attempt.");
+      variantPrompt=data.prompt;
+    }
     const versionRef=submissionRef.collection("versions").doc(String(version));
     const artifacts=project.data().artifacts||{},frozenDigest=digestProject(files,artifacts),when=FieldValue.serverTimestamp();
     tx.create(versionRef,{schoolId:ctx.schoolId,taskId,offeringId,studentUid:ctx.uid,personId,
       projectId,projectRevision:revision,files,artifacts,contentDigest:frozenDigest,
-      sourceLanguage:project.data().language,submittedAt:when,version});
+      sourceLanguage:project.data().language,variantId,variantPrompt,submittedAt:when,version});
     if(submission.exists){
      tx.update(submissionRef,{status:"submitted",currentVersion:version,
-       projectId,projectRevision:revision,contentDigest:frozenDigest,
+       projectId,projectRevision:revision,variantId,contentDigest:frozenDigest,
        revisionRequestMessage:null,revisionDueAt:null,updatedAt:when});
     }else{
      tx.create(submissionRef,{schoolId:ctx.schoolId,taskId,offeringId,studentUid:ctx.uid,
-       personId,projectId,projectRevision:revision,contentDigest:frozenDigest,
+       personId,projectId,projectRevision:revision,variantId,contentDigest:frozenDigest,
        status:"submitted",currentVersion:version,createdAt:when,updatedAt:when});
     }
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,submissionId,studentUid:ctx.uid,
@@ -176,7 +197,7 @@ function createSchoolStudioSubmissionService({db}){
       submissionId:d.id,studentUid:d.data().studentUid,personId:d.data().personId,
       studentName:people[index].exists&&people[index].data().schoolId===ctx.schoolId?
         people[index].data().displayName:"Student",
-      status:d.data().status,version:d.data().currentVersion,
+      status:d.data().status,version:d.data().currentVersion,variantId:d.data().variantId||"",
       updatedAt:d.data().updatedAt?.toMillis?.()||null
     }))};
   }
@@ -192,9 +213,22 @@ function createSchoolStudioSubmissionService({db}){
    if(!snapshot.exists||snapshot.data().schoolId!==ctx.schoolId||
      snapshot.data().contentDigest!==digestProject(snapshot.data().files,snapshot.data().artifacts||{}))
     deny("failed-precondition","Frozen submission content is not verifiable.");
+   let personalizedTask=null;
+   const variantId=String(snapshot.data().variantId||"");
+   if(variantId){
+     const fingerprint=String(task.data().personalizedTask?.poolFingerprint||""),
+       variant=await db.doc(prefix+"assessment_blueprint_private/"+task.data().blueprintId+
+         "/pools/"+fingerprint+"/variants/"+variantId).get();
+     if(!variant.exists||variant.data().schoolId!==ctx.schoolId||
+        variant.data().blueprintId!==task.data().blueprintId||
+        variant.data().fingerprint!==fingerprint||variant.data().variantId!==variantId)
+       deny("failed-precondition","The private personalized task record is unavailable.");
+     personalizedTask={variantId,prompt:snapshot.data().variantPrompt||variant.data().prompt||"",
+       evaluationNotes:variant.data().evaluationNotes||""};
+   }
    return {submissionId,taskId,status:submission.data().status,version,
      files:snapshot.data().files,artifacts:snapshot.data().artifacts||{},contentDigest:snapshot.data().contentDigest,
-     language:snapshot.data().sourceLanguage};
+     language:snapshot.data().sourceLanguage,personalizedTask};
   }
   if(input.action==="request_revision"){
    const reason=String(input.reason||"").trim();

@@ -1,6 +1,6 @@
 import {auth,db} from "./firebase-core.js?v=1.3.0";
 import {collection,getDocs,query,orderBy,limit} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
+import {resolveLegacyStaffRole as resolveStaffRole} from "./staff-session.mjs?v=4.0.2";
 import {matchingStudentRecords,decideAdmission} from "./admission-service.mjs?v=1.3.0";
 import {loadSchoolOptions,fillSchoolDatalist} from "./school-options.mjs?v=1.3.0";
 const field=id=>document.getElementById(id);

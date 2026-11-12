@@ -20,7 +20,7 @@ const {repository,digestEvidence}=require("./school-github-evidence.js");
 const {validateFiles,validateArtifacts,digestProject}=require("./school-studio-projects.js");
 const {validatePlan:validateAssessmentPlan,validateApproval:validateAssessmentApproval}=require("./mcs-canonical-assessment-apply.js");
 
-const SCHEMA="adminerva-v4-mcs-canonical-evidence-grade-plan-v1";
+const SCHEMA="adminerva-v4-mcs-canonical-evidence-grade-plan-v2";
 const sha=value=>createHash("sha256").update(value).digest("hex");
 const v4Key=(...parts)=>sha(JSON.stringify(parts));
 function clean(value,max=5000){return typeof value==="string"?value.trim().slice(0,max):"";}
@@ -156,7 +156,7 @@ function convertStudioSnapshot(version){
  return {ok:true,files,artifacts,sourceLanguage:clean(parsed.lang,30)||"text",
   contentDigest:digestProject(files,artifacts),legacySnapshotHash:expected};
 }
-function studioCandidate({row,versions,task,student,now=Date.now()}){
+function studioCandidate({row,versions,assignments,task,student,legacyStudentId,now=Date.now()}){
  const head=row.data,status=clean(head.status,40);
  if(!["submitted","reviewed","revision_requested"].includes(status))
   return {ok:false,reason:"unsupported_studio_lifecycle_status",status};
@@ -171,7 +171,27 @@ function studioCandidate({row,versions,task,student,now=Date.now()}){
   if(!convertedSnapshot.ok)return convertedSnapshot;
   const version=Number(versionRow.data.revision)||Number(versionRow.id);
   if(!Number.isInteger(version)||version<1)return {ok:false,reason:"studio_version_number_invalid"};
+  const legacyVariantId=clean(versionRow.data.variantId,64);
+  let variantId="",variantPrompt="",variantSourcePath=null;
+  if(task.personalizedTask?.enabled===true){
+   if(!legacyVariantId||!Array.isArray(task.personalizedTask.variantIds)||
+      !task.personalizedTask.variantIds.includes(legacyVariantId))
+    return {ok:false,reason:"studio_personalized_variant_id_missing_or_unapproved"};
+   const assigned=(assignments||[]).find(item=>
+     (Number(item.id)===version||Number(item.data?.attempt)===version)&&
+     item.data?.variantId===legacyVariantId);
+   if(!assigned||clean(assigned.data.assessmentId,128)!==task.sourceAssessmentId||
+      clean(assigned.data.studentId,128)!==legacyStudentId||
+      Number(assigned.data.attempt)!==version||
+      assigned.data.poolFingerprint!==task.migration?.legacyPersonalizationFingerprint||
+      typeof assigned.data.prompt!=="string"||assigned.data.prompt.trim().length<20)
+    return {ok:false,reason:"studio_personalized_attempt_provenance_missing",variantId:legacyVariantId};
+   variantId=legacyVariantId;variantPrompt=assigned.data.prompt;variantSourcePath=assigned.path;
+  }else if(legacyVariantId){
+   return {ok:false,reason:"studio_unexpected_personalized_variant"};
+  }
   converted.push({version,...convertedSnapshot,projectId:clean(versionRow.data.projectId,128),
+   variantId,variantPrompt,variantSourcePath,
    submittedAt:timeMillis(versionRow.data.submittedAt),
    projectRevision:Number.isInteger(versionRow.data.projectRevision)?versionRow.data.projectRevision:0});
  }
@@ -180,21 +200,26 @@ function studioCandidate({row,versions,task,student,now=Date.now()}){
  const current=converted.at(-1),headRevision=Number(head.revision)||0;
  if(headRevision!==current.version||String(head.snapshotHash||"").toLowerCase()!==current.legacySnapshotHash)
   return {ok:false,reason:"studio_head_version_mismatch"};
+ if(task.personalizedTask?.enabled===true&&clean(head.variantId,64)&&clean(head.variantId,64)!==current.variantId)
+  return {ok:false,reason:"studio_head_personalized_variant_mismatch"};
  const mappedStatus=status==="revision_requested"?"reopened":status;
  const requiresRevisionExtension=mappedStatus==="reopened"&&Number(task.dueAt)<now;
  const submissionId=v4Key(SCHOOL_ID,task.taskId,student.uid);
  return {ok:true,submissionId,targetPath:"schools/"+SCHOOL_ID+"/studio_submissions/"+submissionId,
   schoolId:SCHOOL_ID,taskId:task.taskId,offeringId:task.offeringId,
   studentUid:student.uid,personId:student.personId,projectId:clean(head.projectId,128)||current.projectId,
-  projectRevision:current.projectRevision,contentDigest:current.contentDigest,status:mappedStatus,
+  projectRevision:current.projectRevision,variantId:current.variantId||"",
+  contentDigest:current.contentDigest,status:mappedStatus,
   currentVersion:current.version,revisionRequestMessage:mappedStatus==="reopened"?clean(head.reviewNote||head.revisionRequestMessage,2000):null,
   revisionDueAt:null,requiresRevisionExtension,
   reviewedByUid:mappedStatus==="reviewed"?task.ownerUid:null,
   versions:converted.map(item=>({schoolId:SCHOOL_ID,taskId:task.taskId,offeringId:task.offeringId,
    studentUid:student.uid,personId:student.personId,projectId:item.projectId,projectRevision:item.projectRevision,
    files:item.files,artifacts:item.artifacts,contentDigest:item.contentDigest,
-   sourceLanguage:item.sourceLanguage,submittedAt:item.submittedAt,version:item.version,
-   migration:{legacySnapshotHash:item.legacySnapshotHash}})),
+   sourceLanguage:item.sourceLanguage,variantId:item.variantId||"",variantPrompt:item.variantPrompt||"",
+   submittedAt:item.submittedAt,version:item.version,
+   migration:{legacySnapshotHash:item.legacySnapshotHash,
+    personalizedAssignmentSourcePath:item.variantSourcePath||null}})),
   migration:{sourcePath:row.path,legacySubmissionId:row.id,originalStatus:status,
    legacyReviewedBy:clean(head.reviewedBy,128),legacyReviewNote:clean(head.reviewNote,2000)}};
 }
@@ -357,7 +382,8 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
  const approvedAssessments=validateAssessmentApproval(
   validateAssessmentPlan(assessmentPlan),assessmentPlanRaw,assessmentApproval);
  const approvedAssessmentView={...assessmentPlan,tasks:approvedAssessments.tasks,
-  blueprints:approvedAssessments.blueprints};
+  blueprints:approvedAssessments.blueprints,
+  personalizationPools:approvedAssessments.personalizationPools||[]};
  const students=approvedStudentMap(foundationPlan,foundationPlanRaw,foundationApproval);
  const access=validateAccessApproval(validateAccessPlan(academicAccessPlan),academicAccessPlanRaw,academicAccessApproval);
  const enrolled=new Set(access.enrollments.map(row=>row.personId+"|"+row.offeringId));
@@ -394,8 +420,12 @@ async function buildEvidenceGradePlan(db,{foundationPlan,foundationPlanRaw,found
   if(!enrolled.has(student.personId+"|"+task.offeringId)){
    blockers.push({type:"studio_student_enrollment_unapproved",sourcePath:row.path,personId:student.personId,offeringId:task.offeringId});continue;
   }
-  const versions=await readMirrorSubcollection(db,"studio_submissions",row.id,"versions");
-  const candidate=studioCandidate({row,versions,task,student});
+  const [versions,assignments]=await Promise.all([
+    readMirrorSubcollection(db,"studio_submissions",row.id,"versions"),
+    task.personalizedTask?.enabled===true?
+      readMirrorSubcollection(db,"studio_assessment_variants",row.id,"attempts"):[]
+  ]);
+  const candidate=studioCandidate({row,versions,assignments,task,student,legacyStudentId});
   if(!candidate.ok){blockers.push({type:candidate.reason,sourcePath:row.path,
     taskDueAt:candidate.taskDueAt||null,message:candidate.message||""});continue;}
   if(candidate.requiresRevisionExtension)reviewItems.push({

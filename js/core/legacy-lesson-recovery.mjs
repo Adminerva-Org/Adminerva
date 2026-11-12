@@ -1,7 +1,7 @@
 /** Explicit recovery copies; shared originals are never edited from this interface. */
 import {app,auth} from "./firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
+import {resolveLegacyStaffRole as resolveStaffRole} from "./staff-session.mjs?v=4.0.2";
 const request=httpsCallable(getFunctions(app,"asia-southeast1"),"legacyLessonRecovery",{timeout:120000});
 const setupRequest=httpsCallable(getFunctions(app,"asia-southeast1"),"legacySchoolSetup",{timeout:120000});
 export async function restoreOriginalTeacherSections(){

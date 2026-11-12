@@ -1,6 +1,6 @@
 import {resolveAccountAccess} from "./staff-session-v4-pilot.mjs?v=4.0.1";
 import {activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "./connection-cache.mjs?v=1.3.0";
-import {rememberWorkspace,roleHome} from "./session-destination-v4-pilot.mjs?v=4.0.1";
+import {rememberWorkspace,roleHome} from "./session-destination-v4-pilot.mjs?v=4.1.4";
 /** Verified account admission, workspace visibility and sign-out routing. */
 import { auth } from "./firebase-core.js?v=1.3.0";
 import {
@@ -140,6 +140,14 @@ async function checkAccess(user){
      !(["teacher","admin"].includes(admittedRole))){
     replacePage(roleHome(actualRole));return;
   }
+  if(/\/(school-teacher-analytics)\.html$/.test(currentPath)&&
+     !(access.schoolTeacher||access.schoolAdmin||admittedRole==="admin")){
+    replacePage(roleHome(actualRole));return;
+  }
+  if(/\/(school-practice-analytics)\.html$/.test(currentPath)&&
+     !(access.schoolTeacher||access.schoolAdmin||admittedRole==="admin")){
+    replacePage(roleHome(actualRole));return;
+  }
   if(/\/(pilot-sandbox)\.html$/.test(currentPath)&&!(access.schoolTeacher||access.legacyRole==="teacher"||admittedRole==="teacher")){replacePage(roleHome(actualRole));return;}
   if(/\/(school-gradebook)\.html$/.test(currentPath)&&!access.schoolTeacher){
     replacePage(roleHome(actualRole));return;
@@ -147,8 +155,18 @@ async function checkAccess(user){
   if(/\/(class-record)\.html$/.test(currentPath)&&!access.schoolTeacher){
     replacePage(roleHome(actualRole));return;
   }
+  if(/\/(teacher-reference-library)\.html$/.test(currentPath)&&!access.schoolTeacher){
+    replacePage(roleHome(actualRole));return;
+  }
+  if(/\/(school-reference-library)\.html$/.test(currentPath)&&
+     !(access.schoolTeacher||access.schoolAdmin||admittedRole==="admin")){
+    replacePage(roleHome(actualRole));return;
+  }
+  if(v4Cutover&&access.schoolAdmin&&currentPath.endsWith("/issues.html")){
+    replacePage("school-support.html");return;
+  }
   if(actualRole==="schooladmin"&&!access.schoolTeacher&&
-     !/\/(teacher-home|school-admin|school-pilot|people-access|school-grading-schemes|school-class-records|reclaim-inbox|settings|issues|join-school|wiki)\.html$/.test(currentPath)){
+     !/\/(teacher-home|school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-grading-schemes|school-class-records|school-reference-library|reclaim-inbox|settings|issues|school-support|join-school|wiki)\.html$/.test(currentPath)){
     replacePage("school-admin.html");return;
   }
   if(actualRole==="platformowner"&&!access.schoolAdmin&&!access.schoolTeacher&&!access.schoolStudent&&
@@ -159,6 +177,10 @@ async function checkAccess(user){
      !access.schoolStudent){
     replacePage(roleHome(actualRole));return;
   }
+  if(/\/(school-support)\.html$/.test(currentPath)&&
+     !(access.schoolAdmin||access.schoolTeacher||access.schoolStudent)){
+    replacePage(roleHome(actualRole));return;
+  }
   const v4OnlyStudent=access.schoolStudent&&
     (v4Cutover||!access.students?.length)&&!access.schoolTeacher&&!access.schoolAdmin;
   if(v4OnlyStudent){
@@ -166,13 +188,14 @@ async function checkAccess(user){
     const legacyStudentRoutes={
       "student-dashboard.html":"school-student-projects.html",
       "student-settings.html":"school-student-settings.html",
-      "student-assessments.html":"school-student-assessments.html"
+      "student-assessments.html":"school-student-assessments.html",
+      "issues.html":"school-support.html"
     };
     if(legacyStudentRoutes[page]){replacePage(legacyStudentRoutes[page]);return;}
     const allowed=new Set([
       "student-home.html","school-student-projects.html","school-student-settings.html",
       "school-student-assessments.html","school-student-grades.html","student-practice.html","student-playground.html",
-      "student-xml-lab.html","issues.html","join-school.html","wiki.html"
+      "student-xml-lab.html","school-support.html","join-school.html","wiki.html"
     ]);
     if(!allowed.has(page)){replacePage("student-home.html");return;}
   }
@@ -181,10 +204,11 @@ async function checkAccess(user){
     const page=currentPath.split("/").pop();
     const allowed=new Set([
       "teacher-home.html","teacher-assessment-library.html","school-gradebook.html","class-record.html","pilot-sandbox.html",
-      "people-access.html","school-admin.html","school-pilot.html","school-grading-schemes.html","school-class-records.html",
-      "reclaim-inbox.html","learning-follow-up.html","teacher-analytics.html","practice-analytics.html",
-      "lesson-planner.html","presentation.html","schedule.html","library.html",
-      "settings.html","issues.html","join-school.html","wiki.html",
+      "school-support.html","people-access.html","school-admin.html","school-pilot.html","school-analytics.html","school-data-controls.html","school-cutover-readiness.html","school-onboarding-readiness.html","school-grading-schemes.html",
+      ...(access.schoolAdmin?["school-class-records.html"]:[]),
+      "school-teacher-analytics.html","school-practice-analytics.html","reclaim-inbox.html",
+      "lesson-planner.html","presentation.html","schedule.html","teacher-reference-library.html","school-reference-library.html",
+      "settings.html","join-school.html","wiki.html",
       ...(access.platformAdmin?["owner-schools.html"]:[])
     ]);
     if(!allowed.has(page)){
@@ -195,18 +219,23 @@ async function checkAccess(user){
       ]);
       const destination=gradingPages.has(page)?"school-gradebook.html":
         page==="assessment-studio.html"?"teacher-assessment-library.html":
-        "teacher-home.html";
+        page==="teacher-analytics.html"&&location.hash==="#practice"?"school-practice-analytics.html":
+        page==="teacher-analytics.html"?"school-teacher-analytics.html":
+        page==="practice-analytics.html"?"school-practice-analytics.html":
+        page==="issues.html"?"school-support.html":"teacher-home.html";
       replacePage(destination);return;
     }
   }
   const isIssuesPage = currentPath.includes("issues.html");
+  const isSchoolSupportPage = currentPath.includes("school-support.html");
 
   // 4. Strict Routing Enforcement
   if (
     activeRole === "student" &&
     !currentPath.includes("student-") &&
     !isLoginPage &&
-    !isIssuesPage
+    !isIssuesPage &&
+    !isSchoolSupportPage
   ) {
     replacePage(roleHome("student"));
     return;

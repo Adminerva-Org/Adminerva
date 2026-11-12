@@ -36,7 +36,8 @@ test("device preferences never read another account or silently adopt shared leg
 test("workspace reads wait for restored authentication and bind only a server-authorized identity",async()=>{
   const user={uid:"restored",emailVerified:true};let restore,called=false;
   const auth={currentUser:null,authStateReady:()=>new Promise(resolve=>{restore=resolve;})};
-  const context={auth,staffSessionReady:Promise.resolve({user:null,role:null}),resolveStaffRole:async identity=>{called=true;return identity===user?"teacher":null;},
+  const context={auth,staffSessionReady:Promise.resolve({user:null,role:null}),
+    resolveAccountAccess:async identity=>{called=true;return {role:identity===user?"teacher":null,schoolTeacher:false};},
     onAuthStateChanged(){},workspacePath,scopedStorage,localStorage:{},location:{replace(){}},document:{readyState:"loading",addEventListener(){}},doc:(_database,...parts)=>parts,collection:(_database,...parts)=>parts};
   const source=readFileSync("js/lesson-review/workspace-session.mjs","utf8").replace(/^import[^;]+;\s*/gm,"").replace(/\bexport\s+/g,"");
   runInNewContext(source+"\nglobalThis.api={requireStaffWorkspace,workspaceUid};",context);

@@ -75,6 +75,34 @@ async function dryRunLedger(db,{schoolId="mcs-manila",limit=DEFAULT_LIMIT,includ
   await scanCollection(db.collection(root),1);
   if(report.truncated)break;
  }
+ // Personalized Studio attempt documents live below intentionally absent parent
+ // documents (studio_assessment_variants/{student_assessment}/attempts/{n}).
+ // A root collection query cannot discover them, so inventory the collection group
+ // explicitly and keep only paths belonging to that root. Deduplicate in case a
+ // future schema starts creating the parent document.
+ const knownPaths=new Set(report.entries.map(entry=>entry.sourcePath));
+ if(report.summary.total<limit){
+  const attempts=await db.collectionGroup("attempts").get();
+  if(!report.groups.studio_assessment_variants)
+   report.groups.studio_assessment_variants={classification:"school_candidate",documents:0,nestedDocuments:0};
+  const totals=report.groups.studio_assessment_variants;
+  for(const doc of attempts.docs.sort((a,b)=>a.ref.path.localeCompare(b.ref.path))){
+   if(!doc.ref.path.startsWith("studio_assessment_variants/")||knownPaths.has(doc.ref.path))continue;
+   if(report.summary.total>=limit){report.truncated=true;break;}
+   const sourcePath=doc.ref.path,record=doc.data();
+   let destination=null;
+   if(includeExistingTargets){
+    const targetPath=mapPath(sourcePath,schoolId).targetPath,
+      existing=await db.doc(targetPath).get();
+    destination={exists:existing.exists,data:existing.exists?existing.data():null};
+   }
+   const entry=candidateEntry({sourcePath,data:record,
+     updateTime:safeTime(doc.updateTime),schoolId,destination});
+   report.entries.push(entry);knownPaths.add(sourcePath);
+   report.summary.total++;report.summary[entry.decision]++;
+   totals.documents++;totals.nestedDocuments++;
+  }
+ }
  if(report.unknownRoots.length)report.warnings.push("Unclassified roots require separate review before any cutover.");
  if(report.summary.school_conflict||report.summary.legacy_mirror_conflict)
   report.warnings.push("Conflicting school tags or existing legacy-mirror checksums prohibit automatic mirroring.");

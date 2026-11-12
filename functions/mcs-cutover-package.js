@@ -22,8 +22,8 @@ const ARTIFACTS=[
  ["mirrorReconciliation","mirror-reconciliation","adminerva-v4-mcs-mirror-reconciliation-v1"],
  ["foundationReceipt","foundation-receipt","adminerva-v4-mcs-canonical-foundation-receipt-v1"],
  ["academicAccessReceipt","academic-access-receipt","adminerva-v4-mcs-canonical-academic-access-receipt-v1"],
- ["assessmentReceipt","assessment-receipt","adminerva-v4-mcs-canonical-assessment-receipt-v1"],
- ["evidenceGradeReceipt","evidence-grade-receipt","adminerva-v4-mcs-canonical-evidence-grade-receipt-v1"],
+ ["assessmentReceipt","assessment-receipt","adminerva-v4-mcs-canonical-assessment-receipt-v2"],
+ ["evidenceGradeReceipt","evidence-grade-receipt","adminerva-v4-mcs-canonical-evidence-grade-receipt-v2"],
  ["planningReceipt","planning-receipt","adminerva-v4-mcs-canonical-planning-receipt-v1"],
  ["planningSupportReceipt","planning-support-receipt","adminerva-v4-mcs-canonical-planning-support-receipt-v1"],
  ["practiceReceipt","practice-receipt","adminerva-v4-mcs-canonical-practice-receipt-v1"]

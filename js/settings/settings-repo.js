@@ -6,6 +6,8 @@ import {
   doc,
   setDoc,
 } from "../core/teaching-firestore.mjs?v=1.3.0";
+import {auth} from "../core/firebase-core.js?v=1.3.0";
+import {resolveAccountAccess} from "../core/staff-session.mjs?v=4.0.1";
 
 // ==========================================
 // RUBRIC MANAGEMENT & REPOSITORY SETTINGS
@@ -13,6 +15,31 @@ import {
 window.templates = [];
 window.activeTemplateId = null;
 window.editingTemplate = null;
+let rubricsRetired=false;
+
+function retireRubricSettings(){
+  rubricsRetired=true;
+  window.templates=[];window.activeTemplateId=null;window.editingTemplate=null;
+  const nav=document.getElementById("navBtn-rubrics"),panel=document.getElementById("panel-rubrics");
+  if(nav)nav.hidden=true;
+  if(panel){
+    panel.replaceChildren();
+    const box=document.createElement("div");
+    box.className="rounded-xl border border-indigo-200 bg-indigo-50 p-5";
+    const title=document.createElement("h3");title.className="font-extrabold text-indigo-950";
+    title.textContent="School assessment rubrics moved";
+    const body=document.createElement("p");body.className="text-sm text-indigo-900 mt-2";
+    body.textContent="Legacy global AutoGrader templates are retired for this verified-school account. Create and manage assessment rubrics in the school Assessment Library instead.";
+    const link=document.createElement("a");link.href="teacher-assessment-library.html";
+    link.className="inline-flex mt-3 font-bold text-indigo-800 underline";link.textContent="Open Assessment Library";
+    box.append(title,body,link);panel.append(box);
+  }
+}
+function refuseRetiredRubricAction(){
+  if(!rubricsRetired)return false;
+  alert("Legacy global rubric templates are retired for this verified-school account. Use the school Assessment Library.");
+  return true;
+}
 
 const DEFAULT_TEMPLATES = [
   {
@@ -25,8 +52,17 @@ const DEFAULT_TEMPLATES = [
 ];
 
 window.initRubrics = async function () {
+  if(rubricsRetired)return;
   window.showLoader("Loading Rubrics from Cloud...");
   try {
+    const user=auth.currentUser;
+    if(user){
+      const access=await resolveAccountAccess(user);
+      const canonicalSchoolUser=access.schoolTeacher||access.schoolAdmin;
+      if(canonicalSchoolUser&&(access.v4Cutover||!access.legacyRole)){
+        retireRubricSettings();return;
+      }
+    }
     if (!window.db) throw new Error("Firebase disconnected.");
 
     const snap = await getDocs(collection(window.db, "templates"));
@@ -79,6 +115,7 @@ window.updateRubricEquippedUI = function () {
 };
 
 window.changeTemplate = function () {
+  if(refuseRetiredRubricAction())return;
   const target = window.templates.find(
     (t) => t.id === document.getElementById("templateSelect").value,
   );
@@ -151,6 +188,7 @@ window.updateTemplatePreview = function () {
 };
 
 window.equipCurrentTemplate = function () {
+  if(refuseRetiredRubricAction())return;
   const selectedId = document.getElementById("templateSelect").value;
   window.activeTemplateId = selectedId;
   localStorage.setItem("Adminerva_active_template_id", selectedId);
@@ -160,6 +198,7 @@ window.equipCurrentTemplate = function () {
 };
 
 window.createNewTemplate = function () {
+  if(refuseRetiredRubricAction())return;
   const newId = "tpl_" + Date.now();
   window.editingTemplate = {
     id: newId,
@@ -178,6 +217,7 @@ window.createNewTemplate = function () {
 };
 
 window.deleteCurrentTemplate = async function () {
+  if(refuseRetiredRubricAction())return;
   if (window.templates.length <= 1)
     return alert("You must have at least one template.");
   if (
@@ -220,6 +260,7 @@ window.removeCriterion = function (i) {
 };
 
 window.saveRubrics = async function () {
+  if(refuseRetiredRubricAction())return;
   if (!window.db) return alert("Firebase disconnected.");
   window.showLoader("Saving Rubric to Cloud...");
   window.updateTemplatePreview();
