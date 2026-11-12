@@ -152,6 +152,9 @@ async function checkAccess(user){
   if(/\/(school-gradebook)\.html$/.test(currentPath)&&!access.schoolTeacher){
     replacePage(roleHome(actualRole));return;
   }
+  if(/\/(class-record)\.html$/.test(currentPath)&&!access.schoolTeacher){
+    replacePage(roleHome(actualRole));return;
+  }
   if(/\/(teacher-reference-library)\.html$/.test(currentPath)&&!access.schoolTeacher){
     replacePage(roleHome(actualRole));return;
   }
@@ -200,7 +203,7 @@ async function checkAccess(user){
   if(v4OnlyTeacher){
     const page=currentPath.split("/").pop();
     const allowed=new Set([
-      "teacher-home.html","teacher-assessment-library.html","school-gradebook.html","pilot-sandbox.html",
+      "teacher-home.html","teacher-assessment-library.html","school-gradebook.html","class-record.html","pilot-sandbox.html",
       "school-support.html","people-access.html","school-admin.html","school-pilot.html","school-analytics.html","school-data-controls.html","school-cutover-readiness.html","school-onboarding-readiness.html",
       "school-teacher-analytics.html","school-practice-analytics.html","reclaim-inbox.html",
       "lesson-planner.html","presentation.html","schedule.html","teacher-reference-library.html","school-reference-library.html",

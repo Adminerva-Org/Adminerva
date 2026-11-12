@@ -107,6 +107,9 @@ document.addEventListener("DOMContentLoaded", () => {
       ...(hasSchoolTeacher ? [["gradebook-v4", "Gradebook · 4.0 pilot", "school-gradebook.html"]] : []),
       ["repobank", "Repository investigation", "repobank.html"]
     ] },
+    { name: "Class record", area: "class-record", items: hasSchoolTeacher ? [
+      ["class-record", "Class record", "class-record.html"]
+    ] : [] },
     { name: "Insights", area: "educator", items: [
       ["dashboard", "Analytics", "teacher-analytics.html"],
       ["followup", "Learning follow-up", "learning-follow-up.html"]
@@ -149,7 +152,7 @@ document.addEventListener("DOMContentLoaded", () => {
     (group.area === area || area === "admin" && group.area === "settings"));
   const studentGroup = studentGroups[activeModule];
   const areaNames = {
-    educator: "Repository Management", lesson: "Lesson Planning", admin: "School administration",
+    educator: "Repository Management", "class-record": "Class Record", lesson: "Lesson Planning", admin: "School administration",
     settings: "Account settings", global: "Reports & support",
     "student-home": "Your workspace", "staff-home": "Your workspace"
   };
@@ -167,6 +170,7 @@ document.addEventListener("DOMContentLoaded", () => {
     : isStudent ? studentGroup?.items[0]?.[2]
     : area === "lesson" ? "lesson-planner.html"
     : area === "admin" ? "school-admin.html"
+    : area === "class-record" ? "class-record.html"
     : area === "educator" ? "assessment-studio.html" : null;
   const escapeHTML = value => String(value).replace(/[&<>"']/g, char =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -179,6 +183,7 @@ document.addEventListener("DOMContentLoaded", () => {
   ] : [
     [homeLabel, homeRoute, "Your teaching workspace"],
     ["Repository Management", "assessment-studio.html", "Assessments, submissions, grading and repositories"],
+    ...(hasSchoolTeacher ? [["Class Record", "class-record.html", "Manual scores and published Adminerva assessment results"]] : []),
     ["Lesson Planning", "lesson-planner.html", "Lessons, slides, schedule and references"],
     ...((isSuperAdmin || isSchoolAdmin) ? [["School administration", "school-admin.html", "Students, staff, V4 identities, catalogs and pilot operations"]] : []),
     ...((isPlatformOwner && !isSuperAdmin) ? [["Platform pilot control", "owner-schools.html", "Institutions, readiness and controlled pilot state"]] : []),
