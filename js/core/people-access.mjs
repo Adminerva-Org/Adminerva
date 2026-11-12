@@ -96,6 +96,9 @@ const picker=createTenantSchoolPicker({
     ++peopleRequest;++inviteRequest;invitationSelection=null;
     clearTimeout(peopleSearchTimer);
     get("pa-create-invite").reset();get("pa-add-person").reset();
+    get("pa-invite-person").replaceChildren();
+    get("pa-create-invite").querySelector('button[type="submit"]').disabled=true;
+    get("pa-legacy-links").hidden=true;
     get("pa-person-search").elements.query.value="";
     get("pa-person-search").elements.status.value="all";
     updatePeopleContext();
@@ -109,6 +112,7 @@ const picker=createTenantSchoolPicker({
       workspace.hidden=true;say("This school has not granted you directory administration access.");
       return;
     }
+    get("pa-legacy-links").hidden=scope.current.compatibilityMode!=="legacy_allowed";
     workspace.hidden=false;schoolReady=true;
     // Load only the active section. Large school directories should not fetch
     // six unrelated panels when the administrator only needs the overview.
