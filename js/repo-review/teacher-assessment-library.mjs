@@ -1,14 +1,15 @@
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs";
+import {buildExternalPersonalizationPackage,parseExternalPersonalizationResponse} from "./services/external-personalization.mjs";
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"teacherBlueprints");
 const scopedAssessmentApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAssessments");
 const schoolAcademicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 const el=id=>document.getElementById(id),status=el("tl-status"),workspace=el("tl-workspace");
 const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
-  previewDialog=el("tl-preview-dialog");
+  previewDialog=el("tl-preview-dialog"),personalizationDialog=el("tl-personalization-dialog");
 let items=[],deployments=[],filter="mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,
-  lifecycleTask=null,lifecycleAction=null,pendingWrite=false;
+  lifecycleTask=null,lifecycleAction=null,pendingWrite=false,personalizing=null,personalizationState=null;
 const say=message=>status.textContent=message;
 const picker=createTenantSchoolPicker({
   host:el("tl-school-switcher"),status,
@@ -16,8 +17,9 @@ const picker=createTenantSchoolPicker({
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
     items=[];deployments=[];editing=null;sharing=null;deploying=null;deployRequestKey=null;
     lifecycleTask=null;lifecycleAction=null;list.replaceChildren();workspace.hidden=true;
-    shareDialog.close?.();previewDialog.close?.();el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();
-    form.reset();
+    shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();
+    el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();
+    form.reset();togglePersonalizationFields();
   },
   onReady:scope=>{
     if(!scope.current?.roles.includes("teacher")){
@@ -80,6 +82,53 @@ function actionButton(text,handler,alternate=false) {
   button.addEventListener("click",handler);
   return button;
 }
+const personalized=item=>item?.personalization?.enabled===true;
+function togglePersonalizationFields(){
+  const active=form.elements.personalizationMode?.value==="personalized";
+  el("tl-personalization-fields").hidden=!active;
+  if(form.elements.variantTarget)form.elements.variantTarget.required=active;
+}
+async function sha256Text(value){
+  const bytes=new TextEncoder().encode(String(value||""));
+  const digest=await crypto.subtle.digest("SHA-256",bytes);
+  return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,"0")).join("");
+}
+function renderPersonalizationState(){
+  if(!personalizing||!personalizationState)return;
+  const data=personalizationState,count=Number(data.count||0),target=Number(data.variantTarget||0),
+    remaining=Math.max(0,target-count);
+  el("tl-personalization-status").textContent=
+    (data.ready?"Active pool":"Private draft pool")+" · "+count+" of "+target+
+    " variants"+(remaining?" · "+remaining+" remaining":" · target reached")+".";
+  const host=el("tl-personalization-samples");host.replaceChildren();
+  for(const sample of data.samples||[]){
+    const article=document.createElement("article");article.className="rounded-lg border border-violet-200 bg-white p-3";
+    const title=document.createElement("strong");title.textContent=sample.scenarioTitle||sample.variantId;
+    const summary=document.createElement("p");summary.className="text-xs text-slate-600 mt-1";
+    summary.textContent=sample.summary||"Saved personalized scenario.";
+    article.append(title,summary);host.append(article);
+  }
+  if(!host.children.length){
+    const empty=document.createElement("p");empty.className="text-xs text-violet-800";
+    empty.textContent="No personalized variants imported for this blueprint revision yet.";host.append(empty);
+  }
+  el("tl-personalization-copy").disabled=remaining===0;
+  el("tl-personalization-import").disabled=remaining===0;
+  el("tl-personalization-activate").disabled=data.ready||remaining>0;
+}
+async function loadPersonalization(item){
+  personalizing=item;personalizationState=null;
+  el("tl-personalization-title").textContent=item.title+" · private to your teacher account";
+  el("tl-personalization-status").textContent="Loading private pool status…";
+  el("tl-personalization-response").value="";
+  personalizationDialog.showModal();
+  try{
+    personalizationState=await perform("personalization_status",{resourceId:item.id});
+    if(personalizing?.id===item.id)renderPersonalizationState();
+  }catch(error){
+    el("tl-personalization-status").textContent=error?.message||"Personalization pool unavailable.";
+  }
+}
 function openLifecycle(task,action){
   lifecycleTask=task;lifecycleAction=action;
   const dialog=el("tl-lifecycle-dialog"),form=el("tl-lifecycle-form"),
@@ -114,6 +163,10 @@ function showPreview(item){
     const li=document.createElement("li");li.textContent=criterion.name+" · "+criterion.points+" points";
     rubric.append(li);
   }
+  el("tl-preview-personalization").textContent=personalized(item)
+    ?"Personalized Studio assessment · target "+item.personalization.variantTarget+
+      " private variants. Private prompts/evaluator notes are not included in shared previews."
+    :"Standard assessment · one task for the class.";
   previewDialog.showModal();
 }
 function render(){
@@ -134,7 +187,8 @@ function render(){
       heading.style.fontWeight="750";heading.textContent=task.title;
       meta.className="tl-muted";
       const handedOver=task.ownerUid&&task.reviewerUid&&task.ownerUid!==task.reviewerUid;
-      meta.textContent=task.submissionSource+" · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
+      meta.textContent=(task.published?"Published":"Private deployment")+" · "+task.submissionSource+
+        " · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
         new Date(task.dueAt).toLocaleString():"not scheduled")+
         (handedOver?" · review responsibility handed over; original blueprint ownership unchanged":"");
       text.append(heading,meta);
@@ -143,11 +197,18 @@ function render(){
         const gradebook=document.createElement("a");gradebook.className="tl-action alt";
         gradebook.href="school-gradebook.html?task="+encodeURIComponent(task.taskId);
         gradebook.textContent="Review & Grade";controls.append(gradebook);
-        const classRecord=document.createElement("a");classRecord.className="tl-action alt";
-        classRecord.href="class-record.html?"+new URLSearchParams({
-          offering:task.offeringId,assessment:task.taskId,source:"school"
-        }).toString();
-        classRecord.textContent="Add to Class Record";controls.append(classRecord);
+        // Navigation only: the teacher still chooses the linked Class Record
+        // column, and its school-scoped score/release policies remain enforced.
+        if(task.offeringId&&task.taskId){
+          const classRecord=document.createElement("a");classRecord.className="tl-action alt";
+          classRecord.href="class-record.html?"+new URLSearchParams({
+            offering:task.offeringId,assessment:task.taskId,source:"school"
+          }).toString();
+          classRecord.textContent="Add to Class Record";controls.append(classRecord);
+        }
+      }
+      if(["active","closed"].includes(lifecycle)){
+        controls.append(actionButton(task.published?"Unpublish":"Publish",()=>void setPublication(task,!task.published),!task.published));
       }
       if(lifecycle==="active"){
         controls.append(actionButton("Close",()=>openLifecycle(task,"close"),true));
@@ -181,6 +242,7 @@ function render(){
     const info=document.createElement("div"),heading=document.createElement("h3"),meta=document.createElement("p");
     heading.style.fontWeight="750";heading.textContent=item.title;
     meta.className="tl-muted";meta.textContent=(item.canShare?"Owned by you":"Shared by teacher "+item.ownerUid.slice(0,8))+
+      " · "+(personalized(item)?"personalized Studio":"standard")+
       " · "+item.visibility.replaceAll("_"," ")+" · revision "+item.contentRevision;
     info.append(heading,meta);
     const controls=document.createElement("div");controls.className="tl-actions";
@@ -188,6 +250,7 @@ function render(){
     if(item.canShare){
       controls.append(actionButton("Edit",()=>edit(item),true));
       controls.append(actionButton("Share",()=>void share(item)));
+      if(personalized(item))controls.append(actionButton("Personalization",()=>void loadPersonalization(item)));
       controls.append(actionButton("Deploy",()=>void prepareDeployment(item),true));
       controls.append(actionButton("Archive",()=>{
         if(!confirm("Archive this draft? Existing independent copies will remain available."))return;
@@ -205,6 +268,10 @@ function edit(item){
   form.elements.title.value=item.title;
   form.elements.description.value=item.description||"";
   form.elements.instructions.value=item.instructions||"";
+  form.elements.personalizationMode.value=personalized(item)?"personalized":"standard";
+  form.elements.variantTarget.value=String(item.personalization?.variantTarget||30);
+  form.elements.variationGuidance.value=item.personalization?.variationGuidance||"";
+  togglePersonalizationFields();
   form.elements.rubric.value=(item.rubric||[]).map(criterion=>criterion.name+" | "+criterion.points).join("\n");
   form.querySelector("h2").textContent="Edit private draft";
   form.querySelector('button[type="submit"]').textContent="Save draft revision";
@@ -212,7 +279,7 @@ function edit(item){
   form.elements.title.focus();
 }
 function resetEditor(){
-  editing=null;form.reset();
+  editing=null;form.reset();togglePersonalizationFields();
   form.querySelector("h2").textContent="New private blueprint";
   form.querySelector('button[type="submit"]').textContent="Create private assessment";
 }
@@ -235,9 +302,15 @@ form.addEventListener("submit",event=>{
   let criteria;
   try{criteria=parseRubric(data.get("rubric"));}
   catch(error){say(error.message);form.elements.rubric.focus();return;}
+  const isPersonalized=String(data.get("personalizationMode")||"standard")==="personalized";
   const blueprint={
     title:String(data.get("title")||""),description:String(data.get("description")||""),
-    instructions:String(data.get("instructions")||""),rubric:criteria
+    instructions:String(data.get("instructions")||""),rubric:criteria,
+    personalization:isPersonalized?{
+      enabled:true,mode:"ai_blueprint_pool_v1",
+      variantTarget:Number(data.get("variantTarget")||30),
+      variationGuidance:String(data.get("variationGuidance")||"")
+    }:{enabled:false,mode:"standard"}
   };
   const action=editing?"update":"create",details=editing?{
     resourceId:editing.id,expectedRevision:editing.contentRevision,blueprint
@@ -289,11 +362,42 @@ el("tl-share-form").addEventListener("submit",event=>{
     "Assessment sharing updated. Recipients receive view and independent copy rights only.")
     .then(()=>{shareDialog.close();sharing=null;}).catch(()=>{});
 });
+async function setPublication(task,publish){
+  if(pendingWrite)return;
+  const action=publish?"publish":"unpublish";
+  if(!confirm(publish?
+    "Publish this prepared assessment to enrolled students? Assignment notifications will be sent now.":
+    "Unpublish this assessment? Existing submissions and grades are preserved, but the task will disappear from student assignment lists until republished."))return;
+  pendingWrite=true;
+  try{
+    say(publish?"Publishing assessment to students…":"Removing assessment from student assignment lists…");
+    const result=await performScoped(scopedAssessmentApi,action,{
+      taskId:task.taskId,expectedRevision:task.revision||1
+    });
+    await refresh();
+    say(result.alreadyCurrent?
+      "Assessment publication was already in the requested state.":
+      publish?"Assessment published. Enrolled students can now see it.":
+        "Assessment unpublished. Existing evidence and grades were preserved.");
+  }catch(error){say(error?.message||"Assessment publication could not be changed.");}
+  finally{pendingWrite=false;}
+}
 async function prepareDeployment(item){
+  if(personalized(item)){
+    try{
+      const pool=await perform("personalization_status",{resourceId:item.id});
+      if(!pool.ready){
+        say("Complete and activate the private personalization pool before deployment.");
+        await loadPersonalization(item);return;
+      }
+    }catch(error){say(error?.message||"Personalization readiness could not be verified.");return;}
+  }
   deploying=item;deployRequestKey=crypto.randomUUID();
   el("tl-deploy-title").textContent=item.title;
   const form=el("tl-deploy-form");
   form.reset();
+  form.elements.submissionSource.disabled=personalized(item);
+  form.elements.submissionSource.value=personalized(item)?"studio":"studio";
   const now=new Date(),tomorrow=new Date(now.getTime()+24*60*60*1000);
   form.elements.opensAt.value=localDateInput(now);
   form.elements.dueAt.value=localDateInput(tomorrow);
@@ -351,7 +455,10 @@ el("tl-lifecycle-form").addEventListener("submit",event=>{
     finally{pendingWrite=false;[...form.elements].forEach(control=>control.disabled=false);}
   })();
 });
-el("tl-cancel-deploy").addEventListener("click",()=>el("tl-deploy-dialog").close());
+el("tl-cancel-deploy").addEventListener("click",()=>{
+  el("tl-deploy-form").elements.submissionSource.disabled=false;
+  el("tl-deploy-dialog").close();
+});
 el("tl-deploy-form").addEventListener("input",()=>{deployRequestKey=crypto.randomUUID();});
 el("tl-deploy-form").addEventListener("submit",event=>{
   event.preventDefault();if(!deploying||pendingWrite)return;
@@ -372,17 +479,74 @@ el("tl-deploy-form").addEventListener("submit",event=>{
     try{
       const task=await performScoped(scopedAssessmentApi,"deploy",{
         blueprintId:deploying.id,offeringId:String(fields.get("offeringId")||""),
-        submissionSource:String(fields.get("submissionSource")||""),
+        submissionSource:personalized(deploying)?"studio":String(fields.get("submissionSource")||""),
         opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),requestKey:key
       });
-      say(task.alreadyExisted?"This assessment was already deployed. No duplicate created.":
-        "Assessment deployed to your assigned school class. Students can view the task after its start time.");
+      say(task.alreadyExisted?"This assessment was already prepared. No duplicate created.":
+        "Assessment prepared privately for this class. Publish it when you are ready for students to see it.");
       el("tl-deploy-dialog").close();deploying=null;deployRequestKey=null;
       await refresh();
     }catch(error){say(error.message||"Deployment could not be completed. Retry the same request safely.");}
     finally{pendingWrite=false;buttons.forEach(button=>button.disabled=false);}
   })();
 });
+form.elements.personalizationMode.addEventListener("change",togglePersonalizationFields);
+el("tl-personalization-close").addEventListener("click",()=>{personalizing=null;personalizationState=null;personalizationDialog.close();});
+el("tl-personalization-copy").addEventListener("click",()=>void (async()=>{
+  if(!personalizing||!personalizationState)return;
+  const count=Number(personalizationState.count||0),target=Number(personalizationState.variantTarget||0),
+    missing=Math.max(0,target-count);
+  if(!missing){say("The private pool already meets its target.");return;}
+  const batchCount=Math.min(15,missing),batchIndex=Math.floor(count/15)+1,totalBatches=Math.ceil(target/15);
+  try{
+    const packageText=buildExternalPersonalizationPackage({
+      assessment:{
+        title:personalizing.title,assessmentFormat:"studio_code",assessmentMode:"personalized",
+        maxScore:(personalizing.rubric||[]).reduce((sum,row)=>sum+Number(row.points||0),0),
+        taskContext:personalizing.instructions||personalizing.description||"",
+        evalCriteria:(personalizing.rubric||[]).map(row=>row.name+" | "+row.points).join("\n")
+      },
+      guidance:personalizing.personalization?.variationGuidance||"",
+      count:batchCount,batchIndex,totalBatches,
+      existingScenarios:personalizationState.scenarioRegistry||[]
+    });
+    await navigator.clipboard.writeText(packageText);
+    el("tl-personalization-status").textContent=
+      "External AI package copied · batch "+batchIndex+" of "+totalBatches+" · "+batchCount+" variants.";
+  }catch(error){el("tl-personalization-status").textContent="Package not copied: "+(error?.message||"unknown error");}
+})());
+el("tl-personalization-import").addEventListener("click",()=>void (async()=>{
+  if(!personalizing||!personalizationState||pendingWrite)return;
+  const missing=Math.max(0,Number(personalizationState.variantTarget||0)-Number(personalizationState.count||0)),
+    expectedCount=Math.min(15,missing);
+  if(!expectedCount){el("tl-personalization-status").textContent="The pool already meets its target.";return;}
+  try{
+    const variants=await parseExternalPersonalizationResponse(el("tl-personalization-response").value,{
+      expectedCount,hashPrompt:sha256Text,existingScenarios:personalizationState.scenarioRegistry||[]
+    });
+    pendingWrite=true;el("tl-personalization-import").disabled=true;
+    const result=await perform("personalization_import",{
+      resourceId:personalizing.id,expectedRevision:personalizing.contentRevision,variants
+    });
+    personalizationState=await perform("personalization_status",{resourceId:personalizing.id});
+    el("tl-personalization-response").value="";renderPersonalizationState();
+    say("Imported "+variants.length+" private personalized variants. "+result.count+" saved for this blueprint revision.");
+  }catch(error){
+    el("tl-personalization-status").textContent="Import failed: "+(error?.message||"unknown error");
+  }finally{pendingWrite=false;renderPersonalizationState();}
+})());
+el("tl-personalization-activate").addEventListener("click",()=>void (async()=>{
+  if(!personalizing||!personalizationState||pendingWrite)return;
+  try{
+    pendingWrite=true;el("tl-personalization-activate").disabled=true;
+    await perform("personalization_activate",{
+      resourceId:personalizing.id,expectedRevision:personalizing.contentRevision
+    });
+    personalizationState=await perform("personalization_status",{resourceId:personalizing.id});
+    renderPersonalizationState();say("Private personalization pool activated. This blueprint can now be deployed to Adminerva Studio.");
+  }catch(error){el("tl-personalization-status").textContent="Activation failed: "+(error?.message||"unknown error");}
+  finally{pendingWrite=false;renderPersonalizationState();}
+})());
 el("tl-preview-close").addEventListener("click",()=>previewDialog.close());
 try{
   await picker.load();
