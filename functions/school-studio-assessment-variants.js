@@ -54,6 +54,8 @@ function createSchoolStudioAssessmentVariantService({db}){
     deny("invalid-argument","Unknown school personalization operation.");
   if(!ctx.roles.includes("student"))
     deny("permission-denied","Student permission is required.");
+  if(task.published!==true)
+    deny("not-found","This personalized assessment is not published to students.");
 
   const memberRef=db.doc(prefix+"memberships/"+ctx.uid),member=await memberRef.get(),
     personId=member.data()?.personId;
@@ -122,6 +124,7 @@ function createSchoolStudioAssessmentVariantService({db}){
             tx.get(submissionRef),tx.get(assignmentRef),tx.get(reservationRef),tx.get(variantRef)
           ]);
         if(!latestTask.exists||latestTask.data().schoolId!==ctx.schoolId||
+           latestTask.data().published!==true||
            latestTask.data().personalizedTask?.poolFingerprint!==task.personalizedTask.poolFingerprint||
            !variantIds(latestTask.data()).includes(variantId))
           deny("failed-precondition","The personalized deployment changed. Reload the assignment.");
