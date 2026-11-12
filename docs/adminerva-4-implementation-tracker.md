@@ -615,3 +615,10 @@ After the pinned Class Record preservation merge, mainline landed commit `139a0f
 This follow-up imports the **exact** current-main `functions/school-academics.js` changes (validated optional `assignmentScope:"teacher"` for verified teachers including School Admin + Teacher dual-role accounts) and the Class Record/grading-schemes client fixes (explicit verified school-picker initialization and teacher-only course-offering lookup). It updates only the two corresponding page script query versions, preserving V4's integrated navigation.
 
 This is source reconciliation, **not** a change to scores, grading algorithms or student visibility. No production deployment or role grant occurred.
+
+
+## Mainline Cloudflare foundation intake — November 12, 2026
+
+Imported the exact files from pinned production `139a0fa3cf22998fe2646227a7d8a28110be3915`: the internal-only Cloudflare Worker, closed-by-default R2/Queue binding template, minimal contract tests and opt-in CI workflow, plus the Cloudflare integration roadmap. The Worker does not trust browser Firebase tokens, stores PDF resources privately by school, queues opaque pointers only, and requires a separate authorized Firebase relay, Cloudflare secrets and an explicit school policy opt-in before use.
+
+**Non-activation boundary:** This source import does not deploy a Worker, enable R2/Queues, configure credentials, move data, or affect existing Firebase evidence/grades/assessments. The isolated CheerpJ Pages pilot remains a separate workstream. The School Admin must approve any later file-retention policy and storage migration.
