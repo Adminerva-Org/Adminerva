@@ -15,9 +15,11 @@
  * Before changing any value, review docs/studio-cheerpj-phases-5-6.md.
  */
 export const CHEERPJ_STUDIO_ROLLOUT = Object.freeze({
-  mode: 'off',
+  mode: 'developer_evaluation',
   institutionalUseApproved: false,
-  pilotUids: Object.freeze([]),
+  // Instructor-only technical evaluation. This allowlist is a public UI gate,
+  // not security authorization; assessments remain blocked.
+  pilotUids: Object.freeze(['7GE8DNztS9fBCCP4hCibtVkK2Q72']),
   allowGeneralAssessments: false,
   allowPersonalizedAssessments: false,
   allowPracticalExams: false,
