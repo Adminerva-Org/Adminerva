@@ -606,3 +606,12 @@ The foundation uses both `auth-guard-v4-pilot.js` and the canonical `auth-guard.
 - This is **source integration only**. No Class Record grading algorithm, finalization, score, release status, audit record, student record, Firestore rule, production role grant or live data was changed.
 
 **Integration boundary:** This carries an exact pinned snapshot of the separately developed Class Record feature into the V4 branch; future changes to Class Record on `main` must be reviewed and carried forward at the final merge. The larger V4 branch still has other mainline differences and is not a production release. An authenticated role workflow check and the protected MCS migration/pilot gates remain pending.
+
+
+### Subsequent mainline school-access repair — November 12, 2026
+
+After the pinned Class Record preservation merge, mainline landed commit `139a0fa3cf22998fe2646227a7d8a28110be3915` (`fix(class-record): initialize school access and scope offerings`).
+
+This follow-up imports the **exact** current-main `functions/school-academics.js` changes (validated optional `assignmentScope:"teacher"` for verified teachers including School Admin + Teacher dual-role accounts) and the Class Record/grading-schemes client fixes (explicit verified school-picker initialization and teacher-only course-offering lookup). It updates only the two corresponding page script query versions, preserving V4's integrated navigation.
+
+This is source reconciliation, **not** a change to scores, grading algorithms or student visibility. No production deployment or role grant occurred.
