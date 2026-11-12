@@ -446,7 +446,7 @@ el("tl-deploy-form").addEventListener("submit",event=>{
     try{
       const task=await performScoped(scopedAssessmentApi,"deploy",{
         blueprintId:deploying.id,offeringId:String(fields.get("offeringId")||""),
-        submissionSource:String(fields.get("submissionSource")||""),
+        submissionSource:personalized(deploying)?"studio":String(fields.get("submissionSource")||""),
         opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),requestKey:key
       });
       say(task.alreadyExisted?"This assessment was already deployed. No duplicate created.":
