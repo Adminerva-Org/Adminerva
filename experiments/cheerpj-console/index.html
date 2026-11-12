@@ -237,7 +237,7 @@ import { createConsoleBridge } from './console-bridge.mjs';
       terminalStatus.textContent = "Compiling…";
       const compileCode = await window.cheerpjRunMain(
         "com.sun.tools.javac.Main",
-        "/files/",
+        "", // JDK 17 includes javac; no Java 8 tools.jar needed
         "-encoding", "UTF-8", "-d", "/files/", "/str/Main.java"
       );
       if (compileCode !== 0) {
