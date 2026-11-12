@@ -114,3 +114,15 @@ test("loading another subject never changes the saved lesson identity",()=>{
   blankContext.window.generateBlankPlan();
   assert.equal(blankContext.window.currentPlanSubject,"Default Subject");
 });
+
+test("lesson generation keeps the concise format and asynchronous export contract",()=>{
+  const engine=readFileSync("js/lesson-review/ai-engine.js","utf8");
+  const editor=readFileSync("js/lesson-review/app-ui.js","utf8");
+  const exporter=readFileSync("js/lesson-review/document-exporter.js","utf8");
+  assert.match(engine,/exactly 4 to 6 substantive, sequential student actions/);
+  assert.match(engine,/5 to 8 short, nonduplicated resources/);
+  assert.match(engine,/delivery_mode: \{ type: "STRING", enum:/);
+  assert.match(engine,/applyGeneratedSessionDefaults\(session,defaultPrelim,defaultClosing\)/);
+  assert.match(editor,/data-key="delivery_mode"/);
+  assert.match(exporter,/isAsync \? "" : isLab/);
+});
