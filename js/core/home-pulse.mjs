@@ -44,7 +44,8 @@ if(home&&nav){
     const user=auth.currentUser;
     const actualRole=nav.dataset.verifiedRole;
     const correct=role==='student'?actualRole==='student':
-      actualRole==='teacher'||actualRole==='superadmin';
+      actualRole==='teacher'||actualRole==='superadmin'||
+      (actualRole==='schooladmin'&&nav.dataset.schoolTeacher==="true");
     if(!user?.uid||!correct||loading||(!force&&readyUid===user.uid))return;
     readyUid=user.uid;loading=true;
     const token=++generation;
@@ -60,8 +61,11 @@ if(home&&nav){
     update(0,role==='student'?'Missions completed':'Awaiting inspection','—','Reading verified records…');
     update(1,role==='student'?'Completed courses':'Approved evidence','—','Reading verified records…');
     try{
-      const v4Cutover=nav.dataset.v4Cutover==="true";
-      if(v4Cutover){
+      // A V4-only member cannot read legacy global collections even while
+      // the school is still in pilot-compatible legacy_allowed mode.
+      const verifiedOnly=nav.dataset.v4Cutover==="true"||
+        nav.dataset.v4OnlyTeacher==="true"||nav.dataset.v4OnlyStudent==="true";
+      if(verifiedOnly){
         const schoolId=await v4SchoolId(user);
         if(auth.currentUser?.uid!==user.uid||token!==generation)return;
         if(!schoolId){
@@ -145,14 +149,34 @@ if(home&&nav){
       }
     }
   };
-  summary.querySelector('button').addEventListener('click',()=>{void load(true);});
-  document.addEventListener('adminerva:role-ready',()=>{void load();});
+  // Match mainline's intent-first loading: render the home workspace before
+  // fetching potentially heavy evidence summaries. The explicit refresh stays immediate.
+  let idleSummaryTimer=null;
+  function scheduleLoad(force=false){
+    if(idleSummaryTimer){clearTimeout(idleSummaryTimer);idleSummaryTimer=null;}
+    if(force){void load(true);return;}
+    if(document.hidden)return;
+    idleSummaryTimer=setTimeout(()=>{
+      idleSummaryTimer=null;
+      if(!document.hidden)void load();
+    },role==='teacher'?650:120);
+  }
+  summary.querySelector('button').addEventListener('click',()=>scheduleLoad(true));
+  document.addEventListener('adminerva:role-ready',()=>scheduleLoad());
   document.addEventListener('adminerva:school-ready',()=>{
-    if(nav.dataset.v4Cutover==="true"){readyUid='';void load(true);}
+    if(nav.dataset.v4Cutover==="true"||
+       nav.dataset.v4OnlyTeacher==="true"||nav.dataset.v4OnlyStudent==="true"){
+      // Invalidate old requests and clear summaries before loading another school.
+      generation++;loading=false;readyUid='';summary.hidden=true;
+      scheduleLoad(true);
+    }
   });
   onAuthStateChanged(auth,user=>{
-    if(!user||readyUid&&readyUid!==user.uid){generation++;loading=false;readyUid='';summary.hidden=true;}
-    void load();
+    if(!user||readyUid&&readyUid!==user.uid){
+      generation++;loading=false;readyUid='';summary.hidden=true;
+    }
+    scheduleLoad();
   });
-  void load();
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)scheduleLoad();});
+  scheduleLoad();
 }
