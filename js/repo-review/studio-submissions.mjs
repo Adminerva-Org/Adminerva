@@ -147,12 +147,12 @@ async function inspect(item){
      "text-sm font-semibold text-teal-900 mt-4");
    if(!["submitted","reviewed"].includes(item.status))return;
    if(item.status==="reviewed"&&grade.exists()&&grade.data().published){
-     add(detail,"p","This reviewed Studio grade is published to the learner.","text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-3 mt-3");
+     add(detail,"p","This reviewed Studio grade is published and is available to linked Class Record columns.","text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-3 mt-3");
      const publishedActions=add(detail,"div","","flex flex-wrap gap-2 mt-3");
      const unpublish=add(publishedActions,"button","Unpublish for correction","border border-amber-300 bg-amber-50 text-amber-900 rounded-lg px-4 py-2 font-semibold");
      unpublish.addEventListener("click",async()=>{
        if(busy)return;
-       if(!confirm("Unpublish this Studio grade so you can correct it or request a new revision? The learner will stop seeing the published result until you publish again."))return;
+       if(!confirm("Unpublish this Studio grade so you can correct it or request a new revision? The learner and Class Record will stop seeing the published result until you publish again."))return;
        busy=true;unpublish.disabled=true;
        const loading=window.beginLoading?.("Unpublishing Studio grade for correction…")||(()=>{});
        try{
@@ -216,7 +216,7 @@ async function inspect(item){
    publishBtn.hidden=!reviewedDraft;
    const publishReviewed=async()=>{
      if(busy||publishBtn.hidden)return;
-     if(!confirm("Publish this reviewed Studio grade to the learner now?"))return;
+     if(!confirm("Publish this reviewed Studio grade to the learner and linked Class Record now?"))return;
      busy=true;revise.disabled=true;gradeBtn.disabled=true;publishBtn.disabled=true;
      const loading=window.beginLoading?.("Publishing reviewed Studio grade…")||(()=>{});
      try{
@@ -251,7 +251,7 @@ async function inspect(item){
            createdAt:serverTimestamp()
          });
        });
-       setStatus("Studio grade published to the learner.");
+       setStatus("Studio grade published. Linked Class Record columns will show it on refresh.");
        busy=false;await load();
      }catch(error){setStatus("Grade was not published: "+error.message);}
      finally{busy=false;revise.disabled=false;gradeBtn.disabled=false;publishBtn.disabled=false;loading();}
