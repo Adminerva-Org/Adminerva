@@ -400,6 +400,7 @@ function applyNamedProjectConfig(config={}){
 
 function openNamedProject(project){
   if(!project)return;
+  if(cheerpjClient)stopLiveBrowserJava(true);
   createWorkspace(project.lang,project.state?.files,project.state?.fileOrder,project.state?.activeFilename,project.state?.folders,project.state?.projectOrder);
   applyNamedProjectConfig(project.config||{});
   const langSelect=document.getElementById("languageSelect");
@@ -1414,6 +1415,10 @@ function sendConsoleInputLine(){
 }
 
 function clearConsoleInput(){
+  if(cheerpjClient){
+    const input=document.getElementById('stdinLineInput');if(input){input.value='';input.focus();}
+    return;
+  }
   const history=document.getElementById('stdinInput'),lineInput=document.getElementById('stdinLineInput');
   if(history)history.value='';
   if(lineInput){lineInput.value='';lineInput.focus();}
