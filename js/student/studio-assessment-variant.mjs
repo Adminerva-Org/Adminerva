@@ -10,6 +10,7 @@ const meta=document.getElementById("studioPersonalizedTaskMeta");
 const prompt=document.getElementById("studioPersonalizedTaskPrompt");
 const status=document.getElementById("studioPersonalizedTaskStatus");
 const overview=document.getElementById("studioTaskOverview");
+const loadingNote=document.getElementById("studioTaskLoadingNote");
 const overviewTitle=document.getElementById("studioTaskOverviewTitle");
 const overviewMeta=document.getElementById("studioTaskOverviewMeta");
 const overviewText=document.getElementById("studioTaskOverviewText");
@@ -21,6 +22,7 @@ function showOverview(data){
   const instructions=String(data.taskContext||data.instructions||"").trim();
   const criteria=String(data.evalCriteria||"").trim();
   overview.classList.remove("hidden");
+  loadingNote?.classList.add("hidden");
   if(overviewTitle)overviewTitle.textContent=String(data.title||"Assigned Studio assessment").slice(0,180);
   if(overviewMeta)overviewMeta.textContent=data.personalizedTask?.enabled===true
     ?"Complete your individual task below; the instructor's general instructions apply as well."
@@ -41,6 +43,8 @@ if(assessmentId)reportContext({status:"loading",personalized:false,readOnly:fals
 function hide(){
   panel?.classList.add("hidden");
   overview?.classList.add("hidden");
+  loadingNote?.classList.toggle("hidden",!assessmentId);
+  if(loadingNote)loadingNote.textContent="Loading your assignment instructions. You can also review them in My Assessments.";
   window.adminervaStudioAssessmentVariant=null;
 }
 function showStatus(text){if(status)status.textContent=text;}
@@ -50,13 +54,17 @@ async function load(user){
   hide();
   if(!assessmentId)return;
   reportContext({status:user?.uid?"loading":"unavailable",personalized:false,readOnly:false});
-  if(!user?.uid)return;
+  if(!user?.uid){
+    if(loadingNote)loadingNote.textContent="Sign in to view the assigned instructions.";
+    return;
+  }
   try{
     const task=await getDoc(doc(db,"assessments",assessmentId));
     if(stamp!==generation||auth.currentUser?.uid!==user.uid)return;
     if(!task.exists()||task.data().schemaVersion!==3||
       task.data().submissionSource!=="studio"||task.data().published===false){
       reportContext({status:"unavailable",personalized:false,readOnly:false});
+      if(loadingNote)loadingNote.textContent="The assignment is unavailable or unpublished. Return to My Assessments for its current status.";
       return;
     }
     showOverview(task.data());
@@ -86,6 +94,7 @@ async function load(user){
   }catch(error){
     if(stamp!==generation)return;
     reportContext({status:"unavailable",personalized:true,readOnly:false});
+    if(loadingNote)loadingNote.textContent="The personalized task could not be loaded. Return to My Assessments to retry.";
     panel?.classList.remove("hidden");
     if(meta)meta.textContent=" · unavailable";
     if(prompt)prompt.textContent="";
