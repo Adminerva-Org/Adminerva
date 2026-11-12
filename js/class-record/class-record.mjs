@@ -22,6 +22,8 @@ const archivedCount=el("cr-archived-count");
 const finalizeButton=el("cr-finalize");
 const exportButton=el("cr-export");
 const exportXlsxButton=el("cr-export-xlsx");
+const printButton=el("cr-print");
+const printRoot=el("cr-print-root");
 const refreshButton=el("cr-refresh");
 const unsaved=el("cr-unsaved");
 const kpis=el("cr-kpis");
@@ -269,6 +271,7 @@ function setBusy(value,message=""){
   finalizeButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
   exportButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
   exportXlsxButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
+  printButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
   if(message)say(message);
   for(const form of [columnForm,setupForm,importForm]){
     form.querySelectorAll("button,input,select").forEach(control=>{
@@ -323,6 +326,7 @@ function updateDirtyState(){
   finalizeButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
   exportButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
   exportXlsxButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
+  printButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
   unsaved.textContent=dirtyColumns.size?
     dirtyColumns.size+" manual column"+(dirtyColumns.size===1?"":"s")+" with unsaved changes":"";
   refreshSummaries();
@@ -881,6 +885,63 @@ function finalizationExportRows(revision){
   }
   return rows;
 }
+function renderPrintRows(rows,title){
+  printRoot.replaceChildren();
+  const heading=make("h1","cr-print-title",title);printRoot.append(heading);
+  const headerIndex=Math.max(0,rows.findIndex(row=>row[0]==="Student"));
+  const meta=document.createElement("dl");meta.className="cr-print-meta";
+  for(const row of rows.slice(0,headerIndex)){
+    if(!Array.isArray(row)||!row.some(value=>String(value??"").trim()))continue;
+    const dt=document.createElement("dt"),dd=document.createElement("dd");
+    dt.textContent=String(row[0]??"");dd.textContent=String(row[1]??"");
+    meta.append(dt,dd);
+  }
+  printRoot.append(meta);
+  const table=document.createElement("table");table.className="cr-print-table";
+  const tableRows=rows.slice(headerIndex);
+  if(tableRows.length){
+    const thead=document.createElement("thead"),head=document.createElement("tr");
+    for(const value of tableRows[0]){
+      const th=document.createElement("th");th.scope="col";th.textContent=String(value??"");head.append(th);
+    }
+    thead.append(head);table.append(thead);
+    const body=document.createElement("tbody");
+    for(const values of tableRows.slice(1)){
+      const tr=document.createElement("tr");
+      values.forEach((value,index)=>{
+        const cell=document.createElement(index===0?"th":"td");
+        if(index===0)cell.scope="row";
+        cell.textContent=String(value??"");tr.append(cell);
+      });
+      body.append(tr);
+    }
+    table.append(body);
+  }
+  printRoot.append(table);
+  printRoot.hidden=false;printRoot.setAttribute("aria-hidden","false");
+}
+function cleanupPrint(){
+  printRoot.hidden=true;printRoot.setAttribute("aria-hidden","true");printRoot.replaceChildren();
+}
+function printRows(rows,title){
+  renderPrintRows(rows,title);
+  requestAnimationFrame(()=>requestAnimationFrame(()=>window.print()));
+}
+function printLiveRecord(){
+  if(!currentOfferingId||dirtyColumns.size)return;
+  printRows(liveExportRows(),"Adminerva Class Record · Live working record");
+}
+async function printFinalizationRevision(revisionNumber,button){
+  if(button)button.disabled=true;
+  try{
+    const revision=await loadFinalizationRevision(revisionNumber);
+    printRows(finalizationExportRows(revision),
+      "Adminerva Class Record · Frozen revision "+revision.revision);
+    el("cr-finalize-status").textContent="Prepared frozen revision "+revisionNumber+" for printing.";
+  }catch(error){
+    el("cr-finalize-status").textContent=error?.message||"Frozen revision could not be prepared for printing.";
+  }finally{if(button)button.disabled=false;}
+}
 function downloadBlob(blob,filename){
   const url=URL.createObjectURL(blob),a=document.createElement("a");
   a.href=url;a.download=filename;a.hidden=true;document.body.append(a);a.click();a.remove();
@@ -948,7 +1009,10 @@ function renderFinalizationHistory(revisions){
     const exportExcel=make("button","cr-button","Excel");
     exportExcel.type="button";
     exportExcel.addEventListener("click",()=>void exportFinalizationRevision(revision.revision,"xlsx",exportExcel));
-    actions.append(exportRevision,exportExcel);
+    const printRevision=make("button","cr-button","Print");
+    printRevision.type="button";
+    printRevision.addEventListener("click",()=>void printFinalizationRevision(revision.revision,printRevision));
+    actions.append(exportRevision,exportExcel,printRevision);
     card.append(info,actions);finalizeHistory.append(card);
   }
 }
@@ -1235,6 +1299,8 @@ refreshButton.addEventListener("click",()=>{
 saveScoresButton.addEventListener("click",()=>void saveManualScores());
 exportButton.addEventListener("click",exportCsv);
 exportXlsxButton.addEventListener("click",()=>void exportXlsx());
+printButton.addEventListener("click",printLiveRecord);
+window.addEventListener("afterprint",cleanupPrint);
 columnKind.addEventListener("change",syncColumnFields);
 el("cr-import-file").addEventListener("change",async event=>{
   const file=event.target.files?.[0];if(!file)return;

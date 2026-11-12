@@ -178,9 +178,10 @@ Consequences:
 The live working record supports:
 
 - CSV export;
-- native `.xlsx` export generated locally in the browser.
+- native `.xlsx` export generated locally in the browser;
+- landscape print output labeled as a **live working record**.
 
-Frozen finalization revisions support independent CSV and Excel export so a later live change does not alter an old exported period record.
+Frozen finalization revisions support independent CSV, Excel and print output. Frozen printouts are labeled with their finalization revision and use the academic-context snapshot stored with that revision, so a later live change does not alter an old exported or printed period record.
 
 ## Current storage
 
