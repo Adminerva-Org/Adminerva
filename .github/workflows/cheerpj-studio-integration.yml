@@ -6,6 +6,8 @@ on:
       - 'js/student/cheerpj-studio-client.test.mjs'
       - 'js/student/cheerpj-studio-rollout.mjs'
       - 'js/student/cheerpj-studio-rollout.test.mjs'
+      - 'js/student/studio-terminal-echo.mjs'
+      - 'js/student/studio-terminal-echo.test.mjs'
       - 'js/student/studio-assessment-variant.mjs'
       - 'js/student/playground.js'
       - 'student-playground.html'
@@ -28,6 +30,7 @@ jobs:
         run: |
           node --check js/student/cheerpj-studio-client.mjs
           node --check js/student/cheerpj-studio-rollout.mjs
+          node --check js/student/studio-terminal-echo.mjs
           node --check js/student/studio-assessment-variant.mjs
           node --check js/student/playground.js
           node --check experiments/cheerpj-console/embedded-runner.mjs
@@ -36,6 +39,7 @@ jobs:
         run: |
           node --test js/student/cheerpj-studio-client.test.mjs
           node --test js/student/cheerpj-studio-rollout.test.mjs
+          node --test js/student/studio-terminal-echo.test.mjs
           node --test experiments/cheerpj-console/console-bridge.test.mjs
       - name: Check separate Cloudflare runner endpoint
         run: |
