@@ -132,7 +132,7 @@ async function checkAccess(user){
      !(access.platformAdmin||admittedRole==="admin")){
     replacePage(roleHome(actualRole));return;
   }
-  if(/\/(school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness)\.html$/.test(currentPath)&&
+  if(/\/(school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-grading-schemes)\.html$/.test(currentPath)&&
      !(access.schoolAdmin||admittedRole==="admin")){
     replacePage(roleHome(actualRole));return;
   }
@@ -152,6 +152,9 @@ async function checkAccess(user){
   if(/\/(school-gradebook)\.html$/.test(currentPath)&&!access.schoolTeacher){
     replacePage(roleHome(actualRole));return;
   }
+  if(/\/(class-record)\.html$/.test(currentPath)&&!access.schoolTeacher){
+    replacePage(roleHome(actualRole));return;
+  }
   if(/\/(teacher-reference-library)\.html$/.test(currentPath)&&!access.schoolTeacher){
     replacePage(roleHome(actualRole));return;
   }
@@ -163,14 +166,14 @@ async function checkAccess(user){
     replacePage("school-support.html");return;
   }
   if(actualRole==="schooladmin"&&!access.schoolTeacher&&
-     !/\/(teacher-home|school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-reference-library|reclaim-inbox|settings|issues|school-support|join-school|wiki)\.html$/.test(currentPath)){
+     !/\/(teacher-home|school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-grading-schemes|school-reference-library|reclaim-inbox|settings|issues|school-support|join-school|wiki)\.html$/.test(currentPath)){
     replacePage("school-admin.html");return;
   }
   if(actualRole==="platformowner"&&!access.schoolAdmin&&!access.schoolTeacher&&!access.schoolStudent&&
      !/\/(owner-schools|settings|issues|wiki)\.html$/.test(currentPath)){
     replacePage("owner-schools.html");return;
   }
-  if(/\/(school-student-projects|school-student-settings|school-student-assessments)\.html$/.test(currentPath)&&
+  if(/\/(school-student-projects|school-student-settings|school-student-assessments|school-student-grades)\.html$/.test(currentPath)&&
      !access.schoolStudent){
     replacePage(roleHome(actualRole));return;
   }
@@ -191,7 +194,7 @@ async function checkAccess(user){
     if(legacyStudentRoutes[page]){replacePage(legacyStudentRoutes[page]);return;}
     const allowed=new Set([
       "student-home.html","school-student-projects.html","school-student-settings.html",
-      "school-student-assessments.html","student-practice.html","student-playground.html",
+      "school-student-assessments.html","school-student-grades.html","student-practice.html","student-playground.html",
       "student-xml-lab.html","school-support.html","join-school.html","wiki.html"
     ]);
     if(!allowed.has(page)){replacePage("student-home.html");return;}
@@ -200,8 +203,8 @@ async function checkAccess(user){
   if(v4OnlyTeacher){
     const page=currentPath.split("/").pop();
     const allowed=new Set([
-      "teacher-home.html","teacher-assessment-library.html","school-gradebook.html","pilot-sandbox.html",
-      "school-support.html","people-access.html","school-admin.html","school-pilot.html","school-analytics.html","school-data-controls.html","school-cutover-readiness.html","school-onboarding-readiness.html",
+      "teacher-home.html","teacher-assessment-library.html","school-gradebook.html","class-record.html","pilot-sandbox.html",
+      "school-support.html","people-access.html","school-admin.html","school-pilot.html","school-analytics.html","school-data-controls.html","school-cutover-readiness.html","school-onboarding-readiness.html","school-grading-schemes.html",
       "school-teacher-analytics.html","school-practice-analytics.html","reclaim-inbox.html",
       "lesson-planner.html","presentation.html","schedule.html","teacher-reference-library.html","school-reference-library.html",
       "settings.html","join-school.html","wiki.html",
@@ -270,6 +273,10 @@ async function checkAccess(user){
     document.querySelectorAll("[data-admin-only]").forEach(el=>el.classList.remove("hidden"));
   if(access.schoolAdmin&&activeRole==="schooladmin")
     document.querySelectorAll("[data-school-admin-only]").forEach(el=>el.classList.remove("hidden"));
+  if(access.schoolTeacher&&activeRole!=="student")
+    document.querySelectorAll("[data-school-teacher-only]").forEach(el=>el.classList.remove("hidden"));
+  if(access.schoolStudent&&activeRole==="student")
+    document.querySelectorAll("[data-school-student-only]").forEach(el=>el.classList.remove("hidden"));
   // 5. Security cleared: Display the UI
   dismissAccessRecovery();rememberWorkspace(user.uid);
   const pageBody = document.getElementById("pageBody");
