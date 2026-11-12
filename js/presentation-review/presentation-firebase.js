@@ -53,17 +53,20 @@ function injectPlanSelectorUI() {
   if (!listContainer || !listContainer.parentElement) return;
 
   const selectorHTML = `
-        <div class="mb-4 bg-gray-50 p-3 rounded border border-gray-200 w-full relative">
-            <button onclick="openPresentationHistory()" class="absolute top-9 right-2 text-xs font-bold text-blue-700 hover:underline">Version history</button>
-            <button onclick="openArchiveManager()" class="absolute top-2 right-2 text-gray-400 hover:text-red-500 text-xs font-bold transition flex items-center gap-1" title="Recycle Bin">
-                <span>🗑️</span> Archive
-            </button>
-            <label class="block text-xs font-bold text-gray-600 uppercase mb-1 mt-1">1. Select Saved Lesson</label>
+        <div class="mb-3 bg-slate-50 p-3 rounded-xl border border-slate-200 w-full min-w-0">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <strong class="text-xs font-extrabold text-slate-800 uppercase tracking-wide">Lesson source</strong>
+                <div class="flex flex-wrap items-center gap-1">
+                    <button type="button" onclick="openPresentationHistory()" class="min-h-9 px-2.5 rounded-lg border border-blue-200 bg-white text-xs font-semibold text-blue-800 hover:bg-blue-50">History</button>
+                    <button type="button" onclick="openArchiveManager()" class="min-h-9 px-2.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-100" title="Archived lessons and presentations">Archive</button>
+                </div>
+            </div>
+            <label for="presentationPlanSelect" class="block text-xs font-bold text-gray-600 uppercase mb-1">1. Select saved lesson</label>
             <select id="presentationPlanSelect" onchange="handlePlanSelection()" class="w-full p-1.5 mb-3 border border-gray-300 rounded text-xs bg-white focus:ring-blue-500">
                 <option value="">Loading plans...</option>
             </select>
             
-            <label class="block text-xs font-bold text-gray-600 uppercase mb-1">2. Select Session/Day</label>
+            <label for="presentationSessionSelect" class="block text-xs font-bold text-gray-600 uppercase mb-1">2. Select session / day</label>
             <select id="presentationSessionSelect" onchange="handleSessionSelection()" class="w-full p-1.5 mb-3 border border-gray-300 rounded text-xs bg-white focus:ring-blue-500" disabled>
                 <option value="">Awaiting lesson...</option>
             </select>
