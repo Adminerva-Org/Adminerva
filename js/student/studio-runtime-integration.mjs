@@ -60,37 +60,91 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
     }
   },true);
 
-  function renderProblems(result){
-    diagnostics=result;
-    if(!display||!btn)return;
-    btn.textContent=result.available?result.errors+' errors · '+result.warnings+' warnings':'Problems';
-    btn.dataset.hasErrors=String(result.errors>0);
-    const summary=el('studioProblemsSummary');
-    if(summary)summary.textContent=result.available?
-      'Java problems · '+result.errors+' errors, '+result.warnings+' warnings':'Java syntax checker unavailable';
-    display.replaceChildren();
-    if(result.message||!result.issues.length){
-      const paragraph=document.createElement('p');
-      paragraph.textContent=result.message||(result.available?
-        'No preliminary syntax problems detected. Compilation is still required.':'No problems reported.');
-      display.append(paragraph);
+  let activeSeverity='error';
+  const problemTabs={
+    error:el('studioProblemsErrorsTab'),
+    warning:el('studioProblemsWarningsTab')
+  };
+  function renderProblemList(){
+    if(!display||!diagnostics)return;
+    const result=diagnostics;
+    for(const [severity,tab] of Object.entries(problemTabs)){
+      if(!tab)continue;
+      const selected=severity===activeSeverity;
+      tab.setAttribute('aria-selected',String(selected));
+      tab.tabIndex=selected?0:-1;
     }
-    for(const issue of result.issues){
+    display.setAttribute('aria-labelledby',
+      activeSeverity==='error'?'studioProblemsErrorsTab':'studioProblemsWarningsTab');
+    display.replaceChildren();
+    const issues=(result.issues||[]).filter(issue=>issue.severity===activeSeverity);
+    if(!issues.length){
+      const paragraph=document.createElement('p');
+      paragraph.textContent=result.message||(!result.available?'Java checks are currently unavailable.':
+        activeSeverity==='error'?'No preliminary errors detected.':'No warnings detected.');
+      display.append(paragraph);
+      return;
+    }
+    for(const issue of issues){
       const button=document.createElement('button');button.type='button';
       const icon=document.createElement('span');
       icon.textContent=issue.severity==='error'?'●':'▲';
       icon.className=issue.severity==='error'?'studio-problem-error':'studio-problem-warning';
+      icon.setAttribute('aria-hidden','true');
       const message=document.createElement('span');
       message.textContent=(issue.filename||'Project')+(issue.line?':'+issue.line:'')+' — '+issue.message;
       button.append(icon,message);
       button.addEventListener('click',()=>{
         if(!issue.filename)return;
         switchFile(issue.filename);
-        const p={lineNumber:Math.max(1,issue.line),column:Math.max(1,issue.column)};
-        editor.setPosition(p);editor.revealPositionInCenter(p);editor.focus();
+        const p={lineNumber:Math.max(1,issue.line||1),column:Math.max(1,issue.column||1)};
+        // The Explorer becomes an off-canvas drawer on phones.
+        if(window.matchMedia('(max-width:767px)').matches){
+          el('studioMobileCloseFiles')?.click();
+          el('studioMobileEditor')?.click();
+        }
+        requestAnimationFrame(()=>{
+          editor.setPosition(p);editor.revealPositionInCenter(p);editor.focus();
+        });
       });
       display.append(button);
     }
+  }
+  function selectSeverity(severity,focus=false){
+    if(!problemTabs[severity])return;
+    activeSeverity=severity;
+    renderProblemList();
+    if(focus)problemTabs[severity].focus();
+  }
+  for(const [severity,tab] of Object.entries(problemTabs)){
+    tab?.addEventListener('click',()=>selectSeverity(severity));
+    tab?.addEventListener('keydown',event=>{
+      if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+      event.preventDefault();
+      const next=event.key==='Home'?'error':event.key==='End'?'warning':
+        activeSeverity==='error'?'warning':'error';
+      selectSeverity(next,true);
+    });
+  }
+  function renderProblems(result){
+    diagnostics=result;
+    if(!display||!btn)return;
+    const errors=Number(result.errors)||0,warnings=Number(result.warnings)||0;
+    btn.dataset.hasErrors=String(errors>0);
+    btn.setAttribute('aria-label','Problems: '+errors+' errors and '+warnings+' warnings. '+
+      (panel?.classList.contains('hidden')?'Expand':'Collapse')+' Java problems.');
+    for(const [id,count] of [
+      ['studioProblemsErrorsBadge',errors],['studioProblemsWarningsBadge',warnings],
+      ['studioProblemsErrorsCount',errors],['studioProblemsWarningsCount',warnings]
+    ]){
+      const node=el(id);
+      if(node)node.textContent=String(count);
+    }
+    el('studioProblemsErrorsBadge')?.setAttribute('data-active',String(errors>0));
+    el('studioProblemsWarningsBadge')?.setAttribute('data-active',String(warnings>0));
+    const summary=el('studioProblemsSummary');
+    if(summary)summary.textContent=result.available?'Java problems':'Java checks unavailable';
+    renderProblemList();
   }
   function scheduleDiagnostics(){
     clearTimeout(timer);
@@ -111,15 +165,19 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
       }
     },450);
   }
-  btn?.addEventListener('click',()=>{
-    const open=panel?.classList.contains('hidden');
-    panel?.classList.toggle('hidden',!open);
-    btn.setAttribute('aria-expanded',String(Boolean(open)));
-    requestAnimationFrame(()=>editor.layout());
-  });
+  function toggleProblems(open){
+    if(!panel||!btn)return;
+    panel.classList.toggle('hidden',!open);
+    btn.setAttribute('aria-expanded',String(open));
+    btn.setAttribute('aria-label',
+      'Problems: '+(diagnostics?.errors||0)+' errors and '+(diagnostics?.warnings||0)+
+      ' warnings. '+(open?'Collapse':'Expand')+' Java problems.');
+    if(open&&diagnostics?.errors===0&&diagnostics?.warnings>0)selectSeverity('warning');
+  }
+  btn?.addEventListener('click',()=>toggleProblems(panel?.classList.contains('hidden')));
   el('studioProblemsClose')?.addEventListener('click',()=>{
-    panel?.classList.add('hidden');btn?.setAttribute('aria-expanded','false');
-    requestAnimationFrame(()=>editor.layout());
+    toggleProblems(false);
+    btn?.focus();
   });
   editor.onDidChangeModelContent(scheduleDiagnostics);
   scheduleDiagnostics();
