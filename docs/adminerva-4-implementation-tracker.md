@@ -676,3 +676,8 @@ Imported the exact files from pinned production `139a0fa3cf22998fe2646227a7d8a28
 - Added the current-main external importer dialog with stable mobile scroll and visible status/retry feedback. Retained V4's current shared navigation and canonical verified-access guard asset versions, with a new cache query for the legacy library client.
 - The PDF file itself is handed to the external AI **by the user**, not uploaded behind the scenes. No Firebase, Cloudflare, AI credentials, school records, teacher-private assessment notes or existing student data are migrated or changed.
 - This is source reconciliation only, not production deployment or V4 pilot activation. The legacy importer remains available only under the authorized legacy-compatible reference workflow.
+
+
+### Legacy Studio grade publication and linked Class Record clarity — November 12, 2026
+
+Reconciled the four current-main teacher-facing Studio submission messages so the UI explicitly indicates when a **published reviewed Studio grade** is available to a linked Class Record column, when unpublishing hides that linked result, and that refreshed Class Record columns reflect newly published results. Only explanatory confirmation/status strings in `js/repo-review/studio-submissions.mjs` changed. Student release remains Class Record-specific, and final-grade/publication checks continue to run in their owning services; no grade, rubric, evaluation, Firestore rules or data was changed.
