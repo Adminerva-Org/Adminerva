@@ -6,28 +6,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Teaching workspace | Adminerva</title>
     <link rel="icon" type="image/png" sizes="32x32" href="assets/adminerva-favicon-32.png" />
+    <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+    <link rel="dns-prefetch" href="//cdn.tailwindcss.com">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8" />
-<link rel="stylesheet" href="css/teaching-workspace.css?v=1.3.11"></head>
-  <body class="bg-gray-100 font-sans min-h-screen flex flex-col">
+<link rel="stylesheet" href="css/teaching-workspace.css?v=1.3.11">
+    <link rel="stylesheet" href="css/teacher-ux.css?v=4.0.0">
+    <link rel="modulepreload" href="js/repo-review/v2-grading-queue.mjs?v=4.0.1">
+    <link rel="modulepreload" href="js/core/auth-guard.js?v=4.0.4">
+  </head>
+  <body class="av-teacher-refresh av-teacher-review bg-gray-100 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="repo" data-page="repofetch"></div>
-    <script src="js/core/adminerva-nav.js?v=3.0.0"></script>
+    <script defer src="js/core/adminerva-nav.js?v=4.0.7"></script>
 
     <div class="av-educator-layout"><aside class="av-educator-nav" data-educator-hub-nav data-current="review"></aside><div class="av-educator-content">
-    <div class="max-w-screen-xl mx-auto w-full p-3 sm:p-4 mt-2 flex-1">
-      <div class="bg-white p-3 sm:p-4 rounded-lg shadow-sm border border-gray-200">
-        <h1 class="text-xl sm:text-2xl font-extrabold text-slate-900">Review and grade</h1>
-        <a href="studio-submissions.html" class="inline-flex mt-2 px-3 py-2 rounded-lg border border-teal-300 bg-teal-50 text-teal-900 text-sm font-semibold">Review Adminerva Studio projects →</a>
-        <p class="text-xs sm:text-sm text-slate-600 mt-1 mb-3">Choose your class and assessment, then review selected commits, approve evidence, evaluate, and grade each learner.</p>
-        <div class="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          Need broader repository history or manual investigation? <a href="repobank.html" class="font-bold text-indigo-700 underline">Open Repository investigation →</a>
+    <div class="av-review-shell flex-1">
+      <div class="av-review-main">
+        <header class="av-review-heading">
+          <div>
+            <p class="av-teacher-section-title mb-1">Teacher workspace / evidence review</p>
+            <h1>Review and grade</h1>
+            <p class="text-sm text-slate-600 mt-1">Select a class, assessment, and repository group to inspect each learner's evidence.</p>
+          </div>
+          <nav class="av-review-links" aria-label="Related review tools">
+            <a href="studio-submissions.html">Studio submissions</a>
+            <a href="repobank.html">Repository investigation</a>
+          </nav>
+        </header>
+        <div class="av-review-steps" aria-label="Review steps">
+          <span><b aria-hidden="true">1</b> Choose class work</span>
+          <span><b aria-hidden="true">2</b> Verify evidence</span>
+          <span><b aria-hidden="true">3</b> Evaluate and publish</span>
         </div>
-        <section id="v2GradingWorkspace" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 mb-6 shadow-sm space-y-4" aria-labelledby="v2WorkspaceTitle">
+        <section id="v2GradingWorkspace" class="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 mb-6 shadow-sm space-y-3" aria-labelledby="v2WorkspaceTitle" aria-busy="true">
           <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
             <div>
-              <p class="text-xs font-bold uppercase tracking-widest text-slate-500">Review context</p>
-              <h2 id="v2WorkspaceTitle" class="text-xl font-extrabold text-slate-950 mt-1">Review class work</h2>
-              <p class="text-xs text-slate-600 mt-1">Select a repository group, then choose the learner to review and grade.</p>
+              <p class="av-teacher-section-title mb-1">Current review</p>
+              <h2 id="v2WorkspaceTitle" class="text-xl font-extrabold text-slate-950 mt-1">Class and assessment</h2>
             </div>
             <button id="v2RefreshQueue" type="button" class="rounded-lg border border-slate-300 bg-white hover:bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-800">Refresh</button>
           </div>
@@ -43,10 +58,21 @@
             </label>
           </div>
           <select id="reviewTargetMode" class="hidden" aria-hidden="true" tabindex="-1"><option value="group" selected>Group</option></select>
-          <p id="v2QueueStatus" role="status" class="text-sm text-slate-600">Loading assessments…</p>
+          <p id="v2QueueStatus" role="status" aria-live="polite" class="text-sm text-slate-600">Loading assigned classes and assessments…</p>
+          <div id="v2QueueSkeleton" class="av-review-page-loading" aria-hidden="true"><span></span><span></span><span></span></div>
         </section>
         <section id="teachingWorkspace" class="av-teaching-workspace" hidden aria-labelledby="teaching-context-title">
-          <header class="av-teaching-context"><h2 id="teaching-context-title" data-review-context class="font-extrabold text-lg"></h2><p data-review-individual class="text-sm text-slate-600 mt-1"></p><span data-review-evidence-status role="status" class="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 text-slate-700 px-2.5 py-1 text-xs font-bold mt-2" hidden></span><label class="block text-sm font-semibold mt-3">Current learner<select data-review-member class="mt-1 w-full border rounded-lg p-2.5"></select></label></header>
+          <header class="av-teaching-context">
+            <div class="flex items-start justify-between flex-wrap gap-2">
+              <div class="min-w-0"><p class="av-teacher-section-title mb-1">Selected repository / group</p>
+                <h2 id="teaching-context-title" data-review-context class="font-extrabold text-lg"></h2>
+                <p data-review-individual class="text-sm text-slate-600 mt-1"></p></div>
+              <span data-review-evidence-status role="status" class="inline-flex items-center rounded-full border border-slate-300 bg-slate-50 text-slate-700 px-2.5 py-1 text-xs font-bold" hidden></span>
+            </div>
+            <label class="block text-sm font-semibold mt-3">Current learner
+              <select data-review-member class="mt-1 w-full border rounded-lg p-2.5"></select>
+            </label>
+          </header>
           <nav class="av-teaching-tabs" role="tablist" aria-label="Teaching workspace panels">
             
             <button type="button" id="teaching-tab-grade" role="tab" aria-controls="teaching-panel-review" data-teaching-tab="grade" aria-selected="true">Review &amp; grade</button>
@@ -445,9 +471,9 @@
             </div>
             <p id="manualReviewAIStatus" role="status" class="text-xs text-indigo-900">Approve checkpoint evidence to enable suggestions.</p>
             <div id="manualReviewFallback" class="hidden rounded border border-amber-200 bg-amber-50 p-3" role="status"><p class="text-sm">No replacement score was saved. Continue with your own score and feedback, or retry the evaluation.</p><div class="flex flex-wrap gap-3 mt-2"><button type="button" id="manualReviewRetry" class="border rounded px-3 py-2">Retry evaluation</button></div></div>
-            <button id="manualReviewReviewEvidence" type="button" class="hidden border border-emerald-400 bg-emerald-50 text-emerald-950 rounded px-3 py-2.5 text-xs font-bold">Review &amp; approve updated evidence</button>
+            <button id="manualReviewReviewEvidence" type="button" class="hidden border border-emerald-400 bg-emerald-50 text-emerald-950 rounded px-3 py-2 text-xs font-bold">Review &amp; approve updated evidence</button>
             <button id="manualReviewVerifyContributions" type="button" class="hidden border border-indigo-300 rounded px-3 py-2 text-xs font-bold">Verify contributing commits</button>
-            <button id="manualReviewAddUnmatchedCommit" type="button" class="hidden border border-amber-400 bg-amber-50 text-amber-950 rounded px-3 py-2.5 text-xs font-bold">Add / attribute unmatched commit</button>
+            <button id="manualReviewAddUnmatchedCommit" type="button" class="hidden border border-amber-400 bg-amber-50 text-amber-950 rounded px-3 py-2 text-xs font-bold">Add / attribute unmatched commit</button>
             <p id="manualReviewCheckerSetup" class="text-xs border rounded p-3">Evaluation uses the school’s configured evaluation connection. <a href="settings.html" class="underline font-semibold">View connection settings</a>. Your score and feedback stay under your control.</p>
           </section>
           <form id="manualReviewForm" class="space-y-4" style="scroll-margin-top:64px">
@@ -482,7 +508,7 @@
 Score-affecting issues: ...
 
 Recommended improvements: ..."
-                class="w-full border border-slate-300 rounded-lg px-3 py-2.5"></textarea>
+                class="w-full border border-slate-300 rounded-lg px-3 py-3 leading-relaxed"></textarea>
             </div>
             <div>
               <label class="block text-sm font-bold text-slate-800 mb-1" for="manualReviewReason">Additional private note (optional)</label>
@@ -517,13 +543,6 @@ Recommended improvements: ..."
             <p class="mt-1 text-xs text-slate-600">Copy verified evidence to an external evaluator, then paste the returned JSON here. Your prepared package and pasted result are retained if you close and reopen this dialog without changing the approved evidence. Nothing is saved or published until you review and save it.</p>
           </div>
           <button id="externalEvaluationClose" type="button" class="rounded-lg px-3 py-2 font-bold text-slate-600" aria-label="Close external evaluation">✕</button>
-        </div>
-        <div id="externalEvaluationProcessing" hidden style="display:none" class="hidden shrink-0 border-b border-cyan-200 bg-cyan-50 px-4 sm:px-5 py-3 flex items-center gap-3" role="status" aria-live="polite" aria-atomic="true">
-          <span class="av-loader-mark" aria-hidden="true"><img class="av-loader-emblem" src="assets/adminerva-emblem.png" alt=""><span class="av-loader-orbit"></span></span>
-          <span class="min-w-0">
-            <strong class="block text-sm font-bold text-slate-900">Adminerva is processing</strong>
-            <span id="externalEvaluationProcessingText" class="block text-xs text-slate-700">Preparing verified evidence…</span>
-          </span>
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
           <section class="rounded-xl border border-slate-200 p-4 space-y-3">
@@ -562,11 +581,11 @@ Recommended improvements: ..."
     </div>
 
     <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
-    <script type="module" src="js/core/auth-guard.js?v=4.0.4"></script>
+    <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
     <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.2"></script>
-    <script type="module" src="js/repo-review/repofetch.js?v=3.0.0"></script>
+    <script type="module" src="js/repo-review/repofetch.js?v=4.0.1"></script>
     <script type="module" src="js/repo-review/auto-checker.js?v=1.3.0"></script>
     <script type="module" src="js/repo-review/manual-review.mjs?v=1.4.49"></script>
-    <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=1.4.22"></script>
+    <script type="module" src="js/repo-review/v2-grading-queue.mjs?v=4.0.1"></script>
   </body>
 </html>
