@@ -189,6 +189,18 @@
       <button id="cr-setup-close" type="button" class="cr-button">Close</button>
     </div>
 
+    <div class="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3">
+      <div class="flex flex-col lg:flex-row lg:items-end gap-2">
+        <label class="cr-field flex-1 mt-0">School grading scheme
+          <select id="cr-scheme-select" class="cr-select mt-1">
+            <option value="">Custom class setup</option>
+          </select>
+        </label>
+        <button id="cr-apply-scheme" type="button" class="cr-button">Apply scheme</button>
+      </div>
+      <p id="cr-scheme-note" class="cr-help mt-2">School presets are copied into this class record. Later preset edits do not silently change existing grades.</p>
+    </div>
+
     <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
@@ -267,6 +279,6 @@
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script defer src="js/core/adminerva-nav.js?v=4.0.6"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.7"></script>
-<script type="module" src="js/class-record/class-record.mjs?v=1.2.0"></script>
+<script type="module" src="js/class-record/class-record.mjs?v=1.3.0"></script>
 </body>
 </html>

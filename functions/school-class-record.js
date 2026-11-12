@@ -82,7 +82,26 @@ function cleanSettings(raw={}){
   }
   if(total>100.0001)
     deny("invalid-argument","Category weights cannot total more than 100 percent.");
-  return {categoryWeights,gradeComputation};
+  let appliedSchemeId=null,appliedSchemeRevision=null,appliedSchemeName="";
+  if(input.appliedSchemeId!==undefined&&input.appliedSchemeId!==null&&input.appliedSchemeId!==""){
+    appliedSchemeId=checkId(String(input.appliedSchemeId),"Applied grading scheme ID",80);
+    appliedSchemeRevision=Number(input.appliedSchemeRevision);
+    if(!Number.isInteger(appliedSchemeRevision)||appliedSchemeRevision<1)
+      deny("invalid-argument","Applied grading scheme revision is invalid.");
+    appliedSchemeName=String(input.appliedSchemeName||"").trim();
+    if(!appliedSchemeName||appliedSchemeName.length>120)
+      deny("invalid-argument","Applied grading scheme name is invalid.");
+  }
+  return {categoryWeights,gradeComputation,appliedSchemeId,appliedSchemeRevision,appliedSchemeName};
+}
+function settingsCoreKey(settings){
+  return JSON.stringify({
+    gradeComputation:settings.gradeComputation,
+    categoryWeights:[...(settings.categoryWeights||[])].map(row=>({
+      category:String(row.category||"").toLocaleLowerCase("en"),
+      weight:Number(row.weight)||0
+    })).sort((a,b)=>a.category.localeCompare(b.category))
+  });
 }
 function cleanColumns(raw,assessmentMap,previousColumns=[]){
   if(!Array.isArray(raw)||raw.length>MAX_COLUMNS)
@@ -136,10 +155,89 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
   return async request=>{
     const input=request.data||{};
     const ctx=await getSchoolContext({db,request,schoolId:input.schoolId});
-    if(!ctx.roles.includes("teacher"))
-      deny("permission-denied","Class Record access requires an active teacher role.");
+    const teacher=ctx.roles.includes("teacher"),admin=ctx.roles.includes("school_admin");
+    if(!teacher&&!admin)
+      deny("permission-denied","Class Record access requires a school teacher or school administrator role.");
 
     const prefix="schools/"+ctx.schoolId+"/";
+    const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
+    const membershipRef=db.doc(prefix+"memberships/"+ctx.uid);
+    async function verifySchoolAdmin(tx){
+      const [school,membership]=await Promise.all([tx.get(schoolRef),tx.get(membershipRef)]);
+      if(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
+         membership.data().schoolId!==ctx.schoolId||membership.data().status!=="active"||
+         !Array.isArray(membership.data().roles)||!membership.data().roles.includes("school_admin"))
+        deny("permission-denied","Your school administration permission changed. Refresh before saving.");
+    }
+    if(input.action==="list_schemes"){
+      const includeArchived=admin&&input.includeArchived===true;
+      const snap=await db.collection(prefix+"grading_schemes").limit(51).get();
+      if(snap.size===51)deny("resource-exhausted","Grading scheme list requires pagination.");
+      return {schemes:snap.docs.map(doc=>({schemeId:doc.id,...doc.data()}))
+        .filter(item=>item.schoolId===ctx.schoolId&&(includeArchived||item.status==="active"))
+        .map(item=>({
+          schemeId:item.schemeId,name:String(item.name||"Grading scheme"),
+          description:String(item.description||""),status:item.status||"active",
+          revision:Number(item.revision)||1,
+          settings:cleanSettings(item.settings||{}),
+          updatedAt:millis(item.updatedAt)
+        })).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}))};
+    }
+    if(["save_scheme","archive_scheme","restore_scheme"].includes(input.action)){
+      if(!admin)deny("permission-denied","School administration is required to manage grading schemes.");
+      const schemeId=checkId(String(input.schemeId||""),"Grading scheme ID",80);
+      const schemeRef=db.doc(prefix+"grading_schemes/"+schemeId);
+      const expectedRevision=Number(input.expectedRevision);
+      if(!Number.isInteger(expectedRevision)||expectedRevision<0)
+        deny("invalid-argument","Grading scheme revision is invalid.");
+      const auditRef=db.collection(prefix+"grading_scheme_audit").doc();
+      let result;
+      await db.runTransaction(async tx=>{
+        await verifySchoolAdmin(tx);
+        const current=await tx.get(schemeRef),prior=current.exists?current.data():null;
+        const priorRevision=prior?Number(prior.revision)||0:0;
+        if(prior&&prior.schoolId!==ctx.schoolId)deny("permission-denied","Grading scheme belongs to another school.");
+        if(priorRevision!==expectedRevision)
+          deny("failed-precondition","This grading scheme changed. Reload it before saving.");
+        const now=FieldValue.serverTimestamp();
+        if(input.action==="save_scheme"){
+          const name=text(input.name,"Grading scheme name",120);
+          const description=String(input.description||"").trim();
+          if(description.length>300)deny("invalid-argument","Grading scheme description cannot exceed 300 characters.");
+          const schemeSettings=cleanSettings(input.settings||{});
+          const total=schemeSettings.categoryWeights.reduce((sum,row)=>sum+row.weight,0);
+          if(!schemeSettings.categoryWeights.length||Math.abs(total-100)>0.001)
+            deny("invalid-argument","A school grading scheme must contain category weights totaling exactly 100 percent.");
+          const storedSettings={
+            categoryWeights:schemeSettings.categoryWeights,
+            gradeComputation:schemeSettings.gradeComputation
+          };
+          const revision=priorRevision+1;
+          const values={schoolId:ctx.schoolId,name,description,status:"active",
+            settings:storedSettings,revision,updatedByUid:ctx.uid,updatedAt:now};
+          if(prior)tx.update(schemeRef,values);
+          else tx.create(schemeRef,{...values,createdByUid:ctx.uid,createdAt:now});
+          tx.create(auditRef,{schoolId:ctx.schoolId,schemeId,actorUid:ctx.uid,
+            action:prior?"grading_scheme_updated":"grading_scheme_created",
+            revision,createdAt:now});
+          result={schemeId,name,description,status:"active",settings:storedSettings,revision};
+        }else{
+          if(!prior)deny("not-found","Grading scheme does not exist.");
+          const status=input.action==="archive_scheme"?"archived":"active";
+          if(prior.status===status){result={schemeId,status,revision:priorRevision};return;}
+          const revision=priorRevision+1;
+          tx.update(schemeRef,{status,revision,updatedByUid:ctx.uid,updatedAt:now});
+          tx.create(auditRef,{schoolId:ctx.schoolId,schemeId,actorUid:ctx.uid,
+            action:status==="archived"?"grading_scheme_archived":"grading_scheme_restored",
+            revision,createdAt:now});
+          result={schemeId,status,revision};
+        }
+      });
+      return result;
+    }
+
+    if(!teacher)
+      deny("permission-denied","An active teacher assignment is required to open a Class Record.");
     const offeringId=checkId(String(input.offeringId||""),"Course offering ID",330);
     const offeringRef=db.doc(prefix+"course_offerings/"+offeringId);
     const grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,offeringId));
@@ -385,8 +483,24 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const beforeSheet=await sheetRef.get();
       const previousColumns=beforeSheet.exists&&beforeSheet.data().schoolId===ctx.schoolId&&
         Array.isArray(beforeSheet.data().columns)?beforeSheet.data().columns:[];
+      const previousSettings=cleanSettings(beforeSheet.exists&&beforeSheet.data().schoolId===ctx.schoolId?
+        beforeSheet.data().settings:{});
       const columns=cleanColumns(input.columns,assessmentMap,previousColumns);
       const settings=cleanSettings(input.settings);
+      const schemeChanged=settings.appliedSchemeId&&(
+        settings.appliedSchemeId!==previousSettings.appliedSchemeId||
+        settings.appliedSchemeRevision!==previousSettings.appliedSchemeRevision||
+        settingsCoreKey(settings)!==settingsCoreKey(previousSettings)
+      );
+      if(schemeChanged){
+        const scheme=await db.doc(prefix+"grading_schemes/"+settings.appliedSchemeId).get();
+        if(!scheme.exists||scheme.data().schoolId!==ctx.schoolId||scheme.data().status!=="active"||
+           Number(scheme.data().revision)!==settings.appliedSchemeRevision)
+          deny("failed-precondition","The selected school grading scheme changed. Reload grading setup and apply the current revision.");
+        const schemeSettings=cleanSettings(scheme.data().settings||{});
+        if(settingsCoreKey(schemeSettings)!==settingsCoreKey(settings))
+          deny("failed-precondition","The applied grading scheme snapshot does not match the current school preset.");
+      }
       const expectedRevision=Number(input.expectedRevision);
       if(!Number.isInteger(expectedRevision)||expectedRevision<0)
         deny("invalid-argument","The Class Record layout revision is invalid.");

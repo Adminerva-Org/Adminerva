@@ -29,6 +29,9 @@ const columnKind=el("cr-column-kind");
 const assessmentSelect=el("cr-assessment");
 const setupDialog=el("cr-setup-dialog");
 const setupForm=el("cr-setup-form");
+const schemeSelect=el("cr-scheme-select");
+const applySchemeButton=el("cr-apply-scheme");
+const schemeNote=el("cr-scheme-note");
 const importDialog=el("cr-import-dialog");
 const importForm=el("cr-import-form");
 const importColumn=el("cr-import-column");
@@ -42,7 +45,9 @@ let currentOffering=null;
 let roster=[];
 let assessments=[];
 let columns=[];
-let settings={categoryWeights:[],gradeComputation:"raw_weighted"};
+let gradingSchemes=[];
+let pendingSchemeSnapshot=null;
+let settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
 let sheetRevision=0;
 let manualScores=new Map();
 let publishedGrades=new Map();
@@ -531,6 +536,24 @@ async function saveManualScores(){
 function renderWeightSetup(){
   const host=el("cr-weight-list");host.replaceChildren();
   const categories=usedCategories(),saved=weightMap();
+  schemeSelect.replaceChildren(new Option("Custom class setup",""));
+  for(const scheme of gradingSchemes.filter(item=>item.status==="active"))
+    schemeSelect.add(new Option(scheme.name+" · rev "+scheme.revision,scheme.schemeId));
+  pendingSchemeSnapshot=settings.appliedSchemeId?{
+    schemeId:settings.appliedSchemeId,
+    revision:Number(settings.appliedSchemeRevision)||0,
+    name:settings.appliedSchemeName||"School grading scheme"
+  }:null;
+  schemeSelect.value=gradingSchemes.some(item=>item.schemeId===settings.appliedSchemeId)?
+    settings.appliedSchemeId:"";
+  const currentPreset=settings.appliedSchemeId?gradingSchemes.find(item=>item.schemeId===settings.appliedSchemeId):null;
+  if(settings.appliedSchemeId){
+    schemeNote.textContent=currentPreset&&currentPreset.revision!==Number(settings.appliedSchemeRevision)
+      ?"This class uses "+(settings.appliedSchemeName||"a school preset")+" revision "+settings.appliedSchemeRevision+
+        ". The school preset is now revision "+currentPreset.revision+"; reapply it explicitly to update this class."
+      :"This class is using a snapshot of "+(settings.appliedSchemeName||"the selected school preset")+
+        " revision "+settings.appliedSchemeRevision+".";
+  }else schemeNote.textContent="Custom class setup. Applying a school preset copies its current weights and formula into this class record.";
   if(!categories.length){
     host.append(make("p","cr-muted py-3","Add and categorize at least one Class Record column before setting category weights."));
   }else{
@@ -541,10 +564,36 @@ function renderWeightSetup(){
       input.type="number";input.min="0";input.max="100";input.step="0.001";
       input.dataset.weightCategory=category;
       input.value=saved.has(category.toLocaleLowerCase("en"))?String(saved.get(category.toLocaleLowerCase("en"))):"";
-      input.addEventListener("input",updateWeightTotal);row.append(input);host.append(row);
+      input.addEventListener("input",()=>{pendingSchemeSnapshot=null;schemeSelect.value="";schemeNote.textContent="Custom class setup — this class no longer exactly follows a school preset.";updateWeightTotal();});
+      row.append(input);host.append(row);
     }
   }
   setupForm.elements.gradeComputation.value=settings.gradeComputation||"raw_weighted";
+  updateWeightTotal();
+}
+function applySelectedScheme(){
+  const scheme=gradingSchemes.find(item=>item.schemeId===schemeSelect.value&&item.status==="active");
+  if(!scheme){schemeNote.textContent="Choose an active school grading scheme first.";return;}
+  const schemeRows=scheme.settings?.categoryWeights||[];
+  const weights=new Map(schemeRows.map(row=>[
+    String(row.category||"").toLocaleLowerCase("en"),Number(row.weight)||0
+  ]));
+  const inputs=[...el("cr-weight-list").querySelectorAll("[data-weight-category]")];
+  let missing=0;
+  for(const input of inputs){
+    const value=weights.get(String(input.dataset.weightCategory||"").toLocaleLowerCase("en"));
+    input.value=value===undefined?"":String(value);
+    if(value===undefined)missing++;
+  }
+  const activeKeys=new Set(inputs.map(input=>String(input.dataset.weightCategory||"").toLocaleLowerCase("en")));
+  const exactCategorySet=missing===0&&schemeRows.length===activeKeys.size&&
+    schemeRows.every(row=>activeKeys.has(String(row.category||"").toLocaleLowerCase("en")));
+  setupForm.elements.gradeComputation.value=scheme.settings?.gradeComputation||"raw_weighted";
+  pendingSchemeSnapshot=exactCategorySet
+    ?{schemeId:scheme.schemeId,revision:scheme.revision,name:scheme.name}:null;
+  schemeNote.textContent=exactCategorySet
+    ?scheme.name+" revision "+scheme.revision+" is ready to apply to this class. Saving will snapshot these values."
+    :scheme.name+" has different category names from this Class Record. Matching weights were staged as a custom setup; align the column categories before applying the preset as a versioned scheme.";
   updateWeightTotal();
 }
 function updateWeightTotal(){
@@ -719,6 +768,15 @@ function exportCsv(){
   document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),0);
   say("Class Record CSV exported.");
 }
+async function loadSchemes(){
+  try{
+    const result=await scoped(classRecordApi,"list_schemes");
+    gradingSchemes=result.schemes||[];
+  }catch(error){
+    gradingSchemes=[];
+    console.warn("Grading schemes unavailable:",error);
+  }
+}
 async function loadWorkspace(){
   if(!currentOfferingId)return;
   setBusy(true,"Loading class roster and score sources…");
@@ -732,7 +790,7 @@ async function loadWorkspace(){
         ?{...column,assessmentSource:SCHOOL_SOURCE}:column;
       return {...normalized,archived:normalized.archived===true};
     });
-    settings=result.settings||{categoryWeights:[],gradeComputation:"raw_weighted"};
+    settings=result.settings||{categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
     sheetRevision=Number(result.sheetRevision)||0;
     manualScores=new Map((result.manualScores||[]).map(item=>[key(item.columnId,item.personId),item.score]));
     publishedGrades=new Map((result.publishedGrades||[]).map(item=>[
@@ -782,12 +840,24 @@ offeringSelect.addEventListener("change",async()=>{
     offeringSelect.value=currentOfferingId;return;
   }
   currentOfferingId=next;currentOffering=null;roster=[];assessments=[];columns=[];
-  settings={categoryWeights:[],gradeComputation:"raw_weighted"};
+  settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
+  pendingSchemeSnapshot=null;
   manualScores.clear();publishedGrades.clear();dirtyColumns.clear();
   if(next)await loadWorkspace();else render();
 });
 addButton.addEventListener("click",()=>openColumnDialog());
 setupButton.addEventListener("click",openSetup);
+applySchemeButton.addEventListener("click",applySelectedScheme);
+setupForm.elements.gradeComputation.addEventListener("change",()=>{
+  pendingSchemeSnapshot=null;schemeSelect.value="";
+  schemeNote.textContent="Custom class setup — the period-grade formula was changed for this class.";
+});
+schemeSelect.addEventListener("change",()=>{
+  const scheme=gradingSchemes.find(item=>item.schemeId===schemeSelect.value);
+  schemeNote.textContent=scheme
+    ?scheme.name+" revision "+scheme.revision+" selected. Use Apply scheme to copy its current values."
+    :"Custom class setup.";
+});
 importButton.addEventListener("click",openImport);
 archivedButton.addEventListener("click",openArchived);
 refreshButton.addEventListener("click",()=>{
@@ -856,7 +926,12 @@ setupForm.addEventListener("submit",event=>{
   }));
   const nextSettings={
     categoryWeights,
-    gradeComputation:setupForm.elements.gradeComputation.value
+    gradeComputation:setupForm.elements.gradeComputation.value,
+    ...(pendingSchemeSnapshot?{
+      appliedSchemeId:pendingSchemeSnapshot.schemeId,
+      appliedSchemeRevision:pendingSchemeSnapshot.revision,
+      appliedSchemeName:pendingSchemeSnapshot.name
+    }:{})
   };
   const total=categoryWeights.reduce((sum,row)=>sum+row.weight,0);
   if(total>100.0001){
@@ -878,8 +953,9 @@ picker=createTenantSchoolPicker({
   status,
   onBeforeChange:async()=>{
     if(dirtyColumns.size)throw new Error("Save or discard manual score changes before switching schools.");
-    currentOfferingId="";currentOffering=null;offerings=[];roster=[];assessments=[];columns=[];
-    settings={categoryWeights:[],gradeComputation:"raw_weighted"};
+    currentOfferingId="";currentOffering=null;offerings=[];roster=[];assessments=[];columns=[];gradingSchemes=[];
+    pendingSchemeSnapshot=null;
+    settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
     manualScores.clear();publishedGrades.clear();dirtyColumns.clear();
     offeringSelect.replaceChildren(new Option("Choose a class…",""));
     offeringSelect.disabled=true;panel.hidden=true;kpis.replaceChildren();
@@ -888,6 +964,6 @@ picker=createTenantSchoolPicker({
     if(!scope.current?.roles.includes("teacher")){
       say("Your role in this school does not include Class Record access.");return;
     }
-    void loadOfferings();
+    void loadSchemes().finally(()=>loadOfferings());
   }
 });
