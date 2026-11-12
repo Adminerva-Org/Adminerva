@@ -38,6 +38,14 @@ test('broad staff matches cannot create or mutate arbitrary nested academic audi
   await assertFails(setDoc(decision,{reason:'Administrator claim resolution'}));
   await assertFails(updateDoc(decision,{reason:'Replaced decision'}));await assertFails(deleteDoc(decision));
 });
+test('platform governance role registry remains server-only even to legacy administrators',async()=>{
+  for(const database of [client('admin',ADMIN),client('staff',TEACHER),client('alice',EMAIL_A)]){
+    await assertFails(getDoc(doc(database,'platform_governance_roles','data-protection-officer')));
+    await assertFails(setDoc(doc(database,'platform_governance_roles','data-protection-officer'),{
+      displayName:'Data Protection Officer',status:'active'
+    }));
+  }
+});
 test('a directory-only teacher can inspect its own profile but cannot grant itself staff authority',async()=>{
   await env.withSecurityRulesDisabled(async context=>setDoc(doc(context.firestore(),'teachers','directory-only'),{email:'directory.teacher@example.edu',role:'teacher',uid:'directory-only'}));
   const teacher=client('directory-only','directory.teacher@example.edu');

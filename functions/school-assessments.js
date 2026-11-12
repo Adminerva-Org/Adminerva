@@ -9,6 +9,7 @@ const {Timestamp,FieldValue}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
+const {blueprintFingerprint,personalizationContent,PERSONALIZATION_MODE}=require("./teacher-blueprints.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
 function timestamp(value,label){
  if(typeof value!=="string"||!/^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(value)||
@@ -71,11 +72,33 @@ function createSchoolAssessmentService({db}){
         prior.blueprintId===blueprintId&&prior.offeringId===offeringId&&
         prior.requestKey===key&&prior.submissionSource===source&&
         prior.opensAt.toMillis()===start.toMillis()&&prior.dueAt.toMillis()===end.toMillis())
-       {result={taskId,status:"deployed",alreadyExisted:true};return;}
+       {result={taskId,status:"deployed",published:prior.published===true,alreadyExisted:true};return;}
       deny("already-exists","This deployment request was already used with different details.");
     }
     // Only non-confidential blueprint fields; copy by value, never reference mutable
     // private answer keys or share grants in a student-visible deployment.
+    const personalization=personalizationContent(original.personalization);
+    if(personalization.enabled&&source!=="studio")
+      deny("failed-precondition","Personalized assessments currently require Adminerva Studio submission.");
+    let personalizedTask={enabled:false,mode:"standard"};
+    if(personalization.enabled){
+      const fingerprint=blueprintFingerprint(original),
+        poolRef=db.doc(prefix+"assessment_blueprint_private/"+blueprintId+"/pools/"+fingerprint),
+        pool=await tx.get(poolRef),
+        poolData=pool.exists?pool.data():{},
+        variantIds=Array.isArray(poolData.variantIds)?poolData.variantIds:[];
+      if(!pool.exists||poolData.schoolId!==ctx.schoolId||poolData.ownerUid!==ctx.uid||
+         poolData.blueprintId!==blueprintId||
+         poolData.fingerprint!==fingerprint||poolData.ready!==true||
+         variantIds.length<personalization.variantTarget||variantIds.length>600)
+        deny("failed-precondition","Activate a complete private personalization pool before deployment.");
+      personalizedTask={
+        enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",
+        uniqueWithinAssessment:true,poolFingerprint:fingerprint,
+        poolSize:variantIds.length,poolTarget:personalization.variantTarget,
+        variantIds:[...variantIds]
+      };
+    }
     const frozen={
      title:original.title,description:original.description||"",
      instructions:original.instructions||"",
@@ -91,32 +114,80 @@ function createSchoolAssessmentService({db}){
      blueprintId,blueprintRevision:original.contentRevision,
      offeringId,yearId:offering.data().yearId,termId:offering.data().termId,
      subjectId:offering.data().subjectId,sectionId:offering.data().sectionId,
-     submissionSource:source,opensAt:start,dueAt:end,
-     requestKey:key,status:"deployed",lifecycle:"active",revision:1,
+     submissionSource:source,personalizedTask,opensAt:start,dueAt:end,
+     requestKey:key,status:"deployed",published:false,lifecycle:"active",revision:1,
      createdAt:now,updatedAt:now
     });
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
      action:"assessment_deployed",offeringId,source,createdAt:now});
-    result={taskId,status:"deployed",alreadyExisted:false};
+    result={taskId,status:"deployed",published:false,alreadyExisted:false};
    });
-   if(!result.alreadyExisted){
-     // Notification fan-out is best-effort and never changes deployment success.
-     const enrolled=await db.collection(prefix+"enrollments")
-       .where("offeringId","==",offeringId).limit(101).get().catch(()=>null);
-     if(enrolled&&enrolled.size<=100){
-       const active=enrolled.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
-       const people=await Promise.all(active.map(doc=>db.doc(prefix+"people/"+doc.data().personId).get()));
-       await Promise.allSettled(people.map(person=>{
-         const uid=person.exists&&person.data().schoolId===ctx.schoolId&&person.data().status==="active"?
-           person.data().authUid:null;
-         return uid?writeSchoolNotification({
-           db,schoolId:ctx.schoolId,uid,id:"assessment_deployed_"+result.taskId,
-           title:"New assessment assigned",
-           body:frozen.title+" · open Adminerva to review the task and submission method.",
-           type:"assessment",sourceId:result.taskId,target:"student-assessments.html"
-         }):Promise.resolve();
-       }));
-     }
+   return result;
+  }
+
+  if(["publish","unpublish"].includes(input.action)){
+   if(!ctx.roles.includes("teacher"))
+    deny("permission-denied","Only an authorized teacher may change student visibility.");
+   const taskId=checkId(input.taskId,"Assessment task",128),
+    taskRef=tasks.doc(taskId),expectedRevision=Number(input.expectedRevision),
+    publish=input.action==="publish";
+   if(!Number.isInteger(expectedRevision)||expectedRevision<1)
+    deny("invalid-argument","The current assessment revision is required.");
+   const auditRef=db.collection(prefix+"assessment_audit").doc();
+   let result;
+   await db.runTransaction(async tx=>{
+    const [school,membership,task]=await Promise.all([
+      tx.get(schoolRef),tx.get(membershipRef),tx.get(taskRef)
+    ]);
+    if(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
+       membership.data().schoolId!==ctx.schoolId||membership.data().status!=="active"||
+       !Array.isArray(membership.data().roles)||!membership.data().roles.includes("teacher"))
+      deny("permission-denied","Your school teaching access changed.");
+    if(!task.exists||task.data().schoolId!==ctx.schoolId||
+       (task.data().reviewerUid||task.data().ownerUid)!==ctx.uid)
+      deny("permission-denied","Only the currently responsible teacher may change publication.");
+    const data=task.data(),revision=data.revision||1,lifecycle=data.lifecycle||"active",
+      grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,data.offeringId)),
+      grant=await tx.get(grantRef);
+    if(!grant.exists||grant.data().schoolId!==ctx.schoolId||
+       grant.data().teacherUid!==ctx.uid||grant.data().offeringId!==data.offeringId||
+       grant.data().status!=="active")
+      deny("permission-denied","You must still be assigned to this course offering.");
+    if(revision!==expectedRevision)
+      deny("failed-precondition","This assessment changed. Reload before changing publication.");
+    if(["archived","cancelled"].includes(lifecycle))
+      deny("failed-precondition","Restore this assessment before changing publication.");
+    if((data.published===true)===publish){
+      result={taskId,published:publish,revision,alreadyCurrent:true,
+        offeringId:data.offeringId,title:data.title||"Assessment"};return;
+    }
+    const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
+    tx.update(taskRef,{published:publish,revision:nextRevision,updatedAt:now,
+      ...(publish?{publishedAt:now,publishedByUid:ctx.uid}:
+        {unpublishedAt:now,unpublishedByUid:ctx.uid})});
+    tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
+      action:publish?"assessment_published":"assessment_unpublished",
+      beforeRevision:revision,afterRevision:nextRevision,createdAt:now});
+    result={taskId,published:publish,revision:nextRevision,alreadyCurrent:false,
+      offeringId:data.offeringId,title:data.title||"Assessment"};
+   });
+   if(publish&&!result.alreadyCurrent){
+    const enrolled=await db.collection(prefix+"enrollments")
+      .where("offeringId","==",result.offeringId).limit(101).get().catch(()=>null);
+    if(enrolled&&enrolled.size<=100){
+      const active=enrolled.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"),
+        people=await Promise.all(active.map(doc=>db.doc(prefix+"people/"+doc.data().personId).get()));
+      await Promise.allSettled(people.map(person=>{
+        const uid=person.exists&&person.data().schoolId===ctx.schoolId&&person.data().status==="active"?
+          person.data().authUid:null;
+        return uid?writeSchoolNotification({
+          db,schoolId:ctx.schoolId,uid,id:"assessment_published_"+taskId+"_"+result.revision,
+          title:"New assessment assigned",
+          body:result.title+" · open Adminerva to review the task and submission method.",
+          type:"assessment",sourceId:taskId,target:"student-assessments.html"
+        }):Promise.resolve();
+      }));
+    }
    }
    return result;
   }
@@ -241,7 +312,14 @@ function createSchoolAssessmentService({db}){
       subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,
       ownerUid:doc.data().ownerUid,reviewerUid:doc.data().reviewerUid||doc.data().ownerUid,
       opensAt:doc.data().opensAt?.toMillis(),dueAt:doc.data().dueAt?.toMillis(),
-      submissionSource:doc.data().submissionSource,status:doc.data().status,
+      submissionSource:doc.data().submissionSource,
+      personalizedTask:doc.data().personalizedTask?.enabled===true?{
+        enabled:true,mode:doc.data().personalizedTask.mode,
+        poolFingerprint:doc.data().personalizedTask.poolFingerprint,
+        poolSize:doc.data().personalizedTask.poolSize,
+        poolTarget:doc.data().personalizedTask.poolTarget
+      }:{enabled:false,mode:"standard"},
+      status:doc.data().status,published:doc.data().published===true,
       lifecycle:doc.data().lifecycle||"active",revision:doc.data().revision||1
     })).sort((a,b)=>(b.dueAt||0)-(a.dueAt||0))};
   }
@@ -271,13 +349,18 @@ function createSchoolAssessmentService({db}){
     for(const doc of snap.docs){
      const task=doc.data();
      const lifecycle=task.lifecycle||"active";
-     if(task.schoolId!==ctx.schoolId||task.status!=="deployed"||
+     if(task.schoolId!==ctx.schoolId||task.status!=="deployed"||task.published!==true||
         ["archived","cancelled"].includes(lifecycle)||!offered.includes(task.offeringId))continue;
      const now=Date.now(),open=task.opensAt.toMillis(),due=task.dueAt.toMillis();
      results.push({taskId:doc.id,title:task.title,description:task.description||"",
       instructions:task.instructions||"",rubric:task.rubric||[],
       rubricMax:task.rubricMax,offeringId:task.offeringId,
-      submissionSource:task.submissionSource,opensAt:open,dueAt:due,
+      submissionSource:task.submissionSource,
+      personalizedTask:task.personalizedTask?.enabled===true?{
+        enabled:true,mode:task.personalizedTask.mode,
+        poolSize:Number(task.personalizedTask.poolSize||0)
+      }:{enabled:false,mode:"standard"},
+      opensAt:open,dueAt:due,
       lifecycle,windowStatus:lifecycle==="closed"?"closed":
        now<open?"upcoming":now>due?"closed":"open"});
     }

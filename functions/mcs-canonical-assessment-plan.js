@@ -7,15 +7,16 @@
  * rubric points and course-offering scope can be preserved exactly.
  */
 const {initializeApp,getApps,applicationDefault}=require("firebase-admin/app");
-const {getFirestore}=require("firebase-admin/firestore");
+const {getFirestore,FieldPath}=require("firebase-admin/firestore");
 const {readFileSync,writeFileSync}=require("node:fs");
 const {createHash}=require("node:crypto");
 const {canonicalDigest}=require("./mcs-migration-ledger.js");
 const {readMirrorRoot,SCHOOL_ID}=require("./mcs-canonical-foundation-plan.js");
 const {validatePlan,validateApproval}=require("./mcs-canonical-foundation-apply.js");
 const {validatePlan:validateAccessPlan,validateApproval:validateAccessApproval}=require("./mcs-canonical-academic-access-apply.js");
+const {blueprintFingerprint,PERSONALIZATION_MODE}=require("./teacher-blueprints.js");
 
-const SCHEMA="adminerva-v4-mcs-canonical-assessment-plan-v1";
+const SCHEMA="adminerva-v4-mcs-canonical-assessment-plan-v2";
 function sha(value){return createHash("sha256").update(value).digest("hex");}
 function clean(value,max=20000){return typeof value==="string"?value.trim().slice(0,max):"";}
 function stableId(prefix,...parts){return prefix+"_"+sha(parts.join("\0")).slice(0,40);}
@@ -50,6 +51,56 @@ function legacySubmissionSource(data){
  if(Number(data?.schemaVersion)===3&&data?.submissionSource==="studio")return "studio";
  if(Number(data?.schemaVersion)===2&&data?.evidenceMode==="commit_selection")return "github";
  return null;
+}
+function legacyPublished(data,deployments){
+ if(typeof data?.published==="boolean")return data.published;
+ return Array.isArray(deployments)&&deployments.length>0;
+}
+function validVariantId(value){return typeof value==="string"&&/^[a-f0-9]{16,64}$/.test(value)}
+function personalizationPlan({legacy,variantRows,blueprint}){
+ const publicTask=legacy?.personalizedTask,privateConfig=legacy?.personalization;
+ if(publicTask?.enabled!==true)return {ok:true,config:{enabled:false,mode:"standard"},pool:null,task:null};
+ if(legacySubmissionSource(legacy)!=="studio")
+  return {ok:false,reason:"personalized_assessment_requires_studio"};
+ if(publicTask.mode!==PERSONALIZATION_MODE||privateConfig?.mode!==PERSONALIZATION_MODE)
+  return {ok:false,reason:"personalization_mode_mismatch"};
+ const legacyFingerprint=clean(publicTask.poolFingerprint,128),
+  privateFingerprint=clean(privateConfig.fingerprint,128),
+  ids=Array.isArray(privateConfig.variantIds)?privateConfig.variantIds.slice():[],
+  size=Number(publicTask.poolSize),target=Number(publicTask.poolTarget),
+  guidance=clean(privateConfig.guidance,3000);
+ if(!/^[a-f0-9]{64}$/.test(legacyFingerprint)||legacyFingerprint!==privateFingerprint)
+  return {ok:false,reason:"personalization_fingerprint_mismatch"};
+ if(!Number.isInteger(size)||size<1||size>600||ids.length!==size||
+    ids.some(id=>!validVariantId(id))||new Set(ids).size!==ids.length)
+  return {ok:false,reason:"personalization_active_pool_invalid"};
+ if(!Number.isInteger(target)||target<10||target>600||size<target)
+  return {ok:false,reason:"personalization_target_incomplete",size,target};
+ const byId=new Map((variantRows||[]).map(row=>[row.id,row]));
+ const variants=[],scenarioRegistry=[];
+ for(const variantId of ids){
+  const row=byId.get(variantId),data=row?.data;
+  if(!row||data?.variantId!==variantId||data?.fingerprint!==legacyFingerprint||
+     typeof data?.prompt!=="string"||data.prompt.trim().length<20||data.prompt.length>12000||
+     typeof data?.evaluationNotes!=="string"||data.evaluationNotes.trim().length<10||data.evaluationNotes.length>8000)
+   return {ok:false,reason:"personalization_variant_missing_or_invalid",variantId};
+  const scenarioKey=clean(data.scenarioKey,80),scenarioTitle=clean(data.scenarioTitle,120),
+    summary=clean(data.summary,300);
+  if(!scenarioKey||!scenarioTitle)
+   return {ok:false,reason:"personalization_scenario_identity_missing",variantId};
+  variants.push({variantId,scenarioKey,scenarioTitle,prompt:data.prompt,
+    evaluationNotes:data.evaluationNotes,summary,
+    sourcePath:row.path,sourceDigest:row.digest,legacyFingerprint});
+  scenarioRegistry.push({scenarioKey,scenarioTitle,summary});
+ }
+ const config={enabled:true,mode:PERSONALIZATION_MODE,variantTarget:target,variationGuidance:guidance},
+  fingerprint=blueprintFingerprint({...blueprint,personalization:config});
+ return {ok:true,config,pool:{
+   fingerprint,legacyFingerprint,target,variantIds:ids,scenarioRegistry,variants,ready:true
+  },task:{
+   enabled:true,mode:PERSONALIZATION_MODE,regeneration:"new_attempt",uniqueWithinAssessment:true,
+   poolFingerprint:fingerprint,poolSize:size,poolTarget:target,variantIds:ids
+  }};
 }
 function labelMap(rows){
  const map=new Map();
@@ -114,7 +165,7 @@ function buildAssessmentPlan({rows,foundationPlan,foundationPlanRaw,foundationAp
  const teachers=new Map(approved.memberships.filter(member=>member.roles.includes("teacher"))
    .map(member=>[member.uid,member]));
  const privateById=new Map((rows.private||[]).map(row=>[row.id,row.data]));
- const blueprints=[],tasks=[],blockers=[],reviewItems=[];
+ const blueprints=[],personalizationPools=[],tasks=[],blockers=[],reviewItems=[];
  for(const row of rows.assessments||[]){
   const legacy={...row.data,...(privateById.get(row.id)||{})},ownerUid=clean(legacy.ownerUid,128);
   const owner=teachers.get(ownerUid),source=legacySubmissionSource(legacy);
@@ -126,16 +177,45 @@ function buildAssessmentPlan({rows,foundationPlan,foundationPlanRaw,foundationAp
    blockers.push({type:"assessment_submission_schema_unsupported",assessmentId:row.id,
     schemaVersion:legacy.schemaVersion||1,submissionSource:legacy.submissionSource||"legacy_repository"});continue;
   }
-  const blueprintId=stableId("mcsbp",row.id);
+  const blueprintId=stableId("mcsbp",row.id),
+    blueprintBase={
+      title:clean(legacy.title,140)||"Untitled assessment",
+      description:clean(legacy.description,2000),instructions:clean(legacy.taskContext,20000),
+      rubric:parsed.rubric
+    },
+    personalized=personalizationPlan({
+      legacy,variantRows:rows.personalizationVariants?.[row.id]||[],
+      blueprint:blueprintBase
+    });
+  if(!personalized.ok){
+    blockers.push({type:personalized.reason,assessmentId:row.id,
+      variantId:personalized.variantId||null,size:personalized.size||null,target:personalized.target||null});
+    continue;
+  }
   const blueprint={
    blueprintId,targetPath:"schools/"+SCHOOL_ID+"/assessment_blueprints/"+blueprintId,
-   sourceAssessmentId:row.id,ownerUid,title:clean(legacy.title,140)||"Untitled assessment",
-   description:clean(legacy.description,2000),instructions:clean(legacy.taskContext,20000),
-   rubric:parsed.rubric,visibility:"private",status:"draft",
+   sourceAssessmentId:row.id,ownerUid,...blueprintBase,
+   personalization:personalized.config,visibility:"private",status:"draft",
    sourceDigest:row.digest,migration:{sourcePath:row.path,schemaVersion:Number(legacy.schemaVersion)||1}
   };
   blueprints.push(blueprint);
-  const deployments=Array.isArray(legacy.deployments)?legacy.deployments:[];
+  if(personalized.pool){
+    personalizationPools.push({
+      poolId:blueprintId+"_"+personalized.pool.fingerprint.slice(0,16),
+      targetPath:"schools/"+SCHOOL_ID+"/assessment_blueprint_private/"+blueprintId+
+        "/pools/"+personalized.pool.fingerprint,
+      blueprintId,ownerUid,sourceAssessmentId:row.id,...personalized.pool,
+      migration:{sourcePath:"assessment_private/"+row.id,
+        legacyFingerprint:personalized.pool.legacyFingerprint}
+    });
+    if(Number(legacy.personalization?.draftCount||0)>personalized.pool.variantIds.length)
+      reviewItems.push({type:"personalization_unactivated_draft_variants_retained_in_legacy_mirror",
+        assessmentId:row.id,activeVariants:personalized.pool.variantIds.length,
+        legacyDraftCount:Number(legacy.personalization.draftCount),
+        resolution:"Only the activated pool migrates into the canonical runtime. Extra draft variants remain preserved in the reconciled legacy mirror."});
+  }
+  const deployments=Array.isArray(legacy.deployments)?legacy.deployments:[],
+    published=legacyPublished(legacy,deployments);
   for(let index=0;index<deployments.length;index++){
    const deployment=deployments[index],offering=offeringFor({
     assessment:legacy,deployment,approval:foundationApproval,approved
@@ -158,9 +238,12 @@ function buildAssessmentPlan({rows,foundationPlan,foundationPlanRaw,foundationAp
     yearId:offering.yearId,termId:offering.termId,subjectId:offering.subjectId,sectionId:offering.sectionId,
     title:blueprint.title,description:blueprint.description,instructions:blueprint.instructions,
     rubric:blueprint.rubric,rubricMax:parsed.total,submissionSource:source,
-    opensAt:window.opensAt,dueAt:window.dueAt,status:"deployed",
+    personalizedTask:personalized.task||{enabled:false,mode:"standard"},
+    opensAt:window.opensAt,dueAt:window.dueAt,status:"deployed",published,
+    lifecycle:"active",revision:1,
     legacyNoDeadline:window.legacyNoDeadline,windowSource:window.source,
-    migration:{sourcePath:row.path,deploymentIndex:index,legacySection:offering.sectionLabel}
+    migration:{sourcePath:row.path,deploymentIndex:index,legacySection:offering.sectionLabel,
+      legacyPersonalizationFingerprint:personalized.pool?.legacyFingerprint||null}
    });
    if(window.legacyNoDeadline)reviewItems.push({type:"legacy_no_deadline_preserved",
      assessmentId:row.id,taskId,section:offering.sectionLabel,
@@ -197,19 +280,36 @@ function buildAssessmentPlan({rows,foundationPlan,foundationPlanRaw,foundationAp
     sourcePath:ref.sourcePath,candidateTaskIds:ref.candidateTaskIds});
  return {
   schema:SCHEMA,schoolId:SCHOOL_ID,readOnly:true,generatedAt:new Date().toISOString(),
-  foundationPlanSha256:sha(foundationPlanRaw),academicAccessPlanSha256:sha(academicAccessPlanRaw),blueprints,tasks,
+  foundationPlanSha256:sha(foundationPlanRaw),academicAccessPlanSha256:sha(academicAccessPlanRaw),
+  blueprints,personalizationPools,tasks,
   historicalLinks:{githubEvidence:evidenceRefs,studioSubmissions:studioRefs,grades:gradeRefs},
   blockers,reviewItems,readyForApply:false,
-  summary:{legacyAssessments:(rows.assessments||[]).length,blueprints:blueprints.length,tasks:tasks.length,
+  summary:{legacyAssessments:(rows.assessments||[]).length,blueprints:blueprints.length,
+   personalizationPools:personalizationPools.length,tasks:tasks.length,
    githubEvidence:evidenceRefs.length,studioSubmissions:studioRefs.length,grades:gradeRefs.length,
    blockers:blockers.length,reviewItems:reviewItems.length},
   nextRequiredReview:[
    "Resolve every assessment owner, rubric and course-offering blocker.",
    "Map each historical GitHub evidence, Studio submission and grade to exactly one canonical task and approved student identity.",
+   "Review every personalized assessment pool and preserve its exact activated variant set and learner-attempt provenance.",
    "Preserve evidence/submission revision subcollections before any published grade is created.",
    "Do not publish or unpublish a legacy grade during migration; publication state must be reproduced exactly."
   ]
  };
+}
+async function readMirrorSubcollection(db,root,id,subcollection,max=1200){
+ const collection=db.collection("schools/"+SCHOOL_ID+"/legacy_roots/"+root+"/documents/"+id+"/"+subcollection),
+  rows=[];let cursor=null;
+ while(rows.length<max){
+  let query=collection.orderBy(FieldPath.documentId()).limit(Math.min(200,max-rows.length));
+  if(cursor)query=query.startAfter(cursor);
+  const snap=await query.get();
+  for(const doc of snap.docs)rows.push({id:doc.id,path:doc.ref.path,data:doc.data(),
+    digest:canonicalDigest(doc.data())});
+  if(snap.size<200)return rows;
+  cursor=snap.docs.at(-1);
+ }
+ throw Error(root+"/"+id+"/"+subcollection+" exceeded the assessment planner cap.");
 }
 async function generateAssessmentPlan(db,inputs){
  const [assessments,priv,githubEvidence,studioSubmissions,grades]=await Promise.all([
@@ -217,7 +317,13 @@ async function generateAssessmentPlan(db,inputs){
   readMirrorRoot(db,"assessment_evidence"),readMirrorRoot(db,"studio_submissions"),
   readMirrorRoot(db,"student_grades")
  ]);
- return buildAssessmentPlan({rows:{assessments,private:priv,githubEvidence,studioSubmissions,grades},...inputs});
+ const personalizationVariants={};
+ for(const row of assessments){
+  if(row.data?.personalizedTask?.enabled===true)
+    personalizationVariants[row.id]=await readMirrorSubcollection(db,"assessment_private",row.id,"variants");
+ }
+ return buildAssessmentPlan({rows:{assessments,private:priv,personalizationVariants,
+   githubEvidence,studioSubmissions,grades},...inputs});
 }
 function arg(args,name){
  const value=args.find(item=>item.startsWith("--"+name+"="))?.slice(name.length+3);
@@ -245,4 +351,5 @@ if(require.main===module)main().catch(error=>{
  console.error("MCS assessment planning failed:",error.code||error.message);process.exitCode=1;
 });
 module.exports={SCHEMA,stableId,millis,parseLegacyRubric,legacySubmissionSource,
- approvedAcademicMaps,offeringFor,deploymentWindow,buildAssessmentPlan,generateAssessmentPlan};
+ approvedAcademicMaps,offeringFor,deploymentWindow,personalizationPlan,readMirrorSubcollection,
+ buildAssessmentPlan,generateAssessmentPlan};

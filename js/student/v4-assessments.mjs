@@ -95,7 +95,8 @@ if(panel&&list&&status&&schoolHost){
         identity.append(
           node("h3","font-extrabold text-slate-900",task.title),
           node("p","text-xs text-slate-500 mt-1",
-            "Due "+date(task.dueAt)+" · "+(task.submissionSource==="studio"?"Adminerva Studio":"GitHub evidence"))
+            "Due "+date(task.dueAt)+" · "+(task.submissionSource==="studio"?
+              (task.personalizedTask?.enabled===true?"Personalized Adminerva Studio":"Adminerva Studio"):"GitHub evidence"))
         );
         const badge=node("span","self-start rounded-full px-3 py-1 text-xs font-bold "+state.className,state.label);
         top.append(identity,badge);article.append(top);
@@ -127,7 +128,8 @@ if(panel&&list&&status&&schoolHost){
         const actions=node("div","mt-4 flex flex-wrap gap-2");
         if(task.submissionSource==="studio"){
           const link=node("a","rounded-lg bg-indigo-700 text-white px-4 py-2.5 text-sm font-bold",
-            submission?.status==="reopened"?"Open Studio to revise":"Open Adminerva Studio");
+            submission?.status==="reopened"?"Open Studio to revise":
+              task.personalizedTask?.enabled===true?"Open my personalized Studio task":"Open Adminerva Studio");
           link.href="student-playground.html?assessment="+encodeURIComponent(task.taskId);
           actions.append(link);
         }else if(task.submissionSource==="github"){

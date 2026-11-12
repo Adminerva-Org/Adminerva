@@ -34,3 +34,29 @@ test("monitoring handlers stay colocated, bounded and independently scoped", () 
   assert.equal(handlers.activityConsentChanged.__endpoint.timeoutSeconds, 120);
   assert.equal(handlers.activityConsentChanged.__endpoint.eventTrigger.eventFilterPathPatterns.document, "activity_preferences/{ownerUid}");
 });
+
+test("Adminerva 4.0 school workflow callables are packaged in the intended region and bounds",()=>{
+  const names=[
+    "tenantSchools","teacherBlueprints","peopleDirectory","schoolRosterSource","schoolAcademics",
+    "schoolAssessments","schoolStudentProfile","schoolStudioProjects","schoolStudioSubmissions",
+    "schoolGradebook","schoolGithubEvidence","schoolReclaims","acceptSchoolInvitation",
+    "platformSchools","schoolSupport","schoolFilePolicy","schoolDataExport","schoolAnalytics",
+    "schoolPracticeAnalytics","schoolTeacherAnalytics","schoolCutoverReadiness",
+    "schoolOnboardingReadiness","schoolPlanning","schoolSchedules","schoolReferences",
+    "schoolSharedReferences","schoolAI"
+  ];
+  for(const name of names){
+    const handler=handlers[name];
+    assert.ok(handler,name+" must be exported by functions/index.js");
+    assert.equal(typeof handler.run,"function",name+" must be a callable handler");
+    assert.deepEqual(handler.__endpoint.region,["asia-southeast1"]);
+    assert.equal(handler.__endpoint.maxInstances,3);
+    assert.equal(handler.__endpoint.concurrency,10);
+    assert.equal(handler.__endpoint.timeoutSeconds,120);
+    assert.ok(handler.__endpoint.callableTrigger,name+" must remain an HTTPS callable");
+  }
+  assert.deepEqual(handlers.schoolFileRetentionCleanup.__endpoint.region,["asia-southeast1"]);
+  assert.equal(handlers.schoolFileRetentionCleanup.__endpoint.maxInstances,1);
+  assert.equal(handlers.schoolFileRetentionCleanup.__endpoint.timeoutSeconds,300);
+});
+

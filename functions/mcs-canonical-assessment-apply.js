@@ -13,7 +13,7 @@ const {APPROVAL_SCHEMA}=require("./mcs-canonical-assessment-approval-template.js
 const {rowKey}=require("./school-academics.js");
 
 const WRITE_ACK="YES_I_APPROVE_MCS_CANONICAL_ASSESSMENTS";
-const RECEIPT_SCHEMA="adminerva-v4-mcs-canonical-assessment-receipt-v1";
+const RECEIPT_SCHEMA="adminerva-v4-mcs-canonical-assessment-receipt-v2";
 const sha=value=>createHash("sha256").update(value).digest("hex");
 function arg(args,name){
  const value=args.find(item=>item.startsWith("--"+name+"="))?.slice(name.length+3);
@@ -61,17 +61,30 @@ function validateApproval(plan,raw,approval){
     typeof approval.approvedAt!=="string"||!Number.isFinite(Date.parse(approval.approvedAt)))
   throw Error("Approval must identify the reviewer and timestamp.");
  for(const key of ["ownersReviewed","rubricsReviewed","offeringScopesReviewed","submissionModesReviewed",
-   "legacyNoDeadlineReviewed","historicalLinksReviewed","noDeploymentNotifications","backupsAndRollbackReviewed"])
+   "personalizationReviewed","legacyNoDeadlineReviewed","historicalLinksReviewed",
+   "noDeploymentNotifications","backupsAndRollbackReviewed"])
   if(approval.acknowledgements?.[key]!==true)throw Error("Missing approval acknowledgement: "+key);
  if((approval.unresolvedBlockers||[]).length)throw Error("Resolve every assessment migration blocker before apply.");
  if((approval.reviewItems||[]).some(item=>item.resolved!==true))
   throw Error("Resolve every assessment migration review item before apply.");
  const blueprints=explicitDecisions(plan.blueprints||[],approval.blueprints||[],"blueprintId");
+ const personalizationPools=explicitDecisions(
+   plan.personalizationPools||[],approval.personalizationPools||[],"poolId");
  const tasks=explicitDecisions(plan.tasks||[],approval.tasks||[],"taskId");
- const blueprintIds=new Set(blueprints.map(row=>row.blueprintId));
- for(const task of tasks)if(!blueprintIds.has(task.blueprintId))
-  throw Error("An approved deployed task requires its canonical blueprint to be approved.");
- return {planSha256,blueprints,tasks};
+ const blueprintIds=new Set(blueprints.map(row=>row.blueprintId)),
+   poolByBlueprint=new Map(personalizationPools.map(row=>[row.blueprintId,row]));
+ for(const pool of personalizationPools)if(!blueprintIds.has(pool.blueprintId))
+  throw Error("An approved personalized pool requires its canonical blueprint to be approved.");
+ for(const blueprint of blueprints)
+  if(blueprint.personalization?.enabled===true&&!poolByBlueprint.has(blueprint.blueprintId))
+   throw Error("An approved personalized blueprint requires its reviewed private pool.");
+ for(const task of tasks){
+  if(!blueprintIds.has(task.blueprintId))
+   throw Error("An approved deployed task requires its canonical blueprint to be approved.");
+  if(task.personalizedTask?.enabled===true&&!poolByBlueprint.has(task.blueprintId))
+   throw Error("An approved personalized task requires its reviewed private pool.");
+ }
+ return {planSha256,blueprints,personalizationPools,tasks};
 }
 function meta(approved,type,key){return {source:"mcs_legacy_v3",planSha256:approved.planSha256,type,key};}
 function same(data,approved,type,key){
@@ -84,6 +97,17 @@ async function inspect(db,approved){
   const ref=db.doc(row.targetPath),doc=await ref.get();
   rows.push({kind:"blueprint",key:row.blueprintId,targetPath:ref.path,
    state:!doc.exists?"ready":same(doc.data(),approved,"blueprint",row.blueprintId)?"already_applied":"target_conflict"});
+ }
+ for(const row of approved.personalizationPools||[]){
+  const ref=db.doc(row.targetPath),doc=await ref.get();
+  rows.push({kind:"personalization_pool",key:row.poolId,targetPath:ref.path,
+   state:!doc.exists?"ready":same(doc.data(),approved,"personalization_pool",row.poolId)?"already_applied":"target_conflict"});
+  for(const variant of row.variants||[]){
+   const key=row.poolId+"_"+variant.variantId,variantRef=ref.collection("variants").doc(variant.variantId),
+    existing=await variantRef.get();
+   rows.push({kind:"personalization_variant",key,targetPath:variantRef.path,
+    state:!existing.exists?"ready":same(existing.data(),approved,"personalization_variant",key)?"already_applied":"target_conflict"});
+  }
  }
  for(const row of approved.tasks){
   const ref=db.doc(row.targetPath),doc=await ref.get();
@@ -111,7 +135,8 @@ async function createBlueprint(db,approved,row){
   const now=FieldValue.serverTimestamp();
   tx.create(ref,{schoolId:SCHOOL_ID,creatorUid:row.ownerUid,ownerUid:row.ownerUid,
    title:row.title,description:row.description||"",instructions:row.instructions||"",
-   rubric:row.rubric,visibility:"private",sharedWithUids:[],status:"draft",
+   rubric:row.rubric,personalization:row.personalization||{enabled:false,mode:"standard"},
+   visibility:"private",sharedWithUids:[],status:"draft",
    contentRevision:1,aclRevision:1,createdAt:now,updatedAt:now,
    migration:meta(approved,"blueprint",row.blueprintId)});
   tx.create(db.collection("schools/"+SCHOOL_ID+"/resource_audit").doc(),{
@@ -120,15 +145,82 @@ async function createBlueprint(db,approved,row){
   return "created";
  });
 }
+async function createPersonalizationPool(db,approved,row){
+ const prefix="schools/"+SCHOOL_ID+"/",ref=db.doc(row.targetPath),
+  blueprintRef=db.doc(prefix+"assessment_blueprints/"+row.blueprintId);
+ const [blueprint,current]=await Promise.all([blueprintRef.get(),ref.get()]);
+ if(!blueprint.exists||blueprint.data().schoolId!==SCHOOL_ID||
+    blueprint.data().ownerUid!==row.ownerUid||blueprint.data().personalization?.enabled!==true)
+  throw Error("Personalized pool blueprint is unavailable.");
+ if(current.exists){
+  if(!same(current.data(),approved,"personalization_pool",row.poolId))
+   throw Error("Personalized pool target changed after preflight.");
+  return "already_applied";
+ }
+ if(!Array.isArray(row.variants)||row.variants.length!==row.variantIds.length||
+    row.variantIds.length<1||row.variantIds.length>600||
+    row.variantIds.some((id,index)=>row.variants[index]?.variantId!==id))
+  throw Error("Personalized pool variants do not match the reviewed active ID set.");
+ const pending=[];
+ for(const variant of row.variants){
+  const variantRef=ref.collection("variants").doc(variant.variantId),existing=await variantRef.get(),
+    key=row.poolId+"_"+variant.variantId;
+  if(existing.exists){
+   if(!same(existing.data(),approved,"personalization_variant",key))
+    throw Error("Personalized variant target changed after preflight.");
+   continue;
+  }
+  pending.push({ref:variantRef,variant,key});
+ }
+ for(let offset=0;offset<pending.length;offset+=350){
+  const batch=db.batch(),now=FieldValue.serverTimestamp();
+  for(const entry of pending.slice(offset,offset+350)){
+   const variant=entry.variant;
+   batch.create(entry.ref,{
+    schoolId:SCHOOL_ID,ownerUid:row.ownerUid,blueprintId:row.blueprintId,
+    fingerprint:row.fingerprint,variantId:variant.variantId,
+    scenarioKey:variant.scenarioKey,scenarioTitle:variant.scenarioTitle,
+    prompt:variant.prompt,evaluationNotes:variant.evaluationNotes,summary:variant.summary||"",
+    createdAt:now,updatedAt:now,
+    migration:{...meta(approved,"personalization_variant",entry.key),
+      sourcePath:variant.sourcePath,sourceDigest:variant.sourceDigest,
+      legacyFingerprint:variant.legacyFingerprint}
+   });
+  }
+  await batch.commit();
+ }
+ return db.runTransaction(async tx=>{
+  const [latest,owner]=await Promise.all([tx.get(ref),tx.get(blueprintRef)]);
+  if(latest.exists){
+   if(same(latest.data(),approved,"personalization_pool",row.poolId))return "already_applied";
+   throw Error("Personalized pool target changed while finalizing.");
+  }
+  if(!owner.exists||owner.data().schoolId!==SCHOOL_ID||owner.data().ownerUid!==row.ownerUid)
+   throw Error("Personalized pool blueprint changed while finalizing.");
+  const now=FieldValue.serverTimestamp();
+  tx.create(ref,{schoolId:SCHOOL_ID,ownerUid:row.ownerUid,blueprintId:row.blueprintId,
+   blueprintRevision:1,fingerprint:row.fingerprint,variantIds:row.variantIds,
+   scenarioRegistry:row.scenarioRegistry||[],count:row.variantIds.length,target:row.target,
+   ready:true,createdAt:now,updatedAt:now,activatedAt:now,
+   migration:{...meta(approved,"personalization_pool",row.poolId),
+    sourcePath:row.migration?.sourcePath,legacyFingerprint:row.legacyFingerprint}});
+  return "created";
+ });
+}
 async function createTask(db,approved,row){
  const ref=db.doc(row.targetPath);
  return db.runTransaction(async tx=>{
-  const grantRef=db.doc("schools/"+SCHOOL_ID+"/staff_assignments/"+rowKey(row.ownerUid,row.offeringId));
+  const prefix="schools/"+SCHOOL_ID+"/",
+    grantRef=db.doc(prefix+"staff_assignments/"+rowKey(row.ownerUid,row.offeringId));
   const [current,blueprint,member,grant,offering]=await Promise.all([
-   tx.get(ref),tx.get(db.doc("schools/"+SCHOOL_ID+"/assessment_blueprints/"+row.blueprintId)),
-   tx.get(db.doc("schools/"+SCHOOL_ID+"/memberships/"+row.ownerUid)),
-   tx.get(grantRef),tx.get(db.doc("schools/"+SCHOOL_ID+"/course_offerings/"+row.offeringId))
+   tx.get(ref),tx.get(db.doc(prefix+"assessment_blueprints/"+row.blueprintId)),
+   tx.get(db.doc(prefix+"memberships/"+row.ownerUid)),
+   tx.get(grantRef),tx.get(db.doc(prefix+"course_offerings/"+row.offeringId))
   ]);
+  let personalizationPool=null;
+  if(row.personalizedTask?.enabled===true)
+   personalizationPool=await tx.get(db.doc(prefix+"assessment_blueprint_private/"+row.blueprintId+
+     "/pools/"+row.personalizedTask.poolFingerprint));
   if(current.exists){
    if(same(current.data(),approved,"task",row.taskId))return "already_applied";
    throw Error("Assessment task target changed after preflight.");
@@ -143,17 +235,27 @@ async function createTask(db,approved,row){
   if(!offering.exists||offering.data().schoolId!==SCHOOL_ID||offering.data().status!=="active"||
      ["yearId","termId","subjectId","sectionId"].some(key=>offering.data()[key]!==row[key]))
    throw Error("Assessment offering changed after approval.");
+  if(row.personalizedTask?.enabled===true&&
+     (!personalizationPool?.exists||personalizationPool.data().schoolId!==SCHOOL_ID||
+      personalizationPool.data().ownerUid!==row.ownerUid||
+      personalizationPool.data().blueprintId!==row.blueprintId||
+      personalizationPool.data().fingerprint!==row.personalizedTask.poolFingerprint||
+      personalizationPool.data().ready!==true||
+      JSON.stringify(personalizationPool.data().variantIds||[])!==JSON.stringify(row.personalizedTask.variantIds||[])))
+   throw Error("Approved personalized pool is unavailable or changed.");
   if(!Number.isFinite(row.opensAt)||!Number.isFinite(row.dueAt)||row.dueAt<=row.opensAt)
    throw Error("Approved assessment deployment window is invalid.");
   const now=FieldValue.serverTimestamp();
-  tx.create(ref,{schoolId:SCHOOL_ID,ownerUid:row.ownerUid,
+  tx.create(ref,{schoolId:SCHOOL_ID,ownerUid:row.ownerUid,reviewerUid:row.ownerUid,
    blueprintId:row.blueprintId,blueprintRevision:1,
    offeringId:row.offeringId,yearId:row.yearId,termId:row.termId,
    subjectId:row.subjectId,sectionId:row.sectionId,
    title:row.title,description:row.description||"",instructions:row.instructions||"",
    rubric:row.rubric,rubricMax:row.rubricMax,submissionSource:row.submissionSource,
+   personalizedTask:row.personalizedTask||{enabled:false,mode:"standard"},
    opensAt:Timestamp.fromMillis(row.opensAt),dueAt:Timestamp.fromMillis(row.dueAt),
-   requestKey:"migration_"+row.taskId,status:"deployed",createdAt:now,
+   requestKey:"migration_"+row.taskId,status:"deployed",published:row.published===true,
+   lifecycle:row.lifecycle||"active",revision:Number(row.revision)||1,createdAt:now,updatedAt:now,
    migration:{...meta(approved,"task",row.taskId),
     sourceAssessmentId:row.sourceAssessmentId,sourceDeploymentId:row.sourceDeploymentId||null,
     legacyNoDeadline:Boolean(row.legacyNoDeadline),windowSource:row.windowSource}});
@@ -166,6 +268,7 @@ async function createTask(db,approved,row){
 }
 function units(approved){
  return [...approved.blueprints.map(row=>({kind:"blueprint",row})),
+  ...(approved.personalizationPools||[]).map(row=>({kind:"personalization_pool",row})),
   ...approved.tasks.map(row=>({kind:"task",row}))];
 }
 async function applyAssessments(db,approved,{apply=false,maxUnits=50}={}){
@@ -173,7 +276,9 @@ async function applyAssessments(db,approved,{apply=false,maxUnits=50}={}){
   blockers=inspected.filter(row=>row.state==="target_conflict"),work=units(approved);
  const receipt={schema:RECEIPT_SCHEMA,schoolId:SCHOOL_ID,scope:"canonical_assessments_only",
   planSha256:approved.planSha256,mode:apply?"apply":"preflight",generatedAt:new Date().toISOString(),
-  approvedBlueprints:approved.blueprints.length,approvedTasks:approved.tasks.length,
+  approvedBlueprints:approved.blueprints.length,
+  approvedPersonalizationPools:(approved.personalizationPools||[]).length,
+  approvedTasks:approved.tasks.length,
   blocked:!!blockers.length,blockers,created:0,alreadyApplied:0,processedUnits:0,
   remainingUnits:work.length,complete:false,notificationsSent:false};
  if(blockers.length||!apply)return receipt;
@@ -181,6 +286,7 @@ async function applyAssessments(db,approved,{apply=false,maxUnits=50}={}){
  for(const unit of work){
   if(newWrites>=maxUnits)break;
   const result=unit.kind==="blueprint"?await createBlueprint(db,approved,unit.row):
+   unit.kind==="personalization_pool"?await createPersonalizationPool(db,approved,unit.row):
    await createTask(db,approved,unit.row);
   receipt.processedUnits++;
   if(result==="created"){receipt.created++;newWrites++;}else receipt.alreadyApplied++;
