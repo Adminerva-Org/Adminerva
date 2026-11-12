@@ -121,28 +121,31 @@ document.addEventListener("DOMContentLoaded", () => {
       ["pilot-sandbox", "Private pilot sandbox", "pilot-sandbox.html"],
       ["library", "Reference library", "library.html"]
     ] },
-    { name: "School setup", area: "admin", items: (isSuperAdmin || isSchoolAdmin || isPlatformOwner) ? [
-      ...(isPlatformOwner && !isSchoolAdmin && !isSuperAdmin ? [
-        ["owner-schools", "Platform schools & pilot control", "owner-schools.html"]
-      ] : []),
-      ...((isSuperAdmin || isSchoolAdmin) ? [
-        ["overview", "Administration overview", "school-admin.html"],
-        ["pilot-v4", "Controlled pilot · 4.0", "school-pilot.html"],
-        ["people-v4", "People & access · 4.0", "people-access.html"],
-        ...(isSchoolAdmin ? [["grading-schemes", "Grading schemes", "school-grading-schemes.html"]] : [])
-      ] : []),
+    { name: "People & access", area: "admin", items: (isSuperAdmin || isSchoolAdmin) ? [
+      ["people-v4", "People & access · 4.0", "people-access.html"],
       ...(isSuperAdmin ? [
-        ["analytics", "Administration analytics", "admin-analytics.html"],
-        ["directory", "User directory · legacy", "users.html"],
-        ["sections", "Sections · legacy", "manage-sections.html"],
-        ["teachers", "Teacher assignments · legacy", "teacher-accounts.html"],
-        ["programs", "Tracks & pathways · legacy", "manage-programs.html"],
-        ["subjects", "Subjects · legacy", "manage-subjects.html"]
-      ] : []),
-      ...((isSuperAdmin || isPlatformOwner) ? [
-        ["owner-schools", "Controlled pilot · 4.0", "owner-schools.html"]
+        ["directory", "Student roster · legacy", "users.html"],
+        ["teachers", "Teacher assignments · legacy", "teacher-accounts.html"]
       ] : [])
     ] : [] },
+    { name: "Classes & academics", area: "admin", items: [
+      ...(isSchoolAdmin ? [["grading-schemes", "Grading schemes", "school-grading-schemes.html"]] : []),
+      ...(isSuperAdmin ? [
+        ["sections", "Sections · legacy", "manage-sections.html"],
+        ["programs", "Tracks & pathways · legacy", "manage-programs.html"],
+        ["subjects", "Subjects · legacy", "manage-subjects.html"]
+      ] : [])
+    ] },
+    { name: "Pilot & operations", area: "admin", items: [
+      ...((isSuperAdmin || isSchoolAdmin) ? [
+        ["overview", "Administration overview", "school-admin.html"],
+        ["pilot-v4", "Controlled pilot · 4.0", "school-pilot.html"]
+      ] : []),
+      ...(isSuperAdmin ? [["analytics", "Administration analytics · legacy", "admin-analytics.html"]] : []),
+      ...((isSuperAdmin || isPlatformOwner) ? [
+        ["owner-schools", "Platform schools & pilot control", "owner-schools.html"]
+      ] : [])
+    ] },
     { name: "Account", area: "settings", items: [
       ["settings", "Account & integrations", "settings.html"],
       ["issues", "Reports & support", "issues.html"]
