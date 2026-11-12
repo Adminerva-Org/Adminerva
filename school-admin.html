@@ -18,14 +18,14 @@
     <p class="av-eyebrow">School administration / overview</p>
     <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Your school operations at a glance.</h1>
     <p class="text-slate-600 text-sm sm:text-base mt-2 max-w-3xl">Start with people and access, check the school pilot, or review items that need attention.</p>
-    <div class="flex flex-wrap gap-2 mt-4">
+    <div id="adminSchoolActions" class="hidden flex flex-wrap gap-2 mt-4" hidden>
       <a href="people-access.html#overview" class="av-btn">Open People &amp; Access</a>
       <a href="school-pilot.html" class="av-secondary-button">Controlled pilot</a>
     </div>
     <div id="adminSchoolPicker" class="av-school-picker mt-3" hidden></div>
   </header>
   <p id="adminSchoolStatus" role="status" aria-live="polite" class="text-sm text-slate-600">Checking verified school access…</p>
-  <section aria-label="Verified school directory summary">
+  <section id="adminSchoolSummary" aria-label="Verified school directory summary" hidden>
     <div class="flex flex-wrap justify-between items-baseline gap-2 mb-3">
       <h2 class="text-lg font-extrabold">Verified school activity</h2>
       <p id="adminOverviewStatus" role="status" aria-live="polite" class="text-sm text-slate-600">Waiting for verified school access…</p>
@@ -53,7 +53,7 @@
       </article>
     </div>
   </section>
-  <section class="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 sm:p-5" aria-label="Adminerva 4.0 controlled pilot">
+  <section id="adminPilotTools" class="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 sm:p-5" aria-label="Adminerva 4.0 controlled pilot" hidden>
     <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
       <div>
         <p class="text-xs font-extrabold text-cyan-900 tracking-wide uppercase">Adminerva 4.0 · Controlled pilot</p>
@@ -66,7 +66,7 @@
       </div>
     </div>
   </section>
-  <section aria-labelledby="schoolManageHeading">
+  <section id="adminSchoolTools" aria-labelledby="schoolManageHeading" hidden>
     <div class="flex items-baseline justify-between flex-wrap gap-2 mb-3">
       <h2 id="schoolManageHeading" class="text-lg font-extrabold">Manage school operations</h2>
       <p class="text-xs text-slate-500">Authorized administrator actions only</p>
