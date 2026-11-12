@@ -5,7 +5,7 @@ import {createRequire} from "node:module";
 const require=createRequire(import.meta.url);
 
 const {
-  v4Key,exactTask,normalizeGithubFrozen,convertStudioSnapshot,
+  v4Key,exactTask,normalizeGithubFrozen,convertStudioSnapshot,studioCandidate,
   legacyReclaimCandidate,legacyGradeCriteria,gradeCandidate
 }=require("../functions/mcs-canonical-evidence-grade-plan.js");
 const {
@@ -157,4 +157,38 @@ test("apply candidate validators reject stale immutable heads",()=>{
     gradeId:v4Key("task","student"),taskId:"task",studentUid:"student",
     gradeSchema:"legacy_scalar_v1",criteria:[],awarded:75,pending:0,total:100
   }));
+});
+
+
+test("personalized Studio migration binds every frozen revision to its issued legacy variant",()=>{
+ const variantId="c".repeat(24),legacyFingerprint="d".repeat(64),
+  snapshot={schemaVersion:1,lang:"java",files:{"Main.java":"class Main {}"},
+    fileOrder:["Main.java"],database:{tables:{},history:[]},design:{},config:{}},
+  json=JSON.stringify(snapshot),snapshotHash=sha(json),
+  task={taskId:"task_1",sourceAssessmentId:"assessment_1",ownerUid:"teacher_1",
+    offeringId:"offer_1",dueAt:Date.now()+86400000,personalizedTask:{
+      enabled:true,poolFingerprint:"e".repeat(64),variantIds:[variantId]},
+    migration:{legacyPersonalizationFingerprint:legacyFingerprint}},
+  student={uid:"student_1",personId:"person_1"},
+  row={id:"legacy_student_assessment_1",path:"legacy/studio",data:{
+    status:"submitted",ownerUid:"student_1",revision:1,snapshotHash,
+    projectId:"project_1",variantId}},
+  versions=[{id:"1",path:"legacy/studio/versions/1",data:{
+    revision:1,snapshotJson:json,snapshotHash,projectId:"project_1",
+    projectRevision:2,variantId,submittedAt:new Date()
+  }}],
+  assignments=[{id:"1",path:"legacy/variants/attempts/1",data:{
+    assessmentId:"assessment_1",studentId:"legacy_student",attempt:1,variantId,
+    poolFingerprint:legacyFingerprint,
+    prompt:"Build the assigned Java scenario using inheritance, overriding, validation, and the required operations."
+  }}];
+ const candidate=studioCandidate({row,versions,assignments,task,student,legacyStudentId:"legacy_student"});
+ assert.equal(candidate.ok,true);
+ assert.equal(candidate.variantId,variantId);
+ assert.equal(candidate.versions[0].variantId,variantId);
+ assert.match(candidate.versions[0].variantPrompt,/assigned Java scenario/);
+ assert.doesNotThrow(()=>validateStudio(candidate));
+ assert.equal(studioCandidate({
+   row,versions,assignments:[],task,student,legacyStudentId:"legacy_student"
+ }).reason,"studio_personalized_attempt_provenance_missing");
 });
