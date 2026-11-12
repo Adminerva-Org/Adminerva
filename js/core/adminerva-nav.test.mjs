@@ -87,17 +87,23 @@ test('home is a direct link and switching workspaces is an explicit disclosure',
   }
 });
 
-test('educator groups expose the integrated assessment, review and insights destinations', () => {
+test('educator navigation groups assessment and grading work without losing specialist destinations', () => {
   const { desktop } = mount('repo', 'gradebook');
-  assert.deepEqual(groupNames(desktop), ['Assessment ▾', 'Review & grade ▾', 'Insights ▾']);
+  assert.deepEqual(groupNames(desktop), ['Assess & grade ▾', 'Insights ▾']);
   // Legacy teachers cannot open pilot-only school resources without membership.
-  assert.deepEqual(links(desktop.children[0]).map(link => link.href), ['assessment-studio.html', 'submissions.html', 'studio-submissions.html', 'reclaim-inbox.html']);
-  assert.deepEqual(links(desktop.children[1]).map(link => link.href), ['repofetch.html', 'gradebook.html', 'repobank.html']);
-  assert.deepEqual(links(desktop.children[2]).map(link => link.href), ['teacher-analytics.html', 'learning-follow-up.html']);
+  assert.deepEqual(links(desktop.children[0]).map(link => link.href), [
+    'assessment-studio.html','submissions.html','studio-submissions.html','repofetch.html',
+    'gradebook.html','reclaim-inbox.html','repobank.html'
+  ]);
+  assert.deepEqual(links(desktop.children[1]).map(link => link.href), ['teacher-analytics.html', 'learning-follow-up.html']);
   const verified = mount('repo','gradebook','teacher',false,{schoolRoles:{schoolTeacher:'true'}});
-  assert.deepEqual(links(verified.desktop.children[0]).map(link=>link.href), ['teacher-assessment-library.html','assessment-studio.html','submissions.html','studio-submissions.html','reclaim-inbox.html']);
-  assert.deepEqual(links(verified.desktop.children[1]).map(link=>link.href), ['repofetch.html','gradebook.html','school-gradebook.html','repobank.html']);
-  assert.deepEqual(links(verified.desktop.children[2]).map(link=>link.href), ['school-teacher-analytics.html','school-practice-analytics.html','teacher-analytics.html','learning-follow-up.html']);
+  assert.deepEqual(links(verified.desktop.children[0]).map(link=>link.href), [
+    'teacher-assessment-library.html','assessment-studio.html','submissions.html','studio-submissions.html',
+    'repofetch.html','gradebook.html','school-gradebook.html','reclaim-inbox.html','repobank.html'
+  ]);
+  assert.deepEqual(links(verified.desktop.children[1]).map(link=>link.href), [
+    'school-teacher-analytics.html','school-practice-analytics.html','teacher-analytics.html','learning-follow-up.html'
+  ]);
   assert.ok(!links(desktop).some(link => ['activity-grader.html', 'grading.html', 'lesson-planner.html', 'users.html'].includes(link.href)));
 });
 
@@ -119,18 +125,18 @@ test('the current mobile group starts expanded without expanding the complete me
   const { mobile } = mount('repo', 'submissions');
   assert.equal(mobile.children[0].open, false);
   const groups = mobile.children[0].children[1].children;
-  assert.deepEqual(groups.map(group => group.open), [true, false, false]);
+  assert.deepEqual(groups.map(group => group.open), [true, false]);
 });
 
-test('planning has its own destinations and no unrelated analytics shortcut', () => {
+test('teaching has its own destinations and no unrelated analytics shortcut', () => {
   const { desktop } = mount('lesson', 'planner');
-  assert.deepEqual(groupNames(desktop), ['Planning ▾']);
+  assert.deepEqual(groupNames(desktop), ['Teaching ▾']);
   assert.deepEqual(links(desktop).map(link => link.href), ['lesson-planner.html', 'presentation.html', 'schedule.html', 'library.html']);
 });
 
 test('only administrators receive school management destinations', () => {
   const admin = mount('admin', 'directory', 'superadmin');
-  assert.deepEqual(groupNames(admin.desktop), ['School setup ▾', 'Account ▾']);
+  assert.deepEqual(groupNames(admin.desktop), ['School administration ▾', 'Account ▾']);
   assert.ok(links(admin.desktop).some(link => link.href === 'manage-sections.html'));
   assert.ok(links(admin.desktop).some(link => link.href === 'teacher-accounts.html'));
   for (const role of ['teacher', 'student']) {
@@ -184,12 +190,12 @@ test('all rendered links, including legacy grading and XML, resolve to existing 
 
 test('opening a peer closes the previous disclosure and outside clicks close menus', () => {
   const { desktop, moduleSwitch, clickOutside } = mount();
-  const [teaching, evidence] = desktop.children;
-  teaching.open = true; teaching.dispatch('toggle');
-  evidence.open = true; evidence.dispatch('toggle');
-  assert.equal(teaching.open, false);
+  const [assessGrade, insights] = desktop.children;
+  assessGrade.open = true; assessGrade.dispatch('toggle');
+  insights.open = true; insights.dispatch('toggle');
+  assert.equal(assessGrade.open, false);
   moduleSwitch.open = true; moduleSwitch.dispatch('toggle');
-  assert.equal(evidence.open, false);
+  assert.equal(insights.open, false);
   clickOutside(); assert.equal(moduleSwitch.open, false);
 });
 
