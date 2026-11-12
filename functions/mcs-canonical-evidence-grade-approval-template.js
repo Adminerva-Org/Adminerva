@@ -8,7 +8,7 @@ const {createHash}=require("node:crypto");
 const {SCHEMA}=require("./mcs-canonical-evidence-grade-plan.js");
 const {SCHOOL_ID}=require("./mcs-canonical-foundation-plan.js");
 
-const APPROVAL_SCHEMA="adminerva-v4-mcs-canonical-evidence-grade-approval-v1";
+const APPROVAL_SCHEMA="adminerva-v4-mcs-canonical-evidence-grade-approval-v2";
 const sha=value=>createHash("sha256").update(value).digest("hex");
 
 function arg(args,name){
@@ -45,6 +45,7 @@ function createTemplate(plan,raw){
   acknowledgements:{
    githubFrozenSetsReviewed:false,
    studioSnapshotsReviewed:false,
+   personalizedAttemptsReviewed:false,
    studentTaskEnrollmentReviewed:false,
    publicationStatesReviewed:false,
    reclaimHistoryReviewed:false,
