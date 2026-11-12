@@ -1697,3 +1697,84 @@ body[data-playground-access] .studio-assignment-loading{display:none}
     background:#eef7fb;color:#30546a;font-size:12px;line-height:1.6
   }
 }
+
+/* Studio 3.0.10 — keyboard-aware mobile editor and terminal.
+ * Keep the current pane visible while mobile Safari/Chrome resize the
+ * visual viewport, without changing the Java execution or stdin pipeline.
+ */
+@media(max-width:767px){
+  body[data-playground-access].studio-mobile-keyboard-open{
+    height:var(--studio-mobile-visual-height,100dvh)!important;
+    max-height:var(--studio-mobile-visual-height,100dvh)!important;
+    min-height:0;overflow:hidden
+  }
+  body[data-playground-access].studio-mobile-keyboard-open .av-site-footer,
+  body[data-playground-access].studio-mobile-keyboard-open .pg-guest-note{
+    display:none!important
+  }
+  body[data-playground-access].studio-mobile-keyboard-open .studio-mobile-toolbar{
+    min-height:40px;padding:3px 6px;gap:5px
+  }
+  body[data-playground-access].studio-mobile-keyboard-open .studio-mobile-toolbar button{
+    min-height:34px
+  }
+  body[data-playground-access].studio-mobile-keyboard-open #editorContainer{
+    min-height:0!important
+  }
+  body[data-playground-access] #outputPane{
+    min-height:0;overflow:hidden
+  }
+  body[data-playground-access] #outputPane>div:first-child{
+    min-height:38px;padding:6px 8px!important;gap:8px;
+    overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;flex:none
+  }
+  body[data-playground-access] #outputPane>div:first-child::-webkit-scrollbar{
+    display:none
+  }
+  body[data-playground-access] #outputPane>div:first-child>div{
+    align-items:center;gap:9px;flex:none
+  }
+  body[data-playground-access] #consoleOutput{
+    min-height:45px;overscroll-behavior-y:contain;
+    -webkit-overflow-scrolling:touch
+  }
+  body[data-playground-access] #stdinContainer{
+    position:sticky;bottom:0;z-index:2;flex:none;min-height:0;
+    max-height:min(35dvh,180px);overflow-y:auto;
+    overscroll-behavior:contain;
+    padding:7px 8px max(7px,env(safe-area-inset-bottom))!important
+  }
+  body[data-playground-access].studio-mobile-keyboard-open #stdinContainer{
+    max-height:min(36%,125px);padding-bottom:5px!important
+  }
+  body[data-playground-access] #stdinLineInput{
+    min-height:42px;font-size:16px;
+    padding:8px 10px;border-radius:8px
+  }
+  body[data-playground-access] #sendStdinBtn{
+    min-height:42px;min-width:58px;padding:8px 10px;
+    font-size:11px;touch-action:manipulation
+  }
+  body[data-playground-access] .studio-terminal-input-row{
+    gap:5px;min-width:0
+  }
+  body[data-playground-access] .studio-terminal-prompt{
+    min-width:16px;max-width:24px;flex:0 0 16px;
+    font-size:13px
+  }
+  body[data-playground-access] .studio-terminal-prompt span{display:none}
+  body[data-playground-access] #stdinHistoryDisclosure textarea{
+    font-size:16px
+  }
+  body[data-playground-access] #studioMobileTerminal[data-unread="true"]::after{
+    content:"";display:inline-block;vertical-align:middle;
+    width:6px;height:6px;border-radius:50%;
+    margin-left:6px;background:#0d9488
+  }
+  body[data-playground-access] #studioMobileTerminal[data-unread="true"]{
+    font-weight:900;color:#087569
+  }
+  body[data-playground-access] .studio-mobile-pane-switch{
+    min-width:0
+  }
+}
