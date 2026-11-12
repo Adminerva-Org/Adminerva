@@ -1,0 +1,22 @@
+name: Cloudflare services foundation
+on:
+  pull_request:
+    paths:
+      - 'cloudflare/adminerva-edge/**'
+      - 'docs/adminerva-cloudflare-integration-roadmap.md'
+      - '.github/workflows/cloudflare-edge-foundation.yml'
+  workflow_dispatch:
+jobs:
+  edge-contract:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate staged Worker syntax
+        run: node --check cloudflare/adminerva-edge/src/index.mjs
+      - name: Validate closed-by-default R2 and Queue contracts
+        run: node --test cloudflare/adminerva-edge/index.test.mjs
