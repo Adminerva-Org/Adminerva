@@ -46,6 +46,7 @@ const finalizePreview=el("cr-finalize-preview");
 const finalizeHistory=el("cr-finalize-history");
 const finalizeConfirm=el("cr-finalize-confirm");
 const finalizationBanner=el("cr-finalization-banner");
+const collaboratorsNode=el("cr-collaborators");
 
 let picker=null;
 let offerings=[];
@@ -53,6 +54,7 @@ let currentOfferingId="";
 let currentOffering=null;
 let roster=[];
 let assessments=[];
+let collaborators=[];
 let columns=[];
 let gradingSchemes=[];
 let pendingSchemeSnapshot=null;
@@ -175,6 +177,22 @@ function metricsFor(personId,{fromInput=true}={}){
   if(initial!==null&&settings.gradeComputation==="deped_60_100")period=60+(initial*0.4);
   return {byCategory,initial,period,complete:initial!==null};
 }
+function syncCollaborators(){
+  if(!collaboratorsNode)return;
+  if(!currentOfferingId||!collaborators.length){
+    collaboratorsNode.hidden=true;collaboratorsNode.textContent="";return;
+  }
+  collaboratorsNode.hidden=false;
+  collaboratorsNode.className="text-xs text-slate-500 mt-1";
+  if(collaborators.length===1){
+    collaboratorsNode.textContent="Offering-level record · you are the only active assigned teacher.";
+    return;
+  }
+  const names=collaborators.map(item=>item.current?item.name+" (you)":item.name);
+  collaboratorsNode.textContent="Shared offering-level record · "+collaborators.length+
+    " active assigned teachers: "+names.join(", ")+
+    ". Concurrent layout edits use revision protection.";
+}
 function syncFinalizationBanner(){
   if(!finalization){
     finalizationBanner.hidden=true;finalizationBanner.textContent="";return;
@@ -212,6 +230,7 @@ function updateKpis(){
   ];
   for(const text of items)kpis.append(make("span","cr-kpi",text));
   syncFinalizationBanner();
+  syncCollaborators();
 }
 function setBusy(value,message=""){
   busy=value;
@@ -1048,6 +1067,7 @@ async function loadWorkspace(){
     currentOffering=result.offering||null;
     roster=result.roster||[];
     assessments=result.assessments||[];
+    collaborators=result.collaborators||[];
     columns=(result.columns||[]).map(column=>{
       const normalized=column.kind==="assessment"&&!column.assessmentSource
         ?{...column,assessmentSource:SCHOOL_SOURCE}:column;
@@ -1106,7 +1126,7 @@ offeringSelect.addEventListener("change",async()=>{
   if(dirtyColumns.size&&!confirm("Discard unsaved manual score changes and open another class?")){
     offeringSelect.value=currentOfferingId;return;
   }
-  currentOfferingId=next;currentOffering=null;roster=[];assessments=[];columns=[];
+  currentOfferingId=next;currentOffering=null;roster=[];assessments=[];collaborators=[];columns=[];
   finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
   settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
   pendingSchemeSnapshot=null;
@@ -1226,7 +1246,7 @@ picker=createTenantSchoolPicker({
   status,
   onBeforeChange:async()=>{
     if(dirtyColumns.size)throw new Error("Save or discard manual score changes before switching schools.");
-    currentOfferingId="";currentOffering=null;offerings=[];roster=[];assessments=[];columns=[];gradingSchemes=[];
+    currentOfferingId="";currentOffering=null;offerings=[];roster=[];assessments=[];collaborators=[];columns=[];gradingSchemes=[];
     finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
     pendingSchemeSnapshot=null;
     settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};

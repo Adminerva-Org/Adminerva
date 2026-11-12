@@ -1,322 +1,3 @@
-"use strict";
-/**
- * School-scoped Class Record.
- *
- * Class Record is a consolidation layer, not another grading engine:
- * - manual columns are entered here;
- * - school assessment columns project only published V4 Gradebook results;
- * - the MCS compatibility bridge can project published legacy/schema-v3
- *   Personalized Studio grades while that legacy assessment system is active.
- *
- * Linked grades are corrected/published in their owning grading workflow.
- */
-const {FieldValue}=require("firebase-admin/firestore");
-const {createHash}=require("node:crypto");
-const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
-const {rowKey,checkId}=require("./school-academics.js");
-
-const MAX_COLUMNS=80;
-const MAX_CLASS_SIZE=100;
-const MAX_SCORE=10000;
-const MAX_CATEGORIES=20;
-const MAX_SCORE_CELLS=MAX_COLUMNS*MAX_CLASS_SIZE;
-const LEGACY_BRIDGE_SCHOOL="mcs-manila";
-const SCHOOL_SOURCE="school";
-const LEGACY_PERSONALIZED_SOURCE="legacy_personalized";
-const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
-
-function deny(code,message){throw new TenantAccessError(code,message)}
-function text(value,label,max){
-  const clean=String(value||"").trim();
-  if(!clean||clean.length>max)
-    deny("invalid-argument",label+" is required and cannot exceed "+max+" characters.");
-  return clean;
-}
-function optionalText(value,max){
-  const clean=String(value||"").trim();
-  if(clean.length>max)deny("invalid-argument","Category cannot exceed "+max+" characters.");
-  return clean;
-}
-function normalizeEmail(value){
-  const email=String(value||"").trim().toLowerCase();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)?email:"";
-}
-function millis(value){
-  if(!value)return null;
-  if(typeof value.toMillis==="function")return value.toMillis();
-  if(value instanceof Date)return value.getTime();
-  const numeric=Number(value);
-  return Number.isFinite(numeric)?numeric:null;
-}
-function rubricTotal(task){
-  const rubric=Array.isArray(task?.rubric)?task.rubric:[];
-  const total=rubric.reduce((sum,item)=>sum+Number(item?.points||0),0);
-  return Number.isFinite(total)&&total>0?total:0;
-}
-function assessmentKey(sourceType,taskId){
-  return (sourceType||SCHOOL_SOURCE)+":"+taskId;
-}
-function sourceKey(column){
-  return column.kind==="assessment"
-    ?"assessment:"+assessmentKey(column.assessmentSource||SCHOOL_SOURCE,column.taskId)
-    :"manual:"+String(column.maxPoints);
-}
-function cleanSettings(raw={}){
-  const input=raw&&typeof raw==="object"&&!Array.isArray(raw)?raw:{};
-  const gradeComputation=["raw_weighted","deped_60_100"].includes(input.gradeComputation)
-    ?input.gradeComputation:"raw_weighted";
-  const incoming=Array.isArray(input.categoryWeights)?input.categoryWeights:[];
-  if(incoming.length>MAX_CATEGORIES)
-    deny("invalid-argument","Class Record supports up to "+MAX_CATEGORIES+" weighted categories.");
-  const seen=new Set(),categoryWeights=[];
-  let total=0;
-  for(const row of incoming){
-    const category=text(row?.category,"Category",60);
-    const key=category.toLocaleLowerCase("en");
-    if(seen.has(key))deny("invalid-argument","Each grading category may appear only once.");
-    seen.add(key);
-    const weight=Number(row?.weight);
-    if(!Number.isFinite(weight)||weight<0||weight>100)
-      deny("invalid-argument","Category weights must be between 0 and 100 percent.");
-    total+=weight;
-    categoryWeights.push({category,weight:Math.round(weight*1000)/1000});
-  }
-  if(total>100.0001)
-    deny("invalid-argument","Category weights cannot total more than 100 percent.");
-  let appliedSchemeId=null,appliedSchemeRevision=null,appliedSchemeName="";
-  if(input.appliedSchemeId!==undefined&&input.appliedSchemeId!==null&&input.appliedSchemeId!==""){
-    appliedSchemeId=checkId(String(input.appliedSchemeId),"Applied grading scheme ID",80);
-    appliedSchemeRevision=Number(input.appliedSchemeRevision);
-    if(!Number.isInteger(appliedSchemeRevision)||appliedSchemeRevision<1)
-      deny("invalid-argument","Applied grading scheme revision is invalid.");
-    appliedSchemeName=String(input.appliedSchemeName||"").trim();
-    if(!appliedSchemeName||appliedSchemeName.length>120)
-      deny("invalid-argument","Applied grading scheme name is invalid.");
-  }
-  return {categoryWeights,gradeComputation,appliedSchemeId,appliedSchemeRevision,appliedSchemeName};
-}
-function settingsCoreKey(settings){
-  return JSON.stringify({
-    gradeComputation:settings.gradeComputation,
-    categoryWeights:[...(settings.categoryWeights||[])].map(row=>({
-      category:String(row.category||"").toLocaleLowerCase("en"),
-      weight:Number(row.weight)||0
-    })).sort((a,b)=>a.category.localeCompare(b.category))
-  });
-}
-function roundGrade(value){
-  return Math.round((Number(value)+Number.EPSILON)*10000)/10000;
-}
-function finalizationSourceDigest({columns,settings,roster,manualScores,publishedGrades}){
-  const activeColumns=(columns||[]).filter(column=>column.archived!==true);
-  const active=activeColumns.map(column=>({
-    columnId:column.columnId,label:column.label,category:column.category||"",kind:column.kind,
-    maxPoints:Number(column.maxPoints)||0,taskId:column.taskId||"",
-    assessmentSource:column.assessmentSource||"",sourceTitle:column.sourceTitle||""
-  }));
-  const manualIds=new Set(activeColumns.filter(column=>column.kind==="manual").map(column=>column.columnId));
-  const linkedKeys=new Set(activeColumns.filter(column=>column.kind==="assessment").map(column=>
-    (column.assessmentSource||SCHOOL_SOURCE)+"::"+column.taskId));
-  const rosterIds=new Set((roster||[]).map(row=>row.personId));
-  const manual=[...(manualScores||[])].filter(row=>
-    manualIds.has(row.columnId)&&rosterIds.has(row.personId)).map(row=>({
-      columnId:row.columnId,personId:row.personId,score:row.score===null?null:Number(row.score),
-      revision:Number(row.revision)||0
-    })).sort((a,b)=>(a.columnId+"|"+a.personId).localeCompare(b.columnId+"|"+b.personId));
-  const grades=[...(publishedGrades||[])].filter(row=>
-    linkedKeys.has((row.sourceType||SCHOOL_SOURCE)+"::"+row.taskId)&&rosterIds.has(row.personId)).map(row=>({
-      sourceType:row.sourceType||SCHOOL_SOURCE,taskId:row.taskId,personId:row.personId,
-      awarded:Number(row.awarded),total:Number(row.total),revision:Number(row.revision)||0,
-      publishedAt:Number(row.publishedAt)||0
-    })).sort((a,b)=>(a.sourceType+"|"+a.taskId+"|"+a.personId)
-      .localeCompare(b.sourceType+"|"+b.taskId+"|"+b.personId));
-  return createHash("sha256").update(JSON.stringify({
-    columns:active,settings:settingsCoreKey(settings),
-    roster:[...rosterIds].sort(),manual,grades
-  })).digest("hex");
-}
-function computePeriodSnapshot({columns,settings,roster,manualScores,publishedGrades}){
-  const active=(columns||[]).filter(column=>column.archived!==true);
-  const blockers=[];let blockerCount=0;
-  const block=(type,message,extra={})=>{
-    blockerCount++;
-    if(blockers.length<30)blockers.push({type,message,...extra});
-  };
-  const categories=[],categoryKeys=new Set();
-  for(const column of active){
-    const category=String(column.category||"").trim(),key=category.toLocaleLowerCase("en");
-    if(!category){block("uncategorized_column",column.label+" has no grading category.",{columnId:column.columnId});continue;}
-    if(!categoryKeys.has(key)){categoryKeys.add(key);categories.push(category);}
-  }
-  if(!active.length)block("no_active_columns","Add or restore at least one active Class Record column.");
-  const weights=new Map((settings.categoryWeights||[]).map(row=>[
-    String(row.category||"").toLocaleLowerCase("en"),Number(row.weight)||0
-  ]));
-  let activeWeightTotal=0;
-  for(const category of categories){
-    const key=category.toLocaleLowerCase("en");
-    if(!weights.has(key))block("missing_category_weight","No weight is configured for "+category+".",{category});
-    activeWeightTotal+=weights.get(key)||0;
-  }
-  if(categories.length&&Math.abs(activeWeightTotal-100)>0.001)
-    block("invalid_weight_total","Active category weights total "+roundGrade(activeWeightTotal)+"%, not 100%.");
-  const manualMap=new Map((manualScores||[]).map(row=>[row.columnId+"::"+row.personId,row]));
-  const gradeMap=new Map((publishedGrades||[]).map(row=>[
-    (row.sourceType||SCHOOL_SOURCE)+"::"+row.taskId+"::"+row.personId,row
-  ]));
-  const grades=[];
-  for(const student of roster||[]){
-    const byCategory=new Map(categories.map(category=>[category,{earned:0,max:0,complete:true}]));
-    let studentReady=true;
-    for(const column of active){
-      const category=String(column.category||"").trim();
-      if(!category){studentReady=false;continue;}
-      const bucket=byCategory.get(category)||{earned:0,max:0,complete:true};
-      let score=null;
-      if(column.kind==="manual"){
-        const row=manualMap.get(column.columnId+"::"+student.personId);
-        if(row&&row.score!==null&&row.score!==undefined)score=Number(row.score);
-      }else{
-        const source=column.assessmentSource||SCHOOL_SOURCE;
-        const row=gradeMap.get(source+"::"+column.taskId+"::"+student.personId);
-        if(row){
-          if(Math.abs(Number(row.total)-Number(column.maxPoints))>0.000001){
-            block("assessment_max_changed",student.name+" · "+column.label+
-              " published maximum no longer matches this Class Record column.",{
-                personId:student.personId,columnId:column.columnId
-              });
-            studentReady=false;bucket.complete=false;bucket.max+=Number(column.maxPoints)||0;
-            byCategory.set(category,bucket);continue;
-          }
-          score=Number(row.awarded);
-        }
-      }
-      bucket.max+=Number(column.maxPoints)||0;
-      if(!Number.isFinite(score)){
-        block("missing_score",student.name+" · "+column.label+" has no finalized score yet.",{
-          personId:student.personId,columnId:column.columnId
-        });
-        bucket.complete=false;studentReady=false;
-      }else if(score<0||score>Number(column.maxPoints)+0.000001){
-        block("invalid_score",student.name+" · "+column.label+" is outside its allowed score range.",{
-          personId:student.personId,columnId:column.columnId
-        });
-        bucket.complete=false;studentReady=false;
-      }else bucket.earned+=score;
-      byCategory.set(category,bucket);
-    }
-    if(!studentReady)continue;
-    let initial=0;const categoryScores=[];let categoryReady=true;
-    for(const category of categories){
-      const bucket=byCategory.get(category),weight=weights.get(category.toLocaleLowerCase("en"));
-      if(!bucket?.complete||!bucket.max||!Number.isFinite(weight)){categoryReady=false;break;}
-      const percentage=bucket.earned/bucket.max*100,weightedContribution=percentage*weight/100;
-      initial+=weightedContribution;
-      categoryScores.push({
-        category,earned:roundGrade(bucket.earned),max:roundGrade(bucket.max),
-        percentage:roundGrade(percentage),weight:roundGrade(weight),
-        weightedContribution:roundGrade(weightedContribution)
-      });
-    }
-    if(!categoryReady)continue;
-    initial=roundGrade(initial);
-    const period=roundGrade(settings.gradeComputation==="deped_60_100"?60+(initial*0.4):initial);
-    grades.push({
-      personId:student.personId,name:student.name,
-      initialGrade:initial,periodGrade:period,categoryScores
-    });
-  }
-  const sourceDigest=finalizationSourceDigest({columns,settings,roster,manualScores,publishedGrades});
-  return {
-    ready:blockerCount===0&&grades.length===(roster||[]).length&&grades.length>0,
-    blockerCount,blockers,grades,categories,activeColumnCount:active.length,
-    sourceDigest
-  };
-}
-function cleanColumns(raw,assessmentMap,previousColumns=[]){
-  if(!Array.isArray(raw)||raw.length>MAX_COLUMNS)
-    deny("invalid-argument","A class record supports up to "+MAX_COLUMNS+" columns.");
-  const ids=new Set(),linkedTasks=new Set(),previousById=new Map(
-    (Array.isArray(previousColumns)?previousColumns:[]).map(column=>[
-      column.columnId,
-      column.kind==="assessment"&&!column.assessmentSource
-        ?{...column,assessmentSource:SCHOOL_SOURCE}:column
-    ])
-  );
-  return raw.map((item,index)=>{
-    const columnId=checkId(String(item?.columnId||""),"Column ID",64);
-    if(ids.has(columnId))deny("invalid-argument","Column IDs must be unique.");
-    ids.add(columnId);
-    const label=text(item?.label,"Column "+(index+1)+" label",80);
-    const category=optionalText(item?.category,60);
-    const kind=String(item?.kind||"");
-    const archived=item?.archived===true;
-    if(!["manual","assessment"].includes(kind))
-      deny("invalid-argument","Column "+label+" must be manual or assessment-linked.");
-    if(kind==="manual"){
-      const maxPoints=Number(item?.maxPoints);
-      if(!Number.isFinite(maxPoints)||maxPoints<=0||maxPoints>MAX_SCORE)
-        deny("invalid-argument","Manual column "+label+" needs a maximum score above 0 and no more than "+MAX_SCORE+".");
-      return {columnId,label,category,kind,maxPoints,archived};
-    }
-    const taskId=checkId(String(item?.taskId||""),"Assessment task ID",160);
-    const assessmentSource=[SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE].includes(item?.assessmentSource)
-      ?item.assessmentSource:SCHOOL_SOURCE;
-    const unique=assessmentKey(assessmentSource,taskId);
-    if(linkedTasks.has(unique))
-      deny("invalid-argument","The same assessment cannot be linked to the class record twice.");
-    linkedTasks.add(unique);
-    const task=assessmentMap.get(unique),previous=previousById.get(columnId);
-    const sameHistoricalSource=previous&&previous.kind==="assessment"&&
-      assessmentKey(previous.assessmentSource||SCHOOL_SOURCE,previous.taskId)===unique;
-    if(!task&&!sameHistoricalSource)
-      deny("permission-denied","A new linked assessment must still be available to this teacher.");
-    if(task?.linkable===false&&!sameHistoricalSource)
-      deny("failed-precondition","This assessment is historical and cannot be linked as a new Class Record column.");
-    const maxPoints=Number(sameHistoricalSource?previous?.maxPoints:task?.maxPoints);
-    if(!Number.isFinite(maxPoints)||maxPoints<=0)
-      deny("failed-precondition","The linked assessment has no gradeable maximum score.");
-    const sourceTitle=String(sameHistoricalSource?
-      (previous?.sourceTitle||task?.title||label):(task?.title||label)).trim().slice(0,160);
-    return {columnId,label,category,kind,taskId,assessmentSource,maxPoints,sourceTitle,archived};
-  });
-}
-
-function createSchoolClassRecordService({db,resolveUsers=null}){
-  return async request=>{
-    const input=request.data||{};
-    const ctx=await getSchoolContext({db,request,schoolId:input.schoolId});
-    const teacher=ctx.roles.includes("teacher"),admin=ctx.roles.includes("school_admin");
-    if(!teacher&&!admin)
-      deny("permission-denied","Class Record access requires a school teacher or school administrator role.");
-
-    const prefix="schools/"+ctx.schoolId+"/";
-    const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
-    const membershipRef=db.doc(prefix+"memberships/"+ctx.uid);
-    async function verifySchoolAdmin(tx){
-      const [school,membership]=await Promise.all([tx.get(schoolRef),tx.get(membershipRef)]);
-      if(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
-         membership.data().schoolId!==ctx.schoolId||membership.data().status!=="active"||
-         !Array.isArray(membership.data().roles)||!membership.data().roles.includes("school_admin"))
-        deny("permission-denied","Your school administration permission changed. Refresh before saving.");
-    }
-    if(input.action==="list_schemes"){
-      const includeArchived=admin&&input.includeArchived===true;
-      const snap=await db.collection(prefix+"grading_schemes").limit(51).get();
-      if(snap.size===51)deny("resource-exhausted","Grading scheme list requires pagination.");
-      return {schemes:snap.docs.map(doc=>({schemeId:doc.id,...doc.data()}))
-        .filter(item=>item.schoolId===ctx.schoolId&&(includeArchived||item.status==="active"))
-        .map(item=>({
-          schemeId:item.schemeId,name:String(item.name||"Grading scheme"),
-          description:String(item.description||""),status:item.status||"active",
-          revision:Number(item.revision)||1,
-          settings:cleanSettings(item.settings||{}),
-          updatedAt:millis(item.updatedAt)
-        })).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}))};
-    }
-    if(["save_scheme","archive_scheme","restore_scheme"].includes(input.action)){
-      if(!admin)deny("permission-denied","School administration is required to manage grading schemes.");
-      const schemeId=checkId(String(input.schemeId||""),"Grading scheme ID",80);
       const schemeRef=db.doc(prefix+"grading_schemes/"+schemeId);
       const expectedRevision=Number(input.expectedRevision);
       if(!Number.isInteger(expectedRevision)||expectedRevision<0)
@@ -383,6 +64,21 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
          grant.data().status!=="active")
         deny("permission-denied","Only an actively assigned teacher can use this class record.");
       return offering.data();
+    }
+    async function activeOfferingTeachers(){
+      const snap=await db.collection(prefix+"staff_assignments")
+        .where("offeringId","==",offeringId).limit(21).get();
+      if(snap.size===21)
+        deny("resource-exhausted","This offering has more than 20 teacher assignments. Paginated collaborator review is required.");
+      const active=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+        doc.data().offeringId===offeringId&&doc.data().status==="active");
+      const memberships=await Promise.all(active.map(doc=>
+        db.doc(prefix+"memberships/"+doc.data().teacherUid).get()));
+      return active.map((doc,index)=>({
+        name:memberships[index].exists&&memberships[index].data().schoolId===ctx.schoolId?
+          String(memberships[index].data().displayName||"Teacher"):"Teacher",
+        current:doc.data().teacherUid===ctx.uid
+      })).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
     }
     async function offeringLabels(offering){
       const [section,subject]=await Promise.all([
@@ -540,13 +236,14 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const offering=await verifyOffering();
       const labels=await offeringLabels(offering);
       const finalizationRef=db.doc(prefix+"class_record_finalizations/"+offeringId);
-      const [roster,assessments,sheet,gradeSnap,manualSnap,finalizationDoc]=await Promise.all([
+      const [roster,assessments,sheet,gradeSnap,manualSnap,finalizationDoc,collaborators]=await Promise.all([
         classRoster(),
         availableAssessments(offering,labels),
         sheetRef.get(),
         db.collection(prefix+"student_grades").where("offeringId","==",offeringId).limit(MAX_SCORE_CELLS+1).get(),
         db.collection(prefix+"class_record_scores").where("offeringId","==",offeringId).limit(MAX_SCORE_CELLS+1).get(),
-        finalizationRef.get()
+        finalizationRef.get(),
+        activeOfferingTeachers()
       ]);
       if(gradeSnap.size>MAX_SCORE_CELLS)
         deny("resource-exhausted","Published school grade cells exceed the bounded Class Record capacity.");
@@ -605,7 +302,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         stale:String(finalizationDoc.data().sourceDigest||"")!==snapshot.sourceDigest
       }:null;
       return {
-        offering,labels,roster,assessments,columns,settings,manualScores,publishedGrades,
+        offering,labels,roster,assessments,columns,settings,manualScores,publishedGrades,collaborators,
         sheetRevision:sheet.exists&&sheet.data().schoolId===ctx.schoolId?Number(sheet.data().revision)||0:0,
         finalization,snapshot
       };
@@ -620,6 +317,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         roster:data.roster.map(({authUid,...row})=>row),
         assessments:data.assessments,columns:data.columns,settings:data.settings,
         manualScores:data.manualScores,publishedGrades:data.publishedGrades,
+        collaborators:data.collaborators,
         sheetRevision:data.sheetRevision,finalization:data.finalization,
         periodReadiness:{
           ready:data.snapshot.ready,blockerCount:data.snapshot.blockerCount,
@@ -818,122 +516,3 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         deny("invalid-argument","The Class Record layout revision is invalid.");
       const auditRef=db.collection(prefix+"class_record_audit").doc();
       let revision;
-      await db.runTransaction(async tx=>{
-        const [grant,currentOffering,current]=await Promise.all([
-          tx.get(grantRef),tx.get(offeringRef),tx.get(sheetRef)
-        ]);
-        if(!grant.exists||grant.data().schoolId!==ctx.schoolId||
-           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active"||
-           !currentOffering.exists||currentOffering.data().schoolId!==ctx.schoolId)
-          deny("permission-denied","Your class assignment changed. Reload Class Record before saving.");
-        const previous=current.exists&&current.data().schoolId===ctx.schoolId?current.data():null;
-        const priorRevision=previous?Number(previous.revision)||0:0;
-        if(priorRevision!==expectedRevision)
-          deny("failed-precondition","This Class Record layout changed. Reload it before saving your edit.");
-        const oldColumns=Array.isArray(previous?.columns)?previous.columns:[];
-        const nextById=new Map(columns.map(column=>[column.columnId,column]));
-        for(const oldColumn of oldColumns){
-          const normalizedOld=oldColumn.kind==="assessment"&&!oldColumn.assessmentSource
-            ?{...oldColumn,assessmentSource:SCHOOL_SOURCE}:oldColumn;
-          const next=nextById.get(normalizedOld.columnId);
-          if(!next)
-            deny("failed-precondition","Existing Class Record columns cannot be deleted yet. Rename or reorder them instead.");
-          if(sourceKey(next)!==sourceKey(normalizedOld))
-            deny("failed-precondition","An existing column cannot change score source or maximum. Add a new column for a different source.");
-        }
-        revision=priorRevision+1;
-        const values={schoolId:ctx.schoolId,offeringId,columns,settings,revision,
-          lastEditedByUid:ctx.uid,updatedAt:FieldValue.serverTimestamp()};
-        if(previous)tx.update(sheetRef,values);
-        else tx.create(sheetRef,{...values,createdByUid:ctx.uid,createdAt:FieldValue.serverTimestamp()});
-        tx.create(auditRef,{schoolId:ctx.schoolId,offeringId,actorUid:ctx.uid,
-          action:"class_record_layout_saved",revision,columnCount:columns.length,
-          archivedColumnCount:columns.filter(column=>column.archived===true).length,
-          categoryWeights:settings.categoryWeights,gradeComputation:settings.gradeComputation,
-          createdAt:FieldValue.serverTimestamp()});
-      });
-      return {offeringId,revision,columns,settings};
-    }
-
-    if(input.action==="save_manual_scores"){
-      await verifyOffering();
-      const columnId=checkId(String(input.columnId||""),"Column ID",64);
-      const values=Array.isArray(input.values)?input.values:[];
-      if(!values.length||values.length>MAX_CLASS_SIZE)
-        deny("invalid-argument","Save between 1 and "+MAX_CLASS_SIZE+" student scores at a time.");
-      const normalized=values.map(item=>{
-        const personId=checkId(String(item?.personId||""),"Person ID",128);
-        const raw=item?.score;
-        if(raw===null||raw===""||raw===undefined)return {personId,score:null};
-        const score=Number(raw);
-        if(!Number.isFinite(score)||score<0||score>MAX_SCORE)
-          deny("invalid-argument","Manual scores must be blank or between 0 and "+MAX_SCORE+".");
-        return {personId,score};
-      });
-      const unique=new Set(normalized.map(item=>item.personId));
-      if(unique.size!==normalized.length)
-        deny("invalid-argument","Each student may appear only once in a score save.");
-
-      const [sheet,enrollments]=await Promise.all([
-        sheetRef.get(),
-        db.collection(prefix+"enrollments").where("offeringId","==",offeringId).limit(MAX_CLASS_SIZE+1).get()
-      ]);
-      if(!sheet.exists||sheet.data().schoolId!==ctx.schoolId)
-        deny("failed-precondition","Create the Class Record column before entering scores.");
-      const column=(Array.isArray(sheet.data().columns)?sheet.data().columns:[])
-        .find(item=>item.columnId===columnId);
-      if(!column||column.kind!=="manual")
-        deny("failed-precondition","Only manual Class Record columns accept direct score entry.");
-      if(column.archived===true)
-        deny("failed-precondition","Restore this archived column before changing its scores.");
-      const maxPoints=Number(column.maxPoints);
-      if(normalized.some(item=>item.score!==null&&item.score>maxPoints))
-        deny("invalid-argument","A score exceeds the "+maxPoints+"-point maximum for "+column.label+".");
-      const activePeople=new Set(enrollments.docs.filter(doc=>
-        doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"
-      ).map(doc=>doc.data().personId));
-      if(normalized.some(item=>!activePeople.has(item.personId)))
-        deny("permission-denied","One or more score rows no longer belong to this active class roster.");
-
-      const refs=normalized.map(item=>db.doc(prefix+"class_record_scores/"+
-        hash(offeringId,columnId,item.personId)));
-      const auditRef=db.collection(prefix+"class_record_audit").doc();
-      let changed=0;
-      await db.runTransaction(async tx=>{
-        const [grant,currentSheet,...priorScores]=await Promise.all([
-          tx.get(grantRef),tx.get(sheetRef),...refs.map(ref=>tx.get(ref))
-        ]);
-        if(!grant.exists||grant.data().schoolId!==ctx.schoolId||
-           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")
-          deny("permission-denied","Your class assignment changed. Reload Class Record before saving.");
-        const liveColumn=(Array.isArray(currentSheet.data()?.columns)?currentSheet.data().columns:[])
-          .find(item=>item.columnId===columnId);
-        if(!liveColumn||liveColumn.kind!=="manual"||Number(liveColumn.maxPoints)!==maxPoints)
-          deny("failed-precondition","This manual column changed. Reload Class Record before saving scores.");
-        const changes=[];
-        normalized.forEach((item,index)=>{
-          const prior=priorScores[index],before=prior.exists?prior.data().score:null;
-          if(before===item.score||(before==null&&item.score===null))return;
-          changed++;
-          const revision=prior.exists?(Number(prior.data().revision)||0)+1:1;
-          const data={schoolId:ctx.schoolId,offeringId,columnId,personId:item.personId,
-            score:item.score,maxPoints,revision,updatedByUid:ctx.uid,
-            updatedAt:FieldValue.serverTimestamp()};
-          if(prior.exists)tx.update(refs[index],data);
-          else tx.create(refs[index],{...data,createdAt:FieldValue.serverTimestamp()});
-          changes.push({personId:item.personId,before:before==null?null:Number(before),after:item.score});
-        });
-        if(changes.length)tx.create(auditRef,{schoolId:ctx.schoolId,offeringId,columnId,
-          actorUid:ctx.uid,action:"class_record_manual_scores_saved",changes,
-          createdAt:FieldValue.serverTimestamp()});
-      });
-      return {offeringId,columnId,changed};
-    }
-
-    deny("invalid-argument","Unknown Class Record operation.");
-  };
-}
-module.exports={
-  createSchoolClassRecordService,cleanColumns,cleanSettings,
-  SCHOOL_SOURCE,LEGACY_PERSONALIZED_SOURCE
-};
