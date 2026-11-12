@@ -1,4 +1,5 @@
 "use strict";
+const {createHash}=require("node:crypto");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {FieldValue}=require("firebase-admin/firestore");
 const deny=(code,message)=>{throw new TenantAccessError(code,message)};
@@ -10,6 +11,20 @@ function cleanText(value,max,label,{required=false}={}) {
   if(typeof value!=="string" || value.length>max || (required&&!value.trim()))
     deny("invalid-argument",label+" is missing or too long.");
   return value.trim();
+}
+const PERSONALIZATION_MODE="ai_blueprint_pool_v1";
+const MAX_PERSONALIZED_POOL=600;
+function personalizationContent(input={}) {
+  const raw=input&&typeof input==="object"&&!Array.isArray(input)?input:{};
+  const enabled=raw.enabled===true||raw.mode===PERSONALIZATION_MODE;
+  if(!enabled)return {enabled:false,mode:"standard",variantTarget:0,variationGuidance:""};
+  const variantTarget=Number(raw.variantTarget||raw.poolTarget||30);
+  if(!Number.isInteger(variantTarget)||variantTarget<10||variantTarget>MAX_PERSONALIZED_POOL)
+    deny("invalid-argument","Personalized assessments need a target of 10–600 variants.");
+  return {
+    enabled:true,mode:PERSONALIZATION_MODE,variantTarget,
+    variationGuidance:cleanText(raw.variationGuidance||raw.guidance||"",3000,"Variation guidance")
+  };
 }
 function reusableContent(input) {
   if(!input||typeof input!=="object"||Array.isArray(input))deny("invalid-argument","Assessment details are required.");
@@ -26,7 +41,33 @@ function reusableContent(input) {
       deny("invalid-argument","Each criterion must have between 1 and 100 points.");
     return {name,points};
   });
-  return {title,description,instructions,rubric:criteria};
+  return {title,description,instructions,rubric:criteria,
+    personalization:personalizationContent(input.personalization)};
+}
+function blueprintFingerprint(data){
+  const value=reusableContent(data);
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+function normalizeScenarioKey(value){
+  return String(value||"").normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
+    .toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"").replace(/_+/g,"_").slice(0,80);
+}
+function normalizeScenarioTitle(value){
+  return String(value||"").normalize("NFKD").replace(/[\u0300-\u036f]/g,"")
+    .toLowerCase().replace(/[^a-z0-9]+/g," ").trim().replace(/\s+/g," ").slice(0,140);
+}
+function cleanPersonalizedVariant(item,index){
+  if(!item||typeof item!=="object"||Array.isArray(item))
+    deny("invalid-argument","Variant "+(index+1)+" is malformed.");
+  const prompt=cleanText(item.prompt||"",12000,"Variant prompt",{required:true}),
+    evaluationNotes=cleanText(item.evaluationNotes||"",8000,"Variant evaluation notes",{required:true}),
+    summary=cleanText(item.summary||"",300,"Variant summary",{required:true}),
+    scenarioTitle=cleanText(item.scenarioTitle||item.title||"",120,"Variant scenario title",{required:true}),
+    scenarioKey=normalizeScenarioKey(item.scenarioKey||scenarioTitle);
+  if(prompt.length<80||evaluationNotes.length<10||scenarioKey.length<3)
+    deny("invalid-argument","Variant "+(index+1)+" is incomplete.");
+  const variantId=createHash("sha256").update(prompt).digest("hex").slice(0,24);
+  return {variantId,scenarioKey,scenarioTitle,prompt,evaluationNotes,summary};
 }
 function serialize(doc,access) {
   const data=doc.data();
@@ -34,7 +75,8 @@ function serialize(doc,access) {
     id:doc.id,schoolId:data.schoolId,ownerUid:data.ownerUid,
     creatorUid:data.creatorUid,visibility:data.visibility,
     title:data.title,description:data.description,instructions:data.instructions,
-    rubric:data.rubric,contentRevision:data.contentRevision,aclRevision:data.aclRevision,
+    rubric:data.rubric,personalization:personalizationContent(data.personalization),
+    contentRevision:data.contentRevision,aclRevision:data.aclRevision,
     copiedFrom:data.copiedFrom||null,
     sharedWithUids:access.uid===data.ownerUid?(Array.isArray(data.sharedWithUids)?data.sharedWithUids:[]):[],
     canShare:access.uid===data.ownerUid,
@@ -54,8 +96,8 @@ function createTeacherBlueprintService({db}) {
     const selfMemberRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+ctx.uid);
     const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
     const assertCurrentSchool=school=>{
-      if(!school.exists||school.data().state!=="active")
-        deny("permission-denied","This school is not currently active.");
+      if(!school.exists||!["active","pilot"].includes(school.data().state))
+        deny("permission-denied","This school is not currently available for teacher work.");
     };
     const assertCurrentTeacher=member=>{
       if(!member.exists||member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
@@ -63,6 +105,92 @@ function createTeacherBlueprintService({db}) {
         deny("permission-denied","Your teaching access changed. Refresh and try again.");
     };
     const action=input.action;
+    if(["personalization_status","personalization_import","personalization_activate"].includes(action)){
+      const id=documentId(input.resourceId),ref=collection.doc(id);
+      const blueprint=await ref.get();
+      if(!blueprint.exists||blueprint.data().schoolId!==ctx.schoolId||blueprint.data().ownerUid!==ctx.uid)
+        deny("permission-denied","Only the assessment owner can manage its private personalization pool.");
+      if(blueprint.data().status!=="draft")
+        deny("failed-precondition","Only a draft blueprint can manage a personalization pool.");
+      const current=blueprint.data(),config=personalizationContent(current.personalization);
+      if(!config.enabled)
+        deny("failed-precondition","Enable Personalized mode on this blueprint before managing variants.");
+      const fingerprint=blueprintFingerprint(current);
+      const poolRef=db.doc("schools/"+ctx.schoolId+"/assessment_blueprint_private/"+id+"/pools/"+fingerprint);
+      if(action==="personalization_status"){
+        const pool=await poolRef.get(),data=pool.exists?pool.data():{};
+        const variantIds=Array.isArray(data.variantIds)?data.variantIds:[],
+          registry=Array.isArray(data.scenarioRegistry)?data.scenarioRegistry:[];
+        const samples=[];
+        for(const variantId of variantIds.slice(0,3)){
+          const sample=await poolRef.collection("variants").doc(variantId).get();
+          if(sample.exists){
+            const value=sample.data();
+            samples.push({variantId,scenarioTitle:value.scenarioTitle||"",summary:value.summary||"",
+              prompt:value.prompt||"",evaluationNotes:value.evaluationNotes||""});
+          }
+        }
+        return {resourceId:id,fingerprint,variantTarget:config.variantTarget,
+          count:variantIds.length,ready:data.ready===true&&variantIds.length>=config.variantTarget,
+          scenarioRegistry:registry,samples};
+      }
+      const expectedRevision=Number(input.expectedRevision);
+      if(!Number.isInteger(expectedRevision)||expectedRevision!==current.contentRevision)
+        deny("failed-precondition","This assessment changed. Reload it before updating personalization.");
+      if(action==="personalization_import"){
+        const incoming=Array.isArray(input.variants)?input.variants:[];
+        if(!incoming.length||incoming.length>45)
+          deny("invalid-argument","Import 1–45 personalized variants per batch.");
+        const clean=incoming.map(cleanPersonalizedVariant);
+        await db.runTransaction(async tx=>{
+          const [latest,pool]=await Promise.all([tx.get(ref),tx.get(poolRef)]);
+          if(!latest.exists||latest.data().ownerUid!==ctx.uid||
+             latest.data().contentRevision!==expectedRevision||
+             blueprintFingerprint(latest.data())!==fingerprint)
+            deny("failed-precondition","The blueprint changed while importing variants.");
+          const stored=pool.exists?pool.data():{},
+            ids=Array.isArray(stored.variantIds)?stored.variantIds.slice():[],
+            registry=Array.isArray(stored.scenarioRegistry)?stored.scenarioRegistry.slice():[],
+            idSet=new Set(ids),keySet=new Set(registry.map(row=>row.scenarioKey)),
+            titleSet=new Set(registry.map(row=>normalizeScenarioTitle(row.scenarioTitle)));
+          for(const [index,variant] of clean.entries()){
+            const titleKey=normalizeScenarioTitle(variant.scenarioTitle);
+            if(idSet.has(variant.variantId)||keySet.has(variant.scenarioKey)||titleSet.has(titleKey))
+              deny("already-exists","Variant "+(index+1)+" repeats an existing scenario or prompt.");
+            if(ids.length>=MAX_PERSONALIZED_POOL)
+              deny("resource-exhausted","This personalization pool already reached 600 variants.");
+            idSet.add(variant.variantId);keySet.add(variant.scenarioKey);titleSet.add(titleKey);
+            ids.push(variant.variantId);
+            registry.push({scenarioKey:variant.scenarioKey,scenarioTitle:variant.scenarioTitle,summary:variant.summary});
+            tx.create(poolRef.collection("variants").doc(variant.variantId),{
+              ...variant,schoolId:ctx.schoolId,ownerUid:ctx.uid,blueprintId:id,
+              fingerprint,createdAt:FieldValue.serverTimestamp()
+            });
+          }
+          const payload={schoolId:ctx.schoolId,ownerUid:ctx.uid,blueprintId:id,
+            blueprintRevision:expectedRevision,fingerprint,variantIds:ids,scenarioRegistry:registry,
+            count:ids.length,target:config.variantTarget,updatedAt:FieldValue.serverTimestamp()};
+          if(pool.exists)tx.update(poolRef,payload);else tx.create(poolRef,{...payload,ready:false,createdAt:FieldValue.serverTimestamp()});
+        });
+        const updated=await poolRef.get();
+        return {resourceId:id,fingerprint,count:updated.data().variantIds.length,
+          variantTarget:config.variantTarget,ready:updated.data().ready===true};
+      }
+      await db.runTransaction(async tx=>{
+        const [latest,pool]=await Promise.all([tx.get(ref),tx.get(poolRef)]);
+        if(!latest.exists||latest.data().ownerUid!==ctx.uid||
+           latest.data().contentRevision!==expectedRevision||
+           blueprintFingerprint(latest.data())!==fingerprint)
+          deny("failed-precondition","The blueprint changed before pool activation.");
+        if(!pool.exists)deny("failed-precondition","Import personalized variants before activation.");
+        const ids=Array.isArray(pool.data().variantIds)?pool.data().variantIds:[];
+        if(ids.length<config.variantTarget)
+          deny("failed-precondition","The private pool has "+ids.length+" of "+config.variantTarget+" required variants.");
+        tx.update(poolRef,{ready:true,target:config.variantTarget,
+          activatedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp()});
+      });
+      return {resourceId:id,fingerprint,variantTarget:config.variantTarget,ready:true};
+    }
     if(action==="recipients") {
       const snap=await db.collection("schools/"+ctx.schoolId+"/memberships")
         .where("roles","array-contains","teacher").limit(101).get();
@@ -186,4 +314,5 @@ function createTeacherBlueprintService({db}) {
     deny("invalid-argument","Unknown assessment library action.");
   };
 }
-module.exports={createTeacherBlueprintService,reusableContent,canReadBlueprint};
+module.exports={createTeacherBlueprintService,reusableContent,canReadBlueprint,blueprintFingerprint,
+  personalizationContent,PERSONALIZATION_MODE,MAX_PERSONALIZED_POOL};
