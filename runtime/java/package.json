@@ -1,0 +1,17 @@
+{
+  "name": "adminerva-java-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Queue-backed interactive Java runner for Adminerva Studio",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.3",
+    "jose": "^6.1.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

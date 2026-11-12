@@ -1,0 +1,25 @@
+/* People & Access V4: admin navigation, loading clarity and touch affordances. */
+body:has(.pa-shell) #adminerva-nav:empty{min-height:63px;background:#10253d}
+.pa-shell{max-width:1360px!important;padding:clamp(.75rem,1.8vw,1.5rem)!important}
+.pa-shell .pa-header{margin-bottom:.8rem;align-items:flex-end}
+.pa-shell .pa-tabs{padding-bottom:.35rem;scrollbar-gutter:stable;margin-top:.35rem}
+.pa-shell .pa-tabs button{font-weight:650;min-height:45px}
+.pa-shell .pa-tabs button:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+.pa-shell .pa-tabs button[aria-busy="true"]{cursor:progress;border-color:#7fb8d2}
+.pa-shell .pa-card{border-color:#d7e2ef;box-shadow:0 5px 18px #17365408}
+.pa-shell .pa-row{gap:.75rem}
+.pa-shell .pa-row :is(button,a){flex-shrink:0}
+.pa-shell #pa-workspace :is(button,select,input,textarea):focus-visible{outline:3px solid #2563eb;outline-offset:2px}
+.pa-shell #school-status{line-height:1.5;padding:.4rem 0}
+.pa-shell :is(.pa-count,#school-status){font-variant-numeric:tabular-nums}
+.pa-shell [role="tabpanel"]{min-width:0}
+.pa-shell [role="tabpanel"][hidden]{display:none!important}
+.pa-shell .pa-muted{line-height:1.45}
+.pa-shell :is(#pa-reconcile-results,#pa-person-list,#pa-membership-list){scrollbar-gutter:stable}
+.pa-shell :is(#pa-reconcile-results,#pa-person-list,#pa-membership-list) .pa-row{scroll-margin-top:.75rem}
+@media(max-width:760px){
+ .pa-shell .pa-layout,.pa-shell .pa-academic-grid{grid-template-columns:minmax(0,1fr)}
+ .pa-shell .pa-tabs{margin-inline:0;gap:.4rem}
+ .pa-shell .pa-row{align-items:stretch}
+ .pa-shell .pa-cards{gap:.5rem}
+}

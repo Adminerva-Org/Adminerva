@@ -77,8 +77,25 @@ async function initRepositorySections() {
     console.error(e);
   }
 }
-if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",initRepositorySections,{once:true});
-else void initRepositorySections();
+// Legacy group investigation is hidden in the normal V2 review route.
+// Avoid reading the entire student collection a second time on every page load.
+let legacySectionInitStarted=false;
+function lazyLegacySectionInit(){
+  if(legacySectionInitStarted)return;
+  legacySectionInitStarted=true;
+  void initRepositorySections();
+}
+const legacyTools=document.getElementById("legacyRepoTools");
+if(legacyTools){
+  if(!legacyTools.hidden)lazyLegacySectionInit();
+  else{
+    const watcher=new MutationObserver(()=>{
+      if(legacyTools.hidden)return;
+      watcher.disconnect();lazyLegacySectionInit();
+    });
+    watcher.observe(legacyTools,{attributes:true,attributeFilter:["hidden"]});
+  }
+}
 
 let repoSyncBusy=false;
 window.fetchAndSyncRepos = async function () {

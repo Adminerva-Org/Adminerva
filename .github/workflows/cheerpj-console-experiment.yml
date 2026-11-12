@@ -1,0 +1,20 @@
+name: CheerpJ console experiment
+on:
+  pull_request:
+    paths:
+      - 'experiments/cheerpj-console/**'
+      - '.github/workflows/cheerpj-console-experiment.yml'
+  workflow_dispatch:
+
+jobs:
+  terminal-adapter:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Focused terminal input/output tests
+        run: node --test experiments/cheerpj-console/console-bridge.test.mjs

@@ -13,13 +13,13 @@ test("school years cannot overwrite one another or legacy plans",()=>{
 });
 test("quarter and session requirements follow existing lesson formats",()=>{
   assert.equal(quarterCode("SECOND SEMESTER/FOURTH QUARTER"),"Q4");
-  assert.equal(expectedSessions("Grade 11").length,5);
+  assert.equal(expectedSessions("Grade 11").length,4);
   assert.deepEqual(expectedSessions("Grade 12"),["Session 1","Session 2","Session 3","Session Flex"]);
 });
 test("AI generation flags missing standards and sessions",()=>{
   const plan={weekly_overview:{topic:"Topic",content_standard:"",performance_standard:"Required",materials:"- laptop"},sessions:[]};
   assert.ok(validateGeneratedLesson(plan,"Grade 11").some(x=>x.includes("content_standard")));
-  assert.ok(validateGeneratedLesson(plan,"Grade 11").some(x=>x.includes("Expected 5 sessions")));
+  assert.ok(validateGeneratedLesson(plan,"Grade 11").some(x=>x.includes("Expected 4 sessions")));
 });
 test("valid plans pass without rewriting teachers' exact content",()=>{
   const sessions=expectedSessions("Grade 11").map(session_name=>({

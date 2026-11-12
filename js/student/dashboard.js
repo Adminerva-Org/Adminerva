@@ -27,6 +27,7 @@ let cachedCommitsData = [];
 let currentSectionAssessments = [];
 let myPublishedGrades = {}; // ✨ Global grade dictionary
 let dashboardLoadSequence = 0;
+function projectActivityStatus(message){const node=document.getElementById("projectActivityStatus");if(node)node.textContent=message;}
 
 function escapeHTML(str) {
   if (!str) return "";
@@ -84,6 +85,21 @@ onAuthStateChanged(auth, async (user) => {
     });
   }
 
+  const refreshActivityBtn=document.getElementById("refreshProjectActivity");
+  if(refreshActivityBtn&&!refreshActivityBtn.dataset.bound){
+    refreshActivityBtn.dataset.bound="true";
+    refreshActivityBtn.addEventListener("click",()=>{
+      const profile=currentStudentProfile;
+      if(!profile?.githubToken||!profile.repoUrl||!profile.githubUsername){
+        projectActivityStatus("Connect GitHub and configure a repository before refreshing activity.");
+        return;
+      }
+      if(refreshActivityBtn.disabled)return;
+      void syncGitHubData(profile.repoUrl,profile.githubUsername,profile.githubToken,
+        doc(db,"student_dashboard_cache",profile.docId),profile.docId,
+        dashboardLoadSequence,auth.currentUser?.uid);
+    });
+  }
   const connectGithubBtn = document.getElementById("connectGithubBtn");
   if (connectGithubBtn) {
     if (impersonateEmail) {
@@ -158,6 +174,8 @@ async function loadDashboardProfile(studentData) {
   const subtitle = document.getElementById("repoSubtitle");
   const container = document.getElementById("commitListContainer");
   const overlay = document.getElementById("githubAuthOverlay");
+  const refreshButton=document.getElementById("refreshProjectActivity");
+  if(refreshButton)refreshButton.disabled=false;
   const gradeContainer = document.getElementById("latestGradeContainer");
 
   verifyStudentSetup(studentData);
@@ -243,6 +261,8 @@ async function loadDashboardProfile(studentData) {
   subtitle.innerHTML = `<strong>${escapeHTML(studentData.section)}:</strong> Tracking <span class="font-mono text-xs text-slate-800">${escapeHTML(studentData.githubUsername)}</span> on <a href="${escapeHTML(studentData.repoUrl)}" target="_blank" class="text-blue-500 hover:underline font-mono text-xs">${escapeHTML(studentData.repoUrl)}</a>`;
   const defaultFilter = document.getElementById("timeFilter")?.value || "7d";
   const cacheRef = doc(db, "student_dashboard_cache", studentData.docId);
+  let cacheIsFresh=false;
+  projectActivityStatus("Loading saved GitHub activity…");
 
   try {
     const cacheSnap = await getDoc(cacheRef);
@@ -251,6 +271,11 @@ async function loadDashboardProfile(studentData) {
       cachedCommitsData = cacheSnap.data().commits || [];
       renderCommits(cachedCommitsData, defaultFilter);
       renderChart(cachedCommitsData, defaultFilter);
+      const fetchedAt=Date.parse(cacheSnap.data().lastSynced||"");
+      cacheIsFresh=Number.isFinite(fetchedAt)&&Date.now()-fetchedAt<120000&&Date.now()>=fetchedAt;
+      projectActivityStatus(cacheIsFresh
+        ?"Showing recently saved GitHub activity. Select Refresh for a new check."
+        :"Showing saved activity while checking for newer repository changes…");
     }
   } catch (error) {
     console.warn("Database read bypassed. Continuing to UI load.");
@@ -258,9 +283,11 @@ async function loadDashboardProfile(studentData) {
 
   if (!studentData.githubToken) {
     overlay.classList.remove("hidden");
+    projectActivityStatus("Saved activity is available. Connect GitHub to synchronize new commits.");
     return;
   }
-  syncGitHubData(
+  if(cacheIsFresh)return;
+  void syncGitHubData(
     studentData.repoUrl,
     studentData.githubUsername,
     studentData.githubToken,
@@ -275,10 +302,15 @@ function studentDataSection(profileId){return userProfiles.find(item=>item.docId
 function studentDataGithub(profileId){return userProfiles.find(item=>item.docId===profileId)?.githubUsername||"";}
 async function syncGitHubData(repoUrl, username, token, cacheRef, profileId, loadSequence, accountUid) {
   const isCurrent=()=>loadSequence===dashboardLoadSequence&&currentStudentProfile?.docId===profileId&&auth.currentUser?.uid===accountUid;
+  const refreshButton=document.getElementById("refreshProjectActivity");
+  if(refreshButton)refreshButton.disabled=true;
+  if(isCurrent())projectActivityStatus("Checking GitHub for newer commits…");
   try {
-    const urlParts = repoUrl.replace(/\/$/, "").replace(".git", "").split("/");
-    let repo = urlParts.pop();
-    let owner = urlParts.pop();
+    const parsed=new URL(String(repoUrl||"").replace(/\.git$/i,""));
+    if(parsed.protocol!=="https:"||parsed.hostname!=="github.com")throw Error("Use an https://github.com repository URL.");
+    const urlParts=parsed.pathname.split("/").filter(Boolean);
+    if(urlParts.length!==2)throw Error("Select a GitHub repository, not a profile or subfolder.");
+    let [owner,repo]=urlParts;
 
     try {
       const repoInfoRes = await fetch(
@@ -293,25 +325,21 @@ async function syncGitHubData(repoUrl, username, token, cacheRef, profileId, loa
           repoUrl.toLowerCase() !== actualUrl.toLowerCase() &&
           repoUrl.toLowerCase() !== repoInfo.html_url.toLowerCase()
         ) {
-          await setDoc(
-            doc(db, "students", profileId),
-            { repoUrl: actualUrl },
-            { merge: true },
-          );
-          owner = repoInfo.owner.login;
-          repo = repoInfo.name;
-          const profile=userProfiles.find(item=>item.docId===profileId);if(profile)profile.repoUrl=actualUrl;
-          const subtitle = document.getElementById("repoSubtitle");
-          if (subtitle&&isCurrent())
-            subtitle.innerHTML = `<strong>${escapeHTML(studentDataSection(profileId))}:</strong> Tracking <span class="font-mono text-xs text-slate-800">${escapeHTML(studentDataGithub(profileId))}</span> on <a href="${escapeHTML(actualUrl)}" target="_blank" class="text-blue-500 hover:underline font-mono text-xs">${escapeHTML(actualUrl)}</a>`;
+          // Follow GitHub's canonical repository for this read-only sync,
+          // but never silently rewrite a student's school roster record.
+          owner=repoInfo.owner.login;
+          repo=repoInfo.name;
+          if(isCurrent())projectActivityStatus("Repository redirect detected. Activity is being read from the current GitHub address; update your saved URL through the normal account workflow.");
         }
       }
     } catch (autoUpdateError) {}
 
     let allCommits = [];
+    // Dashboard filters cover at most 90 days; avoid downloading older history.
+    const since=new Date(Date.now()-93*86400000).toISOString();
     for (let page = 1; page <= 4; page++) {
       const response = await fetch(
-        `https://api.github.com/repos/${owner}/${repo}/commits?author=${encodeURIComponent(username)}&per_page=100&page=${page}`,
+        `https://api.github.com/repos/${owner}/${repo}/commits?author=${encodeURIComponent(username)}&since=${encodeURIComponent(since)}&per_page=100&page=${page}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -319,7 +347,11 @@ async function syncGitHubData(repoUrl, username, token, cacheRef, profileId, loa
           },
         },
       );
-      if (!response.ok) break;
+      if(!response.ok){
+        if(response.status===409)break; // The linked repository is empty.
+        throw Error("GitHub HTTP "+response.status+(response.status===401||response.status===403
+          ?". Reconnect GitHub and check repository permissions or API limits.":"."));
+      }
       const commits = await response.json();
       allCommits = allCommits.concat(commits);
       if (commits.length < 100) break;
@@ -337,9 +369,15 @@ async function syncGitHubData(repoUrl, username, token, cacheRef, profileId, loa
       const filter = document.getElementById("timeFilter")?.value || "7d";
       renderCommits(cachedCommitsData, filter);
       renderChart(cachedCommitsData, filter);
+      projectActivityStatus("GitHub activity synchronized. The chart and commit list reflect the latest fetched data.");
+    }else if(isCurrent()){
+      projectActivityStatus("No updated commits were returned. Saved activity remains available.");
     }
   } catch (err) {
     console.warn("Background sync failed, using cached data.", err);
+    if(isCurrent())projectActivityStatus("Could not refresh GitHub activity: "+err.message+". Saved activity remains available.");
+  } finally {
+    if(isCurrent()&&refreshButton)refreshButton.disabled=false;
   }
 }
 

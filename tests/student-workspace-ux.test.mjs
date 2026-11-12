@@ -36,8 +36,18 @@ test("Pending includes overdue and revision work, excluding submitted, reviewed 
     myEvidence={approved:{status:"approved"},discovered:{status:"needs_review"},reopened:{status:"reopened"},withdrawn:{status:"withdrawn"}};
     renderAssessments();`,state.context);
   const html=state.field("assignmentsFeed").inserted;
-  for(const id of ["unstarted","overdue","reopened","withdrawn"])assert.match(html,new RegExp('viewAssessmentDetails\\(\''+id+'\''));
-  for(const id of ["published","submitted","approved","discovered"])assert.doesNotMatch(html,new RegExp('viewAssessmentDetails\\(\''+id+'\''));
+  // Cards are data-driven buttons: delegated activation avoids inline handlers
+  // and supports identifiers without embedding them inside executable HTML.
+  for(const id of ["unstarted","overdue","reopened","withdrawn"])
+    assert.match(html,new RegExp('data-assessment-id="'+id+'"'));
+  for(const id of ["published","submitted","approved","discovered"])
+    assert.doesNotMatch(html,new RegExp('data-assessment-id="'+id+'"'));
+  let openedId=null;
+  state.context.window.viewAssessmentDetails=id=>{openedId=id;};
+  state.field("assignmentsFeed").listeners.click({
+    target:{closest:()=>({dataset:{assessmentId:"overdue"}})}
+  });
+  assert.equal(openedId,"overdue","Delegated assignment button activates the matching assessment");
   vm.runInContext('submissionLookupSucceeded=false;allAssessments=[{id:"unknown",title:"unknown",postedDate:new Date()}];',state.context);
   state.field("assignmentsFeed").inserted="";vm.runInContext("renderAssessments()",state.context);
   assert.equal(state.field("assignmentsFeed").inserted,"");assert.match(state.field("assignmentsFeed").innerHTML,/No assignments match/);

@@ -1,6 +1,6 @@
 import {loadPublishedGrades} from "./published-grades.mjs?v=1.3.0";
 /** Student submissions, practice progress and isolated code workspaces: assessments. */
-import { db, auth } from "../core/firebase-core.js?v=1.3.0";
+import { app, db, auth } from "../core/firebase-core.js?v=1.3.0";
 import { cleanGradeFeedback } from "../core/feedback-format.mjs?v=1.3.0";
 import {asDate,assessmentStatus,assessmentTargetDetails} from "./assessment-state.mjs?v=1.3.0";
 import {ensureStudentAccessProjection} from "./student-access.mjs?v=1.3.6";
@@ -11,6 +11,7 @@ import {
   where,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 
 let allAssessments = [];
 let userProfiles = [];
@@ -21,7 +22,56 @@ let myEvidence = {};
 let submissionLookupSucceeded = false;
 let myStudioSubmissions={},studioSubmissionsReadable=false;
 let profileGeneration=0,assessmentGeneration=0,assignmentOwnerUid="";
+let assessmentModalOpener=null,personalizedAssignmentGeneration=0,studioVariantCallable=null;
+const callStudioVariant=input=>{
+  if(!studioVariantCallable)studioVariantCallable=httpsCallable(getFunctions(app,"asia-southeast1"),"studioAssessmentVariant");
+  return studioVariantCallable(input);
+};
 const assignmentField=id=>document.getElementById(id);
+async function loadPersonalizedAssignment(assessment){
+  const panel=assignmentField("personalizedAssignmentPanel"),
+    meta=assignmentField("personalizedAssignmentMeta"),
+    prompt=assignmentField("personalizedAssignmentPrompt"),
+    status=assignmentField("personalizedAssignmentStatus"),
+    open=assignmentField("studioOpenProject"),
+    generation=++personalizedAssignmentGeneration;
+  panel.classList.add("hidden");meta.textContent="";prompt.textContent="";status.textContent="";
+  const personalized=assessment?.assessmentMode==="personalized"||assessment?.personalizedTask?.enabled===true;
+  if(!personalized)return;
+  panel.classList.remove("hidden");
+  if(Number(assessment.personalizedTask?.poolSize||0)<1||!assessment.personalizedTask?.poolFingerprint){
+    status.textContent="Your teacher is still preparing the personalized task pool. No task has been assigned to you yet.";
+    return;
+  }
+  status.textContent="Assigning your version…";
+  try{
+    const response=await callStudioVariant({assessmentId:assessment.id});
+    if(generation!==personalizedAssignmentGeneration||window.__adminervaViewedAssessmentId!==assessment.id)return;
+    const variant=response.data;
+    window.adminervaStudioAssessmentVariant=variant;
+    meta.textContent="Attempt "+variant.attempt+" · Variant "+variant.variantId;
+    prompt.textContent=variant.prompt||"";
+    status.textContent=variant.readOnly
+      ?"This is the version attached to your submitted attempt."
+      :"This version is now frozen to your current attempt. Reloading or reopening keeps the same task.";
+    if(open){
+      open.href="student-playground.html?assessment="+encodeURIComponent(assessment.id);
+      open.removeAttribute("aria-disabled");
+      open.classList.remove("opacity-50","pointer-events-none");
+      open.textContent="Open Adminerva Studio →";
+    }
+  }catch(error){
+    if(generation!==personalizedAssignmentGeneration||window.__adminervaViewedAssessmentId!==assessment.id)return;
+    const message=String(error?.message||"Your personalized task is unavailable.");
+    status.textContent=message.includes("outside the Studio submission window")
+      ?"Your personalized task will be assigned automatically when the assessment work window opens."
+      :"Your personalized task could not be assigned: "+message;
+    if(open){
+      open.removeAttribute("href");open.setAttribute("aria-disabled","true");
+      open.classList.add("opacity-50","pointer-events-none");
+    }
+  }
+}
 function assignmentsNotice(message,tone="info",retry=false){
   assignmentField("assignmentsNoticeText").textContent=message;assignmentField("assignmentsNotice").dataset.tone=tone;
   assignmentField("assignmentsNotice").classList.toggle("hidden",!message);assignmentField("assignmentsRetry").classList.toggle("hidden",!retry);
@@ -174,6 +224,7 @@ async function fetchAssessments() {
     for(const docSnap of [...sectionSnap.docs,...legacySnap.docs])assignedDocs.set(docSnap.id,docSnap);
     assignedDocs.forEach((docSnap) => {
       const data = docSnap.data();
+      if(data.published===false)return;
       let isAssignedToStudent = false;
       let activeDeadline = null;
       let noDeadline = false;
@@ -222,16 +273,74 @@ async function fetchAssessments() {
   } finally { end();if(isCurrent())setAssignmentControls(false); }
 }
 
+function assessmentPresentation(ass){
+  const format=ass?.assessmentFormat||
+    (ass?.schemaVersion===3&&ass?.submissionSource==="studio"?"studio_code":"github_repository"),
+    mode=ass?.assessmentMode||(ass?.personalizedTask?.enabled===true?"personalized":"default"),
+    studio=format==="studio_code",
+    personalized=studio&&mode==="personalized";
+  if(personalized)return {
+    mode:"personalized_studio",
+    label:"Personalized Studio",
+    chip:"bg-violet-100 text-violet-800 border-violet-200",
+    path:"Personalized task · Adminerva Studio project snapshot",
+    summary:"Your individual task is assigned when you open the assessment and stays frozen to the current attempt.",
+    defaultAction:"Open personalized task",
+    revisionAction:"Open revision task",
+    submittedAction:"View frozen submission",
+    reviewedAction:"View reviewed submission",
+    gradedAction:"View grade & feedback"
+  };
+  if(studio)return {
+    mode:"studio",
+    label:"Adminerva Studio",
+    chip:"bg-teal-100 text-teal-800 border-teal-200",
+    path:"Adminerva Studio project snapshot",
+    summary:"Work in a named Studio project and submit an immutable snapshot for teacher review.",
+    defaultAction:"Open Studio task",
+    revisionAction:"Continue revision",
+    submittedAction:"View Studio submission",
+    reviewedAction:"View reviewed submission",
+    gradedAction:"View grade & feedback"
+  };
+  if(format==="essay_response"||format==="essay")return {
+    mode:"essay",
+    label:"Written response",
+    chip:"bg-amber-100 text-amber-800 border-amber-200",
+    path:"Essay / written response",
+    summary:"Written-response assessment.",
+    defaultAction:"Open response",
+    revisionAction:"Revise response",
+    submittedAction:"View response",
+    reviewedAction:"View reviewed response",
+    gradedAction:"View grade & feedback"
+  };
+  return {
+    mode:"repository",
+    label:"Repository evidence",
+    chip:"bg-indigo-100 text-indigo-800 border-indigo-200",
+    path:"GitHub repository evidence",
+    summary:"Submit repository evidence, contribution commits and the required project checkpoint.",
+    defaultAction:"Open repository task",
+    revisionAction:"Revise evidence",
+    submittedAction:"View submission",
+    reviewedAction:"View reviewed evidence",
+    gradedAction:"View grade & feedback"
+  };
+}
 function assignmentStatusFor(ass){
   if(ass.schemaVersion===3&&ass.submissionSource==="studio"){
     if(myGrades[ass.id])return {kind:"graded",text:"Graded"};
-    const head=myStudioSubmissions[ass.id];
+    const head=myStudioSubmissions[ass.id],
+      personalized=ass.assessmentMode==="personalized"||ass.personalizedTask?.enabled===true,
+      poolReady=!personalized||(Number(ass.personalizedTask?.poolSize||0)>0&&Boolean(ass.personalizedTask?.poolFingerprint));
     if(!head&&!studioSubmissionsReadable)return {kind:"unknown",text:"Studio status unavailable — retry"};
-    if(head?.status==="revision_requested")return {kind:"revision",text:"Revision requested"};
+    if(head?.status==="revision_requested")return {kind:"revision",text:personalized?"New personalized revision ready":"Revision requested"};
     if(head?.status==="reviewed")return {kind:"reviewed",text:"Teacher reviewed"};
     if(head?.status==="submitted")return {kind:"submitted",text:"Studio revision "+head.revision+" submitted"};
     if(ass.dueDate&&Date.now()>ass.dueDate.getTime())return {kind:"pastdue",text:"Past due"};
-    return {kind:"notSubmitted",text:"Studio project required"};
+    if(personalized&&!poolReady)return {kind:"preparing",text:"Personalized task being prepared"};
+    return {kind:"notSubmitted",text:personalized?"Personalized task ready":"Studio project required"};
   }
   return assessmentStatus({grade:myGrades[ass.id],submitted:Boolean(mySubmitted[ass.id]),evidenceStatus:myEvidence[ass.id]?.status||null,deadline:ass.noDeadline?null:ass.dueDate,knownSubmissions:submissionLookupSucceeded});
 }
@@ -267,6 +376,13 @@ function renderAssessments() {
   });
 
   container.innerHTML = "";
+  const count=assignmentField("assignmentsCount");
+  if(count){
+    const action=allAssessments.filter(needsStudentAction).length;
+    const graded=allAssessments.filter(item=>assignmentStatusFor(item).kind==="graded").length;
+    count.textContent=filtered.length+" of "+allAssessments.length+" assignments shown · "+
+      action+" need your action · "+graded+" graded";
+  }
   if (filtered.length === 0) {
     assignmentsFeedState(allAssessments.length?"No assignments match these filters":"No assignments posted yet",allAssessments.length?"Try All Assignments or clear your search to see more tasks.":"Your teacher has not posted assignments for "+currentSection+" yet. You can explore Practice Lab while you wait.");
     return;
@@ -290,6 +406,7 @@ function renderAssessments() {
       evidence:"text-indigo-800 bg-indigo-50 border-indigo-200",
       pastdue:"text-rose-700 bg-rose-50 border-rose-200",
       notSubmitted:"text-slate-700 bg-slate-100 border-slate-200",
+      preparing:"text-violet-700 bg-violet-50 border-violet-200",
       unknown:"text-amber-700 bg-amber-50 border-amber-200"
     };
     const urgencyBadge=`<span class="text-[10px] font-bold border rounded-full px-2 py-1 ${colors[status.kind]}">${escapeHTML(status.text)}${status.kind==="graded"?" · "+escapeHTML(myGrade.score):""}</span>`;
@@ -300,19 +417,23 @@ function renderAssessments() {
       ? `<span class="text-[10px] text-slate-400 font-medium ml-auto">Due: ${ass.dueDate.toLocaleDateString()}</span>`
       : `<span class="text-[10px] text-slate-400 font-medium ml-auto">Posted: ${ass.postedDate.toLocaleDateString()}</span>`;
 
-    const action=status.kind==="revision"?"Revise evidence":
-      status.kind==="graded"?"View feedback":
-      status.kind==="submitted"||status.kind==="reviewed"?"View submission":"Open assignment";
+    const presentation=assessmentPresentation(ass);
+    const action=status.kind==="revision"?presentation.revisionAction:
+      status.kind==="graded"?presentation.gradedAction:
+      status.kind==="submitted"?presentation.submittedAction:
+      status.kind==="reviewed"?presentation.reviewedAction:presentation.defaultAction;
     const card = `
-      <button type="button" class="w-full text-left bg-white p-4 rounded-xl border ${ass.isUrgent && !myGrade ? "border-rose-300" : "border-slate-200"} hover:border-indigo-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition flex flex-col sm:flex-row sm:items-center gap-3" onclick="viewAssessmentDetails('${ass.id}')">
+      <button type="button" class="w-full text-left bg-white p-4 rounded-xl border ${ass.isUrgent && !myGrade ? "border-rose-300" : "border-slate-200"} hover:border-indigo-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition flex flex-col sm:flex-row sm:items-center gap-3" data-assessment-id="${escapeHTML(ass.id)}">
         <div class="flex-grow min-w-0">
           <div class="flex flex-wrap items-center gap-2 mb-1.5">
             <span class="${typeColor} text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wide">${escapeHTML(ass.type)}</span>
+            <span class="${presentation.chip} text-[10px] font-bold border px-2 py-0.5 rounded uppercase tracking-wide">${escapeHTML(presentation.label)}</span>
             ${urgencyBadge}
             ${deadlineString}
           </div>
           <h3 class="text-base font-bold text-slate-900 leading-snug">${escapeHTML(ass.title)}</h3>
-          <p class="text-xs text-slate-600 mt-1 line-clamp-1">${escapeHTML(ass.taskContext || "Open to see task instructions and evidence details.")}</p>
+          <p class="text-xs text-slate-600 mt-1 line-clamp-1">${escapeHTML(ass.taskContext || presentation.summary)}</p>
+          <p class="text-[11px] text-slate-500 mt-1">${escapeHTML(presentation.summary)}</p>
         </div>
         <span class="shrink-0 inline-flex items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-800 px-3 py-2 text-xs font-bold sm:ml-auto">${escapeHTML(action)} →</span>
       </button>
@@ -358,6 +479,7 @@ window.__adminervaSubmissionContext = () => ({
   section: currentSection
 });
 window.viewAssessmentDetails = function (id) {
+  assessmentModalOpener=document.activeElement;
   window.__adminervaViewedAssessmentId = id;
   const ass = allAssessments.find((a) => a.id === id);
   if (!ass) return;
@@ -372,9 +494,6 @@ window.viewAssessmentDetails = function (id) {
     `${typeColor} text-[10px] font-bold px-2 py-0.5 rounded border uppercase tracking-wider mb-2 inline-block`;
   document.getElementById("modalAssType").textContent = ass.type;
   document.getElementById("modalAssTitle").textContent = ass.title;
-  const fileScope=assessmentTargetDetails(ass);
-  document.getElementById("modalAssPath").textContent =
-    `Target Paths: ${fileScope.paths}${fileScope.expectedTypes ? " · Expected file types: " + fileScope.expectedTypes : ""}`;
   document.getElementById("modalAssContext").textContent =
     ass.taskContext || "No instructions provided.";
   document.getElementById("modalAssRubric").textContent =
@@ -393,19 +512,83 @@ window.viewAssessmentDetails = function (id) {
     scoreArea.classList.add("hidden");
   }
 
+  const presentation=assessmentPresentation(ass);
+  if(presentation.mode==="repository"){
+    const fileScope=assessmentTargetDetails(ass);
+    document.getElementById("modalAssPath").textContent=
+      "Submission: "+presentation.path+" · Target paths: "+fileScope.paths+
+      (fileScope.expectedTypes?" · Expected file types: "+fileScope.expectedTypes:"");
+  }else{
+    document.getElementById("modalAssPath").textContent="Submission: "+presentation.path;
+  }
   const isStudio=ass.schemaVersion===3&&ass.submissionSource==="studio";
+  const personalized=isStudio&&(ass.assessmentMode==="personalized"||ass.personalizedTask?.enabled===true),
+    personalizedReady=!personalized||(
+      Number(ass.personalizedTask?.poolSize||0)>0&&
+      typeof ass.personalizedTask?.poolFingerprint==="string"&&
+      ass.personalizedTask.poolFingerprint.length>0
+    );
+  if(personalized)
+    document.getElementById("modalAssContext").textContent=
+      (ass.taskContext||"Complete the assigned Studio task.")+
+      "\n\nAdminerva assigns your individual version automatically when you open this assessment. You do not generate or choose a task. The assigned version is frozen to your current attempt; a teacher-requested revision receives another prepared version.";
   document.getElementById("studioAssessmentPanel")?.classList.toggle("hidden",!isStudio);
   document.getElementById("studioExamAdvice")?.classList.toggle("hidden",!isStudio||ass.practicalExam!==true);
-  if(isStudio)document.getElementById("modalAssPath").textContent="Work area: your named Adminerva Studio project (code, diagrams and database).";
+
   document.getElementById("legacySubmitPanel")?.classList.toggle("hidden",isStudio||ass.schemaVersion===2);
   if(isStudio){
-    const head=myStudioSubmissions[id];
-    document.getElementById("studioAssignmentStatus").textContent=head?
-      "Revision "+head.revision+" · "+String(head.status||"submitted").replaceAll("_"," ")+
-      (head.reviewNote?" · Teacher note: "+head.reviewNote:""):
-      "No Studio project has been submitted yet.";
-    document.getElementById("studioOpenProject").href="student-playground.html?assessment="+encodeURIComponent(id);
+    const head=myStudioSubmissions[id],open=document.getElementById("studioOpenProject");
+    document.getElementById("studioAssignmentStatus").textContent=!personalizedReady
+      ?"Your teacher is preparing the personalized task pool. You can review the instructions now; Studio will unlock when the variants are ready."
+      :head
+        ?"Revision "+head.revision+" · "+String(head.status||"submitted").replaceAll("_"," ")+
+          (head.reviewNote?" · Teacher note: "+head.reviewNote:"")
+        :"No Studio project has been submitted yet.";
+    if(personalizedReady&&!personalized){
+      open.href="student-playground.html?assessment="+encodeURIComponent(id);
+      open.removeAttribute("aria-disabled");
+      open.classList.remove("opacity-50","pointer-events-none");
+      open.textContent="Open Adminerva Studio →";
+    }else{
+      open.removeAttribute("href");
+      open.setAttribute("aria-disabled","true");
+      open.classList.add("opacity-50","pointer-events-none");
+      open.textContent=personalizedReady?"Assigning personalized task…":"Personalized task preparation pending";
+    }
   }
   document.getElementById("assessmentModal").classList.remove("hidden");
+  document.getElementById("assessmentModalClose")?.focus({preventScroll:true});
+  if(personalized&&personalizedReady)void loadPersonalizedAssignment(ass);
+  else{
+    personalizedAssignmentGeneration++;
+    document.getElementById("personalizedAssignmentPanel")?.classList.add("hidden");
+  }
   window.dispatchEvent(new CustomEvent("adminerva:assessment-opened",{detail:{assessmentId:id}}));
 };
+
+window.closeAssessmentDetails=function(){
+  personalizedAssignmentGeneration++;
+  const modal=assignmentField("assessmentModal");
+  if(modal.classList.contains("hidden"))return;
+  modal.classList.add("hidden");
+  if(assessmentModalOpener?.isConnected)assessmentModalOpener.focus({preventScroll:true});
+  else assignmentField("searchAssInput")?.focus({preventScroll:true});
+  assessmentModalOpener=null;
+};
+const assignmentFeed=assignmentField("assignmentsFeed");
+assignmentFeed?.addEventListener("click",event=>{
+  const trigger=event.target.closest?.("button[data-assessment-id]");
+  if(trigger)window.viewAssessmentDetails(trigger.dataset.assessmentId);
+});
+assignmentField("assessmentModal")?.addEventListener("keydown",event=>{
+  const modal=assignmentField("assessmentModal");
+  if(modal.classList.contains("hidden"))return;
+  if(event.key==="Escape"){event.preventDefault();window.closeAssessmentDetails();return;}
+  if(event.key!=="Tab")return;
+  const focusables=[...modal.querySelectorAll('button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"])')]
+    .filter(el=>!el.closest(".hidden,[hidden]")&&el.getClientRects().length);
+  if(!focusables.length){event.preventDefault();modal.focus();return;}
+  const first=focusables[0],last=focusables.at(-1);
+  if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus();}
+  else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
+});

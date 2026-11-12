@@ -63,19 +63,29 @@ export function enrichScheduleRowsWithGrades(rows,catalogSections=[]){
 
 export function filterScheduleRowsForLesson(rows,{grade="",subject="",catalogSections=[]}={}){
   const targetGrade=normalize(grade),targetSubject=normalize(subject);
-  return enrichScheduleRowsWithGrades(rows,catalogSections).map(row=>{
-    if(!row||row.type!=="class")return row;
-    const copy={...row};
-    for(const day of ["mon","tue","wed","thu","fri"]){
-      const cell=row[day]||{};
-      if(cell.evt){copy[day]={...cell};continue;}
-      if(!cell.sec||!cell.sub){copy[day]={sec:"",sub:"",evt:"",grade:""};continue;}
-      const subjectOk=!targetSubject||same(cell.sub,targetSubject);
-      const gradeOk=!targetGrade||(cell.grade&&same(cell.grade,targetGrade));
-      copy[day]=subjectOk&&gradeOk?{...cell}:{sec:"",sub:"",evt:"",grade:""};
-    }
-    return copy;
-  });
+  const days=["mon","tue","wed","thu","fri"];
+  return enrichScheduleRowsWithGrades(rows,catalogSections)
+    .filter(row=>row?.type==="class")
+    .map(row=>{
+      const copy={...row};
+      for(const day of days){
+        const cell=row[day]||{};
+        // A lesson prompt only needs meetings for the selected class. Generic
+        // timetable events (assembly, breaks, lunch, etc.) are intentionally
+        // excluded. A periodic event is retained only when it is attached to
+        // the same section + subject cell, because that event replaces or
+        // affects an actual lesson meeting.
+        if(!cell.sec||!cell.sub){
+          copy[day]={sec:"",sub:"",evt:"",grade:""};
+          continue;
+        }
+        const subjectOk=!targetSubject||same(cell.sub,targetSubject);
+        const gradeOk=!targetGrade||(cell.grade&&same(cell.grade,targetGrade));
+        copy[day]=subjectOk&&gradeOk?{...cell}:{sec:"",sub:"",evt:"",grade:""};
+      }
+      return copy;
+    })
+    .filter(row=>days.some(day=>row[day]?.sec&&row[day]?.sub));
 }
 
 function formatTime(time24){
@@ -84,6 +94,227 @@ function formatTime(time24){
   let hour=Number(match[1]);const minute=match[2],suffix=hour>=12?"PM":"AM";
   hour=hour%12||12;
   return `${hour}:${minute} ${suffix}`;
+}
+
+
+const LESSON_DAYS=[
+  ["mon","Monday",1],
+  ["tue","Tuesday",2],
+  ["wed","Wednesday",3],
+  ["thu","Thursday",4],
+  ["fri","Friday",5],
+];
+
+function startDateFromRange(dateRange){
+  const text=normalize(dateRange);
+  let match=/^([A-Za-z]+)\s+(\d{1,2})-(\d{1,2}),\s*(\d{4})$/.exec(text);
+  if(match){
+    const parsed=new Date(`${match[1]} ${match[2]}, ${match[4]}`);
+    return Number.isNaN(parsed.getTime())?null:parsed;
+  }
+  match=/^([A-Za-z]+)\s+(\d{1,2})-([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})$/.exec(text);
+  if(match){
+    const parsed=new Date(`${match[1]} ${match[2]}, ${match[5]}`);
+    return Number.isNaN(parsed.getTime())?null:parsed;
+  }
+  // Historical plans may contain a simpler range. Use its first parseable
+  // month/day/year without making generation depend on date parsing.
+  match=/([A-Za-z]{3,9})\s+(\d{1,2}).*?(\d{4})/.exec(text);
+  if(!match)return null;
+  const parsed=new Date(`${match[1]} ${match[2]}, ${match[3]}`);
+  return Number.isNaN(parsed.getTime())?null:parsed;
+}
+
+function lessonDateLabels(dateRange){
+  const start=startDateFromRange(dateRange);
+  if(!start)return {};
+  const monday=new Date(start);
+  const weekday=monday.getDay();
+  if(weekday!==1)monday.setDate(monday.getDate()+((8-weekday)%7));
+  const labels={};
+  for(const [key,,offset] of LESSON_DAYS){
+    const date=new Date(monday);
+    date.setDate(monday.getDate()+offset-1);
+    labels[key]=date.toLocaleDateString("en-US",{month:"long",day:"numeric",year:"numeric"});
+  }
+  return labels;
+}
+
+export function buildLessonMeetingContext(rows,{dateRange="",grade=""}={}){
+  const dates=lessonDateLabels(dateRange);
+  const entries=[];
+  for(const row of Array.isArray(rows)?rows:[]){
+    if(row?.type!=="class"||!row.startTime||!row.endTime)continue;
+    const startMinutes=Number(row.startTime.slice(0,2))*60+Number(row.startTime.slice(3,5));
+    const endMinutes=Number(row.endTime.slice(0,2))*60+Number(row.endTime.slice(3,5));
+    const duration=Number.isFinite(startMinutes)&&Number.isFinite(endMinutes)&&endMinutes>startMinutes
+      ?endMinutes-startMinutes:null;
+    for(const [key,day,dayOrder] of LESSON_DAYS){
+      const cell=row[key]||{};
+      if(!cell.sec||!cell.sub)continue;
+      entries.push({
+        day,key,dayOrder,
+        date:dates[key]||"",
+        start:row.startTime,
+        end:row.endTime,
+        startMinutes:Number.isFinite(startMinutes)?startMinutes:9999,
+        endMinutes:Number.isFinite(endMinutes)?endMinutes:9999,
+        time:`${formatTime(row.startTime)} - ${formatTime(row.endTime)}`,
+        section:cell.sec,
+        subject:cell.sub,
+        duration,
+        periodCount:1,
+        event:cell.evt||"",
+      });
+    }
+  }
+  if(!entries.length)return {text:"",meetings:[],bySession:{},sessionNames:[]};
+
+  // Timetables commonly store one class period per row. Collapse consecutive
+  // rows for the same section + subject + day into one actual class meeting
+  // before assigning lesson-session numbers. This lets a 3-period laboratory
+  // appear as one meeting even when the source timetable stores 3 separate
+  // 40/45/50/60-minute rows.
+  const groupedByDayClass=new Map();
+  for(const entry of entries){
+    const key=[entry.section,entry.subject,entry.key].join("\u0000");
+    if(!groupedByDayClass.has(key))groupedByDayClass.set(key,[]);
+    groupedByDayClass.get(key).push(entry);
+  }
+  const collapsedEntries=[];
+  for(const group of groupedByDayClass.values()){
+    group.sort((a,b)=>a.startMinutes-b.startMinutes);
+    let current=null;
+    for(const entry of group){
+      if(!current){
+        current={...entry};
+        continue;
+      }
+      const gap=entry.startMinutes-current.endMinutes;
+      if(Number.isFinite(gap)&&gap>=0&&gap<=5){
+        current.end=entry.end;
+        current.endMinutes=entry.endMinutes;
+        current.duration=current.endMinutes-current.startMinutes;
+        current.time=`${formatTime(current.start)} - ${formatTime(current.end)}`;
+        current.periodCount=(current.periodCount||1)+(entry.periodCount||1);
+        current.event=[current.event,entry.event].filter(Boolean)
+          .filter((value,index,array)=>array.indexOf(value)===index).join("; ");
+      }else{
+        collapsedEntries.push(current);
+        current={...entry};
+      }
+    }
+    if(current)collapsedEntries.push(current);
+  }
+  entries.length=0;
+  entries.push(...collapsedEntries);
+
+  // Session numbering is independent for every section and follows the
+  // teacher's actual timetable. A multi-period laboratory block is detected
+  // from the collapsed period pattern/duration, never from grade level or weekday.
+  const byClass=new Map();
+  for(const entry of entries){
+    const key=entry.section+"\u0000"+entry.subject;
+    if(!byClass.has(key))byClass.set(key,[]);
+    byClass.get(key).push(entry);
+  }
+
+  const median=values=>{
+    const sorted=(values||[]).filter(Number.isFinite).sort((a,b)=>a-b);
+    if(!sorted.length)return null;
+    const middle=Math.floor(sorted.length/2);
+    return sorted.length%2?sorted[middle]:(sorted[middle-1]+sorted[middle])/2;
+  };
+  const isMultiPeriodBlock=(meeting,meetings)=>{
+    if(!Number.isFinite(meeting.duration)||meeting.duration<=0)return false;
+    // Three or more contiguous timetable rows are direct structural evidence
+    // of a combined multi-period class, regardless of the school's period length.
+    if(Number(meeting.periodCount||1)>=3)return true;
+    const otherDurations=meetings
+      .filter(candidate=>candidate!==meeting&&Number.isFinite(candidate.duration)&&candidate.duration>0)
+      .map(candidate=>candidate.duration/Math.max(1,Number(candidate.periodCount||1)));
+    const typicalPeriod=median(otherDurations);
+    if(Number.isFinite(typicalPeriod)&&typicalPeriod>0){
+      return meeting.duration>=Math.max(120,typicalPeriod*2.25);
+    }
+    // Without peer periods or a 3-row sequence, remain conservative.
+    return meeting.duration>=150;
+  };
+
+  for(const meetings of byClass.values()){
+    meetings.sort((a,b)=>a.dayOrder-b.dayOrder||a.startMinutes-b.startMinutes);
+    const multiPeriodCandidates=meetings.filter(meeting=>isMultiPeriodBlock(meeting,meetings));
+    // If malformed timetable data contains several long blocks, keep the
+    // longest as the combined laboratory session and number the rest normally.
+    const multiPeriod=multiPeriodCandidates
+      .sort((a,b)=>(b.duration||0)-(a.duration||0)||a.dayOrder-b.dayOrder||a.startMinutes-b.startMinutes)[0]||null;
+    let regularIndex=0;
+    for(const meeting of meetings){
+      if(meeting===multiPeriod){
+        meeting.session="Session 4-6";
+        meeting.sessionType="multi-period";
+        continue;
+      }
+      regularIndex++;
+      meeting.session="Session "+regularIndex;
+      meeting.sessionType="regular";
+    }
+  }
+
+  entries.sort((a,b)=>a.dayOrder-b.dayOrder||a.startMinutes-b.startMinutes||a.section.localeCompare(b.section));
+  const lines=entries.map(entry=>{
+    const parts=[
+      "SESSION: "+entry.session,
+      entry.day,
+      entry.date,
+      entry.time,
+      entry.section,
+      entry.duration?`${entry.duration} minutes`:"",
+      entry.periodCount>1?`${entry.periodCount} consecutive periods`:""
+    ].filter(Boolean);
+    if(entry.event)parts.push("AFFECTING EVENT: "+entry.event);
+    return "- "+parts.join(" | ");
+  });
+
+  const bySession={};
+  for(const entry of entries){
+    if(!bySession[entry.session])bySession[entry.session]=[];
+    bySession[entry.session].push({
+      section:entry.section,
+      day:entry.day,
+      date:entry.date,
+      time:entry.time,
+      duration:entry.duration,
+      periodCount:entry.periodCount,
+      event:entry.event,
+      sessionType:entry.sessionType,
+    });
+  }
+
+  const sessionNames=[...new Set(entries.map(entry=>entry.session).filter(Boolean))]
+    .sort((a,b)=>{
+      const rank=name=>name==="Session 4-6"?4.5:(Number((name.match(/Session (\d+)/)||[])[1])||999);
+      return rank(a)-rank(b);
+    });
+
+  return {
+    text:[
+      "LESSON MEETING CONTEXT (already filtered and session-mapped by Adminerva):",
+      ...lines,
+      "",
+      "Session mapping comes from each section's actual timetable. Multi-period blocks are detected from duration patterns and may occur on any weekday.",
+      "Use these meeting lines only for the remarks of their assigned session. Do not infer, add, or scan other timetable periods."
+    ].join("\n"),
+    meetings:entries.map(({section,subject,day,date,time,duration,periodCount,event,session,sessionType})=>({
+      section,subject,day,date,time,duration,periodCount,event,session,sessionType
+    })),
+    bySession,
+    sessionNames
+  };
+}
+
+export function scheduleRowsToLessonText(rows,options={}){
+  return buildLessonMeetingContext(rows,options).text;
 }
 
 export function scheduleRowsToText(rows){

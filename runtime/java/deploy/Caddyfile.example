@@ -1,0 +1,9 @@
+# Replace runtime.example.edu.ph with your DNS name pointing at the VM.
+# Keep Node bound to 127.0.0.1:8787; open only 80/443 to the public.
+runtime.example.edu.ph {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8787 {
+        # Caddy proxies WebSocket upgrades automatically.
+        stream_close_delay 5m
+    }
+}

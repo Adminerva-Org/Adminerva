@@ -1,0 +1,20 @@
+/* V4 legacy roster: navigable, readable, non-intrusive verification controls. */
+.av-directory-page #adminerva-nav:empty{min-height:62px;background:#10253d}
+.av-directory-page #verifyVisibleRepos{min-height:42px}
+.av-directory-page #verifyVisibleRepos:disabled{opacity:.6;cursor:wait}
+.av-directory-page .av-setup-steps{margin-bottom:1.1rem}
+.av-directory-page :is(#sectionFilter,#statusFilter,#searchInput){min-height:44px;border-radius:9px}
+.av-directory-page :is(#sectionFilter,#statusFilter,#searchInput):focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.av-directory-page .av-directory-table-scroller{scrollbar-gutter:stable;overscroll-behavior-x:contain}
+.av-directory-page .av-directory-table-scroller thead th{position:sticky;top:0;background:#f8fafc;z-index:2;box-shadow:0 1px 0 #dce3ed}
+.av-directory-page .av-directory-table-scroller tbody tr:focus-within{background:#f0f5ff}
+.av-directory-page #userTableBody button{min-height:38px}
+.av-directory-page #paginationControls button{min-height:40px;min-width:72px}
+.av-directory-page #paginationControls button:focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+.av-directory-page #directory-repository-status{max-width:70ch;line-height:1.5}
+.av-directory-page [aria-busy="true"]{cursor:progress}
+@media(max-width:800px){
+ .av-directory-page main{padding-inline:12px}
+ .av-directory-page #paginationControls{justify-content:space-between}
+ .av-directory-page #verifyVisibleRepos{width:100%}
+}

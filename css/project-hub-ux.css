@@ -1,0 +1,15 @@
+/* Student project hub: immediate cached activity with honest refresh state. */
+#pageBody:has(#refreshProjectActivity) #adminerva-nav:empty{min-height:63px;background:#10253d}
+#pageBody:has(#refreshProjectActivity) main{max-width:1440px}
+#pageBody:has(#refreshProjectActivity) #refreshProjectActivity{min-height:42px;white-space:nowrap}
+#pageBody:has(#refreshProjectActivity) #refreshProjectActivity:disabled{cursor:progress}
+#pageBody:has(#refreshProjectActivity) #projectActivityStatus{min-height:1.5rem;line-height:1.5}
+#pageBody:has(#refreshProjectActivity) #timeFilter{min-height:42px}
+#pageBody:has(#refreshProjectActivity) :is(#timeFilter,#refreshProjectActivity):focus-visible{outline:2px solid #2563eb;outline-offset:2px}
+#pageBody:has(#refreshProjectActivity) #commitListContainer{scrollbar-gutter:stable;overscroll-behavior:contain}
+#pageBody:has(#refreshProjectActivity) #githubAuthOverlay{backdrop-filter:blur(5px)}
+@media(max-width:690px){
+ #pageBody:has(#refreshProjectActivity) main{padding-inline:12px}
+ #pageBody:has(#refreshProjectActivity) #refreshProjectActivity{width:100%}
+ #pageBody:has(#refreshProjectActivity) #timeFilter{width:100%}
+}

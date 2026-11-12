@@ -130,8 +130,17 @@ export function buildExternalEvaluationPackage(options={}){
     JSON.stringify(payload,null,2)
   ].join("\n");
 }
+function normalizePastedJsonTransport(raw){
+  return String(raw||"")
+    .replace(/^\uFEFF/,"")
+    .replace(/\\\r?\n/g,"\n")
+    .replace(/^(?:(?:&#x20;|&#32;|&nbsp;))+/gmi,match=>{
+      const count=(match.match(/&#x20;|&#32;|&nbsp;/gi)||[]).length;
+      return " ".repeat(Math.max(1,count));
+    });
+}
 export function parseExternalEvaluationResponse(raw=""){
-  let value=String(raw||"").trim();
+  let value=normalizePastedJsonTransport(raw).trim();
   if(!value)throw Error("Paste the external evaluation JSON first.");
   value=value.replace(/^\s*```(?:json)?\s*/i,"").replace(/\s*```\s*$/,"").trim();
   const first=value.indexOf("{"),last=value.lastIndexOf("}");
@@ -140,5 +149,7 @@ export function parseExternalEvaluationResponse(raw=""){
   try{parsed=JSON.parse(value.slice(first,last+1));}
   catch{throw Error("The pasted evaluation is not valid JSON. Ask the evaluator to return only the required JSON structure.");}
   if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))throw Error("The pasted evaluation must be one JSON object.");
+  if(typeof parsed.format==="string"&&parsed.format.includes("external-personalization-response"))
+    throw Error("This is a personalization response, not an evaluation response. Open Assessment Studio → Personalization, paste it into External response JSON, then click Import external variants.");
   return parsed;
 }
