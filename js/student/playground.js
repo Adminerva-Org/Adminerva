@@ -335,6 +335,7 @@ async function initializePlayground() {
       persistWorkspace();
       executionSequence++;
       executionController?.abort();
+      if(cheerpjClient)stopLiveBrowserJava(true);
       clearTimeout(autoSaveTimeout);
       document.getElementById("workspaceContainer")?.setAttribute("inert","");
       window.location.reload();
@@ -1347,7 +1348,8 @@ function browserJavaControls(active,acceptsInput=false){
   if(mode)mode.disabled=active;
   // In browser-live mode, sending a line without a live process must not
   // fall through into Judge0's batch-replay input workflow.
-  const canSend=isLiveBrowserJava()?active&&acceptsInput:!active||acceptsInput;
+  const isBrowserSelected=javaEngine==='cheerpj'&&currentLang==='java'&&!isJavaDesktopMode();
+  const canSend=isBrowserSelected?active&&acceptsInput:!active||acceptsInput;
   if(send)send.disabled=!canSend;
   if(input){
     input.disabled=!canSend;
@@ -1431,7 +1433,9 @@ function beginLiveBrowserJava(){
 }
 
 function sendConsoleInputLine(){
-  if(isLiveBrowserJava()&&!cheerpjClient)return;
+  // Never reinterpret a Browser Java input as Judge0 batch replay, even if
+  // a pilot entitlement changes while the terminal remains open.
+  if(javaEngine==='cheerpj'&&currentLang==='java'&&!cheerpjClient)return;
   if(cheerpjClient){
     const input=document.getElementById('stdinLineInput');
     if(!input||!cheerpjClient.sendLine(input.value))return;
