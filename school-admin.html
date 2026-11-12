@@ -22,27 +22,34 @@
       <a href="people-access.html#overview" class="av-btn">Open People &amp; Access</a>
       <a href="school-pilot.html" class="av-secondary-button">Controlled pilot</a>
     </div>
+    <div id="adminSchoolPicker" class="av-school-picker mt-3" hidden></div>
   </header>
-  <section aria-label="Administration summary">
+  <p id="adminSchoolStatus" role="status" aria-live="polite" class="text-sm text-slate-600">Checking verified school access…</p>
+  <section aria-label="Verified school directory summary">
     <div class="flex flex-wrap justify-between items-baseline gap-2 mb-3">
-      <h2 class="text-lg font-extrabold">Current activity</h2>
-      <p id="adminOverviewStatus" role="status" aria-live="polite" class="text-sm text-slate-600">Loading administration summary…</p>
+      <h2 class="text-lg font-extrabold">Verified school activity</h2>
+      <p id="adminOverviewStatus" role="status" aria-live="polite" class="text-sm text-slate-600">Waiting for verified school access…</p>
     </div>
-    <div class="grid sm:grid-cols-3 gap-3">
+    <div class="grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
       <article class="av-panel p-4 sm:p-5">
-        <p class="text-xs font-bold uppercase text-slate-500">Active students</p>
-        <strong id="adminStudentCount" class="block text-3xl font-extrabold mt-2" aria-live="polite">—</strong>
-        <a class="inline-flex text-sm font-semibold text-blue-800 underline mt-3" href="users.html">Review directory</a>
+        <p class="text-xs font-bold uppercase text-slate-500">School people</p>
+        <strong id="adminPeopleCount" class="block text-3xl font-extrabold mt-2" aria-live="polite">—</strong>
+        <a class="inline-flex text-sm font-semibold text-blue-800 underline mt-3" href="people-access.html#people">Review people</a>
       </article>
       <article class="av-panel p-4 sm:p-5">
-        <p class="text-xs font-bold uppercase text-slate-500">Active teachers</p>
-        <strong id="adminTeacherCount" class="block text-3xl font-extrabold mt-2" aria-live="polite">—</strong>
-        <a class="inline-flex text-sm font-semibold text-blue-800 underline mt-3" href="teacher-accounts.html">Manage assignments</a>
+        <p class="text-xs font-bold uppercase text-slate-500">Enrollments</p>
+        <strong id="adminEnrollmentCount" class="block text-3xl font-extrabold mt-2" aria-live="polite">—</strong>
+        <a class="inline-flex text-sm font-semibold text-blue-800 underline mt-3" href="people-access.html#classes">Review classes</a>
       </article>
       <article class="av-panel p-4 sm:p-5">
-        <p class="text-xs font-bold uppercase text-slate-500">Open reports</p>
-        <strong id="adminReportCount" class="block text-3xl font-extrabold mt-2" aria-live="polite">—</strong>
-        <a class="inline-flex text-sm font-semibold text-blue-800 underline mt-3" href="issues.html">Triage reports</a>
+        <p class="text-xs font-bold uppercase text-slate-500">Staff assignments</p>
+        <strong id="adminAssignmentCount" class="block text-3xl font-extrabold mt-2" aria-live="polite">—</strong>
+        <a class="inline-flex text-sm font-semibold text-blue-800 underline mt-3" href="people-access.html#classes">Review teaching assignments</a>
+      </article>
+      <article class="av-panel p-4 sm:p-5">
+        <p class="text-xs font-bold uppercase text-slate-500">Invitations</p>
+        <strong id="adminInviteCount" class="block text-3xl font-extrabold mt-2" aria-live="polite">—</strong>
+        <a class="inline-flex text-sm font-semibold text-blue-800 underline mt-3" href="people-access.html#invites">Review invitations</a>
       </article>
     </div>
   </section>
@@ -64,25 +71,57 @@
       <h2 id="schoolManageHeading" class="text-lg font-extrabold">Manage school operations</h2>
       <p class="text-xs text-slate-500">Authorized administrator actions only</p>
     </div>
-    <nav class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3" aria-label="School administration tools">
-      <a href="people-access.html#overview" class="av-panel block p-4 sm:p-5 border-cyan-200"><strong>People &amp; Access · V4</strong><p class="text-sm text-slate-600 mt-1">Verified identities, memberships, invitations and reconciliation.</p></a>
-      <a href="school-pilot.html" class="av-panel block p-4 sm:p-5 border-cyan-200"><strong>Controlled pilot · V4</strong><p class="text-sm text-slate-600 mt-1">Pilot readiness, authorized states and rollout controls.</p></a>
-      <a href="school-grading-schemes.html" class="av-panel block p-4 sm:p-5 border-cyan-200"><strong>Class Record grading schemes</strong><p class="text-sm text-slate-600 mt-1">Manage reusable category weights and period-grade formulas for teacher Class Records.</p></a>
-      <a href="teacher-accounts.html" class="av-panel block p-4 sm:p-5"><strong>Teacher assignments</strong><p class="text-sm text-slate-600 mt-1">Staff access, teaching sections and subject focus.</p></a>
-      <a href="users.html" class="av-panel block p-4 sm:p-5"><strong>User directory</strong><p class="text-sm text-slate-600 mt-1">Review roster data and student-account requests.</p></a>
-      <a href="reclaim-inbox.html" class="av-panel block p-4 sm:p-5"><strong>Commit attribution</strong><p class="text-sm text-slate-600 mt-1">Resolve disputed repository identities before grading.</p></a>
-      <a href="issues.html" class="av-panel block p-4 sm:p-5"><strong>Reports &amp; support</strong><p class="text-sm text-slate-600 mt-1">Respond to issues and triage school requests.</p></a>
-      <a href="manage-sections.html" class="av-panel block p-4 sm:p-5"><strong>Sections</strong><p class="text-sm text-slate-600 mt-1">Maintain official class-section names.</p></a>
-      <a href="manage-subjects.html" class="av-panel block p-4 sm:p-5"><strong>Subjects</strong><p class="text-sm text-slate-600 mt-1">Manage core, elective and school-defined offerings.</p></a>
-      <a href="manage-programs.html" class="av-panel block p-4 sm:p-5"><strong>Tracks &amp; pathways</strong><p class="text-sm text-slate-600 mt-1">Configure academic programs and pathways.</p></a>
-      <a href="admin-analytics.html" class="av-panel block p-4 sm:p-5"><strong>Operations &amp; analytics</strong><p class="text-sm text-slate-600 mt-1">Operational signals, activity and maintenance controls.</p></a>
+    <nav class="grid md:grid-cols-3 gap-3" aria-label="School administration tools">
+      <section class="av-panel p-4 sm:p-5 border-cyan-200" aria-labelledby="admin-people-heading">
+        <h3 id="admin-people-heading" class="font-extrabold text-lg">People &amp; access</h3>
+        <p class="text-sm text-slate-600 mt-1">Work from one school-specific directory for identities, invitations and permissions.</p>
+        <div class="grid gap-2 mt-4 text-sm font-semibold">
+          <a href="people-access.html#people" class="text-blue-800 underline py-1">Students &amp; staff</a>
+          <a href="people-access.html#invites" class="text-blue-800 underline py-1">Invitations</a>
+          <a href="people-access.html#access" class="text-blue-800 underline py-1">Roles &amp; access</a>
+          <a href="people-access.html#import" class="text-blue-800 underline py-1">Roster imports</a>
+        </div>
+        <details class="mt-4 border-t border-slate-200 pt-3 hidden" data-admin-only>
+          <summary class="cursor-pointer text-sm font-semibold text-slate-600 py-2">Legacy roster &amp; teacher tools</summary>
+          <div class="grid gap-2 text-sm mt-2">
+            <a href="users.html" class="text-blue-800 underline py-1">User directory (legacy)</a>
+            <a href="teacher-accounts.html" class="text-blue-800 underline py-1">Teacher assignments (legacy)</a>
+          </div>
+        </details>
+      </section>
+      <section class="av-panel p-4 sm:p-5" aria-labelledby="admin-academics-heading">
+        <h3 id="admin-academics-heading" class="font-extrabold text-lg">Academics &amp; classes</h3>
+        <p class="text-sm text-slate-600 mt-1">Manage verified class relationships, then review academic configuration.</p>
+        <div class="grid gap-2 mt-4 text-sm font-semibold">
+          <a href="people-access.html#classes" class="text-blue-800 underline py-1">School classes &amp; assignments</a>
+          <a href="school-grading-schemes.html" class="text-blue-800 underline py-1">Grading schemes</a>
+        </div>
+        <details class="mt-4 border-t border-slate-200 pt-3 hidden" data-admin-only>
+          <summary class="cursor-pointer text-sm font-semibold text-slate-600 py-2">Legacy academic catalog tools</summary>
+          <div class="grid gap-2 text-sm mt-2">
+            <a href="manage-sections.html" class="text-blue-800 underline py-1">Sections</a>
+            <a href="manage-programs.html" class="text-blue-800 underline py-1">Tracks &amp; pathways</a>
+            <a href="manage-subjects.html" class="text-blue-800 underline py-1">Subjects</a>
+          </div>
+        </details>
+      </section>
+      <section class="av-panel p-4 sm:p-5" aria-labelledby="admin-operations-heading">
+        <h3 id="admin-operations-heading" class="font-extrabold text-lg">Pilot &amp; support</h3>
+        <p class="text-sm text-slate-600 mt-1">Review readiness and resolve school requests without modifying historical grades.</p>
+        <div class="grid gap-2 mt-4 text-sm font-semibold">
+          <a href="school-pilot.html" class="text-blue-800 underline py-1">Controlled pilot</a>
+          <a href="reclaim-inbox.html" class="text-blue-800 underline py-1">Commit attribution requests</a>
+          <a href="issues.html" class="text-blue-800 underline py-1">Reports &amp; support</a>
+          <a href="admin-analytics.html" class="text-blue-800 underline py-1 hidden" data-admin-only>Legacy operations &amp; analytics</a>
+        </div>
+      </section>
     </nav>
   </section>
 </main>
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script defer src="js/core/adminerva-nav.js?v=4.0.7"></script>
-<script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
-<script type="module" src="js/core/school-admin.mjs?v=1.4.0"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.6"></script>
+<script type="module" src="js/core/school-admin.mjs?v=4.0.1"></script>
 <script type="module" src="js/core/home-motion.mjs?v=1.0.0"></script>
 <script type="module" src="js/core/home-experience.mjs?v=1.0.0"></script>
 </body>
