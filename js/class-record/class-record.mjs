@@ -56,6 +56,10 @@ const finalizeHistory=el("cr-finalize-history");
 const finalizeConfirm=el("cr-finalize-confirm");
 const finalizationBanner=el("cr-finalization-banner");
 const collaboratorsNode=el("cr-collaborators");
+const scoreStatusDialog=el("cr-score-status-dialog");
+const scoreStatusForm=el("cr-score-status-form");
+const scoreStatusSelect=el("cr-score-status-select");
+const scoreStatusContext=el("cr-score-status-context");
 
 let picker=null;
 let offerings=[];
@@ -74,9 +78,12 @@ let finalization=null;
 let periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};
 let finalizationPreview=null;
 let manualScores=new Map();
+let manualScoreMeta=new Map();
 let publishedGrades=new Map();
+let cellStates=new Map();
 let dirtyColumns=new Set();
 let editingColumnId=null;
+let scoreStatusTarget=null;
 let busy=false;
 
 function key(columnId,personId){return columnId+"::"+personId}
@@ -85,7 +92,15 @@ function assessmentKey(sourceType,taskId){return (sourceType||SCHOOL_SOURCE)+"::
 function numberText(value){
   const n=Number(value);
   if(!Number.isFinite(n))return "—";
-  return Number.isInteger(n)?String(n):String(Math.round(n*100)/100);
+  return Number.isInteger(n)?String(n):String(Math.round((n+Number.EPSILON)*100)/100);
+}
+function gradeText(value){
+  const n=Number(value);
+  return Number.isFinite(n)?n.toFixed(2):"—";
+}
+function finalGradeText(value){
+  const n=Number(value);
+  return Number.isFinite(n)?String(Math.round(n)):"—";
 }
 function percentText(value){
   const n=Number(value);
@@ -193,17 +208,41 @@ function scoreFor(column,personId,{fromInput=true}={}){
   const state=linkedGradeState(column,personId);
   return state.valid?Number(state.grade.awarded):null;
 }
+function cellStateFor(columnId,personId){
+  return cellStates.get(key(columnId,personId))||null;
+}
+function cellStatusFor(columnId,personId){
+  return cellStateFor(columnId,personId)?.status||"normal";
+}
+function statusName(value){
+  return ({
+    normal:"Normal / use score",
+    incomplete:"Incomplete / for completion",
+    exempt:"Exempt",
+    not_applicable:"Not applicable"
+  })[value]||"Normal / use score";
+}
+function statusShort(value){
+  return ({incomplete:"INC",exempt:"EX",not_applicable:"N/A"})[value]||"";
+}
 function metricsFor(personId,{fromInput=true}={}){
   const categories=usedCategories(),weights=weightMap();
   const byCategory=new Map();
   let allScores=true,allCategorized=true;
-  for(const category of categories)byCategory.set(category,{earned:0,max:0,complete:true});
+  for(const category of categories)byCategory.set(category,{earned:0,max:0,complete:true,excluded:0});
   for(const column of activeColumns()){
     const category=String(column.category||"").trim();
     if(!category){allCategorized=false;continue;}
-    const bucket=byCategory.get(category)||{earned:0,max:0,complete:true};
-    const value=scoreFor(column,personId,{fromInput});
+    const bucket=byCategory.get(category)||{earned:0,max:0,complete:true,excluded:0};
+    const scoreStatus=cellStatusFor(column.columnId,personId);
+    if(scoreStatus==="exempt"||scoreStatus==="not_applicable"){
+      bucket.excluded++;byCategory.set(category,bucket);continue;
+    }
     bucket.max+=Number(column.maxPoints)||0;
+    if(scoreStatus==="incomplete"){
+      bucket.complete=false;allScores=false;byCategory.set(category,bucket);continue;
+    }
+    const value=scoreFor(column,personId,{fromInput});
     if(value===null||!Number.isFinite(value)){bucket.complete=false;allScores=false;}
     else bucket.earned+=value;
     byCategory.set(category,bucket);
@@ -221,7 +260,10 @@ function metricsFor(personId,{fromInput=true}={}){
   }
   let period=initial;
   if(initial!==null&&settings.gradeComputation==="deped_60_100")period=60+(initial*0.4);
-  return {byCategory,initial,period,complete:initial!==null};
+  if(initial!==null)initial=Math.round((initial+Number.EPSILON)*100)/100;
+  if(period!==null)period=Math.round((period+Number.EPSILON)*100)/100;
+  const final=period===null?null:Math.round(period);
+  return {byCategory,initial,period,final,complete:initial!==null};
 }
 function syncCollaborators(){
   if(!collaboratorsNode)return;
@@ -292,9 +334,9 @@ function setBusy(value,message=""){
   exportXlsxButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
   printButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
   if(message)say(message);
-  for(const form of [columnForm,setupForm,importForm]){
+  for(const form of [columnForm,setupForm,importForm,scoreStatusForm]){
     form.querySelectorAll("button,input,select").forEach(control=>{
-      if(["cr-column-close","cr-column-cancel","cr-setup-close","cr-setup-cancel","cr-import-close","cr-import-cancel"].includes(control.id))return;
+      if(["cr-column-close","cr-column-cancel","cr-setup-close","cr-setup-cancel","cr-import-close","cr-import-cancel","cr-score-status-close","cr-score-status-cancel"].includes(control.id))return;
       if(value){
         control.dataset.busyDisabled=String(control.disabled);
         control.disabled=true;
@@ -319,14 +361,17 @@ function refreshSummaries(){
     }
     const initial=tableWrap.querySelector('[data-summary-person="'+CSS.escape(student.personId)+'"][data-summary-kind="initial"]');
     const period=tableWrap.querySelector('[data-summary-person="'+CSS.escape(student.personId)+'"][data-summary-kind="period"]');
-    if(initial)initial.textContent=metrics.complete?numberText(metrics.initial):"—";
+    const final=tableWrap.querySelector('[data-summary-person="'+CSS.escape(student.personId)+'"][data-summary-kind="final"]');
+    if(initial)initial.textContent=metrics.complete?gradeText(metrics.initial):"—";
     if(period){
       period.replaceChildren();
-      if(metrics.complete){
-        period.append(make("span","cr-final",numberText(metrics.period)));
-      }else{
-        period.append(make("span","cr-incomplete","Incomplete"));
-      }
+      if(metrics.complete)period.append(make("span","cr-final",gradeText(metrics.period)));
+      else period.append(make("span","cr-incomplete","Incomplete"));
+    }
+    if(final){
+      final.replaceChildren();
+      if(metrics.complete)final.append(make("span","cr-final",finalGradeText(metrics.final)));
+      else final.append(make("span","cr-incomplete","—"));
     }
   }
 }
@@ -375,6 +420,84 @@ function restoreColumn(column){
     renderArchivedList();
     el("cr-archived-status").textContent=column.label+" restored to the active record.";
   }).catch(error=>{el("cr-archived-status").textContent=error?.message||"Column was not restored.";});
+}
+function cellModificationSummary(column,student){
+  const notes=[];
+  const scoreMeta=manualScoreMeta.get(key(column.columnId,student.personId));
+  if(column.kind==="manual"&&Number(scoreMeta?.revision)>1){
+    notes.push(scoreMeta.hasPreviousScore
+      ?"Score modified. Previous score: "+(scoreMeta.previousScore===null?"blank":numberText(scoreMeta.previousScore))+"."
+      :"Score has prior revisions. The previous value predates the compact tooltip history.");
+  }
+  if(column.kind==="assessment"){
+    const grade=linkedGrade(column,student.personId);
+    if(Number(grade?.revision)>1)notes.push("Published assessment grade is revision "+grade.revision+".");
+  }
+  const state=cellStateFor(column.columnId,student.personId);
+  if(state&&state.previousStatus!==state.status){
+    notes.push("Status changed from "+statusName(state.previousStatus)+" to "+statusName(state.status)+".");
+  }
+  return notes.join(" ");
+}
+function decorateScoreCell(td,column,student){
+  td.classList.add("cr-score-cell");
+  const scoreStatus=cellStatusFor(column.columnId,student.personId);
+  if(scoreStatus!=="normal"){
+    const badge=make("span","cr-status-badge "+scoreStatus,statusShort(scoreStatus));
+    badge.title=statusName(scoreStatus);
+    td.append(badge);
+  }
+  const modified=cellModificationSummary(column,student);
+  if(modified){
+    const dot=make("span","cr-modified-dot","•");
+    dot.title=modified;
+    dot.setAttribute("aria-label",modified);
+    td.append(dot);
+  }
+  const menu=make("button","cr-cell-menu","⋯");
+  menu.type="button";
+  menu.title="Change score status";
+  menu.setAttribute("aria-label","Change "+column.label+" status for "+student.name);
+  menu.addEventListener("click",()=>openScoreStatus(column,student));
+  td.append(menu);
+}
+function openScoreStatus(column,student){
+  if(dirtyColumns.size){
+    say("Save manual score changes before changing a score status.");return;
+  }
+  scoreStatusTarget={columnId:column.columnId,personId:student.personId};
+  scoreStatusSelect.value=cellStatusFor(column.columnId,student.personId);
+  const source=column.kind==="assessment"?"Linked assessment":"Manual score";
+  const raw=scoreFor(column,student.personId,{fromInput:false});
+  scoreStatusContext.textContent=student.name+" · "+column.label+" · "+source+
+    " · current score "+(raw===null?"not available":numberText(raw)+" / "+numberText(column.maxPoints))+".";
+  el("cr-score-status-note").textContent=column.kind==="assessment"
+    ?"This status affects Class Record calculation only. It does not edit or unpublish the assessment grade."
+    :"A non-normal status preserves the encoded score but excludes or blocks it according to the selected status.";
+  el("cr-score-status-message").textContent="";
+  scoreStatusDialog.showModal();
+}
+function closeScoreStatus(){
+  if(scoreStatusDialog.open)scoreStatusDialog.close();
+  scoreStatusTarget=null;el("cr-score-status-message").textContent="";
+}
+async function saveScoreStatus(){
+  if(!scoreStatusTarget)return;
+  const button=el("cr-score-status-save");
+  button.disabled=true;el("cr-score-status-message").textContent="Saving score status…";
+  try{
+    await scoped(classRecordApi,"save_cell_status",{
+      offeringId:currentOfferingId,
+      columnId:scoreStatusTarget.columnId,
+      personId:scoreStatusTarget.personId,
+      status:scoreStatusSelect.value
+    });
+    closeScoreStatus();
+    await loadWorkspace();
+    say("Score status saved.");
+  }catch(error){
+    el("cr-score-status-message").textContent=error?.message||"Score status was not saved.";
+  }finally{button.disabled=false;}
 }
 function render(){
   updateKpis();
@@ -472,11 +595,19 @@ function render(){
 
   const periodHead=make("th");
   periodHead.scope="col";
-  periodHead.append(make("span","cr-category","Computed"));
-  periodHead.append(make("span","cr-column-label","Period Grade"));
+  periodHead.append(make("span","cr-category","Computed · 2 decimals"));
+  periodHead.append(make("span","cr-column-label",
+    settings.gradeComputation==="deped_60_100"?"Transmuted Grade":"Weighted Grade"));
   periodHead.append(make("span","cr-column-meta",
     settings.gradeComputation==="deped_60_100"?"60–100 transmutation":"weighted grade"));
   headRow.append(periodHead);
+
+  const finalHead=make("th");
+  finalHead.scope="col";
+  finalHead.append(make("span","cr-category","Official"));
+  finalHead.append(make("span","cr-column-label","Final Grade"));
+  finalHead.append(make("span","cr-column-meta","nearest whole number"));
+  headRow.append(finalHead);
 
   thead.append(headRow);table.append(thead);
   const tbody=document.createElement("tbody");
@@ -496,6 +627,7 @@ function render(){
         input.dataset.columnId=column.columnId;input.dataset.personId=student.personId;
         input.value=saved===null||saved===undefined?"":numberText(saved);
         input.dataset.original=input.value;input.dataset.dirty="false";
+        input.disabled=cellStatusFor(column.columnId,student.personId)!=="normal";
         input.addEventListener("input",updateDirtyState);td.append(input);
       }else{
         const state=linkedGradeState(column,student.personId),grade=state.grade;
@@ -518,6 +650,7 @@ function render(){
         }
         td.append(value);
       }
+      decorateScoreCell(td,column,student);
       tr.append(td);
     }
 
@@ -529,6 +662,8 @@ function render(){
     initial.dataset.summaryPerson=student.personId;initial.dataset.summaryKind="initial";tr.append(initial);
     const period=make("td","cr-summary");
     period.dataset.summaryPerson=student.personId;period.dataset.summaryKind="period";tr.append(period);
+    const final=make("td","cr-summary");
+    final.dataset.summaryPerson=student.personId;final.dataset.summaryKind="final";tr.append(final);
     tbody.append(tr);
   }
   table.append(tbody);tableWrap.append(table);
@@ -661,14 +796,10 @@ async function saveManualScores(){
         score:input.value.trim()===""?null:Number(input.value)
       }));
       await scoped(classRecordApi,"save_manual_scores",{offeringId:currentOfferingId,columnId,values});
-      for(const input of inputs){
-        input.dataset.original=input.value.trim();input.dataset.dirty="false";
-        const score=input.value.trim()===""?null:Number(input.value);
-        manualScores.set(key(columnId,input.dataset.personId),score);
-      }
-      dirtyColumns.delete(columnId);
     }
-    updateDirtyState();say("Manual scores saved.");
+    dirtyColumns.clear();
+    await loadWorkspace();
+    say("Manual scores saved.");
   }catch(error){
     say(error?.message||"Manual scores were not fully saved. Review the changed cells and retry.");
   }finally{
@@ -928,7 +1059,9 @@ function finalizationExportRows(revision){
   ];
   const header=["Student"];
   for(const category of categories)header.push(category+" Raw",category+" %",category+" Weighted");
-  header.push("Initial Grade","Period Grade");
+  header.push("Initial Grade",
+    revision.gradeComputation==="deped_60_100"?"Transmuted Grade":"Weighted Grade",
+    "Final Grade");
   const rows=[...metadata,header];
   for(const grade of revision.grades||[]){
     const byCategory=new Map((grade.categoryScores||[]).map(row=>[String(row.category||"").toLocaleLowerCase("en"),row]));
@@ -939,7 +1072,8 @@ function finalizationExportRows(revision){
         score?Number(score.percentage):"",
         score?Number(score.weightedContribution):"");
     }
-    row.push(Number(grade.initialGrade),Number(grade.periodGrade));
+    row.push(Number(grade.initialGrade),Number(grade.periodGrade),
+      Number.isFinite(Number(grade.finalGrade))?Number(grade.finalGrade):Math.round(Number(grade.periodGrade)));
     rows.push(row);
   }
   return rows;
@@ -1104,7 +1238,8 @@ function renderFinalizationPreview(preview){
     }
     const table=make("table","cr-finalize-table");
     const thead=document.createElement("thead"),head=document.createElement("tr");
-    for(const label of ["Student","Initial Grade","Period Grade"]){
+    for(const label of ["Student","Initial Grade",
+      settings.gradeComputation==="deped_60_100"?"Transmuted Grade":"Weighted Grade","Final Grade"]){
       const th=make("th","text-xs uppercase tracking-wide text-slate-500",label);
       th.scope="col";head.append(th);
     }
@@ -1113,8 +1248,10 @@ function renderFinalizationPreview(preview){
     for(const grade of preview.grades||[]){
       const tr=document.createElement("tr");
       tr.append(make("td","font-semibold text-slate-900",grade.name));
-      tr.append(make("td","",numberText(grade.initialGrade)));
-      tr.append(make("td","font-extrabold text-slate-900",numberText(grade.periodGrade)));
+      tr.append(make("td","",gradeText(grade.initialGrade)));
+      tr.append(make("td","",gradeText(grade.periodGrade)));
+      tr.append(make("td","font-extrabold text-slate-900",
+        finalGradeText(Number.isFinite(Number(grade.finalGrade))?grade.finalGrade:grade.periodGrade)));
       body.append(tr);
     }
     table.append(body);finalizePreview.append(table);
@@ -1203,13 +1340,17 @@ function liveExportRows(){
     "Student",
     ...visibleColumns.map(column=>column.label+" ("+numberText(column.maxPoints)+")"),
     ...categories.map(category=>category+" %"),
-    "Initial Grade","Period Grade"
+    "Initial Grade",
+    settings.gradeComputation==="deped_60_100"?"Transmuted Grade":"Weighted Grade",
+    "Final Grade"
   ]);
   for(const student of roster){
     const metrics=metricsFor(student.personId,{fromInput:false});
     rows.push([
       student.name,
       ...visibleColumns.map(column=>{
+        const scoreStatus=cellStatusFor(column.columnId,student.personId);
+        if(scoreStatus!=="normal")return statusName(scoreStatus);
         const value=scoreFor(column,student.personId,{fromInput:false});
         return value===null?"":Number(value);
       }),
@@ -1219,7 +1360,8 @@ function liveExportRows(){
           Math.round((bucket.earned/bucket.max*100+Number.EPSILON)*10000)/10000:"";
       }),
       metrics.complete?Number(metrics.initial):"",
-      metrics.complete?Number(metrics.period):""
+      metrics.complete?Number(metrics.period):"",
+      metrics.complete?Number(metrics.final):""
     ]);
   }
   return rows;
@@ -1280,9 +1422,11 @@ async function loadWorkspace(){
     periodReadiness=result.periodReadiness||{ready:false,blockerCount:0,activeColumnCount:0};
     syncFinalizationBanner();
     manualScores=new Map((result.manualScores||[]).map(item=>[key(item.columnId,item.personId),item.score]));
+    manualScoreMeta=new Map((result.manualScores||[]).map(item=>[key(item.columnId,item.personId),item]));
     publishedGrades=new Map((result.publishedGrades||[]).map(item=>[
       gradeKey(item.sourceType||SCHOOL_SOURCE,item.taskId,item.personId),item
     ]));
+    cellStates=new Map((result.cellStates||[]).map(item=>[key(item.columnId,item.personId),item]));
     dirtyColumns.clear();render();
     renderArchivedList();
     maybeOpenAssessmentDeepLink();
@@ -1340,7 +1484,7 @@ offeringSelect.addEventListener("change",async()=>{
   finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
   settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
   pendingSchemeSnapshot=null;
-  manualScores.clear();publishedGrades.clear();dirtyColumns.clear();
+  manualScores.clear();manualScoreMeta.clear();publishedGrades.clear();cellStates.clear();dirtyColumns.clear();
   if(next)await loadWorkspace();else render();
 });
 addButton.addEventListener("click",()=>openColumnDialog());
@@ -1387,6 +1531,9 @@ el("cr-import-cancel").addEventListener("click",closeImport);
 el("cr-archived-close").addEventListener("click",closeArchived);
 el("cr-finalize-close").addEventListener("click",closeFinalize);
 el("cr-finalize-cancel").addEventListener("click",closeFinalize);
+el("cr-score-status-close").addEventListener("click",closeScoreStatus);
+el("cr-score-status-cancel").addEventListener("click",closeScoreStatus);
+scoreStatusForm.addEventListener("submit",event=>{event.preventDefault();void saveScoreStatus();});
 finalizeConfirm.addEventListener("click",()=>void finalizePeriod());
 importForm.addEventListener("submit",event=>{event.preventDefault();stageImportedScores();});
 
@@ -1462,7 +1609,7 @@ picker=createTenantSchoolPicker({
     finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
     pendingSchemeSnapshot=null;
     settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
-    manualScores.clear();publishedGrades.clear();dirtyColumns.clear();
+    manualScores.clear();manualScoreMeta.clear();publishedGrades.clear();cellStates.clear();dirtyColumns.clear();
     offeringSelect.replaceChildren(new Option("Choose a class…",""));
     offeringSelect.disabled=true;panel.hidden=true;kpis.replaceChildren();
   },

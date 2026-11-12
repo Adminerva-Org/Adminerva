@@ -74,6 +74,23 @@ Import is intentionally staged:
 
 Blank imported scores are ignored so an import cannot erase an existing score accidentally.
 
+## Learner score statuses
+
+Each active Class Record cell has a Class Record status independent of its score source:
+
+- **Normal / use score** — the encoded or published score is counted normally.
+- **Incomplete / for completion** — the learner's period grade remains unresolved and finalization is blocked.
+- **Exempt** — the activity is removed from that learner's category denominator.
+- **Not applicable** — the activity is removed from that learner's category denominator.
+
+A numeric **0 is always a real scored zero** and is never treated as missing or exempt.
+
+Status overrides do not rewrite assessment-owned grades. For linked assessments, Adminerva preserves the published source result and applies the exception only in Class Record computation. If every activity in a weighted category is excluded for one learner, that learner remains unresolved because Adminerva will not silently redistribute the category's weight to another category.
+
+Score-status changes are included in the source digest, so changing an exemption/incomplete state after finalization marks the frozen period revision stale.
+
+Teacher UI keeps audit cues small: a modified score/status can show a dot on the cell with a tooltip summarizing the immediately previous value/status. The complete audit trail remains in the school-scoped audit records for later school-administrator review rather than occupying the teacher table.
+
 ## Categories and grade computation
 
 Categories are teacher/school-defined text labels such as Written Work, Performance Task, and Quarterly Assessment.
@@ -97,8 +114,10 @@ Missing scores are never treated as zero.
 
 Supported period-grade computation modes:
 
-- `raw_weighted`: Period Grade = Initial Grade
-- `deped_60_100`: Period Grade = 60 + (Initial Grade × 0.40)
+- `raw_weighted`: computed/weighted grade = Initial Grade
+- `deped_60_100`: Transmuted Grade = 60 + (Initial Grade × 0.40)
+
+Score-entry precision is up to two decimals. Initial/computed/transmuted grades are frozen and displayed to **two decimal places**. The official **Final Grade** is the nearest whole number. Frozen per-student records retain both the two-decimal computed/transmuted value and the whole-number final grade so later student viewing can show the official result without losing calculation detail.
 
 The transmutation mode must be selected only when it matches school policy. Adminerva does not hard-code universal category weights.
 
@@ -154,7 +173,7 @@ Finalization writes:
 - immutable per-student revisions: `.../revisions/{revision}`
 - Class Record audit event
 
-Each student snapshot includes the category breakdown, Initial Grade, Period Grade, source digest and finalization revision.
+Each student snapshot includes the category breakdown, Initial Grade, two-decimal computed/transmuted Period Grade, whole-number Final Grade, learner cell-status exceptions, source digest and finalization revision.
 
 The frozen finalization header also snapshots the human-readable academic context — program/division, school year, academic period name/type, subject and section — so an old finalization remains intelligible even if catalog labels are renamed later.
 
@@ -193,7 +212,8 @@ Primary school-scoped records:
 
 - `class_records/{offeringId}` — layout, settings, scheme snapshot, revision
 - `class_record_scores/{id}` — manual score cells
-- `class_record_audit/{id}` — layout/manual/finalization audit events
+- `class_record_cell_states/{id}` — learner-specific Incomplete/Exempt/Not-applicable status overrides and their revisions
+- `class_record_audit/{id}` — layout/manual/status/finalization audit events
 - `grading_schemes/{schemeId}` — school presets
 - `grading_scheme_audit/{id}` — preset audit events
 - `class_record_finalizations/{offeringId}` — current frozen period header

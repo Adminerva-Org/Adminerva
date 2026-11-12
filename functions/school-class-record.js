@@ -24,6 +24,7 @@ const PERIOD_TYPES=new Set(["term","semester","quarter","trimester","custom"]);
 const LEGACY_BRIDGE_SCHOOL="mcs-manila";
 const SCHOOL_SOURCE="school";
 const LEGACY_PERSONALIZED_SOURCE="legacy_personalized";
+const CELL_STATUSES=new Set(["normal","incomplete","exempt","not_applicable"]);
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
 
 function deny(code,message){throw new TenantAccessError(code,message)}
@@ -127,13 +128,23 @@ function settingsCoreKey(settings){
 function roundGrade(value){
   return Math.round((Number(value)+Number.EPSILON)*10000)/10000;
 }
-function finalizationSourceDigest({columns,settings,roster,manualScores,publishedGrades}){
+function roundTwo(value){
+  return Math.round((Number(value)+Number.EPSILON)*100)/100;
+}
+function cleanCellStatus(value){
+  const status=String(value||"normal").trim().toLowerCase();
+  if(!CELL_STATUSES.has(status))
+    deny("invalid-argument","Score status must be normal, incomplete, exempt or not applicable.");
+  return status;
+}
+function finalizationSourceDigest({columns,settings,roster,manualScores,publishedGrades,cellStates}){
   const activeColumns=(columns||[]).filter(column=>column.archived!==true);
   const active=activeColumns.map(column=>({
     columnId:column.columnId,label:column.label,category:column.category||"",kind:column.kind,
     maxPoints:Number(column.maxPoints)||0,taskId:column.taskId||"",
     assessmentSource:column.assessmentSource||"",sourceTitle:column.sourceTitle||""
   }));
+  const activeColumnIds=new Set(activeColumns.map(column=>column.columnId));
   const manualIds=new Set(activeColumns.filter(column=>column.kind==="manual").map(column=>column.columnId));
   const linkedKeys=new Set(activeColumns.filter(column=>column.kind==="assessment").map(column=>
     (column.assessmentSource||SCHOOL_SOURCE)+"::"+column.taskId));
@@ -150,12 +161,17 @@ function finalizationSourceDigest({columns,settings,roster,manualScores,publishe
       publishedAt:Number(row.publishedAt)||0
     })).sort((a,b)=>(a.sourceType+"|"+a.taskId+"|"+a.personId)
       .localeCompare(b.sourceType+"|"+b.taskId+"|"+b.personId));
+  const statuses=[...(cellStates||[])].filter(row=>
+    activeColumnIds.has(row.columnId)&&rosterIds.has(row.personId)).map(row=>({
+      columnId:row.columnId,personId:row.personId,status:cleanCellStatus(row.status),
+      revision:Number(row.revision)||0
+    })).sort((a,b)=>(a.columnId+"|"+a.personId).localeCompare(b.columnId+"|"+b.personId));
   return createHash("sha256").update(JSON.stringify({
     columns:active,settings:settingsCoreKey(settings),
-    roster:[...rosterIds].sort(),manual,grades
+    roster:[...rosterIds].sort(),manual,grades,statuses
   })).digest("hex");
 }
-function computePeriodSnapshot({columns,settings,roster,manualScores,publishedGrades}){
+function computePeriodSnapshot({columns,settings,roster,manualScores,publishedGrades,cellStates}){
   const active=(columns||[]).filter(column=>column.archived!==true);
   const blockers=[];let blockerCount=0;
   const block=(type,message,extra={})=>{
@@ -184,14 +200,34 @@ function computePeriodSnapshot({columns,settings,roster,manualScores,publishedGr
   const gradeMap=new Map((publishedGrades||[]).map(row=>[
     (row.sourceType||SCHOOL_SOURCE)+"::"+row.taskId+"::"+row.personId,row
   ]));
+  const stateMap=new Map((cellStates||[]).map(row=>[
+    row.columnId+"::"+row.personId,{...row,status:cleanCellStatus(row.status)}
+  ]));
   const grades=[];
   for(const student of roster||[]){
     const byCategory=new Map(categories.map(category=>[category,{earned:0,max:0,complete:true}]));
+    const studentCellStatuses=[];
     let studentReady=true;
     for(const column of active){
       const category=String(column.category||"").trim();
       if(!category){studentReady=false;continue;}
       const bucket=byCategory.get(category)||{earned:0,max:0,complete:true};
+      const state=stateMap.get(column.columnId+"::"+student.personId);
+      const status=state?.status||"normal";
+      if(status!=="normal"){
+        studentCellStatuses.push({columnId:column.columnId,status});
+        if(status==="exempt"||status==="not_applicable"){
+          byCategory.set(category,bucket);
+          continue;
+        }
+        bucket.max+=Number(column.maxPoints)||0;
+        bucket.complete=false;studentReady=false;
+        block("incomplete_score",student.name+" · "+column.label+" is marked incomplete / for completion.",{
+          personId:student.personId,columnId:column.columnId,status
+        });
+        byCategory.set(category,bucket);
+        continue;
+      }
       let score=null;
       if(column.kind==="manual"){
         const row=manualMap.get(column.columnId+"::"+student.personId);
@@ -226,27 +262,33 @@ function computePeriodSnapshot({columns,settings,roster,manualScores,publishedGr
       byCategory.set(category,bucket);
     }
     if(!studentReady)continue;
-    let initial=0;const categoryScores=[];let categoryReady=true;
+    let initialRaw=0;const categoryScores=[];let categoryReady=true;
     for(const category of categories){
       const bucket=byCategory.get(category),weight=weights.get(category.toLocaleLowerCase("en"));
-      if(!bucket?.complete||!bucket.max||!Number.isFinite(weight)){categoryReady=false;break;}
+      if(!bucket?.complete||!Number.isFinite(weight)){categoryReady=false;break;}
+      if(!bucket.max){
+        block("empty_category_after_exclusions",student.name+" has no countable score in "+category+
+          " after exemptions / not-applicable statuses.",{personId:student.personId,category});
+        categoryReady=false;break;
+      }
       const percentage=bucket.earned/bucket.max*100,weightedContribution=percentage*weight/100;
-      initial+=weightedContribution;
+      initialRaw+=weightedContribution;
       categoryScores.push({
-        category,earned:roundGrade(bucket.earned),max:roundGrade(bucket.max),
-        percentage:roundGrade(percentage),weight:roundGrade(weight),
-        weightedContribution:roundGrade(weightedContribution)
+        category,earned:roundTwo(bucket.earned),max:roundTwo(bucket.max),
+        percentage:roundTwo(percentage),weight:roundGrade(weight),
+        weightedContribution:roundTwo(weightedContribution)
       });
     }
     if(!categoryReady)continue;
-    initial=roundGrade(initial);
-    const period=roundGrade(settings.gradeComputation==="deped_60_100"?60+(initial*0.4):initial);
+    const initial=roundTwo(initialRaw);
+    const period=roundTwo(settings.gradeComputation==="deped_60_100"?60+(initialRaw*0.4):initialRaw);
     grades.push({
       personId:student.personId,name:student.name,
-      initialGrade:initial,periodGrade:period,categoryScores
+      initialGrade:initial,periodGrade:period,finalGrade:Math.round(period),
+      categoryScores,cellStatuses:studentCellStatuses
     });
   }
-  const sourceDigest=finalizationSourceDigest({columns,settings,roster,manualScores,publishedGrades});
+  const sourceDigest=finalizationSourceDigest({columns,settings,roster,manualScores,publishedGrades,cellStates});
   return {
     ready:blockerCount===0&&grades.length===(roster||[]).length&&grades.length>0,
     blockerCount,blockers,grades,categories,activeColumnCount:active.length,
@@ -597,12 +639,13 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const offering=await verifyOffering();
       const labels=await offeringLabels(offering);
       const finalizationRef=db.doc(prefix+"class_record_finalizations/"+offeringId);
-      const [roster,assessments,sheet,gradeSnap,manualSnap,finalizationDoc,collaborators]=await Promise.all([
+      const [roster,assessments,sheet,gradeSnap,manualSnap,cellStateSnap,finalizationDoc,collaborators]=await Promise.all([
         classRoster(),
         availableAssessments(offering,labels),
         sheetRef.get(),
         db.collection(prefix+"student_grades").where("offeringId","==",offeringId).limit(MAX_SCORE_CELLS+1).get(),
         db.collection(prefix+"class_record_scores").where("offeringId","==",offeringId).limit(MAX_SCORE_CELLS+1).get(),
+        db.collection(prefix+"class_record_cell_states").where("offeringId","==",offeringId).limit(MAX_SCORE_CELLS+1).get(),
         finalizationRef.get(),
         activeOfferingTeachers()
       ]);
@@ -610,6 +653,8 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         deny("resource-exhausted","Published school grade cells exceed the bounded Class Record capacity.");
       if(manualSnap.size>MAX_SCORE_CELLS)
         deny("resource-exhausted","Manual score cells exceed the bounded Class Record capacity.");
+      if(cellStateSnap.size>MAX_SCORE_CELLS)
+        deny("resource-exhausted","Score-status cells exceed the bounded Class Record capacity.");
 
       const columns=sheet.exists&&sheet.data().schoolId===ctx.schoolId&&Array.isArray(sheet.data().columns)
         ?sheet.data().columns.map(column=>{
@@ -649,10 +694,21 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         data.schoolId===ctx.schoolId&&manualIds.has(data.columnId)&&personIds.has(data.personId)
       ).map(data=>({
         columnId:data.columnId,personId:data.personId,
-        score:data.score===null?null:Number(data.score),revision:Number(data.revision)||1
+        score:data.score===null?null:Number(data.score),revision:Number(data.revision)||1,
+        previousScore:data.previousScore===null||data.previousScore===undefined?null:Number(data.previousScore),
+        hasPreviousScore:Object.prototype.hasOwnProperty.call(data,"previousScore"),
+        updatedAt:millis(data.updatedAt),updatedByUid:data.updatedByUid||null
+      }));
+      const columnIds=new Set(columns.map(column=>column.columnId));
+      const cellStates=cellStateSnap.docs.map(doc=>doc.data()).filter(data=>
+        data.schoolId===ctx.schoolId&&columnIds.has(data.columnId)&&personIds.has(data.personId)
+      ).map(data=>({
+        columnId:data.columnId,personId:data.personId,status:cleanCellStatus(data.status),
+        previousStatus:CELL_STATUSES.has(String(data.previousStatus||""))?String(data.previousStatus):"normal",
+        revision:Number(data.revision)||1,updatedAt:millis(data.updatedAt),updatedByUid:data.updatedByUid||null
       }));
       const publishedGrades=[...schoolGrades,...legacyGrades];
-      const snapshot=computePeriodSnapshot({columns,settings,roster,manualScores,publishedGrades});
+      const snapshot=computePeriodSnapshot({columns,settings,roster,manualScores,publishedGrades,cellStates});
       const finalization=finalizationDoc.exists&&finalizationDoc.data().schoolId===ctx.schoolId?{
         status:finalizationDoc.data().status||"finalized",
         revision:Number(finalizationDoc.data().revision)||1,
@@ -664,7 +720,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         stale:String(finalizationDoc.data().sourceDigest||"")!==snapshot.sourceDigest
       }:null;
       return {
-        offering,labels,roster,assessments,columns,settings,manualScores,publishedGrades,collaborators,
+        offering,labels,roster,assessments,columns,settings,manualScores,publishedGrades,cellStates,collaborators,
         sheetRevision:sheet.exists&&sheet.data().schoolId===ctx.schoolId?Number(sheet.data().revision)||0:0,
         finalization,snapshot
       };
@@ -680,7 +736,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           sectionName:data.labels.sectionName,subjectName:data.labels.subjectName},
         roster:data.roster.map(({authUid,...row})=>row),
         assessments:data.assessments,columns:data.columns,settings:data.settings,
-        manualScores:data.manualScores,publishedGrades:data.publishedGrades,
+        manualScores:data.manualScores,publishedGrades:data.publishedGrades,cellStates:data.cellStates,
         collaborators:data.collaborators,
         sheetRevision:data.sheetRevision,finalization:data.finalization,
         periodReadiness:{
@@ -759,7 +815,10 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           personId:doc.data().personId,name:String(doc.data().studentNameSnapshot||"Student"),
           initialGrade:Number(doc.data().initialGrade),
           periodGrade:Number(doc.data().periodGrade),
-          categoryScores:Array.isArray(doc.data().categoryScores)?doc.data().categoryScores:[]
+          finalGrade:Number.isFinite(Number(doc.data().finalGrade))?
+            Number(doc.data().finalGrade):Math.round(Number(doc.data().periodGrade)),
+          categoryScores:Array.isArray(doc.data().categoryScores)?doc.data().categoryScores:[],
+          cellStatuses:Array.isArray(doc.data().cellStatuses)?doc.data().cellStatuses:[]
         })).sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
       if(grades.length!==Number(header.studentCount||0))
         deny("failed-precondition","The finalized revision grade set is incomplete. Preserve it for audit and contact an administrator before exporting.");
@@ -837,8 +896,9 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
             subjectId:data.offering.subjectId,sectionId:data.offering.sectionId,
             status:"finalized",finalizationRevision:revision,
             sheetRevision:expectedSheetRevision,sourceDigest:data.snapshot.sourceDigest,
-            initialGrade:grade.initialGrade,periodGrade:grade.periodGrade,
-            categoryScores:grade.categoryScores,studentNameSnapshot:grade.name,
+            initialGrade:grade.initialGrade,periodGrade:grade.periodGrade,finalGrade:grade.finalGrade,
+            categoryScores:grade.categoryScores,cellStatuses:grade.cellStatuses,
+            studentNameSnapshot:grade.name,
             finalizedByUid:ctx.uid,finalizedAt:now,updatedAt:now
           };
           tx.set(gradeRef,gradeData,{merge:false});
@@ -993,8 +1053,9 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           changed++;
           const revision=prior.exists?(Number(prior.data().revision)||0)+1:1;
           const data={schoolId:ctx.schoolId,offeringId,columnId,personId:item.personId,
-            score:item.score,maxPoints,revision,updatedByUid:ctx.uid,
-            updatedAt:FieldValue.serverTimestamp()};
+            score:item.score,maxPoints,revision,
+            previousScore:prior.exists?(before==null?null:Number(before)):null,
+            updatedByUid:ctx.uid,updatedAt:FieldValue.serverTimestamp()};
           if(prior.exists)tx.update(refs[index],data);
           else tx.create(refs[index],{...data,createdAt:FieldValue.serverTimestamp()});
           changes.push({personId:item.personId,before:before==null?null:Number(before),after:item.score});
@@ -1004,6 +1065,69 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
           createdAt:FieldValue.serverTimestamp()});
       });
       return {offeringId,columnId,changed};
+    }
+
+    if(input.action==="save_cell_status"){
+      await verifyOffering();
+      const columnId=checkId(String(input.columnId||""),"Column ID",64);
+      const personId=checkId(String(input.personId||""),"Person ID",128);
+      const nextStatus=cleanCellStatus(input.status);
+      const [sheet,enrollments]=await Promise.all([
+        sheetRef.get(),
+        db.collection(prefix+"enrollments").where("offeringId","==",offeringId).limit(MAX_CLASS_SIZE+1).get()
+      ]);
+      if(!sheet.exists||sheet.data().schoolId!==ctx.schoolId)
+        deny("failed-precondition","Create the Class Record before changing a score status.");
+      const column=(Array.isArray(sheet.data().columns)?sheet.data().columns:[])
+        .find(item=>item.columnId===columnId);
+      if(!column||column.archived===true)
+        deny("failed-precondition","Score status can only be changed for an active Class Record column.");
+      const activePeople=new Set(enrollments.docs.filter(doc=>
+        doc.data().schoolId===ctx.schoolId&&doc.data().status==="active"
+      ).map(doc=>doc.data().personId));
+      if(!activePeople.has(personId))
+        deny("permission-denied","This learner no longer belongs to the active class roster.");
+      const stateRef=db.doc(prefix+"class_record_cell_states/"+hash(offeringId,columnId,personId));
+      const auditRef=db.collection(prefix+"class_record_audit").doc();
+      let changed=false,resultState;
+      await db.runTransaction(async tx=>{
+        const [grant,currentSheet,prior]=await Promise.all([
+          tx.get(grantRef),tx.get(sheetRef),tx.get(stateRef)
+        ]);
+        if(!grant.exists||grant.data().schoolId!==ctx.schoolId||
+           grant.data().teacherUid!==ctx.uid||grant.data().status!=="active")
+          deny("permission-denied","Your class assignment changed. Reload Class Record before saving.");
+        const liveColumn=(Array.isArray(currentSheet.data()?.columns)?currentSheet.data().columns:[])
+          .find(item=>item.columnId===columnId);
+        if(!liveColumn||liveColumn.archived===true)
+          deny("failed-precondition","This Class Record column changed. Reload before saving the score status.");
+        const before=prior.exists?cleanCellStatus(prior.data().status):"normal";
+        const priorRevision=prior.exists?Number(prior.data().revision)||1:0;
+        if(before===nextStatus){
+          resultState={
+            columnId,personId,status:before,
+            previousStatus:prior.exists&&CELL_STATUSES.has(String(prior.data().previousStatus||""))?
+              String(prior.data().previousStatus):"normal",
+            revision:priorRevision,updatedAt:millis(prior.data()?.updatedAt)||null
+          };
+          return;
+        }
+        changed=true;
+        const revision=priorRevision+1,now=FieldValue.serverTimestamp();
+        const data={
+          schoolId:ctx.schoolId,offeringId,columnId,personId,status:nextStatus,
+          previousStatus:before,revision,updatedByUid:ctx.uid,updatedAt:now
+        };
+        if(prior.exists)tx.update(stateRef,data);
+        else tx.create(stateRef,{...data,createdAt:now});
+        tx.create(auditRef,{
+          schoolId:ctx.schoolId,offeringId,columnId,personId,actorUid:ctx.uid,
+          action:"class_record_cell_status_saved",beforeStatus:before,afterStatus:nextStatus,
+          revision,createdAt:now
+        });
+        resultState={columnId,personId,status:nextStatus,previousStatus:before,revision};
+      });
+      return {offeringId,changed,state:resultState};
     }
 
     deny("invalid-argument","Unknown Class Record operation.");
