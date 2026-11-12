@@ -15,31 +15,144 @@ let libraryData = [];
 let activeFolderId = null;
 let extractingPdf=false;
 let libraryScope=null,libraryLoadSerial=0;
+const MAX_PDF_FILES=5;
+const MAX_PDF_BYTES=50*1024*1024;
+const MAX_REFERENCE_RECORD_BYTES=850000;
+const PDF_EXTRACTION_INSTRUCTIONS="You are a data ingestion engine. Extract ALL educational text from the attached PDF. Process native text and use vision/OCR for scanned pages, images, graphics, diagrams, tables and labels. Preserve useful reading order, headings, lists, code, formulas and table text when possible. Do not summarize, explain, grade or add conversational filler. Return only the extracted educational text.";
+const externalPdfImport={files:[],folderId:null,busy:false};
+
 function currentLibraryScope(){if(!libraryScope)throw Error("Wait for your reference library to load, then try again.");assertReferenceOwner(libraryScope);return libraryScope;}
 function cacheLibrary(){cacheReferenceFolders(currentLibraryScope(),libraryData);}
 function libraryStatus(message,tone=""){const status=document.getElementById("libraryStatus");if(status){status.textContent=message;if(status.dataset)status.dataset.tone=tone;}}
-// Clear only when reopening the chooser, so the same PDF can be selected to retry.
-document.getElementById("pdfFileInput")?.addEventListener("click",event=>{
-  if(extractingPdf){event.preventDefault();return;}
-  event.currentTarget.value="";
-});
+function externalPdfStatus(message,tone=""){const status=document.getElementById("externalPdfStatus");if(status){status.textContent=message;if(status.dataset)status.dataset.tone=tone;}}
 
-async function waitForProcessedPDF(fileInfo,fileName,key){
-  if(typeof fileInfo?.name!=="string"||typeof fileInfo?.uri!=="string")throw Error("Google returned incomplete upload details for "+fileName+". Select the PDF again to retry.");
-  const deadline=Date.now()+120000;
-  for(let attempt=0;attempt<40;attempt++){
-    const remaining=deadline-Date.now();
-    if(remaining<=0)break;
-    window.showSubtleLoader?.("Analyzing visual diagrams and OCR for "+fileName+"…");
-    const response=await fetch(`https://generativelanguage.googleapis.com/v1beta/${fileInfo.name}?key=${encodeURIComponent(key)}`,{signal:AbortSignal.timeout(Math.min(15000,remaining))});
-    if(!response.ok)throw Error("Google could not check PDF processing (status "+response.status+"). Select the remaining PDF files again to retry after checking your connection or provider limits.");
-    const result=await response.json();
-    if(result.state==="ACTIVE")return fileInfo.uri;
-    if(result.state==="FAILED")throw Error("Google could not process "+fileName+". Select the PDF again to retry.");
-    if(result.state!=="PROCESSING")throw Error("Google returned an unknown PDF processing status. Select the PDF again to retry.");
-    if(attempt<39&&Date.now()<deadline)await new Promise(resolve=>setTimeout(resolve,Math.min(3000,deadline-Date.now())));
+function validatePdfFiles(files){
+  const list=Array.from(files||[]);
+  if(!list.length)throw Error("Select at least one PDF.");
+  if(list.length>MAX_PDF_FILES)throw Error("Select a maximum of "+MAX_PDF_FILES+" PDFs at once.");
+  for(const file of list){
+    const pdfType=file.type==="application/pdf"||/\.pdf$/i.test(file.name||"");
+    if(!pdfType)throw Error(file.name+" is not a PDF.");
+    if(!Number.isFinite(file.size)||file.size<=0)throw Error(file.name+" is empty or unreadable.");
+    if(file.size>MAX_PDF_BYTES)throw Error(file.name+" exceeds the 50 MB PDF processing limit. Split it into smaller references.");
   }
-  throw Error("PDF processing did not finish within two minutes. Your saved references are preserved. Select the remaining PDF files again to retry.");
+  return list;
+}
+
+function referenceRecord(title,text){
+  const cleanTitle=String(title||"").trim(),cleanText=String(text||"").trim();
+  if(!cleanTitle)throw Error("A reference title is missing.");
+  if(!cleanText)throw Error("No educational text was extracted from "+cleanTitle+".");
+  const record={title:cleanTitle,text:cleanText,updatedAt:new Date().toISOString()};
+  if(new TextEncoder().encode(JSON.stringify(record)).length>MAX_REFERENCE_RECORD_BYTES)
+    throw Error("Extracted text from "+cleanTitle+" exceeds Firestore's safe document size. Split this PDF into smaller references.");
+  return record;
+}
+
+async function saveReferenceRecord(folderId,folder,title,text){
+  const record=referenceRecord(title,text);
+  const newRef=doc(referenceFolders(currentLibraryScope(),folderId,"documents"));
+  const batch=writeBatch(db);
+  batch.set(newRef,record);
+  batch.update(referenceFolder(currentLibraryScope(),folderId),{
+    documentCount:increment(1),updatedAt:record.updatedAt
+  });
+  await batch.commit();
+  folder.documents.push({...record,_documentId:newRef.id});
+  return record;
+}
+
+async function fileToBase64(file){
+  return await new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(Error("Could not read "+file.name+" from this device."));
+    reader.onload=()=>{
+      const value=String(reader.result||""),comma=value.indexOf(",");
+      if(comma<0)return reject(Error("Could not encode "+file.name+" for AI processing."));
+      resolve(value.slice(comma+1));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function providerError(response,prefix){
+  let detail="";
+  try{
+    const raw=await response.text();
+    if(raw){
+      try{
+        const parsed=JSON.parse(raw);
+        detail=parsed?.error?.message||parsed?.message||raw;
+      }catch{detail=raw;}
+    }
+  }catch{}
+  detail=String(detail||response.statusText||"").replace(/\s+/g," ").trim();
+  if(detail.length>420)detail=detail.slice(0,417)+"…";
+  return Error(prefix+" (HTTP "+response.status+")"+(detail?": "+detail:"."));
+}
+
+function candidateText(result){
+  return (result?.candidates?.[0]?.content?.parts||[]).map(part=>typeof part?.text==="string"?part.text:"").join("").trim();
+}
+
+function buildExternalPdfPackage(files){
+  const names=files.map(file=>file.name);
+  return [
+    "ADMINERVA REFERENCE LIBRARY PDF EXTRACTION PACKAGE",
+    "",
+    "TASK",
+    "Extract the educational content from the PDF files attached to this external-AI conversation. Adminerva will import your result into the same Reference Library records used by its built-in PDF importer.",
+    "",
+    "REQUIRED PROCESS",
+    "1. Read every attached PDF listed under EXPECTED FILES.",
+    "2. Extract ALL educational text. Use OCR/vision for scanned pages, images, graphics, diagrams, tables and labels.",
+    "3. Preserve useful reading order, headings, lists, code, formulas and table text when possible.",
+    "4. Do not summarize, grade, explain, add commentary, or omit content merely because it appears visually.",
+    "5. Keep each title EXACTLY equal to its original filename.",
+    "",
+    "EXPECTED FILES",
+    ...names.map(name=>"- "+name),
+    "",
+    "RETURN ONLY VALID JSON. NO MARKDOWN FENCES. NO INTRODUCTION.",
+    '{"schemaVersion":1,"documents":[{"title":"EXACT ORIGINAL FILENAME.pdf","text":"FULL EXTRACTED EDUCATIONAL TEXT"}]}',
+    "",
+    "The documents array must contain exactly one entry for every EXPECTED FILE and no extra entries."
+  ].join("\n");
+}
+
+function parseExternalPdfResult(raw,expectedFiles){
+  let text=String(raw||"").trim();
+  if(!text)throw Error("Paste the external AI JSON response first.");
+  if(text.startsWith("```")){
+    text=text.replace(/^```(?:json)?\s*/i,"").replace(/\s*```$/,"").trim();
+  }
+  let parsed;
+  try{parsed=JSON.parse(text);}catch{throw Error("The pasted response is not valid JSON. Ask the external AI to return only the required JSON object.");}
+  if(Number(parsed?.schemaVersion)!==1||!Array.isArray(parsed?.documents))
+    throw Error('The response must use {"schemaVersion":1,"documents":[...]}');
+  const expected=expectedFiles.map(file=>file.name),expectedSet=new Set(expected);
+  if(parsed.documents.length!==expected.length)
+    throw Error("Expected "+expected.length+" document result"+(expected.length===1?"":"s")+" but received "+parsed.documents.length+".");
+  const seen=new Set(),byTitle=new Map();
+  for(const item of parsed.documents){
+    const title=String(item?.title||"").trim(),body=String(item?.text||"").trim();
+    if(!expectedSet.has(title))throw Error('Unexpected filename "'+title+'". Keep titles exactly equal to the selected PDF filenames.');
+    if(seen.has(title))throw Error('Duplicate document result for "'+title+'".');
+    if(!body)throw Error('No extracted text was returned for "'+title+'".');
+    seen.add(title);byTitle.set(title,body);
+  }
+  for(const name of expected)if(!seen.has(name))throw Error('Missing extracted text for "'+name+'".');
+  const normalized=expected.map(title=>({title,text:byTitle.get(title)}));
+  for(const item of normalized)referenceRecord(item.title,item.text);
+  return normalized;
+}
+
+// Clear only when reopening a chooser, so the same PDF can be selected to retry.
+for(const id of ["pdfFileInput","externalPdfFileInput"]){
+  document.getElementById(id)?.addEventListener("click",event=>{
+    if(extractingPdf||externalPdfImport.busy){event.preventDefault();return;}
+    event.currentTarget.value="";
+  });
 }
 
 function escapeHTML(str) {
@@ -363,200 +476,164 @@ function renderDocuments(documentsArray) {
 
 window.extractPDF = async function () {
   if(extractingPdf)return;
-  const fileInput = document.getElementById("pdfFileInput");
-  if (!fileInput.files.length) return;
+  const fileInput=document.getElementById("pdfFileInput");
+  let files;
+  try{files=validatePdfFiles(fileInput.files);}catch(error){alert(error.message);fileInput.value="";return;}
 
-  if (fileInput.files.length > 5) {
-    alert(
-      "To prevent API rate limits, please select a maximum of 5 PDFs at once.",
-    );
-    fileInput.value = "";
-    return;
-  }
+  const gemKey=(localStorage.getItem("Adminerva_gemini_token")||"").trim();
+  const modelName=(localStorage.getItem("Adminerva_ai_model")||"gemini-2.5-flash").trim();
+  if(!gemKey)return alert("Missing Gemini API Key. Please check your Global Settings.");
 
-  const gemKey = (localStorage.getItem("Adminerva_gemini_token") || "").trim();
-  const modelName = (
-    localStorage.getItem("Adminerva_ai_model") || "gemini-2.5-flash"
-  ).trim();
-
-  if (!gemKey)
-    return alert("Missing Gemini API Key. Please check your Global Settings.");
-
-  const targetFolderId = activeFolderId;
-  const folder = libraryData.find((f) => f.id === targetFolderId);
+  const targetFolderId=activeFolderId;
+  const folder=libraryData.find(item=>item.id===targetFolderId);
   if(!folder)return alert("Select a reference folder before importing PDFs.");
-  let uploadedCount=0;
-  let completed=false;
+
+  let savedCount=0,completed=false;
   extractingPdf=true;fileInput.disabled=true;
+  const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
-  const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-  try {
-    for (let i = 0; i < fileInput.files.length; i++) {
-      const file = fileInput.files[i];
-
-      // 🚀 FREE TIER FIX: 15-second mandatory cooldown between files to respect the 15 RPM limit
-      if (i > 0) {
-        if (typeof window.showSubtleLoader === "function") {
-          window.showSubtleLoader(
-            `Free Tier Cooldown (${i + 1}/${fileInput.files.length}). Waiting 15s...`,
-          );
-        }
-        await delay(15000);
+  try{
+    for(let index=0;index<files.length;index++){
+      const file=files[index];
+      if(index>0){
+        window.showSubtleLoader?.("Preparing next PDF ("+(index+1)+"/"+files.length+")…");
+        await delay(1500);
       }
 
-      // 1. FAST RAW UPLOAD TO GEMINI SERVERS
-      if (typeof window.showSubtleLoader === "function") {
-        window.showSubtleLoader(
-          `Uploading PDF to Cloud (${i + 1}/${fileInput.files.length}): ${file.name}`,
-        );
-      }
+      window.showSubtleLoader?.("Reading PDF ("+(index+1)+"/"+files.length+"): "+file.name);
+      const pdfBase64=await fileToBase64(file);
+      const generateUrl=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelName)}:generateContent?key=${encodeURIComponent(gemKey)}`;
 
-      const uploadUrl = `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${encodeURIComponent(gemKey)}`;
-      const uploadRes = await fetch(uploadUrl, {
-        method: "POST",
-        headers: {
-          "X-Goog-Upload-Command": "start, upload, finalize",
-          "X-Goog-Upload-Header-Content-Length": file.size.toString(),
-          "X-Goog-Upload-Header-Content-Type": file.type,
-          "Content-Type": file.type,
-        },
-        body: file,
-      });
-
-      if (!uploadRes.ok)
-        throw new Error(
-          `Upload failed for ${file.name}: ${uploadRes.statusText}`,
-        );
-      const uploadData = await uploadRes.json();
-      const fileInfo = uploadData.file;
-
-      // Processing checks are bounded and HTTP/provider failures stop immediately.
-      const activeFileUri=await waitForProcessedPDF(fileInfo,file.name,gemKey);
-
-      // 3. EXTRACT ALL DATA USING THE PROCESSED FILE URI (FREE TIER RETRY LOGIC)
-      if (typeof window.showSubtleLoader === "function") {
-        window.showSubtleLoader(
-          `Extracting text structure from ${file.name}...`,
-        );
-      }
-
-      const generateUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(gemKey)}`;
-
-      // 🚀 FREE TIER FIX: Increased max retries from 3 to 5
-      let retries = 5;
-      let generateRes;
-      let result;
-      let extractionSuccess = false;
-
-      while (retries >= 0 && !extractionSuccess) {
-        generateRes = await fetch(generateUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: "You are a data ingestion engine. Extract ALL educational text from the attached PDF. You MUST process this document regardless of its format. Extract all standard digital text, AND use your vision capabilities to perform OCR on any scanned images, graphics, or diagrams to extract their text as well. Output ONLY the pure, raw extracted educational text. Do not output any conversational filler.",
-                  },
-                  {
-                    file_data: {
-                      mime_type: file.type,
-                      file_uri: activeFileUri,
-                    },
-                  },
-                ],
-              },
-            ],
-          }),
+      let result=null,lastResponse=null;
+      for(let attempt=0;attempt<4;attempt++){
+        window.showSubtleLoader?.((attempt?"Retrying AI extraction":"Extracting educational content")+" ("+(index+1)+"/"+files.length+"): "+file.name);
+        const response=await fetch(generateUrl,{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            contents:[{parts:[
+              {text:PDF_EXTRACTION_INSTRUCTIONS},
+              {inline_data:{mime_type:"application/pdf",data:pdfBase64}}
+            ]}],
+            generationConfig:{temperature:0}
+          })
         });
-
-        // Intercept API Overloads (503) and Rate Limits (429)
-        if (generateRes.status === 503 || generateRes.status === 429) {
-          // 🚀 FREE TIER FIX: Exponential Backoff + Jitter
-          // Base wait doubles each time: 10s, 20s, 40s...
-          const attemptNumber = 6 - retries; // 1, 2, 3, 4, 5
-          const baseWait = Math.pow(2, attemptNumber) * 5000;
-
-          // Add 1 to 3 seconds of random "Jitter" to stagger requests
-          const jitter = Math.floor(Math.random() * 3000) + 1000;
-          const waitTime = baseWait + jitter;
-
-          console.warn(
-            `[Free Tier Overload] Retrying ${file.name} in ${(waitTime / 1000).toFixed(1)}s... (${retries} attempts left)`,
-          );
-
-          if (typeof window.showSubtleLoader === "function") {
-            window.showSubtleLoader(
-              `API Busy. Retrying in ${(waitTime / 1000).toFixed(1)}s...`,
-            );
-          }
-
-          await delay(waitTime);
-          retries--;
-          continue;
+        lastResponse=response;
+        if(response.ok){result=await response.json();break;}
+        if(response.status!==429&&response.status!==503)throw await providerError(response,"Adminerva AI could not extract "+file.name);
+        if(attempt<3){
+          const waitMs=Math.min(30000,4000*Math.pow(2,attempt))+Math.floor(Math.random()*1500);
+          window.showSubtleLoader?.("AI provider is busy. Retrying "+file.name+"…");
+          await delay(waitMs);
         }
+      }
+      if(!result)throw await providerError(lastResponse,"Adminerva AI remained unavailable for "+file.name);
 
-        if (!generateRes.ok)
-          throw new Error(
-            `Extraction failed for ${file.name}: Status ${generateRes.status}`,
-          );
-
-        result = await generateRes.json();
-
-        if (!result.candidates || result.candidates.length === 0) {
-          throw new Error(
-            `The AI refused to read "${file.name}". It may have triggered safety filters.`,
-          );
-        }
-
-        extractionSuccess = true;
+      const extractedText=candidateText(result);
+      if(!extractedText){
+        const reason=result?.promptFeedback?.blockReason||result?.candidates?.[0]?.finishReason||"no text returned";
+        throw Error("Adminerva AI could not extract "+file.name+" ("+reason+"). Use External AI to import the same PDF without changing the resulting reference.");
       }
 
-      if (!extractionSuccess) {
-        throw new Error(
-          `Failed to extract ${file.name} after multiple API overloads.`,
-        );
-      }
-
-      const extractedText = result.candidates[0].content.parts[0].text;
-
-      const record={title:file.name,text:extractedText,updatedAt:new Date().toISOString()};
-      if(new TextEncoder().encode(JSON.stringify(record)).length>850000)
-        throw Error("Extracted text from "+file.name+" exceeds Firestore's safe document size. Split this PDF into smaller references.");
-      const newRef=doc(referenceFolders(currentLibraryScope(),targetFolderId,"documents"));
-      const batch=writeBatch(db);
-      batch.set(newRef,record);
-      batch.update(referenceFolder(currentLibraryScope(),targetFolderId),{
-        documentCount:increment(1),updatedAt:new Date().toISOString()
-      });
-      await batch.commit();
-      folder.documents.push({...record,_documentId:newRef.id});
-      uploadedCount++;
-
-      // 4. INSTANT CLEANUP
-      fetch(
-        `https://generativelanguage.googleapis.com/v1beta/${fileInfo.name}?key=${encodeURIComponent(gemKey)}`,
-        { method: "DELETE" },
-      ).catch(() => {});
-    }
-
-    if(uploadedCount)console.info("Stored "+uploadedCount+" PDFs as independent records.");
-    completed=true;
-  } catch (error) {
-    alert("PDF import stopped. "+(error.name==="TimeoutError"?"The processing check timed out. Select the remaining PDFs again to retry.":error.message)+(uploadedCount?" "+uploadedCount+" completed reference(s) are already saved; retry only the remaining files.":" Your saved references are unchanged."));
-  } finally {
-    extractingPdf=false;fileInput.disabled=false;
-    if(completed)fileInput.value = "";
-    renderFolders();
-
-    if (activeFolderId === targetFolderId) {
+      await saveReferenceRecord(targetFolderId,folder,file.name,extractedText);
+      savedCount++;
       renderDocuments(folder.documents);
     }
-
-    if (typeof window.hideSubtleLoader === "function") {
-      window.hideSubtleLoader();
-    }
+    completed=true;
+    libraryStatus("Imported "+savedCount+" PDF reference"+(savedCount===1?"":"s")+" with Adminerva AI.");
+  }catch(error){
+    const suffix=savedCount
+      ?" "+savedCount+" completed reference"+(savedCount===1?" is":"s are")+" already saved; retry only the remaining PDFs."
+      :" Your saved references are unchanged. You can use External AI with the same PDFs.";
+    alert("PDF import stopped. "+error.message+suffix);
+    libraryStatus("PDF import stopped: "+error.message,"error");
+  }finally{
+    extractingPdf=false;fileInput.disabled=false;
+    if(completed)fileInput.value="";
+    renderFolders();
+    if(activeFolderId===targetFolderId)renderDocuments(folder.documents);
+    window.hideSubtleLoader?.();
   }
 };
+
+window.prepareExternalPDFImport=function(){
+  if(extractingPdf||externalPdfImport.busy)return;
+  const input=document.getElementById("externalPdfFileInput");
+  let files;
+  try{files=validatePdfFiles(input.files);}catch(error){alert(error.message);input.value="";return;}
+  const folder=libraryData.find(item=>item.id===activeFolderId);
+  if(!folder)return alert("Select a reference folder before importing PDFs.");
+
+  externalPdfImport.files=files;
+  externalPdfImport.folderId=activeFolderId;
+  document.getElementById("externalPdfSelection").textContent=
+    files.length+" PDF"+(files.length===1?"":"s")+" selected · "+files.map(file=>file.name).join(" · ");
+  document.getElementById("externalPdfPackage").value=buildExternalPdfPackage(files);
+  document.getElementById("externalPdfResult").value="";
+  externalPdfStatus("Attach these same PDFs to the external AI, paste the copied package, then return its JSON here.");
+  document.getElementById("externalPdfModal").classList.remove("hidden");
+};
+
+window.closeExternalPDFImport=function(){
+  if(externalPdfImport.busy)return;
+  document.getElementById("externalPdfModal")?.classList.add("hidden");
+};
+
+window.copyExternalPDFPackage=async function(){
+  const area=document.getElementById("externalPdfPackage"),value=area?.value||"";
+  if(!value)return externalPdfStatus("Choose PDFs first.", "error");
+  try{
+    await navigator.clipboard.writeText(value);
+    externalPdfStatus("Package copied. Attach the selected PDFs to ChatGPT or another AI, paste the package there, then paste its JSON response below.");
+  }catch{
+    area.focus();area.select();
+    externalPdfStatus("Clipboard access was blocked. The package text is selected so you can copy it manually.","error");
+  }
+};
+
+window.importExternalPDFResult=async function(){
+  if(externalPdfImport.busy||extractingPdf)return;
+  const files=externalPdfImport.files,folderId=externalPdfImport.folderId;
+  if(!files.length||!folderId)return externalPdfStatus("Choose the PDFs again before importing.","error");
+  if(activeFolderId!==folderId)return externalPdfStatus("The selected Reference Library folder changed. Close this dialog, return to the intended folder, and choose the PDFs again.","error");
+  const folder=libraryData.find(item=>item.id===folderId);
+  if(!folder)return externalPdfStatus("The target reference folder is no longer available.","error");
+
+  let documents;
+  try{documents=parseExternalPdfResult(document.getElementById("externalPdfResult").value,files);}
+  catch(error){return externalPdfStatus("Import rejected: "+error.message,"error");}
+
+  let savedCount=0;
+  externalPdfImport.busy=true;extractingPdf=true;
+  const importButton=document.getElementById("externalPdfImport"),copyButton=document.getElementById("externalPdfCopy");
+  if(importButton)importButton.disabled=true;if(copyButton)copyButton.disabled=true;
+  try{
+    for(let index=0;index<documents.length;index++){
+      const item=documents[index];
+      externalPdfStatus("Saving reference "+(index+1)+" of "+documents.length+": "+item.title);
+      await saveReferenceRecord(folderId,folder,item.title,item.text);
+      savedCount++;
+      renderDocuments(folder.documents);
+    }
+    libraryStatus("Imported "+savedCount+" PDF reference"+(savedCount===1?"":"s")+" with External AI.");
+    externalPdfStatus("Imported successfully. These references are stored in the same format and location as Adminerva AI imports.");
+    document.getElementById("externalPdfFileInput").value="";
+    externalPdfImport.files=[];externalPdfImport.folderId=null;
+    document.getElementById("externalPdfResult").value="";
+    document.getElementById("externalPdfModal").classList.add("hidden");
+  }catch(error){
+    externalPdfStatus("Import stopped: "+error.message+(savedCount?" "+savedCount+" reference"+(savedCount===1?" was":"s were")+" already saved.":""),"error");
+  }finally{
+    externalPdfImport.busy=false;extractingPdf=false;
+    if(importButton)importButton.disabled=false;if(copyButton)copyButton.disabled=false;
+    renderFolders();
+    if(activeFolderId===folderId)renderDocuments(folder.documents);
+  }
+};
+
+document.getElementById("externalPdfModal")?.addEventListener("click",event=>{
+  if(event.target?.id==="externalPdfModal"&&!externalPdfImport.busy)window.closeExternalPDFImport();
+});
+document.addEventListener("keydown",event=>{
+  if(event.key==="Escape"&&!document.getElementById("externalPdfModal")?.classList.contains("hidden"))window.closeExternalPDFImport();
+});

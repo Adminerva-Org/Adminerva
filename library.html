@@ -21,7 +21,7 @@
 </head>
   <body class="bg-gray-50 font-sans min-h-screen flex flex-col">
     <div id="adminerva-nav" data-module="lesson" data-page="library"></div>
-    <script src="js/core/adminerva-nav.js?v=1.4.17"></script>
+    <script src="js/core/adminerva-nav.js?v=4.1.4"></script>
 
     <!-- Main Workspace -->
     <div
@@ -94,16 +94,32 @@
             <button
               onclick="document.getElementById('pdfFileInput').click()"
               class="w-full sm:w-auto bg-blue-100 text-blue-700 font-bold py-3 sm:py-2 px-4 rounded-full sm:rounded hover:bg-blue-200 transition whitespace-nowrap flex justify-center items-center gap-2 text-sm"
+              title="Import PDFs with Adminerva's configured AI"
             >
-              📄 Upload PDF
+              📄 Import PDF
             </button>
             <input
               type="file"
               id="pdfFileInput"
-              accept="application/pdf"
+              accept="application/pdf,.pdf"
               multiple
               class="hidden"
               onchange="extractPDF()"
+            />
+            <button
+              onclick="document.getElementById('externalPdfFileInput').click()"
+              class="w-full sm:w-auto border border-blue-300 bg-white text-blue-800 font-bold py-3 sm:py-2 px-4 rounded-full sm:rounded hover:bg-blue-50 transition whitespace-nowrap flex justify-center items-center gap-2 text-sm"
+              title="Use ChatGPT or another external AI to extract the same reference data"
+            >
+              ↗ External AI
+            </button>
+            <input
+              type="file"
+              id="externalPdfFileInput"
+              accept="application/pdf,.pdf"
+              multiple
+              class="hidden"
+              onchange="prepareExternalPDFImport()"
             />
           </div>
         </div>
@@ -143,10 +159,55 @@
       </div>
     </div>
 
+    <!-- External AI PDF Import -->
+    <div id="externalPdfModal" class="hidden fixed inset-0 z-50 bg-slate-950/55 p-2 sm:p-4 flex items-center justify-center overflow-hidden" role="dialog" aria-modal="true" aria-labelledby="externalPdfModalTitle">
+      <div class="w-full max-w-4xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col" style="max-height:calc(100vh - 1rem);max-height:calc(100dvh - 1rem)">
+        <div class="shrink-0 flex items-start justify-between gap-4 border-b bg-slate-50 px-4 py-4 sm:px-5">
+          <div class="min-w-0">
+            <h3 id="externalPdfModalTitle" class="text-lg font-bold text-slate-900">External AI PDF import</h3>
+            <p class="mt-1 text-sm text-slate-600">Same Reference Library result as Adminerva AI; only the extraction provider is different.</p>
+          </div>
+          <button type="button" onclick="closeExternalPDFImport()" class="shrink-0 rounded-lg px-3 py-2 text-slate-500 hover:bg-slate-200 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label="Close external AI PDF import">✕</button>
+        </div>
+
+        <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5">
+          <div class="space-y-5">
+            <div class="rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <p class="text-sm font-semibold text-blue-950">1. Attach these selected PDFs to ChatGPT or another external AI.</p>
+              <p id="externalPdfSelection" class="mt-1 text-xs leading-5 text-blue-900 break-words"></p>
+              <p class="mt-2 text-xs text-blue-800">Use the same files you selected in Adminerva. The external AI only performs extraction; Adminerva still validates and saves the references.</p>
+            </div>
+
+            <div>
+              <div class="mb-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <label for="externalPdfPackage" class="text-sm font-bold text-slate-800">2. Copy the package and send it with the PDFs</label>
+                <button id="externalPdfCopy" type="button" onclick="copyExternalPDFPackage()" class="w-full sm:w-auto rounded-lg bg-blue-700 px-4 py-2 text-sm font-bold text-white hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500">Copy package</button>
+              </div>
+              <textarea id="externalPdfPackage" readonly class="h-36 sm:h-44 w-full resize-y rounded-xl border border-slate-300 bg-slate-50 p-3 font-mono text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+            </div>
+
+            <div>
+              <label for="externalPdfResult" class="mb-2 block text-sm font-bold text-slate-800">3. Paste the external AI JSON response</label>
+              <textarea id="externalPdfResult" class="h-40 sm:h-52 w-full resize-y rounded-xl border border-slate-300 bg-white p-3 font-mono text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder='{"schemaVersion":1,"documents":[{"title":"example.pdf","text":"..."}]}'></textarea>
+            </div>
+
+            <p id="externalPdfStatus" class="av-status-message" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+
+        <div class="shrink-0 border-t bg-white px-4 py-3 sm:px-5 sm:py-4">
+          <div class="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2">
+            <button type="button" onclick="closeExternalPDFImport()" class="w-full sm:w-auto rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500">Cancel</button>
+            <button id="externalPdfImport" type="button" onclick="importExternalPDFResult()" class="w-full sm:w-auto rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500">Import references</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Removed hardcoded GLOBAL LOADING OVERLAY. Adminerva-loader.js will handle the pop-up -->
 
-    <script type="module" src="js/lesson-review/library.js?v=1.3.4"></script>
-    <script type="module" src="js/core/auth-guard.js?v=4.0.4"></script>
+    <script type="module" src="js/lesson-review/library.js?v=4.1.5"></script>
+    <script type="module" src="js/core/auth-guard.js?v=4.1.4"></script>
     <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
   </body>
 </html>
