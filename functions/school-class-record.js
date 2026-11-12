@@ -758,6 +758,72 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       };
     }
 
+    if(input.action==="student_preview"){
+      const data=await buildWorkspaceData();
+      const personId=checkId(String(input.personId||""),"Person ID",128);
+      const student=data.roster.find(row=>row.personId===personId);
+      if(!student)
+        deny("permission-denied","Student preview is limited to the active class roster.");
+      const activeColumns=data.columns.filter(column=>column.archived!==true);
+      const activeIds=new Set(activeColumns.map(column=>column.columnId));
+      let requestedIds;
+      if(input.columnIds===undefined||input.columnIds===null){
+        requestedIds=activeColumns.filter(column=>column.studentVisibility==="released").map(column=>column.columnId);
+      }else{
+        if(!Array.isArray(input.columnIds)||input.columnIds.length>MAX_COLUMNS)
+          deny("invalid-argument","Student preview column selection is invalid.");
+        requestedIds=[...new Set(input.columnIds.map(value=>checkId(String(value||""),"Column ID",64)))];
+        if(requestedIds.some(id=>!activeIds.has(id)))
+          deny("failed-precondition","One or more preview columns are no longer active.");
+      }
+      const selected=new Set(requestedIds);
+      const manualMap=new Map(data.manualScores.map(row=>[row.columnId+"::"+row.personId,row]));
+      const gradeMap=new Map(data.publishedGrades.map(row=>[
+        (row.sourceType||SCHOOL_SOURCE)+"::"+row.taskId+"::"+row.personId,row
+      ]));
+      const stateMap=new Map(data.cellStates.map(row=>[row.columnId+"::"+row.personId,row]));
+      const scores=activeColumns.filter(column=>selected.has(column.columnId)).map(column=>{
+        const state=stateMap.get(column.columnId+"::"+personId);
+        const status=state?.status||"normal";
+        let score=null;
+        if(status==="normal"){
+          if(column.kind==="manual"){
+            const row=manualMap.get(column.columnId+"::"+personId);
+            if(row&&row.score!==null&&row.score!==undefined&&Number.isFinite(Number(row.score)))
+              score=Number(row.score);
+          }else{
+            const source=column.assessmentSource||SCHOOL_SOURCE;
+            const row=gradeMap.get(source+"::"+column.taskId+"::"+personId);
+            if(row&&Number.isFinite(Number(row.awarded)))score=Number(row.awarded);
+          }
+        }
+        return {
+          columnId:column.columnId,label:column.label,category:column.category||"",
+          kind:column.kind,sourceType:column.kind==="manual"?"manual":(column.assessmentSource||SCHOOL_SOURCE),
+          maxPoints:Number(column.maxPoints)||0,status,score:Number.isFinite(score)?score:null
+        };
+      });
+      let finalGrade=null;
+      const releasedRevision=Number(data.finalization?.releasedRevision)||0;
+      if(releasedRevision>0){
+        const gradeRef=db.doc(prefix+"class_record_period_grades/"+hash(offeringId,personId)+
+          "/revisions/"+releasedRevision);
+        const grade=await gradeRef.get(),row=grade.exists?grade.data():null;
+        if(row&&row.schoolId===ctx.schoolId&&row.offeringId===offeringId&&row.personId===personId&&
+           Number(row.finalizationRevision)===releasedRevision&&Number.isFinite(Number(row.finalGrade))){
+          finalGrade={
+            revision:releasedRevision,finalGrade:Math.round(Number(row.finalGrade)),
+            releasedAt:data.finalization?.releasedAt||null
+          };
+        }
+      }
+      return {
+        offeringId,personId,studentName:student.name,
+        subjectName:data.labels.subjectName,sectionName:data.labels.sectionName,termName:data.labels.termName,
+        scores,finalGrade
+      };
+    }
+
     if(input.action==="finalization_preview"){
       const data=await buildWorkspaceData();
       return {

@@ -190,6 +190,8 @@ Each active Class Record column has a student visibility state:
 
 New and legacy columns default to **Hidden** until a teacher deliberately releases them. Releasing an assessment-linked column does not publish its source grade; the owning grading workflow must still publish that grade first.
 
+Teachers can also use **Student visibility & preview** to manage multiple activity releases in one save. The dialog supports Release all / Hide all and can simulate the selected visibility for any active learner before committing the change. The preview is server-authorized to the active offering and includes the exact currently released frozen Final Grade revision, so teachers can compare what the learner will see without exposing another class or student.
+
 Final Grade publication is separate from activity-score visibility:
 
 `working scores → released activities → frozen finalization revision → released Final Grade`

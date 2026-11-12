@@ -26,6 +26,7 @@ const saveScoresButton=el("cr-save-scores");
 const importButton=el("cr-import-scores");
 const archivedButton=el("cr-archived-columns");
 const archivedCount=el("cr-archived-count");
+const visibilityButton=el("cr-student-visibility");
 const finalizeButton=el("cr-finalize");
 const exportButton=el("cr-export");
 const exportXlsxButton=el("cr-export-xlsx");
@@ -48,6 +49,10 @@ const importForm=el("cr-import-form");
 const importColumn=el("cr-import-column");
 const importText=el("cr-import-text");
 const archivedDialog=el("cr-archived-dialog");
+const visibilityDialog=el("cr-visibility-dialog");
+const visibilityList=el("cr-visibility-list");
+const visibilityStudent=el("cr-visibility-student");
+const visibilityPreview=el("cr-visibility-preview-result");
 const finalizeDialog=el("cr-finalize-dialog");
 const finalizeState=el("cr-finalize-state");
 const finalizeBlockers=el("cr-finalize-blockers");
@@ -337,6 +342,7 @@ function setBusy(value,message=""){
   saveScoresButton.disabled=value||!dirtyColumns.size;
   importButton.disabled=value||!currentOfferingId||!activeManualColumns().length;
   archivedButton.disabled=value||!currentOfferingId;
+  visibilityButton.disabled=value||!currentOfferingId||!activeColumns().length||dirtyColumns.size>0;
   finalizeButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
   exportButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
   exportXlsxButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
@@ -395,6 +401,7 @@ function updateDirtyState(){
   saveScoresButton.disabled=busy||!dirtyColumns.size;
   importButton.disabled=busy||!currentOfferingId||!activeManualColumns().length;
   archivedButton.disabled=busy||!currentOfferingId;
+  visibilityButton.disabled=busy||!currentOfferingId||!activeColumns().length||dirtyColumns.size>0;
   finalizeButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
   exportButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
   exportXlsxButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
@@ -749,6 +756,127 @@ async function toggleColumnVisibility(column){
     await saveLayout(next,settings,column.label+
       (nextVisibility==="released"?" released to students.":" hidden from students."));
   }catch(error){say(error?.message||"Student score visibility was not changed.");}
+}
+function visibilitySelection(){
+  return new Set([...visibilityList.querySelectorAll('input[data-visibility-column]:checked')]
+    .map(input=>input.dataset.visibilityColumn));
+}
+function syncVisibilityCount(){
+  const count=visibilitySelection().size,total=activeColumns().length;
+  el("cr-visibility-count").textContent=count+" of "+total+" released";
+}
+function visibilitySourceText(column){
+  return column.kind==="manual"?"Manual score":
+    sourceName(column.assessmentSource||SCHOOL_SOURCE);
+}
+function renderVisibilityList(){
+  visibilityList.replaceChildren();
+  for(const column of activeColumns()){
+    const row=make("label","cr-list-card flex items-start gap-3 cursor-pointer");
+    const checkbox=document.createElement("input");
+    checkbox.type="checkbox";checkbox.className="mt-1 h-4 w-4";
+    checkbox.dataset.visibilityColumn=column.columnId;
+    checkbox.checked=studentVisibility(column)==="released";
+    checkbox.addEventListener("change",syncVisibilityCount);
+    const info=make("div","min-w-0 flex-1");
+    info.append(make("strong","text-sm text-slate-900",column.label));
+    info.append(make("p","cr-muted mt-1",
+      (column.category||"Uncategorized")+" · "+visibilitySourceText(column)+
+      " · "+numberText(column.maxPoints)+" pts"));
+    row.append(checkbox,info);visibilityList.append(row);
+  }
+  syncVisibilityCount();
+}
+function renderVisibilityStudents(){
+  visibilityStudent.replaceChildren();
+  for(const student of roster)visibilityStudent.add(new Option(student.name,student.personId));
+  visibilityStudent.disabled=!roster.length;
+  el("cr-visibility-preview").disabled=!roster.length;
+}
+function closeVisibility(){
+  if(visibilityDialog.open)visibilityDialog.close();
+  el("cr-visibility-status").textContent="";
+}
+function openVisibility(){
+  if(dirtyColumns.size){say("Save manual score changes before managing student visibility.");return;}
+  if(!activeColumns().length){say("Add an active Class Record column before managing student visibility.");return;}
+  renderVisibilityList();renderVisibilityStudents();
+  visibilityPreview.replaceChildren(make("p","cr-muted","Choose a student and preview the selected activity visibility."));
+  el("cr-visibility-status").textContent="";
+  visibilityDialog.showModal();
+}
+function setAllVisibility(checked){
+  visibilityList.querySelectorAll('input[data-visibility-column]').forEach(input=>{input.checked=checked;});
+  syncVisibilityCount();
+}
+function previewResultText(score){
+  if(score.status==="incomplete")return "INC · For completion";
+  if(score.status==="exempt")return "EX · Exempt";
+  if(score.status==="not_applicable")return "N/A · Not applicable";
+  return score.score===null?"Not yet graded":numberText(score.score)+" / "+numberText(score.maxPoints);
+}
+async function previewStudentVisibility(){
+  const personId=visibilityStudent.value;
+  if(!personId)return;
+  const button=el("cr-visibility-preview");
+  button.disabled=true;el("cr-visibility-status").textContent="Building student preview…";
+  try{
+    const result=await scoped(classRecordApi,"student_preview",{
+      offeringId:currentOfferingId,personId,columnIds:[...visibilitySelection()]
+    });
+    visibilityPreview.replaceChildren();
+    const top=make("div","flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3");
+    const identity=make("div");
+    identity.append(make("strong","text-slate-900",result.studentName||"Student"));
+    identity.append(make("p","cr-muted mt-1",
+      [result.subjectName,result.sectionName,result.termName].filter(Boolean).join(" · ")));
+    const grade=make("div","rounded-lg border border-slate-200 bg-white px-3 py-2");
+    if(result.finalGrade){
+      grade.append(make("span","text-xs font-bold uppercase tracking-wide text-emerald-700","Released Final Grade"));
+      grade.append(make("div","text-2xl font-extrabold text-slate-900",finalGradeText(result.finalGrade.finalGrade)));
+      grade.append(make("p","text-xs text-slate-500","Frozen revision "+result.finalGrade.revision));
+    }else{
+      grade.append(make("span","text-xs font-bold uppercase tracking-wide text-slate-500","Final Grade"));
+      grade.append(make("div","text-sm font-bold text-slate-700 mt-1","Not released"));
+    }
+    top.append(identity,grade);visibilityPreview.append(top);
+    const scores=result.scores||[];
+    if(!scores.length){
+      visibilityPreview.append(make("p","cr-muted mt-3","No activities are selected for release in this preview."));
+    }else{
+      const rows=make("div","grid gap-2 mt-3");
+      for(const score of scores){
+        const row=make("div","rounded-lg border border-slate-200 bg-white p-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1");
+        const info=make("div");
+        info.append(make("strong","text-sm text-slate-900",score.label));
+        info.append(make("p","text-xs text-slate-500",(score.category||"Uncategorized")+" · "+numberText(score.maxPoints)+" pts"));
+        const resultText=make("span","text-sm font-bold "+(score.status==="incomplete"?"text-amber-700":"text-slate-800"),previewResultText(score));
+        row.append(info,resultText);rows.append(row);
+      }
+      visibilityPreview.append(rows);
+    }
+    el("cr-visibility-status").textContent="Preview matches the selected activity visibility. Save to publish that visibility.";
+  }catch(error){
+    visibilityPreview.replaceChildren(make("p","text-sm text-rose-700",error?.message||"Student preview could not be loaded."));
+    el("cr-visibility-status").textContent="";
+  }finally{button.disabled=!roster.length;}
+}
+async function saveStudentVisibility(){
+  if(dirtyColumns.size){el("cr-visibility-status").textContent="Save manual score changes first.";return;}
+  const selected=visibilitySelection();
+  const next=columns.map(column=>column.archived===true?column:{
+    ...column,studentVisibility:selected.has(column.columnId)?"released":"hidden"
+  });
+  const changed=next.some((column,index)=>studentVisibility(column)!==studentVisibility(columns[index]));
+  if(!changed){el("cr-visibility-status").textContent="Student visibility is already saved.";return;}
+  const button=el("cr-visibility-save");
+  button.disabled=true;el("cr-visibility-status").textContent="Saving student visibility…";
+  try{
+    await saveLayout(next,settings,"Student score visibility saved.");
+    closeVisibility();
+  }catch(error){
+    el("cr-visibility-status").textContent=error?.message||"Student visibility was not saved.";
+  }finally{button.disabled=false;}
 }
 function openColumnDialog(column=null){
   if(column?.archived===true)return;
@@ -1603,6 +1731,7 @@ schemeSelect.addEventListener("change",()=>{
 });
 importButton.addEventListener("click",openImport);
 archivedButton.addEventListener("click",openArchived);
+visibilityButton.addEventListener("click",openVisibility);
 finalizeButton.addEventListener("click",()=>void openFinalize());
 refreshButton.addEventListener("click",()=>{
   if(dirtyColumns.size&&!confirm("Discard unsaved manual score changes and refresh this class?"))return;
@@ -1630,6 +1759,12 @@ el("cr-equal-weights").addEventListener("click",equalWeights);
 el("cr-import-close").addEventListener("click",closeImport);
 el("cr-import-cancel").addEventListener("click",closeImport);
 el("cr-archived-close").addEventListener("click",closeArchived);
+el("cr-visibility-close").addEventListener("click",closeVisibility);
+el("cr-visibility-cancel").addEventListener("click",closeVisibility);
+el("cr-visibility-all").addEventListener("click",()=>setAllVisibility(true));
+el("cr-visibility-none").addEventListener("click",()=>setAllVisibility(false));
+el("cr-visibility-preview").addEventListener("click",()=>void previewStudentVisibility());
+el("cr-visibility-save").addEventListener("click",()=>void saveStudentVisibility());
 el("cr-finalize-close").addEventListener("click",closeFinalize);
 el("cr-finalize-cancel").addEventListener("click",closeFinalize);
 el("cr-score-status-close").addEventListener("click",closeScoreStatus);
