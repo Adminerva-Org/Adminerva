@@ -24,6 +24,11 @@
   </div>
   <div id="practiceSandboxBanner" class="hidden px-4 py-2 bg-cyan-50 text-cyan-950 text-sm flex flex-wrap justify-between gap-2"><div><strong>Practice experiment</strong><p id="practiceRunStatus" class="text-xs">Experiment freely. Your personal project stays separate.</p></div><a id="practiceReturnLink" href="student-practice.html" class="font-bold underline">Return to Practice Lab →</a></div>
   <div id="assignedProjectBanner" class="hidden px-4 py-2 bg-indigo-50 text-indigo-950 text-sm border-b border-indigo-200"><strong id="assignedProjectTitle">Assigned project</strong><p id="assignedProjectMeta" class="text-xs mt-0.5"></p><p id="assignedProjectBrief" class="text-xs mt-1 text-indigo-800"></p></div>
+  <details id="studioPersonalizedTask" class="hidden bg-violet-50 text-violet-950 border-b border-violet-200 px-4 py-2 text-sm" open>
+    <summary class="font-bold cursor-pointer">Personalized assessment task <span id="studioPersonalizedTaskMeta" class="font-normal text-xs text-violet-700"></span></summary>
+    <pre id="studioPersonalizedTaskPrompt" class="whitespace-pre-wrap font-sans text-xs leading-5 mt-2 max-h-64 overflow-auto"></pre>
+    <p id="studioPersonalizedTaskStatus" class="text-[11px] mt-2 text-violet-700"></p>
+  </details>
 
   <div class="studio-project-bar">
     <button id="backToProjectsBtn" type="button" class="studio-back" title="Back to projects">← <span class="studio-back-label">Projects</span></button>
@@ -150,4 +155,4 @@
   <p id="studioSubmitStatus" role="status" aria-live="polite" class="text-sm text-slate-600 my-3">Choose an assessment.</p>
   <button id="studioConfirmSubmit" type="button" class="w-full bg-teal-700 text-white font-bold rounded-lg p-3 disabled:opacity-50">Submit frozen project revision</button>
 </dialog>
-<script src="js/core/adminerva-nav.js?v=4.0.3"></script><script type="module" src="js/core/auth-guard.js?v=4.0.4"></script><script src="js/core/adminerva-loader.js?v=1.3.2"></script><script type="module" src="js/student/playground.js?v=4.0.5"></script><script type="module" src="js/student/studio-assessment-submit.mjs?v=4.0.1"></script><script type="module" src="js/student/playground-cloud.mjs?v=2.0.1"></script><script type="module" src="js/student/playground-project-context.mjs?v=1.4.0"></script></body></html>
+<script src="js/core/adminerva-nav.js?v=4.0.6"></script><script type="module" src="js/core/auth-guard.js?v=4.0.4"></script><script src="js/core/adminerva-loader.js?v=1.3.2"></script><script type="module" src="js/student/playground.js?v=4.0.5"></script><script type="module" src="js/student/studio-assessment-variant.mjs?v=1.0.0"></script><script type="module" src="js/student/studio-assessment-submit.mjs?v=4.0.2"></script><script type="module" src="js/student/playground-cloud.mjs?v=2.0.1"></script><script type="module" src="js/student/playground-project-context.mjs?v=1.4.0"></script></body></html>
