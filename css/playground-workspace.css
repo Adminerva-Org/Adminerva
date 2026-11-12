@@ -1223,3 +1223,15 @@ body[data-playground-access] .studio-problems-dock .studio-problems-note{
 @media(prefers-reduced-motion:reduce){
   body[data-playground-access] .studio-problems-chevron{transition:none}
 }
+
+
+/* Browser Java phase 5: clear assessment boundary without changing terminal layout. */
+body[data-playground-access] .studio-browser-java-notice{
+  flex:none;padding:9px 12px;border-bottom:1px solid #305b67;
+  background:#10303a;color:#bdeef2;
+  font-size:11px;line-height:1.5;
+}
+body[data-playground-access] .studio-browser-java-notice.hidden{display:none!important}
+@media(max-width:767px){
+  body[data-playground-access] .studio-browser-java-notice{padding:8px 10px;font-size:10px}
+}
