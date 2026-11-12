@@ -11,6 +11,7 @@ if(button){
   const dialog=document.getElementById("studioSubmitDialog");
   const choose=document.getElementById("studioSubmitChoice");
   const state=document.getElementById("studioSubmitStatus");
+  const details=document.getElementById("studioSubmitDetails");
   const confirmButton=document.getElementById("studioConfirmSubmit");
   const close=()=>dialog.close();
   let choices=new Map(),busy=false,openedUser=null,usingV4=false;
@@ -62,6 +63,7 @@ if(button){
     if(!user?.emailVerified||!user.email)throw Error("Sign in with a verified school email.");
     openedUser=user.uid;usingV4=false;
     choices=new Map();choose.replaceChildren();
+    if(details)details.textContent="Checking assigned assessments and submission windows…";
     notice("Loading available Studio assessments…");
     let v4Known=false,v4Error=null;
     try{v4Known=await loadV4();}
@@ -105,9 +107,20 @@ if(button){
   };
   function syncExamChoice(){
     const chosen=choices.get(choose.value);
-    if(!chosen){confirmButton.disabled=true;return;}
+    if(!chosen){
+      confirmButton.disabled=true;
+      if(details)details.textContent="Choose an assessment to view its type and submission window.";
+      return;
+    }
     if(chosen.mode==="v4"){
       const task=chosen.task;
+      const deadline=Number(task.dueAt);
+      const deadlineLabel=Number.isFinite(deadline)&&deadline>0
+        ?new Date(deadline).toLocaleString():"Not provided";
+      const type=task.personalizedTask?.enabled===true?"Personalized school task":"School Studio project";
+      if(details)details.textContent=task.title+" · "+type+
+        " · School submission deadline: "+deadlineLabel+
+        (chosen.status?.status==="reopened"?" · Teacher-requested revision":"");
       if(task.personalizedTask?.enabled===true&&assessmentParam!==task.taskId){
         confirmButton.disabled=true;
         notice("Open this personalized assessment from My Assignments first so Adminerva can issue your unique task.");
@@ -120,12 +133,23 @@ if(button){
         notice("Your personalized school task is still loading. Wait for the task panel before submitting.");
         return;
       }
-      confirmButton.disabled=!v4Allowed(chosen);
+      const allowed=v4Allowed(chosen);
+      confirmButton.disabled=!allowed;
       if(chosen.status?.status==="reopened"&&Number(chosen.status.revisionDueAt)>Date.now())
-        notice("Revision requested by your teacher. This submission will create a new immutable project version with its newly issued personalized task.");
+        notice("Revision requested by your teacher. This submission creates a new immutable project version with its issued personalized task.");
+      else notice(allowed
+        ?"Ready to submit: your saved project files, diagrams and database will be frozen as a revision."
+        :task.windowStatus==="upcoming"?"This school assessment has not opened yet.":"The school submission window is closed.");
       return;
     }
     const task=chosen.assessment;
+    const deployment=(task.deployments||[]).find(item=>item.section===chosen.student.section);
+    const deadline=deployment?.deadlineEnabled===false||!deployment?.deadline
+      ?"No deadline configured":new Date(deployment.deadline).toLocaleString();
+    const type=task.practicalExam===true?"Practical exam":
+      task.personalizedTask?.enabled===true?"Personalized task":"Studio project";
+    if(details)details.textContent=task.title+" · "+chosen.student.section+
+      " · "+type+" · Deadline: "+deadline;
     if(task?.practicalExam&&assessmentParam!==task.id){
       confirmButton.disabled=true;
       notice("To start a practical exam, open the assignment in My Assessments, then choose Open Adminerva Studio. Exam restrictions must begin before you work.");
@@ -143,7 +167,11 @@ if(button){
       return;
     }
     if(task)window.adminervaSetStudioExamPolicy?.({assessmentId:task.id,practicalExam:task.practicalExam===true});
-    confirmButton.disabled=!task||!studioSubmissionAllowed(task,chosen.student.section).allowed;
+    const eligibility=studioSubmissionAllowed(task,chosen.student.section);
+    confirmButton.disabled=!eligibility.allowed;
+    notice(eligibility.allowed
+      ?"Ready to submit. Your saved project becomes a frozen revision; future edits do not change it."
+      :eligibility.reason);
   }
   choose.addEventListener("change",syncExamChoice);
   button.addEventListener("click",async()=>{
@@ -157,7 +185,8 @@ if(button){
   });
   dialog.querySelector("[data-close-studio]")?.addEventListener("click",close);
   dialog.addEventListener("cancel",event=>{if(busy)event.preventDefault();});
-  if(assessmentParam)window.addEventListener("adminerva:studio-ready",()=>button.click(),{once:true});
+  // Opening a linked assessment displays its instructions in the task sheet.
+  // Never interrupt the editor with a submission confirmation before work starts.
 
   async function submitV4(chosen,captured){
     const task=chosen.task;
