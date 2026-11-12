@@ -1,0 +1,62 @@
+name: CheerpJ Studio integration
+on:
+  pull_request:
+    paths:
+      - 'js/student/cheerpj-studio-client.mjs'
+      - 'js/student/cheerpj-studio-client.test.mjs'
+      - 'js/student/cheerpj-studio-rollout.mjs'
+      - 'js/student/cheerpj-studio-rollout.test.mjs'
+      - 'js/student/studio-terminal-echo.mjs'
+      - 'js/student/studio-terminal-echo.test.mjs'
+      - 'js/student/studio-assessment-variant.mjs'
+      - 'js/student/playground.js'
+      - 'student-playground.html'
+      - 'guest-playground.html'
+      - 'experiments/cheerpj-console/**'
+      - 'scripts/build-cheerpj-pages.mjs'
+      - '.github/workflows/cheerpj-studio-integration.yml'
+  workflow_dispatch:
+jobs:
+  focused-checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check browser Java JavaScript syntax
+        run: |
+          node --check js/student/cheerpj-studio-client.mjs
+          node --check js/student/cheerpj-studio-rollout.mjs
+          node --check js/student/studio-terminal-echo.mjs
+          node --check js/student/studio-assessment-variant.mjs
+          node --check js/student/playground.js
+          node --check experiments/cheerpj-console/embedded-runner.mjs
+          node --check experiments/cheerpj-console/console-bridge.mjs
+      - name: Focused CheerpJ protocol and console tests
+        run: |
+          node --test js/student/cheerpj-studio-client.test.mjs
+          node --test js/student/cheerpj-studio-rollout.test.mjs
+          node --test js/student/studio-terminal-echo.test.mjs
+          node --test experiments/cheerpj-console/console-bridge.test.mjs
+      - name: Check separate Cloudflare runner endpoint
+        run: |
+          curl --fail --silent --show-error --location --max-time 25 --retry 2 \
+            https://adminerva.pages.dev/embedded-runner.html \
+            | grep -F 'embedded-runner.mjs'
+          curl --fail --silent --show-error --location --max-time 25 --retry 2 \
+            https://adminerva.pages.dev/console-bridge.mjs \
+            | grep -F 'createConsoleBridge'
+      - name: Assemble isolated static runner
+        run: |
+          node scripts/build-cheerpj-pages.mjs
+          node --input-type=module -e "
+          import {readdirSync} from 'node:fs';
+          import assert from 'node:assert/strict';
+          assert.deepEqual(
+            readdirSync('dist/cheerpj-runner').sort(),
+            ['_headers','console-bridge.mjs','embedded-runner.html','embedded-runner.mjs','index.html'].sort()
+          );
+          "

@@ -6,7 +6,10 @@ import {projectPath,parentFolders,bundleWebProject} from "./playground-project.m
 import {createProjectStudio} from "./project-studio.mjs?v=4.0.2";
 import {currentV4StudioSchool} from "./v4-studio-service.mjs?v=4.1.0";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
-import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=3";
+import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=4";
+import {CheerpjStudioClient,CHEERPJ_STUDIO_RUNNER_URL,validateCheerpjRunnerUrl} from "./cheerpj-studio-client.mjs?v=3";
+import {evaluateBrowserJavaAccess,CHEERPJ_STUDIO_ROLLOUT} from "./cheerpj-studio-rollout.mjs?v=2";
+import {terminalHistoryLines,echoBatchInputs,echoLiveInput} from "./studio-terminal-echo.mjs?v=1";
 import {
   collection,
   addDoc,
@@ -71,6 +74,14 @@ let practiceTransfer = null;
 const guestMode=document.body.dataset.playgroundAccess==="guest";
 let workspaceFolders=[],projectOrder=[],selectedProjectPath="",selectedProjectFolder=false,explorerDrag=null;
 let executionController=null,executionSequence=0;
+let cheerpjClient=null;
+// Judge0 replays use a fresh process; preserve each previous stdout prefix
+// so the terminal can position supplied values at their original prompt.
+let batchWaitingStdout='';
+let batchInputAnchors=[];
+const CHEERPJ_STUDIO_ENABLED=Boolean(validateCheerpjRunnerUrl(CHEERPJ_STUDIO_RUNNER_URL));
+// Do not carry a pilot selection across students, browsers, or assessments.
+let javaEngine='judge0';
 let loadedOwnerUid=null;
 let projectStudio=null;
 let studioRuntimeIntegration=null;
@@ -201,6 +212,10 @@ window.adminervaSetStudioExamPolicy=({assessmentId,practicalExam=false}={})=>{
   if(examLinkId&&assessmentId!==examLinkId)return;
   examPolicy={assessmentId,practicalExam:practicalExam===true};
   examPolicyPending=false;refreshExamControls();
+  if(editorInstance){
+    if(cheerpjClient&&!currentBrowserJavaAccess().enabled)stopLiveBrowserJava(true);
+    updateOutputView();
+  }
 };
 const inExamCodeField=target=>target instanceof Element&&Boolean(
   target.closest("#editorContainer,#designEditor,#dbSqlInput"));
@@ -325,6 +340,7 @@ async function initializePlayground() {
       persistWorkspace();
       executionSequence++;
       executionController?.abort();
+      if(cheerpjClient)stopLiveBrowserJava(true);
       clearTimeout(autoSaveTimeout);
       document.getElementById("workspaceContainer")?.setAttribute("inert","");
       window.location.reload();
@@ -405,6 +421,7 @@ function applyNamedProjectConfig(config={}){
 
 function openNamedProject(project){
   if(!project)return;
+  if(cheerpjClient)stopLiveBrowserJava(true);
   createWorkspace(project.lang,project.state?.files,project.state?.fileOrder,project.state?.activeFilename,project.state?.folders,project.state?.projectOrder);
   applyNamedProjectConfig(project.config||{});
   const langSelect=document.getElementById("languageSelect");
@@ -605,6 +622,7 @@ function renderTabs() {
 
   attachTabEvents();
   renderFileTree();
+  studioRuntimeIntegration?.scheduleDiagnostics();
   if(window.matchMedia('(max-width:767px)').matches){
     requestAnimationFrame(()=>{
       const tab=container.querySelector('.tab-element[aria-selected="true"]');
@@ -1312,7 +1330,142 @@ function consoleInputExhausted(errorText){
   return false;
 }
 
+
+function currentBrowserJavaAccess(){
+  return evaluateBrowserJavaAccess({
+    policy:CHEERPJ_STUDIO_ROLLOUT,
+    runnerReady:CHEERPJ_STUDIO_ENABLED,
+    uid:auth.currentUser?.uid||null,
+    guest:guestMode,
+    assessmentId:examLinkId,
+    assessmentContext:window.adminervaStudioAssessmentContext||null,
+    examPolicyPending,
+    practicalExam:examPolicy?.practicalExam===true
+  });
+}
+function isLiveBrowserJava(){
+  return javaEngine==='cheerpj'&&currentLang==='java'&&!isJavaDesktopMode()&&
+    currentBrowserJavaAccess().enabled;
+}
+function browserJavaNotice(){
+  const note=document.getElementById('studioBrowserJavaNotice');
+  if(!note)return;
+  const active=isLiveBrowserJava()||Boolean(cheerpjClient);
+  note.classList.toggle('hidden',!active);
+  note.textContent=!active?'':examLinkId?
+    'Browser Java runs a copy of your current Java files for practice. Terminal input/output is not graded. Submit for assessment freezes your saved project revision; teacher grading follows the published rubric.':
+    'Browser Java runs an isolated copy of your Java files. Changes made during a run apply only to the next run. Terminal input/output is not verified grading evidence.';
+}
+function browserJavaControls(active,acceptsInput=false){
+  const run=document.getElementById('runBtn'),stop=document.getElementById('stopCheerpjBtn');
+  const send=document.getElementById('sendStdinBtn'),input=document.getElementById('stdinLineInput');
+  const engine=document.getElementById('javaEngineSelect'),mode=document.getElementById('javaRunMode');
+  if(run)run.disabled=active;
+  if(stop)stop.classList.toggle('hidden',!active);
+  if(engine)engine.disabled=active;
+  if(mode)mode.disabled=active;
+  // In browser-live mode, sending a line without a live process must not
+  // fall through into Judge0's batch-replay input workflow.
+  const isBrowserSelected=javaEngine==='cheerpj'&&currentLang==='java'&&!isJavaDesktopMode();
+  const canSend=isBrowserSelected?active&&acceptsInput:!active||acceptsInput;
+  if(send)send.disabled=!canSend;
+  if(input){
+    input.disabled=!canSend;
+    input.placeholder=isLiveBrowserJava()&&!active?
+      'Click Run to start live Java input':'Type a response and press Enter';
+  }
+}
+function stopLiveBrowserJava(quiet=false){
+  if(!cheerpjClient)return;
+  const client=cheerpjClient;
+  cheerpjClient=null;
+  client.stop();
+  browserJavaControls(false);
+  updateStudioTerminalStatus('cancelled','Stopped');
+  if(!quiet){
+    const output=document.getElementById('consoleOutput');
+    if(output)output.textContent+='\n[Browser Java stopped. Your project files are unchanged.]\n';
+  }
+}
+function beginLiveBrowserJava(){
+  if(cheerpjClient||executionController||studioRuntimeIntegration?.locked())return;
+  const output=document.getElementById('consoleOutput');
+  if(!output)return;
+  const access=currentBrowserJavaAccess();
+  if(!access.enabled){
+    output.textContent='Browser Java unavailable: '+access.reason+'\nChoose Standard (batch) to keep working.';
+    updateStudioTerminalStatus('error');
+    return;
+  }
+  if(!persistWorkspace()){
+    output.textContent='Save the current project before running browser Java. The workspace was not saved.';
+    updateStudioTerminalStatus('error');
+    return;
+  }
+  const files=currentState().files,entry=compilerEntry();
+  document.getElementById('consoleTab')?.click();
+  output.textContent='Browser Java · interactive execution\nPreparing a frozen copy of this Java project…\n';
+  document.getElementById('stdinLineInput').value='';
+  document.getElementById('stdinHistoryDisclosure')?.classList.add('hidden');
+  browserJavaControls(true,false);
+  updateStudioTerminalStatus('running','Starting Java…');
+  try{
+    const client=new CheerpjStudioClient({
+      onEvent:event=>{
+        if(cheerpjClient!==client)return;
+        const terminal=document.getElementById('consoleOutput');
+        if(event.type==='status'){
+          updateStudioTerminalStatus('running',event.state==='running'?'Java live':event.message||'Preparing Java…');
+          browserJavaControls(true,event.state==='running');
+          if(event.state==='running')document.getElementById('stdinLineInput')?.focus();
+        }else if(event.type==='output'){
+          if(!terminal)return;
+          terminal.textContent=(terminal.textContent+event.text).slice(-150000);
+          terminal.scrollTop=terminal.scrollHeight;
+          updateStudioTerminalPrompt(terminal.textContent);
+        }else if(event.type==='finished'){
+          updateStudioTerminalStatus(event.compileFailed||event.code!==0?'error':'finished',
+            event.compileFailed?'Compilation failed':'Finished');
+          if(terminal)terminal.textContent+='\n[Java '+(event.compileFailed?'compilation': 'program')+
+            ' exited'+(event.code===null?'':' with status '+event.code)+']\n';
+          cheerpjClient=null;
+          browserJavaControls(false);
+          notePracticeExecution();
+        }else if(event.type==='error'){
+          updateStudioTerminalStatus('error');
+          if(terminal)terminal.textContent+='\n[Browser Java error] '+event.message+'\n';
+          cheerpjClient=null;
+          browserJavaControls(false);
+        }
+      }
+    });
+    cheerpjClient=client;
+    client.start({files,entry});
+  }catch(error){
+    output.textContent+='\nCannot start Browser Java: '+error.message+'\n';
+    cheerpjClient?.dispose();
+    cheerpjClient=null;
+    browserJavaControls(false);
+    updateStudioTerminalStatus('error');
+  }
+}
+
 function sendConsoleInputLine(){
+  // Never reinterpret a Browser Java input as Judge0 batch replay, even if
+  // a pilot entitlement changes while the terminal remains open.
+  if(javaEngine==='cheerpj'&&currentLang==='java'&&!cheerpjClient)return;
+  if(cheerpjClient){
+    const input=document.getElementById('stdinLineInput');
+    if(!input||!cheerpjClient.sendLine(input.value))return;
+    const out=document.getElementById('consoleOutput');
+    if(out){
+      out.textContent=echoLiveInput(out.textContent,input.value);
+      out.scrollTop=out.scrollHeight;
+    }
+    input.value='';
+    input.focus();
+    return;
+  }
   if(studioRuntimeIntegration?.locked()&&!studioRuntimeIntegration?.hasSession())return;
   if(studioRuntimeIntegration?.hasSession()){
     studioRuntimeIntegration.sendLine();
@@ -1321,6 +1474,8 @@ function sendConsoleInputLine(){
   if(executionController)return;
   const lineInput=document.getElementById('stdinLineInput'),history=document.getElementById('stdinInput');
   if(!lineInput||!history)return;
+  const index=terminalHistoryLines(history.value).length;
+  if(batchWaitingStdout)batchInputAnchors.push({index,before:batchWaitingStdout});
   const separator=history.value&&!history.value.endsWith('\n')?'\n':'';
   history.value+=separator+lineInput.value+'\n';
   lineInput.value='';
@@ -1328,7 +1483,13 @@ function sendConsoleInputLine(){
 }
 
 function clearConsoleInput(){
+  if(cheerpjClient){
+    const input=document.getElementById('stdinLineInput');if(input){input.value='';input.focus();}
+    return;
+  }
   const history=document.getElementById('stdinInput'),lineInput=document.getElementById('stdinLineInput');
+  batchWaitingStdout='';
+  batchInputAnchors=[];
   if(history)history.value='';
   if(lineInput){lineInput.value='';lineInput.focus();}
   updateStudioTerminalStatus('ready');
@@ -1338,12 +1499,27 @@ function clearConsoleInput(){
 }
 
 async function executeCode(options={}) {
+  if(javaEngine==='cheerpj'&&currentLang==='java'&&!isJavaDesktopMode()){
+    const access=currentBrowserJavaAccess();
+    if(!access.enabled){
+      const output=document.getElementById('consoleOutput');
+      if(output)output.textContent='Browser Java unavailable: '+access.reason+'\nSelect Standard (batch) to continue.';
+      updateStudioTerminalStatus('error');
+      return;
+    }
+    beginLiveBrowserJava();
+    return;
+  }
   if(studioRuntimeIntegration?.enabled&&currentLang==='java'&&!isJavaDesktopMode()){
     studioRuntimeIntegration.requestRun();
     return;
   }
   if(executionController)return;
   const continuation=options?.terminalContinuation===true;
+  if(!continuation){
+    batchWaitingStdout='';
+    batchInputAnchors=[];
+  }
   const runBtn=document.getElementById('runBtn'),overlay=document.getElementById('executionOverlay'),consoleOut=document.getElementById('consoleOutput'),label=document.getElementById('executionStage'),sendInputBtn=document.getElementById('sendStdinBtn');
   const sequence=++executionSequence,controller=new AbortController(),entry=compilerEntry(),runLanguage=currentLang,desktopMode=isJavaDesktopMode();executionController=controller;
   const end=continuation?(()=>{}):(window.beginLoading?.(desktopMode?'Compiling Java desktop app…':'Running your code…')||(()=>{}));
@@ -1398,8 +1574,11 @@ async function executeCode(options={}) {
     }
     const waitingForInput=Boolean(error)&&consoleInputExhausted(error);
     if(waitingForInput){
-      const supplied=(document.getElementById('stdinInput')?.value||'').split(/\r?\n/).filter((_,index,items)=>index<items.length-1||items[index]!=='' ).length;
-      consoleOut.textContent=(result.stdout||'')+(supplied?'\n\n[Input history: '+supplied+' line'+(supplied===1?'':'s')+']':'');
+      batchWaitingStdout=String(result.stdout||'');
+      const inputLines=terminalHistoryLines(document.getElementById('stdinInput')?.value||'');
+      const supplied=inputLines.length;
+      consoleOut.textContent=echoBatchInputs(batchWaitingStdout,inputLines,batchInputAnchors)+
+        (supplied?'\n\n[Input history: '+supplied+' line'+(supplied===1?'':'s')+']':'');
       updateStudioTerminalPrompt(result.stdout||'');
       updateStudioTerminalStatus('waiting');
       consoleOut.scrollTop=consoleOut.scrollHeight;
@@ -1408,7 +1587,12 @@ async function executeCode(options={}) {
       notePracticeExecution();
       return;
     }
-    consoleOut.textContent=(error?error+'\n':'')+(result.stdout||(!error?'Program exited with no output.':''))+'\n\n'+(result.status.description||'Finished')+(result.time?' · execution '+result.time+'s':'');
+    batchWaitingStdout='';
+    const inputLines=terminalHistoryLines(document.getElementById('stdinInput')?.value||'');
+    const displayedStdout=echoBatchInputs(result.stdout||'',inputLines,batchInputAnchors);
+    consoleOut.textContent=(error?error+'\n':'')+
+      (displayedStdout||(!error?'Program exited with no output.':''))+
+      '\n\n'+(result.status.description||'Finished')+(result.time?' · execution '+result.time+'s':'');
     consoleOut.scrollTop=consoleOut.scrollHeight;
     updateStudioTerminalPrompt('');
     updateStudioTerminalStatus(error||result.status.id>3?'error':'finished');
@@ -1566,6 +1750,11 @@ function notePracticeExecution(){
     }
   }catch(error){console.warn("Could not record practice run:",error)}
 }
+/**
+ * Two-finger gestures for Monaco on phones/tablets.
+ * A single finger is left entirely to Monaco for caret placement, selections,
+ * and its built-in scrolling. Two fingers control viewport pan and font zoom.
+ */
 function initializeStudioEditorTouchGestures(){
   const surface=document.getElementById('editorContainer');
   if(!surface||!editorInstance)return;
@@ -1819,13 +2008,31 @@ function bindUIEvents() {
   });
   document.getElementById('cancelRunBtn')?.addEventListener('click',()=>executionController?.abort());
   document.getElementById('stopDesktopBtn')?.addEventListener('click',()=>stopJavaDesktop());
+  document.getElementById('stopCheerpjBtn')?.addEventListener('click',()=>stopLiveBrowserJava());
+  document.getElementById('javaEngineSelect')?.addEventListener('change',event=>{
+    if(cheerpjClient)return;
+    javaEngine=event.target.value==='cheerpj'&&currentBrowserJavaAccess().enabled?'cheerpj':'judge0';
+    updateOutputView();
+    updateStudioTerminalStatus('ready',javaEngine==='cheerpj'?'Browser Java ready':'Ready');
+  });
+  window.addEventListener('adminerva:studio-assessment-context',()=>{
+    if(cheerpjClient&&!currentBrowserJavaAccess().enabled)stopLiveBrowserJava(true);
+    updateOutputView();
+  });
   document.getElementById('sendStdinBtn')?.addEventListener('click',sendConsoleInputLine);
   document.getElementById('clearStdinBtn')?.addEventListener('click',clearConsoleInput);
+  document.getElementById('stdinInput')?.addEventListener('input',()=>{
+    // If the student edits the batch textarea, old replay positions no longer
+    // describe its contents. Fall back to visible prompt detection.
+    batchWaitingStdout='';
+    batchInputAnchors=[];
+  });
   document.getElementById('stdinLineInput')?.addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.isComposing){event.preventDefault();sendConsoleInputLine();}});
   document.getElementById('javaRunMode')?.addEventListener('change',event=>{
     javaRunMode=event.target.value==='desktop'?'desktop':'console';
     try{localStorage.setItem(JAVA_RUN_MODE_KEY,javaRunMode);}catch{}
     if(javaRunMode!=='desktop')stopJavaDesktop(true);
+    if(cheerpjClient)stopLiveBrowserJava(true);
     projectStudio?.updateConfig({runMode:javaRunMode});
     updateOutputView();
   });
@@ -1953,6 +2160,26 @@ function updateOutputView() {
   modeSelect?.classList.toggle('hidden',!isJava);
   modeLabel?.classList.toggle('hidden',!isJava);
   if(modeSelect)modeSelect.value=javaRunMode;
+  const engineSelect=document.getElementById('javaEngineSelect'),engineLabel=document.getElementById('javaEngineLabel');
+  const showEngine=isJava&&!desktop&&currentBrowserJavaAccess().enabled;
+  if(!showEngine&&javaEngine==='cheerpj'){
+    if(cheerpjClient)stopLiveBrowserJava(true);
+    javaEngine='judge0';
+  }
+  engineSelect?.classList.toggle('hidden',!showEngine);
+  engineLabel?.classList.toggle('hidden',!showEngine);
+  if(engineSelect)engineSelect.value=javaEngine;
+  browserJavaNotice();
+  document.getElementById('stdinHistoryDisclosure')?.classList.toggle('hidden',showEngine&&javaEngine==='cheerpj');
+  if(!cheerpjClient){
+    const liveReady=showEngine&&javaEngine==='cheerpj';
+    const send=document.getElementById('sendStdinBtn'),line=document.getElementById('stdinLineInput');
+    if(send)send.disabled=liveReady;
+    if(line){
+      line.disabled=liveReady;
+      line.placeholder=liveReady?'Click Run to start live Java input':'Type a response and press Enter';
+    }
+  }
   if(runBtn){
     runBtn.textContent=desktop?'▶ Launch':'▶ Run';
     runBtn.title=desktop?'Compile and launch desktop app · Ctrl+Enter':'Run · Ctrl+Enter';
