@@ -7,7 +7,7 @@ import {createProjectStudio} from "./project-studio.mjs?v=3.0.0";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.0.0";
 import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=4";
-import {CheerpjStudioClient,CHEERPJ_STUDIO_RUNNER_URL,validateCheerpjRunnerUrl} from "./cheerpj-studio-client.mjs?v=1";
+import {CheerpjStudioClient,CHEERPJ_STUDIO_RUNNER_URL,validateCheerpjRunnerUrl} from "./cheerpj-studio-client.mjs?v=2";
 import {
   collection,
   addDoc,
