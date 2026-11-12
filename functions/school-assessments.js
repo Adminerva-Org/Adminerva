@@ -88,7 +88,7 @@ function createSchoolAssessmentService({db}){
         poolData=pool.exists?pool.data():{},
         variantIds=Array.isArray(poolData.variantIds)?poolData.variantIds:[];
       if(!pool.exists||poolData.schoolId!==ctx.schoolId||poolData.ownerUid!==ctx.uid||
-         poolData.blueprintId!==blueprintId||poolData.blueprintRevision!==original.contentRevision||
+         poolData.blueprintId!==blueprintId||
          poolData.fingerprint!==fingerprint||poolData.ready!==true||
          variantIds.length<personalization.variantTarget||variantIds.length>600)
         deny("failed-precondition","Activate a complete private personalization pool before deployment.");
