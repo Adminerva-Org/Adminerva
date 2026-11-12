@@ -1,6 +1,6 @@
 import {auth} from "./firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {sessionDestination} from "./session-destination.mjs?v=4.0.2";
+import {sessionDestination} from "./session-destination.mjs?v=4.1.4";
 const main=document.querySelector("main"),navigation=document.getElementById("adminerva-nav");
 let mounted=false;
 function mount(){
@@ -66,6 +66,8 @@ function mount(){
         "lesson-planner.html":"Lesson Planner","repofetch.html":"Review & Grade",
         "gradebook.html":"Gradebook","assessment-studio.html":"Assessment Studio",
         "class-record.html":"Class Record",
+        "school-class-records.html":"Class Record Oversight",
+        "school-grading-schemes.html":"Grading Schemes",
         "submissions.html":"Review Inbox","teacher-analytics.html":"Teaching Analytics",
         "presentation.html":"Presentation Workspace","schedule.html":"Schedule",
         "teacher-assessment-library.html":"Assessment Library","school-gradebook.html":"Gradebook",
