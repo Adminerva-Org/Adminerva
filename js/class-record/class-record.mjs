@@ -286,10 +286,11 @@ function render(){
     edit.type="button";edit.addEventListener("click",()=>openColumnDialog(column));actions.append(edit);
     if(column.kind==="assessment"){
       const task=columnTask(column);
-      if(task?.gradeRoute){
+      if(task?.gradeRoute||task?.reviewRoute){
         const link=make("a","text-xs font-bold text-indigo-700 underline",
           task.sourceType===PERSONALIZED_SOURCE?"Studio grading":"Gradebook");
-        link.href=task.gradeRoute;actions.append(link);
+        link.href=task.sourceType===PERSONALIZED_SOURCE?(task.reviewRoute||task.gradeRoute):task.gradeRoute;
+        actions.append(link);
       }
     }
     th.append(actions);

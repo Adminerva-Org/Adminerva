@@ -96,7 +96,6 @@ document.addEventListener("DOMContentLoaded", () => {
       ["studio", "Assessment studio", "assessment-studio.html"],
       ...(hasSchoolTeacher ? [["library-v4", "Assessment library · 4.0 pilot", "teacher-assessment-library.html"]] : []),
       ["submissions", "Submission inbox", "submissions.html"],
-      ["studio-submissions", "Studio project submissions", "studio-submissions.html"],
       ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
     ] },
     { name: "Review & grade", area: "educator", items: v4OnlyTeacher ? [
@@ -107,8 +106,9 @@ document.addEventListener("DOMContentLoaded", () => {
       ...(hasSchoolTeacher ? [["gradebook-v4", "Gradebook · 4.0 pilot", "school-gradebook.html"]] : []),
       ["repobank", "Repository investigation", "repobank.html"]
     ] },
-    { name: "Class record", area: "class-record", items: hasSchoolTeacher ? [
-      ["class-record", "Class record", "class-record.html"]
+    { name: "Class record & Adminerva assessments", area: "class-record", items: hasSchoolTeacher ? [
+      ["class-record", "Class record", "class-record.html"],
+      ...(!v4OnlyTeacher ? [["studio-submissions", "Adminerva Studio grading", "studio-submissions.html"]] : [])
     ] : [] },
     { name: "Insights", area: "educator", items: [
       ["dashboard", "Analytics", "teacher-analytics.html"],
@@ -152,7 +152,7 @@ document.addEventListener("DOMContentLoaded", () => {
     (group.area === area || area === "admin" && group.area === "settings"));
   const studentGroup = studentGroups[activeModule];
   const areaNames = {
-    educator: "Repository Management", "class-record": "Class Record", lesson: "Lesson Planning", admin: "School administration",
+    educator: "Repository Management", "class-record": "Class Record & Adminerva Assessments", lesson: "Lesson Planning", admin: "School administration",
     settings: "Account settings", global: "Reports & support",
     "student-home": "Your workspace", "staff-home": "Your workspace"
   };
@@ -183,7 +183,7 @@ document.addEventListener("DOMContentLoaded", () => {
   ] : [
     [homeLabel, homeRoute, "Your teaching workspace"],
     ["Repository Management", "assessment-studio.html", "Assessments, submissions, grading and repositories"],
-    ...(hasSchoolTeacher ? [["Class Record", "class-record.html", "Manual scores and published Adminerva assessment results"]] : []),
+    ...(hasSchoolTeacher ? [["Class Record & Adminerva Assessments", "class-record.html", "Manual scores, Adminerva assessment grading and consolidated results"]] : []),
     ["Lesson Planning", "lesson-planner.html", "Lessons, slides, schedule and references"],
     ...((isSuperAdmin || isSchoolAdmin) ? [["School administration", "school-admin.html", "Students, staff, V4 identities, catalogs and pilot operations"]] : []),
     ...((isPlatformOwner && !isSuperAdmin) ? [["Platform pilot control", "owner-schools.html", "Institutions, readiness and controlled pilot state"]] : []),

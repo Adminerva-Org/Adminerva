@@ -5,15 +5,16 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="css/adminerva-ui.css?v=1.4.8"><link rel="stylesheet" href="css/teaching-workspace.css?v=1.3.11"><link rel="stylesheet" href="css/studio-review-ux.css?v=4.0.0"></head>
 <body id="pageBody" class="hidden av-teacher-refresh av-studio-review bg-slate-50 min-h-screen text-slate-900">
-<div id="adminerva-nav" data-module="educator" data-page="studio-submissions"></div>
+<div id="adminerva-nav" data-module="class-record" data-page="studio-submissions"></div>
 <main class="max-w-7xl mx-auto px-4 py-6">
   <header class="bg-slate-900 rounded-2xl p-4 sm:p-6 text-white mb-4">
     <p class="text-cyan-300 text-xs font-bold uppercase tracking-wider mb-2">Review &amp; Grade · Adminerva Studio</p>
     <h1 class="text-2xl sm:text-3xl font-extrabold mb-2">Studio project submissions</h1>
-    <p class="text-sm text-slate-200">Inspect a frozen revision, request changes, or review against the task rubric. Grades are saved as private drafts in the existing Gradebook until published.</p>
-    <div class="flex flex-wrap items-center gap-2 mt-4"><a href="repofetch.html" class="av-secondary-link">GitHub evidence reviews</a>
-      <a href="gradebook.html" class="av-secondary-link">Gradebook</a>
-      <button id="studioReviewRefresh" type="button" class="av-primary-button">Refresh submissions</button></div>
+    <p class="text-sm text-slate-200">Inspect a frozen revision, request changes, or review against the task rubric. Review Studio work, save a private grade draft, and publish the reviewed grade here. Personalized Studio grading does not require Repository Management.</p>
+    <div class="flex flex-wrap items-center gap-2 mt-4">
+      <a href="class-record.html" class="av-secondary-link">Class Record</a>
+      <button id="studioReviewRefresh" type="button" class="av-primary-button">Refresh submissions</button>
+    </div>
   </header>
   <p id="studioReviewStatus" role="status" aria-live="polite" class="text-sm text-slate-600 mb-3">Loading your assigned submissions…</p>
   <p id="studioReviewCount" class="text-xs font-semibold text-slate-600 mb-3" role="status" aria-live="polite">Preparing submission list…</p>
@@ -33,6 +34,6 @@
 </main>
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script defer src="js/core/adminerva-nav.js?v=4.0.1"></script>
-<script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
-<script type="module" src="js/repo-review/studio-submissions.mjs?v=4.0.6"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.7"></script>
+<script type="module" src="js/repo-review/studio-submissions.mjs?v=4.1.0"></script>
 </body></html>

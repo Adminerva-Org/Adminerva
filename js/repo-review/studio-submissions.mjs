@@ -12,13 +12,15 @@ const add=(p,tag,text,classes="")=>{const n=document.createElement(tag);n.textCo
 let records=[],role="",session=0,inspectionSequence=0,busy=false,selectedId=null,loading=false,activeUid=null;
 const link=new URLSearchParams(location.search);
 const deepLink={assessment:link.get("assessment"),section:link.get("section"),student:link.get("student")};
-let deepLinkPending=Boolean(deepLink.assessment&&deepLink.student);
+let deepLinkPending=Boolean(deepLink.assessment);
 const setStatus=text=>{status.textContent=text;};
 function formatDate(value){try{return value?.toDate?.().toLocaleString()||"Date pending";}catch{return "Date unavailable";}}
 function render(){
  root.replaceChildren();
- const visible=records.filter(data=>node("studioReviewFilter").value==="all"||
-   data.status===node("studioReviewFilter").value);
+ const visible=records.filter(data=>
+   (!deepLink.assessment||data.assessmentId===deepLink.assessment)&&
+   (!deepLink.section||data.section===deepLink.section)&&
+   (node("studioReviewFilter").value==="all"||data.status===node("studioReviewFilter").value));
  const count=node("studioReviewCount");
  if(count)count.textContent=visible.length+" of "+records.length+" submissions shown · "+
    records.filter(item=>item.status==="submitted").length+" awaiting review · "+
@@ -61,9 +63,10 @@ async function load(){
    if(deepLinkPending){
      deepLinkPending=false;
      const matched=records.find(record=>record.assessmentId===deepLink.assessment&&
-       record.studentId===deepLink.student&&(!deepLink.section||record.section===deepLink.section));
+       (!deepLink.student||record.studentId===deepLink.student)&&
+       (!deepLink.section||record.section===deepLink.section));
      if(matched)selectedId=matched.id;
-     else setStatus("That student submission is unavailable to this account or class. Showing your accessible submissions.");
+     else setStatus("No accessible Studio submission matches this assessment and class yet.");
    }
    render();
    if(selectedId){
@@ -137,10 +140,14 @@ async function inspect(item){
      add(designs,"summary","Submitted system designs","font-semibold cursor-pointer");
      add(designs,"pre",JSON.stringify(snapshot.design,null,2),"whitespace-pre-wrap text-xs mt-2 overflow-auto max-h-48");
    }
-   if(item.status==="reviewed")add(detail,"p","Reviewed. Existing private grade: "+(grade.exists()?grade.data().score+" / "+grade.data().maxScore:"Unavailable"),"text-sm font-semibold text-teal-900 mt-4");
+   if(item.status==="reviewed")add(detail,"p",
+     grade.exists()
+       ?(grade.data().published?"Published grade: ":"Reviewed private grade: ")+grade.data().score+" / "+grade.data().maxScore
+       :"Reviewed submission · grade unavailable",
+     "text-sm font-semibold text-teal-900 mt-4");
    if(!["submitted","reviewed"].includes(item.status))return;
    if(item.status==="reviewed"&&grade.exists()&&grade.data().published){
-     add(detail,"p","Published grade protected. Unpublish in Gradebook before requesting a revision.","text-sm text-amber-900 mt-2");
+     add(detail,"p","This reviewed Studio grade is published and will flow into linked Class Record columns. Unpublish it only when a correction or new revision is required.","text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg p-3 mt-3");
      return;
    }
    const form=add(detail,"section","","border-t mt-5 pt-4 grid gap-3");
@@ -157,18 +164,62 @@ async function inspect(item){
    const buttons=add(form,"div","","flex gap-3 flex-wrap");
    const revise=add(buttons,"button","Request revision","border rounded-lg px-4 py-2 text-amber-950 bg-amber-100 font-semibold");
    const gradeBtn=add(buttons,"button","Save reviewed grade draft","bg-teal-700 text-white rounded-lg px-4 py-2 font-semibold");
+   const publishBtn=add(buttons,"button","Publish reviewed grade","bg-emerald-700 text-white rounded-lg px-4 py-2 font-semibold");
+   publishBtn.hidden=!(item.status==="reviewed"&&grade.exists()&&!grade.data().published);
    if(item.status==="reviewed"){
      gradeBtn.hidden=true;scoreLabel.hidden=true;feedbackLabel.hidden=true;
-     note.placeholder="Explain why you are reopening this reviewed Studio submission. The current private grade becomes stale until the new revision is reviewed.";
+     note.placeholder="Explain why you are reopening this reviewed Studio submission. Publishing the existing reviewed grade does not require a new note.";
    }
+   const publishReviewed=async()=>{
+     if(busy||publishBtn.hidden)return;
+     if(!confirm("Publish this reviewed Studio grade to the learner and linked Class Record now?"))return;
+     busy=true;revise.disabled=true;gradeBtn.disabled=true;publishBtn.disabled=true;
+     const loading=window.beginLoading?.("Publishing reviewed Studio grade…")||(()=>{});
+     try{
+       await runTransaction(db,async tx=>{
+         const headRef=doc(db,"studio_submissions",item.id),gradeRef=doc(db,"student_grades",item.id);
+         const [latest,latestGrade,taskDoc]=await Promise.all([
+           tx.get(headRef),tx.get(gradeRef),tx.get(doc(db,"assessments",item.assessmentId))
+         ]);
+         if(auth.currentUser?.uid!==uid)throw Error("Staff account changed. Publication cancelled.");
+         if(!latest.exists()||latest.data().status!=="reviewed"||
+           latest.data().revision!==item.revision||
+           String(latest.data().variantId||"")!==String(item.variantId||""))
+           throw Error("The reviewed Studio submission changed. Refresh before publishing.");
+         if(!taskDoc.exists()||taskDoc.data().schemaVersion!==3)
+           throw Error("This is no longer a Studio assessment.");
+         if(!latestGrade.exists())throw Error("Save a reviewed Studio grade before publishing.");
+         const before=latestGrade.data();
+         if(before.published===true)return;
+         if(before.studentId!==item.studentId||before.taskId!==item.assessmentId||
+           before.gradeSource!=="studio_teacher_review"||
+           before.studioRevision!==item.revision||
+           before.studioSnapshotHash!==item.snapshotHash||
+           String(before.studioVariantId||"")!==String(item.variantId||"")||
+           before.reviewedBy!==latest.data().reviewedBy||before.reviewRequired!==false)
+           throw Error("The grade no longer matches this reviewed Studio evidence.");
+         tx.update(gradeRef,{published:true});
+         tx.set(doc(collection(db,"grade_revisions")),{
+           gradeId:item.id,studentId:item.studentId,taskId:item.assessmentId,
+           editorUid:uid,reason:"Published reviewed Studio grade from Studio submissions",
+           before:{score:before.score,feedback:before.feedback,published:false},
+           after:{score:before.score,feedback:before.feedback,published:true},
+           createdAt:serverTimestamp()
+         });
+       });
+       setStatus("Studio grade published. Linked Class Record columns will show it on refresh.");
+       busy=false;await load();
+     }catch(error){setStatus("Grade was not published: "+error.message);}
+     finally{busy=false;revise.disabled=false;gradeBtn.disabled=false;publishBtn.disabled=false;loading();}
+   };
    const save=async(type)=>{
      if(busy)return;
      const reason=note.value.trim(),points=Number(score.value),text=feedback.value.trim();
      if(reason.length<15)return setStatus("Enter a review explanation of at least 15 characters.");
      if(type==="reviewed"&&(score.value.trim()===""||!Number.isFinite(points)||points<0||points>max||text.length<20))
        return setStatus("Enter a score within the assessment maximum and at least 20 characters of rubric feedback.");
-     if(!confirm(type==="reviewed"?"Save this grade privately for Gradebook publication?":"Request a new student revision?"))return;
-     busy=true;revise.disabled=true;gradeBtn.disabled=true;
+     if(!confirm(type==="reviewed"?"Save this reviewed Studio grade as a private draft?":"Request a new student revision?"))return;
+     busy=true;revise.disabled=true;gradeBtn.disabled=true;publishBtn.disabled=true;
      const loading=window.beginLoading?.("Recording Studio review…")||(()=>{});
      try{
        await runTransaction(db,async tx=>{
@@ -209,13 +260,14 @@ async function inspect(item){
            });
          }
        });
-       setStatus(type==="reviewed"?"Grade saved privately. Open Gradebook to publish it.":"Revision requested. The student may resubmit the project before the deadline.");
+       setStatus(type==="reviewed"?"Grade saved privately. Reopen this reviewed submission to publish it here.":"Revision requested. The student may resubmit the project before the deadline.");
        busy=false;await load();
      }catch(error){setStatus("Review not saved: "+error.message);}
-     finally{busy=false;revise.disabled=false;gradeBtn.disabled=false;loading();}
+     finally{busy=false;revise.disabled=false;gradeBtn.disabled=false;publishBtn.disabled=false;loading();}
    };
    revise.addEventListener("click",()=>void save("revision_requested"));
    gradeBtn.addEventListener("click",()=>void save("reviewed"));
+   publishBtn.addEventListener("click",()=>void publishReviewed());
  }catch(error){
    if(stamp===inspectionSequence){detail.replaceChildren();add(detail,"p","Cannot inspect this submission: "+error.message,"text-rose-700 text-sm");}
  }finally{if(stamp===inspectionSequence)detail.setAttribute("aria-busy","false");}
