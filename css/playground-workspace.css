@@ -1385,3 +1385,46 @@ body[data-playground-access] #studioSubmitDialog{
     padding:6px 7px;font-size:10px
   }
 }
+
+
+/* Published assessment instructions remain accessible without opening submission. */
+body[data-playground-access] .studio-assignment-dock > .studio-task-overview{
+  padding:9px 13px;border-bottom:1px solid #cddbea;
+  background:#eff5ff;color:#263e65;
+  overflow-y:auto;max-height:172px;flex:none
+}
+body[data-playground-access] .studio-task-overview strong{
+  display:block;font-size:12px;line-height:1.45;color:#25366a
+}
+body[data-playground-access] .studio-task-overview #studioTaskOverviewMeta{
+  font-size:11px;line-height:1.5;color:#536b92;margin:3px 0
+}
+body[data-playground-access] .studio-task-overview #studioTaskOverviewText,
+body[data-playground-access] .studio-task-overview #studioTaskOverviewRubric{
+  white-space:pre-wrap;overflow-wrap:anywhere;
+  font:12px/1.6 system-ui,sans-serif;color:#253e5a;margin:7px 0 0
+}
+body[data-playground-access] .studio-task-overview details{
+  margin-top:9px;border-top:1px solid #cddbef;padding-top:7px
+}
+body[data-playground-access] .studio-task-overview details summary{
+  cursor:pointer;font-weight:800;font-size:11px
+}
+body[data-playground-access] #studioTaskSubmitShortcut:focus-visible,
+body[data-playground-access] .studio-assignment-dock button:focus-visible,
+body[data-playground-access] .studio-assignment-dock a:focus-visible{
+  outline:3px solid #0891b2;outline-offset:2px
+}
+@media(max-width:767px){
+  body[data-playground-access] .studio-assignment-dock > .studio-task-overview{
+    max-height:none;overflow:visible;margin-top:10px;
+    padding:13px;border:1px solid #d7dfed;border-radius:12px;background:#fff;
+    box-shadow:0 3px 12px #1a35420e
+  }
+  body[data-playground-access] .studio-task-overview strong{font-size:15px}
+  body[data-playground-access] .studio-task-overview #studioTaskOverviewMeta{font-size:12px}
+  body[data-playground-access] .studio-task-overview #studioTaskOverviewText,
+  body[data-playground-access] .studio-task-overview #studioTaskOverviewRubric{
+    font-size:13px;line-height:1.7
+  }
+}
