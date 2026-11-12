@@ -131,7 +131,7 @@ test('the current mobile group starts expanded without expanding the complete me
 test('teaching has its own destinations and no unrelated analytics shortcut', () => {
   const { desktop } = mount('lesson', 'planner');
   assert.deepEqual(groupNames(desktop), ['Teaching ▾']);
-  assert.deepEqual(links(desktop).map(link => link.href), ['lesson-planner.html', 'presentation.html', 'schedule.html', 'library.html']);
+  assert.deepEqual(links(desktop).map(link => link.href), ['lesson-planner.html', 'presentation.html', 'schedule.html', 'pilot-sandbox.html', 'library.html']);
 });
 
 test('only administrators receive school management destinations', () => {
