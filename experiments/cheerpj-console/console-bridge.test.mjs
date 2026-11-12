@@ -74,3 +74,12 @@ test("limits unconsumed stdin, clears it, then accepts new lines", async () => {
 test("rejects missing undocumented console API rather than pretending stdin works", () => {
   assert.throws(() => createConsoleBridge({},()=>{}), /ConInodeOps/);
 });
+
+test("finishing a run answers an abandoned pending read and clears old bytes", async () => {
+  const {bridge, ops} = setup();
+  const waiting = read(ops, 10);
+  bridge.endRun();
+  assert.deepEqual(await waiting, {count:0, value:""});
+  bridge.sendLine("fresh");
+  assert.equal((await read(ops, 10)).value, "fresh\n");
+});
