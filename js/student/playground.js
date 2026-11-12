@@ -4,7 +4,7 @@ import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlay
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
 import {createProjectStudio} from "./project-studio.mjs?v=4.0.2";
-import {currentV4StudioSchool} from "./v4-studio-service.mjs?v=4.0.1";
+import {currentV4StudioSchool} from "./v4-studio-service.mjs?v=4.1.0";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=3";
 import {
