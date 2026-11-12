@@ -35,6 +35,8 @@ function createSchoolStudioSubmissionService({db}){
   const offeringId=task.data().offeringId;
   if(input.action==="submit"||input.action==="my_status"){
    if(!ctx.roles.includes("student"))deny("permission-denied","Student permission is required.");
+   if(task.data().published!==true)
+    deny("not-found","This Studio assessment is not published to students.");
    const membership=await membershipRef.get();
    const personId=membership.data()?.personId;
    if(typeof personId!=="string")deny("failed-precondition","Link your verified school person record before submitting.");
@@ -83,7 +85,7 @@ function createSchoolStudioSubmissionService({db}){
     const assessment=currentTask.data();
     if(!currentTask.exists||assessment.schoolId!==ctx.schoolId||
        assessment.submissionSource!=="studio"||assessment.status!=="deployed"||
-       assessment.offeringId!==offeringId)
+       assessment.published!==true||assessment.offeringId!==offeringId)
      deny("failed-precondition","The assigned Studio assessment is no longer available.");
     const lifecycle=assessment.lifecycle||"active",
       revisionOpen=submission.exists&&submission.data().status==="reopened";
