@@ -93,6 +93,15 @@ export function createConsoleBridge(cheerpj, onOutput) {
     clearQueuedInput() {
       queued = new Uint8Array(0);
     },
+    endRun() {
+      queued = new Uint8Array(0);
+      // Release any stale blocked read before the next compilation begins.
+      if (pending) {
+        const {callback} = pending;
+        pending = null;
+        callback(0);
+      }
+    },
     resetOutputLimit() {
       outputBytes = 0;
       truncated = false;
