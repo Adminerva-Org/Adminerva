@@ -258,7 +258,7 @@ import { createConsoleBridge } from './console-bridge.mjs';
       terminalStatus.textContent = "Run failed. See output.";
     } finally {
       setInputEnabled(false);
-      bridge?.clearQueuedInput();
+      bridge?.endRun();
       withRunning(false);
     }
   }
