@@ -63,6 +63,9 @@ document.addEventListener("DOMContentLoaded", () => {
         ["school-student-assessments","Assignments · 4.0 pilot","school-student-assessments.html"],
         ["school-student-settings","Settings · 4.0 pilot","school-student-settings.html"]
       ] : []),
+      ...(hasSchoolStudent ? [
+        ["school-student-grades","My grades","school-student-grades.html"]
+      ] : []),
       [v4OnlyStudent?"school-student-settings":"settings", "Account settings", studentSettingsRoute]
     ] },
     "student-practice": { name: "Practice Lab", items: [
@@ -78,6 +81,7 @@ document.addEventListener("DOMContentLoaded", () => {
       v4OnlyTeacher ? [
         ["library-v4","Assessments","teacher-assessment-library.html"],
         ["gradebook-v4", "Gradebook", "school-gradebook.html"],
+        ["class-record","Class Record","class-record.html"],
         ["reclaims", "Requests & attribution", "reclaim-inbox.html"]
       ] : [
         ...(hasSchoolTeacher ? [["library-v4","Assessments · 4.0 pilot","teacher-assessment-library.html"]] : []),
@@ -86,7 +90,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ["studio-submissions", "Studio submissions", "studio-submissions.html"],
         ["repofetch", "Review & grade", "repofetch.html"],
         ["gradebook", "Gradebook · current classes", gradebookRoute],
-        ...(hasSchoolTeacher ? [["gradebook-v4", "Gradebook · 4.0 pilot", "school-gradebook.html"]] : []),
+        ...(hasSchoolTeacher ? [["gradebook-v4", "Gradebook · 4.0 pilot", "school-gradebook.html"],["class-record","Class Record","class-record.html"]] : []),
         ["reclaims", "Requests & attribution", "reclaim-inbox.html"],
         ["repobank", "Repository investigation", "repobank.html"]
       ]) : [] },
@@ -131,6 +135,8 @@ document.addEventListener("DOMContentLoaded", () => {
       ...(hasPlatformAuthority?[["owner-schools","Institution registry","owner-schools.html"]]:[]),
       ["overview","School overview","school-admin.html"],
       ["people-v4","People & classes","people-access.html"],
+      ["grading-schemes","Grading schemes","school-grading-schemes.html"],
+      ["class-record-oversight","Class Record oversight","school-class-records.html"],
       ["data-files","Resources & data","school-data-controls.html"],
       ["cutover-readiness","Advanced readiness","school-cutover-readiness.html"]
     ] : hasPlatformAuthority ? [
@@ -141,7 +147,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["issues", "Reports & support", supportRoute]
     ] }
   ];
-  const area = ["repo", "educator"].includes(activeModule) ? "educator" : activeModule;
+  const area = ["repo", "educator", "class-record"].includes(activeModule) ? "educator" : activeModule;
   const groups = isStudent ? [] : staffGroups.filter(group => group.items.length &&
     (group.area === area || area === "admin" && group.area === "settings"));
   const studentGroup = studentGroups[activeModule];
