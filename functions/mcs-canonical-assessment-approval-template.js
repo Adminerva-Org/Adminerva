@@ -4,7 +4,7 @@ const {readFileSync,writeFileSync}=require("node:fs");
 const {createHash}=require("node:crypto");
 const {SCHEMA}=require("./mcs-canonical-assessment-plan.js");
 const {SCHOOL_ID}=require("./mcs-canonical-foundation-plan.js");
-const APPROVAL_SCHEMA="adminerva-v4-mcs-canonical-assessment-approval-v1";
+const APPROVAL_SCHEMA="adminerva-v4-mcs-canonical-assessment-approval-v2";
 const sha=value=>createHash("sha256").update(value).digest("hex");
 function arg(args,name){
  const value=args.find(item=>item.startsWith("--"+name+"="))?.slice(name.length+3);
@@ -19,12 +19,18 @@ function createTemplate(plan,raw){
   planSha256:sha(raw),approvedBy:"",approvedAt:"",
   acknowledgements:{
    ownersReviewed:false,rubricsReviewed:false,offeringScopesReviewed:false,
-   submissionModesReviewed:false,legacyNoDeadlineReviewed:false,
+   submissionModesReviewed:false,personalizationReviewed:false,legacyNoDeadlineReviewed:false,
    historicalLinksReviewed:false,noDeploymentNotifications:true,
    backupsAndRollbackReviewed:false
   },
   blueprints:(plan.blueprints||[]).map(row=>({
    blueprintId:row.blueprintId,ownerUid:row.ownerUid,title:row.title,
+   personalizationEnabled:row.personalization?.enabled===true,
+   decision:"pending",exclusionReason:""
+  })),
+  personalizationPools:(plan.personalizationPools||[]).map(row=>({
+   poolId:row.poolId,blueprintId:row.blueprintId,ownerUid:row.ownerUid,
+   target:row.target,variantCount:Array.isArray(row.variantIds)?row.variantIds.length:0,
    decision:"pending",exclusionReason:""
   })),
   tasks:(plan.tasks||[]).map(row=>({
@@ -44,7 +50,8 @@ function main(){
  const raw=readFileSync(planPath),plan=JSON.parse(raw.toString("utf8")),template=createTemplate(plan,raw);
  writeFileSync(output,JSON.stringify(template,null,2)+"\n",{flag:"wx",mode:0o600});
  console.info(JSON.stringify({templateCreated:true,schoolId:SCHOOL_ID,
-  blueprints:template.blueprints.length,tasks:template.tasks.length,
+  blueprints:template.blueprints.length,
+  personalizationPools:template.personalizationPools.length,tasks:template.tasks.length,
   blockers:template.unresolvedBlockers.length,approved:false}));
 }
 if(require.main===module)try{main();}catch(error){

@@ -61,7 +61,7 @@ async function schoolAdminContext(db,request){
      memberData?.schoolId!==SCHOOL_ID||memberData?.status!=="active"||
      !Array.isArray(memberData.roles)||!memberData.roles.includes("school_admin"))
     fail("permission-denied","Verified MCS school-administrator access is required.");
-  return {uid,school:schoolData};
+  return {uid,school:schoolData,roles:memberData.roles};
 }
 async function authUsersByEmail(auth,emails){
   const result=new Map(),values=[...new Set(emails.filter(Boolean))];
@@ -74,6 +74,26 @@ async function authUsersByEmail(auth,emails){
     }
   }
   return result;
+}
+function validatePilotMemberships({included,documents,firstAdminUid}){
+  const byUid=new Map(documents.map(doc=>[doc.id,doc.data()]));
+  const requiredStudents=new Set(included.map(row=>row.linkedUid).filter(Boolean));
+  const valid=(data,role)=>data?.schoolId===SCHOOL_ID&&data.status==="active"&&
+    Array.isArray(data.roles)&&data.roles.includes(role);
+  const admin=firstAdminUid?byUid.get(firstAdminUid):null;
+  const firstAdminReady=valid(admin,"school_admin")&&valid(admin,"teacher");
+  const studentMembershipsReady=included.length===EXPECTED_TOTAL&&requiredStudents.size===EXPECTED_TOTAL&&
+    [...requiredStudents].every(uid=>valid(byUid.get(uid),"student"));
+  const extras=documents.filter(doc=>!requiredStudents.has(doc.id)&&doc.id!==firstAdminUid);
+  const invalidExtras=extras.filter(doc=>{
+    const data=doc.data(),roles=data?.roles;
+    return data?.schoolId!==SCHOOL_ID||data.status!=="active"||
+      !Array.isArray(roles)||roles.includes("student")||
+      !roles.some(role=>role==="teacher"||role==="school_admin");
+  });
+  return {firstAdminReady,studentMembershipsReady,
+    extraStaffMemberships:extras.length,invalidExtras:invalidExtras.length,
+    ready:firstAdminReady&&studentMembershipsReady&&!invalidExtras.length};
 }
 async function pilotSnapshot({db,auth,ctx,includeSectionRecords=true}){
   const [students,reviewDocs,exclusionDocs]=await Promise.all([
@@ -127,26 +147,39 @@ async function pilotSnapshot({db,auth,ctx,includeSectionRecords=true}){
     issue:"No verified Firebase account is linked to this legacy student record."
   }));
   const countMismatch=counts.filter(row=>row.included!==row.expected);
-  const [peopleCount,membershipCount,offeringCount,enrollmentCount,assignmentCount]=await Promise.all([
+  const [peopleCount,membershipsSnap,offeringCount,enrollmentCount,assignmentCount]=await Promise.all([
     db.collection("schools/"+SCHOOL_ID+"/people").count().get(),
-    db.collection("schools/"+SCHOOL_ID+"/memberships").count().get(),
+    db.collection("schools/"+SCHOOL_ID+"/memberships").get(),
     db.collection("schools/"+SCHOOL_ID+"/course_offerings").count().get(),
     db.collection("schools/"+SCHOOL_ID+"/enrollments").count().get(),
     db.collection("schools/"+SCHOOL_ID+"/staff_assignments").count().get()
   ]);
+  const memberAudit=validatePilotMemberships({
+    included,documents:membershipsSnap.docs,firstAdminUid:ctx.school.firstAdminUid
+  });
   const canonical={
-    people:peopleCount.data().count,memberships:membershipCount.data().count,
+    people:peopleCount.data().count,memberships:membershipsSnap.size,
     offerings:offeringCount.data().count,enrollments:enrollmentCount.data().count,
-    teacherAssignments:assignmentCount.data().count
+    teacherAssignments:assignmentCount.data().count,
+    firstAdminDualRoleReady:memberAudit.firstAdminReady,
+    studentMembershipsReady:memberAudit.studentMembershipsReady,
+    extraStaffMemberships:memberAudit.extraStaffMemberships,
+    invalidExtraMemberships:memberAudit.invalidExtras
   };
-  canonical.ready=canonical.people===(EXPECTED_TOTAL+1)&&canonical.memberships===(EXPECTED_TOTAL+1)&&canonical.offerings===8&&
+  canonical.ready=canonical.people===(EXPECTED_TOTAL+1)&&memberAudit.ready&&canonical.offerings===8&&
     canonical.enrollments===(EXPECTED_TOTAL*2)&&canonical.teacherAssignments===8;
   const blockers=[];
   if(unresolved.length)blockers.push({code:"identity_unresolved",label:unresolved.length+" student identit"+(unresolved.length===1?"y":"ies")+" need review."});
   if(countMismatch.length)blockers.push({code:"roster_count_mismatch",label:"Pilot roster counts do not yet match the protected four-section roster."});
   if(duplicateLinks.length)blockers.push({code:"duplicate_identity",label:duplicateLinks.length+" account link conflict(s) need review."});
   if(!canonical.ready)blockers.push({code:"canonical_migration_pending",label:"Reviewed V4 pilot migration has not been applied yet."});
-  const readyToStart=blockers.length===0&&included.length===EXPECTED_TOTAL;
+  if(ctx.school.state==="draft"&&!ctx.roles.includes("teacher"))
+    blockers.push({code:"pilot_teacher_role_missing",label:"The pilot administrator must also retain an active teacher role."});
+  if(ctx.school.productionAuthorized===true)
+    blockers.push({code:"pilot_production_state_invalid",label:"This limited pilot requires production authorization to remain disabled."});
+  if((ctx.school.compatibilityMode||"legacy_allowed")!=="legacy_allowed")
+    blockers.push({code:"pilot_compatibility_invalid",label:"Restore legacy compatibility before starting a limited pilot."});
+  const readyToStart=blockers.length===0&&included.length===EXPECTED_TOTAL&&ctx.school.state==="draft";
   const mismatchSectionIds=new Set(countMismatch.map(row=>row.sectionId));
   return {
     schoolId:SCHOOL_ID,schoolState:ctx.school.state,
@@ -224,6 +257,7 @@ function createMcsPilotControlService({db,auth=getAuth()}){
         },{merge:false});
         tx.create(audit,{schoolId:SCHOOL_ID,actorUid:ctx.uid,action:"pilot_identity_link_reviewed",
           legacyStudentId:input.legacyStudentId,sectionId:target.section.sectionId,createdAt:now});
+        tx.update(db.doc("platform_schools/"+SCHOOL_ID),{pilotRosterRevision:FieldValue.increment(1)});
       });
       return {saved:true,legacyStudentId:input.legacyStudentId};
     }
@@ -234,11 +268,17 @@ function createMcsPilotControlService({db,auth=getAuth()}){
         ref=db.doc("schools/"+SCHOOL_ID+"/pilot_identity_reviews/"+input.legacyStudentId),
         audit=db.collection("schools/"+SCHOOL_ID+"/pilot_audit").doc(),now=FieldValue.serverTimestamp();
       await db.runTransaction(async tx=>{
+        const schoolRef=db.doc("platform_schools/"+SCHOOL_ID),memberRef=db.doc("schools/"+SCHOOL_ID+"/memberships/"+ctx.uid);
+        const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(memberRef)]);
+        if(!school.exists||school.data().state!=="draft"||member.data()?.status!=="active"||
+          !Array.isArray(member.data()?.roles)||!member.data().roles.includes("school_admin"))
+          fail("failed-precondition","Pilot administration state changed. Refresh before saving.");
         tx.set(ref,{schoolId:SCHOOL_ID,legacyStudentId:input.legacyStudentId,status:"cleared",
           displayNameSnapshot:displayName(target.data),sectionId:target.section.sectionId,
           reviewedByUid:ctx.uid,reviewedAt:now,reason:why},{merge:false});
         tx.create(audit,{schoolId:SCHOOL_ID,actorUid:ctx.uid,action:"pilot_identity_link_cleared",
           legacyStudentId:input.legacyStudentId,createdAt:now});
+        tx.update(schoolRef,{pilotRosterRevision:FieldValue.increment(1)});
       });
       return {saved:true};
     }
@@ -250,12 +290,18 @@ function createMcsPilotControlService({db,auth=getAuth()}){
         ref=db.doc("schools/"+SCHOOL_ID+"/pilot_roster_exclusions/"+input.legacyStudentId),
         audit=db.collection("schools/"+SCHOOL_ID+"/pilot_audit").doc(),now=FieldValue.serverTimestamp();
       await db.runTransaction(async tx=>{
+        const schoolRef=db.doc("platform_schools/"+SCHOOL_ID),memberRef=db.doc("schools/"+SCHOOL_ID+"/memberships/"+ctx.uid);
+        const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(memberRef)]);
+        if(!school.exists||school.data().state!=="draft"||member.data()?.status!=="active"||
+          !Array.isArray(member.data()?.roles)||!member.data().roles.includes("school_admin"))
+          fail("failed-precondition","Pilot administration state changed. Refresh before saving.");
         tx.set(ref,{schoolId:SCHOOL_ID,legacyStudentId:input.legacyStudentId,
           status:excluding?"excluded":"restored",displayNameSnapshot:displayName(target.data),
           sectionId:target.section.sectionId,reviewedByUid:ctx.uid,reviewedAt:now,reason:why},{merge:false});
         tx.create(audit,{schoolId:SCHOOL_ID,actorUid:ctx.uid,
           action:excluding?"pilot_legacy_record_excluded":"pilot_legacy_record_restored",
           legacyStudentId:input.legacyStudentId,sectionId:target.section.sectionId,createdAt:now});
+        tx.update(schoolRef,{pilotRosterRevision:FieldValue.increment(1)});
       });
       return {saved:true,excluded:excluding};
     }
@@ -275,8 +321,12 @@ function createMcsPilotControlService({db,auth=getAuth()}){
           audit=db.collection("platform_audit").doc(),
           [school,member]=await Promise.all([tx.get(schoolRef),tx.get(memberRef)]);
         if(!school.exists||school.data().state!=="draft"||member.data()?.status!=="active"||
-           !Array.isArray(member.data()?.roles)||!member.data().roles.includes("school_admin"))
-          fail("failed-precondition","Pilot administration state changed. Refresh and review again.");
+           !Array.isArray(member.data()?.roles)||!member.data().roles.includes("school_admin")||
+           !member.data().roles.includes("teacher")||
+           (school.data().compatibilityMode||"legacy_allowed")!=="legacy_allowed"||
+           school.data().productionAuthorized===true||
+           Number(school.data().pilotRosterRevision||0)!==Number(ctx.school.pilotRosterRevision||0))
+          fail("failed-precondition","Pilot scope, account role or reviewed roster changed. Refresh and review again.");
         const now=FieldValue.serverTimestamp();
         tx.update(schoolRef,{
           state:"pilot",compatibilityMode:"legacy_allowed",productionAuthorized:false,
@@ -293,4 +343,4 @@ function createMcsPilotControlService({db,auth=getAuth()}){
     fail("invalid-argument","Unknown MCS controlled-pilot operation.");
   };
 }
-module.exports={SCHOOL_ID,PILOT_SECTIONS,EXPECTED_TOTAL,createMcsPilotControlService,displayName,sectionFor};
+module.exports={SCHOOL_ID,PILOT_SECTIONS,EXPECTED_TOTAL,createMcsPilotControlService,validatePilotMemberships,displayName,sectionFor};

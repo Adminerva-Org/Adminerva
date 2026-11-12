@@ -8,7 +8,7 @@ const {createHash}=require("node:crypto");
 
 const SCHOOL_ROOTS=new Set([
  "students","teachers","school_catalog","assessments","assessment_private",
- "assessment_evidence","studio_submissions","student_grades","grade_revisions",
+ "assessment_evidence","studio_submissions","studio_assessment_variants","student_grades","grade_revisions",
  "student_submissions","commit_reclaims","commit_claim_decisions","commit_claim_conflicts",
  "student_code_projects","student_playground_workspaces","playground_snapshots",
  "student_projects","student_submissions","student_grade_drafts","repositories",

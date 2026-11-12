@@ -19,7 +19,13 @@ function fixture({role="teacher",sections=["A","B"],authorization=async()=>role}
   };
   sdk.writeBatch=()=>({set:sdk.setDoc,update:sdk.updateDoc,delete:sdk.deleteDoc,commit:async()=>{}});
   sdk.getDocsFromServer=sdk.getDocs;sdk.getDocFromServer=sdk.getDoc;
-  const context=vm.createContext({sdk,auth,db:{},resolveStaffRole:authorization,staffRole:()=>role,staffSections:()=>sections});
+  const context=vm.createContext({sdk,auth,db:{},
+    resolveAccountAccess:async user=>({
+      legacyRole:await authorization(user),
+      legacyCompatibilityAllowed:true,
+      v4Cutover:false
+    }),
+    staffRole:()=>role,staffSections:()=>sections});
   const source=readFileSync("js/core/teaching-firestore.mjs","utf8").replace(/^export \* from .*;$/gm,"").replace(/^import .*;$/gm,"").replace(/\bexport /g,"");
   vm.runInContext(source+";globalThis.api={collection,query,doc,getDoc,getDocs,setDoc,updateDoc,deleteDoc,addDoc,runTransaction,writeBatch,onSnapshot};",context);
   return {api:context.api,auth,calls,listeners,sdk};

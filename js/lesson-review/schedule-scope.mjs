@@ -17,17 +17,24 @@ export function scheduleSemester(academicTerm = "") {
 }
 
 export function scheduleScope(schoolYear, semesterOrTerm) {
-  const year = normalizeSchoolYear(schoolYear);
-  const semester = String(semesterOrTerm).toUpperCase() === "S2"
-    ? "S2" : scheduleSemester(semesterOrTerm);
-  const id = "master_schedule_SY" + year.replace("-", "") + "_" + semester;
+  const year = normalizeSchoolYear(schoolYear),raw=String(semesterOrTerm??"").trim(),
+    upper=raw.toUpperCase(),legacySemester=
+      upper==="S1"||upper==="S2"||upper.includes("FIRST SEMESTER")||upper.includes("SECOND SEMESTER");
+  if(!raw)throw new Error("Choose an academic period.");
+  if(!legacySemester&&!/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(raw))
+    throw new Error("Choose a valid academic period.");
+  const semester=legacySemester?(upper==="S2"||upper.includes("SECOND SEMESTER")?"S2":"S1"):null,
+    periodId=legacySemester?semester:raw,
+    id=legacySemester?
+      "master_schedule_SY"+year.replace("-","")+"_"+semester:
+      "school_schedule_"+year.replace("-","")+"_"+periodId;
   return {
-    year, semester, id,
-    jsonKey: "Adminerva_schedule_json_" + id,
-    textKey: "Adminerva_schedule_" + id,
-    pendingKey: "Adminerva_schedule_pending_" + id,
-    versionKey: "Adminerva_schedule_version_" + id,
-    allowLegacy: semester === "S1" && year === LEGACY_SCHEDULE_YEAR,
+    year,semester,periodId,id,
+    jsonKey:"Adminerva_schedule_json_"+id,
+    textKey:"Adminerva_schedule_"+id,
+    pendingKey:"Adminerva_schedule_pending_"+id,
+    versionKey:"Adminerva_schedule_version_"+id,
+    allowLegacy:semester==="S1"&&year===LEGACY_SCHEDULE_YEAR
   };
 }
 

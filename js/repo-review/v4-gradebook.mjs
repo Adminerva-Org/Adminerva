@@ -261,6 +261,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4LegacyGradePanel").hidden=true;
     document.getElementById("gbV4CorrectionPanel").classList.add("hidden");
     document.getElementById("gbV4StudioEvidence").classList.toggle("hidden",currentTask.submissionSource!=="studio");
+    document.getElementById("gbV4PersonalizedTask").classList.add("hidden");
+    document.getElementById("gbV4PersonalizedVariant").textContent="";
+    document.getElementById("gbV4PersonalizedPrompt").textContent="";
+    document.getElementById("gbV4PersonalizedNotes").textContent="";
     document.getElementById("gbV4GithubEvidence").classList.toggle("hidden",currentTask.submissionSource!=="github");
     document.getElementById("gbV4EvidenceType").textContent=
       currentTask.submissionSource==="github"?"Verified GitHub evidence":"Verified Studio submission";
@@ -281,6 +285,15 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         fileSelect.onchange=renderFile;renderFile();
         document.getElementById("gbV4Artifacts").textContent=
           JSON.stringify(currentSnapshot.artifacts||{},null,2);
+        if(currentSnapshot.personalizedTask){
+          document.getElementById("gbV4PersonalizedTask").classList.remove("hidden");
+          document.getElementById("gbV4PersonalizedVariant").textContent=
+            "Variant "+currentSnapshot.personalizedTask.variantId;
+          document.getElementById("gbV4PersonalizedPrompt").textContent=
+            currentSnapshot.personalizedTask.prompt||"Prompt unavailable.";
+          document.getElementById("gbV4PersonalizedNotes").textContent=
+            currentSnapshot.personalizedTask.evaluationNotes||"No private variant notes were saved.";
+        }
       }else renderGithubEvidence(currentSnapshot);
       renderRubric(currentGrade);
       const revisionDue=document.getElementById("gbV4RevisionDue");

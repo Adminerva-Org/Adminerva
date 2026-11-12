@@ -1,19 +1,43 @@
 /** Per-account integration preferences; the application connection is managed by deployment. */
 import { app, auth, db } from "../core/firebase-core.js?v=1.3.0";
-import "./school-ai-settings.mjs?v=1.3.0";
+import "./school-ai-settings.mjs?v=4.0.0";
 import {CONNECTION_DEFAULTS,activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "../core/connection-cache.mjs?v=1.3.0";
+import {resolveAccountAccess} from "../core/staff-session.mjs?v=4.0.1";
 import {collection,query,where,getDocs,doc,updateDoc,setDoc} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 
 const field=id=>document.getElementById(id);
 const safeSet=(id,value)=>{if(field(id))field(id).value=value||"";};
 const safeGet=id=>field(id)?.value.trim()||"";
 const defaultModel=CONNECTION_DEFAULTS.aiModel;
-let saving=false,unsubscribe=null,editRevision=0,formOwnerUid=null;
+let saving=false,unsubscribe=null,editRevision=0,formOwnerUid=null,legacyCredentialsRetired=false;
 const preferences=[["adminGithubToken","githubToken","Adminerva_github_token"],["adminGeminiKey","geminiKey","Adminerva_gemini_token"],["adminAiModel","aiModel","Adminerva_ai_model"],["globalAiEngine","engineMode","Adminerva_engine_mode"]];
 function feedback(message,tone="info"){
   const region=field("security-save-status");if(region){region.textContent=message;region.dataset.tone=tone;}
 }
 function assertAccount(user){if(!user?.uid||auth.currentUser?.uid!==user.uid||formOwnerUid!==user.uid)throw Error("Your account changed. Reload this page before saving.");}
+function setLegacyCredentialMode(detail=null){
+  const nav=document.getElementById("adminerva-nav"),
+    state=detail&&Object.keys(detail).length?detail:{
+      schoolTeacher:nav?.dataset.schoolTeacher==="true",
+      schoolAdmin:nav?.dataset.schoolAdmin==="true",
+      v4Cutover:nav?.dataset.v4Cutover==="true",
+      v4OnlyTeacher:nav?.dataset.v4OnlyTeacher==="true",
+      legacyTeacher:nav?.dataset.legacyTeacher==="true"
+    },
+    canonicalSchoolUser=Boolean(state.schoolTeacher||state.schoolAdmin),
+    retired=Boolean(canonicalSchoolUser&&(state.v4Cutover||state.v4OnlyTeacher||!state.legacyTeacher));
+  legacyCredentialsRetired=retired;
+  const card=field("legacyPersonalConnections"),hint=field("legacyConnectionHint"),button=field("saveSettingsBtn");
+  if(card)card.hidden=retired;
+  if(button)button.hidden=retired;
+  if(hint){
+    hint.textContent=retired?
+      "Personal legacy API credentials are retired for this verified-school account. AI requests use the school connection above; GitHub evidence is handled by the school-scoped assessment workflow.":
+      "These personal credentials support only legacy compatibility workflows during migration. Verified-school AI uses the school connection above and never falls back to a browser Gemini key.";
+  }
+}
+document.addEventListener("adminerva:role-ready",event=>setLegacyCredentialMode(event.detail||{}));
+setLegacyCredentialMode();
 function fillPreferences(values){for(const [id,key] of preferences)safeSet(id,values[key]);}
 function showAppConnection(){
   const options=app?.options||{};
@@ -36,6 +60,7 @@ window.db=db;showAppConnection();fillPreferences(CONNECTION_DEFAULTS);
 
 window.saveSecuritySettings=async function(){
   if(saving)return;
+  if(legacyCredentialsRetired){feedback("Personal legacy API credentials are retired for this verified-school account.");return;}
   const user=auth.currentUser;
   if(!user?.uid||!user.email){feedback("Sign in to your staff account before saving connections.","error");return;}
   if(formOwnerUid!==user.uid){feedback("Your account changed or settings have not loaded. Reload this page before saving.","error");return;}
@@ -78,11 +103,30 @@ window.loadSecuritySettings=async function(){
     if(!user){clearConnectionPreferences();return;}
     try{
       if(auth.currentUser?.uid!==user.uid)return;
-      const owned=activateConnectionOwner(user.uid);formOwnerUid=user.uid;fillPreferences(owned);
+      const access=await resolveAccountAccess(user);
+      if(auth.currentUser?.uid!==user.uid||editRevision!==revision)return;
+      setLegacyCredentialMode({
+        schoolTeacher:access.schoolTeacher===true,
+        schoolAdmin:access.schoolAdmin===true,
+        v4Cutover:access.v4Cutover===true,
+        v4OnlyTeacher:access.schoolTeacher===true&&!access.legacyRole,
+        legacyTeacher:access.legacyRole==="teacher"
+      });
+      formOwnerUid=user.uid;
+      if(legacyCredentialsRetired){
+        clearConnectionPreferences();
+        fillPreferences(CONNECTION_DEFAULTS);
+        feedback("Legacy personal API credentials are retired for this account. Use the verified-school connection controls above.");
+        return;
+      }
+      const owned=activateConnectionOwner(user.uid);fillPreferences(owned);
       const snapshot=await getDocs(query(collection(db,"teachers"),where("email","==",user.email.toLowerCase())));
       if(auth.currentUser?.uid!==user.uid||formOwnerUid!==user.uid||editRevision!==revision||saving)return;
       const data=snapshot.empty?{}:snapshot.docs[0].data();
       fillPreferences(writeConnectionPreferences(user.uid,data));
-    }catch{if(auth.currentUser?.uid===user.uid&&editRevision===revision&&!saving)feedback("Saved profile settings could not load. This browser’s current values are shown. Check your connection before saving.","error");}
+    }catch{
+      if(auth.currentUser?.uid===user.uid&&editRevision===revision&&!saving)
+        feedback("Saved profile settings could not load. This browser’s current values are shown. Check your connection before saving.","error");
+    }
   });
 };

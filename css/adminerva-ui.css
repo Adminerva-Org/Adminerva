@@ -850,6 +850,7 @@ body main > header[class*="mb-8"],body main > header[class*="mb-6"] {
 .av-educator-layout.av-educator-layout--single{grid-template-columns:minmax(0,1fr);max-width:112rem;width:100%}
 .av-educator-layout.av-educator-layout--single>.av-educator-content{grid-column:1/-1;min-width:0}
 
+
 /* V4 account-only school picker: no control or reserved space for one-school users. */
 .av-school-select {
   display: block;

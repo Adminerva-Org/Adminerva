@@ -7,6 +7,7 @@ export function historyRecord(item,ownerUid,savedForLater=false){
     ownerUid:String(ownerUid),
     sourceKey:String(item.key||"").slice(0,500),
     type:String(item.type||"notice").slice(0,32),
+    ...(item.schoolId?{schoolId:String(item.schoolId).slice(0,64)}:{}),
     ...(item.reportCategory?{reportCategory:String(item.reportCategory).slice(0,32)}:{}),
     ...(item.reportAudience?{reportAudience:String(item.reportAudience).slice(0,16)}:{}),
     title:String(item.title||"Notification").slice(0,240),
