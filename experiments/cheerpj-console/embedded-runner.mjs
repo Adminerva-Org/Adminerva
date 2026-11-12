@@ -9,6 +9,9 @@ const CHANNEL='adminerva-cheerpj-studio-v1';
 const PARENTS=new Set(['https://adminerva-org.github.io','http://localhost:8080']);
 const session=new URLSearchParams(location.search).get('session')||'';
 const validSession=/^[a-f0-9-]{36}$/i.test(session);
+// The GitHub Pages copy is source-only. Java is never allowed to execute on
+// Adminerva's authenticated origin, even if this file is publicly accessible.
+const validHost=location.protocol==='https:' && location.origin!=='https://adminerva-org.github.io';
 const encode=new TextEncoder();
 let parentOrigin=null,started=false,running=false,bridge=null;
 let library=null,runRoot=null,heartbeat=null;
@@ -126,12 +129,13 @@ async function execute(files,entry){
     else if(completed)send('finished',completed);
   }
 }
-if(!validSession){
-  document.body.textContent='Invalid session.';
+if(!validSession||!validHost){
+  document.body.textContent='The Java runner is inactive on this origin or session.';
 }else{
   window.addEventListener('message',event=>{
     const data=event.data;
-    if(event.source!==window.parent||!PARENTS.has(event.origin)||!data||
+    if(event.source!==window.parent||event.origin===location.origin||
+       !PARENTS.has(event.origin)||!data||
        data.channel!==CHANNEL||data.session!==session)return;
     if(data.type==='hello'&&!parentOrigin){
       parentOrigin=event.origin;
