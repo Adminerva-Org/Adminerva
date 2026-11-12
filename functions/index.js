@@ -79,6 +79,8 @@ exports.schoolStudentClassRecord=onCall(callOptions,safeCallable(createSchoolStu
   db,
   resolveUsers:async uids=>(await getAuth().getUsers(uids.map(uid=>({uid})))).users
 })));
+const {createSchoolClassRecordAdminService}=require("./school-class-record-admin.js");
+exports.schoolClassRecordAdmin=onCall(callOptions,safeCallable(createSchoolClassRecordAdminService({db})));
 const {createSchoolGradebookService}=require("./school-gradebook.js");
 exports.schoolGradebook=onCall(callOptions,safeCallable(createSchoolGradebookService({db})));
 const {createSchoolGithubEvidenceService}=require("./school-github-evidence.js");

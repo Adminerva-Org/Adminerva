@@ -131,7 +131,10 @@ document.addEventListener("DOMContentLoaded", () => {
         ["overview", "Administration overview", "school-admin.html"],
         ["pilot-v4", "Controlled pilot · 4.0", "school-pilot.html"],
         ["people-v4", "People & access · 4.0", "people-access.html"],
-        ...(isSchoolAdmin ? [["grading-schemes", "Grading schemes", "school-grading-schemes.html"]] : [])
+        ...(isSchoolAdmin ? [
+          ["grading-schemes", "Grading schemes", "school-grading-schemes.html"],
+          ["class-record-oversight", "Class Record oversight", "school-class-records.html"]
+        ] : [])
       ] : []),
       ...(isSuperAdmin ? [
         ["analytics", "Administration analytics", "admin-analytics.html"],

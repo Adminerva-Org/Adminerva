@@ -91,6 +91,8 @@ Score-status changes are included in the source digest, so changing an exemption
 
 Teacher UI keeps audit cues small: a modified score/status can show a dot on the cell with a tooltip summarizing the immediately previous value/status. The complete audit trail remains in the school-scoped audit records for later school-administrator review rather than occupying the teacher table.
 
+School administrators have a separate **Class Record oversight** workspace. It is intentionally read-only and shows offering-level Class Record state, assigned teachers, active/archived/student-visible column counts, finalization and Final Grade release state, plus the Class Record audit trail. Manual score audit events expose before/after values by learner; learner-status events expose the previous/new status; finalization and release events retain their frozen revision context. New layout audit events also store field-level column changes, including student visibility transitions. Historical layout events created before that enhancement remain visible but may not have field-level differences.
+
 ## Categories and grade computation
 
 Categories are teacher/school-defined text labels such as Written Work, Performance Task, and Quarterly Assessment.

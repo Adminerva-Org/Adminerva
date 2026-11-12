@@ -1117,10 +1117,28 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         if(priorRevision!==expectedRevision)
           deny("failed-precondition","This Class Record layout changed. Reload it before saving your edit.");
         const oldColumns=Array.isArray(previous?.columns)?previous.columns:[];
+        const normalizedOldColumns=oldColumns.map(column=>column.kind==="assessment"&&!column.assessmentSource
+          ?{...column,assessmentSource:SCHOOL_SOURCE}:column);
+        const oldById=new Map(normalizedOldColumns.map(column=>[column.columnId,column]));
         const nextById=new Map(columns.map(column=>[column.columnId,column]));
-        for(const oldColumn of oldColumns){
-          const normalizedOld=oldColumn.kind==="assessment"&&!oldColumn.assessmentSource
-            ?{...oldColumn,assessmentSource:SCHOOL_SOURCE}:oldColumn;
+        const auditShape=column=>({
+          label:String(column?.label||""),category:String(column?.category||""),
+          archived:column?.archived===true,
+          studentVisibility:cleanStudentVisibility(column?.studentVisibility),
+          kind:String(column?.kind||"")
+        });
+        const columnChanges=[];
+        for(const nextColumn of columns){
+          const before=oldById.get(nextColumn.columnId);
+          if(!before){
+            columnChanges.push({columnId:nextColumn.columnId,type:"added",after:auditShape(nextColumn)});
+            continue;
+          }
+          const beforeShape=auditShape(before),afterShape=auditShape(nextColumn);
+          if(JSON.stringify(beforeShape)!==JSON.stringify(afterShape))
+            columnChanges.push({columnId:nextColumn.columnId,type:"updated",before:beforeShape,after:afterShape});
+        }
+        for(const normalizedOld of normalizedOldColumns){
           const next=nextById.get(normalizedOld.columnId);
           if(!next)
             deny("failed-precondition","Existing Class Record columns cannot be deleted yet. Rename or reorder them instead.");
@@ -1134,7 +1152,10 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         else tx.create(sheetRef,{...values,createdByUid:ctx.uid,createdAt:FieldValue.serverTimestamp()});
         tx.create(auditRef,{schoolId:ctx.schoolId,offeringId,actorUid:ctx.uid,
           action:"class_record_layout_saved",revision,columnCount:columns.length,
+          activeColumnCount:columns.filter(column=>column.archived!==true).length,
           archivedColumnCount:columns.filter(column=>column.archived===true).length,
+          releasedColumnCount:columns.filter(column=>column.archived!==true&&column.studentVisibility==="released").length,
+          columnChanges,
           categoryWeights:settings.categoryWeights,gradeComputation:settings.gradeComputation,
           createdAt:FieldValue.serverTimestamp()});
       });
