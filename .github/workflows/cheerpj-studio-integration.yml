@@ -37,6 +37,14 @@ jobs:
           node --test js/student/cheerpj-studio-client.test.mjs
           node --test js/student/cheerpj-studio-rollout.test.mjs
           node --test experiments/cheerpj-console/console-bridge.test.mjs
+      - name: Check separate Cloudflare runner endpoint
+        run: |
+          curl --fail --silent --show-error --location --max-time 25 --retry 2 \
+            https://adminerva.pages.dev/embedded-runner.html \
+            | grep -F 'embedded-runner.mjs'
+          curl --fail --silent --show-error --location --max-time 25 --retry 2 \
+            https://adminerva.pages.dev/console-bridge.mjs \
+            | grep -F 'createConsoleBridge'
       - name: Assemble isolated static runner
         run: |
           node scripts/build-cheerpj-pages.mjs

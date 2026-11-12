@@ -8,11 +8,20 @@ const pilot={ mode:'licensed_pilot', institutionalUseApproved:true,
 const context={status:'ready',assessmentId:'personalized-1',personalized:true,
   variantId:'issued-variant',attempt:1,readOnly:false};
 
-test('production default is disabled and developer access requires an independent host',()=>{
-  assert.equal(CHEERPJ_STUDIO_ROLLOUT.mode,'off');
+test('teacher technical evaluation is allowlisted and assessments stay disabled',()=>{
+  assert.equal(CHEERPJ_STUDIO_ROLLOUT.mode,'developer_evaluation');
+  assert.equal(CHEERPJ_STUDIO_ROLLOUT.institutionalUseApproved,false);
+  assert.equal(CHEERPJ_STUDIO_ROLLOUT.allowGeneralAssessments,false);
+  assert.equal(CHEERPJ_STUDIO_ROLLOUT.allowPersonalizedAssessments,false);
+  assert.equal(CHEERPJ_STUDIO_ROLLOUT.allowPracticalExams,false);
+  assert.equal(CHEERPJ_STUDIO_ROLLOUT.allowGuests,false);
+  assert.equal(CHEERPJ_STUDIO_ROLLOUT.pilotUids.length,1);
   assert.equal(evaluateBrowserJavaAccess({runnerReady:true,uid:'instructor-test'}).enabled,false);
   assert.equal(evaluateBrowserJavaAccess({policy:{mode:'developer_evaluation',pilotUids:['a']},
     uid:'a',runnerReady:false}).enabled,false);
+  assert.equal(evaluateBrowserJavaAccess({policy:CHEERPJ_STUDIO_ROLLOUT,
+    runnerReady:true,uid:CHEERPJ_STUDIO_ROLLOUT.pilotUids[0],
+    assessmentId:'any-assessment'}).enabled,false);
 });
 
 test('developer evaluations are allowlisted and cannot run graded assessments',()=>{
