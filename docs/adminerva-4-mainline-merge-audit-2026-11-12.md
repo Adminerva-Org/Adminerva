@@ -146,3 +146,11 @@ The original 73 divergent paths above describe the pinned **pre-integration** tr
 **Critical distinction:** Draft #186 may appear `mergeable` to GitHub because it starts from current `main`; it is **not a finished Adminerva 4.0 release**, and some school-only routes are not yet wired to their intended entry pages. Keep draft and do not deploy before explicit scoped workflow reconciliation and private pilot acceptance.
 
 Remaining high-priority areas are (a) the shared Studio page and server-mediated submission state, (b) verified-school assessment publish/review services and school Gradebook, (c) current mainline Class Record updates belonging to the separate workstream, (d) teacher/student/school-admin entry-point wiring and navigation script versions.
+
+
+## Continued main-first integration — stages 6–7
+
+- **Stage 6, merged [#191](https://github.com/Adminerva-Org/Adminerva/pull/191):** six school-aware teaching entry pages. Teacher Home retains **all three current-main Class Record shortcuts**, Student Home retains its **My Grades** tile, and v4's school-admin panel, academic-period schedule, lesson bridge, presentation bridge and External AI PDF import link are wired through canonical role/navigation scripts.
+- **Stage 7, merged [#192](https://github.com/Adminerva-Org/Adminerva/pull/192):** nine shared Studio/student/teacher assessment paths. Preserved the mobile Task sheet, terminal keyboard fixes, canonical school projects, server-issued variants, no auto submission dialog, guest exclusion, teacher personalized variation pools and the school assessment-to-Class Record deep link.
+- **Current snapshot:** draft main-first [#186](https://github.com/Adminerva-Org/Adminerva/pull/186) is `mergeable=true` with **147 changed paths** (57 added, 90 modified), 16 commits ahead of its pinned `main` base and zero behind. The original 73 divergent shared paths have now had **30 explicitly selected for integration**, leaving **43 not yet dispositioned** on the audit baseline.
+- Mergeable is **only a Git history signal**, not approval for a V4 release. Important remaining shared paths include school Gradebook/repository and Studio submission pages, Class Record data visibility updates owned by another workstream, and additional teacher/admin page script routes. These must be reconciled before browser pilot acceptance and production merge.
