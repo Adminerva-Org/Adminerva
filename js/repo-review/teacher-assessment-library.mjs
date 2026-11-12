@@ -197,6 +197,15 @@ function render(){
         const gradebook=document.createElement("a");gradebook.className="tl-action alt";
         gradebook.href="school-gradebook.html?task="+encodeURIComponent(task.taskId);
         gradebook.textContent="Review & Grade";controls.append(gradebook);
+        // Navigation only: the teacher still chooses the linked Class Record
+        // column, and its school-scoped score/release policies remain enforced.
+        if(task.offeringId&&task.taskId){
+          const classRecord=document.createElement("a");classRecord.className="tl-action alt";
+          classRecord.href="class-record.html?"+new URLSearchParams({
+            offering:task.offeringId,assessment:task.taskId,source:"school"
+          }).toString();
+          classRecord.textContent="Add to Class Record";controls.append(classRecord);
+        }
       }
       if(["active","closed"].includes(lifecycle)){
         controls.append(actionButton(task.published?"Unpublish":"Publish",()=>void setPublication(task,!task.published),!task.published));
