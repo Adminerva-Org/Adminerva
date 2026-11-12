@@ -1,8 +1,8 @@
 /** Same-origin destinations are navigation hints, never proof of access. */
-const studentPages=new Set(["student-home.html","student-dashboard.html","student-assessments.html","student-settings.html","student-practice.html","student-playground.html","student-xml-lab.html","school-support.html","school-student-projects.html","school-student-settings.html","school-student-assessments.html","school-student-grades.html"]);
-const staffPages=new Set(["teacher-home.html","teacher-analytics.html","practice-analytics.html","lesson-planner.html","presentation.html","schedule.html","library.html","teacher-reference-library.html","school-reference-library.html","teacher-assessment-library.html","repofetch.html","repobank.html","gradebook.html","grading.html","activity-grader.html","group-inspector.html","contribution-inspector.html","assessment-studio.html","assessment-evidence-review.html","submissions.html","reclaim-inbox.html","studio-submissions.html","settings.html","school-support.html","school-gradebook.html","school-practice-analytics.html","school-teacher-analytics.html"]);
+const studentPages=new Set(["student-home.html","student-dashboard.html","student-assessments.html","student-settings.html","student-practice.html","student-playground.html","student-xml-lab.html","issues.html","school-student-projects.html","school-student-settings.html","school-student-assessments.html","school-student-grades.html"]);
+const staffPages=new Set(["teacher-home.html","teacher-analytics.html","practice-analytics.html","learning-follow-up.html","lesson-planner.html","presentation.html","schedule.html","library.html","teacher-assessment-library.html","class-record.html","pilot-sandbox.html","repofetch.html","repobank.html","gradebook.html","grading.html","activity-grader.html","group-inspector.html","contribution-inspector.html","assessment-studio.html","assessment-evidence-review.html","submissions.html","reclaim-inbox.html","studio-submissions.html","settings.html","issues.html","school-gradebook.html"]);
 const adminPages=new Set(["users.html","teacher-accounts.html","admin-analytics.html","manage-sections.html","manage-programs.html","manage-subjects.html","owner-schools.html"]);
-const schoolAdminPages=new Set(["school-admin.html","school-pilot.html","people-access.html","reclaim-inbox.html","teacher-assessment-library.html","school-support.html","school-analytics.html","school-practice-analytics.html","school-teacher-analytics.html","school-data-controls.html","school-onboarding-readiness.html","school-cutover-readiness.html","school-reference-library.html","school-class-records.html"]);
+const schoolAdminPages=new Set(["school-admin.html","school-pilot.html","people-access.html","reclaim-inbox.html","teacher-assessment-library.html","issues.html","school-grading-schemes.html","school-class-records.html"]);
 const guestPages=new Set(["guest-home.html","guest-practice.html","guest-playground.html"]);
 export function workspaceHome(access){return access.platformAdmin&&!access.role&&!access.schoolAdmin&&!access.schoolTeacher?"owner-schools.html":access.schoolAdmin?"school-admin.html":access.role||access.schoolTeacher?"teacher-home.html":access.schoolStudent||access.students?.length?"student-home.html":"guest-home.html";}
 export function sessionDestination(candidate,access){
@@ -16,24 +16,18 @@ export function sessionDestination(candidate,access){
       const v4StudentRoutes={
         "student-dashboard.html":"school-student-projects.html",
         "student-assessments.html":"school-student-assessments.html",
-        "student-settings.html":"school-student-settings.html",
-        "issues.html":"school-support.html"
+        "student-settings.html":"school-student-settings.html"
       };
       page=v4StudentRoutes[page]||page;
     }
     if(access.v4OnlyTeacher){
-      if(page==="teacher-analytics.html"&&target.hash==="#practice")
-        page="school-practice-analytics.html";
       const v4Routes={
         "gradebook.html":"school-gradebook.html","repofetch.html":"school-gradebook.html",
         "repobank.html":"school-gradebook.html","grading.html":"school-gradebook.html",
         "activity-grader.html":"school-gradebook.html","group-inspector.html":"school-gradebook.html",
         "contribution-inspector.html":"school-gradebook.html","assessment-evidence-review.html":"school-gradebook.html",
         "submissions.html":"school-gradebook.html","studio-submissions.html":"school-gradebook.html",
-        "assessment-studio.html":"teacher-assessment-library.html",
-        "teacher-analytics.html":"school-teacher-analytics.html",
-        "practice-analytics.html":"school-practice-analytics.html",
-        "issues.html":"school-support.html","library.html":"teacher-reference-library.html"
+        "assessment-studio.html":"teacher-assessment-library.html"
       };
       page=v4Routes[page]||page;
     }

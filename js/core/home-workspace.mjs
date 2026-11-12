@@ -1,6 +1,6 @@
 import {auth} from "./firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {sessionDestination} from "./session-destination.mjs?v=1.3.0";
+import {sessionDestination} from "./session-destination-v4-pilot.mjs?v=4.0.2";
 const main=document.querySelector("main"),navigation=document.getElementById("adminerva-nav");
 let mounted=false;
 function mount(){
@@ -26,7 +26,16 @@ function mount(){
   }
   let candidate;try{candidate=sessionStorage.getItem("Adminerva_last_workspace_"+user.uid);}catch{}
   if(candidate){
-    const destination=sessionDestination(candidate,{role:role==="superadmin"?"admin":role==="teacher"?"teacher":null,students:role==="student"?[{}]:[]});
+    const destination=sessionDestination(candidate,{
+      role:role==="superadmin"?"admin":role==="teacher"?"teacher":null,
+      platformAdmin:navigation?.dataset.platformAdmin==="true",
+      schoolAdmin:navigation?.dataset.schoolAdmin==="true",
+      schoolTeacher:navigation?.dataset.schoolTeacher==="true",
+      schoolStudent:navigation?.dataset.schoolStudent==="true",
+      students:role==="student"?[{}]:[],
+      v4OnlyTeacher:navigation?.dataset.v4OnlyTeacher==="true",
+      v4OnlyStudent:navigation?.dataset.v4OnlyStudent==="true"
+    });
     if(!destination.endsWith("-home.html")){
       const resume=document.createElement("section");resume.className="av-home-resume";
       const text=document.createElement("div"),title=document.createElement("strong"),detail=document.createElement("p"),link=document.createElement("a");
@@ -38,7 +47,8 @@ function mount(){
         "lesson-planner.html":"Lesson Planner","repofetch.html":"Review & Grade",
         "gradebook.html":"Gradebook","assessment-studio.html":"Assessment Studio",
         "teacher-assessment-library.html":"Assessment Library","school-gradebook.html":"School Gradebook",
-        "class-record.html":"Class Record","submissions.html":"Review Inbox","teacher-analytics.html":"Teaching Analytics",
+        "class-record.html":"Class Record","school-class-records.html":"Class Record Oversight",
+        "school-grading-schemes.html":"Grading Schemes","submissions.html":"Review Inbox","teacher-analytics.html":"Teaching Analytics",
         "presentation.html":"Presentation Workspace","schedule.html":"Schedule"
       };
       const name=names[page]||"your last workspace";

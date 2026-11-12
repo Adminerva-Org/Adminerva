@@ -183,6 +183,23 @@ A changed live record is not allowed to rewrite an old frozen revision. The teac
 
 Finalization remains teacher-side academic recordkeeping and is **not automatically student-facing publication**.
 
+## Teacher access and navigation
+
+Class Record uses two separate authorization layers:
+
+- The verified school membership must include the **Teacher** role for Class Record to appear in teacher navigation.
+- The teacher must also have an **active staff assignment** to a specific course offering before that offering can be opened or changed.
+
+A school administrator who is also a teacher keeps both capabilities. The shared navigation labels that account **School administrator · Teacher**; editable Class Record only lists that person's active teacher assignments, while **School Administration → Class Record oversight** remains the read-only school-wide view.
+
+Teacher-facing pages use the V4 access guard consistently so the Class Record workspace remains visible in **Workspaces** while moving through Repository Management, Gradebook, Lesson Planning, Analytics, Settings, and Teacher Home. Class Record is also a valid remembered/resume destination.
+
+The Class Record action bar follows the intended workflow:
+
+`Set up record → enter/import scores and manage student visibility → review/finalize period → export/print`
+
+If verified teacher access succeeds but no active staff assignment exists, the page explicitly reports that Class Record access is working and directs the teacher to request an assignment from the school administrator.
+
 ## Student score visibility and Final Grade release
 
 Each active Class Record column has a student visibility state:

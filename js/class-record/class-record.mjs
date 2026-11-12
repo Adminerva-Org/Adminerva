@@ -1687,14 +1687,16 @@ async function loadOfferings(){
       offeringSelect.add(new Option(parts.join(" · "),item.offeringId));
     }
     offeringSelect.disabled=!offerings.length;
-    say(offerings.length?"Choose a class to open its record.":"No active course offering is assigned to this teacher.");
+    say(offerings.length
+      ?"School access confirmed · "+offerings.length+" assigned class"+(offerings.length===1?"":"es")+". Choose a class to open its record."
+      :"Class Record access is working, but no active course offering is assigned to your teacher account. Ask a school administrator to add or restore your active teacher assignment.");
     const requested=deepLinkOfferingId?offerings.find(item=>item.offeringId===deepLinkOfferingId):null;
     if(requested){
       currentOfferingId=requested.offeringId;offeringSelect.value=currentOfferingId;
       await loadWorkspace();
     }else if(deepLinkOfferingId){
       pendingAssessmentDeepLink=null;clearAssessmentDeepLink();
-      say("The requested Class Record offering is not assigned to this teacher.");
+      say("The requested Class Record is not part of your active teacher assignments. Choose one of your assigned classes instead.");
     }else if(offerings.length===1){
       currentOfferingId=offerings[0].offeringId;offeringSelect.value=currentOfferingId;
       await loadWorkspace();
@@ -1855,7 +1857,7 @@ picker=createTenantSchoolPicker({
   },
   onReady:scope=>{
     if(!scope.current?.roles.includes("teacher")){
-      say("Your role in this school does not include Class Record access.");return;
+      say("Your verified school membership does not include the Teacher role. School administrators can review records from School Administration → Class Record oversight.");return;
     }
     void loadSchemes().finally(()=>loadOfferings());
   }

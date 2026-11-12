@@ -62,7 +62,7 @@ document.addEventListener("DOMContentLoaded", () => {
     currentRole === "schooladmin" ? "School Admin Home" : "Staff Home";
   const roleLabel = isStudent ? "Student" : isSuperAdmin ? "Administrator" :
     currentRole === "platformowner" ? "Platform administrator" :
-    currentRole === "schooladmin" ? "School administrator" : "Teacher";
+    currentRole === "schooladmin" ? (hasSchoolTeacher ? "School administrator · Teacher" : "School administrator") : "Teacher";
 
   // Destinations and page labels share one source, including bookmarked tools.
   const studentGroups = {
