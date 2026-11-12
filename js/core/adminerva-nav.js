@@ -104,6 +104,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ["planner", "Lesson planner", "lesson-planner.html"],
       ["presentation", "Slide editor", "presentation.html"],
       ["schedule", "Teacher schedule", "schedule.html"],
+      ["pilot-sandbox", "Private pilot sandbox", "pilot-sandbox.html"],
       ...(v4OnlyTeacher ? [
         ["teacher-reference-library", "My references", "teacher-reference-library.html"],
         ["school-reference-library", "School references", "school-reference-library.html"]
