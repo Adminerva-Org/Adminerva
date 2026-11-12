@@ -5,7 +5,7 @@
  * Studio only creates a sandboxed cross-origin iframe and sends the Java
  * source snapshot over a narrowly scoped postMessage protocol.
  */
-export const CHEERPJ_STUDIO_RUNNER_URL = '';
+export const CHEERPJ_STUDIO_RUNNER_URL = 'https://adminerva.pages.dev/embedded-runner.html';
 export const CHEERPJ_RUNNER_CHANNEL = 'adminerva-cheerpj-studio-v1';
 
 const CONNECT_TIMEOUT_MS = 45000;
