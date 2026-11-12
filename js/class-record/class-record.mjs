@@ -19,6 +19,7 @@ const saveScoresButton=el("cr-save-scores");
 const importButton=el("cr-import-scores");
 const archivedButton=el("cr-archived-columns");
 const archivedCount=el("cr-archived-count");
+const finalizeButton=el("cr-finalize");
 const exportButton=el("cr-export");
 const refreshButton=el("cr-refresh");
 const unsaved=el("cr-unsaved");
@@ -37,6 +38,11 @@ const importForm=el("cr-import-form");
 const importColumn=el("cr-import-column");
 const importText=el("cr-import-text");
 const archivedDialog=el("cr-archived-dialog");
+const finalizeDialog=el("cr-finalize-dialog");
+const finalizeState=el("cr-finalize-state");
+const finalizeBlockers=el("cr-finalize-blockers");
+const finalizePreview=el("cr-finalize-preview");
+const finalizeConfirm=el("cr-finalize-confirm");
 
 let picker=null;
 let offerings=[];
@@ -49,6 +55,9 @@ let gradingSchemes=[];
 let pendingSchemeSnapshot=null;
 let settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
 let sheetRevision=0;
+let finalization=null;
+let periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};
+let finalizationPreview=null;
 let manualScores=new Map();
 let publishedGrades=new Map();
 let dirtyColumns=new Set();
@@ -178,7 +187,10 @@ function updateKpis(){
     archived.length+" archived",
     linked+" linked assessment"+(linked===1?"":"s"),
     personalized+" personalized",
-    setup.complete?"Weights ready":"Weights incomplete"
+    setup.complete?"Weights ready":"Weights incomplete",
+    finalization
+      ?("Finalized rev "+finalization.revision+(finalization.stale?" · changed":""))
+      :"Not finalized"
   ];
   for(const text of items)kpis.append(make("span","cr-kpi",text));
 }
@@ -191,6 +203,7 @@ function setBusy(value,message=""){
   saveScoresButton.disabled=value||!dirtyColumns.size;
   importButton.disabled=value||!currentOfferingId||!activeManualColumns().length;
   archivedButton.disabled=value||!currentOfferingId;
+  finalizeButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
   exportButton.disabled=value||!currentOfferingId||dirtyColumns.size>0;
   if(message)say(message);
   for(const form of [columnForm,setupForm,importForm]){
@@ -243,6 +256,7 @@ function updateDirtyState(){
   saveScoresButton.disabled=busy||!dirtyColumns.size;
   importButton.disabled=busy||!currentOfferingId||!activeManualColumns().length;
   archivedButton.disabled=busy||!currentOfferingId;
+  finalizeButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
   exportButton.disabled=busy||!currentOfferingId||dirtyColumns.size>0;
   unsaved.textContent=dirtyColumns.size?
     dirtyColumns.size+" manual column"+(dirtyColumns.size===1?"":"s")+" with unsaved changes":"";
@@ -729,6 +743,117 @@ function stageImportedScores(){
     (invalid?" · "+invalid+" invalid/out of range":"")+
     ". Review the highlighted cells, then save manual scores.";
 }
+function formatFinalizedAt(value){
+  const millis=Number(value);
+  if(!Number.isFinite(millis)||millis<=0)return "time unavailable";
+  try{return new Date(millis).toLocaleString();}catch{return "time unavailable";}
+}
+function closeFinalize(){
+  if(finalizeDialog.open)finalizeDialog.close();
+  finalizationPreview=null;
+  el("cr-finalize-status").textContent="";
+}
+function renderFinalizationPreview(preview){
+  finalizationPreview=preview;
+  finalizeState.className="cr-readiness mt-4";
+  finalizeBlockers.replaceChildren();
+  finalizePreview.replaceChildren();
+  const existing=preview.finalization;
+  const current=existing&&!existing.stale&&existing.sourceDigest===preview.sourceDigest;
+  if(preview.ready){
+    if(current){
+      finalizeState.classList.add("ready");
+      finalizeState.textContent="Current period snapshot is finalized · revision "+existing.revision+
+        " · "+formatFinalizedAt(existing.finalizedAt)+". No source changes detected.";
+    }else if(existing){
+      finalizeState.classList.add("stale");
+      finalizeState.textContent="The live Class Record changed after finalized revision "+existing.revision+
+        ". Review the new grades below and create a new finalization revision.";
+    }else{
+      finalizeState.classList.add("ready");
+      finalizeState.textContent="Ready to finalize · "+preview.grades.length+" student"+
+        (preview.grades.length===1?"":"s")+" · "+preview.activeColumnCount+" active column"+
+        (preview.activeColumnCount===1?"":"s")+".";
+    }
+    const table=make("table","cr-finalize-table");
+    const thead=document.createElement("thead"),head=document.createElement("tr");
+    for(const label of ["Student","Initial Grade","Period Grade"]){
+      const th=make("th","text-xs uppercase tracking-wide text-slate-500",label);
+      th.scope="col";head.append(th);
+    }
+    thead.append(head);table.append(thead);
+    const body=document.createElement("tbody");
+    for(const grade of preview.grades||[]){
+      const tr=document.createElement("tr");
+      tr.append(make("td","font-semibold text-slate-900",grade.name));
+      tr.append(make("td","",numberText(grade.initialGrade)));
+      tr.append(make("td","font-extrabold text-slate-900",numberText(grade.periodGrade)));
+      body.append(tr);
+    }
+    table.append(body);finalizePreview.append(table);
+    finalizeConfirm.disabled=current;
+    finalizeConfirm.textContent=current?"Already finalized":existing?"Finalize new revision":"Finalize period";
+  }else{
+    finalizeState.classList.add("blocked");
+    finalizeState.textContent="Not ready to finalize · "+preview.blockerCount+" issue"+
+      (preview.blockerCount===1?"":"s")+" must be resolved.";
+    for(const item of preview.blockers||[]){
+      const row=make("div","rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900",item.message);
+      finalizeBlockers.append(row);
+    }
+    if(preview.blockerCount>(preview.blockers||[]).length){
+      finalizeBlockers.append(make("p","cr-muted","Showing the first "+(preview.blockers||[]).length+
+        " issues. Resolve them and review finalization again."));
+    }
+    finalizeConfirm.disabled=true;
+    finalizeConfirm.textContent="Resolve blockers first";
+  }
+}
+async function openFinalize(){
+  if(dirtyColumns.size){
+    say("Save manual score changes before reviewing period finalization.");
+    return;
+  }
+  finalizationPreview=null;
+  finalizeState.className="cr-readiness mt-4";
+  finalizeState.textContent="Recalculating period grades from saved and published sources…";
+  finalizeBlockers.replaceChildren();finalizePreview.replaceChildren();
+  finalizeConfirm.disabled=true;finalizeConfirm.textContent="Finalize period";
+  el("cr-finalize-status").textContent="";
+  finalizeDialog.showModal();
+  try{
+    const preview=await scoped(classRecordApi,"finalization_preview",{offeringId:currentOfferingId});
+    renderFinalizationPreview(preview);
+  }catch(error){
+    finalizeState.classList.add("blocked");
+    finalizeState.textContent=error?.message||"Period finalization preview could not be loaded.";
+  }
+}
+async function finalizePeriod(){
+  const preview=finalizationPreview;
+  if(!preview?.ready||finalizeConfirm.disabled)return;
+  const existing=preview.finalization;
+  if(!confirm(existing
+    ?"Create a new frozen period-grade revision from the current saved and published scores?"
+    :"Finalize this period-grade snapshot for the class?"))return;
+  finalizeConfirm.disabled=true;
+  el("cr-finalize-status").textContent="Finalizing the server-verified period snapshot…";
+  try{
+    const result=await scoped(classRecordApi,"finalize_period",{
+      offeringId:currentOfferingId,
+      expectedSheetRevision:sheetRevision,
+      expectedFinalizationRevision:existing?.revision||0
+    });
+    el("cr-finalize-status").textContent="Finalized revision "+result.revision+
+      " for "+result.studentCount+" student"+(result.studentCount===1?"":"s")+".";
+    await loadWorkspace();
+    closeFinalize();
+    say("Period grade finalized as revision "+result.revision+".");
+  }catch(error){
+    el("cr-finalize-status").textContent=error?.message||"Period finalization was not saved.";
+    finalizeConfirm.disabled=false;
+  }
+}
 function csvEscape(value){
   const text=String(value??"");
   return /[",\r\n]/.test(text)?'"'+text.replaceAll('"','""')+'"':text;
@@ -792,6 +917,8 @@ async function loadWorkspace(){
     });
     settings=result.settings||{categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
     sheetRevision=Number(result.sheetRevision)||0;
+    finalization=result.finalization||null;
+    periodReadiness=result.periodReadiness||{ready:false,blockerCount:0,activeColumnCount:0};
     manualScores=new Map((result.manualScores||[]).map(item=>[key(item.columnId,item.personId),item.score]));
     publishedGrades=new Map((result.publishedGrades||[]).map(item=>[
       gradeKey(item.sourceType||SCHOOL_SOURCE,item.taskId,item.personId),item
@@ -800,7 +927,8 @@ async function loadWorkspace(){
     renderArchivedList();
     const personalizedAvailable=assessments.filter(task=>task.sourceType===PERSONALIZED_SOURCE&&task.linkable!==false).length;
     say("Class Record loaded. Linked scores are published-only"+
-      (personalizedAvailable?" · "+personalizedAvailable+" Personalized Studio assessment"+(personalizedAvailable===1?"":"s")+" available for linking.":"."));
+      (personalizedAvailable?" · "+personalizedAvailable+" Personalized Studio assessment"+(personalizedAvailable===1?"":"s")+" available for linking.":".")+
+      (finalization?.stale?" · Finalized period record is stale and needs a new revision.":""));
   }catch(error){
     panel.hidden=true;say(error?.message||"Class Record could not be loaded.");
   }finally{
@@ -840,6 +968,7 @@ offeringSelect.addEventListener("change",async()=>{
     offeringSelect.value=currentOfferingId;return;
   }
   currentOfferingId=next;currentOffering=null;roster=[];assessments=[];columns=[];
+  finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
   settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
   pendingSchemeSnapshot=null;
   manualScores.clear();publishedGrades.clear();dirtyColumns.clear();
@@ -860,6 +989,7 @@ schemeSelect.addEventListener("change",()=>{
 });
 importButton.addEventListener("click",openImport);
 archivedButton.addEventListener("click",openArchived);
+finalizeButton.addEventListener("click",()=>void openFinalize());
 refreshButton.addEventListener("click",()=>{
   if(dirtyColumns.size&&!confirm("Discard unsaved manual score changes and refresh this class?"))return;
   void loadWorkspace();
@@ -883,6 +1013,9 @@ el("cr-equal-weights").addEventListener("click",equalWeights);
 el("cr-import-close").addEventListener("click",closeImport);
 el("cr-import-cancel").addEventListener("click",closeImport);
 el("cr-archived-close").addEventListener("click",closeArchived);
+el("cr-finalize-close").addEventListener("click",closeFinalize);
+el("cr-finalize-cancel").addEventListener("click",closeFinalize);
+finalizeConfirm.addEventListener("click",()=>void finalizePeriod());
 importForm.addEventListener("submit",event=>{event.preventDefault();stageImportedScores();});
 
 columnForm.addEventListener("submit",event=>{
@@ -954,6 +1087,7 @@ picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{
     if(dirtyColumns.size)throw new Error("Save or discard manual score changes before switching schools.");
     currentOfferingId="";currentOffering=null;offerings=[];roster=[];assessments=[];columns=[];gradingSchemes=[];
+    finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
     pendingSchemeSnapshot=null;
     settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
     manualScores.clear();publishedGrades.clear();dirtyColumns.clear();
