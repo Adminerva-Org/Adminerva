@@ -562,3 +562,14 @@ The output file is created with owner-only file permissions and cannot overwrite
 - This integration is source-only and is **not** a production deployment, MCS data migration, administrator role grant, V4 pilot activation or release. Class Record and CheerpJ terminal development remain outside this workstream.
 
 **Still pending:** integrate this isolated change into the V4 development branch; reconcile the larger V4 branch with current mainline maintenance without overwriting newer independent features; complete protected MCS migration preparation, focused cross-school authorization checks and controlled pilot activation.
+
+
+## Mainline routing and home continuity reconciliation — November 12, 2026
+
+- Reconciled current mainline verified-school guard and session-destination route additions: `school-grading-schemes.html`, `school-student-grades.html`, and `class-record.html`. These routes retain server-verified school-role access checks; student grades require school-student membership, and Class Record requires school-teacher membership. This does not migrate or modify those modules.
+- Retained the full V4 scoped authorization model and role-specific legacy fences instead of replacing it with mainline's simpler legacy guard.
+- Added compatible `My Grades` and `Class Record` labels for resumable recent-workspace hints without introducing a new top-level navigation group or linking to pages not yet reconciled into this branch.
+- Carried mainline's deferred home pulse scheduling into V4 without losing canonical school Practice/assessment summaries. V4-only accounts use verified-school callables even while MCS remains `legacy_allowed`; they do **not** fall back to legacy global evidence or Practice collections.
+- Changed-school events now invalidate old home pulse requests, hide the prior snapshot and reload from the newly verified school; no school ID is trusted from browser state.
+- No Class Record, CheerpJ, assessment rubric, grade, evidence or production Firebase code changed. No deployment or pilot activation.
+- Still pending: incorporation of the newer independent mainline Class Record and CheerpJ artifacts at a controlled reconciliation boundary, further shared LMS/Firebase compatibility review, and protected MCS pilot activation.
