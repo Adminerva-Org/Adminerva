@@ -22,6 +22,8 @@ function showOverview(data){
   const instructions=String(data.taskContext||data.instructions||"").trim();
   const criteria=String(data.evalCriteria||"").trim();
   overview.classList.remove("hidden");
+  overview.dataset.taskKind=data.practicalExam===true?"Practical exam":
+    data.personalizedTask?.enabled===true?"Personalized task":"Studio assignment";
   loadingNote?.classList.add("hidden");
   if(overviewTitle)overviewTitle.textContent=String(data.title||"Assigned Studio assessment").slice(0,180);
   if(overviewMeta)overviewMeta.textContent=data.personalizedTask?.enabled===true
@@ -30,6 +32,9 @@ function showOverview(data){
   if(overviewText)overviewText.textContent=instructions||"Open My Assessments for the full task instructions.";
   overviewCriteria?.classList.toggle("hidden",!criteria);
   if(overviewRubric)overviewRubric.textContent=criteria;
+  window.dispatchEvent(new CustomEvent("adminerva:studio-task-overview",{
+    detail:{assessmentId,title:String(data.title||"Assigned Studio assessment").slice(0,180)}
+  }));
 }
 function reportContext(context){
   if(!assessmentId)return;
