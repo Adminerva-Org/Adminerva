@@ -55,6 +55,8 @@
     <p id="owner-pilot-summary" class="own-muted">Select a school to review its pilot state.</p>
     <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.75rem">
       <button id="owner-pilot-jump" type="button" class="own-button">Review controlled pilot</button>
+      <a href="#owner-grant" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#1d4ed8">Assign school administrator</a>
+      <a href="people-access.html#access" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#0f766e">Manage teacher access</a>
       <a href="people-access.html#overview" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#0f766e">Open People &amp; Access</a>
       <a href="school-admin.html" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#475569">School administration</a>
     </div>
@@ -140,8 +142,9 @@
       <button type="submit" class="own-button">Save cutover decisions</button>
     </form>
    </section>
-   <form id="owner-grant">
-    <h3 style="font-weight:750;margin:1rem 0 .5rem">Designate verified school administrator</h3>
+   <form id="owner-grant" style="scroll-margin-top:1.5rem;border:2px solid #93c5fd;border-radius:12px;padding:1rem;margin-top:1.25rem">
+    <h3 style="font-weight:750;margin:0 0 .5rem">Designate or repair school administrator access</h3>
+    <p class="own-muted">For an existing verified Firebase user, including an administrator who also teaches. Grants school_admin without removing existing teacher roles. Choose the correct school above. Suspended administrators must use the recovery control below.</p>
     <label>Existing verified Firebase account UID<input class="own-field" name="targetUid" maxlength="128" minlength="8" required autocomplete="off"></label>
     <label>Reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
     <button type="submit" class="own-button">Grant school administrator</button>
