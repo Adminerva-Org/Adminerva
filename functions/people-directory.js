@@ -418,6 +418,57 @@ function createPeopleDirectoryService({db}) {
         accountLinked:Boolean(person.data().authUid),schoolId:ctx.schoolId
       })),truncated:snap.size===101||matches.length>50};
     }
+    if(input.action==="activate_linked_staff"){
+      // Expedited, reviewed access grant for an existing identity-linked staff record.
+      // No UID alone can confer access: a matching active canonical person is required.
+      const personId=id(input.personId);
+      const reason=field(input.reason,500,"Activation reason");
+      if(reason.length<12)invalid("Explain the reason for activating school access.");
+      const personRef=base.doc(personId);
+      const initial=await personRef.get();
+      if(!initial.exists||initial.data().schoolId!==ctx.schoolId||
+         initial.data().status!=="active"||initial.data().kind!=="staff"||
+         !initial.data().authUid)
+        throw new TenantAccessError("failed-precondition","Select an active staff record linked to a verified account.");
+      const targetUid=id(initial.data().authUid);
+      const {getAuth}=require("firebase-admin/auth");
+      const account=await getAuth().getUser(targetUid);
+      if(account.disabled||!account.emailVerified)
+        throw new TenantAccessError("failed-precondition","The linked account must be enabled with a verified email.");
+      if(initial.data().email&&account.email?.toLowerCase()!==String(initial.data().email).toLowerCase())
+        throw new TenantAccessError("failed-precondition","The linked account email does not match this staff record.");
+      const memberRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+targetUid);
+      const indexRef=db.doc("platform_users/"+targetUid+"/memberships/"+ctx.schoolId);
+      const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+      let outcome="active";
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const [person,member]=await Promise.all([tx.get(personRef),tx.get(memberRef)]);
+        if(!person.exists||person.data().schoolId!==ctx.schoolId||
+           person.data().status!=="active"||person.data().kind!=="staff"||
+           person.data().authUid!==targetUid)
+          throw new TenantAccessError("failed-precondition","The staff identity link changed. Refresh before granting access.");
+        const prior=member.exists?member.data():null;
+        if(prior&&prior.schoolId!==ctx.schoolId)
+          throw new TenantAccessError("failed-precondition","The existing membership belongs to another school.");
+        if(prior?.status==="suspended")
+          throw new TenantAccessError("failed-precondition","Suspended membership requires the reviewed Restore access action.");
+        if(prior?.status==="active"&&Array.isArray(prior.roles)&&prior.roles.includes("teacher")){
+          outcome="already_active";return;
+        }
+        if(prior?.personId&&prior.personId!==personId)
+          throw new TenantAccessError("failed-precondition","Existing membership is linked to another person record.");
+        const roles=[...new Set([...(Array.isArray(prior?.roles)?prior.roles:[]),"teacher"])];
+        const revision=(prior?.revision||0)+1,now=FieldValue.serverTimestamp();
+        tx.set(memberRef,{schoolId:ctx.schoolId,personId,status:"active",roles,revision,
+          displayName:String(person.data().displayName||"").slice(0,140),
+          updatedAt:now,updatedByUid:ctx.uid},{merge:true});
+        tx.set(indexRef,{schoolId:ctx.schoolId,status:"active",roles,revision,updatedAt:now});
+        tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,targetUid,
+          personId,action:"linked_staff_access_activated",reason,createdAt:now});
+      });
+      return {personId,targetUid,status:outcome};
+    }
     if(input.action==="list_memberships"){
       const snapshot=await db.collection("schools/"+ctx.schoolId+"/memberships").limit(101).get();
       if(snapshot.size===101)throw new TenantAccessError("resource-exhausted","Member directory is too large for this pilot page.");
