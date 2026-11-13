@@ -1835,7 +1835,16 @@ function initializeMobileStudio(){
   const taskClose=document.getElementById('studioTaskClose');
   const taskAssigned=document.getElementById('assignedProjectBanner');
   const taskPersonalized=document.getElementById('studioPersonalizedTask');
-  const taskLink=Boolean(new URLSearchParams(location.search).get('assessment'));
+  const taskOverview=document.getElementById('studioTaskOverview');
+  const taskBar=document.getElementById('studioTaskBar');
+  const taskBarTitle=document.getElementById('studioTaskBarTitle');
+  const taskBarType=document.getElementById('studioTaskBarType');
+  const taskBarStatus=document.getElementById('studioTaskBarStatus');
+  const taskDockStatus=document.getElementById('studioTaskDockStatus');
+  const taskDesktopOpen=document.getElementById('studioTaskOpenDesktop');
+  const taskJumpButtons=taskDock?.querySelectorAll('[data-task-jump]')||[];
+  const taskAssessmentId=new URLSearchParams(location.search).get('assessment');
+  const taskLink=Boolean(taskAssessmentId);
   if(!panel||!explorer||!actions||!backdrop||!toolbar)return;
   // Keep the original control IDs and event handlers; only their location changes.
   for(const id of ['saveProjectBtn','runBtn']){
@@ -1857,13 +1866,49 @@ function initializeMobileStudio(){
   });
   const compact=()=>window.matchMedia('(max-width:767px)').matches;
   let activeDrawer=null;
+  let submittedLocally=null;
   const taskAvailable=()=>taskLink||
     (taskAssigned&&!taskAssigned.classList.contains('hidden'))||
+    (taskOverview&&!taskOverview.classList.contains('hidden'))||
     (taskPersonalized&&!taskPersonalized.classList.contains('hidden'));
   const refreshTaskButton=()=>{
     const available=Boolean(taskAvailable());
     taskButton?.classList.toggle('hidden',!available);
+    taskBar?.classList.toggle('hidden',!available);
     if(!available&&activeDrawer==='task')closeDrawer();
+    if(!available)return;
+    const overviewReady=taskOverview&&!taskOverview.classList.contains('hidden');
+    const assignedReady=taskAssigned&&!taskAssigned.classList.contains('hidden');
+    const individualReady=taskPersonalized&&!taskPersonalized.classList.contains('hidden');
+    const context=window.adminervaStudioAssessmentContext;
+    const kind=overviewReady
+      ?(taskOverview.dataset.taskKind||'Studio assignment')
+      :(assignedReady?'Assigned project':'Studio assignment');
+    const title=overviewReady
+      ?document.getElementById('studioTaskOverviewTitle')?.textContent
+      :(assignedReady?document.getElementById('assignedProjectTitle')?.textContent:null);
+    const status=submittedLocally&&submittedLocally.assessmentId===taskAssessmentId
+      ?'Revision '+submittedLocally.revision+' submitted'
+      :context?.status==='unavailable'?'Task unavailable'
+      :context?.status==='loading'?'Loading assignment'
+      :context?.status==='ready'&&context.readOnly===true?'Submitted · reference'
+      :context?.status==='ready'?'Individual version ready'
+      :context?.status==='not-personalized'?'Instructions ready'
+      :overviewReady||assignedReady?'Instructions available':'Loading assignment';
+    if(taskBarTitle)taskBarTitle.textContent=title||'Assigned Studio task';
+    if(taskBarType)taskBarType.textContent=kind;
+    if(taskBarStatus)taskBarStatus.textContent=status;
+    if(taskDockStatus)taskDockStatus.textContent=status;
+    taskButton?.setAttribute('title',(title||'View task')+' · '+status);
+    for(const button of taskJumpButtons){
+      const target=button.dataset.taskJump;
+      const visible=target==='instructions'
+        ?(overviewReady||assignedReady)
+        :target==='personalized'?individualReady
+        :target==='criteria'&&overviewReady&&
+          !document.getElementById('studioTaskOverviewCriteria')?.classList.contains('hidden');
+      button.classList.toggle('hidden',!visible);
+    }
   };
   const closeDrawer=()=>{
     explorer.classList.remove('studio-drawer-open');
@@ -1871,7 +1916,8 @@ function initializeMobileStudio(){
     taskDock?.classList.remove('studio-assignment-open');
     taskDock?.removeAttribute('role');
     taskDock?.removeAttribute('aria-modal');
-    taskDock?.setAttribute('aria-hidden',String(compact()));
+    taskDock?.setAttribute('aria-hidden','true');
+    taskDesktopOpen?.setAttribute('aria-expanded','false');
     backdrop.classList.add('hidden');
     activeDrawer=null;
     filesButton?.setAttribute('aria-expanded','false');
@@ -1879,7 +1925,7 @@ function initializeMobileStudio(){
     taskButton?.setAttribute('aria-expanded','false');
   };
   const showDrawer=side=>{
-    if(!compact()||(side==='task'&&!taskAvailable()))return;
+    if((!compact()&&side!=='task')||(side==='task'&&!taskAvailable()))return;
     if(activeDrawer===side){closeDrawer();return;}
     closeDrawer();
     setToolsOpen(false);
@@ -1889,6 +1935,7 @@ function initializeMobileStudio(){
       taskDock?.setAttribute('role','dialog');
       taskDock?.setAttribute('aria-modal','true');
       taskDock?.setAttribute('aria-hidden','false');
+      taskDesktopOpen?.setAttribute('aria-expanded','true');
       taskPersonalized?.setAttribute('open','');
       taskDock?.scrollTo({top:0});
       taskClose?.focus();
@@ -1927,21 +1974,43 @@ function initializeMobileStudio(){
   filesButton?.addEventListener('click',()=>showDrawer('files'));
   moreButton?.addEventListener('click',()=>showDrawer('actions'));
   taskButton?.addEventListener('click',()=>showDrawer('task'));
+  taskDesktopOpen?.addEventListener('click',()=>showDrawer('task'));
+  const focusTaskTrigger=()=>{(compact()?taskButton:taskDesktopOpen)?.focus();};
   taskClose?.addEventListener('click',()=>{
     closeDrawer();
-    taskButton?.focus();
+    focusTaskTrigger();
+  });
+  taskDock?.querySelector('.studio-task-jumps')?.addEventListener('click',event=>{
+    const jump=event.target.closest('[data-task-jump]')?.dataset.taskJump;
+    if(!jump)return;
+    const target=jump==='personalized'
+      ?taskPersonalized
+      :jump==='criteria'?document.getElementById('studioTaskOverviewCriteria')
+      :taskOverview&&!taskOverview.classList.contains('hidden')?taskOverview:taskAssigned;
+    if(!target||target.classList.contains('hidden'))return;
+    if(jump==='personalized'||jump==='criteria')target.open=true;
+    target.scrollIntoView({block:'start',behavior:
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
   });
   document.getElementById('studioTaskSubmitShortcut')?.addEventListener('click',()=>{
     closeDrawer();
     document.getElementById('studioSubmitAssessment')?.click();
   });
-  for(const section of [taskAssigned,taskPersonalized]){
+  for(const section of [taskAssigned,taskPersonalized,taskOverview,
+    document.getElementById('studioTaskOverviewCriteria')]){
     if(section)new MutationObserver(refreshTaskButton).observe(section,{
       attributes:true,attributeFilter:['class']
     });
   }
   window.addEventListener('adminerva:studio-assessment-context',refreshTaskButton);
+  window.addEventListener('adminerva:studio-task-overview',refreshTaskButton);
   window.addEventListener('adminerva:studio-variant-ready',refreshTaskButton);
+  window.addEventListener('adminerva:studio-submitted',event=>{
+    if(event.detail?.assessmentId===taskAssessmentId){
+      submittedLocally={assessmentId:taskAssessmentId,revision:event.detail.revision};
+      refreshTaskButton();
+    }
+  });
   document.getElementById('studioMobileCloseFiles')?.addEventListener('click',closeDrawer);
   document.getElementById('studioMobileCloseMore')?.addEventListener('click',closeDrawer);
   document.getElementById('studioMobileBackToProjects')?.addEventListener('click',()=>{
@@ -1958,11 +2027,26 @@ function initializeMobileStudio(){
   document.addEventListener('keydown',event=>{
     if(event.key==='Escape'){
       if(activeDrawer){
-        const trigger={files:filesButton,actions:moreButton,task:taskButton}[activeDrawer];
+        const trigger=activeDrawer==='task'
+          ?(compact()?taskButton:taskDesktopOpen)
+          :({files:filesButton,actions:moreButton}[activeDrawer]);
         closeDrawer();
         trigger?.focus();
       }
       setToolsOpen(false);
+    }
+    if(event.key==='Tab'&&activeDrawer==='task'){
+      const focusable=[...(taskDock?.querySelectorAll(
+        'a[href],button:not([disabled]):not(.hidden),summary,[tabindex]:not([tabindex="-1"])'
+      )||[])].filter(node=>node.getClientRects().length);
+      if(focusable.length){
+        const first=focusable[0],last=focusable[focusable.length-1];
+        if(event.shiftKey&&document.activeElement===first){
+          event.preventDefault();last.focus();
+        }else if(!event.shiftKey&&document.activeElement===last){
+          event.preventDefault();first.focus();
+        }
+      }
     }
   });
   explorer.addEventListener('click',event=>{
@@ -1972,14 +2056,14 @@ function initializeMobileStudio(){
   });
   const resize=()=>{
     if(!compact()){
-      closeDrawer();
+      if(activeDrawer!=='task')closeDrawer();
       setToolsOpen(false);
       panel.removeAttribute('data-mobile-pane');
       requestAnimationFrame(()=>editorInstance?.layout());
     }else if(!panel.dataset.mobilePane){
       setPane('editor');
     }
-    if(taskDock)taskDock.setAttribute('aria-hidden',String(compact()&&activeDrawer!=='task'));
+    if(taskDock)taskDock.setAttribute('aria-hidden',String(activeDrawer!=='task'));
     refreshTaskButton();
   };
   const syncCodeToolbar=()=>{
