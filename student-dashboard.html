@@ -94,6 +94,10 @@
               </div>
             </div>
             <p id="projectActivityStatus" class="text-xs text-slate-500 mb-3" role="status" aria-live="polite">Loading your saved activity…</p>
+            <div id="githubConnectionNotice" class="hidden mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950" role="status" aria-live="polite">
+              <p id="githubConnectionMessage" class="text-xs sm:text-sm leading-relaxed break-words"></p>
+              <button id="githubReconnectInline" type="button" class="mt-2 inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-2.5 text-xs font-semibold text-white disabled:opacity-50">Reconnect GitHub</button>
+            </div>
             <div class="relative h-56 sm:h-64 w-full">
               <div
                 id="githubAuthOverlay"
@@ -305,7 +309,7 @@
     <script src="js/core/adminerva-nav.js?v=4.0.1"></script>
     <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
     <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
-    <script type="module" src="js/student/dashboard.js?v=4.0.1"></script>
+    <script type="module" src="js/student/dashboard.js?v=4.0.2"></script>
   <script type="module" src="js/student/follow-up.mjs?v=1.4.0"></script>
   </body>
 </html>
