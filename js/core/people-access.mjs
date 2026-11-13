@@ -703,6 +703,36 @@ get("pa-academic-lifecycle-form").addEventListener("submit",event=>{
           void loadClassRoster(currentRosterOfferingId).catch(error=>say(error.message||"Refresh class roster."));
       });
 });
+async function searchLinkedStaff(){
+  const query=get("pa-staff-access-query").value.trim();
+  const select=get("pa-staff-access-person"),message=get("pa-staff-access-status");
+  select.replaceChildren(new Option("Choose a verified linked staff record",""));
+  if(!query){message.textContent="Enter a staff name.";return;}
+  message.textContent="Searching active staff records…";
+  const result=await perform("search_people",{query,kind:"staff",status:"active"});
+  const linked=(result.items||[]).filter(person=>person.accountLinked);
+  for(const person of linked)select.append(new Option(person.displayName,person.personId));
+  message.textContent=linked.length?
+    linked.length+" linked staff record(s) found. Select the intended account.":
+    "No linked staff found. Verify the person's account link or use an invitation for an unlinked account.";
+}
+get("pa-staff-access-search").addEventListener("click",()=>void searchLinkedStaff().catch(error=>{
+  get("pa-staff-access-status").textContent=error.message||"Staff search failed.";
+}));
+get("pa-activate-staff-form").addEventListener("submit",event=>{
+  event.preventDefault();
+  const form=event.currentTarget,data=new FormData(form);
+  const personId=String(data.get("personId")||""),reason=String(data.get("reason")||"").trim();
+  if(!personId)return;
+  if(!confirm("Activate this verified linked teacher for the selected school? Class assignments remain unchanged."))return;
+  void submitForm(form,"activate_linked_staff",{personId,reason}).then(result=>{
+    if(!result)return;
+    get("pa-staff-access-status").textContent=result.status==="already_active"?
+      "This teacher already has active school access.":
+      "Teacher school access activated. Assign a class under Classes to enable Class Record.";
+    void loadMemberships().catch(error=>say(error.message||"Refresh memberships."));
+  });
+});
 async function loadMemberships(){
   const result=await perform("list_memberships");
   const host=get("pa-membership-list");host.replaceChildren();
