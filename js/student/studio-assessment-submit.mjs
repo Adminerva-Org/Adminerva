@@ -9,6 +9,9 @@ if(button){
   const choose=document.getElementById("studioSubmitChoice");
   const state=document.getElementById("studioSubmitStatus");
   const details=document.getElementById("studioSubmitDetails");
+  const typeField=document.getElementById("studioSubmitType");
+  const classField=document.getElementById("studioSubmitClass");
+  const dueField=document.getElementById("studioSubmitDeadline");
   const confirmButton=document.getElementById("studioConfirmSubmit");
   const close=()=>dialog.close();
   let choices=new Map(),busy=false,openedUser=null;
@@ -52,17 +55,26 @@ if(button){
     const chosen=choices.get(choose.value),task=chosen?.assessment;
     if(!task){
       confirmButton.disabled=true;
-      if(details)details.textContent="Choose an assigned assessment to review its type and submission window.";
+      if(details)details.textContent="Select an assessment to see what will receive this revision.";
+      if(typeField)typeField.textContent="—";
+      if(classField)classField.textContent="—";
+      if(dueField)dueField.textContent="—";
       if(choices.size)notice("Choose the assessment to which you want to submit your saved project.");
       return;
     }
     const deployment=(task.deployments||[]).find(item=>item.section===chosen.student.section);
+    const dueValue=deployment?.deadlineEnabled===false||!deployment?.deadline?null:
+      Date.parse(deployment.deadline);
     const due=deployment?.deadlineEnabled===false||!deployment?.deadline
-      ?"No deadline configured":new Date(deployment.deadline).toLocaleString();
+      ?"No fixed deadline"
+      :Number.isFinite(dueValue)
+        ?new Date(dueValue).toLocaleString():"Check My Assessments";
     const kind=task.practicalExam===true?"Practical exam":
       task.personalizedTask?.enabled===true?"Personalized task":"Studio project";
-    if(details)details.textContent=task.title+" · "+chosen.student.section+
-      " · "+kind+" · Deadline: "+due;
+    if(details)details.textContent=task.title;
+    if(typeField)typeField.textContent=kind;
+    if(classField)classField.textContent=String(chosen.student.section||"Assigned class");
+    if(dueField)dueField.textContent=due;
     if(task.practicalExam&&assessmentParam!==task.id){
       confirmButton.disabled=true;
       notice("Open this practical exam from My Assessments so the required exam restrictions apply.");
