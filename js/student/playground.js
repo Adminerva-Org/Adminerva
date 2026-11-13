@@ -1900,6 +1900,16 @@ function initializeMobileStudio(){
     if(taskBarStatus)taskBarStatus.textContent=status;
     if(taskDockStatus)taskDockStatus.textContent=status;
     taskButton?.setAttribute('title',(title||'View task')+' · '+status);
+    const taskSubmitShortcut=document.getElementById('studioTaskSubmitShortcut');
+    if(taskSubmitShortcut){
+      const disabled=context?.readOnly===true||
+        context?.status==='unavailable'||context?.status==='loading';
+      taskSubmitShortcut.disabled=disabled;
+      taskSubmitShortcut.title=context?.readOnly===true
+        ?'This personalized attempt has already been submitted.'
+        :disabled?'Assignment must finish loading before submission.'
+        :'Submit a frozen project revision';
+    }
     for(const button of taskJumpButtons){
       const target=button.dataset.taskJump;
       const visible=target==='instructions'
@@ -1990,7 +2000,7 @@ function initializeMobileStudio(){
     if(!target||target.classList.contains('hidden'))return;
     if(jump==='personalized'||jump==='criteria')target.open=true;
     target.scrollIntoView({block:'start',behavior:
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
   });
   document.getElementById('studioTaskSubmitShortcut')?.addEventListener('click',()=>{
     closeDrawer();
