@@ -202,16 +202,22 @@ document.getElementById("discoverStudentRepos")?.addEventListener("click", async
   select.append(placeholder);
   try {
     const repositories = new Map();
+    let authenticated=Boolean(token),connectionRejected=false;
     for (let page = 1; page <= 3; page++) {
-      const route = token
+      let route = authenticated
         ? "https://api.github.com/user/repos?affiliation=owner,collaborator,organization_member&per_page=100&page=" + page
         : "https://api.github.com/users/" + encodeURIComponent(profile.githubUsername) + "/repos?per_page=100&page=" + page;
       const headers = { Accept: "application/vnd.github+json" };
-      if (token) headers.Authorization = "Bearer " + token;
-      const response = await fetch(route, { headers });
+      if(authenticated)headers.Authorization="Bearer "+token;
+      let response=await fetch(route,{headers});
+      if(response.status===401&&authenticated){
+        authenticated=false;connectionRejected=true;repositories.clear();page=1;
+        route="https://api.github.com/users/"+encodeURIComponent(profile.githubUsername)+"/repos?per_page=100&page=1";
+        response=await fetch(route,{headers:{Accept:"application/vnd.github+json"}});
+      }
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
-          throw new Error("GitHub access expired or lacks permission. Reconnect through Student Dashboard.");
+          throw new Error("GitHub access is unavailable. Reconnect through Student Dashboard or retry after the API limit resets.");
         }
         throw new Error("GitHub returned HTTP " + response.status);
       }
@@ -236,10 +242,13 @@ document.getElementById("discoverStudentRepos")?.addEventListener("click", async
       select.append(option);
     }
     select.classList.remove("hidden");
-    message.textContent = ordered.length
-      ? "Select a repository, then click Save Configuration. " +
-        (token ? "Shows repositories visible to this GitHub connection." : "Only public repositories are visible; reconnect to discover collaborator access.")
-      : "No repositories were returned. Check GitHub connection permissions.";
+    message.textContent = connectionRejected
+      ? "Saved GitHub authorization was rejected. Showing public repositories only. Reconnect GitHub from Student Dashboard to see private or collaborator repositories."
+      : ordered.length
+        ? "Select a repository, then click Save Configuration. " +
+          (authenticated ? "Showing repositories visible to your GitHub connection." : "Only public repositories are visible; connect GitHub to discover private or collaborator access.")
+        : "No repositories were returned. Check GitHub connection permissions.";
+    message.className="text-xs "+(connectionRejected?"text-amber-900":"text-slate-600")+" mt-2";
   } catch (error) {
     if(auth.currentUser?.uid!==uid)return;
     message.textContent = error.message;
