@@ -188,6 +188,18 @@
       </form>
     </section>
     <section id="pa-access" role="tabpanel" aria-labelledby="pa-tab-access" tabindex="0" hidden>
+      <div class="pa-card" style="margin-bottom:1rem">
+        <h2 style="font-size:1.2rem;font-weight:750">Activate linked teacher access</h2>
+        <p class="pa-muted">For teachers who already have a verified account linked to an active school staff record. This activates school membership only; class assignments are managed separately. Suspended access must use Restore access below.</p>
+        <form id="pa-activate-staff-form" style="display:grid;gap:.6rem;max-width:560px">
+          <label>Find linked staff<input id="pa-staff-access-query" class="pa-field" type="search" placeholder="Search staff name" autocomplete="off" required></label>
+          <button id="pa-staff-access-search" class="pa-action" type="button">Find verified staff</button>
+          <label>Staff record<select id="pa-staff-access-person" name="personId" class="pa-field" required><option value="">Search for a linked teacher first</option></select></label>
+          <label>Activation reason<input name="reason" class="pa-field" minlength="12" maxlength="500" required placeholder="Explain the access approval"></label>
+          <button class="pa-action" type="submit">Activate teacher school access</button>
+        </form>
+        <p id="pa-staff-access-status" class="pa-muted" role="status" aria-live="polite"></p>
+      </div>
       <div class="pa-card">
         <h2 style="font-size:1.2rem;font-weight:750">Verified school memberships</h2>
         <p class="pa-muted">Suspending a membership blocks future v4 school operations but preserves the person's history, evidence and existing grades. School administrators cannot suspend other school administrators here.</p>
