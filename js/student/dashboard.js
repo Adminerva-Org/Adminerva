@@ -28,6 +28,27 @@ let currentSectionAssessments = [];
 let myPublishedGrades = {}; // ✨ Global grade dictionary
 let dashboardLoadSequence = 0;
 function projectActivityStatus(message){const node=document.getElementById("projectActivityStatus");if(node)node.textContent=message;}
+// Firebase refreshes Adminerva sessions, not GitHub OAuth credentials. A rejected
+// GitHub credential is retried anonymously only for read-only public resources.
+async function githubReadOnly(url,token){
+  const headers={Accept:"application/vnd.github+json"};
+  const value=String(token||"").trim();
+  const response=await fetch(url,{headers:value?{...headers,Authorization:"Bearer "+value}:headers});
+  if(response.status!==401||!value)return {response,credentialRejected:false};
+  const publicResponse=await fetch(url,{headers});
+  return {response:publicResponse,credentialRejected:true};
+}
+function githubConnectionNotice(message=""){
+  const panel=document.getElementById("githubConnectionNotice");
+  const label=document.getElementById("githubConnectionMessage");
+  if(panel&&label){label.textContent=message;panel.classList.toggle("hidden",!message);}
+}
+function githubConnectionRejected(){
+  githubConnectionNotice("The saved GitHub authorization is no longer valid. Adminerva can continue reading public repository activity, but private repositories and authenticated operations require reconnection.");
+  const overlay=document.getElementById("githubAuthOverlay");
+  // Leave the analytics visible if anonymous GitHub access succeeds.
+  if(overlay)overlay.classList.add("hidden");
+}
 
 function escapeHTML(str) {
   if (!str) return "";
@@ -99,6 +120,12 @@ onAuthStateChanged(auth, async (user) => {
         doc(db,"student_dashboard_cache",profile.docId),profile.docId,
         dashboardLoadSequence,auth.currentUser?.uid);
     });
+  }
+  const reconnectInline=document.getElementById("githubReconnectInline");
+  if(reconnectInline&&!reconnectInline.dataset.bound){
+    reconnectInline.dataset.bound="true";
+    if(impersonateEmail){reconnectInline.disabled=true;reconnectInline.textContent="Unavailable while impersonating";}
+    else reconnectInline.addEventListener("click",()=>void window.withLoading("Reconnecting GitHub…",()=>linkGithubAccount().catch(error=>alert("GitHub authorization failed: "+error.message)),{button:reconnectInline}));
   }
   const connectGithubBtn = document.getElementById("connectGithubBtn");
   if (connectGithubBtn) {
@@ -180,6 +207,7 @@ async function loadDashboardProfile(studentData) {
 
   verifyStudentSetup(studentData);
   overlay.classList.add("hidden");
+  githubConnectionNotice("");
 
   if (currentChart) {
     currentChart.destroy();
@@ -313,10 +341,9 @@ async function syncGitHubData(repoUrl, username, token, cacheRef, profileId, loa
     let [owner,repo]=urlParts;
 
     try {
-      const repoInfoRes = await fetch(
-        `https://api.github.com/repos/${owner}/${repo}`,
-        { headers: { Authorization: `Bearer ${token}` } },
-      );
+      const {response:repoInfoRes,credentialRejected}=await githubReadOnly(
+        `https://api.github.com/repos/${owner}/${repo}`,token);
+      if(credentialRejected&&isCurrent())githubConnectionRejected();
       if (repoInfoRes.ok) {
         const repoInfo = await repoInfoRes.json();
         const actualUrl = repoInfo.html_url + ".git";
@@ -338,15 +365,9 @@ async function syncGitHubData(repoUrl, username, token, cacheRef, profileId, loa
     // Dashboard filters cover at most 90 days; avoid downloading older history.
     const since=new Date(Date.now()-93*86400000).toISOString();
     for (let page = 1; page <= 4; page++) {
-      const response = await fetch(
-        `https://api.github.com/repos/${owner}/${repo}/commits?author=${encodeURIComponent(username)}&since=${encodeURIComponent(since)}&per_page=100&page=${page}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/vnd.github+json",
-          },
-        },
-      );
+      const {response,credentialRejected}=await githubReadOnly(
+        `https://api.github.com/repos/${owner}/${repo}/commits?author=${encodeURIComponent(username)}&since=${encodeURIComponent(since)}&per_page=100&page=${page}`,token);
+      if(credentialRejected&&isCurrent())githubConnectionRejected();
       if(!response.ok){
         if(response.status===409)break; // The linked repository is empty.
         throw Error("GitHub HTTP "+response.status+(response.status===401||response.status===403
@@ -429,6 +450,7 @@ async function linkGithubAccount() {
     await Promise.all(updatePromises);
     const overlay = document.getElementById("githubAuthOverlay");
     if (overlay) overlay.classList.add("hidden");
+    githubConnectionNotice("");
     loadDashboardProfile(currentStudentProfile);
   }
 }
@@ -626,15 +648,16 @@ async function verifyStudentSetup(studentData) {
       .split("/");
     repo = urlParts.pop();
     owner = urlParts.pop();
-    const res = await fetch(
+    const {response:res,credentialRejected}=await githubReadOnly(
       `https://api.github.com/repos/${owner}/${repo}/commits?per_page=100`,
-      {
-        headers: {
-          Authorization: `Bearer ${studentData.githubToken}`,
-          Accept: "application/vnd.github+json",
-        },
-      },
-    );
+      studentData.githubToken);
+    if(credentialRejected){
+      if(currentStudentProfile?.docId!==studentData.docId)return;
+      githubConnectionRejected();
+      return triggerWarning("bg-amber-50 border-amber-200 text-amber-900",
+        "GitHub reconnection recommended",
+        "Your saved GitHub authorization was rejected. Public repository commits may still load. Use Reconnect GitHub to renew authorized access.");
+    }
     if (res.status === 401) {
       const overlay = document.getElementById("githubAuthOverlay");
       if (overlay) overlay.classList.remove("hidden");
