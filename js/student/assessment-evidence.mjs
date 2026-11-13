@@ -12,6 +12,7 @@ const el=id=>document.getElementById(id);
 let context=null,commits=[],selected=new Set(),checkpoint="",claims=new Map(),saved=null,loadSequence=0;
 let historyPage=0,hasOlderCommits=false,historyLoading=false,historyHeadSha="",commitFilter="all",reclaimTarget=null,reclaimBusy=false;
 let evidenceBusy=false;
+let githubPublicMode=false,historyLoadError="";
 let stopEvidence=null,stopClaims=null,selectionDirty=false,evidenceSyncing=true,claimsReadable=false;
 const status=text=>{el("evidenceStatus").textContent=text;};
 function submissionStatus(text,tone="info"){
@@ -85,17 +86,61 @@ function evidenceRepository(active=context){
   }
   return parseRepository(active?.profile?.repoUrl);
 }
+function githubAccessNotice(message,tone="warning"){
+  const panel=el("evidenceGithubNotice"),label=el("evidenceGithubMessage");
+  if(!panel||!label)return;
+  panel.classList.toggle("hidden",!message);
+  panel.classList.toggle("border-rose-300",tone==="error");
+  panel.classList.toggle("bg-rose-50",tone==="error");
+  panel.classList.toggle("text-rose-900",tone==="error");
+  panel.classList.toggle("border-amber-300",tone!=="error");
+  panel.classList.toggle("bg-amber-50",tone!=="error");
+  panel.classList.toggle("text-amber-950",tone!=="error");
+  label.textContent=message;
+}
 async function github(path){
-  const headers={Accept:"application/vnd.github+json"};
-  let token=String(context?.profile?.githubToken||"").trim();
-  if(!token){try{token=String(localStorage.getItem("Adminerva_github_token")||"").trim();}catch{}}
-  if(token)headers.Authorization="Bearer "+token;
-  const response=await fetch("https://api.github.com"+path,{headers});
+  const url="https://api.github.com"+path;
+  const publicHeaders={Accept:"application/vnd.github+json"};
+  // The browser-local legacy token can belong to a different school account.
+  // Use only the token attached to the currently verified student profile.
+  const token=String(context?.profile?.githubToken||"").trim();
+  const authenticated=Boolean(token&&!githubPublicMode);
+  const headers=authenticated?{...publicHeaders,Authorization:"Bearer "+token}:publicHeaders;
+  let response;
+  try{response=await fetch(url,{headers});}
+  catch{throw Error("GitHub could not be reached. Check your connection and retry.");}
+  if(response.status===401&&authenticated){
+    // A rejected saved credential should not block evidence from a public repo.
+    // GitHub itself determines whether anonymous access is permitted.
+    githubPublicMode=true;
+    githubAccessNotice("GitHub rejected the saved connection. Checking whether this repository is publicly readable.");
+    try{response=await fetch(url,{headers:publicHeaders});}
+    catch{throw Error("GitHub rejected your connection and public access could not be checked. Reconnect GitHub from Student Dashboard.");}
+    if(response.ok){
+      githubAccessNotice("Your GitHub connection needs renewal. Public repository commits are available for selection, but reconnect GitHub to restore authenticated and private-repository access.");
+    }else{
+      githubAccessNotice("Your saved GitHub connection was rejected. Reconnect from Student Dashboard. Private repositories cannot be opened without valid authorization.","error");
+      throw Error("GitHub HTTP 401. Reconnect GitHub on Student Dashboard, then reopen this assessment.");
+    }
+  }
   if(!response.ok){
-    const hint=response.status===401||response.status===403
-      ?" Reconnect GitHub in your student settings and make sure the linked account can read this repository."
-      :response.status===404?" Check the repository URL and the linked GitHub account's access.":"";
-    throw Error("GitHub HTTP "+response.status+"."+hint);
+    if(response.status===401){
+      githubAccessNotice("GitHub authentication is invalid. Reconnect from Student Dashboard.","error");
+      throw Error("GitHub HTTP 401. Reconnect GitHub on Student Dashboard, then reopen this assessment.");
+    }
+    if(response.status===403){
+      const rateLimited=response.headers.get("x-ratelimit-remaining")==="0";
+      githubAccessNotice(rateLimited
+        ?"GitHub's API rate limit was reached. Reconnect GitHub or retry after the limit resets."
+        :"GitHub refused access. Reconnect GitHub and verify that this account can read the repository.","error");
+      throw Error("GitHub HTTP 403. "+(rateLimited?"API rate limit reached.":"Repository permission or account authorization required."));
+    }
+    if(response.status===404){
+      githubAccessNotice("The repository was not found or is private. Check its URL in Student Settings and the connected account's access.","error");
+      throw Error("GitHub HTTP 404. Check the repository URL and GitHub access in Student Settings.");
+    }
+    if(response.status===409)throw Error("The selected GitHub repository has no available commit history yet.");
+    throw Error("GitHub HTTP "+response.status+". Please refresh the evidence list or try again later.");
   }
   return response.json();
 }
@@ -147,7 +192,7 @@ function render(){
   if(el("evidenceClear"))el("evidenceClear").disabled=!editable||evidenceBusy;
   const summary=el("evidenceSelectionSummary");
   if(summary)summary.textContent=guidance.message;
-  if(!commits.length){add(list,"p",historyPage===0?"Loading available commits…":"No commits returned. The repository may be empty or inaccessible.","text-sm text-slate-600 rounded-lg border border-dashed p-4");return;}
+  if(!commits.length){add(list,"p",historyLoadError|| (historyPage===0?"Loading available commits…":"No commits returned. The repository may be empty or inaccessible."),"text-sm text-slate-600 rounded-lg border border-dashed p-4");return;}
   const linked=String(context?.profile?.githubUsername||"").trim().replace(/^@/,"").toLowerCase();
   const visible=commits.filter(commit=>{
     const sha=String(commit.sha||"").toLowerCase();
@@ -369,6 +414,7 @@ async function load(){
   el("legacySubmitPanel").classList.toggle("hidden",v2);
   if(!v2){hasOlderCommits=false;refreshHistoryControl();return;}
   context=null;commits=[];selected=new Set();checkpoint="";saved=null;claims=new Map();claimsReadable=false;
+  githubPublicMode=false;historyLoadError="";githubAccessNotice("");
   commitFilter="all";reclaimTarget=null;reclaimBusy=false;
   el("evidenceReclaimEditor").classList.add("hidden");
   el("evidenceReclaimSave").disabled=false;
@@ -438,7 +484,7 @@ async function load(){
     else if(saved?.status==="submitted")status("Evidence submitted. Before approval you may revise and resubmit, or withdraw. Resubmission records a new server time and preserves prior evidence."+sourceWarning);
     else if(saved?.status==="needs_review")status("Your teacher proposed historical evidence, not a student submission. Ask them to reopen it for student changes if you need to choose your own evidence commits and checkpoint before approval.");
     if(evidenceSyncing)status("Checking current evidence status with the server. Editing resumes when connected.");
-  }catch(error){if(seq===loadSequence)status("Unable to load evidence: "+error.message);}
+  }catch(error){if(seq===loadSequence){historyLoadError="Commit history could not be loaded. Use the GitHub connection options above, then refresh.";render();status("Unable to load evidence: "+error.message);}}
   finally{if(seq===loadSequence)el("evidenceCommitList").setAttribute("aria-busy","false");}
 }
 async function loadOlderCommits(){
