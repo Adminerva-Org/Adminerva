@@ -1115,3 +1115,105 @@ body main > header[class*="mb-8"],body main > header[class*="mb-6"] {
     font-size:.66rem;
   }
 }
+
+
+/* 1.5.2 navigation development-state indicators and overflow hardening. */
+.av-nav-status-cluster{
+  display:inline-flex;
+  align-items:center;
+  gap:.32rem;
+  flex:0 0 auto;
+}
+.av-dev-indicator{
+  display:inline-block;
+  width:.58rem;
+  height:.58rem;
+  flex:0 0 .58rem;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.3);
+  box-shadow:0 0 0 2px rgba(15,23,42,.7);
+  cursor:help;
+}
+.av-dev-indicator--needs{background:#facc15}
+.av-dev-indicator--future{background:#ef4444}
+.av-old-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:1.05rem;
+  padding:.04rem .34rem;
+  border:1px solid #64748b;
+  border-radius:.32rem;
+  background:#1e293b;
+  color:#cbd5e1;
+  font-size:.56rem;
+  line-height:1;
+  font-weight:900;
+  letter-spacing:.05em;
+  cursor:help;
+}
+.av-workspace-card-heading{
+  display:flex;
+  min-width:0;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:.5rem;
+}
+.av-workspace-card-title{min-width:0;overflow-wrap:anywhere}
+.av-nav-task-link>span:first-child{min-width:0}
+.av-center-group>summary{
+  display:flex;
+  align-items:center;
+  gap:.4rem;
+  white-space:nowrap;
+}
+.av-nav-menu-panel{
+  max-width:calc(100vw - 1rem);
+}
+.av-nav-top{gap:.65rem}
+.av-nav-brand{flex:0 1 auto}
+.av-nav-tools{flex:0 0 auto}
+.av-center-context,
+#av-desktop-nav{min-width:0}
+#av-desktop-nav{
+  max-width:min(52vw,58rem);
+}
+@media(min-width:1280px){
+  #av-desktop-nav{
+    overflow-x:auto;
+    scrollbar-width:none;
+    overscroll-behavior-x:contain;
+  }
+  #av-desktop-nav::-webkit-scrollbar{display:none}
+}
+@media(max-width:1279px){
+  .av-nav-top{
+    min-height:3.5rem;
+  }
+}
+@media(max-width:760px){
+  .av-nav-top{padding-left:.55rem!important;padding-right:.55rem!important}
+  .av-nav-brand{gap:.4rem!important}
+  .av-nav-wordmark{display:none!important}
+  .av-nav-home-label{display:none!important}
+  .av-module-label{padding-left:.65rem!important;padding-right:.65rem!important}
+  .av-nav-tools{gap:.3rem!important}
+  .av-nav-tools>a[title="Account settings"],
+  .av-nav-tools>button[title="Report Issue"]{
+    min-width:2.35rem!important;
+    width:2.35rem;
+  }
+  .av-nav-tools>div:last-child{
+    padding-left:.45rem!important;
+  }
+  #userEmailDisplay{
+    max-width:7.25rem!important;
+  }
+}
+@media(max-width:460px){
+  .av-nav-tools>a[title="Account settings"]{display:none!important}
+  #userEmailDisplay{display:none!important}
+  .av-nav-tools>div:last-child{border-left:0!important;padding-left:.1rem!important}
+  .av-account-menu summary{max-width:8.5rem}
+  .av-nav-role{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+}
