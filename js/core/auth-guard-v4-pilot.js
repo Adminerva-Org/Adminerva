@@ -167,7 +167,7 @@ async function checkAccess(user){
     replacePage("school-admin.html");return;
   }
   if(actualRole==="platformowner"&&!platformSchoolView&&!access.schoolAdmin&&!access.schoolTeacher&&!access.schoolStudent&&
-     !/\/(owner-schools|settings|issues|wiki|patch-notes|future-workspace)\.html$/.test(currentPath)){
+     !/\/(owner-schools|admin-analytics|settings|issues|wiki|patch-notes|future-workspace)\.html$/.test(currentPath)){
     replacePage("owner-schools.html");return;
   }
   if(/\/(school-student-projects|school-student-settings|school-student-assessments|school-student-grades)\.html$/.test(currentPath)&&
