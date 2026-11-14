@@ -74,7 +74,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const hasSchoolStudent = root.dataset.schoolStudent === "true";
   const v4OnlyTeacher = root.dataset.v4OnlyTeacher === "true";
   const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
-  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=dc76fece4999");
+  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=6ff9393216da");
   const ia=buildNavigationIA({
     isStudent,isSuperAdmin,isSchoolAdmin,isPlatformOwner,
     hasSchoolTeacher,hasSchoolStudent,v4OnlyTeacher,v4OnlyStudent
