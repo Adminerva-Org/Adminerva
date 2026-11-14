@@ -346,11 +346,40 @@ export function buildNavigationIA(ctx){
   const activeWorkspace=isHome?null:(workspaces.find(w=>w.id===requestedWorkspace)||
     workspaces.find(workspaceMatches)||workspaces[0]||null);
   const groups=activeWorkspace?.groups||[];
+  const sectionize=definitions=>{
+    const byId=new Map(workspaces.map(item=>[item.id,item]));
+    const used=new Set(),sections=[];
+    for(const definition of definitions){
+      const items=definition.ids.map(id=>byId.get(id)).filter(Boolean);
+      items.forEach(item=>used.add(item.id));
+      if(items.length)sections.push({id:definition.id,label:definition.label,items});
+    }
+    const remaining=workspaces.filter(item=>!used.has(item.id));
+    if(remaining.length)sections.push({id:"other",label:"Other",items:remaining});
+    return sections;
+  };
+  const workspaceSections=systemDefault?sectionize([
+      {id:"intelligence",label:"Platform Intelligence",ids:["system-analytics"]},
+      {id:"administration",label:"Administration",ids:["directory","system"]},
+      {id:"governance",label:"Governance & Ecosystem",ids:["platform-governance","platform-integrations"]},
+      {id:"support",label:"Support",ids:["platform-support"]}
+    ]):studentView?sectionize([
+      {id:"learning",label:"Learning",ids:["classroom","games","laboratory"]},
+      {id:"services",label:"Student Services",ids:["student-services"]},
+      {id:"support",label:"Support & Information",ids:["student-other"]}
+    ]):sectionize([
+      {id:"teaching",label:"Teaching",ids:["analytics","assessment","grading","preparation"]},
+      {id:"technology",label:"Technology",ids:["repository"]},
+      {id:"personnel",label:"My Personnel",ids:["personnel-self-service"]},
+      {id:"support",label:"Support",ids:["staff-other"]},
+      {id:"school-core",label:"School Operations",ids:["school-admin","registrar","finance","hr"]},
+      {id:"school-services",label:"Campus & Student Services",ids:["health-services","operations","communications","documents-compliance"]}
+    ]);
   const allItems=workspaces.flatMap(w=>w.groups.flatMap(g=>g.items));
   const currentItem=groups.flatMap(g=>g.items).find(itemMatches)||allItems.find(itemMatches)||null;
 
   return {
-    workspaces,groups,currentItem,
+    workspaces,workspaceSections,activeWorkspaceId:activeWorkspace?.id||null,groups,currentItem,
     currentPage:isHome?"Home":currentItem?.[1]||activeWorkspace?.label||"Adminerva",
     currentArea:isHome?"Home":activeWorkspace?.label||"Adminerva",
     currentRoute:isHome?homeRoute:(currentItem?.[2]||activeWorkspace?.route||null),
