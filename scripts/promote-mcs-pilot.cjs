@@ -1,4 +1,5 @@
 "use strict";
+// Idempotent production-main operation: never changes grades, memberships, enrollments, or compatibility to v4_only.
 
 const {initializeApp,applicationDefault}=require("firebase-admin/app");
 const {getFirestore,FieldValue}=require("firebase-admin/firestore");
