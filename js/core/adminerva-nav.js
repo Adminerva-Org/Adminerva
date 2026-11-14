@@ -35,6 +35,27 @@ document.addEventListener("DOMContentLoaded", () => {
   if(!document.querySelector('link[rel="icon"]')){
     const icon=document.createElement("link");icon.rel="icon";icon.type="image/png";icon.sizes="32x32";icon.href="assets/adminerva-favicon-32.png";document.head.append(icon);
   }
+  const removePassiveLegacyNotices = scope => {
+    const candidates = [];
+    if (scope?.matches?.(".av-scope-notice,.av-teacher-scope-note,[data-av-scope-notice],[role='note']")) candidates.push(scope);
+    scope?.querySelectorAll?.(".av-scope-notice,.av-teacher-scope-note,[data-av-scope-notice],[role='note']").forEach(node=>candidates.push(node));
+    for (const node of candidates) {
+      const text = String(node.textContent||"").replace(/\s+/g," ").trim();
+      if (node.matches(".av-scope-notice,.av-teacher-scope-note,[data-av-scope-notice]") ||
+          (text.length < 320 && text.startsWith("Assigned-section access is enforced."))) {
+        node.remove();
+      }
+    }
+  };
+  removePassiveLegacyNotices(document);
+  if (document.body && typeof MutationObserver !== "undefined") {
+    new MutationObserver(records => {
+      for (const record of records) for (const node of record.addedNodes) {
+        if (node.nodeType === 1) removePassiveLegacyNotices(node);
+      }
+    }).observe(document.body,{childList:true,subtree:true});
+  }
+
   const root = document.getElementById("adminerva-nav");
   if (!root) return;
   let currentRole, disclosures = [], utilitiesMounted = false;
