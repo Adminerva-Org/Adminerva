@@ -79,11 +79,37 @@ document.addEventListener("DOMContentLoaded", () => {
     isStudent,isSuperAdmin,isSchoolAdmin,isPlatformOwner,
     hasSchoolTeacher,hasSchoolStudent,v4OnlyTeacher,v4OnlyStudent
   });
-  const {groups,currentArea,currentPage,currentRoute,workspaceRoute,homeRoute,homeLabel,roleLabel}=ia;
+  const {groups,currentArea,currentPage,currentRoute,workspaceRoute,homeRoute,homeLabel,roleLabel,
+    workspaceSections,activeWorkspaceId}=ia;
   currentRole=ia.systemDefault?"platformowner":ia.studentView?"student":ia.schoolAdminView?"schooladmin":"teacher";
   const escapeHTML = value => String(value??"").replace(/[&<>"']/g, char =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
-  const modules=ia.workspaces.map(item=>[item.label,item.route,item.description]);
+  const workspaceLinkMarkup = item => {
+    const active=item.id===activeWorkspaceId;
+    return `<a href="${item.route}" class="av-workspace-card${active?" is-active":""}"${active?' aria-current="location"':""}>
+      <span class="av-workspace-card-title">${escapeHTML(item.label)}</span>
+      <span class="av-workspace-card-description">${escapeHTML(item.description)}</span>
+    </a>`;
+  };
+  const workspaceGridMarkup=(workspaceSections||[]).map(section=>`
+    <section class="av-workspace-section" aria-labelledby="av-workspace-section-${escapeHTML(section.id)}">
+      <h3 id="av-workspace-section-${escapeHTML(section.id)}" class="av-workspace-section-title">${escapeHTML(section.label)}</h3>
+      <div class="av-workspace-section-grid">
+        ${section.items.map(workspaceLinkMarkup).join("")}
+      </div>
+    </section>`).join("");
+  const workspaceAccordionMarkup=(workspaceSections||[]).map(section=>{
+    const containsActive=section.items.some(item=>item.id===activeWorkspaceId);
+    return `<details class="av-workspace-accordion-section"${containsActive?" open":""}>
+      <summary>
+        <span>${escapeHTML(section.label)}</span>
+        <span class="av-workspace-section-count">${section.items.length}</span>
+      </summary>
+      <div class="av-workspace-accordion-links">
+        ${section.items.map(workspaceLinkMarkup).join("")}
+      </div>
+    </details>`;
+  }).join("");
 
   root.innerHTML = `
     <nav aria-label="Adminerva main navigation" class="bg-gray-900/95 backdrop-blur-md text-white shadow-lg relative z-50 border-b border-cyan-900/50 sticky top-0">
@@ -99,9 +125,19 @@ document.addEventListener("DOMContentLoaded", () => {
               <summary class="av-module-label flex items-center gap-2 list-none cursor-pointer rounded-lg px-3 py-2 min-h-10 text-sm font-bold text-cyan-100 border border-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400" aria-label="Switch workspace">
                 <span>Workspaces</span><span aria-hidden="true">▾</span>
               </summary>
-              <div class="av-nav-menu-panel absolute left-0 top-full mt-2 w-72 max-w-[85vw] max-h-[75dvh] overflow-y-auto z-[110] rounded-xl bg-slate-900 border border-slate-600 shadow-2xl p-2">
-                <p class="px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">Major workspaces</p>
-                ${modules.map(([label, route, description]) => `<a href="${route}" class="av-nav-workspace-link block rounded-lg px-3 py-3 hover:bg-slate-800 text-slate-100${route === workspaceRoute ? " bg-slate-800" : ""}"${route === workspaceRoute ? ' aria-current="location"' : ""}><strong class="block text-sm">${escapeHTML(label)}</strong><span class="block text-xs text-slate-400 mt-1">${escapeHTML(description)}</span></a>`).join("")}
+              <div class="av-nav-menu-panel av-workspace-menu absolute left-0 top-full mt-2 z-[110] rounded-xl bg-slate-900 border border-slate-600 shadow-2xl">
+                <div class="av-workspace-menu-head">
+                  <div>
+                    <p class="av-workspace-menu-eyebrow">Workspaces</p>
+                    <p class="av-workspace-menu-caption">Choose a major Adminerva area.</p>
+                  </div>
+                </div>
+                <div class="av-workspace-grid-view">
+                  ${workspaceGridMarkup}
+                </div>
+                <div class="av-workspace-accordion-view">
+                  ${workspaceAccordionMarkup}
+                </div>
               </div>
             </details>
           </div>
