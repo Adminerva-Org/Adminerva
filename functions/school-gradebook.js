@@ -68,7 +68,7 @@ function createSchoolGradebookService({db}){
   const gradeRef=grades.doc(hash(taskId,studentUid));
   const task=await taskRef.get();
   if(!task.exists||task.data().schoolId!==ctx.schoolId||
-     (task.data().reviewerUid||task.data().ownerUid)!==ctx.uid||
+     (!ctx.platformOverride&&(task.data().reviewerUid||task.data().ownerUid)!==ctx.uid)||
      !["studio","github"].includes(task.data().submissionSource))
    deny("permission-denied","You are not the currently responsible teacher for this school assessment.");
   const source=task.data().submissionSource;
@@ -100,24 +100,27 @@ function createSchoolGradebookService({db}){
    const [school,member,grant,currentTask,submission]=await Promise.all([
     tx.get(schoolRef),tx.get(memberRef),tx.get(grantRef),tx.get(taskRef),tx.get(submissionRef)
    ]);
-   if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
-      member.data().status!=="active"||member.data().schoolId!==ctx.schoolId||
+   const schoolInvalid=!school.exists||!["active","pilot"].includes(school.data().state);
+   const teacherAuthorityInvalid=!ctx.platformOverride&&(
+      !member.exists||member.data().status!=="active"||member.data().schoolId!==ctx.schoolId||
       !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher")||
       !grant.exists||grant.data().status!=="active"||
       grant.data().teacherUid!==ctx.uid||grant.data().schoolId!==ctx.schoolId||
-      grant.data().offeringId!==offeringId||!currentTask.exists||
-      currentTask.data().schoolId!==ctx.schoolId||
-      (currentTask.data().reviewerUid||currentTask.data().ownerUid)!==ctx.uid||
+      grant.data().offeringId!==offeringId||
+      (currentTask.exists&&(currentTask.data().reviewerUid||currentTask.data().ownerUid)!==ctx.uid)
+   );
+   const bindingInvalid=!currentTask.exists||currentTask.data().schoolId!==ctx.schoolId||
       !submission.exists||submission.data().schoolId!==ctx.schoolId||
       submission.data().taskId!==taskId||submission.data().studentUid!==studentUid||
-      submission.data().offeringId!==offeringId)
+      submission.data().offeringId!==offeringId;
+   if(schoolInvalid||teacherAuthorityInvalid||bindingInvalid)
     deny("permission-denied","Review permission, assessment, or student submission is no longer valid.");
    return {task:currentTask.data(),submission:submission.data()};
   }
   if(input.action==="get_draft"){
    const grant=await grantRef.get();
-   if(!grant.exists||grant.data().status!=="active"||
-      grant.data().schoolId!==ctx.schoolId||grant.data().teacherUid!==ctx.uid)
+   if(!ctx.platformOverride&&(!grant.exists||grant.data().status!=="active"||
+      grant.data().schoolId!==ctx.schoolId||grant.data().teacherUid!==ctx.uid))
     deny("permission-denied","This task's grading rights are not assigned to you.");
    const [submission,grade]=await Promise.all([submissionRef.get(),gradeRef.get()]);
    if(!submission.exists||submission.data().schoolId!==ctx.schoolId||
