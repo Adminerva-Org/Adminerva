@@ -1,598 +1,298 @@
-import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
-/** Role-separated report feed, triage and optional admin-only diagnostic trails. */
-import { db, auth } from "../core/firebase-core.js?v=1.3.0";
-import {
-  collection,
-  getDoc,
-  getDocs,
-  doc,
-  updateDoc,
-  runTransaction,
-  deleteDoc,
-  addDoc,
-  query,
-  orderBy,
-  where,
-  onSnapshot,
-  serverTimestamp,
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import { filterReports, ownsReport } from "./report-filters.mjs?v=1.3.0";
-import {staffRole,staffSections} from "./staff-role.mjs?v=1.3.0";
+import {app,auth,db} from "./firebase-core.js?v=1.3.0";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
+import {collection,addDoc,getDocs,query,where,serverTimestamp,limit} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import {createTenantSchoolPicker} from "./tenant-school-picker.mjs?v=4.0.1";
 
-let allIssues = [];
-let currentOpenIssueId = null;
-let currentUserEmail = "";
-let currentComments=[];
-let lastFilteredIssues=[];
+const get=id=>document.getElementById(id);
+const functions=getFunctions(app,"asia-southeast1");
+const supportApi=httpsCallable(functions,"schoolSupport");
+const modal=get("issueDetailsModal");
+const newModal=get("bug-modal");
+const form=get("supportReportForm");
+const feed=get("issuesFeed");
+const feedSummary=get("issuesFeedSummary");
+const pageStatus=feedSummary;
+let picker=null,schoolMode=false,schoolAdmin=false,reports=[],activeReport=null,activeDetail=null,desiredLocked=false;
+let legacyLoaded=false,legacyStudent=null;
 
-// Role check
-let isSuperAdmin = false; // Verified auth email; never a localStorage role.
-let isTeacher = false;
-let stopIssueListeners = [];
-function ownsIssue(issue) {
-  return ownsReport(issue,auth.currentUser?.uid,currentUserEmail);
+function escapeHTML(value){
+  return String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]));
 }
-const filterIds=["filterCategory","filterStatus","filterAudience","filterSort","filterMine","filterSearch","filterReportType"];
-function filterStoreKey(){return auth.currentUser?.uid
-  ?"Adminerva_ReportFilters_"+auth.currentUser.uid:null}
-function saveReportFilters(){
-  const key=filterStoreKey();if(!key)return;
-  const value={};
-  for(const id of filterIds){
-    const input=document.getElementById(id);
-    if(input)value[id]=input.type==="checkbox"?input.checked:input.value;
-  }
-  try{localStorage.setItem(key,JSON.stringify(value))}catch(error){
-    console.warn("Report filter preference could not be saved:",error);
-  }
+function dateText(value){return value?new Date(value).toLocaleString():"—";}
+function scoped(action,details={}){
+  const lease=picker.scope.lease();
+  return supportApi({schoolId:lease.schoolId,action,...details}).then(response=>{
+    picker.scope.assertLease(lease);return response.data;
+  });
 }
-function restoreReportFilters(){
-  const key=filterStoreKey();if(!key)return;
-  let stored;
-  try{stored=JSON.parse(localStorage.getItem(key)||"null")}catch{return}
-  if(!stored||typeof stored!=="object")return;
-  for(const id of filterIds){
-    const input=document.getElementById(id);
-    if(!input)continue;
-    if(input.type==="checkbox")input.checked=stored[id]===true;
-    else if(typeof stored[id]==="string"){
-      if(input.tagName==="SELECT"&&
-        ![...input.options].some(option=>option.value===stored[id]))continue;
-      input.value=stored[id];
-    }
-  }
+function setSchoolModeUI(){
+  for(const id of ["filterAudience","filterReportType","reportExportTools"])get(id)?.toggleAttribute("hidden",true);
+  get("legacyReportAudienceWrap")?.classList.add("hidden");
+  const vote=get("upvoteBtn")?.parentElement; if(vote)vote.classList.add("hidden");
+  get("adminTestBtn")?.classList.add("hidden");
+  get("copyIssuePacket")?.classList.add("hidden");
+  get("adminDeleteBtn")?.classList.add("hidden");
 }
-
-function escapeHTML(str) {
-  if (!str) return "";
-  return String(str).replace(
-    /[&<>"']/g,
-    (m) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#039;",
-      })[m],
-  );
-}
-
-onAuthStateChanged(auth, async user => {
-  const trailPanel = document.getElementById("issue-diagnostics");
-  if (trailPanel) { trailPanel.textContent = ""; trailPanel.hidden = true; }
-  stopIssueListeners.forEach(stop => stop()); stopIssueListeners = [];
-  if (user) {
-    currentUserEmail = (user.email||"").toLowerCase();
-    const role=await resolveStaffRole(user);
-    isSuperAdmin = role === "admin";
-    isTeacher = role === "teacher";
-    document.getElementById("filterAudience")?.querySelector('option[value="admin"]')?.toggleAttribute("hidden", !isSuperAdmin);
-    document.getElementById("filterReportType")?.toggleAttribute("hidden",!isSuperAdmin);
-    document.getElementById("reportExportTools")?.toggleAttribute("hidden",!isSuperAdmin);
-    restoreReportFilters();
-    if (!isSuperAdmin && document.getElementById("filterAudience")?.value === "admin") document.getElementById("filterAudience").value = "All";
-    fetchIssues();
-  } else {
-    allIssues = [];
-    currentUserEmail = "";
-    isSuperAdmin = false;
-    isTeacher = false;
-    currentOpenIssueId = null;
-    if(unsubscribeComments){unsubscribeComments();unsubscribeComments=null;}
-    document.getElementById("issueDetailsModal")?.classList.add("hidden");
-    renderIssues();
-  }
-});
-// ==========================================
-// 1. REAL-TIME FEED LISTENER
-// ==========================================
-function fetchIssues() {
-  const container = document.getElementById("issuesFeed");
-  const user = auth.currentUser;
-  if (!user) return;
-  // Query only documents the authenticated role may read.
-  const requests = isSuperAdmin
-    ? [query(collection(db, "issues"), orderBy("createdAt", "desc"))]
-    : isTeacher
-      ? [
-          ...staffSections(user).map(section=>query(collection(db,"issues"),where("audience","==","teacher"),where("section","==",section))),
-          query(collection(db,"issues"),where("reporterUid","==",user.uid)),
-          query(collection(db,"issues"),where("reporterEmail","==",currentUserEmail))
-        ]
-      : [
-          query(collection(db, "issues"), where("reporterUid", "==", user.uid)),
-          query(collection(db, "issues"), where("reporterEmail", "==", currentUserEmail))
-        ];
-  const groups = requests.map(() => []);
-  const refresh = () => {
-    const merged = new Map();
-    groups.flat().forEach(item => merged.set(item.id, item));
-    allIssues = [...merged.values()].sort((a,b)=>
-      (b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
-    renderIssues();
-    const deepLink = new URLSearchParams(location.search).get("issue");
-    if (deepLink && !currentOpenIssueId && allIssues.some(item=>item.id===deepLink)) {
-      window.openIssueModal(deepLink);
-      history.replaceState(null,"",location.pathname);
-    }
-    if (currentOpenIssueId) {
-      const activeIssue = allIssues.find(item=>item.id===currentOpenIssueId);
-      if (activeIssue) document.getElementById("upvoteCount").textContent =
-        (activeIssue.upvotes||[]).length;
-    }
+function currentFilters(){
+  return {
+    category:get("filterCategory")?.value||"All",
+    status:get("filterStatus")?.value||"All",
+    search:String(get("filterSearch")?.value||"").trim().toLowerCase(),
+    mine:Boolean(get("filterMine")?.checked),
+    sort:get("filterSort")?.value||"newest"
   };
-  requests.forEach((request,index)=>{
-    const loaded = window.beginLoading?.("Loading permitted reports…", container) || (() => {});
-    const stop = onSnapshot(request,snapshot=>{
-      groups[index]=snapshot.docs.map(d=>({id:d.id,...d.data()}));
-      refresh();
-      loaded();
-    },error=>{
-      console.error("Report feed unavailable:",error);
-      container.textContent="Failed to load reports permitted for your account.";
-      loaded();
-    });
-    stopIssueListeners.push(()=>{loaded();stop();});
-  });
 }
-
-window.renderIssuesFilter = () => {saveReportFilters();renderIssues()};
-function resetReportFilters(){
-  for(const id of ["filterCategory","filterStatus","filterAudience"]){
-    const input=document.getElementById(id);if(input)input.value="All";
-  }
-  const reportType=document.getElementById("filterReportType");if(reportType)reportType.value="all";
-  document.getElementById("filterSort").value="newest";
-  document.getElementById("filterSearch").value="";
-  document.getElementById("filterMine").checked=false;
-  saveReportFilters();renderIssues();
-}
-function renderIssues() {
-  const container = document.getElementById("issuesFeed");
-  if(!container)return;
-  let filtered=filterReports(allIssues,{
-    role:isSuperAdmin?"admin":isTeacher?"teacher":"student",
-    uid:auth.currentUser?.uid||"",email:currentUserEmail,
-    category:document.getElementById("filterCategory")?.value||"All",
-    status:document.getElementById("filterStatus")?.value||"All",
-    audience:document.getElementById("filterAudience")?.value||"All",
-    onlyMine:document.getElementById("filterMine")?.checked||false,
-    search:document.getElementById("filterSearch")?.value||"",
-    sort:document.getElementById("filterSort")?.value||"newest"
+function filteredReports(){
+  const filters=currentFilters();
+  let rows=reports.filter(report=>{
+    if(filters.category!=="All"&&report.category!==filters.category)return false;
+    if(filters.status!=="All"&&report.status!==filters.status)return false;
+    if(filters.mine&&!report.isMine)return false;
+    if(filters.search){
+      const hay=[report.title,report.description,report.module,report.category,report.status].join(" ").toLowerCase();
+      if(!hay.includes(filters.search))return false;
+    }
+    return true;
   });
-  const reportType=document.getElementById("filterReportType")?.value||"all";
-  if(isSuperAdmin&&reportType!=="all")filtered=filtered.filter(issue=>reportType==="test"?issue.internalTest===true:issue.internalTest!==true);
-  lastFilteredIssues=filtered;
-  const summary=document.getElementById("issuesFeedSummary");
-  if(summary)summary.textContent=filtered.length+" of "+allIssues.length+" accessible reports shown";
-  container.innerHTML = "";
-
-  if (filtered.length === 0) {
-    container.innerHTML = `<div class="py-12 text-center text-slate-400 font-medium italic border-2 border-dashed border-slate-200 rounded-xl bg-white">No reports match your filters.</div>`;
+  rows.sort((a,b)=>{
+    if(filters.sort==="oldest")return Number(a.updatedAt||a.createdAt||0)-Number(b.updatedAt||b.createdAt||0);
+    if(filters.sort==="priority"){
+      const rank={Critical:0,High:1,Medium:2,Low:3};
+      return (rank[a.priority]??9)-(rank[b.priority]??9)||Number(b.updatedAt||0)-Number(a.updatedAt||0);
+    }
+    return Number(b.updatedAt||b.createdAt||0)-Number(a.updatedAt||a.createdAt||0);
+  });
+  return rows;
+}
+function statusTone(status){
+  if(status==="Resolved")return "bg-emerald-100 text-emerald-800";
+  if(status==="In Progress")return "bg-amber-100 text-amber-800";
+  if(status==="Waiting for Reporter")return "bg-violet-100 text-violet-800";
+  if(status==="Closed")return "bg-slate-200 text-slate-700";
+  return "bg-blue-100 text-blue-800";
+}
+function renderSchoolReports(){
+  const rows=filteredReports();
+  feedSummary.textContent=rows.length+" report"+(rows.length===1?"":"s");
+  feed.replaceChildren();
+  if(!rows.length){
+    feed.innerHTML='<div class="py-10 text-center text-slate-500 border border-dashed border-slate-300 rounded-xl bg-white">No reports match the current filters.</div>';
     return;
   }
-
-  filtered.forEach((iss) => {
-    const dateStr = iss.createdAt
-      ? iss.createdAt.toDate().toLocaleDateString()
-      : "Just now";
-    const upvotes = iss.upvotes ? iss.upvotes.length : 0;
-    const isLocked = iss.locked ? "🔒 " : "";
-
-    // Status Styles
-    let statStyle = "bg-slate-100 text-slate-600";
-    if (iss.status === "Open") statStyle = "bg-emerald-100 text-emerald-700";
-    if (iss.status === "In Progress") statStyle = "bg-amber-100 text-amber-700";
-    if (iss.status === "Resolved") statStyle = "bg-blue-100 text-blue-700";
-
-    // Priority Marker
-    const prioMarker =
-      iss.priority === "Critical"
-        ? "🔴 "
-        : iss.priority === "High"
-          ? "🟠 "
-          : "";
-
-    const card = `
-      <div class="bg-white p-4 rounded-xl border border-slate-200 hover:shadow-md hover:border-cyan-300 transition cursor-pointer flex gap-4 items-center group" onclick="openIssueModal('${iss.id}')">
-        
-        <div class="hidden sm:flex flex-col items-center justify-center bg-slate-50 border border-slate-200 rounded-lg min-w-[3rem] py-2">
-            <span class="text-xs text-slate-400">👍</span>
-            <span class="font-bold text-slate-700">${upvotes}</span>
-        </div>
-
-        <div class="flex-grow">
-          <div class="flex items-center gap-2 mb-1.5 flex-wrap">
-            <span class="${statStyle} text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">${escapeHTML(iss.status)}</span>
-            <span class="text-[10px] font-bold text-slate-500 border border-slate-200 bg-slate-50 px-2 py-0.5 rounded uppercase">${escapeHTML(iss.category)}</span>
-            <span class="text-[10px] font-bold text-blue-800 border border-blue-200 bg-blue-50 px-2 py-0.5 rounded uppercase">To ${(iss.audience||"admin")==="teacher"?"Teacher":"Admin"}</span>
-            ${iss.internalTest===true?'<span class="text-[10px] font-bold text-indigo-800 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded uppercase">Internal test</span>':""}
-            <span class="text-[10px] text-slate-400 font-medium ml-auto">${dateStr}</span>
-          </div>
-          <h3 class="text-base font-bold text-slate-800 leading-tight group-hover:text-cyan-700 transition">${isLocked}${prioMarker}${escapeHTML(iss.title)}</h3>
-          <p class="text-xs text-slate-500 mt-1 truncate">Reported by ${ownsIssue(iss) ? "You" : isSuperAdmin ? "Student / Staff member" : "Community member"}</p>
-        </div>
-      </div>
-    `;
-    container.insertAdjacentHTML("beforeend", card);
-  });
+  for(const report of rows){
+    const card=document.createElement("button");
+    card.type="button";
+    card.className="w-full text-left bg-white p-4 rounded-xl border border-slate-200 hover:border-cyan-400 hover:shadow-sm transition";
+    card.innerHTML='<div class="flex items-start justify-between gap-3"><div class="min-w-0">'+
+      '<div class="flex flex-wrap items-center gap-2 mb-1">'+
+      '<span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded '+statusTone(report.status)+'">'+escapeHTML(report.status)+'</span>'+
+      '<span class="text-[10px] font-bold uppercase text-slate-500">'+escapeHTML(report.category)+'</span>'+
+      (report.priority==="Critical"?'<span class="text-[10px] font-extrabold uppercase text-rose-700">Critical</span>':'')+
+      '</div><h3 class="font-extrabold text-slate-900">'+escapeHTML(report.title)+'</h3>'+
+      '<p class="text-xs text-slate-500 mt-1">'+escapeHTML(report.module||"General")+' · '+escapeHTML(report.reporterLabel||"School member")+'</p>'+
+      '</div><span class="text-xs text-slate-400 shrink-0">'+escapeHTML(dateText(report.updatedAt||report.createdAt))+'</span></div>';
+    card.addEventListener("click",()=>void openSchoolReport(report.reportId));
+    feed.append(card);
+  }
 }
-
-for(const id of ["filterCategory","filterStatus","filterAudience","filterSort","filterMine"]){
-  document.getElementById(id)?.addEventListener("change",window.renderIssuesFilter);
+async function loadSchoolReports(){
+  pageStatus.textContent="Loading reports…";
+  const result=await scoped("list",{limit:100});
+  reports=result.reports||[];
+  renderSchoolReports();
+  const deep=new URLSearchParams(location.search).get("report");
+  if(deep&&reports.some(row=>row.reportId===deep)){
+    history.replaceState(null,"",location.pathname);
+    await openSchoolReport(deep);
+  }
 }
-document.getElementById("filterSearch")?.addEventListener("input",window.renderIssuesFilter);
-document.getElementById("resetReportFilters")?.addEventListener("click",resetReportFilters);
-
-// ==========================================
-// 2. MODAL LOGIC & COMMENTS
-// ==========================================
-window.openIssueModal = async function (id) {
-  const iss = allIssues.find((i) => i.id === id);
-  if (!iss) return;
-
-  currentOpenIssueId = id;
-  let diagnosticsPanel = document.getElementById("issue-diagnostics");
-  if (!diagnosticsPanel) {
-    diagnosticsPanel = document.createElement("pre"); diagnosticsPanel.id = "issue-diagnostics";
-    diagnosticsPanel.className = "whitespace-pre-wrap text-xs p-3 bg-slate-100 text-slate-900";
-    document.getElementById("adminControlPanel").after(diagnosticsPanel);
+function renderComments(comments){
+  const node=get("commentsFeed");
+  node.replaceChildren();
+  get("commentCount").textContent=String(comments.length);
+  if(!comments.length){
+    node.innerHTML='<div class="text-center py-6 text-xs text-slate-400">No comments yet.</div>';return;
   }
-  diagnosticsPanel.textContent = ""; diagnosticsPanel.hidden = !isSuperAdmin;
-  if (isSuperAdmin) {
-    const userUid = auth.currentUser.uid;
-    getDoc(doc(db, "issue_diagnostics", id)).then(snapshot => {
-      if (!isSuperAdmin || auth.currentUser?.uid !== userUid || currentOpenIssueId !== id) return;
-      const data = snapshot.data();
-      diagnosticsPanel.textContent = data ? "Optional diagnostic trail (this page only):\n" + data.actions.map((action, index) => (index + 1) + ". " + data.pages[index] + " → " + action).join("\n") : "No diagnostic trail attached.";
-    }).catch(() => { if (isSuperAdmin && currentOpenIssueId === id) diagnosticsPanel.textContent = "Optional diagnostic trail unavailable."; });
+  for(const comment of comments){
+    const item=document.createElement("div");
+    item.className="bg-white p-3 rounded-lg border border-slate-200";
+    item.innerHTML='<div class="flex justify-between gap-2"><strong class="text-xs">'+escapeHTML(comment.authorLabel||"School member")+'</strong>'+
+      '<span class="text-[10px] text-slate-400">'+escapeHTML(dateText(comment.createdAt))+'</span></div>'+
+      '<p class="text-sm text-slate-700 whitespace-pre-wrap mt-1">'+escapeHTML(comment.text||"")+'</p>';
+    node.append(item);
   }
-  const dateStr = iss.createdAt
-    ? iss.createdAt.toDate().toLocaleString()
-    : "Just now";
+}
+async function openSchoolReport(reportId){
+  const result=await scoped("get",{reportId});
+  activeDetail=result;activeReport=result.report;desiredLocked=Boolean(activeReport.locked);
+  get("modalBadges").innerHTML=
+    '<span class="text-[10px] font-bold px-2 py-0.5 rounded uppercase '+statusTone(activeReport.status)+'">'+escapeHTML(activeReport.status)+'</span>'+
+    '<span class="text-[10px] font-bold text-slate-200 border border-slate-500 px-2 py-0.5 rounded uppercase">'+escapeHTML(activeReport.category)+'</span>'+
+    '<span class="text-[10px] font-bold text-slate-200 border border-slate-500 px-2 py-0.5 rounded uppercase">'+escapeHTML(activeReport.priority)+'</span>';
+  get("modalIssueTitle").textContent=activeReport.title;
+  get("modalReporterData").textContent=activeReport.reporterLabel||"School member";
+  get("modalDateData").textContent=dateText(activeReport.createdAt);
+  get("modalIssueDescription").textContent=(activeReport.description||"")+(activeReport.module?"\n\nArea: "+activeReport.module:"");
+  get("modalScreenshots").innerHTML='<span class="text-xs text-slate-400">Attachments are not enabled for this school.</span>';
+  renderComments(result.comments||[]);
 
-  // Build Badges
-  let statStyle = "bg-slate-600 text-white";
-  if (iss.status === "Open") statStyle = "bg-emerald-500 text-white";
-  if (iss.status === "In Progress") statStyle = "bg-amber-500 text-white";
-  if (iss.status === "Resolved") statStyle = "bg-blue-500 text-white";
+  get("adminControlPanel").classList.toggle("hidden",!schoolAdmin);
+  if(schoolAdmin){
+    get("adminControlLabel").textContent="School Admin";
+    get("adminStatusSelect").value=activeReport.status||"Open";
+    get("adminPrioritySelect").value=activeReport.priority||"Medium";
+    get("adminDecisionReason").value="";
+    get("adminLockBtn").textContent=desiredLocked?"Unlock discussion":"Lock discussion";
+  }
+  const locked=Boolean(activeReport.locked)||activeReport.status==="Closed";
+  get("commentInputBox").classList.toggle("hidden",locked);
+  get("lockedNotice").classList.toggle("hidden",!locked);
+  modal.classList.remove("hidden");
+}
+window.openIssueModal=id=>void openSchoolReport(id);
+window.closeIssueModal=()=>{modal.classList.add("hidden");activeReport=null;activeDetail=null;};
+window.viewFullscreen=()=>{};
 
-  document.getElementById("modalBadges").innerHTML = `
-    <span class="${statStyle} text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">${escapeHTML(iss.status)}</span>
-    <span class="text-[10px] font-bold text-slate-200 border border-slate-500 px-2 py-0.5 rounded uppercase">${escapeHTML(iss.category)}</span>
-    <span class="text-[10px] font-bold text-slate-200 border border-slate-500 px-2 py-0.5 rounded uppercase">Priority: ${escapeHTML(iss.priority)}</span>
-    <span class="text-[10px] font-bold text-cyan-100 border border-cyan-500 px-2 py-0.5 rounded uppercase">To ${(iss.audience||"admin")==="teacher"?"Teacher":"Admin"}</span>
-  `;
-
-  document.getElementById("modalIssueTitle").textContent = iss.title;
-  document.getElementById("modalReporterData").textContent =
-    ownsIssue(iss) ? "Report submitted by you" :
-    isSuperAdmin ? "Report submitted by an authenticated user" :
-    "Report submitted by a community member";
-  document.getElementById("modalDateData").textContent = dateStr;
-  const details = [iss.description];
-  if(iss.module)details.push("Module: "+iss.module);
-  if(iss.reproductionSteps)details.push("Steps to reproduce:\n"+iss.reproductionSteps);
-  if(iss.expectedBehavior)details.push("Expected:\n"+iss.expectedBehavior);
-  if(iss.actualBehavior)details.push("Actual:\n"+iss.actualBehavior);
-  document.getElementById("modalIssueDescription").textContent = details.join("\n\n");
-
-  // Handle Images
-  const imgContainer = document.getElementById("modalScreenshots");
-  imgContainer.innerHTML = "";
-  if (iss.images && iss.images.length > 0) {
-    iss.images.forEach((img) => {
-      if(typeof img !== "string" || !/^data:image\/(?:png|jpeg|webp|gif);base64,/i.test(img)) return;
-      const wrapper=document.createElement("button");
-      wrapper.type="button";
-      wrapper.className="aspect-video bg-slate-100 rounded border border-slate-200 overflow-hidden hover:opacity-80";
-      const picture=document.createElement("img");
-      picture.src=img;
-      picture.alt="Issue screenshot";
-      picture.className="w-full h-full object-cover";
-      wrapper.append(picture);
-      wrapper.addEventListener("click",()=>window.viewFullscreen(img));
-      imgContainer.append(wrapper);
+async function saveTriage(){
+  if(!schoolAdmin||!activeReport)return;
+  const reason=get("adminDecisionReason").value.trim();
+  if(reason.length<12){
+    alert("Enter a short reason for the change (at least 12 characters).");return;
+  }
+  const button=get("adminSaveTriage");button.disabled=true;
+  try{
+    const result=await scoped("triage",{
+      reportId:activeReport.reportId,
+      status:get("adminStatusSelect").value,
+      priority:get("adminPrioritySelect").value,
+      locked:desiredLocked,
+      reason,
+      expectedRevision:Number(activeReport.revision)
     });
-  } else {
-    imgContainer.innerHTML = `<span class="text-xs text-slate-400 italic">No evidence attached.</span>`;
-  }
-
-  // Voting Status
-  const upvotes = iss.upvotes || [];
-  const btn = document.getElementById("upvoteBtn");
-  document.getElementById("upvoteCount").textContent = upvotes.length;
-
-  if (upvotes.includes(auth.currentUser?.uid) || upvotes.includes(currentUserEmail)) {
-    btn.classList.add("bg-indigo-100", "text-indigo-700", "border-indigo-300");
-  } else {
-    btn.classList.remove(
-      "bg-indigo-100",
-      "text-indigo-700",
-      "border-indigo-300",
-    );
-  }
-
-  // 🚀 ADMIN CONTROLS INJECTION
-  if (isSuperAdmin || (isTeacher && iss.audience === "teacher")) {
-    document.getElementById("adminControlPanel").classList.remove("hidden");
-    document.getElementById("adminControlLabel").textContent =
-      isSuperAdmin ? "Administrator controls:" : "Teacher controls:";
-    document.getElementById("adminDeleteBtn").classList.toggle("hidden",!isSuperAdmin);
-    document.getElementById("adminStatusSelect").value = iss.status || "Open";
-    document.getElementById("adminPrioritySelect").value =
-      iss.priority || "Medium";
-    document.getElementById("adminLockBtn").textContent = iss.locked
-      ? "🔓 Unlock Comments"
-      : "🔒 Lock Comments";
-    const testButton=document.getElementById("adminTestBtn");
-    if(testButton){testButton.hidden=!isSuperAdmin;testButton.textContent=iss.internalTest?"Mark genuine":"Mark test";}
-    document.getElementById("copyIssuePacket").hidden=!isSuperAdmin;
-  } else {
-    document.getElementById("adminControlPanel").classList.add("hidden");
-  }
-
-  // Lock State UI
-  if (iss.locked) {
-    document.getElementById("commentInputBox").classList.add("hidden");
-    document.getElementById("lockedNotice").classList.remove("hidden");
-  } else {
-    document.getElementById("commentInputBox").classList.remove("hidden");
-    document.getElementById("lockedNotice").classList.add("hidden");
-  }
-
-  document.getElementById("issueDetailsModal").classList.remove("hidden");
-  loadComments(id);
-};
-
-window.closeIssueModal = function () {
-  document.getElementById("issueDetailsModal").classList.add("hidden");
-  currentOpenIssueId = null;
-  // Stop reading live comments after the report is closed (Firestore usage).
-  finishCommentsLoading();
-  if(unsubscribeComments){unsubscribeComments();unsubscribeComments=null;}
-};
-
-window.viewFullscreen = function (base64) {
-  document.getElementById("fullscreenImage").src = base64;
-  document.getElementById("imageViewerModal").classList.remove("hidden");
-};
-
-// ==========================================
-// 3. VOTING & COMMENTING LOGIC
-// ==========================================
-document.getElementById("upvoteBtn").addEventListener("click", async () => {
-  if (!currentOpenIssueId || !auth.currentUser?.uid) return;
-  const button=document.getElementById("upvoteBtn");
-  const issueId=currentOpenIssueId, voterUid=auth.currentUser.uid;
-  button.disabled=true;const end=window.beginLoading?.("Saving report vote…")||(()=>{});
-  try {
-    // Read and update votes atomically. A simultaneous classmate vote cannot
-    // overwrite another user's vote or forge somebody else's identity.
-    const currentVotes=await runTransaction(db,async transaction=>{
-      const ref=doc(db,"issues",issueId);
-      const snapshot=await transaction.get(ref);
-      if(!snapshot.exists())throw new Error("This issue no longer exists.");
-      const votes=Array.isArray(snapshot.data().upvotes)?snapshot.data().upvotes:[];
-      const mine=votes.includes(voterUid)?voterUid:
-        votes.includes(currentUserEmail)?currentUserEmail:null;
-      const next=mine?votes.filter(value=>value!==mine):[...votes,voterUid];
-      transaction.update(ref,{upvotes:next});
-      return next;
-    });
-    const issue=allIssues.find(item=>item.id===issueId);
-    if(issue)issue.upvotes=currentVotes;
-    document.getElementById("upvoteCount").textContent=String(currentVotes.length);
-    const voted=currentVotes.includes(voterUid)||currentVotes.includes(currentUserEmail);
-    button.classList.toggle("bg-indigo-100",voted);
-    button.classList.toggle("text-indigo-700",voted);
-    button.classList.toggle("border-indigo-300",voted);
-    renderIssues();
-  } catch(error) {
-    console.warn("Could not update issue vote",error);
-    alert("Your vote could not be saved. Reload the report and try again.");
-  } finally {
-    button.disabled=false;end();
-  }
+    activeReport={...activeReport,...result};
+    await loadSchoolReports();
+    await openSchoolReport(result.reportId);
+  }catch(error){alert(error?.message||"Report triage could not be saved.");}
+  finally{button.disabled=false;}
+}
+get("adminSaveTriage")?.addEventListener("click",()=>void saveTriage());
+get("adminLockBtn")?.addEventListener("click",()=>{
+  if(!schoolMode)return;
+  desiredLocked=!desiredLocked;
+  get("adminLockBtn").textContent=desiredLocked?"Unlock discussion":"Lock discussion";
 });
-// ==========================================
-// 2. REAL-TIME COMMENTS LISTENER
-// ==========================================
-let unsubscribeComments = null; // Track connection so it doesn't duplicate when opening different issues
-let finishCommentsLoading=()=>{};
 
-function loadComments(issueId) {
-  const feed = document.getElementById("commentsFeed");
-  feed.innerHTML = `<div class="text-center py-4 text-xs text-slate-400">Connecting to live chat...</div>`;
+get("postCommentBtn")?.addEventListener("click",()=>void (async()=>{
+  if(!schoolMode||!activeReport)return;
+  const input=get("newCommentText"),text=input.value.trim();
+  if(!text)return;
+  const button=get("postCommentBtn");button.disabled=true;
+  try{
+    await scoped("comment",{reportId:activeReport.reportId,text});
+    input.value="";
+    await openSchoolReport(activeReport.reportId);
+  }catch(error){alert(error?.message||"Comment could not be posted.");}
+  finally{button.disabled=false;}
+})());
 
-  // If we were listening to a different issue's comments previously, cut that connection
-  finishCommentsLoading();
-  if (unsubscribeComments) {
-    unsubscribeComments();
-  }
-  const end=window.beginLoading?.("Loading report discussion…",feed)||(()=>{});
-  let waiting=true;
-  finishCommentsLoading=()=>{if(waiting){waiting=false;end();}};
-  const q = query(
-    collection(db, `issues/${issueId}/comments`),
-    orderBy("createdAt", "asc"),
-  );
-
-  unsubscribeComments = onSnapshot(
-    q,
-    (snapshot) => {
-      finishCommentsLoading();
-      feed.innerHTML = "";
-      currentComments=snapshot.docs.map(record=>({id:record.id,...record.data()}));
-      document.getElementById("commentCount").textContent = snapshot.size;
-
-      if (snapshot.empty) {
-        feed.innerHTML = `<div class="text-center py-6 text-xs text-slate-400 italic">No comments yet. Start the discussion!</div>`;
-        return;
-      }
-
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        let timeStr = "Date unavailable";
-        try {
-          const raw = data.createdAt || data.timestamp || data.date;
-          const date = raw?.toDate?.() || (raw?.seconds != null ? new Date(raw.seconds * 1000) : raw ? new Date(raw) : null);
-          if (date instanceof Date && !Number.isNaN(date.getTime())) timeStr = date.toLocaleString();
-        } catch { /* Historical comments may use older timestamp formats. */ }
-        const isAdmin = data.role === "superadmin" || trustedStaff.has((data.authorEmail||"").toLowerCase());
-        const tag = isAdmin
-          ? `<span class="bg-cyan-100 text-cyan-800 text-[8px] font-bold px-1.5 py-0.5 rounded ml-2">ADMIN</span>`
-          : "";
-
-        feed.insertAdjacentHTML(
-          "beforeend",
-          `
-                <div class="bg-white p-3 rounded-lg border border-slate-200 shadow-sm relative group">
-                    <div class="flex justify-between items-start mb-1">
-                        <span class="text-xs font-bold text-slate-700 flex items-center">${escapeHTML((data.authorEmail||"").split("@")[0] || "Member")} ${tag}</span>
-                        <span class="text-[9px] text-slate-400">${timeStr}</span>
-                    </div>
-                    <p class="text-sm text-slate-600 whitespace-pre-wrap">${escapeHTML(data.text || data.comment || data.message || "")}</p>
-                    ${((data.authorUid && data.authorUid === auth.currentUser?.uid) || ((data.authorEmail||"").toLowerCase() && (data.authorEmail||"").toLowerCase() === currentUserEmail)) ? `<button onclick="deleteComment('${docSnap.id}')" class="absolute top-2 right-2 text-red-300 hover:text-red-500 text-xs hidden group-hover:block">🗑️</button>` : ""}
-                </div>
-            `,
-        );
-      });
-
-      feed.scrollTop = feed.scrollHeight; // Auto-scroll to latest comment
-    },
-    (error) => {
-      finishCommentsLoading();
-      console.error(error);
-      feed.innerHTML = `<div class="text-center py-4 text-xs text-red-600">Could not load discussion. Please reopen the report or try again.</div>`;
-    },
-  );
+function openNewReport(){
+  form.reset();
+  get("supportReportStatus").textContent="";
+  get("legacyReportAudienceWrap").classList.toggle("hidden",schoolMode);
+  newModal.classList.remove("hidden");
 }
+function closeNewReport(){newModal.classList.add("hidden");}
+get("newReportButton")?.addEventListener("click",openNewReport);
+get("supportReportClose")?.addEventListener("click",closeNewReport);
+get("supportReportCancel")?.addEventListener("click",closeNewReport);
 
-document
-  .getElementById("postCommentBtn")
-  .addEventListener("click", async () => {
-    const textObj = document.getElementById("newCommentText");
-    const text = textObj.value.trim();
-    if (!text || !currentOpenIssueId) return;
-
-    const issueId=currentOpenIssueId;
-    const button=document.getElementById("postCommentBtn");
-    button.disabled=true;const end=window.beginLoading?.("Posting report comment…")||(()=>{});
-    try {
-      await addDoc(collection(db, `issues/${issueId}/comments`), {
-        text: text,
-        authorEmail: isSuperAdmin ? currentUserEmail : "",
-        role: isSuperAdmin ? "superadmin" : isTeacher ? "teacher" : "student",
-        authorUid: auth.currentUser?.uid || null,
-        createdAt: serverTimestamp(),
-      });
-      textObj.value=""; // Clear only after Firestore accepts the comment.
-    } catch (e) {
-      alert("Failed to post comment. Your draft is still in the comment box.");
-    } finally {
-      button.disabled=false;end();
+async function findLegacyStudent(){
+  const user=auth.currentUser;
+  if(!user?.email)return null;
+  try{
+    const snap=await getDocs(query(collection(db,"students"),where("email","==",user.email.toLowerCase()),limit(5)));
+    const doc=snap.docs.find(item=>!["archived","suspended","inactive"].includes(String(item.data().status||"active")));
+    return doc?{studentId:doc.id,section:doc.data().section||""}:null;
+  }catch{return null;}
+}
+async function createLegacyReport(values){
+  const user=auth.currentUser;
+  if(!user?.uid)throw Error("Sign in before creating a report.");
+  legacyStudent=legacyStudent||await findLegacyStudent();
+  let audience=String(values.audience||"admin");
+  if(values.category==="Bug")audience="admin";
+  if(audience==="teacher"&&!legacyStudent)audience="admin";
+  const payload={
+    title:values.title,description:values.description,category:values.category,
+    priority:"Medium",images:[],urlContext:location.href,
+    reporterEmail:(user.email||"").toLowerCase(),reporterUid:user.uid,reporterRole:"reporter",
+    status:"Open",upvotes:[],locked:false,createdAt:serverTimestamp(),
+    module:values.module||"",expectedBehavior:"",actualBehavior:"",reproductionSteps:"",
+    clientContext:{page:location.pathname,userAgent:navigator.userAgent.slice(0,300)},
+    audience,studentId:legacyStudent?.studentId||"",section:legacyStudent?.section||""
+  };
+  await addDoc(collection(db,"issues"),payload);
+}
+form?.addEventListener("submit",event=>void (async()=>{
+  event.preventDefault();
+  if(!form.reportValidity())return;
+  const submit=get("supportReportSubmit");submit.disabled=true;
+  const data=new FormData(form);
+  const values=Object.fromEntries(data.entries());
+  get("supportReportStatus").textContent="Submitting…";
+  try{
+    if(schoolMode){
+      await scoped("create",{title:values.title,description:values.description,category:values.category,module:values.module||""});
+      closeNewReport();await loadSchoolReports();
+    }else{
+      await createLegacyReport(values);
+      closeNewReport();
+      if(legacyLoaded)location.reload();
     }
-  });
-
-window.deleteComment = async function (commentId) {
-  if (!confirm("Delete this comment permanently?")) return;
-  const end=window.beginLoading?.("Deleting report comment…")||(()=>{});
-  try{await deleteDoc(doc(db, `issues/${currentOpenIssueId}/comments`, commentId));loadComments(currentOpenIssueId);}finally{end();}
-};
-
-// ==========================================
-// 4. AUTHORIZED REPORT TRIAGE
-// ==========================================
-function canTriage(issue){
-  return isSuperAdmin || (isTeacher && issue?.audience==="teacher");
-}
-async function updateIssueField(field,value,{button}={}){
-  const id=currentOpenIssueId,issue=allIssues.find(item=>item.id===id);
-  if(!id||!issue||!canTriage(issue))return;
-  const previous=issue[field];
-  if(button)button.disabled=true;
-  const end=window.beginLoading?.("Updating report "+field+"…")||(()=>{});
-  issue[field]=value;
-  renderIssues();
-  try{
-    await updateDoc(doc(db,"issues",id),{
-      [field]:value,updatedAt:serverTimestamp()
-    });
-    if(currentOpenIssueId===id)window.openIssueModal(id);
   }catch(error){
-    console.warn("Report update failed:",error);
-    issue[field]=previous;
-    renderIssues();
-    if(currentOpenIssueId===id)window.openIssueModal(id);
-    alert("Report change could not be saved. Your previous value has been restored.");
-  }finally{
-    if(button)button.disabled=false;end();
+    get("supportReportStatus").textContent=error?.message||"Report could not be submitted.";
+  }finally{submit.disabled=false;}
+})());
+
+for(const id of ["filterCategory","filterStatus","filterSort","filterMine"]){
+  get(id)?.addEventListener("change",()=>{if(schoolMode)renderSchoolReports();});
+}
+get("filterSearch")?.addEventListener("input",()=>{if(schoolMode)renderSchoolReports();});
+get("resetReportFilters")?.addEventListener("click",()=>{
+  if(!schoolMode)return;
+  get("filterCategory").value="All";get("filterStatus").value="All";get("filterSort").value="newest";
+  get("filterSearch").value="";get("filterMine").checked=false;renderSchoolReports();
+});
+
+async function startLegacyFallback(){
+  if(legacyLoaded)return;
+  legacyLoaded=true;schoolMode=false;
+  get("legacyReportAudienceWrap")?.classList.remove("hidden");
+  get("supportSchoolPicker")?.setAttribute("hidden","");
+  await import("./issues-legacy.js?v=1.4.4");
+  // Old issue tracker did not have creation wiring; the shared form above supplies it.
+}
+
+picker=createTenantSchoolPicker({
+  host:get("supportSchoolPicker"),status:pageStatus,
+  onReady:scope=>{
+    if(!scope.current){
+      void startLegacyFallback();return;
+    }
+    schoolMode=true;
+    schoolAdmin=scope.current.roles.includes("school_admin");
+    setSchoolModeUI();
+    void loadSchoolReports().catch(error=>{
+      pageStatus.textContent=error?.message||"School reports could not be loaded.";
+    });
   }
-}
-document.getElementById("adminStatusSelect")?.addEventListener("change",e=>{
-  void updateIssueField("status",e.target.value,{button:e.target});
 });
-document.getElementById("adminPrioritySelect")?.addEventListener("change",e=>{
-  void updateIssueField("priority",e.target.value,{button:e.target});
-});
-document.getElementById("adminTestBtn")?.addEventListener("click",e=>{
-  if(!isSuperAdmin)return;
-  const issue=allIssues.find(item=>item.id===currentOpenIssueId);
-  if(issue)void updateIssueField("internalTest",!Boolean(issue.internalTest),{button:e.currentTarget});
-});
-function issuePacket(issue,comments=[]){
-  const at=value=>value?.toDate?.()?.toISOString?.()||"";
-  return ["# Adminerva support report "+issue.id,"","- Title: "+(issue.title||""),"- Status: "+(issue.status||"Open"),"- Priority: "+(issue.priority||"Medium"),
-    "- Category: "+(issue.category||"Other"),"- Audience: "+(issue.audience||"admin"),"- Type: "+(issue.internalTest?"Internal/test":"User report"),"- Module: "+(issue.module||""),
-    "- Created: "+at(issue.createdAt),"","## Description",issue.description||"",
-    issue.reproductionSteps?"\n## Steps to reproduce\n"+issue.reproductionSteps:"",
-    issue.expectedBehavior?"\n## Expected\n"+issue.expectedBehavior:"",
-    issue.actualBehavior?"\n## Actual\n"+issue.actualBehavior:"",
-    comments.length?"\n## Discussion\n"+comments.map(item=>"- "+(item.role||"member")+": "+(item.text||"")).join("\n"):"",
-    "\n## Context\n"+JSON.stringify({urlContext:issue.urlContext||"",clientContext:issue.clientContext||null},null,2)].filter(Boolean).join("\n");
-}
-async function copyText(value){try{await navigator.clipboard.writeText(value);return true}catch{return false}}
-function download(name,type,text){const blob=new Blob([text],{type}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-document.getElementById("copyIssuePacket")?.addEventListener("click",async()=>{const issue=allIssues.find(item=>item.id===currentOpenIssueId);if(!issue)return;alert(await copyText(issuePacket(issue,currentComments))?"Support packet copied.":"Copy failed.");});
-document.getElementById("copyReportsMarkdown")?.addEventListener("click",async()=>{const text=lastFilteredIssues.map(issue=>issuePacket(issue)).join("\n\n---\n\n");alert(await copyText(text)?"Visible reports copied as Markdown.":"Copy failed.");});
-document.getElementById("downloadReportsJson")?.addEventListener("click",()=>{const clean=lastFilteredIssues.map(issue=>({...issue,createdAt:issue.createdAt?.toDate?.()?.toISOString?.()||null,images:undefined}));download("adminerva-reports.json","application/json",JSON.stringify(clean,null,2));});
-document.getElementById("downloadReportsCsv")?.addEventListener("click",()=>{const quote=value=>'"'+String(value??"").replaceAll('"','""').replaceAll("\n"," ")+'"';const rows=[["id","title","category","status","priority","type","module","description"],...lastFilteredIssues.map(issue=>[issue.id,issue.title,issue.category,issue.status,issue.priority,issue.internalTest?"test":"user",issue.module,issue.description])];download("adminerva-reports.csv","text/csv",rows.map(row=>row.map(quote).join(",")).join("\n"));});
-document.getElementById("filterReportType")?.addEventListener("change",window.renderIssuesFilter);
-document.getElementById("adminLockBtn")?.addEventListener("click",e=>{
-  const issue=allIssues.find(item=>item.id===currentOpenIssueId);
-  if(issue)void updateIssueField("locked",!Boolean(issue.locked),{button:e.currentTarget});
-});
-document.getElementById("adminDeleteBtn")?.addEventListener("click",async event=>{
-  if(!isSuperAdmin||!currentOpenIssueId)return;
-  const issue=allIssues.find(item=>item.id===currentOpenIssueId);if(!issue)return;
-  if(!confirm("Close this report and lock further comments? The report and discussion will be preserved for history and support export."))return;
-  const button=event.currentTarget;button.disabled=true;const end=window.beginLoading?.("Closing report…")||(()=>{});
+void auth.authStateReady().then(async()=>{
   try{
-    await updateDoc(doc(db,"issues",currentOpenIssueId),{status:"Closed (Won't Fix)",locked:true,updatedAt:serverTimestamp()});
-    issue.status="Closed (Won't Fix)";issue.locked=true;renderIssues();window.openIssueModal(issue.id);
-  }catch(error){console.warn("Unable to close report:",error);alert("Report could not be closed. No change was made.");}
-  finally{button.disabled=false;end();}
+    const state=await picker.load();
+    if(!picker.scope.current&&(state?.state==="no_school"||state?.state==="choose_school"===false))
+      await startLegacyFallback();
+  }catch{
+    await startLegacyFallback();
+  }
 });
