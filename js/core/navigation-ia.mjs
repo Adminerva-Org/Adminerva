@@ -68,7 +68,7 @@ export function buildNavigationIA(ctx){
           future("transport","Transportation")
         ])
       ]),
-      ws("student-other","Other","issues.html","Support, documentation and policies",[
+      ws("student-other","Other","student-support.html","Support, documentation and policies",[
         group("Support & Information",[
           live("bug","Bug Report","issues.html"),live("help","Help / Wiki","wiki.html"),
           live("policy","Terms, Conditions & Policy","wiki.html#privacy")
