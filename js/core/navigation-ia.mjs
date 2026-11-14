@@ -113,7 +113,7 @@ export function buildNavigationIA(ctx){
         future("school-policies","Policies & Handbooks"),future("school-integrations","Integrations")
       ])
     ]),
-    ws("registrar","Registrar & SIS","people-access.html","Student information, enrollment, records and credentials",[
+    ws("registrar","Registrar & SIS","people-access.html?workspace=registrar","Student information, enrollment, records and credentials",[
       group("Student Information",[
         live("student-directory","Student Directory","people-access.html#people"),
         future("student-records","Student Records / 201 Files"),future("guardians","Parents / Guardians"),
@@ -129,7 +129,7 @@ export function buildNavigationIA(ctx){
         future("verification","Student Verification / Enrollment Certification")
       ])
     ]),
-    ws("finance","Finance","school-admin.html","Billing, cashiering, budgets, accounting and school financial operations",[
+    ws("finance","Finance","future-workspace.html?workspace=finance","Billing, cashiering, budgets, accounting and school financial operations",[
       group("Student Finance",[
         future("fee-setup","Fee Setup"),future("billing-ledger","Billing & Student Ledgers"),
         future("cashier","Cashier / Payments"),future("receipts","Official Receipts"),
@@ -144,7 +144,7 @@ export function buildNavigationIA(ctx){
         future("payroll","Payroll"),future("compensation","Compensation & Benefits")
       ])
     ]),
-    ws("hr","HR & Personnel","people-access.html","Personnel directory, employment records, documents and staff services",[
+    ws("hr","HR & Personnel","people-access.html?workspace=hr","Personnel directory, employment records, documents and staff services",[
       group("Personnel",[
         live("staff-directory","Staff Directory / Access","people-access.html"),
         future("employment-files","Personnel 201 Files"),future("contracts","Contracts & Appointments"),
@@ -160,7 +160,7 @@ export function buildNavigationIA(ctx){
         future("offboarding","Separation / Offboarding")
       ])
     ]),
-    ws("health-services","Health & Student Services","school-admin.html","Clinic, guidance, discipline and learner welfare",[
+    ws("health-services","Health & Student Services","future-workspace.html?workspace=health-services","Clinic, guidance, discipline and learner welfare",[
       group("Clinic",[
         future("clinic-dashboard","Clinic Dashboard"),future("health-records","Health Records"),
         future("consultations","Consultations / Visits"),future("medications","Medication Log"),
@@ -171,7 +171,7 @@ export function buildNavigationIA(ctx){
         future("special-needs","Learning Support / Special Needs"),future("emergency","Emergency Contacts")
       ])
     ]),
-    ws("operations","Facilities & Services","school-admin.html","Facilities, assets, inventory and campus services",[
+    ws("operations","Facilities & Services","future-workspace.html?workspace=operations","Facilities, assets, inventory and campus services",[
       group("Facilities",[
         future("rooms","Rooms & Facilities"),future("reservations","Facility Reservations"),
         future("maintenance","Maintenance Requests"),future("utilities","Utilities")
@@ -186,7 +186,7 @@ export function buildNavigationIA(ctx){
         future("lost-found","Lost & Found")
       ])
     ]),
-    ws("communications","Communications","issues.html","School announcements, messaging, forms and community communications",[
+    ws("communications","Communications","future-workspace.html?workspace=communications","School announcements, messaging, forms and community communications",[
       group("School Communications",[
         future("school-announcements","School Announcements"),future("class-bulletins","Class Bulletin Management"),
         future("messaging","Messaging"),future("email-sms","Email / SMS Broadcast"),
@@ -197,7 +197,7 @@ export function buildNavigationIA(ctx){
         future("parent-portal","Parent / Guardian Portal"),future("website-content","School Website Content")
       ])
     ]),
-    ws("documents-compliance","Documents & Compliance","school-admin.html","Institutional documents, governance, compliance and audit",[
+    ws("documents-compliance","Documents & Compliance","future-workspace.html?workspace=documents-compliance","Institutional documents, governance, compliance and audit",[
       group("Documents",[
         future("school-documents","School Document Repository"),future("department-documents","Department Files"),
         future("templates","Document Templates"),future("letters-admin","Letters / Memoranda"),
@@ -299,7 +299,7 @@ export function buildNavigationIA(ctx){
         future("system-announcement","Announcement"),future("email-templates","Notification Templates")
       ])
     ]),
-    ws("platform-governance","Governance & Security","owner-schools.html","Platform roles, permissions, privacy, audit and compliance",[
+    ws("platform-governance","Governance & Security","future-workspace.html?workspace=platform-governance","Platform roles, permissions, privacy, audit and compliance",[
       group("Access & Security",[
         future("platform-roles","Roles & Permissions"),future("security-events","Security Events"),
         future("sessions","Sessions / Access Review"),future("audit-log","Platform Audit Log")
@@ -309,7 +309,7 @@ export function buildNavigationIA(ctx){
         future("compliance","Compliance"),future("incident-response","Incident Management")
       ])
     ]),
-    ws("platform-integrations","Integrations","owner-schools.html","Platform services, connectors and external systems",[
+    ws("platform-integrations","Integrations","future-workspace.html?workspace=platform-integrations","Platform services, connectors and external systems",[
       group("Core Integrations",[
         future("identity","Identity / SSO"),future("github","GitHub"),future("ai","AI Providers"),
         future("email-sms-platform","Email / SMS"),future("payments","Payment Gateways"),
@@ -336,10 +336,12 @@ export function buildNavigationIA(ctx){
 
   const workspaces=systemDefault?system():studentView?student(modelCtx):teacher(modelCtx);
   const route=(location.pathname.split("/").pop()||"").toLowerCase();
-  const itemMatches=item=>item[2]&&item[2].split("#")[0].toLowerCase()===route;
-  const workspaceMatches=w=>w.route.split("#")[0].toLowerCase()===route||
-    w.groups.some(g=>g.items.some(itemMatches));
-  const activeWorkspace=workspaces.find(workspaceMatches)||workspaces[0]||null;
+  const requestedWorkspace=new URLSearchParams(location.search).get("workspace")||"";
+  const routePath=value=>String(value||"").split("#")[0].split("?")[0].toLowerCase();
+  const itemMatches=item=>item[2]&&routePath(item[2])===route;
+  const workspaceMatches=w=>routePath(w.route)===route||w.groups.some(g=>g.items.some(itemMatches));
+  const activeWorkspace=workspaces.find(w=>w.id===requestedWorkspace)||
+    workspaces.find(workspaceMatches)||workspaces[0]||null;
   const groups=activeWorkspace?.groups||[];
   const allItems=workspaces.flatMap(w=>w.groups.flatMap(g=>g.items));
   const currentItem=groups.flatMap(g=>g.items).find(itemMatches)||allItems.find(itemMatches)||null;
