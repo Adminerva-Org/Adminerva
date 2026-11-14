@@ -51,16 +51,16 @@ function createSchoolAssessmentService({db}){
      tx.get(schoolRef),tx.get(membershipRef),tx.get(offeringRef),tx.get(grantRef),
      tx.get(blueprintRef),tx.get(taskRef)
     ]);
-    if(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
+    if(!ctx.platformOverride&&(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
        membership.data().status!=="active"||membership.data().schoolId!==ctx.schoolId||
-       !Array.isArray(membership.data().roles)||!membership.data().roles.includes("teacher"))
+       !Array.isArray(membership.data().roles)||!membership.data().roles.includes("teacher")))
       deny("permission-denied","Your school teaching access is no longer active.");
     if(!offering.exists||offering.data().schoolId!==ctx.schoolId||
        offering.data().status!=="active")
       deny("failed-precondition","Select an active school course offering.");
-    if(!grant.exists||grant.data().schoolId!==ctx.schoolId||
+    if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
        grant.data().teacherUid!==ctx.uid||grant.data().offeringId!==offeringId||
-       grant.data().status!=="active")
+       grant.data().status!=="active"))
       deny("permission-denied","You are not assigned to teach this course offering.");
     if(!blueprint.exists||blueprint.data().schoolId!==ctx.schoolId||
        blueprint.data().ownerUid!==ctx.uid||blueprint.data().status!=="draft")
@@ -139,19 +139,19 @@ function createSchoolAssessmentService({db}){
     const [school,membership,task]=await Promise.all([
       tx.get(schoolRef),tx.get(membershipRef),tx.get(taskRef)
     ]);
-    if(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
+    if(!ctx.platformOverride&&(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
        membership.data().schoolId!==ctx.schoolId||membership.data().status!=="active"||
-       !Array.isArray(membership.data().roles)||!membership.data().roles.includes("teacher"))
+       !Array.isArray(membership.data().roles)||!membership.data().roles.includes("teacher")))
       deny("permission-denied","Your school teaching access changed.");
     if(!task.exists||task.data().schoolId!==ctx.schoolId||
-       (task.data().reviewerUid||task.data().ownerUid)!==ctx.uid)
+       (!ctx.platformOverride&&(task.data().reviewerUid||task.data().ownerUid)!==ctx.uid))
       deny("permission-denied","Only the currently responsible teacher may change publication.");
     const data=task.data(),revision=data.revision||1,lifecycle=data.lifecycle||"active",
       grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,data.offeringId)),
       grant=await tx.get(grantRef);
-    if(!grant.exists||grant.data().schoolId!==ctx.schoolId||
+    if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
        grant.data().teacherUid!==ctx.uid||grant.data().offeringId!==data.offeringId||
-       grant.data().status!=="active")
+       grant.data().status!=="active"))
       deny("permission-denied","You must still be assigned to this course offering.");
     if(revision!==expectedRevision)
       deny("failed-precondition","This assessment changed. Reload before changing publication.");
@@ -214,19 +214,19 @@ function createSchoolAssessmentService({db}){
     const [school,membership,task]=await Promise.all([
      tx.get(schoolRef),tx.get(membershipRef),tx.get(taskRef)
     ]);
-    if(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
+    if(!ctx.platformOverride&&(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
        membership.data().schoolId!==ctx.schoolId||membership.data().status!=="active"||
-       !Array.isArray(membership.data().roles)||!membership.data().roles.includes("teacher"))
+       !Array.isArray(membership.data().roles)||!membership.data().roles.includes("teacher")))
       deny("permission-denied","Your school teaching access changed.");
     if(!task.exists||task.data().schoolId!==ctx.schoolId||
-       (task.data().reviewerUid||task.data().ownerUid)!==ctx.uid)
+       (!ctx.platformOverride&&(task.data().reviewerUid||task.data().ownerUid)!==ctx.uid))
       deny("permission-denied","Only the currently responsible teacher may change this deployment.");
     const data=task.data(),revision=data.revision||1,lifecycle=data.lifecycle||"active",
       grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,data.offeringId)),
       grant=await tx.get(grantRef);
-    if(!grant.exists||grant.data().schoolId!==ctx.schoolId||
+    if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
        grant.data().teacherUid!==ctx.uid||grant.data().offeringId!==data.offeringId||
-       grant.data().status!=="active")
+       grant.data().status!=="active"))
       deny("permission-denied","You must still be assigned to this course offering.");
     if(revision!==expectedRevision)
       deny("failed-precondition","This assessment changed. Reload it before saving the lifecycle change.");
@@ -294,17 +294,25 @@ function createSchoolAssessmentService({db}){
 
   if(input.action==="list_teacher"){
    if(!ctx.roles.includes("teacher"))deny("permission-denied","Teacher access is required.");
-   const [owned,responsible]=await Promise.all([
-    tasks.where("ownerUid","==",ctx.uid).limit(101).get(),
-    tasks.where("reviewerUid","==",ctx.uid).limit(101).get()
-   ]);
-   if(owned.size===101||responsible.size===101)
-    deny("resource-exhausted","Assessment deployment list requires pagination.");
-   const docs=new Map();
-   for(const doc of [...owned.docs,...responsible.docs])
-    if(doc.data().schoolId===ctx.schoolId&&(doc.data().reviewerUid||doc.data().ownerUid)===ctx.uid)
-     docs.set(doc.id,doc);
-   return {assessments:[...docs.values()].map(doc=>({
+   let docs;
+   if(ctx.platformOverride){
+    const all=await tasks.limit(201).get();
+    if(all.size===201)deny("resource-exhausted","Assessment deployment list requires pagination.");
+    docs=all.docs.filter(doc=>doc.data().schoolId===ctx.schoolId);
+   }else{
+    const [owned,responsible]=await Promise.all([
+      tasks.where("ownerUid","==",ctx.uid).limit(101).get(),
+      tasks.where("reviewerUid","==",ctx.uid).limit(101).get()
+    ]);
+    if(owned.size===101||responsible.size===101)
+      deny("resource-exhausted","Assessment deployment list requires pagination.");
+    const unique=new Map();
+    for(const doc of [...owned.docs,...responsible.docs])
+      if(doc.data().schoolId===ctx.schoolId&&(doc.data().reviewerUid||doc.data().ownerUid)===ctx.uid)
+        unique.set(doc.id,doc);
+    docs=[...unique.values()];
+   }
+   return {assessments:docs.map(doc=>({
       taskId:doc.id,title:doc.data().title,description:doc.data().description||"",
       instructions:doc.data().instructions||"",rubric:doc.data().rubric||[],
       rubricMax:doc.data().rubricMax||0,offeringId:doc.data().offeringId,
