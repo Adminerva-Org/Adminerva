@@ -104,75 +104,109 @@
       .cr-weight-row{grid-template-columns:1fr 90px}
       .cr-cell-menu{opacity:.7}
     }
-  </style>
+  
+    /* Compact Class Record workspace: controls first, explanations on demand. */
+    .cr-shell{max-width:none;padding:.65rem .75rem 1rem}
+    .cr-topbar{padding:.8rem .9rem;position:relative;z-index:20}
+    .cr-topbar-title{display:flex;align-items:center;justify-content:space-between;gap:.75rem}
+    .cr-commandbar{display:grid;grid-template-columns:minmax(260px,1fr) auto auto auto auto;gap:.5rem;align-items:center;margin-top:.65rem}
+    .cr-class-picker{min-width:0}
+    .cr-commandbar .cr-button{white-space:nowrap}
+    .cr-status-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;margin-top:.5rem;min-height:28px}
+    .cr-status-row #cr-status:empty{display:none}
+    .cr-kpis{gap:.35rem;overflow:auto;flex-wrap:nowrap}
+    .cr-kpi{padding:.25rem .55rem;font-size:.7rem;white-space:nowrap}
+    .cr-more{position:relative}
+    .cr-more>summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:center}
+    .cr-more>summary::-webkit-details-marker{display:none}
+    .cr-more-menu{position:absolute;right:0;top:calc(100% + .4rem);z-index:30;width:230px;padding:.5rem;border:1px solid #cbd5e1;border-radius:.85rem;background:#fff;box-shadow:0 18px 50px #0f172a24;display:grid;gap:.35rem}
+    .cr-more-menu .cr-button{width:100%;text-align:left}
+    .cr-more-divider{height:1px;background:#e2e8f0;margin:.15rem 0}
+    .cr-sheetbar{min-height:44px;padding:.55rem .75rem;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;gap:.75rem}
+    .cr-sheet-state{display:flex;align-items:center;gap:.65rem;min-width:0}
+    .cr-unsaved{font-size:.75rem;font-weight:800;color:#b45309;white-space:nowrap}
+    .cr-table-wrap{max-height:calc(100dvh - 190px);min-height:420px}
+    .cr-panel{border-radius:.8rem}
+    .cr-dialog-inner>.flex:first-child .cr-eyebrow{display:none}
+    .cr-dialog-inner{padding:1rem}
+    .cr-help:empty{display:none}
+    @media(max-width:900px){
+      .cr-commandbar{grid-template-columns:minmax(0,1fr) auto auto}
+      .cr-class-picker{grid-column:1/-1}
+      .cr-status-row{align-items:flex-start;flex-direction:column}
+      .cr-kpis{width:100%}
+      .cr-table-wrap{max-height:calc(100dvh - 245px)}
+    }
+    @media(max-width:520px){
+      .cr-shell{padding:.45rem}
+      .cr-topbar{padding:.65rem}
+      .cr-topbar-title h1{font-size:1.12rem}
+      .cr-commandbar{grid-template-columns:1fr 1fr 1fr}
+      .cr-commandbar .cr-button{min-height:40px;padding:.55rem .65rem;font-size:.78rem}
+      .cr-more{position:static}
+      .cr-more-menu{left:.65rem;right:.65rem;width:auto;top:auto}
+      .cr-table-wrap{max-height:calc(100dvh - 255px);min-height:360px}
+      .cr-table .cr-student{min-width:160px;max-width:190px}
+    }
+</style>
 </head>
 <body id="pageBody" class="hidden av-teacher-refresh bg-slate-50 min-h-screen text-slate-900">
 <div id="adminerva-nav" data-module="class-record" data-page="class-record"></div>
 
 <main class="cr-shell">
-  <header class="cr-hero">
-    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+  <header class="cr-panel cr-topbar">
+    <div class="cr-topbar-title">
       <div>
-        <p class="cr-eyebrow">School class record</p>
-        <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Manual work and Adminerva assessments in one record</h1>
-        <p class="text-sm text-slate-200 mt-2 max-w-4xl">Create columns such as WW1, PT2 or QA1. A column may be scored manually or linked to an Adminerva assessment. Linked scores stay read-only here and appear only after their owning grading workflow publishes them.</p>
+        <p class="cr-eyebrow" style="color:#2563eb">Class Record</p>
+        <h1 class="text-xl sm:text-2xl font-extrabold">Class Record</h1>
       </div>
-      <div id="cr-school-switcher" hidden class="w-full lg:w-auto lg:min-w-[230px]"></div>
+      <div id="cr-school-switcher" hidden class="w-full sm:w-auto sm:min-w-[220px]"></div>
     </div>
-  </header>
 
-  <section class="cr-panel mt-4 p-4" aria-labelledby="cr-class-heading">
-    <div class="cr-controls">
-      <label class="text-sm font-bold text-slate-700">
-        <span id="cr-class-heading">Class / subject offering</span>
-        <select id="cr-offering" class="cr-select mt-1" disabled>
+    <div class="cr-commandbar">
+      <label class="cr-class-picker">
+        <span id="cr-class-heading" class="sr-only">Class / subject offering</span>
+        <select id="cr-offering" class="cr-select" disabled>
           <option value="">Choose a class…</option>
         </select>
       </label>
-      <div class="cr-action-groups" aria-label="Class Record workflow actions">
-        <div class="cr-action-group">
-          <span class="cr-action-label">1 · Set up record</span>
-          <div class="cr-toolbar">
-            <button id="cr-add-column" class="cr-button primary" type="button" disabled>+ Add column</button>
-            <button id="cr-grade-setup" class="cr-button subtle" type="button" disabled>Grading setup</button>
-            <button id="cr-archived-columns" class="cr-button" type="button" disabled>Archived (<span id="cr-archived-count">0</span>)</button>
-          </div>
+
+      <button id="cr-add-column" class="cr-button primary" type="button" disabled>+ Activity</button>
+      <button id="cr-save-scores" class="cr-button success" type="button" disabled>Save scores</button>
+      <button id="cr-finalize" class="cr-button primary" type="button" disabled>Review grade</button>
+
+      <details class="cr-more">
+        <summary class="cr-button">More</summary>
+        <div class="cr-more-menu">
+          <button id="cr-grade-setup" class="cr-button" type="button" disabled>Grading setup</button>
+          <button id="cr-import-scores" class="cr-button" type="button" disabled>Import scores</button>
+          <button id="cr-student-visibility" class="cr-button" type="button" disabled>Student visibility</button>
+          <button id="cr-archived-columns" class="cr-button" type="button" disabled>Archived (<span id="cr-archived-count">0</span>)</button>
+          <div class="cr-more-divider"></div>
+          <button id="cr-export-xlsx" class="cr-button" type="button" disabled>Excel</button>
+          <button id="cr-export" class="cr-button" type="button" disabled>CSV</button>
+          <button id="cr-print" class="cr-button" type="button" disabled>Print</button>
+          <button id="cr-refresh" class="cr-button" type="button" disabled>Refresh</button>
         </div>
-        <div class="cr-action-group">
-          <span class="cr-action-label">2 · Scores &amp; students</span>
-          <div class="cr-toolbar">
-            <button id="cr-save-scores" class="cr-button success" type="button" disabled>Save manual scores</button>
-            <button id="cr-import-scores" class="cr-button" type="button" disabled>Import scores</button>
-            <button id="cr-student-visibility" class="cr-button" type="button" disabled>Student visibility</button>
-          </div>
-        </div>
-        <div class="cr-action-group">
-          <span class="cr-action-label">3 · Period &amp; output</span>
-          <div class="cr-toolbar">
-            <button id="cr-finalize" class="cr-button primary" type="button" disabled>Review period grade</button>
-            <button id="cr-export" class="cr-button" type="button" disabled>CSV</button>
-            <button id="cr-export-xlsx" class="cr-button" type="button" disabled>Excel</button>
-            <button id="cr-print" class="cr-button" type="button" disabled>Print</button>
-            <button id="cr-refresh" class="cr-button" type="button" disabled>Refresh</button>
-          </div>
-        </div>
-      </div>
+      </details>
     </div>
-    <div class="mt-3 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2">
-      <p id="cr-status" class="cr-muted" role="status" aria-live="polite">Checking verified school access…</p>
+
+    <div class="cr-status-row">
+      <p id="cr-status" class="cr-muted" role="status" aria-live="polite">Loading…</p>
       <div id="cr-kpis" class="cr-kpis" aria-label="Class record summary"></div>
     </div>
-  </section>
+  </header>
 
   <section id="cr-record-panel" class="cr-panel mt-4 overflow-hidden" hidden aria-label="Class record table">
-    <div class="px-4 py-3 border-b border-slate-200 bg-slate-50 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
-      <div>
+    <div class="cr-sheetbar">
+      <div class="min-w-0">
         <strong id="cr-record-title" class="text-slate-900">Class record</strong>
-        <p id="cr-record-help" class="cr-muted">Blank scores remain missing. Use the cell menu for Incomplete, Exempt or Not applicable without changing the source score.</p>
-        <p id="cr-collaborators" class="cr-muted mt-1" hidden></p>
-        <p id="cr-finalization-banner" class="cr-muted mt-1" hidden></p>
+        <p id="cr-collaborators" class="cr-muted" hidden></p>
       </div>
-      <span id="cr-unsaved" class="cr-muted"></span>
+      <div class="cr-sheet-state">
+        <span id="cr-finalization-banner" class="cr-muted" hidden></span>
+        <span id="cr-unsaved" class="cr-unsaved"></span>
+      </div>
     </div>
     <div id="cr-table-wrap" class="cr-table-wrap">
       <div class="cr-empty">Choose a class to load its record.</div>
@@ -212,7 +246,7 @@
         <option value="released">Released to students</option>
       </select>
     </label>
-    <p class="cr-help">This controls only the consolidated My Grades view. Linked assessment publication remains owned by its grading workflow.</p>
+    
 
     <label class="cr-field">Score source
       <select name="kind" id="cr-column-kind" class="cr-select mt-1">
@@ -225,14 +259,14 @@
       <label class="cr-field">Highest possible score
         <input name="maxPoints" type="number" class="cr-input mt-1" min="0.01" max="10000" step="0.01" value="10">
       </label>
-      <p class="cr-help">Use this for activities scored outside Adminerva or for scores you want to encode directly.</p>
+      
     </div>
 
     <div id="cr-assessment-fields" hidden>
       <label class="cr-field">Deployed assessment
         <select name="taskId" id="cr-assessment" class="cr-select mt-1"></select>
       </label>
-      <p class="cr-help">School assessments and compatible Personalized Studio assessments assigned to this class appear here. Their published scores remain owned by their original grading workflow.</p>
+      
       <div id="cr-assessment-source-note" class="cr-source-note mt-3" hidden></div>
     </div>
 
@@ -252,7 +286,7 @@
       <div>
         <p class="cr-eyebrow" style="color:#1d4ed8">Grade computation</p>
         <h2 id="cr-setup-heading" class="text-xl font-extrabold mt-1">Grading setup</h2>
-        <p class="cr-muted mt-1">Weights are class-specific. Adminerva does not assume that every subject uses the same category percentages.</p>
+        
       </div>
       <button id="cr-setup-close" type="button" class="cr-button">Close</button>
     </div>
@@ -266,14 +300,14 @@
         </label>
         <button id="cr-apply-scheme" type="button" class="cr-button">Apply scheme</button>
       </div>
-      <p id="cr-scheme-note" class="cr-help mt-2">School presets are copied into this class record. Later preset edits do not silently change existing grades.</p>
+      <p id="cr-scheme-note" class="cr-help mt-2"></p>
     </div>
 
     <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
           <strong class="text-sm">Category weights</strong>
-          <p class="cr-help">For a computed period grade, categorized columns must be complete and the saved category weights must total 100%.</p>
+          
         </div>
         <button id="cr-equal-weights" type="button" class="cr-button">Set equal weights</button>
       </div>
@@ -287,7 +321,7 @@
         <option value="deped_60_100">DepEd-style 60–100 transmutation</option>
       </select>
     </label>
-    <p class="cr-help">The DepEd-style option uses 60 + (weighted grade × 0.40). Choose it only when it matches the grading policy for this class.</p>
+    
 
     <div class="cr-toolbar mt-5">
       <button class="cr-button primary" type="submit">Save grading setup</button>
@@ -304,7 +338,7 @@
       <div>
         <p class="cr-eyebrow" style="color:#1d4ed8">Manual score import</p>
         <h2 id="cr-import-heading" class="text-xl font-extrabold mt-1">Import scores into one column</h2>
-        <p class="cr-muted mt-1">Import only stages values in the Class Record. Review the changed cells, then use Save manual scores.</p>
+        
       </div>
       <button id="cr-import-close" type="button" class="cr-button">Close</button>
     </div>
@@ -320,7 +354,7 @@
     <label class="cr-field">Paste CSV or tab-separated values
       <textarea id="cr-import-text" class="cr-input cr-import-preview mt-1" placeholder="Student,Score&#10;Student Name,10"></textarea>
     </label>
-    <p class="cr-help">The first column may contain the exact student name or canonical person ID. Blank scores are ignored so an import cannot accidentally erase existing scores.</p>
+    
     <div class="cr-toolbar mt-4">
       <button class="cr-button primary" type="submit">Stage imported scores</button>
       <button id="cr-import-cancel" class="cr-button" type="button">Cancel</button>
@@ -335,7 +369,7 @@
       <div>
         <p class="cr-eyebrow" style="color:#1d4ed8">Historical columns</p>
         <h2 id="cr-archived-heading" class="text-xl font-extrabold mt-1">Archived Class Record columns</h2>
-        <p class="cr-muted mt-1">Archiving removes a column from current grade calculations and exports without deleting its saved scores or assessment link.</p>
+        
       </div>
       <button id="cr-archived-close" type="button" class="cr-button">Close</button>
     </div>
@@ -363,10 +397,7 @@
         <option value="not_applicable">Not applicable</option>
       </select>
     </label>
-    <div class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-      <p><strong>Incomplete</strong> keeps the period grade unresolved until the status or score is corrected.</p>
-      <p class="mt-1"><strong>Exempt / Not applicable</strong> removes this activity from this learner's category denominator. A scored zero remains a real zero.</p>
-    </div>
+    
     <p id="cr-score-status-note" class="cr-help mt-3"></p>
     <div class="cr-toolbar mt-5">
       <button id="cr-score-status-save" class="cr-button primary" type="submit">Save status</button>
@@ -382,7 +413,7 @@
       <div>
         <p class="cr-eyebrow" style="color:#1d4ed8">Student score release</p>
         <h2 id="cr-visibility-heading" class="text-xl font-extrabold mt-1">Student visibility & preview</h2>
-        <p class="cr-muted mt-1">Choose which activities appear in My Grades. Preview uses the selected visibility before you save it.</p>
+        
       </div>
       <button id="cr-visibility-close" type="button" class="cr-button">Close</button>
     </div>
@@ -421,7 +452,7 @@
       <div>
         <p class="cr-eyebrow" style="color:#1d4ed8">Period-grade snapshot</p>
         <h2 id="cr-finalize-heading" class="text-xl font-extrabold mt-1">Review period finalization</h2>
-        <p class="cr-muted mt-1">Adminerva recalculates this preview on the server from saved manual scores and published assessment results. Finalization freezes a versioned snapshot; it does not overwrite the source grades.</p>
+        
       </div>
       <button id="cr-finalize-close" type="button" class="cr-button">Close</button>
     </div>
@@ -439,7 +470,7 @@
           <button id="cr-withdraw-final" type="button" class="cr-button" hidden>Withdraw release</button>
         </div>
       </div>
-      <p class="cr-help mt-2">Releasing a Final Grade never recalculates it. Students see the exact frozen revision you release.</p>
+      
     </section>
     <section class="mt-4 border-t border-slate-200 pt-4" aria-labelledby="cr-finalize-history-heading">
       <div class="flex items-baseline justify-between gap-2">
@@ -459,6 +490,6 @@
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script defer src="js/core/adminerva-nav.js?v=4.0.12"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.13"></script>
-<script type="module" src="js/class-record/class-record.mjs?v=1.9.2"></script>
+<script type="module" src="js/class-record/class-record.mjs?v=1.10.0"></script>
 </body>
 </html>
