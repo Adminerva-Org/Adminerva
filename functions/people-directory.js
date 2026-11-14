@@ -62,6 +62,7 @@ function createPeopleDirectoryService({db}) {
     const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
     const adminRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+ctx.uid);
     async function requireCurrentAdmin(tx) {
+      if(ctx.platformOverride)return;
       const school=await tx.get(schoolRef),member=await tx.get(adminRef);
       if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
          member.data().status!=="active"||member.data().schoolId!==ctx.schoolId||
