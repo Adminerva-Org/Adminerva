@@ -80,6 +80,7 @@ let collaborators=[];
 let columns=[];
 let gradingSchemes=[];
 let pendingSchemeSnapshot=null;
+let gradingPolicy=null;
 let settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
 let sheetRevision=0;
 let finalization=null;
@@ -309,7 +310,7 @@ function updateKpis(){
   const items=[
     roster.length+" students",
     active.length+" activities",
-    setup.complete?"Weights ready":"Weights incomplete",
+    gradingPolicy?("Policy · "+gradingPolicy.name):"School policy needed",
     finalization?(finalization.stale?"Grade needs review":"Grade finalized"):"Not finalized"
   ];
   for(const text of items)kpis.append(make("span","cr-kpi",text));
@@ -1648,6 +1649,7 @@ async function loadWorkspace(){
         studentVisibility:studentVisibility(normalized)};
     });
     settings=result.settings||{categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
+    gradingPolicy=result.gradingPolicy||null;
     sheetRevision=Number(result.sheetRevision)||0;
     finalization=result.finalization||null;
     periodReadiness=result.periodReadiness||{ready:false,blockerCount:0,activeColumnCount:0};
@@ -1711,7 +1713,7 @@ offeringSelect.addEventListener("change",async()=>{
   currentOfferingId=next;currentOffering=null;roster=[];assessments=[];collaborators=[];columns=[];
   finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
   settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
-  pendingSchemeSnapshot=null;
+  gradingPolicy=null;pendingSchemeSnapshot=null;
   manualScores.clear();manualScoreMeta.clear();publishedGrades.clear();cellStates.clear();dirtyColumns.clear();
   if(next)await loadWorkspace();else render();
 });
@@ -1851,6 +1853,7 @@ picker=createTenantSchoolPicker({
     finalization=null;periodReadiness={ready:false,blockerCount:0,activeColumnCount:0};finalizationPreview=null;
     pendingSchemeSnapshot=null;
     settings={categoryWeights:[],gradeComputation:"raw_weighted",appliedSchemeId:null,appliedSchemeRevision:null,appliedSchemeName:""};
+    gradingPolicy=null;
     manualScores.clear();manualScoreMeta.clear();publishedGrades.clear();cellStates.clear();dirtyColumns.clear();
     offeringSelect.replaceChildren(new Option("Choose a class…",""));
     offeringSelect.disabled=true;panel.hidden=true;kpis.replaceChildren();
@@ -1859,7 +1862,7 @@ picker=createTenantSchoolPicker({
     if(!scope.current?.roles.includes("teacher")){
       say("Teacher role required. School Admin → People & Access → Access.");return;
     }
-    void loadSchemes().finally(()=>loadOfferings());
+    void loadOfferings();
   }
 });
 void picker.load().catch(error=>{
