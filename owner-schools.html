@@ -50,11 +50,11 @@
    <h2 id="owner-current" style="font-size:1.2rem;font-weight:750"></h2>
    <p id="owner-current-status" class="own-muted"></p>
    <section id="owner-pilot-command" style="margin-top:1rem;padding:1rem;border:2px solid #0891b2;border-radius:12px;background:#ecfeff">
-    <p class="own-muted" style="font-weight:750;text-transform:uppercase;letter-spacing:.04em">Adminerva 4.0 controlled pilot</p>
-    <h3 style="font-size:1.1rem;font-weight:800;margin:.2rem 0">Pilot status &amp; action</h3>
-    <p id="owner-pilot-summary" class="own-muted">Select a school to review its pilot state.</p>
+    <p class="own-muted" style="font-weight:750;text-transform:uppercase;letter-spacing:.04em">School lifecycle</p>
+    <h3 style="font-size:1.1rem;font-weight:800;margin:.2rem 0">School state &amp; action</h3>
+    <p id="owner-pilot-summary" class="own-muted">Select a school to review its lifecycle state.</p>
     <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.75rem">
-      <button id="owner-pilot-jump" type="button" class="own-button">Review controlled pilot</button>
+      <button id="owner-pilot-jump" type="button" class="own-button">Review school state</button>
       <a href="#owner-grant" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#1d4ed8">Assign school administrator</a>
       <a href="people-access.html#access" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#0f766e">Manage teacher access</a>
       <a href="people-access.html#overview" class="own-button" style="text-decoration:none;display:inline-flex;align-items:center;background:#0f766e">Open People &amp; Access</a>
@@ -63,7 +63,7 @@
    </section>
    <section style="margin-top:1rem;padding:1rem;border:1px solid #cbd5e1;border-radius:12px;background:#f8fafc">
     <div style="display:flex;gap:.75rem;align-items:center;justify-content:space-between;flex-wrap:wrap">
-      <div><h3 style="font-weight:750">4.0 cutover readiness</h3><p id="owner-cutover-mode" class="own-muted"></p></div>
+      <div><h3 style="font-weight:750">Cutover readiness</h3><p id="owner-cutover-mode" class="own-muted"></p></div>
       <button id="owner-readiness-refresh" type="button" class="own-button" style="min-height:38px;padding:.45rem .75rem">Refresh readiness</button>
     </div>
     <div id="owner-readiness" class="own-muted" style="margin-top:.75rem"></div>
@@ -165,20 +165,20 @@
     </form>
    </details>
    <form id="owner-start-pilot" hidden>
-    <h3 style="font-weight:750;margin:1.5rem 0 .5rem">Start controlled pilot</h3>
-    <p class="own-muted">Pilot mode enables verified V4 school workflows for a reviewed limited cohort. It keeps legacy compatibility enabled and does not claim institutional production approval.</p>
-    <label>Pilot scope reference<input class="own-field" name="scopeReference" minlength="8" maxlength="240" required value="Adminerva 4.0 MCS SHS ICT pilot"></label>
+    <h3 style="font-weight:750;margin:1.5rem 0 .5rem">Set school to pilot</h3>
+    <p class="own-muted">Pilot is a school lifecycle state for verified school workflows. MCS keeps legacy compatibility enabled during this phase.</p>
+    <label>Pilot scope reference<input class="own-field" name="scopeReference" minlength="8" maxlength="240" required value="MCS Adminerva pilot"></label>
     <label class="own-confirm"><input name="limitedScopeReviewed" type="checkbox" required> The limited pilot cohort and academic scope have been reviewed.</label>
     <label class="own-confirm"><input name="legacyCompatibilityRequired" type="checkbox" required> Legacy 3.x compatibility must remain available during the pilot.</label>
     <label class="own-confirm"><input name="productionNotAuthorized" type="checkbox" required> This pilot is not institutional production authorization.</label>
     <label>Pilot reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
-    <button type="submit" class="own-button">Start controlled pilot</button>
+    <button type="submit" class="own-button">Set school to pilot</button>
    </form>
    <form id="owner-end-pilot" hidden>
-    <h3 style="font-weight:750;margin:1.5rem 0 .5rem">Close controlled pilot</h3>
+    <h3 style="font-weight:750;margin:1.5rem 0 .5rem">Return school to draft</h3>
     <p class="own-muted">Returns the institution to draft access while preserving canonical pilot data and legacy compatibility.</p>
     <label>Close reason<input class="own-field" name="reason" minlength="12" maxlength="500" required></label>
-    <button type="submit" class="own-button warn">Return pilot to draft</button>
+    <button type="submit" class="own-button warn">Return school to draft</button>
    </form>
    <form id="owner-activate" hidden>
     <h3 style="font-weight:750;margin:1.5rem 0 .5rem">Activate institution</h3>
@@ -199,8 +199,8 @@
   </section>
  </div>
 </main>
-<script defer src="js/core/adminerva-nav.js?v=4.0.1"></script>
-<script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.6"></script>
+<script defer src="js/core/adminerva-nav.js?v=4.0.11"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.13"></script>
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script type="module" src="js/core/owner-school-registry.mjs?v=4.0.1"></script>
 </body>
