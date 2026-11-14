@@ -6,19 +6,21 @@ on:
     paths:
       - "css/adminerva-ui.css"
       - "js/core/adminerva-nav.js"
+      - "js/core/navigation-ia.mjs"
+      - "js/core/auth-guard-v4-pilot.js"
       - ".github/workflows/shared-ui-cache-bump.yml"
 
 permissions:
   contents: write
 
 jobs:
-  refresh-html-asset-versions:
+  refresh-shared-shell-versions:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Refresh shared UI asset versions on every HTML page
+      - name: Refresh shared UI and access versions
         shell: bash
         run: |
           set -euo pipefail
@@ -28,6 +30,18 @@ jobs:
           import os, re
 
           version=os.environ["VERSION"]
+
+          nav=Path("js/core/adminerva-nav.js")
+          if nav.exists():
+              text=nav.read_text(encoding="utf-8")
+              updated=re.sub(
+                  r'navigation-ia\.mjs\?v=[^"\']+',
+                  f'navigation-ia.mjs?v={version}',
+                  text
+              )
+              if updated!=text:
+                  nav.write_text(updated,encoding="utf-8")
+
           changed=0
           for path in Path(".").rglob("*.html"):
               if ".git" in path.parts:
@@ -35,6 +49,7 @@ jobs:
               text=path.read_text(encoding="utf-8")
               updated=re.sub(r'css/adminerva-ui\.css\?v=[^"\']+', f'css/adminerva-ui.css?v={version}', text)
               updated=re.sub(r'js/core/adminerva-nav\.js\?v=[^"\']+', f'js/core/adminerva-nav.js?v={version}', updated)
+              updated=re.sub(r'js/core/auth-guard-v4-pilot\.js\?v=[^"\']+', f'js/core/auth-guard-v4-pilot.js?v={version}', updated)
               if updated!=text:
                   path.write_text(updated,encoding="utf-8")
                   changed+=1
@@ -45,12 +60,12 @@ jobs:
       - name: Commit refreshed references
         shell: bash
         run: |
-          if git diff --quiet -- '*.html'; then
-            echo "No HTML asset references needed updating."
+          if git diff --quiet -- '*.html' 'js/core/adminerva-nav.js'; then
+            echo "No shared shell references needed updating."
             exit 0
           fi
           git config user.name "Adminerva UI Sync"
           git config user.email "actions@users.noreply.github.com"
-          git add -- '*.html'
-          git commit -m "chore(ui): refresh shared shell assets [skip ci]"
+          git add -- '*.html' 'js/core/adminerva-nav.js'
+          git commit -m "chore(ui): refresh shared shell and access assets [skip ci]"
           git push
