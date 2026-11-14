@@ -1,6 +1,10 @@
 export function buildNavigationIA(ctx){
-  const live=(id,label,route,tip="")=>[id,label,route,{future:false,tip}];
-  const future=(id,label,tip="Future development")=>[id,label,null,{future:true,tip}];
+  const live=(id,label,route,tip="",status="stable")=>[id,label,route,{future:false,tip,status}];
+  const needs=(id,label,route,tip="Usable now, but this area needs further development or UX enhancement.")=>
+    [id,label,route,{future:false,tip,status:"needs_work"}];
+  const old=(id,label,route,tip="Older Adminerva workflow retained because it is still in use.")=>
+    [id,label,route,{future:false,tip,status:"needs_work",old:true}];
+  const future=(id,label,tip="Future development")=>[id,label,null,{future:true,tip,status:"future"}];
   const group=(name,items)=>({name,items});
   const ws=(id,label,route,description,groups)=>({id,label,route,description,groups});
 
@@ -12,19 +16,20 @@ export function buildNavigationIA(ctx){
       ws("classroom","Adminerva Classroom",assignments,"Classroom activity, assignments, materials, grades and school calendar",[
         group("Classroom",[
           future("bulletin","Classroom Bulletin Board","Class announcements and teacher posts · Future development"),
-          live("assignments","Assignments",assignments,"School and teacher-assigned work"),
+          needs("assignments","Assignments",assignments,"Active assignment workflow; needs further consolidation between school and older repository assignments."),
           ...(grades?[live("my-grades","My Grades",grades,"Teacher-released school grades")]:[]),
           future("ebooks","E-books","Class materials and presentations · Future development"),
           future("calendar","School Calendar","School events, deadlines and academic calendar · Future development")
         ]),
-        group("Repository work",[
-          live("repo-projects","Repository Projects","student-dashboard.html","Existing GitHub / repository projects"),
-          live("repo-assignments","Repository Assignments","student-assessments.html","Existing repository-based assignments")
+        group("Projects & OLD Repository",[
+          ...(scope.hasSchoolStudent?[needs("school-projects","Project Hub","school-student-projects.html","Active school project workflow; still being integrated with Classroom and Studio.")]:[]),
+          old("repo-projects","Repository Projects","student-dashboard.html","OLD repository project workflow retained because current classes still use it."),
+          old("repo-assignments","Repository Assignments","student-assessments.html","OLD repository assignment workflow retained because current classes still use it.")
         ])
       ]),
       ws("games","Adminerva Games","student-practice.html","Practice challenges and subject learning games",[
         group("Games",[
-          live("programming","Programming Practice Challenges","student-practice.html"),
+          needs("programming","Programming Practice Challenges","student-practice.html","Active practice system; analytics, progression and subject expansion still need development."),
           future("science","Science Game"),future("english","English Game"),future("ap","AP Game"),
           future("math","Math Game"),future("values","Values Game"),future("filipino","Filipino Game"),
           future("quiz-bee","General Subject Quiz Bee")
@@ -32,7 +37,8 @@ export function buildNavigationIA(ctx){
       ]),
       ws("laboratory","Adminerva Laboratory","student-playground.html","Interactive subject laboratories and creation workspaces",[
         group("Laboratories",[
-          live("studio","Adminerva Studio","student-playground.html","Browser-based programming IDE"),
+          needs("studio","Adminerva Studio","student-playground.html","Browser-based programming IDE; active and currently used, with further IDE/workflow enhancements planned."),
+          old("xml-lab","XML Layout Lab","student-xml-lab.html","OLD specialized layout laboratory retained for existing student activities."),
           future("adventure","Adminerva Adventure","Maps and history information for AP subjects · Future development"),
           future("experiments","Adminerva Experiments","Science subject experiments · Future development"),
           future("language","Adminerva Language Workshop","English and Filipino language workshop · Future development"),
@@ -71,14 +77,22 @@ export function buildNavigationIA(ctx){
 
   const repository=()=>ws("repository","Repository Management","assessment-studio.html","Existing repository assessment and GitHub workflows",[
     group("Assessment",[
-      live("repo-studio","Assessment Studio","assessment-studio.html"),
-      live("repo-submissions","Submission Inbox","submissions.html"),
-      live("repo-reclaims","Commit Attribution Requests","reclaim-inbox.html")
+      old("repo-studio","Assessment Studio","assessment-studio.html","OLD repository assessment authoring workflow; still active for current repository-based classes."),
+      old("repo-submissions","Submission Inbox","submissions.html","OLD repository submission inbox retained for active repository assignments."),
+      old("repo-reclaims","Commit Attribution Requests","reclaim-inbox.html","OLD repository attribution workflow retained for active classes.")
     ]),
     group("Review & Grade",[
-      live("repo-review","Review & Grade","repofetch.html"),
-      live("repo-gradebook","Gradebook","gradebook.html"),
-      live("repo-investigation","Repository Investigation","repobank.html")
+      old("repo-review","Review & Grade","repofetch.html","OLD repository review workflow; still operational and in active use."),
+      old("repo-gradebook","Gradebook","gradebook.html","OLD repository gradebook retained for active repository assessments."),
+      old("repo-investigation","Repository Investigation","repobank.html","OLD repository investigation workflow retained for repository troubleshooting.")
+    ]),
+    group("OLD Advanced Tools",[
+      old("activity-grader","Activity Grader","activity-grader.html","OLD repository activity grader; retained for current grading workflows."),
+      old("auto-grader","AutoGrader","grading.html","OLD automated grading interface retained for compatibility."),
+      old("learning-follow-up","Learning Follow-up","learning-follow-up.html","OLD repository learning follow-up workflow retained for current records."),
+      old("evidence-review","Evidence Review","assessment-evidence-review.html","OLD contextual evidence review tool; usually opened from Review & Grade."),
+      old("contribution-inspector","Contribution Inspector","contribution-inspector.html","OLD contextual contribution inspector; usually opened from Review & Grade."),
+      old("group-inspector","Group Inspector","group-inspector.html","OLD contextual group repository inspector; usually opened from Review & Grade.")
     ])
   ]);
 
@@ -107,6 +121,11 @@ export function buildNavigationIA(ctx){
         live("class-record-oversight","Class Record Oversight","school-class-records.html"),
         future("school-calendar-admin","School Calendar Configuration"),
         future("grade-approval","Grade Approval"),future("promotion-policy","Promotion / Retention Policy")
+      ]),
+      group("OLD Catalog Tools",[
+        old("old-programs","Tracks & Pathways","manage-programs.html","OLD school catalog editor retained for compatibility. New configuration belongs in Academic Configuration."),
+        old("old-sections","Sections","manage-sections.html","OLD section editor retained for compatibility. New configuration belongs in Academic Configuration."),
+        old("old-subjects","Subjects","manage-subjects.html","OLD subject editor retained for compatibility. New configuration belongs in Academic Configuration.")
       ]),
       group("School Profile",[
         future("school-profile","School Profile & Campuses"),future("departments","Departments / Faculties"),
@@ -215,7 +234,9 @@ export function buildNavigationIA(ctx){
     const out=[
       ws("analytics","Analytics","teacher-analytics.html","Teaching, class and learning analytics",[
         group("Analytics Dashboard",[
-          live("analytics","Analytics Dashboard","teacher-analytics.html"),future("class-standing","Class Standing"),
+          needs("analytics","Analytics Dashboard","teacher-analytics.html","Active analytics dashboard; broader school analytics and drill-downs still need development."),
+          old("practice-analytics","Practice Analytics","practice-analytics.html","OLD practice analytics retained while the unified Games analytics is being developed."),
+          future("class-standing","Class Standing"),
           future("games-analytics","Adminerva Games Analytics"),future("lab-analytics","Adminerva Laboratory Analytics")
         ]),
         group("General Analytics",[
@@ -226,17 +247,18 @@ export function buildNavigationIA(ctx){
       repository(),
       ws("assessment","Assessment","teacher-assessment-library.html","General-subject assessment and checking workflows",[
         group("Assessment",[
-          live("assessment-studio","Assessment Studio","teacher-assessment-library.html","Assessment creation for all subjects"),
+          needs("assessment-studio","Assessment Studio","teacher-assessment-library.html","Active general-subject assessment authoring; submission and checking workflows are still being expanded."),
           future("assessment-inbox","Submission Inbox","General-subject submission inbox · Future development")
         ]),
         group("Assessment Checking",[
           future("student-work","Review Students' Work","General-subject output review · Future development"),
-          live("system-evaluation","System Evaluation","school-gradebook.html","Bulk/general assessment evaluation and grading")
+          needs("studio-submissions","Studio Submissions","studio-submissions.html","Active Studio project submission review; still being consolidated into general assessment checking."),
+          needs("system-evaluation","System Evaluation","school-gradebook.html","Bulk/general assessment evaluation and grading; needs further workflow and bulk-action refinement.")
         ])
       ]),
       ws("grading","Grading","class-record.html","Class records, advisory records and grade administration",[
         group("Grades",[
-          live("class-record","Class Record","class-record.html"),
+          needs("class-record","Class Record","class-record.html","Active Class Record; school policy ownership, approval and grade-release workflows are still being expanded."),
           ...(scope.isSchoolAdmin?[
             live("grading-policy","Grading Policies","school-grading-schemes.html","School-controlled weights, transmutation and applicability"),
             live("record-oversight","Class Record Oversight","school-class-records.html")
@@ -252,9 +274,10 @@ export function buildNavigationIA(ctx){
       ]),
       ws("preparation","Preparation","lesson-planner.html","Teaching plans, materials, schedules and faculty preparation",[
         group("Teaching Preparation",[
-          live("learning-plan","C-map / Learning Plan","lesson-planner.html"),
-          live("slides","Slides Editor","presentation.html"),live("library","Reference Library","library.html"),
-          live("schedule","Schedule","schedule.html"),future("scope-sequence","Scope and Sequence"),
+          needs("learning-plan","C-map / Learning Plan","lesson-planner.html","Active planning workflow; generation and curriculum alignment continue to be refined."),
+          needs("slides","Slides Editor","presentation.html","Active slide workflow; editing and presentation UX still need enhancement."),
+          needs("library","Reference Library","library.html","Active reference library; ingestion and organization continue to be improved."),
+          needs("schedule","Schedule","schedule.html","Active schedule surface; broader scheduling functions remain under development."),future("scope-sequence","Scope and Sequence"),
           future("department-files","Department Files"),future("letters","Letters"),
           ...(scope.isSchoolAdmin?[future("faculty-scheduling","Faculty Scheduling","Admin role · Future development")]:[])
         ])
@@ -274,14 +297,18 @@ export function buildNavigationIA(ctx){
   const system=()=>[
     ws("system-analytics","Analytics","owner-schools.html","Platform-wide analytics and operational intelligence",[
       group("Platform Analytics",[
-        future("users-analytics","Users"),live("schools-analytics","Schools","owner-schools.html"),
+        needs("users-analytics","Users","admin-analytics.html","Existing administration analytics; needs expansion into the full platform analytics model."),
+        live("schools-analytics","Schools","owner-schools.html"),
         future("games-analytics","Games"),future("laboratory-analytics","Laboratory"),
         future("assessment-analytics","Assessments"),future("finance-analytics","Finance"),
         future("usage-analytics","Usage & Performance")
       ])
     ]),
     ws("directory","Directory","owner-schools.html","Users, schools and platform directory administration",[
-      group("Users",[future("system-users","Users","Platform-wide user directory · Future development")]),
+      group("Users",[
+        old("system-users","User Directory","users.html","OLD user directory retained until the unified platform directory replaces it."),
+        old("teacher-accounts","Teacher Accounts","teacher-accounts.html","OLD teacher account administration retained for compatibility.")
+      ]),
       group("Schools",[
         live("system-schools","Schools","owner-schools.html"),live("school-details","School Details","owner-schools.html"),
         future("school-announcement","School Announcement"),future("school-integration","School Integration"),
