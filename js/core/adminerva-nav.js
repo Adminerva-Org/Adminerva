@@ -74,7 +74,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const hasSchoolStudent = root.dataset.schoolStudent === "true";
   const v4OnlyTeacher = root.dataset.v4OnlyTeacher === "true";
   const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
-  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=d63b76e9606a");
+  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=dc76fece4999");
   const ia=buildNavigationIA({
     isStudent,isSuperAdmin,isSchoolAdmin,isPlatformOwner,
     hasSchoolTeacher,hasSchoolStudent,v4OnlyTeacher,v4OnlyStudent
@@ -106,13 +106,26 @@ document.addEventListener("DOMContentLoaded", () => {
   const oldBadgeMarkup=tip=>`<span class="av-old-badge" title="${escapeHTML(tip||"Older workflow retained for current users.")}">OLD</span>`;
   const workspaceLinkMarkup = item => {
     const active=item.id===activeWorkspaceId,health=workspaceHealth(item);
-    return `<a href="${item.route}" class="av-workspace-card${active?" is-active":""}"${active?' aria-current="location"':""}>
-      <span class="av-workspace-card-heading">
-        <span class="av-workspace-card-title">${escapeHTML(item.label)}</span>
-        <span class="av-nav-status-cluster">${health.old?oldBadgeMarkup("OLD workspace retained because existing classes or records still use it."):""}${indicatorMarkup(health.status,health.tip)}</span>
-      </span>
-      <span class="av-workspace-card-description">${escapeHTML(item.description)}</span>
-    </a>`;
+    const quickItems=ia.studentView?item.groups.flatMap(group=>group.items)
+      .filter(entry=>entry[2]&&!entry[3]?.future).slice(0,6):[];
+    return `<article class="av-workspace-card${active?" is-active":""}">
+      <a href="${item.route}" class="av-workspace-card-main"${active?' aria-current="location"':""}>
+        <span class="av-workspace-card-heading">
+          <span class="av-workspace-card-title">${escapeHTML(item.label)}</span>
+          <span class="av-nav-status-cluster">${health.old?oldBadgeMarkup("OLD workspace retained because existing classes or records still use it."):""}${indicatorMarkup(health.status,health.tip)}</span>
+        </span>
+        <span class="av-workspace-card-description">${escapeHTML(item.description)}</span>
+      </a>
+      ${quickItems.length?`<div class="av-workspace-quicklinks">
+        ${quickItems.map(entry=>{
+          const meta=entry[3]||{};
+          return `<a href="${entry[2]}" class="av-workspace-quicklink">
+            <span>${escapeHTML(entry[1])}</span>
+            <span class="av-nav-status-cluster">${meta.old?oldBadgeMarkup(meta.tip):""}${indicatorMarkup(meta.future||meta.status==="future"?"future":meta.status==="needs_work"||meta.old?"needs_work":"stable",meta.tip)}</span>
+          </a>`;
+        }).join("")}
+      </div>`:""}
+    </article>`;
   };
   const workspaceGridMarkup=(workspaceSections||[]).map(section=>`
     <section class="av-workspace-section" aria-labelledby="av-workspace-section-${escapeHTML(section.id)}">
