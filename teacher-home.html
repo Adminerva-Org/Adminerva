@@ -23,24 +23,34 @@
     <div class="av-motion-ambient" aria-hidden="true"></div>
     <p class="av-eyebrow">Your teaching dashboard</p>
     <h1 id="staffTitle">Your next teaching task starts here.</h1>
-    <p>Keep class review, assessment preparation, and lesson planning in one place. Continue where you left off without repeating setup.</p>
+    <p>Choose the workflow that matches the task: Repository Management for GitHub-based work, or Class Record &amp; Adminerva Assessments for school assessments and grades.</p>
     <div class="av-button-row mt-5">
-      <a class="av-primary-button" href="repofetch.html">Open Review &amp; Grade</a>
       <a data-school-teacher-only class="hidden av-primary-button" href="class-record.html">Open Class Record</a>
+      <a class="av-secondary-link" href="repofetch.html">Repository Management</a>
       <a class="av-secondary-link" href="lesson-planner.html">Plan the next lesson</a>
     </div>
   </header>
   <section aria-labelledby="teacherWorkflowHeading">
     <div class="av-home-heading">
-      <div><p class="av-teacher-section-title">A connected workflow</p><h2 id="teacherWorkflowHeading">From assessment to feedback</h2></div>
+      <div><p class="av-teacher-section-title">Repository Management</p><h2 id="teacherWorkflowHeading">GitHub / repository assessment workflow</h2></div>
       <a href="wiki.html#review" class="text-sm font-semibold text-blue-800 underline">Teaching guide</a>
     </div>
     <ol class="av-setup-steps">
-      <li><a href="assessment-studio.html"><strong>1. Prepare &amp; assign</strong><span>Define instructions, rubric criteria, and the classes receiving the task.</span></a></li>
+      <li><a href="assessment-studio.html"><strong>1. Prepare repository task</strong><span>Use this workflow when GitHub commits and repository evidence are part of the assessment.</span></a></li>
       <li><a href="repofetch.html"><strong>2. Inspect &amp; verify</strong><span>Review submitted commits and approve each learner's evidence.</span></a></li>
       <li><a href="gradebook.html"><strong>3. Review &amp; publish</strong><span>Check private drafts, finalize feedback, and publish deliberately.</span></a></li>
       <li data-school-teacher-only class="hidden"><a href="class-record.html"><strong>4. Consolidate &amp; release</strong><span>Combine manual work and published Adminerva assessment scores, preview student visibility, then finalize the period deliberately.</span></a></li>
     </ol>
+  </section>
+  <section data-school-teacher-only class="hidden av-panel mt-7" aria-labelledby="schoolAssessmentWorkflow">
+    <div class="av-home-heading">
+      <div><p class="av-teacher-section-title">Class Record &amp; Adminerva Assessments</p><h2 id="schoolAssessmentWorkflow">School assessment and grading workflow</h2></div>
+    </div>
+    <div class="av-home-quick-grid">
+      <a href="teacher-assessment-library.html"><strong>Create / manage Adminerva assessments</strong><span>Author school-scoped assessments and deploy them to assigned classes.</span></a>
+      <a href="school-gradebook.html"><strong>Review Adminerva assessment results</strong><span>Review and publish school assessment grades without using the GitHub repository workflow.</span></a>
+      <a href="class-record.html"><strong>Class Record</strong><span>Combine manual scores and published Adminerva assessment results, control student visibility, and finalize grades.</span></a>
+    </div>
   </section>
   <section class="av-panel mt-7" aria-labelledby="teacherShortcuts">
     <div class="av-home-heading">
