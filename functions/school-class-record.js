@@ -398,6 +398,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
     const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
     const membershipRef=db.doc(prefix+"memberships/"+ctx.uid);
     async function verifySchoolAdmin(tx){
+      if(ctx.platformOverride)return;
       const [school,membership]=await Promise.all([tx.get(schoolRef),tx.get(membershipRef)]);
       if(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
          membership.data().schoolId!==ctx.schoolId||membership.data().status!=="active"||
@@ -450,16 +451,22 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
             categoryWeights:schemeSettings.categoryWeights,
             gradeComputation:schemeSettings.gradeComputation
           };
-          const [program,subject]=await Promise.all([
+          const [program,subject,section]=await Promise.all([
             requestedApplicability.programId?
               tx.get(db.doc(prefix+"academic_programs/"+requestedApplicability.programId)):Promise.resolve(null),
             requestedApplicability.subjectId?
-              tx.get(db.doc(prefix+"subjects/"+requestedApplicability.subjectId)):Promise.resolve(null)
+              tx.get(db.doc(prefix+"subjects/"+requestedApplicability.subjectId)):Promise.resolve(null),
+            requestedApplicability.sectionId?
+              tx.get(db.doc(prefix+"sections/"+requestedApplicability.sectionId)):Promise.resolve(null)
           ]);
           if(program&&(!program.exists||program.data().schoolId!==ctx.schoolId||program.data().status!=="active"))
             deny("failed-precondition","The grading scheme program/division is unavailable or inactive.");
           if(subject&&(!subject.exists||subject.data().schoolId!==ctx.schoolId||subject.data().status!=="active"))
             deny("failed-precondition","The grading scheme subject is unavailable or inactive.");
+          if(section&&(!section.exists||section.data().schoolId!==ctx.schoolId||section.data().status!=="active"))
+            deny("failed-precondition","The grading scheme section is unavailable or inactive.");
+          if(section&&requestedApplicability.programId&&section.data().programId!==requestedApplicability.programId)
+            deny("failed-precondition","The selected section belongs to another program/division.");
           const revision=priorRevision+1;
           const values={schoolId:ctx.schoolId,name,description,status:"active",
             settings:storedSettings,applicability:requestedApplicability,
