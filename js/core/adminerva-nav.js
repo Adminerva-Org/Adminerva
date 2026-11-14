@@ -67,18 +67,18 @@ document.addEventListener("DOMContentLoaded", () => {
   // Destinations and page labels share one source, including bookmarked tools.
   const studentGroups = {
     student: { name: "Project Hub", items: v4OnlyStudent ? [
-      ["school-student-projects", "Projects · 4.0", "school-student-projects.html"],
-      ["school-student-assessments", "Assignments · 4.0", "school-student-assessments.html"],
-      ["school-student-grades", "My grades · 4.0", "school-student-grades.html"],
-      ["school-student-settings", "Account settings · 4.0", "school-student-settings.html"]
+      ["school-student-projects", "Projects", "school-student-projects.html"],
+      ["school-student-assessments", "Assignments", "school-student-assessments.html"],
+      ["school-student-grades", "My grades", "school-student-grades.html"],
+      ["school-student-settings", "Account settings", "school-student-settings.html"]
     ] : [
       ["dashboard", "Projects", "student-dashboard.html"],
       ["assessments", "Assignments", "student-assessments.html"],
       ...(hasSchoolStudent ? [
-        ["school-student-projects", "Projects · 4.0 pilot", "school-student-projects.html"],
-        ["school-student-assessments", "Assignments · 4.0 pilot", "school-student-assessments.html"],
-        ["school-student-grades", "My grades · 4.0 pilot", "school-student-grades.html"],
-        ["school-student-settings", "Account settings · 4.0 pilot", "school-student-settings.html"]
+        ["school-student-projects", "School projects", "school-student-projects.html"],
+        ["school-student-assessments", "School assignments", "school-student-assessments.html"],
+        ["school-student-grades", "My grades", "school-student-grades.html"],
+        ["school-student-settings", "School account settings", "school-student-settings.html"]
       ] : []),
       ["settings", "Account settings", "student-settings.html"]
     ] },
@@ -92,24 +92,26 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   const staffGroups = [
     { name: "Assessment", area: "educator", items: v4OnlyTeacher ? [
-      ["library-v4", "Assessment library · 4.0", "teacher-assessment-library.html"],
+      ["library-v4", "Adminerva assessment library", "teacher-assessment-library.html"],
       ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
     ] : [
       ["studio", "Assessment studio", "assessment-studio.html"],
-      ...(hasSchoolTeacher ? [["library-v4", "Assessment library · 4.0 pilot", "teacher-assessment-library.html"]] : []),
+      
       ["submissions", "Submission inbox", "submissions.html"],
       ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
     ] },
     { name: "Review & grade", area: "educator", items: v4OnlyTeacher ? [
-      ["gradebook-v4", "Gradebook · 4.0", "school-gradebook.html"]
+      ["gradebook-v4", "Adminerva assessment gradebook", "school-gradebook.html"]
     ] : [
       ["repofetch", "Review & grade", "repofetch.html"],
       ["gradebook", "Gradebook", "gradebook.html"],
-      ...(hasSchoolTeacher ? [["gradebook-v4", "Gradebook · 4.0 pilot", "school-gradebook.html"]] : []),
+      
       ["repobank", "Repository investigation", "repobank.html"]
     ] },
     { name: "Class record & Adminerva assessments", area: "class-record", items: hasSchoolTeacher ? [
       ["class-record", "Class record", "class-record.html"],
+      ["library-v4", "Adminerva assessment library", "teacher-assessment-library.html"],
+      ["gradebook-v4", "Adminerva assessment gradebook", "school-gradebook.html"],
       ...(!v4OnlyTeacher ? [["studio-submissions", "Adminerva Studio grading", "studio-submissions.html"]] : [])
     ] : [] },
     { name: "Insights", area: "educator", items: [
@@ -120,17 +122,15 @@ document.addEventListener("DOMContentLoaded", () => {
       ["planner", "Lesson planner", "lesson-planner.html"],
       ["presentation", "Slide editor", "presentation.html"],
       ["schedule", "Teacher schedule", "schedule.html"],
-      ["pilot-sandbox", "Private pilot sandbox", "pilot-sandbox.html"],
       ["library", "Reference library", "library.html"]
     ] },
     { name: "School setup", area: "admin", items: (isSuperAdmin || isSchoolAdmin || isPlatformOwner) ? [
       ...(isPlatformOwner && !isSchoolAdmin && !isSuperAdmin ? [
-        ["owner-schools", "Platform schools & pilot control", "owner-schools.html"]
+        ["owner-schools", "Platform schools", "owner-schools.html"]
       ] : []),
       ...((isSuperAdmin || isSchoolAdmin) ? [
         ["overview", "Administration overview", "school-admin.html"],
-        ["pilot-v4", "Controlled pilot · 4.0", "school-pilot.html"],
-        ["people-v4", "People & access · 4.0", "people-access.html"],
+                ["people-v4", "People & access", "people-access.html"],
         ...(isSchoolAdmin ? [
           ["grading-schemes", "Grading schemes", "school-grading-schemes.html"],
           ["class-record-oversight", "Class Record oversight", "school-class-records.html"]
@@ -144,9 +144,6 @@ document.addEventListener("DOMContentLoaded", () => {
         ["programs", "Tracks & pathways · legacy", "manage-programs.html"],
         ["subjects", "Subjects · legacy", "manage-subjects.html"]
       ] : []),
-      ...((isSuperAdmin || isPlatformOwner) ? [
-        ["owner-schools", "Controlled pilot · 4.0", "owner-schools.html"]
-      ] : [])
     ] : [] },
     { name: "Account", area: "settings", items: [
       ["settings", "Account & integrations", "settings.html"],
@@ -192,8 +189,8 @@ document.addEventListener("DOMContentLoaded", () => {
     ["Repository Management", "assessment-studio.html", "Assessments, submissions, grading and repositories"],
     ...(hasSchoolTeacher ? [["Class Record & Adminerva Assessments", "class-record.html", "Manual scores, Adminerva assessment grading and consolidated results"]] : []),
     ["Lesson Planning", "lesson-planner.html", "Lessons, slides, schedule and references"],
-    ...((isSuperAdmin || isSchoolAdmin) ? [["School administration", "school-admin.html", "Students, staff, V4 identities, catalogs and pilot operations"]] : []),
-    ...((isPlatformOwner && !isSuperAdmin) ? [["Platform pilot control", "owner-schools.html", "Institutions, readiness and controlled pilot state"]] : []),
+    ...((isSuperAdmin || isSchoolAdmin) ? [["School administration", "school-admin.html", "Students, staff, access, classes and school settings"]] : []),
+    ...((isPlatformOwner && !isSuperAdmin) ? [["Platform schools", "owner-schools.html", "Institutions, access and school lifecycle"]] : []),
     ["Reports & support", "issues.html", "Follow reports and get help"]
   ];
   root.innerHTML = `
