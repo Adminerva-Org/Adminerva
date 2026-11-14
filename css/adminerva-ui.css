@@ -917,3 +917,13 @@ body main > header[class*="mb-8"],body main > header[class*="mb-6"] {
   border:0!important;background:transparent!important;padding:0!important;
   margin:.25rem 0!important;color:#64748b!important;font-size:.78rem!important;line-height:1.4!important;
 }
+
+/* Shared navigation states for the Adminerva workspace architecture. */
+.av-future-badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid #475569;border-radius:999px;padding:.08rem .4rem;
+  font-size:.62rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#94a3b8
+}
+.av-nav-future[aria-disabled="true"]{user-select:none}
+.av-account-menu select{color-scheme:dark}
+.av-active-workspace{max-width:15rem;overflow:hidden;text-overflow:ellipsis}
