@@ -1,0 +1,48 @@
+name: Promote MCS to Adminerva 4.0 pilot
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/promote-mcs-pilot.cjs"
+      - ".github/workflows/promote-mcs-pilot.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firebase-production
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install Firebase Admin dependencies
+        run: npm ci --prefix functions --no-audit --no-fund
+      - name: Prepare Firebase service account
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_REPOREVIEW_E7CA4 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${FIREBASE_SERVICE_ACCOUNT:-}"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/firebase-service-account.json"
+          chmod 600 "$RUNNER_TEMP/firebase-service-account.json"
+          echo "GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase-service-account.json" >> "$GITHUB_ENV"
+      - name: Promote only MCS draft school state to pilot
+        env:
+          NODE_PATH: ${{ github.workspace }}/functions/node_modules
+        run: node scripts/promote-mcs-pilot.cjs
+      - name: Remove temporary deployment credential
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/firebase-service-account.json"
