@@ -100,16 +100,31 @@ async function checkAccess(user){
   else if(admittedRole==="teacher")actualRole="teacher";
 
   let activeRole = actualRole;
+  let platformViewRole="",platformViewSchool="";
+  if(access.platformAdmin){
+    try{
+      platformViewRole=sessionStorage.getItem("Adminerva_platform_view_role")||"";
+      platformViewSchool=sessionStorage.getItem("Adminerva_platform_view_school")||"";
+    }catch{}
+    if(!["schooladmin","teacher","student"].includes(platformViewRole)||!platformViewSchool){
+      platformViewRole="";platformViewSchool="";
+    }
+  }
+  const platformSchoolView=Boolean(access.platformAdmin&&platformViewRole&&platformViewSchool);
 
-  // 3. The Shape-Shifter Logic (ONLY permitted for authorized admins/teachers)
-  if(actualRole==="superadmin"||(actualRole==="teacher"&&access.legacyRole==="teacher")){
+  // Platform administrators may enter an explicit school/role context. This
+  // remains server-authorized; browser state only chooses which authorized
+  // context the platform admin wants to operate.
+  if(platformSchoolView){
+    activeRole=platformViewRole;
+    localStorage.setItem("Adminerva_Role",activeRole);
+    localStorage.removeItem("Adminerva_Mock_Role");
+  }else if(actualRole==="superadmin"||(actualRole==="teacher"&&access.legacyRole==="teacher")){
     const mockRole=localStorage.getItem("Adminerva_Mock_Role");
     if((actualRole==="superadmin"?["superadmin","teacher","student"]:["teacher","student"]).includes(mockRole))
       activeRole=mockRole;
     localStorage.setItem("Adminerva_Role",activeRole);
   }else{
-    // School administrators are a distinct role and never become platform
-    // superadmin through browser state. Students likewise cannot elevate.
     localStorage.setItem("Adminerva_Role",actualRole);
     localStorage.removeItem("Adminerva_Mock_Role");
     activeRole=actualRole;
@@ -133,30 +148,30 @@ async function checkAccess(user){
     replacePage(roleHome(actualRole));return;
   }
   if(/\/(school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-grading-schemes|school-class-records)\.html$/.test(currentPath)&&
-     !(access.schoolAdmin||admittedRole==="admin")){
+     !(access.schoolAdmin||admittedRole==="admin"||platformSchoolView)){
     replacePage(roleHome(actualRole));return;
   }
   if(/\/(teacher-assessment-library)\.html$/.test(currentPath)&&
-     !(["teacher","admin"].includes(admittedRole))){
+     !(["teacher","admin"].includes(admittedRole)||platformSchoolView)){
     replacePage(roleHome(actualRole));return;
   }
   if(/\/(pilot-sandbox)\.html$/.test(currentPath)&&!(access.schoolTeacher||access.legacyRole==="teacher"||admittedRole==="teacher")){replacePage(roleHome(actualRole));return;}
-  if(/\/(school-gradebook)\.html$/.test(currentPath)&&!access.schoolTeacher){
+  if(/\/(school-gradebook)\.html$/.test(currentPath)&&!(access.schoolTeacher||platformSchoolView)){
     replacePage(roleHome(actualRole));return;
   }
-  if(/\/(class-record)\.html$/.test(currentPath)&&!(access.schoolTeacher||access.schoolAdmin)){
+  if(/\/(class-record)\.html$/.test(currentPath)&&!(access.schoolTeacher||access.schoolAdmin||platformSchoolView)){
     replacePage(roleHome(actualRole));return;
   }
   if(actualRole==="schooladmin"&&!access.schoolTeacher&&
      !/\/(teacher-home|school-admin|school-pilot|people-access|school-grading-schemes|school-class-records|class-record|reclaim-inbox|settings|issues|join-school|wiki)\.html$/.test(currentPath)){
     replacePage("school-admin.html");return;
   }
-  if(actualRole==="platformowner"&&!access.schoolAdmin&&!access.schoolTeacher&&!access.schoolStudent&&
+  if(actualRole==="platformowner"&&!platformSchoolView&&!access.schoolAdmin&&!access.schoolTeacher&&!access.schoolStudent&&
      !/\/(owner-schools|settings|issues|wiki)\.html$/.test(currentPath)){
     replacePage("owner-schools.html");return;
   }
   if(/\/(school-student-projects|school-student-settings|school-student-assessments|school-student-grades)\.html$/.test(currentPath)&&
-     !access.schoolStudent){
+     !(access.schoolStudent||(platformSchoolView&&activeRole==="student"))){
     replacePage(roleHome(actualRole));return;
   }
   const v4OnlyStudent=access.schoolStudent&&
@@ -226,17 +241,23 @@ async function checkAccess(user){
     navigation.dataset.verifiedRole=activeRole;
     navigation.dataset.accountEmail=accountEmail;
     navigation.dataset.platformAdmin=String(Boolean(access.platformAdmin));
-    navigation.dataset.schoolAdmin=String(Boolean(access.schoolAdmin));
-    navigation.dataset.schoolTeacher=String(Boolean(access.schoolTeacher));
-    navigation.dataset.schoolStudent=String(Boolean(access.schoolStudent));
+    navigation.dataset.schoolAdmin=String(Boolean(access.schoolAdmin||(
+      platformSchoolView&&activeRole==="schooladmin")));
+    navigation.dataset.schoolTeacher=String(Boolean(access.schoolTeacher||(
+      platformSchoolView&&["schooladmin","teacher"].includes(activeRole))));
+    navigation.dataset.schoolStudent=String(Boolean(access.schoolStudent||(
+      platformSchoolView&&activeRole==="student")));
+    navigation.dataset.platformViewSchool=platformViewSchool;
     navigation.dataset.v4OnlyTeacher=String(Boolean(v4OnlyTeacher));
     navigation.dataset.v4OnlyStudent=String(Boolean(v4OnlyStudent));
     navigation.dataset.v4Cutover=String(Boolean(v4Cutover));
     navigation.dataset.legacyTeacher=String(access.legacyRole==="teacher");
   }
   document.dispatchEvent(new CustomEvent("adminerva:role-ready", {
-    detail:{role:activeRole,platformAdmin:Boolean(access.platformAdmin),schoolAdmin:Boolean(access.schoolAdmin),
-      schoolTeacher:Boolean(access.schoolTeacher),schoolStudent:Boolean(access.schoolStudent),
+    detail:{role:activeRole,platformAdmin:Boolean(access.platformAdmin),
+      schoolAdmin:Boolean(access.schoolAdmin||(platformSchoolView&&activeRole==="schooladmin")),
+      schoolTeacher:Boolean(access.schoolTeacher||(platformSchoolView&&["schooladmin","teacher"].includes(activeRole))),
+      schoolStudent:Boolean(access.schoolStudent||(platformSchoolView&&activeRole==="student")),
       legacyTeacher:access.legacyRole==="teacher",v4OnlyTeacher,v4OnlyStudent,v4Cutover}
   }));
 
