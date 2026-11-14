@@ -17,7 +17,7 @@ export function createTenantSchoolPicker({host,status,onBeforeChange=async()=>{}
       if(status)status.textContent=state.state==="checking"?"Checking school access…":
         state.state==="unavailable"?"School access is unavailable. Retry when connected.":
         state.state==="no_school"?"No verified school membership. Request an invitation.":
-        state.state==="choose_school"?"Choose an authorized school.":"School access confirmed.";
+        state.state==="choose_school"?"Choose a school from the account menu.":"School access confirmed.";
       if(state.context){
         remember(state.context.uid,state.context.schoolId);
         document.dispatchEvent(new CustomEvent("adminerva:school-ready",{detail:{
