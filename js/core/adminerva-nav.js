@@ -72,11 +72,11 @@ document.addEventListener("DOMContentLoaded", () => {
       ["school-student-grades", "My grades", "school-student-grades.html"],
       ["school-student-settings", "Account settings", "school-student-settings.html"]
     ] : [
-      ["dashboard", "Projects", "student-dashboard.html"],
-      ["assessments", "Assignments", "student-assessments.html"],
+      ["dashboard", "Repository projects", "student-dashboard.html"],
+      ["assessments", "Repository assignments", "student-assessments.html"],
       ...(hasSchoolStudent ? [
-        ["school-student-projects", "School projects", "school-student-projects.html"],
-        ["school-student-assessments", "School assignments", "school-student-assessments.html"],
+        ["school-student-projects", "Adminerva projects", "school-student-projects.html"],
+        ["school-student-assessments", "Adminerva assignments", "school-student-assessments.html"],
         ["school-student-grades", "My grades", "school-student-grades.html"],
         ["school-student-settings", "School account settings", "school-student-settings.html"]
       ] : []),
@@ -179,8 +179,8 @@ document.addEventListener("DOMContentLoaded", () => {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
   const modules = isStudent ? [
     [homeLabel, homeRoute, "Start here and continue your work"],
-    ["Project Hub", "student-dashboard.html", "Projects and assignments"],
-    ...(hasSchoolStudent ? [["My Grades", "school-student-grades.html", "Teacher-released activity scores and Final Grades"]] : []),
+    ["Repository Project Hub", "student-dashboard.html", "GitHub / repository projects and assignments"],
+    ...(hasSchoolStudent ? [["Adminerva Assignments & Grades", "school-student-assessments.html", "School assignments, projects and teacher-released grades"]] : []),
     ["Practice Lab", "student-practice.html", "Courses, challenges and XML Lab"],
     ["Adminerva Studio", "student-playground.html", "Write and run code"],
     ["My reports", "issues.html", "Report a problem or follow an update"]
