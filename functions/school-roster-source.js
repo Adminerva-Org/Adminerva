@@ -91,6 +91,7 @@ function createSchoolRosterSourceService({db,fetchImpl=fetch}){
     const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
     const memberRef=db.doc(prefix+"memberships/"+ctx.uid);
     async function authority(tx){
+      if(ctx.platformOverride)return;
       const [school,member]=await Promise.all([tx.get(schoolRef),tx.get(memberRef)]);
       if(!school.exists||!["draft","pilot","active"].includes(school.data().state)||!member.exists||
          member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
