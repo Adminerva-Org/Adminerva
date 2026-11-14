@@ -203,12 +203,20 @@ function openNewReport(){
   form.reset();
   get("supportReportStatus").textContent="";
   get("legacyReportAudienceWrap").classList.toggle("hidden",schoolMode);
+  newModal.hidden=false;
   newModal.classList.remove("hidden");
 }
-function closeNewReport(){newModal.classList.add("hidden");}
+function closeNewReport(){
+  newModal.hidden=true;
+  newModal.classList.add("hidden");
+}
 get("newReportButton")?.addEventListener("click",openNewReport);
 get("supportReportClose")?.addEventListener("click",closeNewReport);
 get("supportReportCancel")?.addEventListener("click",closeNewReport);
+newModal?.addEventListener("click",event=>{if(event.target===newModal)closeNewReport();});
+document.addEventListener("keydown",event=>{
+  if(event.key==="Escape"&&newModal&&!newModal.hidden&&!newModal.classList.contains("hidden"))closeNewReport();
+});
 
 async function findLegacyStudent(){
   const user=auth.currentUser;
@@ -294,7 +302,7 @@ picker=createTenantSchoolPicker({
 void auth.authStateReady().then(async()=>{
   try{
     const state=await picker.load();
-    if(!picker.scope.current&&(state?.state==="no_school"||state?.state==="choose_school"===false))
+    if(!picker.scope.current&&state?.state==="no_school")
       await startLegacyFallback();
   }catch{
     await startLegacyFallback();
