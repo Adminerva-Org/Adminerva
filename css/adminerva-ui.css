@@ -867,3 +867,42 @@ body main > header[class*="mb-8"],body main > header[class*="mb-6"] {
 .av-school-select:focus-visible { outline: 3px solid #38bdf8; outline-offset: 2px; }
 [hidden] > .av-school-select, [hidden].av-school-picker { display: none !important; }
 @media (max-width: 480px) { .av-school-select { max-width: none; font-size: 16px; } }
+
+
+/* 1.4.9 global density cleanup: operational UI first. */
+.av-nav-location{display:none!important}
+.av-scope-notice{display:none!important}
+.av-site-footer{
+  min-height:0!important;
+  padding:.45rem clamp(.75rem,2vw,1.5rem)!important;
+  gap:.35rem .9rem!important;
+  font-size:.72rem!important;
+  flex-wrap:nowrap!important;
+}
+.av-site-footer .av-footer-brand{
+  font-size:.72rem!important;
+  letter-spacing:.1em!important;
+  white-space:nowrap;
+}
+.av-site-footer nav{
+  margin-left:auto!important;
+  gap:.25rem .8rem!important;
+  flex-wrap:nowrap!important;
+}
+.av-site-footer a,.av-site-footer button{
+  padding:.15rem 0!important;
+  font-size:.72rem!important;
+}
+.av-site-footer .av-footer-credits{display:none!important}
+@media(max-width:640px){
+  .av-site-footer{
+    padding:.4rem .65rem max(.4rem,env(safe-area-inset-bottom))!important;
+    justify-content:space-between!important;
+    text-align:left!important;
+    overflow-x:auto;
+  }
+  .av-site-footer nav{
+    justify-content:flex-end!important;
+    min-width:max-content;
+  }
+}
