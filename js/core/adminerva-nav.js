@@ -233,10 +233,6 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
           </div>
         </div>
-        <div class="av-nav-location flex items-center gap-2 px-4 sm:px-6 lg:px-8 py-1.5 border-t border-slate-700 text-xs" aria-label="Current location">
-          <span class="av-nav-context text-slate-400">${escapeHTML(currentArea)}</span><span aria-hidden="true" class="text-slate-500">/</span>
-          <span class="av-nav-page font-semibold text-slate-100">${escapeHTML(currentPage)}</span>
-        </div>
         <div id="av-mobile-nav" class="xl:hidden border-t border-slate-700"></div>
       </div>
     </nav>`;
