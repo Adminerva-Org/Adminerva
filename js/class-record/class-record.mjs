@@ -282,31 +282,20 @@ function syncCollaborators(){
   collaboratorsNode.hidden=false;
   collaboratorsNode.className="text-xs text-slate-500 mt-1";
   if(collaborators.length===1){
-    collaboratorsNode.textContent="Offering-level record · you are the only active assigned teacher.";
-    return;
+    collaboratorsNode.hidden=true;collaboratorsNode.textContent="";return;
   }
-  const names=collaborators.map(item=>item.current?item.name+" (you)":item.name);
-  collaboratorsNode.textContent="Shared offering-level record · "+collaborators.length+
-    " active assigned teachers: "+names.join(", ")+
-    ". Concurrent layout edits use revision protection.";
+  collaboratorsNode.textContent="Shared with "+collaborators.length+" assigned teachers.";
 }
 function syncFinalizationBanner(){
   if(!finalization){
     finalizationBanner.hidden=true;finalizationBanner.textContent="";return;
   }
   finalizationBanner.hidden=false;
-  if(finalization.stale){
-    finalizationBanner.className="text-xs font-semibold text-rose-700 mt-1";
-    finalizationBanner.textContent="Live working record · finalized revision "+finalization.revision+
-      " is now stale because a source score or Class Record setting changed."+
-      (finalization.releasedRevision?" Students still see released revision "+finalization.releasedRevision+".":"");
-  }else{
-    finalizationBanner.className="text-xs font-semibold text-emerald-700 mt-1";
-    finalizationBanner.textContent="Live working record · frozen period revision "+finalization.revision+
-      " remains current. Finalized "+formatFinalizedAt(finalization.finalizedAt)+"."+
-      (finalization.releasedRevision?
-        " Student Final Grade release: revision "+finalization.releasedRevision+".":" Final Grade is not released to students.");
-  }
+  finalizationBanner.className=finalization.stale?
+    "text-xs font-semibold text-rose-700":"text-xs font-semibold text-emerald-700";
+  finalizationBanner.textContent="Finalized r"+finalization.revision+
+    (finalization.stale?" · needs update":" · current")+
+    (finalization.releasedRevision?" · released":"");
 }
 function updateKpis(){
   kpis.replaceChildren();
@@ -318,16 +307,10 @@ function updateKpis(){
   const setup=gradeSetupState();
   archivedCount.textContent=String(archived.length);
   const items=[
-    roster.length+" student"+(roster.length===1?"":"s"),
-    active.length+" active column"+(active.length===1?"":"s"),
-    archived.length+" archived",
-    linked+" linked assessment"+(linked===1?"":"s"),
-    personalized+" personalized",
+    roster.length+" students",
+    active.length+" activities",
     setup.complete?"Weights ready":"Weights incomplete",
-    finalization
-      ?("Finalized rev "+finalization.revision+(finalization.stale?" · changed":"")+
-        (finalization.releasedRevision?" · released "+finalization.releasedRevision:""))
-      :"Not finalized"
+    finalization?(finalization.stale?"Grade needs review":"Grade finalized"):"Not finalized"
   ];
   for(const text of items)kpis.append(make("span","cr-kpi",text));
   syncFinalizationBanner();
@@ -1659,10 +1642,7 @@ async function loadWorkspace(){
     dirtyColumns.clear();render();
     renderArchivedList();
     maybeOpenAssessmentDeepLink();
-    const personalizedAvailable=assessments.filter(task=>task.sourceType===PERSONALIZED_SOURCE&&task.linkable!==false).length;
-    say("Class Record loaded. Linked scores are published-only"+
-      (personalizedAvailable?" · "+personalizedAvailable+" Personalized Studio assessment"+(personalizedAvailable===1?"":"s")+" available for linking.":".")+
-      (finalization?.stale?" · Finalized period record is stale and needs a new revision.":""));
+    say(finalization?.stale?"Finalized grade needs review after recent changes.":"");
   }catch(error){
     panel.hidden=true;say(error?.message||"Class Record could not be loaded.");
   }finally{
@@ -1687,16 +1667,14 @@ async function loadOfferings(){
       offeringSelect.add(new Option(parts.join(" · "),item.offeringId));
     }
     offeringSelect.disabled=!offerings.length;
-    say(offerings.length
-      ?"School access confirmed · "+offerings.length+" assigned class"+(offerings.length===1?"":"es")+". Choose a class to open its record."
-      :"Class Record access is working, but no active course offering is assigned to your teacher account. Ask a school administrator to add or restore your active teacher assignment.");
+    say(offerings.length?"":"No assigned classes. School Admin → People & Access → Classes.");
     const requested=deepLinkOfferingId?offerings.find(item=>item.offeringId===deepLinkOfferingId):null;
     if(requested){
       currentOfferingId=requested.offeringId;offeringSelect.value=currentOfferingId;
       await loadWorkspace();
     }else if(deepLinkOfferingId){
       pendingAssessmentDeepLink=null;clearAssessmentDeepLink();
-      say("The requested Class Record is not part of your active teacher assignments. Choose one of your assigned classes instead.");
+      say("That class is not assigned to this teacher account.");
     }else if(offerings.length===1){
       currentOfferingId=offerings[0].offeringId;offeringSelect.value=currentOfferingId;
       await loadWorkspace();
@@ -1857,7 +1835,7 @@ picker=createTenantSchoolPicker({
   },
   onReady:scope=>{
     if(!scope.current?.roles.includes("teacher")){
-      say("Class Record needs an active Teacher role for this school. As a school administrator, open People & Access → Access to activate the linked teacher account, then Classes to assign the teacher to a course offering. Class Record oversight remains available for read-only review.");return;
+      say("Teacher role required. School Admin → People & Access → Access.");return;
     }
     void loadSchemes().finally(()=>loadOfferings());
   }
