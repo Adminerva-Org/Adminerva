@@ -906,3 +906,14 @@ body main > header[class*="mb-8"],body main > header[class*="mb-6"] {
     min-width:max-content;
   }
 }
+
+/* Passive guidance should not occupy permanent workspace real estate. */
+.av-teacher-scope-note{display:none!important}
+.av-session-notice:not([data-tone="error"]){
+  border:0!important;background:transparent!important;padding:0!important;
+  margin:.25rem 0!important;color:#64748b!important;font-size:.78rem!important;line-height:1.4!important;
+}
+.av-status-message:not([data-tone="error"]):not([data-tone="success"]){
+  border:0!important;background:transparent!important;padding:0!important;
+  margin:.25rem 0!important;color:#64748b!important;font-size:.78rem!important;line-height:1.4!important;
+}
