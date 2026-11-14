@@ -103,7 +103,7 @@ function createSchoolSupportService({db,bucket}){
     await Promise.allSettled(adminUids.map(uid=>writeSchoolNotification({
       db,schoolId:ctx.schoolId,uid,id:"support_report_"+ref.id,
       title:"New school support report",body:category+" · "+title,
-      type:"issue",sourceId:ref.id,target:"school-support.html?report="+encodeURIComponent(ref.id)
+      type:"issue",sourceId:ref.id,target:"issues.html?report="+encodeURIComponent(ref.id)
     })));
     return {reportId:ref.id,status:"Open",revision:1};
   }
@@ -299,7 +299,7 @@ function createSchoolSupportService({db,bucket}){
     if(reportOwner&&reportOwner!==ctx.uid)await writeSchoolNotification({
       db,schoolId:ctx.schoolId,uid:reportOwner,id:"support_comment_"+reportId+"_"+commentRef.id,
       title:"School support report updated",body:reportTitle+" · a school administrator replied.",
-      type:"issue",sourceId:reportId,target:"school-support.html?report="+encodeURIComponent(reportId)
+      type:"issue",sourceId:reportId,target:"issues.html?report="+encodeURIComponent(reportId)
     }).catch(()=>{});
     if(notifyAdmins){
       const admins=await db.collection(prefix+"memberships").where("roles","array-contains","school_admin")
@@ -309,7 +309,7 @@ function createSchoolSupportService({db,bucket}){
         writeSchoolNotification({db,schoolId:ctx.schoolId,uid:doc.id,
           id:"support_comment_"+reportId+"_"+commentRef.id,title:"School support report updated",
           body:reportTitle+" · reporter added a comment.",type:"issue",sourceId:reportId,
-          target:"school-support.html?report="+encodeURIComponent(reportId)})));
+          target:"issues.html?report="+encodeURIComponent(reportId)})));
     }
     return {reportId,commentId:commentRef.id};
   }
@@ -348,7 +348,7 @@ function createSchoolSupportService({db,bucket}){
     if(reporterUid&&reporterUid!==ctx.uid)await writeSchoolNotification({
       db,schoolId:ctx.schoolId,uid:reporterUid,id:"support_triage_"+reportId+"_"+revision,
       title:"School support report updated",body:reportTitle+" · status: "+status+".",
-      type:"issue",sourceId:reportId,target:"school-support.html?report="+encodeURIComponent(reportId)
+      type:"issue",sourceId:reportId,target:"issues.html?report="+encodeURIComponent(reportId)
     }).catch(()=>{});
     return {reportId,status,priority,locked,revision};
   }
