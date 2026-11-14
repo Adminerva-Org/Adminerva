@@ -144,11 +144,11 @@ async function checkAccess(user){
   if(/\/(school-gradebook)\.html$/.test(currentPath)&&!access.schoolTeacher){
     replacePage(roleHome(actualRole));return;
   }
-  if(/\/(class-record)\.html$/.test(currentPath)&&!access.schoolTeacher){
+  if(/\/(class-record)\.html$/.test(currentPath)&&!(access.schoolTeacher||access.schoolAdmin)){
     replacePage(roleHome(actualRole));return;
   }
   if(actualRole==="schooladmin"&&!access.schoolTeacher&&
-     !/\/(teacher-home|school-admin|school-pilot|people-access|school-grading-schemes|school-class-records|reclaim-inbox|settings|issues|join-school|wiki)\.html$/.test(currentPath)){
+     !/\/(teacher-home|school-admin|school-pilot|people-access|school-grading-schemes|school-class-records|class-record|reclaim-inbox|settings|issues|join-school|wiki)\.html$/.test(currentPath)){
     replacePage("school-admin.html");return;
   }
   if(actualRole==="platformowner"&&!access.schoolAdmin&&!access.schoolTeacher&&!access.schoolStudent&&
