@@ -24,7 +24,8 @@ export function buildNavigationIA(ctx){
         group("Projects & OLD Repository",[
           ...(scope.hasSchoolStudent?[needs("school-projects","Project Hub","school-student-projects.html","Active school project workflow; still being integrated with Classroom and Studio.")]:[]),
           old("repo-projects","Repository Projects","student-dashboard.html","OLD repository project workflow retained because current classes still use it."),
-          old("repo-assignments","Repository Assignments","student-assessments.html","OLD repository assignment workflow retained because current classes still use it.")
+          old("repo-assignments","Repository Assignments","student-assessments.html","OLD repository assignment workflow retained because current classes still use it."),
+          old("repo-settings","Repository Settings","student-settings.html","OLD repository/GitHub settings retained for students still working on repository assignments.")
         ])
       ]),
       ws("games","Adminerva Games","student-practice.html","Practice challenges and subject learning games",[
@@ -227,7 +228,6 @@ export function buildNavigationIA(ctx){
       ws("analytics","Analytics","teacher-analytics.html","Teaching, class and learning analytics",[
         group("Analytics Dashboard",[
           needs("analytics","Analytics Dashboard","teacher-analytics.html","Active analytics dashboard; broader school analytics and drill-downs still need development."),
-          old("practice-analytics","Practice Analytics","practice-analytics.html","OLD practice analytics retained while the unified Games analytics is being developed."),
           future("class-standing","Class Standing"),
           future("games-analytics","Adminerva Games Analytics"),future("lab-analytics","Adminerva Laboratory Analytics")
         ]),
