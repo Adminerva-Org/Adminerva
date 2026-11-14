@@ -340,19 +340,22 @@ export function buildNavigationIA(ctx){
   const routePath=value=>String(value||"").split("#")[0].split("?")[0].toLowerCase();
   const itemMatches=item=>item[2]&&routePath(item[2])===route;
   const workspaceMatches=w=>routePath(w.route)===route||w.groups.some(g=>g.items.some(itemMatches));
-  const activeWorkspace=workspaces.find(w=>w.id===requestedWorkspace)||
-    workspaces.find(workspaceMatches)||workspaces[0]||null;
+  const homeRoute=systemDefault?"owner-schools.html":studentView?"student-home.html":
+    schoolAdminView?"school-admin.html":"teacher-home.html";
+  const isHome=!systemDefault&&routePath(homeRoute)===route&&!requestedWorkspace;
+  const activeWorkspace=isHome?null:(workspaces.find(w=>w.id===requestedWorkspace)||
+    workspaces.find(workspaceMatches)||workspaces[0]||null);
   const groups=activeWorkspace?.groups||[];
   const allItems=workspaces.flatMap(w=>w.groups.flatMap(g=>g.items));
   const currentItem=groups.flatMap(g=>g.items).find(itemMatches)||allItems.find(itemMatches)||null;
 
   return {
     workspaces,groups,currentItem,
-    currentPage:currentItem?.[1]||activeWorkspace?.label||"Adminerva",
-    currentArea:activeWorkspace?.label||"Adminerva",
-    currentRoute:currentItem?.[2]||activeWorkspace?.route||null,
+    currentPage:isHome?"Home":currentItem?.[1]||activeWorkspace?.label||"Adminerva",
+    currentArea:isHome?"Home":activeWorkspace?.label||"Adminerva",
+    currentRoute:isHome?homeRoute:(currentItem?.[2]||activeWorkspace?.route||null),
     workspaceRoute:activeWorkspace?.route||null,
-    homeRoute:systemDefault?"owner-schools.html":studentView?"student-home.html":schoolAdminView?"school-admin.html":"teacher-home.html",
+    homeRoute,
     homeLabel:systemDefault?"System Admin":"Home",
     roleLabel:systemDefault?"System administrator":studentView?"Student":
       schoolAdminView?(teacherView?"School administrator · Teacher":"School administrator"):"Teacher",
