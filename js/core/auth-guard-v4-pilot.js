@@ -147,7 +147,7 @@ async function checkAccess(user){
      !(access.platformAdmin||admittedRole==="admin")){
     replacePage(roleHome(actualRole));return;
   }
-  if(/\/(school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-grading-schemes|school-class-records)\.html$/.test(currentPath)&&
+  if(/\/(school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-grading-schemes|school-class-records|school-academic-configuration)\.html$/.test(currentPath)&&
      !(access.schoolAdmin||admittedRole==="admin"||platformSchoolView)){
     replacePage(roleHome(actualRole));return;
   }
@@ -196,7 +196,7 @@ async function checkAccess(user){
     const page=currentPath.split("/").pop();
     const allowed=new Set([
       "teacher-home.html","teacher-assessment-library.html","school-gradebook.html","class-record.html","pilot-sandbox.html",
-      "people-access.html","school-admin.html","school-pilot.html","school-grading-schemes.html","school-class-records.html",
+      "people-access.html","school-admin.html","school-pilot.html","school-grading-schemes.html","school-class-records.html","school-academic-configuration.html",
       "reclaim-inbox.html","learning-follow-up.html","teacher-analytics.html","practice-analytics.html",
       "lesson-planner.html","presentation.html","schedule.html","library.html",
       "settings.html","issues.html","join-school.html","wiki.html",
