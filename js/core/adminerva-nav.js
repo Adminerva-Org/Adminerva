@@ -93,19 +93,22 @@ document.addEventListener("DOMContentLoaded", () => {
             <a href="${homeRoute}" class="av-nav-home flex items-center gap-2 min-h-10 rounded-lg" aria-label="Adminerva · ${homeLabel}"${activePage === "home" ? ' aria-current="page"' : ""}>
               <span class="av-brand-mark"><img src="assets/adminerva-owl.png" alt="" width="32" height="32" class="h-8 w-8 object-contain"></span>
               <span class="av-nav-wordmark hidden sm:inline font-extrabold tracking-wide">ADMINERVA</span>
-              <span class="av-nav-home-label text-sm font-semibold text-cyan-100">Home</span>
+              <span class="av-nav-home-label text-sm font-semibold text-cyan-100">${escapeHTML(homeLabel)}</span>
             </a>
             <details class="av-module-switcher relative group">
               <summary class="av-module-label flex items-center gap-2 list-none cursor-pointer rounded-lg px-3 py-2 min-h-10 text-sm font-bold text-cyan-100 border border-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400" aria-label="Switch workspace">
                 <span>Workspaces</span><span aria-hidden="true">▾</span>
               </summary>
               <div class="av-nav-menu-panel absolute left-0 top-full mt-2 w-72 max-w-[85vw] max-h-[75dvh] overflow-y-auto z-[110] rounded-xl bg-slate-900 border border-slate-600 shadow-2xl p-2">
-                <p class="px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">${isStudent ? "Student workspaces" : "Staff workspaces"}</p>
+                <p class="px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-400">Major workspaces</p>
                 ${modules.map(([label, route, description]) => `<a href="${route}" class="av-nav-workspace-link block rounded-lg px-3 py-3 hover:bg-slate-800 text-slate-100${route === workspaceRoute ? " bg-slate-800" : ""}"${route === workspaceRoute ? ' aria-current="location"' : ""}><strong class="block text-sm">${escapeHTML(label)}</strong><span class="block text-xs text-slate-400 mt-1">${escapeHTML(description)}</span></a>`).join("")}
               </div>
             </details>
           </div>
-          <div id="av-desktop-nav" class="hidden xl:flex gap-1 items-center"></div>
+          <div class="hidden xl:flex items-center gap-1 min-w-0">
+            <span class="av-active-workspace px-3 py-2 text-sm font-extrabold text-cyan-300 whitespace-nowrap">${escapeHTML(currentArea)}</span>
+            <div id="av-desktop-nav" class="flex gap-1 items-center"></div>
+          </div>
           <div id="av-account-controls" class="av-nav-tools flex items-center gap-2">
             <button type="button" title="Report Issue" aria-label="Help and updates" class="min-h-10 min-w-10 rounded-lg border border-slate-600 text-base font-bold hover:bg-slate-800" onclick="const m=document.getElementById('bug-modal');if(m){m.hidden=false;m.classList.remove('hidden')}">?</button>
             <a href="${isStudent ? "student-settings.html" : "settings.html"}" title="Account settings" aria-label="Account settings" class="min-h-10 min-w-10 flex items-center justify-center rounded-lg border border-slate-600 hover:bg-slate-800"><span aria-hidden="true">⚙</span></a>
@@ -144,51 +147,59 @@ document.addEventListener("DOMContentLoaded", () => {
   if (informationSettings) informationSettings.href = isStudent ? "student-settings.html" : "settings.html";
 
   const makeLink = (item, mobile) => {
-    const link = document.createElement("a");
-    link.href = item[2]; link.textContent = item[1];
-    link.className = "av-nav-task-link block rounded-lg px-3 py-2.5 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 " +
-      (item[2] === currentRoute ? "bg-cyan-900/50 text-cyan-100 border-l-2 border-cyan-400" : "text-slate-200 hover:bg-slate-700 hover:text-white") +
-      (mobile ? " min-h-11 flex items-center" : "");
-    if (item[2] === currentRoute) link.setAttribute("aria-current", "page");
+    const meta=item[3]||{};
+    if(!item[2]||meta.future){
+      const disabled=document.createElement("span");
+      disabled.className="av-nav-future block rounded-lg px-3 py-2.5 text-sm text-slate-500 cursor-not-allowed"+
+        (mobile?" min-h-11 flex items-center":"");
+      disabled.setAttribute("aria-disabled","true");
+      disabled.title=meta.tip||"Future development";
+      const row=document.createElement("span");row.className="flex items-center justify-between gap-2 w-full";
+      const label=document.createElement("span");label.textContent=item[1];
+      const badge=document.createElement("span");badge.className="av-future-badge";badge.textContent="Future";
+      row.append(label,badge);disabled.append(row);return disabled;
+    }
+    const link=document.createElement("a");
+    link.href=item[2];link.textContent=item[1];
+    if(meta.tip)link.title=meta.tip;
+    link.className="av-nav-task-link block rounded-lg px-3 py-2.5 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 "+
+      (item[2]===currentRoute?"bg-cyan-900/50 text-cyan-100 border-l-2 border-cyan-400":"text-slate-200 hover:bg-slate-700 hover:text-white")+
+      (mobile?" min-h-11 flex items-center":"");
+    if(item[2]===currentRoute)link.setAttribute("aria-current","page");
     return link;
   };
-  const isActiveGroup = group => group.items.some(item => item[2] === currentRoute);
+  const isActiveGroup = group => group.items.some(item => item[2]&&item[2]===currentRoute);
   const makeGroup = (group, mobile) => {
-    const details = document.createElement("details");
-    details.dataset.navGroup = mobile ? "mobile" : "desktop";
-    details.className = (mobile ? "rounded-lg border border-slate-700/80" : "relative") + (group.secondary ? " av-nav-secondary" : "");
-    const summary = document.createElement("summary");
-    summary.className = "list-none cursor-pointer select-none font-bold rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 " +
-      (mobile ? "text-slate-100 text-sm px-3 py-3 min-h-11" : "text-sm px-3 py-2.5 min-h-11 " +
-        (isActiveGroup(group) ? "text-cyan-300 bg-slate-800" : "text-slate-200 hover:text-cyan-300 hover:bg-slate-800"));
-    summary.textContent = group.name + " ▾";
-    summary.setAttribute("aria-label", group.name + " pages");
+    const details=document.createElement("details");
+    details.dataset.navGroup=mobile?"mobile":"desktop";
+    details.className=mobile?"rounded-lg border border-slate-700/80":"relative";
+    const summary=document.createElement("summary");
+    summary.className="list-none cursor-pointer select-none font-bold rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 "+
+      (mobile?"text-slate-100 text-sm px-3 py-3 min-h-11":"text-sm px-3 py-2.5 min-h-11 "+
+      (isActiveGroup(group)?"text-cyan-300 bg-slate-800":"text-slate-200 hover:text-cyan-300 hover:bg-slate-800"));
+    summary.textContent=group.name+" ▾";summary.setAttribute("aria-label",group.name+" pages");
     details.append(summary);
-    const panel = document.createElement("div");
-    panel.className = mobile ? "p-2 space-y-1" : "av-nav-menu-panel absolute left-0 top-full mt-2 w-64 z-[110] bg-slate-900 border border-slate-600 shadow-2xl rounded-xl p-2 max-h-[70dvh] overflow-y-auto";
-    for (const item of group.items) panel.append(makeLink(item, mobile));
+    const panel=document.createElement("div");
+    panel.className=mobile?"p-2 space-y-1":"av-nav-menu-panel absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 z-[110] bg-slate-900 border border-slate-600 shadow-2xl rounded-xl p-2 max-h-[70dvh] overflow-y-auto";
+    for(const item of group.items)panel.append(makeLink(item,mobile));
     details.append(panel);
-    if (mobile && isActiveGroup(group)) details.open = true;
+    if(mobile&&isActiveGroup(group))details.open=true;
     return details;
   };
-  const desktop = root.querySelector("#av-desktop-nav"), mobile = root.querySelector("#av-mobile-nav");
-  const taskItems = studentGroup?.items || [];
-  if (desktop) desktop.replaceChildren(...(isStudent ? taskItems.map(item => makeLink(item, false)) : groups.map(group => makeGroup(group, false))));
-  if (mobile) {
+  const desktop=root.querySelector("#av-desktop-nav"),mobile=root.querySelector("#av-mobile-nav");
+  if(desktop)desktop.replaceChildren(...groups.map(group=>makeGroup(group,false)));
+  if(mobile){
     mobile.replaceChildren();
-    if (taskItems.length || groups.length) {
-      const details = document.createElement("details");
-      details.id = "av-mobile-staff-menu"; // Retained for existing integration hooks.
-      const summary = document.createElement("summary");
-      summary.className = "flex items-center justify-between px-4 sm:px-6 py-3 font-bold text-sm text-cyan-100 min-h-11 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400";
-      summary.textContent = "Pages · " + currentPage + " ▾";
-      details.append(summary);
-      const panel = document.createElement("div");
-      panel.className = "av-nav-mobile-panel bg-slate-900 border-t border-slate-700 px-3 py-3 max-h-[65dvh] overflow-y-auto overscroll-contain space-y-2";
-      if (isStudent) panel.append(...taskItems.map(item => makeLink(item, true)));
-      else panel.append(...groups.map(group => makeGroup(group, true)));
-      details.append(panel); mobile.append(details);
-    } else mobile.hidden = true;
+    if(groups.length){
+      const details=document.createElement("details");details.id="av-mobile-staff-menu";
+      const summary=document.createElement("summary");
+      summary.className="flex items-center justify-between px-4 sm:px-6 py-3 font-bold text-sm text-cyan-100 min-h-11 cursor-pointer";
+      summary.textContent=currentPage+" · Menu ▾";details.append(summary);
+      const panel=document.createElement("div");
+      panel.className="av-nav-mobile-panel bg-slate-900 border-t border-slate-700 px-3 py-3 max-h-[65dvh] overflow-y-auto overscroll-contain space-y-2";
+      panel.append(...groups.map(group=>makeGroup(group,true)));
+      details.append(panel);mobile.append(details);
+    }else mobile.hidden=true;
   }
 
   // Native disclosures support touch and keyboard. Peer menus close each other;
