@@ -122,6 +122,9 @@
     .cr-more-menu{position:absolute;right:0;top:calc(100% + .4rem);z-index:30;width:230px;padding:.5rem;border:1px solid #cbd5e1;border-radius:.85rem;background:#fff;box-shadow:0 18px 50px #0f172a24;display:grid;gap:.35rem}
     .cr-more-menu .cr-button{width:100%;text-align:left}
     .cr-more-divider{height:1px;background:#e2e8f0;margin:.15rem 0}
+    .cr-export-menu>summary{list-style:none;cursor:pointer}
+    .cr-export-menu>summary::-webkit-details-marker{display:none}
+    .cr-export-options{display:grid;gap:.35rem;margin:.35rem 0 0;padding:.4rem;border-radius:.65rem;background:#f8fafc}
     .cr-sheetbar{min-height:44px;padding:.55rem .75rem;border-bottom:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;justify-content:space-between;gap:.75rem}
     .cr-sheet-state{display:flex;align-items:center;gap:.65rem;min-width:0}
     .cr-unsaved{font-size:.75rem;font-weight:800;color:#b45309;white-space:nowrap}
@@ -181,15 +184,19 @@
       <details class="cr-more">
         <summary class="cr-button">More</summary>
         <div class="cr-more-menu">
-          <button id="cr-grade-setup" class="cr-button" type="button" disabled>Grading setup</button>
+          <button id="cr-grade-setup" class="cr-button" type="button" hidden disabled>Grading setup</button>
           <button id="cr-import-scores" class="cr-button" type="button" disabled>Import scores</button>
           <button id="cr-student-visibility" class="cr-button" type="button" disabled>Student visibility</button>
           <button id="cr-archived-columns" class="cr-button" type="button" disabled>Archived (<span id="cr-archived-count">0</span>)</button>
-          <div class="cr-more-divider"></div>
-          <button id="cr-export-xlsx" class="cr-button" type="button" disabled>Excel</button>
-          <button id="cr-export" class="cr-button" type="button" disabled>CSV</button>
-          <button id="cr-print" class="cr-button" type="button" disabled>Print</button>
-          <button id="cr-refresh" class="cr-button" type="button" disabled>Refresh</button>
+          <details class="cr-export-menu">
+            <summary class="cr-button">Export</summary>
+            <div class="cr-export-options">
+              <button id="cr-export-xlsx" class="cr-button" type="button" disabled>Excel</button>
+              <button id="cr-export" class="cr-button" type="button" disabled>CSV</button>
+              <button id="cr-print" class="cr-button" type="button" disabled>Print</button>
+            </div>
+          </details>
+          <button id="cr-refresh" class="cr-button" type="button" hidden disabled>Refresh</button>
         </div>
       </details>
     </div>
@@ -493,6 +500,6 @@
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script defer src="js/core/adminerva-nav.js?v=dc4bde05cae4"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.13"></script>
-<script type="module" src="js/class-record/class-record.mjs?v=1.10.2"></script>
+<script type="module" src="js/class-record/class-record.mjs?v=1.11.0"></script>
 </body>
 </html>
