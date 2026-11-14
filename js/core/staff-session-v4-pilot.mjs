@@ -16,7 +16,8 @@ async function resolveTenantMemberships(user){
       const schools=Array.isArray(response.data?.schools)?response.data.schools:[];
       return {
         schools,
-        roles:[...new Set(schools.flatMap(s=>Array.isArray(s.roles)?s.roles:[]))],
+        roles:[...new Set(schools.filter(s=>s?.platformOverride!==true)
+          .flatMap(s=>Array.isArray(s.roles)?s.roles:[]))],
         platformAdmin:response.data?.platformAdmin===true,
         available:true,
         legacyCompatibilityAllowed:response.data?.legacyCompatibilityAllowed!==false,
