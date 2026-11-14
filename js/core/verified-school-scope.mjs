@@ -74,10 +74,16 @@ export function createVerifiedSchoolScope({loadSchools,beforeChange=async()=>{},
     }
   });
 }
-/** Accessible account-menu chooser, only rendered when >1 verified membership exists. */
+/** Legacy page-level school chooser. The shared account menu is now the
+ * canonical context switcher, so page-local hosts stay hidden whenever the
+ * shared Adminerva navigation is present. */
 export function renderSchoolSwitcher(container,{options=[],schoolId=null,onSelect=async()=>{}}={}) {
   container.replaceChildren();
   const state=pickerState(options,schoolId);
+  if(document.getElementById("adminerva-nav")){
+    container.hidden=true;
+    return state;
+  }
   container.hidden=!state.showSwitcher;
   if(!state.showSwitcher)return state;
   const label=document.createElement("label");
