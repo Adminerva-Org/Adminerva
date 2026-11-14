@@ -124,7 +124,7 @@
 
     <div id="bug-modal" hidden class="hidden fixed inset-0 bg-slate-950/70 z-[120] flex items-center justify-center p-4" data-report-modal>
       <div class="bg-white rounded-2xl shadow-2xl w-[min(96vw,620px)] max-h-[92dvh] overflow-y-auto">
-        <form id="supportReportForm" class="p-5 space-y-4">
+        <form id="supportReportForm" class="p-5 space-y-4 text-slate-900">
           <div class="flex items-start justify-between gap-3">
             <div><h2 class="text-xl font-extrabold">New report</h2></div>
             <button id="supportReportClose" type="button" class="text-2xl text-slate-500" aria-label="Close"
@@ -132,7 +132,7 @@
           </div>
           <div class="grid sm:grid-cols-2 gap-3">
             <label class="text-sm font-bold">Category
-              <select name="category" class="mt-1 w-full border border-slate-300 rounded-lg p-3 bg-white">
+              <select name="category" class="mt-1 w-full border border-slate-300 rounded-lg p-3 bg-white text-slate-900">
                 <option value="Bug">Bug</option>
                 <option value="Access">Access</option>
                 <option value="UI">UI / Display</option>
@@ -141,11 +141,11 @@
               </select>
             </label>
             <label class="text-sm font-bold">Area
-              <input name="module" maxlength="80" class="mt-1 w-full border border-slate-300 rounded-lg p-3" placeholder="e.g. Class Record">
+              <input name="module" maxlength="80" class="mt-1 w-full border border-slate-300 rounded-lg p-3 bg-white text-slate-900" placeholder="e.g. Class Record">
             </label>
           </div>
           <label class="text-sm font-bold">Title
-            <input name="title" maxlength="160" minlength="4" required class="mt-1 w-full border border-slate-300 rounded-lg p-3" placeholder="What is not working?">
+            <input name="title" maxlength="160" minlength="4" required class="mt-1 w-full border border-slate-300 rounded-lg p-3 bg-white text-slate-900" placeholder="What is not working?">
           </label>
           <label class="text-sm font-bold">Description
             <textarea name="description" rows="6" maxlength="6000" minlength="12" required class="mt-1 w-full border border-slate-300 rounded-lg p-3 resize-y" placeholder="What happened, what did you expect, and what were you doing?"></textarea>
