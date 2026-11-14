@@ -1857,7 +1857,7 @@ picker=createTenantSchoolPicker({
   },
   onReady:scope=>{
     if(!scope.current?.roles.includes("teacher")){
-      say("Your verified school membership does not include the Teacher role. School administrators can review records from School Administration → Class Record oversight.");return;
+      say("Class Record needs an active Teacher role for this school. As a school administrator, open People & Access → Access to activate the linked teacher account, then Classes to assign the teacher to a course offering. Class Record oversight remains available for read-only review.");return;
     }
     void loadSchemes().finally(()=>loadOfferings());
   }
