@@ -527,9 +527,6 @@ function render(){
   panel.hidden=false;
   el("cr-record-title").textContent=offeringSelect.selectedOptions[0]?.textContent||"Class record";
   const setup=gradeSetupState();
-  el("cr-record-help").textContent=setup.complete
-    ?"Linked assessment cells are read-only. Initial and period grades calculate only after every included score is available."
-    :"Linked assessment cells are read-only. Configure categories and weights totaling 100% before period grades can calculate.";
   if(!roster.length){
     tableWrap.append(make("div","cr-empty","No active students are enrolled in this class."));
     return;
