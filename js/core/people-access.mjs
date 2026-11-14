@@ -478,17 +478,6 @@ function populateMultiOptions(selector,items,idField,nameField="name"){
     }
   }
 }
-function refreshAcademicScope(){
-  const form=get("pa-offering-form"),programId=form.elements.programId.value,
-    yearId=form.elements.yearId.value;
-  populateOptions("[data-offering-period]",
-    schoolTerms.filter(item=>item.programId===programId&&item.yearId===yearId)
-      .sort((a,b)=>(Number(a.sequence)||0)-(Number(b.sequence)||0)||a.name.localeCompare(b.name)),
-    "id");
-  populateOptions("[data-offering-section]",
-    schoolSections.filter(item=>item.programId===programId).sort((a,b)=>a.name.localeCompare(b.name)),
-    "id");
-}
 async function loadAcademics(){
   const kinds=["academic_programs","academic_years","terms","subjects","sections"];
   const [catalogs,offerings,people,teachers]=await Promise.all([
@@ -505,7 +494,6 @@ async function loadAcademics(){
     populateOptions('[data-catalog="'+kinds[i]+'"]',items,"id");
   }
   populateOptions('[data-catalog="academic_programs"]',schoolPrograms,"id");
-  refreshAcademicScope();
   schoolOfferings=offerings.offerings||[];
   populateOptions("[data-offering]",schoolOfferings,"offeringId","offeringId");
   populateOptions("[data-student-person]",people.students||[],"personId");
@@ -540,25 +528,6 @@ get("pa-bulk-assignment-form").addEventListener("submit",event=>{
       await loadAcademics();
     });
 });
-get("pa-offering-form").elements.yearId.addEventListener("change",refreshAcademicScope);
-get("pa-offering-form").elements.programId.addEventListener("change",refreshAcademicScope);
-get("pa-catalog-kind").addEventListener("change",event=>{
-  const kind=event.target.value,isPeriod=kind==="terms",isYear=kind==="academic_years",
-    needsProgram=isPeriod||kind==="sections";
-  get("pa-term-year").hidden=!isPeriod;
-  get("pa-term-year").querySelector("select").required=isPeriod;
-  get("pa-catalog-program").hidden=!needsProgram;
-  get("pa-catalog-program").querySelector("select").required=needsProgram;
-  get("pa-period-type").hidden=!isPeriod;
-  get("pa-period-type").querySelector("select").required=isPeriod;
-  get("pa-period-sequence").hidden=!isPeriod;
-  get("pa-period-sequence").querySelector("input").required=isPeriod;
-  get("pa-year-start-month").hidden=!isYear;
-  get("pa-year-start-month").querySelector("select").required=isYear;
-  get("pa-year-end-month").hidden=!isYear;
-  get("pa-year-end-month").querySelector("select").required=isYear;
-  get("pa-year-month-help").hidden=!isYear;
-});
 async function submitAcademic(form,action,fields,message){
   if(pendingWrite)return;
   pendingWrite=true;
@@ -568,30 +537,11 @@ async function submitAcademic(form,action,fields,message){
     const result=await performAcademic(action,fields);
     say(message);
     form.reset();
-    if(form.id==="pa-catalog-form")
-      get("pa-catalog-kind").dispatchEvent(new Event("change"));
     await loadAcademics();
     return result||true;
   }catch(error){say(error?.message||"Academic operation was not saved.");return false;}
   finally{pendingWrite=false;button.disabled=false;}
 }
-get("pa-catalog-form").addEventListener("submit",event=>{
-  event.preventDefault();const form=event.currentTarget,d=new FormData(form);
-  void submitAcademic(form,"create_catalog",{
-    kind:String(d.get("kind")||""),recordId:String(d.get("recordId")||"").trim(),
-    name:String(d.get("name")||"").trim(),yearId:String(d.get("yearId")||"")||null,
-    programId:String(d.get("programId")||"")||null,
-    startMonth:Number(d.get("startMonth")||7),endMonth:Number(d.get("endMonth")||5),
-    periodType:String(d.get("periodType")||"term"),
-    sequence:Number(d.get("sequence")||1)
-  },"Academic catalog record created.");
-});
-get("pa-offering-form").addEventListener("submit",event=>{
-  event.preventDefault();const form=event.currentTarget,d=new FormData(form);
-  void submitAcademic(form,"create_offering",Object.fromEntries(
-    ["programId","yearId","termId","subjectId","sectionId"].map(k=>[k,String(d.get(k)||"")])
-  ),"Class offering created without altering historical grades.");
-});
 get("pa-enrollment-form").addEventListener("submit",event=>{
   event.preventDefault();const form=event.currentTarget,d=new FormData(form);
   void submitAcademic(form,"enroll_student",{
