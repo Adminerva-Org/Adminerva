@@ -42,6 +42,7 @@ function createSchoolAcademicsService({db}) {
   const memberRef=db.doc("schools/"+ctx.schoolId+"/memberships/"+uid);
   function requireAdmin(){if(!admin)deny("permission-denied","School administration is required.");}
   async function checkWriteAuthority(tx){
+   if(ctx.platformOverride)return;
    const [school,membership]=await Promise.all([tx.get(schoolRef),tx.get(memberRef)]);
    if(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
     membership.data().schoolId!==ctx.schoolId||membership.data().status!=="active"||
@@ -58,7 +59,7 @@ function createSchoolAcademicsService({db}) {
    if(assignmentScope==="teacher"&&!teacher)
     deny("permission-denied","Teacher assignment scope requires an active teacher role.");
    let allowed=null;
-   if(!admin||assignmentScope==="teacher"){
+   if(!ctx.platformOverride&&(!admin||assignmentScope==="teacher")){
     const grants=await db.collection("schools/"+ctx.schoolId+"/staff_assignments")
       .where("teacherUid","==",uid).limit(101).get();
     if(grants.size===101)deny("resource-exhausted","Teaching assignments require pagination before planning options can load.");
