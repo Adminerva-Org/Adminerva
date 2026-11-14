@@ -372,6 +372,25 @@ function refreshSummaries(){
     }
   }
 }
+function moveScoreVertically(input,direction){
+  const columnId=input.dataset.columnId,personId=input.dataset.personId;
+  const index=roster.findIndex(student=>student.personId===personId);
+  if(index<0)return;
+  for(let next=index+direction;next>=0&&next<roster.length;next+=direction){
+    const candidate=tableWrap.querySelector('input[data-column-id="'+CSS.escape(columnId)+'"][data-person-id="'+CSS.escape(roster[next].personId)+'"]');
+    if(candidate&&!candidate.disabled){candidate.focus();candidate.select();return;}
+  }
+}
+function scoreKeydown(event){
+  if(event.key==="Enter"){
+    event.preventDefault();moveScoreVertically(event.currentTarget,event.shiftKey?-1:1);return;
+  }
+  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==="s"){
+    event.preventDefault();
+    if(!saveScoresButton.disabled)void saveManualScores();
+  }
+}
+
 function updateDirtyState(){
   dirtyColumns.clear();
   tableWrap.querySelectorAll("input[data-column-id]").forEach(input=>{
@@ -635,7 +654,10 @@ function render(){
         input.value=saved===null||saved===undefined?"":numberText(saved);
         input.dataset.original=input.value;input.dataset.dirty="false";
         input.disabled=cellStatusFor(column.columnId,student.personId)!=="normal";
-        input.addEventListener("input",updateDirtyState);td.append(input);
+        input.addEventListener("input",updateDirtyState);
+        input.addEventListener("keydown",scoreKeydown);
+        input.addEventListener("focus",()=>input.select());
+        td.append(input);
       }else{
         const state=linkedGradeState(column,student.personId),grade=state.grade;
         const personalized=(column.assessmentSource||SCHOOL_SOURCE)===PERSONALIZED_SOURCE;
@@ -1721,6 +1743,9 @@ saveScoresButton.addEventListener("click",()=>void saveManualScores());
 exportButton.addEventListener("click",exportCsv);
 exportXlsxButton.addEventListener("click",()=>void exportXlsx());
 printButton.addEventListener("click",printLiveRecord);
+document.querySelector(".cr-more")?.addEventListener("click",event=>{
+  if(event.target instanceof HTMLButtonElement)event.currentTarget.removeAttribute("open");
+});
 window.addEventListener("afterprint",cleanupPrint);
 columnKind.addEventListener("change",syncColumnFields);
 el("cr-import-file").addEventListener("change",async event=>{
