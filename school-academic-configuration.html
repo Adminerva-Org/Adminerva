@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Configure school academic years, programs, periods, subjects, sections and course offerings.">
+  <title>Academic Configuration · Adminerva</title>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=1.5.0">
+  <script defer src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .ac-shell{max-width:1280px;margin:auto;padding:1rem}
+    .ac-hero{border-radius:1.25rem;padding:1.25rem;background:#0f172a;color:white}
+    .ac-panel{border:1px solid #dbe3ef;border-radius:1rem;background:white;padding:1rem}
+    .ac-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+    .ac-input{width:100%;min-height:44px;border:1px solid #cbd5e1;border-radius:.7rem;padding:.6rem .75rem;background:white}
+    .ac-btn{min-height:42px;border:1px solid #cbd5e1;border-radius:.7rem;padding:.6rem .9rem;background:white;font-weight:750}
+    .ac-btn.primary{background:#1d4ed8;color:white;border-color:#1d4ed8}
+    .ac-list{display:grid;gap:.45rem;margin-top:.8rem}
+    .ac-row{display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;padding:.65rem .75rem;border:1px solid #e2e8f0;border-radius:.75rem;background:#f8fafc}
+    .ac-muted{font-size:.86rem;color:#64748b}
+    .ac-tabs{display:flex;gap:.5rem;overflow-x:auto;padding-bottom:.25rem}
+    .ac-tabs button{white-space:nowrap}
+    .ac-tabs button[aria-selected="true"]{background:#0f172a;color:white;border-color:#0f172a}
+    [hidden]{display:none!important}
+    @media(max-width:800px){.ac-grid{grid-template-columns:1fr}.ac-shell{padding:.7rem}}
+  </style>
+</head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="admin" data-page="academic-config"></div>
+
+<main class="ac-shell space-y-4">
+  <header class="ac-hero">
+    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+      <div>
+        <p class="text-xs font-extrabold uppercase tracking-widest text-cyan-300">School Administration</p>
+        <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Academic Configuration</h1>
+        <p class="text-sm text-slate-200 mt-2 max-w-3xl">Define the school structure used by assignments, grading policies, Class Record, schedules and future SIS modules.</p>
+      </div>
+      <div id="ac-school-switcher" hidden class="w-full lg:w-auto lg:min-w-[230px]"></div>
+    </div>
+  </header>
+
+  <section class="ac-panel">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-extrabold">School academic structure</h2>
+        <p id="ac-status" class="ac-muted mt-1" role="status" aria-live="polite">Checking school administration access…</p>
+      </div>
+      <button id="ac-refresh" class="ac-btn" type="button" disabled>Refresh</button>
+    </div>
+    <div class="ac-tabs mt-4" role="tablist" aria-label="Academic configuration">
+      <button class="ac-btn" type="button" data-tab="catalog" aria-selected="true">Catalog</button>
+      <button class="ac-btn" type="button" data-tab="offerings" aria-selected="false">Course Offerings</button>
+    </div>
+  </section>
+
+  <section id="ac-catalog" class="ac-grid" role="tabpanel">
+    <article class="ac-panel">
+      <h2 class="font-extrabold text-lg">Academic Years</h2>
+      <p class="ac-muted mt-1">School-year records used by academic periods and course offerings.</p>
+      <form id="ac-year-form" class="grid gap-2 mt-3">
+        <label class="text-sm font-bold">ID / code<input name="recordId" class="ac-input mt-1" maxlength="80" required placeholder="sy_2026_2027"></label>
+        <label class="text-sm font-bold">Name<input name="name" class="ac-input mt-1" maxlength="140" required placeholder="SY 2026–2027"></label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="text-sm font-bold">Start month<input name="startMonth" class="ac-input mt-1" type="number" min="1" max="12" value="7"></label>
+          <label class="text-sm font-bold">End month<input name="endMonth" class="ac-input mt-1" type="number" min="1" max="12" value="5"></label>
+        </div>
+        <button class="ac-btn primary" type="submit">Add academic year</button>
+      </form>
+      <div id="ac-years" class="ac-list"></div>
+    </article>
+
+    <article class="ac-panel">
+      <h2 class="font-extrabold text-lg">Programs / Divisions</h2>
+      <p class="ac-muted mt-1">Examples: Junior High School, Senior High School, Basic Education.</p>
+      <form id="ac-program-form" class="grid gap-2 mt-3">
+        <label class="text-sm font-bold">ID / code<input name="recordId" class="ac-input mt-1" maxlength="80" required placeholder="shs"></label>
+        <label class="text-sm font-bold">Name<input name="name" class="ac-input mt-1" maxlength="140" required placeholder="Senior High School"></label>
+        <button class="ac-btn primary" type="submit">Add program / division</button>
+      </form>
+      <div id="ac-programs" class="ac-list"></div>
+    </article>
+
+    <article class="ac-panel">
+      <h2 class="font-extrabold text-lg">Academic Periods</h2>
+      <p class="ac-muted mt-1">Terms, semesters, quarters or other period structures per program.</p>
+      <form id="ac-term-form" class="grid gap-2 mt-3">
+        <label class="text-sm font-bold">ID / code<input name="recordId" class="ac-input mt-1" maxlength="80" required placeholder="shs_sem1_2026"></label>
+        <label class="text-sm font-bold">Name<input name="name" class="ac-input mt-1" maxlength="140" required placeholder="Semester 1"></label>
+        <label class="text-sm font-bold">Academic year<select name="yearId" class="ac-input mt-1" required></select></label>
+        <label class="text-sm font-bold">Program / division<select name="programId" class="ac-input mt-1" required></select></label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="text-sm font-bold">Type<select name="periodType" class="ac-input mt-1"><option value="semester">Semester</option><option value="term">Term</option><option value="quarter">Quarter</option><option value="trimester">Trimester</option><option value="custom">Custom</option></select></label>
+          <label class="text-sm font-bold">Sequence<input name="sequence" class="ac-input mt-1" type="number" min="1" max="12" value="1" required></label>
+        </div>
+        <button class="ac-btn primary" type="submit">Add academic period</button>
+      </form>
+      <div id="ac-terms" class="ac-list"></div>
+    </article>
+
+    <article class="ac-panel">
+      <h2 class="font-extrabold text-lg">Subjects</h2>
+      <p class="ac-muted mt-1">Canonical school subject catalog. Grading policies can be tagged to these subjects.</p>
+      <form id="ac-subject-form" class="grid gap-2 mt-3">
+        <label class="text-sm font-bold">ID / code<input name="recordId" class="ac-input mt-1" maxlength="80" required placeholder="java_oop"></label>
+        <label class="text-sm font-bold">Name<input name="name" class="ac-input mt-1" maxlength="140" required placeholder="Java Object-Oriented Programming"></label>
+        <button class="ac-btn primary" type="submit">Add subject</button>
+      </form>
+      <div id="ac-subjects" class="ac-list"></div>
+    </article>
+
+    <article class="ac-panel">
+      <h2 class="font-extrabold text-lg">Sections</h2>
+      <p class="ac-muted mt-1">Sections belong to a program/division. Grading policy applicability may target a section.</p>
+      <form id="ac-section-form" class="grid gap-2 mt-3">
+        <label class="text-sm font-bold">ID / code<input name="recordId" class="ac-input mt-1" maxlength="80" required placeholder="st_isidore"></label>
+        <label class="text-sm font-bold">Name<input name="name" class="ac-input mt-1" maxlength="140" required placeholder="St. Isidore"></label>
+        <label class="text-sm font-bold">Program / division<select name="programId" class="ac-input mt-1" required></select></label>
+        <button class="ac-btn primary" type="submit">Add section</button>
+      </form>
+      <div id="ac-sections" class="ac-list"></div>
+    </article>
+
+    <article class="ac-panel">
+      <h2 class="font-extrabold text-lg">Configuration ownership</h2>
+      <p class="ac-muted mt-2">Teachers use the academic structure but do not define school-wide subjects, sections, periods, grading weights or transmutation. Those are controlled here and in <a class="font-bold text-blue-700" href="school-grading-schemes.html">Grading Policies</a>.</p>
+      <p class="ac-muted mt-3">Teacher-to-class assignment, student enrollment, invitations and account access remain under <a class="font-bold text-blue-700" href="people-access.html#classes">People &amp; Access</a>.</p>
+    </article>
+  </section>
+
+  <section id="ac-offerings" class="ac-panel" role="tabpanel" hidden>
+    <div class="grid lg:grid-cols-[minmax(280px,.8fr)_minmax(0,1.4fr)] gap-4">
+      <form id="ac-offering-form" class="grid gap-2">
+        <div><h2 class="font-extrabold text-lg">Create course offering</h2><p class="ac-muted mt-1">A course offering binds one program, school year, academic period, section and subject.</p></div>
+        <label class="text-sm font-bold">Program / division<select name="programId" class="ac-input mt-1" required></select></label>
+        <label class="text-sm font-bold">Academic year<select name="yearId" class="ac-input mt-1" required></select></label>
+        <label class="text-sm font-bold">Academic period<select name="termId" class="ac-input mt-1" required></select></label>
+        <label class="text-sm font-bold">Section<select name="sectionId" class="ac-input mt-1" required></select></label>
+        <label class="text-sm font-bold">Subject<select name="subjectId" class="ac-input mt-1" required></select></label>
+        <button class="ac-btn primary" type="submit">Create course offering</button>
+      </form>
+      <div>
+        <div class="flex items-center justify-between gap-3"><h2 class="font-extrabold text-lg">Active course offerings</h2><span id="ac-offering-count" class="ac-muted"></span></div>
+        <div id="ac-offering-list" class="ac-list"></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="js/core/adminerva-loader.js?v=1.3.2"></script>
+<script defer src="js/core/adminerva-nav.js?v=1.6.0"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.14"></script>
+<script type="module" src="js/core/school-academic-configuration.mjs?v=1.0.0"></script>
+</body>
+</html>
