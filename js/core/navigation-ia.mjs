@@ -9,22 +9,23 @@ export function buildNavigationIA(ctx){
   const ws=(id,label,route,description,groups)=>({id,label,route,description,groups});
 
   const student=scope=>{
-    const assignments=scope.hasSchoolStudent?"school-student-assessments.html":"student-assessments.html";
+    const oldAssignments="student-assessments.html";
+    const schoolAssignments=scope.hasSchoolStudent?"school-student-assessments.html":null;
     const grades=scope.hasSchoolStudent?"school-student-grades.html":null;
     const settings=scope.hasSchoolStudent?"school-student-settings.html":"student-settings.html";
     return [
-      ws("classroom","Adminerva Classroom",assignments,"Classroom activity, assignments, materials, grades and school calendar",[
-        group("Classroom",[
-          future("bulletin","Classroom Bulletin Board","Class announcements and teacher posts · Future development"),
-          needs("assignments","Assignments",assignments,"Active assignment workflow; needs further consolidation between school and older repository assignments."),
+      ws("classroom","Adminerva Classroom",oldAssignments,"Assignments, projects, grades, materials and school classroom tools",[
+        group("Assignments",[
+          old("assignments","Assignments",oldAssignments,"OLD assignment workflow retained as the default because existing classes and published repository tasks still use it."),
+          ...(schoolAssignments?[needs("school-assignments","Adminerva Assignments",schoolAssignments,"Newer school-scoped assignments; still being consolidated with the OLD assignment workflow.")]:[]),
           ...(grades?[live("my-grades","My Grades",grades,"Teacher-released school grades")]:[]),
+          future("bulletin","Classroom Bulletin Board","Class announcements and teacher posts · Future development"),
           future("ebooks","E-books","Class materials and presentations · Future development"),
           future("calendar","School Calendar","School events, deadlines and academic calendar · Future development")
         ]),
-        group("Projects & OLD Repository",[
-          ...(scope.hasSchoolStudent?[needs("school-projects","Project Hub","school-student-projects.html","Active school project workflow; still being integrated with Classroom and Studio.")]:[]),
-          old("repo-projects","Repository Projects","student-dashboard.html","OLD repository project workflow retained because current classes still use it."),
-          old("repo-assignments","Repository Assignments","student-assessments.html","OLD repository assignment workflow retained because current classes still use it."),
+        group("Projects & Repository",[
+          old("repo-projects","Project Hub / Repository Projects","student-dashboard.html","OLD project and repository workflow retained because current classes still use it."),
+          ...(scope.hasSchoolStudent?[needs("school-projects","Adminerva Project Hub","school-student-projects.html","Newer school project workflow; still being integrated with Classroom and Studio.")]:[]),
           old("repo-settings","Repository Settings","student-settings.html","OLD repository/GitHub settings retained for students still working on repository assignments.")
         ])
       ]),
