@@ -9,6 +9,7 @@ on:
       - "firestore.rules"
       - "firestore.indexes.json"
       - "firebase.json"
+      - ".github/workflows/firebase-deploy.yml"
 
 permissions:
   contents: read
@@ -19,7 +20,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || vars.FIREBASE_DEPLOY_ENABLED == 'true'
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
