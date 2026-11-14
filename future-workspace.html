@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Reserved Adminerva workspace for planned school-system modules.">
+  <title>Planned Workspace · Adminerva</title>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=1.5.0">
+  <script defer src="https://cdn.tailwindcss.com"></script>
+</head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="admin" data-page="future-workspace"></div>
+<main class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+  <section class="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
+    <p class="text-xs font-extrabold uppercase tracking-widest text-blue-700">Reserved workspace</p>
+    <h1 id="fw-title" class="text-2xl sm:text-3xl font-extrabold mt-2">Future development</h1>
+    <p id="fw-description" class="text-slate-600 mt-3 max-w-3xl">This major workspace has been reserved in Adminerva's information architecture so its future tools will not be scattered into unrelated modules.</p>
+    <div class="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+      The workspace is visible now for navigation consistency. Individual tools remain disabled in the header until they are implemented.
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const names={
+    "finance":["Finance","Billing, cashiering, accounting, budgeting, payroll and financial reporting."],
+    "health-services":["Health & Student Services","Clinic, health records, guidance, discipline and learner welfare."],
+    "operations":["Facilities & Services","Facilities, assets, inventory, library, cafeteria/canteen, transportation and campus services."],
+    "communications":["Communications","Announcements, messaging, broadcasts, forms, surveys and family engagement."],
+    "documents-compliance":["Documents & Compliance","Institutional documents, approval routing, accreditation, privacy and compliance."],
+    "platform-governance":["Governance & Security","Platform roles, privacy, audit, security and compliance administration."],
+    "platform-integrations":["Integrations","Platform identity, GitHub, AI, communications, payment and API integrations."]
+  };
+  const key=new URLSearchParams(location.search).get("workspace")||"";
+  const item=names[key]||["Future Workspace","This workspace is reserved for future Adminerva development."];
+  document.getElementById("fw-title").textContent=item[0];
+  document.getElementById("fw-description").textContent=item[1];
+  document.title=item[0]+" · Adminerva";
+})();
+</script>
+<script src="js/core/adminerva-loader.js?v=1.3.2"></script>
+<script defer src="js/core/adminerva-nav.js?v=1.6.0"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.14"></script>
+</body>
+</html>
