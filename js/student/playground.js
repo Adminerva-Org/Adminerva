@@ -3,7 +3,8 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=3.0.0";
+import {createProjectStudio} from "./project-studio.mjs?v=4.0.2";
+import {currentV4StudioSchool} from "./v4-studio-service.mjs?v=4.1.1";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.0.0";
 import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=4";
@@ -373,6 +374,16 @@ async function initializePlayground() {
       await loadSnapshot(snapshotId);
     } else {
       const uid=ownerUid();
+      let studioSchool=null;
+      try{studioSchool=await currentV4StudioSchool();}catch{}
+      const v4OnlyStudent=document.getElementById("adminerva-nav")?.dataset.v4OnlyStudent==="true";
+      if(v4OnlyStudent&&!studioSchool){
+        document.getElementById("projectHome")?.classList.remove("hidden");
+        document.getElementById("studioShell")?.classList.add("hidden");
+        const list=document.getElementById("codeProjectList");
+        if(list)list.innerHTML='<div class="studio-empty-card"><strong>Choose a verified school</strong><p>Select your active school before opening or creating an Adminerva Studio project.</p></div>';
+        return;
+      }
       const legacyAvailable=PLAYGROUND_LANGUAGES.some(lang=>Boolean(readPlaygroundDraft(localStorage,uid,lang)));
       projectStudio=createProjectStudio({
         uid,
@@ -382,13 +393,13 @@ async function initializePlayground() {
         legacyDraftAvailable:legacyAvailable,
         importLegacyDraft:importLegacyDraftAsProject,
         cloudEnabled:!guestMode,
-        guest:guestMode
+        guest:guestMode,
+        projectScope:studioSchool?.compatibilityMode==="v4_only"?"school_"+studioSchool.schoolId:""
       });
       const requestedProject=urlParams.get("codeProject");
-      if(requestedProject)projectStudio.openProjectById(requestedProject);
+      if(requestedProject)await projectStudio.openProjectById(requestedProject);
       else projectStudio.showHome();
-      // Restore the existing server-side queue/run after a browser refresh.
-      // The runtime remains disabled until a trusted HTTPS server is configured.
+      // Rejoin a queued/running server execution without replacing the school-scoped project.
       void studioRuntimeIntegration?.recover();
     }
     } finally { end(); }
