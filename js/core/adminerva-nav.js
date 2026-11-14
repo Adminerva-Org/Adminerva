@@ -59,7 +59,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const root = document.getElementById("adminerva-nav");
   if (!root) return;
   let currentRole, disclosures = [], utilitiesMounted = false;
-  const renderNavigation = userRole => {
+  const renderNavigation = async userRole => {
   // Retain mounted account utilities and their listeners during a verified-role
   // refresh. Only links and menus are rebuilt; notifications subscribe once.
   const accountControls = root.querySelector("#av-account-controls");
@@ -74,146 +74,17 @@ document.addEventListener("DOMContentLoaded", () => {
   const hasSchoolStudent = root.dataset.schoolStudent === "true";
   const v4OnlyTeacher = root.dataset.v4OnlyTeacher === "true";
   const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
-  currentRole = isStudent ? "student" : isSuperAdmin ? "superadmin" :
-    isPlatformOwner && !isSchoolAdmin ? "platformowner" : isSchoolAdmin ? "schooladmin" : "teacher";
-  const homeRoute = isStudent ? "student-home.html" :
-    currentRole === "platformowner" ? "owner-schools.html" :
-    currentRole === "schooladmin" ? "school-admin.html" : "teacher-home.html";
-  const homeLabel = isStudent ? "Student Home" : currentRole === "platformowner" ? "Platform Home" :
-    currentRole === "schooladmin" ? "School Admin Home" : "Staff Home";
-  const roleLabel = isStudent ? "Student" : isSuperAdmin ? "Administrator" :
-    currentRole === "platformowner" ? "Platform administrator" :
-    currentRole === "schooladmin" ? (hasSchoolTeacher ? "School administrator · Teacher" : "School administrator") : "Teacher";
-
-  // Destinations and page labels share one source, including bookmarked tools.
-  const studentGroups = {
-    student: { name: "Project Hub", items: v4OnlyStudent ? [
-      ["school-student-projects", "Projects", "school-student-projects.html"],
-      ["school-student-assessments", "Assignments", "school-student-assessments.html"],
-      ["school-student-grades", "My grades", "school-student-grades.html"],
-      ["school-student-settings", "Account settings", "school-student-settings.html"]
-    ] : [
-      ["dashboard", "Repository projects", "student-dashboard.html"],
-      ["assessments", "Repository assignments", "student-assessments.html"],
-      ...(hasSchoolStudent ? [
-        ["school-student-projects", "Adminerva projects", "school-student-projects.html"],
-        ["school-student-assessments", "Adminerva assignments", "school-student-assessments.html"],
-        ["school-student-grades", "My grades", "school-student-grades.html"],
-        ["school-student-settings", "School account settings", "school-student-settings.html"]
-      ] : []),
-      ["settings", "Account settings", "student-settings.html"]
-    ] },
-    "student-practice": { name: "Practice Lab", items: [
-      ["practice", "Practice courses", "student-practice.html"],
-      ["xml", "XML Lab", "student-xml-lab.html"]
-    ] },
-    "student-playground": { name: "Adminerva Studio", items: [
-      ["ide", "Live editor", "student-playground.html"]
-    ] }
-  };
-  const staffGroups = [
-    { name: "Assessment", area: "educator", items: v4OnlyTeacher ? [
-      ["library-v4", "Adminerva assessment library", "teacher-assessment-library.html"],
-      ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
-    ] : [
-      ["studio", "Assessment studio", "assessment-studio.html"],
-      
-      ["submissions", "Submission inbox", "submissions.html"],
-      ["reclaims", "Commit attribution requests", "reclaim-inbox.html"]
-    ] },
-    { name: "Review & grade", area: "educator", items: v4OnlyTeacher ? [
-      ["gradebook-v4", "Adminerva assessment gradebook", "school-gradebook.html"]
-    ] : [
-      ["repofetch", "Review & grade", "repofetch.html"],
-      ["gradebook", "Gradebook", "gradebook.html"],
-      
-      ["repobank", "Repository investigation", "repobank.html"]
-    ] },
-    { name: "Class record & Adminerva assessments", area: "class-record", items: hasSchoolTeacher ? [
-      ["class-record", "Class record", "class-record.html"],
-      ["library-v4", "Adminerva assessment library", "teacher-assessment-library.html"],
-      ["gradebook-v4", "Adminerva assessment gradebook", "school-gradebook.html"],
-      ...(!v4OnlyTeacher ? [["studio-submissions", "Adminerva Studio grading", "studio-submissions.html"]] : [])
-    ] : [] },
-    { name: "Insights", area: "educator", items: [
-      ["dashboard", "Analytics", "teacher-analytics.html"],
-      ["followup", "Learning follow-up", "learning-follow-up.html"]
-    ] },
-    { name: "Planning", area: "lesson", items: [
-      ["planner", "Lesson planner", "lesson-planner.html"],
-      ["presentation", "Slide editor", "presentation.html"],
-      ["schedule", "Teacher schedule", "schedule.html"],
-      ["library", "Reference library", "library.html"]
-    ] },
-    { name: "School setup", area: "admin", items: (isSuperAdmin || isSchoolAdmin || isPlatformOwner) ? [
-      ...(isPlatformOwner && !isSchoolAdmin && !isSuperAdmin ? [
-        ["owner-schools", "Platform schools", "owner-schools.html"]
-      ] : []),
-      ...((isSuperAdmin || isSchoolAdmin) ? [
-        ["overview", "Administration overview", "school-admin.html"],
-                ["people-v4", "People & access", "people-access.html"],
-        ...(isSchoolAdmin ? [
-          ["grading-schemes", "Grading schemes", "school-grading-schemes.html"],
-          ["class-record-oversight", "Class Record oversight", "school-class-records.html"]
-        ] : [])
-      ] : []),
-      ...(isSuperAdmin ? [
-        ["analytics", "Administration analytics", "admin-analytics.html"],
-        ["directory", "User directory · legacy", "users.html"],
-        ["sections", "Sections · legacy", "manage-sections.html"],
-        ["teachers", "Teacher assignments · legacy", "teacher-accounts.html"],
-        ["programs", "Tracks & pathways · legacy", "manage-programs.html"],
-        ["subjects", "Subjects · legacy", "manage-subjects.html"]
-      ] : []),
-    ] : [] },
-    { name: "Account", area: "settings", items: [
-      ["settings", "Account & integrations", "settings.html"],
-      ["issues", "Reports & support", "issues.html"]
-    ] }
-  ];
-  const area = ["repo", "educator"].includes(activeModule) ? "educator" : activeModule;
-  const groups = isStudent ? [] : staffGroups.filter(group => group.items.length &&
-    (group.area === area || area === "admin" && group.area === "settings"));
-  const studentGroup = studentGroups[activeModule];
-  const areaNames = {
-    educator: "Repository Management", "class-record": "Class Record & Adminerva Assessments", lesson: "Lesson Planning", admin: "School administration",
-    settings: "Account settings", global: "Reports & support",
-    "student-home": "Your workspace", "staff-home": "Your workspace"
-  };
-  const allItems = isStudent ? Object.values(studentGroups).flatMap(group => group.items)
-    : staffGroups.flatMap(group => group.items);
-  const currentItem = (studentGroup?.items || groups.flatMap(group => group.items))
-    .find(item => item[0] === activePage) || allItems.find(item => item[0] === activePage);
-  const currentArea = studentGroup?.name || areaNames[area] || "Adminerva";
-  const currentPage = activePage === "home" ? homeLabel
-    : activeModule === "global" ? "Reports & support" : currentItem?.[1] || currentArea;
-  const currentRoute = activeModule.endsWith("home") ? homeRoute
-    : activeModule === "global" ? "issues.html" : currentItem?.[2];
-  const workspaceRoute = activeModule.endsWith("home") ? homeRoute
-    : activeModule === "global" ? "issues.html"
-    : isStudent ? studentGroup?.items[0]?.[2]
-    : area === "lesson" ? "lesson-planner.html"
-    : area === "admin" ? "school-admin.html"
-    : area === "class-record" ? "class-record.html"
-    : area === "educator" ? "assessment-studio.html" : null;
-  const escapeHTML = value => String(value).replace(/[&<>"']/g, char =>
+  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=1.0.0");
+  const ia=buildNavigationIA({
+    isStudent,isSuperAdmin,isSchoolAdmin,isPlatformOwner,
+    hasSchoolTeacher,hasSchoolStudent,v4OnlyTeacher,v4OnlyStudent
+  });
+  const {groups,currentArea,currentPage,currentRoute,workspaceRoute,homeRoute,homeLabel,roleLabel}=ia;
+  currentRole=ia.systemDefault?"platformowner":ia.studentView?"student":ia.schoolAdminView?"schooladmin":"teacher";
+  const escapeHTML = value => String(value??"").replace(/[&<>"']/g, char =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
-  const modules = isStudent ? [
-    [homeLabel, homeRoute, "Start here and continue your work"],
-    ["Repository Project Hub", "student-dashboard.html", "GitHub / repository projects and assignments"],
-    ...(hasSchoolStudent ? [["Adminerva Assignments & Grades", "school-student-assessments.html", "School assignments, projects and teacher-released grades"]] : []),
-    ["Practice Lab", "student-practice.html", "Courses, challenges and XML Lab"],
-    ["Adminerva Studio", "student-playground.html", "Write and run code"],
-    ["My reports", "issues.html", "Report a problem or follow an update"]
-  ] : [
-    [homeLabel, homeRoute, "Your teaching workspace"],
-    ["Repository Management", "assessment-studio.html", "Assessments, submissions, grading and repositories"],
-    ...(hasSchoolTeacher ? [["Class Record & Adminerva Assessments", "class-record.html", "Manual scores, Adminerva assessment grading and consolidated results"]] : []),
-    ["Lesson Planning", "lesson-planner.html", "Lessons, slides, schedule and references"],
-    ...((isSuperAdmin || isSchoolAdmin) ? [["School administration", "school-admin.html", "Students, staff, access, classes and school settings"]] : []),
-    ...((isPlatformOwner && !isSuperAdmin) ? [["Platform schools", "owner-schools.html", "Institutions, access and school lifecycle"]] : []),
-    ["Reports & support", "issues.html", "Follow reports and get help"]
-  ];
+  const modules=ia.workspaces.map(item=>[item.label,item.route,item.description]);
+
   root.innerHTML = `
     <nav aria-label="Adminerva main navigation" class="bg-gray-900/95 backdrop-blur-md text-white shadow-lg relative z-50 border-b border-cyan-900/50 sticky top-0">
       <div class="max-w-screen-2xl mx-auto">
