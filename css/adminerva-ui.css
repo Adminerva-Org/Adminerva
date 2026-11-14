@@ -1217,3 +1217,58 @@ body main > header[class*="mb-8"],body main > header[class*="mb-6"] {
   .av-account-menu summary{max-width:8.5rem}
   .av-nav-role{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }
+
+
+/* 1.5.3 student workspace quick links and modal-safe shared navigation. */
+.av-workspace-card{padding:0;justify-content:flex-start}
+.av-workspace-card-main{
+  display:flex;
+  min-width:0;
+  flex-direction:column;
+  justify-content:center;
+  padding:.68rem .75rem;
+  color:inherit;
+  text-decoration:none;
+}
+.av-workspace-card-main:focus-visible{
+  outline:2px solid #22d3ee;
+  outline-offset:-2px;
+  border-radius:.72rem;
+}
+.av-workspace-quicklinks{
+  display:grid;
+  gap:.28rem;
+  padding:0 .5rem .5rem;
+}
+.av-workspace-quicklink{
+  display:flex;
+  min-width:0;
+  align-items:center;
+  justify-content:space-between;
+  gap:.45rem;
+  padding:.42rem .5rem;
+  border:1px solid #243247;
+  border-radius:.5rem;
+  background:#0b1424;
+  color:#cbd5e1;
+  font-size:.66rem;
+  font-weight:750;
+  text-decoration:none;
+}
+.av-workspace-quicklink:hover,
+.av-workspace-quicklink:focus-visible{
+  background:#1e293b;
+  border-color:#475569;
+  color:white;
+  outline:none;
+}
+.av-workspace-quicklink>span:first-child{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+@media(max-width:767px){
+  .av-workspace-quicklinks{padding:.1rem .45rem .45rem}
+  .av-workspace-quicklink{min-height:2.2rem;font-size:.7rem}
+}
