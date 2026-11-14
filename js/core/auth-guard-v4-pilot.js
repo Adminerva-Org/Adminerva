@@ -178,16 +178,12 @@ async function checkAccess(user){
     (v4Cutover||!access.students?.length)&&!access.schoolTeacher&&!access.schoolAdmin;
   if(v4OnlyStudent){
     const page=currentPath.split("/").pop();
-    const legacyStudentRoutes={
-      "student-dashboard.html":"school-student-projects.html",
-      "student-settings.html":"school-student-settings.html",
-      "student-assessments.html":"school-student-assessments.html"
-    };
-    if(legacyStudentRoutes[page]){replacePage(legacyStudentRoutes[page]);return;}
     const allowed=new Set([
       "student-home.html","school-student-projects.html","school-student-settings.html",
-      "school-student-assessments.html","school-student-grades.html","student-practice.html","student-playground.html",
-      "student-xml-lab.html","issues.html","join-school.html","wiki.html"
+      "school-student-assessments.html","school-student-grades.html",
+      "student-dashboard.html","student-settings.html","student-assessments.html",
+      "student-practice.html","student-playground.html","student-xml-lab.html",
+      "issues.html","join-school.html","wiki.html"
     ]);
     if(!allowed.has(page)){replacePage("student-home.html");return;}
   }
@@ -198,21 +194,14 @@ async function checkAccess(user){
       "teacher-home.html","teacher-assessment-library.html","school-gradebook.html","class-record.html","pilot-sandbox.html",
       "people-access.html","school-admin.html","school-pilot.html","school-grading-schemes.html","school-class-records.html","school-academic-configuration.html","future-workspace.html",
       "reclaim-inbox.html","learning-follow-up.html","teacher-analytics.html","practice-analytics.html",
+      "assessment-studio.html","submissions.html","gradebook.html","repofetch.html","repobank.html",
+      "grading.html","activity-grader.html","group-inspector.html","contribution-inspector.html",
+      "assessment-evidence-review.html","studio-submissions.html",
       "lesson-planner.html","presentation.html","schedule.html","library.html",
       "settings.html","issues.html","join-school.html","wiki.html",
       ...(access.platformAdmin?["owner-schools.html"]:[])
     ]);
-    if(!allowed.has(page)){
-      const gradingPages=new Set([
-        "gradebook.html","repofetch.html","repobank.html","grading.html","activity-grader.html",
-        "group-inspector.html","contribution-inspector.html","assessment-evidence-review.html",
-        "submissions.html","studio-submissions.html"
-      ]);
-      const destination=gradingPages.has(page)?"school-gradebook.html":
-        page==="assessment-studio.html"?"teacher-assessment-library.html":
-        "teacher-home.html";
-      replacePage(destination);return;
-    }
+    if(!allowed.has(page)){replacePage("teacher-home.html");return;}
   }
   const isIssuesPage = currentPath.includes("issues.html");
 
