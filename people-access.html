@@ -222,58 +222,13 @@
     <section id="pa-classes" role="tabpanel" aria-labelledby="pa-tab-classes" tabindex="0" hidden>
       <p class="pa-muted">School-specific teaching assignments. Enrolling a person does not alter earlier grades or term history.</p>
       <div class="pa-academic-grid">
+        <section class="pa-card">
+          <h2 style="font-weight:750;font-size:1.1rem">Academic structure</h2>
+          <p class="pa-muted">Academic years, programs/divisions, periods, subjects, sections and course offerings are managed in the dedicated Academic Configuration workspace.</p>
+          <a class="pa-action" style="display:inline-flex;align-items:center;text-decoration:none;margin-top:.75rem" href="school-academic-configuration.html">Open Academic Configuration</a>
+        </section>
         <details class="pa-card">
-          <summary style="font-weight:750;cursor:pointer">1. Academic catalog (program, year, period, subject, section)</summary>
-          <form id="pa-catalog-form" style="padding-top:1rem">
-            <label>Catalog type<select class="pa-field" name="kind" id="pa-catalog-kind">
-              <option value="academic_programs">Academic program / division</option>
-              <option value="academic_years">Academic year</option>
-              <option value="terms">Academic period</option>
-              <option value="subjects">Subject</option><option value="sections">Section</option>
-            </select></label>
-            <label>Stable ID<input class="pa-field" name="recordId" pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,79}" maxlength="80" placeholder="e.g. basic-ed or 2026-2027" required></label>
-            <label>Display name<input class="pa-field" name="name" maxlength="140" required></label>
-            <label id="pa-year-start-month" hidden>Default school-year start month
-              <select class="pa-field" name="startMonth">
-                <option value="1">January</option><option value="2">February</option><option value="3">March</option>
-                <option value="4">April</option><option value="5">May</option><option value="6">June</option>
-                <option value="7" selected>July</option><option value="8">August</option><option value="9">September</option>
-                <option value="10">October</option><option value="11">November</option><option value="12">December</option>
-              </select>
-            </label>
-            <label id="pa-year-end-month" hidden>Default school-year end month
-              <select class="pa-field" name="endMonth">
-                <option value="1">January</option><option value="2">February</option><option value="3">March</option>
-                <option value="4">April</option><option value="5" selected>May</option><option value="6">June</option>
-                <option value="7">July</option><option value="8">August</option><option value="9">September</option>
-                <option value="10">October</option><option value="11">November</option><option value="12">December</option>
-              </select>
-            </label>
-            <p id="pa-year-month-help" class="pa-muted" hidden>July–May is the default only. School administrators may change these months for a specific academic year when the institutional calendar changes.</p>
-            <label id="pa-catalog-program" hidden>Academic program / division<select class="pa-field" name="programId" data-catalog="academic_programs"></select></label>
-            <label id="pa-term-year" hidden>Academic year<select class="pa-field" name="yearId" data-catalog="academic_years"></select></label>
-            <label id="pa-period-type" hidden>Period type<select class="pa-field" name="periodType">
-              <option value="term">Term</option><option value="semester">Semester</option>
-              <option value="quarter">Quarter</option><option value="trimester">Trimester</option>
-              <option value="custom">Custom</option>
-            </select></label>
-            <label id="pa-period-sequence" hidden>Period sequence<input class="pa-field" type="number" name="sequence" min="1" max="12" step="1" value="1"></label>
-            <button class="pa-action" type="submit">Create catalog record</button>
-          </form>
-        </details>
-        <details class="pa-card">
-          <summary style="font-weight:750;cursor:pointer">2. Create course offering</summary>
-          <form id="pa-offering-form" style="padding-top:1rem">
-            <label>Academic program / division<select class="pa-field" name="programId" data-catalog="academic_programs" required></select></label>
-            <label>Academic year<select class="pa-field" name="yearId" data-catalog="academic_years" required></select></label>
-            <label>Academic period<select class="pa-field" name="termId" data-offering-period required></select></label>
-            <label>Subject<select class="pa-field" name="subjectId" data-catalog="subjects" required></select></label>
-            <label>Section<select class="pa-field" name="sectionId" data-offering-section required></select></label>
-            <button class="pa-action" type="submit">Create class offering</button>
-          </form>
-        </details>
-        <details class="pa-card">
-          <summary style="font-weight:750;cursor:pointer">3. Enroll student in offering</summary>
+          <summary style="font-weight:750;cursor:pointer">Enroll student in offering</summary>
           <form id="pa-enrollment-form" style="padding-top:1rem">
             <label>Student school record<select class="pa-field" name="personId" data-student-person required></select></label>
             <label>Course offering<select class="pa-field" name="offeringId" data-offering required></select></label>
@@ -301,7 +256,7 @@
           </form>
         </details>
         <details class="pa-card">
-          <summary style="font-weight:750;cursor:pointer">4. Assign teacher to class</summary>
+          <summary style="font-weight:750;cursor:pointer">Assign teacher to class</summary>
           <form id="pa-assignment-form" style="padding-top:1rem">
             <label>Verified school teacher<select class="pa-field" name="teacherUid" data-school-teacher required></select></label>
             <label>Course offering<select class="pa-field" name="offeringId" data-offering required></select></label>
@@ -347,6 +302,6 @@
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script defer src="js/core/adminerva-nav.js?v=f8330e29a186"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=4.0.13"></script>
-<script type="module" src="js/core/people-access.mjs?v=4.0.1"></script>
+<script type="module" src="js/core/people-access.mjs?v=4.1.0"></script>
 </body>
 </html>
