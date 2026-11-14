@@ -3,7 +3,7 @@ import {app,auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 import {doc,getDoc} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
-import {getV4StudioPersonalizedTask,listV4StudioAssignments} from "./v4-studio-service.mjs?v=4.1.0";
+import {getV4StudioPersonalizedTask,listV4StudioAssignments} from "./v4-studio-service.mjs?v=4.1.1";
 
 const assessmentId=new URL(location.href).searchParams.get("assessment");
 const panel=document.getElementById("studioPersonalizedTask");
