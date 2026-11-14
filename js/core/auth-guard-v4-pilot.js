@@ -95,7 +95,7 @@ async function checkAccess(user){
   // 2. Determine absolute hardware role based strictly on the verified email
   let actualRole="student";
   if(admittedRole==="admin")actualRole="superadmin";
-  else if(access.platformAdmin&&!access.schoolAdmin&&!access.schoolTeacher)actualRole="platformowner";
+  else if(access.platformAdmin)actualRole="platformowner";
   else if(access.schoolAdmin)actualRole="schooladmin";
   else if(admittedRole==="teacher")actualRole="teacher";
 
@@ -162,7 +162,7 @@ async function checkAccess(user){
   if(/\/(class-record)\.html$/.test(currentPath)&&!(access.schoolTeacher||access.schoolAdmin||platformSchoolView)){
     replacePage(roleHome(actualRole));return;
   }
-  if(actualRole==="schooladmin"&&!access.schoolTeacher&&
+  if(actualRole==="schooladmin"&&!access.platformAdmin&&!access.schoolTeacher&&
      !/\/(teacher-home|school-admin|school-pilot|people-access|school-grading-schemes|school-class-records|school-academic-configuration|future-workspace|class-record|reclaim-inbox|settings|issues|join-school|wiki)\.html$/.test(currentPath)){
     replacePage("school-admin.html");return;
   }
