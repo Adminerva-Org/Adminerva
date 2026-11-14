@@ -74,7 +74,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const hasSchoolStudent = root.dataset.schoolStudent === "true";
   const v4OnlyTeacher = root.dataset.v4OnlyTeacher === "true";
   const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
-  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=1.1.0");
+  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=1.2.0");
   const ia=buildNavigationIA({
     isStudent,isSuperAdmin,isSchoolAdmin,isPlatformOwner,
     hasSchoolTeacher,hasSchoolStudent,v4OnlyTeacher,v4OnlyStudent
@@ -84,10 +84,33 @@ document.addEventListener("DOMContentLoaded", () => {
   currentRole=ia.systemDefault?"platformowner":ia.studentView?"student":ia.schoolAdminView?"schooladmin":"teacher";
   const escapeHTML = value => String(value??"").replace(/[&<>"']/g, char =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+  const workspaceHealth=item=>{
+    const metas=item.groups.flatMap(group=>group.items).map(entry=>entry[3]||{});
+    const allFuture=metas.length>0&&metas.every(meta=>meta.future||meta.status==="future");
+    const allOld=metas.length>0&&metas.filter(meta=>!meta.future).length>0&&
+      metas.filter(meta=>!meta.future).every(meta=>meta.old===true);
+    const needsWork=metas.some(meta=>meta.status==="needs_work"||meta.old===true)||
+      (!allFuture&&metas.some(meta=>meta.future||meta.status==="future"));
+    return {
+      status:allFuture?"future":needsWork?"needs_work":"stable",
+      old:allOld,
+      tip:allFuture
+        ?"Future development: this workspace is reserved in Adminerva but its operational tools are not implemented yet."
+        :needsWork
+          ?"Needs further development or enhancement. Some tools are active now while other workflow/UI work remains."
+          :"Operational workspace."
+    };
+  };
+  const indicatorMarkup=(status,tip)=>status==="stable"?"":
+    `<span class="av-dev-indicator av-dev-indicator--${status==="future"?"future":"needs"}" title="${escapeHTML(tip)}" aria-label="${escapeHTML(tip)}"></span>`;
+  const oldBadgeMarkup=tip=>`<span class="av-old-badge" title="${escapeHTML(tip||"Older workflow retained for current users.")}">OLD</span>`;
   const workspaceLinkMarkup = item => {
-    const active=item.id===activeWorkspaceId;
+    const active=item.id===activeWorkspaceId,health=workspaceHealth(item);
     return `<a href="${item.route}" class="av-workspace-card${active?" is-active":""}"${active?' aria-current="location"':""}>
-      <span class="av-workspace-card-title">${escapeHTML(item.label)}</span>
+      <span class="av-workspace-card-heading">
+        <span class="av-workspace-card-title">${escapeHTML(item.label)}</span>
+        <span class="av-nav-status-cluster">${health.old?oldBadgeMarkup("OLD workspace retained because existing classes or records still use it."):""}${indicatorMarkup(health.status,health.tip)}</span>
+      </span>
       <span class="av-workspace-card-description">${escapeHTML(item.description)}</span>
     </a>`;
   };
@@ -182,6 +205,24 @@ document.addEventListener("DOMContentLoaded", () => {
   const informationSettings = root.querySelector("[data-information-settings]");
   if (informationSettings) informationSettings.href = isStudent ? "student-settings.html" : "settings.html";
 
+  const appendStatus=(row,meta)=>{
+    const cluster=document.createElement("span");cluster.className="av-nav-status-cluster";
+    if(meta.old){
+      const badge=document.createElement("span");badge.className="av-old-badge";badge.textContent="OLD";
+      badge.title="Older Adminerva workflow retained because it is still in use.";
+      cluster.append(badge);
+    }
+    const status=meta.future||meta.status==="future"?"future":
+      meta.status==="needs_work"||meta.old?"needs_work":"stable";
+    if(status!=="stable"){
+      const dot=document.createElement("span");
+      dot.className="av-dev-indicator av-dev-indicator--"+(status==="future"?"future":"needs");
+      dot.title=meta.tip||(status==="future"?"Future development":"Needs further development or enhancement");
+      dot.setAttribute("aria-label",dot.title);
+      cluster.append(dot);
+    }
+    if(cluster.childNodes.length)row.append(cluster);
+  };
   const makeLink = (item, mobile) => {
     const meta=item[3]||{};
     if(!item[2]||meta.future){
@@ -189,18 +230,19 @@ document.addEventListener("DOMContentLoaded", () => {
       disabled.className="av-nav-future block rounded-lg px-3 py-2.5 text-sm text-slate-500 cursor-not-allowed"+
         (mobile?" min-h-11 flex items-center":"");
       disabled.setAttribute("aria-disabled","true");
-      disabled.title=meta.tip||"Future development";
       const row=document.createElement("span");row.className="flex items-center justify-between gap-2 w-full";
-      const label=document.createElement("span");label.textContent=item[1];
-      const badge=document.createElement("span");badge.className="av-future-badge";badge.textContent="Future";
-      row.append(label,badge);disabled.append(row);return disabled;
+      const label=document.createElement("span");label.textContent=item[1];row.append(label);
+      appendStatus(row,{...meta,future:true,status:"future"});
+      disabled.append(row);return disabled;
     }
     const link=document.createElement("a");
-    link.href=item[2];link.textContent=item[1];
+    link.href=item[2];
     if(meta.tip)link.title=meta.tip;
     link.className="av-nav-task-link block rounded-lg px-3 py-2.5 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 "+
       (item[2]===currentRoute?"bg-cyan-900/50 text-cyan-100 border-l-2 border-cyan-400":"text-slate-200 hover:bg-slate-700 hover:text-white")+
-      (mobile?" min-h-11 flex items-center":"");
+      (mobile?" min-h-11":"");
+    const row=document.createElement("span");row.className="flex items-center justify-between gap-2 w-full";
+    const label=document.createElement("span");label.textContent=item[1];row.append(label);appendStatus(row,meta);link.append(row);
     if(item[2]===currentRoute)link.setAttribute("aria-current","page");
     return link;
   };
@@ -213,7 +255,18 @@ document.addEventListener("DOMContentLoaded", () => {
     summary.className="list-none cursor-pointer select-none font-bold rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 "+
       (mobile?"text-slate-100 text-sm px-3 py-3 min-h-11":"text-sm px-3 py-2.5 min-h-11 "+
       (isActiveGroup(group)?"text-cyan-300 bg-slate-800":"text-slate-200 hover:text-cyan-300 hover:bg-slate-800"));
-    summary.textContent=group.name+" ▾";summary.setAttribute("aria-label",group.name+" pages");
+    const groupMetas=group.items.map(item=>item[3]||{});
+    const groupAllFuture=groupMetas.length>0&&groupMetas.every(meta=>meta.future||meta.status==="future");
+    const groupNeeds=groupMetas.some(meta=>meta.status==="needs_work"||meta.old)||
+      (!groupAllFuture&&groupMetas.some(meta=>meta.future||meta.status==="future"));
+    const summaryLabel=document.createElement("span");summaryLabel.textContent=group.name+" ▾";summary.append(summaryLabel);
+    if(groupAllFuture||groupNeeds){
+      const dot=document.createElement("span");
+      dot.className="av-dev-indicator av-dev-indicator--"+(groupAllFuture?"future":"needs");
+      dot.title=groupAllFuture?"Future development":"Contains tools that need further development or enhancement.";
+      dot.setAttribute("aria-label",dot.title);summary.append(dot);
+    }
+    summary.setAttribute("aria-label",group.name+" pages");
     details.append(summary);
     const panel=document.createElement("div");
     panel.className=mobile?"p-2 space-y-1":"av-nav-menu-panel absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 z-[110] bg-slate-900 border border-slate-600 shadow-2xl rounded-xl p-2 max-h-[70dvh] overflow-y-auto";
