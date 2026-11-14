@@ -26,6 +26,10 @@ function scoped(action,details={}){
   });
 }
 function setSchoolModeUI(){
+  for(const selectId of ["filterStatus","adminStatusSelect"]){
+    const option=get(selectId)?.querySelector('option[value="Closed (Won\\'t Fix)"]');
+    if(option){option.value="Closed";option.textContent=selectId==="filterStatus"?"Closed":"Status: Closed";}
+  }
   for(const id of ["filterAudience","filterReportType","reportExportTools"])get(id)?.toggleAttribute("hidden",true);
   get("legacyReportAudienceWrap")?.classList.add("hidden");
   const vote=get("upvoteBtn")?.parentElement; if(vote)vote.classList.add("hidden");
