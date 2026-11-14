@@ -89,10 +89,7 @@ export function buildNavigationIA(ctx){
     group("OLD Advanced Tools",[
       old("activity-grader","Activity Grader","activity-grader.html","OLD repository activity grader; retained for current grading workflows."),
       old("auto-grader","AutoGrader","grading.html","OLD automated grading interface retained for compatibility."),
-      old("learning-follow-up","Learning Follow-up","learning-follow-up.html","OLD repository learning follow-up workflow retained for current records."),
-      old("evidence-review","Evidence Review","assessment-evidence-review.html","OLD contextual evidence review tool; usually opened from Review & Grade."),
-      old("contribution-inspector","Contribution Inspector","contribution-inspector.html","OLD contextual contribution inspector; usually opened from Review & Grade."),
-      old("group-inspector","Group Inspector","group-inspector.html","OLD contextual group repository inspector; usually opened from Review & Grade.")
+      old("learning-follow-up","Learning Follow-up","learning-follow-up.html","OLD repository learning follow-up workflow retained for current records.")
     ])
   ]);
 
@@ -121,11 +118,6 @@ export function buildNavigationIA(ctx){
         live("class-record-oversight","Class Record Oversight","school-class-records.html"),
         future("school-calendar-admin","School Calendar Configuration"),
         future("grade-approval","Grade Approval"),future("promotion-policy","Promotion / Retention Policy")
-      ]),
-      group("OLD Catalog Tools",[
-        old("old-programs","Tracks & Pathways","manage-programs.html","OLD school catalog editor retained for compatibility. New configuration belongs in Academic Configuration."),
-        old("old-sections","Sections","manage-sections.html","OLD section editor retained for compatibility. New configuration belongs in Academic Configuration."),
-        old("old-subjects","Subjects","manage-subjects.html","OLD subject editor retained for compatibility. New configuration belongs in Academic Configuration.")
       ]),
       group("School Profile",[
         future("school-profile","School Profile & Campuses"),future("departments","Departments / Faculties"),
@@ -306,8 +298,7 @@ export function buildNavigationIA(ctx){
     ]),
     ws("directory","Directory","owner-schools.html","Users, schools and platform directory administration",[
       group("Users",[
-        old("system-users","User Directory","users.html","OLD user directory retained until the unified platform directory replaces it."),
-        old("teacher-accounts","Teacher Accounts","teacher-accounts.html","OLD teacher account administration retained for compatibility.")
+        future("system-users","Users","Unified platform user directory · Future development")
       ]),
       group("Schools",[
         live("system-schools","Schools","owner-schools.html"),live("school-details","School Details","owner-schools.html"),
