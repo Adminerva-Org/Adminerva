@@ -8,7 +8,7 @@ const api=httpsCallable(functions,"schoolClassRecord");
 const academicsApi=httpsCallable(functions,"schoolAcademics");
 const list=el("gs-list"),status=el("gs-status"),dialog=el("gs-dialog"),form=el("gs-form"),
   weights=el("gs-weights"),total=el("gs-total"),showArchived=el("gs-show-archived");
-let picker=null,schemes=[],programs=[],subjects=[],editing=null,busy=false;
+let picker=null,schemes=[],programs=[],subjects=[],sections=[],editing=null,busy=false;
 
 function scoped(action,details={}){
   if(!picker?.scope.current)return Promise.reject(new Error("Choose a verified school first."));
@@ -33,19 +33,25 @@ function applicabilityLabel(scheme){
   const scope=scheme.applicability||{},parts=[];
   if(scope.programId)parts.push(scopeName(programs,scope.programId,"Selected program"));
   if(scope.subjectId)parts.push(scopeName(subjects,scope.subjectId,"Selected subject"));
+  if(scope.sectionId)parts.push(scopeName(sections,scope.sectionId,"Selected section"));
   if(scope.periodTypes?.length)parts.push(scope.periodTypes.map(value=>
     value.charAt(0).toUpperCase()+value.slice(1)).join("/"));
   return parts.length?parts.join(" · "):"School-wide";
 }
 function fillScopeOptions(){
-  const program=el("gs-program"),subject=el("gs-subject");
-  const selectedProgram=program.value,selectedSubject=subject.value;
+  const program=el("gs-program"),subject=el("gs-subject"),section=el("gs-section");
+  const selectedProgram=program.value,selectedSubject=subject.value,selectedSection=section.value;
   program.replaceChildren(new Option("All programs",""));
   subject.replaceChildren(new Option("All subjects",""));
+  section.replaceChildren(new Option("All sections",""));
   for(const item of programs)program.add(new Option(item.name,item.id));
   for(const item of subjects)subject.add(new Option(item.name,item.id));
-  program.value=programs.some(item=>item.id===selectedProgram)?selectedProgram:"";
+  const programId=programs.some(item=>item.id===selectedProgram)?selectedProgram:"";
+  for(const item of sections.filter(item=>!programId||item.programId===programId))
+    section.add(new Option(item.name,item.id));
+  program.value=programId;
   subject.value=subjects.some(item=>item.id===selectedSubject)?selectedSubject:"";
+  section.value=sections.some(item=>item.id===selectedSection&&(!programId||item.programId===programId))?selectedSection:"";
 }
 function button(text,classes="gs-btn"){
   const node=document.createElement("button");node.type="button";node.className=classes;node.textContent=text;return node;
@@ -123,6 +129,7 @@ function openEditor(scheme=null){
   fillScopeOptions();
   form.elements.programId.value=scheme?.applicability?.programId||"";
   form.elements.subjectId.value=scheme?.applicability?.subjectId||"";
+  form.elements.sectionId.value=scheme?.applicability?.sectionId||"";
   form.elements.periodType.value=scheme?.applicability?.periodTypes?.[0]||"";
   form.elements.gradeComputation.value=scheme?.settings?.gradeComputation||"raw_weighted";
   const rows=scheme?.settings?.categoryWeights||[];
@@ -135,15 +142,18 @@ function closeEditor(){if(dialog.open)dialog.close();editing=null;}
 async function load(){
   setBusy(true,"Loading school grading schemes…");
   try{
-    const [schemeResult,programResult,subjectResult]=await Promise.all([
+    const [schemeResult,programResult,subjectResult,sectionResult]=await Promise.all([
       scoped("list_schemes",{includeArchived:true}),
       academicScoped("list_catalog",{kind:"academic_programs"}),
-      academicScoped("list_catalog",{kind:"subjects"})
+      academicScoped("list_catalog",{kind:"subjects"}),
+      academicScoped("list_catalog",{kind:"sections"})
     ]);
     schemes=schemeResult.schemes||[];
     programs=(programResult.items||[]).filter(item=>item.status==="active")
       .sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
     subjects=(subjectResult.items||[]).filter(item=>item.status==="active")
+      .sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
+    sections=(sectionResult.items||[]).filter(item=>item.status==="active")
       .sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
     fillScopeOptions();render();
     status.textContent=schemes.length+" grading scheme"+(schemes.length===1?"":"s")+" loaded.";
@@ -167,6 +177,7 @@ async function changeStatus(scheme,action){
 el("gs-new").addEventListener("click",()=>openEditor());
 el("gs-refresh").addEventListener("click",()=>void load());
 showArchived.addEventListener("change",render);
+el("gs-program").addEventListener("change",fillScopeOptions);
 el("gs-add-row").addEventListener("click",()=>addWeightRow());
 el("gs-close").addEventListener("click",closeEditor);
 el("gs-cancel").addEventListener("click",closeEditor);
@@ -193,6 +204,7 @@ form.addEventListener("submit",event=>{
     applicability:{
       programId:form.elements.programId.value||null,
       subjectId:form.elements.subjectId.value||null,
+      sectionId:form.elements.sectionId.value||null,
       periodTypes:form.elements.periodType.value?[form.elements.periodType.value]:[]
     },
     settings:{categoryWeights,gradeComputation:form.elements.gradeComputation.value}
@@ -207,7 +219,7 @@ form.addEventListener("submit",event=>{
 picker=createTenantSchoolPicker({
   host:el("gs-school-switcher"),
   status,
-  onBeforeChange:async()=>{schemes=[];programs=[];subjects=[];editing=null;render();},
+  onBeforeChange:async()=>{schemes=[];programs=[];subjects=[];sections=[];editing=null;render();},
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){
       status.textContent="School administrator access is required to manage grading schemes.";return;
