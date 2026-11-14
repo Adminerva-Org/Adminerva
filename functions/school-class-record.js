@@ -1123,6 +1123,7 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
       const beforeSheet=await sheetRef.get();
       const previousColumns=beforeSheet.exists&&beforeSheet.data().schoolId===ctx.schoolId&&
         Array.isArray(beforeSheet.data().columns)?beforeSheet.data().columns:[];
+      const columns=cleanColumns(input.columns,assessmentMap,previousColumns);
       const settings=gradingPolicy.settings;
       const expectedRevision=Number(input.expectedRevision);
       if(!Number.isInteger(expectedRevision)||expectedRevision<0)
