@@ -1,4 +1,4 @@
-/** Cloud Functions v2 notifications and opt-in monitoring maintenance; production deployment remains explicit, audited, and reproducible. */
+/** Cloud Functions v2 notifications and opt-in monitoring maintenance. Production main pushes deploy the Firebase backend through GitHub Actions. */
 // Firebase Cloud Functions v2. Requires separate Firebase deployment.
 const {initializeApp}=require("firebase-admin/app");
 const {getFirestore,FieldValue,Timestamp}=require("firebase-admin/firestore");
