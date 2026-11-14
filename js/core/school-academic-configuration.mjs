@@ -134,7 +134,7 @@ function payload(form){
   for(const [key,value] of data.entries())out[key]=typeof value==="string"?value.trim():value;
   return out;
 }
-async function createCatalog(form,kind,extra={}){
+async function createCatalog(form,kind,extra=()=>({})){
   if(busy||!form.reportValidity())return;
   setBusy(true,"Saving academic record…");
   try{
