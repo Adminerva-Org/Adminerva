@@ -74,7 +74,7 @@ function render(){
   const visible=schemes.filter(item=>showArchived.checked||item.status==="active");
   if(!visible.length){
     const empty=document.createElement("p");empty.className="text-sm text-slate-600 py-6 text-center md:col-span-2";
-    empty.textContent=showArchived.checked?"No grading schemes found.":"No active grading schemes yet.";
+    empty.textContent=showArchived.checked?"No grading policys found.":"No active grading policys yet.";
     list.append(empty);return;
   }
   for(const scheme of visible){
@@ -123,7 +123,7 @@ function updateTotal(){
 function openEditor(scheme=null){
   editing=scheme;
   form.reset();weights.replaceChildren();
-  el("gs-dialog-heading").textContent=scheme?"Edit grading scheme":"New grading scheme";
+  el("gs-dialog-heading").textContent=scheme?"Edit grading policy":"New grading policy";
   form.elements.name.value=scheme?.name||"";
   form.elements.description.value=scheme?.description||"";
   fillScopeOptions();
@@ -140,7 +140,7 @@ function openEditor(scheme=null){
 }
 function closeEditor(){if(dialog.open)dialog.close();editing=null;}
 async function load(){
-  setBusy(true,"Loading school grading schemes…");
+  setBusy(true,"Loading school grading policys…");
   try{
     const [schemeResult,programResult,subjectResult,sectionResult]=await Promise.all([
       scoped("list_schemes",{includeArchived:true}),
@@ -156,10 +156,10 @@ async function load(){
     sections=(sectionResult.items||[]).filter(item=>item.status==="active")
       .sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:"base"}));
     fillScopeOptions();render();
-    status.textContent=schemes.length+" grading scheme"+(schemes.length===1?"":"s")+" loaded.";
+    status.textContent=schemes.length+" grading policy"+(schemes.length===1?"":"s")+" loaded.";
   }catch(error){
     schemes=[];programs=[];subjects=[];render();
-    status.textContent=error?.message||"Grading schemes could not be loaded.";
+    status.textContent=error?.message||"Grading policys could not be loaded.";
   }finally{setBusy(false);}
 }
 async function changeStatus(scheme,action){
@@ -170,7 +170,7 @@ async function changeStatus(scheme,action){
   try{
     await scoped(action,{schemeId:scheme.schemeId,expectedRevision:scheme.revision});
     await load();
-  }catch(error){status.textContent=error?.message||"Grading scheme status was not changed.";}
+  }catch(error){status.textContent=error?.message||"Grading policy status was not changed.";}
   finally{setBusy(false);}
 }
 
@@ -209,10 +209,10 @@ form.addEventListener("submit",event=>{
     },
     settings:{categoryWeights,gradeComputation:form.elements.gradeComputation.value}
   };
-  setBusy(true,"Saving grading scheme…");el("gs-form-status").textContent="Saving…";
+  setBusy(true,"Saving grading policy…");el("gs-form-status").textContent="Saving…";
   void scoped("save_scheme",payload).then(async()=>{
     closeEditor();await load();
-  }).catch(error=>{el("gs-form-status").textContent=error?.message||"Grading scheme was not saved.";})
+  }).catch(error=>{el("gs-form-status").textContent=error?.message||"Grading policy was not saved.";})
     .finally(()=>setBusy(false));
 });
 
@@ -222,7 +222,7 @@ picker=createTenantSchoolPicker({
   onBeforeChange:async()=>{schemes=[];programs=[];subjects=[];sections=[];editing=null;render();},
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){
-      status.textContent="School administrator access is required to manage grading schemes.";return;
+      status.textContent="School administrator access is required to manage grading policys.";return;
     }
     void load();
   }
