@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="Manage school grading schemes used by Adminerva Class Records.">
-  <title>Grading schemes · Adminerva</title>
+  <title>Grading Policies · Adminerva</title>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
   <link rel="stylesheet" href="css/adminerva-ui.css?v=f8330e29a186">
@@ -32,7 +32,7 @@
     <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
       <div>
         <p class="text-xs font-extrabold uppercase tracking-widest text-cyan-300">School administration</p>
-        <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Class Record grading schemes</h1>
+        <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Grading Policies</h1>
         <p class="text-sm text-slate-200 mt-2 max-w-3xl">School-controlled category weights, transmutation and applicability for Class Records.</p>
       </div>
       <div id="gs-school-switcher" hidden class="w-full lg:w-auto lg:min-w-[230px]"></div>
@@ -42,12 +42,12 @@
   <section class="gs-panel">
     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
       <div>
-        <h2 class="text-lg font-extrabold">School presets</h2>
+        <h2 class="text-lg font-extrabold">School grading policies</h2>
         <p id="gs-status" class="text-sm text-slate-600 mt-1" role="status" aria-live="polite">Checking school administration access…</p>
       </div>
       <div class="flex flex-wrap gap-2 items-center">
         <label class="text-sm font-semibold flex items-center gap-2"><input id="gs-show-archived" type="checkbox"> Show archived</label>
-        <button id="gs-new" type="button" class="gs-btn primary" disabled>+ New scheme</button>
+        <button id="gs-new" type="button" class="gs-btn primary" disabled>+ New policy</button>
         <button id="gs-refresh" type="button" class="gs-btn" disabled>Refresh</button>
       </div>
     </div>
@@ -59,8 +59,8 @@
   <form id="gs-form" class="p-4 sm:p-5 bg-white">
     <div class="flex justify-between items-start gap-3">
       <div>
-        <p class="text-xs font-extrabold uppercase tracking-widest text-blue-700">School preset</p>
-        <h2 id="gs-dialog-heading" class="text-xl font-extrabold mt-1">New grading scheme</h2>
+        <p class="text-xs font-extrabold uppercase tracking-widest text-blue-700">School grading policy</p>
+        <h2 id="gs-dialog-heading" class="text-xl font-extrabold mt-1">New grading policy</h2>
       </div>
       <button id="gs-close" type="button" class="gs-btn">Close</button>
     </div>
