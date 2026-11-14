@@ -66,9 +66,11 @@ exports.schoolStudentProfile=onCall(callOptions,safeCallable(createSchoolStudent
 const {createSchoolStudioProjectService}=require("./school-studio-projects.js");
 const {createSchoolStudioSubmissionService}=require("./school-studio-submissions.js");
 const {createStudioAssessmentVariantService}=require("./studio-assessment-variants.js");
+const {createSchoolStudioAssessmentVariantService}=require("./school-studio-assessment-variants.js");
 exports.schoolStudioProjects=onCall(callOptions,safeCallable(createSchoolStudioProjectService({db})));
 exports.schoolStudioSubmissions=onCall(callOptions,safeCallable(createSchoolStudioSubmissionService({db})));
 exports.studioAssessmentVariant=onCall(callOptions,safeCallable(createStudioAssessmentVariantService({db,Timestamp})));
+exports.schoolStudioAssessmentVariant=onCall(callOptions,safeCallable(createSchoolStudioAssessmentVariantService({db})));
 const {createSchoolClassRecordService}=require("./school-class-record.js");
 exports.schoolClassRecord=onCall(callOptions,safeCallable(createSchoolClassRecordService({
   db,
