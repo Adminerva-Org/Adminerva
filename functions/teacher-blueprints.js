@@ -82,8 +82,9 @@ function serialize(doc,access) {
     rubric:data.rubric,personalization:personalizationContent(data.personalization),
     contentRevision:data.contentRevision,aclRevision:data.aclRevision,
     copiedFrom:data.copiedFrom||null,
-    sharedWithUids:access.uid===data.ownerUid?(Array.isArray(data.sharedWithUids)?data.sharedWithUids:[]):[],
-    canShare:access.uid===data.ownerUid,
+    sharedWithUids:(access.uid===data.ownerUid||access.platformOverride===true)?
+      (Array.isArray(data.sharedWithUids)?data.sharedWithUids:[]):[],
+    canShare:access.uid===data.ownerUid||access.platformOverride===true,
     updatedAt:data.updatedAt?.toMillis?.()||null
   };
 }
@@ -104,6 +105,7 @@ function createTeacherBlueprintService({db}) {
         deny("permission-denied","This school is not currently available for teacher work.");
     };
     const assertCurrentTeacher=member=>{
+      if(ctx.platformOverride)return;
       if(!member.exists||member.data().schoolId!==ctx.schoolId||member.data().status!=="active"||
          !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher"))
         deny("permission-denied","Your teaching access changed. Refresh and try again.");
@@ -112,11 +114,13 @@ function createTeacherBlueprintService({db}) {
     if(["personalization_status","personalization_import","personalization_activate"].includes(action)){
       const id=documentId(input.resourceId),ref=collection.doc(id);
       const blueprint=await ref.get();
-      if(!blueprint.exists||blueprint.data().schoolId!==ctx.schoolId||blueprint.data().ownerUid!==ctx.uid)
+      if(!blueprint.exists||blueprint.data().schoolId!==ctx.schoolId||
+         (!ctx.platformOverride&&blueprint.data().ownerUid!==ctx.uid))
         deny("permission-denied","Only the assessment owner can manage its private personalization pool.");
       if(blueprint.data().status!=="draft")
         deny("failed-precondition","Only a draft blueprint can manage a personalization pool.");
-      const current=blueprint.data(),config=personalizationContent(current.personalization);
+      const current=blueprint.data(),blueprintOwner=current.ownerUid,
+        config=personalizationContent(current.personalization);
       if(!config.enabled)
         deny("failed-precondition","Enable Personalized mode on this blueprint before managing variants.");
       const fingerprint=blueprintFingerprint(current);
@@ -148,7 +152,7 @@ function createTeacherBlueprintService({db}) {
         const clean=incoming.map(cleanPersonalizedVariant);
         await db.runTransaction(async tx=>{
           const [latest,pool]=await Promise.all([tx.get(ref),tx.get(poolRef)]);
-          if(!latest.exists||latest.data().ownerUid!==ctx.uid||
+          if(!latest.exists||(!ctx.platformOverride&&latest.data().ownerUid!==ctx.uid)||
              latest.data().contentRevision!==expectedRevision||
              blueprintFingerprint(latest.data())!==fingerprint)
             deny("failed-precondition","The blueprint changed while importing variants.");
@@ -167,11 +171,11 @@ function createTeacherBlueprintService({db}) {
             ids.push(variant.variantId);
             registry.push({scenarioKey:variant.scenarioKey,scenarioTitle:variant.scenarioTitle,summary:variant.summary});
             tx.create(poolRef.collection("variants").doc(variant.variantId),{
-              ...variant,schoolId:ctx.schoolId,ownerUid:ctx.uid,blueprintId:id,
+              ...variant,schoolId:ctx.schoolId,ownerUid:blueprintOwner,blueprintId:id,
               fingerprint,createdAt:FieldValue.serverTimestamp()
             });
           }
-          const payload={schoolId:ctx.schoolId,ownerUid:ctx.uid,blueprintId:id,
+          const payload={schoolId:ctx.schoolId,ownerUid:blueprintOwner,blueprintId:id,
             blueprintRevision:expectedRevision,fingerprint,variantIds:ids,scenarioRegistry:registry,
             count:ids.length,target:config.variantTarget,ready:false,updatedAt:FieldValue.serverTimestamp()};
           if(pool.exists)tx.update(poolRef,payload);else tx.create(poolRef,{...payload,createdAt:FieldValue.serverTimestamp()});
@@ -222,6 +226,11 @@ function createTeacherBlueprintService({db}) {
       return {id:ref.id,visibility:"private",contentRevision:1};
     }
     if(action==="list") {
+      if(ctx.platformOverride){
+        const all=await collection.limit(151).get();
+        return {items:all.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status!=="archived")
+          .slice(0,150).map(doc=>serialize(doc,ctx)),truncated:all.size===151};
+      }
       const [owned,schoolShared,individual]=await Promise.all([
         collection.where("ownerUid","==",ctx.uid).limit(50).get(),
         collection.where("visibility","==","school_teachers").limit(50).get(),
@@ -246,7 +255,8 @@ function createTeacherBlueprintService({db}) {
         const original=await tx.get(ref);
         assertCurrentTeacher(await tx.get(selfMemberRef));
         assertCurrentSchool(await tx.get(schoolRef));
-        if(!original.exists||original.data().schoolId!==ctx.schoolId||original.data().ownerUid!==ctx.uid)
+        if(!original.exists||original.data().schoolId!==ctx.schoolId||
+           (!ctx.platformOverride&&original.data().ownerUid!==ctx.uid))
           deny("permission-denied","Only the creator's authorized owner can change this blueprint.");
         if(original.data().status!=="draft")
           deny("failed-precondition","Only an undeployed draft blueprint may be changed.");
@@ -280,7 +290,8 @@ function createTeacherBlueprintService({db}) {
         const original=await tx.get(ref);
         assertCurrentTeacher(await tx.get(selfMemberRef));
         assertCurrentSchool(await tx.get(schoolRef));
-        if(!original.exists||original.data().schoolId!==ctx.schoolId||original.data().ownerUid!==ctx.uid)
+        if(!original.exists||original.data().schoolId!==ctx.schoolId||
+           (!ctx.platformOverride&&original.data().ownerUid!==ctx.uid))
           deny("permission-denied","Only the assessment owner can change sharing.");
         if(original.data().status==="archived")deny("failed-precondition","Archived work cannot be shared.");
         // All participant membership reads happen before writes.
@@ -302,7 +313,7 @@ function createTeacherBlueprintService({db}) {
         const original=await tx.get(source);
         assertCurrentTeacher(await tx.get(selfMemberRef));
         if(!original.exists||original.data().schoolId!==ctx.schoolId ||
-          original.data().status==="archived"||!canReadBlueprint(original.data(),ctx.uid))
+          original.data().status==="archived"||(!ctx.platformOverride&&!canReadBlueprint(original.data(),ctx.uid)))
           deny("permission-denied","This assessment is not shared with you.");
         const value=original.data();
         // Explicit allowlist: never inherit enrolments, grades, answers, student data, review grants or secrets.
