@@ -63,21 +63,46 @@ function createSchoolGradebookService({db}){
       lastCorrectedAt:doc.data().lastCorrectedAt?.toMillis?.()||null}))};
   }
   if(!ctx.roles.includes("teacher"))deny("permission-denied","Gradebook teacher access is required.");
-  const taskId=checkId(input.taskId,"Task ID",128),
-   studentUid=checkId(input.studentUid,"Student UID",128);
+  const taskId=checkId(input.taskId,"Task ID",128);
   const taskRef=db.doc(prefix+"assessments/"+taskId);
-  const gradeRef=grades.doc(hash(taskId,studentUid));
   const task=await taskRef.get();
   if(!task.exists||task.data().schoolId!==ctx.schoolId||
      (!ctx.platformOverride&&(task.data().reviewerUid||task.data().ownerUid)!==ctx.uid)||
      !["studio","github","text","link"].includes(task.data().submissionSource))
    deny("permission-denied","You are not the currently responsible teacher for this school assessment.");
-  const source=task.data().submissionSource;
+  const source=task.data().submissionSource,offeringId=task.data().offeringId;
+  if(input.action==="list_task_results"){
+    const grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,offeringId));
+    if(!ctx.platformOverride){
+      const [member,grant]=await Promise.all([memberRef.get(),grantRef.get()]);
+      if(!member.exists||member.data().status!=="active"||member.data().schoolId!==ctx.schoolId||
+         !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher")||
+         !grant.exists||grant.data().schoolId!==ctx.schoolId||grant.data().teacherUid!==ctx.uid||
+         grant.data().offeringId!==offeringId||grant.data().status!=="active")
+        deny("permission-denied","This assessment's result access is no longer assigned to you.");
+    }
+    const snap=await grades.where("taskId","==",taskId).limit(101).get();
+    if(snap.size===101)deny("resource-exhausted","Assessment results require pagination.");
+    const rows=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().offeringId===offeringId);
+    const people=await Promise.all(rows.map(doc=>db.doc(prefix+"people/"+doc.data().personId).get()));
+    return {taskId,results:rows.map((doc,index)=>{
+      const data=doc.data(),person=people[index];
+      return {
+        gradeId:doc.id,studentUid:data.studentUid,personId:data.personId,
+        studentName:person.exists&&person.data().schoolId===ctx.schoolId?person.data().displayName:"Student",
+        status:data.status,awarded:data.awarded,total:data.total,pending:data.pending||0,
+        evidenceType:data.evidenceType||source,submissionVersion:data.submissionVersion,
+        revision:data.revision||1,publishedAt:data.publishedAt?.toMillis?.()||null,
+        updatedAt:data.updatedAt?.toMillis?.()||null
+      };
+    })};
+  }
+  const studentUid=checkId(input.studentUid,"Student UID",128);
+  const gradeRef=grades.doc(hash(taskId,studentUid));
   const submissionCollection=source==="studio"?"studio_submissions":
     source==="github"?"github_evidence":"assessment_submissions";
   const submissionRef=db.doc(prefix+submissionCollection+"/"+
     hash(ctx.schoolId,taskId,studentUid));
-  const offeringId=task.data().offeringId;
   const evidenceDigest=data=>source==="studio"?data.contentDigest:
     source==="github"?data.evidenceDigest:data.submissionDigest;
   const gradeable=data=>source==="github"?
