@@ -54,7 +54,12 @@ export async function mountAccountContextSwitcher(root=document){
     const schoolField=field("View context");
     option(schoolField.select,"","System administration",{selected:!getSession(VIEW_SCHOOL)});
     const selectedSchool=getSession(VIEW_SCHOOL);
-    for(const school of schools)option(schoolField.select,school.schoolId,school.name||school.schoolId,{selected:school.schoolId===selectedSchool});
+    for(const school of schools){
+      const state=String(school.schoolState||"").trim();
+      const legacy=(school.compatibilityMode||"legacy_allowed")==="legacy_allowed";
+      const suffix=[state?state[0].toUpperCase()+state.slice(1):"",legacy?"legacy":"standard"].filter(Boolean).join(" · ");
+      option(schoolField.select,school.schoolId,(school.name||school.schoolId)+(suffix?" · "+suffix:""),{selected:school.schoolId===selectedSchool});
+    }
     host.append(schoolField.label);
 
     const modeField=field("School access mode");
