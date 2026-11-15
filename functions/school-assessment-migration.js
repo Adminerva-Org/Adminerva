@@ -113,6 +113,8 @@ function createSchoolAssessmentMigrationService({db}){
       const now=FieldValue.serverTimestamp();
       tx.create(targetRef,{
         title,description,instructions,rubric,checkingInstructions,
+        subject:"Computer Programming",assessmentType:clean(legacy.type||"Assessment",80),
+        defaultSubmissionSource:"github",
         personalization:personalized?{
           enabled:true,mode:"ai_blueprint_pool_v1",variantTarget:target,variationGuidance:guidance
         }:{enabled:false,mode:"standard",variantTarget:0,variationGuidance:""},
@@ -122,7 +124,7 @@ function createSchoolAssessmentMigrationService({db}){
         legacyImport:{
           assessmentId:id,assessmentFormat:clean(legacy.assessmentFormat||"",80),
           schemaVersion:Number(legacy.schemaVersion||0)||null,
-          origin:"repository_management"
+          origin:"repository_management",subject:"Computer Programming",defaultSubmissionSource:"github"
         },
         createdAt:now,updatedAt:now
       });
