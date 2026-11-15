@@ -123,3 +123,29 @@
 
 /* Reserve navigation height while role-aware links initialize. */
 .av-teacher-refresh #adminerva-nav:empty{min-height:63px;background:#10253d}
+
+
+/* Teacher-wide resilience: prevent horizontal UI spill and keep dialogs/actions usable on phones. */
+.av-teacher-refresh :is(main,section,article,aside,form,fieldset,.av-panel){min-width:0}
+.av-teacher-refresh :is(dialog,[role="dialog"],[aria-modal="true"]){
+  max-width:calc(100vw - 1rem);
+  max-height:calc(100dvh - 1rem);
+  overflow:auto;
+  overscroll-behavior:contain;
+}
+.av-teacher-refresh :is(button,a,summary){touch-action:manipulation}
+.av-teacher-refresh :is(.overflow-x-auto,.av-schedule-viewport){
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior-inline:contain;
+}
+@media(max-width:640px){
+  .av-teacher-refresh :is(.tl-actions,.av-review-links,.av-action-row,.av-toolbar-actions){
+    flex-wrap:wrap;
+    max-width:100%;
+  }
+  .av-teacher-refresh :is(.tl-actions,.av-review-links,.av-action-row,.av-toolbar-actions)>:is(button,a){
+    flex:1 1 auto;
+    min-height:42px;
+  }
+  .av-teacher-refresh dialog{margin:.5rem auto}
+}
