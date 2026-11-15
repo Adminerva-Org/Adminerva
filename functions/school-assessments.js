@@ -103,6 +103,9 @@ function createSchoolAssessmentService({db}){
     const frozen={
      title:original.title,description:original.description||"",
      instructions:original.instructions||"",
+     subject:original.subject||offering.data().subjectId||"General",
+     assessmentType:original.assessmentType||"Assessment",
+     defaultSubmissionSource:original.defaultSubmissionSource||source,
      rubric:Array.isArray(original.rubric)?original.rubric:[],
      rubricMax:Array.isArray(original.rubric)?
        original.rubric.reduce((sum,row)=>sum+Number(row.points||0),0):0
@@ -342,7 +345,9 @@ function createSchoolAssessmentService({db}){
    }
    return {assessments:docs.map(doc=>({
       taskId:doc.id,title:doc.data().title,description:doc.data().description||"",
-      instructions:doc.data().instructions||"",rubric:doc.data().rubric||[],
+      instructions:doc.data().instructions||"",subject:doc.data().subject||doc.data().subjectId||"General",
+      assessmentType:doc.data().assessmentType||"Assessment",
+      rubric:doc.data().rubric||[],
       rubricMax:doc.data().rubricMax||0,offeringId:doc.data().offeringId,
       yearId:doc.data().yearId,termId:doc.data().termId,
       subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,
@@ -389,7 +394,8 @@ function createSchoolAssessmentService({db}){
         ["archived","cancelled"].includes(lifecycle)||!offered.includes(task.offeringId))continue;
      const now=Date.now(),open=task.opensAt.toMillis(),due=task.dueAt.toMillis();
      results.push({taskId:doc.id,title:task.title,description:task.description||"",
-      instructions:task.instructions||"",rubric:task.rubric||[],
+      instructions:task.instructions||"",subject:task.subject||task.subjectId||"General",
+      assessmentType:task.assessmentType||"Assessment",rubric:task.rubric||[],
       rubricMax:task.rubricMax,offeringId:task.offeringId,
       submissionSource:task.submissionSource,
       personalizedTask:task.personalizedTask?.enabled===true?{
