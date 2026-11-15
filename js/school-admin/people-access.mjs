@@ -11,8 +11,21 @@ let after=null,loadingPeople=false,pendingWrite=false;
 let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferingId=null,peopleSearchTimer=null,importRows=[],importDigest=null,importPreview=null,importCommitted=false;
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
+const TAB_STATE_KEY="Adminerva_people_access_active_tab";
 let schoolReady=false;
-function activeTab(){return document.querySelector("[data-tab][aria-selected='true']")?.dataset.tab||"overview";}
+function rememberedTab(){
+  const hash=location.hash.slice(1);
+  if(tabNames.has(hash))return hash;
+  try{
+    const saved=sessionStorage.getItem(TAB_STATE_KEY);
+    if(tabNames.has(saved))return saved;
+  }catch{}
+  return "overview";
+}
+function rememberTab(name){
+  try{sessionStorage.setItem(TAB_STATE_KEY,name);}catch{}
+}
+function activeTab(){return document.querySelector("[data-tab][aria-selected='true']")?.dataset.tab||rememberedTab();}
 async function loadSelectedTab(name){
   if(!schoolReady||workspace.hidden)return;
   const task=name==="overview"?loadOverview:
@@ -36,8 +49,7 @@ function setTab(name,{remember=true}={}) {
     button.tabIndex=active?0:-1;
     get("pa-"+button.dataset.tab).hidden=!active;
   }
-  if(remember&&location.hash!=="#"+target)
-    history.replaceState(null,"","#"+target);
+  if(remember)rememberTab(target);
   if(schoolReady)void loadSelectedTab(target);
 }
 const directoryTabs=[...document.querySelectorAll(".pa-tabs [data-tab]")];
@@ -54,8 +66,9 @@ directoryTabs.forEach(button=>{
     directoryTabs[next].focus();
   });
 });
-window.addEventListener("hashchange",()=>setTab(location.hash.slice(1),{remember:false}));
-setTab(location.hash.slice(1),{remember:false});
+// Use the URL hash only as an initial deep-link hint. Internal tab changes stay
+// entirely in-page so the Adminerva shell/navigation never remounts.
+setTab(rememberedTab(),{remember:false});
 const picker=createTenantSchoolPicker({
   host:get("school-picker-host"),status,
   onBeforeChange:async()=>{
