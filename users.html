@@ -17,6 +17,7 @@
   <body
     class="av-directory-page bg-slate-50 font-sans text-slate-800 min-h-screen flex flex-col hidden"
     id="pageBody"
+    data-people-access-target="people"
   >
     <div id="adminerva-nav" data-module="admin" data-page="directory"></div>
 
@@ -38,8 +39,8 @@
       <nav class="av-setup-nav" aria-label="School configuration"><a href="school-admin.html">Overview</a><a href="users.html" aria-current="page">User directory</a><a href="teacher-accounts.html">Teachers</a><a href="manage-sections.html">Sections</a><a href="manage-programs.html">Tracks & pathways</a><a href="manage-subjects.html">Subjects</a></nav>
       <ol class="av-setup-steps" aria-label="School setup workflow"><li><a href="manage-sections.html"><strong>1. Define sections</strong><span>Create the exact class names.</span></a></li><li><a href="users.html" aria-current="step"><strong>2. Enroll students</strong><span>Import a roster with those section names.</span></a></li><li><a href="teacher-accounts.html"><strong>3. Assign teachers</strong><span>Choose who teaches each section.</span></a></li></ol>
       <div class="mb-4 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-sm text-slate-700">
-        <strong class="text-cyan-950">Adminerva 4.0 pilot:</strong>
-        Legacy roster and grading remain unchanged. Use <a class="font-bold underline text-cyan-800" href="school-pilot.html">Controlled Pilot</a> to review migration exceptions, or <a class="font-bold underline text-cyan-800" href="people-access.html#overview">People &amp; Access</a> for the canonical V4 directory.
+        <strong class="text-cyan-950">School-wide directory:</strong>
+        <a class="font-bold underline text-cyan-800" href="people-access.html#overview">People &amp; Access</a> is now the canonical place for students, staff, school access and class relationships. This legacy page remains available only while an administrator has not yet been adopted into the school-wide model.
       </div>
       <p id="directory-summary" class="av-status-message" role="status" aria-live="polite">Loading roster…</p>
       <div class="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
@@ -246,6 +247,7 @@
       </section>
     </main>
 
+    <script type="module" src="js/school-admin/legacy-directory-route.mjs?v=1.0.0"></script>
     <script src="js/core/adminerva-nav.js?v=072e6a6525fd"></script>
     <script type="module" src="js/settings/settings-user.js?v=4.0.1"></script>
     <script type="module" src="js/core/auth-guard.js?v=1.3.8"></script>
