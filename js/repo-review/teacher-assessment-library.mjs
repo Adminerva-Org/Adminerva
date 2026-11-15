@@ -148,7 +148,7 @@ function openLifecycle(task,action){
     reopen:["Reopen assessment","Allows new submissions again. If the prior deadline passed, set a new deadline."],
     archive:["Archive assessment","Removes the task from active student assignment lists while preserving submissions and grades."],
     restore_archive:["Restore archived assessment","Restores the task to its prior active/closed lifecycle state."],
-    cancel:["Cancel assessment","Allowed only when no Studio/GitHub submission or grade history exists."]
+    cancel:["Cancel assessment","Allowed only when no submission, evidence, or grade history exists."]
   };
   el("tl-lifecycle-heading").textContent=labels[action]?.[0]||"Update deployment";
   el("tl-lifecycle-help").textContent=labels[action]?.[1]||"";
@@ -162,7 +162,7 @@ function openLifecycle(task,action){
 }
 function showPreview(item){
   el("tl-preview-heading").textContent=item.title;
-  el("tl-preview-meta").textContent="Owner: "+(item.canShare?"You":item.ownerUid.slice(0,8))+" · "+item.visibility;
+  el("tl-preview-meta").textContent=(item.subject||"General")+" · "+(item.assessmentType||"Assessment")+" · "+sourceLabel(item.defaultSubmissionSource||"text")+" · "+(item.canShare?"Owned by you":"Shared by teacher "+item.ownerUid.slice(0,8))+" · "+item.visibility;
   el("tl-preview-description").textContent=item.description||"No description provided.";
   el("tl-preview-instructions").textContent=item.instructions||"No instructions provided.";
   const rubric=el("tl-preview-rubric");rubric.replaceChildren();
