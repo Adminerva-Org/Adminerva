@@ -12,6 +12,7 @@ on:
       - "js/core/owner-school-registry.mjs"
       - "js/core/navigation-ia.mjs"
       - "js/core/auth-guard-v4-pilot.js"
+      - "js/school-admin/people-access.mjs"
       - ".github/workflows/shared-ui-cache-bump.yml"
 
 permissions:
