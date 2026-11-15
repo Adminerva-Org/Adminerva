@@ -222,11 +222,18 @@
     <article id="ac-section-card" class="ac-panel" data-wizard-step="5" hidden>
       <div class="ac-card-head">
         <span class="ac-number">5</span>
-        <div><h2 class="font-extrabold text-lg">Sections</h2><p class="ac-muted mt-1">Assign each section to its division. The code is generated from the program and section name.</p></div>
+        <div><h2 class="font-extrabold text-lg">Sections</h2><p class="ac-muted mt-1">Assign each section to its division and grade level. Adminerva keeps the grade separate and generates a short readable system code.</p></div>
       </div>
       <form id="ac-section-form" class="grid gap-3 mt-3">
-        <label class="text-sm font-bold">Program / division<select name="programId" class="ac-input mt-1" required></select></label>
-        <label class="text-sm font-bold">Section name<input name="name" class="ac-input mt-1" maxlength="140" required placeholder="St. Isidore"></label>
+        <div class="ac-form-grid">
+          <label class="text-sm font-bold">Program / division<select name="programId" class="ac-input mt-1" required></select></label>
+          <label class="text-sm font-bold">Grade level
+            <select name="gradeLevel" class="ac-input mt-1" required>
+              <option value="">Choose grade level</option>
+            </select>
+          </label>
+        </div>
+        <label class="text-sm font-bold">Section name<input name="name" class="ac-input mt-1" maxlength="140" required placeholder="St. Isidore of Seville"></label>
         <details class="ac-advanced">
           <summary>Advanced: generated system code</summary>
           <label class="text-sm font-bold block mt-2">System code<input name="recordId" class="ac-input mt-1" maxlength="80" required></label>
@@ -283,6 +290,6 @@
 <script src="js/core/adminerva-loader.js?v=2cf96c86be01"></script>
 <script defer src="js/core/adminerva-nav.js?v=2cf96c86be01"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=2cf96c86be01"></script>
-<script type="module" src="js/school-admin/academic-configuration.mjs?v=ed4a71097970"></script>
+<script type="module" src="js/school-admin/academic-configuration.mjs?v=compact-section-id1"></script>
 </body>
 </html>
