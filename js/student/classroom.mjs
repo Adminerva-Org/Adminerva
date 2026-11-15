@@ -18,6 +18,13 @@ function programmingSubject(item){
   const name=subjectKey(item?.subject);
   return name.includes("computer programming")||name==="programming"||name.includes("programming");
 }
+function subjectPageFor(item){
+  const params=new URLSearchParams();
+  if(item?.subjectId)params.set("subjectId",item.subjectId);
+  if(item?.subject)params.set("subject",item.subject);
+  if(item?.offeringIds?.length===1)params.set("offeringId",item.offeringIds[0]);
+  return "student-subject.html"+(params.toString()?"?"+params.toString():"");
+}
 function queryFor(item){
   const params=new URLSearchParams();
   if(item?.subjectId)params.set("subjectId",item.subjectId);
@@ -56,32 +63,30 @@ function renderSelected(item){
   el("classroomAssignmentHint").textContent=programmingSubject(selected)?
     "Open current school tasks and migrated legacy programming assignments.":
     "Open current assignments for this subject.";
-  for(const button of el("classroomSubjects").querySelectorAll("[data-subject-id]")){
-    const active=button.dataset.subjectId===selected.subjectId;
-    button.setAttribute("aria-pressed",active?"true":"false");
-    button.classList.toggle("border-cyan-500",active);
-    button.classList.toggle("bg-cyan-50",active);
-    button.classList.toggle("border-slate-200",!active);
-    button.querySelector("[data-selected]")?.classList.toggle("hidden",!active);
+  for(const card of el("classroomSubjects").querySelectorAll("[data-subject-id]")){
+    const active=card.dataset.subjectId===selected.subjectId;
+    card.classList.toggle("border-cyan-500",active);card.classList.toggle("bg-cyan-50",active);
+    card.classList.toggle("border-slate-200",!active);
+    card.querySelector("[data-selected]")?.classList.toggle("hidden",!active);
   }
 }
 function renderSubjects(){
   const host=el("classroomSubjects");host.replaceChildren();
   for(const item of subjects){
-    const button=node("button","text-left rounded-xl border p-4 hover:border-cyan-400 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-cyan-500 transition","");button.type="button";
-    button.dataset.subjectId=item.subjectId;button.setAttribute("aria-pressed","false");
+    const card=node("a","text-left rounded-xl border p-4 hover:border-cyan-400 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-cyan-500 transition","");
+    card.href=subjectPageFor(item);card.dataset.subjectId=item.subjectId;
     const top=node("div","flex justify-between items-start gap-3");
     top.append(node("strong","text-base",item.subject));
-    const selectedBadge=node("span","hidden rounded-full bg-cyan-800 text-white text-[10px] font-extrabold px-2 py-1","SELECTED");
-    selectedBadge.dataset.selected="true";top.append(selectedBadge);button.append(top);
+    const selectedBadge=node("span","hidden rounded-full bg-cyan-800 text-white text-[10px] font-extrabold px-2 py-1","DEFAULT");
+    selectedBadge.dataset.selected="true";top.append(selectedBadge);card.append(top);
     const sections=[...new Set((item.classes||[]).map(row=>row.section).filter(Boolean))];
-    button.append(node("span","block text-xs text-slate-500 mt-2",
+    card.append(node("span","block text-xs text-slate-500 mt-2",
       sections.length?sections.join(" · "):item.legacy?"Default programming classroom":"Active school enrollment"));
     const count=item.assignmentCount;
-    if(Number.isFinite(count))button.append(node("span","block text-xs font-bold text-indigo-700 mt-3",
+    if(Number.isFinite(count))card.append(node("span","block text-xs font-bold text-indigo-700 mt-3",
       count+" current assignment"+(count===1?"":"s")));
-    button.addEventListener("click",()=>renderSelected(item));
-    host.append(button);
+    card.append(node("span","block text-sm font-extrabold text-cyan-800 mt-4","Open classroom →"));
+    host.append(card);
   }
   renderSelected(preferredSubject());
 }
