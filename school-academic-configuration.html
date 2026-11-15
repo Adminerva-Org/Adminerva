@@ -84,6 +84,7 @@
         <p class="text-xs font-extrabold uppercase tracking-widest text-cyan-300">School Administration</p>
         <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Academic Configuration</h1>
         <p class="text-sm text-slate-200 mt-2 max-w-3xl">Set up the school calendar and structure once. Adminerva now suggests school-year dates, names, codes and the next academic period so administrators do not have to maintain technical IDs manually.</p>
+        <p class="text-xs text-slate-300 mt-3"><a class="font-extrabold text-cyan-200 underline" href="school-academic-structure.html">Manage existing academic structure</a> after setup to edit saved programs, periods, subjects and sections without recreating them.</p>
       </div>
       <div id="ac-school-switcher" hidden class="w-full lg:w-auto lg:min-w-[230px]"></div>
     </div>
@@ -233,6 +234,10 @@
             </select>
           </label>
         </div>
+        <label id="ac-section-pathway-wrap" class="text-sm font-bold" hidden>Track / Strand / Pathway
+          <input name="pathway" class="ac-input mt-1" maxlength="80" placeholder="e.g. ICT, STEM, HUMSS, ABM, TVL-ICT">
+          <span class="ac-helper">Shown only for Senior High School. Leave blank if the section is not grouped by a track, strand or pathway.</span>
+        </label>
         <label class="text-sm font-bold">Section name<input name="name" class="ac-input mt-1" maxlength="140" required placeholder="St. Isidore of Seville"></label>
         <details class="ac-advanced">
           <summary>Advanced: generated system code</summary>
@@ -290,6 +295,6 @@
 <script src="js/core/adminerva-loader.js?v=2cf96c86be01"></script>
 <script defer src="js/core/adminerva-nav.js?v=2cf96c86be01"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=2cf96c86be01"></script>
-<script type="module" src="js/school-admin/academic-configuration.mjs?v=sned-ece-levels1"></script>
+<script type="module" src="js/school-admin/academic-configuration.mjs?v=shs-pathway1"></script>
 </body>
 </html>
