@@ -70,7 +70,15 @@ function createSchoolClassroomStreamService({db}){
         authorName:item.authorName||"Teacher",createdAt:millis(item.createdAt),
         updatedAt:millis(item.updatedAt),revision:Number(item.revision||1)
       }));
-    return {offeringId,canPost:authority.canTeach,posts:items};
+    const grantSnap=await db.collection(prefix+"staff_assignments").where("offeringId","==",offeringId).limit(31).get();
+    const activeTeachers=grantSnap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&doc.data().status==="active");
+    const members=await Promise.all(activeTeachers.map(doc=>db.doc(prefix+"memberships/"+doc.data().teacherUid).get()));
+    const teachers=members.map((member,index)=>{
+      const grant=activeTeachers[index].data(),data=member.exists?member.data():null;
+      return {uid:grant.teacherUid,name:data&&data.schoolId===ctx.schoolId?
+        clean(data.displayName||data.name||"Teacher",140):"Teacher"};
+    });
+    return {offeringId,canPost:authority.canTeach,teachers,posts:items};
   }
 
   if(!authority.canTeach)
