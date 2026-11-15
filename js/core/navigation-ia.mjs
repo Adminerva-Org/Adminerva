@@ -361,7 +361,10 @@ export function buildNavigationIA(ctx){
     const raw=String(value||""),query=raw.includes("?")?raw.split("?")[1].split("#")[0]:"";
     if(!query)return true;
     const expected=new URLSearchParams(query),actual=new URLSearchParams(location.search);
-    for(const [key,value] of expected)if(actual.get(key)!==value)return false;
+    for(const [key,value] of expected){
+      if(key==="view"&&!actual.has("view")&&value==="review")continue;
+      if(actual.get(key)!==value)return false;
+    }
     return true;
   };
   const itemMatches=item=>item[2]&&routePath(item[2])===route&&routeQueryMatches(item[2]);
