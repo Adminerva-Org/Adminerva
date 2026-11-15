@@ -74,7 +74,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const hasSchoolStudent = root.dataset.schoolStudent === "true";
   const v4OnlyTeacher = root.dataset.v4OnlyTeacher === "true";
   const v4OnlyStudent = root.dataset.v4OnlyStudent === "true";
-  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=7e7f869272e4");
+  const {buildNavigationIA}=await import("./navigation-ia.mjs?v=20261115-nav1");
   const ia=buildNavigationIA({
     isStudent,isSuperAdmin,isSchoolAdmin,isPlatformOwner,
     hasSchoolTeacher,hasSchoolStudent,v4OnlyTeacher,v4OnlyStudent
@@ -106,8 +106,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const oldBadgeMarkup=tip=>`<span class="av-old-badge" title="${escapeHTML(tip||"Older workflow retained for current users.")}">OLD</span>`;
   const workspaceLinkMarkup = item => {
     const active=item.id===activeWorkspaceId,health=workspaceHealth(item);
-    const quickItems=ia.studentView?item.groups.flatMap(group=>group.items)
-      .filter(entry=>entry[2]&&!entry[3]?.future).slice(0,6):[];
+    const quickItemLimit=ia.studentView?6:10;
+    const quickItems=item.groups.flatMap(group=>group.items)
+      .filter(entry=>entry[2]&&!entry[3]?.future)
+      .filter((entry,index,all)=>all.findIndex(candidate=>candidate[2]===entry[2])===index)
+      .slice(0,quickItemLimit);
     return `<article class="av-workspace-card${active?" is-active":""}">
       <a href="${item.route}" class="av-workspace-card-main"${active?' aria-current="location"':""}>
         <span class="av-workspace-card-heading">
