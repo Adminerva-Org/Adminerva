@@ -262,6 +262,9 @@ body { min-width: 0; }
 .av-with-footer { display: flex; flex-direction: column; min-height: 100dvh; }
 .av-site-footer { margin-top: auto; padding: 1.25rem clamp(1rem,4vw,3rem); width: 100%; align-self: stretch; flex: none; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; background: #0d1b2d; color: #cbd5e1; border-top: 1px solid #26435a; font-size: .875rem; }
 .av-footer-brand { font-weight: 800; color: #4dd6e8; letter-spacing: .12em; }
+.av-footer-version { color: #bae6fd !important; font-weight: 750; text-decoration: none !important; border: 1px solid #31516b; border-radius: .55rem; padding: .35rem .55rem !important; white-space: nowrap; }
+.av-footer-version:hover { border-color: #67e8f9; color: #ecfeff !important; }
+@media(max-width:640px){.av-site-footer{padding:.7rem 1rem;gap:.55rem}.av-footer-version{order:3;width:100%;text-align:center}.av-site-footer nav{gap:.35rem .8rem;font-size:.78rem}}
 .av-footer-credits { flex-basis: 100%; color: #94a3b8; font-size: .75rem; text-align: center; }
 .av-site-footer nav { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem 1.25rem; }
 .av-site-footer a,.av-site-footer button { color: inherit; text-decoration: underline; text-underline-offset: .25em; padding: .35rem 0; background: none; border: 0; }
