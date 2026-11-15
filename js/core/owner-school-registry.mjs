@@ -11,6 +11,11 @@ const say=text=>status.textContent=text;
 async function execute(action,details={}){
   return (await api({action,...details})).data;
 }
+function isLegacyProvisioning(school=selected){
+  if(!school)return false;
+  return school.provisioningMode==="legacy_migration"||
+    (school.provisioningMode!=="standard"&&(school.compatibilityMode||"legacy_allowed")==="legacy_allowed");
+}
 function updateCutoverAvailability(){
   const button=byId("owner-cutover")?.querySelector('button[type="submit"]');
   if(!button||!selected)return;
@@ -20,39 +25,103 @@ function updateCutoverAvailability(){
 }
 function choose(id){
   selected=schools.find(s=>s.schoolId===id)||null;
-  for(const button of schoolList.querySelectorAll("button"))button.setAttribute("aria-pressed",String(button.dataset.schoolId===id));
+  for(const button of schoolList.querySelectorAll("button"))
+    button.setAttribute("aria-pressed",String(button.dataset.schoolId===id));
   actions.hidden=!selected;
   if(!selected)return;
+
+  const legacy=isLegacyProvisioning(selected);
   byId("owner-current").textContent=selected.displayName;
-  byId("owner-current-status").textContent=selected.schoolId+" · "+selected.state+" · revision "+selected.revision;
-  const pilotSummary=byId("owner-pilot-summary"),pilotJump=byId("owner-pilot-jump");
-  if(pilotSummary){
-    if(selected.state==="draft")pilotSummary.textContent="Draft · The controlled pilot has not started. Review People & Access and migration exceptions, then use Start controlled pilot below.";
-    else if(selected.state==="pilot")pilotSummary.textContent="Pilot active · Legacy compatibility remains available and this is not production authorization.";
-    else if(selected.state==="active")pilotSummary.textContent="Institution active · Controlled-pilot startup is no longer the current transition.";
-    else pilotSummary.textContent=selected.state+" · Review the institution state before changing pilot access.";
+  byId("owner-current-status").textContent=selected.schoolId+" · "+selected.state+" · "+
+    (legacy?"legacy pilot / migration":"standard school setup")+" · revision "+selected.revision;
+
+  const lifecycle=byId("owner-pilot-command"),
+    lifecycleLabel=lifecycle?.querySelector("p"),lifecycleHeading=lifecycle?.querySelector("h3"),
+    summary=byId("owner-pilot-summary"),jump=byId("owner-pilot-jump");
+  if(lifecycleLabel)lifecycleLabel.textContent=legacy?"Legacy school lifecycle":"School lifecycle";
+  if(lifecycleHeading)lifecycleHeading.textContent=legacy?"Pilot / migration state":"School setup & activation";
+
+  if(legacy){
+    if(summary){
+      if(selected.state==="draft")summary.textContent="Draft legacy tenant · Review migration readiness before starting the controlled pilot.";
+      else if(selected.state==="pilot")summary.textContent="Legacy pilot active · Continue Quarter 3 work here; legacy compatibility remains available.";
+      else if(selected.state==="active")summary.textContent="Legacy institution active · Review migration/cutover controls before changing compatibility.";
+      else summary.textContent=selected.state+" · Review the historical institution lifecycle.";
+    }
+    if(jump){
+      jump.textContent=selected.state==="draft"?"Review legacy pilot setup":
+        selected.state==="pilot"?"Review legacy pilot":"Review legacy institution controls";
+      jump.hidden=selected.state==="archived";
+    }
+  }else{
+    if(summary){
+      if(selected.state==="draft")summary.textContent="Draft · Complete the school setup checklist, then activate the school. No pilot or migration cutover is required.";
+      else if(selected.state==="active")summary.textContent="Active · This is a standard school tenant for normal teacher and student operations.";
+      else if(selected.state==="suspended")summary.textContent="Suspended · Existing school data is preserved while normal access is paused.";
+      else summary.textContent=selected.state+" · Standard school provisioning.";
+    }
+    if(jump){
+      jump.textContent=selected.state==="draft"?"Continue school setup":"Review school setup";
+      jump.hidden=selected.state==="archived";
+    }
   }
-  if(pilotJump){
-    pilotJump.textContent=selected.state==="draft"?"Review & start controlled pilot":
-      selected.state==="pilot"?"Review / close controlled pilot":"Review institution controls";
-    pilotJump.hidden=selected.state==="archived";
-  }
-  byId("owner-start-pilot").hidden=selected.state!=="draft";
-  byId("owner-end-pilot").hidden=selected.state!=="pilot";
-  byId("owner-activate").hidden=!["draft","pilot"].includes(selected.state);
+
+  const standard=byId("owner-standard-setup");
+  if(standard)standard.hidden=legacy;
+  for(const node of document.querySelectorAll("[data-legacy-provisioning]"))node.hidden=!legacy;
+
+  byId("owner-start-pilot").hidden=!legacy||selected.state!=="draft";
+  byId("owner-end-pilot").hidden=!legacy||selected.state!=="pilot";
+  byId("owner-activate").hidden=!legacy||!["draft","pilot"].includes(selected.state);
   byId("owner-suspend").hidden=selected.state!=="active";
   byId("owner-grant").hidden=selected.state==="archived";
-  byId("owner-cutover").hidden=selected.compatibilityMode==="v4_only";
-  byId("owner-cutover-rollback").hidden=selected.compatibilityMode!=="v4_only";
-  byId("owner-cutover-mode").textContent="Compatibility: "+(selected.compatibilityMode||"legacy_allowed").replace("_"," ");
+  byId("owner-cutover").hidden=!legacy||selected.compatibilityMode==="v4_only";
+  byId("owner-cutover-rollback").hidden=!legacy||selected.compatibilityMode!=="v4_only";
+  byId("owner-cutover-mode").textContent=legacy?
+    "Legacy compatibility: "+(selected.compatibilityMode||"legacy_allowed").replace("_"," "):"";
+
   latestReadiness=null;latestCutoverPackage=null;
   const packageSection=byId("owner-cutover-package-section");
   if(packageSection)packageSection.hidden=selected.schoolId!=="mcs-manila";
-  updateCutoverAvailability();
-  void loadReadiness(selected.schoolId);
-  void loadCutoverPackage(selected.schoolId);
+
+  if(legacy){
+    void loadReadiness(selected.schoolId);
+    void loadCutoverPackage(selected.schoolId);
+    void loadCutoverDecisions(selected.schoolId);
+  }else{
+    void loadStandardSetup(selected.schoolId);
+  }
   void loadGovernanceRoles(selected.schoolId);
-  void loadCutoverDecisions(selected.schoolId);
+}
+async function loadStandardSetup(schoolId=selected?.schoolId){
+  const host=byId("owner-setup-readiness"),form=byId("owner-activate-standard");
+  if(!host||!schoolId)return null;
+  host.textContent="Checking school setup…";
+  try{
+    const result=await execute("get_setup_status",{schoolId});
+    if(selected?.schoolId!==schoolId)return null;
+    host.replaceChildren();
+    const summary=document.createElement("p");summary.style.fontWeight="800";
+    summary.textContent=result.ready?
+      (result.state==="active"?"School setup is complete and the school is active.":"Required setup is complete. The school can be activated."):
+      "Complete "+result.checks.filter(check=>!check.ok).length+" setup item(s) before activation.";
+    host.append(summary);
+    const list=document.createElement("ol");
+    list.style.cssText="margin:.7rem 0 0;padding-left:1.25rem;display:grid;gap:.35rem";
+    for(const check of result.checks||[]){
+      const item=document.createElement("li");
+      item.textContent=(check.ok?"✓ ":"○ ")+check.label+" — "+check.detail;
+      item.style.color=check.ok?"#166534":"#475569";
+      list.append(item);
+    }
+    host.append(list);
+    if(form)form.hidden=!(result.ready&&result.state==="draft");
+    return result;
+  }catch(error){
+    if(selected?.schoolId===schoolId)host.textContent=error?.message||"School setup status could not be loaded.";
+    if(form)form.hidden=true;
+    return null;
+  }
 }
 async function loadReadiness(schoolId=selected?.schoolId){
   const host=byId("owner-readiness");
@@ -169,7 +238,8 @@ async function refresh(prefer=selected?.schoolId){
     button.type="button";button.dataset.schoolId=school.schoolId;
     const name=document.createElement("strong");name.textContent=school.displayName;
     const meta=document.createElement("span");meta.className="own-muted";
-    meta.textContent=" · "+school.state+" · "+school.schoolId+" · "+String(school.compatibilityMode||"legacy_allowed").replace("_"," ");
+    const legacy=isLegacyProvisioning(school);
+    meta.textContent=" · "+school.state+" · "+school.schoolId+" · "+(legacy?"legacy pilot / migration":"standard school");
     button.append(name,meta);
     button.addEventListener("click",()=>choose(school.schoolId));
     item.append(button);schoolList.append(item);
@@ -224,10 +294,13 @@ function enterSchoolPreview(role="schooladmin"){
 }
 byId("owner-pilot-jump")?.addEventListener("click",()=>{
   if(!selected)return;
-  const target=selected.state==="draft"?byId("owner-start-pilot"):
-    selected.state==="pilot"?byId("owner-end-pilot"):byId("owner-actions");
+  const legacy=isLegacyProvisioning(selected);
+  const target=legacy?
+    (selected.state==="draft"?byId("owner-start-pilot"):
+      selected.state==="pilot"?byId("owner-end-pilot"):byId("owner-actions")):
+    byId("owner-standard-setup");
   target?.scrollIntoView({behavior:"smooth",block:"center"});
-  const focusable=target?.querySelector("input,button,select,textarea");
+  const focusable=target?.querySelector("input,button,select,textarea,a");
   setTimeout(()=>focusable?.focus?.(),250);
 });
 byId("owner-onboarding-start")?.addEventListener("click",()=>{
@@ -269,8 +342,10 @@ byId("owner-onboarding-admin")?.addEventListener("submit",event=>{
 byId("owner-onboarding-skip-admin")?.addEventListener("click",()=>showOnboardingStep(3));
 byId("owner-onboarding-policies")?.addEventListener("click",()=>{
   closeOnboarding();
-  byId("owner-cutover-decisions")?.scrollIntoView({behavior:"smooth",block:"start"});
-  byId("owner-cutover-decisions")?.querySelector("input,select,textarea")?.focus();
+  if(onboardingSchoolId)choose(onboardingSchoolId);
+  const target=byId("owner-standard-setup");
+  target?.scrollIntoView({behavior:"smooth",block:"start"});
+  target?.querySelector("a,button")?.focus();
 });
 byId("owner-onboarding-preview")?.addEventListener("click",()=>enterSchoolPreview("schooladmin"));
 byId("owner-governance-create").addEventListener("submit",event=>{
@@ -370,6 +445,15 @@ byId("owner-cutover-decisions").addEventListener("submit",event=>{
   };
   void submit(f,"save_cutover_decisions",{schoolId:selected.schoolId,decisions,
     reason:String(d.get("reason")||"").trim()});
+});
+byId("owner-setup-refresh")?.addEventListener("click",()=>{
+  if(selected&&!isLegacyProvisioning(selected))void loadStandardSetup(selected.schoolId);
+});
+byId("owner-activate-standard")?.addEventListener("submit",event=>{
+  event.preventDefault();if(!selected||isLegacyProvisioning(selected))return;
+  const f=event.currentTarget,d=new FormData(f);
+  if(!confirm("Activate "+selected.displayName+" for normal school operations?"))return;
+  void submit(f,"activate_standard",{schoolId:selected.schoolId,reason:String(d.get("reason")||"").trim()});
 });
 byId("owner-readiness-refresh").addEventListener("click",()=>{
   if(selected)void loadReadiness(selected.schoolId);
