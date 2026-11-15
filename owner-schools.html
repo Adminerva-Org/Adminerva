@@ -22,8 +22,15 @@
     .own-list button[aria-pressed="true"]{border-color:#1d4ed8;box-shadow:0 0 0 2px #93c5fd}
     .own-muted{color:#475569;font-size:.92rem}
     .own-confirm{display:flex;gap:.6rem;align-items:flex-start;padding:.5rem 0}
+    .own-onboard{margin-top:1rem;padding:1rem;border:2px solid #93c5fd;border-radius:12px;background:#eff6ff}
+    .own-onboard-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.4rem;margin:.8rem 0 1rem}
+    .own-onboard-step{padding:.55rem;border:1px solid #bfdbfe;border-radius:9px;background:white;font-size:.78rem;font-weight:800;color:#475569}
+    .own-onboard-step[data-active="true"]{background:#1d4ed8;color:white;border-color:#1d4ed8}
+    .own-onboard-step[data-complete="true"]{background:#ecfdf5;color:#166534;border-color:#86efac}
+    .own-onboard-actions{display:flex;gap:.5rem;flex-wrap:wrap}
+    .own-helper{display:block;margin:-.65rem 0 .85rem;color:#64748b;font-size:.78rem}
     [hidden]{display:none!important}
-    @media(max-width:740px){.own-grid{grid-template-columns:minmax(0,1fr)}}
+    @media(max-width:740px){.own-grid{grid-template-columns:minmax(0,1fr)}.own-onboard-steps{grid-template-columns:1fr}.own-onboard-actions .own-button{width:100%}}
   </style>
 </head>
 <body id="pageBody" class="hidden" style="background:#f1f5f9;color:#0f172a;font-family:system-ui,sans-serif">
@@ -39,12 +46,45 @@
   <section class="own-card">
    <h2 style="font-size:1.2rem;font-weight:750">Schools</h2>
    <div id="owner-schools" class="own-list" role="list"></div>
-   <h3 style="font-weight:700;margin:1.5rem 0 .5rem">Create school draft</h3>
-   <form id="owner-create">
-    <label>School ID (permanent)<input class="own-field" name="schoolId" pattern="[a-z][a-z0-9-]{1,63}" maxlength="64" required placeholder="example-school"></label>
-    <label>Institution name<input class="own-field" name="displayName" maxlength="120" minlength="3" required></label>
-    <button type="submit" class="own-button">Create draft</button>
-   </form>
+   <h3 style="font-weight:700;margin:1.5rem 0 .35rem">Register a school</h3>
+   <p class="own-muted">Use the guided onboarding flow so registration can continue directly into administrator assignment and platform configuration.</p>
+   <button id="owner-onboarding-start" type="button" class="own-button" style="width:100%;margin-top:.65rem">Start school onboarding</button>
+   <section id="owner-onboarding" class="own-onboard" hidden aria-labelledby="owner-onboarding-title">
+    <div style="display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start">
+      <div><p class="own-muted" style="font-weight:800;text-transform:uppercase;letter-spacing:.04em">New school</p><h3 id="owner-onboarding-title" style="font-weight:800">Continuous onboarding</h3></div>
+      <button id="owner-onboarding-close" type="button" class="own-button" style="background:#475569;min-height:36px;padding:.35rem .6rem">Close</button>
+    </div>
+    <div class="own-onboard-steps" aria-label="School onboarding progress">
+      <div class="own-onboard-step" data-onboard-indicator="1">1 · Institution</div>
+      <div class="own-onboard-step" data-onboard-indicator="2">2 · Administrator</div>
+      <div class="own-onboard-step" data-onboard-indicator="3">3 · Continue setup</div>
+    </div>
+    <form id="owner-create" data-onboard-step="1">
+      <label>Institution name<input class="own-field" name="displayName" maxlength="120" minlength="3" required autocomplete="organization" placeholder="e.g. Manila Cathedral School"></label>
+      <label>Permanent school ID<input class="own-field" name="schoolId" pattern="[a-z][a-z0-9-]{1,63}" maxlength="64" required placeholder="manila-cathedral-school"></label>
+      <span class="own-helper">Adminerva suggests this from the institution name. Change it only if the permanent tenant ID needs a different value.</span>
+      <button type="submit" class="own-button">Create school &amp; continue</button>
+    </form>
+    <form id="owner-onboarding-admin" data-onboard-step="2" hidden>
+      <p class="own-muted">Assign the first verified School Administrator now, or continue and assign one later from this school's controls.</p>
+      <label>Existing verified account UID<input class="own-field" name="targetUid" minlength="8" maxlength="128" autocomplete="off" required></label>
+      <label>Reason<input class="own-field" name="reason" minlength="12" maxlength="500" required value="Initial school administrator designation"></label>
+      <div class="own-onboard-actions">
+        <button type="submit" class="own-button">Assign administrator &amp; continue</button>
+        <button id="owner-onboarding-skip-admin" type="button" class="own-button" style="background:#475569">Assign later</button>
+      </div>
+    </form>
+    <section data-onboard-step="3" hidden>
+      <h4 style="font-weight:800">School tenant created</h4>
+      <p id="owner-onboarding-summary" class="own-muted" style="margin:.35rem 0 .8rem">Continue platform configuration for this school.</p>
+      <div class="own-onboard-actions">
+        <button id="owner-onboarding-policies" type="button" class="own-button">Continue platform configuration</button>
+        <button id="owner-onboarding-preview" type="button" class="own-button" style="background:#0f766e">Preview as School Administrator</button>
+        <button id="owner-onboarding-done" type="button" class="own-button" style="background:#475569">Finish for now</button>
+      </div>
+      <p class="own-helper" style="margin:.8rem 0 0">School role preview is a temporary System Admin test session. School changes made while previewing are not saved.</p>
+    </section>
+   </section>
   </section>
   <section id="owner-actions" class="own-card" hidden>
    <h2 id="owner-current" style="font-size:1.2rem;font-weight:750"></h2>
