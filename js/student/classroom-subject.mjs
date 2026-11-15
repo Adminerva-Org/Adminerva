@@ -223,7 +223,7 @@ el("subjectOfferingSelect").addEventListener("change",event=>{
 el("subjectRefresh").addEventListener("click",()=>void refresh());
 
 picker=createTenantSchoolPicker({
-  host:document.createElement("div"),status:null,
+  host:el("subjectSchoolSwitcher"),status:null,
   onBeforeChange:async()=>{if(busy)throw new Error("Finish loading before switching schools.");++epoch;},
   onReady:scope=>{if(scope.current)void refresh();}
 });
