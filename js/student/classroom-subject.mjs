@@ -1,6 +1,7 @@
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
+import {loadLegacyProgrammingClassroom} from "./legacy-classroom-stream.mjs?v=1.0.0";
 
 const functions=getFunctions(app,"asia-southeast1");
 const profileApi=httpsCallable(functions,"schoolStudentProfile");
@@ -15,7 +16,8 @@ const params=new URLSearchParams(location.search);
 const requestedOfferingId=params.get("offeringId")||"";
 const requestedSubjectId=params.get("subjectId")||"";
 const requestedSubjectName=params.get("subject")||"";
-let picker=null,profile=null,current=null,busy=false,epoch=0;
+const forceLegacy=params.get("legacy")==="1";
+let picker=null,profile=null,current=null,busy=false,epoch=0,legacyMode=false;
 
 function make(tag,cls,text){
   const node=document.createElement(tag);if(cls)node.className=cls;
@@ -54,18 +56,23 @@ function resolveClass(classes){
 }
 function courseLabel(item){return [item.section,item.term,item.year].filter(Boolean).join(" · ");}
 function updateLinks(){
-  const q=subjectQuery(),assign="student-assessments.html"+q,grades="school-student-grades.html"+q,projects="school-student-projects.html"+q;
+  const q=subjectQuery(),assign="student-assessments.html"+q;
+  const grades=legacyMode?assign:"school-student-grades.html"+q;
+  const projects=legacyMode?"student-dashboard.html":"school-student-projects.html"+q;
   for(const id of ["subjectAssignmentsLink","subjectAllWorkLink","subjectQuickAssignments"])el(id).href=assign;
   for(const id of ["subjectGradesLink","subjectQuickGrades"])el(id).href=grades;
   for(const id of ["subjectProjectsLink","subjectQuickProjects"])el(id).href=projects;
+  el("subjectGradesLink").textContent=legacyMode?"Results":"Grades";
+  el("subjectQuickGrades").firstChild.textContent=legacyMode?"Results ":"My Grades ";
   const studio=el("subjectQuickStudio");
-  studio.href=current?.offeringId?"student-playground.html?offeringId="+encodeURIComponent(current.offeringId):"student-playground.html";
+  studio.href=current?.offeringId&&!legacyMode?"student-playground.html?offeringId="+encodeURIComponent(current.offeringId):"student-playground.html";
 }
 function renderHeader(){
   el("subjectClassroomTitle").textContent=current?.subject||"Subject";
   el("subjectClassroomMeta").textContent=courseLabel(current)||"Active school classroom";
   el("subjectClassroomEyebrow").textContent=(current?.section||"Classroom")+" · Student stream";
   el("subjectLegacyNote").classList.toggle("hidden",!isProgramming());
+  if(legacyMode)el("subjectLegacyNote").innerHTML="<strong>Existing Adminerva programming classroom</strong><p class='mt-1'>This stream is using your current legacy class records, assignments, submissions and published feedback. Teacher announcements will appear here automatically after your verified school enrollment is linked.</p>";
   const same=(profile?.classes||[]).filter(item=>item.subjectId===current?.subjectId);
   const wrap=el("subjectOfferingWrap"),select=el("subjectOfferingSelect");
   select.replaceChildren();
@@ -108,7 +115,9 @@ function renderSummary(tasks,statuses,grades,posts){
     summaryCard(announcements,"Announcements","Teacher posts")
   );
 }
-function taskHref(task){return "student-assessments.html"+subjectQuery()+"#"+encodeURIComponent(task.taskId);}
+function taskHref(task){
+  const q=subjectQuery();return "student-assessments.html"+q+"#"+encodeURIComponent(task.taskId);
+}
 function assignmentCard(task,statusRow,grade){
   const state=stateFor(task,statusRow,grade),card=make("article","rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5");
   const top=make("div","flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3"),identity=make("div","min-w-0");
@@ -126,7 +135,7 @@ function assignmentCard(task,statusRow,grade){
   }
   const actions=make("div","mt-4 flex flex-wrap gap-2");
   const open=make("a","rounded-lg bg-indigo-700 text-white px-4 py-2.5 text-sm font-bold","Open classwork →");open.href=taskHref(task);actions.append(open);
-  if(grade){const result=make("a","rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-900 px-4 py-2.5 text-sm font-bold","View result "+grade.awarded+" / "+grade.total);result.href="school-student-grades.html"+subjectQuery();actions.append(result);}
+  if(grade){const result=make("a","rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-900 px-4 py-2.5 text-sm font-bold","View result "+grade.awarded+" / "+grade.total);result.href=legacyMode?taskHref(task):"school-student-grades.html"+subjectQuery();actions.append(result);}
   card.append(actions);return card;
 }
 function postCard(post,pinned=false){
@@ -148,7 +157,7 @@ function gradeCard(grade,task){
     make("p","text-sm font-bold text-emerald-900 mt-2",grade.awarded+" / "+grade.total),
     make("p","text-xs text-slate-500 mt-1","Published "+date(grade.publishedAt)));
   if(grade.feedback)card.append(make("p","text-sm text-emerald-950 mt-3 line-clamp-3",grade.feedback));
-  const link=make("a","inline-block mt-4 text-sm font-bold text-emerald-900 underline","View in My Grades →");link.href="school-student-grades.html"+subjectQuery();card.append(link);return card;
+  const link=make("a","inline-block mt-4 text-sm font-bold text-emerald-900 underline",legacyMode?"Open assignment result →":"View in My Grades →");link.href=legacyMode&&task?taskHref(task):"school-student-grades.html"+subjectQuery();card.append(link);return card;
 }
 function renderUpcoming(tasks,statuses,grades){
   const host=el("subjectUpcoming");host.replaceChildren();
@@ -190,6 +199,26 @@ async function loadStatuses(tasks){
   }));
   return map;
 }
+async function refreshLegacy(){
+  if(busy)return;
+  const turn=++epoch;busy=true;legacyMode=true;el("subjectRefresh").disabled=true;setStatus("Loading your existing Computer Programming classroom…");
+  try{
+    const result=await loadLegacyProgrammingClassroom();if(turn!==epoch)return;
+    profile={classes:result.classes||[]};current=resolveClass(profile.classes);
+    if(!current){
+      setStatus("Your existing Adminerva student record is not linked to a programming section yet.",true);
+      renderSummary([],new Map(),new Map(),[]);renderUpcoming([],new Map(),new Map());renderStream([],[],new Map(),new Map());return;
+    }
+    renderHeader();
+    const tasks=result.tasks||[],statuses=result.statuses||new Map(),grades=result.grades||new Map(),posts=[];
+    renderSummary(tasks,statuses,grades,posts);renderUpcoming(tasks,statuses,grades);renderStream(posts,tasks,statuses,grades);
+    el("subjectClassroomMeta").textContent=[courseLabel(current),"Existing Adminerva class"].filter(Boolean).join(" · ");
+    setStatus(tasks.length||grades.size?"Existing programming classroom loaded. Announcements will join this stream after verified school access is linked.":"Your programming classroom is ready. No current assignments were found.");
+  }catch(error){
+    if(turn===epoch)setStatus(error?.message||"Your existing programming classroom could not be loaded.",true);
+  }finally{if(turn===epoch){busy=false;el("subjectRefresh").disabled=false;}}
+}
+
 async function refresh(){
   if(!picker?.scope.current||busy)return;
   const turn=++epoch;busy=true;el("subjectRefresh").disabled=true;setStatus("Loading your classroom stream…");
@@ -222,7 +251,7 @@ el("subjectOfferingSelect").addEventListener("change",event=>{
   if(!selected)return;const q=new URLSearchParams();q.set("subjectId",selected.subjectId);q.set("subject",selected.subject);q.set("offeringId",selected.offeringId);
   location.href="student-subject.html?"+q.toString();
 });
-el("subjectRefresh").addEventListener("click",()=>void refresh());
+el("subjectRefresh").addEventListener("click",()=>void (legacyMode?refreshLegacy():refresh()));
 
 picker=createTenantSchoolPicker({
   host:el("subjectSchoolSwitcher"),status:null,
@@ -231,7 +260,16 @@ picker=createTenantSchoolPicker({
 });
 await auth.authStateReady();
 try{
-  const state=await picker.load();
-  if(!auth.currentUser)setStatus("Sign in with your student account to open this classroom.",true);
-  else if(state?.state==="choose_school")setStatus("Choose your active school from Student Home before opening a classroom.",true);
-}catch(error){setStatus(error?.message||"Verified school classroom access is unavailable.",true);}
+  if(forceLegacy){
+    if(!auth.currentUser)setStatus("Sign in with your student account to open this classroom.",true);
+    else await refreshLegacy();
+  }else{
+    const state=await picker.load();
+    if(!auth.currentUser)setStatus("Sign in with your student account to open this classroom.",true);
+    else if(state?.state==="no_school")await refreshLegacy();
+    else if(state?.state==="choose_school")setStatus("Choose your active school to load this subject. Your existing programming classroom remains available from All subjects.");
+  }
+}catch(error){
+  if(auth.currentUser&&isProgramming({subject:requestedSubjectName||"Computer Programming"}))await refreshLegacy();
+  else setStatus(error?.message||"Verified school classroom access is unavailable.",true);
+}
