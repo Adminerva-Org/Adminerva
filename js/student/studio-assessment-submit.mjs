@@ -303,7 +303,13 @@ if(button){
     }catch(error){
       notice("Submission not confirmed: "+String(error?.message||"Submission failed")+
         ". Your project remains saved. Reload the assessment status before retrying.");
-    }finally{busy=false;confirmButton.disabled=false;choose.disabled=false;loading();syncExamChoice();}
+    }finally{
+      busy=false;confirmButton.disabled=false;
+      const linkedId=linkedAssessmentId();
+      choose.disabled=Boolean(linkedId&&[...choices.values()].some(choice=>
+        (choice.mode==="v4"?choice.task.taskId:choice.assessment.id)===linkedId));
+      loading();syncExamChoice();
+    }
   });
   onAuthStateChanged(auth,user=>{
     if(dialog.open&&openedUser&&openedUser!==user?.uid){
