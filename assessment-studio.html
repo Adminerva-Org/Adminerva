@@ -17,36 +17,52 @@
     <link rel="stylesheet" href="css/teacher-ux.css?v=20261115-nav1" />
 </head>
   <body class="av-teacher-refresh bg-gray-100 font-sans min-h-screen flex flex-col">
-    <div id="adminerva-nav" data-module="repo" data-page="studio"></div>
+    <div id="adminerva-nav" data-module="assessment" data-page="assessment-library"></div>
     <script defer src="js/core/adminerva-nav.js?v=20261115-assessment1"></script>
 
-    <div class="av-educator-layout"><aside class="av-educator-nav" data-educator-hub-nav data-current="studio"></aside><div class="av-educator-content">
-    <div class="max-w-screen-xl mx-auto w-full p-6 mt-4 flex-1">
-      <div
-        class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-200 min-h-[24rem]"
-      >
-        <div class="flex justify-between items-end mb-6 border-b pb-4">
-          <div>
-            <h2 class="text-2xl font-bold text-gray-800">Assessment Studio</h2>
-            <p class="text-sm text-gray-500 mt-1">
-              Design assessment blueprints and schedule deployments.
-            </p>
+    <main class="max-w-screen-xl mx-auto w-full px-4 sm:px-6 py-6 flex-1">
+      <section class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden min-h-[32rem]">
+        <header class="bg-slate-900 text-white p-5 sm:p-6">
+          <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
+            <div>
+              <p class="text-xs uppercase tracking-[.18em] font-bold text-cyan-300">Teacher assessment workspace</p>
+              <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Assessment Studio</h1>
+              <p class="text-sm text-slate-300 mt-2 max-w-3xl">Create, share, deploy, review and reuse school assessments from one workspace. Repository-era assessment tools remain available in the Legacy tab.</p>
+            </div>
+            <button id="tl-new-assessment" type="button"
+              class="bg-blue-600 text-white px-5 py-2.5 rounded-lg font-bold hover:bg-blue-500 transition shadow flex items-center justify-center gap-2">
+              <span class="text-xl leading-none">+</span> New Assessment
+            </button>
           </div>
-          <button
-            onclick="openCreateModal()"
-            class="bg-blue-600 text-white px-6 py-2.5 rounded font-bold hover:bg-blue-700 transition shadow flex items-center gap-2"
-          >
-            <span class="text-xl leading-none">+</span> New Blueprint
-          </button>
-        </div>
-        <div
-          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-          id="assessmentGrid"
-        ></div>
-      </div>
-    </div>
+        </header>
 
-    </div></div>
+        <nav id="assessmentWorkspaceTabs" class="border-b border-slate-200 bg-white px-3 sm:px-5 py-3 flex gap-2 overflow-x-auto" aria-label="Assessment Studio views">
+          <button type="button" data-filter="mine" aria-pressed="true" class="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold aria-pressed:bg-blue-600 aria-pressed:text-white aria-pressed:border-blue-600">My Assessments</button>
+          <button type="button" data-filter="shared" aria-pressed="false" class="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold aria-pressed:bg-blue-600 aria-pressed:text-white aria-pressed:border-blue-600">Shared with Me</button>
+          <button type="button" data-filter="school" aria-pressed="false" class="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold aria-pressed:bg-blue-600 aria-pressed:text-white aria-pressed:border-blue-600">School Library</button>
+          <button type="button" data-filter="deployed" aria-pressed="false" class="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold aria-pressed:bg-blue-600 aria-pressed:text-white aria-pressed:border-blue-600">Deployed Tasks</button>
+          <button id="assessment-repository-tab" type="button" aria-pressed="false" class="shrink-0 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-bold text-amber-900">Repository Legacy</button>
+        </nav>
+
+        <section id="schoolAssessmentWorkspace" class="p-4 sm:p-6">
+          <div id="schoolAssessmentStudioHost"></div>
+        </section>
+
+        <section id="legacyRepositoryWorkspace" hidden class="p-4 sm:p-6">
+          <div class="mb-5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 border-b border-slate-200 pb-4">
+            <div>
+              <p class="text-xs uppercase tracking-wider font-bold text-amber-700">Compatibility workspace</p>
+              <h2 class="text-xl font-extrabold text-slate-900 mt-1">Repository-era Assessments</h2>
+              <p class="text-sm text-slate-600 mt-1 max-w-2xl">Existing GitHub/repository assessment blueprints remain editable here for active legacy classes. New general assessments should use the school Assessment Studio tabs.</p>
+            </div>
+            <button onclick="openCreateModal()" class="bg-slate-800 text-white px-5 py-2.5 rounded-lg font-bold hover:bg-slate-700 transition shadow flex items-center justify-center gap-2">
+              <span class="text-xl leading-none">+</span> New Legacy Blueprint
+            </button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="assessmentGrid"></div>
+        </section>
+      </section>
+    </main>
 
     <!-- VIEW ASSESSMENT MODAL -->
     <div
@@ -476,8 +492,8 @@
     <!-- Core Scripts -->
     <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
     <script type="module" src="js/core/auth-guard-v4-pilot.js?v=8169bc1f73b0"></script>
-    <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.2"></script>
-    <script type="module" src="js/repo-review/assessment-studio.js?v=3.0.14"></script>
+    <script type="module" src="js/assessment/assessment-studio-library-shell.mjs?v=20261115-studio-shell1"></script>
+    <script type="module" src="js/repo-review/assessment-studio.js?v=3.0.15"></script>
     <div id="assessmentToastRegion" class="fixed right-4 top-4 z-[220] flex w-[min(92vw,24rem)] flex-col gap-2 pointer-events-none" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
