@@ -47,7 +47,10 @@
   <div class="tl-grid">
    <section class="tl-card" aria-label="Assessment list">
     <div id="tl-list" role="list"></div>
-    <button id="tl-refresh" class="tl-action alt" type="button">Refresh library</button>
+    <div class="tl-actions">
+      <button id="tl-refresh" class="tl-action alt" type="button">Refresh library</button>
+      <button id="tl-import-legacy" class="tl-action alt" type="button">Import Repository assessments</button>
+    </div>
    </section>
    <form class="tl-card" id="tl-create">
     <h2 style="font-size:1.2rem;font-weight:750">New private blueprint</h2>
@@ -80,6 +83,17 @@
   </div>
  </section>
 </main>
+<dialog id="tl-legacy-dialog" class="tl-dialog" aria-labelledby="tl-legacy-heading">
+ <div class="tl-dialog-inner">
+  <h2 id="tl-legacy-heading" style="font-size:1.3rem;font-weight:750">Import Repository Management assessments</h2>
+  <p class="tl-muted">This copies only the assessment blueprint into the general Assessment Library. Historical repository deployments, submissions, evidence and grades remain unchanged.</p>
+  <p id="tl-legacy-status" class="tl-muted" role="status" aria-live="polite">Loading your legacy assessments…</p>
+  <div id="tl-legacy-list" class="grid gap-2 my-3"></div>
+  <div class="tl-actions">
+    <button id="tl-legacy-close" type="button" class="tl-action alt">Close</button>
+  </div>
+ </div>
+</dialog>
 <dialog id="tl-share-dialog" class="tl-dialog" aria-labelledby="tl-share-heading">
  <form id="tl-share-form" class="tl-dialog-inner">
   <h2 id="tl-share-heading" style="font-size:1.3rem;font-weight:750">Share assessment</h2>
