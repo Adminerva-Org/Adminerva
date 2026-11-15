@@ -9,40 +9,53 @@ export function buildNavigationIA(ctx){
   const ws=(id,label,route,description,groups)=>({id,label,route,description,groups});
 
   const student=scope=>{
-    const assignments="student-assessments.html";
-    const grades=scope.hasSchoolStudent?"school-student-grades.html":null;
+    const currentParams=new URLSearchParams(location.search);
+    const subjectParams=new URLSearchParams();
+    for(const key of ["subjectId","subject","offeringId","legacy"]){
+      const value=currentParams.get(key);if(value)subjectParams.set(key,value);
+    }
+    const withSubject=route=>{
+      const query=subjectParams.toString();if(!query)return route;
+      return route+(route.includes("?")?"&":"?")+query;
+    };
+    const hasSubjectContext=subjectParams.has("subjectId")||subjectParams.has("subject")||subjectParams.has("offeringId");
+    const streamRoute=hasSubjectContext||currentParams.get("legacy")==="1"
+      ?withSubject("student-subject.html")
+      :"student-classroom.html";
+    const assignments=withSubject("student-assessments.html");
+    const grades=scope.hasSchoolStudent?withSubject("school-student-grades.html"):null;
+    const projectHub=scope.hasSchoolStudent?withSubject("school-student-projects.html"):"student-dashboard.html";
     const settings=scope.hasSchoolStudent?"school-student-settings.html":"student-settings.html";
     return [
-      ws("classroom","Adminerva Classroom","student-classroom.html?v=20261115-stream3","Choose a subject, then enter its classroom stream, classwork, grades and project tools",[
-        group("Assignments",[
-          needs("assignments","Assignments",assignments,"Unified student assignment workspace. Verified school tasks and existing programming assignments are consolidated here."),
-          ...(grades?[live("my-grades","My Grades",grades,"Teacher-released school grades")]:[]),
-          needs("classroom-stream","Subject Stream","student-classroom.html?v=20261115-stream3","Choose a subject to view announcements, class activity, assignments and released results."),
-          future("ebooks","E-books","Class materials and presentations · Future development"),
-          future("calendar","School Calendar","School events, deadlines and academic calendar · Future development")
+      ws("classroom","Classroom","student-classroom.html","Choose a subject, follow its stream, complete classwork and review results",[
+        group("Classroom",[
+          needs("subject-stream","Stream",streamRoute,"Subject announcements, newly deployed work, feedback and classroom activity."),
+          future("calendar","Calendar","Subject and school deadlines · Future development")
         ]),
-        group("Projects & Repository",[
-          old("repo-projects","Project Hub / Repository Projects","student-dashboard.html","OLD project and repository workflow retained because current classes still use it."),
-          ...(scope.hasSchoolStudent?[needs("school-projects","Adminerva Project Hub","school-student-projects.html","Newer school project workflow; still being integrated with Classroom and Studio.")]:[]),
-          old("repo-settings","Repository Settings","student-settings.html","OLD repository/GitHub settings retained for students still working on repository assignments.")
+        group("Classwork",[
+          needs("assignments","Assignments",assignments,"Unified student assignment workspace for current school tasks and existing programming assignments."),
+          ...(grades?[live("my-grades","My Grades",grades,"Teacher-released school grades")]:[]),
+          future("materials","Materials","Class materials, presentations and e-books · Future development")
+        ]),
+        group("Projects & Tools",[
+          scope.hasSchoolStudent
+            ?needs("project-hub","Project Hub",projectHub,"School-scoped projects, repository activity and Adminerva Studio projects.")
+            :old("project-hub","Project Hub",projectHub,"Existing repository project workflow retained for current programming classes."),
+          old("repo-settings","Repository Settings","student-settings.html","Repository/GitHub settings retained for programming assignments that still use GitHub evidence.")
         ])
       ]),
-      ws("games","Adminerva Games","student-practice.html","Practice challenges and subject learning games",[
-        group("Games",[
-          needs("programming","Computer Programming Games","student-practice.html","Active programming arcade with themed games, shared mission progress, rankings and skill-path filters. Campaign progression and richer game-specific interactions remain in development."),
-          future("science","Science Game"),future("english","English Game"),future("ap","AP Game"),
-          future("math","Math Game"),future("values","Values Game"),future("filipino","Filipino Game"),
-          future("quiz-bee","General Subject Quiz Bee")
+      ws("games","Games","student-practice.html","Practice challenges and subject learning games",[
+        group("Practice",[
+          needs("programming","Computer Programming Games","student-practice.html","Active programming arcade with themed games, mission progress, rankings and skill-path filters."),
+          future("other-subject-games","Other Subject Games","Science, English, AP, Mathematics, Values and Filipino · Future development"),
+          future("quiz-bee","Quiz Bee","General subject quiz competition · Future development")
         ])
       ]),
-      ws("laboratory","Adminerva Laboratory","student-playground.html","Interactive subject laboratories and creation workspaces",[
-        group("Laboratories",[
-          needs("studio","Adminerva Studio","student-playground.html","Browser-based programming IDE; active and currently used, with further IDE/workflow enhancements planned."),
-          old("xml-lab","XML Layout Lab","student-xml-lab.html","OLD specialized layout laboratory retained for existing student activities."),
-          future("adventure","Adminerva Adventure","Maps and history information for AP subjects · Future development"),
-          future("experiments","Adminerva Experiments","Science subject experiments · Future development"),
-          future("language","Adminerva Language Workshop","English and Filipino language workshop · Future development"),
-          future("lab-other","Other Laboratories","Reserved for future subject laboratories")
+      ws("laboratory","Laboratory","student-playground.html","Interactive subject laboratories and creation workspaces",[
+        group("Create & Experiment",[
+          needs("studio","Adminerva Studio","student-playground.html","Browser-based programming IDE and assignment workspace."),
+          old("xml-lab","XML Layout Lab","student-xml-lab.html","Older specialized layout laboratory retained for existing activities."),
+          future("future-labs","Other Laboratories","Science, AP and language laboratories · Future development")
         ])
       ]),
       ws("student-services","Student Services",settings,"Student information, requests, documents, finance and welfare services",[
@@ -52,18 +65,10 @@ export function buildNavigationIA(ctx){
           future("student-documents","Documents & Certificates","Student records, certificates and credentials · Future development"),
           future("student-clearance","Clearance","School clearance workflow · Future development")
         ]),
-        group("Requests",[
+        group("Requests & Services",[
           future("document-requests","Document Requests","Certificates, records and registrar requests · Future development"),
           future("student-forms","Forms & Requests","School forms and student service requests · Future development"),
           future("guidance","Guidance & Counseling","Guidance appointments and records · Future development")
-        ]),
-        group("School Services",[
-          future("billing","Billing & Payments","Student billing and payment history · Future development"),
-          future("scholarships","Scholarships & Aid"),
-          future("clinic","Clinic / Health Record","School clinic and health information · Future development"),
-          future("library-account","Library Account"),
-          future("canteen-account","Cafeteria / Canteen Account"),
-          future("transport","Transportation")
         ])
       ]),
       ws("student-other","Other","student-support.html","Support, documentation and policies",[
