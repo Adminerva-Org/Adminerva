@@ -225,10 +225,16 @@ async function buildModel({db,resolveUserByEmail,ctx}){
         blocked=true;addIssue(issues,"canonical_auth_collision","integrity",group.names[0],
           "The school person record is linked to a different account.",{personId,targetUid:group.uid});
       }
-      if(group.uid&&!existingPerson.authUid&&existingPerson.migration?.source!=="mcs_legacy_v3"){
-        blocked=true;addIssue(issues,"unverified_existing_person_link","integrity",group.names[0],
-          "An existing school person occupies the deterministic identity record but has no verified legacy migration provenance. Link it through the reviewed invitation/recovery workflow instead.",
-          {personId,targetUid:group.uid});
+      if(group.uid&&!existingPerson.authUid){
+        const email=verifiedEmailByUid.get(group.uid);
+        const expectedImportHash=email&&kind?sha(kind+"\0email:"+email):null;
+        const trustedImport=Boolean(expectedImportHash&&existingPerson.importIdentityHash===expectedImportHash&&
+          personId==="imp_"+expectedImportHash.slice(0,40));
+        if(existingPerson.migration?.source!=="mcs_legacy_v3"&&!trustedImport){
+          blocked=true;addIssue(issues,"unverified_existing_person_link","integrity",group.names[0],
+            "An existing school person matches the deterministic identity slot but has no verified legacy/import identity provenance. Link it through the reviewed invitation/recovery workflow instead.",
+            {personId,targetUid:group.uid});
+        }
       }
     }
     const member=group.uid?memberByUid.get(group.uid)||null:null;
@@ -544,11 +550,12 @@ function createSchoolLegacyDirectoryAdoptionService({db,resolveUserByEmail}){
            normalizeEmail(account.email)!==initialEmail)
           deny("failed-precondition","Approval requires the same enabled, verified Firebase account as the legacy request.");
       }
-      let personId=null,personRef=null;
+      let personId=null,personRef=null,expectedImportHash=null;
       if(decision==="approved"){
         const kind=role==="student"?"student":"staff";
         const stableId=stablePersonId(targetUid);
-        const importedId="imp_"+sha(kind+"\0email:"+initialEmail).slice(0,40);
+        expectedImportHash=sha(kind+"\0email:"+initialEmail);
+        const importedId="imp_"+expectedImportHash.slice(0,40);
         const [stablePerson,importedPerson]=await Promise.all([
           db.doc("schools/"+ctx.schoolId+"/people/"+stableId).get(),
           db.doc("schools/"+ctx.schoolId+"/people/"+importedId).get()
@@ -574,6 +581,9 @@ function createSchoolLegacyDirectoryAdoptionService({db,resolveUserByEmail}){
           if(person.exists&&(person.data().schoolId!==ctx.schoolId||person.data().kind!==expectedKind||
              (person.data().authUid&&person.data().authUid!==targetUid)))
             deny("failed-precondition","The verified account conflicts with an existing school person record.");
+          if(person.exists&&!person.data().authUid&&person.id.startsWith("imp_")&&
+             person.data().importIdentityHash!==expectedImportHash)
+            deny("failed-precondition","The imported school person identity does not match this verified access request.");
           if(member.exists){
             const prior=member.data();
             if(prior.schoolId!==ctx.schoolId||prior.status==="suspended")
