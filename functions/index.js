@@ -30,16 +30,28 @@ const legacySetup=createLegacySchoolSetup({db,FieldValue,resolveUserByEmail:emai
 const callOptions={region:"asia-southeast1",maxInstances:3,concurrency:10,timeoutSeconds:120,cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
 const PLATFORM_PREVIEW_MUTATION=/^(create|update|upsert|edit|change|delete|archive|publish|unpublish|save|set|assign|grant|revoke|suspend|restore|import|deploy|submit|grade|review|approve|reject|reopen|close|start|end|activate|record|apply|write|link|unlink|accept|invite|enroll|remove|add|sync|finalize|release|lock|unlock|mark|request|cancel|reset|clear|purge|migrate|adopt|withdraw|return|enable|disable|refresh)/i;
 async function rejectPlatformPreviewMutation(request,{allowPlatformSchoolWrites=false}={}){
-  if(allowPlatformSchoolWrites)return;
+  if(allowPlatformSchoolWrites)return null;
   const uid=request?.auth?.uid,schoolId=String(request?.data?.schoolId||"").trim(),
     action=String(request?.data?.action||"").trim();
-  if(!uid||!schoolId||!action||!PLATFORM_PREVIEW_MUTATION.test(action))return;
+  if(!uid||!schoolId||!action||!PLATFORM_PREVIEW_MUTATION.test(action))return null;
   const authority=await platformAuthority({db,request});
-  if(authority.platformAdmin)
-    throw new HttpsError("failed-precondition",
-      "System Admin role test is temporary. This school change was not saved. Exit role test to perform platform-level administration.");
+  if(!authority.platformAdmin)return null;
+  if(String(request?.data?.platformMode||"").trim().toLowerCase()==="assist")
+    return {assist:true,uid,schoolId,action};
+  throw new HttpsError("failed-precondition",
+    "System Admin role preview is temporary. This school change was not saved. Choose Assist school for real, audited administrative changes.");
 }
-function safeCallable(handler,options={}){return async request=>{try{await rejectPlatformPreviewMutation(request,options);return await handler(request);}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
+function safeCallable(handler,options={}){return async request=>{try{
+  const platformContext=await rejectPlatformPreviewMutation(request,options);
+  const result=await handler(request);
+  if(platformContext?.assist){
+    db.collection("platform_admin_assistance_audit").add({
+      actorUid:platformContext.uid,schoolId:platformContext.schoolId,action:platformContext.action,
+      source:"system_admin_assist",createdAt:FieldValue.serverTimestamp()
+    }).catch(error=>console.warn("System Admin assist audit write failed",{code:error.code||"unknown"}));
+  }
+  return result;
+}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
 async function legacyMcsCompatibilityAllowed(){
   const school=await db.doc("platform_schools/mcs-manila").get();
   return !school.exists||school.data().compatibilityMode!=="v4_only";
