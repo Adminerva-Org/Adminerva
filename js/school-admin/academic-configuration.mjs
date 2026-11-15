@@ -37,10 +37,15 @@ function notify(message,tone="info"){
   clearTimeout(toastTimer);host.textContent=message;host.dataset.tone=tone;host.hidden=false;
   toastTimer=setTimeout(()=>{host.hidden=true;},tone==="error"?7000:3500);
 }
+function platformModePayload(){
+  try{
+    return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?{platformMode:"assist"}:{};
+  }catch{return {};}
+}
 function scoped(action,details={}){
   if(!picker?.scope.current)return Promise.reject(new Error("Choose a verified school first."));
   const lease=picker.scope.lease();
-  return api({schoolId:lease.schoolId,action,...details}).then(response=>{
+  return api({schoolId:lease.schoolId,action,...platformModePayload(),...details}).then(response=>{
     picker.scope.assertLease(lease);
     return response.data;
   });
@@ -430,7 +435,7 @@ async function createCatalog(form,kind,extra=()=>({})){
     say(message);notify(message,"error");form.elements.name?.focus();return false;
   }
   const details={kind,...data,...extra(data)};
-  if(inSystemAdminPreview()){
+  if(inSystemAdminPreview()&&!document.getElementById("adminerva-nav")?.dataset.platformAssistMode){
     const preview={...details,id:data.recordId,status:"active",preview:true};
     delete preview.kind;delete preview.recordId;
     source.push(preview);
