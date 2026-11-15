@@ -31,6 +31,11 @@ function reusableContent(input) {
   const title=cleanText(input.title,140,"Title",{required:true});
   const description=cleanText(input.description||"",2000,"Description");
   const instructions=cleanText(input.instructions||"",20000,"Instructions");
+  const subject=cleanText(input.subject||"General",120,"Subject",{required:true});
+  const assessmentType=cleanText(input.assessmentType||"Assessment",80,"Assessment type",{required:true});
+  const defaultSubmissionSource=String(input.defaultSubmissionSource||"text");
+  if(!["text","link","studio","github"].includes(defaultSubmissionSource))
+    deny("invalid-argument","Choose a supported default submission method.");
   const rubric=Array.isArray(input.rubric)?input.rubric:[];
   if(rubric.length>20)deny("invalid-argument","Limit the assessment rubric to 20 criteria.");
   const criteria=rubric.map(item=>{
@@ -41,8 +46,8 @@ function reusableContent(input) {
       deny("invalid-argument","Each criterion must have between 1 and 100 points.");
     return {name,points};
   });
-  return {title,description,instructions,rubric:criteria,
-    personalization:personalizationContent(input.personalization)};
+  return {title,description,instructions,subject,assessmentType,defaultSubmissionSource,
+    rubric:criteria,personalization:personalizationContent(input.personalization)};
 }
 function privateCheckingContent(input={}) {
   return cleanText(input?.checkingInstructions||"",8000,"Teacher checking instructions");
@@ -82,6 +87,8 @@ function serialize(doc,access) {
     id:doc.id,schoolId:data.schoolId,ownerUid:data.ownerUid,
     creatorUid:data.creatorUid,visibility:data.visibility,
     title:data.title,description:data.description,instructions:data.instructions,
+    subject:data.subject||"General",assessmentType:data.assessmentType||"Assessment",
+    defaultSubmissionSource:data.defaultSubmissionSource||"text",
     rubric:data.rubric,personalization:personalizationContent(data.personalization),
     checkingInstructions:(access.uid===data.ownerUid||access.platformOverride===true)?String(data.checkingInstructions||""):"",
     contentRevision:data.contentRevision,aclRevision:data.aclRevision,
