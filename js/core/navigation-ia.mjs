@@ -240,7 +240,7 @@ export function buildNavigationIA(ctx){
       repository(),
       ws("assessment","Assessment","teacher-assessment-library.html","General-subject assessment and checking workflows",[
         group("Assessment",[
-          needs("assessment-studio","Assessment Studio","teacher-assessment-library.html","Active general-subject assessment authoring; submission and checking workflows are still being expanded."),
+          needs("assessment-studio","Assessment Library","teacher-assessment-library.html","Active general-subject assessment authoring, personalization and deployment management; submission and checking workflows are still being expanded."),
           future("assessment-inbox","Submission Inbox","General-subject submission inbox · Future development")
         ]),
         group("Assessment Checking",[
