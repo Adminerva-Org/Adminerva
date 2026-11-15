@@ -1,11 +1,11 @@
 "use strict";
 /** Tenant-tagged per-user notification feed writer for V4 school workflows. */
 const {FieldValue}=require("firebase-admin/firestore");
-const allowedTypes=new Set(["assessment","submission","grade","grading","issue","reclaim"]);
+const allowedTypes=new Set(["assessment","submission","grade","grading","issue","reclaim","announcement"]);
 const allowedPages=new Set([
   "student-assessments.html","gradebook.html","teacher-assessment-library.html",
   "reclaim-inbox.html","people-access.html","issues.html","student-playground.html",
-  "school-support.html","school-gradebook.html"
+  "school-support.html","school-gradebook.html","student-subject.html"
 ]);
 function cleanId(value){return String(value||"event").replace(/[^A-Za-z0-9_-]/g,"_").slice(0,180);}
 function safeTarget(value){
