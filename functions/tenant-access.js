@@ -8,6 +8,18 @@ class TenantAccessError extends Error {
   constructor(code, message) { super(message); this.code=code; this.name="TenantAccessError"; }
 }
 const VALID_ROLES=new Set(["student","teacher","school_admin"]);
+const LEGACY_PLATFORM_ADMIN_EMAILS=new Set(["babaynike2013@gmail.com"]);
+function verifiedAuthEmail(request){
+  if(request?.auth?.token?.email_verified!==true)return "";
+  return String(request?.auth?.token?.email||"").trim().toLowerCase();
+}
+function legacyPlatformAdmin(request){
+  return LEGACY_PLATFORM_ADMIN_EMAILS.has(verifiedAuthEmail(request));
+}
+function activePlatformGrant(snapshot){
+  const data=snapshot?.exists?snapshot.data():null;
+  return Boolean(data?.status==="active"&&data?.role==="platform_admin");
+}
 function checkedSchoolId(value) {
   if(typeof value!=="string" || !/^[a-z][a-z0-9-]{1,63}$/.test(value))
     throw new TenantAccessError("invalid-argument","Select a valid school.");
@@ -33,8 +45,8 @@ async function getSchoolContext({db,request,schoolId,roles=[],allowDraftAdmin=fa
   const data=school.exists?school.data():null;
   const grant=member.exists?member.data():null;
   const memberRoles=activeRoles(grant);
-  const platformOverride=Boolean(platform.exists&&platform.data().status==="active"&&
-    platform.data().role==="platform_admin"&&data&&["draft","pilot","active","suspended"].includes(data.state));
+  const platformOverride=Boolean((activePlatformGrant(platform)||legacyPlatformAdmin(request))&&
+    data&&["draft","pilot","active","suspended"].includes(data.state));
   if(platformOverride){
     const overrideRoles=["school_admin","teacher","student"];
     return Object.freeze({uid,schoolId:id,roles:overrideRoles,membershipRevision:0,
@@ -52,13 +64,14 @@ async function getSchoolContext({db,request,schoolId,roles=[],allowDraftAdmin=fa
 async function platformAuthority({db,request}) {
   const uid=verifiedUid(request);
   const snapshot=await db.doc("platform_admins/"+uid).get();
-  const data=snapshot.exists?snapshot.data():null;
-  return Object.freeze({uid,platformAdmin:Boolean(data?.status==="active"&&data?.role==="platform_admin")});
+  const explicit=activePlatformGrant(snapshot),legacy=legacyPlatformAdmin(request);
+  return Object.freeze({uid,platformAdmin:Boolean(explicit||legacy),
+    authoritySource:explicit?"platform_admin_grant":legacy?"verified_legacy_owner":null});
 }
 async function listVerifiedSchools({db,request}) {
   const uid=verifiedUid(request);
   const platform=await db.doc("platform_admins/"+uid).get();
-  if(platform.exists&&platform.data().status==="active"&&platform.data().role==="platform_admin"){
+  if(activePlatformGrant(platform)||legacyPlatformAdmin(request)){
     const schools=await db.collection("platform_schools").orderBy("displayName").limit(100).get();
     return schools.docs.filter(doc=>doc.data().state!=="archived").map(doc=>({
       schoolId:doc.id,
