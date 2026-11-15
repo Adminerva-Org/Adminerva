@@ -1,6 +1,271 @@
 {
   "releases": [
     {
+      "version": "3.2.0",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-11-16",
+      "title": "School-wide administration, unified assessments and clearer workspaces",
+      "summary": "A cumulative feature update adds guided school onboarding, safer System Admin school-role previews, consolidated People & Access, smarter academic configuration, a full Class Record workflow, unified school assessments, automatic Studio project provisioning, expanded programming games, improved classroom navigation, stronger support flows and visible release/build information on every shared page.",
+      "changes": [
+        {
+          "type": "New",
+          "area": "System Admin school onboarding",
+          "audience": [
+            "admin"
+          ],
+          "text": "System administrators can register a school through a guided onboarding flow that creates the institution, optionally designates its first School Administrator, and continues directly into platform configuration."
+        },
+        {
+          "type": "New",
+          "area": "System Admin role preview",
+          "audience": [
+            "admin"
+          ],
+          "text": "System administrators can enter a selected school as School Administrator, Teacher or Student from the account context menu. A persistent preview banner identifies the temporary role-test session, and school-scoped write actions are blocked so testing does not silently change live school records."
+        },
+        {
+          "type": "Fixed",
+          "area": "System Admin school registry access",
+          "audience": [
+            "admin"
+          ],
+          "text": "Unified the legacy System Admin identity with the newer platform authority checks so the School Registry, school context selector and role-preview controls recognize the same verified administrator account."
+        },
+        {
+          "type": "Updated",
+          "area": "Workspaces and navigation",
+          "audience": [
+            "all"
+          ],
+          "text": "Reorganized role-aware workspaces into clearer domains while keeping Home separate from workspace subnavigation. Desktop workspace cards, mobile accordions, centered contextual navigation, OLD badges and development indicators make active, retained and planned areas easier to distinguish."
+        },
+        {
+          "type": "Updated",
+          "area": "School and role context switching",
+          "audience": [
+            "admin",
+            "teacher"
+          ],
+          "text": "School switching and authorized role context now live in the account menu near Sign out. Platform administrators default to System Administration and can deliberately enter a school context when needed."
+        },
+        {
+          "type": "Updated",
+          "area": "School Administration operations",
+          "audience": [
+            "admin"
+          ],
+          "text": "The School Administration home now emphasizes live operational state instead of a wall of links, including People & Access attention items, Class Record health, support status, Academic Configuration and Grading Policy shortcuts."
+        },
+        {
+          "type": "Updated",
+          "area": "People & Access consolidation",
+          "audience": [
+            "admin"
+          ],
+          "text": "Legacy student directories, teacher access and access requests can be adopted into the school-wide People & Access model with duplicate protection, idempotent imports, provenance preservation and clearer migration summaries."
+        },
+        {
+          "type": "Updated",
+          "area": "Academic Configuration",
+          "audience": [
+            "admin"
+          ],
+          "text": "Academic setup now follows a guided School Year → Division/Program → Periods → Subjects → Sections → Course Offerings flow with exact dates, smart defaults, generated codes, duplicate prevention, mobile-friendly forms and clearer configuration status."
+        },
+        {
+          "type": "New",
+          "area": "Class Record",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Teachers can maintain school-scoped Class Records that combine manual scores and linked Adminerva assessment results. The workflow includes score statuses, school policy application, final-grade rounding, finalization history, print/Excel export, shared-teacher ownership and student release controls."
+        },
+        {
+          "type": "Updated",
+          "area": "School grading policies",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Grading setup is now school policy rather than a per-teacher scheme editor. Policies can be scoped by program, subject, section and academic period and are applied authoritatively by Class Record."
+        },
+        {
+          "type": "Updated",
+          "area": "Student grade visibility",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "Released activity scores, transmuted/final grades and published assessment outcomes are separated from private teacher drafts. Students see only records deliberately released for their school context."
+        },
+        {
+          "type": "Updated",
+          "area": "Unified Assessment workspace",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "General Adminerva assessments and specialized repository evidence tools now have clearer ownership. Assessment Studio is the canonical general assessment authoring workspace, while repository-specific review remains available as specialized technology tooling."
+        },
+        {
+          "type": "Updated",
+          "area": "Legacy assessment consolidation",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Existing repository assessments can be migrated or upgraded in place as Computer Programming assessments while preserving legacy evidence compatibility, subject metadata, response type and assessment ownership."
+        },
+        {
+          "type": "New",
+          "area": "General assessment submissions",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "School assessments can collect written responses and links in addition to Studio projects and GitHub evidence, then route those submissions through the shared review and grading workflow."
+        },
+        {
+          "type": "Updated",
+          "area": "Assessment publication and personalization",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Assessment deployment and publication are treated as separate lifecycle decisions. Personalized assessments retain scenario-pool compatibility, publication boundaries and clearer external-package readiness feedback."
+        },
+        {
+          "type": "New",
+          "area": "Automatic Studio assessment projects",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "Opening an Adminerva Studio assessment can automatically provision or reuse the assessment-owned project, bind it to the task and preserve that ownership across devices so students do not need to manually create a second project."
+        },
+        {
+          "type": "Updated",
+          "area": "Adminerva Studio",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "Improved mobile menus, editor/terminal layout, inline console input, queue/reconnect recovery, project navigation and assessment-safe project handling. Existing project digests and older cloud projects remain compatible."
+        },
+        {
+          "type": "Updated",
+          "area": "Java execution experience",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "Interactive Java execution and terminal recovery were strengthened with clearer queue state, safer cancellation, bounded output, frozen-review handling and more reliable stdin/output replay for classroom coding tasks."
+        },
+        {
+          "type": "Updated",
+          "area": "Student Classroom",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "Classroom is now subject-first, with subject cards opening the relevant classroom stream. Legacy programming students are bridged into the newer stream without losing existing assignment access."
+        },
+        {
+          "type": "Updated",
+          "area": "Student assessments",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "Student assessment views show all subjects by default and display subject, assessment type and response method more clearly. Assignment links preserve subject context and open the appropriate unified workflow."
+        },
+        {
+          "type": "Updated",
+          "area": "Adminerva Games",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "The Computer Programming arcade now includes a larger Java/OOP path with OOP-specific mission mechanics, Trace Quest, Bug Detective, Algorithm Maze content, debugging aids and clearer topic alignment."
+        },
+        {
+          "type": "Updated",
+          "area": "Lesson generation and scheduling",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Lesson generation is more concise and delivery-aware, derives session structure from the timetable, handles variable/multi-period schedules, preserves cancelled planned lessons for next-week catch-up and avoids duplicating carried-over topics."
+        },
+        {
+          "type": "Updated",
+          "area": "Reference Library PDF import",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "PDF ingestion keeps the same Adminerva Reference Library record model whether extraction is completed internally or through the optional external-AI extraction package, with clearer fallback actions when direct import fails."
+        },
+        {
+          "type": "Fixed",
+          "area": "GitHub reconnection and evidence recovery",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "Improved recovery when a GitHub token expires or a repository remains publicly readable, with clearer reconnect actions and less disruption to previously linked project/evidence workflows."
+        },
+        {
+          "type": "Updated",
+          "area": "Reports & Support",
+          "audience": [
+            "all"
+          ],
+          "text": "School-scoped support reports, notification routing and closed-status handling were aligned, and report dialogs are easier to read and reliably closable on desktop and mobile."
+        },
+        {
+          "type": "Updated",
+          "area": "External evaluation workflow",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Large repository reviews can be prepared in bounded external-evaluation packages, with stricter imported JSON handling and clearer separation between evaluator output, teacher review and final publication."
+        },
+        {
+          "type": "Updated",
+          "area": "Loading, caching and deployment visibility",
+          "audience": [
+            "all"
+          ],
+          "text": "Shared navigation and page assets use coordinated cache refreshes so recent fixes are less likely to remain hidden behind stale browser files. Backend deployment and compatibility routes were aligned with the current main branch."
+        },
+        {
+          "type": "New",
+          "area": "Release and page version footer",
+          "audience": [
+            "all"
+          ],
+          "text": "Shared pages now show the current Adminerva release, page name and shell build in the footer. The version label links directly to the matching release notes to make cache/version troubleshooting easier."
+        }
+      ]
+    },
+    {
       "version": "3.1.0",
       "status": "published",
       "public": true,
