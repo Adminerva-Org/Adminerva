@@ -105,11 +105,11 @@ function currentYearId(){
   const ordered=[...years].sort((a,b)=>(itemStartYear(b)||0)-(itemStartYear(a)||0));
   return ordered[0]?.id||"";
 }
-function fillSelect(select,items,{placeholder="Choose…",filter=()=>true,preferred=""}={}){
+function fillSelect(select,items,{placeholder="Choose…",filter=()=>true,preferred="",label=optionLabel}={}){
   const available=items.filter(filter);
   const previous=select.value;
   select.replaceChildren(new Option(placeholder,""));
-  for(const item of available)select.add(new Option(optionLabel(item),item.id));
+  for(const item of available)select.add(new Option(label(item),item.id));
   const next=available.some(item=>item.id===previous)?previous:
     available.some(item=>item.id===preferred)?preferred:
     available.length===1?available[0].id:"";
@@ -381,7 +381,11 @@ function renderCatalog(){
   fillSelect(offeringForm.elements.subjectId,subjects,{placeholder:"Choose subject"});
 
   const offeringProgram=offeringForm.elements.programId.value,offeringYear=offeringForm.elements.yearId.value;
-  fillSelect(offeringForm.elements.sectionId,sections,{placeholder:"Choose section",filter:item=>!offeringProgram||item.programId===offeringProgram});
+  fillSelect(offeringForm.elements.sectionId,sections,{
+    placeholder:"Choose section",
+    filter:item=>!offeringProgram||item.programId===offeringProgram,
+    label:item=>(item.gradeLevel?"Grade "+item.gradeLevel+" · ":"")+(item.name||item.id)
+  });
   const matchingTerms=terms.filter(item=>(!offeringProgram||item.programId===offeringProgram)&&(!offeringYear||item.yearId===offeringYear));
   let preferredTerm="";
   const today=new Date().toISOString().slice(0,10);
