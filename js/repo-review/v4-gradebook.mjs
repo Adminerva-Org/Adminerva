@@ -3,6 +3,7 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
 import {createGithubEvidenceClient} from "./services/github-evidence-client.mjs?v=1.3.0";
 import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
+import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=1.0.0";
 
 const panel=document.getElementById("gbV4Panel");
 const taskSelect=document.getElementById("gbV4Task");
@@ -299,6 +300,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4Rubric").replaceChildren();
     document.getElementById("gbV4CorrectionReason").value="";
     document.getElementById("gbV4LegacyReason").value="";
+    document.getElementById("gbV4ExternalResponse").value="";
+    document.getElementById("gbV4ExternalStatus").textContent="";
+    document.getElementById("gbV4ExternalEvaluationPanel").classList.toggle("hidden",currentTask.submissionSource==="github");
     document.getElementById("gbV4LegacyGradePanel").hidden=true;
     document.getElementById("gbV4CorrectionPanel").classList.add("hidden");
     document.getElementById("gbV4StudioEvidence").classList.toggle("hidden",currentTask.submissionSource!=="studio");
@@ -395,6 +399,41 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         error?.message||"Evidence approval was not recorded.";
     }finally{setBusy(false);}
   })());
+  document.getElementById("gbV4ExternalCopy").addEventListener("click",()=>void (async()=>{
+    const output=document.getElementById("gbV4ExternalStatus");
+    if(busy||!currentTask||!currentSnapshot)return;
+    try{
+      const packageText=buildGeneralExternalEvaluationPackage({task:currentTask,snapshot:currentSnapshot});
+      await navigator.clipboard.writeText(packageText);
+      output.textContent="Anonymous external evaluation package copied. Paste the evaluator JSON below when ready.";
+    }catch(error){
+      output.textContent=error?.message||"Evaluation package could not be copied.";
+    }
+  })());
+  document.getElementById("gbV4ExternalApply").addEventListener("click",()=>{
+    const output=document.getElementById("gbV4ExternalStatus");
+    if(busy||!currentTask||!currentSnapshot)return;
+    try{
+      const suggestion=parseGeneralExternalEvaluationResponse(
+        document.getElementById("gbV4ExternalResponse").value,{task:currentTask}
+      );
+      const rows=[...document.querySelectorAll("#gbV4Rubric [data-rubric-row]")];
+      suggestion.criteria.forEach((criterion,index)=>{
+        const row=rows[index];if(!row)return;
+        row.querySelector("[data-awarded]").value=String(criterion.awardedPoints);
+        row.querySelector("[data-pending]").value=String(criterion.pendingPoints);
+        row.querySelector("[data-comment]").value=criterion.comment||"";
+      });
+      if(suggestion.feedback)document.getElementById("gbV4Feedback").value=suggestion.feedback;
+      updateScore();
+      output.textContent="External evaluation applied to the unsaved private draft fields."+
+        (suggestion.limitations?" Limitations: "+suggestion.limitations:"")+
+        " Review every criterion before saving.";
+    }catch(error){
+      output.textContent=error?.message||"External evaluation could not be applied.";
+    }
+  });
+
   document.getElementById("gbV4Close").addEventListener("click",()=>dialog.close());
   taskSelect.addEventListener("change",()=>void loadInbox());
   document.getElementById("gbV4Refresh").addEventListener("click",()=>void loadInbox());
