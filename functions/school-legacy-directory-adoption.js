@@ -36,6 +36,11 @@ function sha(value){return createHash("sha256").update(String(value)).digest("he
 function stablePersonId(uid){return "mcs_"+sha("person\0"+uid).slice(0,36);}
 function legacyPersonId(kind,sourceId){return "mcs_legacy_"+sha(kind+"\0"+sourceId).slice(0,32);}
 function rowKey(...values){return sha(JSON.stringify(values));}
+function identifier(value,label="Identifier"){
+  const text=clean(value,128);
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(text))deny("invalid-argument",label+" is invalid.");
+  return text;
+}
 function displayName(data,fallback){
   const direct=clean(data?.displayName||data?.name||data?.fullName||data?.studentName||data?.teacherName,140);
   if(direct)return direct;
@@ -463,6 +468,103 @@ function createSchoolLegacyDirectoryAdoptionService({db,resolveUserByEmail}){
     const ctx=await getSchoolContext({db,request,schoolId:input.schoolId,roles:["school_admin"],allowDraftAdmin:true});
     if(ctx.schoolId!==SCHOOL_ID)
       deny("failed-precondition","Legacy directory adoption is available only for the MCS migration school.");
+
+    if(input.action==="list_legacy_requests"){
+      const snapshot=await db.collection("account_requests").limit(201).get();
+      if(snapshot.size===201)deny("resource-exhausted","Legacy access requests exceed the review limit.");
+      const items=snapshot.docs.map(doc=>({id:doc.id,...doc.data()}))
+        .filter(row=>row.status==="pending")
+        .map(row=>({
+          targetUid:row.id,displayName:clean(row.displayName,140)||"Unnamed account",
+          email:normalizeEmail(row.email)||"",requestedRole:clean(row.requestedRole,30)||"guest",
+          revision:Number.isInteger(row.revision)?row.revision:1
+        }))
+        .sort((a,b)=>a.displayName.localeCompare(b.displayName)||a.email.localeCompare(b.email));
+      return {schoolId:ctx.schoolId,items,count:items.length};
+    }
+
+    if(input.action==="decide_legacy_request"){
+      const targetUid=identifier(input.targetUid,"Account UID");
+      const decision=input.decision;
+      if(!["approved","rejected"].includes(decision))
+        deny("invalid-argument","Choose approve or reject.");
+      const role=input.role;
+      if(decision==="approved"&&!["student","teacher"].includes(role))
+        deny("invalid-argument","Choose Student or Teacher access.");
+      const reason=clean(input.reason,500);
+      if(reason.length<12)deny("invalid-argument","Explain the access decision in at least 12 characters.");
+      const requestRef=db.doc("account_requests/"+targetUid);
+      const initial=await requestRef.get();
+      if(!initial.exists||initial.data().status!=="pending")
+        deny("failed-precondition","This legacy access request is no longer pending.");
+      const initialEmail=normalizeEmail(initial.data().email);
+      let account=null;
+      if(decision==="approved"){
+        if(!initialEmail)deny("failed-precondition","The legacy request has no valid verified email.");
+        account=await resolveUserByEmail(initialEmail).catch(error=>{
+          if(error?.code==="auth/user-not-found")return null;
+          throw error;
+        });
+        if(!account||account.uid!==targetUid||account.disabled||!account.emailVerified||
+           normalizeEmail(account.email)!==initialEmail)
+          deny("failed-precondition","Approval requires the same enabled, verified Firebase account as the legacy request.");
+      }
+      const personId=decision==="approved"?stablePersonId(targetUid):null;
+      const personRef=personId?db.doc("schools/"+ctx.schoolId+"/people/"+personId):null;
+      const memberRef=personId?db.doc("schools/"+ctx.schoolId+"/memberships/"+targetUid):null;
+      const indexRef=personId?db.doc("platform_users/"+targetUid+"/memberships/"+ctx.schoolId):null;
+      const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+      await db.runTransaction(async tx=>{
+        const current=await tx.get(requestRef);
+        if(!current.exists||current.data().status!=="pending"||
+           (Number.isInteger(input.expectedRevision)&&current.data().revision!==input.expectedRevision))
+          deny("failed-precondition","This access request changed. Refresh before deciding.");
+        const before=current.data(),now=FieldValue.serverTimestamp(),
+          revision=(Number.isInteger(before.revision)?before.revision:0)+1;
+        if(decision==="approved"){
+          const [person,member]=await Promise.all([tx.get(personRef),tx.get(memberRef)]);
+          const expectedKind=role==="student"?"student":"staff";
+          if(person.exists&&(person.data().schoolId!==ctx.schoolId||person.data().kind!==expectedKind||
+             (person.data().authUid&&person.data().authUid!==targetUid)))
+            deny("failed-precondition","The verified account conflicts with an existing school person record.");
+          if(member.exists){
+            const prior=member.data();
+            if(prior.schoolId!==ctx.schoolId||prior.status==="suspended")
+              deny("failed-precondition","This account has suspended or conflicting school access. Use the reviewed recovery workflow.");
+            if(prior.personId&&prior.personId!==personId)
+              deny("failed-precondition","This school membership is linked to another person record.");
+          }
+          const display=displayName(before,role==="student"?"Student":"Staff");
+          if(!person.exists){
+            tx.create(personRef,{schoolId:ctx.schoolId,displayName:display,
+              searchKey:display.toLocaleLowerCase("en")+"#"+personId,
+              kind:expectedKind,status:"active",authUid:targetUid,
+              migration:{source:"mcs_legacy_v3",scope:"legacy_access_request",sourceIds:["account_requests/"+targetUid]},
+              createdByUid:ctx.uid,createdAt:now,updatedAt:now,revision:1});
+          }else if(!person.data().authUid){
+            tx.update(personRef,{authUid:targetUid,updatedAt:now,revision:(person.data().revision||1)+1});
+          }
+          const prior=member.exists?member.data():null;
+          const roles=[...new Set([...(Array.isArray(prior?.roles)?prior.roles:[]),role])].sort();
+          const memberRevision=(prior?.revision||0)+1;
+          tx.set(memberRef,{schoolId:ctx.schoolId,personId,status:"active",roles,
+            displayName:display,revision:memberRevision,updatedByUid:ctx.uid,updatedAt:now},{merge:true});
+          tx.set(indexRef,{schoolId:ctx.schoolId,status:"active",roles,revision:memberRevision,updatedAt:now},{merge:true});
+        }
+        const after={...before,status:decision,approvedRole:decision==="approved"?role:null,
+          reason,revision,decidedBy:ctx.uid,updatedAt:now,
+          ...(personId?{schoolWideSchoolId:ctx.schoolId,schoolWidePersonId:personId,schoolWideMigratedAt:now}:{})};
+        tx.set(requestRef,after);
+        tx.create(requestRef.collection("revisions").doc(String(revision)),{
+          before,after,actorUid:ctx.uid,createdAt:now
+        });
+        tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,targetUid,
+          personId,action:decision==="approved"?"legacy_access_request_approved":"legacy_access_request_rejected",
+          role:decision==="approved"?role:null,reason,createdAt:now});
+      });
+      return {schoolId:ctx.schoolId,targetUid,status:decision,role:decision==="approved"?role:null,personId};
+    }
+
     const model=await buildModel({db,resolveUserByEmail,ctx});
     if(input.action==="preview")return publicPreview(model);
     if(input.action!=="apply")deny("invalid-argument","Unknown legacy directory adoption operation.");
