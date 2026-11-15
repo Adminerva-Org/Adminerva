@@ -50,7 +50,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const generalSubmissionApi=httpsCallable(functions,"schoolAssessmentSubmissions");
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
   const gradeApi=httpsCallable(functions,"schoolGradebook");
-  let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null;
+  let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null;
   let generation=0,busy=false,githubVerification=null;
 
   async function scoped(api,action,details={}){
@@ -308,7 +308,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   }
   async function openReview(row){
     if(busy||!currentTask)return;
-    currentRow=row;currentSnapshot=null;currentGrade=null;
+    currentRow=row;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;
     document.getElementById("gbV4ReviewTitle").textContent=row.studentName||"Review student project";
     document.getElementById("gbV4ReviewMeta").textContent=
       currentTask.title+" · version "+row.version+" · "+row.status;
@@ -341,9 +341,10 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         {taskId:currentTask.taskId,submissionId:row.recordId};
       const result=await Promise.all([
         scoped(evidenceApi,"inspect",evidenceDetails),
-        scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:row.studentUid})
+        scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:row.studentUid}),
+        scoped(assessmentApi,"get_private",{taskId:currentTask.taskId})
       ]);
-      currentSnapshot=result[0];currentGrade=result[1].grade;
+      currentSnapshot=result[0];currentGrade=result[1].grade;currentPrivateConfig=result[2]||{};
       if(currentTask.submissionSource==="studio"){
         const fileSelect=document.getElementById("gbV4File");
         for(const file of currentSnapshot.files||[])fileSelect.add(new Option(file.path,file.path));
@@ -421,7 +422,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const output=document.getElementById("gbV4ExternalStatus");
     if(busy||!currentTask||!currentSnapshot)return;
     try{
-      const packageText=buildGeneralExternalEvaluationPackage({task:currentTask,snapshot:currentSnapshot});
+      const packageText=buildGeneralExternalEvaluationPackage({task:currentTask,snapshot:currentSnapshot,checkingInstructions:currentPrivateConfig?.checkingInstructions||""});
       await navigator.clipboard.writeText(packageText);
       output.textContent="Anonymous external evaluation package copied. Paste the evaluator JSON below when ready.";
     }catch(error){
