@@ -240,7 +240,6 @@ export function buildNavigationIA(ctx){
           ...(scope.isSchoolAdmin?[future("staff-analytics","Staff Analytics","Admin role · Future development")]:[])
         ])
       ]),
-      repository(),
       ws("assessment","Assessment","assessment-studio.html","General assessment authoring, submissions, grading and results",[
         group("Assessment",[
           needs("classroom-stream","Classroom Stream","teacher-classroom.html","Post announcements and class updates to verified subject/section streams."),
@@ -249,8 +248,16 @@ export function buildNavigationIA(ctx){
           needs("assessment-review","Review & Grade","school-gradebook.html?view=review","Unified rubric review workflow with private drafts, revision requests and deliberate publication."),
           needs("assessment-results","Assessment Results","school-gradebook.html?view=results","Per-assessment results and published outcomes that can feed the Class Record.")
         ]),
-        group("Specialized / compatibility",[
-          old("studio-submissions","Studio Submissions","studio-submissions.html","Specialized Studio review surface retained while Studio evidence is consolidated into the unified Assessment workflow.")
+        group("Technology / Repository Tools",[
+          old("repo-submissions","GitHub Submission Inbox","submissions.html","Specialized repository evidence inbox retained for existing GitHub-based assessments."),
+          old("repo-review","GitHub Evidence Review","repofetch.html","Specialized commit and repository evidence inspection for GitHub-based assessments."),
+          old("repo-reclaims","Commit Attribution","reclaim-inbox.html","Resolve individual contribution attribution for GitHub evidence."),
+          old("repo-investigation","Repository Investigation","repobank.html","Investigate repository history and evidence when needed."),
+          old("repo-gradebook","Legacy Repository Gradebook","gradebook.html","Historical repository grading surface retained for existing records."),
+          old("activity-grader","Activity Grader","activity-grader.html","Specialized repository activity grading utility."),
+          old("auto-grader","AutoGrader","grading.html","Legacy automated repository grading utility."),
+          old("learning-follow-up","Learning Follow-up","learning-follow-up.html","Legacy repository learning follow-up records."),
+          old("studio-submissions","Studio Submissions","studio-submissions.html","Specialized Adminerva Studio submission review surface.")
         ])
       ]),
       ws("grading","Grading","class-record.html","Class records, advisory records and grade administration",[
