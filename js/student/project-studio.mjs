@@ -6,13 +6,13 @@ import {
 import {
   CODE_PROJECT_TEMPLATES,createCodeProject,deleteCodeProject,findCodeProject,
   projectTemplateLabel,readCodeProjects,saveCodeProject,writeCodeProjects
-} from "./code-projects.mjs?v=2.0.0";
+} from "./code-projects.mjs?v=2.1.0";
 import {databaseSummary,executeAdminervaSql} from "./adminerva-db.mjs?v=3.0.0";
 import {prepareProjectImport} from "./project-import.mjs?v=3.0.0";
 import {
   archiveV4StudioProject,currentV4StudioSchool,listArchivedV4StudioProjects,listV4StudioProjects,loadV4StudioProject,
   queueV4StudioProjectSync,restoreV4StudioProject
-} from "./v4-studio-service.mjs?v=4.1.1";
+} from "./v4-studio-service.mjs?v=4.2.0";
 
 const el=id=>document.getElementById(id);
 const clone=value=>JSON.parse(JSON.stringify(value));
