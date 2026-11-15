@@ -477,8 +477,25 @@ export function createProjectStudio({
         }
       }catch(error){
         const message=String(error?.message||error||"");
-        if(!/not.?found|unavailable/i.test(message))
+        if(/archiv/i.test(message)){
+          try{
+            const archived=await listArchivedV4StudioProjects();
+            const match=archived?.find(item=>item.projectId===projectId);
+            if(match){
+              await restoreV4StudioProject(projectId,match.revision);
+              const remote=await loadV4StudioProject(projectId);
+              if(remote){
+                project=v4ProjectToLocal(uid,remote);
+                validateProject(project);
+                project=saveCodeProject(projectStorage,uid,project);
+              }
+            }
+          }catch(restoreError){
+            console.warn("Archived assessment project could not be restored:",restoreError?.message||restoreError);
+          }
+        }else if(!/not.?found|unavailable/i.test(message)){
           console.warn("Verified-school assessment project lookup skipped:",message);
+        }
       }
     }
     if(!project&&cloudEnabled){
@@ -503,8 +520,9 @@ export function createProjectStudio({
       subject:String(context.subject||"Computer Programming").slice(0,120),
       offeringId:String(context.offeringId||"").slice(0,160),
       personalized:context.personalized===true,
-      variantId:String(context.variantId||"").slice(0,160),
-      attempt:Number.isInteger(Number(context.attempt))?Number(context.attempt):null,
+      variantId:String(context.variantId||project?.assessment?.variantId||"").slice(0,160),
+      attempt:Number.isInteger(Number(context.attempt))?Number(context.attempt):
+        (Number.isInteger(Number(project?.assessment?.attempt))?Number(project.assessment.attempt):null),
       provisionedBy:"assessment-launch"
     };
 
