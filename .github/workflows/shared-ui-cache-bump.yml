@@ -67,6 +67,7 @@ jobs:
               updated=re.sub(r'js/core/owner-school-registry\.mjs\?v=[^"\']+', f'js/core/owner-school-registry.mjs?v={version}', updated)
               updated=re.sub(r'js/core/adminerva-nav\.js\?v=[^"\']+', f'js/core/adminerva-nav.js?v={version}', updated)
               updated=re.sub(r'js/core/auth-guard-v4-pilot\.js\?v=[^"\']+', f'js/core/auth-guard-v4-pilot.js?v={version}', updated)
+              updated=re.sub(r'js/school-admin/people-access\.mjs\?v=[^"\']+', f'js/school-admin/people-access.mjs?v={version}', updated)
               if 'js/core/adminerva-loader.js' in updated and 'js/core/release-footer.js' not in updated:
                   match=re.search(r'<script[^>]+src=["\']((?:\.\./)*js/core/adminerva-loader\.js\?v=[^"\']+)["\'][^>]*></script>', updated)
                   if match:
