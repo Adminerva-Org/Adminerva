@@ -7,7 +7,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0"
     />
-    <title>My Assignments | Adminerva</title>
+    <title>Assignments | Adminerva</title>
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -30,11 +30,15 @@
           <h1
             class="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2"
           >
-            <span class="text-indigo-600">📚</span> My Assignments
+            <span class="text-indigo-600">📚</span> Assignments
           </h1>
           <p class="text-sm sm:text-base text-slate-500 mt-1 font-medium">
-            Track your active tasks, PETAs, and module requirements.
+            Open verified school tasks and your existing programming assignments from one workspace.
           </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <a href="student-classroom.html" class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">← Classroom</a>
+          <span id="assignmentSubjectLabel" class="rounded-full bg-cyan-100 text-cyan-900 px-3 py-2 text-xs font-extrabold">Computer Programming</span>
         </div>
         <select
           id="sectionSelectorAssessments"
@@ -42,6 +46,19 @@
           class="hidden w-full sm:w-auto text-sm border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 font-bold bg-indigo-50 px-3 py-2.5 sm:py-2 text-indigo-700 cursor-pointer outline-none border transition"
         ></select>
       </header>
+      <section id="v4AssignmentsPanel" class="hidden rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 sm:p-5">
+    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+      <div><h2 class="text-lg font-extrabold">Current school tasks</h2><p class="text-sm text-slate-600 mt-1">Published grades and revision requests appear with the exact task they belong to.</p></div>
+      <div id="v4AssignmentsSchoolSwitcher" hidden class="min-w-[220px]"></div>
+    </div>
+    <p id="v4AssignmentsStatus" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Checking verified school assignments…</p>
+    <div id="v4AssignmentsList" class="grid gap-3 mt-4"></div>
+  </section>
+      <section id="legacyAssignmentsSection" class="mt-6">
+        <div class="mb-3 flex flex-wrap items-end justify-between gap-2">
+          <div><p class="text-xs uppercase tracking-wider font-bold text-slate-500">Migrated compatibility</p><h2 class="text-lg font-extrabold text-slate-900">Existing programming assignments</h2></div>
+          <p class="text-xs text-slate-500 max-w-xl">Older repository-based tasks remain here while their records are carried into the unified school assessment workflow.</p>
+        </div>
       <div id="assignmentsNotice" class="av-status-message mb-4" role="status" aria-live="polite"><p id="assignmentsNoticeText">Loading your assignments…</p><button type="button" id="assignmentsRetry" class="hidden mt-2 font-bold underline">Retry loading assignments</button></div>
 
       <div
@@ -92,7 +109,87 @@
           <div class="h-4 bg-slate-200 rounded w-1/2"></div>
         </div>
       </div>
+      </section>
     </main>
+
+    <dialog id="v4GithubEvidenceDialog" class="rounded-2xl border-0 shadow-2xl p-0 w-[min(96vw,900px)] max-h-[94dvh] backdrop:bg-slate-950/70" aria-labelledby="v4GithubEvidenceTitle">
+  <div class="bg-white flex flex-col max-h-[94dvh]">
+    <header class="p-4 sm:p-5 bg-slate-900 text-white flex items-start justify-between gap-4">
+      <div><p class="text-xs uppercase tracking-wider text-cyan-300 font-bold">Verified school GitHub evidence</p>
+        <h2 id="v4GithubEvidenceTitle" class="text-xl font-extrabold mt-1">Select committed evidence</h2>
+        <p id="v4GithubEvidenceMeta" class="text-xs text-slate-300 mt-1"></p></div>
+      <button id="v4GithubEvidenceClose" type="button" class="rounded-lg border border-slate-600 px-3 py-2">Close</button>
+    </header>
+    <div class="overflow-y-auto p-4 sm:p-5 space-y-4">
+      <label class="block text-sm font-bold text-slate-700">GitHub repository
+        <input id="v4GithubRepository" class="mt-1 w-full border border-slate-300 rounded-lg p-3" placeholder="https://github.com/owner/repository">
+      </label>
+      <div class="flex flex-wrap gap-2">
+        <button id="v4GithubLoad" type="button" class="rounded-lg bg-slate-800 text-white font-bold px-4 py-2.5">Load repository commits</button><button id="v4GithubAuthorize" type="button" class="rounded-lg border border-slate-300 bg-white text-slate-800 font-bold px-4 py-2.5">Authorize private GitHub for this session</button>
+        <span class="text-xs text-slate-500 self-center">Private repositories require the account-owned GitHub session connection.</span>
+      </div>
+      <p id="v4GithubEvidenceStatus" class="text-sm text-slate-600" role="status" aria-live="polite"></p>
+      <div class="grid lg:grid-cols-[minmax(0,1fr)_250px] gap-4">
+        <section>
+          <div class="flex justify-between gap-3 items-center"><h3 class="font-extrabold">Commit history</h3><span id="v4GithubSelectedCount" class="text-xs font-bold text-indigo-700">0 selected</span></div>
+          <div id="v4GithubCommitList" class="mt-2 max-h-[48dvh] overflow-y-auto space-y-2"></div>
+        </section>
+        <aside class="rounded-xl border bg-slate-50 p-3 h-fit">
+          <h3 class="font-bold">Submission checkpoint</h3>
+          <p class="text-xs text-slate-600 mt-1">Choose the project version containing the selected work. Git identity is not proof of authorship.</p>
+          <p id="v4GithubCheckpoint" class="font-mono text-xs break-all mt-3 text-indigo-800">No checkpoint selected</p>
+        </aside>
+      </div>
+      <section id="v4GithubReclaimEditor" class="hidden rounded-xl border border-amber-300 bg-amber-50 p-4">
+        <div class="flex justify-between gap-3">
+          <div><h3 class="font-bold text-amber-950">Request commit attribution review</h3><p id="v4GithubReclaimSubject" class="text-xs text-amber-900 mt-1 font-mono break-all"></p></div>
+          <button id="v4GithubReclaimCancel" type="button" class="text-xs font-bold underline">Cancel</button>
+        </div>
+        <p class="text-xs text-amber-900 mt-2">Explain why the commit contains your contribution when the Git identity does not represent you correctly.</p>
+        <textarea id="v4GithubReclaimReason" rows="3" minlength="10" maxlength="1500" class="mt-3 w-full rounded-lg border border-amber-300 bg-white p-3 text-sm"></textarea>
+        <button id="v4GithubReclaimSubmit" type="button" class="mt-3 rounded-lg bg-amber-800 text-white font-bold px-4 py-2.5">Send attribution request</button>
+        <p id="v4GithubReclaimStatus" class="text-xs text-amber-900 mt-2" role="status"></p>
+      </section>
+    </div>
+    <footer class="border-t p-4 sm:p-5 flex justify-end">
+      <button id="v4GithubEvidenceSubmit" type="button" class="rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5">Submit frozen evidence</button>
+    </footer>
+  </div>
+</dialog>
+
+<dialog id="v4GeneralSubmissionDialog" class="rounded-2xl border-0 shadow-2xl p-0 w-[min(96vw,760px)] max-h-[92dvh] backdrop:bg-slate-950/70" aria-labelledby="v4GeneralSubmissionTitle">
+  <form id="v4GeneralSubmissionForm" class="bg-white flex flex-col max-h-[92dvh]">
+    <header class="p-4 sm:p-5 bg-slate-900 text-white flex items-start justify-between gap-4">
+      <div><p id="v4GeneralSubmissionType" class="text-xs uppercase tracking-wider text-cyan-300 font-bold">Assessment response</p>
+        <h2 id="v4GeneralSubmissionTitle" class="text-xl font-extrabold mt-1">Submit response</h2>
+        <p id="v4GeneralSubmissionMeta" class="text-xs text-slate-300 mt-1"></p></div>
+      <button id="v4GeneralSubmissionClose" type="button" class="rounded-lg border border-slate-600 px-3 py-2">Close</button>
+    </header>
+    <div class="overflow-y-auto p-4 sm:p-5 space-y-4">
+      <section id="v4TextResponseFields">
+        <label class="block text-sm font-bold text-slate-700">Your written response
+          <textarea id="v4TextResponse" rows="12" maxlength="50000" class="mt-1 w-full border border-slate-300 rounded-lg p-3" placeholder="Write your response here…"></textarea>
+        </label>
+        <p class="text-xs text-slate-500 mt-1">Your exact submitted text is frozen as a version for teacher review.</p>
+      </section>
+      <section id="v4LinkResponseFields" class="hidden space-y-3">
+        <label class="block text-sm font-bold text-slate-700">Submission link
+          <input id="v4LinkResponseUrl" type="url" class="mt-1 w-full border border-slate-300 rounded-lg p-3" placeholder="https://…">
+        </label>
+        <label class="block text-sm font-bold text-slate-700">Submission note <span class="font-normal text-slate-500">(optional)</span>
+          <textarea id="v4LinkResponseNote" rows="5" maxlength="10000" class="mt-1 w-full border border-slate-300 rounded-lg p-3" placeholder="Explain what the teacher should review at this link…"></textarea>
+        </label>
+        <p class="text-xs text-slate-500">Adminerva freezes the submitted URL and note. The linked external content itself may still change outside Adminerva.</p>
+      </section>
+      <div id="v4GeneralRevisionNotice" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"></div>
+      <p id="v4GeneralSubmissionStatus" class="text-sm text-slate-600" role="status" aria-live="polite"></p>
+    </div>
+    <footer class="border-t p-4 sm:p-5 flex flex-wrap justify-end gap-2">
+      <button id="v4GeneralSubmissionCancel" type="button" class="rounded-lg border border-slate-300 bg-white text-slate-700 font-bold px-4 py-2.5">Cancel</button>
+      <button id="v4GeneralSubmissionSubmit" type="submit" class="rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5">Submit frozen response</button>
+    </footer>
+  </form>
+</dialog>
 
     <!-- Assessment Details Modal -->
     <div
@@ -277,7 +374,8 @@
     <script src="js/core/adminerva-nav.js?v=8169bc1f73b0"></script>
     <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
     <script type="module" src="js/core/auth-guard-v4-pilot.js?v=8169bc1f73b0"></script>
-    <script type="module" src="js/student/assessments.js?v=4.0.10"></script>
+    <script type="module" src="js/student/v4-assessments.mjs?v=4.3.0"></script>
+    <script type="module" src="js/student/assessments.js?v=4.0.11"></script>
     <script type="module" src="js/student/submission-receipts.mjs?v=1.3.1"></script>
     <script type="module" src="js/student/assessment-evidence.mjs?v=4.0.2"></script>
   </body>
