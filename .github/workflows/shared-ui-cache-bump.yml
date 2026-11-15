@@ -7,6 +7,8 @@ on:
       - "css/adminerva-ui.css"
       - "js/core/adminerva-nav.js"
       - "js/core/adminerva-loader.js"
+      - "js/core/release-footer.js"
+      - "js/core/owner-school-registry.mjs"
       - "js/core/navigation-ia.mjs"
       - "js/core/auth-guard-v4-pilot.js"
       - ".github/workflows/shared-ui-cache-bump.yml"
@@ -50,8 +52,17 @@ jobs:
               text=path.read_text(encoding="utf-8")
               updated=re.sub(r'css/adminerva-ui\.css\?v=[^"\']+', f'css/adminerva-ui.css?v={version}', text)
               updated=re.sub(r'js/core/adminerva-loader\.js\?v=[^"\']+', f'js/core/adminerva-loader.js?v={version}', updated)
+              updated=re.sub(r'js/core/release-footer\.js\?v=[^"\']+', f'js/core/release-footer.js?v={version}', updated)
+              updated=re.sub(r'js/core/owner-school-registry\.mjs\?v=[^"\']+', f'js/core/owner-school-registry.mjs?v={version}', updated)
               updated=re.sub(r'js/core/adminerva-nav\.js\?v=[^"\']+', f'js/core/adminerva-nav.js?v={version}', updated)
               updated=re.sub(r'js/core/auth-guard-v4-pilot\.js\?v=[^"\']+', f'js/core/auth-guard-v4-pilot.js?v={version}', updated)
+              if 'js/core/adminerva-loader.js' in updated and 'js/core/release-footer.js' not in updated:
+                  match=re.search(r'<script[^>]+src=["\']((?:\.\./)*js/core/adminerva-loader\.js\?v=[^"\']+)["\'][^>]*></script>', updated)
+                  if match:
+                      loader_src=match.group(1)
+                      prefix=loader_src.split('js/core/adminerva-loader.js',1)[0]
+                      tag=f'<script defer src="{prefix}js/core/release-footer.js?v={version}"></script>'
+                      updated=updated[:match.start()]+tag+'\n'+updated[match.start():]
               if updated!=text:
                   path.write_text(updated,encoding="utf-8")
                   changed+=1
