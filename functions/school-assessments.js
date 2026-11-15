@@ -396,7 +396,7 @@ function createSchoolAssessmentService({db}){
         enabled:true,mode:task.personalizedTask.mode,
         poolSize:Number(task.personalizedTask.poolSize||0)
       }:{enabled:false,mode:"standard"},
-      opensAt:open,dueAt:due,
+      opensAt:open,dueAt:due,postedAt:task.createdAt?.toMillis?.()||open,
       lifecycle,windowStatus:lifecycle==="closed"?"closed":
        now<open?"upcoming":now>due?"closed":"open"});
     }
