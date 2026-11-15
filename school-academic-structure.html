@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Manage existing school academic years, programs, periods, subjects and sections.">
+  <title>Academic Structure · Adminerva</title>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=2cf96c86be01">
+  <script defer src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .as-shell{max-width:920px;margin:auto;padding:1rem}
+    .as-hero{border-radius:1.25rem;padding:1.25rem;background:#0f172a;color:white}
+    .as-panel{border:1px solid #dbe3ef;border-radius:1rem;background:white;padding:1rem}
+    .as-tabs{display:flex;gap:.45rem;overflow-x:auto;padding:.15rem 0 .3rem}
+    .as-tab{min-height:42px;border:1px solid #cbd5e1;border-radius:.7rem;background:#fff;padding:.55rem .8rem;font-weight:800;white-space:nowrap}
+    .as-tab[aria-selected="true"]{background:#0f172a;color:white;border-color:#0f172a}
+    .as-list{display:grid;gap:.55rem}
+    .as-row{display:flex;align-items:flex-start;justify-content:space-between;gap:.7rem;border:1px solid #e2e8f0;border-radius:.8rem;background:#f8fafc;padding:.8rem}
+    .as-row button{flex:0 0 auto}
+    .as-muted{font-size:.84rem;color:#64748b}
+    .as-input{width:100%;min-height:46px;border:1px solid #cbd5e1;border-radius:.75rem;padding:.65rem .75rem;background:white}
+    .as-input:focus{outline:3px solid #bfdbfe;border-color:#2563eb}
+    .as-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem}
+    .as-btn{min-height:44px;border:1px solid #cbd5e1;border-radius:.75rem;padding:.65rem .95rem;background:white;font-weight:800}
+    .as-btn.primary{background:#1d4ed8;border-color:#1d4ed8;color:white}
+    .as-btn:disabled{opacity:.5}
+    .as-status{border:1px solid #bae6fd;background:#f0f9ff;color:#0c4a6e;border-radius:.75rem;padding:.7rem .8rem}
+    [hidden]{display:none!important}
+    @media(max-width:640px){.as-grid{grid-template-columns:1fr}.as-row{flex-direction:column}.as-row button{width:100%}.as-shell{padding:.7rem}}
+  </style>
+</head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="admin" data-page="academic-structure"></div>
+<main class="as-shell space-y-4">
+  <header class="as-hero">
+    <p class="text-xs font-extrabold uppercase tracking-widest text-cyan-300">School Administration</p>
+    <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Manage Academic Structure</h1>
+    <p class="text-sm text-slate-200 mt-2">Maintain existing academic records after initial setup. Record IDs remain fixed so classes, assessments and Class Records keep their references.</p>
+    <div class="mt-3 flex flex-wrap gap-2">
+      <a class="as-btn bg-white text-slate-900 no-underline" href="school-academic-configuration.html">← Setup wizard</a>
+    </div>
+  </header>
+
+  <section class="as-panel">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-extrabold">Academic records</h2>
+        <p id="as-status" class="as-muted mt-1" role="status" aria-live="polite">Checking school administration access…</p>
+      </div>
+      <div id="as-school-switcher" hidden class="w-full sm:w-auto sm:min-w-[230px]"></div>
+    </div>
+    <div class="as-tabs mt-4" role="tablist" aria-label="Academic record type">
+      <button class="as-tab" type="button" data-kind="academic_years" aria-selected="true">School Years</button>
+      <button class="as-tab" type="button" data-kind="academic_programs">Programs</button>
+      <button class="as-tab" type="button" data-kind="terms">Periods</button>
+      <button class="as-tab" type="button" data-kind="subjects">Subjects</button>
+      <button class="as-tab" type="button" data-kind="sections">Sections</button>
+    </div>
+  </section>
+
+  <section class="as-panel">
+    <div class="flex items-center justify-between gap-3">
+      <div><h2 id="as-list-title" class="text-lg font-extrabold">School Years</h2><p class="as-muted">Choose a record to edit.</p></div>
+      <button id="as-refresh" class="as-btn" type="button">Refresh</button>
+    </div>
+    <div id="as-list" class="as-list mt-4"></div>
+  </section>
+
+  <section id="as-editor-panel" class="as-panel" hidden>
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <p class="text-xs font-extrabold uppercase tracking-widest text-sky-700">Edit record</p>
+        <h2 id="as-editor-title" class="text-lg font-extrabold mt-1">Academic record</h2>
+        <p class="as-muted mt-1">The system ID is permanent. Edit the human-facing configuration only.</p>
+      </div>
+      <button id="as-close" class="as-btn" type="button">Close</button>
+    </div>
+    <form id="as-edit-form" class="grid gap-3 mt-4">
+      <label class="text-sm font-bold">System ID<input name="recordId" class="as-input mt-1 bg-slate-100" readonly></label>
+      <label class="text-sm font-bold">Display name<input name="name" class="as-input mt-1" maxlength="140" required></label>
+
+      <div id="as-year-fields" class="as-grid" hidden>
+        <label class="text-sm font-bold">Starts<input name="startDate" type="date" class="as-input mt-1"></label>
+        <label class="text-sm font-bold">Ends<input name="endDate" type="date" class="as-input mt-1"></label>
+      </div>
+
+      <div id="as-term-fields" class="grid gap-3" hidden>
+        <div class="as-grid">
+          <label class="text-sm font-bold">School year<select name="yearId" class="as-input mt-1"></select></label>
+          <label class="text-sm font-bold">Program / division<select name="programId" class="as-input mt-1"></select></label>
+        </div>
+        <div class="as-grid">
+          <label class="text-sm font-bold">Period type
+            <select name="periodType" class="as-input mt-1">
+              <option value="semester">Semester</option><option value="term">Term</option><option value="quarter">Quarter</option><option value="trimester">Trimester</option><option value="custom">Custom</option>
+            </select>
+          </label>
+          <label class="text-sm font-bold">Period number<input name="sequence" type="number" min="1" max="12" class="as-input mt-1"></label>
+        </div>
+        <div class="as-grid">
+          <label class="text-sm font-bold">Starts<input name="termStartDate" type="date" class="as-input mt-1"></label>
+          <label class="text-sm font-bold">Ends<input name="termEndDate" type="date" class="as-input mt-1"></label>
+        </div>
+      </div>
+
+      <div id="as-section-fields" class="grid gap-3" hidden>
+        <div class="as-grid">
+          <label class="text-sm font-bold">Program / division<select name="sectionProgramId" class="as-input mt-1"></select></label>
+          <label class="text-sm font-bold">Grade / school level<select name="gradeLevel" class="as-input mt-1"></select></label>
+        </div>
+        <label id="as-pathway-wrap" class="text-sm font-bold" hidden>Track / Strand / Pathway
+          <input name="pathway" maxlength="80" class="as-input mt-1" placeholder="e.g. ICT, STEM, HUMSS, ABM, TVL-ICT">
+          <span class="as-muted block mt-1">Available only for Senior High School sections.</span>
+        </label>
+      </div>
+
+      <div id="as-save-status" class="as-status" hidden></div>
+      <button id="as-save" class="as-btn primary" type="submit">Save changes</button>
+    </form>
+  </section>
+</main>
+<script defer src="js/core/release-footer.js?v=2cf96c86be01"></script>
+<script src="js/core/adminerva-loader.js?v=2cf96c86be01"></script>
+<script defer src="js/core/adminerva-nav.js?v=2cf96c86be01"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=2cf96c86be01"></script>
+<script type="module" src="js/school-admin/academic-structure.mjs?v=1"></script>
+</body>
+</html>
