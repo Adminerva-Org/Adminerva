@@ -286,12 +286,22 @@ function updateSectionGradeOptions(){
   for(const level of levels)select.add(new Option(level.label,level.value));
   select.value=levels.some(level=>level.value===previous)?previous:"";
 }
+function isSeniorHighProgram(programId){
+  const program=programs.find(item=>item.id===programId),name=String(program?.name||programId||"").toLowerCase();
+  return /senior high|\bshs\b/.test(name);
+}
+function updateSectionPathwayVisibility(){
+  const form=el("ac-section-form"),wrap=el("ac-section-pathway-wrap"),shs=isSeniorHighProgram(form.elements.programId.value);
+  if(wrap)wrap.hidden=!shs;
+  if(!shs&&form.elements.pathway)form.elements.pathway.value="";
+}
 function updateSectionCode(force=false){
   const form=el("ac-section-form"),program=programShortCode(form.elements.programId.value),
     level=levelMeta(form.elements.programId.value,form.elements.gradeLevel.value),
     levelCode=level?.code||String(form.elements.gradeLevel.value||"").trim(),
+    pathway=isSeniorHighProgram(form.elements.programId.value)?compactSectionToken(form.elements.pathway?.value||""):"",
     name=compactSectionToken(form.elements.name.value);
-  const generated=[program,levelCode,name].filter(Boolean).join("_").slice(0,80);
+  const generated=[program,levelCode,pathway,name].filter(Boolean).join("_").slice(0,80);
   setAuto(form,"recordId",generated,force);
 }
 function yearRange(item){
@@ -387,7 +397,7 @@ function renderCatalog(){
   renderList(el("ac-sections"),sections,item=>{
     const program=programs.find(x=>x.id===item.programId)?.name||item.programId||"Unassigned program";
     const level=item.gradeLevel?levelLabel(item.programId,item.gradeLevel):null;
-    return [program,level,"ID: "+item.id].filter(Boolean).join(" · ");
+    return [program,level,item.pathway||null,"ID: "+item.id].filter(Boolean).join(" · ");
   });
 
   const termForm=el("ac-term-form"),sectionForm=el("ac-section-form"),offeringForm=el("ac-offering-form");
@@ -396,6 +406,7 @@ function renderCatalog(){
   fillSelect(termForm.elements.yearId,years,{placeholder:"Choose academic year",preferred:preferredYear});
   fillSelect(sectionForm.elements.programId,programs,{placeholder:"Choose program / division"});
   updateSectionGradeOptions();
+  updateSectionPathwayVisibility();
 
   fillSelect(offeringForm.elements.programId,programs,{placeholder:"Choose program / division"});
   fillSelect(offeringForm.elements.yearId,years,{placeholder:"Choose academic year",preferred:preferredYear});
@@ -582,9 +593,11 @@ el("ac-year-form").elements.endDate.addEventListener("change",()=>updateYearSugg
 el("ac-program-form").elements.name.addEventListener("input",()=>updateSimpleCode(el("ac-program-form")));
 el("ac-subject-form").elements.name.addEventListener("input",()=>updateSimpleCode(el("ac-subject-form")));
 el("ac-section-form").elements.name.addEventListener("input",()=>updateSectionCode());
+el("ac-section-form").elements.pathway.addEventListener("input",()=>updateSectionCode());
 el("ac-section-form").elements.gradeLevel.addEventListener("change",()=>updateSectionCode());
 el("ac-section-form").elements.programId.addEventListener("change",()=>{
   updateSectionGradeOptions();
+  updateSectionPathwayVisibility();
   el("ac-section-form").elements.recordId.dataset.manual="false";
   updateSectionCode();
 });
