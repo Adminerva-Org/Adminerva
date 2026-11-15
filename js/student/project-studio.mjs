@@ -1,7 +1,7 @@
 /** Project-first Code Studio orchestration, Adminerva DB lab, design and evidence surfaces. */
 import {db} from "../core/firebase-core.js?v=1.3.0";
 import {
-  collection,deleteDoc,doc,getDocs,setDoc
+  collection,deleteDoc,doc,getDoc,getDocs,setDoc
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {
   CODE_PROJECT_TEMPLATES,createCodeProject,deleteCodeProject,findCodeProject,
@@ -478,7 +478,19 @@ export function createProjectStudio({
       }catch(error){
         const message=String(error?.message||error||"");
         if(!/not.?found|unavailable/i.test(message))
-          console.warn("Assessment Studio project lookup skipped:",message);
+          console.warn("Verified-school assessment project lookup skipped:",message);
+      }
+    }
+    if(!project&&cloudEnabled){
+      try{
+        const legacyCloud=await getDoc(doc(db,"student_code_projects",uid,"projects",projectId));
+        if(legacyCloud.exists()){
+          project={id:projectId,...legacyCloud.data()};
+          validateProject(project);
+          project=saveCodeProject(projectStorage,uid,project);
+        }
+      }catch(error){
+        console.warn("Existing assessment project cloud lookup skipped:",error?.message||error);
       }
     }
 
