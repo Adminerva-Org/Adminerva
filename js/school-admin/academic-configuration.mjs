@@ -5,13 +5,32 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0
 const el=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
 const status=el("ac-status");
-let picker=null,busy=false;
+let picker=null,busy=false,currentStep=1,wizardInitialized=false,toastTimer=null;
 let years=[],programs=[],terms=[],subjects=[],sections=[],offerings=[];
+const WIZARD=[
+  {key:"years",title:"School year"},
+  {key:"programs",title:"Division / program"},
+  {key:"terms",title:"Academic periods"},
+  {key:"subjects",title:"Subjects"},
+  {key:"sections",title:"Sections"},
+  {key:"offerings",title:"Course offering"}
+];
 
 const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
 const periodSize={semester:2,term:3,quarter:4,trimester:3};
 
 function say(message){status.textContent=message;}
+function friendlyError(error,fallback="The action could not be completed."){
+  const message=String(error?.message||fallback);
+  if(/System Admin role test is temporary|school changes are not saved/i.test(message))
+    return "System Admin preview is temporary, so this change was not saved. Exit role test and use an actual School Administrator session to save school configuration.";
+  return message;
+}
+function notify(message,tone="info"){
+  const host=el("ac-action-message");if(!host)return;
+  clearTimeout(toastTimer);host.textContent=message;host.dataset.tone=tone;host.hidden=false;
+  toastTimer=setTimeout(()=>{host.hidden=true;},tone==="error"?7000:3500);
+}
 function scoped(action,details={}){
   if(!picker?.scope.current)return Promise.reject(new Error("Choose a verified school first."));
   const lease=picker.scope.lease();
@@ -22,8 +41,10 @@ function scoped(action,details={}){
 }
 function setBusy(value,message=""){
   busy=value;
-  document.querySelectorAll("form button,#ac-refresh").forEach(button=>button.disabled=value);
+  document.querySelectorAll("form button,#ac-refresh,#ac-wizard-back,#ac-wizard-next,[data-wizard-go]")
+    .forEach(button=>button.disabled=value);
   if(message)say(message);
+  if(!value)syncWizard();
 }
 function slug(value){
   return String(value||"").trim().toLowerCase().normalize("NFKD")
@@ -98,16 +119,71 @@ function renderList(host,items,meta){
     row.append(left,state);host.append(row);
   }
 }
-function updateSteps(){
-  const values=[
-    ["years",years.length],["programs",programs.length],["terms",terms.length],
-    ["subjects",subjects.length],["sections",sections.length],["offerings",offerings.filter(x=>x.status==="active").length]
-  ];
-  for(const [key,count] of values){
-    const label=el("ac-step-"+key);if(label)label.textContent=count?count+" configured":"Not configured";
-    label?.closest(".ac-step")?.setAttribute("data-ready",String(Boolean(count)));
+function configuredCount(step){
+  return [years,programs,terms,subjects,sections,offerings.filter(item=>item.status==="active")][step-1]?.length||0;
+}
+function stepReady(step){return configuredCount(step)>0;}
+function firstIncompleteStep(){
+  for(let step=1;step<=WIZARD.length;step++)if(!stepReady(step))return step;
+  return WIZARD.length;
+}
+function canOpenStep(step){
+  if(step<=1)return true;
+  for(let prior=1;prior<step;prior++)if(!stepReady(prior))return false;
+  return true;
+}
+function syncWizard(){
+  if(!WIZARD[currentStep-1])currentStep=1;
+  const completed=WIZARD.reduce((sum,_,index)=>sum+(stepReady(index+1)?1:0),0);
+  WIZARD.forEach((step,index)=>{
+    const number=index+1,count=configuredCount(number),label=el("ac-step-"+step.key),
+      button=document.querySelector('[data-wizard-go="'+number+'"]');
+    if(label)label.textContent=count?count+" configured":"Not configured";
+    if(button){
+      button.dataset.ready=String(Boolean(count));
+      button.dataset.active=String(number===currentStep);
+      button.disabled=busy||(!canOpenStep(number)&&number!==currentStep);
+      button.setAttribute("aria-current",number===currentStep?"step":"false");
+    }
+  });
+  const title=el("ac-wizard-title"),count=el("ac-wizard-count"),fill=el("ac-progress-fill"),
+    back=el("ac-wizard-back"),next=el("ac-wizard-next"),navStatus=el("ac-wizard-nav-status");
+  if(title)title.textContent="Step "+currentStep+" · "+WIZARD[currentStep-1].title;
+  if(count)count.textContent=currentStep+" of "+WIZARD.length+" · "+completed+" completed";
+  if(fill)fill.style.width=(currentStep/WIZARD.length*100)+"%";
+  if(back)back.disabled=busy||currentStep===1;
+  if(next){
+    next.hidden=currentStep===WIZARD.length;
+    next.disabled=busy||!stepReady(currentStep);
+    next.textContent=currentStep===WIZARD.length-1?"Next: Course offering →":"Next →";
+  }
+  if(navStatus){
+    navStatus.textContent=stepReady(currentStep)?
+      (currentStep===WIZARD.length?"Academic structure has a course offering. You can review any completed step above.":"Step complete. Continue when ready."):
+      "Save at least one "+WIZARD[currentStep-1].title.toLowerCase()+" record to continue.";
   }
 }
+function showWizardStep(step,{scroll=true,force=false}={}){
+  const target=Math.max(1,Math.min(WIZARD.length,Number(step)||1));
+  if(!force&&!canOpenStep(target)){
+    const missing=firstIncompleteStep();
+    notify("Complete Step "+missing+" ("+WIZARD[missing-1].title+") before moving forward.","error");
+    return false;
+  }
+  currentStep=target;
+  el("ac-catalog").hidden=target===6;
+  for(const card of el("ac-catalog").querySelectorAll("[data-wizard-step]"))
+    card.hidden=Number(card.dataset.wizardStep)!==target;
+  el("ac-offerings").hidden=target!==6;
+  syncWizard();
+  if(scroll){
+    const active=target===6?el("ac-offerings"):el("ac-catalog").querySelector('[data-wizard-step="'+target+'"]');
+    active?.scrollIntoView({behavior:"smooth",block:"start"});
+    setTimeout(()=>active?.querySelector("input,select,button")?.focus?.(),220);
+  }
+  return true;
+}
+function updateSteps(){syncWizard();}
 function setAuto(form,key,value,force=false){
   const field=form?.elements?.[key];if(!field)return;
   if(force||field.dataset.manual!=="true")field.value=value||"";
@@ -315,9 +391,15 @@ async function load(){
     sections=(sec.items||[]).filter(x=>x.status==="active");
     offerings=o.offerings||[];
     renderCatalog();
-    say("Academic configuration loaded. Suggested values are generated from the school calendar and existing records.");
+    if(!wizardInitialized){
+      wizardInitialized=true;
+      currentStep=firstIncompleteStep();
+      showWizardStep(currentStep,{scroll:false,force:true});
+    }else showWizardStep(currentStep,{scroll:false,force:true});
+    say("Academic configuration loaded. Configure one step at a time; saved steps unlock the next step.");
   }catch(error){
-    say(error?.message||"Academic configuration could not be loaded.");
+    const message=friendlyError(error,"Academic configuration could not be loaded.");
+    say(message);notify(message,"error");
   }finally{setBusy(false);}
 }
 function payload(form){
@@ -329,21 +411,36 @@ function clearManual(form){
   for(const field of form.querySelectorAll("input,select"))field.dataset.manual="false";
 }
 async function createCatalog(form,kind,extra=()=>({})){
-  if(busy||!form.reportValidity())return;
+  if(busy)return false;
+  if(!form.reportValidity()){
+    notify("Complete the required fields in this step before saving.","error");
+    return false;
+  }
   const data=payload(form);
   const source={academic_years:years,academic_programs:programs,terms,subjects,sections}[kind]||[];
   const duplicate=source.find(item=>String(item.name||"").trim().toLocaleLowerCase("en")===String(data.name||"").trim().toLocaleLowerCase("en"));
   if(duplicate){
-    say("“"+data.name+"” already exists in this school. Use the existing record instead of creating a duplicate.");
-    form.elements.name?.focus();return;
+    const message="“"+data.name+"” already exists in this school. Use the existing record instead of creating a duplicate.";
+    say(message);notify(message,"error");form.elements.name?.focus();return false;
   }
+  const submit=form.querySelector('button[type="submit"]'),original=submit?.textContent||"Save";
+  if(submit)submit.textContent="Saving…";
   setBusy(true,"Saving academic record…");
   try{
-    await scoped("create_catalog",{kind,...data,...extra(data)});
+    const result=await scoped("create_catalog",{kind,...data,...extra(data)});
     form.reset();clearManual(form);
     await load();
-  }catch(error){say(error?.message||"Academic record was not saved.");}
-  finally{setBusy(false);}
+    const label={academic_years:"Academic year",academic_programs:"Division / program",terms:"Academic period",subjects:"Subject",sections:"Section"}[kind]||"Academic record";
+    const message=label+" saved successfully.";
+    say(message+" Step "+currentStep+" is complete.");notify(message,"success");
+    return result||true;
+  }catch(error){
+    const message=friendlyError(error,"Academic record was not saved.");
+    say(message);notify(message,"error");return false;
+  }finally{
+    if(submit)submit.textContent=original;
+    setBusy(false);
+  }
 }
 el("ac-year-form").addEventListener("submit",event=>{
   event.preventDefault();void createCatalog(event.currentTarget,"academic_years",data=>({
@@ -367,12 +464,22 @@ el("ac-section-form").addEventListener("submit",event=>{
 });
 el("ac-offering-form").addEventListener("submit",event=>{
   event.preventDefault();
-  const form=event.currentTarget;if(busy||!form.reportValidity())return;
+  const form=event.currentTarget;
+  if(busy)return;
+  if(!form.reportValidity()){notify("Complete all course-offering fields before saving.","error");return;}
+  const submit=form.querySelector('button[type="submit"]'),original=submit?.textContent||"Create course offering";
+  if(submit)submit.textContent="Saving…";
   setBusy(true,"Creating course offering…");
   void scoped("create_offering",payload(form)).then(async()=>{
     form.reset();clearManual(form);await load();
-  }).catch(error=>say(error?.message||"Course offering was not created."))
-    .finally(()=>setBusy(false));
+    say("Course offering saved successfully.");notify("Course offering saved successfully.","success");
+  }).catch(error=>{
+    const message=friendlyError(error,"Course offering was not created.");
+    say(message);notify(message,"error");
+  }).finally(()=>{
+    if(submit)submit.textContent=original;
+    setBusy(false);
+  });
 });
 
 for(const form of [el("ac-year-form"),el("ac-program-form"),el("ac-term-form"),el("ac-subject-form"),el("ac-section-form")]){
@@ -416,29 +523,22 @@ for(const button of document.querySelectorAll("[data-reset-auto]")){
 }
 el("ac-refresh").addEventListener("click",()=>void load());
 
-function showTab(tab){
-  document.querySelectorAll("[data-tab]").forEach(item=>item.setAttribute("aria-selected",String(item.dataset.tab===tab)));
-  el("ac-catalog").hidden=tab!=="catalog";
-  el("ac-offerings").hidden=tab!=="offerings";
-  if(tab==="offerings")updateOfferingPreview();
-}
-for(const button of document.querySelectorAll("[data-tab]")){
-  button.addEventListener("click",()=>showTab(button.dataset.tab));
+for(const button of document.querySelectorAll("[data-wizard-go]")){
+  button.addEventListener("click",()=>showWizardStep(Number(button.dataset.wizardGo)));
 }
 for(const button of document.querySelectorAll("[data-open-offerings]")){
-  button.addEventListener("click",()=>{showTab("offerings");el("ac-offerings").scrollIntoView({behavior:"smooth",block:"start"});});
+  button.addEventListener("click",()=>showWizardStep(6));
 }
-for(const button of document.querySelectorAll("[data-tab-return]")){
-  button.addEventListener("click",()=>{showTab("catalog");el("ac-catalog").scrollIntoView({behavior:"smooth",block:"start"});});
-}
-for(const button of document.querySelectorAll("[data-jump]")){
-  button.addEventListener("click",()=>{showTab("catalog");el(button.dataset.jump)?.scrollIntoView({behavior:"smooth",block:"start"});});
-}
+el("ac-wizard-back")?.addEventListener("click",()=>showWizardStep(currentStep-1));
+el("ac-wizard-next")?.addEventListener("click",()=>{
+  if(!stepReady(currentStep)){notify("Save this step before continuing.","error");return;}
+  showWizardStep(currentStep+1);
+});
 
 picker=createTenantSchoolPicker({
   host:el("ac-school-switcher"),
   status,
-  onBeforeChange:async()=>{years=[];programs=[];terms=[];subjects=[];sections=[];offerings=[];},
+  onBeforeChange:async()=>{years=[];programs=[];terms=[];subjects=[];sections=[];offerings=[];currentStep=1;wizardInitialized=false;},
   onReady:scope=>{
     if(!scope.current?.roles.includes("school_admin")){
       say("School administrator access is required to configure academics.");return;
