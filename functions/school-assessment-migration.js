@@ -109,6 +109,7 @@ function createSchoolAssessmentMigrationService({db}){
     ].filter(Boolean).join("\n\n"),8000);
     let result;
     await db.runTransaction(async tx=>{
+      const now=FieldValue.serverTimestamp();
       const existing=await tx.get(targetRef);
       if(existing.exists){
         const current=existing.data();
@@ -129,7 +130,6 @@ function createSchoolAssessmentMigrationService({db}){
         }
         result={id:targetRef.id,alreadyImported:Object.keys(patch).length===0,title:current.title||title};return;
       }
-      const now=FieldValue.serverTimestamp();
       tx.create(targetRef,{
         title,description,instructions,rubric,checkingInstructions,
         subject:"Computer Programming",assessmentType:clean(legacy.type||"Assessment",80),
