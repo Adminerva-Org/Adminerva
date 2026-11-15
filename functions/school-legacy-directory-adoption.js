@@ -186,6 +186,11 @@ async function buildModel({db,resolveUserByEmail,ctx}){
         blocked=true;addIssue(issues,"canonical_auth_collision","integrity",group.names[0],
           "The school person record is linked to a different account.",{personId,targetUid:group.uid});
       }
+      if(group.uid&&!existingPerson.authUid&&existingPerson.migration?.source!=="mcs_legacy_v3"){
+        blocked=true;addIssue(issues,"unverified_existing_person_link","integrity",group.names[0],
+          "An existing school person occupies the deterministic identity record but has no verified legacy migration provenance. Link it through the reviewed invitation/recovery workflow instead.",
+          {personId,targetUid:group.uid});
+      }
     }
     const member=group.uid?memberByUid.get(group.uid)||null:null;
     if(member?.personId&&personId&&member.personId!==personId){
