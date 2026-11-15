@@ -44,7 +44,7 @@ function rowKey(...values){
 function createSchoolAcademicsService({db}) {
  const root=id=>({doc:path=>db.doc("schools/"+id+"/"+path)});
  return async request=>{
-  const input=request.data||{},ctx=await getSchoolContext({db,request,schoolId:input.schoolId});
+  const input=request.data||{},ctx=await getSchoolContext({db,request,schoolId:input.schoolId,allowDraftAdmin:true});
   const schoolRoot=root(ctx.schoolId),uid=ctx.uid;
   const admin=ctx.roles.includes("school_admin"),teacher=ctx.roles.includes("teacher");
   const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
@@ -53,7 +53,7 @@ function createSchoolAcademicsService({db}) {
   async function checkWriteAuthority(tx){
    if(ctx.platformOverride)return;
    const [school,membership]=await Promise.all([tx.get(schoolRef),tx.get(memberRef)]);
-   if(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
+   if(!school.exists||!["draft","active","pilot"].includes(school.data().state)||!membership.exists||
     membership.data().schoolId!==ctx.schoolId||membership.data().status!=="active"||
     !Array.isArray(membership.data().roles)||!membership.data().roles.includes("school_admin"))
     deny("permission-denied","Your school administration permission has changed.");
