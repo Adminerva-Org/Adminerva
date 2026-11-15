@@ -32,7 +32,8 @@ const picker=createTenantSchoolPicker({
     void (async()=>{
       const migration=await migrateOwnedLegacyAssessments();
       await refresh();
-      if(migration.migrated) say("Migrated "+migration.migrated+" existing Repository Management assessment"+(migration.migrated===1?"":"s")+" into My Assessments.");
+      if(migration.failed) say("Assessment Studio loaded, but "+migration.failed+" older Computer Programming assessment"+(migration.failed===1?" could":"s could")+" not be consolidated. Refresh once; if it persists, the assessment needs data repair.");
+      else if(migration.migrated) say("Consolidated "+migration.migrated+" existing Computer Programming assessment"+(migration.migrated===1?"":"s")+" into My Assessments.");
     })();
   }
 });
@@ -317,16 +318,17 @@ async function migrateOwnedLegacyAssessments(){
     const pending=(result.items||[]).filter(item=>!item.alreadyImported);
     if(!pending.length)return {migrated:0,total:(result.items||[]).length};
     say("Migrating "+pending.length+" existing Repository Management assessment"+(pending.length===1?"":"s")+" into Assessment Studio…");
-    let migrated=0;
+    let migrated=0,failed=0;
     for(const item of pending){
       try{
         await performScoped(migrationApi,"import_legacy",{legacyAssessmentId:item.legacyAssessmentId});
         migrated++;
       }catch(error){
+        failed++;
         console.warn("Legacy assessment migration skipped:",item.legacyAssessmentId,error);
       }
     }
-    return {migrated,total:(result.items||[]).length};
+    return {migrated,failed,total:(result.items||[]).length};
   }catch(error){
     console.warn("Automatic legacy assessment migration unavailable:",error);
     return {migrated:0,total:0,error};
