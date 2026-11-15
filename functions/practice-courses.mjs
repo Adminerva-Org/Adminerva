@@ -19,7 +19,7 @@ function choices(answer,alternatives,seed){
   return {choices:shuffled,correct:shuffled.indexOf(String(answer))};
 }
 export const COURSES=[
-  {id:"java",name:"Java Foundations",subtitle:"Variables, branches, loops and arrays",
+  {id:"java",name:"Java Programming",subtitle:"Foundations, classes, objects, inheritance and OOP",
    icon:"☕",missions:[
     {id:"j1",title:"Follow a changing variable",concept:"Assignment changes the stored value. Read each statement in order.",
       build(seed){const a=n(seed,8,3),b=n(seed>>2,5,2),result=a+b;
