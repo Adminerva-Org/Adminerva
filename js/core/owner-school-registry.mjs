@@ -408,6 +408,10 @@ try {
     say("Owner school registry loaded. School-specific private academic records are never displayed here.");
   }
 }catch(error){
-  workspace.hidden=true;
-  say(error?.message||"Your account does not have verified platform-owner access.");
+  workspace.hidden=false;
+  actions.hidden=true;
+  const message=error?.message||"The School Registry backend could not verify platform authority.";
+  say(message+" You can still open the school-registration workflow; saving requires the platform backend to be available.");
+  const onboardingStart=byId("owner-onboarding-start");
+  if(onboardingStart)onboardingStart.disabled=false;
 }
