@@ -10,6 +10,9 @@ const gradeApi=httpsCallable(functions,"schoolGradebook");
 const studioApi=httpsCallable(functions,"schoolStudioProjects");
 const el=id=>document.getElementById(id);
 let profile=null,assignments=[],grades=new Map(),studioProjects=[],sessionGithubToken="",busy=false,epoch=0;
+const projectParams=new URLSearchParams(location.search);
+const requestedOfferingId=projectParams.get("offeringId")||"";
+const requestedSubjectId=projectParams.get("subjectId")||"";
 
 function make(tag,className,text){
   const node=document.createElement(tag);if(className)node.className=className;
@@ -41,7 +44,11 @@ function renderSelector(){
   const select=el("projectHubClass"),previous=select.value;select.replaceChildren();
   for(const item of profile?.classes||[])select.add(new Option(classLabel(item),item.offeringId));
   if((profile?.classes||[]).some(item=>item.offeringId===previous))select.value=previous;
-  else if(select.options.length)select.selectedIndex=0;
+  else if(requestedOfferingId&&(profile?.classes||[]).some(item=>item.offeringId===requestedOfferingId))select.value=requestedOfferingId;
+  else if(requestedSubjectId){
+    const match=(profile?.classes||[]).find(item=>item.subjectId===requestedSubjectId);
+    if(match)select.value=match.offeringId;else if(select.options.length)select.selectedIndex=0;
+  }else if(select.options.length)select.selectedIndex=0;
 }
 function renderStudio(){
   const host=el("projectHubStudio");host.replaceChildren();
@@ -62,7 +69,13 @@ function renderStudio(){
 }
 function renderAssignments(){
   const host=el("projectHubAssignments");host.replaceChildren();
-  const current=selectedClass(),rows=assignments.filter(task=>!current||task.offeringId===current.offeringId)
+  const current=selectedClass(),params=new URLSearchParams();
+  if(current?.subjectId)params.set("subjectId",current.subjectId);
+  if(current?.subject)params.set("subject",current.subject);
+  if(current?.offeringId)params.set("offeringId",current.offeringId);
+  const assignmentHref="student-assessments.html"+(params.toString()?"?"+params.toString():"");
+  const allLink=el("projectHubAllAssignments");if(allLink)allLink.href=assignmentHref;
+  const rows=assignments.filter(task=>!current||task.offeringId===current.offeringId)
     .sort((a,b)=>(a.dueAt||0)-(b.dueAt||0));
   if(!rows.length){
     host.append(make("p","rounded-xl border border-dashed p-3 text-sm text-slate-500",
@@ -78,7 +91,7 @@ function renderAssignments(){
     if(grade)card.append(make("span","inline-block mt-2 rounded-full bg-emerald-100 text-emerald-800 px-2 py-1 text-xs font-bold",
       "Published "+grade.awarded+" / "+grade.total));
     const link=make("a","inline-block mt-3 text-xs font-bold text-cyan-800 underline","Open assignment →");
-    link.href="student-assessments.html#"+encodeURIComponent(task.taskId);card.append(link);host.append(card);
+    link.href=assignmentHref+"#"+encodeURIComponent(task.taskId);card.append(link);host.append(card);
   }
 }
 async function githubJson(url){
