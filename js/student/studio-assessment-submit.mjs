@@ -20,6 +20,7 @@ if(button){
   let choices=new Map(),busy=false,openedUser=null,usingV4=false;
   const notice=text=>{state.textContent=text;};
   const assessmentParam=new URL(location.href).searchParams.get("assessment");
+  const linkedAssessmentId=()=>String(window.adminervaStudioSubmissionState?.()?.project?.assessment?.assessmentId||assessmentParam||"");
 
   function v4Allowed(choice){
     if(!choice?.task)return false;
@@ -97,11 +98,17 @@ if(button){
           (studioSubmissionAllowed(assessment,student.section).allowed?"":" · Schedule not currently open"),key));
       }
     }
-    if(assessmentParam){
+    const linkedId=linkedAssessmentId();
+    if(linkedId){
       for(const [key,choice] of choices){
         const id=choice.mode==="v4"?choice.task.taskId:choice.assessment.id;
-        if(id===assessmentParam){choose.value=key;break;}
+        if(id===linkedId){choose.value=key;break;}
       }
+      const matched=Boolean(choose.value);
+      choose.disabled=matched;
+      choose.title=matched?"This project was created for this assessment.":"";
+    }else{
+      choose.disabled=false;choose.title="";
     }
     notice(v4Known?
       "School-scoped submissions are available. Legacy pilot tasks remain listed only during migration.":
@@ -200,6 +207,9 @@ if(button){
 
   async function submitV4(chosen,captured){
     const task=chosen.task;
+    const owner=captured.project?.assessment;
+    if(owner?.assessmentId&&owner.assessmentId!==task.taskId)
+      throw Error("This Studio project belongs to another assessment. Open the assigned project from My Assignments.");
     if(!v4Allowed(chosen))throw Error("This school submission window is not open.");
     const fileCount=Object.keys(captured.state?.files||{}).length;
     if(!confirm("Submit \""+captured.project.title+"\" as a frozen "+fileCount+
@@ -214,6 +224,9 @@ if(button){
   }
   async function submitLegacy(chosen,captured,uid){
     const {student,assessment}=chosen;
+    const owner=captured.project?.assessment;
+    if(owner?.assessmentId&&owner.assessmentId!==assessment.id)
+      throw Error("This Studio project belongs to another assessment. Open the assigned project from My Assessments.");
     if(assessment.practicalExam&&assessmentParam!==assessment.id)
       throw Error("Open this practical exam from My Assessments before working on it.");
     if(assessment.personalizedTask?.enabled===true&&assessmentParam!==assessment.id)
