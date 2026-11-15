@@ -16,15 +16,37 @@ function make(tag,className,text){
   if(text!==undefined)element.textContent=String(text);
   return element;
 }
+function sourceLabel(source){
+  return ({text:"Written response",link:"Submission link",studio:"Adminerva Studio",github:"GitHub / repository evidence"})[source]||"Assessment response";
+}
+function sourceApi(source,{studio,general,github}){
+  return source==="github"?github:source==="studio"?studio:general;
+}
 function localIso(value){
   if(!value)return null;
   const date=new Date(value);
   return Number.isFinite(date.getTime())?date.toISOString():null;
 }
 if(panel&&taskSelect&&inbox&&status&&dialog){
+  const view=new URL(location.href).searchParams.get("view")||"review";
+  const viewCopy={
+    submissions:["Submissions","Inspect frozen learner responses and open the exact submitted version when review is needed."],
+    review:["Review & Grade","Review immutable assessment evidence, save private rubric drafts, and publish deliberately."],
+    results:["Assessment Results","Review saved draft/published outcomes and open any learner result against its frozen submission."]
+  }[view]||["Review & Grade","Review immutable assessment evidence, save private rubric drafts, and publish deliberately."];
+  const pageTitle=document.getElementById("gbV4PageTitle"),pageDescription=document.getElementById("gbV4PageDescription");
+  if(pageTitle)pageTitle.textContent=viewCopy[0];
+  if(pageDescription)pageDescription.textContent=viewCopy[1];
+  document.querySelectorAll('nav[aria-label="Assessment workflow views"] a').forEach(link=>{
+    const active=new URL(link.href,location.href).searchParams.get("view")===view;
+    link.classList.toggle("bg-cyan-900",active);
+    if(active)link.setAttribute("aria-current","page");else link.removeAttribute("aria-current");
+  });
+
   const functions=getFunctions(app,"asia-southeast1");
   const assessmentApi=httpsCallable(functions,"schoolAssessments");
   const submissionApi=httpsCallable(functions,"schoolStudioSubmissions");
+  const generalSubmissionApi=httpsCallable(functions,"schoolAssessmentSubmissions");
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
   const gradeApi=httpsCallable(functions,"schoolGradebook");
   let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null;
@@ -66,20 +88,20 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     status.textContent="Loading your verified school assessments…";
     const result=await scoped(assessmentApi,"list_teacher");
     if(token!==generation)return;
-    const items=(result.assessments||[]).filter(item=>["studio","github"].includes(item.submissionSource)&&item.status==="deployed");
+    const items=(result.assessments||[]).filter(item=>["studio","github","text","link"].includes(item.submissionSource)&&item.status==="deployed");
     tasks=new Map(items.map(item=>[item.taskId,item]));
     taskSelect.replaceChildren();
     const start=new Option(items.length?"Choose an assessment…":"No deployed V4 assessments","");
     start.disabled=true;start.selected=true;taskSelect.add(start);
     for(const task of items){
-      const label=(task.submissionSource==="github"?"GitHub · ":"Studio · ")+task.title+" · "+(task.sectionId||"class")+" · "+(task.subjectId||"subject");
+      const label=sourceLabel(task.submissionSource)+" · "+task.title+" · "+(task.sectionId||"class")+" · "+(task.subjectId||"subject");
       taskSelect.add(new Option(label,task.taskId));
     }
     panel.classList.remove("hidden");
     inbox.replaceChildren();
     status.textContent=items.length?
       items.length+" deployed V4 assessment"+(items.length===1?"":"s")+" available.":
-      "No verified V4 assessments owned by this teacher in the active school." ;
+      "No deployed school assessments owned by this teacher in the active school." ;
     const requested=new URL(location.href).searchParams.get("task");
     if(requested&&tasks.has(requested)){
       taskSelect.value=requested;
@@ -91,10 +113,11 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     currentTask=task||null;inbox.replaceChildren();
     if(!task){status.textContent="Choose an assessment to load submissions.";return;}
     const token=++generation;
-    status.textContent=task.submissionSource==="github"?
-      "Loading frozen GitHub evidence…":"Loading frozen Studio submissions…";
+    status.textContent="Loading frozen "+sourceLabel(task.submissionSource).toLowerCase()+" submissions…";
     try{
-      const evidenceApi=task.submissionSource==="github"?githubEvidenceApi:submissionApi;
+      const evidenceApi=sourceApi(task.submissionSource,{
+        studio:submissionApi,general:generalSubmissionApi,github:githubEvidenceApi
+      });
       const result=await scoped(evidenceApi,"inbox",{taskId:task.taskId});
       if(token!==generation)return;
       const rows=task.submissionSource==="github"?(result.evidence||[]):(result.submissions||[]);
@@ -114,7 +137,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           make("p","text-xs text-slate-500 mt-1",
             "Version "+row.version+" · "+row.status+" · "+(row.updatedAt?new Date(row.updatedAt).toLocaleString():"recently"))
         );
-        const button=make("button","rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5 text-sm",task.submissionSource==="github"?"Verify evidence":"Review frozen project");
+        const button=make("button","rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5 text-sm",
+          task.submissionSource==="github"?"Verify evidence":"Review response");
         button.type="button";
         const normalized=task.submissionSource==="github"?
           {...row,recordId:row.evidenceId}:{...row,recordId:row.submissionId};
@@ -165,6 +189,23 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4GithubApprovalNote").value="";
     githubVerification=null;
   }
+  function renderGeneralEvidence(snapshot){
+    const isLink=currentTask?.submissionSource==="link";
+    const payload=snapshot?.payload||{};
+    document.getElementById("gbV4GeneralHeading").textContent=isLink?"Frozen submission link":"Frozen written response";
+    document.getElementById("gbV4GeneralMeta").textContent=
+      "Version "+(snapshot?.version||"—")+" · "+(snapshot?.status||"submitted");
+    const link=document.getElementById("gbV4GeneralLink");
+    link.classList.toggle("hidden",!isLink);
+    if(isLink)link.href=payload.url||"#";
+    const body=document.getElementById("gbV4GeneralBody");
+    body.textContent=isLink?(payload.url||"No submitted URL."):(payload.response||"No written response.");
+    const note=document.getElementById("gbV4GeneralNote");
+    const noteText=isLink?String(payload.note||"").trim():"";
+    note.classList.toggle("hidden",!noteText);
+    note.textContent=noteText?"Student note:\n"+noteText:"";
+  }
+
   async function verifyGithubEvidence(){
     if(busy||currentTask?.submissionSource!=="github"||!currentSnapshot)return;
     const verifyStatus=document.getElementById("gbV4GithubVerifyStatus");
@@ -266,11 +307,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4PersonalizedPrompt").textContent="";
     document.getElementById("gbV4PersonalizedNotes").textContent="";
     document.getElementById("gbV4GithubEvidence").classList.toggle("hidden",currentTask.submissionSource!=="github");
-    document.getElementById("gbV4EvidenceType").textContent=
-      currentTask.submissionSource==="github"?"Verified GitHub evidence":"Verified Studio submission";
+    document.getElementById("gbV4GeneralEvidence").classList.toggle("hidden",!["text","link"].includes(currentTask.submissionSource));
+    document.getElementById("gbV4EvidenceType").textContent="Verified "+sourceLabel(currentTask.submissionSource);
     githubVerification=null;dialog.showModal();
     try{
-      const evidenceApi=currentTask.submissionSource==="github"?githubEvidenceApi:submissionApi;
+      const evidenceApi=sourceApi(currentTask.submissionSource,{
+        studio:submissionApi,general:generalSubmissionApi,github:githubEvidenceApi
+      });
       const evidenceDetails=currentTask.submissionSource==="github"?
         {taskId:currentTask.taskId,evidenceId:row.recordId}:
         {taskId:currentTask.taskId,submissionId:row.recordId};
@@ -294,7 +337,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           document.getElementById("gbV4PersonalizedNotes").textContent=
             currentSnapshot.personalizedTask.evaluationNotes||"No private variant notes were saved.";
         }
-      }else renderGithubEvidence(currentSnapshot);
+      }else if(currentTask.submissionSource==="github")renderGithubEvidence(currentSnapshot);
+      else renderGeneralEvidence(currentSnapshot);
       renderRubric(currentGrade);
       const revisionDue=document.getElementById("gbV4RevisionDue");
       const revisionDueLabel=document.getElementById("gbV4RevisionDueLabel");
@@ -490,7 +534,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(!confirm("Reopen this frozen submission for a student revision?"))return;
     try{
       setBusy(true,"Requesting a new student revision…");
-      const evidenceApi=currentTask.submissionSource==="github"?githubEvidenceApi:submissionApi;
+      const evidenceApi=sourceApi(currentTask.submissionSource,{
+        studio:submissionApi,general:generalSubmissionApi,github:githubEvidenceApi
+      });
       const identity=currentTask.submissionSource==="github"?
         {evidenceId:currentRow.recordId}:{submissionId:currentRow.recordId};
       await scoped(evidenceApi,"request_revision",{
