@@ -250,10 +250,11 @@ function render(){
     const row=document.createElement("article");row.className="tl-row";row.setAttribute("role","listitem");
     const info=document.createElement("div"),heading=document.createElement("h3"),meta=document.createElement("p");
     heading.style.fontWeight="750";heading.textContent=item.title;
-    meta.className="tl-muted";meta.textContent=(item.canShare?"Owned by you":"Shared by teacher "+item.ownerUid.slice(0,8))+
-      " · "+(personalized(item)?"personalized Studio":"standard")+
-      (item.legacyImport?" · GitHub / Repository · migrated":"")+
-      " · "+item.visibility.replaceAll("_"," ")+" · revision "+item.contentRevision;
+    meta.className="tl-muted";meta.textContent=(item.subject||"General")+" · "+
+      (item.assessmentType||"Assessment")+" · "+sourceLabel(item.defaultSubmissionSource||"text")+
+      " · "+(personalized(item)?"personalized":"standard")+
+      " · "+(item.canShare?"Owned by you":"Shared by teacher "+item.ownerUid.slice(0,8))+
+      " · revision "+item.contentRevision;
     info.append(heading,meta);
     const controls=document.createElement("div");controls.className="tl-actions";
     controls.append(actionButton("Preview",()=>showPreview(item),true));
@@ -278,6 +279,9 @@ function edit(item){
   form.elements.title.value=item.title;
   form.elements.description.value=item.description||"";
   form.elements.instructions.value=item.instructions||"";
+  form.elements.subject.value=item.subject||"General";
+  form.elements.assessmentType.value=item.assessmentType||"Assessment";
+  form.elements.defaultSubmissionSource.value=item.defaultSubmissionSource||"text";
   form.elements.checkingInstructions.value=item.checkingInstructions||"";
   form.elements.personalizationMode.value=personalized(item)?"personalized":"standard";
   form.elements.variantTarget.value=String(item.personalization?.variantTarget||30);
@@ -348,7 +352,10 @@ form.addEventListener("submit",event=>{
   const isPersonalized=String(data.get("personalizationMode")||"standard")==="personalized";
   const blueprint={
     title:String(data.get("title")||""),description:String(data.get("description")||""),
-    instructions:String(data.get("instructions")||""),checkingInstructions:String(data.get("checkingInstructions")||""),rubric:criteria,
+    instructions:String(data.get("instructions")||""),subject:String(data.get("subject")||"General"),
+    assessmentType:String(data.get("assessmentType")||"Assessment"),
+    defaultSubmissionSource:String(data.get("defaultSubmissionSource")||"text"),
+    checkingInstructions:String(data.get("checkingInstructions")||""),rubric:criteria,
     personalization:isPersonalized?{
       enabled:true,mode:"ai_blueprint_pool_v1",
       variantTarget:Number(data.get("variantTarget")||30),
@@ -440,7 +447,7 @@ async function prepareDeployment(item){
   const form=el("tl-deploy-form");
   form.reset();
   form.elements.submissionSource.disabled=personalized(item);
-  form.elements.submissionSource.value=personalized(item)?"studio":"studio";
+  form.elements.submissionSource.value=personalized(item)?"studio":(item.defaultSubmissionSource||"text");
   const now=new Date(),tomorrow=new Date(now.getTime()+24*60*60*1000);
   form.elements.opensAt.value=localDateInput(now);
   form.elements.dueAt.value=localDateInput(tomorrow);
