@@ -2,3 +2,23 @@
 
 @media(max-width:1000px){.lab-game-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.lab-game-card{min-height:165px}}
 @media(max-width:520px){.lab-game-grid{grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:1.4rem}.lab-game-card{min-height:150px;padding:.8rem}.lab-game-card-icon{width:34px;height:34px;font-size:1rem}.lab-game-card strong{font-size:.78rem}.lab-game-card p{font-size:.62rem;line-height:1.5}.lab-game-card-tag{font-size:.48rem}.lab-game-card small{font-size:.55rem}}
+
+.lab-mechanic-panel{margin:0 0 1.2rem;padding:1rem;border:1px solid #c7d8ea;border-radius:.9rem;background:#f8fbff}
+.lab-mechanic-panel[data-kind=trace]{background:#f3f7ff;border-color:#b9cdf1}
+.lab-mechanic-panel[data-kind=debug]{background:#fff8ed;border-color:#e9c987}
+.lab-mechanic-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.8rem}
+.lab-mechanic-head strong{font-size:.85rem}
+.lab-mechanic-kicker{font-size:.56rem;font-weight:900;letter-spacing:.11em;color:#58779b}
+.lab-mechanic-panel[data-kind=debug] .lab-mechanic-kicker{color:#956814}
+.lab-trace-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.55rem;list-style:none;padding:0;margin:0;counter-reset:trace}
+.lab-trace-steps li{counter-increment:trace;position:relative;padding:.8rem .7rem .8rem 2rem;border:1px solid #d7e2f2;border-radius:.7rem;background:white;font-size:.68rem;line-height:1.55;color:#4b6684}
+.lab-trace-steps li::before{content:counter(trace);position:absolute;left:.65rem;top:.72rem;display:flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#e6efff;color:#2f62a5;font-size:.58rem;font-weight:850}
+.lab-case-hint{margin:0 0 .8rem;font-size:.72rem;line-height:1.65;color:#775a28}
+.lab-code-case{overflow:hidden;border:1px solid #d9c38f;border-radius:.7rem;background:#18283b;color:#dcebf4}
+.lab-code-line{display:grid;grid-template-columns:32px minmax(0,1fr);min-height:31px;align-items:start;font:12px/1.7 ui-monospace,SFMono-Regular,Consolas,monospace}
+.lab-code-line.is-focus{background:#49370f;color:#fff4c8;box-shadow:inset 3px 0 0 #f0c14f}
+.lab-code-line-number{padding:.35rem .45rem;text-align:right;color:#8094aa;user-select:none}
+.lab-code-line.is-focus .lab-code-line-number{color:#f6d77c}
+.lab-code-line code{padding:.35rem .7rem;white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:700px){.lab-trace-steps{grid-template-columns:1fr 1fr}}
+@media(max-width:430px){.lab-trace-steps{grid-template-columns:1fr}.lab-mechanic-panel{padding:.8rem}.lab-code-line{font-size:11px}}
