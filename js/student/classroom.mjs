@@ -57,6 +57,7 @@ function renderSelected(item){
     selected.legacy?"Current default classroom for your programming assignments.":
     "Active school subject.";
   const q=queryFor(selected);
+  el("classroomStream").href=subjectPageFor(selected);
   el("classroomAssignments").href="student-assessments.html"+q;
   el("classroomGrades").href="school-student-grades.html"+q;
   el("classroomProjects").href="school-student-projects.html"+q;
