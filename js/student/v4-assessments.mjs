@@ -9,6 +9,11 @@ const panel=document.getElementById("v4AssignmentsPanel");
 const list=document.getElementById("v4AssignmentsList");
 const status=document.getElementById("v4AssignmentsStatus");
 const schoolHost=document.getElementById("v4AssignmentsSchoolSwitcher");
+const assignmentSubjectLabel=document.getElementById("assignmentSubjectLabel");
+const assignmentParams=new URLSearchParams(location.search);
+const requestedSubjectId=assignmentParams.get("subjectId")||"";
+const requestedOfferingId=assignmentParams.get("offeringId")||"";
+const requestedSubjectName=assignmentParams.get("subject")||"";
 
 function node(tag,className,text){
   const item=document.createElement(tag);
@@ -23,6 +28,7 @@ function sourceLabel(source,task={}){
 if(panel&&list&&status&&schoolHost){
   const functions=getFunctions(app,"asia-southeast1");
   const assessmentsApi=httpsCallable(functions,"schoolAssessments");
+  const profileApi=httpsCallable(functions,"schoolStudentProfile");
   const submissionsApi=httpsCallable(functions,"schoolStudioSubmissions");
   const generalSubmissionsApi=httpsCallable(functions,"schoolAssessmentSubmissions");
   const gradebookApi=httpsCallable(functions,"schoolGradebook");
@@ -68,10 +74,23 @@ if(panel&&list&&status&&schoolHost){
     try{
       const results=await Promise.all([
         scoped(scope,assessmentsApi,"list_student"),
-        scoped(scope,gradebookApi,"my_published")
+        scoped(scope,gradebookApi,"my_published"),
+        scoped(scope,profileApi,"my_profile")
       ]);
       if(generation!==renderGeneration)return;
-      const tasks=results[0].assignments||[];
+      const profile=results[2]||{},classes=profile.classes||[];
+      let subjectId=requestedSubjectId,subjectName=requestedSubjectName,offeringId=requestedOfferingId;
+      if(!subjectId&&!offeringId&&classes.length){
+        const programming=classes.find(item=>/computer\s*programming|programming/i.test(String(item.subject||"")));
+        const fallback=programming||classes[0];subjectId=fallback?.subjectId||"";subjectName=fallback?.subject||subjectName;
+      }
+      const allowedOfferings=new Set(classes.filter(item=>
+        offeringId?item.offeringId===offeringId:subjectId?item.subjectId===subjectId:true
+      ).map(item=>item.offeringId));
+      if(!subjectName&&subjectId)subjectName=classes.find(item=>item.subjectId===subjectId)?.subject||subjectName;
+      if(assignmentSubjectLabel&&subjectName)assignmentSubjectLabel.textContent=subjectName;
+      const allTasks=results[0].assignments||[];
+      const tasks=(subjectId||offeringId)?allTasks.filter(task=>allowedOfferings.has(task.offeringId)):allTasks;
       const grades=new Map((results[1].grades||[]).map(item=>[item.taskId,item]));
       const statuses=new Map();
       await Promise.all(tasks.map(async task=>{
@@ -84,12 +103,12 @@ if(panel&&list&&status&&schoolHost){
       }));
       if(generation!==renderGeneration)return;
       if(!tasks.length){
-        status.textContent="No verified school assignments are currently deployed to your active enrollments.";
+        status.textContent="No verified school assignments are currently deployed"+(subjectName?" for "+subjectName:"")+".";
         list.append(node("div","rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600",
           "No other active verified-school tasks are available in this school."));
         return;
       }
-      status.textContent=tasks.length+" verified school assignment"+(tasks.length===1?"":"s")+" loaded.";
+      status.textContent=tasks.length+" verified school assignment"+(tasks.length===1?"":"s")+" loaded"+(subjectName?" for "+subjectName:"")+".";
       for(const task of tasks){
         const submission=statuses.get(task.taskId),grade=grades.get(task.taskId);
         const state=assignmentState(task,submission,grade);
