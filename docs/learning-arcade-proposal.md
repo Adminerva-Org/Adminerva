@@ -56,12 +56,18 @@ sandboxed; do not execute arbitrary student code with server privileges.
 
 ## What this review branch actually implements
 
-The branch now uses one **Skill Arcade** practice hub rather than separate mini-apps.
-It provides five reusable deterministic interaction mechanics — choice, output,
-ordering, matching and debugging — over the current course/mission packs. The eight
-named themed mechanics above remain future content designs; they are not represented
-as eight separate applications, and the branch does not invent subject mappings that
-teachers have not approved.
+The current main branch now presents the programming pack as **Adminerva Games ·
+Computer Programming**. The same server-backed mission IDs are surfaced through a
+Mission Map plus themed views for Bug Detective, Trace Quest, Algorithm Maze, Logic
+Circuit, Code Sprint, Interface Repair and Data Detective. XML Layout Rescue opens the
+existing XML laboratory. These views deliberately reuse the existing five deterministic
+interaction mechanics — choice, output, ordering, matching and debugging — so saved
+progress and one-reward-per-mission rules remain intact.
+
+Safe Inbox is no longer treated as part of the programming pack; it fits better in a
+later Digital Citizenship / Cybersecurity subject pack. The next programming expansion
+should add richer game-specific interactions and deeper Java OOP content rather than
+duplicating the current mission records.
 
 Guest playground/XML tools remain separate. Guest Arcade attempts do not create an
 enrolled-student progress record; authenticated practice uses the existing private
