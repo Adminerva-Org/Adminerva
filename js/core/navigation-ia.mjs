@@ -75,9 +75,9 @@ export function buildNavigationIA(ctx){
     ];
   };
 
-  const repository=()=>ws("repository","Repository Management","assessment-studio.html?view=repository","Existing repository assessment and GitHub workflows",[
+  const repository=()=>ws("repository","Repository Management","repository-assessment-studio.html","Existing repository assessment and GitHub workflows",[
     group("Assessment",[
-      old("repo-studio","Legacy Assessment Studio","assessment-studio.html?view=repository","OLD repository assessment authoring workflow; retained for current repository-based classes."),
+      old("repo-studio","Repository Assessment Studio","repository-assessment-studio.html","OLD repository assessment authoring workflow; retained for current repository-based classes."),
       old("repo-submissions","Submission Inbox","submissions.html","OLD repository submission inbox retained for active repository assignments."),
       old("repo-reclaims","Commit Attribution Requests","reclaim-inbox.html","OLD repository attribution workflow retained for active classes.")
     ]),
@@ -367,14 +367,8 @@ export function buildNavigationIA(ctx){
     return true;
   };
   const itemMatches=item=>item[2]&&routePath(item[2])===route&&routeQueryMatches(item[2]);
-  const workspaceMatches=w=>{
-    if(route==="assessment-studio.html"){
-      const view=new URLSearchParams(location.search).get("view")||"mine";
-      if(view==="repository")return w.id==="repository";
-      if(w.id==="assessment")return true;
-    }
-    return (routePath(w.route)===route&&routeQueryMatches(w.route))||w.groups.some(g=>g.items.some(itemMatches));
-  };
+  const workspaceMatches=w=>
+    (routePath(w.route)===route&&routeQueryMatches(w.route))||w.groups.some(g=>g.items.some(itemMatches));
   const homeRoute=systemDefault?"owner-schools.html":studentView?"student-home.html":
     schoolAdminView?"school-admin.html":"teacher-home.html";
   const isHome=!systemDefault&&routePath(homeRoute)===route&&!requestedWorkspace;
