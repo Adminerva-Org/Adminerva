@@ -792,7 +792,13 @@ function mountAdminervaReleaseFooter(){
   versionHost.href="patch-notes.html";
   versionHost.title="Open Adminerva release notes";
 
-  fetch("site-release.json",{cache:"no-store",credentials:"same-origin"}).then(response=>{
+  const releaseManifest=(()=>{
+    try{
+      const scriptUrl=loader?.src?new URL(loader.src,location.href):new URL("js/core/adminerva-loader.js",location.href);
+      return new URL("../../site-release.json",scriptUrl).href;
+    }catch{return new URL("site-release.json",location.href).href;}
+  })();
+  fetch(releaseManifest,{cache:"no-store",credentials:"same-origin"}).then(response=>{
     if(!response.ok)throw Error("release unavailable");
     return response.json();
   }).then(release=>{
