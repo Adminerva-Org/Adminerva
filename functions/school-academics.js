@@ -19,6 +19,15 @@ function academicMonth(value,fallback,label){
   deny("invalid-argument",label+" must be a month number from 1 to 12.");
  return resolved;
 }
+function optionalAcademicDate(value,label){
+ const text=typeof value==="string"?value.trim():"";
+ if(!text)return null;
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(text))deny("invalid-argument",label+" must use YYYY-MM-DD.");
+ const date=new Date(text+"T00:00:00Z");
+ if(Number.isNaN(date.getTime())||date.toISOString().slice(0,10)!==text)
+  deny("invalid-argument",label+" is not a valid calendar date.");
+ return text;
+}
 function checkId(value,label="Identifier",max=80){
  if(typeof value!=="string"||value.length>max||!new RegExp("^[A-Za-z0-9][A-Za-z0-9_-]{0,"+(max-1)+"}$").test(value))deny("invalid-argument",label+" must contain 1–80 letters, digits, underscores or hyphens.");
  return value;
@@ -144,11 +153,17 @@ function createSchoolAcademicsService({db}) {
     startMonth=kind==="academic_years"?
       academicMonth(input.startMonth,DEFAULT_ACADEMIC_YEAR_START_MONTH,"Academic-year start month"):null,
     endMonth=kind==="academic_years"?
-      academicMonth(input.endMonth,DEFAULT_ACADEMIC_YEAR_END_MONTH,"Academic-year end month"):null;
+      academicMonth(input.endMonth,DEFAULT_ACADEMIC_YEAR_END_MONTH,"Academic-year end month"):null,
+    startDate=["academic_years","terms"].includes(kind)?
+      optionalAcademicDate(input.startDate,kind==="academic_years"?"Academic-year start date":"Academic period start date"):null,
+    endDate=["academic_years","terms"].includes(kind)?
+      optionalAcademicDate(input.endDate,kind==="academic_years"?"Academic-year end date":"Academic period end date"):null;
    if(kind==="terms"&&!PERIOD_TYPES.has(periodType))
     deny("invalid-argument","Academic period type must be term, semester, quarter, trimester or custom.");
    if(kind==="terms"&&(!Number.isInteger(sequence)||sequence<1||sequence>12))
     deny("invalid-argument","Academic period sequence must be between 1 and 12.");
+   if(startDate&&endDate&&startDate>endDate)
+    deny("invalid-argument",(kind==="academic_years"?"Academic year":"Academic period")+" end date must be after its start date.");
    await db.runTransaction(async tx=>{
     await checkWriteAuthority(tx);
     if((await tx.get(ref)).exists)deny("already-exists","An academic catalog record with this ID exists.");
@@ -171,6 +186,8 @@ function createSchoolAcademicsService({db}) {
       periodType:kind==="terms"?periodType:null,sequence:kind==="terms"?sequence:null,
       startMonth:kind==="academic_years"?startMonth:null,
       endMonth:kind==="academic_years"?endMonth:null,
+      startDate:["academic_years","terms"].includes(kind)?startDate:null,
+      endDate:["academic_years","terms"].includes(kind)?endDate:null,
       revision:1,createdByUid:uid,createdAt:now,updatedAt:now});
     tx.create(auditRef,audit("academic_catalog_created",{kind,recordId:itemId}));
    });
@@ -188,6 +205,8 @@ function createSchoolAcademicsService({db}) {
       academicMonth(doc.data().startMonth,DEFAULT_ACADEMIC_YEAR_START_MONTH,"Academic-year start month"):null,
     endMonth:kind==="academic_years"?
       academicMonth(doc.data().endMonth,DEFAULT_ACADEMIC_YEAR_END_MONTH,"Academic-year end month"):null,
+    startDate:["academic_years","terms"].includes(kind)?(doc.data().startDate||null):null,
+    endDate:["academic_years","terms"].includes(kind)?(doc.data().endDate||null):null,
     status:doc.data().status})),truncated:snap.size===200};
   }
   if(input.action==="create_offering"){
