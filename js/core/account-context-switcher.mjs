@@ -6,6 +6,7 @@ const SCHOOL_KEY=uid=>"Adminerva_last_verified_school_"+uid;
 const VIEW_SCHOOL="Adminerva_platform_view_school";
 const VIEW_ROLE="Adminerva_platform_view_role";
 const VIEW_TEST="Adminerva_platform_test_mode";
+const VIEW_MODE="Adminerva_platform_school_mode";
 
 function getSession(key){try{return sessionStorage.getItem(key)||"";}catch{return "";}}
 function setSession(key,value){try{value?sessionStorage.setItem(key,value):sessionStorage.removeItem(key);}catch{}}
@@ -56,8 +57,15 @@ export async function mountAccountContextSwitcher(root=document){
     for(const school of schools)option(schoolField.select,school.schoolId,school.name||school.schoolId,{selected:school.schoolId===selectedSchool});
     host.append(schoolField.label);
 
-    const roleField=field("Test as role");
-    roleField.label.classList.toggle("hidden",!selectedSchool);
+    const modeField=field("School access mode");
+    modeField.label.classList.toggle("hidden",!selectedSchool);
+    const selectedMode=getSession(VIEW_MODE)||"preview";
+    option(modeField.select,"assist","Assist school · real, audited changes",{selected:selectedMode==="assist"});
+    option(modeField.select,"preview","Preview/test role · temporary changes",{selected:selectedMode!=="assist"});
+    host.append(modeField.label);
+
+    const roleField=field("Preview as role");
+    roleField.label.classList.toggle("hidden",!selectedSchool||selectedMode==="assist");
     const selectedRole=getSession(VIEW_ROLE)||"schooladmin";
     option(roleField.select,"schooladmin","School administrator",{selected:selectedRole==="schooladmin"});
     option(roleField.select,"teacher","Teacher",{selected:selectedRole==="teacher"});
@@ -65,26 +73,38 @@ export async function mountAccountContextSwitcher(root=document){
     host.append(roleField.label);
 
     const note=document.createElement("p");note.className="px-2 pt-1.5 text-[10px] leading-4 text-slate-500";
-    note.textContent=selectedSchool
-      ?"Temporary System Admin role test · "+currentSchoolName(schools,selectedSchool)+" · school changes are not saved"
-      :"System-wide administration";
+    note.textContent=!selectedSchool
+      ?"System-wide administration"
+      :selectedMode==="assist"
+        ?"System Admin assistance · "+currentSchoolName(schools,selectedSchool)+" · real changes are saved and attributed to the System Admin"
+        :"Temporary System Admin role preview · "+currentSchoolName(schools,selectedSchool)+" · school changes are not saved";
     host.append(note);
 
     schoolField.select.addEventListener("change",()=>{
       const schoolId=schoolField.select.value;
       if(!schoolId){
-        setSession(VIEW_SCHOOL,"");setSession(VIEW_ROLE,"");setSession(VIEW_TEST,"");rememberSchool(user.uid,"");
+        setSession(VIEW_SCHOOL,"");setSession(VIEW_ROLE,"");setSession(VIEW_TEST,"");setSession(VIEW_MODE,"");rememberSchool(user.uid,"");
         location.href="owner-schools.html";return;
       }
-      setSession(VIEW_SCHOOL,schoolId);setSession(VIEW_TEST,"1");
+      setSession(VIEW_SCHOOL,schoolId);
+      const mode=getSession(VIEW_MODE)||"preview";setSession(VIEW_MODE,mode);
       const role=getSession(VIEW_ROLE)||"schooladmin";setSession(VIEW_ROLE,role);
+      setSession(VIEW_TEST,mode==="preview"?"1":"");
       rememberSchool(user.uid,schoolId);
-      location.href=routeForRole(role);
+      location.href=mode==="assist"?"school-admin.html":routeForRole(role);
+    });
+    modeField.select.addEventListener("change",()=>{
+      const schoolId=getSession(VIEW_SCHOOL);if(!schoolId)return;
+      const mode=modeField.select.value==="assist"?"assist":"preview";
+      setSession(VIEW_MODE,mode);setSession(VIEW_TEST,mode==="preview"?"1":"");
+      if(mode==="assist")setSession(VIEW_ROLE,"schooladmin");
+      rememberSchool(user.uid,schoolId);
+      location.href=mode==="assist"?"school-admin.html":routeForRole(getSession(VIEW_ROLE)||"schooladmin");
     });
     roleField.select.addEventListener("change",()=>{
       const schoolId=getSession(VIEW_SCHOOL);
       if(!schoolId)return;
-      setSession(VIEW_ROLE,roleField.select.value);setSession(VIEW_TEST,"1");rememberSchool(user.uid,schoolId);
+      setSession(VIEW_ROLE,roleField.select.value);setSession(VIEW_MODE,"preview");setSession(VIEW_TEST,"1");rememberSchool(user.uid,schoolId);
       location.href=routeForRole(roleField.select.value);
     });
     return;
