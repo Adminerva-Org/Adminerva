@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Subject Classroom · Adminerva</title>
+  <meta name="description" content="Student subject stream with announcements, assignments, grades and classroom activity.">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=8169bc1f73b0">
+  <link rel="stylesheet" href="css/workspace-navigation.css?v=1.3.0">
+</head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="student" data-page="classroom-subject"></div>
+<main class="max-w-7xl mx-auto px-4 sm:px-6 py-5 space-y-5">
+  <section class="rounded-3xl overflow-hidden shadow-sm border border-slate-200 bg-white">
+    <div class="bg-slate-900 text-white p-5 sm:p-7 lg:p-8">
+      <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2">
+            <a href="student-classroom.html" class="text-xs font-bold text-cyan-200 hover:text-white underline underline-offset-4">← All subjects</a>
+            <span class="text-slate-500">/</span>
+            <span id="subjectClassroomEyebrow" class="text-xs uppercase tracking-widest font-bold text-cyan-300">Classroom</span>
+          </div>
+          <h1 id="subjectClassroomTitle" class="text-3xl sm:text-4xl font-extrabold mt-3 break-words">Computer Programming</h1>
+          <p id="subjectClassroomMeta" class="text-sm sm:text-base text-slate-300 mt-2">Loading your class…</p>
+        </div>
+        <div class="flex flex-col sm:flex-row gap-2 lg:items-end">
+          <label id="subjectOfferingWrap" class="hidden text-xs font-bold text-slate-200">Class / term
+            <select id="subjectOfferingSelect" class="mt-1 w-full sm:min-w-[260px] rounded-lg border border-slate-600 bg-slate-800 text-white px-3 py-2.5 text-sm"></select>
+          </label>
+          <button id="subjectRefresh" type="button" class="rounded-lg border border-slate-600 px-4 py-2.5 text-sm font-bold hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-cyan-400">Refresh</button>
+        </div>
+      </div>
+      <nav class="flex gap-2 overflow-x-auto mt-6 pb-1" aria-label="Subject classroom">
+        <button type="button" class="shrink-0 rounded-full bg-white text-slate-900 px-4 py-2 text-sm font-extrabold" aria-current="page">Stream</button>
+        <a id="subjectAssignmentsLink" href="student-assessments.html" class="shrink-0 rounded-full border border-slate-600 px-4 py-2 text-sm font-bold hover:bg-slate-800">Classwork</a>
+        <a id="subjectGradesLink" href="school-student-grades.html" class="shrink-0 rounded-full border border-slate-600 px-4 py-2 text-sm font-bold hover:bg-slate-800">Grades</a>
+        <a id="subjectProjectsLink" href="school-student-projects.html" class="shrink-0 rounded-full border border-slate-600 px-4 py-2 text-sm font-bold hover:bg-slate-800">Projects</a>
+      </nav>
+    </div>
+    <div id="subjectSummary" class="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 text-center"></div>
+  </section>
+
+  <p id="subjectClassroomStatus" class="text-sm text-slate-600" role="status" aria-live="polite">Loading your classroom stream…</p>
+
+  <div class="grid lg:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
+    <section class="space-y-4" aria-labelledby="streamHeading">
+      <div class="flex items-end justify-between gap-3">
+        <div>
+          <p class="text-xs uppercase tracking-wider font-bold text-cyan-800">Class stream</p>
+          <h2 id="streamHeading" class="text-2xl font-extrabold mt-1">What’s happening</h2>
+          <p class="text-sm text-slate-600 mt-1">Announcements, newly available work, teacher feedback and released results appear together here.</p>
+        </div>
+      </div>
+      <div id="subjectPinnedPosts" class="space-y-3"></div>
+      <div id="subjectStream" class="space-y-3"></div>
+    </section>
+
+    <aside class="space-y-4 lg:sticky lg:top-20">
+      <section class="rounded-2xl border border-slate-200 bg-white shadow-sm p-4">
+        <div class="flex items-center justify-between gap-3">
+          <div><p class="text-xs uppercase tracking-wider font-bold text-amber-700">Next up</p><h2 class="text-lg font-extrabold mt-1">Upcoming work</h2></div>
+          <a id="subjectAllWorkLink" href="student-assessments.html" class="text-xs font-bold text-indigo-700 underline">View all</a>
+        </div>
+        <div id="subjectUpcoming" class="space-y-3 mt-4"></div>
+      </section>
+
+      <section class="rounded-2xl border border-slate-200 bg-white shadow-sm p-4">
+        <p class="text-xs uppercase tracking-wider font-bold text-slate-500">Quick access</p>
+        <div class="grid gap-2 mt-3">
+          <a id="subjectQuickAssignments" href="student-assessments.html" class="rounded-xl border border-slate-200 px-4 py-3 font-bold hover:border-indigo-300 hover:bg-indigo-50">Assignments <span class="float-right">→</span></a>
+          <a id="subjectQuickGrades" href="school-student-grades.html" class="rounded-xl border border-slate-200 px-4 py-3 font-bold hover:border-emerald-300 hover:bg-emerald-50">My Grades <span class="float-right">→</span></a>
+          <a id="subjectQuickProjects" href="school-student-projects.html" class="rounded-xl border border-slate-200 px-4 py-3 font-bold hover:border-cyan-300 hover:bg-cyan-50">Project Hub <span class="float-right">→</span></a>
+          <a id="subjectQuickStudio" href="student-playground.html" class="rounded-xl border border-slate-200 px-4 py-3 font-bold hover:border-violet-300 hover:bg-violet-50">Adminerva Studio <span class="float-right">→</span></a>
+        </div>
+      </section>
+
+      <section id="subjectLegacyNote" class="hidden rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <strong>Existing programming work</strong>
+        <p class="mt-1">Older repository-based programming assignments remain available inside the unified Assignments page while their historical records are migrated.</p>
+      </section>
+    </aside>
+  </div>
+</main>
+<script src="js/core/adminerva-loader.js?v=1.3.2"></script>
+<script src="js/core/adminerva-nav.js?v=8169bc1f73b0"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js?v=8169bc1f73b0"></script>
+<script type="module" src="js/student/classroom-subject.mjs?v=1.0.0"></script>
+</body>
+</html>
