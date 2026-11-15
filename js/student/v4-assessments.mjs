@@ -113,6 +113,7 @@ if(panel&&list&&status&&schoolHost){
         const submission=statuses.get(task.taskId),grade=grades.get(task.taskId);
         const state=assignmentState(task,submission,grade);
         const article=node("article","rounded-xl border border-slate-200 bg-white p-4 shadow-sm");
+        article.dataset.taskId=task.taskId;article.tabIndex=-1;
         const top=node("div","flex flex-col sm:flex-row sm:justify-between gap-3");
         const identity=node("div","min-w-0");
         identity.append(
@@ -181,6 +182,14 @@ if(panel&&list&&status&&schoolHost){
         }
         if(actions.children.length)article.append(actions);
         list.append(article);
+      }
+      const targetId=decodeURIComponent((location.hash||"").replace(/^#/,""));
+      if(targetId){
+        const target=[...list.querySelectorAll("[data-task-id]")].find(item=>item.dataset.taskId===targetId);
+        if(target){
+          target.classList.add("ring-2","ring-indigo-400");
+          requestAnimationFrame(()=>{target.scrollIntoView({behavior:"smooth",block:"center"});target.focus({preventScroll:true});});
+        }
       }
     }catch(error){
       if(generation!==renderGeneration)return;
