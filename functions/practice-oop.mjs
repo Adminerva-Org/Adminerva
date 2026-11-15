@@ -48,6 +48,8 @@ const MODULES=[
     {id:"exception-handling",title:"Trace exception handling",example:{prompt:"What is printed?",code:"try {\n  int x = 10 / 0;\n} catch (ArithmeticException e) {\n  System.out.println(\"caught\");\n}",answer:"caught",alternatives:["0","10","Nothing; the program always terminates before catch."],why:"Division by zero throws ArithmeticException, which the matching catch block handles.",fullCode:"public class Main { public static void main(String[] args){ try { int x=10/0; } catch (ArithmeticException e){ System.out.println(\"caught\"); } } }"}}
   ]}
 ];
+const TRACE_TOPICS=new Set(["instance-field","instance-method","shared-reference","constructor-output","getter-setter","inherited-method","super-constructor","override","dynamic-dispatch","interface-reference","arraylist-objects","static-member","exception-handling"]);
+function arcadeType(topic,topicIndex,levelIndex){if(levelIndex===0)return "choice";if(levelIndex===1)return TRACE_TOPICS.has(topic.id)?"output":"matching";return topicIndex%2===0?"debugging":"ordering";}
 export function buildJavaOopModules(levels){
   return MODULES.map((module,moduleIndex)=>({
     id:"java-"+module.id,
@@ -59,6 +61,8 @@ export function buildJavaOopModules(levels){
       oop:true,
       oopModule:module.id,
       oopTopic:topic.id,
+      oopLevel:levelIndex,
+      arcadeType:arcadeType(topic,topicIndex,levelIndex),
       build(seed){return question(topic,seed,levelIndex);}
     })))
   }));
