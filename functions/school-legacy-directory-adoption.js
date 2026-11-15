@@ -434,14 +434,30 @@ async function applyIdentity({db,ctx,candidate,reason}){
     const [person,member,index]=await Promise.all([
       tx.get(personRef),memberRef?tx.get(memberRef):Promise.resolve(null),indexRef?tx.get(indexRef):Promise.resolve(null)
     ]);
+    let changed=false,created=false;
     if(person.exists){
       const data=person.data();
       if(data.schoolId!==ctx.schoolId||data.kind!==candidate.kind||
          (data.authUid&&candidate.uid&&data.authUid!==candidate.uid))
         deny("failed-precondition","A school person changed during legacy consolidation. Preview again.");
-      if(candidate.uid&&!data.authUid){
-        tx.update(personRef,{authUid:candidate.uid,updatedAt:FieldValue.serverTimestamp(),
-          revision:(data.revision||1)+1});
+      const students=[...new Set([...(Array.isArray(data.legacyStudentIds)?data.legacyStudentIds:[]),
+        ...candidate.legacyStudentIds])].sort();
+      const staff=[...new Set([...(Array.isArray(data.legacyStaffRecordIds)?data.legacyStaffRecordIds:[]),
+        ...candidate.legacyStaffRecordIds])].sort();
+      const sources=[...new Set([...(Array.isArray(data.legacySourceIds)?data.legacySourceIds:[]),
+        ...candidate.sourceIds])].sort();
+      const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+      const patch={};
+      if(candidate.uid&&!data.authUid)patch.authUid=candidate.uid;
+      if(!same(students,Array.isArray(data.legacyStudentIds)?[...data.legacyStudentIds].sort():[]))
+        patch.legacyStudentIds=students;
+      if(!same(staff,Array.isArray(data.legacyStaffRecordIds)?[...data.legacyStaffRecordIds].sort():[]))
+        patch.legacyStaffRecordIds=staff;
+      if(!same(sources,Array.isArray(data.legacySourceIds)?[...data.legacySourceIds].sort():[]))
+        patch.legacySourceIds=sources;
+      if(Object.keys(patch).length){
+        patch.updatedAt=FieldValue.serverTimestamp();patch.revision=(data.revision||1)+1;
+        tx.update(personRef,patch);changed=true;
       }
     }else{
       const now=FieldValue.serverTimestamp();
@@ -449,8 +465,10 @@ async function applyIdentity({db,ctx,candidate,reason}){
         searchKey:candidate.displayName.toLocaleLowerCase("en")+"#"+candidate.personId,
         kind:candidate.kind,status:candidate.status,authUid:candidate.uid||null,
         legacyStudentIds:candidate.legacyStudentIds,legacyStaffRecordIds:candidate.legacyStaffRecordIds,
+        legacySourceIds:candidate.sourceIds,
         migration:{source:"mcs_legacy_v3",scope:"people_access",sourceIds:candidate.sourceIds},
         createdByUid:ctx.uid,createdAt:now,updatedAt:now,revision:1});
+      changed=true;created=true;
     }
     if(candidate.uid&&candidate.roles.length){
       const prior=member?.exists?member.data():null;
@@ -458,15 +476,22 @@ async function applyIdentity({db,ctx,candidate,reason}){
         deny("failed-precondition","A school membership changed during legacy consolidation. Preview again.");
       const roles=[...new Set([...(Array.isArray(prior?.roles)?prior.roles:[]),...candidate.roles])].sort();
       const status=prior?.status||candidate.memberStatus;
-      const revision=(prior?.revision||0)+1,now=FieldValue.serverTimestamp();
-      tx.set(memberRef,{schoolId:ctx.schoolId,personId:candidate.personId,status,roles,revision,
-        displayName:candidate.displayName,updatedAt:now,updatedByUid:ctx.uid},{merge:true});
-      tx.set(indexRef,{schoolId:ctx.schoolId,status,roles,revision,updatedAt:now},{merge:true});
+      const priorRoles=Array.isArray(prior?.roles)?[...new Set(prior.roles)].sort():[];
+      const memberChanged=!prior||prior.personId!==candidate.personId||prior.status!==status||
+        JSON.stringify(priorRoles)!==JSON.stringify(roles)||
+        String(prior.displayName||"")!==candidate.displayName;
+      if(memberChanged){
+        const revision=(prior?.revision||0)+1,now=FieldValue.serverTimestamp();
+        tx.set(memberRef,{schoolId:ctx.schoolId,personId:candidate.personId,status,roles,revision,
+          displayName:candidate.displayName,updatedAt:now,updatedByUid:ctx.uid},{merge:true});
+        tx.set(indexRef,{schoolId:ctx.schoolId,status,roles,revision,updatedAt:now},{merge:true});
+        changed=true;
+      }
     }
-    tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId:candidate.personId,
+    if(changed)tx.create(auditRef,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId:candidate.personId,
       targetUid:candidate.uid||null,action:"legacy_person_adopted",reason,
       sourceIds:candidate.sourceIds.slice(0,30),createdAt:FieldValue.serverTimestamp()});
-    return {state:person.exists?"existing":"created"};
+    return {state:created?"created":changed?"updated":"existing"};
   });
 }
 async function applyAcademic({db,ctx,model,reason}){
@@ -639,6 +664,7 @@ function createSchoolLegacyDirectoryAdoptionService({db,resolveUserByEmail}){
     });
     const identity={
       created:results.filter(row=>row.state==="created").length,
+      updated:results.filter(row=>row.state==="updated").length,
       existing:results.filter(row=>row.state==="existing").length,
       blocked:results.filter(row=>row.state==="blocked").length,
       failed:results.filter(row=>row.state==="failed").length
