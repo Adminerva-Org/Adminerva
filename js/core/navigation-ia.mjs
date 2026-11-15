@@ -9,15 +9,13 @@ export function buildNavigationIA(ctx){
   const ws=(id,label,route,description,groups)=>({id,label,route,description,groups});
 
   const student=scope=>{
-    const oldAssignments="student-assessments.html";
-    const schoolAssignments=scope.hasSchoolStudent?"school-student-assessments.html":null;
+    const assignments="student-assessments.html";
     const grades=scope.hasSchoolStudent?"school-student-grades.html":null;
     const settings=scope.hasSchoolStudent?"school-student-settings.html":"student-settings.html";
     return [
-      ws("classroom","Adminerva Classroom",oldAssignments,"Assignments, projects, grades, materials and school classroom tools",[
+      ws("classroom","Adminerva Classroom","student-classroom.html","Choose a subject, then open assignments, grades and project tools",[
         group("Assignments",[
-          old("assignments","Assignments",oldAssignments,"OLD assignment workflow retained as the default because existing classes and published repository tasks still use it."),
-          ...(schoolAssignments?[needs("school-assignments","Adminerva Assignments",schoolAssignments,"Newer school-scoped assignments; still being consolidated with the OLD assignment workflow.")]:[]),
+          needs("assignments","Assignments",assignments,"Unified student assignment workspace. Verified school tasks and existing programming assignments are consolidated here."),
           ...(grades?[live("my-grades","My Grades",grades,"Teacher-released school grades")]:[]),
           future("bulletin","Classroom Bulletin Board","Class announcements and teacher posts · Future development"),
           future("ebooks","E-books","Class materials and presentations · Future development"),
