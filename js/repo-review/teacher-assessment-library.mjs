@@ -273,6 +273,7 @@ function edit(item){
   form.elements.title.value=item.title;
   form.elements.description.value=item.description||"";
   form.elements.instructions.value=item.instructions||"";
+  form.elements.checkingInstructions.value=item.checkingInstructions||"";
   form.elements.personalizationMode.value=personalized(item)?"personalized":"standard";
   form.elements.variantTarget.value=String(item.personalization?.variantTarget||30);
   form.elements.variationGuidance.value=item.personalization?.variationGuidance||"";
@@ -350,7 +351,7 @@ form.addEventListener("submit",event=>{
   const isPersonalized=String(data.get("personalizationMode")||"standard")==="personalized";
   const blueprint={
     title:String(data.get("title")||""),description:String(data.get("description")||""),
-    instructions:String(data.get("instructions")||""),rubric:criteria,
+    instructions:String(data.get("instructions")||""),checkingInstructions:String(data.get("checkingInstructions")||""),rubric:criteria,
     personalization:isPersonalized?{
       enabled:true,mode:"ai_blueprint_pool_v1",
       variantTarget:Number(data.get("variantTarget")||30),
