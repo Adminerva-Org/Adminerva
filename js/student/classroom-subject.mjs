@@ -208,6 +208,8 @@ async function refresh(){
     const grades=new Map((gradeResult.grades||[]).filter(grade=>tasks.some(task=>task.taskId===grade.taskId)).map(grade=>[grade.taskId,grade]));
     const statuses=await loadStatuses(tasks);if(turn!==epoch)return;
     const posts=streamResult.posts||[];
+    const teacherNames=(streamResult.teachers||[]).map(item=>item.name).filter(Boolean);
+    el("subjectClassroomMeta").textContent=[courseLabel(current),teacherNames.length?"Teacher: "+teacherNames.join(", "):""].filter(Boolean).join(" · ")||"Active school classroom";
     renderSummary(tasks,statuses,grades,posts);renderUpcoming(tasks,statuses,grades);renderStream(posts,tasks,statuses,grades);
     const extra=streamResult.error?" Announcements are temporarily unavailable, but classwork and grades loaded.":"";
     setStatus((tasks.length||posts.length||grades.size?"Classroom is up to date.":"This classroom has no activity yet.")+extra,Boolean(streamResult.error));
