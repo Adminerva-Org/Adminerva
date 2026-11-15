@@ -79,6 +79,7 @@ export function normalizeProject(project){
     database:clone(project.database||template.database||{tables:{},history:[]}),
     design:clone(project.design||template.design||{}),
     evidence:clone(project.evidence||{events:[],runs:[]}),
+    assessment:project.assessment&&typeof project.assessment==="object"?clone(project.assessment):null,
     createdAt:project.createdAt||nowIso(),updatedAt:project.updatedAt||nowIso(),lastOpenedAt:project.lastOpenedAt||project.updatedAt||nowIso()
   };
 }
@@ -97,14 +98,15 @@ export function writeCodeProjects(storage,uid,projects){
   return normalized;
 }
 
-export function createCodeProject(storage,uid,{title,templateId,config={}}){
+export function createCodeProject(storage,uid,{id="",title,templateId,config={},assessment=null}={}){
   const template=CODE_PROJECT_TEMPLATES[templateId]||CODE_PROJECT_TEMPLATES["java-blank"];
   const time=nowIso();
   const project=normalizeProject({
-    id:safeId(),ownerUid:uid,title:String(title||"Untitled Project").trim()||"Untitled Project",
+    id:String(id||safeId()),ownerUid:uid,title:String(title||"Untitled Project").trim()||"Untitled Project",
     template:template.id,lang:template.lang,config:{...template.config,...config},state:clone(template.workspace),
     database:clone(template.database||{tables:{},history:[]}),design:clone(template.design||{}),
-    evidence:{events:[],runs:[]},createdAt:time,updatedAt:time,lastOpenedAt:time,status:"active"
+    evidence:{events:[],runs:[]},assessment:assessment&&typeof assessment==="object"?clone(assessment):null,
+    createdAt:time,updatedAt:time,lastOpenedAt:time,status:"active"
   });
   const projects=readCodeProjects(storage,uid);
   writeCodeProjects(storage,uid,[project,...projects]);
