@@ -28,7 +28,7 @@ const {createLegacyLessonRecovery,createLegacySchoolSetup}=require("./legacy-les
 const legacyRecovery=createLegacyLessonRecovery({db,FieldValue,resolveUserByEmail:email=>getAuth().getUserByEmail(email)});
 const legacySetup=createLegacySchoolSetup({db,FieldValue,resolveUserByEmail:email=>getAuth().getUserByEmail(email)});
 const callOptions={region:"asia-southeast1",maxInstances:3,concurrency:10,timeoutSeconds:120,cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
-const PLATFORM_PREVIEW_MUTATION=/^(create|update|delete|archive|publish|unpublish|save|set|assign|grant|revoke|suspend|restore|import|deploy|submit|grade|approve|reject|reopen|close|start|end|activate|record|apply|write|link|unlink|accept|invite|enroll|remove|add|sync|finalize|release|lock|unlock|mark|request|cancel|reset|clear|purge|migrate|adopt)/i;
+const PLATFORM_PREVIEW_MUTATION=/^(create|update|upsert|edit|change|delete|archive|publish|unpublish|save|set|assign|grant|revoke|suspend|restore|import|deploy|submit|grade|review|approve|reject|reopen|close|start|end|activate|record|apply|write|link|unlink|accept|invite|enroll|remove|add|sync|finalize|release|lock|unlock|mark|request|cancel|reset|clear|purge|migrate|adopt|withdraw|return|enable|disable|refresh)/i;
 async function rejectPlatformPreviewMutation(request,{allowPlatformSchoolWrites=false}={}){
   if(allowPlatformSchoolWrites)return;
   const uid=request?.auth?.uid,schoolId=String(request?.data?.schoolId||"").trim(),
