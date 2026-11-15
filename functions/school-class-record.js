@@ -564,11 +564,11 @@ function createSchoolClassRecordService({db,resolveUsers=null}){
         lifecycle:doc.data().lifecycle||"active",
         dueAt:millis(doc.data().dueAt),
         maxPoints:rubricTotal(doc.data()),
-        categorySuggestion:"",
-        published:true,
-        linkable:doc.data().status==="deployed"&&doc.data().lifecycle!=="cancelled",
-        historical:doc.data().status!=="deployed"||doc.data().lifecycle==="cancelled",
-        gradeRoute:"school-gradebook.html?task="+encodeURIComponent(doc.id)
+        categorySuggestion:String(doc.data().assessmentType||"").trim().slice(0,60),
+        published:doc.data().published===true,
+        linkable:doc.data().status==="deployed"&&["active","closed"].includes(doc.data().lifecycle||"active"),
+        historical:doc.data().status!=="deployed"||["archived","cancelled"].includes(doc.data().lifecycle||"active"),
+        gradeRoute:"school-gradebook.html?view=review&task="+encodeURIComponent(doc.id)
       })).filter(task=>task.maxPoints>0);
     }
     async function ownedLegacyPersonalizedAssessments(sectionName){
