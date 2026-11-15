@@ -20,7 +20,10 @@ if(button){
   let choices=new Map(),busy=false,openedUser=null,usingV4=false;
   const notice=text=>{state.textContent=text;};
   const assessmentParam=new URL(location.href).searchParams.get("assessment");
-  const linkedAssessmentId=()=>String(window.adminervaStudioSubmissionState?.()?.project?.assessment?.assessmentId||assessmentParam||"");
+  const linkedAssessmentId=()=>{
+    try{return String(window.adminervaStudioSubmissionState?.()?.project?.assessment?.assessmentId||assessmentParam||"");}
+    catch{return String(assessmentParam||"");}
+  };
 
   function v4Allowed(choice){
     if(!choice?.task)return false;
