@@ -95,7 +95,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const start=new Option(items.length?"Choose an assessment…":"No deployed V4 assessments","");
     start.disabled=true;start.selected=true;taskSelect.add(start);
     for(const task of items){
-      const label=sourceLabel(task.submissionSource)+" · "+task.title+" · "+(task.sectionId||"class")+" · "+(task.subjectId||"subject");
+      const label=sourceLabel(task.submissionSource)+" · "+task.title+" · "+(task.sectionId||"class")+" · "+(task.subject||task.subjectId||"subject");
       taskSelect.add(new Option(label,task.taskId));
     }
     panel.classList.remove("hidden");
