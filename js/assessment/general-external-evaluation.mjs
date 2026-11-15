@@ -63,7 +63,7 @@ export function responseShape(task={}){
     limitations:"Only unresolved evidence or verification limitations"
   };
 }
-export function buildGeneralExternalEvaluationPackage({task={},snapshot={}}={}){
+export function buildGeneralExternalEvaluationPackage({task={},snapshot={},checkingInstructions=""}={}){
   const assessment=compactTask(task);
   if(!assessment.rubric.length)throw Error("This assessment has no rubric.");
   if(!["text","link","studio"].includes(assessment.submissionSource))
@@ -72,11 +72,13 @@ export function buildGeneralExternalEvaluationPackage({task={},snapshot={}}={}){
     format:GENERAL_EXTERNAL_EVALUATION_FORMAT,
     privacy:"Learner name, email and account identifiers are intentionally omitted.",
     assessment,
+    teacherCheckingInstructions:text(checkingInstructions,8000),
     evidence:compactEvidence(assessment.submissionSource,snapshot),
     gradingRules:{
       rubricAuthority:"Use the published rubric exactly. Do not add requirements or reweight criteria.",
       evidenceBoundary:"Award points only for evidence present in this frozen submission package. Put uncertainty in pendingPoints or limitations.",
       teacherAuthority:"This response is only a suggestion. Adminerva must keep it private until the teacher reviews and explicitly saves/publishes.",
+      checkingInstructions:"Teacher checking instructions refine interpretation but never override the published rubric maximum or student-visible task requirements.",
       linkBoundary:assessment.submissionSource==="link"?
         "Do not claim facts about linked external content unless the evaluator actually accessed it. The frozen URL/note alone may be insufficient for some criteria.":
         "Evaluate only the frozen content supplied in this package."
