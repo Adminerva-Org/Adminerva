@@ -242,6 +242,8 @@ function programShortCode(programId){
   const normalized=name.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
   if(/\bsenior high school\b|\bshs\b/.test(normalized))return "shs";
   if(/\bjunior high school\b|\bjhs\b/.test(normalized))return "jhs";
+  if(/\bspecial needs education\b|\bsned\b/.test(normalized))return "sned";
+  if(/\bearly childhood\b|\bece\b|\bkinder(?:garten)?\b|\bpreschool\b/.test(normalized))return "ece";
   if(/\bbasic education\b/.test(normalized))return "be";
   if(/\belementary\b|\bgrade school\b/.test(normalized))return "elem";
   if(/\bcollege\b|\btertiary\b/.test(normalized))return "college";
@@ -253,24 +255,43 @@ function compactSectionToken(value){
   return String(value||"").normalize("NFKD").replace(/[^A-Za-z0-9]+/g," ").trim().split(/\s+/)
     .filter(Boolean).map(word=>word.charAt(0).toUpperCase()+word.slice(1)).join("").slice(0,48);
 }
-function gradeOptionsForProgram(programId){
+function levelOptionsForProgram(programId){
   const program=programs.find(item=>item.id===programId),name=String(program?.name||"").toLowerCase();
-  if(/senior high|\bshs\b/.test(name))return [11,12];
-  if(/junior high|\bjhs\b/.test(name))return [7,8,9,10];
-  if(/elementary|grade school/.test(name))return [1,2,3,4,5,6];
-  return [1,2,3,4,5,6,7,8,9,10,11,12];
+  if(/special needs education|\bsned\b|\bsne[d]?\b/.test(name))return [
+    {value:"sned_elem",label:"SNED Elementary (Grades 1–6)",code:"elem"},
+    {value:"sned_jhs",label:"SNED Junior High (Grades 7–10)",code:"jhs"}
+  ];
+  if(/early childhood|\bece\b|kinder|kindergarten|preschool|pre-school/.test(name))return [
+    {value:"nursery_prep",label:"Nursery / Prep",code:"prep"},
+    {value:"kinder_1",label:"Kinder 1",code:"k1"},
+    {value:"kinder_2",label:"Kinder 2",code:"k2"}
+  ];
+  if(/senior high|\bshs\b/.test(name))return [11,12].map(n=>({value:String(n),label:"Grade "+n,code:String(n)}));
+  if(/junior high|\bjhs\b/.test(name))return [7,8,9,10].map(n=>({value:String(n),label:"Grade "+n,code:String(n)}));
+  if(/elementary|grade school/.test(name))return [1,2,3,4,5,6].map(n=>({value:String(n),label:"Grade "+n,code:String(n)}));
+  return [1,2,3,4,5,6,7,8,9,10,11,12].map(n=>({value:String(n),label:"Grade "+n,code:String(n)}));
+}
+function levelMeta(programId,value){
+  return levelOptionsForProgram(programId).find(item=>item.value===String(value||""))||null;
+}
+function levelLabel(programId,value){
+  return levelMeta(programId,value)?.label||(
+    /^\d+$/.test(String(value||""))?"Grade "+value:String(value||"")
+  );
 }
 function updateSectionGradeOptions(){
   const form=el("ac-section-form"),select=form.elements.gradeLevel,previous=select.value;
-  const grades=gradeOptionsForProgram(form.elements.programId.value);
-  select.replaceChildren(new Option("Choose grade level",""));
-  for(const grade of grades)select.add(new Option("Grade "+grade,String(grade)));
-  select.value=grades.map(String).includes(previous)?previous:"";
+  const levels=levelOptionsForProgram(form.elements.programId.value);
+  select.replaceChildren(new Option("Choose grade / level",""));
+  for(const level of levels)select.add(new Option(level.label,level.value));
+  select.value=levels.some(level=>level.value===previous)?previous:"";
 }
 function updateSectionCode(force=false){
   const form=el("ac-section-form"),program=programShortCode(form.elements.programId.value),
-    grade=String(form.elements.gradeLevel.value||"").trim(),name=compactSectionToken(form.elements.name.value);
-  const generated=[program,grade,name].filter(Boolean).join("_").slice(0,80);
+    level=levelMeta(form.elements.programId.value,form.elements.gradeLevel.value),
+    levelCode=level?.code||String(form.elements.gradeLevel.value||"").trim(),
+    name=compactSectionToken(form.elements.name.value);
+  const generated=[program,levelCode,name].filter(Boolean).join("_").slice(0,80);
   setAuto(form,"recordId",generated,force);
 }
 function yearRange(item){
@@ -365,8 +386,8 @@ function renderCatalog(){
   renderList(el("ac-subjects"),subjects,item=>"ID: "+item.id);
   renderList(el("ac-sections"),sections,item=>{
     const program=programs.find(x=>x.id===item.programId)?.name||item.programId||"Unassigned program";
-    const grade=item.gradeLevel?"Grade "+item.gradeLevel:null;
-    return [program,grade,"ID: "+item.id].filter(Boolean).join(" · ");
+    const level=item.gradeLevel?levelLabel(item.programId,item.gradeLevel):null;
+    return [program,level,"ID: "+item.id].filter(Boolean).join(" · ");
   });
 
   const termForm=el("ac-term-form"),sectionForm=el("ac-section-form"),offeringForm=el("ac-offering-form");
@@ -384,7 +405,7 @@ function renderCatalog(){
   fillSelect(offeringForm.elements.sectionId,sections,{
     placeholder:"Choose section",
     filter:item=>!offeringProgram||item.programId===offeringProgram,
-    label:item=>(item.gradeLevel?"Grade "+item.gradeLevel+" · ":"")+(item.name||item.id)
+    label:item=>(item.gradeLevel?levelLabel(item.programId,item.gradeLevel)+" · ":"")+(item.name||item.id)
   });
   const matchingTerms=terms.filter(item=>(!offeringProgram||item.programId===offeringProgram)&&(!offeringYear||item.yearId===offeringYear));
   let preferredTerm="";
