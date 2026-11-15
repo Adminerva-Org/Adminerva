@@ -208,7 +208,7 @@ function resetAuto(group){
   }else if(group==="subject"){
     const form=el("ac-subject-form");form.elements.recordId.dataset.manual="false";updateSimpleCode(form,true);
   }else if(group==="section"){
-    const form=el("ac-section-form");form.elements.recordId.dataset.manual="false";updateSectionCode(true);
+    const form=el("ac-section-form");form.elements.recordId.dataset.manual="false";updateSectionGradeOptions();updateSectionCode(true);
   }else if(group==="term"){
     const form=el("ac-term-form");for(const key of ["name","recordId"])form.elements[key].dataset.manual="false";
     updateTermSuggestion(true);
@@ -237,9 +237,41 @@ function updateYearSuggestion(force=false){
 function updateSimpleCode(form,force=false){
   setAuto(form,"recordId",slug(form.elements.name.value),force);
 }
+function programShortCode(programId){
+  const program=programs.find(item=>item.id===programId),name=String(program?.name||programId||"").trim();
+  const normalized=name.toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+  if(/\bsenior high school\b|\bshs\b/.test(normalized))return "shs";
+  if(/\bjunior high school\b|\bjhs\b/.test(normalized))return "jhs";
+  if(/\bbasic education\b/.test(normalized))return "be";
+  if(/\belementary\b|\bgrade school\b/.test(normalized))return "elem";
+  if(/\bcollege\b|\btertiary\b/.test(normalized))return "college";
+  const words=normalized.split(/\s+/).filter(word=>word&&!["of","the","and","for"].includes(word));
+  const initials=words.map(word=>word[0]).join("").slice(0,6);
+  return initials||slug(programId).slice(0,8)||"program";
+}
+function compactSectionToken(value){
+  return String(value||"").normalize("NFKD").replace(/[^A-Za-z0-9]+/g," ").trim().split(/\s+/)
+    .filter(Boolean).map(word=>word.charAt(0).toUpperCase()+word.slice(1)).join("").slice(0,48);
+}
+function gradeOptionsForProgram(programId){
+  const program=programs.find(item=>item.id===programId),name=String(program?.name||"").toLowerCase();
+  if(/senior high|\bshs\b/.test(name))return [11,12];
+  if(/junior high|\bjhs\b/.test(name))return [7,8,9,10];
+  if(/elementary|grade school/.test(name))return [1,2,3,4,5,6];
+  return [1,2,3,4,5,6,7,8,9,10,11,12];
+}
+function updateSectionGradeOptions(){
+  const form=el("ac-section-form"),select=form.elements.gradeLevel,previous=select.value;
+  const grades=gradeOptionsForProgram(form.elements.programId.value);
+  select.replaceChildren(new Option("Choose grade level",""));
+  for(const grade of grades)select.add(new Option("Grade "+grade,String(grade)));
+  select.value=grades.map(String).includes(previous)?previous:"";
+}
 function updateSectionCode(force=false){
-  const form=el("ac-section-form"),program=slug(form.elements.programId.value),name=slug(form.elements.name.value);
-  setAuto(form,"recordId",codeJoin([program,name]),force);
+  const form=el("ac-section-form"),program=programShortCode(form.elements.programId.value),
+    grade=String(form.elements.gradeLevel.value||"").trim(),name=compactSectionToken(form.elements.name.value);
+  const generated=[program,grade,name].filter(Boolean).join("_").slice(0,80);
+  setAuto(form,"recordId",generated,force);
 }
 function yearRange(item){
   if(!item)return null;
@@ -333,7 +365,8 @@ function renderCatalog(){
   renderList(el("ac-subjects"),subjects,item=>"ID: "+item.id);
   renderList(el("ac-sections"),sections,item=>{
     const program=programs.find(x=>x.id===item.programId)?.name||item.programId||"Unassigned program";
-    return program+" · ID: "+item.id;
+    const grade=item.gradeLevel?"Grade "+item.gradeLevel:null;
+    return [program,grade,"ID: "+item.id].filter(Boolean).join(" · ");
   });
 
   const termForm=el("ac-term-form"),sectionForm=el("ac-section-form"),offeringForm=el("ac-offering-form");
@@ -341,6 +374,7 @@ function renderCatalog(){
   fillSelect(termForm.elements.programId,programs,{placeholder:"Choose program / division"});
   fillSelect(termForm.elements.yearId,years,{placeholder:"Choose academic year",preferred:preferredYear});
   fillSelect(sectionForm.elements.programId,programs,{placeholder:"Choose program / division"});
+  updateSectionGradeOptions();
 
   fillSelect(offeringForm.elements.programId,programs,{placeholder:"Choose program / division"});
   fillSelect(offeringForm.elements.yearId,years,{placeholder:"Choose academic year",preferred:preferredYear});
@@ -523,7 +557,12 @@ el("ac-year-form").elements.endDate.addEventListener("change",()=>updateYearSugg
 el("ac-program-form").elements.name.addEventListener("input",()=>updateSimpleCode(el("ac-program-form")));
 el("ac-subject-form").elements.name.addEventListener("input",()=>updateSimpleCode(el("ac-subject-form")));
 el("ac-section-form").elements.name.addEventListener("input",()=>updateSectionCode());
-el("ac-section-form").elements.programId.addEventListener("change",()=>updateSectionCode());
+el("ac-section-form").elements.gradeLevel.addEventListener("change",()=>updateSectionCode());
+el("ac-section-form").elements.programId.addEventListener("change",()=>{
+  updateSectionGradeOptions();
+  el("ac-section-form").elements.recordId.dataset.manual="false";
+  updateSectionCode();
+});
 for(const name of ["yearId","programId","periodType"]){
   el("ac-term-form").elements[name].addEventListener("change",()=>{
     if(name==="programId"){
