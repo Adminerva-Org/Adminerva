@@ -208,4 +208,5 @@ if(host&&general&&legacy){
   if(requested==="repository")showLegacy();else showGeneral();
 
   await import("../repo-review/teacher-assessment-library.mjs?v=20261115-studio-shell1");
+  if(requested==="repository")showLegacy();
 }
