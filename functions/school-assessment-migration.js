@@ -108,7 +108,7 @@ function createSchoolAssessmentMigrationService({db}){
       tx.create(targetRef,{
         title,description,instructions,rubric,
         personalization:personalized?{
-          enabled:true,mode:"pool_v1",variantTarget:target,variationGuidance:guidance
+          enabled:true,mode:"ai_blueprint_pool_v1",variantTarget:target,variationGuidance:guidance
         }:{enabled:false,mode:"standard",variantTarget:0,variationGuidance:""},
         schoolId:ctx.schoolId,creatorUid:ctx.uid,ownerUid:ctx.uid,
         visibility:"private",sharedWithUids:[],status:"draft",
