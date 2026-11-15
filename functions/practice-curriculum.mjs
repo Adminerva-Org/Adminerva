@@ -1,3 +1,4 @@
+import {buildJavaOopModules} from "./practice-oop.mjs";
 const levels=["Guided","Apply","Challenge"];
 function answerOptions(answer,seed){
   const value=String(answer),opposite={true:"false",false:"true",True:"False",False:"True",PASS:"RETRY",RETRY:"PASS"};
@@ -154,6 +155,7 @@ export function expandPracticeCourses(courses){
       }));
       return {id:course.id+"-"+moduleId,title:course.id==="logic"?["Trace state changes","Reason about decisions","Investigate loop behavior","Inspect indexed data","Design result checks"][moduleIndex]:title,missions};
     });
+    if(course.id==="java")course.modules.push(...buildJavaOopModules(levels));
     course.missions=course.modules.flatMap(module=>module.missions);
   }
   return courses;
