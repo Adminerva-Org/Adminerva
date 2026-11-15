@@ -119,7 +119,7 @@ if(panel&&list&&status&&schoolHost){
         identity.append(
           node("h3","font-extrabold text-slate-900",task.title),
           node("p","text-xs text-slate-500 mt-1",
-            "Due "+date(task.dueAt)+" · "+sourceLabel(task.submissionSource,task))
+            (task.assessmentType||"Assessment")+" · Due "+date(task.dueAt)+" · "+sourceLabel(task.submissionSource,task))
         );
         const badge=node("span","self-start rounded-full px-3 py-1 text-xs font-bold "+state.className,state.label);
         top.append(identity,badge);article.append(top);
