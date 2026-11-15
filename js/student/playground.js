@@ -3,10 +3,10 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=4.0.2";
-import {currentV4StudioSchool} from "./v4-studio-service.mjs?v=4.1.1";
+import {createProjectStudio} from "./project-studio.mjs?v=4.1.0";
+import {currentV4StudioSchool,listV4StudioAssignments} from "./v4-studio-service.mjs?v=4.2.0";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
-import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.0.0";
+import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.1.0";
 import {installStudioRuntime} from "./studio-runtime-integration.mjs?v=4";
 import {CheerpjStudioClient,CHEERPJ_STUDIO_RUNNER_URL,validateCheerpjRunnerUrl} from "./cheerpj-studio-client.mjs?v=3";
 import {evaluateBrowserJavaAccess,CHEERPJ_STUDIO_ROLLOUT} from "./cheerpj-studio-rollout.mjs?v=2";
@@ -234,6 +234,72 @@ document.addEventListener("keydown",event=>{
     (event.shiftKey&&key==="insert")||(event.ctrlKey&&key==="insert"))event.preventDefault();
 },true);
 
+function inferAssessmentProjectSetup(task={}){
+  const text=[task.title,task.description,task.instructions,task.subject,task.assessmentType]
+    .filter(Boolean).join(" ").toLowerCase();
+  if(/\bpython\b/.test(text))return {templateId:"python-console",config:{runMode:"console",database:false}};
+  if(/\b(html|css|javascript|web app|web page|website)\b/.test(text))
+    return {templateId:"web",config:{runMode:"web",database:false}};
+  const database=/\b(database|sql|jdbc|crud|information system|record management)\b/.test(text);
+  const desktop=/\b(swing|gui|graphical user interface|desktop app|desktop application|jframe|jpanel)\b/.test(text);
+  if(database)return {templateId:"java-information",config:{javaVersion:"17",runMode:desktop?"desktop":"desktop",database:true}};
+  if(desktop)return {templateId:"java-desktop",config:{javaVersion:"17",runMode:"desktop",database:false}};
+  return {templateId:"java-blank",config:{javaVersion:"17",runMode:"console",database:false}};
+}
+async function resolveAssessmentProjectContext(assessmentId,studioSchool){
+  if(!assessmentId)return null;
+  if(studioSchool){
+    try{
+      const tasks=await listV4StudioAssignments();
+      const task=Array.isArray(tasks)?tasks.find(item=>item.taskId===assessmentId):null;
+      if(task){
+        if(task.submissionSource!=="studio")throw Error("This assessment is not configured for Adminerva Studio.");
+        return {...task,assessmentId:task.taskId,taskId:task.taskId,schoolId:studioSchool.schoolId,canonicalV4:true};
+      }
+    }catch(error){
+      if(document.getElementById("adminerva-nav")?.dataset.v4OnlyStudent==="true")throw error;
+    }
+  }
+  const snapshot=await getDoc(doc(db,"assessments",assessmentId));
+  if(!snapshot.exists())throw Error("This Studio assessment is no longer available.");
+  const task={id:snapshot.id,...snapshot.data()};
+  if(task.published===false)throw Error("This Studio assessment is not published.");
+  if(task.submissionSource!=="studio"&&task.assessmentFormat!=="studio_code")
+    throw Error("This assessment is not configured for Adminerva Studio.");
+  return {
+    ...task,assessmentId:task.id,taskId:task.id,canonicalV4:false,
+    title:task.title||"Studio Assessment",
+    description:task.description||task.taskContext||"",
+    instructions:task.instructions||task.taskInstructions||task.taskContext||"",
+    subject:task.subject||"Computer Programming",
+    assessmentType:task.assessmentType||task.type||"Assessment",
+    personalizedTask:task.personalizedTask||{enabled:task.assessmentMode==="personalized"}
+  };
+}
+async function provisionAssessmentProject(assessmentId,studioSchool){
+  const context=await resolveAssessmentProjectContext(assessmentId,studioSchool);
+  if(!context)return null;
+  const setup=inferAssessmentProjectSetup(context);
+  const variant=window.adminervaStudioAssessmentVariant;
+  const result=await projectStudio.ensureAssessmentProject({
+    assessmentId:context.assessmentId,taskId:context.taskId,title:context.title,
+    projectTitle:context.title,description:context.description,instructions:context.instructions,
+    assessmentType:context.assessmentType,subject:context.subject,offeringId:context.offeringId||"",
+    personalized:context.personalizedTask?.enabled===true||context.assessmentMode==="personalized",
+    variantId:variant?.assessmentId===context.assessmentId?variant.variantId:"",
+    attempt:variant?.assessmentId===context.assessmentId?variant.attempt:null,
+    templateId:setup.templateId,config:setup.config
+  });
+  window.adminervaAssessmentProjectContext={...context,projectId:result?.projectId||"",created:result?.created===true};
+  if(result?.project){
+    showSaveStatus(result.created?"Assessment project created automatically":"Assessment project reopened");
+    window.dispatchEvent(new CustomEvent("adminerva:assessment-project-ready",{detail:{
+      assessmentId:context.assessmentId,projectId:result.projectId,created:result.created===true
+    }}));
+  }
+  return result;
+}
+
 // ==========================================
 // 2. INITIALIZATION
 // ==========================================
@@ -397,7 +463,20 @@ async function initializePlayground() {
         projectScope:studioSchool?.compatibilityMode==="v4_only"?"school_"+studioSchool.schoolId:""
       });
       const requestedProject=urlParams.get("codeProject");
-      if(requestedProject)await projectStudio.openProjectById(requestedProject);
+      const requestedAssessment=urlParams.get("assessment");
+      if(requestedAssessment){
+        try{
+          await provisionAssessmentProject(requestedAssessment,studioSchool);
+        }catch(error){
+          console.error("Assessment Studio project provisioning failed:",error);
+          projectStudio.showHome();
+          const list=document.getElementById("codeProjectList");
+          if(list)list.insertAdjacentHTML("afterbegin",
+            '<div class="studio-empty-card"><strong>Assessment project could not be prepared</strong><p>'+
+            String(error?.message||"Return to My Assessments and retry.").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]))+
+            '</p></div>');
+        }
+      }else if(requestedProject)await projectStudio.openProjectById(requestedProject);
       else projectStudio.showHome();
       // Rejoin a queued/running server execution without replacing the school-scoped project.
       void studioRuntimeIntegration?.recover();
@@ -406,6 +485,20 @@ async function initializePlayground() {
   }, () => { end(); document.getElementById("editorLoading").textContent = "Editor could not load. Check your connection and reload; saved drafts are unchanged."; });
   } catch (error) { end(); document.getElementById("editorLoading").textContent = "Editor unavailable. Saved drafts are unchanged. Reload to retry."; }
 }
+window.addEventListener("adminerva:studio-variant-ready",event=>{
+  const assessmentId=new URLSearchParams(location.search).get("assessment");
+  if(!assessmentId||event.detail?.assessmentId!==assessmentId||!projectStudio)return;
+  const active=projectStudio.getActiveProject?.();
+  if(!active?.assessment||active.assessment.assessmentId!==assessmentId)return;
+  void projectStudio.ensureAssessmentProject({
+    assessmentId,taskId:assessmentId,title:active.assessment.title||active.title,
+    assessmentType:active.assessment.assessmentType||"Assessment",
+    subject:active.assessment.subject||"Computer Programming",
+    offeringId:active.assessment.offeringId||"",personalized:true,
+    variantId:event.detail.variantId||"",attempt:event.detail.attempt,
+    templateId:active.template,config:active.config
+  }).catch(error=>console.warn("Assessment project variant metadata was not refreshed:",error));
+});
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",initializePlayground,{once:true});
 else void initializePlayground();
 
