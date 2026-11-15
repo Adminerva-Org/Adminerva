@@ -20,6 +20,12 @@ const MONTHS=["January","February","March","April","May","June","July","August",
 const periodSize={semester:2,term:3,quarter:4,trimester:3};
 
 function say(message){status.textContent=message;}
+function inSystemAdminPreview(){
+  try{
+    return sessionStorage.getItem("Adminerva_platform_test_mode")==="1"||
+      document.getElementById("adminerva-nav")?.dataset.platformTestMode==="true";
+  }catch{return false;}
+}
 function friendlyError(error,fallback="The action could not be completed."){
   const message=String(error?.message||fallback);
   if(/System Admin role test is temporary|school changes are not saved/i.test(message))
@@ -423,11 +429,22 @@ async function createCatalog(form,kind,extra=()=>({})){
     const message="“"+data.name+"” already exists in this school. Use the existing record instead of creating a duplicate.";
     say(message);notify(message,"error");form.elements.name?.focus();return false;
   }
+  const details={kind,...data,...extra(data)};
+  if(inSystemAdminPreview()){
+    const preview={...details,id:data.recordId,status:"active",preview:true};
+    delete preview.kind;delete preview.recordId;
+    source.push(preview);
+    form.reset();clearManual(form);renderCatalog();
+    const label={academic_years:"Academic year",academic_programs:"Division / program",terms:"Academic period",subjects:"Subject",sections:"Section"}[kind]||"Academic record";
+    const message=label+" created for this temporary System Admin preview. It will disappear when you reload or exit role test.";
+    say(message);notify(message,"success");syncWizard();
+    return {preview:true};
+  }
   const submit=form.querySelector('button[type="submit"]'),original=submit?.textContent||"Save";
   if(submit)submit.textContent="Saving…";
   setBusy(true,"Saving academic record…");
   try{
-    const result=await scoped("create_catalog",{kind,...data,...extra(data)});
+    const result=await scoped("create_catalog",details);
     form.reset();clearManual(form);
     await load();
     const label={academic_years:"Academic year",academic_programs:"Division / program",terms:"Academic period",subjects:"Subject",sections:"Section"}[kind]||"Academic record";
@@ -467,10 +484,17 @@ el("ac-offering-form").addEventListener("submit",event=>{
   const form=event.currentTarget;
   if(busy)return;
   if(!form.reportValidity()){notify("Complete all course-offering fields before saving.","error");return;}
+  const data=payload(form);
+  if(inSystemAdminPreview()){
+    offerings.push({offeringId:"preview_"+Date.now(),...data,status:"active",preview:true});
+    form.reset();clearManual(form);renderCatalog();
+    const message="Course offering created for this temporary System Admin preview. It will disappear when you reload or exit role test.";
+    say(message);notify(message,"success");syncWizard();return;
+  }
   const submit=form.querySelector('button[type="submit"]'),original=submit?.textContent||"Create course offering";
   if(submit)submit.textContent="Saving…";
   setBusy(true,"Creating course offering…");
-  void scoped("create_offering",payload(form)).then(async()=>{
+  void scoped("create_offering",data).then(async()=>{
     form.reset();clearManual(form);await load();
     say("Course offering saved successfully.");notify("Course offering saved successfully.","success");
   }).catch(error=>{
