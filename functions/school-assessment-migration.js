@@ -96,8 +96,14 @@ function createSchoolAssessmentMigrationService({db}){
     const personalized=legacy.assessmentMode==="personalized"||legacy.personalizedTask?.enabled===true;
     const rawTarget=Number(legacy.personalizedTask?.poolTarget||legacy.personalizedTask?.poolSize||45);
     const target=Math.max(10,Math.min(600,Number.isFinite(rawTarget)?Math.round(rawTarget):45));
-    const guidance=privateDoc.exists&&privateDoc.data().ownerUid===ctx.uid?
-      clean(privateDoc.data().personalization?.guidance||"",3000):"";
+    const privateData=privateDoc.exists&&privateDoc.data().ownerUid===ctx.uid?privateDoc.data():{};
+    const guidance=clean(privateData.personalization?.guidance||"",3000);
+    const legacyRules=Array.isArray(privateData.rules)?privateData.rules.slice(0,40).map(rule=>
+      clean((rule?.type?rule.type+": ":"")+String(rule?.value||""),400)).filter(Boolean):[];
+    const checkingInstructions=clean([
+      clean(privateData.systemPersona||legacy.systemPersona||"",6000),
+      legacyRules.length?"Legacy checking rules:\n"+legacyRules.map(rule=>"- "+rule).join("\n"):""
+    ].filter(Boolean).join("\n\n"),8000);
     let result;
     await db.runTransaction(async tx=>{
       const existing=await tx.get(targetRef);
@@ -106,7 +112,7 @@ function createSchoolAssessmentMigrationService({db}){
       }
       const now=FieldValue.serverTimestamp();
       tx.create(targetRef,{
-        title,description,instructions,rubric,
+        title,description,instructions,rubric,checkingInstructions,
         personalization:personalized?{
           enabled:true,mode:"ai_blueprint_pool_v1",variantTarget:target,variationGuidance:guidance
         }:{enabled:false,mode:"standard",variantTarget:0,variationGuidance:""},
