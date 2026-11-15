@@ -92,6 +92,30 @@ if(host){
             <label class="text-sm font-bold text-slate-700">Assessment title *
               <input name="title" class="tl-input" maxlength="140" required placeholder="e.g. Encapsulation mini performance task">
             </label>
+            <div class="grid sm:grid-cols-3 gap-3">
+              <label class="text-sm font-bold text-slate-700">Subject *
+                <input name="subject" class="tl-input" maxlength="120" required value="General" placeholder="e.g. Computer Programming">
+              </label>
+              <label class="text-sm font-bold text-slate-700">Assessment type *
+                <select name="assessmentType" class="tl-input">
+                  <option value="Assessment">Assessment</option>
+                  <option value="Written Work">Written Work</option>
+                  <option value="Performance Task">Performance Task</option>
+                  <option value="Mini PETA">Mini PETA</option>
+                  <option value="Practical Exam">Practical Exam</option>
+                  <option value="Formative">Formative</option>
+                  <option value="Quiz">Quiz</option>
+                </select>
+              </label>
+              <label class="text-sm font-bold text-slate-700">Default response *
+                <select name="defaultSubmissionSource" class="tl-input">
+                  <option value="text">Written response</option>
+                  <option value="link">Submission link</option>
+                  <option value="studio">Adminerva Studio</option>
+                  <option value="github">GitHub / Repository</option>
+                </select>
+              </label>
+            </div>
             <label class="text-sm font-bold text-slate-700">Short description
               <textarea name="description" class="tl-input" maxlength="2000" rows="3" placeholder="A concise teacher/library summary."></textarea>
             </label>
