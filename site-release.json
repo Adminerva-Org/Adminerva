@@ -1,5 +1,5 @@
 {
-  "version": "3.1.0",
-  "releasedAt": "2026-11-11",
-  "notes": "Maintenance and UI/UX update: more reliable approved-evidence review, reopened resubmissions, bulk external evaluation, explicit teacher grade publication, larger review saves, improved Studio and lesson tools, responsive workspaces and faster loading. No separate platform pilot features are announced."
+  "version": "3.2.0",
+  "releasedAt": "2026-11-16",
+  "notes": "School-wide administration and workflow update: guided school onboarding, System Admin role preview, consolidated People & Access, smarter academic configuration, Class Record, unified assessments, automatic Studio assessment projects, expanded programming games, improved classroom/support UX, and visible release/build information in the footer."
 }
