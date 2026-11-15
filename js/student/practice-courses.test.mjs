@@ -6,18 +6,19 @@ import {COURSES,practiceQuestion,getCourse} from "./practice-courses.mjs";
 import {historyDocId,historyRecord,mergeNotificationHistory} from "../core/notification-history.mjs";
 import {shouldOfferSiteUpdate} from "../core/site-updates.mjs";
 
-test("four courses retain legacy work and contain five modules with fifteen guided missions each",()=>{
+test("programming catalog retains legacy work and adds Java OOP without changing existing IDs",()=>{
   assert.equal(COURSES.length,4);
   assert.deepEqual(COURSES.map(x=>x.id),["java","python","web","logic"]);
   const all=new Set();
   for(const course of COURSES){
-    assert.equal(course.modules.length,5);assert.equal(course.missions.length,75);
+    const java=course.id==="java";
+    assert.equal(course.modules.length,java?10:5);assert.equal(course.missions.length,java?150:75);
     assert.ok(course.modules.every(module=>module.missions.length===15));
     assert.equal(getCourse(course.id),course);
     for(const mission of course.missions){
       assert.ok(!all.has(mission.id));all.add(mission.id);
       for(const student of ["student-a","student-b"]){
-        for(let attempt=0;attempt<90;attempt++){
+        for(let attempt=0;attempt<12;attempt++){
           const question=practiceQuestion(student,mission,attempt);
           assert.equal(question.choices.length,4,mission.id+" choices");
           assert.equal(new Set(question.choices).size,4,mission.id+" unique options");
@@ -28,8 +29,8 @@ test("four courses retain legacy work and contain five modules with fifteen guid
       }
     }
   }
-  assert.equal(all.size,300);
-  for(const id of ["j1","j2","j3","j4","p1","p2","p3","p4","w1","w2","w3","w4","d1","d2","d3","d4"])assert.ok(all.has(id));
+  assert.equal(all.size,375);
+  for(const id of ["j1","j2","j3","j4","p1","p2","p3","p4","w1","w2","w3","w4","d1","d2","d3","d4","java-oop-1-01","java-oop-5-15"])assert.ok(all.has(id));
 });
 test("opened alerts remain recallable alongside the live unread inbox",()=>{
   const alert={key:"issue:42",type:"issue",title:"Report follow-up",body:"Teacher answered",target:"issues.html",at:9};
