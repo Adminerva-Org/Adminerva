@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
- <title>Assessment Studio · Adminerva</title><link rel="preconnect" href="https://www.gstatic.com" crossorigin><link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
+ <title>Assessment Library · Adminerva</title><link rel="preconnect" href="https://www.gstatic.com" crossorigin><link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
  
   <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="css/adminerva-ui.css?v=20261115-nav1"><link rel="stylesheet" href="css/teacher-ux.css?v=20261115-nav1">
@@ -143,13 +143,15 @@
   <label>Assigned course offering
     <select name="offeringId" class="tl-input" id="tl-deploy-offering" required></select>
   </label>
-  <label>Submission method<select name="submissionSource" class="tl-input" required>
+  <label>Student response / submission method<select name="submissionSource" class="tl-input" required>
+    <option value="text">Written response in Adminerva</option>
+    <option value="link">Submission link</option>
     <option value="studio">Adminerva Studio project</option>
-    <option value="github">GitHub commit evidence</option>
+    <option value="github">GitHub / repository evidence</option>
   </select></label>
   <label>Opens at<input name="opensAt" type="datetime-local" class="tl-input" required></label>
   <label>Deadline<input name="dueAt" type="datetime-local" class="tl-input" required></label>
-  <p class="tl-muted">Choose Adminerva Studio for a frozen project version or GitHub commit evidence for a frozen repository checkpoint and selected commits. Both use the same private-draft and published Gradebook workflow.</p>
+  <p class="tl-muted">Written responses, links, Studio projects and GitHub evidence all use the same frozen-submission, private-draft and published Assessment Results workflow. Personalized assessments currently use Adminerva Studio.</p>
   <div class="tl-actions">
     <button type="submit" class="tl-action">Deploy task</button>
     <button type="button" id="tl-cancel-deploy" class="tl-action alt">Cancel</button>
