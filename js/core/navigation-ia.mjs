@@ -29,7 +29,7 @@ export function buildNavigationIA(ctx){
       ]),
       ws("games","Adminerva Games","student-practice.html","Practice challenges and subject learning games",[
         group("Games",[
-          needs("programming","Programming Practice Challenges","student-practice.html","Active practice system; analytics, progression and subject expansion still need development."),
+          needs("programming","Computer Programming Games","student-practice.html","Active programming arcade with themed games, shared mission progress, rankings and skill-path filters. Campaign progression and richer game-specific interactions remain in development."),
           future("science","Science Game"),future("english","English Game"),future("ap","AP Game"),
           future("math","Math Game"),future("values","Values Game"),future("filipino","Filipino Game"),
           future("quiz-bee","General Subject Quiz Bee")
