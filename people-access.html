@@ -222,6 +222,17 @@
         <p class="pa-muted">The invitation is tied to this school person record. Acceptance links the verified account to that person; it still does not create an enrollment or teaching assignment.</p>
         <div id="pa-invitation-result" role="status" aria-live="polite"></div>
       </form>
+      <section id="pa-legacy-requests-panel" class="pa-card" hidden style="max-width:760px;margin-top:1rem">
+        <div style="display:flex;gap:.75rem;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">
+          <div>
+            <h2 style="font-weight:750;font-size:1.1rem">Previous access requests</h2>
+            <p class="pa-muted">Pending requests from the older Adminerva directory are reviewed here during consolidation. Approval creates school-wide person and membership records only; class enrollment or teaching assignment is handled in Classes.</p>
+          </div>
+          <button id="pa-legacy-requests-refresh" type="button" class="pa-action" style="background:#475569">Refresh</button>
+        </div>
+        <div id="pa-legacy-requests-list" role="list" aria-live="polite"></div>
+        <p id="pa-legacy-requests-status" class="pa-muted" role="status" aria-live="polite">Loading previous access requests…</p>
+      </section>
     </section>
     <section id="pa-access" role="tabpanel" aria-labelledby="pa-tab-access" tabindex="0" hidden>
       <div class="pa-card" style="margin-bottom:1rem">
@@ -338,7 +349,7 @@
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script defer src="js/core/adminerva-nav.js?v=072e6a6525fd"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=072e6a6525fd"></script>
-<script type="module" src="js/school-admin/legacy-directory-adoption.mjs?v=1.0.0"></script>
+<script type="module" src="js/school-admin/legacy-directory-adoption.mjs?v=1.0.1"></script>
 <script type="module" src="js/school-admin/people-access.mjs?v=1.0.1"></script>
 </body>
 </html>
