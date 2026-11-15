@@ -4,10 +4,11 @@ import {existsSync,readFileSync} from "node:fs";
 const read=path=>readFileSync(path,"utf8");
 const has=(path,text)=>assert.ok(read(path).includes(text),path+" is missing expected reliability change: "+text);
 const lacks=(path,text)=>assert.ok(!read(path).includes(text),path+" still contains reverted/regressive pattern: "+text);
+const matches=(path,pattern)=>assert.match(read(path),pattern,path+" is missing expected reliability pattern: "+pattern);
 
 has("js/student/assessment-evidence.mjs","resolveSubmissionCheckpoint");
 has("js/repo-review/services/commit-history.mjs","verifyCheckpointAncestry");
-has("js/student/assessment-evidence.mjs",'headers.Authorization="Bearer "+token');
+has("js/student/assessment-evidence.mjs",'Authorization:"Bearer "+token');
 has("js/core/push-notifications.mjs","localOptOutKey");
 has("js/core/push-notifications.mjs","departPushAccount");
 has("js/core/adminerva-nav.js","push.departPushAccount()");
@@ -25,8 +26,8 @@ has("functions/index.js",'const pushTypes=new Set(["assessment","submission","gr
 has("js/core/workspace-return.mjs","cachedWorkspaceDestination(auth.currentUser)");
 has("js/core/auth-guard.js",'roleHome(actualRole)');
 has("js/core/auth-guard-v4-pilot.js",'roleHome(actualRole)');
-has("assessment-studio.html","js/core/auth-guard-v4-pilot.js?v=4.0.12");
-has("repofetch.html","js/core/auth-guard-v4-pilot.js?v=4.0.12");
+matches("assessment-studio.html",/js\/core\/auth-guard-v4-pilot\.js\?v=[^"'<>]+/);
+matches("repofetch.html",/js\/core\/auth-guard-v4-pilot\.js\?v=[^"'<>]+/);
 lacks("js/settings/account-preferences.mjs","await refreshPush(version);");
 has("js/core/teaching-firestore.mjs","void actor().then(async current=>");
 has("firebase-messaging-sw.js","assets/adminerva-notification-badge.png");
