@@ -59,6 +59,8 @@ function createSchoolAcademicsService({db}) {
     deny("permission-denied","Your school administration permission has changed.");
   }
   const audit=(action,extra={})=>({schoolId:ctx.schoolId,actorUid:uid,action,
+    actorMode:ctx.platformOverride&&String(input.platformMode||"").toLowerCase()==="assist"?
+      "system_admin_assist":"school_admin",
     ...extra,createdAt:FieldValue.serverTimestamp()});
   if(input.action==="planning_options"){
    if(!admin&&!teacher)deny("permission-denied","Teaching access is required.");
