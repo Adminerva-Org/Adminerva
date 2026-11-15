@@ -207,6 +207,6 @@ if(host&&general&&legacy){
   const requested=new URL(location.href).searchParams.get("view");
   if(requested==="repository")showLegacy();else showGeneral();
 
-  await import("../repo-review/teacher-assessment-library.mjs?v=20261115-studio-shell1");
+  await import("../repo-review/teacher-assessment-library.mjs?v=20261115-studio-shell2");
   if(requested==="repository")showLegacy();
 }
