@@ -119,11 +119,22 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const evidenceApi=sourceApi(task.submissionSource,{
         studio:submissionApi,general:generalSubmissionApi,github:githubEvidenceApi
       });
-      const result=await scoped(evidenceApi,"inbox",{taskId:task.taskId});
+      const [result,resultData]=await Promise.all([
+        scoped(evidenceApi,"inbox",{taskId:task.taskId}),
+        scoped(gradeApi,"list_task_results",{taskId:task.taskId})
+      ]);
       if(token!==generation)return;
-      const rows=task.submissionSource==="github"?(result.evidence||[]):(result.submissions||[]);
+      let rows=task.submissionSource==="github"?(result.evidence||[]):(result.submissions||[]);
+      const gradeMap=new Map((resultData.results||[]).map(item=>[item.studentUid,item]));
+      if(view==="results")rows=[...rows].sort((a,b)=>{
+        const rank=value=>value==="published"?0:value==="draft"?1:2;
+        return rank(gradeMap.get(a.studentUid)?.status)-rank(gradeMap.get(b.studentUid)?.status)||
+          String(a.studentName||"").localeCompare(String(b.studentName||""));
+      });
+      const published=[...gradeMap.values()].filter(item=>item.status==="published").length;
+      const drafts=[...gradeMap.values()].filter(item=>item.status==="draft").length;
       status.textContent=rows.length?
-        rows.length+" frozen evidence item"+(rows.length===1?"":"s")+" loaded.":
+        rows.length+" submitted · "+published+" published · "+drafts+" private draft"+(drafts===1?"":"s")+".":
         "No student evidence yet for this assessment.";
       if(!rows.length){
         inbox.append(make("div","rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600",
@@ -131,6 +142,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         return;
       }
       for(const row of rows){
+        const grade=gradeMap.get(row.studentUid)||null;
         const card=make("article","rounded-xl border border-slate-200 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3");
         const details=make("div","min-w-0");
         details.append(
@@ -138,8 +150,14 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
           make("p","text-xs text-slate-500 mt-1",
             "Version "+row.version+" · "+row.status+" · "+(row.updatedAt?new Date(row.updatedAt).toLocaleString():"recently"))
         );
+        const resultLine=grade?
+          (grade.status==="published"?"Published result":"Private grade draft")+" · "+grade.awarded+" / "+grade.total+
+            (grade.pending?" · "+grade.pending+" pending":""):
+          "Needs grading";
+        details.append(make("p","text-xs font-bold mt-1 "+(grade?.status==="published"?"text-emerald-700":grade?"text-amber-700":"text-slate-600"),resultLine));
         const button=make("button","rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5 text-sm",
-          task.submissionSource==="github"?"Verify evidence":"Review response");
+          view==="results"?(grade?"Open result":"Grade response"):
+            task.submissionSource==="github"?"Verify evidence":"Review response");
         button.type="button";
         const normalized=task.submissionSource==="github"?
           {...row,recordId:row.evidenceId}:{...row,recordId:row.submissionId};
