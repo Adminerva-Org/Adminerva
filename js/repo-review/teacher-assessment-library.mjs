@@ -250,12 +250,19 @@ function render(){
     const row=document.createElement("article");row.className="tl-row";row.setAttribute("role","listitem");
     const info=document.createElement("div"),heading=document.createElement("h3"),meta=document.createElement("p");
     heading.style.fontWeight="750";heading.textContent=item.title;
-    meta.className="tl-muted";meta.textContent=(item.subject||"General")+" · "+
-      (item.assessmentType||"Assessment")+" · "+sourceLabel(item.defaultSubmissionSource||"text")+
+    const badges=document.createElement("div");badges.className="mt-2 flex flex-wrap gap-1.5";
+    const subjectBadge=document.createElement("span");
+    subjectBadge.className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-cyan-200";
+    subjectBadge.textContent=item.subject||"General";
+    const sourceBadge=document.createElement("span");
+    sourceBadge.className="rounded-full border border-slate-500 bg-slate-700 px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide text-slate-100";
+    sourceBadge.textContent=sourceLabel(item.defaultSubmissionSource||"text");
+    badges.append(subjectBadge,sourceBadge);
+    meta.className="tl-muted";meta.textContent=(item.assessmentType||"Assessment")+
       " · "+(personalized(item)?"personalized":"standard")+
       " · "+(item.canShare?"Owned by you":"Shared by teacher "+item.ownerUid.slice(0,8))+
       " · revision "+item.contentRevision;
-    info.append(heading,meta);
+    info.append(heading,badges,meta);
     const controls=document.createElement("div");controls.className="tl-actions";
     controls.append(actionButton("Preview",()=>showPreview(item),true));
     if(item.canShare){
