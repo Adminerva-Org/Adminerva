@@ -60,7 +60,7 @@ export async function loadLegacyProgrammingClassroom(){
   const taskMap=new Map(),statuses=new Map(),grades=new Map();
   for(const profile of profiles){
     const [sectionSnap,targetSnap,submissionSnap,evidenceSnap,studioSnap,gradeSnap]=await Promise.all([
-      getDocs(query(collection(db,"assessments"),where("sectionIds","array-contains",profile.section)).catch?null:null).catch(()=>null),
+      getDocs(query(collection(db,"assessments"),where("sectionIds","array-contains",profile.section))).catch(()=>null),
       getDocs(query(collection(db,"assessments"),where("targetSections","array-contains",profile.section))).catch(()=>null),
       getDocs(query(collection(db,"student_submissions"),where("studentId","==",profile.id))).catch(()=>null),
       getDocs(query(collection(db,"assessment_evidence"),where("studentId","==",profile.id))).catch(()=>null),
