@@ -13,11 +13,11 @@ export function buildNavigationIA(ctx){
     const grades=scope.hasSchoolStudent?"school-student-grades.html":null;
     const settings=scope.hasSchoolStudent?"school-student-settings.html":"student-settings.html";
     return [
-      ws("classroom","Adminerva Classroom","student-classroom.html","Choose a subject, then open assignments, grades and project tools",[
+      ws("classroom","Adminerva Classroom","student-classroom.html?v=20261115-stream3","Choose a subject, then enter its classroom stream, classwork, grades and project tools",[
         group("Assignments",[
           needs("assignments","Assignments",assignments,"Unified student assignment workspace. Verified school tasks and existing programming assignments are consolidated here."),
           ...(grades?[live("my-grades","My Grades",grades,"Teacher-released school grades")]:[]),
-          needs("classroom-stream","Subject Stream","student-classroom.html","Choose a subject to view announcements, class activity, assignments and released results."),
+          needs("classroom-stream","Subject Stream","student-classroom.html?v=20261115-stream3","Choose a subject to view announcements, class activity, assignments and released results."),
           future("ebooks","E-books","Class materials and presentations · Future development"),
           future("calendar","School Calendar","School events, deadlines and academic calendar · Future development")
         ]),
