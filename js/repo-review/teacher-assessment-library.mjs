@@ -5,9 +5,10 @@ import {buildExternalPersonalizationPackage,parseExternalPersonalizationResponse
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"teacherBlueprints");
 const scopedAssessmentApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAssessments");
 const schoolAcademicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAcademics");
+const migrationApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAssessmentMigration");
 const el=id=>document.getElementById(id),status=el("tl-status"),workspace=el("tl-workspace");
 const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
-  previewDialog=el("tl-preview-dialog"),personalizationDialog=el("tl-personalization-dialog");
+  previewDialog=el("tl-preview-dialog"),personalizationDialog=el("tl-personalization-dialog"),legacyDialog=el("tl-legacy-dialog");
 let items=[],deployments=[],filter="mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,
   lifecycleTask=null,lifecycleAction=null,pendingWrite=false,personalizing=null,personalizationState=null;
 const say=message=>status.textContent=message;
@@ -17,7 +18,7 @@ const picker=createTenantSchoolPicker({
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
     items=[];deployments=[];editing=null;sharing=null;deploying=null;deployRequestKey=null;
     lifecycleTask=null;lifecycleAction=null;list.replaceChildren();workspace.hidden=true;
-    shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();
+    shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog.close?.();
     el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();
     form.reset();togglePersonalizationFields();
   },
@@ -246,6 +247,7 @@ function render(){
     heading.style.fontWeight="750";heading.textContent=item.title;
     meta.className="tl-muted";meta.textContent=(item.canShare?"Owned by you":"Shared by teacher "+item.ownerUid.slice(0,8))+
       " · "+(personalized(item)?"personalized Studio":"standard")+
+      (item.legacyImport?" · imported from Repository Management":"")+
       " · "+item.visibility.replaceAll("_"," ")+" · revision "+item.contentRevision;
     info.append(heading,meta);
     const controls=document.createElement("div");controls.className="tl-actions";
@@ -299,6 +301,46 @@ document.querySelectorAll("[data-filter]").forEach(button=>button.addEventListen
   filter=button.dataset.filter;render();
 }));
 el("tl-refresh").addEventListener("click",()=>void refresh().catch(error=>say(error.message)));
+el("tl-import-legacy").addEventListener("click",()=>void (async()=>{
+  if(pendingWrite)return;
+  legacyDialog.showModal();
+  const host=el("tl-legacy-list"),message=el("tl-legacy-status");
+  host.replaceChildren();message.textContent="Loading your Repository Management assessments…";
+  try{
+    const result=await performScoped(migrationApi,"list_legacy");
+    const rows=result.items||[];
+    message.textContent=rows.length?
+      rows.length+" legacy assessment"+(rows.length===1?"":"s")+" found. Import only the blueprints you want to reuse in the general Assessment workflow.":
+      "No teacher-owned legacy Repository Management assessments were found for this account.";
+    for(const item of rows){
+      const row=document.createElement("article");row.className="tl-row";
+      const info=document.createElement("div"),title=document.createElement("h3"),meta=document.createElement("p");
+      title.style.fontWeight="750";title.textContent=item.title;
+      meta.className="tl-muted";meta.textContent=
+        (item.subject?item.subject+" · ":"")+(item.type||"Assessment")+" · "+
+        (item.maxScore||"—")+" pts · "+item.deploymentCount+" legacy deployment"+
+        (item.deploymentCount===1?"":"s")+(item.personalized?" · personalized":"");
+      info.append(title,meta);
+      const actions=document.createElement("div");actions.className="tl-actions";
+      const button=actionButton(item.alreadyImported?"Imported":"Import blueprint",()=>void (async()=>{
+        if(pendingWrite||item.alreadyImported)return;
+        pendingWrite=true;button.disabled=true;message.textContent="Importing "+item.title+" as a private general-assessment blueprint…";
+        try{
+          const imported=await performScoped(migrationApi,"import_legacy",{legacyAssessmentId:item.legacyAssessmentId});
+          item.alreadyImported=true;button.textContent="Imported";button.disabled=true;
+          await refresh();
+          message.textContent=imported.alreadyImported?
+            "This assessment was already imported. The existing general blueprint was preserved.":
+            "Imported "+item.title+". Historical repository grades/evidence were not changed.";
+        }catch(error){
+          button.disabled=false;message.textContent=error?.message||"Legacy assessment import failed.";
+        }finally{pendingWrite=false;}
+      }),true);
+      button.disabled=item.alreadyImported;actions.append(button);row.append(info,actions);host.append(row);
+    }
+  }catch(error){message.textContent=error?.message||"Legacy assessments could not be loaded.";}
+})());
+el("tl-legacy-close").addEventListener("click",()=>{if(!pendingWrite)legacyDialog.close();});
 form.addEventListener("submit",event=>{
   event.preventDefault();if(!form.reportValidity())return;
   const data=new FormData(form);
