@@ -29,6 +29,9 @@ function slug(value){
   return String(value||"").trim().toLowerCase().normalize("NFKD")
     .replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,72);
 }
+function codeJoin(parts){
+  return parts.filter(Boolean).map(slug).join("_").replace(/_+/g,"_").slice(0,80).replace(/_+$/,"");
+}
 function dateText(value){
   if(!value)return "";
   const date=new Date(value+"T00:00:00");
@@ -149,7 +152,7 @@ function updateSimpleCode(form,force=false){
 }
 function updateSectionCode(force=false){
   const form=el("ac-section-form"),program=slug(form.elements.programId.value),name=slug(form.elements.name.value);
-  setAuto(form,"recordId",[program,name].filter(Boolean).join("_"),force);
+  setAuto(form,"recordId",codeJoin([program,name]),force);
 }
 function yearRange(item){
   if(!item)return null;
@@ -185,7 +188,7 @@ function updateTermSuggestion(force=false){
   const sequence=Math.max(1,Number(form.elements.sequence.value)||1),name=termLabel(type,sequence);
   const short={semester:"sem",term:"term",quarter:"q",trimester:"tri",custom:"period"}[type]||"period";
   setAuto(form,"name",name,force);
-  setAuto(form,"recordId",[programId,yearId,short+sequence].filter(Boolean).map(slug).join("_"),force);
+  setAuto(form,"recordId",codeJoin([programId,yearId,short+sequence]),force);
 
   const year=years.find(item=>item.id===yearId),range=yearRange(year),total=periodSize[type];
   if(range&&total&&sequence<=total){
@@ -327,9 +330,15 @@ function clearManual(form){
 }
 async function createCatalog(form,kind,extra=()=>({})){
   if(busy||!form.reportValidity())return;
+  const data=payload(form);
+  const source={academic_years:years,academic_programs:programs,terms,subjects,sections}[kind]||[];
+  const duplicate=source.find(item=>String(item.name||"").trim().toLocaleLowerCase("en")===String(data.name||"").trim().toLocaleLowerCase("en"));
+  if(duplicate){
+    say("“"+data.name+"” already exists in this school. Use the existing record instead of creating a duplicate.");
+    form.elements.name?.focus();return;
+  }
   setBusy(true,"Saving academic record…");
   try{
-    const data=payload(form);
     await scoped("create_catalog",{kind,...data,...extra(data)});
     form.reset();clearManual(form);
     await load();
