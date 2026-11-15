@@ -6,7 +6,7 @@ const readinessApi=httpsCallable(functions,"schoolCutoverReadiness");
 const byId=id=>document.getElementById(id);
 const status=byId("owner-status"),workspace=byId("owner-content"),
   schoolList=byId("owner-schools"),actions=byId("owner-actions");
-let selected=null,schools=[],governanceRoles=[],busy=false,latestReadiness=null,latestCutoverPackage=null;
+let selected=null,schools=[],governanceRoles=[],busy=false,latestReadiness=null,latestCutoverPackage=null,onboardingSchoolId="";
 const say=text=>status.textContent=text;
 async function execute(action,details={}){
   return (await api({action,...details})).data;
@@ -183,8 +183,8 @@ async function refresh(prefer=selected?.schoolId){
   workspace.hidden=false;
 }
 async function submit(form,action,fields){
-  if(busy)return;
-  if(!form.reportValidity())return;
+  if(busy)return null;
+  if(!form.reportValidity())return null;
   const buttons=[...document.querySelectorAll(".own-button")];
   busy=true;buttons.forEach(button=>button.disabled=true);
   say("Checking owner privileges and recording the action…");
@@ -193,8 +193,34 @@ async function submit(form,action,fields){
     say("School operation recorded: "+action.replaceAll("_"," ")+".");
     form.reset();
     await refresh(response.schoolId||fields.schoolId);
-  }catch(error){say(error?.message||"The change was not recorded. No local permission was granted.");}
+    return response;
+  }catch(error){say(error?.message||"The change was not recorded. No local permission was granted.");return null;}
   finally{busy=false;buttons.forEach(button=>button.disabled=false);}
+}
+function schoolSlug(value){
+  return String(value||"").trim().toLowerCase().normalize("NFKD")
+    .replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,64).replace(/-+$/,"");
+}
+function showOnboardingStep(step){
+  const host=byId("owner-onboarding");if(!host)return;
+  host.hidden=false;
+  host.querySelectorAll("[data-onboard-step]").forEach(node=>node.hidden=Number(node.dataset.onboardStep)!==step);
+  host.querySelectorAll("[data-onboard-indicator]").forEach(node=>{
+    const current=Number(node.dataset.onboardIndicator);
+    node.dataset.active=String(current===step);
+    node.dataset.complete=String(current<step);
+  });
+  host.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+function closeOnboarding(){const host=byId("owner-onboarding");if(host)host.hidden=true;}
+function enterSchoolPreview(role="schooladmin"){
+  const schoolId=onboardingSchoolId||selected?.schoolId;if(!schoolId)return;
+  try{
+    sessionStorage.setItem("Adminerva_platform_view_school",schoolId);
+    sessionStorage.setItem("Adminerva_platform_view_role",role);
+    sessionStorage.setItem("Adminerva_platform_test_mode","1");
+  }catch{}
+  location.href=role==="student"?"student-home.html":role==="teacher"?"teacher-home.html":"school-admin.html";
 }
 byId("owner-pilot-jump")?.addEventListener("click",()=>{
   if(!selected)return;
@@ -204,11 +230,49 @@ byId("owner-pilot-jump")?.addEventListener("click",()=>{
   const focusable=target?.querySelector("input,button,select,textarea");
   setTimeout(()=>focusable?.focus?.(),250);
 });
+byId("owner-onboarding-start")?.addEventListener("click",()=>{
+  onboardingSchoolId="";const form=byId("owner-create");form?.reset();
+  if(form?.elements.schoolId)form.elements.schoolId.dataset.manual="false";
+  showOnboardingStep(1);form?.elements.displayName?.focus();
+});
+byId("owner-onboarding-close")?.addEventListener("click",closeOnboarding);
+byId("owner-onboarding-done")?.addEventListener("click",closeOnboarding);
+const createForm=byId("owner-create");
+createForm?.elements.displayName?.addEventListener("input",()=>{
+  const idField=createForm.elements.schoolId;
+  if(idField.dataset.manual!=="true")idField.value=schoolSlug(createForm.elements.displayName.value);
+});
+createForm?.elements.schoolId?.addEventListener("input",event=>{event.currentTarget.dataset.manual="true";});
 byId("owner-create").addEventListener("submit",event=>{
   event.preventDefault();const f=event.currentTarget,d=new FormData(f);
-  void submit(f,"create_draft",{schoolId:String(d.get("schoolId")||"").trim(),
-    displayName:String(d.get("displayName")||"").trim()});
+  void (async()=>{
+    const response=await submit(f,"create_draft",{schoolId:String(d.get("schoolId")||"").trim(),
+      displayName:String(d.get("displayName")||"").trim()});
+    if(!response)return;
+    onboardingSchoolId=response.schoolId;
+    const summary=byId("owner-onboarding-summary");
+    if(summary)summary.textContent="“"+(selected?.displayName||response.schoolId)+"” is registered as a draft. Continue platform configuration now or preview the school workspace.";
+    showOnboardingStep(2);
+  })();
 });
+byId("owner-onboarding-admin")?.addEventListener("submit",event=>{
+  event.preventDefault();if(!onboardingSchoolId)return;
+  const f=event.currentTarget,d=new FormData(f);
+  void (async()=>{
+    const response=await submit(f,"grant_school_admin",{
+      schoolId:onboardingSchoolId,targetUid:String(d.get("targetUid")||"").trim(),
+      reason:String(d.get("reason")||"").trim()
+    });
+    if(response)showOnboardingStep(3);
+  })();
+});
+byId("owner-onboarding-skip-admin")?.addEventListener("click",()=>showOnboardingStep(3));
+byId("owner-onboarding-policies")?.addEventListener("click",()=>{
+  closeOnboarding();
+  byId("owner-cutover-decisions")?.scrollIntoView({behavior:"smooth",block:"start"});
+  byId("owner-cutover-decisions")?.querySelector("input,select,textarea")?.focus();
+});
+byId("owner-onboarding-preview")?.addEventListener("click",()=>enterSchoolPreview("schooladmin"));
 byId("owner-governance-create").addEventListener("submit",event=>{
   event.preventDefault();const f=event.currentTarget,d=new FormData(f);
   void submit(f,"create_governance_role",{
