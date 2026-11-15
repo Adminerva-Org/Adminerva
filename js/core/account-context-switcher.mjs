@@ -5,6 +5,7 @@ const api=httpsCallable(getFunctions(app,"asia-southeast1"),"tenantSchools");
 const SCHOOL_KEY=uid=>"Adminerva_last_verified_school_"+uid;
 const VIEW_SCHOOL="Adminerva_platform_view_school";
 const VIEW_ROLE="Adminerva_platform_view_role";
+const VIEW_TEST="Adminerva_platform_test_mode";
 
 function getSession(key){try{return sessionStorage.getItem(key)||"";}catch{return "";}}
 function setSession(key,value){try{value?sessionStorage.setItem(key,value):sessionStorage.removeItem(key);}catch{}}
@@ -55,7 +56,7 @@ export async function mountAccountContextSwitcher(root=document){
     for(const school of schools)option(schoolField.select,school.schoolId,school.name||school.schoolId,{selected:school.schoolId===selectedSchool});
     host.append(schoolField.label);
 
-    const roleField=field("Role view");
+    const roleField=field("Test as role");
     roleField.label.classList.toggle("hidden",!selectedSchool);
     const selectedRole=getSession(VIEW_ROLE)||"schooladmin";
     option(roleField.select,"schooladmin","School administrator",{selected:selectedRole==="schooladmin"});
@@ -65,17 +66,17 @@ export async function mountAccountContextSwitcher(root=document){
 
     const note=document.createElement("p");note.className="px-2 pt-1.5 text-[10px] leading-4 text-slate-500";
     note.textContent=selectedSchool
-      ?"System administrator override · "+currentSchoolName(schools,selectedSchool)
+      ?"Temporary System Admin role test · "+currentSchoolName(schools,selectedSchool)+" · school changes are not saved"
       :"System-wide administration";
     host.append(note);
 
     schoolField.select.addEventListener("change",()=>{
       const schoolId=schoolField.select.value;
       if(!schoolId){
-        setSession(VIEW_SCHOOL,"");setSession(VIEW_ROLE,"");rememberSchool(user.uid,"");
+        setSession(VIEW_SCHOOL,"");setSession(VIEW_ROLE,"");setSession(VIEW_TEST,"");rememberSchool(user.uid,"");
         location.href="owner-schools.html";return;
       }
-      setSession(VIEW_SCHOOL,schoolId);
+      setSession(VIEW_SCHOOL,schoolId);setSession(VIEW_TEST,"1");
       const role=getSession(VIEW_ROLE)||"schooladmin";setSession(VIEW_ROLE,role);
       rememberSchool(user.uid,schoolId);
       location.href=routeForRole(role);
@@ -83,7 +84,7 @@ export async function mountAccountContextSwitcher(root=document){
     roleField.select.addEventListener("change",()=>{
       const schoolId=getSession(VIEW_SCHOOL);
       if(!schoolId)return;
-      setSession(VIEW_ROLE,roleField.select.value);rememberSchool(user.uid,schoolId);
+      setSession(VIEW_ROLE,roleField.select.value);setSession(VIEW_TEST,"1");rememberSchool(user.uid,schoolId);
       location.href=routeForRole(roleField.select.value);
     });
     return;
