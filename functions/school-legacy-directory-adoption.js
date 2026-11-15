@@ -95,10 +95,11 @@ function addIssue(issues,type,severity,label,detail,extra={}){
 }
 async function buildModel({db,resolveUserByEmail,ctx}){
   const schoolRef=db.doc("platform_schools/"+ctx.schoolId);
-  const [school,students,staff,people,memberships,years,sections,subjects,offerings,enrollments,assignments]=await Promise.all([
+  const [school,students,staff,teachers,people,memberships,years,sections,subjects,offerings,enrollments,assignments]=await Promise.all([
     schoolRef.get(),
     readAll(db.collection("students"),5000,"Legacy student roster"),
     readAll(db.collection("staff_access"),500,"Legacy staff access"),
+    readAll(db.collection("teachers"),1000,"Legacy teacher profiles"),
     readAll(db.collection("schools/"+ctx.schoolId+"/people"),5000,"School people"),
     readAll(db.collection("schools/"+ctx.schoolId+"/memberships"),2000,"School memberships"),
     readAll(db.collection("schools/"+ctx.schoolId+"/academic_years"),250,"Academic years"),
@@ -114,7 +115,8 @@ async function buildModel({db,resolveUserByEmail,ctx}){
 
   const emails=[...new Set([
     ...students.map(row=>normalizeEmail(row.data.email)),
-    ...staff.map(row=>normalizeEmail(row.data.email||row.id))
+    ...staff.map(row=>normalizeEmail(row.data.email||row.id)),
+    ...teachers.map(row=>normalizeEmail(row.data.email))
   ].filter(Boolean))];
   const resolvedPairs=await mapLimit(emails,16,async email=>{
     try{
@@ -158,6 +160,22 @@ async function buildModel({db,resolveUserByEmail,ctx}){
     if(row.data.role==="teacher"&&activeStatus(row.data.status)&&user)group.roles.add("teacher");
     if(row.data.role==="admin")group.legacyAdmin=true;
     sourceToGroup.set("staff_access/"+row.id,key);
+  }
+  for(const row of teachers){
+    const email=normalizeEmail(row.data.email),user=email?resolved.get(email):null;
+    const staffKey=sourceToGroup.get("staff_access/"+row.id);
+    const key=staffKey||(user?"uid:"+user.uid:null);
+    if(!key){
+      addIssue(issues,"legacy_teacher_profile_unresolved","review",
+        displayName(row.data,"Teacher "+row.id),
+        "A previous teacher profile has no verified account or staff-access record. It remains preserved for manual reconciliation.",
+        {recordId:row.id});
+      continue;
+    }
+    const group=groups.get(key)||groupFor(key,"staff",user?.uid);
+    group.kinds.add("staff");group.sourceIds.push("teachers/"+row.id);group.names.push(displayName(row.data,"Teacher "+row.id));
+    group.active=group.active||activeStatus(row.data.status);
+    sourceToGroup.set("teachers/"+row.id,key);
   }
 
   const candidates=[],candidateByGroup=new Map();
@@ -344,7 +362,7 @@ async function buildModel({db,resolveUserByEmail,ctx}){
     assignments:assignmentCandidates.map(row=>({assignmentId:row.assignmentId,state:row.state,sourceIds:row.sourceIds})),
     issues:issues.map(row=>({type:row.type,severity:row.severity,personId:row.personId||null,targetUid:row.targetUid||null}))
   })));
-  return {school,students,staff,candidates,candidateByGroup,enrollmentCandidates,assignmentCandidates,issues,digest};
+  return {school,students,staff,teachers,candidates,candidateByGroup,enrollmentCandidates,assignmentCandidates,issues,digest};
 }
 function publicPreview(model){
   const count=(items,predicate)=>items.filter(predicate).length;
@@ -355,6 +373,7 @@ function publicPreview(model){
     schoolId:SCHOOL_ID,digest:model.digest,
     summary:{
       legacyStudentRows:model.students.length,legacyStaffRows:model.staff.length,
+      legacyTeacherProfiles:model.teachers.length,
       peopleToCreate:count(model.candidates,row=>row.personState==="create"),
       peopleExisting:count(model.candidates,row=>row.personState==="existing"),
       verifiedAccounts:count(model.candidates,row=>Boolean(row.uid)),
