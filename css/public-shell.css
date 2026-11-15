@@ -1,3 +1,4 @@
+#adminerva-public-nav{flex:0 0 auto;min-width:0}
 /* Shared public Adminerva shell.
    Mirrors the authenticated navigation language without loading private role/school state. */
 .av-public-shell{position:sticky;top:0;z-index:80;background:rgba(15,23,42,.97);color:#fff;border-bottom:1px solid rgba(8,145,178,.28);box-shadow:0 8px 24px rgba(15,23,42,.14);backdrop-filter:blur(12px)}
