@@ -107,6 +107,7 @@ function v4ProjectToLocal(uid,remote){
       folders:[...folders].sort(),projectOrder:[...folders,...order]},
     database:artifacts.database||{tables:{},history:[]},
     design:artifacts.design||{},evidence:artifacts.evidence||{events:[],runs:[]},
+    assessment:artifacts.assessment&&typeof artifacts.assessment==="object"?artifacts.assessment:null,
     createdAt:time(remote.createdAt),updatedAt:time(remote.updatedAt),lastOpenedAt:time(remote.updatedAt)
   };
 }
@@ -162,6 +163,7 @@ export function createProjectStudio({
     refreshEvidence:()=>renderEvidence(),
     refreshMonitor:()=>renderMonitor(),
     openProjectById,
+    ensureAssessmentProject,
     activateProject,
     resetToTemplate,
     importBundleMetadata,
@@ -450,6 +452,76 @@ export function createProjectStudio({
     if(cloudEnabled)void mergeCloudProjects();
   }
 
+  function assessmentProjectId(assessmentId){
+    const raw=String(assessmentId||"").replace(/[^A-Za-z0-9_-]/g,"_")||"task";
+    if(raw.length<=68)return "assessment-"+raw;
+    let hash=2166136261;
+    for(const char of raw){hash^=char.charCodeAt(0);hash=Math.imul(hash,16777619)>>>0;}
+    return "assessment-"+raw.slice(0,55)+"-"+hash.toString(36);
+  }
+
+  async function ensureAssessmentProject(context={}){
+    const assessmentId=String(context.assessmentId||"").trim();
+    if(!assessmentId)throw Error("Assessment project provisioning requires an assessment ID.");
+    const projectId=assessmentProjectId(assessmentId);
+    let project=findCodeProject(projectStorage,uid,projectId)||
+      readCodeProjects(projectStorage,uid).find(item=>item.assessment?.assessmentId===assessmentId);
+
+    if(!project&&cloudEnabled){
+      try{
+        const remote=await loadV4StudioProject(projectId);
+        if(remote){
+          project=v4ProjectToLocal(uid,remote);
+          validateProject(project);
+          project=saveCodeProject(projectStorage,uid,project);
+        }
+      }catch(error){
+        const message=String(error?.message||error||"");
+        if(!/not.?found|unavailable/i.test(message))
+          console.warn("Assessment Studio project lookup skipped:",message);
+      }
+    }
+
+    const ownership={
+      assessmentId,
+      taskId:String(context.taskId||assessmentId),
+      title:String(context.title||"Studio assessment").slice(0,180),
+      assessmentType:String(context.assessmentType||"Assessment").slice(0,80),
+      submissionSource:"studio",
+      subject:String(context.subject||"Computer Programming").slice(0,120),
+      offeringId:String(context.offeringId||"").slice(0,160),
+      personalized:context.personalized===true,
+      variantId:String(context.variantId||"").slice(0,160),
+      attempt:Number.isInteger(Number(context.attempt))?Number(context.attempt):null,
+      provisionedBy:"assessment-launch"
+    };
+
+    if(project){
+      const changed=JSON.stringify(project.assessment||{})!==JSON.stringify(ownership);
+      if(changed)project=saveCodeProject(projectStorage,uid,{...project,assessment:ownership});
+      activateProject(project);
+      return {project:activeProject,created:false,projectId:activeProject.id};
+    }
+
+    if(context.allowCreate===false)return {project:null,created:false,projectId};
+    validateProject({state:{files:{}},database:{tables:{}},design:{},evidence:{}},{creating:true});
+    const templateId=CODE_PROJECT_TEMPLATES[context.templateId]?context.templateId:"java-blank";
+    const template=CODE_PROJECT_TEMPLATES[templateId];
+    const projectTitle=String(context.projectTitle||context.title||"Studio Assessment").trim().slice(0,120)||"Studio Assessment";
+    project=createCodeProject(projectStorage,uid,{
+      id:projectId,title:projectTitle,templateId:template.id,
+      config:{...template.config,...(context.config||{})},assessment:ownership
+    });
+    try{
+      validateProject(project);
+      activateProject(project);
+      return {project:activeProject,created:true,projectId:activeProject.id};
+    }catch(error){
+      deleteCodeProject(projectStorage,uid,project.id);
+      throw error;
+    }
+  }
+
   async function openProjectById(id){
     let project=findCodeProject(projectStorage,uid,id);
     if(!project&&cloudEnabled){
@@ -580,7 +652,8 @@ export function createProjectStudio({
     if(title)title.textContent=activeProject.title;
     if(meta){
       const kb=Math.max(1,Math.ceil(projectSize(activeProject)/1024));
-      meta.textContent=projectTypeMeta(activeProject).detail+" · "+Object.keys(activeProject.state?.files||{}).length+" files · "+kb+" KB"+(guest?" · local guest project":"");
+      meta.textContent=projectTypeMeta(activeProject).detail+" · "+Object.keys(activeProject.state?.files||{}).length+" files · "+kb+" KB"+
+        (activeProject.assessment?.assessmentId?" · Assessment project":"")+(guest?" · local guest project":"");
     }
     document.title=activeProject.title+" · Adminerva";
   }
