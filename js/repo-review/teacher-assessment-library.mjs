@@ -8,8 +8,9 @@ const schoolAcademicsApi=httpsCallable(getFunctions(app,"asia-southeast1"),"scho
 const migrationApi=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolAssessmentMigration");
 const el=id=>document.getElementById(id),status=el("tl-status"),workspace=el("tl-workspace");
 const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
-  previewDialog=el("tl-preview-dialog"),personalizationDialog=el("tl-personalization-dialog"),legacyDialog=el("tl-legacy-dialog");
-let items=[],deployments=[],filter="mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,
+  previewDialog=el("tl-preview-dialog"),personalizationDialog=el("tl-personalization-dialog"),legacyDialog=el("tl-legacy-dialog"),editorDialog=el("tl-editor-dialog");
+const requestedFilter=new URL(location.href).searchParams.get("view");
+let items=[],deployments=[],filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,
   lifecycleTask=null,lifecycleAction=null,pendingWrite=false,personalizing=null,personalizationState=null;
 const say=message=>status.textContent=message;
 const picker=createTenantSchoolPicker({
@@ -18,7 +19,7 @@ const picker=createTenantSchoolPicker({
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
     items=[];deployments=[];editing=null;sharing=null;deploying=null;deployRequestKey=null;
     lifecycleTask=null;lifecycleAction=null;list.replaceChildren();workspace.hidden=true;
-    shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog.close?.();
+    shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog.close?.();editorDialog?.close?.();
     el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();
     form.reset();togglePersonalizationFields();
   },
@@ -281,13 +282,19 @@ function edit(item){
   form.elements.rubric.value=(item.rubric||[]).map(criterion=>criterion.name+" | "+criterion.points).join("\n");
   form.querySelector("h2").textContent="Edit private draft";
   form.querySelector('button[type="submit"]').textContent="Save draft revision";
-  form.scrollIntoView({behavior:"smooth",block:"start"});
+  if(editorDialog){editorDialog.showModal();}else form.scrollIntoView({behavior:"smooth",block:"start"});
   form.elements.title.focus();
 }
-function resetEditor(){
+function resetEditor({close=true}={}){
   editing=null;form.reset();togglePersonalizationFields();
   form.querySelector("h2").textContent="New private blueprint";
   form.querySelector('button[type="submit"]').textContent="Create private assessment";
+  if(close&&editorDialog?.open)editorDialog.close();
+}
+function openNewEditor(){
+  resetEditor({close:false});
+  if(editorDialog)editorDialog.showModal();
+  form.elements.title.focus();
 }
 async function refresh(){
   const [result,deployed]=await Promise.all([
@@ -299,8 +306,12 @@ async function refresh(){
   if(result.truncated)say("Only the first assessment records are shown. Pagination is required for more.");
 }
 document.querySelectorAll("[data-filter]").forEach(button=>button.addEventListener("click",()=>{
-  filter=button.dataset.filter;render();
+  filter=button.dataset.filter;
+  const url=new URL(location.href);url.searchParams.set("view",filter);history.replaceState(null,"",url);
+  render();
 }));
+el("tl-new-assessment")?.addEventListener("click",openNewEditor);
+el("tl-editor-cancel")?.addEventListener("click",()=>editorDialog?.close());
 el("tl-refresh").addEventListener("click",()=>void refresh().catch(error=>say(error.message)));
 el("tl-import-legacy").addEventListener("click",()=>void (async()=>{
   if(pendingWrite)return;
