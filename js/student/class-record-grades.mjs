@@ -4,6 +4,11 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0
 const list=document.getElementById("student-grades-list"),status=document.getElementById("student-grades-status"),schoolHost=document.getElementById("student-grades-school-switcher");
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolStudentClassRecord");
 let picker=null,generation=0;
+const gradeParams=new URLSearchParams(location.search);
+const requestedOfferingId=gradeParams.get("offeringId")||"";
+const requestedSubjectName=gradeParams.get("subject")||"";
+const subjectLabel=document.getElementById("studentGradesSubjectLabel");
+if(subjectLabel&&requestedSubjectName){subjectLabel.textContent=requestedSubjectName;subjectLabel.classList.remove("hidden");}
 function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=String(text);return n}
 function numberText(v){const n=Number(v);return Number.isFinite(n)?(Number.isInteger(n)?String(n):String(Math.round((n+Number.EPSILON)*100)/100)):"—"}
 function statusLabel(v){return ({incomplete:"INC · For completion",exempt:"EX · Exempt",not_applicable:"N/A · Not applicable"})[v]||""}
@@ -37,7 +42,9 @@ function classCard(item){
 }
 async function render(scope){
  const turn=++generation;status.textContent="Loading teacher-released Class Record results…";list.replaceChildren();
- try{const result=await load(scope);if(turn!==generation)return;const classes=result.classes||[];
+ try{const result=await load(scope);if(turn!==generation)return;const allClasses=result.classes||[];
+  const classes=allClasses.filter(item=>requestedOfferingId?item.offeringId===requestedOfferingId:
+    requestedSubjectName?String(item.subjectName||"").toLowerCase()===requestedSubjectName.toLowerCase():true);
   status.textContent=classes.length?classes.length+" active class"+(classes.length===1?"":"es")+" loaded. Only explicitly released results are shown.":"No active school classes are available for your verified student record.";
   for(const item of classes)list.append(classCard(item))
  }catch(error){if(turn===generation)status.textContent=error?.message||"Your released Class Record results could not be loaded."}
