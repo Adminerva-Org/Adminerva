@@ -100,7 +100,7 @@ function createSchoolAssessmentSubmissionService({db}){
        data.personId!==personId||data.offeringId!==offeringId)
       deny("permission-denied","Stored submission belongs to a different school context.");
     return {taskId,submissionId,submitted:true,status:data.status,version:data.currentVersion,
-      currentVersion:data.currentVersion,submissionSource:source,
+      currentVersion:data.currentVersion,submissionSource:source,payload:data.payload||{},
       requestMessage:data.status==="reopened"?data.revisionRequestMessage||"":"",
       revisionDueAt:data.status==="reopened"?data.revisionDueAt?.toMillis?.()||null:null};
   }
