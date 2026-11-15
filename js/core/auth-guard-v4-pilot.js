@@ -189,7 +189,7 @@ async function checkAccess(user){
      !(access.platformAdmin||admittedRole==="admin")){
     replacePage(roleHome(actualRole));return;
   }
-  if(/\/(school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-grading-schemes|school-class-records|school-academic-configuration)\.html$/.test(currentPath)&&
+  if(/\/(school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-grading-schemes|school-class-records|school-academic-configuration|school-academic-structure)\.html$/.test(currentPath)&&
      !(access.schoolAdmin||admittedRole==="admin"||platformSchoolView)){
     replacePage(roleHome(actualRole));return;
   }
@@ -205,7 +205,7 @@ async function checkAccess(user){
     replacePage(roleHome(actualRole));return;
   }
   if(actualRole==="schooladmin"&&!access.platformAdmin&&!access.schoolTeacher&&
-     !/\/(teacher-home|school-admin|school-pilot|people-access|school-grading-schemes|school-class-records|school-academic-configuration|future-workspace|class-record|reclaim-inbox|settings|issues|join-school|wiki)\.html$/.test(currentPath)){
+     !/\/(teacher-home|school-admin|school-pilot|people-access|school-grading-schemes|school-class-records|school-academic-configuration|school-academic-structure|future-workspace|class-record|reclaim-inbox|settings|issues|join-school|wiki)\.html$/.test(currentPath)){
     replacePage("school-admin.html");return;
   }
   if(actualRole==="platformowner"&&!platformSchoolView&&!access.schoolAdmin&&!access.schoolTeacher&&!access.schoolStudent&&
