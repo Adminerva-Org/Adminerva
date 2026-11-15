@@ -54,10 +54,17 @@ function privateCheckingContent(input={}) {
 }
 function blueprintFingerprint(data){
   const value=reusableContent(data),personalization=value.personalization||{};
-  const stable={...value,personalization:{
-    enabled:personalization.enabled===true,mode:personalization.mode||"standard",
-    variationGuidance:personalization.variationGuidance||""
-  }};
+  // Keep the historical fingerprint contract stable. Subject labels, assessment
+  // category and preferred response method are routing metadata; changing them
+  // must not orphan an already-generated private personalization pool.
+  const stable={
+    title:value.title,description:value.description,instructions:value.instructions,
+    rubric:value.rubric,
+    personalization:{
+      enabled:personalization.enabled===true,mode:personalization.mode||"standard",
+      variationGuidance:personalization.variationGuidance||""
+    }
+  };
   return createHash("sha256").update(JSON.stringify(stable)).digest("hex");
 }
 function normalizeScenarioKey(value){
