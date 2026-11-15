@@ -118,7 +118,8 @@ export function buildNavigationIA(ctx){
       group("Operations",[
         live("school-operations","Operations Dashboard","school-admin.html"),
         live("people-access","People & Access","people-access.html"),
-        live("academic-config","Academic Configuration","school-academic-configuration.html","Academic years, programs, periods, subjects, sections and course offerings")
+        live("academic-config","Academic Configuration","school-academic-configuration.html","Initial setup and new-year academic configuration"),
+        live("academic-structure","Manage Academic Structure","school-academic-structure.html","Edit existing years, programs, periods, subjects and sections without changing their stable IDs")
       ]),
       group("Academic Policy",[
         live("grading-policies","Grading Policies","school-grading-schemes.html","School-controlled weights, transmutation and program/subject/section applicability"),
