@@ -37,6 +37,13 @@ function checkName(value,label="Name"){
   deny("invalid-argument",label+" is required and cannot exceed 140 characters.");
  return value.trim();
 }
+const SPECIAL_SECTION_LEVELS=new Set(["nursery_prep","kinder_1","kinder_2","sned_elem","sned_jhs"]);
+function sectionLevel(value){
+ const raw=String(value??"").trim().toLowerCase();
+ if(/^([1-9]|1[0-2])$/.test(raw))return raw;
+ if(SPECIAL_SECTION_LEVELS.has(raw))return raw;
+ deny("invalid-argument","Choose a valid grade or school level for this section.");
+}
 function rowKey(...values){
  const checked=values.map(v=>checkId(v,"Key segment",330));
  return createHash("sha256").update(JSON.stringify(checked)).digest("hex");
@@ -150,7 +157,7 @@ function createSchoolAcademicsService({db}) {
    const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
    const parentYear=input.yearId?checkId(input.yearId,"Academic year ID"):null,
     parentProgram=input.programId?checkId(input.programId,"Academic program ID"):null,
-    gradeLevel=kind==="sections"?Number(input.gradeLevel):null,
+    gradeLevel=kind==="sections"?sectionLevel(input.gradeLevel):null,
     periodType=kind==="terms"?String(input.periodType||"term").trim().toLowerCase():null,
     sequence=kind==="terms"?Number(input.sequence):null,
     startMonth=kind==="academic_years"?
@@ -161,8 +168,6 @@ function createSchoolAcademicsService({db}) {
       optionalAcademicDate(input.startDate,kind==="academic_years"?"Academic-year start date":"Academic period start date"):null,
     endDate=["academic_years","terms"].includes(kind)?
       optionalAcademicDate(input.endDate,kind==="academic_years"?"Academic-year end date":"Academic period end date"):null;
-   if(kind==="sections"&&(!Number.isInteger(gradeLevel)||gradeLevel<1||gradeLevel>12))
-    deny("invalid-argument","Section grade level must be between Grade 1 and Grade 12.");
    if(kind==="terms"&&!PERIOD_TYPES.has(periodType))
     deny("invalid-argument","Academic period type must be term, semester, quarter, trimester or custom.");
    if(kind==="terms"&&(!Number.isInteger(sequence)||sequence<1||sequence>12))
