@@ -68,8 +68,11 @@ function createSchoolAssessmentMigrationService({db}){
     if(snap.size===101)deny("resource-exhausted","Legacy assessment import requires pagination.");
     const docs=snap.docs.filter(doc=>doc.data()?.title);
     const imported=await Promise.all(docs.map(doc=>blueprints.doc(targetId(ctx.schoolId,ctx.uid,doc.id)).get()));
-    return {items:docs.map((doc,index)=>legacySummary(doc,imported[index].exists))
-      .sort((a,b)=>a.title.localeCompare(b.title))};
+    return {items:docs.map((doc,index)=>{
+      const migrated=imported[index],data=migrated.exists?migrated.data():{};
+      const complete=migrated.exists&&data.subject==="Computer Programming"&&data.defaultSubmissionSource==="github";
+      return legacySummary(doc,complete);
+    }).sort((a,b)=>a.title.localeCompare(b.title))};
   }
   if(input.action==="import_legacy"){
     const id=legacyId(input.legacyAssessmentId),sourceRef=db.doc("assessments/"+id),
@@ -108,7 +111,23 @@ function createSchoolAssessmentMigrationService({db}){
     await db.runTransaction(async tx=>{
       const existing=await tx.get(targetRef);
       if(existing.exists){
-        result={id:targetRef.id,alreadyImported:true,title:existing.data().title||title};return;
+        const current=existing.data();
+        const patch={};
+        if(current.subject!=="Computer Programming")patch.subject="Computer Programming";
+        if(current.defaultSubmissionSource!=="github")patch.defaultSubmissionSource="github";
+        if(!current.assessmentType)patch.assessmentType=clean(legacy.type||"Assessment",80);
+        if(!current.legacyImport)patch.legacyImport={
+          assessmentId:id,assessmentFormat:clean(legacy.assessmentFormat||"",80),
+          schemaVersion:Number(legacy.schemaVersion||0)||null,
+          origin:"repository_management",subject:"Computer Programming",defaultSubmissionSource:"github"
+        };
+        if(Object.keys(patch).length){
+          patch.updatedAt=now;
+          tx.update(targetRef,patch);
+          tx.create(auditRef,{schoolId:ctx.schoolId,resourceId:targetRef.id,actorUid:ctx.uid,
+            action:"legacy_assessment_consolidated",legacyAssessmentId:id,createdAt:now});
+        }
+        result={id:targetRef.id,alreadyImported:Object.keys(patch).length===0,title:current.title||title};return;
       }
       const now=FieldValue.serverTimestamp();
       tx.create(targetRef,{
