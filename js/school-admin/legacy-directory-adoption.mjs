@@ -173,7 +173,8 @@ async function apply(includeAcademic){
       includeAcademic,confirmAcademicMappings:includeAcademic})).data;
     const identity=result.identity||{},academic=result.academic||{};
     say("Legacy consolidation "+result.status+": "+(identity.created||0)+" people created · "+
-      (identity.existing||0)+" already present · "+(identity.failed||0)+" identity failures"+
+      (identity.updated||0)+" existing records updated · "+(identity.existing||0)+" already current · "+
+      (identity.failed||0)+" identity failures"+
       (includeAcademic?" · "+(academic.created||0)+" class relationships created · "+(academic.failed||0)+" relationship failures.":"."));
     preview=null;
     setTimeout(()=>location.reload(),900);
