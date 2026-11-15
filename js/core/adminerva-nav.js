@@ -106,11 +106,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const oldBadgeMarkup=tip=>`<span class="av-old-badge" title="${escapeHTML(tip||"Older workflow retained for current users.")}">OLD</span>`;
   const workspaceLinkMarkup = item => {
     const active=item.id===activeWorkspaceId,health=workspaceHealth(item);
-    const quickItemLimit=ia.studentView?6:10;
-    const quickItems=item.groups.flatMap(group=>group.items)
-      .filter(entry=>entry[2]&&!entry[3]?.future)
-      .filter((entry,index,all)=>all.findIndex(candidate=>candidate[2]===entry[2])===index)
-      .slice(0,quickItemLimit);
     return `<article class="av-workspace-card${active?" is-active":""}">
       <a href="${item.route}" class="av-workspace-card-main"${active?' aria-current="location"':""}>
         <span class="av-workspace-card-heading">
@@ -119,15 +114,6 @@ document.addEventListener("DOMContentLoaded", () => {
         </span>
         <span class="av-workspace-card-description">${escapeHTML(item.description)}</span>
       </a>
-      ${quickItems.length?`<div class="av-workspace-quicklinks">
-        ${quickItems.map(entry=>{
-          const meta=entry[3]||{};
-          return `<a href="${entry[2]}" class="av-workspace-quicklink">
-            <span>${escapeHTML(entry[1])}</span>
-            <span class="av-nav-status-cluster">${meta.old?oldBadgeMarkup(meta.tip):""}${indicatorMarkup(meta.future||meta.status==="future"?"future":meta.status==="needs_work"||meta.old?"needs_work":"stable",meta.tip)}</span>
-          </a>`;
-        }).join("")}
-      </div>`:""}
     </article>`;
   };
   const workspaceGridMarkup=(workspaceSections||[]).map(section=>`
@@ -150,6 +136,29 @@ document.addEventListener("DOMContentLoaded", () => {
     </details>`;
   }).join("");
 
+  if(!document.getElementById("av-nav-hierarchy-style")){
+    const style=document.createElement("style");style.id="av-nav-hierarchy-style";
+    style.textContent=`
+      @media (min-width:1280px){
+        #adminerva-nav .av-nav-top{display:grid!important;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;min-height:4.35rem!important}
+        #adminerva-nav .av-nav-brand{justify-self:start;min-width:0}
+        #adminerva-nav .av-center-context{justify-self:center;max-width:min(56vw,58rem)}
+        #adminerva-nav .av-nav-tools{justify-self:end}
+        #adminerva-nav #av-desktop-nav{max-width:min(56vw,58rem);overflow:visible!important}
+        #adminerva-nav .av-center-group>summary{display:flex;align-items:center;gap:.35rem}
+      }
+      #adminerva-nav .av-workspace-menu{width:min(46rem,calc(100vw - 2rem))}
+      #adminerva-nav .av-workspace-card-main{min-height:4.25rem}
+      #adminerva-nav .av-workspace-card-description{-webkit-line-clamp:2}
+      #adminerva-nav .av-workspace-quicklinks{display:none!important}
+      #adminerva-nav .av-active-workspace{text-decoration:none}
+      #adminerva-nav details[open]>.av-nav-chevron{transform:rotate(180deg)}
+      #adminerva-nav .av-nav-chevron{transition:transform .12s ease}
+      @media(max-width:1279px){
+        #adminerva-nav #av-mobile-nav>details>summary{display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:.75rem}
+      }
+    `;document.head.append(style);
+  }
   root.innerHTML = `
     <nav aria-label="Adminerva main navigation" class="bg-gray-900/95 backdrop-blur-md text-white shadow-lg relative z-50 border-b border-cyan-900/50 sticky top-0">
       <div class="max-w-screen-2xl mx-auto">
@@ -180,9 +189,9 @@ document.addEventListener("DOMContentLoaded", () => {
               </div>
             </details>
           </div>
-          <div class="hidden xl:flex items-center gap-1 min-w-0">
-            <span class="av-active-workspace px-3 py-2 text-sm font-extrabold text-cyan-300 whitespace-nowrap">${escapeHTML(currentArea)}</span>
-            <div id="av-desktop-nav" class="flex gap-1 items-center"></div>
+          <div class="av-center-context hidden xl:flex flex-col items-center justify-center min-w-0 self-stretch py-1">
+            <a href="${workspaceRoute||homeRoute}" class="av-active-workspace block max-w-full truncate px-3 pt-1 text-[11px] uppercase tracking-[.16em] font-extrabold text-cyan-300 hover:text-cyan-200" aria-label="${escapeHTML(currentArea)} workspace">${escapeHTML(currentArea)}</a>
+            <div id="av-desktop-nav" class="flex gap-1 items-center justify-center min-w-0"></div>
           </div>
           <div id="av-account-controls" class="av-nav-tools flex items-center gap-2">
             <button type="button" title="Report Issue" aria-label="Help and updates" class="min-h-10 min-w-10 rounded-lg border border-slate-600 text-base font-bold hover:bg-slate-800" onclick="const m=document.getElementById('bug-modal');if(m){m.hidden=false;m.classList.remove('hidden')}">?</button>
@@ -266,10 +275,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const makeGroup = (group, mobile) => {
     const details=document.createElement("details");
     details.dataset.navGroup=mobile?"mobile":"desktop";
-    details.className=mobile?"rounded-lg border border-slate-700/80":"relative";
+    details.className=mobile?"rounded-lg border border-slate-700/80":"relative av-center-group";
     const summary=document.createElement("summary");
     summary.className="list-none cursor-pointer select-none font-bold rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-400 "+
-      (mobile?"text-slate-100 text-sm px-3 py-3 min-h-11":"text-sm px-3 py-2.5 min-h-11 "+
+      (mobile?"text-slate-100 text-sm px-3 py-3 min-h-11":"text-sm px-3 py-1.5 min-h-8 "+
       (isActiveGroup(group)?"text-cyan-300 bg-slate-800":"text-slate-200 hover:text-cyan-300 hover:bg-slate-800"));
     const groupMetas=group.items.map(item=>item[3]||{});
     const groupAllFuture=groupMetas.length>0&&groupMetas.every(meta=>meta.future||meta.status==="future");
@@ -299,7 +308,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const details=document.createElement("details");details.id="av-mobile-staff-menu";
       const summary=document.createElement("summary");
       summary.className="flex items-center justify-between px-4 sm:px-6 py-3 font-bold text-sm text-cyan-100 min-h-11 cursor-pointer";
-      summary.textContent=currentPage+" · Menu ▾";details.append(summary);
+      summary.innerHTML="<span class=\"truncate\">"+escapeHTML(currentArea)+"</span><span class=\"text-slate-400 font-semibold truncate\">"+escapeHTML(currentPage)+" ▾</span>";details.append(summary);
       const panel=document.createElement("div");
       panel.className="av-nav-mobile-panel bg-slate-900 border-t border-slate-700 px-3 py-3 max-h-[65dvh] overflow-y-auto overscroll-contain space-y-2";
       panel.append(...groups.map(group=>makeGroup(group,true)));
