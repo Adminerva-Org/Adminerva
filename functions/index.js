@@ -34,8 +34,8 @@ async function rejectPlatformPreviewMutation(request,{allowPlatformSchoolWrites=
   const uid=request?.auth?.uid,schoolId=String(request?.data?.schoolId||"").trim(),
     action=String(request?.data?.action||"").trim();
   if(!uid||!schoolId||!action||!PLATFORM_PREVIEW_MUTATION.test(action))return;
-  const platform=await db.doc("platform_admins/"+uid).get(),data=platform.exists?platform.data():null;
-  if(data?.status==="active"&&data?.role==="platform_admin")
+  const authority=await platformAuthority({db,request});
+  if(authority.platformAdmin)
     throw new HttpsError("failed-precondition",
       "System Admin role test is temporary. This school change was not saved. Exit role test to perform platform-level administration.");
 }
