@@ -19,7 +19,7 @@ const picker=createTenantSchoolPicker({
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
     items=[];deployments=[];editing=null;sharing=null;deploying=null;deployRequestKey=null;
     lifecycleTask=null;lifecycleAction=null;list.replaceChildren();workspace.hidden=true;
-    shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog.close?.();editorDialog?.close?.();
+    shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog?.close?.();editorDialog?.close?.();
     el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();
     form.reset();togglePersonalizationFields();
   },
