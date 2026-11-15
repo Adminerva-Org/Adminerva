@@ -71,10 +71,8 @@ if(host){
         <div>
           <p class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Assessment blueprints</p>
           <p class="mt-1 text-xs text-slate-500">Create once, then choose how learners respond when you deploy.</p>
-        </div>
-        <div class="flex flex-wrap gap-2">
+        </div>        <div class="flex flex-wrap gap-2">
           <button id="tl-refresh" class="tl-action alt" type="button">Refresh</button>
-          <button id="tl-import-legacy" class="tl-action alt" type="button">Import old Repository assessment</button>
         </div>
       </div>
       <div id="tl-list" role="list"></div>
@@ -227,13 +225,7 @@ if(host){
       </form>
     </dialog>
 
-    <dialog id="tl-legacy-dialog" class="tl-dialog">
-      <div class="tl-dialog-inner">
-        <header class="bg-slate-800 px-5 py-5 text-white"><h2 class="text-xl font-extrabold">Import Old Repository Assessment</h2><p class="mt-1 text-xs text-slate-300">Copy only the reusable academic blueprint into this general Assessment Studio.</p></header>
-        <div class="tl-dialog-body"><p id="tl-legacy-status" class="text-sm text-slate-600" role="status">Loading…</p><div id="tl-legacy-list" class="grid gap-2 mt-3"></div></div>
-        <footer class="tl-dialog-footer"><button id="tl-legacy-close" type="button" class="tl-action alt">Close</button></footer>
-      </div>
-    </dialog>
+
   `;
 
   await import("../repo-review/teacher-assessment-library.mjs?v=20261115-assessment-split1");
