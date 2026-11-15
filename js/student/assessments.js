@@ -454,6 +454,11 @@ function renderAssessments() {
     `;
     container.insertAdjacentHTML("beforeend", card);
   });
+  const deepLink=decodeURIComponent((location.hash||"").replace(/^#/,""));
+  if(deepLink&&!window.__adminervaLegacyDeepLinkOpened&&allAssessments.some(item=>item.id===deepLink)){
+    window.__adminervaLegacyDeepLinkOpened=true;
+    queueMicrotask(()=>window.viewAssessmentDetails?.(deepLink));
+  }
 }
 
 window.addEventListener("adminerva:submission-recorded",event=>{
