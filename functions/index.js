@@ -55,6 +55,10 @@ exports.tenantSchools=onCall(callOptions,safeCallable(async request=>{
 exports.teacherBlueprints=onCall(callOptions,safeCallable(teacherBlueprints));
 const {createPeopleDirectoryService,createInvitationAcceptanceService}=require("./people-directory.js");
 exports.peopleDirectory=onCall(callOptions,safeCallable(createPeopleDirectoryService({db})));
+const {createSchoolLegacyDirectoryAdoptionService}=require("./school-legacy-directory-adoption.js");
+exports.schoolLegacyDirectoryAdoption=onCall(callOptions,safeCallable(
+  createSchoolLegacyDirectoryAdoptionService({db,resolveUserByEmail:email=>getAuth().getUserByEmail(email)})
+));
 const {createSchoolRosterSourceService}=require("./school-roster-source.js");
 exports.schoolRosterSource=onCall(callOptions,safeCallable(createSchoolRosterSourceService({db})));
 const {createSchoolAcademicsService}=require("./school-academics.js");
