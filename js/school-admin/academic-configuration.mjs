@@ -505,7 +505,7 @@ async function createCatalog(form,kind,extra=()=>({})){
     say(message);notify(message,"error");form.elements.name?.focus();return false;
   }
   const details={kind,...data,...extra(data)};
-  if(inSystemAdminPreview()&&!document.getElementById("adminerva-nav")?.dataset.platformAssistMode){
+  if(inSystemAdminPreview()&&document.getElementById("adminerva-nav")?.dataset.platformAssistMode!=="true"){
     const preview={...details,id:data.recordId,status:"active",preview:true};
     delete preview.kind;delete preview.recordId;
     source.push(preview);
@@ -560,7 +560,7 @@ el("ac-offering-form").addEventListener("submit",event=>{
   if(busy)return;
   if(!form.reportValidity()){notify("Complete all course-offering fields before saving.","error");return;}
   const data=payload(form);
-  if(inSystemAdminPreview()){
+  if(inSystemAdminPreview()&&document.getElementById("adminerva-nav")?.dataset.platformAssistMode!=="true"){
     offerings.push({offeringId:"preview_"+Date.now(),...data,status:"active",preview:true});
     form.reset();clearManual(form);renderCatalog();
     const message="Course offering created for this temporary System Admin preview. It will disappear when you reload or exit role test.";
