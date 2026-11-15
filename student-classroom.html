@@ -33,35 +33,11 @@
     <div id="classroomSubjects" class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-4" aria-label="Available subjects"></div>
   </section>
 
-  <section id="classroomSelected" class="bg-white border border-cyan-200 rounded-2xl overflow-hidden shadow-sm" aria-labelledby="selectedSubjectTitle">
-    <div class="p-4 sm:p-5 bg-cyan-50 border-b border-cyan-200">
-      <p class="text-xs uppercase tracking-wider font-bold text-cyan-800">Selected classroom</p>
-      <h2 id="selectedSubjectTitle" class="text-xl font-extrabold mt-1">Computer Programming</h2>
-      <p id="selectedSubjectMeta" class="text-sm text-cyan-950 mt-1">Your current Adminerva programming workspace.</p>
-    </div>
-    <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 p-4 sm:p-5">
-      <a id="classroomStream" href="student-subject.html?subject=Computer%20Programming" class="rounded-xl border border-cyan-300 bg-cyan-50 p-4 hover:border-cyan-500 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-cyan-500">
-        <span class="block text-xs uppercase tracking-wider font-bold text-cyan-800">Start here</span>
-        <strong class="block text-lg mt-1">Classroom Stream</strong>
-        <span class="block text-sm text-cyan-950 mt-1">See announcements, new work, deadlines and recent class activity.</span>
-      </a>
-      <a id="classroomAssignments" href="student-assessments.html?subject=Computer%20Programming" class="rounded-xl border border-slate-200 p-4 hover:border-indigo-300 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-500">
-        <span class="block text-xs uppercase tracking-wider font-bold text-indigo-700">Primary</span>
-        <strong class="block text-lg mt-1">Assignments</strong>
-        <span id="classroomAssignmentHint" class="block text-sm text-slate-600 mt-1">Open current and migrated programming tasks.</span>
-      </a>
-      <a id="classroomGrades" href="school-student-grades.html?subject=Computer%20Programming" class="rounded-xl border border-slate-200 p-4 hover:border-emerald-300 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-emerald-500">
-        <span class="block text-xs uppercase tracking-wider font-bold text-emerald-700">Results</span>
-        <strong class="block text-lg mt-1">My Grades</strong>
-        <span class="block text-sm text-slate-600 mt-1">View teacher-released scores and final grades.</span>
-      </a>
-      <a id="classroomProjects" href="school-student-projects.html?subject=Computer%20Programming" class="rounded-xl border border-slate-200 p-4 hover:border-cyan-300 hover:shadow-sm focus-visible:ring-2 focus-visible:ring-cyan-500">
-        <span class="block text-xs uppercase tracking-wider font-bold text-cyan-800">Projects</span>
-        <strong class="block text-lg mt-1">Project Hub</strong>
-        <span class="block text-sm text-slate-600 mt-1">Open repository activity and Adminerva Studio projects.</span>
-      </a>
-    </div>
+  <section class="rounded-2xl border border-slate-200 bg-slate-100 p-4 text-sm text-slate-600">
+    <strong class="text-slate-800">Open a subject to enter its classroom.</strong>
+    Announcements, classwork, deadlines, feedback and released results are shown inside the subject stream. Computer Programming remains the default for current legacy programming classes.
   </section>
+
 
   <section class="rounded-2xl border border-slate-200 bg-slate-100 p-4 text-sm text-slate-600">
     <strong class="text-slate-800">Subject-ready design.</strong> The current default is Computer Programming. When your school adds other active subjects, this page will list them as separate classroom choices without changing the student navigation.
@@ -70,5 +46,5 @@
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script src="js/core/adminerva-nav.js?v=8169bc1f73b0"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=8169bc1f73b0"></script>
-<script type="module" src="js/student/classroom.mjs?v=1.0.0"></script>
+<script type="module" src="js/student/classroom.mjs?v=1.2.0"></script>
 </body></html>
