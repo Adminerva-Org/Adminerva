@@ -5,7 +5,10 @@ on:
     branches: [main]
     paths:
       - "css/adminerva-ui.css"
+      - "css/public-shell.css"
+      - "css/documentation.css"
       - "js/core/adminerva-nav.js"
+      - "js/core/public-shell.mjs"
       - "js/core/account-context-switcher.mjs"
       - "js/core/adminerva-loader.js"
       - "js/core/release-footer.js"
@@ -62,10 +65,13 @@ jobs:
                   continue
               text=path.read_text(encoding="utf-8")
               updated=re.sub(r'css/adminerva-ui\.css\?v=[^"\']+', f'css/adminerva-ui.css?v={version}', text)
+              updated=re.sub(r'css/public-shell\.css\?v=[^"\']+', f'css/public-shell.css?v={version}', updated)
+              updated=re.sub(r'css/documentation\.css\?v=[^"\']+', f'css/documentation.css?v={version}', updated)
               updated=re.sub(r'js/core/adminerva-loader\.js\?v=[^"\']+', f'js/core/adminerva-loader.js?v={version}', updated)
               updated=re.sub(r'js/core/release-footer\.js\?v=[^"\']+', f'js/core/release-footer.js?v={version}', updated)
               updated=re.sub(r'js/core/owner-school-registry\.mjs\?v=[^"\']+', f'js/core/owner-school-registry.mjs?v={version}', updated)
               updated=re.sub(r'js/core/adminerva-nav\.js\?v=[^"\']+', f'js/core/adminerva-nav.js?v={version}', updated)
+              updated=re.sub(r'js/core/public-shell\.mjs\?v=[^"\']+', f'js/core/public-shell.mjs?v={version}', updated)
               updated=re.sub(r'js/core/auth-guard-v4-pilot\.js\?v=[^"\']+', f'js/core/auth-guard-v4-pilot.js?v={version}', updated)
               updated=re.sub(r'js/school-admin/people-access\.mjs\?v=[^"\']+', f'js/school-admin/people-access.mjs?v={version}', updated)
               if 'js/core/adminerva-loader.js' in updated and 'js/core/release-footer.js' not in updated:
