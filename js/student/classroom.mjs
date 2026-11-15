@@ -23,7 +23,9 @@ function subjectPageFor(item){
   if(item?.subjectId)params.set("subjectId",item.subjectId);
   if(item?.subject)params.set("subject",item.subject);
   if(item?.offeringIds?.length===1)params.set("offeringId",item.offeringIds[0]);
-  return "student-subject.html"+(params.toString()?"?"+params.toString():"");
+  if(item?.legacy)params.set("legacy","1");
+  params.set("v","20261115-stream3");
+  return "student-subject.html?"+params.toString();
 }
 function queryFor(item){
   const params=new URLSearchParams();
@@ -49,28 +51,6 @@ function preferredSubject(){
   }catch{}
   return subjects.find(programmingSubject)||subjects[0]||fallback;
 }
-function renderSelected(item){
-  selected=item||fallback;remember(selected);
-  el("selectedSubjectTitle").textContent=selected.subject||"Computer Programming";
-  const labels=[...new Set((selected.classes||[]).flatMap(row=>[row.section,row.term,row.year]).filter(Boolean))];
-  el("selectedSubjectMeta").textContent=labels.length?labels.join(" · "):
-    selected.legacy?"Current default classroom for your programming assignments.":
-    "Active school subject.";
-  const q=queryFor(selected);
-  el("classroomStream").href=subjectPageFor(selected);
-  el("classroomAssignments").href="student-assessments.html"+q;
-  el("classroomGrades").href="school-student-grades.html"+q;
-  el("classroomProjects").href="school-student-projects.html"+q;
-  el("classroomAssignmentHint").textContent=programmingSubject(selected)?
-    "Open current school tasks and migrated legacy programming assignments.":
-    "Open current assignments for this subject.";
-  for(const card of el("classroomSubjects").querySelectorAll("[data-subject-id]")){
-    const active=card.dataset.subjectId===selected.subjectId;
-    card.classList.toggle("border-cyan-500",active);card.classList.toggle("bg-cyan-50",active);
-    card.classList.toggle("border-slate-200",!active);
-    card.querySelector("[data-selected]")?.classList.toggle("hidden",!active);
-  }
-}
 function renderSubjects(){
   const host=el("classroomSubjects");host.replaceChildren();
   for(const item of subjects){
@@ -78,8 +58,9 @@ function renderSubjects(){
     card.href=subjectPageFor(item);card.dataset.subjectId=item.subjectId;
     const top=node("div","flex justify-between items-start gap-3");
     top.append(node("strong","text-base",item.subject));
-    const selectedBadge=node("span","hidden rounded-full bg-cyan-800 text-white text-[10px] font-extrabold px-2 py-1","DEFAULT");
-    selectedBadge.dataset.selected="true";top.append(selectedBadge);card.append(top);
+    const selectedBadge=node("span","rounded-full bg-cyan-800 text-white text-[10px] font-extrabold px-2 py-1",
+      programmingSubject(item)?"DEFAULT":"SUBJECT");
+    top.append(selectedBadge);card.append(top);
     const sections=[...new Set((item.classes||[]).map(row=>row.section).filter(Boolean))];
     card.append(node("span","block text-xs text-slate-500 mt-2",
       sections.length?sections.join(" · "):item.legacy?"Default programming classroom":"Active school enrollment"));
@@ -89,7 +70,6 @@ function renderSubjects(){
     card.append(node("span","block text-sm font-extrabold text-cyan-800 mt-4","Open classroom →"));
     host.append(card);
   }
-  renderSelected(preferredSubject());
 }
 function groupSubjects(profile,tasks){
   const map=new Map();
@@ -141,14 +121,18 @@ async function refresh(){
 }
 renderSubjects();
 picker=createTenantSchoolPicker({
-  host:el("classroomSchoolSwitcher"),status:el("classroomStatus"),
+  host:el("classroomSchoolSwitcher"),status:null,
   onBeforeChange:async()=>{if(busy)throw new Error("Finish loading before switching schools.");++epoch;subjects=[fallback];renderSubjects();},
   onReady:scope=>{if(scope.current)void refresh();}
 });
 el("classroomRefresh").addEventListener("click",()=>void refresh());
 try{
-  await picker.load();
+  const state=await picker.load();
   if(!auth.currentUser)say("Sign in with your student account to load school subjects.",true);
+  else if(state?.state==="no_school")
+    say("Computer Programming is ready from your existing Adminerva class. School-scoped announcements will join automatically after verified school access is linked.");
+  else if(state?.state==="choose_school")
+    say("Choose your active school to load its subjects. Computer Programming remains available from your existing Adminerva class.");
 }catch(error){
-  say("Computer Programming is ready as the default classroom. "+(error?.message||"School subject lookup is unavailable."),true);
+  say("Computer Programming is ready from your existing Adminerva class. Verified school subjects are temporarily unavailable.");
 }
