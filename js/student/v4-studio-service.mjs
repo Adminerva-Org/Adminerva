@@ -48,7 +48,8 @@ function projectPayload(project,state){
       database:project.database||{tables:{},history:[]},
       design:project.design||{},
       config:project.config||{},
-      evidence:project.evidence||{events:[],runs:[]}
+      evidence:project.evidence||{events:[],runs:[]},
+      assessment:project.assessment||null
     }
   };
 }
