@@ -80,15 +80,11 @@ if(panel&&list&&status&&schoolHost){
       if(generation!==renderGeneration)return;
       const profile=results[2]||{},classes=profile.classes||[];
       let subjectId=requestedSubjectId,subjectName=requestedSubjectName,offeringId=requestedOfferingId;
-      if(!subjectId&&!offeringId&&classes.length){
-        const programming=classes.find(item=>/computer\s*programming|programming/i.test(String(item.subject||"")));
-        const fallback=programming||classes[0];subjectId=fallback?.subjectId||"";subjectName=fallback?.subject||subjectName;
-      }
       const allowedOfferings=new Set(classes.filter(item=>
         offeringId?item.offeringId===offeringId:subjectId?item.subjectId===subjectId:true
       ).map(item=>item.offeringId));
       if(!subjectName&&subjectId)subjectName=classes.find(item=>item.subjectId===subjectId)?.subject||subjectName;
-      if(assignmentSubjectLabel&&subjectName)assignmentSubjectLabel.textContent=subjectName;
+      if(assignmentSubjectLabel)assignmentSubjectLabel.textContent=subjectName||"All subjects";
       const allTasks=results[0].assignments||[];
       const tasks=(subjectId||offeringId)?allTasks.filter(task=>allowedOfferings.has(task.offeringId)):allTasks;
       const grades=new Map((results[1].grades||[]).map(item=>[item.taskId,item]));
