@@ -92,6 +92,7 @@ function createSchoolAssessmentSubmissionService({db}){
   const submissionRef=collection.doc(submissionId);
 
   if(input.action==="my_status"){
+    if(taskData.published!==true)deny("not-found","This assessment is not published to students.");
     const {personId}=await verifyStudentRead();
     const current=await submissionRef.get();
     if(!current.exists)return {taskId,submitted:false,status:"not_submitted",version:0};
