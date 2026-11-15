@@ -75,6 +75,9 @@ async function write(action,details,success) {
     for(const button of document.querySelectorAll("button"))button.disabled=false;
   }
 }
+function sourceLabel(source){
+  return ({text:"Written response",link:"Submission link",studio:"Adminerva Studio",github:"GitHub / repository evidence"})[source]||source||"Assessment response";
+}
 function actionButton(text,handler,alternate=false) {
   const button=document.createElement("button");
   button.type="button";button.className="tl-action"+(alternate?" alt":"");
@@ -187,7 +190,7 @@ function render(){
       heading.style.fontWeight="750";heading.textContent=task.title;
       meta.className="tl-muted";
       const handedOver=task.ownerUid&&task.reviewerUid&&task.ownerUid!==task.reviewerUid;
-      meta.textContent=(task.published?"Published":"Private deployment")+" · "+task.submissionSource+
+      meta.textContent=(task.published?"Published":"Private deployment")+" · "+sourceLabel(task.submissionSource)+
         " · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
         new Date(task.dueAt).toLocaleString():"not scheduled")+
         (handedOver?" · review responsibility handed over; original blueprint ownership unchanged":"");
