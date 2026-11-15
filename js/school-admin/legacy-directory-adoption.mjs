@@ -17,7 +17,7 @@ function setBusy(value){
 function count(id,value){const node=get(id);if(node)node.textContent=String(value??0);}
 function reset(){
   preview=null;
-  for(const id of ["pa-legacy-students","pa-legacy-staff","pa-legacy-verified","pa-legacy-unlinked",
+  for(const id of ["pa-legacy-students","pa-legacy-staff","pa-legacy-teachers","pa-legacy-verified","pa-legacy-unlinked",
     "pa-legacy-people","pa-legacy-memberships","pa-legacy-enrollments","pa-legacy-assignments","pa-legacy-issues"])count(id,"—");
   get("pa-legacy-results")?.replaceChildren();
   if(get("pa-legacy-apply-identities"))get("pa-legacy-apply-identities").disabled=true;
@@ -46,6 +46,7 @@ function render(result){
   const s=result.summary||{};
   count("pa-legacy-students",s.legacyStudentRows);
   count("pa-legacy-staff",s.legacyStaffRows);
+  count("pa-legacy-teachers",s.legacyTeacherProfiles);
   count("pa-legacy-verified",s.verifiedAccounts);
   count("pa-legacy-unlinked",s.unlinkedPeople);
   count("pa-legacy-people",s.peopleToCreate);
@@ -92,7 +93,7 @@ async function loadLegacyRequests(){
       meta.className="pa-muted";meta.textContent=[item.email,item.requestedRole?"requested "+item.requestedRole:null].filter(Boolean).join(" · ");
       info.append(title,meta);
 
-      const controls=document.createElement("form");
+      const controls=document.createElement("form");controls.className="pa-legacy-request-controls";
       controls.style.cssText="display:grid;grid-template-columns:minmax(120px,.5fr) minmax(180px,1fr) auto auto;gap:.5rem;width:100%;align-items:end";
       const roleLabel=document.createElement("label");roleLabel.textContent="Approve as";
       const role=document.createElement("select");role.className="pa-field";role.style.marginBottom="0";
