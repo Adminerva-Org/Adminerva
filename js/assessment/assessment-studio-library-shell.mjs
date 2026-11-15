@@ -228,5 +228,5 @@ if(host){
 
   `;
 
-  await import("../repo-review/teacher-assessment-library.mjs?v=20261115-assessment-split1");
+  await import("../repo-review/teacher-assessment-library.mjs?v=20261115-auto-migrate1");
 }
