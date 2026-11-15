@@ -73,11 +73,10 @@ Guest playground/XML tools remain separate. Guest Arcade attempts do not create 
 enrolled-student progress record; authenticated practice uses the existing private
 server-validated practice path.
 
-Practice Lab now has four courses, each with five modules and fifteen missions
-per module: 300 guided missions in total. Five skills per module each have
+The Computer Programming pack now has four skill paths and 375 guided missions in total. Java Programming contains ten modules (five foundations plus five OOP modules), while Python, Web and Logic retain five modules each. Five skills per module each have
 Guided, Apply and Challenge levels. Numeric examples use seeded operands;
 some web questions reuse the same demonstration with a different learning task.
-These are guided variants, not 300 independent projects or 300 unique concepts.
+These are guided variants, not 375 independent projects or 375 unique concepts.
 The existing sixteen mission identifiers and completions are retained.
 
 Student private progress saves without activity consent or instructor approval.
