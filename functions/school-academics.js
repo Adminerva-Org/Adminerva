@@ -150,6 +150,7 @@ function createSchoolAcademicsService({db}) {
    const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
    const parentYear=input.yearId?checkId(input.yearId,"Academic year ID"):null,
     parentProgram=input.programId?checkId(input.programId,"Academic program ID"):null,
+    gradeLevel=kind==="sections"?Number(input.gradeLevel):null,
     periodType=kind==="terms"?String(input.periodType||"term").trim().toLowerCase():null,
     sequence=kind==="terms"?Number(input.sequence):null,
     startMonth=kind==="academic_years"?
@@ -160,6 +161,8 @@ function createSchoolAcademicsService({db}) {
       optionalAcademicDate(input.startDate,kind==="academic_years"?"Academic-year start date":"Academic period start date"):null,
     endDate=["academic_years","terms"].includes(kind)?
       optionalAcademicDate(input.endDate,kind==="academic_years"?"Academic-year end date":"Academic period end date"):null;
+   if(kind==="sections"&&(!Number.isInteger(gradeLevel)||gradeLevel<1||gradeLevel>12))
+    deny("invalid-argument","Section grade level must be between Grade 1 and Grade 12.");
    if(kind==="terms"&&!PERIOD_TYPES.has(periodType))
     deny("invalid-argument","Academic period type must be term, semester, quarter, trimester or custom.");
    if(kind==="terms"&&(!Number.isInteger(sequence)||sequence<1||sequence>12))
@@ -185,6 +188,7 @@ function createSchoolAcademicsService({db}) {
     tx.create(ref,{schoolId:ctx.schoolId,name,status:"active",
       yearId:kind==="terms"?parentYear:null,
       programId:["terms","sections"].includes(kind)?parentProgram:null,
+      gradeLevel:kind==="sections"?gradeLevel:null,
       periodType:kind==="terms"?periodType:null,sequence:kind==="terms"?sequence:null,
       startMonth:kind==="academic_years"?startMonth:null,
       endMonth:kind==="academic_years"?endMonth:null,
@@ -202,6 +206,7 @@ function createSchoolAcademicsService({db}) {
    const snap=await db.collection("schools/"+ctx.schoolId+"/"+kind).orderBy("name").limit(200).get();
    return {items:snap.docs.map(doc=>({id:doc.id,name:doc.data().name,
     yearId:doc.data().yearId,programId:doc.data().programId,
+    gradeLevel:kind==="sections"?(doc.data().gradeLevel||null):null,
     periodType:doc.data().periodType,sequence:doc.data().sequence,
     startMonth:kind==="academic_years"?
       academicMonth(doc.data().startMonth,DEFAULT_ACADEMIC_YEAR_START_MONTH,"Academic-year start month"):null,
