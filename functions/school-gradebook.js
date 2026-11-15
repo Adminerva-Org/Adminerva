@@ -10,6 +10,7 @@ const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
 const {digestProject}=require("./school-studio-projects.js");
 const {digestEvidence}=require("./school-github-evidence.js");
+const {digestSubmission}=require("./school-assessment-submissions.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
 function deny(code,message){throw new TenantAccessError(code,message)}
@@ -69,23 +70,27 @@ function createSchoolGradebookService({db}){
   const task=await taskRef.get();
   if(!task.exists||task.data().schoolId!==ctx.schoolId||
      (!ctx.platformOverride&&(task.data().reviewerUid||task.data().ownerUid)!==ctx.uid)||
-     !["studio","github"].includes(task.data().submissionSource))
+     !["studio","github","text","link"].includes(task.data().submissionSource))
    deny("permission-denied","You are not the currently responsible teacher for this school assessment.");
   const source=task.data().submissionSource;
-  const submissionRef=db.doc(prefix+
-    (source==="studio"?"studio_submissions/":"github_evidence/")+
+  const submissionCollection=source==="studio"?"studio_submissions":
+    source==="github"?"github_evidence":"assessment_submissions";
+  const submissionRef=db.doc(prefix+submissionCollection+"/"+
     hash(ctx.schoolId,taskId,studentUid));
   const offeringId=task.data().offeringId;
-  const evidenceDigest=data=>source==="studio"?data.contentDigest:data.evidenceDigest;
-  const gradeable=data=>source==="studio"?
-    ["submitted","reviewed"].includes(data.status):["approved","reviewed"].includes(data.status);
+  const evidenceDigest=data=>source==="studio"?data.contentDigest:
+    source==="github"?data.evidenceDigest:data.submissionDigest;
+  const gradeable=data=>source==="github"?
+    ["approved","reviewed"].includes(data.status):["submitted","reviewed"].includes(data.status);
   const verifyFrozen=snapshot=>{
     if(!snapshot.exists)return false;
     const data=snapshot.data();
     if(source==="studio")
       return data.contentDigest&&data.contentDigest===digestProject(data.files,data.artifacts||{});
-    return data.evidenceDigest&&data.evidenceDigest===
-      digestEvidence(data.repository,data.selectedCommitShas||[],data.checkpointSha);
+    if(source==="github")
+      return data.evidenceDigest&&data.evidenceDigest===
+        digestEvidence(data.repository,data.selectedCommitShas||[],data.checkpointSha);
+    return data.submissionDigest&&data.submissionDigest===digestSubmission(source,data.payload);
   };
   const verifyFrozenBinding=(snapshot,submission,version)=>{
     if(!snapshot.exists)return false;
@@ -154,7 +159,8 @@ function createSchoolGradebookService({db}){
     if(!gradeable(submission))
      deny("failed-precondition",source==="github"?
        "Teacher-approved GitHub evidence is required before grading.":
-       "Only the currently submitted Studio revision may be graded.");
+       source==="studio"?"Only the currently submitted Studio revision may be graded.":
+       "Only the currently submitted assessment response may be graded.");
     if(submission.currentVersion!==submissionVersion)
      deny("failed-precondition","Student resubmitted. Refresh the frozen submission before grading.");
     const snapshot=await tx.get(submissionRef.collection("versions").doc(String(submissionVersion)));
