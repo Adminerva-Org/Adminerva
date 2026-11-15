@@ -75,9 +75,9 @@ export function buildNavigationIA(ctx){
     ];
   };
 
-  const repository=()=>ws("repository","Repository Management","assessment-studio.html","Existing repository assessment and GitHub workflows",[
+  const repository=()=>ws("repository","Repository Management","assessment-studio.html?view=repository","Existing repository assessment and GitHub workflows",[
     group("Assessment",[
-      old("repo-studio","Assessment Studio","assessment-studio.html","OLD repository assessment authoring workflow; still active for current repository-based classes."),
+      old("repo-studio","Legacy Assessment Studio","assessment-studio.html?view=repository","OLD repository assessment authoring workflow; retained for current repository-based classes."),
       old("repo-submissions","Submission Inbox","submissions.html","OLD repository submission inbox retained for active repository assignments."),
       old("repo-reclaims","Commit Attribution Requests","reclaim-inbox.html","OLD repository attribution workflow retained for active classes.")
     ]),
@@ -236,10 +236,10 @@ export function buildNavigationIA(ctx){
         ])
       ]),
       repository(),
-      ws("assessment","Assessment","teacher-assessment-library.html","General assessment authoring, submissions, grading and results",[
+      ws("assessment","Assessment","assessment-studio.html","General assessment authoring, submissions, grading and results",[
         group("Assessment",[
           needs("classroom-stream","Classroom Stream","teacher-classroom.html","Post announcements and class updates to verified subject/section streams."),
-          needs("assessment-library","Assessment Library","teacher-assessment-library.html","Canonical school assessment authoring, sharing, personalization and deployment workflow."),
+          needs("assessment-library","Assessment Studio","assessment-studio.html","Canonical school assessment authoring, sharing, personalization and deployment workspace."),
           needs("assessment-submissions","Submissions","school-gradebook.html?view=submissions","Unified submission inbox for written responses, links, Adminerva Studio projects and GitHub evidence."),
           needs("assessment-review","Review & Grade","school-gradebook.html?view=review","Unified rubric review workflow with private drafts, revision requests and deliberate publication."),
           needs("assessment-results","Assessment Results","school-gradebook.html?view=results","Per-assessment results and published outcomes that can feed the Class Record.")
@@ -367,7 +367,14 @@ export function buildNavigationIA(ctx){
     return true;
   };
   const itemMatches=item=>item[2]&&routePath(item[2])===route&&routeQueryMatches(item[2]);
-  const workspaceMatches=w=>routePath(w.route)===route||w.groups.some(g=>g.items.some(itemMatches));
+  const workspaceMatches=w=>{
+    if(route==="assessment-studio.html"){
+      const view=new URLSearchParams(location.search).get("view")||"mine";
+      if(view==="repository")return w.id==="repository";
+      if(w.id==="assessment")return true;
+    }
+    return (routePath(w.route)===route&&routeQueryMatches(w.route))||w.groups.some(g=>g.items.some(itemMatches));
+  };
   const homeRoute=systemDefault?"owner-schools.html":studentView?"student-home.html":
     schoolAdminView?"school-admin.html":"teacher-home.html";
   const isHome=!systemDefault&&routePath(homeRoute)===route&&!requestedWorkspace;
