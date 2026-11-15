@@ -6,7 +6,7 @@
 const {getAuth}=require("firebase-admin/auth");
 const {createHash}=require("node:crypto");
 const {FieldValue}=require("firebase-admin/firestore");
-const {TenantAccessError,checkedSchoolId,verifiedUid}=require("./tenant-access.js");
+const {TenantAccessError,checkedSchoolId,verifiedUid,platformAuthority}=require("./tenant-access.js");
 const {evaluateSchoolCutoverReadiness}=require("./school-cutover-readiness.js");
 const {SCHEMA:CUTOVER_DECISION_SCHEMA,normalizeCutoverDecisions}=
  require("./school-cutover-policy.js");
@@ -26,8 +26,8 @@ function governanceRoleId(value){
   return role;
 }
 async function ownerContext({db,request}) {
-  const uid=verifiedUid(request),doc=await db.doc("platform_admins/"+uid).get();
-  if(!doc.exists||doc.data().status!=="active"||doc.data().role!=="platform_admin")
+  const uid=verifiedUid(request),authority=await platformAuthority({db,request});
+  if(!authority.platformAdmin)
     fail("permission-denied","Only a verified platform administrator may manage institutions.");
   return uid;
 }
