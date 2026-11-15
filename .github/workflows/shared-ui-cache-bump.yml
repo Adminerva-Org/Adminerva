@@ -6,6 +6,7 @@ on:
     paths:
       - "css/adminerva-ui.css"
       - "js/core/adminerva-nav.js"
+      - "js/core/adminerva-loader.js"
       - "js/core/navigation-ia.mjs"
       - "js/core/auth-guard-v4-pilot.js"
       - ".github/workflows/shared-ui-cache-bump.yml"
@@ -48,6 +49,7 @@ jobs:
                   continue
               text=path.read_text(encoding="utf-8")
               updated=re.sub(r'css/adminerva-ui\.css\?v=[^"\']+', f'css/adminerva-ui.css?v={version}', text)
+              updated=re.sub(r'js/core/adminerva-loader\.js\?v=[^"\']+', f'js/core/adminerva-loader.js?v={version}', updated)
               updated=re.sub(r'js/core/adminerva-nav\.js\?v=[^"\']+', f'js/core/adminerva-nav.js?v={version}', updated)
               updated=re.sub(r'js/core/auth-guard-v4-pilot\.js\?v=[^"\']+', f'js/core/auth-guard-v4-pilot.js?v={version}', updated)
               if updated!=text:
