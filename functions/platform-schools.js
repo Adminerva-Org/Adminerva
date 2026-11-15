@@ -25,6 +25,37 @@ function governanceRoleId(value){
     fail("invalid-argument","Governance role ID must use 2–64 lowercase letters, digits or hyphens.");
   return role;
 }
+async function standardSetupStatus({db,schoolId,schoolData}){
+  const prefix="schools/"+schoolId+"/";
+  const firstAdminUid=schoolData.firstAdminUid||null;
+  const [admin,program,year,term,subject,section,offering]=await Promise.all([
+    firstAdminUid?db.doc(prefix+"memberships/"+firstAdminUid).get():Promise.resolve(null),
+    db.collection(prefix+"academic_programs").where("status","==","active").limit(1).get(),
+    db.collection(prefix+"academic_years").where("status","==","active").limit(1).get(),
+    db.collection(prefix+"terms").where("status","==","active").limit(1).get(),
+    db.collection(prefix+"subjects").where("status","==","active").limit(1).get(),
+    db.collection(prefix+"sections").where("status","==","active").limit(1).get(),
+    db.collection(prefix+"course_offerings").where("status","==","active").limit(1).get()
+  ]);
+  const firstAdminActive=Boolean(admin?.exists&&admin.data().schoolId===schoolId&&
+    admin.data().status==="active"&&Array.isArray(admin.data().roles)&&
+    admin.data().roles.includes("school_admin"));
+  const checks=[
+    {id:"school_registered",ok:true,label:"School registered",detail:"The institution tenant exists."},
+    {id:"school_admin",ok:firstAdminActive,label:"School Administrator assigned",
+      detail:firstAdminActive?"The first School Administrator is active.":"Assign a verified School Administrator."},
+    {id:"academic_year",ok:!year.empty,label:"School year configured",detail:year.empty?"Create the school year.":"School year is configured."},
+    {id:"program",ok:!program.empty,label:"Division / program configured",detail:program.empty?"Create at least one division or program.":"Division / program is configured."},
+    {id:"period",ok:!term.empty,label:"Academic period configured",detail:term.empty?"Create the current quarter, term or semester.":"Academic period is configured."},
+    {id:"subject",ok:!subject.empty,label:"Subject configured",detail:subject.empty?"Create at least one subject.":"Subject catalog is configured."},
+    {id:"section",ok:!section.empty,label:"Section configured",detail:section.empty?"Create at least one section.":"Section catalog is configured."},
+    {id:"offering",ok:!offering.empty,label:"Course offering configured",detail:offering.empty?"Connect a subject, section and academic period in a course offering.":"At least one course offering is configured."}
+  ];
+  return {schoolId,ready:checks.every(check=>check.ok),checks,firstAdminUid,firstAdminActive,
+    state:schoolData.state,compatibilityMode:schoolData.compatibilityMode||"legacy_allowed",
+    provisioningMode:schoolData.provisioningMode||
+      ((schoolData.compatibilityMode||"legacy_allowed")==="v4_only"?"standard":"legacy_migration")};
+}
 async function ownerContext({db,request}) {
   const uid=verifiedUid(request),authority=await platformAuthority({db,request});
   if(!authority.platformAdmin)
@@ -92,6 +123,8 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
         schoolId:doc.id,displayName:doc.data().displayName,state:doc.data().state,
         dataLocation:doc.data().dataLocation,revision:doc.data().revision,
         compatibilityMode:doc.data().compatibilityMode||"legacy_allowed",
+        provisioningMode:doc.data().provisioningMode||
+          ((doc.data().compatibilityMode||"legacy_allowed")==="v4_only"?"standard":"legacy_migration"),
         productionAuthorized:doc.data().productionAuthorized===true,
         pilot:doc.data().pilot?{
           status:doc.data().pilot.status||null,
@@ -146,6 +179,37 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
           roleId,reason,createdAt:now});
       });
       return {schoolId,roleId,status:"active"};
+    }
+    if(action==="get_setup_status"){
+      const school=await schoolRef.get();
+      if(!school.exists)fail("not-found","The school does not exist.");
+      return await standardSetupStatus({db,schoolId,schoolData:school.data()});
+    }
+    if(action==="activate_standard"){
+      const reason=phrase(input.reason,12,500,"Activation reason");
+      const school=await schoolRef.get();
+      if(!school.exists)fail("not-found","The school does not exist.");
+      const data=school.data();
+      const mode=data.provisioningMode||
+        ((data.compatibilityMode||"legacy_allowed")==="v4_only"?"standard":"legacy_migration");
+      if(mode!=="standard"||(data.compatibilityMode||"legacy_allowed")!=="v4_only")
+        fail("failed-precondition","Use the legacy pilot/cutover workflow for this institution.");
+      if(data.state!=="draft")
+        fail("failed-precondition","Only a draft standard school can be activated from setup.");
+      const setup=await standardSetupStatus({db,schoolId,schoolData:data});
+      if(!setup.ready)
+        fail("failed-precondition","Complete the standard school setup checklist before activation.");
+      await db.runTransaction(async tx=>{
+        const current=await tx.get(schoolRef);
+        if(!current.exists||current.data().state!=="draft")
+          fail("failed-precondition","The school state changed. Refresh before activating.");
+        const now=FieldValue.serverTimestamp();
+        tx.update(schoolRef,{state:"active",productionAuthorized:true,
+          revision:(current.data().revision||0)+1,activatedByUid:uid,activatedAt:now,updatedAt:now});
+        tx.create(auditRef,{schoolId,actorUid:uid,action:"standard_school_activated",
+          reason,createdAt:now});
+      });
+      return {schoolId,state:"active",productionAuthorized:true};
     }
     if(action==="get_cutover_decisions"){
       const [school,decision]=await Promise.all([schoolRef.get(),cutoverDecisionRef.get()]);
@@ -236,7 +300,7 @@ function createPlatformSchoolService({db,auth=getAuth()}) {
       await db.runTransaction(async tx=>{
         if((await tx.get(schoolRef)).exists)fail("already-exists","The school already exists.");
         tx.create(schoolRef,{
-          displayName,state:"draft",revision:1,compatibilityMode:"v4_only",productionAuthorized:false,
+          displayName,state:"draft",revision:1,compatibilityMode:"v4_only",provisioningMode:"standard",productionAuthorized:false,
           dataLocation:{type:"shared_firestore_namespace",database:"(default)",path:"schools/"+schoolId},
           firstAdminUid:null,aiEnabled:false,storageEnabled:false,
           readiness:{},createdByUid:uid,createdAt:FieldValue.serverTimestamp(),
