@@ -41,6 +41,7 @@ function createSchoolAssessmentService({db}){
     .update(JSON.stringify([ctx.schoolId,ctx.uid,blueprintId,offeringId,key]))
     .digest("hex");
    const taskRef=tasks.doc(taskId);
+   const privateTaskRef=db.doc(prefix+"assessment_private/"+taskId);
    const offeringRef=db.doc(prefix+"course_offerings/"+offeringId);
    const grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,offeringId));
    const blueprintRef=db.doc(prefix+"assessment_blueprints/"+blueprintId);
@@ -117,6 +118,11 @@ function createSchoolAssessmentService({db}){
      submissionSource:source,personalizedTask,opensAt:start,dueAt:end,
      requestKey:key,status:"deployed",published:false,lifecycle:"active",revision:1,
      createdAt:now,updatedAt:now
+    });
+    tx.create(privateTaskRef,{
+     schoolId:ctx.schoolId,taskId,blueprintId,ownerUid:ctx.uid,reviewerUid:ctx.uid,
+     checkingInstructions:String(original.checkingInstructions||"").slice(0,8000),
+     blueprintRevision:original.contentRevision,createdAt:now,updatedAt:now
     });
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
      action:"assessment_deployed",offeringId,source,createdAt:now});
@@ -291,6 +297,27 @@ function createSchoolAssessmentService({db}){
     }));
    }
    return result;
+  }
+
+  if(input.action==="get_private"){
+   if(!ctx.roles.includes("teacher"))deny("permission-denied","Teacher access is required.");
+   const taskId=checkId(input.taskId,"Assessment task",128),taskRef=tasks.doc(taskId);
+   const task=await taskRef.get();
+   if(!task.exists||task.data().schoolId!==ctx.schoolId||
+      (!ctx.platformOverride&&(task.data().reviewerUid||task.data().ownerUid)!==ctx.uid))
+     deny("permission-denied","This assessment is not assigned to you.");
+   if(!ctx.platformOverride){
+    const grant=await db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,task.data().offeringId)).get();
+    if(!grant.exists||grant.data().schoolId!==ctx.schoolId||grant.data().teacherUid!==ctx.uid||
+       grant.data().offeringId!==task.data().offeringId||grant.data().status!=="active")
+      deny("permission-denied","This assessment's teacher assignment is no longer active.");
+   }
+   const privateTask=await db.doc(prefix+"assessment_private/"+taskId).get();
+   if(!privateTask.exists)return {taskId,checkingInstructions:""};
+   const data=privateTask.data();
+   if(data.schoolId!==ctx.schoolId||data.taskId!==taskId)
+     deny("failed-precondition","Private assessment configuration is invalid.");
+   return {taskId,checkingInstructions:String(data.checkingInstructions||"").slice(0,8000)};
   }
 
   if(input.action==="list_teacher"){
