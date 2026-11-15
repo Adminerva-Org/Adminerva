@@ -28,6 +28,14 @@ const callStudioVariant=input=>{
   return studioVariantCallable(input);
 };
 const assignmentField=id=>document.getElementById(id);
+const assignmentParams=new URLSearchParams(location.search);
+const selectedSubjectName=assignmentParams.get("subject")||"Computer Programming";
+const selectedSubjectId=assignmentParams.get("subjectId")||"";
+const legacySubjectEnabled=!selectedSubjectId||/computer\s*programming|programming/i.test(selectedSubjectName);
+const subjectLabel=assignmentField("assignmentSubjectLabel");
+if(subjectLabel)subjectLabel.textContent=selectedSubjectName;
+const legacySection=assignmentField("legacyAssignmentsSection");
+if(legacySection)legacySection.hidden=!legacySubjectEnabled;
 async function loadPersonalizedAssignment(assessment){
   const panel=assignmentField("personalizedAssignmentPanel"),
     meta=assignmentField("personalizedAssignmentMeta"),
@@ -147,7 +155,13 @@ async function loadStudentAssignments(user=auth.currentUser){
     if(version===profileGeneration&&auth.currentUser?.uid===user.uid){assignmentsNotice("Your class could not load. Check your connection and retry.","error",true);assignmentsFeedState("Unable to load your class","Retry loading assignments when your connection is ready.");}
   } finally { end();if(version===profileGeneration)setAssignmentControls(false); }
 }
-onAuthStateChanged(auth,user=>void loadStudentAssignments(user));
+onAuthStateChanged(auth,user=>{
+  if(legacySubjectEnabled)void loadStudentAssignments(user);
+  else{
+    const notice=assignmentField("assignmentsNotice");
+    if(notice)notice.classList.add("hidden");
+  }
+});
 assignmentField("assignmentsRetry").addEventListener("click",()=>void loadStudentAssignments());
 
 async function fetchAssessments() {
