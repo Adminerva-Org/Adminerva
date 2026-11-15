@@ -12,7 +12,7 @@
   <header class="mb-5 rounded-2xl bg-slate-900 text-white p-5 sm:p-7">
     <p class="text-xs uppercase tracking-widest font-bold text-cyan-300">Verified school assignments</p>
     <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">My assignments</h1>
-    <p class="text-sm text-slate-200 mt-2">Tasks are based on your active school enrollments. Studio and GitHub submissions are frozen and reviewed through the school-scoped evidence workflow.</p>
+    <p class="text-sm text-slate-200 mt-2">Tasks are based on your active school enrollments. Written responses, links, Studio projects and GitHub evidence are frozen by submission version before grading.</p>
   </header>
   <section id="v4AssignmentsPanel" class="hidden rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 sm:p-5">
     <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
@@ -68,8 +68,42 @@
     </footer>
   </div>
 </dialog>
+
+<dialog id="v4GeneralSubmissionDialog" class="rounded-2xl border-0 shadow-2xl p-0 w-[min(96vw,760px)] max-h-[92dvh] backdrop:bg-slate-950/70" aria-labelledby="v4GeneralSubmissionTitle">
+  <form id="v4GeneralSubmissionForm" class="bg-white flex flex-col max-h-[92dvh]">
+    <header class="p-4 sm:p-5 bg-slate-900 text-white flex items-start justify-between gap-4">
+      <div><p id="v4GeneralSubmissionType" class="text-xs uppercase tracking-wider text-cyan-300 font-bold">Assessment response</p>
+        <h2 id="v4GeneralSubmissionTitle" class="text-xl font-extrabold mt-1">Submit response</h2>
+        <p id="v4GeneralSubmissionMeta" class="text-xs text-slate-300 mt-1"></p></div>
+      <button id="v4GeneralSubmissionClose" type="button" class="rounded-lg border border-slate-600 px-3 py-2">Close</button>
+    </header>
+    <div class="overflow-y-auto p-4 sm:p-5 space-y-4">
+      <section id="v4TextResponseFields">
+        <label class="block text-sm font-bold text-slate-700">Your written response
+          <textarea id="v4TextResponse" rows="12" maxlength="50000" class="mt-1 w-full border border-slate-300 rounded-lg p-3" placeholder="Write your response here…"></textarea>
+        </label>
+        <p class="text-xs text-slate-500 mt-1">Your exact submitted text is frozen as a version for teacher review.</p>
+      </section>
+      <section id="v4LinkResponseFields" class="hidden space-y-3">
+        <label class="block text-sm font-bold text-slate-700">Submission link
+          <input id="v4LinkResponseUrl" type="url" class="mt-1 w-full border border-slate-300 rounded-lg p-3" placeholder="https://…">
+        </label>
+        <label class="block text-sm font-bold text-slate-700">Submission note <span class="font-normal text-slate-500">(optional)</span>
+          <textarea id="v4LinkResponseNote" rows="5" maxlength="10000" class="mt-1 w-full border border-slate-300 rounded-lg p-3" placeholder="Explain what the teacher should review at this link…"></textarea>
+        </label>
+        <p class="text-xs text-slate-500">Adminerva freezes the submitted URL and note. The linked external content itself may still change outside Adminerva.</p>
+      </section>
+      <div id="v4GeneralRevisionNotice" class="hidden rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"></div>
+      <p id="v4GeneralSubmissionStatus" class="text-sm text-slate-600" role="status" aria-live="polite"></p>
+    </div>
+    <footer class="border-t p-4 sm:p-5 flex flex-wrap justify-end gap-2">
+      <button id="v4GeneralSubmissionCancel" type="button" class="rounded-lg border border-slate-300 bg-white text-slate-700 font-bold px-4 py-2.5">Cancel</button>
+      <button id="v4GeneralSubmissionSubmit" type="submit" class="rounded-lg bg-indigo-700 text-white font-bold px-4 py-2.5">Submit frozen response</button>
+    </footer>
+  </form>
+</dialog>
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script src="js/core/adminerva-nav.js?v=20261115-nav1"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=7e7f869272e4"></script>
-<script type="module" src="js/student/v4-assessments.mjs?v=4.1.1"></script>
+<script type="module" src="js/student/v4-assessments.mjs?v=4.2.0"></script>
 </body></html>
