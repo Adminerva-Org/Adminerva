@@ -238,15 +238,15 @@ export function buildNavigationIA(ctx){
         ])
       ]),
       repository(),
-      ws("assessment","Assessment","teacher-assessment-library.html","General-subject assessment and checking workflows",[
+      ws("assessment","Assessment","teacher-assessment-library.html","General assessment authoring, submissions, grading and results",[
         group("Assessment",[
-          needs("assessment-studio","Assessment Library","teacher-assessment-library.html","Active general-subject assessment authoring, personalization and deployment management; submission and checking workflows are still being expanded."),
-          future("assessment-inbox","Submission Inbox","General-subject submission inbox · Future development")
+          needs("assessment-library","Assessment Library","teacher-assessment-library.html","Canonical school assessment authoring, sharing, personalization and deployment workflow."),
+          needs("assessment-submissions","Submissions","school-gradebook.html?view=submissions","Unified submission inbox for written responses, links, Adminerva Studio projects and GitHub evidence."),
+          needs("assessment-review","Review & Grade","school-gradebook.html?view=review","Unified rubric review workflow with private drafts, revision requests and deliberate publication."),
+          needs("assessment-results","Assessment Results","school-gradebook.html?view=results","Per-assessment results and published outcomes that can feed the Class Record.")
         ]),
-        group("Assessment Checking",[
-          future("student-work","Review Students' Work","General-subject output review · Future development"),
-          needs("studio-submissions","Studio Submissions","studio-submissions.html","Active Studio project submission review; still being consolidated into general assessment checking."),
-          needs("system-evaluation","System Evaluation","school-gradebook.html","Bulk/general assessment evaluation and grading; needs further workflow and bulk-action refinement.")
+        group("Specialized / compatibility",[
+          old("studio-submissions","Studio Submissions","studio-submissions.html","Specialized Studio review surface retained while Studio evidence is consolidated into the unified Assessment workflow.")
         ])
       ]),
       ws("grading","Grading","class-record.html","Class records, advisory records and grade administration",[
@@ -357,7 +357,14 @@ export function buildNavigationIA(ctx){
   const route=(location.pathname.split("/").pop()||"").toLowerCase();
   const requestedWorkspace=new URLSearchParams(location.search).get("workspace")||"";
   const routePath=value=>String(value||"").split("#")[0].split("?")[0].toLowerCase();
-  const itemMatches=item=>item[2]&&routePath(item[2])===route;
+  const routeQueryMatches=value=>{
+    const raw=String(value||""),query=raw.includes("?")?raw.split("?")[1].split("#")[0]:"";
+    if(!query)return true;
+    const expected=new URLSearchParams(query),actual=new URLSearchParams(location.search);
+    for(const [key,value] of expected)if(actual.get(key)!==value)return false;
+    return true;
+  };
+  const itemMatches=item=>item[2]&&routePath(item[2])===route&&routeQueryMatches(item[2]);
   const workspaceMatches=w=>routePath(w.route)===route||w.groups.some(g=>g.items.some(itemMatches));
   const homeRoute=systemDefault?"owner-schools.html":studentView?"student-home.html":
     schoolAdminView?"school-admin.html":"teacher-home.html";
