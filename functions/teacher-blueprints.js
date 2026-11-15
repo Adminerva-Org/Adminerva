@@ -82,6 +82,7 @@ function serialize(doc,access) {
     rubric:data.rubric,personalization:personalizationContent(data.personalization),
     contentRevision:data.contentRevision,aclRevision:data.aclRevision,
     copiedFrom:data.copiedFrom||null,
+    legacyImport:data.legacyImport||null,
     sharedWithUids:(access.uid===data.ownerUid||access.platformOverride===true)?
       (Array.isArray(data.sharedWithUids)?data.sharedWithUids:[]):[],
     canShare:access.uid===data.ownerUid||access.platformOverride===true,
