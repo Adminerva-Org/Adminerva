@@ -40,6 +40,32 @@ function showAccessRecovery(message){
   accessGate.querySelector("[data-recovery-retry]").focus();
 }
 function dismissAccessRecovery(){if(accessGate)accessGate.hidden=true;document.body.inert=false;}
+function exitPlatformRoleTest(){
+  try{
+    sessionStorage.removeItem("Adminerva_platform_view_school");
+    sessionStorage.removeItem("Adminerva_platform_view_role");
+    sessionStorage.removeItem("Adminerva_platform_test_mode");
+  }catch{}
+  replacePage("owner-schools.html");
+}
+function mountPlatformRoleTestBanner({schoolName,role}){
+  let banner=document.getElementById("adminerva-platform-role-test");
+  if(!banner){
+    banner=document.createElement("aside");banner.id="adminerva-platform-role-test";
+    banner.setAttribute("role","status");
+    banner.style.cssText="position:relative;z-index:45;background:#fffbeb;border-bottom:1px solid #f59e0b;color:#78350f;padding:.55rem 1rem;font:600 13px/1.35 system-ui;";
+    const inner=document.createElement("div");inner.style.cssText="max-width:1536px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:.75rem;flex-wrap:wrap;text-align:center";
+    const label=document.createElement("span");label.dataset.roleTestLabel="";
+    const exit=document.createElement("button");exit.type="button";exit.textContent="Exit role test";
+    exit.style.cssText="border:1px solid #d97706;background:#fff7ed;color:#92400e;border-radius:.55rem;padding:.35rem .65rem;font-weight:800;cursor:pointer";
+    exit.addEventListener("click",exitPlatformRoleTest);inner.append(label,exit);banner.append(inner);
+    const nav=document.getElementById("adminerva-nav");
+    if(nav?.parentNode)nav.insertAdjacentElement("afterend",banner);else document.body.prepend(banner);
+  }
+  const readableRole={schooladmin:"School Administrator",teacher:"Teacher",student:"Student"}[role]||role;
+  banner.querySelector("[data-role-test-label]").textContent=
+    "SYSTEM ADMIN PREVIEW · "+schoolName+" · "+readableRole+" · temporary test session — school changes are not saved";
+}
 
 // 🚨 TIER 1: The Master Key (Can access system API settings)
 
@@ -111,6 +137,7 @@ async function checkAccess(user){
     }
   }
   const platformSchoolView=Boolean(access.platformAdmin&&platformViewRole&&platformViewSchool);
+  const platformTestMode=platformSchoolView;
 
   // Platform administrators may enter an explicit school/role context. This
   // remains server-authorized; browser state only chooses which authorized
@@ -237,6 +264,7 @@ async function checkAccess(user){
     navigation.dataset.schoolStudent=String(Boolean(access.schoolStudent||(
       platformSchoolView&&activeRole==="student")));
     navigation.dataset.platformViewSchool=platformViewSchool;
+    navigation.dataset.platformTestMode=String(Boolean(platformTestMode));
     navigation.dataset.v4OnlyTeacher=String(Boolean(v4OnlyTeacher));
     navigation.dataset.v4OnlyStudent=String(Boolean(v4OnlyStudent));
     navigation.dataset.v4Cutover=String(Boolean(v4Cutover));
@@ -247,7 +275,8 @@ async function checkAccess(user){
       schoolAdmin:Boolean(access.schoolAdmin||(platformSchoolView&&activeRole==="schooladmin")),
       schoolTeacher:Boolean(access.schoolTeacher||(platformSchoolView&&["schooladmin","teacher"].includes(activeRole))),
       schoolStudent:Boolean(access.schoolStudent||(platformSchoolView&&activeRole==="student")),
-      legacyTeacher:access.legacyRole==="teacher",v4OnlyTeacher,v4OnlyStudent,v4Cutover}
+      legacyTeacher:access.legacyRole==="teacher",v4OnlyTeacher,v4OnlyStudent,v4Cutover,
+      platformTestMode,platformViewSchool}
   }));
 
   // Only verified administrator accounts see management shortcuts.
@@ -263,6 +292,10 @@ async function checkAccess(user){
   dismissAccessRecovery();rememberWorkspace(user.uid);
   const pageBody = document.getElementById("pageBody");
   if (pageBody) pageBody.classList.remove("hidden");
+  if(platformTestMode){
+    const schoolName=access.v4Schools?.find(item=>item.schoolId===platformViewSchool)?.name||platformViewSchool;
+    mountPlatformRoleTestBanner({schoolName,role:activeRole});
+  }else document.getElementById("adminerva-platform-role-test")?.remove();
 
   const emailDisplay = document.getElementById("userEmailDisplay");
   if (emailDisplay) emailDisplay.textContent = accountEmail;
