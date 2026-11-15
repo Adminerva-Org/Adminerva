@@ -10,10 +10,10 @@
   <link rel="stylesheet" href="css/adminerva-ui.css?v=20df00111935">
   <script defer src="https://cdn.tailwindcss.com"></script>
   <style>
-    .ac-shell{max-width:1280px;margin:auto;padding:1rem}
+    .ac-shell{max-width:920px;margin:auto;padding:1rem}
     .ac-hero{border-radius:1.25rem;padding:1.25rem;background:#0f172a;color:white}
     .ac-panel{border:1px solid #dbe3ef;border-radius:1rem;background:white;padding:1rem}
-    .ac-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+    .ac-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:1rem}
     .ac-wide{grid-column:1/-1}
     .ac-input{width:100%;min-height:46px;border:1px solid #cbd5e1;border-radius:.75rem;padding:.65rem .75rem;background:white;color:#0f172a}
     .ac-input:focus{outline:3px solid #bfdbfe;border-color:#2563eb}
@@ -24,9 +24,19 @@
     .ac-list{display:grid;gap:.5rem;margin-top:.85rem}
     .ac-row{display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start;padding:.75rem;border:1px solid #e2e8f0;border-radius:.8rem;background:#f8fafc}
     .ac-muted{font-size:.86rem;color:#64748b}
-    .ac-tabs{display:flex;gap:.5rem;overflow-x:auto;padding-bottom:.25rem}
-    .ac-tabs button{white-space:nowrap}
-    .ac-tabs button[aria-selected="true"]{background:#0f172a;color:white;border-color:#0f172a}
+    .ac-tabs{display:none}
+    .ac-wizard-head{display:flex;justify-content:space-between;gap:1rem;align-items:flex-end;margin-top:1rem}
+    .ac-wizard-label{font-weight:850;color:#0f172a}
+    .ac-wizard-count{font-size:.78rem;color:#64748b;white-space:nowrap}
+    .ac-progress{height:.55rem;border-radius:999px;background:#e2e8f0;overflow:hidden;margin-top:.55rem}
+    .ac-progress>span{display:block;height:100%;width:16.666%;background:#2563eb;border-radius:inherit;transition:width .18s ease}
+    .ac-step[data-active="true"]{border-color:#2563eb;background:#eff6ff;box-shadow:0 0 0 2px #bfdbfe}
+    .ac-step:disabled{cursor:not-allowed;opacity:.58}
+    .ac-wizard-nav{position:sticky;bottom:.6rem;z-index:20;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.65rem;padding:.7rem;border:1px solid #cbd5e1;border-radius:1rem;background:rgba(255,255,255,.96);box-shadow:0 12px 28px rgba(15,23,42,.12);backdrop-filter:blur(10px)}
+    .ac-wizard-nav p{text-align:center;font-size:.82rem;color:#475569;font-weight:700}
+    .ac-action-message{position:fixed;left:50%;bottom:1rem;z-index:400;transform:translateX(-50%);width:min(38rem,calc(100vw - 1.25rem));padding:.8rem 1rem;border-radius:.8rem;background:#0f172a;color:white;box-shadow:0 16px 40px rgba(15,23,42,.28);font-size:.88rem;font-weight:700}
+    .ac-action-message[data-tone="success"]{background:#166534}
+    .ac-action-message[data-tone="error"]{background:#991b1b}
     .ac-stepbar{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.5rem;margin-top:1rem}
     .ac-step{border:1px solid #dbe3ef;border-radius:.85rem;background:#f8fafc;padding:.7rem;text-align:left;min-width:0}
     .ac-step strong{display:block;font-size:.86rem}
@@ -57,6 +67,10 @@
       .ac-btn{width:100%}
       .ac-mobile-actions{display:grid;grid-template-columns:1fr;width:100%}
       .ac-hero{padding:1rem}
+      .ac-wizard-nav{grid-template-columns:1fr 1fr}
+      .ac-wizard-nav p{grid-column:1/-1;grid-row:1}
+      .ac-wizard-nav .ac-back{grid-column:1;grid-row:2}
+      .ac-wizard-nav .ac-next{grid-column:2;grid-row:2}
     }
   </style>
 </head>
@@ -83,22 +97,23 @@
       </div>
       <button id="ac-refresh" class="ac-btn" type="button" disabled>Refresh</button>
     </div>
-    <div class="ac-tabs mt-4" role="tablist" aria-label="Academic configuration">
-      <button class="ac-btn" type="button" data-tab="catalog" aria-selected="true">Setup</button>
-      <button class="ac-btn" type="button" data-tab="offerings" aria-selected="false">Course Offerings</button>
+    <div class="ac-wizard-head">
+      <div><p id="ac-wizard-title" class="ac-wizard-label">Step 1 · School year</p><p class="ac-muted">Configure one part at a time. Saved steps remain available to review.</p></div>
+      <span id="ac-wizard-count" class="ac-wizard-count">1 of 6</span>
     </div>
-    <div class="ac-stepbar" aria-label="Recommended setup order">
-      <button class="ac-step" type="button" data-jump="ac-year-card"><strong>1 · School year</strong><span id="ac-step-years">Not configured</span></button>
-      <button class="ac-step" type="button" data-jump="ac-program-card"><strong>2 · Division</strong><span id="ac-step-programs">Not configured</span></button>
-      <button class="ac-step" type="button" data-jump="ac-term-card"><strong>3 · Periods</strong><span id="ac-step-terms">Not configured</span></button>
-      <button class="ac-step" type="button" data-jump="ac-subject-card"><strong>4 · Subjects</strong><span id="ac-step-subjects">Not configured</span></button>
-      <button class="ac-step" type="button" data-jump="ac-section-card"><strong>5 · Sections</strong><span id="ac-step-sections">Not configured</span></button>
-      <button class="ac-step" type="button" data-open-offerings><strong>6 · Offerings</strong><span id="ac-step-offerings">Not configured</span></button>
+    <div class="ac-progress" aria-label="Academic setup progress"><span id="ac-progress-fill"></span></div>
+    <div class="ac-stepbar" aria-label="Academic setup steps">
+      <button class="ac-step" type="button" data-wizard-go="1"><strong>1 · School year</strong><span id="ac-step-years">Not configured</span></button>
+      <button class="ac-step" type="button" data-wizard-go="2"><strong>2 · Division</strong><span id="ac-step-programs">Not configured</span></button>
+      <button class="ac-step" type="button" data-wizard-go="3"><strong>3 · Periods</strong><span id="ac-step-terms">Not configured</span></button>
+      <button class="ac-step" type="button" data-wizard-go="4"><strong>4 · Subjects</strong><span id="ac-step-subjects">Not configured</span></button>
+      <button class="ac-step" type="button" data-wizard-go="5"><strong>5 · Sections</strong><span id="ac-step-sections">Not configured</span></button>
+      <button class="ac-step" type="button" data-wizard-go="6"><strong>6 · Offering</strong><span id="ac-step-offerings">Not configured</span></button>
     </div>
   </section>
 
   <section id="ac-catalog" class="ac-grid" role="tabpanel">
-    <article id="ac-year-card" class="ac-panel ac-wide">
+    <article id="ac-year-card" class="ac-panel ac-wide" data-wizard-step="1">
       <div class="ac-card-head">
         <span class="ac-number">1</span>
         <div><h2 class="font-extrabold text-lg">Academic Year</h2><p class="ac-muted mt-1">Adminerva predicts the current or next unused school year. Adjust the dates if your official calendar differs.</p></div>
@@ -128,7 +143,7 @@
       <div id="ac-years" class="ac-list"></div>
     </article>
 
-    <article id="ac-program-card" class="ac-panel">
+    <article id="ac-program-card" class="ac-panel" data-wizard-step="2" hidden>
       <div class="ac-card-head">
         <span class="ac-number">2</span>
         <div><h2 class="font-extrabold text-lg">Programs / Divisions</h2><p class="ac-muted mt-1">Examples: Senior High School, Junior High School or Basic Education.</p></div>
@@ -147,7 +162,7 @@
       <div id="ac-programs" class="ac-list"></div>
     </article>
 
-    <article id="ac-term-card" class="ac-panel">
+    <article id="ac-term-card" class="ac-panel" data-wizard-step="3" hidden>
       <div class="ac-card-head">
         <span class="ac-number">3</span>
         <div><h2 class="font-extrabold text-lg">Academic Periods</h2><p class="ac-muted mt-1">Choose the year and division; Adminerva suggests the next semester, term or quarter and its date range.</p></div>
@@ -187,7 +202,7 @@
       <div id="ac-terms" class="ac-list"></div>
     </article>
 
-    <article id="ac-subject-card" class="ac-panel">
+    <article id="ac-subject-card" class="ac-panel" data-wizard-step="4" hidden>
       <div class="ac-card-head">
         <span class="ac-number">4</span>
         <div><h2 class="font-extrabold text-lg">Subjects</h2><p class="ac-muted mt-1">Create the canonical subject once; Adminerva generates its system code from the name.</p></div>
@@ -204,7 +219,7 @@
       <div id="ac-subjects" class="ac-list"></div>
     </article>
 
-    <article id="ac-section-card" class="ac-panel">
+    <article id="ac-section-card" class="ac-panel" data-wizard-step="5" hidden>
       <div class="ac-card-head">
         <span class="ac-number">5</span>
         <div><h2 class="font-extrabold text-lg">Sections</h2><p class="ac-muted mt-1">Assign each section to its division. The code is generated from the program and section name.</p></div>
@@ -222,7 +237,7 @@
       <div id="ac-sections" class="ac-list"></div>
     </article>
 
-    <article class="ac-panel">
+    <article id="ac-offering-intro-card" class="ac-panel" hidden>
       <div class="ac-card-head">
         <span class="ac-number">6</span>
         <div><h2 class="font-extrabold text-lg">Finish with Course Offerings</h2><p class="ac-muted mt-1">A course offering connects one subject to one section for a specific year and academic period.</p></div>
@@ -232,7 +247,7 @@
     </article>
   </section>
 
-  <section id="ac-offerings" class="ac-panel" role="tabpanel" hidden>
+  <section id="ac-offerings" class="ac-panel" role="tabpanel" data-wizard-step="6" hidden>
     <div class="grid lg:grid-cols-[minmax(300px,.85fr)_minmax(0,1.4fr)] gap-4">
       <form id="ac-offering-form" class="grid gap-3">
         <div class="ac-card-head">
@@ -248,7 +263,6 @@
         <label class="text-sm font-bold">Subject<select name="subjectId" class="ac-input mt-1" required></select></label>
         <div id="ac-offering-preview" class="ac-summary ac-muted">Choose the required fields to preview this course offering.</div>
         <button class="ac-btn success" type="submit">Create course offering</button>
-        <button class="ac-btn" type="button" data-tab-return>Back to setup</button>
       </form>
       <div>
         <div class="flex items-center justify-between gap-3"><h2 class="font-extrabold text-lg">Active Course Offerings</h2><span id="ac-offering-count" class="ac-muted"></span></div>
@@ -256,12 +270,19 @@
       </div>
     </div>
   </section>
+
+  <nav id="ac-wizard-nav" class="ac-wizard-nav" aria-label="Academic setup navigation">
+    <button id="ac-wizard-back" class="ac-btn ac-back" type="button">← Back</button>
+    <p id="ac-wizard-nav-status">Complete this step, then continue.</p>
+    <button id="ac-wizard-next" class="ac-btn primary ac-next" type="button" disabled>Next →</button>
+  </nav>
 </main>
+<div id="ac-action-message" class="ac-action-message" role="status" aria-live="assertive" hidden></div>
 
 <script defer src="js/core/release-footer.js?v=20df00111935"></script>
 <script src="js/core/adminerva-loader.js?v=20df00111935"></script>
 <script defer src="js/core/adminerva-nav.js?v=20df00111935"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=20df00111935"></script>
-<script type="module" src="js/school-admin/academic-configuration.mjs?v=1.1.0"></script>
+<script type="module" src="js/school-admin/academic-configuration.mjs?v=wizard-20261116-1"></script>
 </body>
 </html>
