@@ -1,7 +1,7 @@
 /** Student submissions, practice progress and isolated code workspaces: practice courses. */
 // Adminerva Practice Lab — four original introductory tracks.
 // Practice is formative; correct choices do not constitute graded evidence.
-import {expandPracticeCourses} from "./practice-curriculum.mjs?v=1.3.0";
+import {expandPracticeCourses} from "./practice-curriculum.mjs?v=1.4.0";
 const n=(seed,max,min=1)=>min+(Math.abs(seed)%max);
 function choices(answer,alternatives,seed){
   const items=[answer,...alternatives].map(String);
@@ -19,7 +19,7 @@ function choices(answer,alternatives,seed){
   return {choices:shuffled,correct:shuffled.indexOf(String(answer))};
 }
 export const COURSES=[
-  {id:"java",name:"Java Foundations",subtitle:"Variables, branches, loops and arrays",
+  {id:"java",name:"Java Programming",subtitle:"Foundations, classes, objects, inheritance and OOP",
    icon:"☕",missions:[
     {id:"j1",title:"Follow a changing variable",concept:"Assignment changes the stored value. Read each statement in order.",
       build(seed){const a=n(seed,8,3),b=n(seed>>2,5,2),result=a+b;
