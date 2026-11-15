@@ -49,7 +49,7 @@ function projectPayload(project,state){
       design:project.design||{},
       config:project.config||{},
       evidence:project.evidence||{events:[],runs:[]},
-      assessment:project.assessment||null
+      ...(project.assessment?{assessment:project.assessment}:{})
     }
   };
 }
