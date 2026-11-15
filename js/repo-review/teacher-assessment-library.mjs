@@ -199,7 +199,7 @@ function render(){
       const controls=document.createElement("div");controls.className="tl-actions";
       if(lifecycle!=="cancelled"){
         const gradebook=document.createElement("a");gradebook.className="tl-action alt";
-        gradebook.href="school-gradebook.html?task="+encodeURIComponent(task.taskId);
+        gradebook.href="school-gradebook.html?view=review&task="+encodeURIComponent(task.taskId);
         gradebook.textContent="Review & Grade";controls.append(gradebook);
         // Navigation only: the teacher still chooses the linked Class Record
         // column, and its school-scoped score/release policies remain enforced.
