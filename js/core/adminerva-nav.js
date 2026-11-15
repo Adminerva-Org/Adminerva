@@ -285,7 +285,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const groupNeeds=groupMetas.some(meta=>meta.status==="needs_work"||meta.old)||
       (!groupAllFuture&&groupMetas.some(meta=>meta.future||meta.status==="future"));
     const summaryLabel=document.createElement("span");summaryLabel.textContent=group.name+" ▾";summary.append(summaryLabel);
-    if(groupAllFuture||groupNeeds){
+    if(!ia.studentView&&(groupAllFuture||groupNeeds)){
       const dot=document.createElement("span");
       dot.className="av-dev-indicator av-dev-indicator--"+(groupAllFuture?"future":"needs");
       dot.title=groupAllFuture?"Future development":"Contains tools that need further development or enhancement.";
