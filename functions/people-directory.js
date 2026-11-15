@@ -64,7 +64,7 @@ function createPeopleDirectoryService({db}) {
     async function requireCurrentAdmin(tx) {
       if(ctx.platformOverride)return;
       const school=await tx.get(schoolRef),member=await tx.get(adminRef);
-      if(!school.exists||!["active","pilot"].includes(school.data().state)||!member.exists||
+      if(!school.exists||!["draft","active","pilot"].includes(school.data().state)||!member.exists||
          member.data().status!=="active"||member.data().schoolId!==ctx.schoolId||
          !Array.isArray(member.data().roles)||!member.data().roles.includes("school_admin"))
         throw new TenantAccessError("permission-denied","School administration access has changed.");
