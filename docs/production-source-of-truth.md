@@ -34,6 +34,7 @@ Do not present `school-pilot.html` or `pilot-sandbox.html` as normal teacher wor
 
 - **School Administration:** `school-admin.html`
 - **People & Access:** `people-access.html` is the canonical place for verified people, memberships, teacher activation, course offerings, enrollments and class assignments.
+- **Legacy directory compatibility:** `users.html` and `teacher-accounts.html` are recovery routes only. Once an administrator has verified school-wide authority they route into People & Access. MCS legacy `students`, `staff_access`, teacher profiles and pending account requests are consolidated through the reviewed People & Access migration flow; source records remain preserved.
 - **Class Record oversight:** `school-class-records.html` is read-only administration/audit.
 - **Grading schemes:** `school-grading-schemes.html`.
 
