@@ -17,8 +17,8 @@
     <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
       <div>
         <p class="text-xs uppercase tracking-widest font-bold text-cyan-300">School Class Record</p>
-        <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">My Grades</h1>
-        <p class="text-sm text-slate-200 mt-2 max-w-3xl">Only scores your teacher has released appear here. Final Grades appear only after a frozen period revision is explicitly released.</p>
+        <div class="flex flex-wrap items-center gap-2"><h1 class="text-2xl sm:text-3xl font-extrabold mt-1">My Grades</h1><span id="studentGradesSubjectLabel" class="hidden rounded-full bg-cyan-100 text-cyan-950 px-3 py-1 text-xs font-extrabold"></span></div>
+        <p class="text-sm text-slate-200 mt-2 max-w-3xl">Only scores your teacher has released appear here. Final Grades appear only after a frozen period revision is explicitly released.</p><a href="student-classroom.html" class="inline-block mt-3 text-xs font-bold text-cyan-200 underline">← Back to Classroom</a>
       </div>
       <div id="student-grades-school-switcher" hidden class="w-full lg:w-auto lg:min-w-[230px]"></div>
     </div>
