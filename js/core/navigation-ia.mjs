@@ -17,7 +17,7 @@ export function buildNavigationIA(ctx){
         group("Assignments",[
           needs("assignments","Assignments",assignments,"Unified student assignment workspace. Verified school tasks and existing programming assignments are consolidated here."),
           ...(grades?[live("my-grades","My Grades",grades,"Teacher-released school grades")]:[]),
-          future("bulletin","Classroom Bulletin Board","Class announcements and teacher posts · Future development"),
+          needs("classroom-stream","Subject Stream","student-classroom.html","Choose a subject to view announcements, class activity, assignments and released results."),
           future("ebooks","E-books","Class materials and presentations · Future development"),
           future("calendar","School Calendar","School events, deadlines and academic calendar · Future development")
         ]),
@@ -238,6 +238,7 @@ export function buildNavigationIA(ctx){
       repository(),
       ws("assessment","Assessment","teacher-assessment-library.html","General assessment authoring, submissions, grading and results",[
         group("Assessment",[
+          needs("classroom-stream","Classroom Stream","teacher-classroom.html","Post announcements and class updates to verified subject/section streams."),
           needs("assessment-library","Assessment Library","teacher-assessment-library.html","Canonical school assessment authoring, sharing, personalization and deployment workflow."),
           needs("assessment-submissions","Submissions","school-gradebook.html?view=submissions","Unified submission inbox for written responses, links, Adminerva Studio projects and GitHub evidence."),
           needs("assessment-review","Review & Grade","school-gradebook.html?view=review","Unified rubric review workflow with private drafts, revision requests and deliberate publication."),
