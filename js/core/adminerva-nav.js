@@ -346,7 +346,7 @@ document.addEventListener("DOMContentLoaded", () => {
     import("./notifications.mjs?v=1.4.19").then(module => module.mountNotificationCenter())
       .catch(error => console.warn("Notification center unavailable:", error));
   }
-  import("./account-context-switcher.mjs?v=1.0.0")
+  import("./account-context-switcher.mjs?v=4765ddf583ff")
     .then(module=>module.mountAccountContextSwitcher(root))
     .catch(error=>console.warn("Account context switcher unavailable:",error));
   };
