@@ -31,8 +31,8 @@ function createSchoolAssessmentService({db}){
    const offeringId=checkId(input.offeringId,"Course offering ID",330);
    const key=checkId(input.requestKey,"Request key",100);
    const source=input.submissionSource;
-   if(!["studio","github"].includes(source))
-    deny("invalid-argument","Choose Adminerva Studio or GitHub evidence.");
+   if(!["studio","github","text","link"].includes(source))
+    deny("invalid-argument","Choose a supported assessment submission method.");
    const start=timestamp(input.opensAt,"Opening time");
    const end=timestamp(input.dueAt,"Deadline");
    if(end.toMillis()<=start.toMillis())
@@ -251,12 +251,13 @@ function createSchoolAssessmentService({db}){
     }else if(input.action==="cancel"){
       if(!["active","closed"].includes(lifecycle))
        deny("failed-precondition","Only an active or closed assessment can be cancelled.");
-      const [studio,github,grades]=await Promise.all([
+      const [studio,github,general,grades]=await Promise.all([
        tx.get(db.collection(prefix+"studio_submissions").where("taskId","==",taskId).limit(1)),
        tx.get(db.collection(prefix+"github_evidence").where("taskId","==",taskId).limit(1)),
+       tx.get(db.collection(prefix+"assessment_submissions").where("taskId","==",taskId).limit(1)),
        tx.get(db.collection(prefix+"student_grades").where("taskId","==",taskId).limit(1))
       ]);
-      if(!studio.empty||!github.empty||!grades.empty)
+      if(!studio.empty||!github.empty||!general.empty||!grades.empty)
        deny("failed-precondition","This assessment already has submission or grade history. Close or archive it instead of cancelling.");
       next="cancelled";
     }
