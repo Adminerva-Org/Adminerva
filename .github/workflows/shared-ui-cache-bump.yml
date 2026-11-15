@@ -6,6 +6,7 @@ on:
     paths:
       - "css/adminerva-ui.css"
       - "js/core/adminerva-nav.js"
+      - "js/core/account-context-switcher.mjs"
       - "js/core/adminerva-loader.js"
       - "js/core/release-footer.js"
       - "js/core/owner-school-registry.mjs"
@@ -41,6 +42,11 @@ jobs:
                   r'navigation-ia\.mjs\?v=[^"\']+',
                   f'navigation-ia.mjs?v={version}',
                   text
+              )
+              updated=re.sub(
+                  r'account-context-switcher\.mjs\?v=[^"\']+',
+                  f'account-context-switcher.mjs?v={version}',
+                  updated
               )
               if updated!=text:
                   nav.write_text(updated,encoding="utf-8")
