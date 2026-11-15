@@ -240,9 +240,12 @@ function inferAssessmentProjectSetup(task={}){
   if(/\bpython\b/.test(text))return {templateId:"python-console",config:{runMode:"console",database:false}};
   if(/\b(html|css|javascript|web app|web page|website)\b/.test(text))
     return {templateId:"web",config:{runMode:"web",database:false}};
-  const database=/\b(database|sql|jdbc|crud|information system|record management)\b/.test(text);
+  const database=/\b(database|sql|jdbc|crud|record management)\b/.test(text);
+  const informationSystem=/\binformation system\b/.test(text);
   const desktop=/\b(swing|gui|graphical user interface|desktop app|desktop application|jframe|jpanel)\b/.test(text);
-  if(database)return {templateId:"java-information",config:{javaVersion:"17",runMode:desktop?"desktop":"desktop",database:true}};
+  if(informationSystem||(database&&desktop))
+    return {templateId:"java-information",config:{javaVersion:"17",runMode:"desktop",database:true}};
+  if(database)return {templateId:"java-blank",config:{javaVersion:"17",runMode:"console",database:true}};
   if(desktop)return {templateId:"java-desktop",config:{javaVersion:"17",runMode:"desktop",database:false}};
   return {templateId:"java-blank",config:{javaVersion:"17",runMode:"console",database:false}};
 }
