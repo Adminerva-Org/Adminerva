@@ -2,24 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Verified School Gradebook · Adminerva</title><link rel="preconnect" href="https://www.gstatic.com" crossorigin><link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
+  <title>Assessment Review & Results · Adminerva</title><link rel="preconnect" href="https://www.gstatic.com" crossorigin><link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="css/adminerva-ui.css?v=20261115-nav1"><link rel="stylesheet" href="css/teacher-ux.css?v=20261115-nav1">
 </head>
 <body id="pageBody" class="av-teacher-refresh hidden bg-slate-50 min-h-screen text-slate-900">
-<div id="adminerva-nav" data-module="assessment" data-page="system-evaluation"></div>
+<div id="adminerva-nav" data-module="assessment" data-page="assessment-review"></div>
 <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
   <header class="mb-5 rounded-2xl bg-slate-900 text-white p-5 sm:p-7">
     <p class="text-xs uppercase tracking-widest font-bold text-cyan-300">Verified school workflow</p>
-    <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Review &amp; Grade</h1>
-    <p class="text-sm text-slate-200 mt-2 max-w-3xl">Review immutable Studio or GitHub evidence, save a private rubric draft, and publish only against the exact current student submission.</p>
+    <h1 id="gbV4PageTitle" class="text-2xl sm:text-3xl font-extrabold mt-1">Review &amp; Grade</h1>
+    <p id="gbV4PageDescription" class="text-sm text-slate-200 mt-2 max-w-3xl">Review immutable written responses, links, Studio projects or GitHub evidence; save a private rubric draft; and publish only against the exact current student submission.</p>
+    <nav class="mt-4 flex flex-wrap gap-2 text-sm font-bold" aria-label="Assessment workflow views">
+      <a href="school-gradebook.html?view=submissions" class="rounded-lg border border-slate-600 px-3 py-2 hover:bg-slate-800">Submissions</a>
+      <a href="school-gradebook.html?view=review" class="rounded-lg border border-slate-600 px-3 py-2 hover:bg-slate-800">Review &amp; Grade</a>
+      <a href="school-gradebook.html?view=results" class="rounded-lg border border-slate-600 px-3 py-2 hover:bg-slate-800">Assessment Results</a>
+    </nav>
   </header>
 
   <section id="gbV4Panel" class="hidden rounded-2xl border border-indigo-200 bg-white shadow-sm overflow-hidden" aria-labelledby="gbV4Heading">
     <div class="p-4 sm:p-5 border-b border-slate-200 bg-indigo-50/60">
       <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-        <div><p class="text-xs font-extrabold uppercase tracking-wider text-indigo-700">School-scoped Gradebook</p>
-          <h2 id="gbV4Heading" class="text-xl font-extrabold text-slate-900 mt-1">Assessment evidence &amp; grading</h2>
+        <div><p class="text-xs font-extrabold uppercase tracking-wider text-indigo-700">School-scoped assessment workflow</p>
+          <h2 id="gbV4Heading" class="text-xl font-extrabold text-slate-900 mt-1">Submissions, review &amp; results</h2>
           <p class="text-sm text-slate-600 mt-1 max-w-2xl">Only assessments you own and course offerings you are currently assigned to teach are available.</p></div>
         <div id="gbV4SchoolSwitcher" hidden class="w-full lg:w-auto lg:min-w-[220px]"></div>
       </div>
@@ -29,7 +34,7 @@
         </label>
         <button id="gbV4Refresh" type="button" class="rounded-lg border border-indigo-300 bg-white text-indigo-800 font-bold px-4 py-2.5">Refresh submissions</button>
       </div>
-      <p id="gbV4Status" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Checking verified school Gradebook access…</p>
+      <p id="gbV4Status" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Checking verified school assessment access…</p>
     </div>
     <div id="gbV4Inbox" class="p-4 sm:p-5 grid gap-3"></div>
   </section>
@@ -64,6 +69,16 @@
             </label>
             <button id="gbV4GithubApprove" type="button" class="mt-3 rounded-lg bg-emerald-700 text-white font-bold px-4 py-2.5">Approve exact evidence version</button>
           </div>
+        </section>
+
+        <section id="gbV4GeneralEvidence" class="hidden rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div><h3 id="gbV4GeneralHeading" class="font-extrabold text-slate-900">Frozen assessment response</h3>
+              <p id="gbV4GeneralMeta" class="text-xs text-slate-600 mt-1"></p></div>
+            <a id="gbV4GeneralLink" class="hidden text-sm font-bold text-indigo-700 underline break-all" target="_blank" rel="noopener noreferrer">Open submitted link ↗</a>
+          </div>
+          <div id="gbV4GeneralBody" class="mt-3 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-800 whitespace-pre-wrap break-words"></div>
+          <div id="gbV4GeneralNote" class="hidden mt-3 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-700 whitespace-pre-wrap"></div>
         </section>
 
         <section>
@@ -113,5 +128,5 @@
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script defer src="js/core/adminerva-nav.js?v=20261115-nav1"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=7e7f869272e4"></script>
-<script type="module" src="js/repo-review/v4-gradebook.mjs?v=4.1.1"></script>
+<script type="module" src="js/repo-review/v4-gradebook.mjs?v=4.2.0"></script>
 </body></html>
