@@ -64,7 +64,7 @@
         <div class="pa-card"><span class="pa-muted">Staff assignments</span><span class="pa-count" id="pa-staff-count">—</span></div>
         <div class="pa-card"><span class="pa-muted">Invitations (all states)</span><span class="pa-count" id="pa-invite-count">—</span></div>
       </div>
-      <p class="pa-muted">Counts reflect only this verified school. Historical migration records are not shown until approved and imported.</p>
+      <p class="pa-muted">Counts reflect only this verified school. Previous MCS roster/access data can be reviewed and consolidated below without deleting the legacy source records.</p>
       <section style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid #cbd5e1">
         <div style="display:flex;gap:.75rem;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">
           <div>
@@ -81,6 +81,42 @@
         </div>
         <div id="pa-reconcile-results" role="list" aria-live="polite"></div>
         <p id="pa-reconcile-status" class="pa-muted" role="status" aria-live="polite">Loading school relationship checks…</p>
+      </section>
+
+      <section id="pa-legacy-panel" hidden style="margin-top:1.25rem;padding-top:1rem;border-top:1px solid #cbd5e1">
+        <div style="display:flex;gap:.75rem;align-items:flex-start;justify-content:space-between;flex-wrap:wrap">
+          <div style="max-width:720px">
+            <h3 style="font-size:1.05rem;font-weight:750">Legacy directory consolidation</h3>
+            <p class="pa-muted">Adopt the previous MCS student roster and teacher access into the school-wide People → Memberships → Classes model. This is non-destructive: existing school-wide records, suspensions and School Administrator grants take precedence.</p>
+          </div>
+          <button id="pa-legacy-preview" type="button" class="pa-action" style="background:#475569">Preview legacy data</button>
+        </div>
+        <div class="pa-cards" style="margin-top:.75rem">
+          <div class="pa-card"><span class="pa-muted">Legacy student rows</span><span class="pa-count" id="pa-legacy-students">—</span></div>
+          <div class="pa-card"><span class="pa-muted">Legacy staff rows</span><span class="pa-count" id="pa-legacy-staff">—</span></div>
+          <div class="pa-card"><span class="pa-muted">Verified accounts</span><span class="pa-count" id="pa-legacy-verified">—</span></div>
+          <div class="pa-card"><span class="pa-muted">People without account link</span><span class="pa-count" id="pa-legacy-unlinked">—</span></div>
+          <div class="pa-card"><span class="pa-muted">People to create</span><span class="pa-count" id="pa-legacy-people">—</span></div>
+          <div class="pa-card"><span class="pa-muted">Membership changes</span><span class="pa-count" id="pa-legacy-memberships">—</span></div>
+          <div class="pa-card"><span class="pa-muted">Enrollment candidates</span><span class="pa-count" id="pa-legacy-enrollments">—</span></div>
+          <div class="pa-card"><span class="pa-muted">Teacher assignments</span><span class="pa-count" id="pa-legacy-assignments">—</span></div>
+        </div>
+        <div class="pa-card" style="margin:.75rem 0">
+          <span class="pa-muted">Items requiring review</span><span class="pa-count" id="pa-legacy-issues">—</span>
+          <div id="pa-legacy-results" role="list" aria-live="polite" style="margin-top:.5rem"></div>
+        </div>
+        <label>Consolidation reason
+          <input id="pa-legacy-reason" class="pa-field" minlength="12" maxlength="500" placeholder="Example: Adopt verified 2026–2027 legacy roster and teacher access into the school-wide directory.">
+        </label>
+        <label style="display:flex;gap:.6rem;align-items:flex-start;margin:.25rem 0 1rem">
+          <input id="pa-legacy-confirm-academic" type="checkbox" style="width:20px;height:20px;margin-top:.1rem">
+          <span><strong>I reviewed the section/subject mappings.</strong><br><span class="pa-muted">Required only when also adopting student enrollments and teacher course assignments. Exact school-wide labels are used; unresolved labels are left for manual review.</span></span>
+        </label>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+          <button id="pa-legacy-apply-identities" type="button" class="pa-action" disabled>Adopt people &amp; access</button>
+          <button id="pa-legacy-apply-all" type="button" class="pa-action" style="background:#166534" disabled>Adopt people, access &amp; reviewed classes</button>
+        </div>
+        <p id="pa-legacy-status" class="pa-muted" role="status" aria-live="polite">Preview the previous directory before applying any migration.</p>
       </section>
     </section>
     <section id="pa-people" role="tabpanel" aria-labelledby="pa-tab-people" tabindex="0" hidden>
@@ -302,6 +338,7 @@
 <script src="js/core/adminerva-loader.js?v=1.3.2"></script>
 <script defer src="js/core/adminerva-nav.js?v=072e6a6525fd"></script>
 <script type="module" src="js/core/auth-guard-v4-pilot.js?v=072e6a6525fd"></script>
-<script type="module" src="js/school-admin/people-access.mjs?v=1.0.0"></script>
+<script type="module" src="js/school-admin/legacy-directory-adoption.mjs?v=1.0.0"></script>
+<script type="module" src="js/school-admin/people-access.mjs?v=1.0.1"></script>
 </body>
 </html>
