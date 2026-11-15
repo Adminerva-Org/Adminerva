@@ -44,6 +44,15 @@ function sectionLevel(value){
  if(SPECIAL_SECTION_LEVELS.has(raw))return raw;
  deny("invalid-argument","Choose a valid grade or school level for this section.");
 }
+function optionalShortText(value,label,max=80){
+ const text=typeof value==="string"?value.trim():"";
+ if(!text)return null;
+ if(text.length>max)deny("invalid-argument",label+" cannot exceed "+max+" characters.");
+ return text;
+}
+function isSeniorHighName(value){
+ return /senior high|\bshs\b/i.test(String(value||""));
+}
 function rowKey(...values){
  const checked=values.map(v=>checkId(v,"Key segment",330));
  return createHash("sha256").update(JSON.stringify(checked)).digest("hex");
@@ -158,6 +167,7 @@ function createSchoolAcademicsService({db}) {
    const parentYear=input.yearId?checkId(input.yearId,"Academic year ID"):null,
     parentProgram=input.programId?checkId(input.programId,"Academic program ID"):null,
     gradeLevel=kind==="sections"?sectionLevel(input.gradeLevel):null,
+    pathway=kind==="sections"?optionalShortText(input.pathway,"Track / Strand / Pathway",80):null,
     periodType=kind==="terms"?String(input.periodType||"term").trim().toLowerCase():null,
     sequence=kind==="terms"?Number(input.sequence):null,
     startMonth=kind==="academic_years"?
@@ -182,6 +192,8 @@ function createSchoolAcademicsService({db}) {
      const program=await tx.get(schoolRoot.doc("academic_programs/"+parentProgram));
      if(!program.exists||program.data().schoolId!==ctx.schoolId||program.data().status!=="active")
       deny("failed-precondition","Academic program/division does not exist or is inactive.");
+     if(kind==="sections"&&pathway&&!isSeniorHighName(program.data().name))
+      deny("invalid-argument","Track / Strand / Pathway is only available for Senior High School sections.");
     }
     if(kind==="terms"){
      if(!parentYear)deny("invalid-argument","Academic period requires academic year ID.");
@@ -194,6 +206,7 @@ function createSchoolAcademicsService({db}) {
       yearId:kind==="terms"?parentYear:null,
       programId:["terms","sections"].includes(kind)?parentProgram:null,
       gradeLevel:kind==="sections"?gradeLevel:null,
+      pathway:kind==="sections"?pathway:null,
       periodType:kind==="terms"?periodType:null,sequence:kind==="terms"?sequence:null,
       startMonth:kind==="academic_years"?startMonth:null,
       endMonth:kind==="academic_years"?endMonth:null,
@@ -201,6 +214,69 @@ function createSchoolAcademicsService({db}) {
       endDate:["academic_years","terms"].includes(kind)?endDate:null,
       revision:1,createdByUid:uid,createdAt:now,updatedAt:now});
     tx.create(auditRef,audit("academic_catalog_created",{kind,recordId:itemId}));
+   });
+   return {recordId:itemId,kind,status:"active"};
+  }
+  if(input.action==="update_catalog"){
+   requireAdmin();
+   const kind=input.kind;
+   if(!CATALOG.has(kind))deny("invalid-argument","Unknown academic catalog type.");
+   const itemId=checkId(input.recordId),ref=schoolRoot.doc(kind+"/"+itemId);
+   const name=checkName(input.name),parentYear=input.yearId?checkId(input.yearId,"Academic year ID"):null,
+    parentProgram=input.programId?checkId(input.programId,"Academic program ID"):null,
+    gradeLevel=kind==="sections"?sectionLevel(input.gradeLevel):null,
+    pathway=kind==="sections"?optionalShortText(input.pathway,"Track / Strand / Pathway",80):null,
+    periodType=kind==="terms"?String(input.periodType||"term").trim().toLowerCase():null,
+    sequence=kind==="terms"?Number(input.sequence):null,
+    startMonth=kind==="academic_years"?
+      academicMonth(input.startMonth,DEFAULT_ACADEMIC_YEAR_START_MONTH,"Academic-year start month"):null,
+    endMonth=kind==="academic_years"?
+      academicMonth(input.endMonth,DEFAULT_ACADEMIC_YEAR_END_MONTH,"Academic-year end month"):null,
+    startDate=["academic_years","terms"].includes(kind)?
+      optionalAcademicDate(input.startDate,kind==="academic_years"?"Academic-year start date":"Academic period start date"):null,
+    endDate=["academic_years","terms"].includes(kind)?
+      optionalAcademicDate(input.endDate,kind==="academic_years"?"Academic-year end date":"Academic period end date"):null;
+   if(kind==="terms"&&!PERIOD_TYPES.has(periodType))
+    deny("invalid-argument","Academic period type must be term, semester, quarter, trimester or custom.");
+   if(kind==="terms"&&(!Number.isInteger(sequence)||sequence<1||sequence>12))
+    deny("invalid-argument","Academic period sequence must be between 1 and 12.");
+   if(startDate&&endDate&&startDate>endDate)
+    deny("invalid-argument",(kind==="academic_years"?"Academic year":"Academic period")+" end date must be after its start date.");
+   const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
+   await db.runTransaction(async tx=>{
+    await checkWriteAuthority(tx);
+    const current=await tx.get(ref);
+    if(!current.exists||current.data().schoolId!==ctx.schoolId)
+      deny("not-found","Academic record was not found in this school.");
+    if(kind==="terms"||kind==="sections"){
+      if(!parentProgram)deny("invalid-argument",(kind==="terms"?"Academic period":"Section")+" requires an academic program/division.");
+      const program=await tx.get(schoolRoot.doc("academic_programs/"+parentProgram));
+      if(!program.exists||program.data().schoolId!==ctx.schoolId||program.data().status!=="active")
+        deny("failed-precondition","Academic program/division does not exist or is inactive.");
+      if(kind==="sections"&&pathway&&!isSeniorHighName(program.data().name))
+        deny("invalid-argument","Track / Strand / Pathway is only available for Senior High School sections.");
+    }
+    if(kind==="terms"){
+      if(!parentYear)deny("invalid-argument","Academic period requires academic year ID.");
+      const year=await tx.get(schoolRoot.doc("academic_years/"+parentYear));
+      if(!year.exists||year.data().schoolId!==ctx.schoolId||year.data().status!=="active")
+        deny("failed-precondition","Academic year does not exist or is inactive in this school.");
+    }
+    const now=FieldValue.serverTimestamp();
+    tx.update(ref,{
+      name,
+      yearId:kind==="terms"?parentYear:null,
+      programId:["terms","sections"].includes(kind)?parentProgram:null,
+      gradeLevel:kind==="sections"?gradeLevel:null,
+      pathway:kind==="sections"?pathway:null,
+      periodType:kind==="terms"?periodType:null,sequence:kind==="terms"?sequence:null,
+      startMonth:kind==="academic_years"?startMonth:null,
+      endMonth:kind==="academic_years"?endMonth:null,
+      startDate:["academic_years","terms"].includes(kind)?startDate:null,
+      endDate:["academic_years","terms"].includes(kind)?endDate:null,
+      revision:(Number(current.data().revision)||1)+1,updatedByUid:uid,updatedAt:now
+    });
+    tx.create(auditRef,audit("academic_catalog_updated",{kind,recordId:itemId}));
    });
    return {recordId:itemId,kind,status:"active"};
   }
@@ -212,6 +288,7 @@ function createSchoolAcademicsService({db}) {
    return {items:snap.docs.map(doc=>({id:doc.id,name:doc.data().name,
     yearId:doc.data().yearId,programId:doc.data().programId,
     gradeLevel:kind==="sections"?(doc.data().gradeLevel||null):null,
+    pathway:kind==="sections"?(doc.data().pathway||null):null,
     periodType:doc.data().periodType,sequence:doc.data().sequence,
     startMonth:kind==="academic_years"?
       academicMonth(doc.data().startMonth,DEFAULT_ACADEMIC_YEAR_START_MONTH,"Academic-year start month"):null,
