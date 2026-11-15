@@ -28,7 +28,18 @@ const {createLegacyLessonRecovery,createLegacySchoolSetup}=require("./legacy-les
 const legacyRecovery=createLegacyLessonRecovery({db,FieldValue,resolveUserByEmail:email=>getAuth().getUserByEmail(email)});
 const legacySetup=createLegacySchoolSetup({db,FieldValue,resolveUserByEmail:email=>getAuth().getUserByEmail(email)});
 const callOptions={region:"asia-southeast1",maxInstances:3,concurrency:10,timeoutSeconds:120,cors:["https://adminerva-org.github.io","https://reporeview-e7ca4.web.app","https://reporeview-e7ca4.firebaseapp.com"]};
-function safeCallable(handler){return async request=>{try{return await handler(request);}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
+const PLATFORM_PREVIEW_MUTATION=/^(create|update|delete|archive|publish|unpublish|save|set|assign|grant|revoke|suspend|restore|import|deploy|submit|grade|approve|reject|reopen|close|start|end|activate|record|apply|write|link|unlink|accept|invite|enroll|remove|add|sync|finalize|release|lock|unlock|mark|request|cancel|reset|clear|purge|migrate|adopt)/i;
+async function rejectPlatformPreviewMutation(request,{allowPlatformSchoolWrites=false}={}){
+  if(allowPlatformSchoolWrites)return;
+  const uid=request?.auth?.uid,schoolId=String(request?.data?.schoolId||"").trim(),
+    action=String(request?.data?.action||"").trim();
+  if(!uid||!schoolId||!action||!PLATFORM_PREVIEW_MUTATION.test(action))return;
+  const platform=await db.doc("platform_admins/"+uid).get(),data=platform.exists?platform.data():null;
+  if(data?.status==="active"&&data?.role==="platform_admin")
+    throw new HttpsError("failed-precondition",
+      "System Admin role test is temporary. This school change was not saved. Exit role test to perform platform-level administration.");
+}
+function safeCallable(handler,options={}){return async request=>{try{await rejectPlatformPreviewMutation(request,options);return await handler(request);}catch(error){const allowed=["unauthenticated","permission-denied","invalid-argument","failed-precondition","resource-exhausted","unavailable","not-found","already-exists"];if(allowed.includes(error.code))throw new HttpsError(error.code,error.message);console.error("Staff request failed",{code:error.code||"internal"});throw new HttpsError("unavailable","This request could not finish. Your existing work is preserved; retry shortly.");}};}
 async function legacyMcsCompatibilityAllowed(){
   const school=await db.doc("platform_schools/mcs-manila").get();
   return !school.exists||school.data().compatibilityMode!=="v4_only";
@@ -101,7 +112,7 @@ const {createSchoolReclaimService}=require("./school-reclaims.js");
 exports.schoolReclaims=onCall(callOptions,safeCallable(createSchoolReclaimService({db})));
 exports.acceptSchoolInvitation=onCall(callOptions,safeCallable(createInvitationAcceptanceService({db})));
 const {createPlatformSchoolService}=require("./platform-schools.js");
-exports.platformSchools=onCall(callOptions,safeCallable(createPlatformSchoolService({db})));
+exports.platformSchools=onCall(callOptions,safeCallable(createPlatformSchoolService({db}),{allowPlatformSchoolWrites:true}));
 const {createMcsPilotControlService}=require("./mcs-pilot-control.js");
 exports.mcsPilotControl=onCall(callOptions,safeCallable(createMcsPilotControlService({db,auth:getAuth()})));
 const {createSchoolSupportService}=require("./school-support.js");
