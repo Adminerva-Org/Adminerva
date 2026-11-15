@@ -2,7 +2,7 @@
 export const PRACTICE_SEASON="practice-2026-10";
 export const DIFFICULTIES=[{name:"Starter",maximum:20,deduction:2,floor:10},{name:"Standard",maximum:30,deduction:3,floor:15},{name:"Challenge",maximum:40,deduction:4,floor:20}];
 export const ACTIVITY_TYPES=["choice","output","ordering","matching","debugging"];
-export function missionMeta(course,mission){const index=course.missions.findIndex(item=>item.id===mission.id);return {...DIFFICULTIES[Math.max(0,index)%3],type:ACTIVITY_TYPES[Math.max(0,index)%5]};}
+export function missionMeta(course,mission){const index=course.missions.findIndex(item=>item.id===mission.id);return {...DIFFICULTIES[Math.max(0,index)%3],type:mission.arcadeType||ACTIVITY_TYPES[Math.max(0,index)%5]};}
 function rotate(items,seed){const shift=Math.abs(seed)%items.length;return [...items.slice(shift),...items.slice(0,shift)];}
 function workspace(language,code){const java=language==="java",filename=java?"Main.java":language==="web"?"index.html":"main.py",content=java?"public class Main { public static void main(String[] args) {\n"+code+"\n}}":code;return {lang:language,files:{[filename]:content},fileOrder:[filename],activeFilename:filename};}
 function javaFile(content){return {lang:"java",files:{"Main.java":content},fileOrder:["Main.java"],activeFilename:"Main.java"};}
