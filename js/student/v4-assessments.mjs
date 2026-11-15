@@ -17,10 +17,14 @@ function node(tag,className,text){
   return item;
 }
 function date(value){return value?new Date(value).toLocaleString():"—";}
+function sourceLabel(source,task={}){
+  return ({text:"Written response",link:"Submission link",studio:task.personalizedTask?.enabled===true?"Personalized Adminerva Studio":"Adminerva Studio",github:"GitHub / repository evidence"})[source]||"Assessment response";
+}
 if(panel&&list&&status&&schoolHost){
   const functions=getFunctions(app,"asia-southeast1");
   const assessmentsApi=httpsCallable(functions,"schoolAssessments");
   const submissionsApi=httpsCallable(functions,"schoolStudioSubmissions");
+  const generalSubmissionsApi=httpsCallable(functions,"schoolAssessmentSubmissions");
   const gradebookApi=httpsCallable(functions,"schoolGradebook");
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
   const reclaimsApi=httpsCallable(functions,"schoolReclaims");
@@ -72,7 +76,7 @@ if(panel&&list&&status&&schoolHost){
       const statuses=new Map();
       await Promise.all(tasks.map(async task=>{
         try{
-          const api=task.submissionSource==="github"?githubEvidenceApi:submissionsApi;
+          const api=task.submissionSource==="github"?githubEvidenceApi:task.submissionSource==="studio"?submissionsApi:generalSubmissionsApi;
           statuses.set(task.taskId,await scoped(scope,api,"my_status",{taskId:task.taskId}));
         }catch(error){
           statuses.set(task.taskId,{error:error?.message||"Status unavailable"});
@@ -95,8 +99,7 @@ if(panel&&list&&status&&schoolHost){
         identity.append(
           node("h3","font-extrabold text-slate-900",task.title),
           node("p","text-xs text-slate-500 mt-1",
-            "Due "+date(task.dueAt)+" · "+(task.submissionSource==="studio"?
-              (task.personalizedTask?.enabled===true?"Personalized Adminerva Studio":"Adminerva Studio"):"GitHub evidence"))
+            "Due "+date(task.dueAt)+" · "+sourceLabel(task.submissionSource,task))
         );
         const badge=node("span","self-start rounded-full px-3 py-1 text-xs font-bold "+state.className,state.label);
         top.append(identity,badge);article.append(top);
@@ -148,6 +151,14 @@ if(panel&&list&&status&&schoolHost){
             repoLink.href="https://github.com/"+submission.repository;repoLink.target="_blank";repoLink.rel="noopener noreferrer";
             actions.append(repoLink);
           }
+        }else if(["text","link"].includes(task.submissionSource)){
+          const canEdit=!submission?.submitted||submission.status==="reopened";
+          const responseButton=node("button",
+            "rounded-lg px-4 py-2.5 text-sm font-bold "+(canEdit?"bg-indigo-700 text-white":"border border-slate-300 text-slate-600"),
+            canEdit?(submission?.status==="reopened"?"Revise response":"Open response editor"):"Response submitted");
+          responseButton.type="button";responseButton.disabled=!canEdit;
+          if(canEdit)responseButton.addEventListener("click",()=>openGeneralSubmission(task,submission));
+          actions.append(responseButton);
         }
         if(actions.children.length)article.append(actions);
         list.append(article);
@@ -159,6 +170,62 @@ if(panel&&list&&status&&schoolHost){
         "No school assignment data was changed. Retry when the verified-school service is available."));
     }
   }
+  const generalDialog=document.getElementById("v4GeneralSubmissionDialog");
+  const generalForm=document.getElementById("v4GeneralSubmissionForm");
+  const generalStatus=document.getElementById("v4GeneralSubmissionStatus");
+  let generalTask=null,generalTaskStatus=null,generalBusy=false;
+
+  function openGeneralSubmission(task,current){
+    generalTask=task;generalTaskStatus=current||null;
+    const isLink=task.submissionSource==="link";
+    document.getElementById("v4GeneralSubmissionType").textContent=sourceLabel(task.submissionSource,task);
+    document.getElementById("v4GeneralSubmissionTitle").textContent=task.title;
+    document.getElementById("v4GeneralSubmissionMeta").textContent=
+      "Due "+date(task.dueAt)+" · version "+(current?.version||0);
+    document.getElementById("v4TextResponseFields").classList.toggle("hidden",isLink);
+    document.getElementById("v4LinkResponseFields").classList.toggle("hidden",!isLink);
+    document.getElementById("v4TextResponse").value=current?.payload?.response||"";
+    document.getElementById("v4LinkResponseUrl").value=current?.payload?.url||"";
+    document.getElementById("v4LinkResponseNote").value=current?.payload?.note||"";
+    const notice=document.getElementById("v4GeneralRevisionNotice");
+    notice.classList.toggle("hidden",current?.status!=="reopened");
+    notice.textContent=current?.status==="reopened"
+      ?"Teacher revision request: "+(current.requestMessage||"Revise and resubmit this response.")+
+        (current.revisionDueAt?" · Extension deadline: "+date(current.revisionDueAt):""):"";
+    generalStatus.textContent=current?.status==="reopened"?
+      "Edit the prior frozen response and submit a new immutable version.":
+      "Your response becomes read-only after submission unless your teacher requests a revision.";
+    generalDialog.showModal();
+  }
+  function closeGeneralSubmission(){
+    if(generalBusy)return;
+    generalDialog.close();generalTask=null;generalTaskStatus=null;
+  }
+  document.getElementById("v4GeneralSubmissionClose").addEventListener("click",closeGeneralSubmission);
+  document.getElementById("v4GeneralSubmissionCancel").addEventListener("click",closeGeneralSubmission);
+  generalForm.addEventListener("submit",event=>void (async()=>{
+    event.preventDefault();
+    if(generalBusy||!generalTask||!picker?.scope.current)return;
+    const source=generalTask.submissionSource;
+    const details=source==="text"?
+      {response:document.getElementById("v4TextResponse").value}:
+      {url:document.getElementById("v4LinkResponseUrl").value,note:document.getElementById("v4LinkResponseNote").value};
+    if(!confirm("Submit this frozen "+sourceLabel(source,generalTask).toLowerCase()+" for \""+generalTask.title+"\"? Changes require a teacher revision request after submission."))return;
+    generalBusy=true;
+    const submit=document.getElementById("v4GeneralSubmissionSubmit");
+    submit.disabled=true;generalStatus.textContent="Freezing your assessment response…";
+    try{
+      const receipt=await scoped(picker.scope,generalSubmissionsApi,"submit",{taskId:generalTask.taskId,...details});
+      generalStatus.textContent=receipt.alreadyExisted?
+        "This exact response was already submitted. No duplicate version was created.":
+        "Response submitted as frozen version "+receipt.version+".";
+      generalDialog.close();generalTask=null;generalTaskStatus=null;
+      await render(picker.scope);
+    }catch(error){
+      generalStatus.textContent=error?.message||"Assessment response was not submitted.";
+    }finally{generalBusy=false;submit.disabled=false;}
+  })());
+
   const ghDialog=document.getElementById("v4GithubEvidenceDialog");
   const ghRepository=document.getElementById("v4GithubRepository");
   const ghList=document.getElementById("v4GithubCommitList");
@@ -397,7 +464,7 @@ if(panel&&list&&status&&schoolHost){
       host:schoolHost,status:null,
       onReady:scope=>void render(scope),
       onBeforeChange:async()=>{
-        if(githubBusy||ghDialog.open)throw Error("Close the GitHub evidence editor before switching schools.");
+        if(githubBusy||generalBusy||ghDialog.open||generalDialog.open)throw Error("Close the open assessment editor before switching schools.");
         renderGeneration++;list.replaceChildren();
         status.textContent="Switching verified school…";
       }
