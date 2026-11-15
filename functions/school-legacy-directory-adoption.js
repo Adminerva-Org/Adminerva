@@ -128,6 +128,8 @@ async function buildModel({db,resolveUserByEmail,ctx}){
     }
   });
   const resolved=new Map(resolvedPairs);
+  const verifiedEmailByUid=new Map([...resolved.values()].filter(Boolean)
+    .map(user=>[user.uid,normalizeEmail(user.email)]).filter(([,email])=>Boolean(email)));
 
   const peopleById=new Map(people.map(row=>[row.id,row.data]));
   const peopleByUid=new Map();
@@ -194,7 +196,21 @@ async function buildModel({db,resolveUserByEmail,ctx}){
           "This account is already linked to multiple school person records.",{targetUid:group.uid});
       }else if(linked.length===1){
         personId=linked[0].id;existingPerson=linked[0].data;
-      }else personId=stablePersonId(group.uid);
+      }else if(kind){
+        const stableId=stablePersonId(group.uid),email=verifiedEmailByUid.get(group.uid);
+        const importedId=email?"imp_"+sha(kind+"\0email:"+email).slice(0,40):null;
+        const stablePerson=peopleById.get(stableId)||null,importedPerson=importedId?peopleById.get(importedId)||null:null;
+        if(stablePerson&&importedPerson&&stableId!==importedId){
+          blocked=true;personId=stableId;existingPerson=stablePerson;
+          addIssue(issues,"duplicate_person_identity_candidates","integrity",group.names[0],
+            "Both a previous migration person and a roster-import person match this verified account. Merge/review them before granting access.",
+            {personId:stableId,targetUid:group.uid,alternatePersonId:importedId});
+        }else if(importedPerson){
+          personId=importedId;existingPerson=importedPerson;
+        }else{
+          personId=stableId;existingPerson=stablePerson;
+        }
+      }
     }else if(kind){
       const sourceId=(kind==="student"?group.studentRows[0]?.id:group.staffRows[0]?.id)||group.key;
       personId=legacyPersonId(kind,sourceId);
@@ -528,8 +544,20 @@ function createSchoolLegacyDirectoryAdoptionService({db,resolveUserByEmail}){
            normalizeEmail(account.email)!==initialEmail)
           deny("failed-precondition","Approval requires the same enabled, verified Firebase account as the legacy request.");
       }
-      const personId=decision==="approved"?stablePersonId(targetUid):null;
-      const personRef=personId?db.doc("schools/"+ctx.schoolId+"/people/"+personId):null;
+      let personId=null,personRef=null;
+      if(decision==="approved"){
+        const kind=role==="student"?"student":"staff";
+        const stableId=stablePersonId(targetUid);
+        const importedId="imp_"+sha(kind+"\0email:"+initialEmail).slice(0,40);
+        const [stablePerson,importedPerson]=await Promise.all([
+          db.doc("schools/"+ctx.schoolId+"/people/"+stableId).get(),
+          db.doc("schools/"+ctx.schoolId+"/people/"+importedId).get()
+        ]);
+        if(stablePerson.exists&&importedPerson.exists&&stableId!==importedId)
+          deny("failed-precondition","Both a migrated and imported school person match this account. Resolve the duplicate before approving access.");
+        personId=importedPerson.exists?importedId:stableId;
+        personRef=db.doc("schools/"+ctx.schoolId+"/people/"+personId);
+      }
       const memberRef=personId?db.doc("schools/"+ctx.schoolId+"/memberships/"+targetUid):null;
       const indexRef=personId?db.doc("platform_users/"+targetUid+"/memberships/"+ctx.schoolId):null;
       const auditRef=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
