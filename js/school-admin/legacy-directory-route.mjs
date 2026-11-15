@@ -14,7 +14,8 @@ function redirect(){
   location.replace(url.href);
 }
 await auth.authStateReady();
-if(auth.currentUser){
+const recoveryOnly=location.pathname.endsWith("/teacher-accounts.html")&&location.hash==="#legacy-recovery";
+if(auth.currentUser&&!recoveryOnly){
   try{
     const preferred=sessionStorage.getItem("Adminerva_last_verified_school_"+auth.currentUser.uid)||null;
     const response=(await api({preferredSchoolId:preferred})).data||{};
