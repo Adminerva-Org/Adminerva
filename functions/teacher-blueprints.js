@@ -44,6 +44,9 @@ function reusableContent(input) {
   return {title,description,instructions,rubric:criteria,
     personalization:personalizationContent(input.personalization)};
 }
+function privateCheckingContent(input={}) {
+  return cleanText(input?.checkingInstructions||"",8000,"Teacher checking instructions");
+}
 function blueprintFingerprint(data){
   const value=reusableContent(data),personalization=value.personalization||{};
   const stable={...value,personalization:{
@@ -80,6 +83,7 @@ function serialize(doc,access) {
     creatorUid:data.creatorUid,visibility:data.visibility,
     title:data.title,description:data.description,instructions:data.instructions,
     rubric:data.rubric,personalization:personalizationContent(data.personalization),
+    checkingInstructions:(access.uid===data.ownerUid||access.platformOverride===true)?String(data.checkingInstructions||""):"",
     contentRevision:data.contentRevision,aclRevision:data.aclRevision,
     copiedFrom:data.copiedFrom||null,
     legacyImport:data.legacyImport||null,
@@ -212,14 +216,14 @@ function createTeacherBlueprintService({db}) {
       return {teachers,truncated:snap.size===101};
     }
     if(action==="create") {
-      const fields=reusableContent(input.blueprint);
+      const fields=reusableContent(input.blueprint),checkingInstructions=privateCheckingContent(input.blueprint);
       const ref=collection.doc();
       const now=FieldValue.serverTimestamp();
       await db.runTransaction(async tx=>{
         assertCurrentTeacher(await tx.get(selfMemberRef));
         assertCurrentSchool(await tx.get(schoolRef));
         tx.create(ref,{
-          ...fields,schoolId:ctx.schoolId,creatorUid:ctx.uid,ownerUid:ctx.uid,
+          ...fields,checkingInstructions,schoolId:ctx.schoolId,creatorUid:ctx.uid,ownerUid:ctx.uid,
           visibility:"private",sharedWithUids:[],status:"draft",
           contentRevision:1,aclRevision:1,createdAt:now,updatedAt:now
         });
@@ -251,6 +255,7 @@ function createTeacherBlueprintService({db}) {
       if(!Number.isInteger(expectedRevision)||expectedRevision<1)
         deny("invalid-argument","The current assessment revision is required.");
       const fields=action==="update"?reusableContent(input.blueprint):null;
+      const checkingInstructions=action==="update"?privateCheckingContent(input.blueprint):null;
       const auditRef=db.collection("schools/"+ctx.schoolId+"/resource_audit").doc();
       await db.runTransaction(async tx=>{
         const original=await tx.get(ref);
@@ -264,7 +269,7 @@ function createTeacherBlueprintService({db}) {
         if(original.data().contentRevision!==expectedRevision)
           deny("failed-precondition","This assessment has changed. Reload it before saving.");
         const now=FieldValue.serverTimestamp();
-        tx.update(ref,fields?{...fields,contentRevision:expectedRevision+1,updatedAt:now}
+        tx.update(ref,fields?{...fields,checkingInstructions,contentRevision:expectedRevision+1,updatedAt:now}
           :{status:"archived",contentRevision:expectedRevision+1,updatedAt:now});
         tx.create(auditRef,{schoolId:ctx.schoolId,resourceId:id,actorUid:ctx.uid,
           action,contentRevision:expectedRevision+1,createdAt:now});
