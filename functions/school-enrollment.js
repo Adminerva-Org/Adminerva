@@ -1,13 +1,10 @@
 "use strict";
 /**
- * Standard student enrollment / registration service.
+ * School-scoped Enrollment & Registration.
  *
- * Phase 1 is intentionally School Administrator operated. The records and
- * actions are school-scoped so a future Registrar role can assume this module
- * without changing the student identity or academic enrollment model.
- *
- * This service is enabled only for Manila Cathedral School standard v4
- * provisioning. It does not touch the legacy-compatible mcs-manila pilot.
+ * School Admin operates this during the current phase; the record model is
+ * intentionally registrar-ready. Online applicants and onsite/manual entries
+ * converge here before official student/person/class records are created.
  */
 const {FieldValue}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
@@ -15,6 +12,8 @@ const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rosterEmailHash,normalizedRosterEmail}=require("./school-roster-identity.js");
 
 const STANDARD_MCS_SCHOOL_ID="manila-cathedral-school";
+const EMAIL_TYPES=new Set(["personal","institutional"]);
+const APPLICATION_REVIEW_STATUSES=new Set(["needs_information","rejected"]);
 
 function deny(code,message){throw new TenantAccessError(code,message)}
 function checkId(value,label="Identifier",max=330){
@@ -33,6 +32,26 @@ function optionalText(value,max=80){
   if(out.length>max)deny("invalid-argument","Optional student information is too long.");
   return out||null;
 }
+function normalizedEmail(value,label,required=true){
+  const out=typeof value==="string"?value.trim().toLowerCase():"";
+  if(!out&&!required)return null;
+  if(!out||out.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(out))
+    deny("invalid-argument","Enter a valid "+label.toLowerCase()+".");
+  return out;
+}
+function academicDate(value,label){
+  const out=text(value,label,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(out))deny("invalid-argument",label+" must use YYYY-MM-DD.");
+  const parsed=new Date(out+"T00:00:00Z");
+  if(Number.isNaN(parsed.getTime())||parsed.toISOString().slice(0,10)!==out||parsed.getTime()>=Date.now())
+    deny("invalid-argument","Enter a valid "+label.toLowerCase()+" in the past.");
+  return out;
+}
+function gradeRequiresStudentEmail(level){
+  const raw=String(level||"").trim().toLowerCase();
+  if(raw==="sned_jhs")return true;
+  return /^\d+$/.test(raw)&&Number(raw)>=7;
+}
 function key(...parts){
   return createHash("sha256").update(JSON.stringify(parts)).digest("hex");
 }
@@ -43,6 +62,14 @@ function legacyImportPersonId(email){
 function standardSchool(data){
   return data?.compatibilityMode==="v4_only" &&
     (data?.provisioningMode||"standard")==="standard";
+}
+function publicReference(applicationId){
+  return "MCS-"+String(applicationId||"").slice(0,10).toUpperCase();
+}
+function guardianPersonId({displayName,birthDate,guardianEmail}){
+  return "reg_"+createHash("sha256")
+    .update(["guardian-managed",displayName.toLowerCase(),birthDate,guardianEmail].join("\0"))
+    .digest("hex").slice(0,40);
 }
 
 function createSchoolEnrollmentService({db}){
@@ -92,6 +119,49 @@ function createSchoolEnrollmentService({db}){
       };
     }
 
+    if(input.action==="list_applications"){
+      const snap=await db.collection(root+"enrollment_applications").limit(201).get();
+      if(snap.size===201)deny("resource-exhausted","Enrollment application queue requires pagination.");
+      const items=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId).map(doc=>({
+        applicationId:doc.id,reference:publicReference(doc.id),
+        applicationType:doc.data().applicationType||"new",
+        displayName:doc.data().displayName||"Student",
+        birthDate:doc.data().birthDate||"",incomingLevel:doc.data().incomingLevel||"",
+        yearId:doc.data().yearId||"",preferredProgramId:doc.data().preferredProgramId||"",
+        guardianName:doc.data().guardianName||"",guardianRelationship:doc.data().guardianRelationship||"",
+        guardianEmail:doc.data().guardianEmail||"",guardianMobile:doc.data().guardianMobile||"",
+        studentEmail:doc.data().studentEmail||"",studentEmailType:doc.data().studentEmailType||"",
+        studentEmailRequired:Boolean(doc.data().studentEmailRequired),
+        source:doc.data().source||"online",status:doc.data().status||"submitted",
+        reviewReason:doc.data().reviewReason||"",
+        updatedAt:doc.data().updatedAt?.toMillis?.()||doc.data().createdAt?.toMillis?.()||0
+      }));
+      items.sort((a,b)=>b.updatedAt-a.updatedAt||a.displayName.localeCompare(b.displayName));
+      return {items};
+    }
+
+    if(input.action==="review_application"){
+      const applicationId=checkId(input.applicationId,"Application ID",128);
+      const status=String(input.status||"").trim().toLowerCase();
+      if(!APPLICATION_REVIEW_STATUSES.has(status))
+        deny("invalid-argument","Choose Needs information or Rejected.");
+      const reason=text(input.reason,"Review reason",500);
+      if(reason.length<8)deny("invalid-argument","Explain the enrollment review decision.");
+      const ref=db.doc(root+"enrollment_applications/"+applicationId);
+      await db.runTransaction(async tx=>{
+        await requireCurrentAdmin(tx);
+        const application=await tx.get(ref);
+        if(!application.exists||application.data().schoolId!==ctx.schoolId)
+          deny("not-found","Enrollment application was not found.");
+        if(["enrolled","withdrawn"].includes(application.data().status))
+          deny("failed-precondition","This application already has a final enrollment state.");
+        tx.update(ref,{status,reviewReason:reason,reviewedByUid:ctx.uid,
+          reviewedAt:FieldValue.serverTimestamp(),updatedAt:FieldValue.serverTimestamp(),
+          revision:(Number(application.data().revision)||1)+1});
+      });
+      return {applicationId,status};
+    }
+
     if(input.action==="list_registrations"){
       const snap=await db.collection(root+"student_registrations").orderBy("displayName").limit(201).get();
       if(snap.size===201)deny("resource-exhausted","Enrollment list requires pagination.");
@@ -102,31 +172,37 @@ function createSchoolEnrollmentService({db}){
         status:doc.data().status||"active",
         yearId:doc.data().yearId,programId:doc.data().programId,
         termId:doc.data().termId,sectionId:doc.data().sectionId,
+        gradeLevel:doc.data().gradeLevel||null,
         courseCount:Number(doc.data().courseCount)||0,
-        accountLinked:Boolean(doc.data().accountLinked)
+        accountLinked:Boolean(doc.data().accountLinked),
+        accountResponsibility:doc.data().accountResponsibility||"student",
+        guardianEmail:doc.data().guardianEmail||"",
+        source:doc.data().source||"onsite"
       }))};
     }
 
     if(input.action==="register_student"){
       const displayName=text(input.displayName,"Student name",140);
-      const email=normalizedRosterEmail(input.activationEmail);
-      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-        deny("invalid-argument","Enter the verified email the student will use to sign in.");
+      const birthDate=academicDate(input.birthDate,"Birth date");
+      const guardianName=text(input.guardianName,"Parent/guardian name",140);
+      const guardianRelationship=text(input.guardianRelationship,"Parent/guardian relationship",60);
+      const guardianEmail=normalizedEmail(input.guardianEmail,"Parent/guardian email",true);
+      const guardianMobile=optionalText(input.guardianMobile,40);
       const studentNumber=optionalText(input.studentNumber,80);
       const yearId=checkId(input.yearId,"Academic year");
       const programId=checkId(input.programId,"Program");
       const termId=checkId(input.termId,"Academic period");
       const sectionId=checkId(input.sectionId,"Section");
-      const activationEmailHash=rosterEmailHash(email);
+      const applicationId=input.applicationId?checkId(input.applicationId,"Application ID",128):null;
+      const applicationRef=applicationId?db.doc(root+"enrollment_applications/"+applicationId):null;
 
-      const [year,program,term,section,offeringSnap,emailMatches,legacyImported]=await Promise.all([
+      const [year,program,term,section,offeringSnap,application]=await Promise.all([
         db.doc(root+"academic_years/"+yearId).get(),
         db.doc(root+"academic_programs/"+programId).get(),
         db.doc(root+"terms/"+termId).get(),
         db.doc(root+"sections/"+sectionId).get(),
         db.collection(root+"course_offerings").limit(250).get(),
-        db.collection(root+"people").where("activationEmailHash","==",activationEmailHash).limit(3).get(),
-        db.doc(root+"people/"+legacyImportPersonId(email)).get()
+        applicationRef?applicationRef.get():Promise.resolve(null)
       ]);
       for(const [record,label] of [[year,"academic year"],[program,"program"],[term,"academic period"],[section,"section"]]){
         if(!record.exists||record.data().schoolId!==ctx.schoolId||record.data().status!=="active")
@@ -136,6 +212,30 @@ function createSchoolEnrollmentService({db}){
         deny("failed-precondition","The academic period does not belong to the selected school year and program.");
       if(section.data().programId!==programId)
         deny("failed-precondition","The section does not belong to the selected program.");
+      if(applicationRef&&(!application?.exists||application.data().schoolId!==ctx.schoolId))
+        deny("failed-precondition","The selected online application is no longer available.");
+
+      const gradeLevel=String(section.data().gradeLevel||"").trim().toLowerCase();
+      const studentEmailRequired=gradeRequiresStudentEmail(gradeLevel);
+      const rawStudentEmail=typeof input.studentEmail==="string"?input.studentEmail.trim():"";
+      const studentEmail=rawStudentEmail?normalizedEmail(rawStudentEmail,"Student email",true):null;
+      const studentEmailType=studentEmail?String(input.studentEmailType||"").trim().toLowerCase():null;
+      if(studentEmailRequired&&!studentEmail)
+        deny("invalid-argument","A student email is required for Grade 7 and above.");
+      if(!studentEmailRequired&&studentEmail)
+        deny("invalid-argument","Student email is not collected below Grade 7. Use the parent/guardian email.");
+      if(studentEmail&&!EMAIL_TYPES.has(studentEmailType))
+        deny("invalid-argument","Choose whether the student email is personal or institutional.");
+      if(studentEmail&&studentEmail===guardianEmail)
+        deny("invalid-argument","Student and parent/guardian email must be different.");
+
+      if(application?.exists){
+        const app=application.data();
+        if(["rejected","withdrawn","enrolled"].includes(app.status))
+          deny("failed-precondition","This online application already has a final decision.");
+        if(app.yearId&&app.yearId!==yearId)
+          deny("failed-precondition","The online application belongs to another school year.");
+      }
 
       const offerings=offeringSnap.docs.filter(doc=>{
         const row=doc.data();
@@ -146,19 +246,41 @@ function createSchoolEnrollmentService({db}){
         deny("failed-precondition",
           "This section has no active course offerings for the selected period. Configure the section subjects first.");
 
-      const matched=emailMatches.docs.filter(doc=>{
-        const row=doc.data();
-        return row.schoolId===ctx.schoolId&&row.kind==="student"&&row.status==="active";
+      const activationEmailHash=studentEmail?rosterEmailHash(studentEmail):null;
+      const lookups=[];
+      if(activationEmailHash)
+        lookups.push(db.collection(root+"people").where("activationEmailHash","==",activationEmailHash).limit(3).get());
+      else lookups.push(Promise.resolve({docs:[]}));
+      if(studentNumber)
+        lookups.push(db.collection(root+"people").where("studentNumber","==",studentNumber).limit(3).get());
+      else lookups.push(Promise.resolve({docs:[]}));
+      const [emailMatches,numberMatches]=await Promise.all(lookups);
+      const activeEmailMatches=emailMatches.docs.filter(doc=>{
+        const row=doc.data();return row.schoolId===ctx.schoolId&&row.kind==="student"&&row.status==="active";
       });
-      if(matched.length>1)
-        deny("failed-precondition","More than one active student record uses this activation identity. Resolve the duplicate in People & Access.");
+      const activeNumberMatches=numberMatches.docs.filter(doc=>{
+        const row=doc.data();return row.schoolId===ctx.schoolId&&row.kind==="student"&&row.status==="active";
+      });
+      if(activeEmailMatches.length>1||activeNumberMatches.length>1)
+        deny("failed-precondition","Duplicate student identity records require People & Access review before enrollment.");
+
+      const candidateIds=new Set();
+      if(application?.exists&&application.data().personId)candidateIds.add(String(application.data().personId));
+      if(activeEmailMatches[0])candidateIds.add(activeEmailMatches[0].id);
+      if(activeNumberMatches[0])candidateIds.add(activeNumberMatches[0].id);
+      if(candidateIds.size>1)
+        deny("failed-precondition","Student email, number and application point to different records. Resolve the identity before enrolling.");
 
       let personRef;
-      if(matched.length===1)personRef=matched[0].ref;
-      else if(legacyImported.exists&&legacyImported.data().schoolId===ctx.schoolId&&
-        legacyImported.data().kind==="student"&&legacyImported.data().status==="active")
-        personRef=legacyImported.ref;
-      else personRef=db.doc(root+"people/reg_"+activationEmailHash.slice(0,40));
+      const candidateId=[...candidateIds][0];
+      if(candidateId)personRef=db.doc(root+"people/"+checkId(candidateId,"Person ID",128));
+      else if(studentEmail){
+        const legacyImported=await db.doc(root+"people/"+legacyImportPersonId(studentEmail)).get();
+        personRef=legacyImported.exists&&legacyImported.data().schoolId===ctx.schoolId&&
+          legacyImported.data().kind==="student"&&legacyImported.data().status==="active"
+          ?legacyImported.ref
+          :db.doc(root+"people/reg_"+activationEmailHash.slice(0,40));
+      }else personRef=db.doc(root+"people/"+guardianPersonId({displayName,birthDate,guardianEmail}));
 
       const personId=personRef.id;
       const registrationId=key(personId,yearId,termId,sectionId);
@@ -166,35 +288,50 @@ function createSchoolEnrollmentService({db}){
       const enrollmentRefs=offerings.map(offering=>
         db.doc(root+"enrollments/"+key(personId,offering.id)));
       const auditRef=db.collection(root+"directory_audit").doc();
+      const source=applicationId?"online":"onsite";
+      const accountResponsibility=studentEmailRequired?"student":"guardian";
 
       let result;
       await db.runTransaction(async tx=>{
         await requireCurrentAdmin(tx);
-        const [person,registration,...enrollments]=await Promise.all([
-          tx.get(personRef),tx.get(registrationRef),...enrollmentRefs.map(ref=>tx.get(ref))
-        ]);
+        const reads=[tx.get(personRef),tx.get(registrationRef),...enrollmentRefs.map(ref=>tx.get(ref))];
+        if(applicationRef)reads.push(tx.get(applicationRef));
+        const records=await Promise.all(reads);
+        const person=records[0],registration=records[1],
+          enrollments=records.slice(2,2+enrollmentRefs.length),
+          currentApplication=applicationRef?records.at(-1):null;
+
+        if(currentApplication&&(!currentApplication.exists||currentApplication.data().schoolId!==ctx.schoolId||
+          ["rejected","withdrawn","enrolled"].includes(currentApplication.data().status)))
+          deny("failed-precondition","The online application changed before enrollment. Refresh and review it again.");
+
         if(person.exists){
           const row=person.data();
           if(row.schoolId!==ctx.schoolId||row.kind!=="student"||row.status!=="active")
             deny("failed-precondition","The matching person record cannot be used for student enrollment.");
-          if(row.activationEmailHash&&row.activationEmailHash!==activationEmailHash)
-            deny("failed-precondition","The matching student record has a different activation identity.");
-          if(row.authUid&&registration.exists&&registration.data().personId!==personId)
-            deny("failed-precondition","The student identity is linked to another enrollment record.");
-          tx.update(personRef,{
+          if(row.activationEmailHash&&activationEmailHash&&row.activationEmailHash!==activationEmailHash)
+            deny("failed-precondition","The matching student record has a different sign-in identity.");
+          const update={
             displayName,searchKey:displayName.toLocaleLowerCase("en")+"#"+personId,
-            activationEmailHash,studentNumber:studentNumber||row.studentNumber||null,
-            updatedAt:FieldValue.serverTimestamp(),updatedByUid:ctx.uid,
+            studentNumber:studentNumber||row.studentNumber||null,birthDate,
+            primaryGuardianName:guardianName,primaryGuardianRelationship:guardianRelationship,
+            primaryGuardianEmail:guardianEmail,primaryGuardianMobile:guardianMobile,
+            accountResponsibility,updatedAt:FieldValue.serverTimestamp(),updatedByUid:ctx.uid,
             revision:(row.revision||0)+1
-          });
+          };
+          if(activationEmailHash)Object.assign(update,{activationEmailHash,studentEmailType});
+          tx.update(personRef,update);
         }else{
           const now=FieldValue.serverTimestamp();
           tx.create(personRef,{
             schoolId:ctx.schoolId,displayName,
             searchKey:displayName.toLocaleLowerCase("en")+"#"+personId,
             kind:"student",status:"active",authUid:null,
-            activationEmailHash,studentNumber,
-            createdByUid:ctx.uid,createdAt:now,updatedAt:now,revision:1
+            ...(activationEmailHash?{activationEmailHash,studentEmailType}:{}),
+            studentNumber,birthDate,
+            primaryGuardianName:guardianName,primaryGuardianRelationship:guardianRelationship,
+            primaryGuardianEmail:guardianEmail,primaryGuardianMobile:guardianMobile,
+            accountResponsibility,createdByUid:ctx.uid,createdAt:now,updatedAt:now,revision:1
           });
         }
 
@@ -229,10 +366,13 @@ function createSchoolEnrollmentService({db}){
           });
         });
 
+        const accountLinked=person.exists&&Boolean(person.data().authUid);
         const registrationData={
-          schoolId:ctx.schoolId,personId,displayName,studentNumber,
-          yearId,programId,termId,sectionId,status:"active",
-          courseCount:activeCourses,accountLinked:Boolean(person.data()?.authUid),
+          schoolId:ctx.schoolId,personId,displayName,studentNumber,birthDate,
+          guardianName,guardianRelationship,guardianEmail,guardianMobile,
+          studentEmailType,studentEmailRequired,accountResponsibility,
+          yearId,programId,termId,sectionId,gradeLevel,status:"active",
+          courseCount:activeCourses,accountLinked,source,applicationId,
           updatedByUid:ctx.uid,updatedAt:now
         };
         if(registration.exists)
@@ -242,13 +382,23 @@ function createSchoolEnrollmentService({db}){
           tx.create(registrationRef,{...registrationData,revision:1,
             createdByUid:ctx.uid,createdAt:now});
 
+        if(currentApplication){
+          tx.update(applicationRef,{
+            status:"enrolled",personId,registrationId,officialProgramId:programId,
+            officialTermId:termId,officialSectionId:sectionId,
+            enrolledByUid:ctx.uid,enrolledAt:now,updatedAt:now,
+            revision:(Number(currentApplication.data().revision)||1)+1
+          });
+        }
+
         tx.create(auditRef,{
           schoolId:ctx.schoolId,actorUid:ctx.uid,personId,registrationId,
-          action:"student_registered_and_enrolled",yearId,programId,termId,sectionId,
-          courseCount:activeCourses,createdCourses,createdAt:now
+          applicationId,source,action:"student_registered_and_enrolled",
+          yearId,programId,termId,sectionId,gradeLevel,courseCount:activeCourses,
+          createdCourses,createdAt:now
         });
-        result={registrationId,personId,displayName,courseCount:activeCourses,
-          createdCourses,accountLinked:Boolean(person.data()?.authUid)};
+        result={registrationId,personId,displayName,gradeLevel,studentEmailRequired,
+          accountResponsibility,courseCount:activeCourses,createdCourses,accountLinked,source};
       });
       return result;
     }
@@ -257,4 +407,9 @@ function createSchoolEnrollmentService({db}){
   };
 }
 
-module.exports={createSchoolEnrollmentService,STANDARD_MCS_SCHOOL_ID,standardSchool};
+module.exports={
+  createSchoolEnrollmentService,
+  STANDARD_MCS_SCHOOL_ID,
+  standardSchool,
+  gradeRequiresStudentEmail
+};
