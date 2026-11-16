@@ -9,7 +9,7 @@ const pages=[
   ["index.html",["av-public-hero","wiki.html#school-setup"]],
   ["login.html",['id="loginForm"','id="googleLoginBtn"']],
   ["wiki.html",['id="school-setup"',"teacher-accounts.html"]],
-  ["manage-sections.html",['data-catalog-kind="sections"','id="catalog-roster-sections"']],
+  ["school-academic-configuration.html",['data-page="academic-config"','id="ac-status"']],
   ["student-practice.html",['id="practiceApp"','js/student/practice-game.mjs']],
   ["guest-home.html",['data-home-experience="guest"','js/core/home-experience.mjs']],
   ["student-home.html",['data-home-experience="student"','js/core/home-pulse.mjs']],
