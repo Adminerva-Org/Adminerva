@@ -265,19 +265,40 @@ document.addEventListener("keydown",event=>{
 },true);
 
 function inferAssessmentProjectSetup(task={}){
+  const explicit=String(task.studioProjectProfile||task.studioProjectSetup||"auto").trim().toLowerCase();
+  const profiles={
+    "java-console":{templateId:"java-console",config:{javaVersion:"17",runMode:"console",database:false,design:false}},
+    "java-desktop":{templateId:"java-desktop",config:{javaVersion:"17",runMode:"desktop",database:false,design:true}},
+    "java-database":{templateId:"java-information",config:{javaVersion:"17",runMode:"console",database:true,design:false}},
+    "web":{templateId:"web",config:{runMode:"web",database:false,design:false}},
+    "python-console":{templateId:"python-console",config:{runMode:"console",database:false,design:false}}
+  };
+  if(profiles[explicit])return profiles[explicit];
+
   const text=[task.title,task.description,task.instructions,task.subject,task.assessmentType]
     .filter(Boolean).join(" ").toLowerCase();
-  if(/\bpython\b/.test(text))return {templateId:"python-console",config:{runMode:"console",database:false}};
-  if(/\b(html|css|javascript|web app|web page|website)\b/.test(text))
-    return {templateId:"web",config:{runMode:"web",database:false}};
-  const database=/\b(database|sql|jdbc|crud|record management)\b/.test(text);
-  const informationSystem=/\binformation system\b/.test(text);
-  const desktop=/\b(swing|gui|graphical user interface|desktop app|desktop application|jframe|jpanel)\b/.test(text);
-  if(informationSystem||(database&&desktop))
-    return {templateId:"java-information",config:{javaVersion:"17",runMode:"desktop",database:true}};
-  if(database)return {templateId:"java-blank",config:{javaVersion:"17",runMode:"console",database:true}};
-  if(desktop)return {templateId:"java-desktop",config:{javaVersion:"17",runMode:"desktop",database:false}};
-  return {templateId:"java-blank",config:{javaVersion:"17",runMode:"console",database:false}};
+
+  if(/\bpython\b/.test(text))
+    return {templateId:"python-console",config:{runMode:"console",database:false,design:false}};
+  if(/\b(html|css|javascript|web app|web page|website|browser app)\b/.test(text))
+    return {templateId:"web",config:{runMode:"web",database:false,design:false}};
+
+  // Auto mode is intentionally conservative. A scenario may be called an
+  // "information system" or "record system" while still being a console OOP task.
+  // Only explicit technology requirements enable GUI/database capabilities.
+  const database=/\b(jdbc|java\.sql|sql database|relational database|database connection|adminerva db|sqlite|mysql|postgres(?:ql)?)\b/.test(text);
+  const desktop=/\b(swing|awt|jframe|jpanel|jdialog|graphical user interface|\bgui\b|desktop gui|desktop application)\b/.test(text);
+
+  if(database&&desktop)
+    return {templateId:"java-information",config:{javaVersion:"17",runMode:"desktop",database:true,design:true}};
+  if(database)
+    return {templateId:"java-blank",config:{javaVersion:"17",runMode:"console",database:true,design:false}};
+  if(desktop)
+    return {templateId:"java-desktop",config:{javaVersion:"17",runMode:"desktop",database:false,design:true}};
+
+  // Java/OOP/fundamentals/default programming assessments start with the smallest
+  // useful workspace: one Java console project, no DB and no design surface.
+  return {templateId:"java-console",config:{javaVersion:"17",runMode:"console",database:false,design:false}};
 }
 async function resolveAssessmentProjectContext(assessmentId,studioSchool){
   if(!assessmentId)return null;
