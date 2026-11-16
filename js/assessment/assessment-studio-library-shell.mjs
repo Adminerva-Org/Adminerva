@@ -116,6 +116,19 @@ if(host){
                 </select>
               </label>
             </div>
+            <div id="tl-studio-project-profile-wrap" hidden class="rounded-xl border border-cyan-200 bg-cyan-50 p-3">
+              <label class="text-sm font-bold text-cyan-950">Studio project setup
+                <select name="studioProjectProfile" class="tl-input">
+                  <option value="auto">Auto · infer conservatively from the task</option>
+                  <option value="java-console">Java Console · fundamentals / OOP / CLI</option>
+                  <option value="java-desktop">Java Desktop · Swing / AWT / GUI</option>
+                  <option value="java-database">Java + Database · Adminerva DB / JDBC / SQL</option>
+                  <option value="web">Web · HTML / CSS / JavaScript</option>
+                  <option value="python-console">Python Console</option>
+                </select>
+              </label>
+              <p class="mt-1 text-xs text-cyan-900">This controls the project Adminerva creates when a learner opens the assessment. Auto will not assume a GUI or database unless the task explicitly requires one.</p>
+            </div>
             <label class="text-sm font-bold text-slate-700">Short description
               <textarea name="description" class="tl-input" maxlength="2000" rows="3" placeholder="A concise teacher/library summary."></textarea>
             </label>
