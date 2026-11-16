@@ -1923,3 +1923,30 @@ body[data-playground-access]:has(#studioShell:not(.hidden)) .av-site-footer{disp
   body[data-playground-access] #outputPane>div:first-child{padding:5px 9px!important}
   body[data-playground-access] #stdinContainer{padding:5px 8px!important}
 }
+
+
+/* Tablet/short-desktop Studio: task context becomes an on-demand button in the
+   main command header instead of consuming a permanent horizontal band. */
+@media(min-width:768px) and (max-height:1000px){
+  body[data-playground-access] .studio-task-bar{display:none!important}
+  body[data-playground-access] .studio-mobile-task:not(.hidden){
+    display:inline-flex!important;
+    align-items:center;
+    justify-content:center;
+    flex:none;
+    min-height:29px;
+    padding:4px 7px;
+    border:1px solid #b9d8d0;
+    border-radius:7px;
+    background:#e5f6ef;
+    color:#116855;
+    font-size:9px;
+    font-weight:850;
+    white-space:nowrap;
+  }
+  body[data-playground-access] .studio-mobile-task[aria-expanded="true"]{
+    background:#0d736a;
+    border-color:#0d736a;
+    color:#fff;
+  }
+}
