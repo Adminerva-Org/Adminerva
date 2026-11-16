@@ -1953,11 +1953,27 @@ function initializeMobileStudio(){
   const taskAssessmentId=new URLSearchParams(location.search).get('assessment');
   const taskLink=Boolean(taskAssessmentId);
   if(!panel||!explorer||!actions||!backdrop||!toolbar)return;
-  // Keep the original control IDs and event handlers; only their location changes.
-  for(const id of ['saveProjectBtn','runBtn']){
-    const button=document.getElementById(id);
-    if(button&&toolsPanel)toolsPanel.appendChild(button);
-  }
+  const compact=()=>window.matchMedia('(max-width:767px)').matches;
+  const commandBar=document.querySelector('.studio-command-bar');
+  const placePrimaryControls=()=>{
+    const save=document.getElementById('saveProjectBtn');
+    const run=document.getElementById('runBtn');
+    if(compact()){
+      if(save&&toolsPanel)toolsPanel.appendChild(save);
+      if(run&&toolsPanel)toolsPanel.appendChild(run);
+      return;
+    }
+    if(save&&commandBar){
+      const format=document.getElementById('formatBtn');
+      format?commandBar.insertBefore(save,format):commandBar.appendChild(save);
+    }
+    if(run&&commandBar){
+      const submit=document.getElementById('studioSubmitAssessment');
+      const more=document.getElementById('studioMoreMenu');
+      commandBar.insertBefore(run,submit||more||null);
+    }
+  };
+  placePrimaryControls();
   const setToolsOpen=open=>{
     toolsPanel?.classList.toggle('studio-tools-open',Boolean(open));
     toolsBar?.classList.toggle('studio-tabs-expanded',Boolean(open));
@@ -1971,7 +1987,6 @@ function initializeMobileStudio(){
   toolsPanel?.addEventListener('click',event=>{
     if(event.target.closest('[data-studio-view]')&&compact())setToolsOpen(false);
   });
-  const compact=()=>window.matchMedia('(max-width:767px)').matches;
   let activeDrawer=null;
   let submittedLocally=null;
   const taskAvailable=()=>taskLink||
@@ -2172,6 +2187,7 @@ function initializeMobileStudio(){
     }
   });
   const resize=()=>{
+    placePrimaryControls();
     if(!compact()){
       if(activeDrawer!=='task')closeDrawer();
       setToolsOpen(false);
