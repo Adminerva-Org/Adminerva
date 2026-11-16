@@ -1950,3 +1950,237 @@ body[data-playground-access]:has(#studioShell:not(.hidden)) .av-site-footer{disp
     color:#fff;
   }
 }
+
+
+/* 3.2.0 Studio ribbon: Microsoft Office-style contextual command groups.
+   One thin tab strip stays visible; only the selected command panel is rendered. */
+body[data-playground-access] .studio-ribbon{
+  display:grid;
+  grid-template-rows:auto auto;
+  min-width:0;
+  width:100%;
+  color:#17344c;
+}
+body[data-playground-access] .studio-ribbon-tabs{
+  display:flex;
+  align-items:end;
+  gap:1px;
+  min-width:0;
+  height:23px;
+  padding:0 2px;
+  overflow-x:auto;
+  scrollbar-width:none;
+}
+body[data-playground-access] .studio-ribbon-tabs::-webkit-scrollbar{display:none}
+body[data-playground-access] .studio-ribbon-tabs>button{
+  flex:none;
+  min-height:23px;
+  padding:3px 8px 4px;
+  border:0;
+  border-radius:6px 6px 0 0;
+  background:transparent;
+  color:#587184;
+  font-size:9px;
+  line-height:1;
+  font-weight:850;
+  white-space:nowrap;
+}
+body[data-playground-access] .studio-ribbon-tabs>button[aria-selected="true"]{
+  background:#fff;
+  color:#075d68;
+  box-shadow:0 -1px 0 #cbdde5,1px 0 0 #cbdde5,-1px 0 0 #cbdde5;
+}
+body[data-playground-access] .studio-ribbon-panels{
+  min-width:0;
+  border-top:1px solid #cbdde5;
+}
+body[data-playground-access] .studio-ribbon-panel{
+  min-width:0;
+  min-height:31px;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:4px;
+  padding:2px 0 0;
+  overflow:visible;
+}
+body[data-playground-access] .studio-ribbon-panel[hidden]{display:none!important}
+body[data-playground-access] .studio-ribbon-panel :is(button,select,a,summary){
+  min-height:29px;
+  border:1px solid #d5e0e8;
+  border-radius:7px;
+  padding:4px 7px;
+  background:#fff;
+  color:#294a62;
+  font-size:9px;
+  line-height:1.15;
+  font-weight:800;
+  white-space:nowrap;
+}
+body[data-playground-access] .studio-ribbon-panel>a{
+  display:inline-flex;
+  align-items:center;
+  text-decoration:none;
+}
+body[data-playground-access] .studio-ribbon-panel select{
+  padding-right:24px;
+}
+body[data-playground-access] .studio-ribbon-panel details{
+  position:relative;
+  flex:none;
+}
+body[data-playground-access] .studio-ribbon-panel details>summary{
+  display:flex;
+  align-items:center;
+  cursor:pointer;
+  list-style:none;
+}
+body[data-playground-access] .studio-ribbon-panel details>summary::-webkit-details-marker{display:none}
+body[data-playground-access] .studio-ribbon-panel .pg-menu{
+  top:calc(100% + 4px);
+  right:0;
+  left:auto;
+  z-index:120;
+}
+body[data-playground-access] .studio-ribbon-panel #languageSelect{width:82px}
+body[data-playground-access] .studio-ribbon-panel #javaRunMode{width:158px}
+body[data-playground-access] .studio-ribbon-panel #javaRunModeLabel,
+body[data-playground-access] .studio-ribbon-panel #javaEngineLabel{
+  font-size:8px;
+  color:#60788a;
+  font-weight:850;
+  white-space:nowrap;
+}
+body[data-playground-access] .studio-ribbon-panel #autoSaveIndicator{
+  max-width:150px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:#0b8a65;
+  font-size:8px;
+  font-weight:750;
+}
+body[data-playground-access] .studio-ribbon-panel .pg-save{
+  background:#eaf6fb;
+  border-color:#c8dfea;
+  color:#0b5870;
+}
+body[data-playground-access] .studio-ribbon-panel .pg-run{
+  background:#008f79;
+  border-color:#008f79;
+  color:#fff;
+  padding-inline:12px;
+}
+body[data-playground-access] .studio-ribbon-panel .studio-submit-primary{
+  background:#0f766e;
+  border-color:#0f766e;
+  color:#fff;
+  padding-inline:10px;
+}
+body[data-playground-access] .studio-ribbon-task{
+  border-color:#b9d8d0!important;
+  background:#e5f6ef!important;
+  color:#116855!important;
+}
+body[data-playground-access] .studio-ribbon-panel :is(button,select,a,summary):focus-visible,
+body[data-playground-access] .studio-ribbon-tabs>button:focus-visible{
+  outline:3px solid #0e7490;
+  outline-offset:2px;
+}
+
+@media(min-width:768px){
+  body[data-playground-access] .studio-project-bar{
+    min-height:57px;
+    align-items:stretch;
+    padding-block:2px;
+  }
+  body[data-playground-access] .studio-project-actions{
+    align-items:stretch;
+  }
+  body[data-playground-access] .studio-project-identity,
+  body[data-playground-access] .studio-back{
+    align-self:center;
+  }
+  body[data-playground-access] .studio-ribbon{
+    flex:1 1 auto;
+  }
+  /* Assessment context is now available from the Assessment ribbon tab. */
+  body[data-playground-access] .studio-mobile-task{display:none!important}
+}
+
+@media(min-width:768px) and (max-height:1000px){
+  body[data-playground-access] .studio-ribbon-tabs{height:20px}
+  body[data-playground-access] .studio-ribbon-tabs>button{
+    min-height:20px;
+    padding:2px 7px 3px;
+    font-size:8px;
+  }
+  body[data-playground-access] .studio-ribbon-panel{
+    min-height:28px;
+    padding-top:1px;
+  }
+  body[data-playground-access] .studio-ribbon-panel :is(button,select,a,summary){
+    min-height:26px;
+    padding:3px 6px;
+    font-size:8px;
+  }
+  body[data-playground-access] .studio-project-bar{min-height:50px}
+}
+
+@media(max-width:767px){
+  body[data-playground-access] .studio-ribbon{
+    display:flex;
+    flex-direction:column;
+    width:100%;
+    gap:8px;
+  }
+  body[data-playground-access] .studio-ribbon-tabs{
+    height:auto;
+    padding:0 0 5px;
+    border-bottom:1px solid #d9e5eb;
+  }
+  body[data-playground-access] .studio-ribbon-tabs>button{
+    min-height:36px;
+    padding:7px 10px;
+    border:1px solid transparent;
+    border-radius:8px;
+    font-size:11px;
+  }
+  body[data-playground-access] .studio-ribbon-tabs>button[aria-selected="true"]{
+    border-color:#9bc8d1;
+    background:#eaf7f7;
+    box-shadow:none;
+  }
+  body[data-playground-access] .studio-ribbon-panels{border-top:0}
+  body[data-playground-access] .studio-ribbon-panel{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+    gap:8px;
+    min-height:0;
+    padding:0;
+    overflow:visible;
+  }
+  body[data-playground-access] .studio-ribbon-panel :is(button,select,a,details,summary){
+    width:100%;
+    min-width:0;
+  }
+  body[data-playground-access] .studio-ribbon-panel :is(button,select,a,summary){
+    min-height:42px;
+    padding:8px;
+    font-size:11px;
+  }
+  body[data-playground-access] .studio-ribbon-panel #languageSelect,
+  body[data-playground-access] .studio-ribbon-panel #javaRunMode{
+    width:100%;
+  }
+  body[data-playground-access] .studio-ribbon-panel #autoSaveIndicator{
+    grid-column:1/-1;
+    max-width:none;
+    padding:4px 2px;
+    font-size:10px;
+  }
+  body[data-playground-access] .studio-ribbon-panel :is(#javaRunModeLabel,#javaEngineLabel){
+    grid-column:1/-1;
+    font-size:10px;
+  }
+}
