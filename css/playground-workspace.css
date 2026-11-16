@@ -2190,3 +2190,129 @@ body[data-playground-access] .studio-ribbon-tabs>button:focus-visible{
 @media(min-width:768px){
   body[data-playground-access] .studio-task-bar{display:none!important}
 }
+
+
+/* 3.2.2 Practical-exam state lives in the Assessment ribbon instead of a
+   permanent banner, preserving IDE vertical space. */
+body[data-playground-access] #studioExamBanner.studio-exam-announcer{
+  position:absolute!important;
+  width:1px!important;
+  height:1px!important;
+  margin:-1px!important;
+  padding:0!important;
+  border:0!important;
+  overflow:hidden!important;
+  clip-path:inset(50%)!important;
+  white-space:nowrap!important;
+}
+body[data-playground-access] .studio-exam-indicator{
+  position:relative;
+  flex:none;
+}
+body[data-playground-access] .studio-exam-indicator.hidden{display:none!important}
+body[data-playground-access] .studio-exam-indicator-button{
+  display:inline-flex!important;
+  align-items:center;
+  gap:5px;
+  border-color:#e7c46a!important;
+  background:#fff8df!important;
+  color:#725414!important;
+}
+body[data-playground-access] .studio-exam-dot{
+  width:7px;
+  height:7px;
+  flex:none;
+  border-radius:50%;
+  background:#d89b18;
+  box-shadow:0 0 0 2px #f8e5ac;
+}
+body[data-playground-access] .studio-exam-indicator[data-state="pending"] .studio-exam-dot{
+  background:#ca8a04;
+  opacity:.72;
+}
+body[data-playground-access] .studio-exam-tooltip{
+  position:absolute;
+  z-index:180;
+  top:calc(100% + 6px);
+  right:0;
+  width:min(310px,calc(100vw - 24px));
+  padding:10px 11px;
+  border:1px solid #dfc77e;
+  border-radius:9px;
+  background:#fffdf5;
+  color:#4e421f;
+  box-shadow:0 14px 34px #0f172a2b;
+  opacity:0;
+  visibility:hidden;
+  transform:translateY(-3px);
+  transition:opacity .12s ease,transform .12s ease,visibility .12s;
+  pointer-events:none;
+  text-align:left;
+}
+body[data-playground-access] .studio-exam-tooltip strong{
+  display:block;
+  font-size:11px;
+  color:#5f4812;
+}
+body[data-playground-access] .studio-exam-tooltip p{
+  margin:4px 0 7px;
+  font-size:10px;
+  line-height:1.5;
+  color:#64593a;
+  white-space:normal;
+}
+body[data-playground-access] .studio-exam-tooltip a{
+  min-height:0!important;
+  padding:0!important;
+  border:0!important;
+  background:transparent!important;
+  color:#7a5707!important;
+  font-size:10px!important;
+  text-decoration:underline!important;
+}
+body[data-playground-access] .studio-exam-indicator:hover .studio-exam-tooltip,
+body[data-playground-access] .studio-exam-indicator:focus-within .studio-exam-tooltip,
+body[data-playground-access] .studio-exam-indicator.is-open .studio-exam-tooltip{
+  opacity:1;
+  visibility:visible;
+  transform:translateY(0);
+  pointer-events:auto;
+}
+body[data-playground-access] .studio-ribbon-tabs>button[data-exam-state]::after{
+  content:"";
+  display:inline-block;
+  width:6px;
+  height:6px;
+  margin-left:5px;
+  border-radius:50%;
+  background:#d89b18;
+  vertical-align:middle;
+  box-shadow:0 0 0 2px #f7e7b7;
+}
+body[data-playground-access] .studio-ribbon-tabs>button[data-exam-state="pending"]::after{
+  opacity:.7;
+}
+
+@media(max-width:767px){
+  body[data-playground-access] .studio-exam-indicator{
+    grid-column:1/-1;
+  }
+  body[data-playground-access] .studio-exam-indicator-button{
+    width:100%;
+    justify-content:flex-start;
+  }
+  body[data-playground-access] .studio-exam-tooltip{
+    position:static;
+    width:100%;
+    margin-top:6px;
+    transform:none;
+    display:none;
+  }
+  body[data-playground-access] .studio-exam-indicator.is-open .studio-exam-tooltip,
+  body[data-playground-access] .studio-exam-indicator:focus-within .studio-exam-tooltip{
+    display:block;
+    opacity:1;
+    visibility:visible;
+    pointer-events:auto;
+  }
+}
