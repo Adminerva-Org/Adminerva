@@ -54,11 +54,14 @@ function createSchoolRosterActivationService({db}){
     const memberRef=db.doc("schools/"+schoolId+"/memberships/"+uid);
     const indexRef=db.doc("platform_users/"+uid+"/memberships/"+schoolId);
     const auditRef=db.collection("schools/"+schoolId+"/directory_audit").doc();
+    const registrations=await db.collection("schools/"+schoolId+"/student_registrations")
+      .where("personId","==",personId).limit(30).get();
     let alreadyActive=false,displayName="Student";
 
     await db.runTransaction(async tx=>{
-      const [freshSchool,person,member]=await Promise.all([
-        tx.get(schoolRef),tx.get(personRef),tx.get(memberRef)
+      const [freshSchool,person,member,...registrationDocs]=await Promise.all([
+        tx.get(schoolRef),tx.get(personRef),tx.get(memberRef),
+        ...registrations.docs.map(doc=>tx.get(doc.ref))
       ]);
       if(!freshSchool.exists||!["active","pilot"].includes(freshSchool.data().state)||
          !enabledStandardMcs(schoolId,freshSchool.data()))
@@ -91,6 +94,12 @@ function createSchoolRosterActivationService({db}){
       tx.set(indexRef,{schoolId,status:"active",roles,revision,updatedAt:now});
       tx.update(personRef,{authUid:uid,linkedAt:now,updatedAt:now,
         revision:(person.data().revision||0)+1});
+      for(const registration of registrationDocs){
+        if(!registration.exists||registration.data().schoolId!==schoolId||
+           registration.data().personId!==personId||registration.data().status!=="active")continue;
+        tx.update(registration.ref,{accountLinked:true,updatedAt:now,
+          revision:(registration.data().revision||0)+1});
+      }
       tx.create(auditRef,{schoolId,actorUid:uid,personId,
         action:"student_roster_email_activated",createdAt:now});
     });
