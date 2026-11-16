@@ -136,8 +136,9 @@ export function buildNavigationIA(ctx){
       group("Student Information",[
         live("enrollment","Enrollment & Registration","school-enrollment.html","Standard student registration, section placement and verified account activation."),
         live("student-directory","Student Directory","people-access.html#people"),
-        future("student-records","Student Records / 201 Files"),future("guardians","Parents / Guardians"),
-        future("admissions","Admissions")
+        future("student-records","Student Records / 201 Files"),
+        future("student-tags","Student Tags / Statuses","Enrollment status, learner classifications and registrar-managed student tags · Future development"),
+        future("guardians","Parents / Guardians"),future("admissions","Admissions")
       ]),
       group("Academic Records",[
         future("curriculum","Curriculum Assignment"),future("promotion","Promotion / Retention"),
