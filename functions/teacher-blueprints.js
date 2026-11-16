@@ -14,6 +14,15 @@ function cleanText(value,max,label,{required=false}={}) {
 }
 const PERSONALIZATION_MODE="ai_blueprint_pool_v1";
 const MAX_PERSONALIZED_POOL=600;
+const STUDIO_PROJECT_PROFILES=new Set([
+  "auto","java-console","java-desktop","java-database","web","python-console"
+]);
+function studioProjectProfile(value){
+  const profile=String(value||"auto").trim().toLowerCase();
+  if(!STUDIO_PROJECT_PROFILES.has(profile))
+    deny("invalid-argument","Choose a supported Adminerva Studio project profile.");
+  return profile;
+}
 function personalizationContent(input={}) {
   const raw=input&&typeof input==="object"&&!Array.isArray(input)?input:{};
   const enabled=raw.enabled===true||raw.mode===PERSONALIZATION_MODE;
@@ -47,6 +56,7 @@ function reusableContent(input) {
     return {name,points};
   });
   return {title,description,instructions,subject,assessmentType,defaultSubmissionSource,
+    studioProjectProfile:defaultSubmissionSource==="studio"?studioProjectProfile(input.studioProjectProfile):"auto",
     rubric:criteria,personalization:personalizationContent(input.personalization)};
 }
 function privateCheckingContent(input={}) {
@@ -96,6 +106,7 @@ function serialize(doc,access) {
     title:data.title,description:data.description,instructions:data.instructions,
     subject:data.subject||"General",assessmentType:data.assessmentType||"Assessment",
     defaultSubmissionSource:data.defaultSubmissionSource||"text",
+    studioProjectProfile:studioProjectProfile(data.studioProjectProfile||"auto"),
     rubric:data.rubric,personalization:personalizationContent(data.personalization),
     checkingInstructions:(access.uid===data.ownerUid||access.platformOverride===true)?String(data.checkingInstructions||""):"",
     contentRevision:data.contentRevision,aclRevision:data.aclRevision,
