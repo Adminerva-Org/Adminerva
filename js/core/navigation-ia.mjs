@@ -386,7 +386,11 @@ export function buildNavigationIA(ctx){
     (routePath(w.route)===route&&routeQueryMatches(w.route))||w.groups.some(g=>g.items.some(itemMatches));
   const homeRoute=systemDefault?"owner-schools.html":studentView?"student-home.html":
     schoolAdminView?"school-admin.html":"teacher-home.html";
-  const isHome=!systemDefault&&routePath(homeRoute)===route&&!requestedWorkspace;
+  // School Administration is both the administrator landing page and a real
+  // workspace with its own Operations / Academic Policy / School Profile nav.
+  // Keep student/teacher home pages as Home, but do not collapse the admin
+  // workspace into a generic Home state.
+  const isHome=!systemDefault&&routePath(homeRoute)===route&&!requestedWorkspace&&!schoolAdminView;
   const activeWorkspace=isHome?null:(workspaces.find(w=>w.id===requestedWorkspace)||
     workspaces.find(workspaceMatches)||workspaces[0]||null);
   const groups=activeWorkspace?.groups||[];
