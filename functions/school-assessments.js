@@ -106,6 +106,7 @@ function createSchoolAssessmentService({db}){
      subject:original.subject||offering.data().subjectId||"General",
      assessmentType:original.assessmentType||"Assessment",
      defaultSubmissionSource:original.defaultSubmissionSource||source,
+     studioProjectProfile:String(original.studioProjectProfile||"auto"),
      rubric:Array.isArray(original.rubric)?original.rubric:[],
      rubricMax:Array.isArray(original.rubric)?
        original.rubric.reduce((sum,row)=>sum+Number(row.points||0),0):0
@@ -354,6 +355,7 @@ function createSchoolAssessmentService({db}){
       ownerUid:doc.data().ownerUid,reviewerUid:doc.data().reviewerUid||doc.data().ownerUid,
       opensAt:doc.data().opensAt?.toMillis(),dueAt:doc.data().dueAt?.toMillis(),
       submissionSource:doc.data().submissionSource,
+      studioProjectProfile:doc.data().studioProjectProfile||"auto",
       personalizedTask:doc.data().personalizedTask?.enabled===true?{
         enabled:true,mode:doc.data().personalizedTask.mode,
         poolFingerprint:doc.data().personalizedTask.poolFingerprint,
@@ -398,6 +400,7 @@ function createSchoolAssessmentService({db}){
       assessmentType:task.assessmentType||"Assessment",rubric:task.rubric||[],
       rubricMax:task.rubricMax,offeringId:task.offeringId,
       submissionSource:task.submissionSource,
+      studioProjectProfile:task.studioProjectProfile||"auto",
       personalizedTask:task.personalizedTask?.enabled===true?{
         enabled:true,mode:task.personalizedTask.mode,
         poolSize:Number(task.personalizedTask.poolSize||0)
