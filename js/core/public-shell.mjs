@@ -5,6 +5,7 @@ if(root){
   const guestControls=root.dataset.guestControls==="true";
   const links=[
     ["home","Home","index.html"],
+    ["enrollment","Enrollment","enroll.html"],
     ["explore","Explore","guest-home.html"],
     ["wiki","Help & guides","wiki.html"],
     ["updates","What's new","patch-notes.html"]
