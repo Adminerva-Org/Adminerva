@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Enroll at Manila Cathedral School | Adminerva</title>
+  <meta name="description" content="Submit an online enrollment application for Manila Cathedral School through Adminerva.">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/adminerva-ui.css">
+  <link rel="stylesheet" href="css/public-shell.css">
+  <link rel="stylesheet" href="css/public-enrollment.css">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/adminerva-favicon-32.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/adminerva-touch-icon-180.png">
+</head>
+<body class="bg-slate-50 min-h-screen">
+<div id="adminerva-public-nav" data-page="enrollment"></div>
+
+<main class="pe-shell av-public-content">
+  <section class="pe-hero">
+    <div>
+      <p class="pe-eyebrow">Manila Cathedral School</p>
+      <h1>Online Enrollment</h1>
+      <p>Submit the learner's enrollment information online. School staff will review the application, confirm the official academic placement, and complete enrollment before any student account is activated.</p>
+      <div class="pe-hero-points" aria-label="Enrollment steps">
+        <span><strong>1</strong> Apply online</span>
+        <span><strong>2</strong> School review</span>
+        <span><strong>3</strong> Official enrollment</span>
+      </div>
+    </div>
+    <aside class="pe-policy">
+      <strong>Email policy</strong>
+      <p>Parent or guardian email is required for every learner.</p>
+      <p>Student email is required for Grade 7 and above because it will be used for the learner's Adminerva sign-in.</p>
+      <p>For younger learners, enrollment is guardian-managed and no student email is requested.</p>
+    </aside>
+  </section>
+
+  <p id="pe-status" class="pe-status" role="status" aria-live="polite">Loading enrollment form…</p>
+
+  <section id="pe-form-shell" class="pe-layout" hidden>
+    <form id="pe-form" class="pe-form" novalidate>
+      <section class="pe-card">
+        <div class="pe-step"><span>1</span><div><h2>Application</h2><p>Tell us what type of enrollment this is.</p></div></div>
+        <div class="pe-grid two">
+          <label>Application type
+            <select name="applicationType" required>
+              <option value="">Choose application type</option>
+              <option value="new">New student</option>
+              <option value="returning">Returning student / re-enrollment</option>
+              <option value="transferee">Transferee</option>
+            </select>
+          </label>
+          <label>School year
+            <select name="yearId" required></select>
+          </label>
+        </div>
+      </section>
+
+      <section class="pe-card">
+        <div class="pe-step"><span>2</span><div><h2>Learner information</h2><p>Use the learner's official name and incoming level.</p></div></div>
+        <div class="pe-grid two">
+          <label>Student full name
+            <input name="displayName" maxlength="140" autocomplete="name" required>
+          </label>
+          <label>Birth date
+            <input name="birthDate" type="date" required>
+          </label>
+          <label>Incoming grade / school level
+            <select name="incomingLevel" required>
+              <option value="">Choose incoming level</option>
+              <option value="nursery_prep">Nursery / Prep</option>
+              <option value="kinder_1">Kinder 1</option>
+              <option value="kinder_2">Kinder 2</option>
+              <option value="1">Grade 1</option>
+              <option value="2">Grade 2</option>
+              <option value="3">Grade 3</option>
+              <option value="4">Grade 4</option>
+              <option value="5">Grade 5</option>
+              <option value="6">Grade 6</option>
+              <option value="7">Grade 7</option>
+              <option value="8">Grade 8</option>
+              <option value="9">Grade 9</option>
+              <option value="10">Grade 10</option>
+              <option value="11">Grade 11</option>
+              <option value="12">Grade 12</option>
+              <option value="sned_elem">SNED · Elementary</option>
+              <option value="sned_jhs">SNED · Junior High School</option>
+            </select>
+          </label>
+          <label>Preferred program / division <span class="pe-optional">(optional)</span>
+            <select name="preferredProgramId"></select>
+          </label>
+        </div>
+
+        <div id="pe-student-email" class="pe-email-panel" hidden>
+          <div>
+            <strong>Student sign-in email</strong>
+            <p>This is required from Grade 7 onward and will later be used to activate the student's Adminerva account.</p>
+          </div>
+          <div class="pe-grid two">
+            <label>Student email
+              <input name="studentEmail" type="email" maxlength="254" autocomplete="email" placeholder="student@gmail.com">
+            </label>
+            <label>Email type
+              <select name="studentEmailType">
+                <option value="personal">Personal email</option>
+                <option value="institutional">Institutional / school email</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div id="pe-guardian-managed" class="pe-email-panel guardian">
+          <strong>Guardian-managed learner</strong>
+          <p>No student email is collected below Grade 7. Parent/guardian contact will be used for enrollment communication.</p>
+        </div>
+      </section>
+
+      <section class="pe-card">
+        <div class="pe-step"><span>3</span><div><h2>Parent / guardian</h2><p>At least one parent or guardian contact is required for every learner.</p></div></div>
+        <div class="pe-grid two">
+          <label>Parent / guardian full name
+            <input name="guardianName" maxlength="140" autocomplete="name" required>
+          </label>
+          <label>Relationship
+            <select name="guardianRelationship" required>
+              <option value="">Choose relationship</option>
+              <option value="Mother">Mother</option>
+              <option value="Father">Father</option>
+              <option value="Legal guardian">Legal guardian</option>
+              <option value="Grandparent">Grandparent</option>
+              <option value="Other guardian">Other guardian</option>
+            </select>
+          </label>
+          <label>Parent / guardian email
+            <input name="guardianEmail" type="email" maxlength="254" autocomplete="email" required placeholder="parent@gmail.com">
+            <span class="pe-help">Required for every enrollment application.</span>
+          </label>
+          <label>Mobile number <span class="pe-optional">(optional)</span>
+            <input name="guardianMobile" type="tel" maxlength="40" autocomplete="tel" placeholder="+63">
+          </label>
+        </div>
+      </section>
+
+      <section class="pe-card">
+        <div class="pe-step"><span>4</span><div><h2>Review & submit</h2><p>Submission creates an application for school review. It does not immediately create school access or assign a section.</p></div></div>
+        <label class="pe-consent">
+          <input name="consent" type="checkbox" required>
+          <span>I confirm that the information provided is accurate and I authorize the school to use these details for enrollment review, student record preparation, and enrollment communication.</span>
+        </label>
+        <label class="pe-honeypot" aria-hidden="true" tabindex="-1">Website
+          <input name="website" autocomplete="off" tabindex="-1">
+        </label>
+        <button id="pe-submit" class="pe-submit" type="submit">Submit enrollment application</button>
+        <p class="pe-help">The school will determine the official program, section, academic period and subject enrollment after review.</p>
+      </section>
+    </form>
+
+    <aside class="pe-side">
+      <section class="pe-side-card">
+        <p class="pe-eyebrow dark">What happens next?</p>
+        <ol>
+          <li><span>1</span><div><strong>Application received</strong><p>Your application enters the school's enrollment queue.</p></div></li>
+          <li><span>2</span><div><strong>Registrar review</strong><p>School staff check information and requirements and may contact the parent or guardian.</p></div></li>
+          <li><span>3</span><div><strong>Official placement</strong><p>The school assigns the official program, period and section.</p></div></li>
+          <li><span>4</span><div><strong>Account activation</strong><p>Grade 7+ students use their recorded student email to activate Adminerva after enrollment.</p></div></li>
+        </ol>
+      </section>
+      <section class="pe-side-card">
+        <h2>Enrolling onsite?</h2>
+        <p>Onsite enrollment remains available. School staff can enter walk-in applications through the internal Enrollment & Registration workspace using the same email and guardian rules.</p>
+      </section>
+    </aside>
+  </section>
+
+  <section id="pe-success" class="pe-success" hidden tabindex="-1">
+    <p class="pe-eyebrow dark">Application submitted</p>
+    <h2>Keep your enrollment reference.</h2>
+    <p>Your application has been sent to Manila Cathedral School for review.</p>
+    <div class="pe-reference"><span>Reference</span><strong id="pe-reference">—</strong></div>
+    <p id="pe-success-note">The school may contact the parent/guardian email if more information is needed.</p>
+    <div class="pe-actions">
+      <a class="pe-submit" href="index.html">Return to Adminerva</a>
+      <button id="pe-new-application" class="pe-secondary" type="button">Submit another application</button>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="js/core/public-shell.mjs"></script>
+<script defer src="js/core/release-footer.js"></script>
+<script src="js/core/adminerva-loader.js"></script>
+<script type="module" src="js/public/enrollment.mjs"></script>
+</body>
+</html>
