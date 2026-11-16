@@ -189,7 +189,7 @@ async function checkAccess(user){
      !(access.platformAdmin||admittedRole==="admin")){
     replacePage(roleHome(actualRole));return;
   }
-  if(/\/(school-admin|school-pilot|people-access|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-grading-schemes|school-class-records|school-academic-configuration|school-academic-structure)\.html$/.test(currentPath)&&
+  if(/\/(school-admin|school-pilot|people-access|school-enrollment|school-analytics|school-data-controls|school-cutover-readiness|school-onboarding-readiness|school-grading-schemes|school-class-records|school-academic-configuration|school-academic-structure)\.html$/.test(currentPath)&&
      !(access.schoolAdmin||admittedRole==="admin"||platformSchoolView)){
     replacePage(roleHome(actualRole));return;
   }
@@ -205,7 +205,7 @@ async function checkAccess(user){
     replacePage(roleHome(actualRole));return;
   }
   if(actualRole==="schooladmin"&&!access.platformAdmin&&!access.schoolTeacher&&
-     !/\/(teacher-home|school-admin|school-pilot|people-access|school-grading-schemes|school-class-records|school-academic-configuration|school-academic-structure|future-workspace|class-record|reclaim-inbox|settings|issues|join-school|wiki)\.html$/.test(currentPath)){
+     !/\/(teacher-home|school-admin|school-pilot|people-access|school-enrollment|school-grading-schemes|school-class-records|school-academic-configuration|school-academic-structure|future-workspace|class-record|reclaim-inbox|settings|issues|join-school|wiki)\.html$/.test(currentPath)){
     replacePage("school-admin.html");return;
   }
   if(actualRole==="platformowner"&&!platformSchoolView&&!access.schoolAdmin&&!access.schoolTeacher&&!access.schoolStudent&&
@@ -234,7 +234,7 @@ async function checkAccess(user){
     const page=currentPath.split("/").pop();
     const allowed=new Set([
       "teacher-home.html","teacher-assessment-library.html","school-gradebook.html","class-record.html","pilot-sandbox.html",
-      "people-access.html","school-admin.html","school-pilot.html","school-grading-schemes.html","school-class-records.html","school-academic-configuration.html","future-workspace.html",
+      "people-access.html","school-enrollment.html","school-admin.html","school-pilot.html","school-grading-schemes.html","school-class-records.html","school-academic-configuration.html","future-workspace.html",
       "reclaim-inbox.html","learning-follow-up.html","teacher-analytics.html","practice-analytics.html",
       "assessment-studio.html","submissions.html","gradebook.html","repofetch.html","repobank.html",
       "grading.html","activity-grader.html","group-inspector.html","contribution-inspector.html",
