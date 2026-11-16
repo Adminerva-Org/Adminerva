@@ -93,6 +93,12 @@ function actionButton(text,handler,alternate=false) {
   return button;
 }
 const personalized=item=>item?.personalization?.enabled===true;
+function toggleStudioProjectProfile(){
+  const active=form.elements.defaultSubmissionSource?.value==="studio";
+  const wrap=el("tl-studio-project-profile-wrap");
+  if(wrap)wrap.hidden=!active;
+  if(form.elements.studioProjectProfile)form.elements.studioProjectProfile.disabled=!active;
+}
 function togglePersonalizationFields(){
   const active=form.elements.personalizationMode?.value==="personalized";
   el("tl-personalization-fields").hidden=!active;
@@ -290,6 +296,8 @@ function edit(item){
   form.elements.subject.value=item.subject||"General";
   form.elements.assessmentType.value=item.assessmentType||"Assessment";
   form.elements.defaultSubmissionSource.value=item.defaultSubmissionSource||"text";
+  form.elements.studioProjectProfile.value=item.studioProjectProfile||"auto";
+  toggleStudioProjectProfile();
   form.elements.checkingInstructions.value=item.checkingInstructions||"";
   form.elements.personalizationMode.value=personalized(item)?"personalized":"standard";
   form.elements.variantTarget.value=String(item.personalization?.variantTarget||30);
@@ -302,7 +310,9 @@ function edit(item){
   form.elements.title.focus();
 }
 function resetEditor({close=true}={}){
-  editing=null;form.reset();togglePersonalizationFields();
+  editing=null;form.reset();
+  if(form.elements.studioProjectProfile)form.elements.studioProjectProfile.value="auto";
+  toggleStudioProjectProfile();togglePersonalizationFields();
   form.querySelector("h2").textContent="New private blueprint";
   form.querySelector('button[type="submit"]').textContent="Create private assessment";
   if(close&&editorDialog?.open)editorDialog.close();
@@ -364,6 +374,7 @@ form.addEventListener("submit",event=>{
     instructions:String(data.get("instructions")||""),subject:String(data.get("subject")||"General"),
     assessmentType:String(data.get("assessmentType")||"Assessment"),
     defaultSubmissionSource:String(data.get("defaultSubmissionSource")||"text"),
+    studioProjectProfile:String(data.get("studioProjectProfile")||"auto"),
     checkingInstructions:String(data.get("checkingInstructions")||""),rubric:criteria,
     personalization:isPersonalized?{
       enabled:true,mode:"ai_blueprint_pool_v1",
@@ -550,6 +561,7 @@ el("tl-deploy-form").addEventListener("submit",event=>{
   })();
 });
 form.elements.personalizationMode.addEventListener("change",togglePersonalizationFields);
+form.elements.defaultSubmissionSource.addEventListener("change",toggleStudioProjectProfile);
 el("tl-personalization-close").addEventListener("click",()=>{personalizing=null;personalizationState=null;personalizationDialog.close();});
 el("tl-personalization-copy").addEventListener("click",()=>void (async()=>{
   if(!personalizing||!personalizationState)return;
