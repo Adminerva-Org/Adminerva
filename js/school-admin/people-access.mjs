@@ -12,7 +12,7 @@ let accessChange=null,personChange=null,lifecycleChange=null,currentRosterOfferi
 function say(message){status.textContent=message;}
 const tabNames=new Set(["overview","people","import","invites","classes","access"]);
 const TAB_STATE_KEY="Adminerva_people_access_active_tab";
-let schoolReady=false;
+let schoolReady=false,standardEnrollmentMode=false;
 function rememberedTab(){
   const hash=location.hash.slice(1);
   if(tabNames.has(hash))return hash;
@@ -95,6 +95,27 @@ const picker=createTenantSchoolPicker({
       workspace.hidden=true;say("This school has not granted you directory administration access.");
       return;
     }
+    standardEnrollmentMode=scope.current.schoolId==="manila-cathedral-school"&&
+      scope.current.compatibilityMode==="v4_only";
+    const studentInvite=get("pa-invite-role-student"),inviteForm=get("pa-create-invite");
+    if(studentInvite){
+      studentInvite.hidden=standardEnrollmentMode;studentInvite.disabled=standardEnrollmentMode;
+      if(standardEnrollmentMode&&inviteForm.elements.role.value==="student")
+        inviteForm.elements.role.value="teacher";
+    }
+    if(get("pa-invite-title"))get("pa-invite-title").textContent=
+      standardEnrollmentMode?"Create staff invitation":"Create pending invitation";
+    if(get("pa-invite-help"))get("pa-invite-help").textContent=standardEnrollmentMode
+      ?"Manila Cathedral School students activate from Enrollment & Registration. Use invitations here for verified staff access."
+      :"The invitation is tied to this school person record. Acceptance links the verified account to that person; it still does not create an enrollment or teaching assignment.";
+    for(const id of ["pa-student-enrollment-card","pa-bulk-enrollment-card"])
+      if(get(id))get(id).hidden=standardEnrollmentMode;
+    if(get("pa-classes-help"))get("pa-classes-help").innerHTML=standardEnrollmentMode
+      ?'Student enrollment is owned by <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a> for Manila Cathedral School. Teaching assignments and roster review remain available here.'
+      :"School-specific teaching assignments. Enrolling a person does not alter earlier grades or term history.";
+    if(get("pa-import-course-help"))get("pa-import-course-help").innerHTML=standardEnrollmentMode
+      ?'For Manila Cathedral School, roster import prepares identity records only. Complete official academic placement in <a href="school-enrollment.html" style="font-weight:800;text-decoration:underline">Enrollment &amp; Registration</a>.'
+      :"Section values from the roster are hints only. After the people import is committed, review each matched section, choose the exact active course offering, and explicitly enroll the listed students.";
     workspace.hidden=false;schoolReady=true;
     // Load only the active section. Large school directories should not fetch
     // six unrelated panels when the administrator only needs the overview.
@@ -250,6 +271,10 @@ function renderImportCourseMapping(){
   const host=get("pa-import-course-groups"),statusNode=get("pa-import-course-status");
   if(!host||!statusNode)return;
   host.replaceChildren();
+  if(standardEnrollmentMode){
+    statusNode.textContent="Roster identities can be imported here. Complete section placement and subject enrollment in Enrollment & Registration.";
+    return;
+  }
   if(!importPreview){
     statusNode.textContent="Preview a roster with student section hints to prepare reviewed enrollment groups.";
     return;
