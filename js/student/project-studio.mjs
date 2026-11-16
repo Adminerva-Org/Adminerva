@@ -511,6 +511,9 @@ export function createProjectStudio({
       }
     }
 
+    const templateId=CODE_PROJECT_TEMPLATES[context.templateId]?context.templateId:"java-console";
+    const template=CODE_PROJECT_TEMPLATES[templateId]||CODE_PROJECT_TEMPLATES["java-console"];
+    const desiredConfig={...template.config,...(context.config||{})};
     const ownership={
       assessmentId,
       taskId:String(context.taskId||assessmentId),
@@ -523,24 +526,34 @@ export function createProjectStudio({
       variantId:String(context.variantId||project?.assessment?.variantId||"").slice(0,160),
       attempt:Number.isInteger(Number(context.attempt))?Number(context.attempt):
         (Number.isInteger(Number(project?.assessment?.attempt))?Number(project.assessment.attempt):null),
+      studioProjectProfile:String(context.studioProjectProfile||context.projectProfile||"auto").slice(0,40),
       provisionedBy:"assessment-launch"
     };
 
     if(project){
-      const changed=JSON.stringify(project.assessment||{})!==JSON.stringify(ownership);
-      if(changed)project=saveCodeProject(projectStorage,uid,{...project,assessment:ownership});
+      // Preserve learner files and artifacts. Only correct the automatically
+      // provisioned project classification/capabilities to match the assessment.
+      const next={
+        ...project,
+        template:template.id,
+        lang:template.lang,
+        config:{...(project.config||{}),...desiredConfig},
+        assessment:ownership
+      };
+      const changed=JSON.stringify(project.assessment||{})!==JSON.stringify(ownership)||
+        project.template!==next.template||project.lang!==next.lang||
+        JSON.stringify(project.config||{})!==JSON.stringify(next.config||{});
+      if(changed)project=saveCodeProject(projectStorage,uid,next);
       activateProject(project);
       return {project:activeProject,created:false,projectId:activeProject.id};
     }
 
     if(context.allowCreate===false)return {project:null,created:false,projectId};
     validateProject({state:{files:{}},database:{tables:{}},design:{},evidence:{}},{creating:true});
-    const templateId=CODE_PROJECT_TEMPLATES[context.templateId]?context.templateId:"java-blank";
-    const template=CODE_PROJECT_TEMPLATES[templateId];
     const projectTitle=String(context.projectTitle||context.title||"Studio Assessment").trim().slice(0,120)||"Studio Assessment";
     project=createCodeProject(projectStorage,uid,{
       id:projectId,title:projectTitle,templateId:template.id,
-      config:{...template.config,...(context.config||{})},assessment:ownership
+      config:desiredConfig,assessment:ownership
     });
     try{
       validateProject(project);
@@ -656,6 +669,19 @@ export function createProjectStudio({
     return true;
   }
 
+  function syncAssessmentCapabilities(){
+    if(!activeProject)return;
+    const assessmentProject=activeProject.assessment?.provisionedBy==="assessment-launch";
+    const designAllowed=!assessmentProject||activeProject.config?.design!==false;
+    const databaseAllowed=!assessmentProject||activeProject.config?.database===true;
+    const designButton=document.querySelector('[data-studio-view="design"]');
+    const databaseButton=document.querySelector('[data-studio-view="database"]');
+    designButton?.classList.toggle("hidden",!designAllowed);
+    databaseButton?.classList.toggle("hidden",!databaseAllowed);
+    el("studioPanelDesign")?.setAttribute("data-capability-enabled",String(designAllowed));
+    el("studioPanelDatabase")?.setAttribute("data-capability-enabled",String(databaseAllowed));
+  }
+
   function activateProject(project){
     initialize();
     activeProject={...project,lastOpenedAt:new Date().toISOString()};
@@ -663,6 +689,7 @@ export function createProjectStudio({
     el("projectHome")?.classList.add("hidden");
     el("studioShell")?.classList.remove("hidden");
     updateProjectHeading();
+    syncAssessmentCapabilities();
     openProject(activeProject);
     switchStudioView("code");
     window.dispatchEvent(new CustomEvent("adminerva:studio-ready",{detail:{projectId:activeProject.id}}));
@@ -745,6 +772,11 @@ export function createProjectStudio({
     el("projectSettingsTitle").value=activeProject.title;
     el("projectSettingsRunMode").value=activeProject.config?.runMode||"console";
     el("projectSettingsDatabase").checked=Boolean(activeProject.config?.database);
+    const assessmentLocked=activeProject.assessment?.provisionedBy==="assessment-launch";
+    el("projectSettingsRunMode").disabled=assessmentLocked;
+    el("projectSettingsDatabase").disabled=assessmentLocked;
+    el("projectSettingsRunMode").title=assessmentLocked?"Runtime is set by this assessment.":"";
+    el("projectSettingsDatabase").title=assessmentLocked?"Database access is set by this assessment.":"";
     el("projectSettingsJavaOptions")?.classList.toggle("hidden",activeProject.lang!=="java");
     el("projectSettingsModal")?.classList.remove("hidden");
   }
@@ -783,7 +815,11 @@ export function createProjectStudio({
       document.getElementById("consoleTab")?.click();
       return;
     }
-    const chosen=valid.includes(view)?view:"code";
+    let chosen=valid.includes(view)?view:"code";
+    if(activeProject.assessment?.provisionedBy==="assessment-launch"){
+      if(chosen==="design"&&activeProject.config?.design===false)chosen="code";
+      if(chosen==="database"&&activeProject.config?.database!==true)chosen="code";
+    }
     for(const name of valid){
       el("studioPanel"+name[0].toUpperCase()+name.slice(1))?.classList.toggle("hidden",name!==chosen);
     }
