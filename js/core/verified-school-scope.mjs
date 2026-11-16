@@ -80,14 +80,19 @@ export function createVerifiedSchoolScope({loadSchools,beforeChange=async()=>{},
 export function renderSchoolSwitcher(container,{options=[],schoolId=null,onSelect=async()=>{}}={}) {
   container.replaceChildren();
   const state=pickerState(options,schoolId);
-  if(document.getElementById("adminerva-nav")){
+  const sharedNavigation=Boolean(document.getElementById("adminerva-nav"));
+  const needsLocalChoice=state.showSwitcher&&!state.schoolId;
+  // The account menu remains the normal multi-school switcher after a school
+  // is selected. If no school can be resolved yet, expose a page-local fallback
+  // instead of hiding every workspace control behind an instruction.
+  if(sharedNavigation&&!needsLocalChoice){
     container.hidden=true;
     return state;
   }
   container.hidden=!state.showSwitcher;
   if(!state.showSwitcher)return state;
   const label=document.createElement("label");
-  label.textContent="Active school";
+  label.textContent=needsLocalChoice?"Choose school to continue":"Active school";
   const select=document.createElement("select");
   select.className="av-school-select";
   select.setAttribute("aria-label","Switch active school");
