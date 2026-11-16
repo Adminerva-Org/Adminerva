@@ -1773,3 +1773,153 @@ body[data-playground-access] .studio-submit-state{
     padding-inline:7px;font-size:10px
   }
 }
+
+
+/* 3.1.0 Compact Studio chrome: prioritize editor/terminal height on tablets and desktop.
+   Secondary actions live under More; full-screen Studio does not spend viewport on the site footer. */
+body[data-playground-access]:has(#studioShell:not(.hidden)) .av-site-footer{display:none!important}
+
+@media(min-width:768px){
+  body[data-playground-access] #adminerva-nav .av-nav-top{
+    min-height:52px!important;
+    padding-block:2px!important;
+  }
+  body[data-playground-access] #adminerva-nav .av-nav-home,
+  body[data-playground-access] #adminerva-nav .av-module-switcher>summary,
+  body[data-playground-access] #adminerva-nav .av-nav-tools :is(button,a,summary){
+    min-height:32px!important;
+  }
+
+  body[data-playground-access] #studioExamBanner{
+    min-height:28px;
+    padding:3px 10px!important;
+    gap:8px;
+    font-size:10px!important;
+    line-height:1.25;
+  }
+
+  body[data-playground-access] .studio-task-bar{
+    min-height:34px;
+    padding:3px 8px;
+    gap:8px;
+  }
+  body[data-playground-access] .studio-task-bar-info{gap:7px}
+  body[data-playground-access] .studio-task-bar-type{
+    padding:2px 6px;
+    font-size:9px;
+  }
+  body[data-playground-access] #studioTaskBarTitle{font-size:11px}
+  body[data-playground-access] .studio-task-bar-status{
+    max-width:150px;
+    font-size:9px;
+  }
+  body[data-playground-access] #studioTaskOpenDesktop{
+    min-height:28px;
+    padding:4px 8px;
+    font-size:10px;
+  }
+
+  body[data-playground-access] .studio-project-bar{
+    display:flex;
+    flex-wrap:nowrap!important;
+    align-items:center;
+    min-height:40px;
+    padding:3px 7px;
+    gap:6px;
+    overflow:visible;
+  }
+  body[data-playground-access] .studio-desktop-row-title{display:none!important}
+  body[data-playground-access] .studio-project-identity{
+    flex:0 1 210px;
+    min-width:135px;
+  }
+  body[data-playground-access] .studio-project-title-row{gap:5px}
+  body[data-playground-access] .studio-project-identity strong{
+    font-size:11px;
+    line-height:1.15;
+  }
+  body[data-playground-access] .studio-project-identity>span,
+  body[data-playground-access] .studio-storage-badge{
+    font-size:8px;
+    line-height:1.2;
+  }
+  body[data-playground-access] .studio-back{
+    min-height:30px;
+    padding:4px 7px;
+    font-size:9px;
+  }
+  body[data-playground-access] .studio-project-actions{
+    flex:1 1 auto;
+    min-width:0;
+    margin-left:auto;
+    display:flex;
+    flex-wrap:nowrap!important;
+    align-items:center;
+    justify-content:flex-end;
+    gap:4px;
+  }
+  body[data-playground-access] .studio-project-actions .studio-command-bar{
+    flex:1 1 auto;
+    min-width:0;
+    display:flex;
+    flex-wrap:nowrap!important;
+    align-items:center;
+    justify-content:flex-end;
+    gap:4px;
+    overflow:visible;
+  }
+  body[data-playground-access] .studio-command-bar>button,
+  body[data-playground-access] .studio-command-bar>select,
+  body[data-playground-access] .studio-command-bar>details>summary,
+  body[data-playground-access] .studio-command-bar>a{
+    min-height:29px;
+    padding:4px 6px;
+    border-radius:7px;
+    font-size:9px;
+  }
+  body[data-playground-access] .studio-command-bar #languageSelect{width:78px}
+  body[data-playground-access] .studio-command-bar #javaRunMode{width:152px}
+  body[data-playground-access] .studio-command-bar #javaRunModeLabel{font-size:8px}
+  body[data-playground-access] .studio-command-bar .pg-run{padding-inline:11px}
+  body[data-playground-access] .studio-command-bar .studio-submit-primary{
+    background:#0f766e;
+    border-color:#0f766e;
+    color:#fff;
+    padding-inline:9px;
+  }
+  body[data-playground-access] #studioMoreMenu>.pg-menu{
+    min-width:185px;
+  }
+
+  body[data-playground-access] .studio-tabs{
+    min-height:32px;
+    padding:0 6px;
+  }
+  body[data-playground-access] .studio-tools-panel{
+    gap:2px;
+  }
+  body[data-playground-access] .studio-tabs button{
+    min-height:30px;
+    padding:4px 9px;
+    font-size:9px;
+  }
+
+  body[data-playground-access] #fileTabsContainer{min-height:29px}
+  body[data-playground-access] #fileTabsContainer .tab-element{
+    padding-top:5px!important;
+    padding-bottom:5px!important;
+  }
+  body[data-playground-access] .studio-editor-meta{
+    min-height:27px;
+  }
+}
+
+@media(min-width:768px) and (max-height:1000px){
+  body[data-playground-access] .studio-task-bar-status{display:none}
+  body[data-playground-access] .studio-project-identity>span#activeProjectMeta{display:none}
+  body[data-playground-access] .studio-project-bar{min-height:36px}
+  body[data-playground-access] .studio-tabs{min-height:29px}
+  body[data-playground-access] .studio-tabs button{min-height:28px;padding-block:3px}
+  body[data-playground-access] #outputPane>div:first-child{padding:5px 9px!important}
+  body[data-playground-access] #stdinContainer{padding:5px 8px!important}
+}
