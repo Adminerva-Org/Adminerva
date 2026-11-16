@@ -5,7 +5,8 @@ import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs";
 const get=id=>document.getElementById(id);
 const api=httpsCallable(getFunctions(app,"asia-southeast1"),"schoolEnrollment");
 const status=get("en-status"),workspace=get("en-workspace"),form=get("en-register-form");
-let picker=null,catalog={years:[],programs:[],terms:[],sections:[],offerings:[]},saving=false;
+let picker=null,catalog={years:[],programs:[],terms:[],sections:[],offerings:[]},
+  saving=false,loadedApplication=null;
 
 function assistMode(){
   try{return sessionStorage.getItem("Adminerva_platform_school_mode")==="assist"?"assist":"";}catch{return "";}
@@ -30,11 +31,36 @@ function options(select,items,label){
   if(items.some(item=>item.id===previous))select.value=previous;
 }
 function selected(name){return String(form.elements[name].value||"");}
+function gradeRequiresStudentEmail(level){
+  const raw=String(level||"").trim().toLowerCase();
+  return raw==="sned_jhs"||(/^\d+$/.test(raw)&&Number(raw)>=7);
+}
+function levelLabel(level){
+  const special={nursery_prep:"Nursery / Prep",kinder_1:"Kinder 1",kinder_2:"Kinder 2",sned_elem:"SNED · Elementary",sned_jhs:"SNED · Junior High"};
+  return special[level]||(/^\d+$/.test(String(level||""))?"Grade "+level:(level||"Level not specified"));
+}
+function currentSection(){
+  return catalog.sections.find(row=>row.id===selected("sectionId"))||null;
+}
+function updateStudentEmailPolicy(){
+  const section=currentSection(),required=gradeRequiresStudentEmail(section?.gradeLevel);
+  get("en-student-email-panel").hidden=!required;
+  get("en-guardian-account-panel").hidden=required;
+  form.elements.studentEmail.required=required;
+  form.elements.studentEmailType.required=required;
+  if(!required){
+    form.elements.studentEmail.value="";
+    form.elements.studentEmailType.value="personal";
+  }
+  return required;
+}
 function refreshPlacement(){
   const yearId=selected("yearId"),programId=selected("programId");
   const terms=catalog.terms.filter(row=>
     (!yearId||row.yearId===yearId)&&(!programId||row.programId===programId));
-  const sections=catalog.sections.filter(row=>!programId||row.programId===programId);
+  let sections=catalog.sections.filter(row=>!programId||row.programId===programId);
+  if(loadedApplication?.incomingLevel)
+    sections=sections.filter(row=>String(row.gradeLevel||"")===String(loadedApplication.incomingLevel));
   options(form.elements.termId,terms,"Choose academic period");
   options(form.elements.sectionId,sections,"Choose section");
   updateCoursePreview();
@@ -42,12 +68,15 @@ function refreshPlacement(){
 function updateCoursePreview(){
   const yearId=selected("yearId"),programId=selected("programId"),
     termId=selected("termId"),sectionId=selected("sectionId");
+  const section=currentSection(),required=updateStudentEmailPolicy();
   const count=catalog.offerings.filter(row=>
     row.yearId===yearId&&row.programId===programId&&row.termId===termId&&row.sectionId===sectionId).length;
+  const grade=section?.gradeLevel?levelLabel(section.gradeLevel):"";
   get("en-course-preview").textContent=!yearId||!programId||!termId||!sectionId
     ?"Choose the academic placement to see how many active subject offerings will be enrolled."
     :count
-      ?count+" active subject offering"+(count===1?"":"s")+" will be enrolled for this section and period."
+      ?grade+" · "+count+" active subject offering"+(count===1?"":"s")+" · "+
+        (required?"student email required for Adminerva sign-in":"guardian-managed; student login not required")
       :"No active subject offerings match this placement. Configure the section subjects before enrolling students.";
   get("en-register-button").disabled=saving||count===0;
 }
@@ -78,17 +107,103 @@ async function loadRegistrations(){
     const row=document.createElement("article");row.className="en-row";row.setAttribute("role","listitem");
     const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p");
     name.textContent=item.displayName;meta.className="en-muted";
+    const identity=item.accountResponsibility==="guardian"
+      ?"guardian-managed · no student login required"
+      :(item.accountLinked?"student account linked":"student activation pending");
     meta.textContent=registrationLabel(item)+" · "+item.courseCount+" subject"+(item.courseCount===1?"":"s")+
-      (item.studentNumber?" · "+item.studentNumber:"")+(item.accountLinked?" · account linked":" · awaiting activation");
+      (item.studentNumber?" · "+item.studentNumber:"")+" · "+identity+" · "+(item.source==="online"?"online application":"onsite");
     info.append(name,meta);
     const badge=document.createElement("span");badge.className="en-badge";badge.textContent=item.status||"active";
     row.append(info,badge);host.append(row);
   }
 }
+function applicationMeta(item){
+  const year=catalog.years.find(x=>x.id===item.yearId)?.name||item.yearId;
+  const program=catalog.programs.find(x=>x.id===item.preferredProgramId)?.name||"No program preference";
+  return [item.reference,year,levelLabel(item.incomingLevel),program].filter(Boolean).join(" · ");
+}
+function loadApplicationIntoForm(item){
+  loadedApplication=item;
+  form.elements.applicationId.value=item.applicationId;
+  form.elements.displayName.value=item.displayName||"";
+  form.elements.birthDate.value=item.birthDate||"";
+  form.elements.guardianName.value=item.guardianName||"";
+  form.elements.guardianRelationship.value=item.guardianRelationship||"";
+  form.elements.guardianEmail.value=item.guardianEmail||"";
+  form.elements.guardianMobile.value=item.guardianMobile||"";
+  form.elements.studentEmail.value=item.studentEmail||"";
+  form.elements.studentEmailType.value=item.studentEmailType||"personal";
+  if((catalog.years||[]).some(row=>row.id===item.yearId))form.elements.yearId.value=item.yearId;
+  if((catalog.programs||[]).some(row=>row.id===item.preferredProgramId))form.elements.programId.value=item.preferredProgramId;
+  get("en-register-title").textContent="Review & place online application";
+  get("en-register-help").textContent=item.reference+" · "+levelLabel(item.incomingLevel)+
+    ". Confirm official program, period and section before enrollment.";
+  get("en-clear-application").hidden=false;
+  refreshPlacement();
+  form.scrollIntoView({behavior:"smooth",block:"start"});
+  form.elements.displayName.focus();
+}
+function clearLoadedApplication({resetIdentity=false}={}){
+  loadedApplication=null;form.elements.applicationId.value="";
+  get("en-register-title").textContent="Onsite / manual enrollment";
+  get("en-register-help").textContent="Use this for walk-in enrollees. Online applications can be loaded here from the review queue before official placement.";
+  get("en-clear-application").hidden=true;
+  if(resetIdentity){
+    for(const name of ["displayName","birthDate","studentNumber","guardianName","guardianRelationship","guardianEmail","guardianMobile","studentEmail"])
+      form.elements[name].value="";
+    form.elements.studentEmailType.value="personal";
+  }
+  refreshPlacement();
+}
+async function reviewApplication(item,nextStatus){
+  const label=nextStatus==="rejected"?"rejection":"request for more information";
+  const reason=prompt("Enter the reason for this "+label+". This is recorded in the enrollment review history.");
+  if(!reason)return;
+  status.textContent="Saving enrollment review…";
+  try{
+    await perform("review_application",{applicationId:item.applicationId,status:nextStatus,reason});
+    status.textContent=nextStatus==="rejected"?"Application rejected.":"Application marked as needing information.";
+    await loadApplications();
+  }catch(error){status.textContent=error?.message||"Application review was not saved.";}
+}
+async function loadApplications(){
+  const result=await perform("list_applications"),host=get("en-application-list");
+  host.replaceChildren();
+  const items=result.items||[];
+  if(!items.length){
+    const empty=document.createElement("p");empty.className="en-muted";
+    empty.textContent="No online enrollment applications yet.";host.append(empty);return;
+  }
+  for(const item of items){
+    const row=document.createElement("article");row.className="en-row";row.setAttribute("role","listitem");
+    const info=document.createElement("div"),name=document.createElement("strong"),meta=document.createElement("p"),
+      contacts=document.createElement("p");
+    name.textContent=item.displayName;meta.className="en-muted";contacts.className="en-muted";
+    meta.textContent=applicationMeta(item);
+    contacts.textContent=item.guardianName+" · "+item.guardianEmail+
+      (item.studentEmail?" · student: "+item.studentEmail:" · guardian-managed learner");
+    info.append(name,meta,contacts);
+    if(item.reviewReason){
+      const note=document.createElement("p");note.className="en-muted";note.textContent="Review note: "+item.reviewReason;info.append(note);
+    }
+    const actions=document.createElement("div");actions.style.cssText="display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end";
+    const badge=document.createElement("span");badge.className="en-badge";badge.textContent=item.status.replaceAll("_"," ");
+    actions.append(badge);
+    if(item.status==="submitted"){
+      const load=document.createElement("button");load.type="button";load.className="en-btn secondary";load.textContent="Review & place";
+      load.addEventListener("click",()=>loadApplicationIntoForm(item));actions.append(load);
+      const need=document.createElement("button");need.type="button";need.className="en-btn secondary";need.textContent="Needs info";
+      need.addEventListener("click",()=>void reviewApplication(item,"needs_information"));actions.append(need);
+      const reject=document.createElement("button");reject.type="button";reject.className="en-btn secondary";reject.textContent="Reject";
+      reject.addEventListener("click",()=>void reviewApplication(item,"rejected"));actions.append(reject);
+    }
+    row.append(info,actions);host.append(row);
+  }
+}
 async function refreshAll(){
   status.textContent="Loading enrollment configuration…";
   await loadCatalog();
-  await loadRegistrations();
+  await Promise.all([loadApplications(),loadRegistrations()]);
   status.textContent="";
 }
 function activationUrl(){
@@ -102,7 +217,7 @@ get("en-activation-link").value=activation;get("en-open-activation").href=activa
 get("en-copy-activation").addEventListener("click",async()=>{
   try{
     await navigator.clipboard.writeText(activation);
-    get("en-activation-status").textContent="Activation link copied. It is reusable and still requires an exact verified roster email match.";
+    get("en-activation-status").textContent="Activation link copied. Grade 7+ students still need an exact verified enrollment email match.";
   }catch{
     get("en-activation-link").focus();get("en-activation-link").select();
     get("en-activation-status").textContent="Clipboard access was blocked. The activation link is selected for manual copying.";
@@ -112,24 +227,47 @@ form.elements.yearId.addEventListener("change",refreshPlacement);
 form.elements.programId.addEventListener("change",refreshPlacement);
 form.elements.termId.addEventListener("change",updateCoursePreview);
 form.elements.sectionId.addEventListener("change",updateCoursePreview);
+get("en-clear-application").addEventListener("click",()=>clearLoadedApplication({resetIdentity:true}));
+get("en-refresh-applications").addEventListener("click",()=>void loadApplications().catch(error=>{
+  status.textContent=error?.message||"Online applications could not be refreshed.";
+}));
+
 form.addEventListener("submit",event=>{
-  event.preventDefault();if(saving||!form.reportValidity())return;
+  event.preventDefault();updateStudentEmailPolicy();
+  if(saving||!form.reportValidity())return;
   const data=new FormData(form);
+  const studentEmail=String(data.get("studentEmail")||"").trim().toLowerCase();
+  const guardianEmail=String(data.get("guardianEmail")||"").trim().toLowerCase();
+  if(studentEmail&&studentEmail===guardianEmail){
+    status.textContent="Student and parent/guardian email must be different.";
+    form.elements.studentEmail.focus();return;
+  }
   void (async()=>{
-    saving=true;get("en-register-button").disabled=true;status.textContent="Registering student and creating section subject enrollments…";
+    saving=true;get("en-register-button").disabled=true;
+    status.textContent=loadedApplication
+      ?"Creating official enrollment from the reviewed application…"
+      :"Registering onsite student and creating section subject enrollments…";
     try{
       const result=await perform("register_student",{
+        applicationId:String(data.get("applicationId")||""),
         displayName:String(data.get("displayName")||"").trim(),
-        activationEmail:String(data.get("activationEmail")||"").trim(),
+        birthDate:String(data.get("birthDate")||""),
         studentNumber:String(data.get("studentNumber")||"").trim(),
+        guardianName:String(data.get("guardianName")||"").trim(),
+        guardianRelationship:String(data.get("guardianRelationship")||"").trim(),
+        guardianEmail,guardianMobile:String(data.get("guardianMobile")||"").trim(),
+        studentEmail,studentEmailType:studentEmail?String(data.get("studentEmailType")||"personal"):"",
         yearId:String(data.get("yearId")||""),programId:String(data.get("programId")||""),
         termId:String(data.get("termId")||""),sectionId:String(data.get("sectionId")||"")
       });
-      status.textContent=result.displayName+" registered · "+result.courseCount+
-        " active subject enrollment"+(result.courseCount===1?"":"s")+
-        (result.accountLinked?" · existing account remains linked.":" · ready for verified-email activation.");
-      form.elements.displayName.value="";form.elements.activationEmail.value="";form.elements.studentNumber.value="";
-      await loadRegistrations();
+      status.textContent=result.displayName+" enrolled · "+result.courseCount+
+        " active subject enrollment"+(result.courseCount===1?"":"s")+" · "+
+        (result.accountResponsibility==="guardian"
+          ?"guardian-managed learner; no student account required yet."
+          :(result.accountLinked?"student account already linked.":"student account ready for email activation."));
+      clearLoadedApplication({resetIdentity:true});
+      form.elements.studentNumber.value="";
+      await Promise.all([loadApplications(),loadRegistrations()]);
     }catch(error){status.textContent=error?.message||"Student enrollment was not saved.";}
     finally{saving=false;updateCoursePreview();}
   })();
@@ -140,7 +278,10 @@ get("en-refresh").addEventListener("click",()=>void refreshAll().catch(error=>{
 
 picker=createTenantSchoolPicker({
   host:get("en-school-picker"),status,
-  onBeforeChange:async()=>{if(saving)throw new Error("Finish the current enrollment before switching schools.");workspace.hidden=true;},
+  onBeforeChange:async()=>{
+    if(saving)throw new Error("Finish the current enrollment before switching schools.");
+    loadedApplication=null;workspace.hidden=true;
+  },
   onReady:scope=>{
     const current=scope.current;
     if(!current?.roles.includes("school_admin")){
