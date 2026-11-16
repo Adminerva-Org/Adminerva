@@ -66,6 +66,18 @@ directoryTabs.forEach(button=>{
     directoryTabs[next].focus();
   });
 });
+document.querySelectorAll("[data-pa-open-tab]").forEach(button=>{
+  button.addEventListener("click",()=>{
+    const tab=button.dataset.paOpenTab;
+    setTab(tab);
+    const target=button.dataset.paFocus?get(button.dataset.paFocus):null;
+    requestAnimationFrame(()=>{
+      const focusable=target?.matches?.("input,select,button,textarea")?target:
+        target?.querySelector?.("input,select,button,textarea");
+      focusable?.focus?.();
+    });
+  });
+});
 // Use the URL hash only as an initial deep-link hint. Internal tab changes stay
 // entirely in-page so the Adminerva shell/navigation never remounts.
 setTab(rememberedTab(),{remember:false});
@@ -1033,9 +1045,13 @@ async function submitForm(form,action,details) {
 }
 get("pa-add-person").addEventListener("submit",event=>{
   event.preventDefault();const values=new FormData(event.currentTarget);
+  const kind=String(values.get("kind")||"");
   void submitForm(event.currentTarget,"create_person",{person:{
-    displayName:String(values.get("displayName")||""),kind:String(values.get("kind")||"")
-  }});
+    displayName:String(values.get("displayName")||""),kind
+  }}).then(result=>{
+    if(result&&kind==="student")
+      say("Student directory record created. Next: use Invitations if this learner needs to sign in, then Classes to enroll the student.");
+  });
 });
 get("pa-create-invite").addEventListener("submit",event=>{
   event.preventDefault();const values=new FormData(event.currentTarget);
