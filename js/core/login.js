@@ -1,7 +1,7 @@
-import {resolveAccountAccess} from "./staff-session.mjs?v=1.3.0";
+import {resolveAccountAccess} from "./staff-session-v4-pilot.mjs?v=4.0.1";
 import {ensureGuestRequest} from "./admission-service.mjs?v=1.3.0";
 import {activateConnectionOwner,writeConnectionPreferences,clearConnectionPreferences} from "./connection-cache.mjs?v=1.3.0";
-import {sessionDestination} from "./session-destination.mjs?v=1.3.8";
+import {sessionDestination} from "./session-destination-v4-pilot.mjs?v=4.0.1";
 /** Approved-account sign-in and access feedback. */
 import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {
@@ -19,6 +19,17 @@ import {
 const errBox = document.getElementById("loginErrorBox");
 let signingIn = false;
 let continuing=false;
+function hasVerifiedSchoolAccess(access){
+  return Boolean(access?.platformAdmin||access?.schoolAdmin||access?.schoolTeacher||access?.schoolStudent);
+}
+function cachedRoleForAccess(access){
+  if(access?.platformAdmin&&!access?.schoolAdmin&&!access?.schoolTeacher&&!access?.schoolStudent)return "platformowner";
+  if(access?.schoolAdmin)return "schooladmin";
+  if(access?.role==="admin")return "superadmin";
+  if(access?.role==="teacher"||access?.schoolTeacher)return "teacher";
+  if(access?.schoolStudent||access?.students?.length)return "student";
+  return "guest";
+}
 async function signOutWithPushCleanup(){
   try{const push=await import("./push-notifications.mjs?v=1.3.6");await push.departPushAccount();}
   catch(error){console.warn("Push registration cleanup skipped during sign-out:",error?.message||error);}
@@ -36,11 +47,14 @@ async function continueWorkspace(){
   try{
     if(!user.emailVerified||!user.email)throw Error("Verify your account email or choose a different account to continue.");
     const access=await resolveAccountAccess(user);
-    if(access.staffLookupUnavailable)throw Error("Your school access could not be checked. Check your connection, then select Continue to retry.");
+    if(access.staffLookupUnavailable&&!hasVerifiedSchoolAccess(access))
+      throw Error("Your school access could not be checked. Check your connection, then select Continue to retry.");
     if(auth.currentUser?.uid!==user.uid)throw Error("Your account changed. Continue with the account currently shown.");
     activateConnectionOwner(user.uid);
-    if(access.role)writeConnectionPreferences(user.uid,access.teachers?.[0]?.data?.()||{});else clearConnectionPreferences();
-    localStorage.setItem("Adminerva_Role",access.role==="admin"?"superadmin":access.role==="teacher"?"teacher":access.students?.length?"student":"guest");
+    if(access.legacyRole||access.role==="admin")
+      writeConnectionPreferences(user.uid,access.teachers?.[0]?.data?.()||{});
+    else clearConnectionPreferences();
+    localStorage.setItem("Adminerva_Role",cachedRoleForAccess(access));
     const parameters=new URLSearchParams(location.search);
     let candidate=parameters.get("returnTo");
     if(!candidate)try{candidate=sessionStorage.getItem("Adminerva_last_workspace_"+user.uid);}catch{}
@@ -102,29 +116,35 @@ const handleOAuthLogin = async (provider, providerType) => {
 
     // 2. VERIFY IDENTITY against Firestore Directory
     const access=await resolveAccountAccess(result.user),role=access.role;
-    if(access.staffLookupUnavailable)throw Error("Your account is signed in, but school access could not be checked. Check your connection and use Continue to retry.");
-    const isEducator=!!role;
+    if(access.staffLookupUnavailable&&!hasVerifiedSchoolAccess(access))
+      throw Error("Your account is signed in, but school access could not be checked. Check your connection and use Continue to retry.");
+    const verifiedSchoolAccess=hasVerifiedSchoolAccess(access);
+    const legacyEducator=Boolean(access.legacyRole||role==="admin");
+    const isEducator=legacyEducator||access.schoolTeacher||access.schoolAdmin||access.platformAdmin;
+    const requestedReturn=new URLSearchParams(location.search).get("returnTo")||"";
+    const joiningSchool=/^join-school\.html(?:[?#]|$)/.test(requestedReturn);
     if(auth.currentUser?.uid!==result.user.uid)throw Error("account-changed");
-    if(!isEducator)clearConnectionPreferences();
-    let targetCollection = isEducator ? "teachers" : "students";
+    if(!legacyEducator)clearConnectionPreferences();
+    let targetCollection = legacyEducator ? "teachers" : "students";
 
-    if(!isEducator&&(access.needsTeacherApproval||!access.students.length)){
+    if(!verifiedSchoolAccess&&!legacyEducator&&!joiningSchool&&
+       (access.needsTeacherApproval||!access.students.length)){
       await ensureGuestRequest(result.user,access.needsTeacherApproval?"teacher":"guest");
       localStorage.setItem("Adminerva_Role","guest");localStorage.removeItem("Adminerva_Mock_Role");
       window.location.href="guest-home.html";return;
     }
-    let profileDocs=isEducator?access.teachers:access.students;
-    if(isEducator && !profileDocs.length){
+    let profileDocs=legacyEducator?access.teachers:access.students;
+    if(legacyEducator && !profileDocs.length){
       await setDoc(doc(db,"teachers",result.user.uid),{email,name:String(result.user.displayName||email).slice(0,120),uid:result.user.uid});
       profileDocs=[{id:result.user.uid}];
     }
-    if(isEducator){
+    if(legacyEducator){
       if(!result.user.emailVerified||auth.currentUser?.uid!==result.user.uid)throw Error("account-changed");
       const ownProfile=profileDocs.find(profile=>String(profile.data?.()?.email||"").toLowerCase()===email);
       writeConnectionPreferences(result.user.uid,ownProfile?.data?.()||{});
     }
 
-    if (!profileDocs.length && !isEducator) {
+    if (!profileDocs.length && !verifiedSchoolAccess && !joiningSchool) {
       await signOutWithPushCleanup();
       throw new Error("unrecognized-email:" + email);
     }
@@ -152,7 +172,7 @@ const handleOAuthLogin = async (provider, providerType) => {
 
         await Promise.all(updatePromises);
         if(auth.currentUser?.uid!==result.user.uid)throw Error("account-changed");
-        if(isEducator){
+        if(legacyEducator){
           const own=activateConnectionOwner(result.user.uid);
           writeConnectionPreferences(result.user.uid,{...own,githubToken:credential.accessToken});
         }
@@ -164,14 +184,7 @@ const handleOAuthLogin = async (provider, providerType) => {
       window.showSubtleLoader("Preparing Workspace...");
     }
 
-    localStorage.setItem(
-      "Adminerva_Role",
-      isEducator
-        ? role === "admin"
-          ? "superadmin"
-          : "teacher"
-        : "student",
-    );
+    localStorage.setItem("Adminerva_Role",cachedRoleForAccess(access));
     window.location.href = sessionDestination(new URLSearchParams(location.search).get("returnTo"),access);
   } catch (error) {
     let errorTitle = "Login Failed";
