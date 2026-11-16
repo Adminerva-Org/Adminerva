@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Register students, assign school-year and section placement, and prepare standard school account activation.">
+  <title>Enrollment & Registration · Adminerva</title>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
+  <link rel="stylesheet" href="css/adminerva-ui.css">
+  <script defer src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .en-shell{max-width:1180px;margin:auto;padding:1rem}
+    .en-hero{border-radius:1.2rem;padding:1.25rem;background:#0f172a;color:white}
+    .en-grid{display:grid;grid-template-columns:minmax(300px,.9fr) minmax(0,1.35fr);gap:1rem}
+    .en-card{border:1px solid #dbe3ef;border-radius:1rem;background:white;padding:1rem}
+    .en-input{width:100%;min-height:46px;border:1px solid #cbd5e1;border-radius:.75rem;padding:.65rem .75rem;background:white;color:#0f172a}
+    .en-input:focus{outline:3px solid #bfdbfe;border-color:#2563eb}
+    .en-btn{min-height:44px;border:1px solid #1d4ed8;border-radius:.75rem;padding:.65rem .95rem;background:#1d4ed8;color:white;font-weight:800}
+    .en-btn.secondary{background:white;color:#1e3a8a;border-color:#94a3b8}
+    .en-btn:disabled{opacity:.5;cursor:not-allowed}
+    .en-muted{font-size:.86rem;color:#64748b}
+    .en-notice{border:1px solid #bae6fd;background:#f0f9ff;border-radius:.9rem;padding:.85rem;color:#0c4a6e}
+    .en-list{display:grid;gap:.55rem;margin-top:.75rem}
+    .en-row{display:flex;justify-content:space-between;gap:1rem;align-items:flex-start;padding:.8rem;border:1px solid #e2e8f0;border-radius:.8rem;background:#f8fafc}
+    .en-badge{display:inline-flex;border-radius:999px;padding:.2rem .55rem;background:#dcfce7;color:#166534;font-size:.72rem;font-weight:800}
+    .en-summary{border:1px solid #cbd5e1;background:#f8fafc;border-radius:.8rem;padding:.75rem}
+    [hidden]{display:none!important}
+    @media(max-width:820px){.en-grid{grid-template-columns:1fr}.en-shell{padding:.7rem}.en-row{flex-direction:column}}
+  </style>
+</head>
+<body id="pageBody" class="hidden bg-slate-50 min-h-screen text-slate-900">
+<div id="adminerva-nav" data-module="admin" data-page="enrollment"></div>
+
+<main class="en-shell space-y-4">
+  <header class="en-hero">
+    <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+      <div>
+        <p class="text-xs font-extrabold uppercase tracking-widest text-cyan-300">Registrar &amp; SIS · Phase 1</p>
+        <h1 class="text-2xl sm:text-3xl font-extrabold mt-1">Enrollment &amp; Registration</h1>
+        <p class="text-sm text-slate-200 mt-2 max-w-3xl">Register a student once, assign the official academic placement, and prepare verified account activation. School Administrators operate this workspace now; a dedicated Registrar role can assume it later without changing the underlying records.</p>
+      </div>
+      <div id="en-school-picker" hidden class="w-full lg:w-auto lg:min-w-[230px]"></div>
+    </div>
+  </header>
+
+  <section id="en-boundary" class="en-notice">
+    <strong>Manila Cathedral School standard enrollment only.</strong>
+    <span> The legacy-compatible pilot school keeps its existing accounts and invitation workflow unchanged.</span>
+  </section>
+
+  <p id="en-status" class="en-muted" role="status" aria-live="polite">Checking school enrollment access…</p>
+
+  <section id="en-workspace" hidden class="space-y-4">
+    <div class="en-grid">
+      <section class="en-card">
+        <h2 class="text-lg font-extrabold">Register student</h2>
+        <p class="en-muted mt-1">This creates or reconciles the canonical student record and enrolls the learner into every active subject offering for the selected section and academic period.</p>
+        <form id="en-register-form" class="grid gap-3 mt-4">
+          <label class="text-sm font-bold">Student name
+            <input name="displayName" class="en-input mt-1" maxlength="140" autocomplete="off" required>
+          </label>
+          <label class="text-sm font-bold">Verified sign-in email
+            <input name="activationEmail" class="en-input mt-1" type="email" maxlength="254" autocomplete="off" required placeholder="student@school.edu.ph">
+            <span class="en-muted block mt-1">The server stores an activation identity hash for matching; the reusable school link does not grant access by itself.</span>
+          </label>
+          <label class="text-sm font-bold">Student number <span class="en-muted">(optional)</span>
+            <input name="studentNumber" class="en-input mt-1" maxlength="80" autocomplete="off">
+          </label>
+          <label class="text-sm font-bold">Academic year
+            <select name="yearId" class="en-input mt-1" required></select>
+          </label>
+          <label class="text-sm font-bold">Program / division
+            <select name="programId" class="en-input mt-1" required></select>
+          </label>
+          <label class="text-sm font-bold">Academic period
+            <select name="termId" class="en-input mt-1" required></select>
+          </label>
+          <label class="text-sm font-bold">Section
+            <select name="sectionId" class="en-input mt-1" required></select>
+          </label>
+          <div id="en-course-preview" class="en-summary en-muted">Choose the academic placement to see how many active subject offerings will be enrolled.</div>
+          <button id="en-register-button" class="en-btn" type="submit">Register &amp; enroll student</button>
+        </form>
+      </section>
+
+      <div class="space-y-4">
+        <section class="en-card">
+          <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
+            <div>
+              <h2 class="text-lg font-extrabold">Student activation</h2>
+              <p class="en-muted mt-1">Share one school link with registered students. Each learner signs in with the verified email already recorded during enrollment.</p>
+            </div>
+            <span class="en-badge">No individual invite ID</span>
+          </div>
+          <label class="text-sm font-bold block mt-3">Reusable Manila Cathedral School activation link
+            <input id="en-activation-link" class="en-input mt-1" type="text" readonly>
+          </label>
+          <div class="flex gap-2 flex-wrap mt-2">
+            <button id="en-copy-activation" class="en-btn secondary" type="button">Copy link</button>
+            <a id="en-open-activation" class="en-btn" style="display:inline-flex;align-items:center;text-decoration:none;background:#0f766e;border-color:#0f766e" target="_blank" rel="noopener">Open activation page</a>
+          </div>
+          <p id="en-activation-status" class="en-muted mt-2">A student who is not on this school's active enrollment roster will be rejected even if they have this link.</p>
+        </section>
+
+        <section class="en-card">
+          <div class="flex justify-between gap-3 items-start">
+            <div>
+              <h2 class="text-lg font-extrabold">Current registrations</h2>
+              <p class="en-muted mt-1">School-scoped registration records for this standard enrollment system.</p>
+            </div>
+            <button id="en-refresh" class="en-btn secondary" type="button">Refresh</button>
+          </div>
+          <div id="en-registration-list" class="en-list" role="list" aria-live="polite"></div>
+        </section>
+
+        <section class="en-card">
+          <h2 class="text-lg font-extrabold">Bulk enrollment</h2>
+          <p class="en-muted mt-1">The existing CSV / Google Sheets roster importer is still available while this module is being consolidated. Its records remain school-scoped and can be used by this enrollment system.</p>
+          <div class="flex gap-2 flex-wrap mt-3">
+            <a class="en-btn secondary" style="display:inline-flex;align-items:center;text-decoration:none" href="people-access.html#import">Open roster import</a>
+            <a class="en-btn secondary" style="display:inline-flex;align-items:center;text-decoration:none" href="school-academic-configuration.html">Academic configuration</a>
+          </div>
+        </section>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script defer src="js/core/release-footer.js"></script>
+<script src="js/core/adminerva-loader.js"></script>
+<script defer src="js/core/adminerva-nav.js"></script>
+<script type="module" src="js/core/auth-guard-v4-pilot.js"></script>
+<script type="module" src="js/school-admin/enrollment.mjs"></script>
+</body>
+</html>
