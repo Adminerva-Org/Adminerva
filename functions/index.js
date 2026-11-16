@@ -78,8 +78,10 @@ exports.tenantSchools=onCall(callOptions,safeCallable(async request=>{
 exports.teacherBlueprints=onCall(callOptions,safeCallable(teacherBlueprints));
 const {createPeopleDirectoryService,createInvitationAcceptanceService}=require("./people-directory.js");
 const {createSchoolRosterActivationService}=require("./school-roster-activation.js");
+const {createSchoolEnrollmentService}=require("./school-enrollment.js");
 exports.peopleDirectory=onCall(callOptions,safeCallable(createPeopleDirectoryService({db})));
 exports.activateSchoolRosterAccess=onCall(callOptions,safeCallable(createSchoolRosterActivationService({db})));
+exports.schoolEnrollment=onCall(callOptions,safeCallable(createSchoolEnrollmentService({db})));
 const {createSchoolLegacyDirectoryAdoptionService}=require("./school-legacy-directory-adoption.js");
 exports.schoolLegacyDirectoryAdoption=onCall(callOptions,safeCallable(
   createSchoolLegacyDirectoryAdoptionService({db,resolveUserByEmail:email=>getAuth().getUserByEmail(email)})
