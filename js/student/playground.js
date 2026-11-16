@@ -1955,25 +1955,122 @@ function initializeMobileStudio(){
   if(!panel||!explorer||!actions||!backdrop||!toolbar)return;
   const compact=()=>window.matchMedia('(max-width:767px)').matches;
   const commandBar=document.querySelector('.studio-command-bar');
-  const placePrimaryControls=()=>{
-    const save=document.getElementById('saveProjectBtn');
-    const run=document.getElementById('runBtn');
-    if(compact()){
-      if(save&&toolsPanel)toolsPanel.appendChild(save);
-      if(run&&toolsPanel)toolsPanel.appendChild(run);
-      return;
+  let ribbonTaskButton=null;
+  const setupRibbon=()=>{
+    if(!commandBar||document.getElementById('studioRibbon'))return;
+    const ribbon=document.createElement('div');
+    ribbon.id='studioRibbon';
+    ribbon.className='studio-ribbon';
+    ribbon.setAttribute('aria-label','Studio command ribbon');
+
+    const tabs=document.createElement('div');
+    tabs.className='studio-ribbon-tabs';
+    tabs.setAttribute('role','tablist');
+    tabs.setAttribute('aria-label','Studio command categories');
+
+    const panels=document.createElement('div');
+    panels.className='studio-ribbon-panels';
+
+    const defs=[
+      {id:'home',label:'Home',nodes:[
+        document.getElementById('saveProjectBtn'),
+        document.getElementById('formatBtn'),
+        document.getElementById('autoSaveIndicator')
+      ]},
+      {id:'project',label:'Project',nodes:[
+        document.getElementById('languageSelect'),
+        document.getElementById('studioProjectMenu'),
+        document.getElementById('projectZipInput'),
+        document.getElementById('projectSettingsBtn')
+      ]},
+      {id:'run',label:'Run',nodes:[
+        document.getElementById('javaRunModeLabel'),
+        document.getElementById('javaRunMode'),
+        document.getElementById('javaEngineLabel'),
+        document.getElementById('javaEngineSelect'),
+        document.getElementById('runBtn')
+      ]},
+      {id:'assessment',label:'Assessment',nodes:[
+        document.getElementById('studioSubmitAssessment')
+      ]},
+      {id:'tools',label:'Tools',nodes:[
+        document.querySelector('#studioMoreMenu a[href="student-xml-lab.html"]'),
+        document.getElementById('aiTutorBtn'),
+        document.getElementById('studioPreferencesBtn')
+      ]}
+    ];
+
+    const selectTab=id=>{
+      const chosen=defs.some(item=>item.id===id)?id:'home';
+      for(const button of tabs.querySelectorAll('[data-studio-ribbon-tab]')){
+        const active=button.dataset.studioRibbonTab===chosen;
+        button.setAttribute('aria-selected',String(active));
+        button.tabIndex=active?0:-1;
+      }
+      for(const panel of panels.querySelectorAll('[data-studio-ribbon-panel]')){
+        panel.hidden=panel.dataset.studioRibbonPanel!==chosen;
+      }
+      try{sessionStorage.setItem('Adminerva_Studio_Ribbon_Tab_v1',chosen);}catch{}
+      requestAnimationFrame(()=>editorInstance?.layout());
+    };
+
+    for(const def of defs){
+      const button=document.createElement('button');
+      button.type='button';
+      button.dataset.studioRibbonTab=def.id;
+      button.setAttribute('role','tab');
+      button.setAttribute('aria-controls','studioRibbonPanel-'+def.id);
+      button.textContent=def.label;
+      button.addEventListener('click',()=>selectTab(def.id));
+      tabs.appendChild(button);
+
+      const panel=document.createElement('div');
+      panel.id='studioRibbonPanel-'+def.id;
+      panel.className='studio-ribbon-panel';
+      panel.dataset.studioRibbonPanel=def.id;
+      panel.setAttribute('role','tabpanel');
+      panel.setAttribute('aria-label',def.label+' commands');
+      for(const node of def.nodes)if(node)panel.appendChild(node);
+      panels.appendChild(panel);
     }
-    if(save&&commandBar){
-      const format=document.getElementById('formatBtn');
-      format?commandBar.insertBefore(save,format):commandBar.appendChild(save);
-    }
-    if(run&&commandBar){
-      const submit=document.getElementById('studioSubmitAssessment');
-      const more=document.getElementById('studioMoreMenu');
-      commandBar.insertBefore(run,submit||more||null);
-    }
+
+    ribbonTaskButton=document.createElement('button');
+    ribbonTaskButton.id='studioRibbonTask';
+    ribbonTaskButton.type='button';
+    ribbonTaskButton.textContent='Task';
+    ribbonTaskButton.className='studio-ribbon-task hidden';
+    ribbonTaskButton.addEventListener('click',()=>{
+      (compact()?taskButton:taskDesktopOpen)?.click();
+    });
+    panels.querySelector('[data-studio-ribbon-panel="assessment"]')?.prepend(ribbonTaskButton);
+
+    const more=document.getElementById('studioMoreMenu');
+    more?.remove();
+
+    tabs.addEventListener('keydown',event=>{
+      if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+      const buttons=[...tabs.querySelectorAll('[data-studio-ribbon-tab]')];
+      const current=Math.max(0,buttons.indexOf(document.activeElement));
+      let next=current;
+      if(event.key==='ArrowRight')next=(current+1)%buttons.length;
+      if(event.key==='ArrowLeft')next=(current-1+buttons.length)%buttons.length;
+      if(event.key==='Home')next=0;
+      if(event.key==='End')next=buttons.length-1;
+      event.preventDefault();
+      buttons[next].focus();
+      selectTab(buttons[next].dataset.studioRibbonTab);
+    });
+
+    commandBar.replaceWith(ribbon);
+    ribbon.append(tabs,panels);
+    let initial='home';
+    try{
+      const saved=sessionStorage.getItem('Adminerva_Studio_Ribbon_Tab_v1');
+      if(saved)initial=saved;
+    }catch{}
+    selectTab(initial);
   };
-  placePrimaryControls();
+  setupRibbon();
   const setToolsOpen=open=>{
     toolsPanel?.classList.toggle('studio-tools-open',Boolean(open));
     toolsBar?.classList.toggle('studio-tabs-expanded',Boolean(open));
@@ -1996,6 +2093,7 @@ function initializeMobileStudio(){
   const refreshTaskButton=()=>{
     const available=Boolean(taskAvailable());
     taskButton?.classList.toggle('hidden',!available);
+    ribbonTaskButton?.classList.toggle('hidden',!available);
     taskBar?.classList.toggle('hidden',!available);
     if(!available&&activeDrawer==='task')closeDrawer();
     if(!available)return;
@@ -2187,7 +2285,6 @@ function initializeMobileStudio(){
     }
   });
   const resize=()=>{
-    placePrimaryControls();
     if(!compact()){
       if(activeDrawer!=='task')closeDrawer();
       setToolsOpen(false);
