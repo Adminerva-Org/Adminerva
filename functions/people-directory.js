@@ -2,6 +2,7 @@
 const {getSchoolContext,TenantAccessError,checkedSchoolId,verifiedUid}=require("./tenant-access.js");
 const {FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {createHash}=require("node:crypto");
+const {rosterEmailHash}=require("./school-roster-identity.js");
 function invalid(message){throw new TenantAccessError("invalid-argument",message)}
 function field(value,max,label) {
   if(typeof value!=="string"||!value.trim()||value.trim().length>max)invalid(label+" is required and must be shorter.");
@@ -29,8 +30,9 @@ function importIdentity(row,index){
   if(!email&&!externalId)errors.push("Provide an email or externalId so the row can be imported idempotently.");
   const identitySource=externalId?"external:"+externalId.toLowerCase():"email:"+email;
   const identityHash=errors.length?null:createHash("sha256").update(kind+"\0"+identitySource).digest("hex");
+  const activationEmailHash=kind==="student"&&email&&errors.length===0?rosterEmailHash(email):null;
   return {index,valid:errors.length===0,errors,displayName,kind,email,externalId,sectionHint,
-    identityHash,personId:identityHash?"imp_"+identityHash.slice(0,40):null};
+    identityHash,activationEmailHash,personId:identityHash?"imp_"+identityHash.slice(0,40):null};
 }
 function normalizedImport(rows){
   if(!Array.isArray(rows)||!rows.length||rows.length>200)
@@ -47,8 +49,8 @@ function normalizedImport(rows){
   }
   const canonical=normalized.map(row=>({
     index:row.index,valid:row.valid,displayName:row.displayName,kind:row.kind,
-    identityHash:row.identityHash,personId:row.personId,sectionHint:row.sectionHint||"",
-    errors:row.errors
+    identityHash:row.identityHash,activationEmailHash:row.activationEmailHash||null,
+    personId:row.personId,sectionHint:row.sectionHint||"",errors:row.errors
   }));
   const digest=createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
   return {rows:normalized,digest};
@@ -248,7 +250,8 @@ function createPeopleDirectoryService({db}) {
         items:docs.map(person=>({
           personId:person.id,displayName:person.data().displayName,
           kind:person.data().kind,status:person.data().status,
-          accountLinked:Boolean(person.data().authUid),schoolId:ctx.schoolId
+          accountLinked:Boolean(person.data().authUid),
+          activationReady:Boolean(person.data().activationEmailHash),schoolId:ctx.schoolId
         })),
         nextCursor:snap.docs.length>pageSize?(docs.at(-1)?.data().searchKey||null):null
       };
@@ -267,6 +270,7 @@ function createPeopleDirectoryService({db}) {
       },rows:normalized.rows.map(row=>({
         index:row.index,displayName:row.displayName,kind:row.kind,email:row.email,
         externalId:row.externalId,sectionHint:row.sectionHint,personId:row.personId,
+        activationReady:Boolean(row.activationEmailHash),
         status:!row.valid?"invalid":existing.has(row.personId)?"existing":"create",
         errors:row.errors,
         existingName:existing.get(row.personId)?.displayName||null
@@ -294,32 +298,42 @@ function createPeopleDirectoryService({db}) {
           throw new TenantAccessError("failed-precondition","This import batch requires administrator review.");
         }
         const now=FieldValue.serverTimestamp();
-        let created=0,skipped=0;
+        let created=0,skipped=0,activationPrepared=0;
         normalized.rows.forEach((row,index)=>{
           const prior=existing[index];
           if(prior.exists){
             const data=prior.data();
             if(data.schoolId!==ctx.schoolId||data.importIdentityHash!==row.identityHash)
               throw new TenantAccessError("failed-precondition","An import identity collision requires manual review.");
+            if(row.activationEmailHash&&data.activationEmailHash!==row.activationEmailHash){
+              tx.update(refs[index],{activationEmailHash:row.activationEmailHash,
+                updatedAt:now,updatedByUid:ctx.uid,revision:(data.revision||0)+1});
+              tx.create(audits[index],{schoolId:ctx.schoolId,actorUid:ctx.uid,
+                personId:row.personId,action:"student_activation_email_prepared",batchId,createdAt:now});
+              activationPrepared++;
+            }
             skipped++;return;
           }
           created++;
+          const activation=row.activationEmailHash?{activationEmailHash:row.activationEmailHash}:{};
           tx.create(refs[index],{
             schoolId:ctx.schoolId,displayName:row.displayName,
             searchKey:row.displayName.toLocaleLowerCase("en")+"#"+row.personId,
             kind:row.kind,status:"active",authUid:null,importIdentityHash:row.identityHash,
-            importBatchId:batchId,importSource:"csv",createdByUid:ctx.uid,
+            ...activation,importBatchId:batchId,importSource:"csv",createdByUid:ctx.uid,
             createdAt:now,updatedAt:now,revision:1
           });
           tx.create(audits[index],{schoolId:ctx.schoolId,actorUid:ctx.uid,
             personId:row.personId,action:"person_imported",batchId,
+            activationEmailPrepared:Boolean(row.activationEmailHash),
             sectionHintPresent:Boolean(row.sectionHint),createdAt:now});
+          if(row.activationEmailHash)activationPrepared++;
         });
         tx.create(batchRef,{schoolId:ctx.schoolId,digest:normalized.digest,status:"committed",
           source:"csv",rowCount:normalized.rows.length,created,skipped,
           createdByUid:ctx.uid,createdAt:now,
           note:"People only; no account, membership, enrollment or teacher assignment was granted."});
-        result={batchId,created,skipped,alreadyCommitted:false};
+        result={batchId,created,skipped,activationPrepared,alreadyCommitted:false};
       });
       return result;
     }
@@ -376,7 +390,8 @@ function createPeopleDirectoryService({db}) {
       return {
         person:{
           personId,displayName:data.displayName,kind:data.kind,status:data.status,
-          accountLinked:Boolean(authUid),revision:data.revision||1
+          accountLinked:Boolean(authUid),activationReady:Boolean(data.activationEmailHash),
+          revision:data.revision||1
         },
         membership:membership?.exists&&membership.data().schoolId===ctx.schoolId?{
           status:membership.data().status,
@@ -416,7 +431,8 @@ function createPeopleDirectoryService({db}) {
       return {items:matches.slice(0,50).map(person=>({
         personId:person.id,displayName:person.data().displayName,
         kind:person.data().kind,status:person.data().status,
-        accountLinked:Boolean(person.data().authUid),schoolId:ctx.schoolId
+        accountLinked:Boolean(person.data().authUid),
+        activationReady:Boolean(person.data().activationEmailHash),schoolId:ctx.schoolId
       })),truncated:snap.size===101||matches.length>50};
     }
     if(input.action==="activate_linked_staff"){
@@ -629,24 +645,36 @@ function createPeopleDirectoryService({db}) {
       const person=input.person||{};
       const displayName=field(person.displayName,140,"Person name");
       if(!["student","staff"].includes(person.kind))invalid("Choose student or staff.");
+      const activationEmail=typeof person.activationEmail==="string"?person.activationEmail.trim().toLowerCase():"";
+      if(activationEmail&&ctx.schoolId!=="manila-cathedral-school")
+        throw new TenantAccessError("failed-precondition","Roster email activation is not enabled for this school.");
+      if(activationEmail&&person.kind!=="student")
+        invalid("Roster activation email is only for student records.");
+      if(activationEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(activationEmail))
+        invalid("Enter a valid student activation email.");
+      const activationEmailHash=activationEmail?rosterEmailHash(activationEmail):null;
       const ref=base.doc(),audit=db.collection("schools/"+ctx.schoolId+"/directory_audit").doc();
       const now=FieldValue.serverTimestamp();
       await db.runTransaction(async tx=>{
         await requireCurrentAdmin(tx);
         tx.create(ref,{
           schoolId:ctx.schoolId,displayName,searchKey:displayName.toLocaleLowerCase("en")+"#"+ref.id,
-          kind:person.kind,status:"active",authUid:null,createdByUid:ctx.uid,
+          kind:person.kind,status:"active",authUid:null,
+          ...(activationEmailHash?{activationEmailHash}:{}),createdByUid:ctx.uid,
           createdAt:now,updatedAt:now,revision:1
         });
         tx.create(audit,{schoolId:ctx.schoolId,actorUid:ctx.uid,personId:ref.id,
-          action:"create_person",createdAt:now});
+          action:"create_person",activationEmailPrepared:Boolean(activationEmailHash),createdAt:now});
       });
-      return {personId:ref.id,accountLinked:false};
+      return {personId:ref.id,accountLinked:false,activationReady:Boolean(activationEmailHash)};
     }
     if(input.action==="invite") {
       const email=field(input.email,254,"Email").toLowerCase();
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))invalid("Enter a valid invitation email.");
       if(!["student","teacher"].includes(input.role))invalid("Choose a student or teacher invitation.");
+      if(ctx.schoolId==="manila-cathedral-school"&&input.role==="student")
+        throw new TenantAccessError("failed-precondition",
+          "Manila Cathedral School students use verified roster activation instead of individual invitations.");
       const linkedPersonId=id(input.personId);
       const invitationId=createHash("sha256").update(input.role+"\0"+email).digest("hex").slice(0,48);
       const ref=db.collection("schools/"+ctx.schoolId+"/invitations").doc(invitationId);
