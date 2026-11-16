@@ -2184,3 +2184,9 @@ body[data-playground-access] .studio-ribbon-tabs>button:focus-visible{
     font-size:10px;
   }
 }
+
+
+/* 3.2.1 Ribbon owns desktop assignment context */
+@media(min-width:768px){
+  body[data-playground-access] .studio-task-bar{display:none!important}
+}
