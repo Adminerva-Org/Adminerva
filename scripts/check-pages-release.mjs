@@ -8,6 +8,7 @@ const base="https://adminerva-org.github.io/Adminerva/";
 const pages=[
   ["index.html",["av-public-hero","wiki.html#school-setup"]],
   ["login.html",['id="loginForm"','id="googleLoginBtn"']],
+  ["enroll.html",['id="pe-form"','id="pe-student-email"']],
   ["wiki.html",['id="school-setup"',"teacher-accounts.html"]],
   ["school-academic-configuration.html",['data-page="academic-config"','id="ac-status"']],
   ["student-practice.html",['id="practiceApp"','js/student/practice-game.mjs']],
@@ -18,7 +19,7 @@ const pages=[
   ["school-enrollment.html",['data-page="enrollment"','id="en-register-form"']],
   ["reclaim-inbox.html",['id="reclaimRefresh"','js/repo-review/reclaim-inbox.mjs']]
 ];
-const assets=["css/adminerva-ui.css","css/documentation.css","js/core/adminerva-nav.js","js/core/adminerva-loader.js","js/core/school-catalog.mjs","js/student/practice.js","js/student/practice-standings.mjs","js/settings/settings-security.js","js/lesson-review/library.js","css/home-experience.css","css/home-showcase.css","js/core/home-experience.mjs","js/core/home-showcase.mjs","js/core/home-pulse.mjs","js/student/assessment-evidence.mjs","js/repo-review/assessment-evidence-review.mjs","js/repo-review/services/reclaim-decision.mjs","js/repo-review/reclaim-inbox.mjs"];
+const assets=["css/adminerva-ui.css","css/public-shell.css","css/public-enrollment.css","css/documentation.css","js/core/public-shell.mjs","js/public/enrollment.mjs","js/core/adminerva-nav.js","js/core/adminerva-loader.js","js/core/school-catalog.mjs","js/student/practice.js","js/student/practice-standings.mjs","js/settings/settings-security.js","js/lesson-review/library.js","css/home-experience.css","css/home-showcase.css","js/core/home-experience.mjs","js/core/home-showcase.mjs","js/core/home-pulse.mjs","js/student/assessment-evidence.mjs","js/repo-review/assessment-evidence-review.mjs","js/repo-review/services/reclaim-decision.mjs","js/repo-review/reclaim-inbox.mjs"];
 const digest=bytes=>createHash("sha256").update(bytes).digest("hex");
 function manifest(bytes,label){
   let value;try{value=JSON.parse(Buffer.from(bytes).toString("utf8"));}catch{throw Error(label+" is not valid JSON.");}
