@@ -132,11 +132,12 @@ export function buildNavigationIA(ctx){
         future("school-policies","Policies & Handbooks"),future("school-integrations","Integrations")
       ])
     ]),
-    ws("registrar","Registrar & SIS","people-access.html?workspace=registrar","Student information, enrollment, records and credentials",[
+    ws("registrar","Registrar & SIS","school-enrollment.html","Student information, enrollment, records and credentials",[
       group("Student Information",[
+        live("enrollment","Enrollment & Registration","school-enrollment.html","Standard student registration, section placement and verified account activation."),
         live("student-directory","Student Directory","people-access.html#people"),
         future("student-records","Student Records / 201 Files"),future("guardians","Parents / Guardians"),
-        future("admissions","Admissions"),future("enrollment","Enrollment / Registration")
+        future("admissions","Admissions")
       ]),
       group("Academic Records",[
         future("curriculum","Curriculum Assignment"),future("promotion","Promotion / Retention"),
