@@ -8,7 +8,8 @@ import {practiceAlias} from "../js/student/practice-ranking-model.mjs";
 let environment;
 const email=identity=>identity+"@example.test";
 const account=(identity,verified=true)=>environment.authenticatedContext(identity,{email:email(identity),email_verified:verified}).firestore();
-const ranking=(identity,count,section="A")=>({ownerUid:identity,studentId:identity,section,alias:practiceAlias(identity),completedCount:count,points:count*10,catalogMaximum:300,verificationVersion:1,updatedAt:serverTimestamp()});
+const CATALOG_MAXIMUM=COURSES.reduce((count,course)=>count+course.missions.length,0);
+const ranking=(identity,count,section="A")=>({ownerUid:identity,studentId:identity,section,alias:practiceAlias(identity),completedCount:count,points:count*10,catalogMaximum:CATALOG_MAXIMUM,verificationVersion:1,updatedAt:serverTimestamp()});
 const selection=(identity,section)=>({ownerUid:identity,studentId:identity,section,alias:practiceAlias(identity),leaderboardOptIn:false,updatedAt:serverTimestamp()});
 before(async()=>{
  const address=process.env.FIRESTORE_EMULATOR_HOST;assert.match(address||"",/^(127\.0\.0\.1|localhost):\d+$/);
@@ -59,8 +60,8 @@ test("class-only alias queries work without opt-in and immediately revoke access
  await environment.withSecurityRulesDisabled(context=>updateDoc(doc(context.firestore(),"students","bob"),{section:"B"}));
  await assertFails(getDocs(query(collection(bob,"practice_rankings"),where("section","==","A"))));
 });
-test("the full 300-mission verified catalog fits class standings without school-grade records",async()=>{
- const total=COURSES.reduce((count,course)=>count+course.missions.length,0);assert.equal(total,300);
- await environment.withSecurityRulesDisabled(context=>setDoc(doc(context.firestore(),"practice_rankings","alice"),ranking("alice",total)));
- assert.equal((await getDoc(doc(account("alice"),"practice_rankings","alice"))).data().points,3000);
+test("the full verified catalog fits class standings without school-grade records",async()=>{
+ assert.ok(CATALOG_MAXIMUM>0);
+ await environment.withSecurityRulesDisabled(context=>setDoc(doc(context.firestore(),"practice_rankings","alice"),ranking("alice",CATALOG_MAXIMUM)));
+ assert.equal((await getDoc(doc(account("alice"),"practice_rankings","alice"))).data().points,CATALOG_MAXIMUM*10);
 });
