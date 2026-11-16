@@ -148,13 +148,24 @@ document.addEventListener("DOMContentLoaded", () => {
         #adminerva-nav #av-desktop-nav{max-width:min(56vw,58rem);overflow:visible!important}
         #adminerva-nav .av-center-group>summary{display:flex;align-items:center;gap:.35rem}
       }
-      #adminerva-nav .av-workspace-menu{width:min(46rem,calc(100vw - 2rem))}
-      #adminerva-nav .av-workspace-card-main{min-height:4.25rem}
-      #adminerva-nav .av-workspace-card-description{-webkit-line-clamp:2}
+      #adminerva-nav .av-workspace-menu{
+        width:min(72rem,calc(100vw - 2rem));
+        max-height:calc(100dvh - 5.5rem);
+      }
+      #adminerva-nav .av-workspace-section{padding:.58rem}
+      #adminerva-nav .av-workspace-card{min-height:0;padding:.55rem .65rem}
+      #adminerva-nav .av-workspace-card-main{display:block;min-height:0}
+      #adminerva-nav .av-workspace-card-description{-webkit-line-clamp:1}
       #adminerva-nav .av-workspace-quicklinks{display:none!important}
       #adminerva-nav .av-active-workspace{text-decoration:none}
       #adminerva-nav details[open]>.av-nav-chevron{transform:rotate(180deg)}
       #adminerva-nav .av-nav-chevron{transition:transform .12s ease}
+      @media(min-width:1500px){
+        #adminerva-nav .av-workspace-menu{width:min(76rem,calc(100vw - 2rem))}
+      }
+      @media(min-width:768px) and (max-width:1499px){
+        #adminerva-nav .av-workspace-section-grid{grid-template-columns:1fr!important}
+      }
       @media(max-width:1279px){
         #adminerva-nav #av-mobile-nav>details>summary{display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:.75rem}
       }
