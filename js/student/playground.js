@@ -2030,18 +2030,42 @@ function initializeMobileStudio(){
       ]}
     ];
 
-    const selectTab=id=>{
+    const focusRibbon=()=>window.matchMedia('(min-width:768px) and (max-height:900px)').matches;
+    const selectTab=(id,{toggle=false,open=true}={})=>{
       const chosen=defs.some(item=>item.id===id)?id:'home';
+      const wasSelected=tabs.querySelector('[data-studio-ribbon-tab][aria-selected="true"]')?.dataset.studioRibbonTab===chosen;
       for(const button of tabs.querySelectorAll('[data-studio-ribbon-tab]')){
         const active=button.dataset.studioRibbonTab===chosen;
         button.setAttribute('aria-selected',String(active));
         button.tabIndex=active?0:-1;
+        button.setAttribute('aria-expanded',String(
+          active&&(!focusRibbon()||ribbon.dataset.panelOpen==="true")
+        ));
       }
       for(const panel of panels.querySelectorAll('[data-studio-ribbon-panel]')){
         panel.hidden=panel.dataset.studioRibbonPanel!==chosen;
       }
+      if(focusRibbon()){
+        const nextOpen=toggle&&wasSelected
+          ?ribbon.dataset.panelOpen!=="true"
+          :Boolean(open);
+        ribbon.dataset.panelOpen=String(nextOpen);
+        for(const button of tabs.querySelectorAll('[data-studio-ribbon-tab]')){
+          button.setAttribute('aria-expanded',String(
+            button.dataset.studioRibbonTab===chosen&&nextOpen
+          ));
+        }
+      }else{
+        ribbon.dataset.panelOpen="true";
+      }
       try{sessionStorage.setItem('Adminerva_Studio_Ribbon_Tab_v1',chosen);}catch{}
       requestAnimationFrame(()=>editorInstance?.layout());
+    };
+    const closeFocusRibbon=()=>{
+      if(!focusRibbon())return;
+      ribbon.dataset.panelOpen="false";
+      for(const button of tabs.querySelectorAll('[data-studio-ribbon-tab]'))
+        button.setAttribute('aria-expanded','false');
     };
 
     for(const def of defs){
@@ -2051,7 +2075,7 @@ function initializeMobileStudio(){
       button.setAttribute('role','tab');
       button.setAttribute('aria-controls','studioRibbonPanel-'+def.id);
       button.textContent=def.label;
-      button.addEventListener('click',()=>selectTab(def.id));
+      button.addEventListener('click',()=>selectTab(def.id,{toggle:true,open:true}));
       tabs.appendChild(button);
 
       const panel=document.createElement('div');
@@ -2103,6 +2127,10 @@ function initializeMobileStudio(){
       examIndicator.classList.remove('is-open');
       examIndicatorButton.setAttribute('aria-expanded','false');
     });
+    document.addEventListener('pointerdown',event=>{
+      if(!focusRibbon()||ribbon.contains(event.target))return;
+      closeFocusRibbon();
+    });
 
     const more=document.getElementById('studioMoreMenu');
     more?.remove();
@@ -2118,7 +2146,7 @@ function initializeMobileStudio(){
       if(event.key==='End')next=buttons.length-1;
       event.preventDefault();
       buttons[next].focus();
-      selectTab(buttons[next].dataset.studioRibbonTab);
+      selectTab(buttons[next].dataset.studioRibbonTab,{open:true});
     });
 
     commandBar.replaceWith(ribbon);
@@ -2128,7 +2156,14 @@ function initializeMobileStudio(){
       const saved=sessionStorage.getItem('Adminerva_Studio_Ribbon_Tab_v1');
       if(saved)initial=saved;
     }catch{}
-    selectTab(initial);
+    selectTab(initial,{open:!focusRibbon()});
+    const ribbonMedia=window.matchMedia('(min-width:768px) and (max-height:900px)');
+    ribbonMedia.addEventListener?.('change',()=>{
+      selectTab(
+        tabs.querySelector('[data-studio-ribbon-tab][aria-selected="true"]')?.dataset.studioRibbonTab||'home',
+        {open:!ribbonMedia.matches}
+      );
+    });
     refreshExamControls();
   };
   setupRibbon();
