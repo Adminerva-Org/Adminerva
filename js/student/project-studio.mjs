@@ -115,6 +115,18 @@ function v4ProjectToLocal(uid,remote){
 function defaultDiagramName(key){
   return ({useCase:"Use Case",classDiagram:"Class Diagram",sequence:"Sequence Diagram",architecture:"Architecture"})[key]||key;
 }
+function matchesTemplateStarter(project,template){
+  if(!project||!template)return false;
+  const state=project.state||{},starter=template.workspace||{};
+  const normalizeList=value=>Array.isArray(value)?value:[];
+  const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
+  return same(state.files||{},starter.files||{}) &&
+    same(normalizeList(state.fileOrder),normalizeList(starter.fileOrder)) &&
+    same(normalizeList(state.folders),normalizeList(starter.folders)) &&
+    same(normalizeList(state.projectOrder),normalizeList(starter.projectOrder)) &&
+    same(project.database||{tables:{},history:[]},template.database||{tables:{},history:[]}) &&
+    same(project.design||{},template.design||{});
+}
 
 export function createProjectStudio({
   uid,openProject,captureState,onConfigChange,legacyDraftAvailable=false,importLegacyDraft=null,
@@ -531,16 +543,26 @@ export function createProjectStudio({
     };
 
     if(project){
-      // Preserve learner files and artifacts. Only correct the automatically
-      // provisioned project classification/capabilities to match the assessment.
+      // If an earlier Adminerva version generated the wrong starter and the learner
+      // has not changed that starter at all, replace only that untouched scaffold.
+      // Any edited source/database/design data is preserved.
+      const priorTemplate=CODE_PROJECT_TEMPLATES[project.template];
+      const untouchedStarter=project.assessment?.provisionedBy==="assessment-launch" &&
+        project.template!==template.id && matchesTemplateStarter(project,priorTemplate);
       const next={
         ...project,
         template:template.id,
         lang:template.lang,
         config:{...(project.config||{}),...desiredConfig},
-        assessment:ownership
+        assessment:ownership,
+        ...(untouchedStarter?{
+          state:clone(template.workspace),
+          database:clone(template.database||{tables:{},history:[]}),
+          design:clone(template.design||{})
+        }:{})
       };
-      const changed=JSON.stringify(project.assessment||{})!==JSON.stringify(ownership)||
+      const changed=untouchedStarter||
+        JSON.stringify(project.assessment||{})!==JSON.stringify(ownership)||
         project.template!==next.template||project.lang!==next.lang||
         JSON.stringify(project.config||{})!==JSON.stringify(next.config||{});
       if(changed)project=saveCodeProject(projectStorage,uid,next);
