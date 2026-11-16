@@ -3,7 +3,7 @@ import { db, auth } from "../core/firebase-core.js?v=1.3.0";
 import {playgroundWorkspaceKey,playgroundLanguageKey,playgroundUndoKey,validPlaygroundState,readPlaygroundDraft,PLAYGROUND_LANGUAGES} from "./playground-storage.mjs?v=1.3.10";
 import {readPracticeTransfer,practiceBridgeKey,recordPracticeRun,practiceReturnUrl} from "./practice-playground-bridge.mjs?v=1.3.0";
 import {projectPath,parentFolders,bundleWebProject} from "./playground-project.mjs?v=1.3.0";
-import {createProjectStudio} from "./project-studio.mjs?v=4.1.1";
+import {createProjectStudio} from "./project-studio.mjs?v=assessment-profile2";
 import {currentV4StudioSchool,listV4StudioAssignments} from "./v4-studio-service.mjs?v=4.2.1";
 import {chooseCompilerEntry} from "./playground-entry.mjs?v=2.1.3";
 import {createCodeProject,saveCodeProject} from "./code-projects.mjs?v=2.1.0";
@@ -269,7 +269,7 @@ function inferAssessmentProjectSetup(task={}){
   const profiles={
     "java-console":{templateId:"java-console",config:{javaVersion:"17",runMode:"console",database:false,design:false}},
     "java-desktop":{templateId:"java-desktop",config:{javaVersion:"17",runMode:"desktop",database:false,design:true}},
-    "java-database":{templateId:"java-information",config:{javaVersion:"17",runMode:"console",database:true,design:false}},
+    "java-database":{templateId:"java-console",config:{javaVersion:"17",runMode:"console",database:true,design:false}},
     "web":{templateId:"web",config:{runMode:"web",database:false,design:false}},
     "python-console":{templateId:"python-console",config:{runMode:"console",database:false,design:false}}
   };
@@ -340,6 +340,7 @@ async function provisionAssessmentProject(assessmentId,studioSchool){
     projectTitle:context.title,description:context.description,instructions:context.instructions,
     assessmentType:context.assessmentType,subject:context.subject,offeringId:context.offeringId||"",
     personalized:context.personalizedTask?.enabled===true||context.assessmentMode==="personalized",
+    studioProjectProfile:context.studioProjectProfile||"auto",
     variantId:variant?.assessmentId===context.assessmentId?variant.variantId:"",
     attempt:variant?.assessmentId===context.assessmentId?variant.attempt:null,
     templateId:setup.templateId,config:setup.config
@@ -549,6 +550,7 @@ window.addEventListener("adminerva:studio-variant-ready",event=>{
     assessmentType:active.assessment.assessmentType||"Assessment",
     subject:active.assessment.subject||"Computer Programming",
     offeringId:active.assessment.offeringId||"",personalized:true,
+    studioProjectProfile:active.assessment.studioProjectProfile||"auto",
     variantId:event.detail.variantId||"",attempt:event.detail.attempt,
     templateId:active.template,config:active.config
   }).catch(error=>console.warn("Assessment project variant metadata was not refreshed:",error));
