@@ -197,11 +197,41 @@ const examRestrictedActions=["importZipBtn","legacyImportBtn","undoRestoreBtn",
 function examRestrictionsActive(){return !guestMode&&(examPolicyPending||examPolicy?.practicalExam===true);}
 function refreshExamControls(){
   const active=examRestrictionsActive(),banner=document.getElementById("studioExamBanner");
+  const indicator=document.getElementById("studioExamIndicator");
+  const indicatorButton=document.getElementById("studioExamIndicatorButton");
+  const indicatorLabel=document.getElementById("studioExamIndicatorLabel");
+  const indicatorTitle=document.getElementById("studioExamIndicatorTitle");
+  const indicatorText=document.getElementById("studioExamIndicatorText");
+  const assessmentTab=document.querySelector('[data-studio-ribbon-tab="assessment"]');
+  const pending=Boolean(examPolicyPending);
+  const practical=examPolicy?.practicalExam===true;
   if(banner){
-    banner.classList.toggle("hidden",!active);
-    document.getElementById("studioExamNotice").textContent=examPolicyPending
-      ?"Checking this assessment. Code import and clipboard actions are temporarily restricted…"
-      :"Practical exam: code copying/pasting, imports, previous versions and AI helper are disabled here. This is not a proctored exam.";
+    document.getElementById("studioExamNotice").textContent=pending
+      ?"Checking this assessment. Code import and clipboard actions are temporarily restricted."
+      :practical
+        ?"Practical exam restrictions are active. Code copying/pasting, imports, previous versions and AI helper are disabled. This is not a proctored exam."
+        :"This assessment does not use practical-exam restrictions.";
+  }
+  if(indicator){
+    indicator.classList.toggle("hidden",!active);
+    indicator.dataset.state=pending?"pending":practical?"active":"inactive";
+  }
+  if(indicatorButton){
+    indicatorButton.title=pending
+      ?"Checking practical-exam restrictions"
+      :"Practical-exam restrictions are active";
+  }
+  if(indicatorLabel)indicatorLabel.textContent=pending?"Checking exam rules":"Exam restrictions";
+  if(indicatorTitle)indicatorTitle.textContent=pending?"Checking exam restrictions…":"Exam restrictions active";
+  if(indicatorText)indicatorText.textContent=pending
+    ?"Adminerva is checking this assessment. Imports, clipboard actions, previous versions and AI help stay temporarily restricted until the check completes."
+    :"Code copying/pasting, imports, previous versions and the AI helper are disabled for this practical exam. This limits transfer tools but does not make the assessment proctored.";
+  if(assessmentTab){
+    if(active)assessmentTab.dataset.examState=pending?"pending":"active";
+    else delete assessmentTab.dataset.examState;
+    assessmentTab.title=active
+      ?(pending?"Checking exam restrictions":"Practical-exam restrictions are active")
+      :"";
   }
   for(const id of examRestrictedActions){
     const element=document.getElementById(id);
@@ -2042,7 +2072,37 @@ function initializeMobileStudio(){
     ribbonTaskButton.addEventListener('click',()=>{
       (compact()?taskButton:taskDesktopOpen)?.click();
     });
-    panels.querySelector('[data-studio-ribbon-panel="assessment"]')?.prepend(ribbonTaskButton);
+    const assessmentPanel=panels.querySelector('[data-studio-ribbon-panel="assessment"]');
+    assessmentPanel?.prepend(ribbonTaskButton);
+
+    const examIndicator=document.createElement('div');
+    examIndicator.id='studioExamIndicator';
+    examIndicator.className='studio-exam-indicator hidden';
+    const examIndicatorButton=document.createElement('button');
+    examIndicatorButton.id='studioExamIndicatorButton';
+    examIndicatorButton.type='button';
+    examIndicatorButton.className='studio-exam-indicator-button';
+    examIndicatorButton.setAttribute('aria-expanded','false');
+    examIndicatorButton.setAttribute('aria-controls','studioExamIndicatorTooltip');
+    examIndicatorButton.innerHTML='<span class="studio-exam-dot" aria-hidden="true"></span><span id="studioExamIndicatorLabel">Exam restrictions</span>';
+    const examTooltip=document.createElement('div');
+    examTooltip.id='studioExamIndicatorTooltip';
+    examTooltip.className='studio-exam-tooltip';
+    examTooltip.setAttribute('role','tooltip');
+    examTooltip.innerHTML='<strong id="studioExamIndicatorTitle">Exam restrictions active</strong><p id="studioExamIndicatorText">Code copying/pasting, imports, previous versions and the AI helper are disabled for this practical exam.</p><a href="student-assessments.html">Open My Assessments</a>';
+    examIndicator.append(examIndicatorButton,examTooltip);
+    assessmentPanel?.prepend(examIndicator);
+    examIndicatorButton.addEventListener('click',event=>{
+      event.stopPropagation();
+      const open=!examIndicator.classList.contains('is-open');
+      examIndicator.classList.toggle('is-open',open);
+      examIndicatorButton.setAttribute('aria-expanded',String(open));
+    });
+    document.addEventListener('click',event=>{
+      if(examIndicator.contains(event.target))return;
+      examIndicator.classList.remove('is-open');
+      examIndicatorButton.setAttribute('aria-expanded','false');
+    });
 
     const more=document.getElementById('studioMoreMenu');
     more?.remove();
@@ -2069,6 +2129,7 @@ function initializeMobileStudio(){
       if(saved)initial=saved;
     }catch{}
     selectTab(initial);
+    refreshExamControls();
   };
   setupRibbon();
   const setToolsOpen=open=>{
