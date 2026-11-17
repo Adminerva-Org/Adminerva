@@ -7,6 +7,7 @@
 import {app,auth} from "../core/firebase-core.js?v=1.3.0";
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.1";
+import {trackOperation} from "../core/telemetry.mjs?v=4.0.0";
 
 const functions=getFunctions(app,"asia-southeast1");
 const projectsApi=httpsCallable(functions,"schoolStudioProjects");
@@ -138,7 +139,9 @@ async function scopedCall(api,action,details={}){
   await init();
   if(!picker?.scope.current)return null;
   const lease=picker.scope.lease();
-  const result=(await api({schoolId:lease.schoolId,action,...details})).data;
+  const result=await trackOperation("studio."+action,async traceId=>
+    (await api({schoolId:lease.schoolId,action,...details,_telemetryTraceId:traceId})).data
+  ,{sampleRate:.20});
   picker.scope.assertLease(lease);
   return result;
 }

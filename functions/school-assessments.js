@@ -5,6 +5,7 @@
  * This does NOT write grades, approve evidence or accept Studio/GitHub submissions.
  */
 const {createHash}=require("node:crypto");
+const {measureSpan}=require("./platform-telemetry.js");
 const {Timestamp,FieldValue}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
@@ -47,7 +48,7 @@ function createSchoolAssessmentService({db}){
    const blueprintRef=db.doc(prefix+"assessment_blueprints/"+blueprintId);
    const auditRef=db.collection(prefix+"assessment_audit").doc();
    let result=null;
-   await db.runTransaction(async tx=>{
+   await measureSpan(request,"assessment.deploy_transaction",()=>db.runTransaction(async tx=>{
     const [school,membership,offering,grant,blueprint,existing]=await Promise.all([
      tx.get(schoolRef),tx.get(membershipRef),tx.get(offeringRef),tx.get(grantRef),
      tx.get(blueprintRef),tx.get(taskRef)
@@ -131,7 +132,7 @@ function createSchoolAssessmentService({db}){
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
      action:"assessment_deployed",offeringId,source,createdAt:now});
     result={taskId,status:"deployed",published:false,alreadyExisted:false};
-   });
+   }));
    return result;
   }
 

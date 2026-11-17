@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Operations Center | Adminerva System Admin</title>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="css/first-paint.css?v=4.0.0">
+  <script defer src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="css/adminerva-ui.css?v=b29bdd51fb91">
+  <link rel="stylesheet" href="css/platform-operations.css?v=3">
+</head>
+<body id="pageBody" class="hidden">
+  <div id="adminerva-nav" data-module="admin" data-page="platform-operations"></div>
+  <main class="opc" id="opc-main">
+    <header class="opc-header">
+      <div>
+        <p class="opc-eyebrow">SYSTEM ADMIN / PLATFORM OPERATIONS</p>
+        <h1>Operations Center</h1>
+        <p class="opc-subtitle">Institution lifecycle, technical health, incidents and operational controls—all scoped to verified System Administrators.</p>
+      </div>
+      <div class="opc-header-actions">
+        <a class="opc-button opc-button--quiet" href="owner-schools.html">School registry</a>
+        <button class="opc-button opc-button--primary" id="opc-refresh" type="button">Refresh overview</button>
+      </div>
+    </header>
+    <div id="opc-alert" class="opc-alert" role="alert" hidden></div>
+    <div class="opc-meta"><p id="opc-status" role="status" aria-live="polite">Connecting to platform services…</p>
+      <p id="opc-updated">Not refreshed yet</p></div>
+    <section aria-labelledby="opc-summary-title">
+      <div class="opc-section-head"><h2 id="opc-summary-title">Platform snapshot</h2>
+        <span class="opc-helper">Verified registry counts</span></div>
+      <div class="opc-stats" aria-live="polite">
+        <article class="opc-stat"><span>Registered schools</span><strong id="opc-total">—</strong><small>Across registry</small></article>
+        <article class="opc-stat"><span>Active schools</span><strong id="opc-active">—</strong><small>Live lifecycle state</small></article>
+        <article class="opc-stat"><span>Draft &amp; pilot</span><strong id="opc-preparing">—</strong><small>Preparing for use</small></article>
+        <article class="opc-stat"><span>Open incidents</span><strong id="opc-incident-count">—</strong><small>Operator-owned issues</small></article>
+      </div>
+      <p id="opc-coverage" class="opc-footnote">Counts appear after connecting.</p>
+    </section>
+    <div class="opc-tabs" role="tablist" aria-label="Operations Center sections">
+      <button type="button" id="opc-tab-overview" role="tab" aria-controls="opc-panel-overview" aria-selected="true" tabindex="0" data-opc-tab="overview">Overview</button>
+      <button type="button" id="opc-tab-health" role="tab" aria-controls="opc-panel-health" aria-selected="false" tabindex="-1" data-opc-tab="health">Service health</button>
+      <button type="button" id="opc-tab-observability" role="tab" aria-controls="opc-panel-observability" aria-selected="false" tabindex="-1" data-opc-tab="observability">Observability</button>
+      <button type="button" id="opc-tab-incidents" role="tab" aria-controls="opc-panel-incidents" aria-selected="false" tabindex="-1" data-opc-tab="incidents">Incidents &amp; alerts</button>
+      <button type="button" id="opc-tab-automation" role="tab" aria-controls="opc-panel-automation" aria-selected="false" tabindex="-1" data-opc-tab="automation">Jobs &amp; policy</button>
+      <button type="button" id="opc-tab-rollouts" role="tab" aria-controls="opc-panel-rollouts" aria-selected="false" tabindex="-1" data-opc-tab="rollouts">Feature rollouts</button>
+    </div>
+
+    <section id="opc-panel-overview" role="tabpanel" aria-labelledby="opc-tab-overview">
+      <div class="opc-split">
+        <section class="opc-panel" aria-labelledby="opc-schools-title">
+          <div class="opc-section-head">
+            <div><h2 id="opc-schools-title">Schools</h2><p class="opc-helper">Select an institution to inspect operational counts.</p></div>
+            <span class="opc-count" id="opc-matches">—</span>
+          </div>
+          <div class="opc-filters">
+            <label>Find school<input id="opc-search" type="search" placeholder="School name or ID" autocomplete="off" maxlength="120"></label>
+            <label>Lifecycle state<select id="opc-state"><option value="all">All states</option>
+              <option value="active">Active</option><option value="draft">Draft</option><option value="pilot">Pilot</option>
+              <option value="suspended">Suspended</option><option value="archived">Archived</option></select></label>
+          </div>
+          <div class="opc-school-list" id="opc-school-list"><p class="opc-empty">Loading school registry…</p></div>
+        </section>
+        <section class="opc-panel" aria-labelledby="opc-detail-title">
+          <div class="opc-section-head"><div><h2 id="opc-detail-title">School operations</h2>
+            <p class="opc-helper">Aggregate counts only. No student reports or grading data.</p></div></div>
+          <div id="opc-school-detail" aria-live="polite"><p class="opc-empty">Choose a school.</p></div>
+        </section>
+      </div>
+      <div class="opc-split opc-split--lower">
+        <section class="opc-panel" aria-labelledby="opc-fleet-title">
+          <div class="opc-section-head"><div><h2 id="opc-fleet-title">Fleet support summary</h2>
+            <p class="opc-helper">Loaded in small batches to avoid expensive wide reads.</p></div>
+            <button id="opc-fleet-reload" type="button" class="opc-button opc-button--quiet">Load fleet</button></div>
+          <div id="opc-fleet" class="opc-list"><p class="opc-empty">Select Load fleet to retrieve school support aggregates.</p></div>
+          <button id="opc-fleet-more" type="button" class="opc-button opc-button--quiet" hidden>Load next schools</button>
+        </section>
+        <section class="opc-panel" aria-labelledby="opc-events-title">
+          <div class="opc-section-head"><div><h2 id="opc-events-title">Recent school registry changes</h2>
+            <p class="opc-helper">Sanitized history—no actor identities or audit reasons.</p></div>
+            <a href="patch-notes.html" class="opc-inline-link">Release history</a></div>
+          <ol class="opc-timeline" id="opc-events"><li class="opc-empty">Loading platform events…</li></ol>
+        </section>
+      </div>
+    </section>
+
+    <section id="opc-panel-health" role="tabpanel" aria-labelledby="opc-tab-health" hidden>
+      <div class="opc-workflow-banner">
+        <div><strong>Service observations, not an uptime guarantee</strong>
+          <p>Internal probes test a limited operation; vendor probes use public status pages, not your credentials or tenant configuration. Push self-test reports Firebase acceptance only; device display is not a delivery receipt. Billing remains unmonitored until cloud IAM/export is authorized.</p></div>
+        <div class="opc-header-actions">
+          <button id="opc-push-test" type="button" class="opc-button opc-button--quiet">Send push self-test</button>
+          <button id="opc-probe" type="button" class="opc-button opc-button--primary">Run checks now</button>
+        </div>
+      </div>
+      <div class="opc-split opc-split--lower">
+        <section class="opc-panel"><div class="opc-section-head"><h2>Latest service checks</h2>
+          <span id="opc-probe-stamp" class="opc-helper">No observations yet</span></div>
+          <div class="opc-service-list" id="opc-services"><p class="opc-empty">Load a snapshot first.</p></div>
+          <div class="opc-maintenance" id="opc-maintenance"><h3>Legacy monitoring maintenance</h3></div>
+        </section>
+        <section class="opc-panel"><div class="opc-section-head"><h2>Probe history</h2>
+          <span class="opc-helper">Last 30 checks · 90-day retention for scheduled samples</span></div>
+          <div id="opc-history" class="opc-list"><p class="opc-empty">No samples loaded.</p></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="opc-panel-observability" role="tabpanel" aria-labelledby="opc-tab-observability" hidden>
+      <div class="opc-workflow-banner">
+        <div><strong>Adminerva-native telemetry</strong>
+          <p>Success traffic is sampled; failures are retained as grouped technical metadata. No prompts, source code, grades, credentials, notification bodies, student names, or request payloads are stored by this telemetry layer.</p></div>
+        <div class="opc-header-actions">
+          <button id="opc-telemetry-cleanup" type="button" class="opc-button opc-button--quiet">Run retention cleanup</button>
+          <button id="opc-telemetry-refresh" type="button" class="opc-button opc-button--primary">Refresh telemetry</button>
+        </div>
+      </div>
+      <div class="opc-stats opc-stats--telemetry">
+        <article class="opc-stat"><span>Estimated requests</span><strong id="opc-telemetry-requests">—</strong><small>Last 60 minutes</small></article>
+        <article class="opc-stat"><span>Failures</span><strong id="opc-telemetry-failures">—</strong><small id="opc-telemetry-error-rate">Error rate unavailable</small></article>
+        <article class="opc-stat"><span>Average latency</span><strong id="opc-telemetry-latency">—</strong><small>Weighted sampled traffic</small></article>
+        <article class="opc-stat"><span>P95 latency band</span><strong id="opc-telemetry-p95">—</strong><small>Histogram estimate</small></article>
+      </div>
+      <p class="opc-footnote">Backend success samples represent approximately 10% of successful calls; failures are recorded at full rate. Browser page loads are sampled at approximately 10%.</p>
+      <div class="opc-split">
+        <section class="opc-panel"><div class="opc-section-head"><div><h2>Detected anomalies</h2>
+          <p class="opc-helper">Simple recent-baseline checks for failure-rate and latency spikes.</p></div><span id="opc-anomaly-count" class="opc-count">—</span></div>
+          <div id="opc-anomalies" class="opc-list"><p class="opc-empty">Open this tab to load telemetry.</p></div>
+        </section>
+        <section class="opc-panel"><div class="opc-section-head"><div><h2>Service metrics</h2>
+          <p class="opc-helper">Estimated request volume, failures and sampled latency by operation.</p></div></div>
+          <div id="opc-metric-services" class="opc-list"><p class="opc-empty">No telemetry loaded.</p></div>
+        </section>
+      </div>
+      <div class="opc-split opc-split--lower">
+        <section class="opc-panel"><div class="opc-section-head"><div><h2>Error groups</h2>
+          <p class="opc-helper">Sanitized fingerprints; school contexts are bounded and no user identity is exposed.</p></div></div>
+          <div id="opc-error-groups" class="opc-list"><p class="opc-empty">No grouped errors loaded.</p></div>
+        </section>
+        <section class="opc-panel"><div class="opc-section-head"><div><h2>Recent traces</h2>
+          <p class="opc-helper">Sampled call/event traces with bounded technical spans.</p></div></div>
+          <div id="opc-traces" class="opc-list"><p class="opc-empty">No traces loaded.</p></div>
+        </section>
+      </div>
+      <div class="opc-split opc-split--lower">
+        <section class="opc-panel"><div class="opc-section-head"><div><h2>Deployment correlation</h2>
+          <p class="opc-helper">Observed backend revisions and frontend telemetry release markers from recent traces.</p></div></div>
+          <div id="opc-releases" class="opc-list"><p class="opc-empty">No release markers observed.</p></div>
+        </section>
+        <section class="opc-panel"><div class="opc-section-head"><div><h2>Traffic timeline</h2>
+          <p class="opc-helper">Five-minute aggregate buckets from the recent telemetry window.</p></div></div>
+          <div id="opc-metric-timeline" class="opc-bars"><p class="opc-empty">No metric buckets loaded.</p></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="opc-panel-incidents" role="tabpanel" aria-labelledby="opc-tab-incidents" hidden>
+      <div class="opc-split">
+        <section class="opc-panel"><div class="opc-section-head"><div><h2>Operational incidents</h2>
+          <p class="opc-helper">Record, acknowledge, investigate and resolve platform issues.</p></div></div>
+          <details class="opc-accordion" id="opc-incident-create">
+            <summary>Record new incident</summary>
+            <form id="opc-incident-form" class="opc-form">
+              <label>Title<input name="title" minlength="6" maxlength="150" required placeholder="Short technical summary"></label>
+              <label>Description<textarea name="description" minlength="12" maxlength="750" rows="3" required placeholder="Technical details only; do not include student data or credentials."></textarea></label>
+              <div class="opc-two">
+                <label>Severity<select name="severity" required><option value="medium">Medium</option><option value="low">Low</option>
+                  <option value="high">High</option><option value="critical">Critical</option></select></label>
+                <label>Related service<select name="serviceId" id="opc-incident-service"><option value="">General platform</option></select></label>
+              </div>
+              <label>School (optional)<select name="schoolId" id="opc-incident-school"><option value="">Platform-wide</option></select></label>
+              <button type="submit" class="opc-button opc-button--primary">Create incident</button>
+            </form>
+          </details>
+          <div id="opc-incidents" class="opc-list"><p class="opc-empty">No incidents loaded.</p></div>
+        </section>
+        <section class="opc-panel"><div class="opc-section-head"><div><h2>Service alerts</h2>
+          <p class="opc-helper">Alert records are generated only after the approved threshold is reached.</p></div></div>
+          <div id="opc-alerts" class="opc-list"><p class="opc-empty">No alerts loaded.</p></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="opc-panel-automation" role="tabpanel" aria-labelledby="opc-tab-automation" hidden>
+      <div class="opc-split opc-split--lower">
+        <section class="opc-panel"><div class="opc-section-head"><div><h2>Monitoring and alert policy</h2>
+          <p class="opc-helper">Scheduled checks remain disabled by default. Saving does not deploy a scheduler.</p></div></div>
+          <form id="opc-policy-form" class="opc-form">
+            <label class="opc-checkbox"><input name="automatedChecks" type="checkbox">Enable hourly service checks</label>
+            <label class="opc-checkbox"><input name="automaticIncidents" type="checkbox">Open incidents after consecutive unavailable checks</label>
+            <label class="opc-checkbox"><input name="dailyDigest" type="checkbox">Save one aggregate digest per UTC day</label>
+            <div class="opc-two">
+              <label>Consecutive failures<select name="failureThreshold"><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option></select></label>
+              <label>Probe stale after (min)<input name="staleAfterMinutes" type="number" min="30" max="1440" step="1" required></label>
+              <label>Alert cooldown (min)<input name="cooldownMinutes" type="number" min="30" max="1440" step="1" required></label>
+              <label>Critical support threshold<input name="criticalSupportThreshold" type="number" min="1" max="1000" step="1" required></label>
+              <label>Monthly budget (PHP; optional)<input name="monthlyBudgetPHP" type="number" min="1" max="100000000" step="1" placeholder="Not set"></label>
+            </div>
+            <label>Reason for policy change<input name="reason" minlength="12" maxlength="300" required placeholder="Why these operational controls are changing"></label>
+            <button type="submit" class="opc-button opc-button--primary">Save monitoring policy</button>
+          </form>
+        </section>
+        <section class="opc-panel"><div class="opc-section-head"><div><h2>Jobs and digests</h2>
+          <p class="opc-helper">Instrumented scheduled maintenance and platform pulse jobs are tracked here with duration and failure state.</p></div></div>
+          <div id="opc-jobs" class="opc-list"><p class="opc-empty">No jobs loaded.</p></div>
+          <h3 class="opc-subheading">Daily summaries</h3>
+          <div id="opc-digests" class="opc-list"><p class="opc-empty">No daily digests have been saved.</p></div>
+          <div id="opc-runtime" class="opc-maintenance"></div>
+        </section>
+      </div>
+      <section class="opc-panel opc-narrow">
+        <div class="opc-section-head"><div><h2>Cloud spend and quota visibility</h2>
+          <p class="opc-helper">Cloud Billing export and quota APIs are not connected. Record approved monthly figures manually; these are not validated cloud charges.</p></div></div>
+        <div id="opc-cost-summary" class="opc-detail-note">No cost report loaded.</div>
+        <form id="opc-cost-form" class="opc-form">
+          <div class="opc-two"><label>Month<input name="month" type="month" required></label>
+            <label>Operator-reported amount (PHP)<input name="reportedPHP" type="number" min="0" max="100000000" step="1" required></label></div>
+          <label>Report source / internal reference<input name="sourceReference" maxlength="120" minlength="6" required placeholder="Approved billing report reference"></label>
+          <label>Reason for update<input name="reason" minlength="12" maxlength="300" required></label>
+          <button type="submit" class="opc-button opc-button--quiet">Save operator-reported figure</button>
+        </form>
+      </section>
+    </section>
+
+    <section id="opc-panel-rollouts" role="tabpanel" aria-labelledby="opc-tab-rollouts" hidden>
+      <section class="opc-panel">
+        <div class="opc-section-head"><div><h2>School-scoped Operations Center features</h2>
+          <p class="opc-helper">These toggles control only the Operations Center's supported behaviors—not classroom navigation, grading, or institution access.</p></div></div>
+        <div id="opc-rollouts" class="opc-rollouts"><p class="opc-empty">Feature configuration unavailable.</p></div>
+        <p class="opc-footnote">Pilot mode applies only to the selected registered institutions. The server verifies every school ID and records each change in the operations audit.</p>
+      </section>
+    </section>
+    <footer class="opc-footer"><strong>Operational safety</strong><span>Control changes are platform-authorized, revision-checked and audited. No incident or monitoring action grants access to academic records or changes school lifecycle.</span></footer>
+  </main>
+  <script defer src="js/core/adminerva-nav.js?v=b29bdd51fb91"></script>
+  <script type="module" src="js/core/auth-guard-v4-pilot.js?v=b29bdd51fb91"></script>
+  <script defer src="js/core/release-footer.js?v=b29bdd51fb91"></script>
+  <script src="js/core/adminerva-loader.js?v=b29bdd51fb91"></script>
+  <script type="module" src="js/core/platform-operations.mjs?v=3"></script>
+</body>
+</html>

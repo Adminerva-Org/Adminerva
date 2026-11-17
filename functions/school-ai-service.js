@@ -1,6 +1,7 @@
 /** School-scoped AI credentials and limits. Prompts are never logged or persisted. */
 const {randomUUID,createHash}=require("node:crypto");
 const {getSchoolContext}=require("./tenant-access.js");
+const {measureSpan}=require("./platform-telemetry.js");
 function problem(code,message){const error=Error(message);error.code=code;throw error;}
 function createSchoolAI({db,FieldValue,Timestamp,resolveUser,fetchImpl=fetch}){
   async function actor(request,roles){
@@ -168,14 +169,14 @@ function createSchoolAI({db,FieldValue,Timestamp,resolveUser,fetchImpl=fetch}){
       const live=(await connection.get()).data();
       if(!live?.enabled||!live.apiKey)
         problem("failed-precondition","School AI was disabled before provider execution.");
-      const response=await fetchImpl(
+      const response=await measureSpan(request,"gemini.generate",()=>fetchImpl(
         "https://generativelanguage.googleapis.com/v1beta/models/"+
         encodeURIComponent(live.model)+":generateContent",{
           method:"POST",
           headers:{"Content-Type":"application/json","x-goog-api-key":live.apiKey},
           body:JSON.stringify({contents,generationConfig}),
           signal:AbortSignal.timeout(85000)
-        });
+        }));
       if(!response.ok){
         if(response.status===429)problem("resource-exhausted","This school's Gemini account is busy or has reached its provider allowance.");
         if([400,401,403,404].includes(response.status))

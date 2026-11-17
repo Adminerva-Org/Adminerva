@@ -8,6 +8,10 @@ import {
   signOut,
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
 
+void import("./telemetry.mjs?v=4.0.0")
+  .then(module=>module.startClientTelemetry())
+  .catch(error=>console.warn("Client diagnostics unavailable:",error?.message||error));
+
 const currentPath = window.location.pathname.toLowerCase();
 const isLoginPage = currentPath.includes("login.html");
 let admittedUid;
@@ -185,6 +189,9 @@ async function checkAccess(user){
   if(v4Cutover&&actualRole==="platformowner"&&currentPath.endsWith("/issues.html")){
     replacePage("owner-schools.html");return;
   }
+  if(currentPath.endsWith("/platform-operations.html")&&!access.platformAdmin){
+    replacePage(roleHome(actualRole));return;
+  }
   if(/\/(owner-schools)\.html$/.test(currentPath)&&
      !(access.platformAdmin||admittedRole==="admin")){
     replacePage(roleHome(actualRole));return;
@@ -209,7 +216,7 @@ async function checkAccess(user){
     replacePage("school-admin.html");return;
   }
   if(actualRole==="platformowner"&&!platformSchoolView&&!access.schoolAdmin&&!access.schoolTeacher&&!access.schoolStudent&&
-     !/\/(owner-schools|admin-analytics|settings|issues|wiki|patch-notes|future-workspace)\.html$/.test(currentPath)){
+     !/\/(owner-schools|platform-operations|admin-analytics|settings|issues|wiki|patch-notes|future-workspace)\.html$/.test(currentPath)){
     replacePage("owner-schools.html");return;
   }
   if(/\/(school-student-projects|school-student-settings|school-student-assessments|school-student-grades)\.html$/.test(currentPath)&&
@@ -241,7 +248,7 @@ async function checkAccess(user){
       "assessment-evidence-review.html","studio-submissions.html",
       "lesson-planner.html","presentation.html","schedule.html","library.html",
       "settings.html","issues.html","join-school.html","wiki.html",
-      ...(access.platformAdmin?["owner-schools.html"]:[])
+      ...(access.platformAdmin?["owner-schools.html","platform-operations.html"]:[])
     ]);
     if(!allowed.has(page)){replacePage("teacher-home.html");return;}
   }
