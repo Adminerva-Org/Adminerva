@@ -154,7 +154,7 @@ async function judge0Verify({files,profile,stdin=""}){
    message:"No Java static void main(...) entry point was found in the frozen files."};
  try{
   const javaFiles=files.filter(file=>/\.java$/i.test(file.path)).map(file=>shellQuote(file.path));
-  const compileOnly=profile.swing===true;
+  const compileOnly=profile.swing===true||profile.database===true;
   const additional_files=zipBase64([
    ...files.map(file=>[file.path,file.content]),
    ["compile","#!/bin/bash\nset -e\njavac -encoding UTF-8 -d . "+javaFiles.join(" ")+"\n"],
@@ -196,7 +196,7 @@ async function judge0Verify({files,profile,stdin=""}){
     message:clip(error.message,1000)};
  }
 }
-async function dedicatedRuntimeVerify({files,profile,database,sourceDigestValue,task}){
+async function dedicatedRuntimeVerify({files,profile,database,sourceDigestValue,task,stdin=""}){
  if(!RUNTIME_ORIGIN||!RUNTIME_TOKEN)return {
    attempted:false,status:"not_configured",
    message:"Dedicated Adminerva desktop/database runtime verification is not configured on the Firebase backend."
@@ -210,7 +210,8 @@ async function dedicatedRuntimeVerify({files,profile,database,sourceDigestValue,
     files:Object.fromEntries(files.map(file=>[file.path,file.content])),entry:main.entry,
     profile:profile.id,sourceDigest:sourceDigestValue,database:database||null,
     uiExpectations:task?.verificationConfig?.ui||null,
-    databaseChecks:task?.verificationConfig?.databaseChecks||null
+    databaseChecks:task?.verificationConfig?.databaseChecks||null,
+    stdin:clip(stdin,6000)
    }),signal:AbortSignal.timeout(35000)
   });
   let data={};try{data=await response.json();}catch{}
@@ -228,6 +229,10 @@ async function verifyFrozenSubmission({snapshot,task}){
  const files=normalizeFiles(snapshot),language=String(snapshot.sourceLanguage||snapshot.language||snapshot.lang||"").toLowerCase();
  const digest=sourceDigest(files,language),profile=inferProfile(task,{...snapshot,files});
  const limitations=[];
+ const historicalRuns=Array.isArray(snapshot.executionEvidence?.runs)?snapshot.executionEvidence.runs:
+   Array.isArray(snapshot.artifacts?.evidence?.runs)?snapshot.artifacts.evidence.runs:[];
+ const matchingInput=historicalRuns.find(run=>run?.sourceDigest===digest&&String(run?.stdin||"").length)?.stdin||"";
+ const verificationInput=String(task?.verificationConfig?.stdin??matchingInput??"").slice(0,6000);
  if(profile.id==="unsupported")return {
    verificationVersion:VERIFY_VERSION,verifiedAt:Date.now(),profile,sourceDigest:digest,
    matchesSubmittedSource:true,status:"not_applicable",
@@ -235,12 +240,12 @@ async function verifyFrozenSubmission({snapshot,task}){
    database:verifyDatabaseArtifact(databaseArtifact(snapshot)),
    limitations:["Automatic runtime verification currently targets Java Studio submissions."]
  };
- const compileRun=await judge0Verify({files,profile});
+ const compileRun=await judge0Verify({files,profile,stdin:verificationInput});
  const database=verifyDatabaseArtifact(databaseArtifact(snapshot));
  let dedicated={attempted:false,status:"not_required"};
  if(profile.swing||profile.database){
   dedicated=await dedicatedRuntimeVerify({
-    files,profile,database:databaseArtifact(snapshot),sourceDigestValue:digest,task
+    files,profile,database:databaseArtifact(snapshot),sourceDigestValue:digest,task,stdin:verificationInput
   });
   if(dedicated.status==="not_configured")
    limitations.push("Dedicated desktop/database runtime verification is not configured; compile and frozen database-artifact checks remain available.");
@@ -254,12 +259,14 @@ async function verifyFrozenSubmission({snapshot,task}){
    status:dedicated.gui?.status||dedicated.desktopLaunch?.status||dedicated.status||"not_configured",
    ...(dedicated.gui||{}),inventory:dedicated.gui?.inventory||null
  }:{attempted:false,status:"not_applicable"};
- const runtime=profile.swing?{
-   attempted:dedicated.attempted===true,
-   status:dedicated.runtime?.status||dedicated.desktopLaunch?.status||dedicated.status||"compile_only",
-   runSucceeded:dedicated.runtime?.runSucceeded??dedicated.desktopLaunch?.succeeded??null,
-   exitCode:dedicated.runtime?.exitCode??null,
-   stdout:clip(dedicated.runtime?.stdout,16000),stderr:clip(dedicated.runtime?.stderr,12000)
+ const dedicatedRuntime=dedicated?.runtime&&typeof dedicated.runtime==="object"?dedicated.runtime:null;
+ const runtime=(profile.swing||profile.database)?{
+   attempted:dedicatedRuntime?dedicatedRuntime.attempted!==false:dedicated.attempted===true,
+   status:dedicatedRuntime?.status||dedicated.desktopLaunch?.status||dedicated.status||
+     (profile.database?"requires_database_runtime":"compile_only"),
+   runSucceeded:dedicatedRuntime?.runSucceeded??dedicated.desktopLaunch?.succeeded??null,
+   exitCode:dedicatedRuntime?.exitCode??null,
+   stdout:clip(dedicatedRuntime?.stdout,16000),stderr:clip(dedicatedRuntime?.stderr,12000)
  }:{
    attempted:compileRun.runAttempted===true,
    status:compileRun.status,runSucceeded:compileRun.runSucceeded,
