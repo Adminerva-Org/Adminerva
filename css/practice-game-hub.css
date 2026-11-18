@@ -316,6 +316,99 @@ body.lab-page::after{
   background:rgba(6,24,37,.54);
   padding:1rem;
 }
+.games-challenges{
+  margin:0 0 1rem;
+  padding:.9rem;
+  border:1px solid rgba(159,120,255,.22);
+  border-radius:1rem;
+  background:
+    radial-gradient(circle at 92% 5%,rgba(159,120,255,.12),transparent 42%),
+    linear-gradient(160deg,rgba(23,34,65,.62),rgba(9,29,43,.6));
+}
+.games-challenge-section-head,
+.games-challenge-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.75rem;
+}
+.games-challenge-section-head .lab-eyebrow{margin:0 0 .2rem;color:#b29aff}
+.games-challenge-section-head h2{margin:0;color:#fff;font-size:1rem}
+.games-challenge-list{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:.65rem;
+  margin-top:.7rem;
+}
+.games-challenge-card{
+  display:grid;
+  gap:.65rem;
+  padding:.8rem;
+  border:1px solid rgba(145,121,231,.22);
+  border-radius:.85rem;
+  background:rgba(8,24,40,.68);
+}
+.games-challenge-head>div{
+  min-width:0;
+  display:grid;
+  gap:.18rem;
+}
+.games-challenge-head strong{
+  color:#f5f1ff;
+  font-size:.78rem;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.games-challenge-head small{
+  color:#9caec5;
+  font-size:.58rem;
+}
+.games-challenge-icon{
+  flex:0 0 auto;
+  width:30px;
+  height:30px;
+  display:grid;
+  place-items:center;
+  border-radius:9px;
+  background:rgba(159,120,255,.12);
+  color:#c9b9ff;
+  border:1px solid rgba(159,120,255,.2);
+}
+.games-challenge-card .games-meter{height:7px}
+.games-challenge-button{
+  justify-self:start;
+  min-height:34px;
+  padding:.42rem .72rem;
+  border:1px solid rgba(159,120,255,.34);
+  border-radius:999px;
+  background:rgba(128,94,220,.14);
+  color:#d9ceff;
+  font-size:.64rem;
+  font-weight:850;
+}
+.games-challenge-button:hover{
+  background:rgba(128,94,220,.24);
+  border-color:rgba(177,151,255,.55);
+}
+.games-challenge-empty{
+  grid-column:1/-1;
+  display:flex;
+  align-items:center;
+  gap:.55rem;
+  min-height:48px;
+  color:#829fb0;
+  font-size:.68rem;
+}
+.games-challenge-empty-icon{
+  width:28px;
+  height:28px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:rgba(70,204,159,.1);
+  color:#7dddb9;
+}
 .lab-section-heading{
   gap:.55rem;
 }
@@ -886,4 +979,9 @@ body.lab-page::after{
 @media(max-width:420px){
   .games-progress-ring{width:58px}
   .games-daily-row{align-items:flex-start;flex-direction:column}
+}
+
+@media(max-width:700px){
+  .games-challenge-list{grid-template-columns:1fr}
+  .games-challenges{padding:.75rem}
 }
