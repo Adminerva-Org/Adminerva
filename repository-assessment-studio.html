@@ -343,13 +343,13 @@
     <!-- DEPLOYMENT MODAL (Scheduling & Deadlines) -->
     <div
       id="deployModal"
-      class="hidden fixed inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center z-[130] p-4"
+      class="hidden fixed inset-0 bg-slate-900/90 backdrop-blur-sm flex items-center justify-center z-[130] p-2 sm:p-4"
     >
       <div
-        class="bg-white rounded-xl shadow-2xl max-w-sm w-full flex flex-col overflow-hidden"
+        class="bg-white rounded-xl shadow-2xl max-w-sm w-full flex flex-col overflow-hidden max-h-[92dvh]"
       >
         <div
-          class="p-5 border-b bg-slate-800 flex justify-between items-center"
+          class="p-4 sm:p-5 border-b bg-slate-800 flex justify-between items-center shrink-0"
         >
           <h2 id="deployModalTitle" class="text-lg font-bold text-white">
             Deploy Task
@@ -363,7 +363,7 @@
             &times;
           </button>
         </div>
-        <div class="p-6 bg-gray-50 space-y-5">
+        <div class="p-4 sm:p-6 bg-gray-50 space-y-5 flex-1 min-h-0 overflow-y-auto overscroll-contain">
           <div class="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
             Deployment configures the assigned sections and schedule. It does <strong>not</strong> publish a new assessment to students. Use <strong>Publish</strong> from the assessment view when the task is ready.
           </div>
@@ -394,12 +394,12 @@
           </div>
 
           <label class="flex gap-3 items-start p-3 rounded-lg bg-white border border-slate-200 mb-3">
-            <input type="checkbox" id="deployUseDeadline" onchange="toggleDeployDeadline()" checked class="mt-1 h-4 w-4" />
+            <input type="checkbox" id="deployUseDeadline" onchange="toggleDeployDeadline()" checked class="mt-1 h-5 w-5 shrink-0" />
             <span><strong class="text-sm text-slate-800">Enforce deadline</strong>
               <span class="block text-xs text-slate-500">Uncheck for historical assessments; existing deployments keep their settings until edited.</span></span>
           </label>
           <label id="deployAllowLateWrap" class="flex gap-3 items-start p-3 rounded-lg bg-amber-50 border border-amber-200 mb-3">
-            <input type="checkbox" id="deployAllowLate" class="mt-1 h-4 w-4" />
+            <input type="checkbox" id="deployAllowLate" class="mt-1 h-5 w-5 shrink-0" />
             <span><strong class="text-sm text-amber-950">Allow late submissions</strong>
               <span class="block text-xs text-amber-800">Keeps the official deadline, but allows students to submit after it while the deployment remains active.</span></span>
           </label>
@@ -407,7 +407,7 @@
             <label class="block text-sm font-bold text-gray-700 mb-2"
               >Duration & Schedule</label
             >
-            <div class="grid grid-cols-5 gap-1 mb-2">
+            <div class="grid grid-cols-2 sm:grid-cols-5 gap-1 mb-2">
               <button
                 onclick="setDeployRange(3, this)"
                 class="range-preset-btn bg-white border border-gray-300 text-gray-600 text-[10px] py-1.5 rounded hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 font-bold transition"
@@ -458,7 +458,7 @@
             </p>
           </div>
         </div>
-        <div class="p-4 border-t bg-white flex justify-end gap-3">
+        <div class="p-3 sm:p-4 border-t bg-white flex justify-end gap-3 shrink-0">
           <button
             onclick="
               document.getElementById('deployModal').classList.add('hidden')
@@ -483,7 +483,7 @@
 <script src="js/core/adminerva-loader.js?v=5a4e9bfed537"></script>
     <script type="module" src="js/core/auth-guard-v4-pilot.js?v=5a4e9bfed537"></script>
     <script type="module" src="js/core/educator-hub-nav.mjs?v=1.4.2"></script>
-    <script type="module" src="js/repo-review/assessment-studio.js?v=3.0.16"></script>
+    <script type="module" src="js/repo-review/assessment-studio.js?v=3.0.17"></script>
     <div id="assessmentToastRegion" class="fixed right-4 top-4 z-[220] flex w-[min(92vw,24rem)] flex-col gap-2 pointer-events-none" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
