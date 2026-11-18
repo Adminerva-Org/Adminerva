@@ -81,7 +81,11 @@ function compactEvidence(source,snapshot={}){
     files:Array.isArray(snapshot.files)?snapshot.files.slice(0,80).map(file=>({
       path:text(file?.path,300),content:String(file?.content||"").slice(0,60000)
     })):[],
-    artifacts:snapshot.artifacts&&typeof snapshot.artifacts==="object"?snapshot.artifacts:{},
+    artifacts:snapshot.artifacts&&typeof snapshot.artifacts==="object"?{
+      database:snapshot.artifacts.database||{},
+      design:snapshot.artifacts.design||{},
+      config:snapshot.artifacts.config||{}
+    }:{},
     executionEvidence:compactExecutionEvidence(snapshot),
     personalizedTask:snapshot.personalizedTask?{
       variantId:text(snapshot.personalizedTask.variantId,120),
