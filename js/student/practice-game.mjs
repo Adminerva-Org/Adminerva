@@ -5,7 +5,7 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {collection,query,orderBy,limit,onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.5.0";
 import {PROGRAMMING_GAMES,getProgrammingGame,programmingGameMatches} from "./practice-games.mjs?v=1.2.0";
-import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.4.1";
+import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.5.0";
 import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest} from "./practice-session.mjs?v=1.3.0";
 import {practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.3.0";
 const functions=getFunctions(app,"asia-southeast1"),field=id=>document.getElementById(id),guestPage=document.body.dataset.practiceAccess==="public";
@@ -375,6 +375,14 @@ function revealHint(){
   const hints=hintMessages(attempt.question);if(!hints.length)return;
   hintLevel=Math.min(hints.length,hintLevel+1);renderHintControl();
 }
+function codeBlockKind(text){
+  const value=String(text).trim();
+  if(/^(if|else|for|while|switch|case|try|catch)|\b(if|for|while)\s*\(/.test(value))return "control";
+  if(/print|println|textContent|role="status"/i.test(value))return "output";
+  if(/^(<|<\/)|^[.#a-z][^{]*\{$|display:|flex-|padding:|border:|box-sizing:/i.test(value))return "interface";
+  if(/\b(new|int|double|boolean|String|const|let|var|=\s*\[)/.test(value))return "data";
+  return "action";
+}
 function moveOrder(from,to,swap=false){
   if(!Array.isArray(answer)||from===to||from<0||to<0||from>=answer.length||to>=answer.length)return;
   if(swap)[answer[from],answer[to]]=[answer[to],answer[from]];
@@ -388,7 +396,7 @@ function renderAnswer(){
   else if(question.type==="ordering"){
     if(!Array.isArray(answer)||answer.length!==question.items.length)answer=question.items.map((item,index)=>index);
     const list=node("ol",undefined,"lab-order-list");answer.forEach((itemIndex,position)=>{
-      const row=node("li",undefined,!guestPage&&builderSelection===position?"is-picked":""),code=node("code",question.items[itemIndex]),actions=node("div",undefined,"lab-order-actions");
+      const blockText=question.items[itemIndex],row=node("li",undefined,!guestPage&&builderSelection===position?"is-picked":""),code=node("code",blockText),actions=node("div",undefined,"lab-order-actions");row.dataset.blockKind=codeBlockKind(blockText);
       if(!guestPage){
         row.draggable=!busy&&!pending;row.tabIndex=0;row.dataset.position=String(position);
         const choose=()=>{if(busy||pending)return;if(builderSelection===null){builderSelection=position;renderAnswer();}else if(builderSelection===position){builderSelection=null;renderAnswer();}else moveOrder(builderSelection,position,true);};
@@ -430,11 +438,13 @@ function renderMechanicAid(question){
   field("practiceCode").hidden=!question.code;
   const gameId=field("practiceMissionPanel")?.dataset.game||missionGameId(course,mission);
   if(!guestPage&&gameId==="interface-repair"){
-    const visual=gameVisualHeader("interface","Interface Repair","Inspect → compare → repair"),preview=node("section",undefined,"games-interface-preview"),bar=node("div",undefined,"games-interface-bar"),dots=node("span","●  ●  ●"),label=node("strong","Interface Preview");
-    bar.append(dots,label);preview.append(bar);setGameStatus(visual,"Live preview","info","▤");
+    const visual=gameVisualHeader("interface","Interface Repair","Inspect → compare → repair"),preview=node("section",undefined,"games-interface-preview"),bar=node("div",undefined,"games-interface-bar"),dots=node("span","●  ●  ●"),label=node("strong","Interface Preview"),tools=node("div",undefined,"games-interface-tools");
+    label.append(node("small",question.interfaceScenario||"UI repair"));
+    [["desktop","▰","Desktop preview"],["mobile","▯","Mobile preview"]].forEach(([mode,icon,aria],index)=>{const button=node("button",icon);button.type="button";button.dataset.mode=mode;button.setAttribute("aria-label",aria);button.setAttribute("aria-pressed",String(index===0));button.addEventListener("click",()=>{preview.dataset.viewport=mode;for(const item of tools.querySelectorAll("button"))item.setAttribute("aria-pressed",String(item===button));playGameFx("snap",preview);});tools.append(button);});
+    bar.append(dots,label,tools);preview.dataset.viewport="desktop";preview.append(bar);setGameStatus(visual,question.interfaceScenario||"Live preview","info","▤");
     const source=String(question.code||""),hasMarkup=/<[a-z][\s\S]*>/i.test(source);
     if(hasMarkup){
-      const frame=document.createElement("iframe");frame.className="games-interface-frame";frame.title="Interface Repair mission preview";frame.sandbox="allow-scripts";frame.srcdoc=/<!doctype|<html/i.test(source)?source:"<!doctype html><html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font:14px system-ui;margin:16px;color:#172033}*{box-sizing:border-box}</style><body>"+source+"</body></html>";preview.append(frame);
+      const stage=node("div",undefined,"games-interface-stage"),frame=document.createElement("iframe");frame.className="games-interface-frame";frame.title="Interface Repair mission preview";frame.sandbox="allow-scripts";frame.srcdoc=/<!doctype|<html/i.test(source)?source:"<!doctype html><html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font:14px system-ui;margin:16px;color:#172033}*{box-sizing:border-box}</style><body>"+source+"</body></html>";stage.append(frame);preview.append(stage);
     }else{
       const empty=node("div",undefined,"games-interface-empty");empty.append(node("span","▤"),node("span","Use the code and prompt to identify the interface repair."));preview.append(empty);
     }
@@ -442,14 +452,14 @@ function renderMechanicAid(question){
   }
   if(!guestPage&&gameId==="data-detective"){
     const visual=gameVisualHeader("data","Data Detective","Mark the evidence that matters"),board=node("section",undefined,"games-data-board"),head=node("div",undefined,"games-data-head");head.append(node("span","DATA DETECTIVE","lab-mechanic-kicker"),node("strong","Evidence board"));board.append(head);
-    const source=String(question.code||""),tokens=[...new Set((source.match(/-?\d+(?:\.\d+)?/g)||[]))].slice(0,6),signals=[];
+    const source=String(question.code||""),caseTerms=Array.isArray(question.left)?question.left.slice(0,5).map(value=>String(value)):[],tokens=[...new Set((source.match(/-?\d+(?:\.\d+)?/g)||[]))].slice(0,6),signals=[];
     if(/\[[^\]]*\]|values\[|list\[|array/i.test(source))signals.push("INDEX");
     if(/length|len\s*\(/i.test(source))signals.push("LENGTH");
     if(/min\s*\(|max\s*\(|Math\.(?:min|max)/i.test(source))signals.push("BOUND");
     if(/>=|<=|==|!=|>|</.test(source))signals.push("CHECK");
     if(/\+|-|\*|\/|%/.test(source))signals.push("OPERATION");
     const evidence=node("div",undefined,"games-data-evidence");
-    const items=[...tokens.map(value=>"VALUE "+value),...signals].slice(0,8);
+    const items=[...caseTerms,...tokens.map(value=>"VALUE "+value),...signals].filter(Boolean).slice(0,8);
     (items.length?items:["READ","TRACE","VERIFY"]).forEach(value=>{const chip=node("button",value,"games-data-chip");chip.type="button";chip.setAttribute("aria-pressed","false");chip.addEventListener("click",()=>{const marked=chip.getAttribute("aria-pressed")!=="true";chip.setAttribute("aria-pressed",String(marked));chip.classList.toggle("is-marked",marked);const count=[...evidence.querySelectorAll(".games-data-chip.is-marked")].length;setGameStatus(visual,count?count+" clue"+(count===1?"":"s")+" marked":"Evidence board","info",count?"●":"⌕");playGameFx("link",chip);});evidence.append(chip);});
     const note=node("p","Mark the evidence you think matters, then solve the case from the code.","games-data-note");board.append(evidence,note);setGameStatus(visual,"Evidence board","info","⌕");panel.append(visual,board);panel.hidden=false;panel.classList.add("is-data");
   }
