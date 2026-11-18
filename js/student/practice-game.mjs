@@ -1,14 +1,13 @@
 /** One public mission map. Authenticated submissions and every point are checked by the server. */
-import {app,auth,db} from "../core/firebase-core.js?v=1.3.0";
+import {auth,db} from "../core/firebase-core.js?v=1.3.0";
 import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js";
-import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {collection,query,orderBy,limit,onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.5.0";
 import {PROGRAMMING_GAMES,getProgrammingGame,programmingGameMatches,gameDeviceLabel} from "./practice-games.mjs?v=1.3.0";
 import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.5.0";
-import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest} from "./practice-session.mjs?v=1.3.0";
+import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest,practiceSchoolRequest} from "./practice-session.mjs?v=1.4.0";
 import {practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.3.0";
-const functions=getFunctions(app,"asia-southeast1"),field=id=>document.getElementById(id),guestPage=document.body.dataset.practiceAccess==="public";
+const field=id=>document.getElementById(id),guestPage=document.body.dataset.practiceAccess==="public";
 const typeNames=guestPage?{choice:"Choose the answer",output:"Write the output",ordering:"Build the sequence",matching:"Match the pairs",debugging:"Fix the bug"}:{choice:"Quick Pick",output:"Code Trace",ordering:"Code Builder",matching:"Logic Match",debugging:"Bug Hunt"},typeIcons={choice:"◉",output:"⌨",ordering:"⇅",matching:"⇄",debugging:"⌁"};
 const initialGame=getProgrammingGame(new URLSearchParams(location.search).get("game"));
 const TOTAL_MISSIONS=COURSES.reduce((sum,entry)=>sum+entry.missions.length,0);
@@ -43,7 +42,7 @@ function saveDraft(){if(mission)localSet(draftKey(),{answer});}
 function sync(message,tone="ready"){field("labSync").textContent=message;field("labSync").dataset.tone=tone;}
 function notice(message,tone="info"){field("labNoticeText").textContent=message;field("labNotice").hidden=!message;field("labNotice").dataset.tone=tone;}
 function feedback(message,tone="info"){field("practiceFeedback").textContent=message;field("practiceFeedback").dataset.tone=tone;field("practiceFeedback").hidden=!message;}
-function setBusy(value){busy=value;field("practiceMissionPanel").setAttribute("aria-busy",String(value));for(const id of ["practiceCheckBtn","practiceBackBtn","practiceTransferBtn","practiceSyncBtn","labPreferencesSave","labNextMission","labHintBtn"])field(id).disabled=value;field("practiceClass").disabled=value||!(hub.classes||[]).length;for(const control of field("practiceChoices").querySelectorAll("input,select,button"))control.disabled=value||!!pending||control.dataset.boundary==="true";field("practiceCheckBtn").textContent=value?(pending?"Saving…":"Please wait…"):pending?"Retry save":attempt?.completed?"Check replay":"Submit answer";field("practiceCheckBtn").disabled=value||!eligible||!attempt?.attemptId;}
+function setBusy(value){busy=value;field("practiceMissionPanel").setAttribute("aria-busy",String(value));for(const id of ["practiceCheckBtn","practiceBackBtn","practiceReconnectBtn","practiceTransferBtn","practiceSyncBtn","labPreferencesSave","labNextMission","labHintBtn"])field(id).disabled=value;field("practiceClass").disabled=value||!(hub.classes||[]).length;for(const control of field("practiceChoices").querySelectorAll("input,select,button"))control.disabled=value||!!pending||control.dataset.boundary==="true";field("practiceCheckBtn").textContent=value?(pending?"Saving…":"Please wait…"):pending?"Retry save":attempt?.completed?"Check replay":"Submit answer";field("practiceCheckBtn").disabled=value||!eligible||!attempt?.attemptId;}
 function completed(id){return (hub.courses||[]).some(row=>row.completed?.includes(id));}
 function earned(id){for(const row of hub.courses||[])if(row.missionScores?.[id]!==undefined)return row.missionScores[id];return 0;}
 function renderSummary(){
@@ -320,8 +319,31 @@ function renderBoard(){
   if(!rows.length){const message=boardMode==="global"?(publicBoardError?"Rankings could not connect. Refresh to try again.":publicBoardReady?"A new season is starting. Opt in and set the pace.":"Connecting to public rankings…"):(eligible?"No class scores yet. Finish a mission to begin.":"Sign in with a linked student account to see your class.");list.append(node("li",message,"lab-board-empty"));return;}
   let rank=0,prior=null;rows.forEach((row,index)=>{if(row.points!==prior)rank=index+1;prior=row.points;const item=node("li",undefined,"lab-rank-row"+(row.isCurrent?" is-you":""));item.append(node("span",rank<=3?["🥇","🥈","🥉"][rank-1]:String(rank),"lab-rank-number"),node("span",row.alias+(row.isCurrent?" · You":"")),node("strong",row.points.toLocaleString()+" points"));list.append(item);});
 }
-async function call(name,payload={}){const uid=auth.currentUser?.uid,result=await httpsCallable(functions,name)(payload);if(auth.currentUser?.uid!==uid)throw Error("Account changed. Reload practice before continuing.");return result.data;}
-async function refreshHub(classId=field("practiceClass").value){const version=epoch,uid=user?.uid;try{const result=await call("practiceHub",{classId:classId||""});if(version!==epoch||uid!==user?.uid)return;hub=result;eligible=result.eligible===true;renderSummary();renderCourses();renderBoard();renderChallenges();sync(user?"Saved to your account":"Public preview");if(user&&!eligible)notice("Finish your access request to save practice. You can still browse every mission.");else if(!pending)notice("");}catch(error){if(version!==epoch)return;eligible=false;sync("Connection needed","error");notice(error.details?.reason==="guest-registration"?"Finish your access request from My workspace, then refresh practice.":"Practice could not connect. The map remains available. Refresh to reconnect before submitting an answer.","error");renderSummary();}}
+async function call(name,payload={}){return practiceSchoolRequest(name,payload);}
+async function refreshHub(classId=field("practiceClass").value){
+  const version=epoch,uid=user?.uid,reconnect=field("practiceReconnectBtn");
+  if(reconnect)reconnect.hidden=true;
+  if(!user){eligible=false;hub={season:PRACTICE_SEASON,eligible:false,classes:[],courses:[],legacyCount:0};renderSummary();renderCourses();renderBoard();sync("Public preview");notice("");return;}
+  try{
+    const result=await call("practiceHub",{classId:classId||""});
+    if(version!==epoch||uid!==user?.uid)return;
+    hub=result;eligible=result.eligible===true;
+    if(Array.isArray(result.publicRows)){globalRows=result.publicRows;publicBoardReady=true;publicBoardError=false;}
+    renderSummary();renderCourses();renderBoard();renderChallenges();sync("Saved to your school");
+    if(!pending)notice("");
+  }catch(error){
+    if(version!==epoch)return;
+    eligible=false;sync("Connection needed","error");
+    const reason=error.details?.reason||"";
+    const message=reason==="practice-migration"?"Your Practice progress is being finalized for this school. Saved scores are protected while reconciliation completes.":
+      reason==="school-selection"?"Choose your active school from the account menu, then reconnect Games.":
+      reason==="enrollment"?"Your active school enrollment could not be verified. Ask your school administrator to check your student membership and enrollment.":
+      ["revoked-sign-in","recent-sign-in","verified-sign-in"].includes(reason)?"Your sign-in needs to be renewed before Practice can save scores.":
+      error.message&&error.message!=="internal" ? error.message : "Practice could not connect to your school. The map remains available.";
+    if(reconnect&&["revoked-sign-in","recent-sign-in","verified-sign-in","session-moved"].includes(reason)){reconnect.hidden=false;reconnect.textContent="Reconnect account";}
+    notice(message,"error");renderSummary();renderBoard();
+  }
+}
 function errorFeedback(error){const reason=error.details?.reason,transfer=["transfer-required","recent-sign-in","session-moved","revoked-sign-in"].includes(reason);field("practiceTransferBtn").hidden=!transfer;if(transfer)notice("Practice needs to reconnect. Continue on this device to resume safely.","warning");sync("Not saved yet","error");feedback(transfer?"Continue practice on this device to reconnect. Your saved points stay safe.":error.message||"The answer could not be confirmed. Retry the same answer to avoid counting it twice.","warning");}
 async function connect(takeover=false){const result=await resumePracticeSession({season:true,takeover,reauthenticate:takeover});field("practiceTransferBtn").hidden=true;sync(result.transferred?"Practice moved here":"Connected");return result;}
 function readAnswer(){
@@ -620,7 +642,7 @@ async function submit(){
 function markup(){return `
   <header class="lab-hero"><div><p class="lab-eyebrow">ADMINERVA GAMES · COMPUTER PROGRAMMING</p><h1>Choose a game.<br><span>Build the skill.</span></h1><p>Debug, trace, arrange, match, repair, and experiment across Java, Python, Web, Logic, and XML.</p><div class="lab-hero-links"><a href="${guestPage?"guest-playground.html":"student-playground.html"}">Open Code Playground ↗</a><a href="${guestPage?"guest-xml-lab.html":"student-xml-lab.html"}">Open XML Layout Lab ↗</a></div></div><div class="lab-hero-mark" aria-hidden="true">&lt;/&gt;<span>COMPUTER PROGRAMMING</span></div></header>
   <div class="lab-statusbar"><span id="labIdentity">Public visitor</span><span id="labSync" role="status">Connecting…</span><button id="practiceSyncBtn" type="button">↻ Refresh progress</button><a id="labAccountLink" href="login.html">Sign in</a></div>
-  <div id="labNotice" class="lab-notice" role="status" hidden><span id="labNoticeText"></span><button id="practiceTransferBtn" type="button" hidden>Continue practice here</button><button id="labPendingResume" type="button" hidden>Resume pending save</button></div>
+  <div id="labNotice" class="lab-notice" role="status" hidden><span id="labNoticeText"></span><button id="practiceReconnectBtn" type="button" hidden>Reconnect account</button><button id="practiceTransferBtn" type="button" hidden>Continue practice here</button><button id="labPendingResume" type="button" hidden>Resume pending save</button></div>
   <div id="practiceOverview" class="lab-stats" aria-label="Your season progress"></div><p id="labPreviousProgress" class="lab-history"></p>
   <div class="lab-workspace"><div class="lab-main"><section id="labMapPanel"><div class="lab-section-heading"><div><p class="lab-eyebrow">COMPUTER PROGRAMMING</p><h2>Choose a game</h2></div><span class="lab-pill">${PROGRAMMING_GAMES.length} game modes · ${TOTAL_MISSIONS} missions</span></div><nav id="labGameCatalog" class="lab-game-grid" aria-label="Computer Programming games"></nav><div class="lab-section-heading lab-skill-heading"><div><p class="lab-eyebrow">FILTER THE GAME</p><h2>Choose a skill path</h2></div><span class="lab-pill">Java · Python · Web · Logic</span></div><nav id="labCourseTabs" class="lab-course-tabs" aria-label="Programming skill paths"></nav><div class="lab-map-heading"><div><h2 id="labCourseTitle"></h2><p id="labCourseSubtitle"></p></div><span class="lab-map-key">✓ completed · choose any mission</span></div><div id="practiceCourseList"></div></section>
   <section id="practiceMissionPanel" class="lab-mission-panel" aria-labelledby="practiceMissionTitle" aria-busy="false" hidden><button id="practiceBackBtn" type="button" class="lab-text-button">← Back to games</button><div class="lab-mission-meta"><span id="labGameName" class="lab-pill"></span><span id="practiceCourseName"></span><span id="labMissionType" class="lab-pill"></span><span id="labDeviceHint" class="lab-pill lab-device-pill"></span></div><div id="gamesSprintHud" class="games-sprint-hud" hidden><span id="gamesSprintGraphic" class="games-sprint-graphic" aria-hidden="true"></span><div><strong id="gamesSprintRound">Round 1 / 5</strong><span id="gamesSprintStreak">Streak 0</span></div><div id="gamesSprintPips" class="games-sprint-pips"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span></div><button id="gamesSprintReset" type="button" hidden>New sprint</button></div><h2 id="practiceMissionTitle" tabindex="-1"></h2><p id="labMissionPoints" class="lab-points-available"></p><pre id="practiceCode"></pre><div id="labMechanicPanel" class="lab-mechanic-panel" hidden></div><h3 id="practicePrompt"></h3><div id="practiceChoices" class="lab-answers"></div><p id="labScoringHint" class="lab-scoring-hint"></p><div id="labHintTray" class="games-hint-tray" hidden><button id="labHintBtn" type="button">Hint 1 / 2</button><p id="labHintText" hidden></p></div><div id="practiceFeedback" class="lab-feedback" role="status" aria-live="polite" hidden></div><div class="lab-mission-actions"><button id="practiceCheckBtn" type="button" class="lab-primary">Submit answer</button><a id="labSubmitSignin" href="login.html" class="lab-primary" hidden>Sign in to submit</a><button id="labReopenMission" type="button" hidden>Reconnect mission</button><button id="labNextMission" type="button" class="lab-secondary" hidden>Next mission →</button></div><a id="labExperimentLink" class="lab-experiment-link" href="${guestPage?"guest-playground.html":"student-playground.html"}?practice=1" hidden>Experiment with this code in Playground ↗</a></section>
@@ -645,6 +667,21 @@ bindControl("practiceCheckBtn","click",()=>{void submit();});
 bindControl("labHintBtn","click",()=>{if(!busy)revealHint();});
 bindControl("gamesSprintReset","click",()=>{if(!busy)resetSprint();});
 bindControl("labReopenMission","click",()=>{if(!busy&&mission){field("labReopenMission").hidden=true;void openMission(course,mission);}});
+bindControl("practiceReconnectBtn","click",async()=>{
+  if(busy||!user)return;
+  const button=field("practiceReconnectBtn"),end=window.beginLoading?.("Reconnecting Practice account…")||(()=>{});
+  button.disabled=true;sync("Reconnecting…","saving");
+  try{
+    await resumePracticeSession({season:true,reauthenticate:true});
+    await refreshHub();
+    button.hidden=true;sync("Connected");
+    if(mission)await openMission(course,mission);
+  }catch(error){
+    if(error.details?.reason==="transfer-required"){field("practiceTransferBtn").hidden=false;notice("Practice is active on another device. Continue here to transfer the scored session safely.","warning");}
+    else notice(error.message||"Practice could not reconnect. Sign out and sign in again, then retry.","error");
+    sync("Connection needed","error");
+  }finally{button.disabled=false;end();}
+});
 bindControl("practiceTransferBtn","click",async()=>{if(busy||!user||!confirm("Move practice to this device? Other active practice sessions stop submitting; your saved points stay safe."))return;setBusy(true);try{await connect(true);setBusy(false);if(mission)await openMission(course,mission);}catch(error){errorFeedback(error);}finally{setBusy(false);}});
 bindControl("labPendingResume","click",()=>{if(busy||!pending)return;const entry=COURSES.find(item=>item.id===pending.courseId),target=entry?.missions.find(item=>item.id===pending.missionId);if(target)void openMission(entry,target);});
 bindControl("labNextMission","click",()=>{if(busy||!mission)return;const pool=gameMissions(course).length?gameMissions(course):course.missions,index=pool.findIndex(item=>item.id===mission.id),next=pool.slice(Math.max(0,index+1)).find(item=>!completed(item.id))||pool.find(item=>!completed(item.id))||pool[(Math.max(0,index)+1)%pool.length];if(next)void openMission(course,next);});
@@ -676,7 +713,8 @@ if(!guestPage){
 let stopBoard=()=>{};
 function connectBoard(){
   try{
-    stopBoard();publicBoardError=false;
+    stopBoard();stopBoard=()=>{};publicBoardError=false;
+    if(user){publicBoardReady=true;renderBoard();return;}
     stopBoard=onSnapshot(query(collection(db,"practice_public_rankings"),orderBy("points","desc"),limit(30)),snapshot=>{
       globalRows=snapshot.docs.map(row=>row.data()).filter(row=>row.season===PRACTICE_SEASON);
       publicBoardReady=true;publicBoardError=false;renderBoard();
@@ -690,6 +728,7 @@ connectBoard();
 
 onAuthStateChanged(auth,async current=>{
   epoch++;loadSequence++;user=current;eligible=false;hub={};mission=null;attempt=null;answer=null;busy=false;resetPracticeSession();pending=localGet(pendingKey());
+  connectBoard();
   try{
     field("practiceMissionPanel").hidden=true;field("labMapPanel").hidden=false;field("practiceTransferBtn").hidden=true;
     renderSummary();renderCourses();renderBoard();
