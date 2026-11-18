@@ -470,15 +470,26 @@ function renderMechanicAid(question){
     const note=node("p","Mark the evidence you think matters, then solve the case from the code.","games-data-note");board.append(evidence,note);setGameStatus(visual,"Evidence board","info","⌕");panel.append(visual,board);panel.hidden=false;panel.classList.add("is-data");
   }
   if(!guestPage&&mission?.oop===true&&gameId==="oop-builder"){
-    const visual=gameVisualHeader("oop","OOP Builder","Model structure and runtime relationships");visual.dataset.module=mission.oopModule||"oop";panel.append(visual);const blueprints={
+    const visual=gameVisualHeader("oop","OOP Builder","Model structure and runtime relationships");visual.dataset.module=mission.oopModule||"oop";panel.append(visual);
+    const moduleBlueprints={
       "oop-classes":["CLASS","creates","OBJECT"],
       "oop-encapsulation":["PRIVATE STATE","controlled by","METHODS"],
       "oop-inheritance":["PARENT","extends to","CHILD"],
       "oop-polymorphism":["REFERENCE","dispatches to","RUNTIME TYPE"],
       "oop-real":["OBJECT","works with","OBJECT"]
-    },parts=blueprints[mission.oopModule]||["OOP","connects","BEHAVIOR"],blueprint=node("div",undefined,"games-oop-blueprint"),head=node("div",undefined,"games-oop-blueprint-head");
+    },topicBlueprints={
+      "object-identity":["OBJECT A","different from","OBJECT B"],
+      "validated-setter":["INPUT","validated by","SETTER","protects","PRIVATE STATE"],
+      "super-method":["CHILD OVERRIDE","calls","super","reuses","PARENT BEHAVIOR"],
+      "interface-list":["INTERFACE","holds","IMPLEMENTATIONS","dispatch to","OWN METHODS"],
+      "collection-polymorphism":["LIST<ANIMAL>","contains","DOG + CAT","dispatch to","OVERRIDES"],
+      "dynamic-dispatch":["REFERENCE","points to","RUNTIME OBJECT","selects","OVERRIDE"],
+      "composition":["OWNER","has-a","COMPONENT"],
+      "private-field":["PRIVATE FIELD","accessed through","METHODS"]
+    },parts=topicBlueprints[mission.oopTopic]||moduleBlueprints[mission.oopModule]||["OOP","connects","BEHAVIOR"],blueprint=node("div",undefined,"games-oop-blueprint"),head=node("div",undefined,"games-oop-blueprint-head");
     head.append(node("span","OOP BLUEPRINT","lab-mechanic-kicker"),node("strong",mission.title.replace(/ · (Guided|Apply|Challenge)$/,"")));
-    const flow=node("div",undefined,"games-oop-flow"),left=node("span",parts[0],"games-oop-node"),link=node("span",parts[1],"games-oop-link"),right=node("span",parts[2],"games-oop-node");left.dataset.role="source";right.dataset.role="target";flow.append(left,link,right);
+    const flow=node("div",undefined,"games-oop-flow");flow.dataset.steps=String(parts.length);
+    parts.forEach((part,index)=>{const isNode=index%2===0,item=node("span",part,isNode?"games-oop-node":"games-oop-link");if(isNode)item.dataset.role=index===0?"source":index===parts.length-1?"target":"bridge";flow.append(item);});
     blueprint.append(head,flow);panel.append(blueprint);panel.hidden=false;panel.dataset.kind="oop";setGameStatus(visual,{ "oop-classes":"Classes & objects","oop-encapsulation":"Encapsulation","oop-inheritance":"Inheritance","oop-polymorphism":"Polymorphism","oop-real":"Real programs"}[mission.oopModule]||"OOP concept","info","◇");
   }
   const hasTraceGuide=Array.isArray(question.traceGuide)&&question.traceGuide.length;
