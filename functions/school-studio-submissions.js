@@ -98,7 +98,7 @@ function createSchoolStudioSubmissionService({db}){
     const revisionDeadline=revisionOpen?
       submission.data().revisionDueAt?.toMillis?.()||0:0;
     if(now<assessment.opensAt.toMillis()||
-       (now>assessment.dueAt.toMillis()&&now>revisionDeadline))
+       (assessment.allowLateSubmissions!==true&&now>assessment.dueAt.toMillis()&&now>revisionDeadline))
      deny("failed-precondition","The Studio submission deadline has passed. Ask your teacher for an explicit revision extension.");
     if(!project.exists||project.data().schoolId!==ctx.schoolId||
        project.data().ownerUid!==ctx.uid)
