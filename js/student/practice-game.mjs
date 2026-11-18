@@ -12,7 +12,7 @@ const functions=getFunctions(app,"asia-southeast1"),field=id=>document.getElemen
 const typeNames=guestPage?{choice:"Choose the answer",output:"Write the output",ordering:"Build the sequence",matching:"Match the pairs",debugging:"Fix the bug"}:{choice:"Quick Pick",output:"Code Trace",ordering:"Code Builder",matching:"Logic Match",debugging:"Bug Hunt"},typeIcons={choice:"◉",output:"⌨",ordering:"⇅",matching:"⇄",debugging:"⌁"};
 const initialGame=getProgrammingGame(new URLSearchParams(location.search).get("game"));
 const TOTAL_MISSIONS=COURSES.reduce((sum,entry)=>sum+entry.missions.length,0);
-let user=null,eligible=false,hub={},course=COURSES[0],activeGame=initialGame.external?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[],hintLevel=0,builderSelection=null;
+let user=null,eligible=false,hub={},course=COURSES[0],activeGame=initialGame.external?"all":initialGame.id,mission=null,attempt=null,answer=null,busy=false,epoch=0,loadSequence=0,pending=null,boardMode="global",globalRows=[],publicBoardReady=false,publicBoardError=false,assignedPacks=[],hintLevel=0,builderSelection=null,bugLineFound=false;
 function node(tag,text,className=""){const item=document.createElement(tag);if(text!==undefined)item.textContent=text;item.className=className;return item;}
 function localGet(key){try{return JSON.parse(sessionStorage.getItem(key)||"null");}catch{return null;}}
 function localSet(key,value){try{if(value===null)sessionStorage.removeItem(key);else sessionStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
@@ -344,7 +344,7 @@ function moveOrder(from,to,swap=false){
   builderSelection=null;saveDraft();renderAnswer();
 }
 function renderAnswer(){
-  const question=attempt.question,container=field("practiceChoices");container.replaceChildren();
+  const question=attempt.question,container=field("practiceChoices");container.replaceChildren();container.hidden=!guestPage&&question.type==="debugging"&&!bugLineFound;
   if(["choice","debugging"].includes(question.type))question.choices.forEach((value,index)=>{const label=node("label",undefined,"lab-answer-choice"),radio=document.createElement("input");radio.type="radio";radio.name="practiceAnswer";radio.value=String(index);radio.checked=answer===index;radio.addEventListener("change",()=>{answer=index;saveDraft();});label.append(radio,node("span",value));container.append(label);});
   else if(question.type==="output"){const label=node("label","Your exact answer","lab-answer-label"),input=document.createElement("input");input.id="labOutputAnswer";input.type="text";input.maxLength=500;input.autocomplete="off";input.spellcheck=false;input.value=typeof answer==="string"?answer:"";input.placeholder="Type the result or requested element…";input.addEventListener("input",()=>{answer=input.value;saveDraft();});label.htmlFor=input.id;container.append(label,input);}
   else if(question.type==="ordering"){
@@ -429,11 +429,27 @@ function renderMechanicAid(question){
   }
   if(question.type==="debugging"&&Number.isInteger(question.focusLine)&&question.code){
     panel.hidden=false;panel.dataset.kind="debug";field("practiceCode").hidden=true;
-    const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","BUG HUNT","lab-mechanic-kicker"),node("strong","Case file"));
+    if(!guestPage&&(attempt?.completed||answer!==null))bugLineFound=true;
+    const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","BUG HUNT","lab-mechanic-kicker"),node("strong",guestPage?"Case file":bugLineFound?"Defect located":"Find the defect"));
     const hint=node("p",question.caseHint||"Inspect the highlighted line and compare it with the stated goal.","lab-case-hint");
-    const viewer=node("div",undefined,"lab-code-case");
-    question.code.split("\n").forEach((text,index)=>{const row=node("div",undefined,"lab-code-line"+(index+1===question.focusLine?" is-focus":""));row.append(node("span",String(index+1),"lab-code-line-number"),node("code",text||" "));viewer.append(row);});
-    if(guestPage)panel.append(head,hint,viewer);else panel.append(head,viewer);
+    const viewer=node("div",undefined,"lab-code-case"),status=node("p",guestPage?"":bugLineFound?"Defect located. Choose the repair.":"Select the line you think contains the defect. No points are lost while hunting.","games-bug-status");
+    question.code.split("\n").forEach((text,index)=>{
+      const lineNumber=index+1,row=node("div",undefined,"lab-code-line"+((guestPage||bugLineFound)&&lineNumber===question.focusLine?" is-focus":""));row.append(node("span",String(lineNumber),"lab-code-line-number"),node("code",text||" "));
+      if(!guestPage&&!bugLineFound){
+        row.tabIndex=0;row.setAttribute("role","button");row.setAttribute("aria-label","Mark line "+lineNumber+" as the suspected defect");
+        const choose=()=>{
+          if(busy||bugLineFound)return;
+          if(lineNumber===question.focusLine){
+            bugLineFound=true;row.classList.add("is-focus");status.textContent="Defect located. Choose the repair.";head.querySelector("strong").textContent="Defect located";field("practicePrompt").textContent=question.prompt;renderAnswer();
+          }else{
+            row.classList.remove("is-wrong-suspect");void row.offsetWidth;row.classList.add("is-wrong-suspect");status.textContent="Not that line — no points lost. Keep hunting.";
+          }
+        };
+        row.addEventListener("click",choose);row.addEventListener("keydown",event=>{if(["Enter"," "].includes(event.key)){event.preventDefault();choose();}});
+      }
+      viewer.append(row);
+    });
+    if(guestPage)panel.append(head,hint,viewer);else{if(!bugLineFound)field("practicePrompt").textContent="Find the defective line, then choose the repair.";panel.append(head,viewer,status);}
   }
   if(!guestPage&&question.type==="ordering"){
     panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="build";const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","CODE BUILDER","lab-mechanic-kicker"),node("strong","Arrange the blocks"));panel.append(head,node("p","Build the program in execution order.","games-mechanic-note"));
@@ -444,7 +460,7 @@ function renderMechanicAid(question){
 }
 function pointsText(){const meta=attempt.question.difficulty;field("labMissionPoints").textContent=attempt.completed?attempt.earnedPoints+" pts earned":attempt.availablePoints+" pts available";field("labScoringHint").textContent=attempt.completed?"Completed · replays do not change XP.":meta.name+" · "+meta.maximum+" pts max · −"+meta.deduction+" per miss · "+meta.floor+" pt floor · experiments are free.";}
 async function openMission(selectedCourse,selectedMission){
-  if(busy)return;const end=window.beginLoading?.("Preparing practice mission…")||(()=>{});saveDraft();course=selectedCourse;mission=selectedMission;persistentSet(resumeKey(),{courseId:course.id,missionId:mission.id,gameId:activeGame,openedAt:Date.now()});attempt=null;hintLevel=0;builderSelection=null;answer=localGet(draftKey())?.answer??null;const version=epoch,sequence=++loadSequence;
+  if(busy)return;const end=window.beginLoading?.("Preparing practice mission…")||(()=>{});saveDraft();course=selectedCourse;mission=selectedMission;persistentSet(resumeKey(),{courseId:course.id,missionId:mission.id,gameId:activeGame,openedAt:Date.now()});attempt=null;hintLevel=0;builderSelection=null;bugLineFound=false;answer=localGet(draftKey())?.answer??null;const version=epoch,sequence=++loadSequence;
   field("labReopenMission").hidden=true;
   field("practiceCheckBtn").hidden=true;field("labSubmitSignin").hidden=true;
   const themeGame=activeGame==="all"?missionGameId(course,mission):activeGame;field("labMapPanel").hidden=true;const missionPanel=field("practiceMissionPanel");missionPanel.hidden=false;missionPanel.classList.remove("is-complete");missionPanel.dataset.game=themeGame;renderSprintHud();field("practiceMissionTitle").textContent=mission.title.replace(/ · (Guided|Apply|Challenge)$/,"");field("practiceCourseName").textContent=course.name;field("labMissionType").textContent=typeNames[missionMeta(course,mission).type];field("practiceChoices").replaceChildren();field("practiceCode").textContent="";field("practicePrompt").textContent="Preparing your mission…";field("labExperimentLink").hidden=true;field("labNextMission").hidden=true;feedback("");setBusy(true);
@@ -484,7 +500,7 @@ async function submit(){
     pending=null;localSet(pendingKey(),null);field("labPendingResume").hidden=true;notice("");
     if(result.correct){attempt.completed=true;attempt.earnedPoints=result.earnedPoints;field("practiceMissionPanel").classList.add("is-complete");if(result.awarded&&field("practiceMissionPanel").dataset.game==="code-sprint")sprintCorrect();prepareExperiment(result.workspace);field("labNextMission").hidden=false;feedback((result.awarded?"Mission complete! +"+result.earnedPoints+" points. ":"Correct replay. Your original reward stays saved. ")+(result.explanation||""),"success");if(result.awarded)celebrateMission();await refreshHub();sync(result.awarded?"Saved · +"+result.earnedPoints+" points":"Replay checked");}
     else if(result.alreadyRecorded){feedback("Not quite. This is a replay, so your saved points are unchanged. "+(result.explanation||""),"warning");sync("Replay checked");}
-    else{attempt.availablePoints=result.availablePoints;attempt.wrongSubmissions=result.wrongSubmissions;if(!guestPage){revealHint();if(field("practiceMissionPanel").dataset.game==="code-sprint")sprintMiss();}feedback(result.deduction?"Not quite. This scored submission used "+result.deduction+" points from this mission’s possible reward. "+result.availablePoints+" points remains available. Adjust your answer and try again.":"Not quite. You have reached this mission’s minimum reward; more attempts cannot reduce it further. Keep trying.","warning");sync("Attempt saved");}
+    else{attempt.availablePoints=result.availablePoints;attempt.wrongSubmissions=result.wrongSubmissions;if(!guestPage){if(attempt.question.type==="debugging")bugLineFound=true;revealHint();if(field("practiceMissionPanel").dataset.game==="code-sprint")sprintMiss();}feedback(result.deduction?"Not quite. This scored submission used "+result.deduction+" points from this mission’s possible reward. "+result.availablePoints+" points remains available. Adjust your answer and try again.":"Not quite. You have reached this mission’s minimum reward; more attempts cannot reduce it further. Keep trying.","warning");sync("Attempt saved");}
     pointsText();renderAnswer();
   }catch(error){if(version===epoch){const reason=error.details?.reason;if(["answer-incomplete","practice-rate-limit","attempt-expired","enrollment","guest-registration","session-moved"].includes(reason)){pending=null;localSet(pendingKey(),null);if(reason==="attempt-expired")field("labReopenMission").hidden=false;}errorFeedback(error);pendingNotice();}}
   finally{if(version===epoch)setBusy(false);end();}
