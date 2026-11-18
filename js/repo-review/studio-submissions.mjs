@@ -24,13 +24,19 @@ function legacyRubric(assessment={}){
  for(const line of String(assessment.evalCriteria||"").split(/\r?\n/)){
    const cleaned=line.replace(/^[\s>*#-]+/,"").replace(/[*_`]/g,"").trim()
      .replace(/^\d+\s*[.)]\s*/,"");
+   if(!cleaned||/^total\b/i.test(cleaned))continue;
    const match=cleaned.match(/^(.*?)(?:\s*\|\s*|\s*[:–—-]\s*|\s*\()\s*(\d+(?:\.\d+)?)\s*(?:pts?|points?)?(?:\s*[:–—-]\s*.*)?\)?\s*$/i);
    if(!match)continue;
    const name=String(match[1]||"").replace(/[.:;-]+$/,"").trim(),points=Number(match[2]);
-   if(name&&name.length<=160&&Number.isFinite(points)&&points>0&&points<=maximum)rows.push({name,points});
+   if(name&&name.length<=160&&!/^\d/.test(name)&&Number.isFinite(points)&&points>0&&points<=maximum)
+     rows.push({name,points});
  }
- const sum=rows.reduce((total,row)=>total+row.points,0);
- if(rows.length&&Math.abs(sum-maximum)<0.001)return rows;
+ const deduped=[];
+ for(const row of rows){
+   if(!deduped.some(item=>item.name.toLowerCase()===row.name.toLowerCase()))deduped.push(row);
+ }
+ const sum=deduped.reduce((total,row)=>total+row.points,0);
+ if(deduped.length&&Math.abs(sum-maximum)<0.001)return deduped;
  return [{name:"Published task and rubric requirements",points:maximum}];
 }
 function evaluationTask(assessment={}){
@@ -48,8 +54,12 @@ function evaluationSnapshot(snapshot,item,assignedVariant){
  const order=Array.isArray(snapshot.fileOrder)?snapshot.fileOrder:Object.keys(snapshot.files||{});
  return {
    version:Number(item.revision||0),sourceLanguage:snapshot.lang||"",contentDigest:item.snapshotHash||"",
+   sourceDigest:String(snapshot.sourceDigest||snapshot.executionEvidence?.sourceDigest||""),
    files:order.map(path=>({path,content:String(snapshot.files?.[path]||"")})),
-   artifacts:{database:snapshot.database||{},design:snapshot.design||{}},
+   artifacts:{
+     database:snapshot.database||{},design:snapshot.design||{},
+     executionEvidence:snapshot.executionEvidence||{sourceDigest:"",runs:[]}
+   },
    personalizedTask:assignedVariant?{
      variantId:assignedVariant.variantId||"",
      prompt:assignedVariant.prompt||"",
