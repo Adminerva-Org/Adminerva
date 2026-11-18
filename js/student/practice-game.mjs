@@ -184,7 +184,12 @@ function renderGameCatalog(){
     }
     const top=node("div",undefined,"lab-game-card-top");
     top.append(node("span",game.icon,"lab-game-card-icon"),node("span",game.tag,"lab-game-card-tag"));
-    item.append(top,node("strong",game.name),node("p",game.description),node("small",game.external?"Open XML Lab ↗":done+" / "+total+" complete"));
+    item.append(top,node("strong",game.name),node("p",game.description));
+    if(game.external)item.append(node("small","Open XML Lab ↗"));
+    else{
+      const progress=node("div",undefined,"lab-game-progress"),meter=node("div",undefined,"games-meter"),fill=node("span"),count=node("small",done+" / "+total);
+      fill.style.width=(total?Math.round(done/total*100):0)+"%";meter.append(fill);progress.append(meter,count);item.append(progress);
+    }
     catalog.append(item);
   }
   renderHubHero();
