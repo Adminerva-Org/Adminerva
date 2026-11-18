@@ -177,6 +177,16 @@ function celebrateMission(){
   requestAnimationFrame(()=>layer.classList.add("is-active"));
   setTimeout(()=>{layer.classList.remove("is-active");layer.replaceChildren();},950);
 }
+function syncGamesHeaderOffset(){
+  const nav=document.querySelector("#adminerva-nav nav"),height=Math.max(0,Math.ceil(nav?.getBoundingClientRect().height||0));
+  document.documentElement.style.setProperty("--games-header-offset",height+"px");
+}
+function watchGamesHeader(){
+  syncGamesHeaderOffset();
+  const nav=document.querySelector("#adminerva-nav nav");if(!nav)return;
+  if("ResizeObserver" in window){const observer=new ResizeObserver(syncGamesHeaderOffset);observer.observe(nav);}
+  window.addEventListener("resize",syncGamesHeaderOffset,{passive:true});
+}
 function enhanceGamesHub(){
   const app=field("practiceApp"),existing=[...app.children],shell=node("div",undefined,"games-shell"),rail=node("nav",undefined,"games-rail"),content=node("div",undefined,"games-content");
   rail.setAttribute("aria-label","Games navigation");
@@ -200,6 +210,7 @@ function enhanceGamesHub(){
   const legacyBoard=sidebar.querySelector(".lab-board"),rankings=document.createElement("details");rankings.className="lab-board games-ranking-card";const rankSummary=node("summary",undefined,"games-ranking-summary");rankSummary.append(node("span","Rankings"),node("span","🏆"));if(legacyBoard){rankings.append(rankSummary,...legacyBoard.children);legacyBoard.replaceWith(rankings);}sidebar.querySelector(".lab-tip-card")?.remove();
   sidebar.prepend(progressCard);sidebar.prepend(achievementCard);sidebar.prepend(levelCard);sidebar.prepend(dailyCard);
   assignedPacks=Array.isArray(window.__adminervaPracticePacks)?window.__adminervaPracticePacks:[];renderChallenges();
+  watchGamesHeader();
   if("IntersectionObserver" in window){
     const links=[...rail.querySelectorAll(".games-rail-link")],targets=links.filter(link=>link.getAttribute("href")!=="#gamesProgress").map(link=>document.querySelector(link.getAttribute("href"))).filter(Boolean);
     const observer=new IntersectionObserver(entries=>{const visible=entries.filter(entry=>entry.isIntersecting).sort((a,b)=>b.intersectionRatio-a.intersectionRatio)[0];if(!visible)return;const link=links.find(item=>item.getAttribute("href")==="#"+visible.target.id);if(link)setCurrentRail(link);},{rootMargin:"-20% 0px -60% 0px",threshold:[0,.15,.35,.6]});
