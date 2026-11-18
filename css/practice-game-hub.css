@@ -554,6 +554,39 @@ body.lab-page::after{
   line-height:1.45;
 }
 .lab-game-card small{color:#61d6df}
+.lab-game-card-visual{
+  position:absolute;
+  right:10px;
+  top:42px;
+  width:58px;
+  height:58px;
+  display:grid;
+  place-items:center;
+  color:#6ddde4;
+  opacity:.34;
+  transform:rotate(-4deg);
+  pointer-events:none;
+  transition:opacity .18s ease,transform .18s ease,filter .18s ease;
+}
+.lab-game-card-visual .game-visual-svg{
+  width:46px;
+  height:46px;
+}
+.lab-game-card[data-game="bug-detective"] .lab-game-card-visual{color:#f06aa3}
+.lab-game-card[data-game="algorithm-maze"] .lab-game-card-visual{color:#e6c460}
+.lab-game-card[data-game="logic-circuit"] .lab-game-card-visual{color:#62d7b4}
+.lab-game-card[data-game="oop-builder"] .lab-game-card-visual{color:#a98cff}
+.lab-game-card[data-game="interface-repair"] .lab-game-card-visual{color:#60c9de}
+.lab-game-card[data-game="data-detective"] .lab-game-card-visual{color:#6ecda8}
+.lab-game-card[data-game="code-sprint"] .lab-game-card-visual{color:#74a8ff}
+.lab-game-card:hover .lab-game-card-visual,
+.lab-game-card:focus-visible .lab-game-card-visual,
+.lab-game-card.is-active .lab-game-card-visual,
+.lab-game-card.is-recommended .lab-game-card-visual{
+  opacity:.78;
+  transform:rotate(0) translateY(-2px) scale(1.03);
+  filter:drop-shadow(0 0 14px currentColor);
+}
 .lab-game-progress{
   display:grid;
   grid-template-columns:minmax(0,1fr) auto;
