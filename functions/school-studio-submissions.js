@@ -239,7 +239,8 @@ function createSchoolStudioSubmissionService({db}){
    return {submissionId,taskId,status:submission.data().status,version,
      files:snapshot.data().files,artifacts:snapshot.data().artifacts||{},contentDigest:snapshot.data().contentDigest,
      sourceDigest:snapshot.data().sourceDigest||digestSource(snapshot.data().files,snapshot.data().sourceLanguage),
-     language:snapshot.data().sourceLanguage,personalizedTask};
+     language:snapshot.data().sourceLanguage,personalizedTask,
+     automaticVerification:snapshot.data().verification||null};
   }
   if(input.action==="request_revision"){
    const reason=String(input.reason||"").trim();
