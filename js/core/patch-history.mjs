@@ -27,14 +27,32 @@ const cleanImpact=value=>{
   return Object.keys(cleaned).length?cleaned:null;
 };
 
+const cleanReleaseRedactions=value=>{
+  if(!Array.isArray(value))return [];
+  return value.slice(0,8).flatMap(item=>{
+    const x=Number(item?.x),y=Number(item?.y),width=Number(item?.width),height=Number(item?.height);
+    if(![x,y,width,height].every(Number.isFinite)||x<0||y<0||width<=0||height<=0||x+width>100||y+height>100)return [];
+    const label=text(item?.label,80);
+    return [{x,y,width,height,...(label?{label}:{})}];
+  });
+};
 const cleanReleaseMedia=value=>{
   if(!value||typeof value!=="object"||Array.isArray(value))return null;
   const src=text(value.src,240).replace(/^\.\//,"");
   if(!src||src.includes("..")||!/^assets\/releases\/[A-Za-z0-9._/-]+\.(?:png|jpe?g|webp|avif)$/i.test(src))return null;
   const alt=text(value.alt,180);
   if(!alt)return null;
-  const caption=text(value.caption,240);
-  return {src,alt,...(caption?{caption}:{})};
+  const caption=text(value.caption,240),redactions=cleanReleaseRedactions(value.redactions);
+  return {src,alt,...(caption?{caption}:{}),...(redactions.length?{redactions}:{})};
+};
+const cleanDevelopment=value=>{
+  if(!Array.isArray(value))return [];
+  return value.slice(0,8).flatMap(item=>{
+    const title=text(item?.title,100),summary=text(item?.summary||item?.text,500);
+    if(!title||!summary)return [];
+    const audience=cleanAudience(item?.audience)||["all"];
+    return [{title,summary,audience}];
+  });
 };
 const cleanHighlights=value=>{
   if(!Array.isArray(value))return [];
@@ -91,7 +109,8 @@ export function releaseForRole(release,role){
       Object.entries(change.impact).filter(([audience])=>audience===role||audience==="all")
     )}:{})}));
   const highlights=(release.highlights||[]).filter(highlight=>audienceMatches(highlight.audience,role));
-  return changes.length?{...release,changes,...(release.highlights?{highlights}:{})}:null;
+  const development=(release.development||[]).filter(item=>audienceMatches(item.audience,role));
+  return changes.length?{...release,changes,...(release.highlights?{highlights}:{}),...(release.development?{development}:{})}:null;
 }
 const releaseAudience=changes=>{
   const all=changes.flatMap(change=>changeAudience(change));
@@ -112,8 +131,9 @@ export function publicReleases(data,now=Date.now()){
     if(!changes.length||!text(release.title,120)||!text(release.summary,500))return [];
     versions.add(release.version);
     const displayVersion=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(release.displayVersion||"")?release.displayVersion:null,
-      highlights=cleanHighlights(release.highlights);
-    return [{version:release.version,...(displayVersion?{displayVersion}:{}),releasedAt:release.releasedAt,...(publishedAt?{publishedAt}:{}),title:text(release.title,120),summary:text(release.summary,500),changes,audience:releaseAudience(changes),...(highlights.length?{highlights}:{})}];
+      highlights=cleanHighlights(release.highlights),
+      development=cleanDevelopment(release.development);
+    return [{version:release.version,...(displayVersion?{displayVersion}:{}),releasedAt:release.releasedAt,...(publishedAt?{publishedAt}:{}),title:text(release.title,120),summary:text(release.summary,500),changes,audience:releaseAudience(changes),...(highlights.length?{highlights}:{}),...(development.length?{development}:{})}];
   }).sort((first,second)=>effectiveReleaseTime(second)-effectiveReleaseTime(first)||second.version.localeCompare(first.version,undefined,{numeric:true}));
 }
 export function releaseNotifications(releases,role=null){
