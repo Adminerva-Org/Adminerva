@@ -20,8 +20,10 @@ body.lab-page{
     linear-gradient(180deg,#071724 0%,#06111b 100%);
   color:var(--games-text);
   min-height:100vh;
+  min-height:100dvh;
   position:relative;
   isolation:isolate;
+  overflow-x:hidden;
 }
 body.lab-page::before,
 body.lab-page::after{
@@ -52,7 +54,11 @@ body.lab-page::after{
 #practiceApp,.lab-footer,#practiceAssignedPacks{position:relative;z-index:1}
 #practiceApp{
   width:min(1540px,100%);
-  padding:clamp(.8rem,2vw,1.5rem);
+  padding:
+    max(clamp(.8rem,2vw,1.5rem),env(safe-area-inset-top,0px))
+    max(clamp(.8rem,2vw,1.5rem),env(safe-area-inset-right,0px))
+    max(clamp(.8rem,2vw,1.5rem),env(safe-area-inset-bottom,0px))
+    max(clamp(.8rem,2vw,1.5rem),env(safe-area-inset-left,0px));
 }
 .games-shell{
   display:grid;
@@ -1769,7 +1775,7 @@ body.lab-page::after{
   .games-shell{display:block}
   .games-rail{
     position:sticky;
-    top:.4rem;
+    top:calc(var(--games-header-offset,56px) + .35rem);
     z-index:20;
     display:flex;
     gap:.35rem;
@@ -2255,4 +2261,134 @@ body.lab-page::after{
 @media(max-width:560px){
   .games-oop-flow[data-steps="5"]{grid-template-columns:1fr}
   .games-trace-state{grid-template-columns:1fr 1fr}
+}
+
+/* Mobile hardening for Student Games. */
+@media(max-width:760px){
+  body.lab-page #adminerva-nav .av-nav-top{
+    gap:.35rem;
+    padding-left:max(.5rem,env(safe-area-inset-left,0px));
+    padding-right:max(.5rem,env(safe-area-inset-right,0px));
+  }
+  body.lab-page #adminerva-nav .av-nav-brand{gap:.4rem}
+  body.lab-page #adminerva-nav .av-nav-home{gap:.35rem}
+  body.lab-page #adminerva-nav .av-nav-home-label{display:none}
+  body.lab-page #adminerva-nav .av-module-label{padding:.45rem .55rem;font-size:.72rem}
+  body.lab-page #adminerva-nav #av-account-controls{gap:.3rem}
+  body.lab-page #adminerva-nav #av-account-controls .border-l{padding-left:.4rem}
+  .games-rail{
+    overscroll-behavior-x:contain;
+    scrollbar-width:none;
+    -webkit-overflow-scrolling:touch;
+  }
+  .games-rail::-webkit-scrollbar{display:none}
+  .lab-game-grid,.lab-course-tabs{
+    overscroll-behavior-x:contain;
+    -webkit-overflow-scrolling:touch;
+  }
+  #practiceCode,
+  .lab-code-case,
+  .lab-order-list code{
+    max-width:100%;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+  .lab-mission-panel,
+  .lab-mechanic-panel,
+  .games-interface-preview,
+  .games-data-board,
+  .games-oop-blueprint{
+    max-width:100%;
+    min-width:0;
+  }
+  .games-challenge-button,
+  .games-hint-tray button,
+  .games-interface-tools button,
+  .games-sprint-hud button,
+  .games-match-choice,
+  .games-data-chip,
+  .lab-order-actions button{
+    min-height:44px;
+  }
+  .games-interface-tools button{width:44px}
+  .lab-order-actions button{min-width:44px}
+  .games-match-choice,.games-data-chip{padding:.6rem .7rem}
+  .lab-page input[type="text"],
+  .lab-page input[type="email"],
+  .lab-page input[type="search"],
+  .lab-page input[type="url"],
+  .lab-page input[type="number"],
+  .lab-page select,
+  .games-trace-variable input{
+    font-size:16px;
+  }
+}
+@media(max-width:480px){
+  body.lab-page #adminerva-nav #av-account-controls>button[title="Report Issue"],
+  body.lab-page #adminerva-nav #av-account-controls>a[title="Account settings"]{
+    display:none;
+  }
+  body.lab-page #adminerva-nav #userEmailDisplay{display:none}
+  body.lab-page #adminerva-nav .av-nav-tools{gap:.15rem}
+  body.lab-page #adminerva-nav .av-module-label{min-width:0}
+  .games-hero-art{display:none}
+  .games-hero h1,
+  .games-hero-sub,
+  .games-hero-progress{max-width:100%}
+  .games-hero-copy{padding-right:0}
+  .games-section{padding:.72rem}
+  .games-challenge-section-head{align-items:flex-start}
+  .games-challenge-section-head>.lab-pill{flex:0 0 auto}
+  .lab-section-heading{align-items:flex-start}
+  .lab-section-heading>.lab-pill{max-width:100%;white-space:normal}
+  .lab-map-heading{flex-direction:column;align-items:flex-start}
+  .games-interface-bar{align-items:stretch}
+  .games-interface-tools{width:100%;margin-left:0}
+  .games-interface-tools button{flex:1}
+  .games-sprint-hud{
+    grid-template-columns:38px minmax(0,1fr);
+  }
+  .games-sprint-hud button{
+    grid-column:1/-1;
+    grid-row:auto;
+    width:100%;
+  }
+  .games-sprint-pips{
+    grid-column:1/-1;
+    grid-row:auto;
+    width:100%;
+    justify-content:space-between;
+  }
+  .games-sprint-pips span{width:32px;height:32px}
+  .games-oop-flow,
+  .games-oop-flow[data-steps="5"]{grid-template-columns:1fr;gap:.3rem}
+  .games-oop-link::before{
+    content:"↓";
+    display:block;
+    width:auto;
+    height:auto;
+    margin:.05rem 0;
+    background:none;
+    color:#9f8bcf;
+    font-size:.8rem;
+    line-height:1;
+  }
+  .games-oop-link::after{display:none}
+  .games-trace-state{grid-template-columns:1fr}
+  .game-status-badge{
+    max-width:100%;
+    white-space:normal;
+  }
+}
+@media(max-width:360px){
+  body.lab-page #adminerva-nav .av-module-label{
+    padding:.45rem;
+    font-size:.66rem;
+  }
+  body.lab-page #adminerva-nav .av-nav-brand{gap:.25rem}
+  .games-rail-link{flex-basis:70px;padding:.4rem;font-size:.54rem}
+  .lab-game-card{flex-basis:142px}
+  .lab-mission-panel{padding:1rem .75rem}
+  .games-visual-copy small{display:none}
+  .lab-mission-actions :is(button,a){width:100%;flex-basis:100%}
 }
