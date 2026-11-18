@@ -14,6 +14,7 @@ const {digestSubmission}=require("./school-assessment-submissions.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
 function deny(code,message){throw new TenantAccessError(code,message)}
+const DRAFT_SOURCES=new Set(["teacher","internal_ai","external_ai"]);
 function validateScores(criteria,rubric){
  if(!Array.isArray(rubric)||!rubric.length||!Array.isArray(criteria)||
     criteria.length!==rubric.length)
@@ -97,6 +98,101 @@ function createSchoolGradebookService({db}){
       };
     })};
   }
+  if(input.action==="publish_task_drafts"){
+   const grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,offeringId));
+   if(!ctx.platformOverride){
+    const [member,grant]=await Promise.all([memberRef.get(),grantRef.get()]);
+    if(!member.exists||member.data().status!=="active"||member.data().schoolId!==ctx.schoolId||
+       !Array.isArray(member.data().roles)||!member.data().roles.includes("teacher")||
+       !grant.exists||grant.data().schoolId!==ctx.schoolId||grant.data().teacherUid!==ctx.uid||
+       grant.data().offeringId!==offeringId||grant.data().status!=="active")
+      deny("permission-denied","This assessment's grading rights are no longer assigned to you.");
+   }
+   const snap=await grades.where("taskId","==",taskId).limit(201).get();
+   if(snap.size===201)deny("resource-exhausted","Bulk publication requires pagination for this assessment.");
+   const rows=snap.docs.filter(doc=>doc.data().schoolId===ctx.schoolId&&
+     doc.data().offeringId===offeringId&&doc.data().status==="draft");
+   const zeroSkipped=rows.filter(doc=>Number(doc.data().awarded)===0).length;
+   const candidates=rows.filter(doc=>Number(doc.data().awarded)>0);
+   const collectionName=source==="studio"?"studio_submissions":
+     source==="github"?"github_evidence":"assessment_submissions";
+   const digestOf=data=>source==="studio"?data.contentDigest:
+     source==="github"?data.evidenceDigest:data.submissionDigest;
+   const frozenValid=snapshot=>{
+    if(!snapshot.exists)return false;
+    const data=snapshot.data();
+    if(source==="studio")
+      return data.contentDigest&&data.contentDigest===digestProject(data.files,data.artifacts||{});
+    if(source==="github")
+      return data.evidenceDigest&&data.evidenceDigest===
+        digestEvidence(data.repository,data.selectedCommitShas||[],data.checkpointSha);
+    return data.submissionDigest&&data.submissionDigest===digestSubmission(source,data.payload);
+   };
+   const taskTotal=Array.isArray(task.data().rubric)?
+     task.data().rubric.reduce((sum,row)=>sum+Number(row.points||0),0):0;
+   let published=0,failed=0;
+   const failedGradeIds=[];
+   for(const record of candidates){
+    try{
+     let studentUidForNotification=null;
+     await db.runTransaction(async tx=>{
+      const current=await tx.get(record.ref);
+      if(!current.exists||current.data().status!=="draft")
+       deny("failed-precondition","Draft changed before publication.");
+      const grade=current.data();
+      if(grade.schoolId!==ctx.schoolId||grade.taskId!==taskId||grade.offeringId!==offeringId||
+         !Number.isFinite(Number(grade.awarded))||Number(grade.awarded)<=0||
+         Number(grade.pending||0)!==0||Number(grade.total)!==taskTotal)
+       deny("failed-precondition","Draft score is incomplete or no longer matches the published rubric.");
+      const submissionRef=db.doc(prefix+collectionName+"/"+checkId(grade.submissionId,"Submission ID",128));
+      const submission=await tx.get(submissionRef);
+      if(!submission.exists||submission.data().schoolId!==ctx.schoolId||
+         submission.data().taskId!==taskId||submission.data().studentUid!==grade.studentUid||
+         submission.data().offeringId!==offeringId||
+         !((source==="github"&&["approved","reviewed"].includes(submission.data().status))||
+           (source!=="github"&&["submitted","reviewed"].includes(submission.data().status)))||
+         submission.data().currentVersion!==grade.submissionVersion||
+         digestOf(submission.data())!==grade.submissionDigest)
+       deny("failed-precondition","Draft no longer matches the current frozen student evidence.");
+      const version=await tx.get(submissionRef.collection("versions").doc(String(grade.submissionVersion)));
+      if(!version.exists||version.data().schoolId!==ctx.schoolId||
+         version.data().taskId!==taskId||version.data().offeringId!==offeringId||
+         version.data().studentUid!==grade.studentUid||version.data().personId!==grade.personId||
+         version.data().version!==grade.submissionVersion||
+         digestOf(version.data())!==grade.submissionDigest||!frozenValid(version))
+       deny("failed-precondition","Frozen evidence validation failed.");
+      const now=FieldValue.serverTimestamp(),revision=(grade.revision||0)+1;
+      tx.update(record.ref,{status:"published",publishedAt:now,publishedByUid:ctx.uid,
+        revision,updatedAt:now});
+      tx.update(submissionRef,{status:"reviewed",reviewedByUid:ctx.uid,
+        reviewedVersion:grade.submissionVersion,updatedAt:now});
+      tx.create(record.ref.collection("revisions").doc(String(revision)),{
+        ...grade,status:"published",revision,publishedAt:now,publishedByUid:ctx.uid,
+        action:"grade_bulk_published",createdAt:now
+      });
+      tx.create(db.collection(prefix+"grade_audit").doc(),{
+        schoolId:ctx.schoolId,taskId,studentUid:grade.studentUid,actorUid:ctx.uid,
+        action:"grade_bulk_published",revision,createdAt:now
+      });
+      studentUidForNotification=grade.studentUid;
+     });
+     published++;
+     if(studentUidForNotification)await writeSchoolNotification({
+       db,schoolId:ctx.schoolId,uid:studentUidForNotification,
+       id:"grade_published_"+taskId+"_"+record.id,
+       title:"Grade published",
+       body:(task.data().title||"Assessment")+" · your reviewed result is now available.",
+       type:"grade",sourceId:taskId,target:"student-assessments.html"
+     }).catch(()=>{});
+    }catch(error){
+     failed++;
+     if(failedGradeIds.length<25)failedGradeIds.push(record.id);
+    }
+   }
+   return {taskId,published,zeroSkipped,failed,failedGradeIds,
+     remainingDrafts:Math.max(0,rows.length-published)};
+  }
+
   const studentUid=checkId(input.studentUid,"Student UID",128);
   const gradeRef=grades.doc(hash(taskId,studentUid));
   const submissionCollection=source==="studio"?"studio_submissions":
@@ -162,6 +258,7 @@ function createSchoolGradebookService({db}){
       gradeSchema:grade.data().gradeSchema||"rubric_v1",criteria:Array.isArray(grade.data().criteria)?grade.data().criteria:[],
       awarded:grade.data().awarded,total:grade.data().total,
       pending:grade.data().pending,feedback:grade.data().feedback,
+      draftSource:grade.data().draftSource||"teacher",
       version:grade.data().submissionVersion,revision:grade.data().revision,
       publishedAt:grade.data().publishedAt?.toMillis?.()||null,
       lastCorrectedAt:grade.data().lastCorrectedAt?.toMillis?.()||null
@@ -173,6 +270,7 @@ function createSchoolGradebookService({db}){
     deny("invalid-argument","Choose the current frozen submission version.");
    const feedback=String(input.feedback||"").trim();
    if(feedback.length>5000)deny("invalid-argument","Teacher feedback is too long.");
+   const draftSource=DRAFT_SOURCES.has(String(input.draftSource||""))?String(input.draftSource):"teacher";
    const auditRef=db.collection(prefix+"grade_audit").doc();
    await db.runTransaction(async tx=>{
     const {task,submission}=await authorize(tx);
@@ -200,7 +298,7 @@ function createSchoolGradebookService({db}){
      personId:submission.personId,studentUid,reviewerUid:ctx.uid,
      evidenceType:source,submissionId:submissionRef.id,submissionVersion,submissionDigest:evidenceDigest(submission),
      gradeSchema:"rubric_v1",criteria:scores.criteria,awarded:scores.awarded,pending:scores.pending,total:scores.total,
-     feedback,status:"draft",revision,updatedAt:now};
+     feedback,draftSource,status:"draft",revision,updatedAt:now};
     if(grade.exists)tx.update(gradeRef,values);
     else tx.create(gradeRef,{...values,createdAt:now});
     tx.create(gradeRef.collection("revisions").doc(String(revision)),{
