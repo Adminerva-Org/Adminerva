@@ -70,6 +70,9 @@ function canonicalJson(value){
 function digestProject(files,artifacts={}){
  return createHash("sha256").update(canonicalJson({files,artifacts})).digest("hex");
 }
+function digestSource(files,language=""){
+ return createHash("sha256").update(canonicalJson({language:String(language||""),files})).digest("hex");
+}
 function digestFiles(files){return digestProject(files,{});}
 function createSchoolStudioProjectService({db}){
  return async request=>{
@@ -113,7 +116,7 @@ function createSchoolStudioProjectService({db}){
    await db.runTransaction(async tx=>{
     await authorizeTransaction(tx);
     tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,
-      language,files,artifacts,contentDigest:digestProject(files,artifacts),status:"active",revision:1,
+      language,files,artifacts,contentDigest:digestProject(files,artifacts),sourceDigest:digestSource(files,language),status:"active",revision:1,
       createdAt:now,updatedAt:now});
    });
    return {projectId:ref.id,revision:1,contentDigest:digestProject(files,artifacts)};
@@ -131,7 +134,7 @@ function createSchoolStudioProjectService({db}){
     const current=await tx.get(ref),now=FieldValue.serverTimestamp();
     if(!current.exists){
      tx.create(ref,{schoolId:ctx.schoolId,ownerUid:ctx.uid,title,language,files,artifacts,status:"active",
-       contentDigest:digest,revision:1,createdAt:now,updatedAt:now});
+       contentDigest:digest,sourceDigest:digestSource(files,language),revision:1,createdAt:now,updatedAt:now});
      result={projectId,revision:1,contentDigest:digest,created:true};return;
     }
     const data=current.data();
@@ -148,7 +151,8 @@ function createSchoolStudioProjectService({db}){
      result={projectId,revision:data.revision,contentDigest:digest,created:false,unchanged:true};return;
     }
     const revision=data.revision+1;
-    tx.update(ref,{title,language,files,artifacts,contentDigest:digest,revision,updatedAt:now});
+    tx.update(ref,{title,language,files,artifacts,contentDigest:digest,
+      sourceDigest:digestSource(files,language),revision,updatedAt:now});
     result={projectId,revision,contentDigest:digest,created:false,unchanged:false};
    });
    return result;
@@ -163,6 +167,7 @@ function createSchoolStudioProjectService({db}){
    if(data.status==="archived")deny("failed-precondition","This school project is archived. Restore it before opening.");
    return {projectId,title:data.title,language:data.language,status:data.status||"active",
     revision:data.revision,files:data.files,artifacts:data.artifacts||{},contentDigest:data.contentDigest,
+    sourceDigest:data.sourceDigest||digestSource(data.files||[],data.language),
     createdAt:data.createdAt?.toMillis?.()||null,updatedAt:data.updatedAt?.toMillis?.()||null};
   }
   if(action==="archive"||action==="restore"){
@@ -204,7 +209,8 @@ function createSchoolStudioProjectService({db}){
      deny("failed-precondition","Restore this archived school project before saving.");
     if(doc.data().revision!==revision)
      deny("failed-precondition","Project changed elsewhere. Load the latest version before saving.");
-    tx.update(ref,{title,files,artifacts,contentDigest:digest,revision:revision+1,
+    tx.update(ref,{title,files,artifacts,contentDigest:digest,
+      sourceDigest:digestSource(files,doc.data().language),revision:revision+1,
       updatedAt:FieldValue.serverTimestamp()});
    });
    return {projectId,revision:revision+1,contentDigest:digest};
@@ -212,4 +218,4 @@ function createSchoolStudioProjectService({db}){
   deny("invalid-argument","Unknown school Studio project action.");
  };
 }
-module.exports={createSchoolStudioProjectService,validateFiles,validateArtifacts,digestFiles,digestProject,canonicalJson};
+module.exports={createSchoolStudioProjectService,validateFiles,validateArtifacts,digestFiles,digestProject,digestSource,canonicalJson};
