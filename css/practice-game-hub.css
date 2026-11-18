@@ -881,6 +881,46 @@ body.lab-page::after{
 .lab-mission-panel{
   scroll-margin-top:1rem;
 }
+.lab-mission-panel{
+  --mission-accent-rgb:66,225,237;
+  position:relative;
+  overflow:hidden;
+  border-color:rgba(var(--mission-accent-rgb),.28)!important;
+}
+.lab-mission-panel::before{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  top:0;
+  height:3px;
+  background:linear-gradient(90deg,rgba(var(--mission-accent-rgb),.08),rgba(var(--mission-accent-rgb),.95),rgba(var(--mission-accent-rgb),.08));
+  box-shadow:0 0 18px rgba(var(--mission-accent-rgb),.22);
+}
+.lab-mission-panel::after{
+  content:"";
+  position:absolute;
+  right:-70px;
+  top:-70px;
+  width:190px;
+  height:190px;
+  border-radius:50%;
+  background:radial-gradient(circle,rgba(var(--mission-accent-rgb),.1),transparent 68%);
+  pointer-events:none;
+}
+.lab-mission-panel[data-game="bug-detective"]{--mission-accent-rgb:241,91,155}
+.lab-mission-panel[data-game="trace-quest"]{--mission-accent-rgb:66,225,237}
+.lab-mission-panel[data-game="algorithm-maze"]{--mission-accent-rgb:241,199,91}
+.lab-mission-panel[data-game="logic-circuit"]{--mission-accent-rgb:85,214,177}
+.lab-mission-panel[data-game="oop-builder"]{--mission-accent-rgb:159,120,255}
+.lab-mission-panel[data-game="code-sprint"]{--mission-accent-rgb:89,158,255}
+.lab-mission-panel[data-game="interface-repair"]{--mission-accent-rgb:74,201,230}
+.lab-mission-panel[data-game="data-detective"]{--mission-accent-rgb:103,205,165}
+.lab-mission-panel #labGameName{
+  border-color:rgba(var(--mission-accent-rgb),.28);
+  color:rgb(var(--mission-accent-rgb));
+  background:rgba(var(--mission-accent-rgb),.08);
+}
 .lab-text-button{color:#77e6e9}
 .lab-mission-meta{color:#92b6c5}
 #practiceMissionTitle{color:#fff}
