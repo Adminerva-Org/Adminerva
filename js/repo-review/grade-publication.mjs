@@ -77,15 +77,29 @@ export async function publishGradeEntries(entries,published,{context,onProgress=
         const task=await transaction.get(doc(db,"assessments",before.taskId));
         if(published&&(!task.exists()||typeof task.data().maxScore!=="number"||task.data().maxScore<=0||before.score>task.data().maxScore||(before.maxScore!=null&&before.maxScore!==task.data().maxScore)))throw Error("Assessment bounds changed or are unavailable. Review this grade before publishing.");
         const legacyReady=published&&legacyReadyDraft(before);
-        if(published&&task.data()?.schemaVersion===2)await verifyGradePublication(transaction,entry.ref,before);
+        const aiDraft=published&&approvableEvaluationDraft(before);
+        if(published&&task.data()?.schemaVersion===2)
+          await verifyGradePublication(transaction,entry.ref,before,{allowTeacherApproval:aiDraft});
         transaction.set(doc(collection(db,"grade_revisions")),{
           gradeId:entry.ref.id,studentId:before.studentId,taskId:before.taskId,editorUid:uid,
-          reason:published?(legacyReady?"Teacher published legacy clean system draft":"Teacher explicitly published a reviewed batch draft"):"Teacher explicitly unpublished a batch grade",
+          reason:published
+            ?(aiDraft?"Teacher bulk-published AI grade draft unchanged":
+              legacyReady?"Teacher published legacy clean system draft":
+              "Teacher explicitly published a reviewed batch draft")
+            :"Teacher explicitly unpublished a batch grade",
           before:{published:Boolean(before.published)},after:{published},createdAt:serverTimestamp()
         });
         transaction.update(entry.ref,{
           published,
-          ...(legacyReady?{reviewRequired:false,reviewPriority:"ready_to_publish"}:{})
+          ...(legacyReady?{reviewRequired:false,reviewPriority:"ready_to_publish"}:{}),
+          ...(aiDraft?{
+            reviewRequired:false,
+            reviewPriority:"teacher_approved",
+            reviewedBy:uid,
+            reviewedAt:serverTimestamp(),
+            teacherReviewNote:"Teacher approved this AI-generated grade draft unchanged through the confirmed bulk publication action.",
+            evaluationDraft:{...(before.evaluationDraft||{}),teacherReviewed:true}
+          }:{})
         });
       });
       progress.completed.push(entry.ref.id);progress.pending=progress.pending.filter(id=>id!==entry.ref.id);
