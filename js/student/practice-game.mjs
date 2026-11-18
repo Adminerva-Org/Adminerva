@@ -182,10 +182,19 @@ function syncGamesHeaderOffset(){
   document.documentElement.style.setProperty("--games-header-offset",height+"px");
 }
 function watchGamesHeader(){
-  syncGamesHeaderOffset();
-  const nav=document.querySelector("#adminerva-nav nav");if(!nav)return;
-  if("ResizeObserver" in window){const observer=new ResizeObserver(syncGamesHeaderOffset);observer.observe(nav);}
+  const root=document.getElementById("adminerva-nav");let resizeObserver=null;
+  const attach=()=>{
+    syncGamesHeaderOffset();
+    const nav=root?.querySelector("nav");if(!nav)return false;
+    if("ResizeObserver" in window){resizeObserver?.disconnect();resizeObserver=new ResizeObserver(syncGamesHeaderOffset);resizeObserver.observe(nav);}
+    return true;
+  };
+  if(!attach()&&root&&"MutationObserver" in window){
+    const observer=new MutationObserver(()=>{if(attach())observer.disconnect();});
+    observer.observe(root,{childList:true,subtree:true});
+  }
   window.addEventListener("resize",syncGamesHeaderOffset,{passive:true});
+  window.addEventListener("orientationchange",syncGamesHeaderOffset,{passive:true});
 }
 function enhanceGamesHub(){
   const app=field("practiceApp"),existing=[...app.children],shell=node("div",undefined,"games-shell"),rail=node("nav",undefined,"games-rail"),content=node("div",undefined,"games-content");
