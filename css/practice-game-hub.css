@@ -716,8 +716,17 @@ body.lab-page::after{
   display:grid;
   justify-items:center;
   gap:.35rem;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:inherit;
+  font:inherit;
 }
-.games-progress-ring{
+.games-progress-item:hover .games-progress-ring,
+.games-progress-item:focus-visible .games-progress-ring{
+  transform:translateY(-2px) scale(1.03);
+  box-shadow:0 0 26px rgba(66,225,237,.11);
+}.games-progress-ring{
   --value:0;
   width:64px;
   aspect-ratio:1;
@@ -727,6 +736,7 @@ body.lab-page::after{
   background:conic-gradient(var(--games-cyan) calc(var(--value) * 1%),rgba(80,145,164,.15) 0);
   position:relative;
   box-shadow:0 0 22px rgba(66,225,237,.05);
+  transition:transform .18s ease,box-shadow .18s ease;
 }
 .games-progress-ring::before{
   content:"";
