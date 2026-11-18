@@ -986,6 +986,91 @@ body.lab-page::after{
   color:#a5eef2;
 }
 .lab-scoring-hint{color:#7fa4b5}
+.lab-mechanic-panel{
+  border-color:rgba(96,161,188,.2);
+  background:rgba(7,25,39,.72);
+  color:#dceff5;
+}
+.lab-mechanic-panel[data-kind=trace]{
+  border-color:rgba(66,225,237,.2);
+  background:rgba(12,44,58,.56);
+}
+.lab-mechanic-panel[data-kind=debug]{
+  border-color:rgba(241,199,91,.26);
+  background:rgba(65,47,20,.32);
+}
+.lab-mechanic-head strong{color:#f0fdff}
+.lab-mechanic-kicker{color:#70dce4}
+.lab-mechanic-panel[data-kind=debug] .lab-mechanic-kicker{color:#f2cf72}
+.lab-trace-steps li{
+  border-color:rgba(66,225,237,.14);
+  background:rgba(7,27,41,.75);
+  color:#a9c9d6;
+}
+.lab-trace-steps li::before{
+  background:rgba(66,225,237,.12);
+  color:#82ecf0;
+}
+.lab-case-hint{color:#d2bc83}
+.games-oop-blueprint{
+  display:grid;
+  gap:.7rem;
+  margin-bottom:.8rem;
+  padding:.8rem;
+  border:1px solid rgba(159,120,255,.22);
+  border-radius:.75rem;
+  background:
+    radial-gradient(circle at 90% 0,rgba(159,120,255,.12),transparent 42%),
+    rgba(26,20,53,.34);
+}
+.games-oop-blueprint-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.8rem;
+}
+.games-oop-blueprint-head strong{
+  max-width:65%;
+  color:#eee8ff;
+  font-size:.72rem;
+  text-align:right;
+}
+.games-oop-flow{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);
+  align-items:center;
+  gap:.55rem;
+}
+.games-oop-node{
+  min-height:48px;
+  display:grid;
+  place-items:center;
+  padding:.55rem;
+  border:1px solid rgba(177,151,255,.3);
+  border-radius:.7rem;
+  background:linear-gradient(160deg,rgba(114,80,204,.18),rgba(16,37,54,.58));
+  color:#e2d8ff;
+  font-size:.64rem;
+  font-weight:900;
+  letter-spacing:.04em;
+  text-align:center;
+  box-shadow:inset 0 0 18px rgba(159,120,255,.035);
+}
+.games-oop-link{
+  color:#9f8bcf;
+  font-size:.56rem;
+  font-weight:800;
+  text-align:center;
+}
+.games-oop-link::before,
+.games-oop-link::after{
+  content:"";
+  display:block;
+  height:1px;
+  width:100%;
+  margin:.22rem 0;
+  background:linear-gradient(90deg,transparent,rgba(159,120,255,.5),transparent);
+}
 .lab-feedback{
   border-color:rgba(82,169,224,.28);
   background:rgba(28,78,111,.24);
@@ -1174,4 +1259,12 @@ body.lab-page::after{
   .lab-game-card p{display:none}
   .lab-game-card{min-height:124px}
   .lab-game-progress{margin-top:auto}
+}
+
+@media(max-width:470px){
+  .games-oop-flow{grid-template-columns:1fr;gap:.35rem}
+  .games-oop-link::before,.games-oop-link::after{display:none}
+  .games-oop-node{min-height:40px}
+  .games-oop-blueprint-head{align-items:flex-start;flex-direction:column}
+  .games-oop-blueprint-head strong{max-width:100%;text-align:left}
 }
