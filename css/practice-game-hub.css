@@ -1764,6 +1764,66 @@ body.lab-page::after{
 .game-status-badge[data-tone=warning]>span:first-child{
   background:rgba(241,199,91,.11);
 }
+.games-builder-track{
+  position:absolute;
+  left:76px;
+  right:88px;
+  bottom:7px;
+  display:flex;
+  gap:.25rem;
+  pointer-events:none;
+}
+.games-builder-track span{
+  flex:1 1 0;
+  height:3px;
+  overflow:hidden;
+  text-indent:-999px;
+  border-radius:999px;
+  background:rgba(241,199,91,.13);
+}
+.games-builder-track span::after{
+  content:"";
+  display:block;
+  width:100%;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg,rgba(241,199,91,.16),rgba(241,199,91,.55),rgba(241,199,91,.16));
+  transform:translateX(-110%);
+  animation:gameBuilderTrack 3.2s ease-in-out infinite;
+}
+.games-builder-track span:nth-child(2)::after{animation-delay:.14s}
+.games-builder-track span:nth-child(3)::after{animation-delay:.28s}
+.games-builder-track span:nth-child(4)::after{animation-delay:.42s}
+.games-builder-track span:nth-child(5)::after{animation-delay:.56s}
+.game-visual-oop[data-module="oop-encapsulation"]{--game-visual-rgb:119,208,255}
+.game-visual-oop[data-module="oop-inheritance"]{--game-visual-rgb:159,120,255}
+.game-visual-oop[data-module="oop-polymorphism"]{--game-visual-rgb:236,122,255}
+.game-visual-oop[data-module="oop-real"]{--game-visual-rgb:98,219,174}
+.game-visual-oop[data-module="oop-classes"]{--game-visual-rgb:119,167,255}
+.lab-mechanic-panel[data-kind=build] .lab-order-list{
+  position:relative;
+}
+.lab-mechanic-panel[data-kind=build] .lab-order-list::before{
+  content:"ASSEMBLY";
+  display:block;
+  margin:0 0 .45rem;
+  color:#88784f;
+  font-size:.46rem;
+  font-weight:900;
+  letter-spacing:.12em;
+}
+.lab-mechanic-panel[data-kind=match] .games-match-row.has-match>strong{
+  color:#dffff5;
+}
+.lab-mechanic-panel[data-kind=match] .games-match-row.has-match{
+  background:
+    radial-gradient(circle at 97% 50%,rgba(85,214,177,.055),transparent 36%),
+    rgba(8,34,39,.58);
+}
+@keyframes gameBuilderTrack{
+  0%,50%{transform:translateX(-110%)}
+  82%,100%{transform:translateX(110%)}
+}
 .game-fx-error{
   animation:gameFxShake .32s ease;
 }
@@ -1926,7 +1986,8 @@ body.lab-page::after{
   .lab-order-list.game-fx-snap li,
   .games-oop-blueprint .games-oop-node,
   .games-oop-blueprint .games-oop-link,
-  .games-oop-blueprint .games-oop-node::before{animation:none!important}
+  .games-oop-blueprint .games-oop-node::before,
+  .games-builder-track span::after{animation:none!important}
 }
 
 /* Existing practice markup remains the functional layout container. */
@@ -1987,4 +2048,8 @@ body.lab-page::after{
   .game-status-badge{position:static;justify-self:start;margin-top:.25rem;grid-column:2}
   .games-match-row{grid-template-columns:1fr}
   .games-match-connector{display:none}
+}
+
+@media(max-width:560px){
+  .games-builder-track{left:61px;right:8px;bottom:5px}
 }
