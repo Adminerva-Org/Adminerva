@@ -3,9 +3,10 @@ import {AdminervaRuntimeClient} from './studio-runtime-client.mjs?v=3';
 import {analyzeJavaWorkspace,clearJavaDiagnostics} from './studio-diagnostics.mjs?v=1';
 
 /** Adds local Java problems and, once deployed, the optional server-backed queue. */
-export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFiles,getEntry,getProjectId,save,switchFile,showRecoveredSnapshot,leaveRecoveredSnapshot}){
+export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFiles,getEntry,getProjectId,save,switchFile,showRecoveredSnapshot,leaveRecoveredSnapshot,recordRun}){
   const enabled=Boolean(ADMINERVA_RUNTIME_ORIGIN)&&!guest;
   let session=null,locked=false,diagnostics=null,timer=null,generation=0,recoveredPreview=false;
+  let runtimeStdout="",runtimeStderr="",runtimeInput="",runtimeEntry="",runtimeStarted=false,runtimeRecorded=false;
   const el=id=>document.getElementById(id);
   const display=el('studioProblemsList');
   const banner=el('studioQueueBanner');
@@ -199,7 +200,18 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
   }
   function runtimeEvent(message){
     if(message.type==='status'){
+      if(message.state==='running')runtimeStarted=true;
       if(['finished','failed','expired','cancelled'].includes(message.state)){
+        if(!runtimeRecorded){
+          runtimeRecorded=true;
+          try{recordRun?.({
+            mode:"console",engine:"adminerva_runtime",entry:runtimeEntry,
+            status:message.state,compileSucceeded:runtimeStarted?true:null,
+            runSucceeded:message.state==='finished'?null:false,exitCode:null,
+            stdout:runtimeStdout,stderr:runtimeStderr,stdin:runtimeInput,
+            message:message.message||"Runtime session "+message.state
+          });}catch(error){console.warn("Runtime evidence not recorded:",error);}
+        }
         finish(message.state);return;
       }
       banner?.classList.remove('hidden');
@@ -223,14 +235,28 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
       return;
     }
     if(message.type==='stdout'||message.type==='stderr'||message.type==='echo'){
+      const value=String(message.data||'');
+      if(message.type==='stdout')runtimeStdout=(runtimeStdout+value).slice(-16000);
+      if(message.type==='stderr')runtimeStderr=(runtimeStderr+value).slice(-12000);
       if(output){
-        output.textContent=(output.textContent+(message.data||'')).slice(-150000);
+        output.textContent=(output.textContent+value).slice(-150000);
         output.scrollTop=output.scrollHeight;
       }
       return;
     }
     if(message.type==='exit'){
       if(output)output.textContent+='\n[Java exited'+(message.code===null?'':' with status '+message.code)+']\n';
+      if(!runtimeRecorded){
+        runtimeRecorded=true;
+        try{recordRun?.({
+          mode:"console",engine:"adminerva_runtime",entry:runtimeEntry,
+          status:message.state||"finished",compileSucceeded:runtimeStarted?true:null,
+          runSucceeded:(message.state||"finished")==='finished'&&Number(message.code||0)===0,
+          exitCode:Number.isFinite(Number(message.code))?Number(message.code):null,
+          stdout:runtimeStdout,stderr:runtimeStderr,stdin:runtimeInput,
+          message:"Adminerva runtime exit"
+        });}catch(error){console.warn("Runtime evidence not recorded:",error);}
+      }
       finish(message.state);
     }
     if(message.type==='connection'&&position)
@@ -241,6 +267,7 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
     try{
       const files=getFiles(false),entry=getEntry();
       if(!entry||!files[entry])throw Error('Choose a valid Java entry file.');
+      runtimeStdout="";runtimeStderr="";runtimeInput="";runtimeEntry=entry;runtimeStarted=false;runtimeRecorded=false;
       if(save()===false)throw Error('Project could not be saved. Please resolve the save error before queuing.');
       if(output)output.textContent='Submitting a frozen Java project snapshot…\n';
       lock(true);
@@ -342,6 +369,7 @@ export function installStudioRuntime({monaco,editor,auth,guest,getLanguage,getFi
       if(!session||!input)return false;
       const text=input.value;
       if(!session.sendInput(text+'\n'))return false;
+      runtimeInput=(runtimeInput+text+'\n').slice(-6000);
       // The backend echoes and retains input, so reconnects show exactly one transcript.
       input.value='';
       return true;
