@@ -299,13 +299,13 @@ function renderMechanicAid(question){
     blueprint.append(head,flow);panel.append(blueprint);panel.hidden=false;panel.dataset.kind="oop";
   }
   if(question.type==="output"&&Array.isArray(question.traceGuide)&&question.traceGuide.length){
-    panel.hidden=false;panel.classList.add("is-trace");
+    panel.hidden=false;panel.dataset.kind="trace";
     const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","CODE TRACE","lab-mechanic-kicker"),node("strong","Trace board"));
     const list=node("ol",undefined,"lab-trace-steps");question.traceGuide.forEach(step=>list.append(node("li",step)));
     panel.append(head,list);
   }
   if(question.type==="debugging"&&Number.isInteger(question.focusLine)&&question.code){
-    panel.hidden=false;panel.classList.add("is-debug");field("practiceCode").hidden=true;
+    panel.hidden=false;panel.dataset.kind="debug";field("practiceCode").hidden=true;
     const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","BUG HUNT","lab-mechanic-kicker"),node("strong","Case file"));
     const hint=node("p",question.caseHint||"Inspect the highlighted line and compare it with the stated goal.","lab-case-hint");
     const viewer=node("div",undefined,"lab-code-case");
