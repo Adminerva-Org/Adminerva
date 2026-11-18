@@ -156,7 +156,7 @@ function createSchoolGithubEvidenceService({db}){
     const revisionDeadline=revisionOpen?
       current.data().revisionDueAt?.toMillis?.()||0:0;
     if(now<assessment.opensAt.toMillis()||
-       (now>assessment.dueAt.toMillis()&&now>revisionDeadline))
+       (assessment.allowLateSubmissions!==true&&now>assessment.dueAt.toMillis()&&now>revisionDeadline))
       deny("failed-precondition","The GitHub evidence submission deadline is not open.");
     let version=1;
     if(current.exists){
