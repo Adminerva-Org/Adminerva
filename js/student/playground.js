@@ -435,7 +435,8 @@ async function initializePlayground() {
         const meta=document.getElementById('activeProjectMeta');
         if(title)title.textContent='Code project';
         if(meta)meta.textContent='Java project';
-      }
+      },
+      recordRun:run=>projectStudio?.recordRun?.(run)
     });
     syncStudioEditorZoomLabel();
     initResizer();
