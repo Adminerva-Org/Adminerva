@@ -15,7 +15,7 @@ function cleanText(value,max,label,{required=false}={}) {
 const PERSONALIZATION_MODE="ai_blueprint_pool_v1";
 const MAX_PERSONALIZED_POOL=600;
 const STUDIO_PROJECT_PROFILES=new Set([
-  "auto","java-console","java-desktop","java-database","web","python-console"
+  "auto","java-console","java-desktop","java-database","java-desktop-database","web","python-console"
 ]);
 function studioProjectProfile(value){
   const profile=String(value||"auto").trim().toLowerCase();
