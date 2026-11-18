@@ -135,23 +135,20 @@ export function seasonActivity(course,mission,seed){
   }
   if(meta.type==="ordering"){
     if(mission.oop===true)activity={...activity,...oopOrderingActivity(mission,seed)};
-    else{
-      const ordered=language==="web"?["<main>","  <h1>Practice makes progress</h1>","  <p>My first lesson</p>","</main>"]:language==="java"?["int score = "+a+";","score += "+b+";","System.out.println(score);"]:["score = "+a,"score += "+b,"print(score)"];
-      const items=rotate(ordered.map((text,id)=>({id,text})),seed+1).reverse();
-      activity={...activity,code:"",prompt:language==="web"?"Arrange the opening element, heading, paragraph, and closing element to build the requested page.":"Arrange the statements so the program starts at "+a+", adds "+b+", and prints "+(a+b)+".",items:items.map(item=>item.text),solution:ordered.map((text,id)=>items.findIndex(item=>item.id===id)),why:language==="web"?"Open the main element first, place its heading before its paragraph, then close main.":"Create the variable before updating it, then print the updated value.",workspace:workspace(language,ordered.join("\n"))};
-    }
+    else activity={...activity,...genericOrderingActivity(course,mission,language,seed,a,b)};
   }
   if(meta.type==="matching"){
     if(mission.oop===true)activity={...activity,...oopMatchingActivity(mission,seed)};
+    else if(course.id==="logic")activity={...activity,...logicMatchingActivity(course,mission,seed,a,b)};
     else{
-      const pairs=language==="web"?[["<header>","Introductory page or section content"],["<nav>","Major navigation links"],["<main>","The primary page content"]]:[[a+" + "+b,String(a+b)],[a+" × "+b,String(a*b)],[a+" − "+b,String(a-b)]];
+      const pairs=language==="web"?[["<header>","Introductory page or section content"],["<nav>","Major navigation links"],["<main>","The primary page content"],["<article>","Independent self-contained content"]]:[[a+" + "+b,String(a+b)],[a+" × "+b,String(a*b)],[a+" − "+b,String(a-b)],[a+" % "+b,String(a%b)]];
       const right=rotate(pairs.map((pair,id)=>({id,text:pair[1]})),seed+1).reverse();
-      activity={...activity,code:"",prompt:language==="web"?"Match each semantic element with its purpose.":"Match each expression with its result.",left:pairs.map(pair=>pair[0]),right:right.map(item=>item.text),solution:pairs.map((pair,id)=>right.findIndex(item=>item.id===id)),why:language==="web"?"Semantic elements describe the purpose of their content.":"Apply each operator to the two operands. Addition, multiplication, and subtraction produce different results."};
+      activity={...activity,code:"",prompt:language==="web"?"Match each semantic element with its purpose.":"Match each expression with its result.",left:pairs.map(pair=>pair[0]),right:right.map(item=>item.text),solution:pairs.map((pair,id)=>right.findIndex(item=>item.id===id)),why:language==="web"?"Semantic elements describe the purpose of their content.":"Apply each operator to the two operands."};
     }
   }
   if(meta.type==="debugging"){
     if(mission.oop===true)activity={...activity,...oopDebuggingActivity(mission,seed)};
-    else if(language==="web")activity={...activity,code:'<label for="student-name">Name</label>\n<input id="learner-name">',prompt:"The label does not focus the input. Choose the replacement input that fixes the link.",choices:['<input id="student-name">','<input name="student-name">','<input title="student-name">','<input placeholder="student-name">'],solution:0,why:"The label's for value must match the input's id.",workspace:workspace("web",'<label for="student-name">Name</label><input id="student-name">'),focusLine:2,caseHint:"The label and input identifiers do not match."};
+    else if(language==="web")activity={...activity,...webDebuggingActivity(course,mission,seed)};
     else{
       const lines=language==="java"?["int total = "+a+" - "+b+";","System.out.println(total);"]:["total = "+a+" - "+b,"print(total)"],fixes=rotate(["+","−","×","÷"],seed);
       activity={...activity,code:lines.join("\n"),prompt:"The program should print the sum "+(a+b)+". Which operator should replace the subtraction on the first line?",choices:fixes,solution:fixes.indexOf("+"),why:"Use addition to calculate the requested sum. Subtraction produces the difference.",workspace:workspace(language,lines.join("\n").replace(a+" - "+b,a+" + "+b)),focusLine:1,caseHint:"The highlighted operator does not match the requested calculation."};
