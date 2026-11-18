@@ -1455,7 +1455,7 @@ function renderDeploymentsTable(deployments) {
             <tr class="border-b last:border-0 hover:bg-gray-50 transition">
                 <td class="px-4 py-3 font-bold text-gray-800">${escapeHTML(deploy.section)}</td>
                 <td class="px-4 py-3">${formatPrettyDate(deploy.postDate)}</td>
-                <td class="px-4 py-3 font-bold text-blue-600">${deploy.deadlineEnabled === false ? "No deadline" : formatPrettyDate(deploy.deadline)}</td>
+                <td class="px-4 py-3 font-bold text-blue-600">${deploy.deadlineEnabled === false ? "No deadline" : formatPrettyDate(deploy.deadline)+(deploy.allowLateSubmissions === true ? " · Late allowed" : "")}</td>
                 <td class="px-4 py-3 text-right">
                     <button onclick="window.openDeployModal('${deploy.id}')" class="text-xs font-bold text-slate-500 hover:text-slate-800 mr-2">Edit</button>
                     <button onclick="window.deleteDeployment('${deploy.id}')" class="text-xs font-bold text-red-400 hover:text-red-600">Remove</button>
@@ -1496,7 +1496,14 @@ window.openCustomRange = function (btnElement) {
 window.toggleDeployDeadline = function () {
   const checkbox = document.getElementById("deployUseDeadline");
   const fields = document.getElementById("deployScheduleFields");
+  const allowLate = document.getElementById("deployAllowLate");
+  const allowLateWrap = document.getElementById("deployAllowLateWrap");
   if (checkbox && fields) fields.classList.toggle("hidden", !checkbox.checked);
+  if (allowLate) {
+    allowLate.disabled = !checkbox?.checked;
+    if (!checkbox?.checked) allowLate.checked = false;
+  }
+  if (allowLateWrap) allowLateWrap.classList.toggle("opacity-50", !checkbox?.checked);
 };
 
 window.openDeployModal = function (deployId = null) {
@@ -1513,6 +1520,7 @@ window.openDeployModal = function (deployId = null) {
 
     deploySelectedSections = [deploy.section];
     document.getElementById("deployUseDeadline").checked = deploy.deadlineEnabled !== false;
+    document.getElementById("deployAllowLate").checked = deploy.allowLateSubmissions === true;
     if (deploy.postDate && deploy.deadline) {
       fpInstance.setDate([new Date(deploy.postDate), new Date(deploy.deadline)], true);
     } else fpInstance.clear();
@@ -1526,6 +1534,7 @@ window.openDeployModal = function (deployId = null) {
 
     deploySelectedSections = [];
     document.getElementById("deployUseDeadline").checked = false;
+    document.getElementById("deployAllowLate").checked = false;
     fpInstance.clear();
 
     document.getElementById("deploySectionSelector").classList.remove("hidden");
@@ -1608,6 +1617,7 @@ window.saveDeployment = async function () {
 
   const deployId = document.getElementById("deployId").value;
   const deadlineEnabled = document.getElementById("deployUseDeadline").checked;
+  const allowLateSubmissions = deadlineEnabled && document.getElementById("deployAllowLate").checked;
   const postDate = deadlineEnabled ? document.getElementById("deployPostDate").value : null;
   const deadline = deadlineEnabled ? document.getElementById("deployDeadline").value : null;
 
@@ -1633,6 +1643,7 @@ window.saveDeployment = async function () {
         postDate,
         deadline,
         deadlineEnabled,
+        allowLateSubmissions,
       };
     }
   } else {
@@ -1643,6 +1654,7 @@ window.saveDeployment = async function () {
         postDate: postDate,
         deadline: deadline,
         deadlineEnabled,
+        allowLateSubmissions,
       });
     });
   }
@@ -1706,7 +1718,7 @@ async function saveDeploymentScope(item,deployments){
   if(item.schemaVersion===3){
     for(const deployment of deployments){
       const opens=deployment.postDate?new Date(deployment.postDate):new Date(0);
-      const closes=deployment.deadlineEnabled!==false&&deployment.deadline
+      const closes=deployment.deadlineEnabled!==false&&deployment.deadline&&deployment.allowLateSubmissions!==true
         ?new Date(deployment.deadline):new Date("2100-01-01T00:00:00.000Z");
       if(!Number.isFinite(opens.getTime())||!Number.isFinite(closes.getTime())||opens>closes)
         throw Error("A Studio submission schedule is invalid.");
