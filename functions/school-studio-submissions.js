@@ -7,7 +7,7 @@ const {createHash}=require("node:crypto");
 const {FieldValue,Timestamp}=require("firebase-admin/firestore");
 const {getSchoolContext,TenantAccessError}=require("./tenant-access.js");
 const {rowKey,checkId}=require("./school-academics.js");
-const {digestProject}=require("./school-studio-projects.js");
+const {digestProject,digestSource}=require("./school-studio-projects.js");
 const {writeSchoolNotification}=require("./school-notifications.js");
 function deny(code,message){throw new TenantAccessError(code,message)}
 const hash=(...values)=>createHash("sha256").update(JSON.stringify(values)).digest("hex");
@@ -142,9 +142,10 @@ function createSchoolStudioSubmissionService({db}){
       variantEvaluationNotes=typeof data.evaluationNotes==="string"?data.evaluationNotes:"";
     }
     const versionRef=submissionRef.collection("versions").doc(String(version));
-    const artifacts=project.data().artifacts||{},frozenDigest=digestProject(files,artifacts),when=FieldValue.serverTimestamp();
+    const artifacts=project.data().artifacts||{},frozenDigest=digestProject(files,artifacts),
+      sourceDigest=digestSource(files,project.data().language),when=FieldValue.serverTimestamp();
     tx.create(versionRef,{schoolId:ctx.schoolId,taskId,offeringId,studentUid:ctx.uid,personId,
-      projectId,projectRevision:revision,files,artifacts,contentDigest:frozenDigest,
+      projectId,projectRevision:revision,files,artifacts,contentDigest:frozenDigest,sourceDigest,
       sourceLanguage:project.data().language,variantId,variantPrompt,variantEvaluationNotes,submittedAt:when,version});
     if(submission.exists){
      tx.update(submissionRef,{status:"submitted",currentVersion:version,
@@ -237,6 +238,7 @@ function createSchoolStudioSubmissionService({db}){
    }
    return {submissionId,taskId,status:submission.data().status,version,
      files:snapshot.data().files,artifacts:snapshot.data().artifacts||{},contentDigest:snapshot.data().contentDigest,
+     sourceDigest:snapshot.data().sourceDigest||digestSource(snapshot.data().files,snapshot.data().sourceLanguage),
      language:snapshot.data().sourceLanguage,personalizedTask};
   }
   if(input.action==="request_revision"){

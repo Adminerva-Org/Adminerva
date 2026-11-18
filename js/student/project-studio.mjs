@@ -1075,13 +1075,26 @@ export function createProjectStudio({
     const note=el("evidenceProjectNote");
     if(note)note.textContent="This is learning evidence gathered from the project. It does not by itself constitute an official TESDA competency assessment.";
   }
+  function canonicalSourceJson(value){
+    const normalize=node=>{
+      if(node===null||typeof node==="string"||typeof node==="boolean")return node;
+      if(typeof node==="number")return Number.isFinite(node)?(Object.is(node,-0)?0:node):null;
+      if(Array.isArray(node))return node.map(normalize);
+      if(node&&typeof node==="object"){
+        const result={};
+        for(const key of Object.keys(node).sort())result[key]=normalize(node[key]);
+        return result;
+      }
+      return null;
+    };
+    return JSON.stringify(normalize(value));
+  }
   async function sourceDigestForRun(state){
     const files=state?.files&&typeof state.files==="object"?state.files:{};
-    const order=Array.isArray(state?.fileOrder)&&state.fileOrder.length?
-      state.fileOrder.filter(path=>Object.hasOwn(files,path)):Object.keys(files).sort();
-    const payload=JSON.stringify({
-      lang:String(state?.lang||activeProject?.lang||""),
-      files:order.map(path=>[path,String(files[path]??"")])
+    const entries=Object.keys(files).sort().map(path=>({path,content:String(files[path]??"")}));
+    const payload=canonicalSourceJson({
+      language:String(state?.lang||activeProject?.lang||""),
+      files:entries
     });
     if(!globalThis.crypto?.subtle)return "";
     const digest=await globalThis.crypto.subtle.digest("SHA-256",new TextEncoder().encode(payload));

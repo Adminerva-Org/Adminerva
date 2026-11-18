@@ -27,14 +27,27 @@ function compactExecutionRuns(project,maxRuns=8){
     sourceFileCount:Number.isInteger(Number(run?.sourceFileCount))?Number(run.sourceFileCount):null
   }));
 }
+function canonicalSourceJson(value){
+  const normalize=node=>{
+    if(node===null||typeof node==="string"||typeof node==="boolean")return node;
+    if(typeof node==="number"){
+      if(!Number.isFinite(node))throw Error("Source data contains a non-finite number.");
+      return Object.is(node,-0)?0:node;
+    }
+    if(Array.isArray(node))return node.map(normalize);
+    if(node&&typeof node==="object"){
+      const result={};
+      for(const key of Object.keys(node).sort())result[key]=normalize(node[key]);
+      return result;
+    }
+    throw Error("Source data contains an unsupported value.");
+  };
+  return JSON.stringify(normalize(value));
+}
 export async function studioSourceDigest(liveState){
   const files=liveState?.files&&typeof liveState.files==="object"?liveState.files:{};
-  const order=Array.isArray(liveState?.fileOrder)&&liveState.fileOrder.length?
-    liveState.fileOrder.filter(path=>Object.hasOwn(files,path)):Object.keys(files).sort();
-  const payload=JSON.stringify({
-    lang:String(liveState?.lang||""),
-    files:order.map(path=>[path,String(files[path]??"")])
-  });
+  const entries=Object.keys(files).sort().map(path=>({path,content:String(files[path]??"")}));
+  const payload=canonicalSourceJson({language:String(liveState?.lang||""),files:entries});
   if(!globalThis.crypto?.subtle)throw Error("Secure source verification is unavailable. Use HTTPS and retry.");
   const digest=await globalThis.crypto.subtle.digest("SHA-256",new TextEncoder().encode(payload));
   return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,"0")).join("");

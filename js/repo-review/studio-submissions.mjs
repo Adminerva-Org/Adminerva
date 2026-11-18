@@ -4,7 +4,7 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {collection,doc,getDoc,getDocs,query,where,runTransaction,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {resolveStaffRole} from "../core/staff-session.mjs?v=1.3.10";
 import {studioDigest,verifyStudioSnapshot} from "../student/studio-assessment-model.mjs?v=1.0.0";
-import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=1.2.0";
+import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=1.3.0";
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
@@ -24,13 +24,19 @@ function legacyRubric(assessment={}){
  for(const line of String(assessment.evalCriteria||"").split(/\r?\n/)){
    const cleaned=line.replace(/^[\s>*#-]+/,"").replace(/[*_`]/g,"").trim()
      .replace(/^\d+\s*[.)]\s*/,"");
+   if(!cleaned||/^total\b/i.test(cleaned))continue;
    const match=cleaned.match(/^(.*?)(?:\s*\|\s*|\s*[:–—-]\s*|\s*\()\s*(\d+(?:\.\d+)?)\s*(?:pts?|points?)?(?:\s*[:–—-]\s*.*)?\)?\s*$/i);
    if(!match)continue;
    const name=String(match[1]||"").replace(/[.:;-]+$/,"").trim(),points=Number(match[2]);
-   if(name&&name.length<=160&&Number.isFinite(points)&&points>0&&points<=maximum)rows.push({name,points});
+   if(name&&name.length<=160&&!/^\d/.test(name)&&Number.isFinite(points)&&points>0&&points<=maximum)
+     rows.push({name,points});
  }
- const sum=rows.reduce((total,row)=>total+row.points,0);
- if(rows.length&&Math.abs(sum-maximum)<0.001)return rows;
+ const deduped=[];
+ for(const row of rows){
+   if(!deduped.some(item=>item.name.toLowerCase()===row.name.toLowerCase()))deduped.push(row);
+ }
+ const sum=deduped.reduce((total,row)=>total+row.points,0);
+ if(deduped.length&&Math.abs(sum-maximum)<0.001)return deduped;
  return [{name:"Published task and rubric requirements",points:maximum}];
 }
 function evaluationTask(assessment={}){
@@ -48,8 +54,12 @@ function evaluationSnapshot(snapshot,item,assignedVariant){
  const order=Array.isArray(snapshot.fileOrder)?snapshot.fileOrder:Object.keys(snapshot.files||{});
  return {
    version:Number(item.revision||0),sourceLanguage:snapshot.lang||"",contentDigest:item.snapshotHash||"",
+   sourceDigest:String(snapshot.sourceDigest||snapshot.executionEvidence?.sourceDigest||""),
    files:order.map(path=>({path,content:String(snapshot.files?.[path]||"")})),
-   artifacts:{database:snapshot.database||{},design:snapshot.design||{}},
+   artifacts:{
+     database:snapshot.database||{},design:snapshot.design||{},
+     executionEvidence:snapshot.executionEvidence||{sourceDigest:"",runs:[]}
+   },
    personalizedTask:assignedVariant?{
      variantId:assignedVariant.variantId||"",
      prompt:assignedVariant.prompt||"",

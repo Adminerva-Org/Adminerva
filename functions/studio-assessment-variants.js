@@ -6,12 +6,11 @@ const MAX_POOL_SIZE=600;
 const deny=(code,message)=>{const error=Error(message);error.code=code;throw error;};
 const cleanId=(value,label)=>{
   const text=String(value??"").trim();
-  // Legacy student documents were not restricted to the newer alphanumeric ID
-  // convention. Treat the value as a Firestore document ID instead: allow
-  // historical punctuation (for example email-like IDs), but reject path
-  // separators, control characters and oversized values so callers cannot
-  // escape the intended collection path.
-  if(!text||text.length>512||text==="."||text===".."||text.includes("/")||/[\\u0000-\\u001F\\u007F]/.test(text))
+  // Match Firestore's document-ID size limit instead of imposing a narrower
+  // application-only ceiling. Use actual control-character escapes so ordinary alphanumeric IDs
+  // are not rejected.
+  const byteLength=Buffer.byteLength(text,"utf8");
+  if(!text||byteLength>1500||text==="."||text===".."||text.includes("/")||/[\u0000-\u001F\u007F]/.test(text))
     deny("invalid-argument",label+" is invalid.");
   return text;
 };
