@@ -160,7 +160,7 @@ function enhanceGamesHub(){
   sidebar.prepend(progressCard);sidebar.prepend(achievementCard);sidebar.prepend(levelCard);sidebar.prepend(dailyCard);
   assignedPacks=Array.isArray(window.__adminervaPracticePacks)?window.__adminervaPracticePacks:[];renderChallenges();
   if("IntersectionObserver" in window){
-    const links=[...rail.querySelectorAll(".games-rail-link")],targets=links.map(link=>document.querySelector(link.getAttribute("href"))).filter(Boolean);
+    const links=[...rail.querySelectorAll(".games-rail-link")],targets=links.filter(link=>link.getAttribute("href")!=="#gamesProgress").map(link=>document.querySelector(link.getAttribute("href"))).filter(Boolean);
     const observer=new IntersectionObserver(entries=>{const visible=entries.filter(entry=>entry.isIntersecting).sort((a,b)=>b.intersectionRatio-a.intersectionRatio)[0];if(!visible)return;const link=links.find(item=>item.getAttribute("href")==="#"+visible.target.id);if(link)setCurrentRail(link);},{rootMargin:"-20% 0px -60% 0px",threshold:[0,.15,.35,.6]});
     targets.forEach(target=>observer.observe(target));
   }
