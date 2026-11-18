@@ -19,6 +19,46 @@ function compactTask(task={}){
     personalized:task.personalizedTask?.enabled===true
   };
 }
+function compactExecutionEvidence(snapshot={}){
+  const sourceDigest=text(
+    snapshot.sourceDigest||
+    snapshot.executionEvidence?.sourceDigest||
+    snapshot.artifacts?.executionEvidence?.sourceDigest||
+    snapshot.artifacts?.sourceDigest,128
+  );
+  const rawRuns=Array.isArray(snapshot.executionEvidence?.runs)?snapshot.executionEvidence.runs:
+    Array.isArray(snapshot.artifacts?.executionEvidence?.runs)?snapshot.artifacts.executionEvidence.runs:
+    Array.isArray(snapshot.artifacts?.evidence?.runs)?snapshot.artifacts.evidence.runs:[];
+  const runs=rawRuns.slice(0,8).map(run=>{
+    const runDigest=text(run?.sourceDigest,128);
+    return {
+      at:text(run?.at,80),
+      mode:text(run?.mode,40),
+      engine:text(run?.engine,80),
+      entry:text(run?.entry,220),
+      status:text(run?.status,120),
+      statusId:Number.isFinite(Number(run?.statusId))?Number(run.statusId):null,
+      compileSucceeded:typeof run?.compileSucceeded==="boolean"?run.compileSucceeded:null,
+      runSucceeded:typeof run?.runSucceeded==="boolean"?run.runSucceeded:null,
+      exitCode:Number.isFinite(Number(run?.exitCode))?Number(run.exitCode):null,
+      time:Number.isFinite(Number(run?.time))?Number(run.time):null,
+      memory:Number.isFinite(Number(run?.memory))?Number(run.memory):null,
+      stdout:text(run?.stdout,16000),
+      stderr:text(run?.stderr,12000),
+      compileOutput:text(run?.compileOutput,12000),
+      stdin:text(run?.stdin,6000),
+      message:text(run?.message,2000),
+      sourceDigest:runDigest,
+      matchesSubmittedSource:Boolean(sourceDigest&&runDigest&&sourceDigest===runDigest)
+    };
+  });
+  return {
+    submittedSourceDigest:sourceDigest,
+    runs,
+    matchingRunCount:runs.filter(run=>run.matchesSubmittedSource).length,
+    interpretation:"Only runs marked matchesSubmittedSource=true may be used as direct compilation/runtime evidence for this frozen submission. Other runs are historical context only."
+  };
+}
 function compactEvidence(source,snapshot={}){
   if(source==="text")return {
     type:"written_response",
@@ -36,11 +76,13 @@ function compactEvidence(source,snapshot={}){
     type:"adminerva_studio_snapshot",
     version:Number(snapshot.version||0),
     contentDigest:text(snapshot.contentDigest||snapshot.snapshotHash,128),
+    sourceDigest:text(snapshot.sourceDigest,128),
     language:text(snapshot.sourceLanguage||snapshot.language,80),
     files:Array.isArray(snapshot.files)?snapshot.files.slice(0,80).map(file=>({
       path:text(file?.path,300),content:String(file?.content||"").slice(0,60000)
     })):[],
     artifacts:snapshot.artifacts&&typeof snapshot.artifacts==="object"?snapshot.artifacts:{},
+    executionEvidence:compactExecutionEvidence(snapshot),
     personalizedTask:snapshot.personalizedTask?{
       variantId:text(snapshot.personalizedTask.variantId,120),
       prompt:text(snapshot.personalizedTask.prompt,12000),
@@ -103,7 +145,7 @@ export function buildGeneralExternalEvaluationPackage({task={},snapshot={},check
     evidence,
     gradingRules:{
       rubricAuthority:"Use the published rubric exactly. Do not add requirements or reweight criteria.",
-      evidenceBoundary:"Award points only for evidence present in this frozen submission package. Put uncertainty in pendingPoints or limitations.",
+      evidenceBoundary:"Award points only for evidence present in this frozen submission package. Runtime claims require source-bound execution evidence with matchesSubmittedSource=true. Put uncertainty in pendingPoints or limitations.",
       teacherAuthority:"This response is only a suggestion. Adminerva must keep it private until the teacher reviews and explicitly saves/publishes.",
       checkingInstructions:"Teacher checking instructions refine interpretation but never override the published rubric maximum or student-visible task requirements.",
       linkBoundary:assessment.submissionSource==="link"?
@@ -125,7 +167,7 @@ export function buildGeneralExternalEvaluationPackage({task={},snapshot={},check
     "2. awardedPoints + pendingPoints must never exceed the criterion maximum.",
     "3. Use pendingPoints only for genuinely unresolved evidence; confirmed deficiencies are unearned points, not pending credit.",
     "4. Inspect every supplied file relevant to each criterion. Base comments and rationales on concrete file/class/method evidence, not keyword presence alone.",
-    "5. For code submissions, distinguish static evidence from verified runtime behavior. Do not claim that code compiles, runs, or produces output unless the package contains execution evidence. Obvious compile blockers visible in the frozen files are confirmed deficiencies, not pending uncertainty.",
+    "5. For code submissions, distinguish static evidence from runtime evidence. Treat compilation/output as evidence for the submitted version only when executionEvidence contains a run with matchesSubmittedSource=true. A historical or unmatched run does not prove the frozen submission compiles or runs. Obvious compile blockers visible in the frozen files are confirmed deficiencies, not pending uncertainty.",
     "6. Requirements that are not separate rubric criteria may inform whether a published criterion is functional or meaningful, but never create extra point categories or change criterion weights.",
     "7. Do not infer authorship, plagiarism, misconduct, or AI use from coding style or identifiers.",
     "8. Return only one valid JSON object matching REQUIRED RESPONSE JSON. No Markdown fences or surrounding commentary.",
