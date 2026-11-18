@@ -1267,6 +1267,31 @@ body.lab-page::after{
   color:#82ecf0;
 }
 .lab-case-hint{color:#d2bc83}
+.lab-code-line[role=button]{
+  cursor:pointer;
+  transition:background .14s ease,box-shadow .14s ease,transform .14s ease;
+}
+.lab-code-line[role=button]:hover,
+.lab-code-line[role=button]:focus-visible{
+  background:rgba(241,199,91,.07);
+  box-shadow:inset 3px 0 rgba(241,199,91,.28);
+}
+.lab-code-line.is-wrong-suspect{
+  animation:gamesWrongLine .34s ease;
+  background:rgba(241,91,91,.06);
+  box-shadow:inset 3px 0 rgba(241,91,91,.34);
+}
+.games-bug-status{
+  margin:.55rem 0 0;
+  color:#b8a777;
+  font-size:.6rem;
+  line-height:1.45;
+}
+@keyframes gamesWrongLine{
+  0%,100%{transform:translateX(0)}
+  30%{transform:translateX(-3px)}
+  65%{transform:translateX(3px)}
+}
 .games-oop-blueprint{
   display:grid;
   gap:.7rem;
@@ -1613,7 +1638,8 @@ body.lab-page::after{
   .games-orb,
   .games-meter > span::after,
   .games-celebration span,
-  .lab-mission-node.is-next{animation:none!important}
+  .lab-mission-node.is-next,
+  .lab-code-line.is-wrong-suspect{animation:none!important}
 }
 
 /* Existing practice markup remains the functional layout container. */
