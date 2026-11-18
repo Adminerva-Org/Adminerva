@@ -84,13 +84,23 @@ function inferProfile(task,snapshot){
    Object.entries(snapshot.files||{}).map(([path,content])=>({path,content:String(content)}));
  const source=files.map(file=>file.content).join("\n");
  const declared=String(task?.studioProjectProfile||"auto").toLowerCase();
- const swing=declared==="java-desktop"||config.runMode==="desktop"||
-   /\b(?:javax\.swing|java\.awt)\b/.test(source);
- const database=declared==="java-database"||config.database===true||
+ const taskText=String(task?.instructions||task?.taskContext||task?.description||"").toLowerCase();
+ // Assessment intent has authority over the learner's implementation. A student
+ // who submits Swing code to a console task must not change the verifier profile.
+ const taskSaysConsole=/\bconsole\b/.test(taskText)&&!/\b(?:swing|desktop gui|graphical user interface required)\b/.test(taskText);
+ const taskSaysSwing=/\b(?:java swing|swing gui|desktop application|desktop gui)\b/.test(taskText);
+ const swing=declared==="java-desktop"||(declared==="auto"&&(
+   taskSaysSwing||(!taskSaysConsole&&(config.runMode==="desktop"||/\b(?:javax\.swing|java\.awt)\b/.test(source)))
+ ));
+ const taskSaysDatabase=/\b(?:database|jdbc|sql|crud)\b/.test(taskText);
+ const database=declared==="java-database"||(declared==="auto"&&(
+   taskSaysDatabase||config.database===true||
    Object.keys((artifacts.database||snapshot.database||{}).tables||{}).length>0||
-   /\b(?:java\.sql|DriverManager|PreparedStatement|ResultSet)\b/.test(source);
+   /\b(?:java\.sql|DriverManager|PreparedStatement|ResultSet)\b/.test(source)
+ ));
  return {id:swing?(database?"java_swing_database":"java_swing"):
-   (database?"java_console_database":"java_console"),language,swing,database,declared};
+   (database?"java_console_database":"java_console"),language,swing,database,declared,
+   inferredFrom:declared!=="auto"?"assessment_profile":taskSaysConsole||taskSaysSwing||taskSaysDatabase?"assessment_instructions":"project_fallback"};
 }
 function databaseArtifact(snapshot){
  return snapshot.artifacts?.database||snapshot.database||null;
@@ -299,9 +309,10 @@ function createStudioAutoVerification({db}){
   const data=snap.data()||{},assessmentId=String(data.assessmentId||"");
   if(!assessmentId)return;
   const task=await db.doc("assessments/"+assessmentId).get();
-  const verification=await verifyFrozenSubmission({snapshot:{
-    ...JSON.parse(String(data.snapshotJson||"{}")),sourceLanguage:JSON.parse(String(data.snapshotJson||"{}")).lang
-  },task:task.exists?task.data():{}});
+  const parsed=JSON.parse(String(data.snapshotJson||"{}"));
+  const verification=await verifyFrozenSubmission({
+    snapshot:{...parsed,sourceLanguage:parsed.lang},task:task.exists?task.data():{}
+  });
   await snap.ref.set({verification},{merge:true});
  }
  async function enrichSchool(event){
