@@ -28,11 +28,12 @@
           <p class="text-sm text-slate-600 mt-1 max-w-2xl">Only assessments you own and course offerings you are currently assigned to teach are available.</p></div>
         <div id="gbV4SchoolSwitcher" hidden class="w-full lg:w-auto lg:min-w-[220px]"></div>
       </div>
-      <div class="mt-4 grid md:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
+      <div class="mt-4 grid md:grid-cols-[minmax(0,1fr)_auto_auto] gap-3 items-end">
         <label class="text-sm font-bold text-slate-700">My deployed assessment
           <select id="gbV4Task" class="mt-1 w-full border border-slate-300 rounded-lg px-3 py-2.5 bg-white"><option value="">Choose an assessment…</option></select>
         </label>
         <button id="gbV4Refresh" type="button" class="rounded-lg border border-indigo-300 bg-white text-indigo-800 font-bold px-4 py-2.5">Refresh submissions</button>
+        <button id="gbV4BulkPublish" type="button" disabled class="rounded-lg bg-emerald-700 text-white font-bold px-4 py-2.5 disabled:opacity-50">Publish all drafts (0)</button>
       </div>
       <p id="gbV4Status" class="text-sm text-slate-600 mt-3" role="status" aria-live="polite">Checking verified school assessment access…</p>
     </div>
