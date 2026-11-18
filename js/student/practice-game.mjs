@@ -16,7 +16,7 @@ let user=null,eligible=false,hub={},course=COURSES[0],activeGame=initialGame.ext
 function node(tag,text,className=""){const item=document.createElement(tag);if(text!==undefined)item.textContent=text;item.className=className;return item;}
 function localGet(key){try{return JSON.parse(sessionStorage.getItem(key)||"null");}catch{return null;}}
 function localSet(key,value){try{if(value===null)sessionStorage.removeItem(key);else sessionStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
-const owner=()=>user?.uid||"public-visitor-v1",pendingKey=()=>"Adminerva_Season_Pending_"+owner(),draftKey=()=>"Adminerva_Season_Draft_"+owner()+"_"+(mission?.id||""),resumeKey=()=>"Adminerva_Games_Resume_"+owner();
+const owner=()=>user?.uid||"public-visitor-v1",pendingKey=()=>"Adminerva_Season_Pending_"+owner(),draftKey=()=>"Adminerva_Season_Draft_"+owner()+"_"+(mission?.id||""),resumeKey=()=>"Adminerva_Games_Resume_"+owner(),traceScratchKey=()=>"Adminerva_Games_TraceScratch_"+owner()+"_"+(mission?.id||"");
 function persistentGet(key){try{return JSON.parse(localStorage.getItem(key)||"null");}catch{return null;}}
 function persistentSet(key,value){try{if(value===null)localStorage.removeItem(key);else localStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
 const sprintKey=()=>"Adminerva_Games_Sprint_"+PRACTICE_SEASON+"_"+owner();
@@ -303,6 +303,12 @@ function readAnswer(){
 }
 function reducedGameMotion(){return matchMedia("(prefers-reduced-motion: reduce)").matches;}
 function svgNode(name,attrs={}){const element=document.createElementNS("http://www.w3.org/2000/svg",name);for(const [key,value] of Object.entries(attrs))element.setAttribute(key,String(value));return element;}
+function traceVariables(code){
+  const source=String(code||""),blocked=new Set(["if","else","for","while","return","print","println","System","Math","new","class","public","private","protected","static","final","true","false","null"]),found=[];
+  const patterns=[/\b(?:int|double|float|long|boolean|String|char|var|let|const)\s+([A-Za-z_$][\w$]*)/g,/^\s*([A-Za-z_]\w*)\s*=/gm];
+  for(const pattern of patterns){for(const match of source.matchAll(pattern)){const name=match[1];if(!blocked.has(name)&&!found.includes(name))found.push(name);if(found.length>=5)return found;}}
+  return found;
+}
 function gameGlyph(kind){
   const svg=svgNode("svg",{viewBox:"0 0 64 64","aria-hidden":"true",focusable:"false"});svg.classList.add("game-visual-svg");
   const stroke={fill:"none",stroke:"currentColor","stroke-width":"3","stroke-linecap":"round","stroke-linejoin":"round"};
