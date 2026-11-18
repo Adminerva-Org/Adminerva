@@ -4,7 +4,6 @@
  * Source fields remain immutable; the system appends a verification sidecar
  * whose sourceDigest is calculated from the exact submitted files.
  */
-const JSZip=require("jszip");
 const {createHash}=require("node:crypto");
 
 const VERIFY_VERSION="studio-auto-verification-v1";
@@ -12,6 +11,45 @@ const JUDGE0_ORIGIN=String(process.env.ADMINERVA_JUDGE0_ORIGIN||"https://ce.judg
 const RUNTIME_ORIGIN=String(process.env.ADMINERVA_RUNTIME_VERIFY_ORIGIN||"").replace(/\/$/,"");
 const RUNTIME_TOKEN=String(process.env.ADMINERVA_RUNTIME_VERIFY_TOKEN||"");
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const CRC_TABLE=(()=>{
+ const table=new Uint32Array(256);
+ for(let n=0;n<256;n++){
+  let value=n;
+  for(let k=0;k<8;k++)value=(value&1)?(0xEDB88320^(value>>>1)):(value>>>1);
+  table[n]=value>>>0;
+ }
+ return table;
+})();
+function crc32(buffer){
+ let crc=0xFFFFFFFF;
+ for(const byte of buffer)crc=CRC_TABLE[(crc^byte)&0xFF]^(crc>>>8);
+ return (crc^0xFFFFFFFF)>>>0;
+}
+function zipBase64(entries){
+ const locals=[],centrals=[];let offset=0;
+ for(const [name,value] of entries){
+  const filename=Buffer.from(name,"utf8"),data=Buffer.from(String(value),"utf8"),crc=crc32(data);
+  const local=Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50,0);local.writeUInt16LE(20,4);local.writeUInt16LE(0,6);
+  local.writeUInt16LE(0,8);local.writeUInt16LE(0,10);local.writeUInt16LE(0,12);
+  local.writeUInt32LE(crc,14);local.writeUInt32LE(data.length,18);local.writeUInt32LE(data.length,22);
+  local.writeUInt16LE(filename.length,26);local.writeUInt16LE(0,28);
+  locals.push(local,filename,data);
+  const central=Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50,0);central.writeUInt16LE(20,4);central.writeUInt16LE(20,6);
+  central.writeUInt16LE(0,8);central.writeUInt16LE(0,10);central.writeUInt16LE(0,12);central.writeUInt16LE(0,14);
+  central.writeUInt32LE(crc,16);central.writeUInt32LE(data.length,20);central.writeUInt32LE(data.length,24);
+  central.writeUInt16LE(filename.length,28);central.writeUInt16LE(0,30);central.writeUInt16LE(0,32);
+  central.writeUInt16LE(0,34);central.writeUInt16LE(0,36);central.writeUInt32LE(0,38);central.writeUInt32LE(offset,42);
+  centrals.push(central,filename);
+  offset+=local.length+filename.length+data.length;
+ }
+ const centralBuffer=Buffer.concat(centrals),end=Buffer.alloc(22),count=entries.length;
+ end.writeUInt32LE(0x06054b50,0);end.writeUInt16LE(0,4);end.writeUInt16LE(0,6);
+ end.writeUInt16LE(count,8);end.writeUInt16LE(count,10);end.writeUInt32LE(centralBuffer.length,12);
+ end.writeUInt32LE(offset,16);end.writeUInt16LE(0,20);
+ return Buffer.concat([...locals,centralBuffer,end]).toString("base64");
+}
 const clip=(value,max)=>String(value??"").slice(0,max);
 function canonicalJson(value){
  function normalize(node){
@@ -115,13 +153,13 @@ async function judge0Verify({files,profile,stdin=""}){
    compileSucceeded:null,runAttempted:false,runSucceeded:null,
    message:"No Java static void main(...) entry point was found in the frozen files."};
  try{
-  const zip=new JSZip();
-  for(const file of files)zip.file(file.path,file.content);
   const javaFiles=files.filter(file=>/\.java$/i.test(file.path)).map(file=>shellQuote(file.path));
-  zip.file("compile","#!/bin/bash\nset -e\njavac -encoding UTF-8 -d . "+javaFiles.join(" ")+"\n");
   const compileOnly=profile.swing===true;
-  zip.file("run","#!/bin/bash\nset -e\n"+(compileOnly?"true":"timeout 12s java "+shellQuote(main.mainClass))+"\n");
-  const additional_files=await zip.generateAsync({type:"base64"});
+  const additional_files=zipBase64([
+   ...files.map(file=>[file.path,file.content]),
+   ["compile","#!/bin/bash\nset -e\njavac -encoding UTF-8 -d . "+javaFiles.join(" ")+"\n"],
+   ["run","#!/bin/bash\nset -e\n"+(compileOnly?"true":"timeout 12s java "+shellQuote(main.mainClass))+"\n"]
+  ]);
   const start=await fetch(JUDGE0_ORIGIN+"/submissions?base64_encoded=false&wait=false",{
    method:"POST",headers:{"Content-Type":"application/json"},
    body:JSON.stringify({language_id:89,additional_files,stdin:compileOnly?"":clip(stdin,6000),
