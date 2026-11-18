@@ -618,25 +618,84 @@ function markup(){return `
   <details class="lab-rules"><summary>How scoring works</summary><div class="lab-rules-grid">${DIFFICULTIES.map(level=>`<div><strong>${level.name}</strong><span>${level.maximum} points to start</span><small>−${level.deduction} per incorrect scored answer · floor ${level.floor} points</small></div>`).join("")}</div><p>Only selecting Submit scored answer counts as a graded attempt. Opening a mission, changing an answer, running code, compiler errors, and connection failures do not deduct points. Each mission rewards you once per season. Replays cannot add points. Practice scores do not change school grades. Earlier completion history is preserved.</p><p>Guests and students share this mission pool. A verified signed-in account with an active or pending school access request can save points. Visitors can preview missions and use the public Playground.</p></details></div>
   <aside class="lab-sidebar"><section class="lab-board"><div class="lab-section-heading"><h2>Leaderboard</h2><span aria-hidden="true">🏆</span></div><div class="lab-board-tabs"><button id="labGlobalTab" type="button" aria-pressed="true">Global</button><button id="labClassTab" type="button" aria-pressed="false">My class</button></div><div id="labClassControls" hidden><select id="practiceClass" aria-label="Choose your practice class"></select><p id="labClassHint"></p></div><ol id="practiceStandings" aria-label="Practice rankings"></ol><p id="labBoardFootnote" class="lab-board-footnote">Current season · top 30 public aliases. Equal points share a rank.</p></section><details class="lab-public-preferences"><summary>Your public leaderboard alias</summary><p>Choose a nickname, never your real name, school or email. Public rows contain only aliases, season points and mission counts. Joining is optional.</p><form id="labPreferences" hidden><label for="labAlias">Nickname<input id="labAlias" maxlength="24" minlength="3" pattern="[A-Za-z0-9 _-]{3,24}" required autocomplete="off"></label><label class="lab-checkbox"><input id="labOptIn" type="checkbox"> Show my alias and points publicly</label><button id="labPreferencesSave" type="submit">Save leaderboard choice</button><p id="labPreferencesStatus" role="status"></p></form><a id="labPreferencesSignin" href="login.html">Sign in to join the season →</a></details><section class="lab-tip-card"><span aria-hidden="true">✦</span><h3>Try. Learn. Come back stronger.</h3><p>Incorrect answers are part of practice. Every difficulty has a minimum reward, so you can keep learning.</p></section></aside></div>`;}
 field("practiceApp").innerHTML=markup();
+const bindControl=(id,event,handler)=>{
+  const control=field(id);
+  if(!control){console.warn("[Adminerva Games] Missing control:",id);return null;}
+  control.addEventListener(event,handler);
+  return control;
+};
+window.__adminervaGamesReady={base:true,enhanced:false,backend:false,version:"3.3.0"};
+
+bindControl("practiceSyncBtn","click",()=>{
+  const action=async()=>{if(busy)return;connectBoard();await refreshHub();if(mission&&!attempt?.attemptId&&eligible)await openMission(course,mission);else setBusy(false);};
+  if(typeof window.withLoading==="function")void window.withLoading("Refreshing practice progress…",action,{button:field("practiceSyncBtn")});
+  else void action();
+});
+bindControl("practiceBackBtn","click",()=>{returnToGamesHub();});
+bindControl("practiceCheckBtn","click",()=>{void submit();});
+bindControl("labHintBtn","click",()=>{if(!busy)revealHint();});
+bindControl("gamesSprintReset","click",()=>{if(!busy)resetSprint();});
+bindControl("labReopenMission","click",()=>{if(!busy&&mission){field("labReopenMission").hidden=true;void openMission(course,mission);}});
+bindControl("practiceTransferBtn","click",async()=>{if(busy||!user||!confirm("Move practice to this device? Other active practice sessions stop submitting; your saved points stay safe."))return;setBusy(true);try{await connect(true);setBusy(false);if(mission)await openMission(course,mission);}catch(error){errorFeedback(error);}finally{setBusy(false);}});
+bindControl("labPendingResume","click",()=>{if(busy||!pending)return;const entry=COURSES.find(item=>item.id===pending.courseId),target=entry?.missions.find(item=>item.id===pending.missionId);if(target)void openMission(entry,target);});
+bindControl("labNextMission","click",()=>{if(busy||!mission)return;const pool=gameMissions(course).length?gameMissions(course):course.missions,index=pool.findIndex(item=>item.id===mission.id),next=pool.slice(Math.max(0,index+1)).find(item=>!completed(item.id))||pool.find(item=>!completed(item.id))||pool[(Math.max(0,index)+1)%pool.length];if(next)void openMission(course,next);});
+bindControl("labGlobalTab","click",()=>{boardMode="global";renderBoard();});
+bindControl("labClassTab","click",()=>{boardMode="class";renderBoard();});
+bindControl("practiceClass","change",()=>void refreshHub());
+bindControl("labPreferences","submit",async event=>{event.preventDefault();if(busy||!eligible)return;const uid=user?.uid;field("labPreferencesSave").disabled=true;const end=window.beginLoading?.("Saving leaderboard choices…")||(()=>{});field("labPreferencesStatus").textContent="Saving choice…";try{const result=await call("practicePreferences",{alias:field("labAlias").value.trim(),optIn:field("labOptIn").checked});if(uid!==user?.uid)return;hub={...hub,...result};field("labPreferencesStatus").textContent=result.optIn?"Saved. Your alias is on the public leaderboard.":"Saved. Your alias is hidden from the public leaderboard.";await refreshHub();}catch(error){if(uid===user?.uid)field("labPreferencesStatus").textContent=error.message||"Choice could not save. Try again.";}finally{field("labPreferencesSave").disabled=false;end();}});
+
+/* Render a usable mission browser before auth/network work completes. */
+renderSummary();
+renderCourses();
+renderBoard();
+
 if(!guestPage){
-  enhanceGamesHub();
-  field("labHeroContinue").addEventListener("click",()=>{if(busy)return;const button=field("labHeroContinue"),targetCourse=COURSES.find(item=>item.id===button.dataset.course),target=targetCourse?.missions.find(item=>item.id===button.dataset.mission);if(target)void openMission(targetCourse,target);});
+  try{
+    enhanceGamesHub();
+    window.__adminervaGamesReady.enhanced=true;
+    bindControl("labHeroContinue","click",()=>{if(busy)return;const button=field("labHeroContinue"),targetCourse=COURSES.find(item=>item.id===button?.dataset.course),target=targetCourse?.missions.find(item=>item.id===button?.dataset.mission);if(target)void openMission(targetCourse,target);});
+    renderSummary();
+    renderCourses();
+    renderChallenges();
+  }catch(error){
+    document.body.dataset.gamesUi="fallback";
+    console.error("[Adminerva Games] Enhanced UI failed; base game browser remains active.",error);
+    notice("Games are running in compatibility mode. Core missions remain available while the enhanced layout reconnects.","warning");
+  }
 }
-field("practiceSyncBtn").addEventListener("click",()=>void window.withLoading("Refreshing practice progress…",async()=>{if(busy)return;connectBoard();await refreshHub();if(mission&&!attempt?.attemptId&&eligible)await openMission(course,mission);else setBusy(false);},{button:field("practiceSyncBtn")}));
-field("practiceBackBtn").addEventListener("click",()=>{returnToGamesHub();});
-field("practiceCheckBtn").addEventListener("click",()=>{void submit();});
-field("labHintBtn").addEventListener("click",()=>{if(!busy)revealHint();});
-field("gamesSprintReset").addEventListener("click",()=>{if(!busy)resetSprint();});
-field("labReopenMission").addEventListener("click",()=>{if(!busy&&mission){field("labReopenMission").hidden=true;void openMission(course,mission);}});
-field("practiceTransferBtn").addEventListener("click",async()=>{if(busy||!user||!confirm("Move practice to this device? Other active practice sessions stop submitting; your saved points stay safe."))return;setBusy(true);try{await connect(true);setBusy(false);if(mission)await openMission(course,mission);}catch(error){errorFeedback(error);}finally{setBusy(false);}});
-field("labPendingResume").addEventListener("click",()=>{if(busy||!pending)return;const entry=COURSES.find(item=>item.id===pending.courseId),target=entry?.missions.find(item=>item.id===pending.missionId);if(target)void openMission(entry,target);});
-field("labNextMission").addEventListener("click",()=>{if(busy||!mission)return;const pool=gameMissions(course).length?gameMissions(course):course.missions,index=pool.findIndex(item=>item.id===mission.id),next=pool.slice(Math.max(0,index+1)).find(item=>!completed(item.id))||pool.find(item=>!completed(item.id))||pool[(Math.max(0,index)+1)%pool.length];void openMission(course,next);});
-field("labGlobalTab").addEventListener("click",()=>{boardMode="global";renderBoard();});field("labClassTab").addEventListener("click",()=>{boardMode="class";renderBoard();});field("practiceClass").addEventListener("change",()=>void refreshHub());
-field("labPreferences").addEventListener("submit",async event=>{event.preventDefault();if(busy||!eligible)return;const uid=user?.uid;field("labPreferencesSave").disabled=true;const end=window.beginLoading?.("Saving leaderboard choices…")||(()=>{});field("labPreferencesStatus").textContent="Saving choice…";try{const result=await call("practicePreferences",{alias:field("labAlias").value.trim(),optIn:field("labOptIn").checked});if(uid!==user?.uid)return;hub={...hub,...result};field("labPreferencesStatus").textContent=result.optIn?"Saved. Your alias is on the public leaderboard.":"Saved. Your alias is hidden from the public leaderboard.";await refreshHub();}catch(error){if(uid===user?.uid)field("labPreferencesStatus").textContent=error.message||"Choice could not save. Try again.";}finally{field("labPreferencesSave").disabled=false;end();}});
+
 let stopBoard=()=>{};
-function connectBoard(){stopBoard();publicBoardError=false;stopBoard=onSnapshot(query(collection(db,"practice_public_rankings"),orderBy("points","desc"),limit(30)),snapshot=>{globalRows=snapshot.docs.map(row=>row.data()).filter(row=>row.season===PRACTICE_SEASON);publicBoardReady=true;publicBoardError=false;renderBoard();},()=>{publicBoardError=true;renderBoard();});}
+function connectBoard(){
+  try{
+    stopBoard();publicBoardError=false;
+    stopBoard=onSnapshot(query(collection(db,"practice_public_rankings"),orderBy("points","desc"),limit(30)),snapshot=>{
+      globalRows=snapshot.docs.map(row=>row.data()).filter(row=>row.season===PRACTICE_SEASON);
+      publicBoardReady=true;publicBoardError=false;renderBoard();
+    },()=>{publicBoardError=true;renderBoard();});
+  }catch(error){
+    publicBoardError=true;renderBoard();console.warn("[Adminerva Games] Rankings unavailable.",error);
+    stopBoard=()=>{};
+  }
+}
 connectBoard();
-onAuthStateChanged(auth,async current=>{epoch++;loadSequence++;user=current;eligible=false;hub={};mission=null;attempt=null;answer=null;busy=false;resetPracticeSession();pending=localGet(pendingKey());field("practiceMissionPanel").hidden=true;field("labMapPanel").hidden=false;field("practiceTransferBtn").hidden=true;renderSummary();renderCourses();renderBoard();await refreshHub();pendingNotice();const params=new URLSearchParams(location.search),requested=COURSES.find(item=>item.id===params.get("course")),target=requested?.missions.find(item=>item.id===params.get("mission"));if(target)await openMission(requested,target);});
+
+onAuthStateChanged(auth,async current=>{
+  epoch++;loadSequence++;user=current;eligible=false;hub={};mission=null;attempt=null;answer=null;busy=false;resetPracticeSession();pending=localGet(pendingKey());
+  try{
+    field("practiceMissionPanel").hidden=true;field("labMapPanel").hidden=false;field("practiceTransferBtn").hidden=true;
+    renderSummary();renderCourses();renderBoard();
+    await refreshHub();
+    window.__adminervaGamesReady.backend=true;
+    pendingNotice();
+    const params=new URLSearchParams(location.search),requested=COURSES.find(item=>item.id===params.get("course")),target=requested?.missions.find(item=>item.id===params.get("mission"));
+    if(target)await openMission(requested,target);
+  }catch(error){
+    eligible=false;busy=false;setBusy(false);
+    renderSummary();renderCourses();renderBoard();
+    console.error("[Adminerva Games] Account initialization failed; browse mode remains active.",error);
+    notice("Your saved progress could not reconnect, but the games and mission previews are still available. Refresh progress to retry.","warning");
+  }
+});
 window.addEventListener("pagehide",()=>stopBoard());
 
 
