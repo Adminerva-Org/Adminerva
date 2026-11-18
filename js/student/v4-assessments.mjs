@@ -57,6 +57,7 @@ if(panel&&list&&status&&schoolHost){
     };
     if(task.windowStatus==="upcoming")return {label:"Upcoming",className:"bg-slate-100 text-slate-700"};
     if(task.windowStatus==="closed")return {label:"Past due",className:"bg-rose-100 text-rose-800"};
+    if(task.late===true)return {label:"Late submission allowed",className:"bg-amber-100 text-amber-900"};
     return {label:"Ready to work",className:"bg-indigo-100 text-indigo-800"};
   }
   function appendDetails(article,title,body){
