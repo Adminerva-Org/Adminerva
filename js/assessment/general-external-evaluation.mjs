@@ -45,6 +45,23 @@ function compactEvidence(source,snapshot={}){
       evaluationNotes:text(snapshot.personalizedTask.evaluationNotes,8000)
     }:null
   };
+  if(source==="github")return {
+    type:"github_frozen_commit_evidence",
+    version:Number(snapshot.version||0),
+    checkpointSha:text(snapshot.checkpointSha,40),
+    selectedCommitShas:Array.isArray(snapshot.selectedCommitShas)?snapshot.selectedCommitShas.slice(0,100).map(value=>text(value,40)):[],
+    commits:Array.isArray(snapshot.commits)?snapshot.commits.slice(0,40).map(commit=>({
+      sha:text(commit?.sha,40),
+      files:Array.isArray(commit?.files)?commit.files.slice(0,120).map(file=>({
+        path:text(file?.path,500),
+        status:text(file?.status,40),
+        additions:Number(file?.additions||0),
+        deletions:Number(file?.deletions||0),
+        patch:String(file?.patch||"").slice(0,24000)
+      })):[]
+    })):[],
+    limitations:Array.isArray(snapshot.limitations)?snapshot.limitations.slice(0,20).map(value=>text(value,1000)):[]
+  };
   throw Error("This evidence type still uses its specialized evaluation workflow.");
 }
 export function responseShape(task={}){
@@ -66,8 +83,8 @@ export function responseShape(task={}){
 export function buildGeneralExternalEvaluationPackage({task={},snapshot={},checkingInstructions=""}={}){
   const assessment=compactTask(task);
   if(!assessment.rubric.length)throw Error("This assessment has no rubric.");
-  if(!["text","link","studio"].includes(assessment.submissionSource))
-    throw Error("Use the repository-specific evaluation workflow for GitHub evidence.");
+  if(!["text","link","studio","github"].includes(assessment.submissionSource))
+    throw Error("This assessment evidence type is not supported by the shared evaluator.");
   const payload={
     format:GENERAL_EXTERNAL_EVALUATION_FORMAT,
     privacy:"Learner name, email and account identifiers are intentionally omitted.",
@@ -81,7 +98,10 @@ export function buildGeneralExternalEvaluationPackage({task={},snapshot={},check
       checkingInstructions:"Teacher checking instructions refine interpretation but never override the published rubric maximum or student-visible task requirements.",
       linkBoundary:assessment.submissionSource==="link"?
         "Do not claim facts about linked external content unless the evaluator actually accessed it. The frozen URL/note alone may be insufficient for some criteria.":
-        "Evaluate only the frozen content supplied in this package."
+        "Evaluate only the frozen content supplied in this package.",
+      repositoryBoundary:assessment.submissionSource==="github"?
+        "Credit only the supplied frozen selected-commit evidence. Do not infer unshown repository state, runtime behavior, or authorship beyond the supplied patches.":
+        "Not applicable."
     }
   };
   return [
@@ -95,7 +115,7 @@ export function buildGeneralExternalEvaluationPackage({task={},snapshot={},check
     "2. awardedPoints + pendingPoints must never exceed the criterion maximum.",
     "3. Use pendingPoints only for genuinely unresolved evidence; confirmed deficiencies are unearned points, not pending credit.",
     "4. Return only one valid JSON object matching REQUIRED RESPONSE JSON. No Markdown fences or surrounding commentary.",
-    "5. The result remains a private teacher draft until explicitly reviewed and saved in Adminerva.",
+    "5. The result remains a teacher draft until explicitly published in Adminerva.",
     "",
     "REQUIRED RESPONSE JSON",
     JSON.stringify(responseShape(task),null,2),
