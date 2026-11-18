@@ -12,8 +12,9 @@ test("programming catalog retains legacy work and adds Java OOP without changing
   const all=new Set();
   for(const course of COURSES){
     const java=course.id==="java";
-    assert.equal(course.modules.length,java?10:5);assert.equal(course.missions.length,java?150:75);
-    assert.ok(course.modules.every(module=>module.missions.length===15));
+    assert.equal(course.modules.length,java?10:5);assert.equal(course.missions.length,java?165:75);
+    assert.ok(course.modules.slice(0,5).every(module=>module.missions.length===15));
+    if(java)assert.ok(course.modules.slice(5).every(module=>module.missions.length===18));
     assert.equal(getCourse(course.id),course);
     for(const mission of course.missions){
       assert.ok(!all.has(mission.id));all.add(mission.id);
@@ -29,8 +30,8 @@ test("programming catalog retains legacy work and adds Java OOP without changing
       }
     }
   }
-  assert.equal(all.size,375);
-  for(const id of ["j1","j2","j3","j4","p1","p2","p3","p4","w1","w2","w3","w4","d1","d2","d3","d4","java-oop-1-01","java-oop-5-15"])assert.ok(all.has(id));
+  assert.equal(all.size,390);
+  for(const id of ["j1","j2","j3","j4","p1","p2","p3","p4","w1","w2","w3","w4","d1","d2","d3","d4","java-oop-1-01","java-oop-1-18","java-oop-5-15","java-oop-5-18"])assert.ok(all.has(id));
 });
 test("opened alerts remain recallable alongside the live unread inbox",()=>{
   const alert={key:"issue:42",type:"issue",title:"Report follow-up",body:"Teacher answered",target:"issues.html",at:9};
