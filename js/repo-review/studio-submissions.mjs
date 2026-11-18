@@ -10,7 +10,9 @@ import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
 
 const node=id=>document.getElementById(id);
-const variantCall=httpsCallable(getFunctions(app,"asia-southeast1"),"studioAssessmentVariant");
+const cloudFunctions=getFunctions(app,"asia-southeast1");
+const variantCall=httpsCallable(cloudFunctions,"studioAssessmentVariant");
+const verificationCall=httpsCallable(cloudFunctions,"studioSubmissionVerification");
 const root=node("studioReviewList"),detail=node("studioReviewDetail"),status=node("studioReviewStatus");
 const add=(p,tag,text,classes="")=>{const n=document.createElement(tag);n.textContent=String(text??"");n.className=classes;p.append(n);return n;};
 let records=[],role="",session=0,inspectionSequence=0,busy=false,selectedId=null,loading=false,activeUid=null;
@@ -229,6 +231,20 @@ async function inspect(item){
    const actual=await studioDigest(saved.snapshotJson);
    if(actual!==saved.snapshotHash||saved.snapshotHash!==item.snapshotHash)
      throw Error("The snapshot checksum no longer matches. Do not grade this revision.");
+   snapshot.verification=saved.verification||null;
+   if(!snapshot.verification&&snapshot.lang==="java"){
+     setStatus("Frozen project loaded. Adminerva is compiling/verifying this exact revision…");
+     try{
+       const response=await verificationCall({action:"verify_legacy",submissionId:item.id,revision:Number(item.revision)});
+       snapshot.verification=response?.data?.verification||null;
+     }catch(error){
+       snapshot.verification={
+         verificationVersion:"studio-auto-verification-v1",status:"verification_unavailable",
+         matchesSubmittedSource:true,
+         limitations:[String(error?.message||"Automatic verification unavailable.")]
+       };
+     }
+   }
    let assignedVariant=null,variantError="";
    if(assessment.personalizedTask?.enabled===true){
      try{
@@ -271,6 +287,22 @@ async function inspect(item){
      add(dbInfo,"summary","Database tables (submitted data)","font-semibold cursor-pointer");
      const counts=Object.entries(snapshot.database.tables).map(([name,table])=>name+": "+(table.rows||[]).length+" row(s)");
      add(dbInfo,"pre",counts.join("\n")||"No database tables.","whitespace-pre-wrap text-xs mt-2");
+   }
+   if(snapshot.verification){
+     const verification=add(detail,"details","","mt-4 border border-cyan-200 bg-cyan-50 rounded-lg p-3");
+     const value=snapshot.verification,compile=value.compile||{},runtime=value.runtime||{},gui=value.gui||{},database=value.database||{};
+     add(verification,"summary","Automatic submission verification · "+String(value.profile?.id||value.status||"available"),
+       "font-semibold cursor-pointer text-cyan-950");
+     const lines=[
+       "Source-bound: "+(value.matchesSubmittedSource===true?"yes":"unconfirmed"),
+       "Compile: "+(compile.succeeded===true?"passed":compile.succeeded===false?"failed":compile.status||"not verified"),
+       "Runtime: "+(runtime.runSucceeded===true?"passed":runtime.runSucceeded===false?"failed":runtime.status||"not verified")
+     ];
+     if(value.profile?.swing===true)lines.push("Swing launch: "+String(gui.status||"not verified"));
+     if(value.profile?.database===true)lines.push("Database: "+String(database.runtimeIntegration?.status||database.status||"not verified"));
+     if(gui.inventory)lines.push("GUI inventory: "+JSON.stringify(gui.inventory));
+     if(Array.isArray(value.limitations)&&value.limitations.length)lines.push("Limitations: "+value.limitations.join(" | "));
+     add(verification,"pre",lines.join("\n"),"whitespace-pre-wrap text-xs text-cyan-950 mt-2 overflow-auto max-h-56");
    }
    if(snapshot.design&&Object.keys(snapshot.design).length){
      const designs=add(detail,"details","","mt-3 border rounded-lg p-3");
