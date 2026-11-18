@@ -1699,7 +1699,7 @@ async function executeCode(options={}) {
     while(!result.status||result.status.id<=2){
       stage=result.status?.id===2?(desktopMode?'Compiling desktop application':'Compiling and running'):'Waiting in compiler queue';update();
       await new Promise((resolve,reject)=>{const onAbort=()=>{clearTimeout(timer);reject(new DOMException('Cancelled','AbortError'));};const timer=setTimeout(()=>{controller.signal.removeEventListener('abort',onAbort);resolve();},900);if(controller.signal.aborted)onAbort();else controller.signal.addEventListener('abort',onAbort,{once:true});});
-      result=await request('https://ce.judge0.com/submissions/'+encodeURIComponent(token)+'?base64_encoded=false&fields=stdout,stderr,compile_output,message,status,time,memory');
+      result=await request('https://ce.judge0.com/submissions/'+encodeURIComponent(token)+'?base64_encoded=false&fields=stdout,stderr,compile_output,message,status,time,memory,exit_code');
     }
     if(sequence!==executionSequence)return;
     if(controller.signal.aborted)throw new DOMException('Cancelled','AbortError');
@@ -1709,6 +1709,13 @@ async function executeCode(options={}) {
         consoleOut.textContent=(error||String(result.message||result.status.description||'Desktop build failed.'))+'\n\n'+(result.status.description||'Build failed');
         if(error&&currentLang===runLanguage)applyVisualDiagnostics(error,entry);
         updateStudioTerminalStatus('error');
+        projectStudio?.recordRun({
+          mode:"desktop",engine:"judge0",entry,status:result.status?.description||"Build failed",
+          statusId:Number(result.status?.id||0),compileSucceeded:Number(result.status?.id)!==6,
+          runSucceeded:false,exitCode:result.exit_code??null,time:result.time||null,memory:result.memory||null,
+          stdout:"",stderr:result.stderr||"",compileOutput:result.compile_output||"",
+          message:result.message||result.status?.description||"Desktop build failed"
+        });
         return;
       }
       const jarBase64=String(result.stdout||'').replace(/\s+/g,'');
@@ -1718,7 +1725,13 @@ async function executeCode(options={}) {
       document.getElementById('desktopTab')?.click();
       stage='Launching desktop runtime';update();
       launchJavaDesktop(jarBase64);
-      try{projectStudio?.recordRun({mode:"desktop",status:"launched"});}catch(e){console.warn("Run history not saved:",e);}
+      projectStudio?.recordRun({
+        mode:"desktop",engine:"judge0",entry,status:"launched",statusId:Number(result.status?.id||0),
+        compileSucceeded:true,runSucceeded:null,exitCode:result.exit_code??null,
+        time:result.time||null,memory:result.memory||null,
+        stdout:"",stderr:result.stderr||"",compileOutput:result.compile_output||"",
+        message:"Desktop build succeeded; application launch requested."
+      });
       notePracticeExecution();
       return;
     }
@@ -1732,7 +1745,14 @@ async function executeCode(options={}) {
       updateStudioTerminalPrompt(result.stdout||'');
       updateStudioTerminalStatus('waiting');
       consoleOut.scrollTop=consoleOut.scrollHeight;
-      try{projectStudio?.recordRun({mode:"console",status:"waiting for input",time:result.time||null,memory:result.memory||null});}catch(e){console.warn("Run history not saved:",e);}
+      projectStudio?.recordRun({
+        mode:"console",engine:"judge0",entry,status:"waiting for input",
+        statusId:Number(result.status?.id||0),compileSucceeded:Number(result.status?.id)!==6,
+        runSucceeded:null,exitCode:result.exit_code??null,time:result.time||null,memory:result.memory||null,
+        stdout:result.stdout||"",stderr:result.stderr||"",compileOutput:result.compile_output||"",
+        stdin:document.getElementById('stdinInput')?.value||"",
+        message:"Program requested additional input before completion."
+      });
       requestAnimationFrame(()=>document.getElementById('stdinLineInput')?.focus());
       notePracticeExecution();
       return;
@@ -1749,11 +1769,25 @@ async function executeCode(options={}) {
     if(error&&currentLang===runLanguage)applyVisualDiagnostics(error,entry);
     if(error&&currentLang==='java'&&/HeadlessException|No X11 DISPLAY|headless/i.test(error))consoleOut.textContent+='\n\nThis program appears to open a desktop window. Change Run as to “Desktop GUI (Swing) · Beta” and run it again.';
     if(result.status.id>3&&!error)consoleOut.textContent+='\n'+String(result.message||'Review the execution status above.');
-    try{projectStudio?.recordRun({mode:"console",status:result.status?.description||"finished",time:result.time||null,memory:result.memory||null});}catch(e){console.warn("Run history not saved:",e);}
+    projectStudio?.recordRun({
+      mode:"console",engine:"judge0",entry,status:result.status?.description||"finished",
+      statusId:Number(result.status?.id||0),compileSucceeded:Number(result.status?.id)!==6,
+      runSucceeded:Number(result.status?.id)===3,exitCode:result.exit_code??null,
+      time:result.time||null,memory:result.memory||null,
+      stdout:displayedStdout||result.stdout||"",stderr:result.stderr||"",
+      compileOutput:result.compile_output||"",stdin:document.getElementById('stdinInput')?.value||"",
+      message:result.message||result.status?.description||""
+    });
     notePracticeExecution();
   }catch(error){
     if(sequence!==executionSequence)return;
-    try{projectStudio?.recordRun({mode:desktopMode?"desktop":"console",status:controller.signal.aborted?"cancelled":"error"});}catch(e){console.warn("Run history not saved:",e);}
+    projectStudio?.recordRun({
+      mode:desktopMode?"desktop":"console",engine:"judge0",entry,
+      status:controller.signal.aborted?"cancelled":"error",
+      compileSucceeded:null,runSucceeded:false,
+      stderr:controller.signal.aborted?"":String(error?.message||error),
+      message:controller.signal.aborted?(stage==='Compiler timed out'?"Compiler timed out":"Run cancelled"):String(error?.message||error)
+    });
     updateStudioTerminalStatus(controller.signal.aborted?'cancelled':'error');
     consoleOut.textContent=controller.signal.aborted?(stage==='Compiler timed out'?'The compiler did not finish within 45 seconds. Your code is saved. Retry, or export the project to run locally.':'Run cancelled. Your code is unchanged. The remote service may finish the already submitted job.'):'Execution unavailable: '+error.message+'\nYour code is saved on this device when browser storage is available.';
   }finally{clearTimeout(timeout);clearInterval(clock);executionController=null;runBtn.disabled=false;if(sendInputBtn)sendInputBtn.disabled=false;overlay?.classList.add('hidden');end();}
