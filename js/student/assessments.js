@@ -242,6 +242,7 @@ async function fetchAssessments() {
       let isAssignedToStudent = false;
       let activeDeadline = null;
       let noDeadline = false;
+      let allowLateSubmissions = false;
       let activePostDate=asDate(data.createdAt)||new Date();
 
       if (data.deployments && Array.isArray(data.deployments)) {
@@ -251,6 +252,7 @@ async function fetchAssessments() {
         if (deployment) {
           isAssignedToStudent = true;
           noDeadline = deployment.deadlineEnabled === false;
+          allowLateSubmissions = deployment.allowLateSubmissions === true && !noDeadline;
           if (deployment.deadline && !noDeadline)
             activeDeadline=asDate(deployment.deadline);
           if (deployment.postDate)
@@ -275,6 +277,7 @@ async function fetchAssessments() {
           postedDate: activePostDate,
           dueDate: activeDeadline,
           noDeadline,
+          allowLateSubmissions,
         });
       }
     });
@@ -352,10 +355,15 @@ function assignmentStatusFor(ass){
     if(head?.status==="revision_requested")return {kind:"revision",text:personalized?"New personalized revision ready":"Revision requested"};
     if(head?.status==="reviewed")return {kind:"reviewed",text:"Teacher reviewed"};
     if(head?.status==="submitted")return {kind:"submitted",text:"Studio revision "+head.revision+" submitted"};
-    if(ass.dueDate&&Date.now()>ass.dueDate.getTime())return {kind:"pastdue",text:"Past due"};
+    if(ass.dueDate&&Date.now()>ass.dueDate.getTime())
+      return ass.allowLateSubmissions===true
+        ?{kind:"revision",text:"Late submission allowed"}
+        :{kind:"pastdue",text:"Past due"};
     if(personalized&&!poolReady)return {kind:"preparing",text:"Personalized task being prepared"};
     return {kind:"notSubmitted",text:personalized?"Personalized task ready":"Studio project required"};
   }
+  if(ass.allowLateSubmissions===true&&ass.dueDate&&Date.now()>ass.dueDate.getTime()&&!mySubmitted[ass.id])
+    return {kind:"revision",text:"Late submission allowed"};
   return assessmentStatus({grade:myGrades[ass.id],submitted:Boolean(mySubmitted[ass.id]),evidenceStatus:myEvidence[ass.id]?.status||null,deadline:ass.noDeadline?null:ass.dueDate,knownSubmissions:submissionLookupSucceeded});
 }
 function needsStudentAction(ass){return ["notSubmitted","pastdue","revision"].includes(assignmentStatusFor(ass).kind);}
