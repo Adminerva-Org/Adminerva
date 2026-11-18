@@ -93,7 +93,7 @@ function renderHubHero(){
 }
 function formatChallengeDue(value){
   if(!value)return "";
-  const date=new Date(value);if(Number.isNaN(date.getTime()))return "Due "+String(value);
+  const source=typeof value?.toDate==="function"?value.toDate():value,date=new Date(source);if(Number.isNaN(date.getTime()))return "";
   return "Due "+date.toLocaleDateString(undefined,{month:"short",day:"numeric"});
 }
 function renderChallenges(){
@@ -112,11 +112,22 @@ function renderChallenges(){
   }
 }
 window.addEventListener("adminerva:practice-packs",event=>{assignedPacks=Array.isArray(event.detail?.packs)?event.detail.packs:[];renderChallenges();});
+function celebrateMission(){
+  if(guestPage||matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+  const layer=field("gamesCelebrationLayer");if(!layer)return;
+  layer.replaceChildren();layer.classList.remove("is-active");
+  const symbols=["◆","✦","◇","•"];
+  for(let index=0;index<16;index++){
+    const spark=node("span",symbols[index%symbols.length]);spark.style.setProperty("--x",((index%8)-3.5)*24+"px");spark.style.setProperty("--y",(-45-(index%5)*15)+"px");spark.style.setProperty("--delay",(index%4)*24+"ms");spark.style.setProperty("--spin",(index%2?1:-1)*(80+(index%5)*35)+"deg");layer.append(spark);
+  }
+  requestAnimationFrame(()=>layer.classList.add("is-active"));
+  setTimeout(()=>{layer.classList.remove("is-active");layer.replaceChildren();},950);
+}
 function enhanceGamesHub(){
   const app=field("practiceApp"),existing=[...app.children],shell=node("div",undefined,"games-shell"),rail=node("nav",undefined,"games-rail"),content=node("div",undefined,"games-content");
   rail.setAttribute("aria-label","Games navigation");
   [["#gamesHome","⌂","Hub"],["#labGameCatalog","🎮","Games"],["#gamesChallenges","✦","Challenges"],["#gamesProgress","◫","Progress"]].forEach(([href,icon,label],index)=>{const link=document.createElement("a");link.href=href;link.className="games-rail-link"+(index===0?" is-current":"");link.append(node("span",icon),node("span",label));link.addEventListener("click",()=>{for(const item of rail.querySelectorAll(".games-rail-link"))item.classList.toggle("is-current",item===link);});rail.append(link);});
-  content.append(...existing);shell.append(rail,content);app.replaceChildren(shell);
+  content.append(...existing);const celebrationLayer=node("div",undefined,"games-celebration");celebrationLayer.id="gamesCelebrationLayer";celebrationLayer.setAttribute("aria-hidden","true");shell.append(rail,content,celebrationLayer);app.replaceChildren(shell);
   const hero=content.querySelector(".lab-hero");hero.id="gamesHome";hero.className="games-hero";
   const copy=node("div",undefined,"games-hero-copy"),eyebrow=node("p","CONTINUE PLAYING","lab-eyebrow"),mode=node("div",undefined,"games-hero-mode"),modeIcon=node("span","◈"),modeText=node("span","Mission Map");modeText.id="labHeroMode";mode.append(modeIcon,modeText);
   const title=node("h1","Programming missions");title.id="labHeroTitle";const sub=node("p","Choose a game and start a mission.","games-hero-sub");sub.id="labHeroSub";
@@ -269,7 +280,7 @@ async function submit(){
     const result=await practiceRequest("practiceMissionSubmit",pending);
     if(version!==epoch||user?.uid!==uid)return;
     pending=null;localSet(pendingKey(),null);field("labPendingResume").hidden=true;notice("");
-    if(result.correct){attempt.completed=true;attempt.earnedPoints=result.earnedPoints;prepareExperiment(result.workspace);field("labNextMission").hidden=false;feedback((result.awarded?"Mission complete! +"+result.earnedPoints+" points. ":"Correct replay. Your original reward stays saved. ")+(result.explanation||""),"success");await refreshHub();sync(result.awarded?"Saved · +"+result.earnedPoints+" points":"Replay checked");}
+    if(result.correct){attempt.completed=true;attempt.earnedPoints=result.earnedPoints;prepareExperiment(result.workspace);field("labNextMission").hidden=false;feedback((result.awarded?"Mission complete! +"+result.earnedPoints+" points. ":"Correct replay. Your original reward stays saved. ")+(result.explanation||""),"success");if(result.awarded)celebrateMission();await refreshHub();sync(result.awarded?"Saved · +"+result.earnedPoints+" points":"Replay checked");}
     else if(result.alreadyRecorded){feedback("Not quite. This is a replay, so your saved points are unchanged. "+(result.explanation||""),"warning");sync("Replay checked");}
     else{attempt.availablePoints=result.availablePoints;attempt.wrongSubmissions=result.wrongSubmissions;feedback(result.deduction?"Not quite. This scored submission used "+result.deduction+" points from this mission’s possible reward. "+result.availablePoints+" points remains available. Adjust your answer and try again.":"Not quite. You have reached this mission’s minimum reward; more attempts cannot reduce it further. Keep trying.","warning");sync("Attempt saved");}
     pointsText();renderAnswer();
