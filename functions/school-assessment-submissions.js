@@ -140,7 +140,7 @@ function createSchoolAssessmentSubmissionService({db}){
         deny("failed-precondition","This assessment is closed to new submissions.");
       const revisionDeadline=revisionOpen?current.data().revisionDueAt?.toMillis?.()||0:0;
       if(nowMillis<assessment.opensAt.toMillis()||
-         (nowMillis>assessment.dueAt.toMillis()&&nowMillis>revisionDeadline))
+         (assessment.allowLateSubmissions!==true&&nowMillis>assessment.dueAt.toMillis()&&nowMillis>revisionDeadline))
         deny("failed-precondition","The assessment submission window is not open.");
       let version=1;
       if(current.exists){
