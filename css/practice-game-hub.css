@@ -313,6 +313,32 @@ body.lab-page::after{
   padding:.55rem .25rem;
   color:var(--games-muted);
 }
+.games-statusbar{
+  min-height:32px;
+  justify-content:flex-end;
+  padding:.15rem .2rem;
+}
+.games-statusbar #labSync{
+  margin-left:auto;
+}
+.games-statusbar #practiceSyncBtn{
+  width:34px;
+  min-width:34px;
+  min-height:34px;
+  display:grid;
+  place-items:center;
+  margin-left:0;
+  padding:0;
+  border:1px solid rgba(66,225,237,.12);
+  border-radius:50%;
+  background:rgba(66,225,237,.05);
+  color:#83e9ed;
+  font-size:.9rem;
+}
+.games-statusbar #practiceSyncBtn:hover{
+  border-color:rgba(66,225,237,.32);
+  background:rgba(66,225,237,.1);
+}
 .lab-statusbar>button,
 .lab-statusbar a{
   color:#8eecef;
