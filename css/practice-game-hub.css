@@ -641,6 +641,46 @@ body.lab-page::after{
   color:#9ff0ce;
   box-shadow:0 5px 0 rgba(5,17,29,.65),0 0 18px rgba(75,223,166,.06);
 }
+.lab-mission-node.is-next:not(.is-complete){
+  border-color:rgba(66,225,237,.78);
+  box-shadow:0 5px 0 rgba(5,17,29,.65),0 0 0 5px rgba(66,225,237,.035),0 0 26px rgba(66,225,237,.14);
+  animation:gamesNextNode 2.8s ease-in-out infinite;
+}
+.lab-mission-node.is-next:not(.is-complete)::after{
+  content:"NEXT";
+  position:absolute;
+  left:50%;
+  bottom:-17px;
+  transform:translateX(-50%);
+  padding:.16rem .35rem;
+  border-radius:999px;
+  background:#0b3347;
+  color:#78e9ed;
+  font-size:.43rem;
+  font-weight:900;
+  letter-spacing:.06em;
+  border:1px solid rgba(66,225,237,.18);
+}
+@keyframes gamesNextNode{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-2px)}
+}
+@media(min-width:561px){
+  .lab-mission-node:not(:nth-child(5n+1))::before{
+    content:"";
+    position:absolute;
+    right:calc(100% + 2px);
+    top:50%;
+    width:clamp(10px,1.4vw,22px);
+    height:2px;
+    transform:translateY(-50%);
+    background:linear-gradient(90deg,rgba(73,126,154,.08),rgba(73,180,192,.34));
+    pointer-events:none;
+  }
+  .lab-mission-node.is-complete:not(:nth-child(5n+1))::before{
+    background:linear-gradient(90deg,rgba(75,223,166,.12),rgba(75,223,166,.48));
+  }
+}
 .lab-node-number{
   border-color:#082033;
   background:#274c68;
@@ -1280,7 +1320,8 @@ body.lab-page::after{
   .games-hero-art img,
   .games-orb,
   .games-meter > span::after,
-  .games-celebration span{animation:none!important}
+  .games-celebration span,
+  .lab-mission-node.is-next{animation:none!important}
 }
 
 /* Existing practice markup remains the functional layout container. */
