@@ -57,7 +57,7 @@ function featuredTarget(){
     const lastCourse=COURSES.find(entry=>entry.id===last.courseId),lastMission=lastCourse?.missions.find(item=>item.id===last.missionId);
     if(lastCourse&&lastMission&&!completed(lastMission.id)&&gameMissions(lastCourse).some(item=>item.id===lastMission.id))return {course:lastCourse,mission:lastMission,resume:true};
   }
-  if(activeGame==="all"){
+  if(activeGame==="all"&&(hub.completedCount||0)>0){
     const recommended=weakestSkillTarget();if(recommended)return recommended;
   }
   const ordered=[course,...COURSES.filter(entry=>entry.id!==course.id)];
@@ -160,13 +160,19 @@ function enhanceGamesHub(){
 function missionModule(entryCourse,entryMission){return entryCourse.modules?.find(module=>module.missions.some(item=>item.id===entryMission.id))||null;}
 function gameMissions(entryCourse,gameId=activeGame){return entryCourse.missions.filter(entry=>programmingGameMatches(gameId,entryCourse,entry,missionMeta(entryCourse,entry),missionModule(entryCourse,entry)));}
 function ensureCourseForGame(){if(gameMissions(course).length)return;course=COURSES.find(entry=>gameMissions(entry).length)||COURSES[0];}
+function recommendedGameId(){
+  if(!(hub.completedCount||0))return "code-sprint";
+  const target=weakestSkillTarget();
+  return target?.recommendation==="OOP"?"oop-builder":target?.recommendation==="Debugging"?"bug-detective":target?.recommendation==="Logic"?"logic-circuit":"code-sprint";
+}
 function renderGameCatalog(){
   const catalog=field("labGameCatalog");if(!catalog)return;catalog.replaceChildren();
-  for(const game of PROGRAMMING_GAMES){
+  const recommended=recommendedGameId(),ordered=[...PROGRAMMING_GAMES].sort((a,b)=>a.id===recommended?-1:b.id===recommended?1:a.id==="all"?-1:b.id==="all"?1:0);
+  for(const game of ordered){
     const total=game.external?0:COURSES.reduce((sum,entry)=>sum+gameMissions(entry,game.id).length,0);
     const done=game.external?0:COURSES.reduce((sum,entry)=>sum+gameMissions(entry,game.id).filter(item=>completed(item.id)).length,0);
     const item=game.external?document.createElement("a"):document.createElement("button");
-    item.className="lab-game-card"+(!game.external&&game.id===activeGame?" is-active":"");
+    item.className="lab-game-card"+(!game.external&&game.id===activeGame?" is-active":"")+(game.id===recommended?" is-recommended":"");
     item.dataset.game=game.id;
     if(game.external){
       item.href=guestPage?"guest-xml-lab.html":"student-xml-lab.html";
@@ -183,7 +189,7 @@ function renderGameCatalog(){
       });
     }
     const top=node("div",undefined,"lab-game-card-top");
-    top.append(node("span",game.icon,"lab-game-card-icon"),node("span",game.tag,"lab-game-card-tag"));
+    top.append(node("span",game.icon,"lab-game-card-icon"),node("span",game.id===recommended?"FOR YOU":game.tag,"lab-game-card-tag"));
     item.append(top,node("strong",game.name),node("p",game.description));
     if(game.external)item.append(node("small","Open XML Lab ↗"));
     else{
