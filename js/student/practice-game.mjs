@@ -302,34 +302,28 @@ function readAnswer(){
   return answer;
 }
 function hintMessages(question){
-  const hints=[];
-  if(mission?.oop===true){
-    const oopHints={
-      "oop-classes":"Separate the class definition from the object or reference created from it.",
-      "oop-encapsulation":"Look for who is allowed to read or change object state.",
-      "oop-inheritance":"Look for extends, super, inherited members, or an override.",
-      "oop-polymorphism":"Compare the reference type with the runtime object and the method implementation it selects.",
-      "oop-real":"Decide whether the relationship is has-a, class-wide, overloaded, or collection-based."
-    };
-    if(oopHints[mission.oopModule])hints.push(oopHints[mission.oopModule]);
-  }
+  const hints=[],concept=String(mission?.concept||"").trim();
   if(question.type==="debugging"){
     if(question.caseHint)hints.push(question.caseHint);
-    if(Number.isInteger(question.focusLine))hints.push("Focus on line "+question.focusLine+". Compare what it does with the exact goal in the prompt.");
+    if(concept)hints.push("Concept: "+concept);
+    else if(Number.isInteger(question.focusLine))hints.push("Focus on line "+question.focusLine+". Compare what it does with the exact goal in the prompt.");
   }else if(question.type==="output"){
-    hints.push("Track only values or object state that can affect the final output.");
-    hints.push("Start at the print/output statement and trace backward to the values it depends on.");
+    if(concept)hints.push("Concept: "+concept);
+    hints.push(mission?.oop===true?"Track the runtime object, field changes, and overridden calls before reading the final output.":"Track only values or state that can affect the final output.");
   }else if(question.type==="ordering"){
+    if(concept)hints.push("Concept: "+concept);
     hints.push("Find the block that must happen first because later blocks depend on it.");
-    hints.push("For each block, ask what must already exist before that line can run.");
   }else if(question.type==="matching"){
-    hints.push("Match the most distinctive pair first, then eliminate that option from the remaining pairs.");
-    hints.push("Every right-side option is used once, so a confident match narrows the rest.");
+    if(concept)hints.push("Concept: "+concept);
+    hints.push("Match the most distinctive pair first; each right-side option can be used only once.");
   }else{
-    hints.push("Read the goal first, then compare each choice against the exact rule shown in the code.");
-    hints.push("Eliminate choices that contradict the code before choosing between the remaining options.");
+    if(concept)hints.push("Concept: "+concept);
+    if(mission?.oop===true){
+      const oopHints={"oop-classes":"Separate the class definition from the object or reference created from it.","oop-encapsulation":"Look for who is allowed to read or change object state.","oop-inheritance":"Look for extends, super, inherited members, or an override.","oop-polymorphism":"Compare the reference type with the runtime object and the implementation selected at runtime.","oop-real":"Decide whether the relationship is has-a, class-wide, overloaded, or collection-based."};
+      hints.push(oopHints[mission.oopModule]||"Identify the object-oriented relationship before choosing.");
+    }else hints.push("Eliminate choices that contradict the code before choosing between the remaining options.");
   }
-  return [...new Set(hints)].slice(0,2);
+  return [...new Set(hints.filter(Boolean))].slice(0,2);
 }
 function renderHintControl(){
   const tray=field("labHintTray"),button=field("labHintBtn"),text=field("labHintText");if(!tray||!button||!text)return;
