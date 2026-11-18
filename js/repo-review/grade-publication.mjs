@@ -78,26 +78,30 @@ export async function publishGradeEntries(entries,published,{context,onProgress=
         if(published&&(!task.exists()||typeof task.data().maxScore!=="number"||task.data().maxScore<=0||before.score>task.data().maxScore||(before.maxScore!=null&&before.maxScore!==task.data().maxScore)))throw Error("Assessment bounds changed or are unavailable. Review this grade before publishing.");
         const legacyReady=published&&legacyReadyDraft(before);
         const aiDraft=published&&approvableEvaluationDraft(before);
+        const needsBulkApproval=published&&before.reviewRequired===true;
         if(published&&task.data()?.schemaVersion===2)
-          await verifyGradePublication(transaction,entry.ref,before,{allowTeacherApproval:aiDraft});
+          await verifyGradePublication(transaction,entry.ref,before,{allowTeacherApproval:true});
         transaction.set(doc(collection(db,"grade_revisions")),{
           gradeId:entry.ref.id,studentId:before.studentId,taskId:before.taskId,editorUid:uid,
           reason:published
             ?(aiDraft?"Teacher bulk-published AI grade draft unchanged":
+              needsBulkApproval?"Teacher bulk-published reviewed draft unchanged":
               legacyReady?"Teacher published legacy clean system draft":
-              "Teacher explicitly published a reviewed batch draft")
+              "Teacher explicitly published a grade draft")
             :"Teacher explicitly unpublished a batch grade",
           before:{published:Boolean(before.published)},after:{published},createdAt:serverTimestamp()
         });
         transaction.update(entry.ref,{
           published,
           ...(legacyReady?{reviewRequired:false,reviewPriority:"ready_to_publish"}:{}),
-          ...(aiDraft?{
+          ...(needsBulkApproval?{
             reviewRequired:false,
             reviewPriority:"teacher_approved",
             reviewedBy:uid,
             reviewedAt:serverTimestamp(),
-            teacherReviewNote:"Teacher approved this AI-generated grade draft unchanged through the confirmed bulk publication action.",
+            teacherReviewNote:"Teacher approved this grade draft unchanged through the confirmed bulk publication action."
+          }:{}),
+          ...(aiDraft?{
             evaluationDraft:{...(before.evaluationDraft||{}),teacherReviewed:true}
           }:{})
         });
