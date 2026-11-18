@@ -792,6 +792,33 @@ body.lab-page::after{
   margin:0;
   padding:1rem;
 }
+.games-ranking-card{
+  padding:.2rem .85rem .85rem;
+}
+.games-ranking-card:not([open]){
+  padding-bottom:.2rem;
+}
+.games-ranking-summary{
+  min-height:46px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.75rem;
+  color:#dffcff;
+  font-size:.75rem;
+  font-weight:850;
+  cursor:pointer;
+  list-style:none;
+}
+.games-ranking-summary::-webkit-details-marker{display:none}
+.games-ranking-summary::after{
+  content:"⌄";
+  margin-left:auto;
+  color:#6fdde3;
+  transition:transform .18s ease;
+}
+.games-ranking-card[open] .games-ranking-summary::after{transform:rotate(180deg)}
+.games-ranking-card>.lab-section-heading:first-of-type{display:none}
 .lab-board-tabs{
   background:rgba(4,18,29,.65);
 }
