@@ -4,7 +4,7 @@ import {onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.13.0/fir
 import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-functions.js";
 import {collection,query,orderBy,limit,onSnapshot} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
 import {COURSES,hashSeed} from "./practice-courses.mjs?v=1.4.1";
-import {PROGRAMMING_GAMES,getProgrammingGame,programmingGameMatches} from "./practice-games.mjs?v=1.0.0";
+import {PROGRAMMING_GAMES,getProgrammingGame,programmingGameMatches} from "./practice-games.mjs?v=1.1.0";
 import {PRACTICE_SEASON,DIFFICULTIES,missionMeta,seasonActivity,publicActivity} from "./practice-season.mjs?v=1.4.1";
 import {resumePracticeSession,activePracticeSession,resetPracticeSession,practiceRequest} from "./practice-session.mjs?v=1.3.0";
 import {practiceBridgeKey} from "./practice-playground-bridge.mjs?v=1.3.0";
@@ -47,6 +47,25 @@ function featuredTarget(){
   }
   return null;
 }
+function dailyQuestState(){
+  const target=3;
+  if(!Object.prototype.hasOwnProperty.call(hub,"completedCount"))return {done:0,target};
+  const now=new Date(),day=[now.getFullYear(),String(now.getMonth()+1).padStart(2,"0"),String(now.getDate()).padStart(2,"0")].join("-");
+  const key="Adminerva_Games_DailyQuest_"+(hub.season||"season")+"_"+owner()+"_"+day,count=hub.completedCount||0;
+  let baseline=null;
+  try{const saved=Number(localStorage.getItem(key));if(Number.isFinite(saved))baseline=saved;}catch{}
+  if(baseline===null){baseline=count;try{localStorage.setItem(key,String(count));}catch{}}
+  return {done:Math.max(0,Math.min(target,count-baseline)),target};
+}
+function progressBreakdown(){
+  const entries=COURSES.flatMap(entry=>entry.missions.map(mission=>({course:entry,mission})));
+  const ratio=predicate=>{const pool=entries.filter(({course,mission})=>predicate(course,mission));if(!pool.length)return 0;return Math.round(pool.filter(({mission})=>completed(mission.id)).length/pool.length*100);};
+  return [
+    {id:"labProgressLogic",label:"Logic",value:ratio(course=>course.id==="logic")},
+    {id:"labProgressDebug",label:"Debugging",value:ratio((course,mission)=>missionMeta(course,mission).type==="debugging")},
+    {id:"labProgressOop",label:"OOP",value:ratio((course,mission)=>course.id==="java"&&mission.oop===true)}
+  ];
+}
 function renderHubHero(){
   const title=field("labHeroTitle");if(!title)return;
   const count=hub.completedCount||0,points=hub.points||0,total=Math.max(1,TOTAL_MISSIONS);
@@ -61,6 +80,9 @@ function renderHubHero(){
   field("labBadgeStarter").classList.toggle("is-earned",count>=1);
   field("labBadgeExplorer").classList.toggle("is-earned",count>=Math.min(10,TOTAL_MISSIONS));
   field("labBadgeMaster").classList.toggle("is-earned",count>=TOTAL_MISSIONS&&TOTAL_MISSIONS>0);
+  const daily=dailyQuestState();field("labDailyQuestText").textContent=daily.done+" / "+daily.target+" missions";
+  [...field("labDailyQuestPips").children].forEach((pip,index)=>{const done=index<daily.done;pip.classList.toggle("is-complete",done);pip.textContent=done?"✓":String(index+1);});
+  for(const item of progressBreakdown()){const ring=field(item.id);ring.style.setProperty("--value",String(item.value));ring.setAttribute("aria-label",item.label+" "+item.value+" percent");ring.querySelector("strong").textContent=item.value+"%";}
 }
 function enhanceGamesHub(){
   const app=field("practiceApp"),existing=[...app.children],shell=node("div",undefined,"games-shell"),rail=node("nav",undefined,"games-rail"),content=node("div",undefined,"games-content");
@@ -75,10 +97,10 @@ function enhanceGamesHub(){
   copy.append(eyebrow,mode,title,sub,progress,continueButton);
   const art=node("div",undefined,"games-hero-art");["one","two","three"].forEach(kind=>art.append(node("span",undefined,"games-orb "+kind)));const image=document.createElement("img");image.src="assets/adminerva-owl.png";image.alt="";art.append(image);hero.replaceChildren(copy,art);
   const map=field("labMapPanel");map.classList.add("games-section");const headings=map.querySelectorAll(".lab-section-heading h2");if(headings[0])headings[0].textContent="Recommended games";if(headings[1])headings[1].textContent="Skill paths";
-  const sidebar=content.querySelector(".lab-sidebar"),levelCard=node("section",undefined,"games-utility-card games-glass"),levelTitle=node("div",undefined,"games-utility-title"),levelLabel=node("strong","Skill XP"),levelText=node("span","Lv. 1");levelText.id="labLevelText";levelTitle.append(levelLabel,levelText);const levelRow=node("div",undefined,"games-level-row"),nextLevel=node("strong","Next level"),levelPoints=node("small","0 / 250 XP");levelPoints.id="labLevelPoints";levelRow.append(nextLevel,levelPoints);const levelMeter=node("div",undefined,"games-meter"),levelFill=node("span");levelFill.id="labLevelProgress";levelMeter.append(levelFill);levelCard.append(levelTitle,levelRow,levelMeter);
+  const sidebar=content.querySelector(".lab-sidebar"),dailyCard=node("section",undefined,"games-utility-card games-glass games-daily-card"),dailyTitle=node("div",undefined,"games-utility-title");dailyTitle.append(node("strong","Daily Quest"),node("span","◫"));const dailyRow=node("div",undefined,"games-daily-row"),dailyText=node("span","0 / 3 missions");dailyText.id="labDailyQuestText";const dailyPips=node("div",undefined,"games-daily-pips");dailyPips.id="labDailyQuestPips";for(let index=1;index<=3;index++)dailyPips.append(node("span",String(index)));dailyRow.append(dailyText,dailyPips);dailyCard.append(dailyTitle,dailyRow),levelCard=node("section",undefined,"games-utility-card games-glass"),levelTitle=node("div",undefined,"games-utility-title"),levelLabel=node("strong","Skill XP"),levelText=node("span","Lv. 1");levelText.id="labLevelText";levelTitle.append(levelLabel,levelText);const levelRow=node("div",undefined,"games-level-row"),nextLevel=node("strong","Next level"),levelPoints=node("small","0 / 250 XP");levelPoints.id="labLevelPoints";levelRow.append(nextLevel,levelPoints);const levelMeter=node("div",undefined,"games-meter"),levelFill=node("span");levelFill.id="labLevelProgress";levelMeter.append(levelFill);levelCard.append(levelTitle,levelRow,levelMeter);
   const achievementCard=node("section",undefined,"games-utility-card games-glass"),achievementTitle=node("div",undefined,"games-utility-title");achievementTitle.append(node("strong","Achievements"),node("span","◆"));const achievements=node("div",undefined,"games-achievements");[["labBadgeStarter","⌁","First mission completed"],["labBadgeExplorer","✦","Ten missions completed"],["labBadgeMaster","◇","All missions completed"]].forEach(([id,icon,label])=>{const badge=node("span",icon,"games-badge");badge.id=id;badge.title=label;badge.setAttribute("aria-label",label);achievements.append(badge);});achievementCard.append(achievementTitle,achievements);
-  const progressCard=node("section",undefined,"games-utility-card games-glass"),progressTitle=node("div",undefined,"games-utility-title");progressTitle.append(node("strong","Your progress"),node("span","▥"));progressCard.append(progressTitle,field("practiceOverview"),field("labPreviousProgress"));
-  sidebar.prepend(progressCard);sidebar.prepend(achievementCard);sidebar.prepend(levelCard);
+  const progressCard=node("section",undefined,"games-utility-card games-glass"),progressTitle=node("div",undefined,"games-utility-title");progressTitle.append(node("strong","Your progress"),node("span","▥"));const rings=node("div",undefined,"games-progress-rings");[["labProgressLogic","Logic"],["labProgressDebug","Debug"],["labProgressOop","OOP"]].forEach(([id,label])=>{const wrap=node("div",undefined,"games-progress-item"),ring=node("div",undefined,"games-progress-ring");ring.id=id;ring.style.setProperty("--value","0");ring.append(node("strong","0%"));wrap.append(ring,node("small",label));rings.append(wrap);});progressCard.append(progressTitle,rings,field("practiceOverview"),field("labPreviousProgress"));
+  sidebar.prepend(progressCard);sidebar.prepend(achievementCard);sidebar.prepend(levelCard);sidebar.prepend(dailyCard);
 }
 function missionModule(entryCourse,entryMission){return entryCourse.modules?.find(module=>module.missions.some(item=>item.id===entryMission.id))||null;}
 function gameMissions(entryCourse,gameId=activeGame){return entryCourse.missions.filter(entry=>programmingGameMatches(gameId,entryCourse,entry,missionMeta(entryCourse,entry),missionModule(entryCourse,entry)));}
