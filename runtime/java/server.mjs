@@ -260,7 +260,7 @@ const server=http.createServer(async(req,res)=>{
       const result=await runAutomaticVerification({
         files:parsed.files,entry:parsed.entry,mainClass:parsed.mainClass,profile,
         sourceDigest,database:body.database||null,uiExpectations:body.uiExpectations||null,
-        databaseChecks:body.databaseChecks||null,image:IMAGE
+        databaseChecks:body.databaseChecks||null,stdin:String(body.stdin||"").slice(0,6000),image:IMAGE
       });
       json(res,200,result);return;
     }
