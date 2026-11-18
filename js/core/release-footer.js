@@ -1,5 +1,8 @@
 (() => {
   "use strict";
+  const STATE_KEY="__adminervaReleaseFooterState";
+  if(globalThis[STATE_KEY]?.mount){globalThis[STATE_KEY].mount();return;}
+  const state=globalThis[STATE_KEY]={mount:null,label:""};
   const VERSION_ATTR="data-adminerva-version";
   const FOOTER_ID="adminerva-site-footer";
   function pageLabel(){
@@ -50,18 +53,21 @@
     footer.className="av-site-footer";
     footer.setAttribute("aria-label","Adminerva site information");
     const brand=document.createElement("span");brand.className="av-footer-brand";brand.textContent="ADMINERVA";
-    const version=document.createElement("a");version.setAttribute(VERSION_ATTR,"");version.className="av-footer-version";
+    const version=document.createElement("a");version.setAttribute(VERSION_ATTR,"");version.className="av-footer-version";version.hidden=false;
     const nav=document.createElement("nav");nav.setAttribute("aria-label","Footer links");
     for(const [label,href] of [["Help / tutorial","wiki.html"],["Wiki","wiki.html"],["Patch notes","patch-notes.html"],["Privacy","wiki.html#privacy"]]){
       const link=document.createElement("a");link.href=href;link.textContent=label;nav.append(link);
     }
     footer.replaceChildren(brand,version,nav);
+    version.textContent=state.label||"Adminerva · release info loading";
     document.body.classList.add("av-with-footer");
     return version;
   }
   async function mount(){
-    const versionHost=ensureFooter(),base=scriptBase(),page=pageLabel();
-    versionHost.textContent="Adminerva · "+page+" · build "+base.build;
+    const base=scriptBase(),page=pageLabel();
+    state.label="Adminerva · "+page+" · build "+base.build;
+    const versionHost=ensureFooter();
+    versionHost.textContent=state.label;
     versionHost.href="patch-notes.html";
     versionHost.title="Open Adminerva release notes";
     try{
@@ -69,15 +75,32 @@
       if(!response.ok)throw Error("release unavailable");
       const release=await response.json();
       const version=typeof release?.version==="string"&&/^\d+\.\d+\.\d+$/.test(release.version)?release.version:"unknown";
-      versionHost.textContent="Adminerva v"+version+" · "+page+" · build "+base.build;
+      state.label="Adminerva v"+version+" · "+page+" · build "+base.build;
+      versionHost.textContent=state.label;
       versionHost.href="patch-notes.html?version="+encodeURIComponent(version);
       versionHost.title="Current site release "+version+" · page "+page+" · build "+base.build;
       document.documentElement.dataset.adminervaRelease=version;
       document.documentElement.dataset.adminervaPageBuild=base.build;
     }catch{
-      versionHost.textContent="Adminerva · release unavailable · "+page+" · build "+base.build;
+      state.label="Adminerva · release unavailable · "+page+" · build "+base.build;
+      versionHost.textContent=state.label;
     }
+  }
+  state.mount=()=>void mount();
+  const repair=()=>{
+    if(!document.body)return;
+    const footer=document.getElementById(FOOTER_ID),version=footer?.querySelector("["+VERSION_ATTR+"]");
+    if(!footer||!version||!String(version.textContent||"").trim()){
+      const host=ensureFooter();
+      host.textContent=state.label||"Adminerva · release info loading";
+    }
+  };
+  if("MutationObserver" in window){
+    const observer=new MutationObserver(()=>queueMicrotask(repair));
+    const startObserver=()=>{if(document.body)observer.observe(document.body,{childList:true,subtree:false});};
+    if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",startObserver,{once:true});else startObserver();
   }
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",()=>void mount(),{once:true});
   else void mount();
+  window.addEventListener("load",repair,{once:true});
 })();
