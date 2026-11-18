@@ -110,9 +110,72 @@ function createStudioAssessmentVariantService({db,Timestamp}){
     deny("permission-denied","You are not authorized to inspect this learner's personalized task.");
   }
 
+  async function recoverRecordedVariant({assessmentId,assessment,studentId,attempt,expectedVariantId}){
+    if(!Number.isInteger(attempt)||attempt<1||attempt>30)
+      deny("invalid-argument","Attempt number is invalid.");
+    if(!expectedVariantId)
+      deny("failed-precondition","This historical submission does not contain a personalized variant ID, so Adminerva cannot grade it against an exact scenario.");
+    if(!/^[a-f0-9]{16,64}$/.test(expectedVariantId))
+      deny("failed-precondition","The personalized variant ID saved with this submission is invalid.");
+
+    let attemptRecord=null;
+    const studentIdSafe=Boolean(studentId)&&studentId.length<=512&&studentId!=="."&&studentId!==".."&&
+      !studentId.includes("/")&&!/[\u0000-\u001F\u007F]/.test(studentId);
+    if(studentIdSafe){
+      const variant=await db.doc("studio_assessment_variants/"+studentId+"_"+assessmentId+"/attempts/"+attempt).get();
+      if(variant.exists){
+        const data=variant.data();
+        if(data.assessmentId===assessmentId&&data.studentId===studentId&&data.attempt===attempt&&
+           data.variantId===expectedVariantId&&typeof data.prompt==="string"&&data.prompt.trim().length>=20)
+          attemptRecord=data;
+      }
+    }
+    if(attemptRecord){
+      return {assessmentId,studentId,attempt,variantId:attemptRecord.variantId,prompt:attemptRecord.prompt,
+        evaluationNotes:attemptRecord.evaluationNotes||"",poolFingerprint:attemptRecord.poolFingerprint||"",
+        createdAt:millis(attemptRecord.createdAt),readOnly:true,historical:true,source:"attempt_record"};
+    }
+
+    const privateVariant=await db.doc("assessment_private/"+assessmentId+"/variants/"+expectedVariantId).get();
+    if(privateVariant.exists){
+      const data=privateVariant.data();
+      if(data.variantId===expectedVariantId&&typeof data.prompt==="string"&&data.prompt.trim().length>=20){
+        return {assessmentId,studentId,attempt,variantId:expectedVariantId,prompt:data.prompt,
+          evaluationNotes:typeof data.evaluationNotes==="string"?data.evaluationNotes:"",
+          poolFingerprint:data.fingerprint||assessment?.personalizedTask?.poolFingerprint||"",
+          createdAt:millis(data.createdAt),readOnly:true,historical:true,source:"private_pool_fallback"};
+      }
+    }
+    deny("failed-precondition",
+      "The exact personalized scenario for this historical submission could not be recovered. The saved variant ID was preserved, but its prompt record is unavailable.");
+  }
+
   return async request=>{
-    const actor=request.auth||{},input=request.data||{},
-      assessmentId=cleanId(input.assessmentId,"Assessment"),
+    const actor=request.auth||{},input=request.data||{};
+
+    if(input.action==="inspect_submission"){
+      const submissionId=cleanId(input.submissionId,"Submission"),
+        submission=await db.doc("studio_submissions/"+submissionId).get();
+      if(!submission.exists)deny("not-found","Historical Studio submission unavailable.");
+      const head=submission.data()||{},
+        assessmentId=cleanId(head.assessmentId,"Assessment"),
+        studentId=String(head.studentId||"").trim(),
+        attempt=Number(head.revision),
+        expectedVariantId=String(head.variantId||"").trim(),
+        {data:assessment}=await assessmentRecord(assessmentId,{requireCurrentPool:false});
+      await authorizeAssessmentTeacher(actor,assessment);
+
+      const version=await submission.ref.collection("versions").doc(String(attempt)).get();
+      if(!version.exists)deny("failed-precondition","The frozen historical submission revision is unavailable.");
+      const frozen=version.data()||{};
+      if(frozen.assessmentId!==assessmentId||frozen.studentId!==studentId||frozen.revision!==attempt||
+         String(frozen.variantId||"")!==expectedVariantId)
+        deny("failed-precondition","The historical submission head does not match its frozen revision.");
+
+      return recoverRecordedVariant({assessmentId,assessment,studentId,attempt,expectedVariantId});
+    }
+
+    const assessmentId=cleanId(input.assessmentId,"Assessment"),
       inspecting=input.action==="inspect",
       {data:assessment,pool}=await assessmentRecord(assessmentId,{requireCurrentPool:!inspecting});
 
@@ -142,53 +205,9 @@ function createStudioAssessmentVariantService({db,Timestamp}){
     if(input.action==="inspect"){
       const attempt=Number(input.attempt),
         expectedVariantId=String(input.expectedVariantId||"").trim(),
-        rawStudentId=String(input.studentId??"").trim();
-      if(!Number.isInteger(attempt)||attempt<1||attempt>30)deny("invalid-argument","Attempt number is invalid.");
-      if(!expectedVariantId)
-        deny("failed-precondition","This historical submission does not contain a personalized variant ID, so Adminerva cannot grade it against an exact scenario.");
-      if(!/^[a-f0-9]{16,64}$/.test(expectedVariantId))
-        deny("failed-precondition","The personalized variant ID saved with this submission is invalid.");
-
-      // Historical review is authorized from the assessment itself. Older student
-      // document IDs used formats that predate the current ID convention, so a
-      // teacher review must not fail merely because that legacy ID cannot be
-      // normalized by newer student-ID validators.
+        studentId=String(input.studentId??"").trim();
       await authorizeAssessmentTeacher(actor,assessment);
-
-      let studentId=rawStudentId,attemptRecord=null;
-      const studentIdSafe=Boolean(studentId)&&studentId.length<=512&&studentId!=="."&&studentId!==".."&&
-        !studentId.includes("/")&&!/[\u0000-\u001F\u007F]/.test(studentId);
-      if(studentIdSafe){
-        const variant=await db.doc("studio_assessment_variants/"+studentId+"_"+assessmentId+"/attempts/"+attempt).get();
-        if(variant.exists){
-          const data=variant.data();
-          if(data.assessmentId===assessmentId&&data.studentId===studentId&&data.attempt===attempt&&
-             data.variantId===expectedVariantId&&typeof data.prompt==="string"&&data.prompt.trim().length>=20)
-            attemptRecord=data;
-        }
-      }
-      if(attemptRecord){
-        return {assessmentId,studentId,attempt,variantId:attemptRecord.variantId,prompt:attemptRecord.prompt,
-          evaluationNotes:attemptRecord.evaluationNotes||"",poolFingerprint:attemptRecord.poolFingerprint||"",
-          createdAt:millis(attemptRecord.createdAt),readOnly:true,historical:true,source:"attempt_record"};
-      }
-
-      // Compatibility recovery for legacy submissions: the submission itself
-      // freezes the variant ID, so use that exact ID to recover the teacher-owned
-      // prompt from the assessment's private pool. Never substitute a different
-      // or newly generated variant.
-      const privateVariant=await db.doc("assessment_private/"+assessmentId+"/variants/"+expectedVariantId).get();
-      if(privateVariant.exists){
-        const data=privateVariant.data();
-        if(data.variantId===expectedVariantId&&typeof data.prompt==="string"&&data.prompt.trim().length>=20){
-          return {assessmentId,studentId,attempt,variantId:expectedVariantId,prompt:data.prompt,
-            evaluationNotes:typeof data.evaluationNotes==="string"?data.evaluationNotes:"",
-            poolFingerprint:data.fingerprint||"",createdAt:millis(data.createdAt),
-            readOnly:true,historical:true,source:"private_pool_fallback"};
-        }
-      }
-      deny("failed-precondition",
-        "The exact personalized scenario for this historical submission could not be recovered. The saved variant ID was preserved, but its prompt record is unavailable.");
+      return recoverRecordedVariant({assessmentId,assessment,studentId,attempt,expectedVariantId});
     }
 
     const student=await studentFor(actor,assessment),now=Date.now(),
