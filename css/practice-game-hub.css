@@ -473,6 +473,13 @@ body.lab-page::after{
   border-color:var(--games-line-strong);
   box-shadow:0 12px 28px rgba(0,0,0,.18),0 0 20px rgba(66,225,237,.06);
 }
+.lab-game-card.is-recommended:not(.is-active){
+  border-color:rgba(159,120,255,.5);
+  box-shadow:inset 0 0 0 1px rgba(159,120,255,.08),0 0 20px rgba(159,120,255,.05);
+}
+.lab-game-card.is-recommended .lab-game-card-tag{
+  color:#d2c4ff;
+}
 .lab-game-card.is-active{
   border-color:rgba(66,225,237,.75);
   background:
