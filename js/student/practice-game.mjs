@@ -166,6 +166,17 @@ function enhanceGamesHub(){
   }
 }
 function missionModule(entryCourse,entryMission){return entryCourse.modules?.find(module=>module.missions.some(item=>item.id===entryMission.id))||null;}
+function missionGameId(entryCourse,entryMission){
+  if(entryMission.oop===true)return "oop-builder";
+  const meta=missionMeta(entryCourse,entryMission);
+  if(meta.type==="debugging")return "bug-detective";
+  if(meta.type==="output")return "trace-quest";
+  if(meta.type==="ordering")return "algorithm-maze";
+  if(meta.type==="matching")return "logic-circuit";
+  if(entryCourse.id==="web")return "interface-repair";
+  if(entryCourse.id==="logic")return "data-detective";
+  return "code-sprint";
+}
 function gameMissions(entryCourse,gameId=activeGame){return entryCourse.missions.filter(entry=>programmingGameMatches(gameId,entryCourse,entry,missionMeta(entryCourse,entry),missionModule(entryCourse,entry)));}
 function ensureCourseForGame(){if(gameMissions(course).length)return;course=COURSES.find(entry=>gameMissions(entry).length)||COURSES[0];}
 function recommendedGameId(){
@@ -278,8 +289,8 @@ async function openMission(selectedCourse,selectedMission){
   if(busy)return;const end=window.beginLoading?.("Preparing practice mission…")||(()=>{});saveDraft();course=selectedCourse;mission=selectedMission;persistentSet(resumeKey(),{courseId:course.id,missionId:mission.id,gameId:activeGame,openedAt:Date.now()});attempt=null;answer=localGet(draftKey())?.answer??null;const version=epoch,sequence=++loadSequence;
   field("labReopenMission").hidden=true;
   field("practiceCheckBtn").hidden=true;field("labSubmitSignin").hidden=true;
-  field("labMapPanel").hidden=true;field("practiceMissionPanel").hidden=false;field("practiceMissionTitle").textContent=mission.title.replace(/ · (Guided|Apply|Challenge)$/,"");field("practiceCourseName").textContent=course.name;field("labMissionType").textContent=typeNames[missionMeta(course,mission).type];field("practiceChoices").replaceChildren();field("practiceCode").textContent="";field("practicePrompt").textContent="Preparing your mission…";field("labExperimentLink").hidden=true;field("labNextMission").hidden=true;feedback("");setBusy(true);
-  field("labGameName").textContent=getProgrammingGame(activeGame).name;field("practiceMissionTitle").focus({preventScroll:true});field("practiceMissionPanel").scrollIntoView({behavior:"smooth",block:"start"});
+  const themeGame=activeGame==="all"?missionGameId(course,mission):activeGame;field("labMapPanel").hidden=true;const missionPanel=field("practiceMissionPanel");missionPanel.hidden=false;missionPanel.dataset.game=themeGame;field("practiceMissionTitle").textContent=mission.title.replace(/ · (Guided|Apply|Challenge)$/,"");field("practiceCourseName").textContent=course.name;field("labMissionType").textContent=typeNames[missionMeta(course,mission).type];field("practiceChoices").replaceChildren();field("practiceCode").textContent="";field("practicePrompt").textContent="Preparing your mission…";field("labExperimentLink").hidden=true;field("labNextMission").hidden=true;feedback("");setBusy(true);
+  field("labGameName").textContent=getProgrammingGame(themeGame).name;field("practiceMissionTitle").focus({preventScroll:true});field("practiceMissionPanel").scrollIntoView({behavior:"smooth",block:"start"});
   try{
     if(eligible&&user){if(!activePracticeSession()||activePracticeSession().expiresAt<Date.now())await connect();attempt=await practiceRequest("practiceMissionStart",{courseId:course.id,missionId:mission.id});}
     else{const preview=seasonActivity(course,mission,Math.abs(hashSeed(PRACTICE_SEASON+mission.id))),meta=missionMeta(course,mission);attempt={question:publicActivity(preview),availablePoints:meta.maximum,completed:false,previewWorkspace:preview.workspace};}
