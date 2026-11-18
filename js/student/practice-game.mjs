@@ -40,6 +40,19 @@ function renderSummary(){
   field("labClassHint").textContent=(hub.classes||[]).length?"Only your class sees this private class board.":"Your class board appears when your school links a student section.";
   renderHubHero();
 }
+function assignedChallengeTarget(){
+  const packs=[...assignedPacks].sort((a,b)=>{
+    const toTime=value=>{const source=typeof value?.toDate==="function"?value.toDate():value,time=new Date(source||0).getTime();return Number.isFinite(time)&&time>0?time:Number.MAX_SAFE_INTEGER;};
+    return toTime(a.dueDate)-toTime(b.dueDate);
+  });
+  for(const pack of packs){
+    for(const ref of pack.missionRefs||[]){
+      const [courseId,missionId]=String(ref).split(":"),entry=COURSES.find(item=>item.id===courseId),target=entry?.missions.find(item=>item.id===missionId);
+      if(entry&&target&&!completed(target.id))return {course:entry,mission:target,challenge:true,challengeTitle:pack.title||"Teacher Challenge"};
+    }
+  }
+  return null;
+}
 function weakestSkillTarget(){
   const groups=[
     {label:"OOP",entries:COURSES.flatMap(entry=>entry.id==="java"?entry.missions.filter(item=>item.oop===true).map(mission=>({course:entry,mission})):[])},
@@ -57,8 +70,9 @@ function featuredTarget(){
     const lastCourse=COURSES.find(entry=>entry.id===last.courseId),lastMission=lastCourse?.missions.find(item=>item.id===last.missionId);
     if(lastCourse&&lastMission&&!completed(lastMission.id)&&gameMissions(lastCourse).some(item=>item.id===lastMission.id))return {course:lastCourse,mission:lastMission,resume:true};
   }
-  if(activeGame==="all"&&(hub.completedCount||0)>0){
-    const recommended=weakestSkillTarget();if(recommended)return recommended;
+  if(activeGame==="all"){
+    const challenge=assignedChallengeTarget();if(challenge)return challenge;
+    if((hub.completedCount||0)>0){const recommended=weakestSkillTarget();if(recommended)return recommended;}
   }
   const ordered=[course,...COURSES.filter(entry=>entry.id!==course.id)];
   for(const entry of ordered){
@@ -92,11 +106,11 @@ function renderHubHero(){
   const count=hub.completedCount||0,points=hub.points||0,total=Math.max(1,TOTAL_MISSIONS);
   const progress=Math.max(0,Math.min(100,Math.round(count/total*100))),level=1+Math.floor(points/250),levelProgress=Math.max(0,Math.min(100,Math.round((points%250)/250*100)));
   const target=featuredTarget(),game=getProgrammingGame(activeGame);
-  field("labHeroMode").textContent=target?.resume?"Resume mission":target?.recommendation?"Recommended · "+target.recommendation:game.name;
+  field("labHeroMode").textContent=target?.resume?"Resume mission":target?.challenge?"Teacher Challenge":target?.recommendation?"Recommended · "+target.recommendation:game.name;
   title.textContent=target?target.mission.title.replace(/ · (Guided|Apply|Challenge)$/,""):"Programming missions";
   field("labHeroSub").textContent=target?(target.course.name+" · "+typeNames[missionMeta(target.course,target.mission).type]):"Choose a game and start a mission.";
   field("labHeroProgress").style.width=progress+"%";field("labHeroProgressText").textContent=progress+"%";
-  const button=field("labHeroContinue");button.disabled=!target;button.dataset.course=target?.course.id||"";button.dataset.mission=target?.mission.id||"";button.querySelector("span:last-child").textContent=target?.resume?"Resume":target&&completed(target.mission.id)?"Replay":"Continue";
+  const button=field("labHeroContinue");button.disabled=!target;button.dataset.course=target?.course.id||"";button.dataset.mission=target?.mission.id||"";button.querySelector("span:last-child").textContent=target?.resume?"Resume":target?.challenge?"Play Challenge":target&&completed(target.mission.id)?"Replay":"Continue";
   field("labLevelText").textContent="Lv. "+level;field("labLevelPoints").textContent=(points%250)+" / 250 XP";field("labLevelProgress").style.width=levelProgress+"%";
   field("labBadgeStarter").classList.toggle("is-earned",count>=1);
   field("labBadgeExplorer").classList.toggle("is-earned",count>=Math.min(10,TOTAL_MISSIONS));
@@ -125,7 +139,7 @@ function renderChallenges(){
     list.append(card);
   }
 }
-window.addEventListener("adminerva:practice-packs",event=>{assignedPacks=Array.isArray(event.detail?.packs)?event.detail.packs:[];renderChallenges();});
+window.addEventListener("adminerva:practice-packs",event=>{assignedPacks=Array.isArray(event.detail?.packs)?event.detail.packs:[];renderChallenges();renderHubHero();});
 function celebrateMission(){
   if(guestPage||matchMedia("(prefers-reduced-motion: reduce)").matches)return;
   const layer=field("gamesCelebrationLayer");if(!layer)return;
