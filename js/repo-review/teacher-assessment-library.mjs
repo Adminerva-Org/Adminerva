@@ -85,6 +85,16 @@ async function write(action,details,success) {
 function sourceLabel(source){
   return ({text:"Written response",link:"Submission link",studio:"Adminerva Studio",github:"GitHub / repository evidence"})[source]||source||"Assessment response";
 }
+function studioProfileLabel(profile){
+  return ({
+    auto:"Auto project setup",
+    "java-console":"Java Console",
+    "java-desktop":"Java Desktop",
+    "java-database":"Java + Database",
+    web:"Web",
+    "python-console":"Python Console"
+  })[String(profile||"auto")]||"Auto project setup";
+}
 function actionButton(text,handler,alternate=false) {
   const button=document.createElement("button");
   button.type="button";button.className="tl-action"+(alternate?" alt":"");
@@ -169,7 +179,9 @@ function openLifecycle(task,action){
 }
 function showPreview(item){
   el("tl-preview-heading").textContent=item.title;
-  el("tl-preview-meta").textContent=(item.subject||"General")+" · "+(item.assessmentType||"Assessment")+" · "+sourceLabel(item.defaultSubmissionSource||"text")+" · "+(item.canShare?"Owned by you":"Shared by teacher "+item.ownerUid.slice(0,8))+" · "+item.visibility;
+  el("tl-preview-meta").textContent=(item.subject||"General")+" · "+(item.assessmentType||"Assessment")+" · "+sourceLabel(item.defaultSubmissionSource||"text")+
+    (item.defaultSubmissionSource==="studio"?" · "+studioProfileLabel(item.studioProjectProfile):"")+
+    " · "+(item.canShare?"Owned by you":"Shared by teacher "+item.ownerUid.slice(0,8))+" · "+item.visibility;
   el("tl-preview-description").textContent=item.description||"No description provided.";
   el("tl-preview-instructions").textContent=item.instructions||"No instructions provided.";
   const rubric=el("tl-preview-rubric");rubric.replaceChildren();
@@ -267,6 +279,7 @@ function render(){
     badges.append(subjectBadge,sourceBadge);
     meta.className="tl-muted";meta.textContent=(item.assessmentType||"Assessment")+
       " · "+(personalized(item)?"personalized":"standard")+
+      (item.defaultSubmissionSource==="studio"?" · "+studioProfileLabel(item.studioProjectProfile):"")+
       " · "+(item.canShare?"Owned by you":"Shared by teacher "+item.ownerUid.slice(0,8))+
       " · revision "+item.contentRevision;
     info.append(heading,badges,meta);
