@@ -1,5 +1,5 @@
 /** Shared navigation, account access, reporting and release infrastructure: patch history. */
-import {validReleaseId} from "./release-version.mjs?v=1.3.0";
+import {validReleaseId} from "./release-version.mjs?v=1.3.1";
 const categories=new Set(["New","Updated","Fixed","Revised","Removed"]);
 const roles=["admin","teacher","student"];
 const text=(value,max)=>typeof value==="string"?value.trim().slice(0,max):"";
