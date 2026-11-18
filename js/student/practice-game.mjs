@@ -108,7 +108,7 @@ function renderHubHero(){
   const target=featuredTarget(),game=getProgrammingGame(activeGame);
   field("labHeroMode").textContent=target?.resume?"Resume mission":target?.challenge?"Teacher Challenge":target?.recommendation?"Recommended · "+target.recommendation:game.name;
   title.textContent=target?target.mission.title.replace(/ · (Guided|Apply|Challenge)$/,""):"Programming missions";
-  field("labHeroSub").textContent=target?(target.course.name+" · "+typeNames[missionMeta(target.course,target.mission).type]):"Choose a game and start a mission.";
+  field("labHeroSub").textContent=target?(target.challenge?(target.challengeTitle+" · "+target.course.name):(target.course.name+" · "+typeNames[missionMeta(target.course,target.mission).type])):"Choose a game and start a mission.";
   field("labHeroProgress").style.width=progress+"%";field("labHeroProgressText").textContent=progress+"%";
   const button=field("labHeroContinue");button.disabled=!target;button.dataset.course=target?.course.id||"";button.dataset.mission=target?.mission.id||"";button.querySelector("span:last-child").textContent=target?.resume?"Resume":target?.challenge?"Play Challenge":target&&completed(target.mission.id)?"Replay":"Continue";
   field("labLevelText").textContent="Lv. "+level;field("labLevelPoints").textContent=(points%250)+" / 250 XP";field("labLevelProgress").style.width=levelProgress+"%";
