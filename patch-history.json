@@ -20,16 +20,7 @@
           "media": {
             "src": "assets/releases/3.3.0/assessment-studio-overview.webp",
             "alt": "Assessment Studio workspace with signed-in account details obscured",
-            "caption": "Assessment Studio consolidates assessment authoring and deployment actions in one workspace.",
-            "redactions": [
-              {
-                "x": 88,
-                "y": 4.1,
-                "width": 11.3,
-                "height": 3.3,
-                "label": "Signed-in account identifier"
-              }
-            ]
+            "caption": "Assessment Studio consolidates assessment authoring and deployment actions in one workspace."
           }
         },
         {
@@ -44,16 +35,7 @@
           "media": {
             "src": "assets/releases/3.3.0/personalized-student-task.webp",
             "alt": "Student personalized assessment view with private variant and task content obscured",
-            "caption": "A learner attempt retains its own private task variant and Studio submission.",
-            "redactions": [
-              {
-                "x": 19.5,
-                "y": 39.9,
-                "width": 11.3,
-                "height": 2.7,
-                "label": "Private variant identifier"
-              }
-            ]
+            "caption": "A learner attempt retains its own private task variant and Studio submission."
           }
         },
         {
@@ -77,16 +59,7 @@
           "media": {
             "src": "assets/releases/3.3.0/unified-review-grade.webp",
             "alt": "Unified Review and Grade workflow with school-specific section details obscured",
-            "caption": "Historical Studio assessments now surface from the unified Review & Grade workflow.",
-            "redactions": [
-              {
-                "x": 6.8,
-                "y": 82.9,
-                "width": 37.8,
-                "height": 3.5,
-                "label": "School-specific section details"
-              }
-            ]
+            "caption": "Historical Studio assessments now surface from the unified Review & Grade workflow."
           }
         },
         {
@@ -108,23 +81,7 @@
           "media": {
             "src": "assets/releases/3.3.0/academic-configuration.webp",
             "alt": "Academic Configuration workflow with account and live school details obscured",
-            "caption": "Academic Configuration presents school structure as a guided, reviewable sequence.",
-            "redactions": [
-              {
-                "x": 87.9,
-                "y": 3.6,
-                "width": 11.1,
-                "height": 3.1,
-                "label": "Signed-in account identifier"
-              },
-              {
-                "x": 43.9,
-                "y": 77.4,
-                "width": 30.2,
-                "height": 6.6,
-                "label": "School-specific course offering"
-              }
-            ]
+            "caption": "Academic Configuration presents school structure as a guided, reviewable sequence."
           }
         }
       ],
