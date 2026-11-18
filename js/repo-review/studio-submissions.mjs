@@ -53,7 +53,12 @@ async function load(){
      const access=await getDoc(doc(db,"staff_access",String(user.email||"").toLowerCase()));
      const sections=access.exists()&&access.data().status==="active"?
        [...new Set((access.data().sections||[]).filter(x=>typeof x==="string"&&x))]:[];
-     snapshots=await Promise.all(sections.map(section=>getDocs(query(collection(db,"studio_submissions"),where("section","==",section)))));
+     const ownedAssessments=await getDocs(query(collection(db,"assessments"),where("ownerUid","==",user.uid)));
+     const ownedAssessmentIds=[...new Set(ownedAssessments.docs.map(item=>item.id))];
+     snapshots=await Promise.all([
+       ...sections.map(section=>getDocs(query(collection(db,"studio_submissions"),where("section","==",section)))),
+       ...ownedAssessmentIds.map(assessmentId=>getDocs(query(collection(db,"studio_submissions"),where("assessmentId","==",assessmentId))))
+     ]);
    }
    if(stamp!==session||auth.currentUser?.uid!==user.uid)return;
    const map=new Map();
