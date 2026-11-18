@@ -278,6 +278,7 @@ Make multi-school tenancy operational with school onboarding, academic configura
 | FUT-708 | More integrations | Interoperate with institutional systems | Demand, maintenance cost, privacy and permission model |
 | FUT-709 | Reassess Firebase Auth retirement | Simplify auth infrastructure if beneficial | Session/user continuity and migration risk |
 | FUT-710 | Offline-first workflows | Support learners with intermittent connectivity | Conflict strategy, secure local storage, sync integrity |
+| FUT-711 | Five-slot mobile bottom navigation with elevated center module switcher | Improve one-handed access to Home, contextual menu, current workspace/module, notifications and account controls on phones | Design role-aware slot behavior first; preserve existing shared navigation, safe-area support, accessibility and page content clearance; planning only until approved |
 
 ## 8. Cross-cutting technical and product design requirements
 
@@ -429,6 +430,7 @@ Score each proposed feature on: (a) teacher time saved, (b) direct student learn
 
 | Date | Revision | Change | Source |
 | --- | --- | --- | --- |
+| 2026-11-18 | Added FUT-711: plan a five-slot mobile bottom navigation with an elevated center module/workspace switcher; explicitly kept as a future enhancement, not current implementation. |
 | 2026-11-06 | 0.2 — feature discovery | Added fourteen provisional 5.x classroom, practice, competency, group-work, accommodation, grading and portfolio candidates with dependencies; no implementation approved | 5.x scope discussion |
 | 2026-11-06 | 0.1 — initial planning baseline | Established 5.0 summer transition, Supabase target architecture, 5.x daily workflows, 6.x institutional direction, future backlog, risk rules and open decisions | Adminerva roadmap discussion |
 
