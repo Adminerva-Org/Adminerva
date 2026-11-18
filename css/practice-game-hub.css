@@ -559,6 +559,10 @@ body.lab-page::after{
   margin-top:auto;
 }
 .lab-game-progress .games-meter{height:6px}
+.lab-game-progress .games-meter > span::after,
+.games-challenge-card .games-meter > span::after{
+  display:none;
+}
 .lab-game-progress small{
   margin:0;
   color:#75dbe2;
