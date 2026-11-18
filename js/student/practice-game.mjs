@@ -278,8 +278,8 @@ async function connect(takeover=false){const result=await resumePracticeSession(
 function readAnswer(){
   if(["choice","debugging"].includes(attempt.question.type)){const selected=field("practiceChoices").querySelector("input:checked");return selected?Number(selected.value):null;}
   if(attempt.question.type==="output")return field("labOutputAnswer").value.trim();
-  if(attempt.question.type==="ordering")return answer;
-  return [...field("practiceChoices").querySelectorAll("select")].map(select=>select.value===""?null:Number(select.value));
+  if(["ordering","matching"].includes(attempt.question.type))return answer;
+  return answer;
 }
 function hintMessages(question){
   const hints=[];
@@ -362,7 +362,6 @@ function renderAnswer(){
       question.right.forEach((right,rightIndex)=>{const button=node("button",right,"games-match-choice"+(answer[index]===rightIndex?" is-selected":""));button.type="button";button.setAttribute("aria-pressed",String(answer[index]===rightIndex));button.addEventListener("click",()=>{if(busy||pending)return;const prior=answer.indexOf(rightIndex);if(prior>=0&&prior!==index)answer[prior]=null;answer[index]=answer[index]===rightIndex?null:rightIndex;saveDraft();renderAnswer();});choices.append(button);});
       container.append(row);
     });
-  }
   }
   for(const control of container.querySelectorAll("input,select,button"))if(busy||pending)control.disabled=true;
 }
