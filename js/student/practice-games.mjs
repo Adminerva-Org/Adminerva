@@ -3,7 +3,7 @@
  * the scoring/progress identity so themed views never create duplicate rewards.
  */
 export const PROGRAMMING_GAMES=[
-  {id:"all",name:"Mission Map",icon:"◇",tag:"ALL PROGRAMMING",description:"Browse every Java, Python, Web, and Logic mission in one place."},
+  {id:"all",name:"All Missions",icon:"◇",tag:"BROWSE",description:"Browse every Java, Python, Web, Logic, and OOP mission."},
   {id:"bug-detective",name:"Bug Hunt",icon:"⌁",tag:"DEBUG",description:"Find broken code, choose the repair, and learn why the defect happened."},
   {id:"trace-quest",name:"Code Trace",icon:"⌨",tag:"TRACE",description:"Follow changing values and predict the exact result before revealing it."},
   {id:"algorithm-maze",name:"Code Builder",icon:"⇅",tag:"BUILD",description:"Arrange statements in the right order to make the program reach its goal."},
