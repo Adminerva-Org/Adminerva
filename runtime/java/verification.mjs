@@ -117,7 +117,7 @@ function parseMarkers(stderr){
   const cleaned=lines.filter(line=>!line.startsWith("__ADMINERVA_")).join("\n").trim();
   return {stages,dbChecks,gui,cleanedStderr:cleaned};
 }
-async function prepareFolder(files,database,checks){
+async function prepareFolder(files,database,checks,stdin=""){
   const base=await mkdtemp(path.join(tmpdir(),"adminerva-verify-"));
   for(const [name,source] of Object.entries(files)){
     const full=path.join(base,...name.split("/"));
@@ -128,18 +128,19 @@ async function prepareFolder(files,database,checks){
   }
   const sql=databaseSql(database);
   if(sql)await writeFile(path.join(base,"__adminerva_db.sql"),sql,{mode:0o644});
+  if(String(stdin||"").length)await writeFile(path.join(base,"__adminerva_stdin.txt"),String(stdin).slice(0,6000),{mode:0o644});
   if(checks.length){
     const dir=path.join(base,"__adminerva_db_checks");await mkdir(dir,{recursive:true,mode:0o755});
     for(const check of checks)await writeFile(path.join(dir,String(check.index)+".sql"),check.sql+"\n",{mode:0o644});
   }
   return base;
 }
-export async function runAutomaticVerification({files,entry,mainClass,profile,sourceDigest,database,uiExpectations,databaseChecks,image}){
+export async function runAutomaticVerification({files,entry,mainClass,profile,sourceDigest,database,uiExpectations,databaseChecks,stdin="",image}){
   const computedDigest=digestFiles(files),matchesSubmittedSource=!sourceDigest||computedDigest===sourceDigest;
   if(!matchesSubmittedSource)return {status:"source_mismatch",sourceDigest:computedDigest,matchesSubmittedSource:false,
     compile:{succeeded:null},runtime:{runSucceeded:null},gui:{status:"not_run"},database:{status:"not_run"}};
   const checks=sanitizeChecks(databaseChecks);
-  const folder=await prepareFolder(files,database,checks);
+  const folder=await prepareFolder(files,database,checks,stdin);
   const containerName="adminerva-verify-"+createHash("sha256").update(folder).digest("hex").slice(0,20);
   let stdout="",stderr="",code=null,timedOut=false;
   try{
