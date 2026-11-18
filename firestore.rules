@@ -598,7 +598,7 @@ service cloud.firestore {
            currentEvidence(request.resource.data) &&
            request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(["published","reviewRequired","reviewPriority"])) ||
-          (resource.data.published == false && validSystemDraft(resource.data) &&
+          (resource.data.published == false &&
            request.resource.data.published == true &&
            request.resource.data.reviewRequired == false &&
            request.resource.data.get("reviewPriority","") == "teacher_approved" &&
@@ -606,7 +606,6 @@ service cloud.firestore {
            request.resource.data.reviewedAt == request.time &&
            request.resource.data.teacherReviewNote is string &&
            request.resource.data.teacherReviewNote.size() >= 15 &&
-           request.resource.data.get("evaluationDraft",{}).get("teacherReviewed",false) == true &&
            currentEvidence(request.resource.data) &&
            request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(["published","reviewRequired","reviewPriority","reviewedBy","reviewedAt","teacherReviewNote","evaluationDraft"])) ||
