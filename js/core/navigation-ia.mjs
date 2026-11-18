@@ -261,8 +261,7 @@ export function buildNavigationIA(ctx){
           old("repo-gradebook","Legacy Repository Gradebook","gradebook.html","Historical repository grading surface retained for existing records."),
           old("activity-grader","Activity Grader","activity-grader.html","Specialized repository activity grading utility."),
           old("auto-grader","AutoGrader","grading.html","Legacy automated repository grading utility."),
-          old("learning-follow-up","Learning Follow-up","learning-follow-up.html","Legacy repository learning follow-up records."),
-          old("studio-submissions","Studio Submissions","studio-submissions.html","Specialized Adminerva Studio submission review surface.")
+          old("learning-follow-up","Learning Follow-up","learning-follow-up.html","Legacy repository learning follow-up records.")
         ])])
       ]),
       ws("grading","Grading","class-record.html","Class records, advisory records and grade administration",[
