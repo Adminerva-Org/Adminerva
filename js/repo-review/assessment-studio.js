@@ -1511,6 +1511,11 @@ window.openDeployModal = function (deployId = null) {
   if (!item) return;
 
   updatePresetUI(null);
+  savingDeployment=false;
+  const deploySaveButton=document.getElementById("deploySaveBtn");
+  if(deploySaveButton)deploySaveButton.disabled=false;
+  const deployModalBody=document.getElementById("deployModalBody");
+  if(deployModalBody)deployModalBody.scrollTop=0;
 
   if (deployId) {
     const deploy = (item.deployments || []).find((d) => d.id === deployId);
