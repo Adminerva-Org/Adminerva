@@ -92,7 +92,10 @@ function inferProfile(task,snapshot){
  const swing=declared==="java-desktop"||(declared==="auto"&&(
    taskSaysSwing||(!taskSaysConsole&&(config.runMode==="desktop"||/\b(?:javax\.swing|java\.awt)\b/.test(source)))
  ));
- const taskSaysDatabase=/\b(?:database|jdbc|sql|crud)\b/.test(taskText);
+ const databaseMention=/\b(?:database|jdbc|sql|crud)\b/.test(taskText);
+ const databaseNegated=/\b(?:not required|do not require|without|no)\b[^.\n]{0,80}\b(?:database|jdbc|sql)\b/.test(taskText)||
+   /\b(?:database|jdbc|sql)\b[^.\n]{0,80}\b(?:not required|out of scope)\b/.test(taskText);
+ const taskSaysDatabase=databaseMention&&!databaseNegated;
  const database=declared==="java-database"||(declared==="auto"&&(
    taskSaysDatabase||config.database===true||
    Object.keys((artifacts.database||snapshot.database||{}).tables||{}).length>0||
