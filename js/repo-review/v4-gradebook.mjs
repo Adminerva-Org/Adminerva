@@ -3,7 +3,7 @@ import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.
 import {createTenantSchoolPicker} from "../core/tenant-school-picker.mjs?v=4.0.0";
 import {createGithubEvidenceClient} from "./services/github-evidence-client.mjs?v=1.3.0";
 import {activateConnectionOwner} from "../core/connection-cache.mjs?v=1.3.0";
-import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=1.0.0";
+import {buildGeneralExternalEvaluationPackage,parseGeneralExternalEvaluationResponse} from "../assessment/general-external-evaluation.mjs?v=1.2.0";
 import {generateSchoolContent} from "../core/school-ai.mjs?v=1.3.0";
 import {evaluationJSON} from "./services/request-backoff.mjs?v=1.3.0";
 import {clearEvaluationReview,renderEvaluationReview} from "../assessment/evaluation-review-ui.mjs?v=1.0.0";
@@ -353,7 +353,12 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     updateScore();
   }
   async function evaluationSnapshotForCurrent(){
-    if(currentTask?.submissionSource!=="github")return currentSnapshot;
+    if(currentTask?.submissionSource!=="github"){
+      if(currentTask?.submissionSource==="studio"&&currentTask?.personalizedTask?.enabled===true&&
+         !(currentSnapshot?.personalizedTask?.variantId&&String(currentSnapshot?.personalizedTask?.prompt||"").trim()))
+        throw Error("The assigned personalized scenario is unavailable for this frozen Studio submission. Reload before using AI evaluation.");
+      return currentSnapshot;
+    }
     if(!["approved","reviewed"].includes(currentSnapshot?.status))
       throw Error("Approve the exact frozen GitHub evidence before running AI evaluation.");
     const prefs=auth.currentUser?activateConnectionOwner(auth.currentUser.uid):{};
