@@ -156,7 +156,7 @@ async function inspect(item){
    if(assessment.personalizedTask?.enabled===true){
      try{
        const response=await variantCall({action:"inspect",assessmentId:item.assessmentId,
-         studentId:item.studentId,attempt:item.revision});
+         studentId:item.studentId,attempt:item.revision,expectedVariantId:item.variantId||""});
        assignedVariant=response.data;
        if(item.variantId&&assignedVariant.variantId!==item.variantId)
          throw Error("Submitted variant ID does not match the recorded personalized task.");
