@@ -46,6 +46,10 @@ function parseLegacyRubric(value,maxScore){
   if(rows.length&&rows.length<=20&&maximum>0&&Math.abs(sum-maximum)<0.001)return rows;
   return fallbackRubric(maximum||20);
 }
+function legacySubmissionSource(data={}){
+  return data.schemaVersion===3||data.submissionSource==="studio"||data.assessmentFormat==="studio_code"
+    ?"studio":"github";
+}
 function legacySummary(doc,imported=false){
   const data=doc.data();
   return {
@@ -55,7 +59,12 @@ function legacySummary(doc,imported=false){
     schemaVersion:Number(data.schemaVersion||0)||null,
     personalized:data.assessmentMode==="personalized"||data.personalizedTask?.enabled===true,
     deploymentCount:Array.isArray(data.deployments)?data.deployments.length:0,
-    published:data.published===true,alreadyImported:imported
+    published:data.published===true,submissionSource:legacySubmissionSource(data),
+    deployments:Array.isArray(data.deployments)?data.deployments.slice(0,40).map(item=>({
+      id:clean(item?.id||"",120),section:clean(item?.section||"",160),
+      deadline:item?.deadline||null,deadlineEnabled:item?.deadlineEnabled!==false,
+      allowLateSubmissions:item?.allowLateSubmissions===true
+    })):[],alreadyImported:imported
   };
 }
 function createSchoolAssessmentMigrationService({db}){
@@ -70,9 +79,18 @@ function createSchoolAssessmentMigrationService({db}){
     const imported=await Promise.all(docs.map(doc=>blueprints.doc(targetId(ctx.schoolId,ctx.uid,doc.id)).get()));
     return {items:docs.map((doc,index)=>{
       const migrated=imported[index],data=migrated.exists?migrated.data():{};
-      const complete=migrated.exists&&data.subject==="Computer Programming"&&data.defaultSubmissionSource==="github";
+      const expectedSource=legacySubmissionSource(doc.data());
+      const complete=migrated.exists&&data.subject==="Computer Programming"&&data.defaultSubmissionSource===expectedSource;
       return legacySummary(doc,complete);
     }).sort((a,b)=>a.title.localeCompare(b.title))};
+  }
+  if(input.action==="list_legacy_deployments"){
+    const snap=await db.collection("assessments").where("ownerUid","==",ctx.uid).limit(101).get();
+    if(snap.size===101)deny("resource-exhausted","Legacy deployment list requires pagination.");
+    const items=snap.docs.filter(doc=>Array.isArray(doc.data()?.deployments)&&doc.data().deployments.length>0)
+      .map(doc=>legacySummary(doc,true))
+      .sort((a,b)=>a.title.localeCompare(b.title));
+    return {items};
   }
   if(input.action==="import_legacy"){
     const id=legacyId(input.legacyAssessmentId),sourceRef=db.doc("assessments/"+id),
@@ -82,7 +100,7 @@ function createSchoolAssessmentMigrationService({db}){
     const [source,privateDoc]=await Promise.all([sourceRef.get(),privateRef.get()]);
     if(!source.exists||source.data().ownerUid!==ctx.uid)
       deny("permission-denied","Only your own legacy repository assessments can be imported.");
-    const legacy=source.data(),title=clean(legacy.title,140);
+    const legacy=source.data(),title=clean(legacy.title,140),submissionSource=legacySubmissionSource(legacy);
     if(!title)deny("failed-precondition","The legacy assessment has no usable title.");
     const maximum=Number(legacy.maxScore||20);
     if(!Number.isFinite(maximum)||maximum<=0||maximum>2000)
@@ -115,12 +133,12 @@ function createSchoolAssessmentMigrationService({db}){
         const current=existing.data();
         const patch={};
         if(current.subject!=="Computer Programming")patch.subject="Computer Programming";
-        if(current.defaultSubmissionSource!=="github")patch.defaultSubmissionSource="github";
+        if(current.defaultSubmissionSource!==submissionSource)patch.defaultSubmissionSource=submissionSource;
         if(!current.assessmentType)patch.assessmentType=clean(legacy.type||"Assessment",80);
         if(!current.legacyImport)patch.legacyImport={
           assessmentId:id,assessmentFormat:clean(legacy.assessmentFormat||"",80),
           schemaVersion:Number(legacy.schemaVersion||0)||null,
-          origin:"repository_management",subject:"Computer Programming",defaultSubmissionSource:"github"
+          origin:"repository_management",subject:"Computer Programming",defaultSubmissionSource:submissionSource
         };
         if(Object.keys(patch).length){
           patch.updatedAt=now;
@@ -133,7 +151,7 @@ function createSchoolAssessmentMigrationService({db}){
       tx.create(targetRef,{
         title,description,instructions,rubric,checkingInstructions,
         subject:"Computer Programming",assessmentType:clean(legacy.type||"Assessment",80),
-        defaultSubmissionSource:"github",
+        defaultSubmissionSource:submissionSource,
         personalization:personalized?{
           enabled:true,mode:"ai_blueprint_pool_v1",variantTarget:target,variationGuidance:guidance
         }:{enabled:false,mode:"standard",variantTarget:0,variationGuidance:""},
@@ -143,7 +161,7 @@ function createSchoolAssessmentMigrationService({db}){
         legacyImport:{
           assessmentId:id,assessmentFormat:clean(legacy.assessmentFormat||"",80),
           schemaVersion:Number(legacy.schemaVersion||0)||null,
-          origin:"repository_management",subject:"Computer Programming",defaultSubmissionSource:"github"
+          origin:"repository_management",subject:"Computer Programming",defaultSubmissionSource:submissionSource
         },
         createdAt:now,updatedAt:now
       });
