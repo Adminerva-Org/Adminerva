@@ -89,14 +89,14 @@ function inferProfile(task,snapshot){
  // who submits Swing code to a console task must not change the verifier profile.
  const taskSaysConsole=/\bconsole\b/.test(taskText)&&!/\b(?:swing|desktop gui|graphical user interface required)\b/.test(taskText);
  const taskSaysSwing=/\b(?:java swing|swing gui|desktop application|desktop gui)\b/.test(taskText);
- const swing=declared==="java-desktop"||(declared==="auto"&&(
+ const swing=["java-desktop","java-desktop-database"].includes(declared)||(declared==="auto"&&(
    taskSaysSwing||(!taskSaysConsole&&(config.runMode==="desktop"||/\b(?:javax\.swing|java\.awt)\b/.test(source)))
  ));
  const databaseMention=/\b(?:database|jdbc|sql|crud)\b/.test(taskText);
  const databaseNegated=/\b(?:not required|do not require|without|no)\b[^.\n]{0,80}\b(?:database|jdbc|sql)\b/.test(taskText)||
    /\b(?:database|jdbc|sql)\b[^.\n]{0,80}\b(?:not required|out of scope)\b/.test(taskText);
  const taskSaysDatabase=databaseMention&&!databaseNegated;
- const database=declared==="java-database"||(declared==="auto"&&(
+ const database=["java-database","java-desktop-database"].includes(declared)||(declared==="auto"&&(
    taskSaysDatabase||config.database===true||
    Object.keys((artifacts.database||snapshot.database||{}).tables||{}).length>0||
    /\b(?:java\.sql|DriverManager|PreparedStatement|ResultSet)\b/.test(source)
