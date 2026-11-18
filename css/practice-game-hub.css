@@ -2389,6 +2389,6 @@ body.lab-page::after{
   .games-rail-link{flex-basis:70px;padding:.4rem;font-size:.54rem}
   .lab-game-card{flex-basis:142px}
   .lab-mission-panel{padding:1rem .75rem}
-  .games-visual-copy small{display:none}
+  .game-visual-copy small{display:none}
   .lab-mission-actions :is(button,a){width:100%;flex-basis:100%}
 }
