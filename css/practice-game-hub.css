@@ -1795,14 +1795,16 @@ body.lab-page::after{
   .games-shell{display:block}
   .games-rail{
     position:sticky;
-    top:calc(var(--games-header-offset,56px) + .35rem);
+    top:var(--games-header-offset,0px);
     z-index:20;
     display:flex;
     gap:.35rem;
     overflow-x:auto;
     margin-bottom:.7rem;
     padding:.4rem;
-    border-radius:1rem;
+    border-top:0;
+    border-radius:0 0 1rem 1rem;
+    box-shadow:0 14px 32px rgba(0,0,0,.22),inset 0 1px rgba(255,255,255,.025);
   }
   .games-rail-link{
     flex:1 0 76px;

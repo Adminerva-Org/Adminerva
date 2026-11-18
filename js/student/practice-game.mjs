@@ -177,24 +177,33 @@ function celebrateMission(){
   requestAnimationFrame(()=>layer.classList.add("is-active"));
   setTimeout(()=>{layer.classList.remove("is-active");layer.replaceChildren();},950);
 }
+let gamesHeaderOffsetFrame=0;
 function syncGamesHeaderOffset(){
-  const nav=document.querySelector("#adminerva-nav nav"),height=Math.max(0,Math.ceil(nav?.getBoundingClientRect().height||0));
-  document.documentElement.style.setProperty("--games-header-offset",height+"px");
+  const nav=document.querySelector("#adminerva-nav nav"),rect=nav?.getBoundingClientRect();
+  const offset=rect?Math.max(0,Math.ceil(Math.min(rect.bottom,rect.height))):0;
+  document.documentElement.style.setProperty("--games-header-offset",offset+"px");
+}
+function queueGamesHeaderOffset(){
+  if(gamesHeaderOffsetFrame)return;
+  gamesHeaderOffsetFrame=requestAnimationFrame(()=>{gamesHeaderOffsetFrame=0;syncGamesHeaderOffset();});
 }
 function watchGamesHeader(){
   const root=document.getElementById("adminerva-nav");let resizeObserver=null;
   const attach=()=>{
     syncGamesHeaderOffset();
     const nav=root?.querySelector("nav");if(!nav)return false;
-    if("ResizeObserver" in window){resizeObserver?.disconnect();resizeObserver=new ResizeObserver(syncGamesHeaderOffset);resizeObserver.observe(nav);}
+    if("ResizeObserver" in window){resizeObserver?.disconnect();resizeObserver=new ResizeObserver(queueGamesHeaderOffset);resizeObserver.observe(nav);}
     return true;
   };
   if(!attach()&&root&&"MutationObserver" in window){
     const observer=new MutationObserver(()=>{if(attach())observer.disconnect();});
     observer.observe(root,{childList:true,subtree:true});
   }
-  window.addEventListener("resize",syncGamesHeaderOffset,{passive:true});
-  window.addEventListener("orientationchange",syncGamesHeaderOffset,{passive:true});
+  window.addEventListener("scroll",queueGamesHeaderOffset,{passive:true});
+  window.addEventListener("resize",queueGamesHeaderOffset,{passive:true});
+  window.addEventListener("orientationchange",queueGamesHeaderOffset,{passive:true});
+  window.visualViewport?.addEventListener("resize",queueGamesHeaderOffset,{passive:true});
+  window.visualViewport?.addEventListener("scroll",queueGamesHeaderOffset,{passive:true});
 }
 function enhanceGamesHub(){
   const app=field("practiceApp"),existing=[...app.children],shell=node("div",undefined,"games-shell"),rail=node("nav",undefined,"games-rail"),content=node("div",undefined,"games-content");
