@@ -11,16 +11,16 @@ const form=el("tl-create"),list=el("tl-list"),shareDialog=el("tl-share-dialog"),
   previewDialog=el("tl-preview-dialog"),personalizationDialog=el("tl-personalization-dialog"),legacyDialog=el("tl-legacy-dialog"),editorDialog=el("tl-editor-dialog");
 const requestedFilter=new URL(location.href).searchParams.get("view");
 let items=[],deployments=[],filter=["mine","shared","school","deployed"].includes(requestedFilter)?requestedFilter:"mine",editing=null,sharing=null,deploying=null,deployRequestKey=null,
-  lifecycleTask=null,lifecycleAction=null,pendingWrite=false,personalizing=null,personalizationState=null;
+  lifecycleTask=null,lifecycleAction=null,deploymentSettingsTask=null,pendingWrite=false,personalizing=null,personalizationState=null;
 const say=message=>status.textContent=message;
 const picker=createTenantSchoolPicker({
   host:el("tl-school-switcher"),status,
   onBeforeChange:async()=>{
     if(pendingWrite)throw new Error("Finish saving this assessment before switching schools.");
     items=[];deployments=[];editing=null;sharing=null;deploying=null;deployRequestKey=null;
-    lifecycleTask=null;lifecycleAction=null;list.replaceChildren();workspace.hidden=true;
+    lifecycleTask=null;lifecycleAction=null;deploymentSettingsTask=null;list.replaceChildren();workspace.hidden=true;
     shareDialog.close?.();previewDialog.close?.();personalizationDialog.close?.();legacyDialog?.close?.();editorDialog?.close?.();
-    el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();
+    el("tl-deploy-dialog").close?.();el("tl-lifecycle-dialog").close?.();el("tl-deployment-settings-dialog").close?.();
     form.reset();togglePersonalizationFields();
   },
   onReady:scope=>{
@@ -177,6 +177,16 @@ function openLifecycle(task,action){
   }else form.elements.newDueAt.required=false;
   dialog.showModal();
 }
+function openDeploymentSettings(task){
+  deploymentSettingsTask=task;
+  const dialog=el("tl-deployment-settings-dialog"),form=el("tl-deployment-settings-form");
+  form.reset();
+  el("tl-deployment-settings-title").textContent=task.title+" · "+sourceLabel(task.submissionSource);
+  if(task.opensAt)form.elements.opensAt.value=localDateInput(new Date(task.opensAt));
+  if(task.dueAt)form.elements.dueAt.value=localDateInput(new Date(task.dueAt));
+  form.elements.allowLateSubmissions.checked=task.allowLateSubmissions===true;
+  dialog.showModal();
+}
 function showPreview(item){
   el("tl-preview-heading").textContent=item.title;
   el("tl-preview-meta").textContent=(item.subject||"General")+" · "+(item.assessmentType||"Assessment")+" · "+sourceLabel(item.defaultSubmissionSource||"text")+
@@ -219,6 +229,7 @@ function render(){
         (task.submissionSource==="studio"?" · "+studioProfileLabel(task.studioProjectProfile):"")+
         " · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
         new Date(task.dueAt).toLocaleString():"not scheduled")+
+        (task.allowLateSubmissions?" · late submissions allowed":"")+
         (handedOver?" · review responsibility handed over; original blueprint ownership unchanged":"");
       text.append(heading,meta);
       const controls=document.createElement("div");controls.className="tl-actions";
@@ -235,6 +246,7 @@ function render(){
           }).toString();
           classRecord.textContent="Add to Class Record";controls.append(classRecord);
         }
+        controls.append(actionButton("Deployment settings",()=>openDeploymentSettings(task),true));
       }
       if(["active","closed"].includes(lifecycle)){
         controls.append(actionButton(task.published?"Unpublish":"Publish",()=>void setPublication(task,!task.published),!task.published));
@@ -286,6 +298,11 @@ function render(){
     info.append(heading,badges,meta);
     const controls=document.createElement("div");controls.className="tl-actions";
     controls.append(actionButton("Preview",()=>showPreview(item),true));
+    if(item.canShare&&item.legacyImport?.assessmentId){
+      const legacy=document.createElement("a");legacy.className="tl-action alt";
+      legacy.href="repository-assessment-studio.html?legacyAssessment="+encodeURIComponent(item.legacyImport.assessmentId);
+      legacy.textContent="Edit legacy assessment";controls.append(legacy);
+    }
     if(item.canShare){
       controls.append(actionButton("Edit",()=>edit(item),true));
       controls.append(actionButton("Share",()=>void share(item)));
@@ -507,6 +524,35 @@ async function prepareDeployment(item){
     if(select.options.length===1)say("Your school administrator must assign you a class offering before deployment.");
   }catch(error){say(error.message||"Could not load assigned classes.");}
 }
+el("tl-deployment-settings-cancel").addEventListener("click",()=>{
+  deploymentSettingsTask=null;el("tl-deployment-settings-dialog").close();
+});
+el("tl-deployment-settings-form").addEventListener("submit",event=>{
+  event.preventDefault();if(!deploymentSettingsTask||pendingWrite)return;
+  const form=event.currentTarget;if(!form.reportValidity())return;
+  const opensAt=new Date(String(form.elements.opensAt.value||"")),
+    dueAt=new Date(String(form.elements.dueAt.value||""));
+  if(!Number.isFinite(opensAt.getTime())||!Number.isFinite(dueAt.getTime())||dueAt<=opensAt){
+    say("Choose a valid opening time and later deadline.");return;
+  }
+  const task=deploymentSettingsTask,details={
+    taskId:task.taskId,expectedRevision:task.revision||1,
+    opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
+    allowLateSubmissions:form.elements.allowLateSubmissions.checked===true,
+    reason:String(form.elements.reason.value||"")
+  };
+  void (async()=>{
+    pendingWrite=true;[...form.elements].forEach(control=>control.disabled=true);
+    try{
+      say("Saving audited deployment settings…");
+      await performScoped(scopedAssessmentApi,"update_settings",details);
+      el("tl-deployment-settings-dialog").close();deploymentSettingsTask=null;
+      await refresh();
+      say(task.title+" deployment settings updated.");
+    }catch(error){say(error?.message||"Deployment settings could not be saved.");}
+    finally{pendingWrite=false;[...form.elements].forEach(control=>control.disabled=false);}
+  })();
+});
 el("tl-lifecycle-cancel").addEventListener("click",()=>{
   lifecycleTask=null;lifecycleAction=null;el("tl-lifecycle-dialog").close();
 });
@@ -564,7 +610,8 @@ el("tl-deploy-form").addEventListener("submit",event=>{
       const task=await performScoped(scopedAssessmentApi,"deploy",{
         blueprintId:deploying.id,offeringId:String(fields.get("offeringId")||""),
         submissionSource:personalized(deploying)?"studio":String(fields.get("submissionSource")||""),
-        opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),requestKey:key
+        opensAt:opensAt.toISOString(),dueAt:dueAt.toISOString(),
+        allowLateSubmissions:fields.get("allowLateSubmissions")==="on",requestKey:key
       });
       say(task.alreadyExisted?"This assessment was already prepared. No duplicate created.":
         "Assessment prepared privately for this class. Publish it when you are ready for students to see it.");
