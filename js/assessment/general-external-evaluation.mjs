@@ -35,6 +35,7 @@ function compactEvidence(source,snapshot={}){
   if(source==="studio")return {
     type:"adminerva_studio_snapshot",
     version:Number(snapshot.version||0),
+    contentDigest:text(snapshot.contentDigest||snapshot.snapshotHash,128),
     language:text(snapshot.sourceLanguage||snapshot.language,80),
     files:Array.isArray(snapshot.files)?snapshot.files.slice(0,80).map(file=>({
       path:text(file?.path,300),content:String(file?.content||"").slice(0,60000)
@@ -85,6 +86,9 @@ export function responseShape(task={}){
 export function buildGeneralExternalEvaluationPackage({task={},snapshot={},checkingInstructions=""}={}){
   const assessment=compactTask(task);
   if(!assessment.rubric.length)throw Error("This assessment has no rubric.");
+  const rubricTotal=assessment.rubric.reduce((sum,row)=>sum+Number(row.points||0),0);
+  if(!Number.isFinite(assessment.maxScore)||assessment.maxScore<=0||Math.abs(rubricTotal-assessment.maxScore)>0.000001)
+    throw Error("The published rubric does not reconcile with the assessment maximum. Fix the rubric before running AI evaluation.");
   if(!["text","link","studio","github"].includes(assessment.submissionSource))
     throw Error("This assessment evidence type is not supported by the shared evaluator.");
   const evidence=compactEvidence(assessment.submissionSource,snapshot);
@@ -117,11 +121,15 @@ export function buildGeneralExternalEvaluationPackage({task={},snapshot={},check
     "Evaluate this anonymous learner submission against the published assessment instructions and rubric.",
     "",
     "REQUIRED RULES",
-    "1. Keep rubric criteria in exactly the published order.",
+    "1. Keep rubric criteria in exactly the published order and preserve each criterion name exactly.",
     "2. awardedPoints + pendingPoints must never exceed the criterion maximum.",
     "3. Use pendingPoints only for genuinely unresolved evidence; confirmed deficiencies are unearned points, not pending credit.",
-    "4. Return only one valid JSON object matching REQUIRED RESPONSE JSON. No Markdown fences or surrounding commentary.",
-    "5. The result remains a teacher draft until explicitly published in Adminerva.",
+    "4. Inspect every supplied file relevant to each criterion. Base comments and rationales on concrete file/class/method evidence, not keyword presence alone.",
+    "5. For code submissions, distinguish static evidence from verified runtime behavior. Do not claim that code compiles, runs, or produces output unless the package contains execution evidence. Obvious compile blockers visible in the frozen files are confirmed deficiencies, not pending uncertainty.",
+    "6. Requirements that are not separate rubric criteria may inform whether a published criterion is functional or meaningful, but never create extra point categories or change criterion weights.",
+    "7. Do not infer authorship, plagiarism, misconduct, or AI use from coding style or identifiers.",
+    "8. Return only one valid JSON object matching REQUIRED RESPONSE JSON. No Markdown fences or surrounding commentary.",
+    "9. The result remains a teacher draft until explicitly published in Adminerva.",
     "",
     "REQUIRED RESPONSE JSON",
     JSON.stringify(responseShape(task),null,2),
@@ -146,20 +154,27 @@ export function parseGeneralExternalEvaluationResponse(raw,{task={}}={}){
   const rubric=Array.isArray(task.rubric)?task.rubric:[];
   if(!Array.isArray(parsed.criteria)||parsed.criteria.length!==rubric.length)
     throw Error("The response must include one result for every rubric criterion.");
+  const allowedConfidence=new Set(["high","moderate","teacher_confirmation"]);
   const criteria=parsed.criteria.map((item,index)=>{
+    const expectedName=String(rubric[index]?.name||"");
+    const returnedName=String(item?.name||"");
     const maximum=Number(rubric[index]?.points||0);
+    const declaredMaximum=item?.maximumPoints===undefined?maximum:Number(item.maximumPoints);
     const awarded=Number(item?.awardedPoints),pending=Number(item?.pendingPoints||0);
+    const comment=text(item?.comment,1000),rationale=text(item?.rationale,1500);
+    const confidence=text(item?.confidence,40);
+    if(returnedName!==expectedName)
+      throw Error("Criterion "+(index+1)+" does not match the published rubric name/order.");
+    if(!Number.isFinite(declaredMaximum)||Math.abs(declaredMaximum-maximum)>0.000001)
+      throw Error("Criterion "+(index+1)+" does not match the published maximum.");
     if(!Number.isFinite(awarded)||!Number.isFinite(pending)||awarded<0||pending<0||
        awarded+pending>maximum+0.000001)
       throw Error("Criterion "+(index+1)+" has invalid points.");
-    return {
-      awardedPoints:awarded,pendingPoints:pending,
-      comment:text(item?.comment||item?.rationale,1000)
-    };
+    if(!comment||!rationale)throw Error("Criterion "+(index+1)+" must include evidence-based comment and rationale.");
+    if(!allowedConfidence.has(confidence))throw Error("Criterion "+(index+1)+" has an invalid confidence value.");
+    return {awardedPoints:awarded,pendingPoints:pending,comment,rationale,confidence};
   });
-  return {
-    criteria,
-    feedback:text(parsed.feedback,5000),
-    limitations:text(parsed.limitations,3000)
-  };
+  const feedback=text(parsed.feedback,5000),limitations=text(parsed.limitations,3000);
+  if(!feedback)throw Error("The external evaluation must include overall feedback.");
+  return {criteria,feedback,limitations};
 }
