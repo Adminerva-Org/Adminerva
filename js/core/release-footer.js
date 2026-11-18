@@ -13,6 +13,7 @@
     return {build:raw.length>12?raw.slice(0,12):raw,manifest:new URL("../../site-release.json",url).href};
   }
   function ensureFooterStyle(){
+    if(document.querySelector('link[href*="css/adminerva-ui.css"]'))return;
     if(document.getElementById("adminerva-release-footer-style"))return;
     const style=document.createElement("style");
     style.id="adminerva-release-footer-style";
