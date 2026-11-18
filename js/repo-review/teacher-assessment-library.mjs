@@ -216,6 +216,7 @@ function render(){
       meta.className="tl-muted";
       const handedOver=task.ownerUid&&task.reviewerUid&&task.ownerUid!==task.reviewerUid;
       meta.textContent=(task.published?"Published":"Private deployment")+" · "+sourceLabel(task.submissionSource)+
+        (task.submissionSource==="studio"?" · "+studioProfileLabel(task.studioProjectProfile):"")+
         " · "+lifecycle+" · revision "+(task.revision||1)+" · due "+(task.dueAt?
         new Date(task.dueAt).toLocaleString():"not scheduled")+
         (handedOver?" · review responsibility handed over; original blueprint ownership unchanged":"");
