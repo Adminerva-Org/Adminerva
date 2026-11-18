@@ -386,8 +386,33 @@ function renderAnswer(){
   for(const control of container.querySelectorAll("input,select,button"))if(busy||pending)control.disabled=true;
 }
 function renderMechanicAid(question){
-  const panel=field("labMechanicPanel");panel.replaceChildren();panel.hidden=true;panel.dataset.kind="";panel.classList.remove("is-trace","is-debug");
+  const panel=field("labMechanicPanel");panel.replaceChildren();panel.hidden=true;panel.dataset.kind="";panel.classList.remove("is-trace","is-debug","is-interface","is-data");
   field("practiceCode").hidden=!question.code;
+  const gameId=field("practiceMissionPanel")?.dataset.game||missionGameId(course,mission);
+  if(!guestPage&&gameId==="interface-repair"){
+    const preview=node("section",undefined,"games-interface-preview"),bar=node("div",undefined,"games-interface-bar"),dots=node("span","●  ●  ●"),label=node("strong","Interface Preview");
+    bar.append(dots,label);preview.append(bar);
+    const source=String(question.code||""),hasMarkup=/<[a-z][\s\S]*>/i.test(source);
+    if(hasMarkup){
+      const frame=document.createElement("iframe");frame.className="games-interface-frame";frame.title="Interface Repair mission preview";frame.sandbox="allow-scripts";frame.srcdoc=/<!doctype|<html/i.test(source)?source:"<!doctype html><html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font:14px system-ui;margin:16px;color:#172033}*{box-sizing:border-box}</style><body>"+source+"</body></html>";preview.append(frame);
+    }else{
+      const empty=node("div",undefined,"games-interface-empty");empty.append(node("span","▤"),node("span","Use the code and prompt to identify the interface repair."));preview.append(empty);
+    }
+    panel.append(preview);panel.hidden=false;panel.classList.add("is-interface");
+  }
+  if(!guestPage&&gameId==="data-detective"){
+    const board=node("section",undefined,"games-data-board"),head=node("div",undefined,"games-data-head");head.append(node("span","DATA DETECTIVE","lab-mechanic-kicker"),node("strong","Evidence board"));board.append(head);
+    const source=String(question.code||""),tokens=[...new Set((source.match(/-?\d+(?:\.\d+)?/g)||[]))].slice(0,6),signals=[];
+    if(/\[[^\]]*\]|values\[|list\[|array/i.test(source))signals.push("INDEX");
+    if(/length|len\s*\(/i.test(source))signals.push("LENGTH");
+    if(/min\s*\(|max\s*\(|Math\.(?:min|max)/i.test(source))signals.push("BOUND");
+    if(/>=|<=|==|!=|>|</.test(source))signals.push("CHECK");
+    if(/\+|-|\*|\/|%/.test(source))signals.push("OPERATION");
+    const evidence=node("div",undefined,"games-data-evidence");
+    const items=[...tokens.map(value=>"VALUE "+value),...signals].slice(0,8);
+    (items.length?items:["READ","TRACE","VERIFY"]).forEach(value=>{const chip=node("button",value,"games-data-chip");chip.type="button";chip.setAttribute("aria-pressed","false");chip.addEventListener("click",()=>{const marked=chip.getAttribute("aria-pressed")!=="true";chip.setAttribute("aria-pressed",String(marked));chip.classList.toggle("is-marked",marked);});evidence.append(chip);});
+    const note=node("p","Mark the evidence you think matters, then solve the case from the code.","games-data-note");board.append(evidence,note);panel.append(board);panel.hidden=false;panel.classList.add("is-data");
+  }
   if(!guestPage&&mission?.oop===true){
     const blueprints={
       "oop-classes":["CLASS","creates","OBJECT"],
