@@ -117,7 +117,7 @@ function developerFocus(release){
   if(!changes.length)return null;
   const section=node("aside","","av-release-development");
   section.append(node("span","Not included in this release","av-release-development-label"),node("h3","Still in development","av-release-development-title"));
-  const intro=node("p","These areas have active foundations or previews, but they are not being presented as completed 3.3.0 features.","av-release-development-intro");
+  const intro=node("p","These areas have active foundations or previews, but they are not being presented as completed features in this release.","av-release-development-intro");
   section.append(intro);
   const list=node("ul","","av-release-development-list");
   for(const change of changes){
