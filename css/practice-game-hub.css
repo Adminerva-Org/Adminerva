@@ -1006,7 +1006,7 @@ body.lab-page::after{
 }
 .games-sprint-hud{
   display:grid;
-  grid-template-columns:auto minmax(0,1fr) auto;
+  grid-template-columns:42px auto minmax(0,1fr) auto;
   align-items:center;
   gap:.8rem;
   margin:.65rem 0 .9rem;
@@ -1018,7 +1018,27 @@ body.lab-page::after{
     rgba(8,26,42,.64);
 }
 .games-sprint-hud[hidden]{display:none}
-.games-sprint-hud>div:first-child{
+.games-sprint-graphic{
+  width:38px;
+  height:38px;
+  display:grid;
+  place-items:center;
+  border-radius:12px;
+  border:1px solid rgba(89,158,255,.24);
+  background:rgba(89,158,255,.08);
+  color:#8ab8ff;
+  box-shadow:0 0 18px rgba(89,158,255,.07);
+  animation:gameSprintPulse 2.4s ease-in-out infinite;
+}
+.games-sprint-graphic .game-visual-svg{
+  width:24px;
+  height:24px;
+}
+@keyframes gameSprintPulse{
+  0%,100%{transform:translateY(0);box-shadow:0 0 18px rgba(89,158,255,.06)}
+  50%{transform:translateY(-2px);box-shadow:0 0 25px rgba(89,158,255,.13)}
+}
+.games-sprint-hud>div:nth-child(2){
   display:grid;
   gap:.1rem;
 }
@@ -1026,7 +1046,7 @@ body.lab-page::after{
   color:#dcecff;
   font-size:.72rem;
 }
-.games-sprint-hud>div:first-child span{
+.games-sprint-hud>div:nth-child(2) span{
   color:#83a9d4;
   font-size:.55rem;
   font-weight:800;
@@ -1684,6 +1704,9 @@ body.lab-page::after{
 .game-visual-builder{--game-visual-rgb:241,199,91}
 .game-visual-match{--game-visual-rgb:85,214,177}
 .game-visual-oop{--game-visual-rgb:159,120,255}
+.game-visual-trace{--game-visual-rgb:66,225,237}
+.game-visual-interface{--game-visual-rgb:74,201,230}
+.game-visual-data{--game-visual-rgb:103,205,165}
 .game-visual-glyph{
   width:54px;
   height:54px;
@@ -1987,7 +2010,8 @@ body.lab-page::after{
   .games-oop-blueprint .games-oop-node,
   .games-oop-blueprint .games-oop-link,
   .games-oop-blueprint .games-oop-node::before,
-  .games-builder-track span::after{animation:none!important}
+  .games-builder-track span::after,
+  .games-sprint-graphic{animation:none!important}
 }
 
 /* Existing practice markup remains the functional layout container. */
@@ -2030,9 +2054,9 @@ body.lab-page::after{
 }
 
 @media(max-width:560px){
-  .games-sprint-hud{grid-template-columns:1fr auto;gap:.55rem}
+  .games-sprint-hud{grid-template-columns:38px 1fr auto;gap:.55rem}
   .games-sprint-pips{grid-column:1/-1;grid-row:2;justify-content:flex-start}
-  .games-sprint-hud button{grid-column:2;grid-row:1}
+  .games-sprint-hud button{grid-column:3;grid-row:1}
 }
 
 @media(max-width:560px){
