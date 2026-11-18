@@ -20,13 +20,15 @@ body.lab-page{
     linear-gradient(180deg,#071724 0%,#06111b 100%);
   color:var(--games-text);
   min-height:100vh;
+  position:relative;
+  isolation:isolate;
 }
 body.lab-page::before,
 body.lab-page::after{
   content:"";
   position:fixed;
   pointer-events:none;
-  z-index:-1;
+  z-index:0;
   opacity:.36;
 }
 body.lab-page::before{
@@ -47,6 +49,7 @@ body.lab-page::after{
     radial-gradient(ellipse at 50% 115%,rgba(66,225,237,.25),transparent 54%),
     linear-gradient(175deg,transparent 66%,rgba(66,225,237,.09) 67% 68%,transparent 69%);
 }
+#practiceApp,.lab-footer,#practiceAssignedPacks{position:relative;z-index:1}
 #practiceApp{
   width:min(1540px,100%);
   padding:clamp(.8rem,2vw,1.5rem);
