@@ -2285,6 +2285,13 @@ body.lab-page::after{
 
 /* Mobile hardening for Student Games. */
 @media(max-width:760px){
+  #practiceApp{
+    padding:
+      max(.65rem,env(safe-area-inset-top,0px))
+      max(.65rem,env(safe-area-inset-right,0px))
+      max(.65rem,env(safe-area-inset-bottom,0px))
+      max(.65rem,env(safe-area-inset-left,0px));
+  }
   #gamesHome,#labGameCatalog,#gamesChallenges,#gamesProgress,.lab-mission-panel{
     scroll-margin-top:calc(var(--games-header-offset,56px) + 64px);
   }
