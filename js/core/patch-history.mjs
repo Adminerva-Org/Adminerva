@@ -27,6 +27,27 @@ const cleanImpact=value=>{
   return Object.keys(cleaned).length?cleaned:null;
 };
 
+const cleanReleaseMedia=value=>{
+  if(!value||typeof value!=="object"||Array.isArray(value))return null;
+  const src=text(value.src,240).replace(/^\.\//,"");
+  if(!src||src.includes("..")||!/^assets\/releases\/[A-Za-z0-9._/-]+\.(?:png|jpe?g|webp|avif)$/i.test(src))return null;
+  const alt=text(value.alt,180);
+  if(!alt)return null;
+  const caption=text(value.caption,240);
+  return {src,alt,...(caption?{caption}:{})};
+};
+const cleanHighlights=value=>{
+  if(!Array.isArray(value))return [];
+  return value.slice(0,6).flatMap(item=>{
+    const title=text(item?.title,100),summary=text(item?.summary,500);
+    if(!title||!summary)return [];
+    const audience=cleanAudience(item?.audience)||["all"],
+      why=text(item?.why,400),
+      media=cleanReleaseMedia(item?.media);
+    return [{title,summary,audience,...(why?{why}:{}),...(media?{media}:{})}];
+  });
+};
+
 export function inferLegacyChangeAudience(change){
   const area=text(change?.area,80).toLowerCase();
   // Historical release entries predate audience metadata. Prefer conservative
@@ -69,7 +90,8 @@ export function releaseForRole(release,role){
     .map(change=>({...change,...(change.impact?{impact:Object.fromEntries(
       Object.entries(change.impact).filter(([audience])=>audience===role||audience==="all")
     )}:{})}));
-  return changes.length?{...release,changes}:null;
+  const highlights=(release.highlights||[]).filter(highlight=>audienceMatches(highlight.audience,role));
+  return changes.length?{...release,changes,...(release.highlights?{highlights}:{})}:null;
 }
 const releaseAudience=changes=>{
   const all=changes.flatMap(change=>changeAudience(change));
@@ -89,8 +111,9 @@ export function publicReleases(data,now=Date.now()){
         audience:changeAudience(change),...(cleanImpact(change.impact)?{impact:cleanImpact(change.impact)}:{})}));
     if(!changes.length||!text(release.title,120)||!text(release.summary,500))return [];
     versions.add(release.version);
-    const displayVersion=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(release.displayVersion||"")?release.displayVersion:null;
-    return [{version:release.version,...(displayVersion?{displayVersion}:{}),releasedAt:release.releasedAt,...(publishedAt?{publishedAt}:{}),title:text(release.title,120),summary:text(release.summary,500),changes,audience:releaseAudience(changes)}];
+    const displayVersion=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(release.displayVersion||"")?release.displayVersion:null,
+      highlights=cleanHighlights(release.highlights);
+    return [{version:release.version,...(displayVersion?{displayVersion}:{}),releasedAt:release.releasedAt,...(publishedAt?{publishedAt}:{}),title:text(release.title,120),summary:text(release.summary,500),changes,audience:releaseAudience(changes),...(highlights.length?{highlights}:{})}];
   }).sort((first,second)=>effectiveReleaseTime(second)-effectiveReleaseTime(first)||second.version.localeCompare(first.version,undefined,{numeric:true}));
 }
 export function releaseNotifications(releases,role=null){

@@ -1,6 +1,325 @@
 {
   "releases": [
     {
+      "version": "3.3.0",
+      "status": "published",
+      "public": true,
+      "releasedAt": "2026-11-19",
+      "publishedAt": "2026-11-19T00:00:00+08:00",
+      "title": "Personalized assessments, unified review and assessment-aware Studio",
+      "summary": "Adminerva 3.3.0 connects assessment authoring, personalized learner tasks, assessment-owned Studio projects, frozen submission review and teacher-controlled evaluation more closely, while strengthening Academic Configuration and preserving historical Studio evidence.",
+      "highlights": [
+        {
+          "title": "A clearer Assessment Studio",
+          "summary": "Teachers can manage owned assessments, shared resources, school-library items and deployed tasks from a more unified authoring workspace.",
+          "why": "Assessment creation, personalization and deployment now read as one lifecycle instead of separate tools.",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "media": {
+            "src": "assets/releases/3.3.0/assessment-studio-overview.webp",
+            "alt": "Assessment Studio showing teacher-owned assessments and deployment actions",
+            "caption": "Assessment Studio consolidates assessment authoring and deployment actions in one workspace."
+          }
+        },
+        {
+          "title": "Personalized assessments",
+          "summary": "Learners can receive a frozen personalized Adminerva Studio task for an individual attempt while teachers preserve a common competency target and rubric.",
+          "why": "The scenario can vary per learner without changing the learning outcome being assessed.",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "media": {
+            "src": "assets/releases/3.3.0/personalized-student-task.webp",
+            "alt": "Student assessment view showing a personalized Adminerva Studio task and submitted revision",
+            "caption": "A learner attempt retains its own private task variant and Studio submission."
+          }
+        },
+        {
+          "title": "Assessment-aware Studio setup",
+          "summary": "Studio-based assessments can define or conservatively infer the project setup needed by the task, including practical-exam workflows.",
+          "why": "Students should open an assessment-owned project that is already aligned with the task instead of recreating setup manually.",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ]
+        },
+        {
+          "title": "Unified Review & Grade",
+          "summary": "Historical Studio deployments and newer assessment evidence now enter a clearer common review workflow while preserving access to frozen legacy submissions.",
+          "why": "Teachers should not need a separate grading system for every evidence source Adminerva has supported over time.",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "media": {
+            "src": "assets/releases/3.3.0/unified-review-grade.webp",
+            "alt": "Review and Grade showing a historical Adminerva Studio assessment available from the unified workflow",
+            "caption": "Historical Studio assessments now surface from the unified Review & Grade workflow."
+          }
+        },
+        {
+          "title": "Teacher-controlled evaluation",
+          "summary": "Adminerva internal evaluation and validated external evaluation remain separate review paths until the teacher deliberately applies a suggestion to the grade draft.",
+          "why": "Evaluation tools can assist evidence review without taking control of saved or published grades.",
+          "audience": [
+            "teacher",
+            "admin"
+          ]
+        },
+        {
+          "title": "Clearer Academic Configuration",
+          "summary": "School setup follows School Year, Division, Periods, Subjects, Sections and Course Offerings with visible completion state and reviewable saved steps.",
+          "why": "Administrators can maintain academic structure without manually managing technical identifiers.",
+          "audience": [
+            "admin"
+          ],
+          "media": {
+            "src": "assets/releases/3.3.0/academic-configuration.webp",
+            "alt": "Academic Configuration showing all six setup steps completed and active course offerings",
+            "caption": "Academic Configuration presents school structure as a guided, reviewable sequence."
+          }
+        }
+      ],
+      "changes": [
+        {
+          "type": "New",
+          "area": "Personalized assessments",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Added private personalized task variants for Adminerva Studio assessments, including configurable variant pools, variation guidance and frozen learner-attempt assignment."
+        },
+        {
+          "type": "Fixed",
+          "area": "Personalized task loading",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Fixed valid personalized assessments being rejected by legacy assessment-ID validation, including the issue that could show “Assessment is invalid” for an affected learner."
+        },
+        {
+          "type": "Updated",
+          "area": "Personalized task review",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Review and evaluation now bind more reliably to the learner's submitted personalized variant, with recovery paths for historical Studio records whose variant metadata is incomplete."
+        },
+        {
+          "type": "Updated",
+          "area": "Assessment Studio",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Consolidated assessment blueprints into a clearer workspace with My Assessments, Shared with Me, School Library and Deployed Tasks views."
+        },
+        {
+          "type": "New",
+          "area": "Assessment-aware Studio setup",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Studio-based assessments can define or conservatively infer project requirements so the assessment-owned project is prepared when the learner opens it."
+        },
+        {
+          "type": "Updated",
+          "area": "Practical examinations",
+          "audience": [
+            "teacher",
+            "student",
+            "admin"
+          ],
+          "text": "Practical-exam assessments can use Adminerva Studio project submission with assessment-specific project controls and clearer learner-facing restrictions."
+        },
+        {
+          "type": "Updated",
+          "area": "Adminerva Studio interface",
+          "audience": [
+            "student",
+            "teacher"
+          ],
+          "text": "Reworked Studio around a more compact ribbon-style layout that keeps task context, project controls, Run actions and tools accessible with less vertical overhead."
+        },
+        {
+          "type": "Updated",
+          "area": "Adminerva Studio mobile",
+          "audience": [
+            "student",
+            "teacher"
+          ],
+          "text": "Improved narrow-screen Studio workflows with compact Menus, Views and Task controls plus easier switching between Files, Editor and Terminal."
+        },
+        {
+          "type": "Updated",
+          "area": "Unified Review & Grade",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Historical Adminerva Studio deployments now surface from Review & Grade while retaining access to their original frozen submission evidence."
+        },
+        {
+          "type": "Updated",
+          "area": "Historical Studio review",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Teachers can review owned legacy Studio submissions with the published task, rubric, personalized variant, frozen project files and submission snapshot in one review surface."
+        },
+        {
+          "type": "New",
+          "area": "Internal and external evaluation",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Review & Grade now provides separate Adminerva internal-evaluation and validated external-evaluation paths against the same frozen evidence and published rubric."
+        },
+        {
+          "type": "Updated",
+          "area": "External evaluation packages",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Strengthened external evaluation packages with rubric context, frozen evidence, personalized-task context and source-bound verification information where available."
+        },
+        {
+          "type": "Fixed",
+          "area": "Bulk external evaluation",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Fixed bulk external evaluation identifier parsing so valid evaluator responses are no longer rejected by the previous identifier mismatch."
+        },
+        {
+          "type": "Updated",
+          "area": "Grade draft application",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Evaluator suggestions remain separate from the grade draft until the teacher explicitly applies one; the resulting draft remains editable before saving or publication."
+        },
+        {
+          "type": "Updated",
+          "area": "Bulk grade publication",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Simplified Publish all drafts so a deliberate bulk action can approve eligible unpublished drafts in one operation while zero-score results remain visible for teacher attention."
+        },
+        {
+          "type": "New",
+          "area": "Frozen Studio verification",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Added source-bound verification metadata for frozen Studio submissions, including supported compilation, runtime and database states plus explicit limitations when a capability is unavailable."
+        },
+        {
+          "type": "Updated",
+          "area": "Studio runtime evidence",
+          "audience": [
+            "teacher",
+            "admin"
+          ],
+          "text": "Compile and runtime evidence can be associated with the exact project source revision and included in supported evaluation packages without duplicating transcripts."
+        },
+        {
+          "type": "Updated",
+          "area": "Student submission experience",
+          "audience": [
+            "student"
+          ],
+          "text": "Improved Studio submission confirmation and late-submission state so learners receive clearer feedback about the status of an assessment submission."
+        },
+        {
+          "type": "Updated",
+          "area": "Academic Configuration",
+          "audience": [
+            "admin"
+          ],
+          "text": "Academic setup now follows a guided School Year → Division → Periods → Subjects → Sections → Course Offerings workflow with visible completion state and reviewable saved steps."
+        },
+        {
+          "type": "New",
+          "area": "Academic structure support",
+          "audience": [
+            "admin"
+          ],
+          "text": "Added structured grade levels, grade-aware Section IDs, Senior High School pathway handling and support for ECE, Kindergarten and SNED section levels."
+        },
+        {
+          "type": "Updated",
+          "area": "Course Offerings",
+          "audience": [
+            "admin"
+          ],
+          "text": "Improved Course Offering setup with compatible academic selections and clearer active-offering summaries."
+        },
+        {
+          "type": "Updated",
+          "area": "People & Access",
+          "audience": [
+            "admin"
+          ],
+          "text": "Further separated identity, membership and access administration from the developing student-enrollment lifecycle so People & Access has a clearer school-access responsibility."
+        },
+        {
+          "type": "Updated",
+          "area": "Navigation and workspace consistency",
+          "audience": [
+            "all"
+          ],
+          "text": "Continued consolidating assessment and school-administration navigation so active workflows have clearer canonical entry points and shared release information."
+        },
+        {
+          "type": "Updated",
+          "area": "Developer focus · Enrollment & Registration",
+          "audience": [
+            "admin"
+          ],
+          "text": "Enrollment and Registration has a substantial implemented foundation, but the complete applicant → review → enrollment → activation → Classroom lifecycle remains under operational validation and is not presented as completed in this release."
+        },
+        {
+          "type": "Updated",
+          "area": "Developer focus · Student Games",
+          "audience": [
+            "student",
+            "teacher",
+            "admin"
+          ],
+          "text": "The redesigned Student Games experience remains a development preview and is not part of the released 3.3.0 feature set."
+        },
+        {
+          "type": "Updated",
+          "area": "Developer focus · Operations Center",
+          "audience": [
+            "admin"
+          ],
+          "text": "The System Administrator Operations Center and first-party observability work remain under development and are not part of the released 3.3.0 feature set."
+        }
+      ]
+    },
+    {
       "version": "3.2.0",
       "status": "published",
       "public": true,

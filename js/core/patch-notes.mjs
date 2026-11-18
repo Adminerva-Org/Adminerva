@@ -1,4 +1,4 @@
-import {loadPublicReleases,releaseForRole} from "./patch-history.mjs?v=1.4.19";
+import {loadPublicReleases,releaseForRole} from "./patch-history.mjs?v=1.4.20";
 import {releasePresentation,releaseMatches} from "./release-version.mjs?v=1.3.0";
 import {auth} from "./firebase-core.js?v=1.3.0";
 import {resolveStaffRole} from "./staff-session.mjs?v=1.3.0";
@@ -7,6 +7,54 @@ const field=id=>document.getElementById(id);
 const node=(tag,text,className="")=>{const element=document.createElement(tag);element.textContent=text;element.className=className;return element;};
 let releases=[],viewerRole=null;
 const roleLabel=role=>role==="admin"?"Administrator":role==="teacher"?"Teacher":role==="student"?"Student":"Public";
+
+let mediaDialog=null;
+function openReleaseMedia(media){
+  if(!media?.src)return;
+  if(!mediaDialog){
+    mediaDialog=document.createElement("dialog");
+    mediaDialog.className="av-release-media-dialog";
+    const shell=node("div","","av-release-media-dialog-shell"),
+      close=node("button","Close","av-release-media-close"),
+      image=document.createElement("img"),
+      caption=node("p","","av-release-media-dialog-caption");
+    close.type="button";
+    close.addEventListener("click",()=>mediaDialog.close());
+    mediaDialog.addEventListener("click",event=>{if(event.target===mediaDialog)mediaDialog.close();});
+    shell.append(close,image,caption);mediaDialog.append(shell);document.body.append(mediaDialog);
+    mediaDialog._image=image;mediaDialog._caption=caption;
+  }
+  mediaDialog._image.src=media.src;
+  mediaDialog._image.alt=media.alt||"";
+  mediaDialog._caption.textContent=media.caption||"";
+  mediaDialog._caption.hidden=!media.caption;
+  if(typeof mediaDialog.showModal==="function")mediaDialog.showModal();
+}
+function releaseHighlights(release){
+  const highlights=Array.isArray(release.highlights)?release.highlights:[];
+  if(!highlights.length)return null;
+  const section=node("section","","av-release-highlights");
+  section.setAttribute("aria-label","Release highlights");
+  section.append(node("h3","Release highlights","av-release-section-title"));
+  for(const highlight of highlights){
+    const item=node("article","","av-release-highlight"),copy=node("div","","av-release-highlight-copy");
+    copy.append(node("span","Highlight","av-release-highlight-label"),node("h4",highlight.title),node("p",highlight.summary));
+    if(highlight.why)copy.append(node("p","Why this matters: "+highlight.why,"av-release-highlight-why"));
+    item.append(copy);
+    if(highlight.media){
+      const figure=node("figure","","av-release-media"),button=document.createElement("button"),image=document.createElement("img");
+      button.type="button";
+      button.className="av-release-media-button";
+      button.setAttribute("aria-label","Enlarge screenshot: "+highlight.media.alt);
+      image.src=highlight.media.src;image.alt=highlight.media.alt;image.loading="lazy";image.decoding="async";
+      button.append(image);button.addEventListener("click",()=>openReleaseMedia(highlight.media));figure.append(button);
+      if(highlight.media.caption)figure.append(node("figcaption",highlight.media.caption));
+      item.append(figure);
+    }
+    section.append(item);
+  }
+  return section;
+}
 function scopedReleases(){
   const selector=field("patchAudience");
   if(!viewerRole||!selector||selector.value!=="relevant")return releases;
@@ -27,7 +75,10 @@ function render(){
     date.dateTime=release.releasedAt;header.append(date);
     card.append(header,node("h2",release.title),node("p",release.summary,"av-release-summary"));
     if(presentation.label!==release.version)card.append(node("p","Original release ID: "+release.version,"av-release-origin"));
-    const list=node("ul","","av-release-changes");
+    const highlights=releaseHighlights(release);
+    if(highlights)card.append(highlights);
+    const changelogHeading=node("h3","Full changelog","av-release-section-title av-release-changelog-title"),
+      list=node("ul","","av-release-changes");
     for(const change of release.changes){
       const item=node("li","");item.append(node("span",change.type,"av-change-kind"),node("strong",change.area),node("p",change.text));
       for(const [role,impact] of Object.entries(change.impact||{})){
@@ -35,7 +86,7 @@ function render(){
       }
       list.append(item);
     }
-    card.append(list);field("patchList").append(card);
+    card.append(changelogHeading,list);field("patchList").append(card);
   }
   const relevant=viewerRole&&field("patchAudience")?.value==="relevant";
   field("patchStatus").textContent=relevant
