@@ -35,6 +35,7 @@ function createSchoolAssessmentService({db}){
     deny("invalid-argument","Choose a supported assessment submission method.");
    const start=timestamp(input.opensAt,"Opening time");
    const end=timestamp(input.dueAt,"Deadline");
+   const allowLateSubmissions=input.allowLateSubmissions===true;
    if(end.toMillis()<=start.toMillis())
     deny("invalid-argument","The deadline must follow the opening time.");
    const taskId=createHash("sha256")
@@ -72,7 +73,8 @@ function createSchoolAssessmentService({db}){
       if(prior.schoolId===ctx.schoolId&&prior.ownerUid===ctx.uid&&
         prior.blueprintId===blueprintId&&prior.offeringId===offeringId&&
         prior.requestKey===key&&prior.submissionSource===source&&
-        prior.opensAt.toMillis()===start.toMillis()&&prior.dueAt.toMillis()===end.toMillis())
+        prior.opensAt.toMillis()===start.toMillis()&&prior.dueAt.toMillis()===end.toMillis()&&
+        Boolean(prior.allowLateSubmissions)===allowLateSubmissions)
        {result={taskId,status:"deployed",published:prior.published===true,alreadyExisted:true};return;}
       deny("already-exists","This deployment request was already used with different details.");
     }
@@ -119,7 +121,7 @@ function createSchoolAssessmentService({db}){
      blueprintId,blueprintRevision:original.contentRevision,
      offeringId,yearId:offering.data().yearId,termId:offering.data().termId,
      subjectId:offering.data().subjectId,sectionId:offering.data().sectionId,
-     submissionSource:source,personalizedTask,opensAt:start,dueAt:end,
+     submissionSource:source,personalizedTask,opensAt:start,dueAt:end,allowLateSubmissions,
      requestKey:key,status:"deployed",published:false,lifecycle:"active",revision:1,
      createdAt:now,updatedAt:now
     });
@@ -129,7 +131,7 @@ function createSchoolAssessmentService({db}){
      blueprintRevision:original.contentRevision,createdAt:now,updatedAt:now
     });
     tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
-     action:"assessment_deployed",offeringId,source,createdAt:now});
+     action:"assessment_deployed",offeringId,source,allowLateSubmissions,createdAt:now});
     result={taskId,status:"deployed",published:false,alreadyExisted:false};
    });
    return result;
@@ -199,6 +201,57 @@ function createSchoolAssessmentService({db}){
       }));
     }
    }
+   return result;
+  }
+
+  if(input.action==="update_settings"){
+   if(!ctx.roles.includes("teacher"))
+    deny("permission-denied","Only an authorized teacher may update assessment deployment settings.");
+   const taskId=checkId(input.taskId,"Assessment task",128),
+    taskRef=tasks.doc(taskId),expectedRevision=Number(input.expectedRevision),
+    reason=String(input.reason||"").trim(),
+    start=timestamp(input.opensAt,"Opening time"),end=timestamp(input.dueAt,"Deadline"),
+    allowLateSubmissions=input.allowLateSubmissions===true;
+   if(!Number.isInteger(expectedRevision)||expectedRevision<1)
+    deny("invalid-argument","The current assessment revision is required.");
+   if(reason.length<12||reason.length>1000)
+    deny("invalid-argument","Explain the deployment change in 12–1,000 characters.");
+   if(end.toMillis()<=start.toMillis())
+    deny("invalid-argument","The deadline must follow the opening time.");
+   const auditRef=db.collection(prefix+"assessment_audit").doc();
+   let result;
+   await db.runTransaction(async tx=>{
+    const [school,membership,task]=await Promise.all([
+      tx.get(schoolRef),tx.get(membershipRef),tx.get(taskRef)
+    ]);
+    if(!ctx.platformOverride&&(!school.exists||!["active","pilot"].includes(school.data().state)||!membership.exists||
+       membership.data().schoolId!==ctx.schoolId||membership.data().status!=="active"||
+       !Array.isArray(membership.data().roles)||!membership.data().roles.includes("teacher")))
+      deny("permission-denied","Your school teaching access changed.");
+    if(!task.exists||task.data().schoolId!==ctx.schoolId||
+       (!ctx.platformOverride&&(task.data().reviewerUid||task.data().ownerUid)!==ctx.uid))
+      deny("permission-denied","Only the currently responsible teacher may edit this deployment.");
+    const data=task.data(),revision=data.revision||1,lifecycle=data.lifecycle||"active",
+      grantRef=db.doc(prefix+"staff_assignments/"+rowKey(ctx.uid,data.offeringId)),
+      grant=await tx.get(grantRef);
+    if(!ctx.platformOverride&&(!grant.exists||grant.data().schoolId!==ctx.schoolId||
+       grant.data().teacherUid!==ctx.uid||grant.data().offeringId!==data.offeringId||
+       grant.data().status!=="active"))
+      deny("permission-denied","You must still be assigned to this course offering.");
+    if(revision!==expectedRevision)
+      deny("failed-precondition","This assessment changed. Reload it before saving deployment settings.");
+    if(["archived","cancelled"].includes(lifecycle))
+      deny("failed-precondition","Restore this assessment before editing its deployment settings.");
+    const now=FieldValue.serverTimestamp(),nextRevision=revision+1;
+    tx.update(taskRef,{opensAt:start,dueAt:end,allowLateSubmissions,revision:nextRevision,updatedAt:now,
+      lastSettingsReason:reason,lastSettingsByUid:ctx.uid});
+    tx.create(auditRef,{schoolId:ctx.schoolId,taskId,actorUid:ctx.uid,
+      action:"assessment_settings_updated",beforeRevision:revision,afterRevision:nextRevision,reason,
+      before:{opensAt:data.opensAt,dueAt:data.dueAt,allowLateSubmissions:data.allowLateSubmissions===true},
+      after:{opensAt:start,dueAt:end,allowLateSubmissions},createdAt:now});
+    result={taskId,revision:nextRevision,opensAt:start.toMillis(),dueAt:end.toMillis(),
+      allowLateSubmissions,lifecycle,title:data.title||"Assessment"};
+   });
    return result;
   }
 
@@ -354,6 +407,7 @@ function createSchoolAssessmentService({db}){
       subjectId:doc.data().subjectId,sectionId:doc.data().sectionId,
       ownerUid:doc.data().ownerUid,reviewerUid:doc.data().reviewerUid||doc.data().ownerUid,
       opensAt:doc.data().opensAt?.toMillis(),dueAt:doc.data().dueAt?.toMillis(),
+      allowLateSubmissions:doc.data().allowLateSubmissions===true,
       submissionSource:doc.data().submissionSource,
       studioProjectProfile:doc.data().studioProjectProfile||"auto",
       personalizedTask:doc.data().personalizedTask?.enabled===true?{
@@ -406,8 +460,10 @@ function createSchoolAssessmentService({db}){
         poolSize:Number(task.personalizedTask.poolSize||0)
       }:{enabled:false,mode:"standard"},
       opensAt:open,dueAt:due,postedAt:task.createdAt?.toMillis?.()||open,
+      allowLateSubmissions:task.allowLateSubmissions===true,
+      late:task.allowLateSubmissions===true&&now>due,
       lifecycle,windowStatus:lifecycle==="closed"?"closed":
-       now<open?"upcoming":now>due?"closed":"open"});
+       now<open?"upcoming":now>due&&task.allowLateSubmissions!==true?"closed":"open"});
     }
    }
    return {assignments:results.sort((a,b)=>a.dueAt-b.dueAt)};
