@@ -424,7 +424,7 @@ function renderMechanicAid(question){
     panel.hidden=false;panel.dataset.kind="trace";
     const head=node("div",undefined,"lab-mechanic-head");head.append(node("span",guestPage?"TRACE QUEST":"CODE TRACE","lab-mechanic-kicker"),node("strong","Trace board"));
     const guide=hasTraceGuide?question.traceGuide:["Read the starting values.","Follow each call or update in order.","Write the exact final output."];
-    const list=node("ol",undefined,"lab-trace-steps");guide.forEach(step=>list.append(node("li",step)));
+    const list=node("ol",undefined,"lab-trace-steps");guide.forEach(step=>{const item=node("li",step);if(!guestPage){item.tabIndex=0;item.setAttribute("role","checkbox");item.setAttribute("aria-checked","false");const toggle=()=>{const checked=item.getAttribute("aria-checked")==="true";item.setAttribute("aria-checked",String(!checked));item.classList.toggle("is-checked",!checked);};item.addEventListener("click",toggle);item.addEventListener("keydown",event=>{if(["Enter"," "].includes(event.key)){event.preventDefault();toggle();}});}list.append(item);});
     panel.append(head,list);
   }
   if(question.type==="debugging"&&Number.isInteger(question.focusLine)&&question.code){
