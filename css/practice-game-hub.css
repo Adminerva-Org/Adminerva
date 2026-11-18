@@ -1101,6 +1101,27 @@ body.lab-page::after{
   border-color:rgba(83,213,151,.35);
   color:#a9edcd;
 }
+.lab-feedback[data-tone=success]::before{
+  content:"✓";
+  display:inline-grid;
+  place-items:center;
+  width:22px;
+  height:22px;
+  margin-right:.5rem;
+  border-radius:50%;
+  background:rgba(93,224,165,.14);
+  color:#8ff0c4;
+  font-weight:900;
+}
+.lab-mission-panel.is-complete{
+  box-shadow:0 18px 48px rgba(0,0,0,.18),0 0 28px rgba(69,219,157,.05),inset 0 1px rgba(255,255,255,.025);
+}
+.lab-mission-panel.is-complete #labNextMission{
+  border-color:rgba(80,226,174,.55);
+  background:linear-gradient(180deg,rgba(50,181,131,.34),rgba(28,119,91,.28));
+  color:#caffea;
+  box-shadow:0 0 20px rgba(75,223,166,.08);
+}
 .lab-feedback[data-tone=warning]{
   background:rgba(155,106,28,.19);
   border-color:rgba(238,190,86,.34);
