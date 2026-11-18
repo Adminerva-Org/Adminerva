@@ -407,6 +407,14 @@ function renderAnswer(){
       container.append(row);
     });
   }
+  if(!guestPage){
+    const visual=field("labMechanicPanel")?.querySelector(".game-visual-header");
+    if(question.type==="matching"){
+      const linked=Array.isArray(answer)?answer.filter(Number.isInteger).length:0;setGameStatus(visual,linked+" / "+question.left.length+" linked",linked===question.left.length?"success":"info",linked===question.left.length?"✓":"↔");
+    }else if(question.type==="ordering"){
+      setGameStatus(visual,(Array.isArray(answer)?answer.length:0)+" blocks ready","info","▦");
+    }
+  }
   for(const control of container.querySelectorAll("input,select,button"))if(busy||pending)control.disabled=true;
 }
 function renderMechanicAid(question){
@@ -438,7 +446,7 @@ function renderMechanicAid(question){
     const note=node("p","Mark the evidence you think matters, then solve the case from the code.","games-data-note");board.append(evidence,note);panel.append(board);panel.hidden=false;panel.classList.add("is-data");
   }
   if(!guestPage&&mission?.oop===true){
-    const visual=gameVisualHeader("oop","OOP Builder","Model structure and runtime relationships");panel.append(visual);const blueprints={
+    const visual=gameVisualHeader("oop","OOP Builder","Model structure and runtime relationships");visual.dataset.module=mission.oopModule||"oop";panel.append(visual);const blueprints={
       "oop-classes":["CLASS","creates","OBJECT"],
       "oop-encapsulation":["PRIVATE STATE","controlled by","METHODS"],
       "oop-inheritance":["PARENT","extends to","CHILD"],
@@ -447,7 +455,7 @@ function renderMechanicAid(question){
     },parts=blueprints[mission.oopModule]||["OOP","connects","BEHAVIOR"],blueprint=node("div",undefined,"games-oop-blueprint"),head=node("div",undefined,"games-oop-blueprint-head");
     head.append(node("span","OOP BLUEPRINT","lab-mechanic-kicker"),node("strong",mission.title.replace(/ · (Guided|Apply|Challenge)$/,"")));
     const flow=node("div",undefined,"games-oop-flow"),left=node("span",parts[0],"games-oop-node"),link=node("span",parts[1],"games-oop-link"),right=node("span",parts[2],"games-oop-node");left.dataset.role="source";right.dataset.role="target";flow.append(left,link,right);
-    blueprint.append(head,flow);panel.append(blueprint);panel.hidden=false;panel.dataset.kind="oop";
+    blueprint.append(head,flow);panel.append(blueprint);panel.hidden=false;panel.dataset.kind="oop";setGameStatus(visual,{ "oop-classes":"Classes & objects","oop-encapsulation":"Encapsulation","oop-inheritance":"Inheritance","oop-polymorphism":"Polymorphism","oop-real":"Real programs"}[mission.oopModule]||"OOP concept","info","◇");
   }
   const hasTraceGuide=Array.isArray(question.traceGuide)&&question.traceGuide.length;
   if(question.type==="output"&&(!guestPage||hasTraceGuide)){
@@ -482,7 +490,7 @@ function renderMechanicAid(question){
     if(guestPage)panel.append(head,hint,viewer);else{if(!bugLineFound)field("practicePrompt").textContent="Find the defective line, then choose the repair.";if(bugLineFound)setGameStatus(visual,"Defect isolated","success","✓");panel.append(visual,head,viewer,status);}
   }
   if(!guestPage&&question.type==="ordering"){
-    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="build";const visual=gameVisualHeader("builder","Code Builder","Assemble the execution path"),head=node("div",undefined,"lab-mechanic-head");head.append(node("span","CODE BUILDER","lab-mechanic-kicker"),node("strong","Arrange the blocks"));panel.append(visual,head,node("p","Build the program in execution order.","games-mechanic-note"));
+    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="build";const visual=gameVisualHeader("builder","Code Builder","Assemble the execution path"),track=node("div",undefined,"games-builder-track"),head=node("div",undefined,"lab-mechanic-head");for(let index=0;index<question.items.length;index++)track.append(node("span",String(index+1)));visual.append(track);setGameStatus(visual,question.items.length+" blocks","info","▦");head.append(node("span","CODE BUILDER","lab-mechanic-kicker"),node("strong","Arrange the blocks"));panel.append(visual,head,node("p","Build the program in execution order.","games-mechanic-note"));
   }
   if(!guestPage&&question.type==="matching"){
     panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="match";const visual=gameVisualHeader("match","Logic Match","Connect each rule to its result"),head=node("div",undefined,"lab-mechanic-head");head.append(node("span","LOGIC MATCH","lab-mechanic-kicker"),node("strong","Complete the pairs"));panel.append(visual,head,node("p","Each match can be used once.","games-mechanic-note"));
@@ -528,9 +536,9 @@ async function submit(){
     const result=await practiceRequest("practiceMissionSubmit",pending);
     if(version!==epoch||user?.uid!==uid)return;
     pending=null;localSet(pendingKey(),null);field("labPendingResume").hidden=true;notice("");
-    if(result.correct){attempt.completed=true;attempt.earnedPoints=result.earnedPoints;field("practiceMissionPanel").classList.add("is-complete");if(result.awarded&&field("practiceMissionPanel").dataset.game==="code-sprint")sprintCorrect();prepareExperiment(result.workspace);field("labNextMission").hidden=false;feedback((result.awarded?"Mission complete! +"+result.earnedPoints+" points. ":"Correct replay. Your original reward stays saved. ")+(result.explanation||""),"success");if(result.awarded)celebrateMission();await refreshHub();sync(result.awarded?"Saved · +"+result.earnedPoints+" points":"Replay checked");}
+    if(result.correct){attempt.completed=true;attempt.earnedPoints=result.earnedPoints;field("practiceMissionPanel").classList.add("is-complete");if(!guestPage){const visual=field("labMechanicPanel")?.querySelector(".game-visual-header");setGameStatus(visual,"Mission solved","success","✓");playGameFx("success",field("labMechanicPanel"));}if(result.awarded&&field("practiceMissionPanel").dataset.game==="code-sprint")sprintCorrect();prepareExperiment(result.workspace);field("labNextMission").hidden=false;feedback((result.awarded?"Mission complete! +"+result.earnedPoints+" points. ":"Correct replay. Your original reward stays saved. ")+(result.explanation||""),"success");if(result.awarded)celebrateMission();await refreshHub();sync(result.awarded?"Saved · +"+result.earnedPoints+" points":"Replay checked");}
     else if(result.alreadyRecorded){feedback("Not quite. This is a replay, so your saved points are unchanged. "+(result.explanation||""),"warning");sync("Replay checked");}
-    else{attempt.availablePoints=result.availablePoints;attempt.wrongSubmissions=result.wrongSubmissions;if(!guestPage){if(attempt.question.type==="debugging")bugLineFound=true;revealHint();if(field("practiceMissionPanel").dataset.game==="code-sprint")sprintMiss();}feedback(result.deduction?"Not quite. This scored submission used "+result.deduction+" points from this mission’s possible reward. "+result.availablePoints+" points remains available. Adjust your answer and try again.":"Not quite. You have reached this mission’s minimum reward; more attempts cannot reduce it further. Keep trying.","warning");sync("Attempt saved");}
+    else{attempt.availablePoints=result.availablePoints;attempt.wrongSubmissions=result.wrongSubmissions;if(!guestPage){const visual=field("labMechanicPanel")?.querySelector(".game-visual-header");setGameStatus(visual,"Recheck your solution","warning","!");playGameFx("error",field("practiceChoices"));if(attempt.question.type==="debugging")bugLineFound=true;revealHint();if(field("practiceMissionPanel").dataset.game==="code-sprint")sprintMiss();}feedback(result.deduction?"Not quite. This scored submission used "+result.deduction+" points from this mission’s possible reward. "+result.availablePoints+" points remains available. Adjust your answer and try again.":"Not quite. You have reached this mission’s minimum reward; more attempts cannot reduce it further. Keep trying.","warning");sync("Attempt saved");}
     pointsText();renderAnswer();
   }catch(error){if(version===epoch){const reason=error.details?.reason;if(["answer-incomplete","practice-rate-limit","attempt-expired","enrollment","guest-registration","session-moved"].includes(reason)){pending=null;localSet(pendingKey(),null);if(reason==="attempt-expired")field("labReopenMission").hidden=false;}errorFeedback(error);pendingNotice();}}
   finally{if(version===epoch)setBusy(false);end();}
