@@ -30,6 +30,17 @@ export function publicationCandidates(entries,published=true) {
       entry.data.score<=(entry.data.maxScore??entry.maxScore)
     )));
 }
+
+export function bulkPublicationCandidates(entries,published=true) {
+  const base=publicationCandidates(entries,published);
+  return published
+    ?base.filter(entry=>Number(entry.data.score)>0)
+    :base;
+}
+
+export function bulkZeroScoreDrafts(entries) {
+  return publicationCandidates(entries,true).filter(entry=>Number(entry.data.score)===0);
+}
 export function publicationJournal(storage,key) {
   function read() {
     try {
