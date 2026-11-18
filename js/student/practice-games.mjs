@@ -4,10 +4,11 @@
  */
 export const PROGRAMMING_GAMES=[
   {id:"all",name:"Mission Map",icon:"◇",tag:"ALL PROGRAMMING",description:"Browse every Java, Python, Web, and Logic mission in one place."},
-  {id:"bug-detective",name:"Bug Detective",icon:"⌁",tag:"DEBUG",description:"Find broken code, choose the repair, and learn why the defect happened."},
-  {id:"trace-quest",name:"Trace Quest",icon:"⌨",tag:"TRACE",description:"Follow changing values and predict the exact result before revealing it."},
-  {id:"algorithm-maze",name:"Algorithm Maze",icon:"⇅",tag:"BUILD",description:"Arrange statements in the right order to make the program reach its goal."},
-  {id:"logic-circuit",name:"Logic Circuit",icon:"⇄",tag:"LOGIC",description:"Match expressions, rules, and outcomes to complete the circuit."},
+  {id:"bug-detective",name:"Bug Hunt",icon:"⌁",tag:"DEBUG",description:"Find broken code, choose the repair, and learn why the defect happened."},
+  {id:"trace-quest",name:"Code Trace",icon:"⌨",tag:"TRACE",description:"Follow changing values and predict the exact result before revealing it."},
+  {id:"algorithm-maze",name:"Code Builder",icon:"⇅",tag:"BUILD",description:"Arrange statements in the right order to make the program reach its goal."},
+  {id:"logic-circuit",name:"Logic Match",icon:"⇄",tag:"LOGIC",description:"Match expressions, rules, and outcomes to complete the circuit."},
+  {id:"oop-builder",name:"OOP Builder",icon:"◇",tag:"OOP",description:"Build skill with classes, objects, encapsulation, inheritance, polymorphism and abstraction."},
   {id:"code-sprint",name:"Code Sprint",icon:"◉",tag:"QUICK PLAY",description:"Fast concept challenges across programming syntax, logic, and web development."},
   {id:"interface-repair",name:"Interface Repair",icon:"▤",tag:"WEB",description:"Repair HTML, CSS, responsive layout, DOM, and accessibility problems."},
   {id:"data-detective",name:"Data Detective",icon:"▦",tag:"DATA",description:"Inspect indexed data, collections, boundaries, validation, and result checks."},
@@ -20,6 +21,7 @@ export function programmingGameMatches(gameId,course,mission,meta,module){
     case "trace-quest": return meta.type==="output";
     case "algorithm-maze": return meta.type==="ordering";
     case "logic-circuit": return meta.type==="matching";
+    case "oop-builder": return course.id==="java" && mission.oop===true;
     case "code-sprint": return meta.type==="choice";
     case "interface-repair": return course.id==="web";
     case "data-detective": return course.id==="logic" && ["logic-collections","logic-checks"].includes(module?.id);
