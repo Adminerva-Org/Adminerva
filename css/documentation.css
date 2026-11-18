@@ -46,32 +46,80 @@ html{box-sizing:border-box}*,*:before,*:after{box-sizing:inherit}body{margin:0;b
   .av-guide-content>section{padding:1rem}
 }
 
+/* Editorial release notes, curated screenshots and grouped changelog. */
+.av-release-card{overflow:hidden}
+.av-release-card h2{font-size:clamp(1.35rem,2.3vw,1.65rem);margin:.85rem 0 .5rem}
+.av-release-summary{max-width:92ch;font-size:1rem}
+.av-release-topics{display:flex;flex-wrap:wrap;gap:.45rem;margin:.9rem 0 .25rem}
+.av-release-topic{display:inline-flex;align-items:center;padding:.28rem .62rem;border-radius:999px;background:#f0f7fc;border:1px solid #d8e8f3;color:#31556f;font-size:.76rem;font-weight:700}
+.av-release-section-title{font-size:1.05rem;font-weight:800;color:#12354e;margin:0 0 .75rem}
 
-/* Editorial release highlights and curated screenshots. */
-.av-release-section-title{font-size:1rem;font-weight:800;color:#12354e;margin:1.5rem 0 .75rem}
-.av-release-changelog-title{margin-top:1.75rem;padding-top:1.25rem;border-top:1px solid #eaf0f7}
-.av-release-highlights{display:grid;gap:1rem;margin-top:1.25rem}
-.av-release-highlight{display:grid;grid-template-columns:minmax(0,1fr) minmax(18rem,.9fr);gap:1.25rem;align-items:center;padding:1.1rem;border:1px solid #dce4f0;border-radius:.9rem;background:#f8fbfe}
-.av-release-highlight:nth-of-type(even){grid-template-columns:minmax(18rem,.9fr) minmax(0,1fr)}
-.av-release-highlight:nth-of-type(even) .av-release-highlight-copy{order:2}
+/* Neutralize the generic documentation section treatment for nested release sections. */
+.av-documentation .av-release-highlights{display:grid;gap:.85rem;margin:1.3rem 0 0;padding:0;background:transparent;border:0;border-radius:0}
+.av-release-highlight{display:grid;gap:1rem;align-items:center;padding:1rem 1.05rem;border:1px solid #dce4f0;border-radius:.9rem;background:#f8fbfe;min-width:0}
+.av-release-highlight-has-media{grid-template-columns:minmax(0,.95fr) minmax(24rem,1.05fr)}
+.av-release-highlight-media-first{grid-template-columns:minmax(24rem,1.05fr) minmax(0,.95fr)}
+.av-release-highlight-media-first .av-release-highlight-copy{order:2}
+.av-release-highlight-media-first .av-release-media{order:1}
+.av-release-highlight-text-only{grid-template-columns:1fr;padding:.9rem 1rem;background:#fbfdff}
 .av-release-highlight-copy{min-width:0}
-.av-release-highlight-label{display:inline-flex;font-size:.72rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#155e75;background:#cffafe;border-radius:999px;padding:.2rem .55rem}
-.av-release-highlight h4{font-size:1.15rem;font-weight:800;line-height:1.35;margin:.55rem 0 .4rem;color:#12354e}
-.av-release-highlight p{margin:.35rem 0;color:#52657b}
-.av-release-highlight-why{font-size:.9rem;border-left:3px solid #67e8f9;padding-left:.75rem}
+.av-release-highlight-label{display:inline-flex;font-size:.68rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#155e75;background:#cffafe;border-radius:999px;padding:.18rem .5rem}
+.av-release-highlight h4{font-size:1.08rem;font-weight:800;line-height:1.35;margin:.45rem 0 .25rem;color:#12354e}
+.av-release-highlight p{margin:.25rem 0;color:#52657b}
+.av-release-highlight-why{font-size:.88rem;border-left:3px solid #67e8f9;padding:.35rem 0 .35rem .7rem;margin-top:.55rem!important}
 .av-release-media{margin:0;min-width:0}
-.av-release-media-button{display:block;width:100%;padding:0!important;border:1px solid #cbd5e1!important;border-radius:.75rem!important;overflow:hidden;background:white!important;box-shadow:0 8px 26px #102c4612}
+.av-release-media-button{display:block;width:100%;padding:0!important;border:1px solid #cbd5e1!important;border-radius:.7rem!important;overflow:hidden;background:white!important;box-shadow:0 7px 22px #102c4610}
 .av-release-media-button:hover{border-color:#5f8fb0!important;background:white!important}
-.av-release-media img{display:block;width:100%;height:auto;max-height:26rem;object-fit:contain;background:#f8fafc}
-.av-release-media figcaption{font-size:.78rem;color:#617089;margin-top:.45rem;line-height:1.45}
+.av-release-media img{display:block;width:100%;height:auto;max-height:24rem;object-fit:contain;background:#f8fafc}
+.av-release-media figcaption{font-size:.76rem;color:#617089;margin-top:.35rem;line-height:1.4}
+
+/* Keep the long implementation history available without letting it dominate the release. */
+.av-release-changelog{margin-top:1.35rem;border:1px solid #dce4f0;border-radius:.85rem;background:#fff;overflow:hidden}
+.av-release-changelog-summary{display:flex;align-items:center;justify-content:space-between;gap:1rem;min-height:52px;padding:.8rem 1rem;cursor:pointer;background:#f8fbfe;font-weight:800;color:#12354e;list-style:none}
+.av-release-changelog-summary::-webkit-details-marker{display:none}
+.av-release-changelog-summary:after{content:"+";display:grid;place-items:center;width:1.7rem;height:1.7rem;border-radius:999px;background:#e8f2f8;color:#155e75;font-size:1.1rem;line-height:1}
+.av-release-changelog[open] .av-release-changelog-summary:after{content:"–"}
+.av-release-changelog-label{font-size:1rem}
+.av-release-changelog-count{margin-left:auto;font-size:.78rem;font-weight:700;color:#617089}
+.av-release-changelog-body{display:grid;gap:.9rem;padding:.85rem 1rem 1rem;border-top:1px solid #eaf0f7}
+.av-documentation .av-release-change-group{margin:0;padding:0;background:transparent;border:0;border-radius:0}
+.av-release-change-group-title{font-size:.9rem;font-weight:800;color:#31556f;margin:.1rem 0 .35rem}
+.av-release-changes{margin:0;display:grid;gap:.35rem}
+.av-release-changes li{border-top:1px solid #edf2f7;padding:.65rem 0}
+.av-release-changes li:first-child{border-top:0}
+.av-release-changes strong{margin-left:.45rem}
+.av-release-changes p{margin:.28rem 0 0;font-size:.88rem;color:#52657b}
+
+/* Development work is intentionally separated from shipped changes. */
+.av-release-development{margin-top:1rem;padding:1rem;border:1px solid #f3d49b;border-radius:.85rem;background:#fffaf0}
+.av-release-development-label{display:inline-flex;padding:.2rem .55rem;border-radius:999px;background:#ffedd5;color:#9a4f12;font-size:.68rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.av-release-development-title{font-size:1rem;font-weight:800;color:#6f3c16;margin:.45rem 0 .2rem}
+.av-release-development-intro{font-size:.88rem;color:#76553d;margin:0 0 .6rem}
+.av-release-development-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.65rem}
+.av-release-development-list li{padding:.75rem;border:1px solid #f3dfbd;border-radius:.7rem;background:#fff}
+.av-release-development-list strong{display:block;color:#59361b;font-size:.9rem}
+.av-release-development-list p{margin:.3rem 0 0;color:#76553d;font-size:.82rem;line-height:1.5}
+
 .av-release-media-dialog{width:min(1100px,calc(100vw - 2rem));max-width:none;border:0;border-radius:1rem;padding:0;background:#081827;color:white;box-shadow:0 30px 80px #0008}
 .av-release-media-dialog::backdrop{background:#07131fcc}
 .av-release-media-dialog-shell{display:grid;gap:.75rem;padding:1rem}
 .av-release-media-dialog img{display:block;width:100%;max-height:80vh;object-fit:contain;border-radius:.65rem;background:#fff}
 .av-release-media-close{justify-self:end;background:#fff!important;color:#102c46!important;border-color:#fff!important;min-height:40px!important;padding:.45rem .8rem!important}
 .av-release-media-dialog-caption{margin:0;color:#d9e8f5;font-size:.9rem}
-@media(max-width:800px){
-  .av-release-highlight,.av-release-highlight:nth-of-type(even){grid-template-columns:1fr}
-  .av-release-highlight:nth-of-type(even) .av-release-highlight-copy{order:0}
+
+@media(max-width:900px){
+  .av-release-highlight-has-media,.av-release-highlight-media-first{grid-template-columns:1fr}
+  .av-release-highlight-media-first .av-release-highlight-copy{order:0}
+  .av-release-highlight-media-first .av-release-media{order:1}
+  .av-release-development-list{grid-template-columns:1fr}
   .av-release-media img{max-height:none}
 }
+@media(max-width:600px){
+  .av-release-card{padding:1rem}
+  .av-release-topic{font-size:.72rem}
+  .av-release-highlight{padding:.85rem}
+  .av-release-changelog-summary{align-items:flex-start;flex-wrap:wrap}
+  .av-release-changelog-count{margin-left:0}
+  .av-release-changelog-summary:after{margin-left:auto}
+}
+
