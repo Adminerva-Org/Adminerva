@@ -1651,6 +1651,264 @@ body.lab-page::after{
   .games-hero-art{display:none}
   .lab-mission-path{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
+
+/* Shared game graphics + interaction FX */
+.game-visual-header{
+  --game-visual-rgb:66,225,237;
+  position:relative;
+  overflow:hidden;
+  min-height:78px;
+  display:grid;
+  grid-template-columns:58px minmax(0,1fr) 78px;
+  align-items:center;
+  gap:.8rem;
+  margin:0 0 .75rem;
+  padding:.72rem .8rem;
+  border:1px solid rgba(var(--game-visual-rgb),.2);
+  border-radius:.9rem;
+  background:
+    radial-gradient(circle at 92% 8%,rgba(var(--game-visual-rgb),.12),transparent 42%),
+    linear-gradient(145deg,rgba(var(--game-visual-rgb),.055),rgba(8,26,41,.76));
+  box-shadow:inset 0 1px rgba(255,255,255,.025);
+}
+.game-visual-header::after{
+  content:"";
+  position:absolute;
+  inset:auto -12% 0 42%;
+  height:1px;
+  background:linear-gradient(90deg,transparent,rgba(var(--game-visual-rgb),.38),transparent);
+  transform:translateX(-55%);
+  animation:gameVisualScan 4.8s ease-in-out infinite;
+}
+.game-visual-bug{--game-visual-rgb:241,91,155}
+.game-visual-builder{--game-visual-rgb:241,199,91}
+.game-visual-match{--game-visual-rgb:85,214,177}
+.game-visual-oop{--game-visual-rgb:159,120,255}
+.game-visual-glyph{
+  width:54px;
+  height:54px;
+  display:grid;
+  place-items:center;
+  border-radius:16px;
+  border:1px solid rgba(var(--game-visual-rgb),.24);
+  background:
+    radial-gradient(circle at 40% 28%,rgba(255,255,255,.11),transparent 36%),
+    rgba(var(--game-visual-rgb),.09);
+  color:rgb(var(--game-visual-rgb));
+  box-shadow:0 0 22px rgba(var(--game-visual-rgb),.08),inset 0 0 20px rgba(var(--game-visual-rgb),.035);
+}
+.game-visual-svg{
+  width:34px;
+  height:34px;
+  filter:drop-shadow(0 0 9px rgba(var(--game-visual-rgb),.18));
+}
+.game-visual-copy{
+  min-width:0;
+  display:grid;
+  gap:.15rem;
+}
+.game-visual-copy strong{
+  color:#f4feff;
+  font-size:.78rem;
+  letter-spacing:.01em;
+}
+.game-visual-copy small{
+  color:#86aebb;
+  font-size:.58rem;
+  line-height:1.35;
+}
+.game-visual-lines{
+  height:36px;
+  opacity:.72;
+  background:
+    linear-gradient(90deg,transparent 0 8%,rgba(var(--game-visual-rgb),.25) 8% 10%,transparent 10% 28%,rgba(var(--game-visual-rgb),.16) 28% 30%,transparent 30% 54%,rgba(var(--game-visual-rgb),.28) 54% 56%,transparent 56%),
+    linear-gradient(180deg,transparent 0 20%,rgba(var(--game-visual-rgb),.16) 20% 23%,transparent 23% 68%,rgba(var(--game-visual-rgb),.2) 68% 71%,transparent 71%);
+  mask-image:linear-gradient(to right,transparent,#000 25%);
+}
+.game-status-badge{
+  position:absolute;
+  right:.7rem;
+  bottom:.55rem;
+  z-index:2;
+  display:inline-flex;
+  align-items:center;
+  gap:.32rem;
+  min-height:23px;
+  padding:.2rem .45rem;
+  border:1px solid rgba(109,177,197,.2);
+  border-radius:999px;
+  background:rgba(7,25,38,.82);
+  color:#8bb3c2;
+  font-size:.5rem;
+  font-weight:850;
+  backdrop-filter:blur(8px);
+}
+.game-status-badge>span:first-child{
+  width:15px;
+  height:15px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+}
+.game-status-badge[data-tone=success]{
+  color:#aaf0ce;
+  border-color:rgba(75,223,166,.3);
+}
+.game-status-badge[data-tone=success]>span:first-child{
+  background:rgba(75,223,166,.12);
+}
+.game-status-badge[data-tone=warning]{
+  color:#f0ce7c;
+  border-color:rgba(241,199,91,.3);
+}
+.game-status-badge[data-tone=warning]>span:first-child{
+  background:rgba(241,199,91,.11);
+}
+.game-fx-error{
+  animation:gameFxShake .32s ease;
+}
+.game-fx-success{
+  animation:gameFxSuccess .62s cubic-bezier(.2,.75,.22,1);
+}
+.game-fx-snap{
+  animation:gameFxSnap .32s cubic-bezier(.2,.75,.22,1);
+}
+.game-fx-link{
+  animation:gameFxLink .38s ease;
+}
+.lab-code-case{
+  position:relative;
+  overflow:hidden;
+}
+.lab-code-case.game-fx-success::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:linear-gradient(110deg,transparent 0 34%,rgba(75,223,166,.18) 46%,transparent 60%);
+  transform:translateX(-125%);
+  animation:gameDefectScan .58s ease-out;
+}
+.lab-order-list.game-fx-snap li{
+  animation:gameBlockSettle .34s cubic-bezier(.2,.8,.25,1);
+}
+.games-match-row{
+  position:relative;
+  grid-template-columns:minmax(120px,.8fr) 36px minmax(0,1.4fr);
+}
+.games-match-connector{
+  position:relative;
+  align-self:center;
+  height:22px;
+}
+.games-match-connector::before,
+.games-match-connector::after{
+  content:"";
+  position:absolute;
+  top:50%;
+  transform:translateY(-50%);
+}
+.games-match-connector::before{
+  left:0;
+  right:0;
+  height:2px;
+  border-radius:999px;
+  background:rgba(85,214,177,.11);
+}
+.games-match-connector::after{
+  left:0;
+  width:0;
+  height:2px;
+  border-radius:999px;
+  background:linear-gradient(90deg,#4dd5ad,#8ff1d4);
+  box-shadow:0 0 12px rgba(85,214,177,.28);
+}
+.games-match-row.has-match .games-match-connector::after{
+  width:100%;
+  transition:width .26s ease;
+}
+.games-match-row.has-match .games-match-connector{
+  background:
+    radial-gradient(circle at 0 50%,#75e6c5 0 3px,transparent 4px),
+    radial-gradient(circle at 100% 50%,#75e6c5 0 3px,transparent 4px);
+}
+.games-match-row.game-fx-link{
+  border-color:rgba(85,214,177,.3);
+  box-shadow:0 0 22px rgba(85,214,177,.045);
+}
+.games-oop-blueprint{
+  position:relative;
+}
+.games-oop-node{
+  position:relative;
+  overflow:hidden;
+}
+.games-oop-node::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:linear-gradient(115deg,transparent 15%,rgba(255,255,255,.08) 42%,transparent 68%);
+  transform:translateX(-120%);
+}
+.games-oop-blueprint .games-oop-node[data-role=source]{
+  animation:gameOopNodeIn .42s cubic-bezier(.18,.75,.24,1) both;
+}
+.games-oop-blueprint .games-oop-link{
+  animation:gameOopLinkIn .45s .14s ease both;
+}
+.games-oop-blueprint .games-oop-node[data-role=target]{
+  animation:gameOopNodeIn .42s .25s cubic-bezier(.18,.75,.24,1) both;
+}
+.games-oop-blueprint .games-oop-node[data-role=target]::before{
+  animation:gameOopShine 2.8s 1s ease-in-out infinite;
+}
+@keyframes gameVisualScan{
+  0%,55%{transform:translateX(-55%);opacity:.2}
+  72%{opacity:.85}
+  90%,100%{transform:translateX(45%);opacity:.15}
+}
+@keyframes gameFxShake{
+  0%,100%{transform:translateX(0)}
+  25%{transform:translateX(-4px)}
+  55%{transform:translateX(4px)}
+  78%{transform:translateX(-2px)}
+}
+@keyframes gameFxSuccess{
+  0%{box-shadow:0 0 0 rgba(75,223,166,0)}
+  38%{box-shadow:0 0 0 4px rgba(75,223,166,.06),0 0 28px rgba(75,223,166,.1)}
+  100%{box-shadow:0 0 0 rgba(75,223,166,0)}
+}
+@keyframes gameFxSnap{
+  0%{transform:scale(.992)}
+  55%{transform:scale(1.006)}
+  100%{transform:scale(1)}
+}
+@keyframes gameFxLink{
+  0%{transform:translateY(1px)}
+  60%{transform:translateY(-1px)}
+  100%{transform:translateY(0)}
+}
+@keyframes gameDefectScan{
+  to{transform:translateX(125%)}
+}
+@keyframes gameBlockSettle{
+  0%{transform:translateY(-3px);opacity:.82}
+  100%{transform:translateY(0);opacity:1}
+}
+@keyframes gameOopNodeIn{
+  from{opacity:0;transform:scale(.92) translateY(4px)}
+  to{opacity:1;transform:scale(1) translateY(0)}
+}
+@keyframes gameOopLinkIn{
+  from{opacity:0;transform:scaleX(.4)}
+  to{opacity:1;transform:scaleX(1)}
+}
+@keyframes gameOopShine{
+  0%,60%{transform:translateX(-120%)}
+  82%,100%{transform:translateX(120%)}
+}
+
 @media(prefers-reduced-motion:reduce){
   .games-hero::before,
   .games-hero-art img,
@@ -1658,7 +1916,17 @@ body.lab-page::after{
   .games-meter > span::after,
   .games-celebration span,
   .lab-mission-node.is-next,
-  .lab-code-line.is-wrong-suspect{animation:none!important}
+  .lab-code-line.is-wrong-suspect,
+  .game-visual-header::after,
+  .game-fx-error,
+  .game-fx-success,
+  .game-fx-snap,
+  .game-fx-link,
+  .lab-code-case.game-fx-success::after,
+  .lab-order-list.game-fx-snap li,
+  .games-oop-blueprint .games-oop-node,
+  .games-oop-blueprint .games-oop-link,
+  .games-oop-blueprint .games-oop-node::before{animation:none!important}
 }
 
 /* Existing practice markup remains the functional layout container. */
@@ -1709,4 +1977,14 @@ body.lab-page::after{
 @media(max-width:560px){
   .games-interface-frame{min-height:170px}
   .games-interface-bar{align-items:flex-start;flex-direction:column;gap:.2rem}
+}
+
+@media(max-width:560px){
+  .game-visual-header{grid-template-columns:48px minmax(0,1fr);min-height:66px;padding:.62rem}
+  .game-visual-glyph{width:44px;height:44px;border-radius:13px}
+  .game-visual-svg{width:28px;height:28px}
+  .game-visual-lines{display:none}
+  .game-status-badge{position:static;justify-self:start;margin-top:.25rem;grid-column:2}
+  .games-match-row{grid-template-columns:1fr}
+  .games-match-connector{display:none}
 }
