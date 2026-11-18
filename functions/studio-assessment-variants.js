@@ -39,7 +39,7 @@ function validVariant(data,{variantId,fingerprint}){
 }
 
 function createStudioAssessmentVariantService({db,Timestamp}){
-  async function assessmentRecord(assessmentId){
+  async function assessmentRecord(assessmentId,{requireCurrentPool=true}={}){
     const record=await db.doc("assessments/"+assessmentId).get();
     if(!record.exists)deny("not-found","This assessment is unavailable.");
     const data=record.data();
@@ -49,6 +49,7 @@ function createStudioAssessmentVariantService({db,Timestamp}){
        data.personalizedTask?.enabled!==true||
        data.personalizedTask?.mode!==PERSONALIZATION_MODE)
       deny("failed-precondition","This assessment is not a personalized Adminerva Studio Code task.");
+    if(!requireCurrentPool)return {data,pool:null};
     const privateRecord=await db.doc("assessment_private/"+assessmentId).get();
     if(!privateRecord.exists)deny("failed-precondition","This assessment's private personalization configuration is unavailable.");
     const pool=validPool(privateRecord.data(),data);
@@ -106,7 +107,8 @@ function createStudioAssessmentVariantService({db,Timestamp}){
   return async request=>{
     const actor=request.auth||{},input=request.data||{},
       assessmentId=cleanId(input.assessmentId,"Assessment"),
-      {data:assessment,pool}=await assessmentRecord(assessmentId);
+      inspecting=input.action==="inspect",
+      {data:assessment,pool}=await assessmentRecord(assessmentId,{requireCurrentPool:!inspecting});
 
     if(input.action==="stats"){
       await authorizeAssessmentTeacher(actor,assessment);
@@ -140,9 +142,16 @@ function createStudioAssessmentVariantService({db,Timestamp}){
       await authorizeTeacher(actor,assessment,student);
       const variant=await db.doc("studio_assessment_variants/"+studentId+"_"+assessmentId+"/attempts/"+attempt).get();
       if(!variant.exists)deny("not-found","No personalized task was recorded for this submitted revision.");
-      const data=variant.data();
+      const data=variant.data(),expectedVariantId=String(input.expectedVariantId||"");
+      if(data.assessmentId!==assessmentId||data.studentId!==studentId||data.attempt!==attempt||
+         typeof data.variantId!=="string"||!data.variantId||
+         typeof data.prompt!=="string"||data.prompt.trim().length<20)
+        deny("failed-precondition","The recorded personalized task is incomplete or belongs to another attempt.");
+      if(expectedVariantId&&data.variantId!==expectedVariantId)
+        deny("failed-precondition","The recorded personalized task does not match the submitted variant ID.");
       return {assessmentId,studentId,attempt,variantId:data.variantId,prompt:data.prompt,
-        evaluationNotes:data.evaluationNotes||"",createdAt:millis(data.createdAt),readOnly:true};
+        evaluationNotes:data.evaluationNotes||"",poolFingerprint:data.poolFingerprint||"",
+        createdAt:millis(data.createdAt),readOnly:true,historical:true};
     }
 
     const student=await studentFor(actor,assessment),now=Date.now(),
