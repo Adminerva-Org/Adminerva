@@ -317,6 +317,12 @@ function renderMechanicAid(question){
     question.code.split("\n").forEach((text,index)=>{const row=node("div",undefined,"lab-code-line"+(index+1===question.focusLine?" is-focus":""));row.append(node("span",String(index+1),"lab-code-line-number"),node("code",text||" "));viewer.append(row);});
     panel.append(head,hint,viewer);
   }
+  if(question.type==="ordering"){
+    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="build";const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","CODE BUILDER","lab-mechanic-kicker"),node("strong","Arrange the blocks"));panel.append(head);
+  }
+  if(question.type==="matching"){
+    panel.hidden=false;if(!panel.dataset.kind)panel.dataset.kind="match";const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","LOGIC MATCH","lab-mechanic-kicker"),node("strong","Complete the pairs"));panel.append(head);
+  }
 }
 function pointsText(){const meta=attempt.question.difficulty;field("labMissionPoints").textContent=attempt.completed?attempt.earnedPoints+" pts earned":attempt.availablePoints+" pts available";field("labScoringHint").textContent=attempt.completed?"Completed · replays do not change XP.":meta.name+" · "+meta.maximum+" pts max · −"+meta.deduction+" per miss · "+meta.floor+" pt floor · experiments are free.";}
 async function openMission(selectedCourse,selectedMission){
