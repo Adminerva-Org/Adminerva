@@ -67,6 +67,57 @@ function checkerInstructions(privateTask,assignedVariant){
    assignedVariant?.evaluationNotes||""
  ].filter(Boolean).join("\n\n").slice(0,8000);
 }
+
+async function recoverHistoricalVariant(item,assessment){
+ const expectedVariantId=String(item?.variantId||"").trim();
+ if(!expectedVariantId)
+   throw Error("This historical submission does not contain a personalized variant ID.");
+ if(!/^[a-f0-9]{16,64}$/.test(expectedVariantId))
+   throw Error("The personalized variant ID saved with this submission is invalid.");
+
+ let callableError="";
+ try{
+   const response=await variantCall({
+     action:"inspect",assessmentId:item.assessmentId,studentId:item.studentId,
+     attempt:item.revision,expectedVariantId
+   });
+   const value=response?.data||null;
+   if(value?.variantId!==expectedVariantId||typeof value?.prompt!=="string"||value.prompt.trim().length<20)
+     throw Error("The recovered personalized task does not match the submitted variant ID.");
+   return value;
+ }catch(error){
+   callableError=String(error?.message||"Historical variant service unavailable.");
+ }
+
+ // Compatibility fallback for legacy submissions. Teachers who own the old
+ // assessment are already permitted to read its private variant records. Use
+ // only the exact variant ID frozen in the submission; never substitute or
+ // generate another scenario.
+ try{
+   const variant=await getDoc(doc(db,"assessment_private",item.assessmentId,"variants",expectedVariantId));
+   if(!variant.exists())throw Error("Exact private variant record was not found.");
+   const data=variant.data()||{};
+   if(String(data.variantId||variant.id)!==expectedVariantId)
+     throw Error("Private variant record ID does not match the submitted variant.");
+   const prompt=String(data.prompt||"").trim();
+   if(prompt.length<20)throw Error("Exact private variant prompt is incomplete.");
+   return {
+     assessmentId:item.assessmentId,
+     studentId:item.studentId,
+     attempt:Number(item.revision||1),
+     variantId:expectedVariantId,
+     prompt,
+     evaluationNotes:String(data.evaluationNotes||""),
+     poolFingerprint:String(data.fingerprint||assessment?.personalizedTask?.poolFingerprint||""),
+     readOnly:true,
+     historical:true,
+     source:"teacher_private_variant_fallback"
+   };
+ }catch(error){
+   const fallbackError=String(error?.message||"Exact private variant recovery failed.");
+   throw Error(callableError+" Exact-variant fallback also failed: "+fallbackError);
+ }
+}
 function render(){
  root.replaceChildren();
  const visible=records.filter(data=>
@@ -155,12 +206,11 @@ async function inspect(item){
    let assignedVariant=null,variantError="";
    if(assessment.personalizedTask?.enabled===true){
      try{
-       const response=await variantCall({action:"inspect",assessmentId:item.assessmentId,
-         studentId:item.studentId,attempt:item.revision,expectedVariantId:item.variantId||""});
-       assignedVariant=response.data;
-       if(item.variantId&&assignedVariant.variantId!==item.variantId)
-         throw Error("Submitted variant ID does not match the recorded personalized task.");
-     }catch(error){assignedVariant=null;variantError=String(error?.message||"Personalized task unavailable.");}
+       assignedVariant=await recoverHistoricalVariant(item,assessment);
+     }catch(error){
+       assignedVariant=null;
+       variantError=String(error?.message||"Personalized task unavailable.");
+     }
    }
    if(stamp!==inspectionSequence||auth.currentUser?.uid!==uid)return;
    detail.replaceChildren();
