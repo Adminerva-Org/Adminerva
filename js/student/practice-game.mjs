@@ -284,16 +284,28 @@ function renderAnswer(){
   for(const control of container.querySelectorAll("input,select,button"))if(busy||pending)control.disabled=true;
 }
 function renderMechanicAid(question){
-  const panel=field("labMechanicPanel");panel.replaceChildren();panel.hidden=true;
+  const panel=field("labMechanicPanel");panel.replaceChildren();panel.hidden=true;panel.dataset.kind="";panel.classList.remove("is-trace","is-debug");
   field("practiceCode").hidden=!question.code;
+  if(mission?.oop===true){
+    const blueprints={
+      "oop-classes":["CLASS","creates","OBJECT"],
+      "oop-encapsulation":["PRIVATE STATE","controlled by","METHODS"],
+      "oop-inheritance":["PARENT","extends to","CHILD"],
+      "oop-polymorphism":["REFERENCE","dispatches to","RUNTIME TYPE"],
+      "oop-real":["OBJECT","works with","OBJECT"]
+    },parts=blueprints[mission.oopModule]||["OOP","connects","BEHAVIOR"],blueprint=node("div",undefined,"games-oop-blueprint"),head=node("div",undefined,"games-oop-blueprint-head");
+    head.append(node("span","OOP BLUEPRINT","lab-mechanic-kicker"),node("strong",mission.title.replace(/ · (Guided|Apply|Challenge)$/,"")));
+    const flow=node("div",undefined,"games-oop-flow");flow.append(node("span",parts[0],"games-oop-node"),node("span",parts[1],"games-oop-link"),node("span",parts[2],"games-oop-node"));
+    blueprint.append(head,flow);panel.append(blueprint);panel.hidden=false;panel.dataset.kind="oop";
+  }
   if(question.type==="output"&&Array.isArray(question.traceGuide)&&question.traceGuide.length){
-    panel.hidden=false;panel.dataset.kind="trace";
+    panel.hidden=false;panel.classList.add("is-trace");
     const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","CODE TRACE","lab-mechanic-kicker"),node("strong","Trace board"));
     const list=node("ol",undefined,"lab-trace-steps");question.traceGuide.forEach(step=>list.append(node("li",step)));
     panel.append(head,list);
   }
   if(question.type==="debugging"&&Number.isInteger(question.focusLine)&&question.code){
-    panel.hidden=false;panel.dataset.kind="debug";field("practiceCode").hidden=true;
+    panel.hidden=false;panel.classList.add("is-debug");field("practiceCode").hidden=true;
     const head=node("div",undefined,"lab-mechanic-head");head.append(node("span","BUG HUNT","lab-mechanic-kicker"),node("strong","Case file"));
     const hint=node("p",question.caseHint||"Inspect the highlighted line and compare it with the stated goal.","lab-case-hint");
     const viewer=node("div",undefined,"lab-code-case");
