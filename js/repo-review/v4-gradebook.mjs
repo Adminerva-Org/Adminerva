@@ -35,9 +35,9 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const view=new URL(location.href).searchParams.get("view")||"review";
   const viewCopy={
     submissions:["Submissions","Inspect frozen learner responses and open the exact submitted version when review is needed."],
-    review:["Review & Grade","Review immutable assessment evidence, save private rubric drafts, and publish deliberately."],
+    review:["Review & Grade","Review immutable assessment evidence, save grade drafts, and publish deliberately."],
     results:["Assessment Results","Review saved draft/published outcomes and open any learner result against its frozen submission."]
-  }[view]||["Review & Grade","Review immutable assessment evidence, save private rubric drafts, and publish deliberately."];
+  }[view]||["Review & Grade","Review immutable assessment evidence, save grade drafts, and publish deliberately."];
   const pageTitle=document.getElementById("gbV4PageTitle"),pageDescription=document.getElementById("gbV4PageDescription");
   if(pageTitle)pageTitle.textContent=viewCopy[0];
   if(pageDescription)pageDescription.textContent=viewCopy[1];
@@ -55,7 +55,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   const githubEvidenceApi=httpsCallable(functions,"schoolGithubEvidence");
   const gradeApi=httpsCallable(functions,"schoolGradebook");
   let picker=null,tasks=new Map(),currentTask=null,currentRow=null,currentSnapshot=null,currentGrade=null,currentPrivateConfig=null;
-  let generation=0,busy=false,githubVerification=null;
+  let generation=0,busy=false,githubVerification=null,currentDraftSource="teacher";
 
   async function scoped(api,action,details={}){
     if(!picker?.scope.current)throw Error("Choose a verified school first.");
@@ -176,7 +176,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
       const published=[...gradeMap.values()].filter(item=>item.status==="published").length;
       const drafts=[...gradeMap.values()].filter(item=>item.status==="draft").length;
       status.textContent=rows.length?
-        rows.length+" submitted · "+published+" published · "+drafts+" private draft"+(drafts===1?"":"s")+".":
+        rows.length+" submitted · "+published+" published · "+drafts+" draft"+(drafts===1?"":"s")+".":
         "No student evidence yet for this assessment.";
       if(!rows.length){
         inbox.append(make("div","rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600",
@@ -337,7 +337,46 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4Feedback").value=grade?.feedback||"";
     updateScore();
   }
+  async function evaluationSnapshotForCurrent(){
+    if(currentTask?.submissionSource!=="github")return currentSnapshot;
+    if(!["approved","reviewed"].includes(currentSnapshot?.status))
+      throw Error("Approve the exact frozen GitHub evidence before running AI evaluation.");
+    const prefs=auth.currentUser?activateConnectionOwner(auth.currentUser.uid):{};
+    const client=createGithubEvidenceClient({
+      token:prefs.githubToken||null,maxPages:10,maxCommitFilesPages:10,retryCount:1
+    });
+    const repository=currentSnapshot?.repository?.fullName;
+    const selected=(currentSnapshot?.selectedCommitShas||[]).map(String);
+    if(!repository||!selected.length)throw Error("Frozen GitHub evidence is incomplete.");
+    const commits=[],limitations=[];
+    for(const sha of selected.slice(0,20)){
+      const detail=await client.loadCommit(repository,sha);
+      if(detail.filesTruncated)limitations.push("Commit "+sha.slice(0,12)+" has more files than could be fully retrieved.");
+      commits.push({
+        sha,
+        files:(detail.files||[]).slice(0,100).map(file=>({
+          path:file.filename||"",
+          status:file.status||"",
+          additions:Number(file.additions||0),
+          deletions:Number(file.deletions||0),
+          patch:file.patch||""
+        }))
+      });
+      if((detail.files||[]).length>100)
+        limitations.push("Commit "+sha.slice(0,12)+" contains additional files omitted from the AI package.");
+    }
+    if(selected.length>20)
+      limitations.push((selected.length-20)+" selected commit(s) were omitted from the AI package because the evidence set is unusually large.");
+    return {
+      version:Number(currentSnapshot.version||0),
+      checkpointSha:currentSnapshot.checkpointSha||"",
+      selectedCommitShas:selected,
+      commits,
+      limitations
+    };
+  }
   function applyEvaluationSuggestion(suggestion,label){
+    currentDraftSource=label==="Internal AI"?"internal_ai":label==="External AI"?"external_ai":"teacher";
     const rows=[...document.querySelectorAll("#gbV4Rubric [data-rubric-row]")];
     suggestion.criteria.forEach((criterion,index)=>{
       const row=rows[index];if(!row)return;
@@ -348,13 +387,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(suggestion.feedback)document.getElementById("gbV4Feedback").value=suggestion.feedback;
     updateScore();
     document.getElementById("gbV4ExternalStatus").textContent=
-      label+" applied to the unsaved private rubric draft. Review every criterion before saving.";
+      label+" applied to the unsaved grade draft. Review every criterion before saving.";
   }
   function showEvaluationReview(containerId,label,suggestion){
     renderEvaluationReview(document.getElementById(containerId),{
       title:label+" rubric suggestion",sourceLabel:label,suggestion,task:currentTask,
       onApply:value=>applyEvaluationSuggestion(value,label),
-      applyLabel:"Apply "+label+" to private draft"
+      applyLabel:"Apply "+label+" to draft"
     });
   }
   function collectCriteria(){
@@ -370,7 +409,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   }
   async function openReview(row){
     if(busy||!currentTask)return;
-    currentRow=row;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;
+    currentRow=row;currentSnapshot=null;currentGrade=null;currentPrivateConfig=null;currentDraftSource="teacher";
     document.getElementById("gbV4ReviewTitle").textContent=row.studentName||"Review student project";
     document.getElementById("gbV4ReviewMeta").textContent=
       currentTask.title+" · version "+row.version+" · "+row.status;
@@ -384,7 +423,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     document.getElementById("gbV4ExternalStatus").textContent="";
     clearEvaluationReview(document.getElementById("gbV4SystemReview"),"Internal AI has not been run for this submission.");
     clearEvaluationReview(document.getElementById("gbV4ExternalReview"),"No External AI review has been imported for this submission.");
-    document.getElementById("gbV4ExternalEvaluationPanel").classList.toggle("hidden",currentTask.submissionSource==="github");
+    document.getElementById("gbV4ExternalEvaluationPanel").classList.remove("hidden");
     document.getElementById("gbV4LegacyGradePanel").hidden=true;
     document.getElementById("gbV4CorrectionPanel").classList.add("hidden");
     document.getElementById("gbV4StudioEvidence").classList.toggle("hidden",currentTask.submissionSource!=="studio");
@@ -409,6 +448,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         scoped(assessmentApi,"get_private",{taskId:currentTask.taskId})
       ]);
       currentSnapshot=result[0];currentGrade=result[1].grade;currentPrivateConfig=result[2]||{};
+      currentDraftSource=currentGrade?.draftSource||"teacher";
       if(currentTask.submissionSource==="studio"){
         const fileSelect=document.getElementById("gbV4File");
         for(const file of currentSnapshot.files||[])fileSelect.add(new Option(file.path,file.path));
@@ -445,7 +485,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         reopened?"A revision is already requested. Wait for the student to resubmit.":
         currentTask.submissionSource==="github"&&!["approved","reviewed"].includes(currentSnapshot.status)?
           "Verify and approve the exact frozen GitHub evidence before starting a grade draft.":
-        currentGrade?.status==="draft"?"Private draft loaded. Review before publishing.":
+        currentGrade?.status==="draft"?"Draft loaded. Review before publishing.":
         "No grade draft yet. Scores remain private until you save and publish.";
     }catch(error){
       document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Review data unavailable.";
@@ -475,7 +515,7 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
         "Evidence approved for grading. The exact commit set and checkpoint are frozen in the audit record.";
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=
-        "GitHub evidence approved. You can now save a private rubric draft.";
+        "GitHub evidence approved. You can now save a grade draft.";
       await loadInbox();
     }catch(error){
       document.getElementById("gbV4GithubVerifyStatus").textContent=
@@ -485,12 +525,13 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
   document.getElementById("gbV4SystemCheck").addEventListener("click",()=>void (async()=>{
     const output=document.getElementById("gbV4ExternalStatus");
     const button=document.getElementById("gbV4SystemCheck");
-    if(busy||!currentTask||!currentSnapshot||currentTask.submissionSource==="github")return;
+    if(busy||!currentTask||!currentSnapshot)return;
     button.disabled=true;
     output.textContent="Running Internal AI against the exact frozen submission…";
     try{
+      const evaluationSnapshot=await evaluationSnapshotForCurrent();
       const packageText=buildGeneralExternalEvaluationPackage({
-        task:currentTask,snapshot:currentSnapshot,
+        task:currentTask,snapshot:evaluationSnapshot,
         checkingInstructions:currentPrivateConfig?.checkingInstructions||""
       });
       const result=await generateSchoolContent({
@@ -511,7 +552,8 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     const output=document.getElementById("gbV4ExternalStatus");
     if(busy||!currentTask||!currentSnapshot)return;
     try{
-      const packageText=buildGeneralExternalEvaluationPackage({task:currentTask,snapshot:currentSnapshot,checkingInstructions:currentPrivateConfig?.checkingInstructions||""});
+      const evaluationSnapshot=await evaluationSnapshotForCurrent();
+      const packageText=buildGeneralExternalEvaluationPackage({task:currentTask,snapshot:evaluationSnapshot,checkingInstructions:currentPrivateConfig?.checkingInstructions||""});
       await navigator.clipboard.writeText(packageText);
       output.textContent="Anonymous External AI evaluation package copied. Paste the evaluator JSON below when ready.";
     }catch(error){
@@ -541,17 +583,18 @@ if(panel&&taskSelect&&inbox&&status&&dialog){
     if(busy||!currentTask||!currentRow||!currentSnapshot)return;
     try{
       const criteria=collectCriteria();
-      setBusy(true,"Saving private rubric draft…");
+      setBusy(true,"Saving grade draft…");
       await scoped(gradeApi,"save_draft",{
         taskId:currentTask.taskId,studentUid:currentRow.studentUid,
         submissionVersion:currentSnapshot.version,criteria,
-        feedback:document.getElementById("gbV4Feedback").value.trim()
+        feedback:document.getElementById("gbV4Feedback").value.trim(),
+        draftSource:currentDraftSource
       });
       const refreshed=await scoped(gradeApi,"get_draft",{taskId:currentTask.taskId,studentUid:currentRow.studentUid});
       currentGrade=refreshed.grade;renderRubric(currentGrade);
       refreshReviewControls();
       document.getElementById("gbV4ReviewStatus").textContent=
-        "Private draft saved against frozen submission version "+currentSnapshot.version+".";
+        "Draft saved against frozen submission version "+currentSnapshot.version+".";
     }catch(error){
       document.getElementById("gbV4ReviewStatus").textContent=error?.message||"Grade draft was not saved.";
     }finally{setBusy(false);}
